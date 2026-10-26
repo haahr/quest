@@ -1,0 +1,85 @@
+(* Quest Self-Hosted Compiler: Shared Checks Implementation *)
+
+module checks : Checks
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/model : questlang/types/Model
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/env : questlang/types/Env
+    questlang/types/kinds : questlang/types/Kinds
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+export
+    Let Named = Tuple name: String offset: Int end
+
+    let checkDistinctNames(members: Array(Named)): Ok =
+        begin
+            let seen = hashMap.new(:String :Bool stringOp.equal hash.string)
+            for i = 0 upto {extent members - 1} do
+                let m = members[i]
+                if hashMap.contains(:String :Bool seen m.name) then
+                    diagnostics.fail(:Ok "'" <> m.name <> "' is declared more than once in one simultaneous declaration" m.offset)
+                end
+                hashMap.insert(:String :Bool seen m.name true)
+            end
+        end
+
+    let describeKind(k: model.Kind): String =
+        if model.isPower(k) then "<: " <> model.show(model.powerBound(k)) else ":: " <> model.showKind(k) end
+
+    let checkTypeArgKind(what: String targ: model.Type bound: model.Kind e: env.T offset: Int): Ok =
+        begin
+            let b = model.evaluateKindLazily(bound maybe.unwrap(:model.Lookup env.lookupOf(e)))
+            if model.isPower(b) then
+                if not(subtyping.isSubtype(targ model.powerBound(b) env.lookupOf(e))) then
+                    diagnostics.fail(:Ok what <> " '" <> model.show(targ) <> "' is not a subtype of bound '" <>
+                        model.show(model.powerBound(b)) <> "'" offset)
+                end
+            else
+                let kind = kinds.synthKind(targ maybe.some(:env.T e))
+                if not(subtyping.isSubkind(kind b env.lookupOf(e))) then
+                    diagnostics.fail(:Ok what <> " '" <> model.show(targ) <> "' has kind '" <> model.showKind(kind) <>
+                        "', which is not a subkind of '" <> model.showKind(b) <> "'" offset)
+                end
+            end
+        end
+
+    let joinTypes(types: Array(model.Type) e: env.T offset: Int errorMessage: maybe.T(String)): model.Type =
+        if extent types is 0 then
+            model.okType
+        else
+            let var join = types[0]
+            for i = 1 upto {extent types - 1} do
+                let bt = types[i]
+                if subtyping.isSubtype(join bt env.lookupOf(e)) then
+                    join := bt
+                elsif not(subtyping.isSubtype(bt join env.lookupOf(e))) then
+                    let message = if maybe.isSome(:String errorMessage) then
+                        strutil.replace(strutil.replace(maybe.unwrap(:String errorMessage) "{t1}" model.show(join))
+                            "{t2}" model.show(bt))
+                    else
+                        "Cannot find common supertype join for branch types '" <> model.show(join) <> "' and '" <>
+                            model.show(bt) <> "'"
+                    end
+                    diagnostics.fail(:Ok message offset)
+                end
+            end
+            join
+        end
+
+    let requireSubtype(offset: Int typed: typedAst.Expr expected: model.Type e: env.T typeDesc: maybe.T(String)): typedAst.Expr =
+        if subtyping.isSubtype(typed.type expected env.lookupOf(e)) then
+            typed
+        else
+            let prefix = maybe.unwrapOr(:String typeDesc "Type mismatch: synthesized")
+            diagnostics.fail(:typedAst.Expr prefix <> " type '" <> model.show(typed.type) <>
+                "' is not a subtype of expected type '" <> model.show(expected) <> "'" offset)
+        end
+
+    let notDesugared(className: String offset: Int): diagnostics.CompilerError =
+        diagnostics.errorAt("internal: " <> className <> " reached the type checker without desugaring" offset)
+end

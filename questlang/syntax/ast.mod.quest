@@ -33,12 +33,14 @@ export
      * apply them to TypeExpr.
      * ========================================================================= *)
 
-    Let TypeFormalOf(T::TYPE) = Tuple name: String bound: T end
-    Let QuantifierOf(T::TYPE) = Tuple name: String bound: T mode: ParamMode isType: Bool end
-    Let FieldSigOf(T::TYPE) = Tuple name: maybe.T(String) typeSig: maybe.T(T) mode: ParamMode end
-    Let RecordFieldSigOf(T::TYPE) = Tuple name: String typeSig: T isVar: Bool end
-    Let VariantFieldSigOf(T::TYPE) = Tuple tag: String typeSig: T isVar: Bool end
+    (* Components have the offset the bootstrap gives the corresponding node *)
+    Let TypeFormalOf(T::TYPE) = Tuple offset: Int name: String bound: T end
+    Let QuantifierOf(T::TYPE) = Tuple offset: Int name: String bound: T mode: ParamMode isType: Bool end
+    Let FieldSigOf(T::TYPE) = Tuple offset: Int name: maybe.T(String) typeSig: maybe.T(T) mode: ParamMode end
+    Let RecordFieldSigOf(T::TYPE) = Tuple offset: Int name: String typeSig: T isVar: Bool end
+    Let VariantFieldSigOf(T::TYPE) = Tuple offset: Int tag: String typeSig: T isVar: Bool end
     Let TypeBindingOf(T::TYPE) = Tuple
+        offset: Int
         name: String
         typeVal: T
         params: vector.T(TypeFormalOf(T))
@@ -53,11 +55,11 @@ export
         sigValue with val: FieldSigOf(T) end
         sigType with val: TypeFormalOf(T) end
         sigTypeBinding with val: TypeBindingOf(T) end
-        sigTypeBindingGroup with val: vector.T(TypeBindingOf(T)) end
-        sigKindBinding with val: Tuple name: String kindVal: T end end
+        sigTypeBindingGroup with offset: Int val: vector.T(TypeBindingOf(T)) end
+        sigKindBinding with val: Tuple offset: Int name: String kindVal: T end end
     end
     (* An option's case: its tag and its payload's signature, which is a tuple type's *)
-    Let OptionFieldSigOf(T::TYPE) = Tuple tag: String payloadSig: vector.T(SignatureOf(T)) end
+    Let OptionFieldSigOf(T::TYPE) = Tuple offset: Int tag: String payloadSig: vector.T(SignatureOf(T)) end
 
     Let Rec TypeForm = Option
         (* Level 2: Kinds *)
@@ -107,6 +109,7 @@ export
     Let Signature = SignatureOf(TypeExpr)
 
     Let FormalParam = Tuple
+        offset: Int
         name: String
         typeAnnot: maybe.T(TypeExpr)
         mode: ParamMode
@@ -126,6 +129,7 @@ export
 
     Let ElsifBranchOf(E::TYPE) = Tuple cond: E thenBranch: E end
     Let TupleFieldBindingOf(E::TYPE) = Tuple
+        offset: Int
         name: maybe.T(String)
         value: E
         typeAnnot: maybe.T(TypeExpr)
@@ -135,18 +139,20 @@ export
      * recursive values) *)
     Let TupleFieldOf(E::TYPE) = Option
         fieldVal with val: TupleFieldBindingOf(E) end
-        fieldGroup with val: vector.T(TupleFieldBindingOf(E)) end
+        fieldGroup with offset: Int val: vector.T(TupleFieldBindingOf(E)) end
         fieldDecl with val: E end
     end
-    Let RecordBindingOf(E::TYPE) = Tuple name: String value: E isVar: Bool end
+    Let RecordBindingOf(E::TYPE) = Tuple offset: Int name: String value: E isVar: Bool end
     Let CaseBranchOf(E::TYPE) = Tuple
+        offset: Int
         tags: vector.T(String)
         binder: maybe.T(String)
         binderType: maybe.T(TypeExpr)
         body: E
     end
-    Let InspectBranchOf(E::TYPE) = Tuple matchType: TypeExpr binders: vector.T(InspectBinder) body: E end
+    Let InspectBranchOf(E::TYPE) = Tuple offset: Int matchType: TypeExpr binders: vector.T(InspectBinder) body: E end
     Let TryBranchOf(E::TYPE) = Tuple
+        offset: Int
         excPattern: E
         binder: maybe.T(String)
         binderType: maybe.T(TypeExpr)
@@ -288,6 +294,7 @@ export
     Let TryBranch = TryBranchOf(Expr)
 
     Let ImportItem = Tuple
+        offset: Int
         names: vector.T(String)
         interfaceName: String
         modulePaths: maybe.T(vector.T(String))
@@ -436,27 +443,31 @@ export
      * Auxiliary Helpers
      * ========================================================================= *)
 
-    let formalParam(name: String typeAnnot: maybe.T(TypeExpr) mode: ParamMode): FormalParam =
+    let formalParam(offset: Int name: String typeAnnot: maybe.T(TypeExpr) mode: ParamMode): FormalParam =
         tuple
+            let offset = offset
             let name = name
             let typeAnnot = typeAnnot
             let mode = mode
         end
 
-    let fieldSig(name: maybe.T(String) typeSig: maybe.T(TypeExpr) mode: ParamMode): FieldSig =
+    let fieldSig(offset: Int name: maybe.T(String) typeSig: maybe.T(TypeExpr) mode: ParamMode): FieldSig =
         tuple
+            let offset = offset
             let name = name
             let typeSig = typeSig
             let mode = mode
         end
 
     let tupleBinding(
+        offset: Int
         name: maybe.T(String)
         value: Expr
         typeAnnot: maybe.T(TypeExpr)
         isVar: Bool
     ): TupleFieldBinding =
         tuple
+            let offset = offset
             let name = name
             let value = value
             let typeAnnot = typeAnnot
@@ -464,12 +475,14 @@ export
         end
 
     let importItem(
+        offset: Int
         names: vector.T(String)
         interfaceName: String
         modulePaths: maybe.T(vector.T(String))
         interfacePath: maybe.T(String)
     ): ImportItem =
         tuple
+            let offset = offset
             let names = names
             let interfaceName = interfaceName
             let modulePaths = modulePaths

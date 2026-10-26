@@ -28,7 +28,7 @@ let phases = array of "tokenize" "parse" "desugar" end;
 let usage(message: String): Ok =
     begin
         writer.putString(writer.err "main: " <> message <> "\n")
-        writer.putString(writer.err "usage: main --stop-after tokenize|parse|desugar FILE\n")
+        writer.putString(writer.err "usage: main --stop-after tokenize|parse|desugar [--show-offsets] FILE\n")
         system.sysexit(2)
     end;
 
@@ -37,12 +37,16 @@ let options =
     begin
         let var stopAfter = ""
         let var file = ""
+        let var showOffsets = false
         let var i = 1
         while i < extent system.args do
             let arg = system.args[i]
             if {stringOp.equal(arg "--stop-after")} andif {{i + 1} < extent system.args} then
                 stopAfter := system.args[i + 1]
                 i := i + 2
+            elsif stringOp.equal(arg "--show-offsets") then
+                showOffsets := true
+                i := i + 1
             elsif stringOp.equal(file "") then
                 file := arg
                 i := i + 1
@@ -57,7 +61,7 @@ let options =
         end
         if not(known) then usage("unknown phase '" <> stopAfter <> "'") end
         if stringOp.equal(file "") then usage("no file") end
-        tuple let stopAfter = stopAfter let file = file end
+        tuple let stopAfter = stopAfter let file = file let showOffsets = showOffsets end
     end;
 
 (* The text of a file, up to its first byte that is not ASCII, if any: a character is ASCII, and a reader raises
@@ -105,10 +109,11 @@ let run(): Ok =
                 print(tokenizer.formatDump(toks sm false))
             else
                 let program = parser.parseProgram(toks sm bag)
+                let show = if options.showOffsets then astprint.dumpWithOffsets else astprint.dump end
                 if stringOp.equal(options.stopAfter "parse") then
-                    print(astprint.dump(program))
+                    print(show(program))
                 else
-                    print(astprint.dump(desugar.program(program)))
+                    print(show(desugar.program(program)))
                 end
             end
         when diagbag.fatalError then

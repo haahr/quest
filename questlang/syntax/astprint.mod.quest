@@ -52,6 +52,28 @@ export
     let leaf(name: String): S = node(name array of :Field end)
     let f(name: String value: S): Field = tuple let name = name let value = value end
 
+    (* Whether nodes show their offsets, as ast_dump's show_offsets has them *)
+    Let Options = Tuple var offsets: Bool end
+    let options: Options = tuple let var offsets = false end
+
+    (* A node with its offset first, if offsets are shown (once: a node another's description gives keeps its own) *)
+    let at(offset: Int s: S): S =
+        if options.offsets then
+            case s
+                when node with x then
+                    if {extent x.fields > 0} andif stringOp.equal(x.fields[0].name "offset") then
+                        s
+                    else
+                        let fields = vector.fromArray(:Field array of f("offset" int(offset)) end)
+                        for i = 0 upto {extent x.fields - 1} do vector.append(:Field fields x.fields[i]) end
+                        node(x.name vector.toArray(:Field fields))
+                    end
+                else s
+            end
+        else
+            s
+        end
+
     let optional(A::TYPE m: maybe.T(A) dumpA: All(a: A) S): S =
         if maybe.isSome(:A m) then dumpA(maybe.unwrap(:A m)) else none end
     let optStr(m: maybe.T(String)): S = optional(:String m str)
@@ -64,7 +86,8 @@ export
      * 2. Types and Kinds
      * ========================================================================= *)
 
-    let rec ty(t: ast.TypeExpr): S =
+    let rec ty(t: ast.TypeExpr): S = at(t.span.startOffset tyForm(t))
+    and tyForm(t: ast.TypeExpr): S =
         case t.form
             when kindType then leaf("KindType")
             when kindPower with k then node("KindPower" array of f("bound" ty(k.bound)) end)
@@ -115,43 +138,49 @@ export
             when typeExternal with x then node("TypeExternal" array of f("c_type" str(x.cType)) end)
         end
     and quantifier(q: ast.Quantifier): S =
-        node("Quantifier" array of
+        at(q.offset node("Quantifier" array of
             f("name" str(q.name)) f("bound" ty(q.bound)) f("mode" mode(q.mode)) f("is_type" flag(q.isType))
-        end)
+        end))
     and fieldSig(s: ast.FieldSig): S =
-        node("FieldSig" array of
+        at(s.offset node("FieldSig" array of
             f("name" optStr(s.name)) f("type_sig" optional(:ast.TypeExpr s.typeSig ty)) f("mode" mode(s.mode))
-        end)
+        end))
     and recordFieldSig(s: ast.RecordFieldSig): S =
-        node("RecordFieldSig" array of f("name" str(s.name)) f("type_sig" ty(s.typeSig)) f("is_var" flag(s.isVar)) end)
+        at(s.offset node("RecordFieldSig" array of
+            f("name" str(s.name)) f("type_sig" ty(s.typeSig)) f("is_var" flag(s.isVar))
+        end))
     and optionFieldSig(s: ast.OptionFieldSig): S =
-        node("OptionFieldSig" array of
+        at(s.offset node("OptionFieldSig" array of
             f("tag" str(s.tag)) f("payload_sig" each(:ast.Signature s.payloadSig signature))
-        end)
+        end))
     and variantFieldSig(s: ast.VariantFieldSig): S =
-        node("VariantFieldSig" array of f("tag" str(s.tag)) f("type_sig" ty(s.typeSig)) f("is_var" flag(s.isVar)) end)
+        at(s.offset node("VariantFieldSig" array of
+            f("tag" str(s.tag)) f("type_sig" ty(s.typeSig)) f("is_var" flag(s.isVar))
+        end))
     and typeFormal(p: ast.TypeFormal): S =
-        node("TypeFormal" array of f("name" str(p.name)) f("bound" ty(p.bound)) end)
+        at(p.offset node("TypeFormal" array of f("name" str(p.name)) f("bound" ty(p.bound)) end))
     and typeBinding(b: ast.TypeBinding): S =
-        node("TypeBinding" array of
+        at(b.offset node("TypeBinding" array of
             f("name" str(b.name)) f("type_val" ty(b.typeVal)) f("params" each(:ast.TypeFormal b.params typeFormal))
             f("bound" optional(:ast.KindExpr b.bound ty)) f("is_rec" flag(b.isRec)) f("is_def" flag(b.isDef))
-        end)
+        end))
     and signature(s: ast.Signature): S =
         case s
             when sigValue with x then fieldSig(x.val)
             when sigType with x then typeFormal(x.val)
             when sigTypeBinding with x then typeBinding(x.val)
             when sigTypeBindingGroup with x then
-                node("TypeBindingGroup" array of f("bindings" each(:ast.TypeBinding x.val typeBinding)) end)
+                at(x.offset node("TypeBindingGroup" array of f("bindings" each(:ast.TypeBinding x.val typeBinding)) end))
             when sigKindBinding with x then
-                node("DefKindBinding" array of f("name" str(x.val.name)) f("kind_val" ty(x.val.kindVal)) end)
+                at(x.val.offset node("DefKindBinding" array of
+                    f("name" str(x.val.name)) f("kind_val" ty(x.val.kindVal))
+                end))
         end
 
     let formalParam(p: ast.FormalParam): S =
-        node("FormalParam" array of
+        at(p.offset node("FormalParam" array of
             f("name" str(p.name)) f("type_annot" optional(:ast.TypeExpr p.typeAnnot ty)) f("mode" mode(p.mode))
-        end)
+        end))
 
     let optTy(m: maybe.T(ast.TypeExpr)): S = optional(:ast.TypeExpr m ty)
 
@@ -159,7 +188,8 @@ export
      * 3. Expressions and Declarations
      * ========================================================================= *)
 
-    let rec ex(e: ast.Expr): S =
+    let rec ex(e: ast.Expr): S = at(e.span.startOffset exForm(e))
+    and exForm(e: ast.Expr): S =
         case e.form
             when exprInt with x then node("ExprInt" array of f("value" int(x.value)) f("lexeme" str(x.lexeme)) end)
             when exprReal with x then node("ExprReal" array of f("value" real(x.value)) f("lexeme" str(x.lexeme)) end)
@@ -263,8 +293,8 @@ export
                 node("LetValueBindingGroup" array of f("bindings" each(:ast.Decl x.bindings ex)) end)
             when declTypeBinding with x then
                 typeBinding(tuple
-                    let name = x.name let typeVal = x.typeVal let params = x.params let bound = x.bound
-                    let isRec = x.isRec let isDef = x.isDef
+                    let offset = e.span.startOffset let name = x.name let typeVal = x.typeVal let params = x.params
+                    let bound = x.bound let isRec = x.isRec let isDef = x.isDef
                 end)
             when declTypeBindingGroup with x then
                 node("TypeBindingGroup" array of f("bindings" each(:ast.Decl x.bindings ex)) end)
@@ -279,46 +309,48 @@ export
         case t
             when fieldVal with v then tupleBinding(v.val)
             when fieldGroup with g then
-                node("TupleBindingGroup" array of f("bindings" each(:ast.TupleFieldBinding g.val tupleBinding)) end)
+                at(g.offset node("TupleBindingGroup" array of
+                    f("bindings" each(:ast.TupleFieldBinding g.val tupleBinding))
+                end))
             when fieldDecl with d then ex(d.val)
         end
     and tupleBinding(b: ast.TupleFieldBinding): S =
-        node("TupleBinding" array of
+        at(b.offset node("TupleBinding" array of
             f("name" optStr(b.name)) f("value" ex(b.value)) f("type_annot" optTy(b.typeAnnot)) f("is_var" flag(b.isVar))
-        end)
+        end))
     and recordBinding(r: ast.RecordBinding): S =
-        node("RecordBinding" array of f("name" str(r.name)) f("value" ex(r.value)) f("is_var" flag(r.isVar)) end)
+        at(r.offset node("RecordBinding" array of f("name" str(r.name)) f("value" ex(r.value)) f("is_var" flag(r.isVar)) end))
     and caseBranch(c: ast.CaseBranch): S =
-        node("CaseBranch" array of
+        at(c.offset node("CaseBranch" array of
             f("tags" strs(c.tags)) f("binder" optStr(c.binder)) f("binder_type" optTy(c.binderType))
             f("body" ex(c.body))
-        end)
+        end))
     (* Python holds an inspect binder as a plain (name, type) tuple *)
     and inspectBranch(i: ast.InspectBranch): S =
-        node("InspectBranch" array of
+        at(i.offset node("InspectBranch" array of
             f("match_type" ty(i.matchType))
             f("binders" each(:ast.InspectBinder i.binders
                 fun(x: ast.InspectBinder): S seq(array of str(x.name) optTy(x.typeAnnot) end)))
             f("body" ex(i.body))
-        end)
+        end))
     and tryBranch(t: ast.TryBranch): S =
-        node("TryBranch" array of
+        at(t.offset node("TryBranch" array of
             f("exc_pattern" ex(t.excPattern)) f("binder" optStr(t.binder)) f("binder_type" optTy(t.binderType))
             f("body" ex(t.body))
-        end)
+        end))
 
     (* =========================================================================
      * 4. Phrases and Programs
      * ========================================================================= *)
 
     let importItem(i: ast.ImportItem): S =
-        node("ImportItem" array of
+        at(i.offset node("ImportItem" array of
             f("names" strs(i.names)) f("interface_name" str(i.interfaceName))
             f("module_paths" optional(:vector.T(String) i.modulePaths strs)) f("interface_path" optStr(i.interfacePath))
-        end)
+        end))
 
     let phrase(p: ast.Phrase): S =
-        case p.form
+        at(p.span.startOffset case p.form
             when phraseImport with x then
                 node("ImportPhrase" array of f("items" each(:ast.ImportItem x.phrase.items importItem)) end)
             when phraseInterface with x then
@@ -335,9 +367,10 @@ export
                 end)
             when phraseDecl with x then ex(x.decl)
             when phraseExpr with x then ex(x.expr)
-        end
+        end)
 
-    let program(p: ast.Program): S = node("Program" array of f("phrases" each(:ast.Phrase p.form.phrases phrase)) end)
+    let program(p: ast.Program): S =
+        at(p.span.startOffset node("Program" array of f("phrases" each(:ast.Phrase p.form.phrases phrase)) end))
 
     (* =========================================================================
      * 5. Rendering, with ast_dump's layout rules
@@ -468,6 +501,13 @@ export
     let show(v: S): String = render(stringBuilder.new() v 0).toString()
 
     let dump(node: ast.Program): String = show(program(node))
+    let dumpWithOffsets(node: ast.Program): String =
+        begin
+            options.offsets := true
+            let text = show(program(node))
+            options.offsets := false
+            text
+        end
     let dumpPhrase(node: ast.Phrase): String = show(phrase(node))
     let dumpExpr(node: ast.Expr): String = show(ex(node))
     let dumpTypeExpr(node: ast.TypeExpr): String = show(ty(node))

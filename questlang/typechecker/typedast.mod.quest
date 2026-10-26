@@ -1,0 +1,154 @@
+(* Quest Self-Hosted Compiler: Typed AST Implementation *)
+
+module typedAst : TypedAst
+import
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    Let Rec Expr = Tuple
+        offset: Int
+        type: model.Type
+        form: ExprForm
+    end
+    and ExprForm = Option
+        exprInt with value: Int end
+        exprReal with value: Real end
+        exprBool with value: Bool end
+        exprChar with value: Char end
+        exprString with value: String end
+        exprOk
+        exprExternal with symbol: String end
+        exprVar with name: String symbol: symbols.ValueSymbol end
+        exprFun with params: Array(Param) body: Expr typeParamIds: Array(Int) end
+        exprApp with func: Expr args: Array(Expr) end
+        exprTypeApp with func: Expr typeArgs: Array(model.Type) end
+        exprInfix with left: Expr op: String right: Expr end
+        exprRecord with fields: Array(RecordField) end
+        exprTypeWitness with name: String witnessType: model.Type bound: maybe.T(model.Kind) end
+        exprTuple with
+            elements: Array(Expr)
+            recGroups: Array(Array(Int))
+            simultaneousGroups: Array(Array(Int))
+            labels: Array(maybe.T(symbols.ValueSymbol))
+        end
+        exprSelect with target: Expr field: String end
+        exprIndex with target: Expr index: Expr end
+        exprIndexAssign with target: Expr index: Expr value: Expr end
+        exprArray with elements: Array(Expr) end
+        exprArrayRep with count: Expr initVal: Expr end
+        exprVarCell with value: Expr end
+        exprDerefCell with target: Expr end
+        exprSelectRef with target: Expr field: String end
+        exprIndexRef with target: Expr index: Expr end
+        exprTupleSelectRef with target: Expr index: Int field: maybe.T(String) end
+        exprAssign with target: Expr value: Expr end
+        exprVariant with tag: String payload: maybe.T(Expr) end
+        exprOption with tag: maybe.T(String) payload: maybe.T(Expr) ordinalExpr: maybe.T(Expr) end
+        exprAuto with witnessType: model.Type autoType: model.Type payload: Expr end
+        exprVariantCheck with target: Expr tag: String end
+        exprVariantAssert with target: Expr tag: String end
+        exprCase with target: Expr branches: Array(CaseBranch) elseBranch: maybe.T(Expr) end
+        exprInspect with
+            target: Expr
+            branches: Array(InspectBranch)
+            elseBranch: maybe.T(Expr)
+            autoType: maybe.T(model.Type)
+        end
+        exprBlock with bindings: Array(Binding) result: Expr end
+        exprIf with cond: Expr thenBranch: Expr elseBranch: Expr end
+        exprWhile with cond: Expr body: Expr end
+        exprLoop with body: Expr end
+        exprFor with varName: String symbol: symbols.ValueSymbol start: Expr isDownto: Bool stop: Expr body: Expr end
+        exprExit
+        exprException with name: String payloadType: maybe.T(model.Type) symbol: maybe.T(symbols.ValueSymbol) end
+        exprRaise with exc: Expr payload: maybe.T(Expr) end
+        exprTry with body: Expr branches: Array(TryBranch) elseBranch: maybe.T(Expr) end
+    end
+    and Param = Tuple
+        offset: Int
+        name: String
+        symbol: symbols.ValueSymbol
+        type: model.Type
+        isVar: Bool
+        isOut: Bool
+    end
+    and RecordField = Tuple offset: Int name: String value: Expr isVar: Bool end
+    and CaseBranch = Tuple offset: Int tags: Array(String) body: Expr binder: maybe.T(symbols.ValueSymbol) end
+    and InspectBranch = Tuple
+        offset: Int
+        matchType: model.Type
+        binders: Array(symbols.ValueSymbol)
+        body: Expr
+        exact: Bool
+    end
+    and TryBranch = Tuple offset: Int excPattern: Expr body: Expr binder: maybe.T(symbols.ValueSymbol) end
+    and Binding = Tuple offset: Int form: BindingForm end
+    and BindingForm = Option
+        bindLetValue with value: LetValue end
+        bindLetValueGroup with members: Array(LetValue) end
+        bindLetType with value: LetType end
+        bindLetTypeGroup with members: Array(LetType) end
+        bindDefKind with name: String symbol: symbols.KindSymbol end
+        bindExprStmt with expr: Expr end
+        bindInterface with name: String signatures: Array(Binding) scope: symbols.Scope end
+        bindModule with
+            name: String
+            interfaceName: String
+            bindings: Array(Binding)
+            scope: symbols.Scope
+            cInit: maybe.T(String)
+            isPrecompiled: Bool
+            symbolId: maybe.T(Int)
+        end
+        bindImport with items: Array(ImportItem) end
+    end
+    and LetValue = Tuple offset: Int name: String value: Expr symbol: symbols.ValueSymbol isRec: Bool end
+    and LetType = Tuple offset: Int name: String symbol: symbols.TypeSymbol end
+    and ImportItem = Tuple
+        offset: Int
+        names: Array(String)
+        interfaceName: String
+        modulePaths: maybe.T(Array(String))
+        interfacePath: maybe.T(String)
+        canonicalModulePaths: maybe.T(Array(String))
+        symbolIds: maybe.T(Array(maybe.T(Int)))
+    end
+
+    Let Program = Tuple offset: Int phrases: Array(Binding) end
+
+    let expr(offset: Int type: model.Type form: ExprForm): Expr =
+        tuple let offset = offset let type = type let form = form end
+
+    let binding(offset: Int form: BindingForm): Binding = tuple let offset = offset let form = form end
+
+    let effectiveModulePaths(item: ImportItem): Array(String) = maybe.unwrapOr(:Array(String) item.modulePaths item.names)
+    let effectiveInterfacePath(item: ImportItem): String = maybe.unwrapOr(:String item.interfacePath item.interfaceName)
+    let effectiveCanonicalModulePaths(item: ImportItem): Array(String) =
+        maybe.unwrapOr(:Array(String) item.canonicalModulePaths effectiveModulePaths(item))
+
+    let bindingMembers(b: Binding): Array(Binding) =
+        case b.form
+            when bindLetValueGroup with g then
+                begin
+                    let members = vector.new(:Binding)
+                    for i = 0 upto {extent g.members - 1} do
+                        let m = g.members[i]
+                        vector.append(:Binding members binding(m.offset option bindLetValue of BindingForm with let value = m end))
+                    end
+                    vector.toArray(:Binding members)
+                end
+            else array of b end
+        end
+
+    let declaredName(b: Binding): maybe.T(String) =
+        case b.form
+            when bindLetValue with x then maybe.some(:String x.value.name)
+            when bindLetType with x then maybe.some(:String x.value.name)
+            when bindDefKind with x then maybe.some(:String x.name)
+            when bindInterface with x then maybe.some(:String x.name)
+            when bindModule with x then maybe.some(:String x.name)
+            else maybe.none(:String)
+        end
+end

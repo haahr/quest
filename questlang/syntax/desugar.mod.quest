@@ -136,6 +136,7 @@ export
         if maybe.isSome(:ast.Expr o) then maybe.some(:ast.Expr expr(maybe.unwrap(:ast.Expr o))) else o end
     and tupleBinding(b: ast.TupleFieldBinding): ast.TupleFieldBinding =
         tuple
+            let offset = b.offset
             let name = b.name
             let value = expr(b.value)
             let typeAnnot = b.typeAnnot
@@ -146,6 +147,7 @@ export
             when fieldVal with x then option fieldVal of ast.TupleField with let val = tupleBinding(x.val) end
             when fieldGroup with x then
                 option fieldGroup of ast.TupleField with
+                    let offset = x.offset
                     let val = vector.map(:ast.TupleFieldBinding :ast.TupleFieldBinding x.val tupleBinding)
                 end
             when fieldDecl with x then option fieldDecl of ast.TupleField with let val = expr(x.val) end
@@ -197,6 +199,7 @@ export
                     let fields = vector.map(:ast.RecordBinding :ast.RecordBinding x.fields
                         fun(b: ast.RecordBinding): ast.RecordBinding
                             tuple
+                                let offset = b.offset
                                 let name = b.name
                                 let value = expr(b.value)
                                 let isVar = b.isVar
@@ -249,6 +252,7 @@ export
                     let branches = vector.map(:ast.CaseBranch :ast.CaseBranch x.branches
                         fun(b: ast.CaseBranch): ast.CaseBranch
                             tuple
+                                let offset = b.offset
                                 let tags = b.tags
                                 let binder = b.binder
                                 let binderType = b.binderType
@@ -262,6 +266,7 @@ export
                     let branches = vector.map(:ast.InspectBranch :ast.InspectBranch x.branches
                         fun(b: ast.InspectBranch): ast.InspectBranch
                             tuple
+                                let offset = b.offset
                                 let matchType = b.matchType
                                 let binders = b.binders
                                 let body = expr(b.body)
@@ -280,6 +285,7 @@ export
                     let branches = vector.map(:ast.TryBranch :ast.TryBranch x.branches
                         fun(b: ast.TryBranch): ast.TryBranch
                             tuple
+                                let offset = b.offset
                                 let excPattern = expr(b.excPattern)
                                 let binder = b.binder
                                 let binderType = b.binderType

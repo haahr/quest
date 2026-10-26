@@ -1,0 +1,354 @@
+(* Quest Self-Hosted Compiler: Typed AST Printer Implementation
+ *
+ * A node is printed in two steps, as astprint prints the AST: it is described (its class's name, its header, its type
+ * if dump_type gives one, and its labeled children), and one renderer prints descriptions with TypedNode.dump's
+ * layout. *)
+
+module typedAstPrint : TypedAstPrint
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/dump : questlang/types/Dump
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Let Expr = typedAst.Expr
+    Let Binding = typedAst.Binding
+
+    (* =========================================================================
+     * 1. Descriptions
+     * ========================================================================= *)
+
+    Let Rec Desc = Tuple name: String header: String type: maybe.T(model.Type) children: Array(Child) end
+    and Child = Option
+        one with label: String node: Desc end
+        many with label: String nodes: Array(Desc) end
+    end
+
+    let noType: maybe.T(model.Type) = maybe.none(:model.Type)
+    let typed(t: model.Type): maybe.T(model.Type) = maybe.some(:model.Type t)
+    let noChildren: Array(Child) = array of :Child end
+
+    let desc(name: String header: String type: maybe.T(model.Type) children: Array(Child)): Desc =
+        tuple let name = name let header = header let type = type let children = children end
+
+    let one(label: String node: Desc): Child = option one of Child with let label = label let node = node end
+    let many(label: String nodes: Array(Desc)): Child = option many of Child with let label = label let nodes = nodes end
+
+    (* Python's repr of a str, an int, and a float *)
+    let pyStr(s: String): String = diagnostics.pyRepr(s)
+    let pyInt(n: Int): String = if n < 0 then "-" <> conv.int({~1 * n}) else conv.int(n) end
+    let pyReal(r: Real): String =
+        begin
+            let s = conv.real(r)
+            if {stringOp.length(s) > 0} andif {stringOp.getChar(s 0) is '~'} then
+                "-" <> stringOp.getSub(s 1 {stringOp.length(s) - 1})
+            else
+                s
+            end
+        end
+    let quoted(name: String): String = "'" <> name <> "'"
+
+    (* Python's repr of a list of ints *)
+    let pyIntList(items: Array(Int)): String =
+        begin
+            let parts = vector.new(:String)
+            for i = 0 upto {extent items - 1} do vector.append(:String parts pyInt(items[i])) end
+            "[" <> strutil.join(", " parts) <> "]"
+        end
+
+    let joinSpaced(parts: vector.T(String)): String = strutil.join(" " parts)
+
+    let children(cs: vector.T(Child)): Array(Child) = vector.toArray(:Child cs)
+
+    let rec exprDesc(e: Expr): Desc =
+        begin
+            let t = typed(e.type)
+            case e.form
+                when exprInt with x then desc("TypedInt" pyInt(x.value) t noChildren)
+                when exprReal with x then desc("TypedReal" pyReal(x.value) t noChildren)
+                when exprBool with x then desc("TypedBool" if x.value then "true" else "false" end noType noChildren)
+                when exprChar with x then desc("TypedChar" pyStr(stringOp.new(1 x.value)) t noChildren)
+                when exprString with x then desc("TypedString" pyStr(x.value) t noChildren)
+                when exprOk then desc("TypedOk" "" noType noChildren)
+                when exprExternal with x then desc("TypedExternal" quoted(x.symbol) t noChildren)
+                when exprVar with x then desc("TypedVar" quoted(x.name) t noChildren)
+                when exprFun with x then
+                    begin
+                        let params = vector.new(:String)
+                        for i = 0 upto {extent x.params - 1} do
+                            let p = x.params[i]
+                            vector.append(:String params "(" <> quoted(p.name) <> " : " <> dump.formatCompact(p.type) <> ")")
+                        end
+                        desc("TypedFun" ":params (" <> joinSpaced(params) <> ")" t array of one(":body" exprDesc(x.body)) end)
+                    end
+                when exprApp with x then
+                    desc("TypedApp" "" t array of one(":func" exprDesc(x.func)) many(":args" exprDescs(x.args)) end)
+                when exprTypeApp with x then
+                    begin
+                        let args = vector.new(:String)
+                        for i = 0 upto {extent x.typeArgs - 1} do vector.append(:String args dump.formatCompact(x.typeArgs[i])) end
+                        desc("TypedTypeApp" "[" <> joinSpaced(args) <> "]" t array of one(":func" exprDesc(x.func)) end)
+                    end
+                when exprInfix with x then
+                    desc("TypedInfix" pyStr(x.op) t array of one(":left" exprDesc(x.left)) one(":right" exprDesc(x.right)) end)
+                when exprRecord with x then
+                    begin
+                        let fields = vector.new(:Desc)
+                        for i = 0 upto {extent x.fields - 1} do
+                            let f = x.fields[i]
+                            let header = quoted(f.name) <> {if f.isVar then " :var" else "" end}
+                            vector.append(:Desc fields desc("TypedRecordField" header noType array of one(":value" exprDesc(f.value)) end))
+                        end
+                        desc("TypedRecord" "" t array of many(":fields" vector.toArray(:Desc fields)) end)
+                    end
+                when exprTypeWitness with x then
+                    desc("TypedTypeWitness" quoted(x.name) <> " = " <> model.show(x.witnessType) noType noChildren)
+                when exprTuple with x then
+                    begin
+                        let parts = vector.new(:String)
+                        for i = 0 upto {extent x.recGroups - 1} do vector.append(:String parts ":rec " <> pyIntList(x.recGroups[i])) end
+                        for i = 0 upto {extent x.simultaneousGroups - 1} do
+                            vector.append(:String parts ":and " <> pyIntList(x.simultaneousGroups[i]))
+                        end
+                        desc("TypedTuple" joinSpaced(parts) t array of many(":elements" exprDescs(x.elements)) end)
+                    end
+                when exprSelect with x then desc("TypedSelect" quoted(x.field) t array of one(":target" exprDesc(x.target)) end)
+                when exprIndex with x then
+                    desc("TypedIndex" "" t array of one(":target" exprDesc(x.target)) one(":index" exprDesc(x.index)) end)
+                when exprIndexAssign with x then
+                    desc("TypedIndexAssign" "" noType array of
+                        one(":target" exprDesc(x.target)) one(":index" exprDesc(x.index)) one(":value" exprDesc(x.value))
+                    end)
+                when exprArray with x then desc("TypedArray" "" t array of many(":elements" exprDescs(x.elements)) end)
+                when exprArrayRep with x then
+                    desc("TypedArrayRep" "" t array of one(":count" exprDesc(x.count)) one(":init" exprDesc(x.initVal)) end)
+                when exprVarCell with x then desc("TypedVarCell" "" t array of one(":value" exprDesc(x.value)) end)
+                when exprDerefCell with x then desc("TypedDerefCell" "" t array of one(":target" exprDesc(x.target)) end)
+                when exprSelectRef with x then
+                    desc("TypedSelectRef" "." <> x.field <> " (ref)" t array of one(":target" exprDesc(x.target)) end)
+                when exprIndexRef with x then
+                    desc("TypedIndexRef" "[] (ref)" t array of
+                        one(":target" exprDesc(x.target)) one(":index" exprDesc(x.index))
+                    end)
+                when exprTupleSelectRef with x then
+                    begin
+                        let name = maybe.unwrapOr(:String x.field "")
+                        let field = if stringOp.length(name) > 0 then "." <> name else "._" <> pyInt(x.index) end
+                        desc("TypedTupleSelectRef" field <> " (ref)" t array of one(":target" exprDesc(x.target)) end)
+                    end
+                when exprAssign with x then
+                    desc("TypedAssign" "" noType array of one(":target" exprDesc(x.target)) one(":value" exprDesc(x.value)) end)
+                when exprVariant with x then
+                    begin
+                        let cs = vector.new(:Child)
+                        optChild(cs ":payload" x.payload)
+                        desc("TypedVariant" quoted(x.tag) t children(cs))
+                    end
+                when exprOption with x then
+                    begin
+                        let cs = vector.new(:Child)
+                        optChild(cs ":ordinal" x.ordinalExpr)
+                        optChild(cs ":payload" x.payload)
+                        let header = if maybe.isSome(:String x.tag) then quoted(maybe.unwrap(:String x.tag)) else "ordinal" end
+                        desc("TypedOption" header t children(cs))
+                    end
+                when exprAuto with x then
+                    desc("TypedAuto" ":" <> model.show(x.witnessType) t array of one(":payload" exprDesc(x.payload)) end)
+                when exprVariantCheck with x then
+                    desc("TypedVariantCheck" quoted(x.tag) t array of one(":target" exprDesc(x.target)) end)
+                when exprVariantAssert with x then
+                    desc("TypedVariantAssert" quoted(x.tag) t array of one(":target" exprDesc(x.target)) end)
+                when exprCase with x then
+                    begin
+                        let branches = vector.new(:Desc)
+                        for i = 0 upto {extent x.branches - 1} do
+                            let b = x.branches[i]
+                            let tags = vector.fromArray(:String b.tags)
+                            let binder = if maybe.isSome(:symbols.ValueSymbol b.binder) then
+                                " :binder " <> quoted(maybe.unwrap(:symbols.ValueSymbol b.binder).name)
+                            else
+                                ""
+                            end
+                            vector.append(:Desc branches desc("TypedCaseBranch" "tags=(" <> strutil.join(", " tags) <> ")" <> binder
+                                noType array of one(":body" exprDesc(b.body)) end))
+                        end
+                        let cs = vector.fromArray(:Child array of
+                            one(":target" exprDesc(x.target)) many(":branches" vector.toArray(:Desc branches))
+                        end)
+                        optChild(cs ":else" x.elseBranch)
+                        desc("TypedCase" "" t children(cs))
+                    end
+                when exprInspect with x then
+                    begin
+                        let branches = vector.new(:Desc)
+                        for i = 0 upto {extent x.branches - 1} do
+                            let b = x.branches[i]
+                            let header = "match=" <> model.show(b.matchType) <> {if b.exact then " exact" else "" end}
+                            vector.append(:Desc branches desc("TypedInspectBranch" header noType array of one(":body" exprDesc(b.body)) end))
+                        end
+                        let cs = vector.fromArray(:Child array of
+                            one(":target" exprDesc(x.target)) many(":branches" vector.toArray(:Desc branches))
+                        end)
+                        optChild(cs ":else" x.elseBranch)
+                        desc("TypedInspect" "" t children(cs))
+                    end
+                when exprBlock with x then
+                    desc("TypedBlock" "" t array of many(":bindings" bindingDescs(x.bindings)) one(":result" exprDesc(x.result)) end)
+                when exprIf with x then
+                    desc("TypedIf" "" t array of
+                        one(":cond" exprDesc(x.cond)) one(":then" exprDesc(x.thenBranch)) one(":else" exprDesc(x.elseBranch))
+                    end)
+                when exprWhile with x then
+                    desc("TypedWhile" "" noType array of one(":cond" exprDesc(x.cond)) one(":body" exprDesc(x.body)) end)
+                when exprLoop with x then desc("TypedLoop" "" noType array of one(":body" exprDesc(x.body)) end)
+                when exprFor with x then
+                    desc("TypedFor" quoted(x.varName) <> {if x.isDownto then " :downto" else " :upto" end} noType array of
+                        one(":start" exprDesc(x.start)) one(":stop" exprDesc(x.stop)) one(":body" exprDesc(x.body))
+                    end)
+                when exprExit then desc("TypedExit" "" noType noChildren)
+                when exprException with x then desc("TypedException" quoted(x.name) t noChildren)
+                when exprRaise with x then
+                    begin
+                        let cs = vector.fromArray(:Child array of one(":exc" exprDesc(x.exc)) end)
+                        optChild(cs ":payload" x.payload)
+                        desc("TypedRaise" "" t children(cs))
+                    end
+                when exprTry with x then
+                    begin
+                        let branches = vector.new(:Desc)
+                        for i = 0 upto {extent x.branches - 1} do
+                            let b = x.branches[i]
+                            vector.append(:Desc branches desc("TypedTryBranch" "" noType array of
+                                one(":exc_pattern" exprDesc(b.excPattern)) one(":body" exprDesc(b.body))
+                            end))
+                        end
+                        let cs = vector.fromArray(:Child array of
+                            one(":body" exprDesc(x.body)) many(":branches" vector.toArray(:Desc branches))
+                        end)
+                        optChild(cs ":else" x.elseBranch)
+                        desc("TypedTry" "" t children(cs))
+                    end
+            end
+        end
+    and exprDescs(xs: Array(Expr)): Array(Desc) =
+        begin
+            let ds = vector.new(:Desc)
+            for i = 0 upto {extent xs - 1} do vector.append(:Desc ds exprDesc(xs[i])) end
+            vector.toArray(:Desc ds)
+        end
+    and optChild(cs: vector.T(Child) label: String x: maybe.T(Expr)): Ok =
+        if maybe.isSome(:Expr x) then vector.append(:Child cs one(label exprDesc(maybe.unwrap(:Expr x)))) end
+    and letValueDesc(v: typedAst.LetValue): Desc =
+        desc("TypedLetValue" quoted(v.name) <> {if v.isRec then " :rec" else "" end} <> " :type " <>
+            dump.formatCompact(v.symbol.type) noType array of one(":value" exprDesc(v.value)) end)
+    and letTypeDesc(v: typedAst.LetType): Desc =
+        desc("TypedLetType" quoted(v.name) <> " :kind " <> model.showKind(v.symbol.kind) noType noChildren)
+    and bindingDesc(b: Binding): Desc =
+        case b.form
+            when bindLetValue with x then letValueDesc(x.value)
+            when bindLetValueGroup with x then
+                begin
+                    let names = vector.new(:String)
+                    let members = vector.new(:Desc)
+                    for i = 0 upto {extent x.members - 1} do
+                        vector.append(:String names quoted(x.members[i].name))
+                        vector.append(:Desc members letValueDesc(x.members[i]))
+                    end
+                    desc("TypedLetValueGroup" joinSpaced(names) noType array of many(":members" vector.toArray(:Desc members)) end)
+                end
+            when bindLetType with x then letTypeDesc(x.value)
+            when bindLetTypeGroup with x then
+                begin
+                    let names = vector.new(:String)
+                    let members = vector.new(:Desc)
+                    for i = 0 upto {extent x.members - 1} do
+                        vector.append(:String names quoted(x.members[i].name))
+                        vector.append(:Desc members letTypeDesc(x.members[i]))
+                    end
+                    desc("TypedLetTypeGroup" joinSpaced(names) noType array of many(":members" vector.toArray(:Desc members)) end)
+                end
+            when bindDefKind with x then desc("TypedDefKind" quoted(x.name) <> " :kind " <> model.showKind(x.symbol.kind) noType noChildren)
+            when bindExprStmt with x then desc("TypedExprStmt" "" noType array of one(":expr" exprDesc(x.expr)) end)
+            when bindInterface with x then
+                desc("TypedInterface" quoted(x.name) noType array of many(":signatures" bindingDescs(x.signatures)) end)
+            when bindModule with x then
+                desc("TypedModule" quoted(x.name) <> " implements " <> quoted(x.interfaceName) noType
+                    array of many(":bindings" bindingDescs(x.bindings)) end)
+            when bindImport with x then
+                begin
+                    let items = vector.new(:Desc)
+                    for i = 0 upto {extent x.items - 1} do
+                        let item = x.items[i]
+                        let names = vector.new(:String)
+                        for j = 0 upto {extent item.names - 1} do vector.append(:String names pyStr(item.names[j])) end
+                        let header = if vector.empty(:String names) then
+                            ": " <> quoted(item.interfaceName)
+                        else
+                            "(" <> joinSpaced(names) <> ") : " <> quoted(item.interfaceName)
+                        end
+                        vector.append(:Desc items desc("TypedImportItem" header noType noChildren))
+                    end
+                    desc("TypedImport" "" noType array of many(":items" vector.toArray(:Desc items)) end)
+                end
+        end
+    and bindingDescs(bs: Array(Binding)): Array(Desc) =
+        begin
+            let ds = vector.new(:Desc)
+            for i = 0 upto {extent bs - 1} do vector.append(:Desc ds bindingDesc(bs[i])) end
+            vector.toArray(:Desc ds)
+        end
+
+    (* =========================================================================
+     * 2. Rendering, with TypedNode.dump's layout
+     * ========================================================================= *)
+
+    let pad(n: Int): String = stringBuilder.new().repeat(' ' {2 * n}).toString()
+
+    let rec render(d: Desc indent: Int): String =
+        begin
+            let parts = vector.new(:String)
+            vector.append(:String parts d.name)
+            if stringOp.length(d.header) > 0 then vector.append(:String parts d.header) end
+            if maybe.isSome(:model.Type d.type) then
+                vector.append(:String parts ":type " <> dump.formatCompact(maybe.unwrap(:model.Type d.type)))
+            end
+            let header = joinSpaced(parts)
+            if extent d.children is 0 then
+                "(" <> header <> ")"
+            else
+                let childPad = pad({indent + 1})
+                let lines = vector.new(:String)
+                vector.append(:String lines "(" <> header)
+                for i = 0 upto {extent d.children - 1} do
+                    case d.children[i]
+                        when one with c then vector.append(:String lines childPad <> c.label <> " " <> render(c.node {indent + 1}))
+                        when many with c then
+                            if extent c.nodes is 0 then
+                                vector.append(:String lines childPad <> c.label <> " ()")
+                            else
+                                vector.append(:String lines childPad <> c.label <> " (")
+                                for j = 0 upto {extent c.nodes - 1} do
+                                    vector.append(:String lines childPad <> "  " <> render(c.nodes[j] {indent + 2}))
+                                end
+                                vector.append(:String lines childPad <> ")")
+                            end
+                    end
+                end
+                let last = vector.length(:String lines) - 1
+                vector.set(:String lines last vector.get(:String lines last) <> ")")
+                strutil.join("\n" lines)
+            end
+        end
+
+    let dumpExpr(e: Expr indent: Int): String = render(exprDesc(e) indent)
+    let dumpBinding(b: Binding indent: Int): String = render(bindingDesc(b) indent)
+    let dumpProgram(p: typedAst.Program): String =
+        render(desc("TypedProgram" "" noType array of many(":phrases" bindingDescs(p.phrases)) end) 0)
+end

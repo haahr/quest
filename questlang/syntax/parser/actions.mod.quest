@@ -168,7 +168,7 @@ export
         case e.form
             when declLetVal with x then
                 if vector.empty(:ast.FormalParam x.params) then
-                    ast.tupleBinding(maybe.some(:String x.name) x.value x.typeAnnot x.isVar)
+                    ast.tupleBinding(e.span.startOffset maybe.some(:String x.name) x.value x.typeAnnot x.isVar)
                 else
                     let fn = ast.makeExpr(from(ctx e.span.startOffset) option exprFun of ExprForm with
                         let params = x.params
@@ -176,7 +176,7 @@ export
                         let body = x.value
                         let typeParams = vector.new(:ast.TypeFormal)
                     end)
-                    ast.tupleBinding(maybe.some(:String x.name) fn maybe.none(:ast.TypeExpr) x.isVar)
+                    ast.tupleBinding(e.span.startOffset maybe.some(:String x.name) fn maybe.none(:ast.TypeExpr) x.isVar)
                 end
             else
                 wrong(:ast.TupleFieldBinding "a value declaration")
@@ -201,16 +201,17 @@ export
                             fieldDecl(e)
                         else
                             option fieldGroup of ast.TupleField with
+                                let offset = e.span.startOffset
                                 let val = vector.map(:ast.Expr :ast.TupleFieldBinding x.bindings
                                     fun(m: ast.Expr): ast.TupleFieldBinding tupleBinding(ctx m))
                             end
                         end
                     when declExprStmt with x then
-                        fieldVal(ast.tupleBinding(maybe.none(:String) x.expr maybe.none(:ast.TypeExpr) false))
+                        fieldVal(ast.tupleBinding(e.span.startOffset maybe.none(:String) x.expr maybe.none(:ast.TypeExpr) false))
                     when typeArg then
-                        fieldVal(ast.tupleBinding(maybe.none(:String) e maybe.none(:ast.TypeExpr) false))
+                        fieldVal(ast.tupleBinding(e.span.startOffset maybe.none(:String) e maybe.none(:ast.TypeExpr) false))
                     when kindArg then
-                        fieldVal(ast.tupleBinding(maybe.none(:String) e maybe.none(:ast.TypeExpr) false))
+                        fieldVal(ast.tupleBinding(e.span.startOffset maybe.none(:String) e maybe.none(:ast.TypeExpr) false))
                     else
                         fieldDecl(e)
                 end
@@ -258,6 +259,7 @@ export
         case e.form
             when declTypeBinding with x then
                 tuple
+                    let offset = e.span.startOffset
                     let name = x.name
                     let typeVal = x.typeVal
                     let params = x.params
@@ -276,11 +278,12 @@ export
                 vSig(option sigTypeBinding of ast.Signature with let val = typeBindingOf(e) end e.span)
             when declTypeBindingGroup with x then
                 vSig(option sigTypeBindingGroup of ast.Signature with
+                    let offset = e.span.startOffset
                     let val = vector.map(:ast.Expr :ast.TypeBinding x.bindings typeBindingOf)
                 end e.span)
             when declDefKind with x then
                 vSig(option sigKindBinding of ast.Signature with
-                    let val = tuple let name = x.name let kindVal = x.kindVal end
+                    let val = tuple let offset = e.span.startOffset let name = x.name let kindVal = x.kindVal end
                 end e.span)
             else
                 wrong(:Val "a declaration in a signature")
@@ -301,9 +304,16 @@ export
     let quantifier(ctx: Ctx v: Val defaultStart: Int): ast.Quantifier =
         case sigOf(v)
             when sigType with x then
-                tuple let name = x.val.name let bound = x.val.bound let mode = mValue let isType = true end
+                tuple
+                    let offset = sigStart(v)
+                    let name = x.val.name
+                    let bound = x.val.bound
+                    let mode = mValue
+                    let isType = true
+                end
             when sigValue with x then
                 tuple
+                    let offset = sigStart(v)
                     let name = nameOr(x.val.name)
                     let bound = powerKind(sigSpan(v) maybe.unwrap(:ast.TypeExpr x.val.typeSig))
                     let mode = x.val.mode
@@ -311,6 +321,7 @@ export
                 end
             else
                 tuple
+                    let offset = sigStart(v)
                     let name = nameOr(signatureName(sigOf(v)))
                     let bound = typeKind(from(ctx defaultStart))
                     let mode = mValue
@@ -345,7 +356,7 @@ export
                 when sigValue with x then
                     if maybe.isSome(:String x.val.name) then
                         maybe.some(:ast.FormalParam
-                            ast.formalParam(maybe.unwrap(:String x.val.name) x.val.typeSig x.val.mode))
+                            ast.formalParam(sigStart(v) maybe.unwrap(:String x.val.name) x.val.typeSig x.val.mode))
                     else
                         maybe.none(:ast.FormalParam)
                     end
@@ -416,22 +427,25 @@ export
 
     (* r1, r2 : Rnd = p1, p2 : IfacePath *)
     let importDual(ctx: Ctx args: Args): Val =
-        vImport(ast.importItem(strs(args[0]) tok(args[2]).lexeme somePaths(strs(args[3])) maybe.some(:String str(args[4]))))
+        vImport(ast.importItem(tok(args[1]).span.startOffset strs(args[0]) tok(args[2]).lexeme somePaths(strs(args[3]))
+            maybe.some(:String str(args[4]))))
 
     (* : Rnd = p1, p2 : IfacePath *)
     let importAliasPaths(ctx: Ctx args: Args): Val =
-        vImport(ast.importItem(
+        vImport(ast.importItem(tok(args[0]).span.startOffset
             vector.map(:String :String strs(args[2]) basename) tok(args[1]).lexeme somePaths(strs(args[2]))
             maybe.some(:String str(args[3]))
         ))
 
     (* : Rnd = : IfacePath *)
     let importAliasInterface(ctx: Ctx args: Args): Val =
-        vImport(ast.importItem(vector.new(:String) tok(args[1]).lexeme noPaths maybe.some(:String str(args[2]))))
+        vImport(ast.importItem(tok(args[0]).span.startOffset vector.new(:String) tok(args[1]).lexeme noPaths
+            maybe.some(:String str(args[2]))))
 
     (* : IfacePath *)
     let importInterface(ctx: Ctx args: Args): Val =
-        vImport(ast.importItem(vector.new(:String) basename(str(args[1])) noPaths dirPath(str(args[1]))))
+        vImport(ast.importItem(tok(args[0]).span.startOffset vector.new(:String) basename(str(args[1])) noPaths
+            dirPath(str(args[1]))))
 
     (* m1 = p1, m2 = p2 : IfacePath or p1, p2 : IfacePath *)
     let importModules(ctx: Ctx args: Args): Val =
@@ -447,8 +461,8 @@ export
                 end
             end
             let ifacePath = str(args[2])
-            vImport(ast.importItem(names basename(ifacePath) if aliased then somePaths(paths) else noPaths end
-                dirPath(ifacePath)))
+            vImport(ast.importItem(tok(args[1]).span.startOffset names basename(ifacePath)
+                if aliased then somePaths(paths) else noPaths end dirPath(ifacePath)))
         end
 
     (* =========================================================================
@@ -584,7 +598,7 @@ export
             let fields = each(:ast.VariantFieldSig items(args[1]) fun(v: Val): ast.VariantFieldSig
                 begin
                     let s = recordFieldSigOf(v)
-                    tuple let tag = s.name let typeSig = s.typeSig let isVar = s.isVar end
+                    tuple let offset = s.offset let tag = s.name let typeSig = s.typeSig let isVar = s.isVar end
                 end)
         end)
 
@@ -685,7 +699,8 @@ export
             let mode = paramMode(args[0] args[1])
             eachVal(items(args[2]) fun(name: Val): Val
                 vSig(option sigValue of ast.Signature with
-                    let val = ast.fieldSig(maybe.some(:String str(name)) maybe.some(:ast.TypeExpr fieldType) mode)
+                    let val = ast.fieldSig(colon.span.startOffset maybe.some(:String str(name))
+                        maybe.some(:ast.TypeExpr fieldType) mode)
                 end at(ctx colon)))
         end
 
@@ -698,7 +713,7 @@ export
             let names = if present(args[0]) then items(args[0]) else array of vStr("_") end end
             eachVal(names fun(name: Val): Val
                 vSig(option sigType of ast.Signature with
-                    let val = tuple let name = str(name) let bound = bound end
+                    let val = tuple let offset = bound.span.startOffset let name = str(name) let bound = bound end
                 end from(ctx bound.span.startOffset)))
         end
 
@@ -712,7 +727,12 @@ export
                 let names = items(field[1])
                 for j = 0 upto {extent(names) - 1} do
                     vector.append(:Val result option recordFieldSig of Val with
-                        let val = tuple let name = str(names[j]) let typeSig = ty(field[2]) let isVar = present(field[0]) end
+                        let val = tuple
+                            let offset = ty(field[2]).span.startOffset
+                            let name = str(names[j])
+                            let typeSig = ty(field[2])
+                            let isVar = present(field[0])
+                        end
                     end)
                 end
             end
@@ -730,7 +750,7 @@ export
                 let tags = items(alternative[0])
                 for j = 0 upto {extent(tags) - 1} do
                     vector.append(:Val result option optionFieldSig of Val with
-                        let val = tuple let tag = tok(tags[j]).lexeme let payloadSig = payload end
+                        let val = tuple let offset = tok(tags[j]).span.startOffset let tag = tok(tags[j]).lexeme let payloadSig = payload end
                     end)
                 end
             end
@@ -741,7 +761,7 @@ export
     let mutField(mode: ast.ParamMode): engine.Action =
         fun(ctx: Ctx args: Args): Val
             vSig(option sigValue of ast.Signature with
-                let val = ast.fieldSig(maybe.none(:String) maybe.some(:ast.TypeExpr ty(args[1])) mode)
+                let val = ast.fieldSig(tok(args[0]).span.startOffset maybe.none(:String) maybe.some(:ast.TypeExpr ty(args[1])) mode)
             end at(ctx tok(args[0])))
 
     (* =========================================================================
@@ -997,6 +1017,7 @@ export
                 let nameType = optTy(binderPart(binder 1))
                 option caseBranch of Val with
                     let val = tuple
+                        let offset = whenToken.span.startOffset
                         let tags = strs(pattern)
                         let binder = name
                         let binderType = nameType
@@ -1012,6 +1033,7 @@ export
                 let binderType = optTy(binderPart(binder 1))
                 option inspectBranch of Val with
                     let val = tuple
+                        let offset = whenToken.span.startOffset
                         let matchType = ty(pattern)
                         let binders = vector.map(:String :ast.InspectBinder names
                             fun(name: String): ast.InspectBinder tuple let name = name let typeAnnot = binderType end)
@@ -1027,6 +1049,7 @@ export
                 let nameType = optTy(binderPart(binder 1))
                 option tryBranch of Val with
                     let val = tuple
+                        let offset = whenToken.span.startOffset
                         let excPattern = ex(pattern)
                         let binder = name
                         let binderType = nameType
@@ -1112,7 +1135,12 @@ export
             begin
                 let b = items(v)
                 option recordBinding of Val with
-                    let val = tuple let name = tok(b[1]).lexeme let value = ex(b[2]) let isVar = present(b[0]) end
+                    let val = tuple
+                        let offset = tok(b[1]).span.startOffset
+                        let name = tok(b[1]).lexeme
+                        let value = ex(b[2])
+                        let isVar = present(b[0])
+                    end
                 end
             end)
 

@@ -1,0 +1,34 @@
+(* Quest Self-Hosted Compiler: Shared Checks Interface
+ *
+ * The checks of bootstrap/python/quest/typechecker/checks.py that the type checker's parts share: distinct names,
+ * type arguments' kinds, joins of types, and subtype assertions. A failed check raises diagnostics.compilerError at
+ * the offset given. *)
+
+interface Checks
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/model : questlang/types/Model
+    questlang/types/env : questlang/types/Env
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    util/maybe : util/Maybe
+export
+    Def Named = Tuple name: String offset: Int end
+    (* Rejects a simultaneous declaration (members joined by and) that declares one name twice *)
+    checkDistinctNames(members: Array(Named)): Ok
+
+    (* A kind as written in a HasKind clause: <: T for POWER(T), :: K otherwise *)
+    describeKind(k: model.Kind): String
+
+    (* Checks that a type argument (explicit or inferred) has a kind within its quantifier's bound *)
+    checkTypeArgKind(what: String targ: model.Type bound: model.Kind e: env.T offset: Int): Ok
+
+    (* The least common supertype of the types (Ok if there are none). errorMessage, if given, is the error's
+     * message, with {t1} and {t2} replaced by the two types that have no join. *)
+    joinTypes(types: Array(model.Type) e: env.T offset: Int errorMessage: maybe.T(String)): model.Type
+
+    (* typed itself, if its type is a subtype of expected; typeDesc, if given, begins the error's message *)
+    requireSubtype(offset: Int typed: typedAst.Expr expected: model.Type e: env.T typeDesc: maybe.T(String)): typedAst.Expr
+
+    (* The internal error for syntactic sugar (the bootstrap's node class className) that reached the checker *)
+    notDesugared(className: String offset: Int): diagnostics.CompilerError
+end
