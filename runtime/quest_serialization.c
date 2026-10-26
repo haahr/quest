@@ -1113,6 +1113,8 @@ static int quest_json_peek(QJsonReader *jr) {
     if (jr->peek != -1) return jr->peek;
     if (jr->rd == NULL || jr->rd->is_closed) return -1;
     if (!quest_reader_more(jr->rd)) return -1;
+    /* A character is ASCII, as in Typeful Programming, so another fails as the document's, not as the reader's */
+    if (jr->rd->peek_char > 127) quest_raise_dynamic_error();
     jr->peek = (int)quest_reader_get_char(jr->rd);
     return jr->peek;
 }
@@ -1167,30 +1169,9 @@ static QJsonValue *quest_parse_json_string(QJsonReader *jr) {
                         else if (h >= 'A' && h <= 'F') hex = (hex << 4) | (h - 'A' + 10);
                         else quest_raise_dynamic_error();
                     }
-                    if (hex <= 0x7F) {
-                        ch = (int)hex;
-                    } else if (hex <= 0x7FF) {
-                        if (len + 2 >= cap) {
-                            cap *= 2;
-                            char *nb = (char *)quest_alloc_atomic(cap);
-                            memcpy(nb, buf, len);
-                            buf = nb;
-                        }
-                        buf[len++] = (char)(0xC0 | (hex >> 6));
-                        buf[len++] = (char)(0x80 | (hex & 0x3F));
-                        continue;
-                    } else {
-                        if (len + 3 >= cap) {
-                            cap = cap * 2 + 4;
-                            char *nb = (char *)quest_alloc_atomic(cap);
-                            memcpy(nb, buf, len);
-                            buf = nb;
-                        }
-                        buf[len++] = (char)(0xE0 | (hex >> 12));
-                        buf[len++] = (char)(0x80 | ((hex >> 6) & 0x3F));
-                        buf[len++] = (char)(0x80 | (hex & 0x3F));
-                        continue;
-                    }
+                    /* A character is ASCII */
+                    if (hex > 0x7F) quest_raise_dynamic_error();
+                    ch = (int)hex;
                     break;
                 }
                 default: quest_raise_dynamic_error();

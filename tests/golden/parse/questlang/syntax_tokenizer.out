@@ -681,5 +681,103 @@
         )
       )
     )
+    (LetValueBinding
+      :name 'codeRange'
+      :value (ExprString '\'\\127\' \'\\128\' "a\\x7f\\x80"\n' '"\'\\\\127\' \'\\\\128\' \\"a\\\\x7f\\\\x80\\"\\n"')
+    )
+    (LetValueBinding
+      :name 'smRange'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'location')
+          :field 'newSourceMap'
+        )
+        :args (
+          (ExprString 'ascii_range.quest' '"ascii_range.quest"')
+          (ExprId 'codeRange')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'bagRange'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'diagbag')
+          :field 'new'
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'tkRange'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'tokenizer')
+          :field 'new'
+        )
+        :args (
+          (ExprId 'smRange')
+          (ExprId 'bagRange')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'tokensRange'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'tokenizer')
+          :field 'tokenizeAll'
+        )
+        :args (
+          (ExprId 'tkRange')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'printStr')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'tokenizer')
+              :field 'formatDump'
+            )
+            :args (
+              (ExprId 'tokensRange')
+              (ExprId 'smRange')
+              (ExprBool False)
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'printInt')
+        :args (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'diagbag')
+              :field 'errorCount'
+            )
+            :args (
+              (ExprId 'bagRange')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'diagbag')
+          :field 'renderAll'
+        )
+        :args (
+          (ExprId 'bagRange')
+          (ExprId 'smRange')
+          (ExprId 'wOut')
+        )
+      )
+    )
   )
 )

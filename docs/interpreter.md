@@ -74,7 +74,7 @@ a human-readable `type_name` and a `to_str(visited)` method supporting cycle det
 | `QInt` | `Int` | 64-bit signed integer (`int`) | `"42"`, `"-7"` |
 | `QReal` | `Real` | 64-bit IEEE float (`float`) | `"2.0"`, `"3.14"` (guarantees decimal) |
 | `QChar` | `Char` | 1-character string (`str`) | `"'a'"`, `"'\\n'"`, `"'\\''"` |
-| `QString` | `String` | UTF-8 string (`str`) | `"\"hello\\n\""` |
+| `QString` | `String` | ASCII string (`str`) | `"\"hello\\n\""` |
 
 ### 2.2. Aggregates and Data Structures
 

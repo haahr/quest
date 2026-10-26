@@ -2886,6 +2886,24 @@ QAuto *quest_dynamic_copy(const QAuto *d) {
 #include <dirent.h>
 #include <errno.h>
 
+/* Whether n bytes are ASCII: a character is ASCII, as in Typeful Programming, so a function that would produce
+ * another raises its module's error */
+static bool quest_is_ascii(const char *bytes, size_t n) {
+    for (size_t i = 0; i < n; i++) {
+        if ((unsigned char)bytes[i] > 127) return false;
+    }
+    return true;
+}
+
+/* A new string of an OS-provided C string, raising system.error if it is not ASCII */
+static QString *quest_system_string(const char *s) {
+    size_t n = strlen(s);
+    if (!quest_is_ascii(s, n)) {
+        quest_raise_system_error();
+    }
+    return quest_string_new(s, (int64_t)n);
+}
+
 /* System module primitives */
 QArray *quest_system_args = NULL;
 
@@ -2894,7 +2912,7 @@ void quest_system_init(int argc, char **argv) {
     quest_system_args = quest_array_new(argc, (QVal){ .p = NULL });
     for (int i = 0; i < argc; i++) {
         const char *arg = (argv != NULL && argv[i] != NULL) ? argv[i] : "";
-        quest_system_args->data[i].p = quest_string_new(arg, (int64_t)strlen(arg));
+        quest_system_args->data[i].p = quest_system_string(arg);
     }
 }
 
@@ -2908,7 +2926,7 @@ QString *quest_system_getenv(const QString *var) {
     if (val == NULL) {
         return quest_string_new("", 0);
     }
-    return quest_string_new(val, (int64_t)strlen(val));
+    return quest_system_string(val);
 }
 
 bool quest_system_file_exists(const QString *path) {
@@ -2999,7 +3017,7 @@ QString *quest_system_current_directory(void) {
     if (getcwd(buf, sizeof(buf)) == NULL) {
         quest_raise_system_error();
     }
-    return quest_string_new(buf, (int64_t)strlen(buf));
+    return quest_system_string(buf);
 }
 
 void quest_system_change_directory(const QString *path) {
@@ -3048,6 +3066,11 @@ QArray *quest_system_list_directory(const QString *path) {
                 quest_raise_system_error();
             }
             entries = new_entries;
+        }
+        if (!quest_is_ascii(entry->d_name, strlen(entry->d_name))) {
+            free(entries);
+            closedir(dir);
+            quest_raise_system_error();
         }
         entries[count++] = quest_string_new(entry->d_name, (int64_t)strlen(entry->d_name));
     }
@@ -3217,7 +3240,7 @@ QChar quest_reader_get_char(QReader *r) {
     } else {
         ch = fgetc(r->file);
     }
-    if (ch == EOF) {
+    if (ch == EOF || ch > 127) {
         quest_raise_reader_error();
     }
     return (QChar)(unsigned char)ch;
@@ -3239,6 +3262,9 @@ QString *quest_reader_get_string(QReader *r, int64_t size) {
     if (count < size) {
         size_t n = fread(buf + count, 1, (size_t)(size - count), r->file);
         count += (int64_t)n;
+    }
+    if (!quest_is_ascii(buf, (size_t)count)) {
+        quest_raise_reader_error();
     }
     buf[count] = 0;
     QString *res = (QString *)quest_alloc(sizeof(QString));
@@ -3264,6 +3290,9 @@ void quest_reader_get_substring(QReader *r, QString *s, int64_t start, int64_t s
         if ((int64_t)n < size - count) {
             quest_raise_reader_error();
         }
+    }
+    if (!quest_is_ascii(s->data + start, (size_t)size)) {
+        quest_raise_reader_error();
     }
 }
 
@@ -3478,7 +3507,7 @@ QString *quest_sb_to_string(const QStringBuilder *b) {
 
 /* Ascii module primitives */
 QChar quest_ascii_char(int64_t n) {
-    if (n < 0 || n > 255) {
+    if (n < 0 || n > 127) {
         quest_raise_ascii_error();
     }
     return (QChar)(unsigned char)n;

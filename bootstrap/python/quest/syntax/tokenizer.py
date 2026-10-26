@@ -33,6 +33,9 @@ SIMPLE_ESCAPES: dict[str, str] = {
 
 HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
 
+# A character is ASCII, as in Typeful Programming, so its code is at most this
+CHAR_MAX = 127
+
 # The range of Int, a 64-bit signed integer
 INT_MIN = -(2**63)
 INT_MAX = 2**63 - 1
@@ -47,6 +50,7 @@ class Tokenizer:
         self.cursor = 0
         self.length = len(source_text)
         self.source_map = SourceMap(source_text, file_name)
+        self.checked_ascii = False
 
     @classmethod
     def from_file(cls, path: str) -> "Tokenizer":
@@ -162,18 +166,28 @@ class Tokenizer:
                     escape_start,
                     self.cursor - escape_start,
                 )
-            return chr(int(hex_digits, 16))
+            return self._escaped_char(int(hex_digits, 16), escape_start)
         if char.isdigit():
             # Decimal character code \ddd (up to 3 decimal digits)
-            char_code = int(char + self._skip_while(str.isdigit, limit=2))
-            if char_code > 255:
-                raise TokenizerError(
-                    f"Character code {char_code} out of byte range",
-                    escape_start,
-                    self.cursor - escape_start,
-                )
-            return chr(char_code)
+            return self._escaped_char(int(char + self._skip_while(str.isdigit, limit=2)), escape_start)
         raise TokenizerError(f"Unknown escape sequence '\\{char}'", escape_start, 2)
+
+    def _escaped_char(self, char_code: int, escape_start: int) -> str:
+        """The character of a code that an escape sequence from escape_start to the cursor gives."""
+        if char_code > CHAR_MAX:
+            raise TokenizerError(
+                f"Character code {char_code} out of ASCII range",
+                escape_start,
+                self.cursor - escape_start,
+            )
+        return chr(char_code)
+
+    def _check_ascii(self) -> None:
+        """Rejects a source text with a character outside ASCII, even in a comment."""
+        self.checked_ascii = True
+        for offset, char in enumerate(self.source_text):
+            if ord(char) > CHAR_MAX:
+                raise TokenizerError(f"Non-ASCII character with code {ord(char)}", offset, 1)
 
     def _lex_char(self) -> Token:
         start = self.cursor
@@ -229,6 +243,8 @@ class Tokenizer:
 
     def next_token(self) -> Token:
         """Returns the next Token from the input stream, returning EOF at end."""
+        if not self.checked_ascii:
+            self._check_ascii()
         self._skip_whitespace_and_comments()
 
         if self.cursor >= self.length:

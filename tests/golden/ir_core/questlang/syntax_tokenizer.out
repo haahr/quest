@@ -99,5 +99,15 @@ main {
   do call printInt(%35)
   do call printStr("--- Diagnostics Rendered ---")
   do call diagbag.renderAll(bagErr, smErr, wOut)
+  let codeRange: String = "'\\127' '\\128' \"a\\x7f\\x80\"\n"
+  let smRange: location.SourceMap = call location.newSourceMap("ascii_range.quest", codeRange)
+  let bagRange: diagbag.T = call diagbag.new()
+  let tkRange: tokenizer.T = call tokenizer.new(smRange, bagRange)
+  let tokensRange: vector.T(tokens.Token) = call tokenizer.tokenizeAll(tkRange)
+  let %36: String = call tokenizer.formatDump(tokensRange, smRange, false)
+  do call printStr(%36)
+  let %37: Int = call diagbag.errorCount(bagRange)
+  do call printInt(%37)
+  do call diagbag.renderAll(bagRange, smRange, wOut)
 }
 

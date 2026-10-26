@@ -412,4 +412,67 @@
           (TypedVar 'smErr' :type location.SourceMap)
           (TypedVar 'wOut' :type writer.T)
         )))
+    (TypedLetValue 'codeRange' :type String
+      :value (TypedString '\'\\127\' \'\\128\' "a\\x7f\\x80"\n' :type String))
+    (TypedLetValue 'smRange' :type location.SourceMap
+      :value (TypedApp :type location.SourceMap
+        :func (TypedSelect 'newSourceMap' :type Fun(file: String text: String): location.SourceMap
+          :target (TypedVar 'location' :type Module 'location'))
+        :args (
+          (TypedString 'ascii_range.quest' :type String)
+          (TypedVar 'codeRange' :type String)
+        )))
+    (TypedLetValue 'bagRange' :type diagbag.T
+      :value (TypedApp :type diagbag.T
+        :func (TypedSelect 'new' :type Fun(): diagbag.T
+          :target (TypedVar 'diagbag' :type Module 'diagbag'))
+        :args ()))
+    (TypedLetValue 'tkRange' :type tokenizer.T
+      :value (TypedApp :type tokenizer.T
+        :func (TypedSelect 'new' :type Fun(sm: location.SourceMap bag: diagbag.T): tokenizer.T
+          :target (TypedVar 'tokenizer' :type Module 'tokenizer'))
+        :args (
+          (TypedVar 'smRange' :type location.SourceMap)
+          (TypedVar 'bagRange' :type diagbag.T)
+        )))
+    (TypedLetValue 'tokensRange' :type vector.T(tokens.Token)
+      :value (TypedApp :type vector.T(tokens.Token)
+        :func (TypedSelect 'tokenizeAll' :type Fun(tok: tokenizer.T): vector.T(tokens.Token)
+          :target (TypedVar 'tokenizer' :type Module 'tokenizer'))
+        :args (
+          (TypedVar 'tkRange' :type tokenizer.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printStr' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'formatDump' :type Fun(tokensList: vector.T(tokens.Token) sm: location.SourceMap showValues: Bool): String
+              :target (TypedVar 'tokenizer' :type Module 'tokenizer'))
+            :args (
+              (TypedVar 'tokensRange' :type vector.T(tokens.Token))
+              (TypedVar 'smRange' :type location.SourceMap)
+              (TypedBool false)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'printInt' :type Fun(n: Int): Ok)
+        :args (
+          (TypedApp :type Int
+            :func (TypedSelect 'errorCount' :type Fun(bag: diagbag.T): Int
+              :target (TypedVar 'diagbag' :type Module 'diagbag'))
+            :args (
+              (TypedVar 'bagRange' :type diagbag.T)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'renderAll' :type Fun(bag: diagbag.T sm: location.SourceMap w: writer.T): Ok
+          :target (TypedVar 'diagbag' :type Module 'diagbag'))
+        :args (
+          (TypedVar 'bagRange' :type diagbag.T)
+          (TypedVar 'smRange' :type location.SourceMap)
+          (TypedVar 'wOut' :type writer.T)
+        )))
   ))

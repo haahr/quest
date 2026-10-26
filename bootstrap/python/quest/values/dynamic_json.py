@@ -981,9 +981,10 @@ class _Reader:
                 return QReal(special[data])
         if ref == "Bool" and isinstance(data, bool):
             return TRUE_VALUE if data else FALSE_VALUE
-        if ref == "Char" and isinstance(data, str) and len(data) == 1:
+        # A character is ASCII, as in Typeful Programming, even one a \u escape gives
+        if ref == "Char" and isinstance(data, str) and len(data) == 1 and data.isascii():
             return QChar(data)
-        if ref == "String" and isinstance(data, str):
+        if ref == "String" and isinstance(data, str) and data.isascii():
             return QString(data)
         if ref == "Ok" and data is None:
             return OK_VALUE
