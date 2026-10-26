@@ -11,7 +11,7 @@ import dynamic: Dynamic;
 import reader: Reader;
 import writer: Writer;
 import conv: Conv;
-let line(s: String): Ok = begin writer.putString(writer.output s); writer.putString(writer.output "\n") end;
+let line(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
 
 Let Pair = Auto A::TYPE with a: A b: A end;
 let p = dynamic.be(:Pair dynamic.intern(reader.input));
@@ -30,7 +30,7 @@ line(inspect o when Int with v then
 Let Cell = Auto A::TYPE with var c: A d: Dynamic end;
 let c = dynamic.be(:Cell dynamic.intern(reader.input));
 line(inspect c when Tuple n: Int f: Bool end with k then
-    begin k.c := tuple let n = 2 let f = false end; conv.int(k.c.n) <> conv.char(dynamic.be(:Char k.d)) end
+    begin k.c := tuple let n = 2 let f = false end conv.int(k.c.n) <> conv.char(dynamic.be(:Char k.d)) end
   else "?" end);
 
 let ps = dynamic.be(:Record ps: Array(Pair) end dynamic.intern(reader.input));
@@ -38,4 +38,4 @@ line(inspect ps.ps[0] when String with s then s.a <> s.b else "?" end);
 line(inspect ps.ps[1] when Bool with b then if b.a then "true" else "false" end else "?" end);
 
 (* A witness that is not a subtype of the auto type's bound is rejected *)
-line(try begin dynamic.intern(reader.input); "read" end when dynamic.error then "rejected" end);
+line(try begin dynamic.intern(reader.input) "read" end when dynamic.error then "rejected" end);

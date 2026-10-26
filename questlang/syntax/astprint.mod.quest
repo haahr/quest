@@ -27,28 +27,28 @@ export
         strs with items: vector.T(String) end
         seq with items: Array(S) end
         node with name: String fields: Array(Tuple name: String value: S end) end
-    end;
+    end
 
-    Let Field = Tuple name: String value: S end;
+    Let Field = Tuple name: String value: S end
 
-    let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n);
+    let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n)
 
     (* Python's repr of a string: single quotes unless the string holds a single quote and no double quote *)
     let pyRepr(s: String): String =
         begin
-            let size = stringOp.length(s);
-            let var hasSingle = false;
-            let var hasDouble = false;
+            let size = stringOp.length(s)
+            let var hasSingle = false
+            let var hasDouble = false
             for i = 0 upto {size - 1} do
-                let c = stringOp.getChar(s i);
-                if c is '\'' then hasSingle := true elsif c is '"' then hasDouble := true end;
-            end;
-            let quote = if hasSingle andif not(hasDouble) then '"' else '\'' end;
-            let b = stringBuilder.new();
-            b.char(quote);
+                let c = stringOp.getChar(s i)
+                if c is '\'' then hasSingle := true elsif c is '"' then hasDouble := true end
+            end
+            let quote = if hasSingle andif not(hasDouble) then '"' else '\'' end
+            let b = stringBuilder.new()
+            b.char(quote)
             for i = 0 upto {size - 1} do
-                let c = stringOp.getChar(s i);
-                let code = ascii.val(c);
+                let c = stringOp.getChar(s i)
+                let code = ascii.val(c)
                 if c is '\\' then b.str("\\\\")
                 elsif c is quote then b.char('\\').char(quote)
                 elsif code is 10 then b.str("\\n")
@@ -57,10 +57,10 @@ export
                 elsif {code < 32} orif {code is 127} then
                     b.str("\\x").char(hexDigit(code / 16)).char(hexDigit(code % 16))
                 else b.char(c)
-                end;
-            end;
+                end
+            end
             b.char(quote).toString()
-        end;
+        end
 
     (* Python writes negative numbers with -, Quest with ~ *)
     let pyNumber(s: String): String =
@@ -68,28 +68,28 @@ export
             "-" <> stringOp.getSub(s 1 {stringOp.length(s) - 1})
         else
             s
-        end;
+        end
 
-    let none: S = option nil of S end;
-    let flag(value: Bool): S = option flag of S with let value = value end;
-    let atom(text: String): S = option atom of S with let text = text end;
-    let str(s: String): S = atom(pyRepr(s));
-    let int(n: Int): S = atom(pyNumber(conv.int(n)));
-    let real(r: Real): S = atom(pyNumber(conv.real(r)));
-    let strs(items: vector.T(String)): S = option strs of S with let items = items end;
-    let seq(items: Array(S)): S = option seq of S with let items = items end;
+    let none: S = option nil of S end
+    let flag(value: Bool): S = option flag of S with let value = value end
+    let atom(text: String): S = option atom of S with let text = text end
+    let str(s: String): S = atom(pyRepr(s))
+    let int(n: Int): S = atom(pyNumber(conv.int(n)))
+    let real(r: Real): S = atom(pyNumber(conv.real(r)))
+    let strs(items: vector.T(String)): S = option strs of S with let items = items end
+    let seq(items: Array(S)): S = option seq of S with let items = items end
     let node(name: String fields: Array(Field)): S =
-        option node of S with let name = name let fields = fields end;
-    let leaf(name: String): S = node(name array of :Field end);
-    let f(name: String value: S): Field = tuple let name = name let value = value end;
+        option node of S with let name = name let fields = fields end
+    let leaf(name: String): S = node(name array of :Field end)
+    let f(name: String value: S): Field = tuple let name = name let value = value end
 
     let optional(A::TYPE m: maybe.T(A) dumpA: All(a: A) S): S =
-        if maybe.isSome(:A m) then dumpA(maybe.unwrap(:A m)) else none end;
-    let optStr(m: maybe.T(String)): S = optional(:String m str);
-    let each(A::TYPE v: vector.T(A) dumpA: All(a: A) S): S = seq(vector.toArray(:S vector.map(:A :S v dumpA)));
+        if maybe.isSome(:A m) then dumpA(maybe.unwrap(:A m)) else none end
+    let optStr(m: maybe.T(String)): S = optional(:String m str)
+    let each(A::TYPE v: vector.T(A) dumpA: All(a: A) S): S = seq(vector.toArray(:S vector.map(:A :S v dumpA)))
 
     let mode(m: ast.ParamMode): S =
-        atom(case m when modeValue then "VALUE" when modeVar then "VAR" when modeOut then "OUT" end);
+        atom(case m when modeValue then "VALUE" when modeVar then "VAR" when modeOut then "OUT" end)
 
     (* =========================================================================
      * 2. Types and Kinds
@@ -177,14 +177,14 @@ export
                 node("TypeBindingGroup" array of f("bindings" each(:ast.TypeBinding x.val typeBinding)) end)
             when sigKindBinding with x then
                 node("DefKindBinding" array of f("name" str(x.val.name)) f("kind_val" ty(x.val.kindVal)) end)
-        end;
+        end
 
     let formalParam(p: ast.FormalParam): S =
         node("FormalParam" array of
             f("name" str(p.name)) f("type_annot" optional(:ast.TypeExpr p.typeAnnot ty)) f("mode" mode(p.mode))
-        end);
+        end)
 
-    let optTy(m: maybe.T(ast.TypeExpr)): S = optional(:ast.TypeExpr m ty);
+    let optTy(m: maybe.T(ast.TypeExpr)): S = optional(:ast.TypeExpr m ty)
 
     (* =========================================================================
      * 3. Expressions and Declarations
@@ -335,7 +335,7 @@ export
         node("TryBranch" array of
             f("exc_pattern" ex(t.excPattern)) f("binder" optStr(t.binder)) f("binder_type" optTy(t.binderType))
             f("body" ex(t.body))
-        end);
+        end)
 
     (* =========================================================================
      * 4. Phrases and Programs
@@ -345,7 +345,7 @@ export
         node("ImportItem" array of
             f("names" strs(i.names)) f("interface_name" str(i.interfaceName))
             f("module_paths" optional(:vector.T(String) i.modulePaths strs)) f("interface_path" optStr(i.interfacePath))
-        end);
+        end)
 
     let phrase(p: ast.Phrase): S =
         case p.form
@@ -365,9 +365,9 @@ export
                 end)
             when phraseDecl with x then ex(x.decl)
             when phraseExpr with x then ex(x.expr)
-        end;
+        end
 
-    let program(p: ast.Program): S = node("Program" array of f("phrases" each(:ast.Phrase p.form.phrases phrase)) end);
+    let program(p: ast.Program): S = node("Program" array of f("phrases" each(:ast.Phrase p.form.phrases phrase)) end)
 
     (* =========================================================================
      * 5. Rendering, with ast_dump's layout rules
@@ -379,7 +379,7 @@ export
             when seq with x then extent x.items is 0
             when node then false
             else true
-        end;
+        end
 
     (* A field that a multi-line node leaves out: None, False, or an empty tuple *)
     let isOmitted(v: S): Bool =
@@ -389,21 +389,21 @@ export
             when strs with x then vector.length(:String x.items) is 0
             when seq with x then extent x.items is 0
             else false
-        end;
+        end
 
-    let pad(b: stringBuilder.T indent: Int): stringBuilder.T = b.repeat(' ' {2 * indent});
+    let pad(b: stringBuilder.T indent: Int): stringBuilder.T = b.repeat(' ' {2 * indent})
 
-    let flagText(value: Bool): String = if value then "True" else "False" end;
+    let flagText(value: Bool): String = if value then "True" else "False" end
 
     (* The items of a tuple of strings, quoted and separated by sep *)
     let quoted(b: stringBuilder.T items: vector.T(String) sep: String): stringBuilder.T =
         begin
             for i = 0 upto {vector.length(:String items) - 1} do
-                if i > 0 then b.str(sep) end;
-                b.str(pyRepr(vector.get(:String items i)));
-            end;
+                if i > 0 then b.str(sep) end
+                b.str(pyRepr(vector.get(:String items i)))
+            end
             b
-        end;
+        end
 
     (* A simple value as a field of a node *)
     let simpleField(b: stringBuilder.T v: S): stringBuilder.T =
@@ -412,7 +412,7 @@ export
             when atom with x then b.str(x.text)
             when strs with x then quoted(b.char('(') x.items " ").char(')')
             else b.str("()")
-        end;
+        end
 
     (* A simple value as an item of a tuple, as Python's str prints it *)
     let simpleItem(b: stringBuilder.T v: S): stringBuilder.T =
@@ -420,37 +420,37 @@ export
             when nil then b.str("None")
             when strs with x then
                 begin
-                    quoted(b.char('(') x.items ", ");
-                    if vector.length(:String x.items) is 1 then b.char(',') end;
+                    quoted(b.char('(') x.items ", ")
+                    if vector.length(:String x.items) is 1 then b.char(',') end
                     b.char(')')
                 end
             else simpleField(b v)
-        end;
+        end
 
     let rec render(b: stringBuilder.T v: S indent: Int): stringBuilder.T =
         case v
             when nil then b.str("nil")
             when seq with x then
                 begin
-                    let count = extent x.items;
-                    let var allSimple = true;
+                    let count = extent x.items
+                    let var allSimple = true
                     for i = 0 upto {count - 1} do
-                        if not(isSimple(x.items[i])) then allSimple := false end;
-                    end;
+                        if not(isSimple(x.items[i])) then allSimple := false end
+                    end
                     if count is 0 then
                         b.str("()")
                     elsif allSimple then
-                        b.char('(');
+                        b.char('(')
                         for i = 0 upto {count - 1} do
-                            if i > 0 then b.char(' ') end;
-                            simpleItem(b x.items[i]);
-                        end;
+                            if i > 0 then b.char(' ') end
+                            simpleItem(b x.items[i])
+                        end
                         b.char(')')
                     else
-                        b.char('(');
+                        b.char('(')
                         for i = 0 upto {count - 1} do
-                            render(pad(b.char('\n') {indent + 1}) x.items[i] {indent + 1});
-                        end;
+                            render(pad(b.char('\n') {indent + 1}) x.items[i] {indent + 1})
+                        end
                         pad(b.char('\n') indent).char(')')
                     end
                 end
@@ -459,46 +459,46 @@ export
         end
     and renderNode(b: stringBuilder.T name: String fields: Array(Field) indent: Int): stringBuilder.T =
         begin
-            let count = extent fields;
-            let var allSimple = true;
+            let count = extent fields
+            let var allSimple = true
             for i = 0 upto {count - 1} do
-                if not(isSimple(fields[i].value)) then allSimple := false end;
-            end;
-            b.char('(').str(name);
+                if not(isSimple(fields[i].value)) then allSimple := false end
+            end
+            b.char('(').str(name)
             if allSimple then
                 for i = 0 upto {count - 1} do
-                    let v = fields[i].value;
-                    case v when nil then ok else simpleField(b.char(' ') v); ok end;
-                end;
+                    let v = fields[i].value
+                    case v when nil then ok else simpleField(b.char(' ') v) ok end
+                end
                 b.char(')')
             else
                 for i = 0 upto {count - 1} do
-                    let v = fields[i].value;
+                    let v = fields[i].value
                     if not(isOmitted(v)) then
-                        pad(b.char('\n') {indent + 1}).char(':').str(fields[i].name).char(' ');
+                        pad(b.char('\n') {indent + 1}).char(':').str(fields[i].name).char(' ')
                         case v
                             when seq with x then
                                 begin
-                                    let itemCount = extent x.items;
-                                    b.char('(');
+                                    let itemCount = extent x.items
+                                    b.char('(')
                                     for k = 0 upto {itemCount - 1} do
-                                        render(pad(b.char('\n') {indent + 2}) x.items[k] {indent + 2});
-                                    end;
+                                        render(pad(b.char('\n') {indent + 2}) x.items[k] {indent + 2})
+                                    end
                                     pad(b.char('\n') {indent + 1}).char(')')
                                 end
                             when node then render(b v {indent + 1})
                             else simpleField(b v)
-                        end;
-                    end;
-                end;
+                        end
+                    end
+                end
                 pad(b.char('\n') indent).char(')')
             end
-        end;
+        end
 
-    let show(v: S): String = render(stringBuilder.new() v 0).toString();
+    let show(v: S): String = render(stringBuilder.new() v 0).toString()
 
-    let dump(node: ast.Program): String = show(program(node));
-    let dumpPhrase(node: ast.Phrase): String = show(phrase(node));
-    let dumpExpr(node: ast.Expr): String = show(ex(node));
-    let dumpTypeExpr(node: ast.TypeExpr): String = show(ty(node));
+    let dump(node: ast.Program): String = show(program(node))
+    let dumpPhrase(node: ast.Phrase): String = show(phrase(node))
+    let dumpExpr(node: ast.Expr): String = show(ex(node))
+    let dumpTypeExpr(node: ast.TypeExpr): String = show(ty(node))
 end;

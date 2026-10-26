@@ -14,7 +14,7 @@ import
     word: Word
 export
     (* Exception raised on argument parsing or configuration errors *)
-    let error: Exception = exception error: Ok end;
+    let error: Exception = exception error: Ok end
 
     (* Kind-specific option definition using Option *)
     Let OptKind = Option
@@ -23,19 +23,19 @@ export
         choice with choices: Array(String) defaultVal: String end
         integer with defaultVal: Int end
         multi
-    end;
+    end
 
     Let OptDef = Tuple
         name: String
         flagsStr: String
         help: String
         kind: OptKind
-    end;
+    end
 
     Let PositionalDef = Tuple
         name: String
         help: String
-    end;
+    end
 
     Let Parser = Tuple
         prog: String
@@ -43,7 +43,7 @@ export
         options: vector.T(OptDef)
         flagsMap: hashMap.T(String Int)
         positionals: vector.T(PositionalDef)
-    end;
+    end
 
     Let Results = Tuple
         bools: hashMap.T(String Bool)
@@ -52,32 +52,32 @@ export
         multis: hashMap.T(String vector.T(String))
         posArgs: vector.T(String)
         targetArgsList: vector.T(String)
-    end;
+    end
 
     let isFlag(k: OptKind): Bool =
         case k
             when flag then true
             else false
-        end;
+        end
 
     let isMulti(k: OptKind): Bool =
         case k
             when multi then true
             else false
-        end;
+        end
 
     let registerFlags(p: Parser flagsStr: String optIdx: Int): Ok =
         begin
-            let flagList = strutil.split(flagsStr " ");
-            let fCount = vector.length(:String flagList);
+            let flagList = strutil.split(flagsStr " ")
+            let fCount = vector.length(:String flagList)
             for fi = 0 upto {fCount - 1} do
-                let f = vector.get(:String flagList fi);
+                let f = vector.get(:String flagList fi)
                 if stringOp.length(f) > 0 then
-                    hashMap.insert(:String :Int p.flagsMap f optIdx);
-                end;
-            end;
+                    hashMap.insert(:String :Int p.flagsMap f optIdx)
+                end
+            end
             ok
-        end;
+        end
 
     let new(prog: String description: String): Parser =
         begin
@@ -87,43 +87,43 @@ export
                 let options = vector.new(:OptDef)
                 let flagsMap = hashMap.new(:String :Int stringOp.equal hash.string)
                 let positionals = vector.new(:PositionalDef)
-            end;
+            end
             (* Automatically register -h and --help *)
             vector.append(:OptDef p.options tuple
                 let name = "help"
                 let flagsStr = "-h --help"
                 let help = "Show this help message and exit"
                 let kind = option flag of OptKind end
-            end);
-            registerFlags(p "-h --help" 0);
+            end)
+            registerFlags(p "-h --help" 0)
             p
-        end;
+        end
 
     let addFlag(p: Parser name: String flags: String help: String): Ok =
         begin
-            let optIdx = vector.length(:OptDef p.options);
+            let optIdx = vector.length(:OptDef p.options)
             vector.append(:OptDef p.options tuple
                 let name = name
                 let flagsStr = flags
                 let help = help
                 let kind = option flag of OptKind end
-            end);
-            registerFlags(p flags optIdx);
+            end)
+            registerFlags(p flags optIdx)
             ok
-        end;
+        end
 
     let addString(p: Parser name: String flags: String defaultVal: String help: String): Ok =
         begin
-            let optIdx = vector.length(:OptDef p.options);
+            let optIdx = vector.length(:OptDef p.options)
             vector.append(:OptDef p.options tuple
                 let name = name
                 let flagsStr = flags
                 let help = help
                 let kind = option str of OptKind with tuple let defaultVal = defaultVal end end
-            end);
-            registerFlags(p flags optIdx);
+            end)
+            registerFlags(p flags optIdx)
             ok
-        end;
+        end
 
     let addChoice(
         p: Parser
@@ -134,7 +134,7 @@ export
         help: String
     ): Ok =
         begin
-            let optIdx = vector.length(:OptDef p.options);
+            let optIdx = vector.length(:OptDef p.options)
             vector.append(:OptDef p.options tuple
                 let name = name
                 let flagsStr = flags
@@ -143,133 +143,133 @@ export
                     let choices = choices
                     let defaultVal = defaultVal
                 end end
-            end);
-            registerFlags(p flags optIdx);
+            end)
+            registerFlags(p flags optIdx)
             ok
-        end;
+        end
 
     let addInt(p: Parser name: String flags: String defaultVal: Int help: String): Ok =
         begin
-            let optIdx = vector.length(:OptDef p.options);
+            let optIdx = vector.length(:OptDef p.options)
             vector.append(:OptDef p.options tuple
                 let name = name
                 let flagsStr = flags
                 let help = help
                 let kind = option integer of OptKind with tuple let defaultVal = defaultVal end end
-            end);
-            registerFlags(p flags optIdx);
+            end)
+            registerFlags(p flags optIdx)
             ok
-        end;
+        end
 
     let addMulti(p: Parser name: String flags: String help: String): Ok =
         begin
-            let optIdx = vector.length(:OptDef p.options);
+            let optIdx = vector.length(:OptDef p.options)
             vector.append(:OptDef p.options tuple
                 let name = name
                 let flagsStr = flags
                 let help = help
                 let kind = option multi of OptKind end
-            end);
-            registerFlags(p flags optIdx);
+            end)
+            registerFlags(p flags optIdx)
             ok
-        end;
+        end
 
     let addPositional(p: Parser name: String help: String): Ok =
         begin
             vector.append(:PositionalDef p.positionals tuple
                 let name = name
                 let help = help
-            end);
+            end)
             ok
-        end;
+        end
 
     (* Help Formatting *)
     let formatHelp(p: Parser): String =
         begin
-            let b = stringBuilder.new();
-            b.str("Usage: ").str(p.prog).str(" [options]");
-            let posCount = vector.length(:PositionalDef p.positionals);
+            let b = stringBuilder.new()
+            b.str("Usage: ").str(p.prog).str(" [options]")
+            let posCount = vector.length(:PositionalDef p.positionals)
             for i = 0 upto {posCount - 1} do
-                let pos = vector.get(:PositionalDef p.positionals i);
-                b.str(" ").str(pos.name);
-            end;
-            b.char('\n');
+                let pos = vector.get(:PositionalDef p.positionals i)
+                b.str(" ").str(pos.name)
+            end
+            b.char('\n')
             if stringOp.length(p.description) > 0 then
-                b.char('\n').str(p.description).char('\n');
-            end;
+                b.char('\n').str(p.description).char('\n')
+            end
 
             if posCount > 0 then
-                b.str("\nPositional arguments:\n");
+                b.str("\nPositional arguments:\n")
                 for i = 0 upto {posCount - 1} do
-                    let pos = vector.get(:PositionalDef p.positionals i);
-                    b.str("  ").str(pos.name);
-                    let pad = {24 - stringOp.length(pos.name)};
-                    if pad > 0 then b.repeat(' ' pad) else b.str("  ") end;
-                    b.str(pos.help).char('\n');
-                end;
-            end;
+                    let pos = vector.get(:PositionalDef p.positionals i)
+                    b.str("  ").str(pos.name)
+                    let pad = {24 - stringOp.length(pos.name)}
+                    if pad > 0 then b.repeat(' ' pad) else b.str("  ") end
+                    b.str(pos.help).char('\n')
+                end
+            end
 
-            let optCount = vector.length(:OptDef p.options);
+            let optCount = vector.length(:OptDef p.options)
             if optCount > 0 then
-                b.str("\nOptions:\n");
+                b.str("\nOptions:\n")
                 for i = 0 upto {optCount - 1} do
-                    let opt = vector.get(:OptDef p.options i);
-                    b.str("  ").str(opt.flagsStr);
-                    let pad = {24 - stringOp.length(opt.flagsStr)};
-                    if pad > 0 then b.repeat(' ' pad) else b.str("  ") end;
-                    b.str(opt.help);
+                    let opt = vector.get(:OptDef p.options i)
+                    b.str("  ").str(opt.flagsStr)
+                    let pad = {24 - stringOp.length(opt.flagsStr)}
+                    if pad > 0 then b.repeat(' ' pad) else b.str("  ") end
+                    b.str(opt.help)
                     case opt.kind
                         when choice with cd: Tuple choices: Array(String) defaultVal: String end then
-                            b.str(" (choices: ");
-                            let cNum = extent cd.choices;
+                            b.str(" (choices: ")
+                            let cNum = extent cd.choices
                             for ci = 0 upto {cNum - 1} do
-                                if ci > 0 then b.str(", "); end;
-                                b.str(cd.choices[ci]);
-                            end;
-                            b.str(")");
+                                if ci > 0 then b.str(", ") end
+                                b.str(cd.choices[ci])
+                            end
+                            b.str(")")
                             if stringOp.length(cd.defaultVal) > 0 then
-                                b.str(" [default: ").str(cd.defaultVal).str("]");
-                            end;
+                                b.str(" [default: ").str(cd.defaultVal).str("]")
+                            end
                         when str with sd: Tuple defaultVal: String end then
                             if stringOp.length(sd.defaultVal) > 0 then
-                                b.str(" [default: ").str(sd.defaultVal).str("]");
-                            end;
+                                b.str(" [default: ").str(sd.defaultVal).str("]")
+                            end
                         when integer with id: Tuple defaultVal: Int end then
                             if id.defaultVal isnot 0 then
-                                b.str(" [default: ").int(id.defaultVal).str("]");
-                            end;
+                                b.str(" [default: ").int(id.defaultVal).str("]")
+                            end
                         else ok
-                    end;
-                    b.char('\n');
-                end;
-            end;
+                    end
+                    b.char('\n')
+                end
+            end
 
             b.toString()
-        end;
+        end
 
     let printHelp(p: Parser w: writer.T): Ok =
         begin
-            writer.putString(w formatHelp(p));
+            writer.putString(w formatHelp(p))
             ok
-        end;
+        end
 
     (* Match a flag against registered option definitions *)
     (* Returns index in p.options, or ~1 if not found *)
     let findOptByFlag(p: Parser flag: String): Int =
-        maybe.unwrapOr(:Int hashMap.get(:String :Int p.flagsMap flag) ~1);
+        maybe.unwrapOr(:Int hashMap.get(:String :Int p.flagsMap flag) ~1)
 
     (* Check if val is in choices array *)
     let isChoiceValid(choices: Array(String) val: String): Bool =
         begin
-            let n = extent choices;
-            let var okChoice = false;
+            let n = extent choices
+            let var okChoice = false
             for i = 0 upto {n - 1} do
                 if stringOp.equal(choices[i] val) then
-                    okChoice := true;
-                end;
-            end;
+                    okChoice := true
+                end
+            end
             okChoice
-        end;
+        end
 
     (* Store parsed value according to option kind *)
     let storeOptValue(
@@ -282,7 +282,7 @@ export
         case opt.kind
             when str then
                 begin
-                    hashMap.insert(:String :String res.strings opt.name valPart);
+                    hashMap.insert(:String :String res.strings opt.name valPart)
                     ok
                 end
             when choice with cd: Tuple choices: Array(String) defaultVal: String end then
@@ -292,36 +292,36 @@ export
                             writer.err
                             {p.prog <> ": error: invalid choice '" <> valPart
                                 <> "' for option '" <> flagPart <> "'\n"}
-                        );
+                        )
                         raise error end
-                    end;
-                    hashMap.insert(:String :String res.strings opt.name valPart);
+                    end
+                    hashMap.insert(:String :String res.strings opt.name valPart)
                     ok
                 end
             when integer then
                 begin
-                    let parsedInt = strutil.tryToInt(valPart);
+                    let parsedInt = strutil.tryToInt(valPart)
                     if maybe.isNone(:Int parsedInt) then
                         writer.putString(
                             writer.err
                             {p.prog <> ": error: option '" <> flagPart
                                 <> "' requires integer argument\n"}
-                        );
+                        )
                         raise error end
-                    end;
-                    hashMap.insert(:String :Int res.ints opt.name maybe.unwrap(:Int parsedInt));
+                    end
+                    hashMap.insert(:String :Int res.ints opt.name maybe.unwrap(:Int parsedInt))
                     ok
                 end
             when multi then
                 begin
-                    let mOpt = hashMap.get(:String :vector.T(String) res.multis opt.name);
+                    let mOpt = hashMap.get(:String :vector.T(String) res.multis opt.name)
                     if maybe.isSome(:vector.T(String) mOpt) then
-                        vector.append(:String maybe.unwrap(:vector.T(String) mOpt) valPart);
-                    end;
+                        vector.append(:String maybe.unwrap(:vector.T(String) mOpt) valPart)
+                    end
                     ok
                 end
             else ok
-        end;
+        end
 
     let parseVector(p: Parser args: vector.T(String)): Results =
         begin
@@ -332,121 +332,121 @@ export
                 let multis = hashMap.new(:String :vector.T(String) stringOp.equal hash.string)
                 let posArgs = vector.new(:String)
                 let targetArgsList = vector.new(:String)
-            end;
+            end
 
             (* Pre-populate multis with empty vectors *)
-            let optCount = vector.length(:OptDef p.options);
+            let optCount = vector.length(:OptDef p.options)
             for i = 0 upto {optCount - 1} do
-                let opt = vector.get(:OptDef p.options i);
+                let opt = vector.get(:OptDef p.options i)
                 if isMulti(opt.kind) then
-                    let emptyVec = vector.new(:String);
-                    hashMap.insert(:String :vector.T(String) res.multis opt.name emptyVec);
-                end;
-            end;
+                    let emptyVec = vector.new(:String)
+                    hashMap.insert(:String :vector.T(String) res.multis opt.name emptyVec)
+                end
+            end
 
-            let nArgs = vector.length(:String args);
-            let var idx = 0;
-            let var inTargetArgs = false;
+            let nArgs = vector.length(:String args)
+            let var idx = 0
+            let var inTargetArgs = false
 
             while idx < nArgs do
-                let arg = vector.get(:String args idx);
+                let arg = vector.get(:String args idx)
                 if inTargetArgs then
-                    vector.append(:String res.targetArgsList arg);
-                    idx := idx + 1;
+                    vector.append(:String res.targetArgsList arg)
+                    idx := idx + 1
                 elsif stringOp.equal(arg "--") then
-                    inTargetArgs := true;
-                    idx := idx + 1;
+                    inTargetArgs := true
+                    idx := idx + 1
                 elsif strutil.startsWith(arg "--") then
                     (* Long option *)
-                    let eqIdx = strutil.find(arg "=");
+                    let eqIdx = strutil.find(arg "=")
                     let flagPart =
                         if eqIdx is ~1 then
                             arg
                         else
                             stringOp.getSub(arg 0 eqIdx)
-                        end;
-                    let optIdx = findOptByFlag(p flagPart);
+                        end
+                    let optIdx = findOptByFlag(p flagPart)
                     if optIdx is ~1 then
-                        writer.putString(writer.err {p.prog <> ": error: unrecognized option '" <> flagPart <> "'\n"});
+                        writer.putString(writer.err {p.prog <> ": error: unrecognized option '" <> flagPart <> "'\n"})
                         raise error end
-                    end;
-                    let opt = vector.get(:OptDef p.options optIdx);
+                    end
+                    let opt = vector.get(:OptDef p.options optIdx)
 
                     if isFlag(opt.kind) then
                         (* Flag *)
                         if stringOp.equal(opt.name "help") then
-                            printHelp(p writer.output);
+                            printHelp(p writer.output)
                             raise error end
-                        end;
-                        hashMap.insert(:String :Bool res.bools opt.name true);
-                        idx := idx + 1;
+                        end
+                        hashMap.insert(:String :Bool res.bools opt.name true)
+                        idx := idx + 1
                     else
                         (* Option expecting value *)
                         let valPart =
                             if eqIdx isnot ~1 then
                                 stringOp.getSub(arg {eqIdx + 1} {{stringOp.length(arg) - eqIdx} - 1})
                             else
-                                idx := idx + 1;
+                                idx := idx + 1
                                 if idx >= nArgs then
                                     writer.putString(
                                         writer.err
                                         {p.prog <> ": error: option '" <> flagPart <> "' requires an argument\n"}
-                                    );
+                                    )
                                     raise error end
-                                end;
+                                end
                                 vector.get(:String args idx)
-                            end;
+                            end
 
-                        storeOptValue(p opt flagPart valPart res);
-                        idx := idx + 1;
-                    end;
+                        storeOptValue(p opt flagPart valPart res)
+                        idx := idx + 1
+                    end
                 elsif strutil.startsWith(arg "-") andif {stringOp.length(arg) > 1} then
                     (* Short option *)
-                    let flagPart = stringOp.getSub(arg 0 2);
-                    let optIdx = findOptByFlag(p flagPart);
+                    let flagPart = stringOp.getSub(arg 0 2)
+                    let optIdx = findOptByFlag(p flagPart)
                     if optIdx is ~1 then
-                        writer.putString(writer.err {p.prog <> ": error: unrecognized option '" <> arg <> "'\n"});
+                        writer.putString(writer.err {p.prog <> ": error: unrecognized option '" <> arg <> "'\n"})
                         raise error end
-                    end;
-                    let opt = vector.get(:OptDef p.options optIdx);
+                    end
+                    let opt = vector.get(:OptDef p.options optIdx)
 
                     if isFlag(opt.kind) then
                         (* Flag: could be bundled or single *)
                         if stringOp.equal(opt.name "help") then
-                            printHelp(p writer.output);
+                            printHelp(p writer.output)
                             raise error end
-                        end;
-                        hashMap.insert(:String :Bool res.bools opt.name true);
-                        let aLen = stringOp.length(arg);
+                        end
+                        hashMap.insert(:String :Bool res.bools opt.name true)
+                        let aLen = stringOp.length(arg)
                         if aLen > 2 then
                             (* Handle remaining bundled short flags *)
                             for ci = 2 upto {aLen - 1} do
-                                let bFlag = "-" <> stringOp.getSub(arg ci 1);
-                                let bOptIdx = findOptByFlag(p bFlag);
+                                let bFlag = "-" <> stringOp.getSub(arg ci 1)
+                                let bOptIdx = findOptByFlag(p bFlag)
                                 if bOptIdx is ~1 then
                                     writer.putString(
                                         writer.err
                                         {p.prog <> ": error: unrecognized option '" <> bFlag <> "'\n"}
-                                    );
+                                    )
                                     raise error end
-                                end;
-                                let bOpt = vector.get(:OptDef p.options bOptIdx);
+                                end
+                                let bOpt = vector.get(:OptDef p.options bOptIdx)
                                 if not(isFlag(bOpt.kind)) then
                                     writer.putString(
                                         writer.err
                                         {p.prog <> ": error: option '" <> bFlag
                                             <> "' requires value and cannot be bundled\n"}
-                                    );
+                                    )
                                     raise error end
-                                end;
+                                end
                                 if stringOp.equal(bOpt.name "help") then
-                                    printHelp(p writer.output);
+                                    printHelp(p writer.output)
                                     raise error end
-                                end;
-                                hashMap.insert(:String :Bool res.bools bOpt.name true);
-                            end;
-                        end;
-                        idx := idx + 1;
+                                end
+                                hashMap.insert(:String :Bool res.bools bOpt.name true)
+                            end
+                        end
+                        idx := idx + 1
                     else
                         (* Option expecting value *)
                         let valPart =
@@ -454,100 +454,100 @@ export
                                 (* Attached value, e.g. -Ipath or -ofile *)
                                 stringOp.getSub(arg 2 {stringOp.length(arg) - 2})
                             else
-                                idx := idx + 1;
+                                idx := idx + 1
                                 if idx >= nArgs then
                                     writer.putString(
                                         writer.err
                                         {p.prog <> ": error: option '" <> flagPart <> "' requires an argument\n"}
-                                    );
+                                    )
                                     raise error end
-                                end;
+                                end
                                 vector.get(:String args idx)
-                            end;
+                            end
 
-                        storeOptValue(p opt flagPart valPart res);
-                        idx := idx + 1;
-                    end;
+                        storeOptValue(p opt flagPart valPart res)
+                        idx := idx + 1
+                    end
                 else
                     (* Positional argument *)
-                    vector.append(:String res.posArgs arg);
-                    idx := idx + 1;
-                end;
-            end;
+                    vector.append(:String res.posArgs arg)
+                    idx := idx + 1
+                end
+            end
 
             (* Apply defaults for non-specified options *)
             for i = 0 upto {optCount - 1} do
-                let opt = vector.get(:OptDef p.options i);
+                let opt = vector.get(:OptDef p.options i)
                 case opt.kind
                     when str with sd: Tuple defaultVal: String end then
                         begin
                             if not(hashMap.contains(:String :String res.strings opt.name))
                                andif {stringOp.length(sd.defaultVal) > 0} then
-                                hashMap.insert(:String :String res.strings opt.name sd.defaultVal);
-                            end;
+                                hashMap.insert(:String :String res.strings opt.name sd.defaultVal)
+                            end
                             ok
                         end
                     when choice with cd: Tuple choices: Array(String) defaultVal: String end then
                         begin
                             if not(hashMap.contains(:String :String res.strings opt.name))
                                andif {stringOp.length(cd.defaultVal) > 0} then
-                                hashMap.insert(:String :String res.strings opt.name cd.defaultVal);
-                            end;
+                                hashMap.insert(:String :String res.strings opt.name cd.defaultVal)
+                            end
                             ok
                         end
                     when integer with id: Tuple defaultVal: Int end then
                         begin
                             if not(hashMap.contains(:String :Int res.ints opt.name)) then
-                                hashMap.insert(:String :Int res.ints opt.name id.defaultVal);
-                            end;
+                                hashMap.insert(:String :Int res.ints opt.name id.defaultVal)
+                            end
                             ok
                         end
                     else ok
-                end;
-            end;
+                end
+            end
 
             res
-        end;
+        end
 
     let parse(p: Parser args: Array(String)): Results =
         begin
-            let n = extent args;
-            let v = vector.newWithCapacity(:String n);
+            let n = extent args
+            let v = vector.newWithCapacity(:String n)
             for i = 0 upto {n - 1} do
-                vector.append(:String v args[i]);
-            end;
+                vector.append(:String v args[i])
+            end
             parseVector(p v)
-        end;
+        end
 
     (* Result Queries *)
     let getBool(r: Results name: String): Bool =
-        maybe.unwrapOr(:Bool hashMap.get(:String :Bool r.bools name) false);
+        maybe.unwrapOr(:Bool hashMap.get(:String :Bool r.bools name) false)
 
     let getString(r: Results name: String): maybe.T(String) =
-        hashMap.get(:String :String r.strings name);
+        hashMap.get(:String :String r.strings name)
 
     let getStringOr(r: Results name: String defaultVal: String): String =
-        maybe.unwrapOr(:String hashMap.get(:String :String r.strings name) defaultVal);
+        maybe.unwrapOr(:String hashMap.get(:String :String r.strings name) defaultVal)
 
     let getInt(r: Results name: String): maybe.T(Int) =
-        hashMap.get(:String :Int r.ints name);
+        hashMap.get(:String :Int r.ints name)
 
     let getIntOr(r: Results name: String defaultVal: Int): Int =
-        maybe.unwrapOr(:Int hashMap.get(:String :Int r.ints name) defaultVal);
+        maybe.unwrapOr(:Int hashMap.get(:String :Int r.ints name) defaultVal)
 
     let getMulti(r: Results name: String): vector.T(String) =
         begin
-            let res = hashMap.get(:String :vector.T(String) r.multis name);
+            let res = hashMap.get(:String :vector.T(String) r.multis name)
             if maybe.isSome(:vector.T(String) res) then
                 maybe.unwrap(:vector.T(String) res)
             else
                 vector.new(:String)
             end
-        end;
+        end
 
     let positionals(r: Results): vector.T(String) =
-        r.posArgs;
+        r.posArgs
 
     let targetArgs(r: Results): vector.T(String) =
-        r.targetArgsList;
+        r.targetArgsList
 end;

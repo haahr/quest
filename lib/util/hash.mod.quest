@@ -4,37 +4,37 @@ import
     stringOp = string : StringOp
     wordLib = word : Word
 export
-    let identityEqual(A::TYPE)(x1: A x2: A): Bool = x1 is x2;
+    let identityEqual(A::TYPE)(x1: A x2: A): Bool = x1 is x2
 
-    let identityHash(A::TYPE)(x: A): wordLib.T = external "quest_identity_hash";
-    let mix(w: wordLib.T): wordLib.T = external "quest_hash_mix";
-    let combine(h1: wordLib.T h2: wordLib.T): wordLib.T = external "quest_hash_combine";
+    let identityHash(A::TYPE)(x: A): wordLib.T = external "quest_identity_hash"
+    let mix(w: wordLib.T): wordLib.T = external "quest_hash_mix"
+    let combine(h1: wordLib.T h2: wordLib.T): wordLib.T = external "quest_hash_combine"
 
-    let int(n: Int): wordLib.T = mix(wordLib.fromInt(n));
+    let int(n: Int): wordLib.T = mix(wordLib.fromInt(n))
 
     let bool(b: Bool): wordLib.T =
-        if b then wordLib.fromInt(1) else wordLib.fromInt(0) end;
+        if b then wordLib.fromInt(1) else wordLib.fromInt(0) end
 
-    let char(c: Char): wordLib.T = mix(wordLib.fromInt(ascii.val(c)));
+    let char(c: Char): wordLib.T = mix(wordLib.fromInt(ascii.val(c)))
 
-    let word(w: wordLib.T): wordLib.T = mix(w);
+    let word(w: wordLib.T): wordLib.T = mix(w)
 
     (* 64-bit FNV-1a string hashing:
      * offset basis: 14695981039346656037 (0xcbf29ce484222325)
      * prime:        1099511628211        (0x100000001b3)
      *)
-    let fnvOffsetBasis: wordLib.T = wordLib.fromInt(~3750763034362895579);
-    let fnvPrime: wordLib.T = wordLib.fromInt(1099511628211);
+    let fnvOffsetBasis: wordLib.T = wordLib.fromInt(~3750763034362895579)
+    let fnvPrime: wordLib.T = wordLib.fromInt(1099511628211)
 
     let string(s: String): wordLib.T =
         begin
-            let sLen = stringOp.length(s);
-            let var h = fnvOffsetBasis;
+            let sLen = stringOp.length(s)
+            let var h = fnvOffsetBasis
             for i = 0 upto {sLen - 1} do
-                let chCode = ascii.val(stringOp.getChar(s i));
-                h := wordLib.xorBits(h wordLib.fromInt(chCode));
-                h := wordLib.mul(h fnvPrime);
-            end;
+                let chCode = ascii.val(stringOp.getChar(s i))
+                h := wordLib.xorBits(h wordLib.fromInt(chCode))
+                h := wordLib.mul(h fnvPrime)
+            end
             h
-        end;
+        end
 end;

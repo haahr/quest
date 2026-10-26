@@ -11,7 +11,7 @@ import conv: Conv;
 let wOut = writer.output;
 let printInt(n: Int): Ok =
     begin
-        writer.putString(wOut conv.int(n));
+        writer.putString(wOut conv.int(n))
         writer.putString(wOut "\n")
     end;
 
@@ -20,7 +20,7 @@ Let Small = Record a: Int end;
 Let Big = Record a: Int b: Int end;
 Let P = Record s: Small var n: Int end;
 Let Car = Record fuel: String var n: Int s: Big end;
-let bump0(A <: P x: A): Int = begin x.n := x.n + 10; x.s.a + x.n end;
+let bump0(A <: P x: A): Int = begin x.n := x.n + 10 x.s.a + x.n end;
 let bump: All(A <: P x: A) Int = bump0;
 let car: Car = record fuel = "gas" var n = 1 s = record a = 5 b = 6 end end;
 printInt(bump(:Car car));
@@ -29,8 +29,8 @@ printInt(car.n);
 (* 2. Arrays of a bounded parameter's values: updated by generic code, seen by the caller *)
 let rotate0(A <: P xs: Array(A)): Ok =
     begin
-        let first = xs[0];
-        xs[0] := xs[1];
+        let first = xs[0]
+        xs[0] := xs[1]
         xs[1] := first
     end;
 let rotate: All(A <: P xs: Array(A)) Ok = rotate0;
@@ -40,7 +40,7 @@ printInt(cars[0].n);
 printInt(cars[0].s.b);
 
 (* 3. A var cell of a bounded parameter's value *)
-let swapIn0(A <: P var x: A y: A): Int = begin let old = x; x := y; old.n end;
+let swapIn0(A <: P var x: A y: A): Int = begin let old = x x := y old.n end;
 let swapIn: All(A <: P var x: A y: A) Int = swapIn0;
 let var held: Car = car;
 printInt(swapIn(:Car @held cars[1]));
@@ -75,7 +75,7 @@ printInt(ord(:S qs));
 printInt(extract(:S qs));
 
 (* 6. Generic code passing its values on to other generic code, and upcasting them to the bound *)
-let viaBound0(A <: P x: A): Int = begin let p: P = x; p.s.a + bump(:A x) end;
+let viaBound0(A <: P x: A): Int = begin let p: P = x p.s.a + bump(:A x) end;
 let viaBound: All(A <: P x: A) Int = viaBound0;
 printInt(viaBound(:Car car));
 printInt(car.n);
@@ -96,7 +96,7 @@ Let Boxed = Auto A::TYPE with a: A end;
 let box0(A <: Small x: A): Boxed = auto :Tuple var y: A end with tuple let var y = x end end;
 let box: All(A <: Small x: A) Boxed = box0;
 let set0(A <: Small b: Boxed v: A): Bool =
-    inspect b when Tuple var y: A end with t then begin t.a.y := v; true end else false end;
+    inspect b when Tuple var y: A end with t then begin t.a.y := v true end else false end;
 let set: All(A <: Small b: Boxed v: A) Bool = set0;
 let boxed = box(:Big record a = 30 b = 31 end);
 set(:Big boxed record a = 32 b = 33 end);
@@ -113,12 +113,12 @@ printInt(inspect c when Tuple y: Big end with t then t.a.y.b else 0 end);
 
 (* 8. Tuples: components read through the bound, one at a subtype's view, and a var component written *)
 Let T = Tuple s: Small var n: Int end;
-let tick0(A <: T t: A): Int = begin t.n := t.n + 1; t.s.a + t.n end;
+let tick0(A <: T t: A): Int = begin t.n := t.n + 1 t.s.a + t.n end;
 let tick: All(A <: T t: A) Int = tick0;
 let tb: Tuple s: Big var n: Int extra: Bool end = tuple let s = record a = 50 b = 51 end let var n = 1 let extra = true end;
 printInt(tick(:Tuple s: Big var n: Int extra: Bool end tb));
 printInt(tb.n);
 let bumpIn(var n: Int): Ok = n := n + 100;
-let tickVar0(A <: T t: A): Int = begin bumpIn(@t.n); t.n end;
+let tickVar0(A <: T t: A): Int = begin bumpIn(@t.n) t.n end;
 let tickVar: All(A <: T t: A) Int = tickVar0;
 printInt(tickVar(:Tuple s: Big var n: Int extra: Bool end tb));

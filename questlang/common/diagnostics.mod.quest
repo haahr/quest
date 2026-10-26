@@ -14,13 +14,13 @@ export
         error
         warning
         info
-    end;
+    end
 
     Let Label = Tuple
         sp: location.Span
         message: String
         isPrimary: Bool
-    end;
+    end
 
     Let Diagnostic = Tuple
         severity: Severity
@@ -30,7 +30,7 @@ export
         notes: vector.T(String)
         var help: maybe.T(String)
         var code: maybe.T(String)
-    end;
+    end
 
     let make(sev: Severity msg: String sp: location.Span): Diagnostic =
         tuple
@@ -41,27 +41,27 @@ export
             let notes = vector.new(:String)
             let var help = maybe.none(:String)
             let var code = maybe.none(:String)
-        end;
+        end
 
     let fatal(msg: String sp: location.Span): Diagnostic =
-        make(option fatal of Severity end msg sp);
+        make(option fatal of Severity end msg sp)
 
     let error(msg: String sp: location.Span): Diagnostic =
-        make(option error of Severity end msg sp);
+        make(option error of Severity end msg sp)
 
     let warning(msg: String sp: location.Span): Diagnostic =
-        make(option warning of Severity end msg sp);
+        make(option warning of Severity end msg sp)
 
     let info(msg: String sp: location.Span): Diagnostic =
-        make(option info of Severity end msg sp);
+        make(option info of Severity end msg sp)
 
-    let severity(d: Diagnostic): Severity = d.severity;
-    let message(d: Diagnostic): String = d.message;
-    let span(d: Diagnostic): location.Span = d.sp;
-    let labels(d: Diagnostic): vector.T(Label) = d.labels;
-    let notes(d: Diagnostic): vector.T(String) = d.notes;
-    let help(d: Diagnostic): maybe.T(String) = d.help;
-    let code(d: Diagnostic): maybe.T(String) = d.code;
+    let severity(d: Diagnostic): Severity = d.severity
+    let message(d: Diagnostic): String = d.message
+    let span(d: Diagnostic): location.Span = d.sp
+    let labels(d: Diagnostic): vector.T(Label) = d.labels
+    let notes(d: Diagnostic): vector.T(String) = d.notes
+    let help(d: Diagnostic): maybe.T(String) = d.help
+    let code(d: Diagnostic): maybe.T(String) = d.code
 
     let addLabel(d: Diagnostic sp: location.Span msg: String isPrimary: Bool): Ok =
         begin
@@ -69,24 +69,24 @@ export
                 let sp = sp
                 let message = msg
                 let isPrimary = isPrimary
-            end;
-            vector.append(:Label d.labels l);
-        end;
+            end
+            vector.append(:Label d.labels l)
+        end
 
     let addNote(d: Diagnostic note: String): Ok =
-        vector.append(:String d.notes note);
+        vector.append(:String d.notes note)
 
     let setHelp(d: Diagnostic h: String): Ok =
         begin
-            d.help := maybe.some(:String h);
+            d.help := maybe.some(:String h)
             ok
-        end;
+        end
 
     let setCode(d: Diagnostic c: String): Ok =
         begin
-            d.code := maybe.some(:String c);
+            d.code := maybe.some(:String c)
             ok
-        end;
+        end
 
     let severityString(sev: Severity): String =
         case sev
@@ -94,49 +94,49 @@ export
             when error then "error"
             when warning then "warning"
             when info then "info"
-        end;
+        end
 
     let format(d: Diagnostic sm: location.SourceMap): String =
         begin
-            let sb = stringBuilder.new();
-            let sevStr = severityString(d.severity);
-            let sp = d.sp;
-            let located = {stringOp.length(sp.file) > 0} andif {sp.startOffset >= 0};
-            let pos = location.locate(sm if located then sp.startOffset else 0 end);
+            let sb = stringBuilder.new()
+            let sevStr = severityString(d.severity)
+            let sp = d.sp
+            let located = {stringOp.length(sp.file) > 0} andif {sp.startOffset >= 0}
+            let pos = location.locate(sm if located then sp.startOffset else 0 end)
             if located then
-                sb.str(sp.file).char(':').int(pos.line).char(':').int(pos.col).str(": ");
-            end;
-            sb.str(sevStr).str(": ").str(d.message).char('\n');
+                sb.str(sp.file).char(':').int(pos.line).char(':').int(pos.col).str(": ")
+            end
+            sb.str(sevStr).str(": ").str(d.message).char('\n')
 
-            let lineStr = if located then location.getLine(sm pos.line) else "" end;
-            let lineLen = stringOp.length(lineStr);
+            let lineStr = if located then location.getLine(sm pos.line) else "" end
+            let lineLen = stringOp.length(lineStr)
             if lineLen > 0 then
-                sb.str("    ").str(lineStr).char('\n');
+                sb.str("    ").str(lineStr).char('\n')
 
-                let padCount = if pos.col > 1 then pos.col - 1 else 0 end;
-                let var spanLen = sp.endOffset - sp.startOffset;
-                if spanLen < 1 then spanLen := 1 end;
-                let maxLen = {lineLen - padCount};
+                let padCount = if pos.col > 1 then pos.col - 1 else 0 end
+                let var spanLen = sp.endOffset - sp.startOffset
+                if spanLen < 1 then spanLen := 1 end
+                let maxLen = {lineLen - padCount}
                 if {maxLen > 0} andif {spanLen > maxLen} then
-                    spanLen := maxLen;
-                end;
-                sb.str("    ").repeat(' ' padCount).repeat('^' spanLen).char('\n');
-            end;
+                    spanLen := maxLen
+                end
+                sb.str("    ").repeat(' ' padCount).repeat('^' spanLen).char('\n')
+            end
 
-            let noteCount = vector.length(:String d.notes);
+            let noteCount = vector.length(:String d.notes)
             if noteCount > 0 then
                 for i = 0 upto {noteCount - 1} do
-                    sb.str("  = note: ").str(vector.get(:String d.notes i)).char('\n');
-                end;
-            end;
+                    sb.str("  = note: ").str(vector.get(:String d.notes i)).char('\n')
+                end
+            end
 
             if maybe.isSome(:String d.help) then
-                sb.str("  = help: ").str(maybe.unwrap(:String d.help)).char('\n');
-            end;
+                sb.str("  = help: ").str(maybe.unwrap(:String d.help)).char('\n')
+            end
 
             sb.toString()
-        end;
+        end
 
     let render(d: Diagnostic sm: location.SourceMap w: writer.T): Ok =
-        writer.putString(w format(d sm));
+        writer.putString(w format(d sm))
 end;

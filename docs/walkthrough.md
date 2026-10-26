@@ -58,17 +58,17 @@ let argmax(E::TYPE K::TYPE)(
            key: All(e: E) K
            isGreater: All(x: K y: K) Bool): Tuple index: Int element: E end =
     begin
-        let n = arrayOp.size(:E a);
-        if n is 0 then raise empty end end;
-        let var best = 0;
-        let var bestKey = key(a[0]);
+        let n = arrayOp.size(:E a)
+        if n is 0 then raise empty end end
+        let var best = 0
+        let var bestKey = key(a[0])
         for i = 1 upto n - 1 do
-            let k = key(a[i]);
+            let k = key(a[i])
             if isGreater(k bestKey) then
-                best := i;
+                best := i
                 bestKey := k
             end
-        end;
+        end
         tuple let index = best let element = a[best] end
     end;
 ```
@@ -94,8 +94,9 @@ Reading it as a Python programmer:
   `e` is documentation; any function of one `E` returning a `K` will do.
 - **`: Tuple index: Int element: E end`** is the result type, a tuple with two named components, like a
   `NamedTuple`.
-- **`begin ... end`** is a block, whose phrases are separated by `;`. Its value is its last phrase's, so the block
-  ends with the tuple it returns: Quest has no `return` statement.
+- **`begin ... end`** is a block, whose phrases follow one another with nothing between them (§4 says why none is
+  needed). Its value is its last phrase's, so the block ends with the tuple it returns: Quest has no `return`
+  statement.
 - **`let n = ...`** names a value that never changes, and **`let var best = 0`** a variable that may, assigned with
   `:=`.
 - **`arrayOp.size(:E a)`** calls the library's `size` with the type argument `E` (the leading `:` marks a type) and
@@ -141,7 +142,7 @@ the signature of a function the module must provide. Elsewhere, a module impleme
 <!-- excerpt: examples/argmax/scoring.mod.quest source -->
 ```quest
 module scoring: Scoring export
-    Let Candidate = Tuple name: String years: Int rating: Real end;
+    Let Candidate = Tuple name: String years: Int rating: Real end
     let score(c: Candidate): Real = c.rating
 end;
 ```
@@ -367,6 +368,11 @@ and the block:
 
 The tree records structure, not meaning. Nothing yet says that `n` is an integer, that `arrayOp` has a `size`, or
 even that the names used are defined.
+
+The parser needs nothing between the phrases of a block to find where one ends and the next begins. A phrase could
+only run on into the next through a `(` (a call), a `[` (indexing), a `.` (selecting a field), or an infix operator
+followed by its right operand, and no phrase begins with any of these. So where Python ends a statement at the end of
+a line, Quest lets lines break anywhere, and the grammar alone says where each phrase ends.
 
 ---
 

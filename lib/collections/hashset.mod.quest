@@ -16,82 +16,82 @@ export
         map: hashMap.T(A Ok)
         equal: All(a1: A a2: A) Bool
         hash: All(a: A) word.T
-    end;
+    end
 
     let newWithCapacity(A::TYPE)(capacity: Int equal: All(a1: A a2: A) Bool hash: All(a: A) word.T): T(A) =
         tuple
             let map = hashMap.newWithCapacity(:A :Ok capacity equal hash)
             let equal = equal
             let hash = hash
-        end;
+        end
 
     let new(A::TYPE)(equal: All(a1: A a2: A) Bool hash: All(a: A) word.T): T(A) =
         tuple
             let map = hashMap.new(:A :Ok equal hash)
             let equal = equal
             let hash = hash
-        end;
+        end
 
     let newIdentitySet(A::TYPE): T(A) =
-        new(:A hash.identityEqual(:A) hash.identityHash(:A));
+        new(:A hash.identityEqual(:A) hash.identityHash(:A))
 
     let newIdentitySetWithCapacity(A::TYPE)(capacity: Int): T(A) =
-        newWithCapacity(:A capacity hash.identityEqual(:A) hash.identityHash(:A));
+        newWithCapacity(:A capacity hash.identityEqual(:A) hash.identityHash(:A))
 
     let size(A::TYPE)(s: T(A)): Int =
-        hashMap.size(s.map);
+        hashMap.size(s.map)
 
     let empty(A::TYPE)(s: T(A)): Bool =
-        hashMap.empty(s.map);
+        hashMap.empty(s.map)
 
     let contains(A::TYPE)(s: T(A) elem: A): Bool =
-        hashMap.contains(s.map elem);
+        hashMap.contains(s.map elem)
 
     let insert(A::TYPE)(s: T(A) elem: A): Bool =
-        hashMap.insert(s.map elem ok);
+        hashMap.insert(s.map elem ok)
 
     let delete(A::TYPE)(s: T(A) elem: A): Bool =
-        maybe.isSome(hashMap.delete(s.map elem));
+        maybe.isSome(hashMap.delete(s.map elem))
 
     let clear(A::TYPE)(s: T(A)): Ok =
-        hashMap.clear(s.map);
+        hashMap.clear(s.map)
 
     let elements(A::TYPE)(s: T(A)): vector.T(A) =
-        hashMap.keys(s.map);
+        hashMap.keys(s.map)
 
     let forEach(A::TYPE)(s: T(A) action: All(elem: A) Ok): Ok =
         hashMap.forEach(:A :Ok s.map fun(elem: A dummy: Ok): Ok
-            action(elem));
+            action(elem))
 
     let fold(A::TYPE Acc::TYPE)(s: T(A) init: Acc f: All(acc: Acc elem: A) Acc): Acc =
         hashMap.fold(:A :Ok :Acc s.map init fun(acc: Acc elem: A dummy: Ok): Acc
-            f(acc elem));
+            f(acc elem))
 
     let copy(A::TYPE)(s: T(A)): T(A) =
         fold(:A :T(A) s newWithCapacity(size(s) s.equal s.hash)
             fun(acc: T(A) elem: A): T(A)
                 begin
-                    insert(acc elem);
+                    insert(acc elem)
                     acc
-                end);
+                end)
 
     let filter(A::TYPE)(s: T(A) pred: All(elem: A) Bool): T(A) =
         fold(:A :T(A) s newWithCapacity(size(s) s.equal s.hash)
             fun(acc: T(A) elem: A): T(A)
                 begin
                     if pred(elem) then
-                        insert(acc elem);
-                    end;
+                        insert(acc elem)
+                    end
                     acc
-                end);
+                end)
 
     let map(A::TYPE B::TYPE)(s: T(A) equal: All(b1: B b2: B) Bool hash: All(b: B) word.T f: All(elem: A) B): T(B) =
         fold(:A :T(B) s newWithCapacity(:B size(s) equal hash)
             fun(acc: T(B) elem: A): T(B)
                 begin
-                    insert(:B acc f(elem));
+                    insert(:B acc f(elem))
                     acc
-                end);
+                end)
 
     let filterMap(A::TYPE B::TYPE)(
         s: T(A)
@@ -102,60 +102,60 @@ export
         fold(:A :T(B) s newWithCapacity(:B size(s) equal hash)
             fun(acc: T(B) elem: A): T(B)
                 begin
-                    let opt: maybe.T(B) = f(elem);
+                    let opt: maybe.T(B) = f(elem)
                     if maybe.isSome(:B opt) then
-                        insert(:B acc maybe.unwrap(:B opt));
-                    end;
+                        insert(:B acc maybe.unwrap(:B opt))
+                    end
                     acc
-                end);
+                end)
 
     let union(A::TYPE)(s1: T(A) s2: T(A)): T(A) =
         begin
-            let res = copy(s1);
+            let res = copy(s1)
             forEach(s2 fun(elem: A): Ok
                 begin
-                    insert(res elem);
+                    insert(res elem)
                     ok
-                end);
+                end)
             res
-        end;
+        end
 
     let intersection(A::TYPE)(s1: T(A) s2: T(A)): T(A) =
         begin
-            let primary = if size(s1) <= size(s2) then s1 else s2 end;
-            let secondary = if size(s1) <= size(s2) then s2 else s1 end;
+            let primary = if size(s1) <= size(s2) then s1 else s2 end
+            let secondary = if size(s1) <= size(s2) then s2 else s1 end
             filter(primary fun(elem: A): Bool
                 contains(secondary elem))
-        end;
+        end
 
     let difference(A::TYPE)(s1: T(A) s2: T(A)): T(A) =
         filter(s1 fun(elem: A): Bool
-            not(contains(s2 elem)));
+            not(contains(s2 elem)))
 
     let isSubset(A::TYPE)(s1: T(A) s2: T(A)): Bool =
         begin
             if size(s1) > size(s2) then
                 false
             else
-                let elems = elements(s1);
-                let n = vector.length(elems);
-                let var subset = true;
-                let var i = 0;
+                let elems = elements(s1)
+                let n = vector.length(elems)
+                let var subset = true
+                let var i = 0
                 while {i < n} /\ subset do
                     if not(contains(s2 vector.get(elems i))) then
-                        subset := false;
+                        subset := false
                     else
-                        i := i + 1;
-                    end;
-                end;
+                        i := i + 1
+                    end
+                end
                 subset
             end
-        end;
+        end
 
     let equal(A::TYPE)(s1: T(A) s2: T(A)): Bool =
         if size(s1) is size(s2) then
             isSubset(s1 s2)
         else
             false
-        end;
+        end
 end;
