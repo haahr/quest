@@ -607,22 +607,20 @@ class QTupleType(QType):
         for f1, f2 in zip(self.fields, other.fields):
             if type(f1) is not type(f2):
                 return False
-            if isinstance(f1, QTupleTypeFormal):
-                assert isinstance(f2, QTupleTypeFormal)
-                if f1.name != f2.name or f1.bound != f2.bound:
-                    return False
-            elif isinstance(f1, QTupleField):
-                assert isinstance(f2, QTupleField)
-                if f1.name is not None and f2.name is not None and f1.name != f2.name:
-                    return False
-                if f1.is_var != f2.is_var:
-                    return False
-                if f1.type_val != f2.type_val:
-                    return False
-            elif isinstance(f1, QTupleTypeBinding):
-                assert isinstance(f2, QTupleTypeBinding)
-                if f1.name != f2.name or f1.type_val != f2.type_val or f1.bound != f2.bound:
-                    return False
+            match f1, f2:
+                case QTupleTypeFormal(), QTupleTypeFormal():
+                    if f1.name != f2.name or f1.bound != f2.bound:
+                        return False
+                case QTupleField(), QTupleField():
+                    if f1.name is not None and f2.name is not None and f1.name != f2.name:
+                        return False
+                    if f1.is_var != f2.is_var:
+                        return False
+                    if f1.type_val != f2.type_val:
+                        return False
+                case QTupleTypeBinding(), QTupleTypeBinding():
+                    if f1.name != f2.name or f1.type_val != f2.type_val or f1.bound != f2.bound:
+                        return False
         return True
 
     def __hash__(self) -> int:
@@ -1377,22 +1375,23 @@ def map_aliases(
     if key in memo:
         return memo[key]
     result = node
-    if isinstance(node, QAliasType):
-        replacement = replace(node)
-        if replacement is not None:
-            result = replacement
-    elif isinstance(node, QTypeMeta):
-        pruned = node.prune()
-        result = node if pruned is node else map_aliases(pruned, replace, memo)
-    elif isinstance(node, tuple):
-        items = tuple(map_aliases(item, replace, memo) for item in node)
-        if any(a is not b for a, b in zip(items, node)):
-            result = items
-    elif isinstance(type(node), _InternedNode) and dataclasses.is_dataclass(node):
-        values = {f.name: getattr(node, f.name) for f in dataclasses.fields(node)}
-        mapped = {k: map_aliases(v, replace, memo) for k, v in values.items()}
-        if any(mapped[k] is not values[k] for k in values):
-            result = QTupleType(mapped["fields"]) if isinstance(node, QTupleType) else type(node)(**mapped)
+    match node:
+        case QAliasType():
+            replacement = replace(node)
+            if replacement is not None:
+                result = replacement
+        case QTypeMeta():
+            pruned = node.prune()
+            result = node if pruned is node else map_aliases(pruned, replace, memo)
+        case tuple():
+            items = tuple(map_aliases(item, replace, memo) for item in node)
+            if any(a is not b for a, b in zip(items, node)):
+                result = items
+        case _ if isinstance(type(node), _InternedNode) and dataclasses.is_dataclass(node):
+            values = {f.name: getattr(node, f.name) for f in dataclasses.fields(node)}
+            mapped = {k: map_aliases(v, replace, memo) for k, v in values.items()}
+            if any(mapped[k] is not values[k] for k in values):
+                result = QTupleType(mapped["fields"]) if isinstance(node, QTupleType) else type(node)(**mapped)
     memo[key] = result
     return result
 
@@ -1408,20 +1407,21 @@ def strip_aliases(node: Any, memo: Optional[dict[int, Any]] = None) -> Any:
     if cached is not None and cached[0] is node:
         return cached[1]
     result = node
-    if isinstance(node, QAliasType):
-        result = strip_aliases(node.target, memo)
-    elif isinstance(node, QTypeMeta):
-        pruned = node.prune()
-        result = node if pruned is node else strip_aliases(pruned, memo)
-    elif isinstance(node, tuple):
-        items = tuple(strip_aliases(item, memo) for item in node)
-        if any(a is not b for a, b in zip(items, node)):
-            result = items
-    elif isinstance(type(node), _InternedNode) and dataclasses.is_dataclass(node):
-        values = {f.name: getattr(node, f.name) for f in dataclasses.fields(node)}
-        stripped = {k: strip_aliases(v, memo) for k, v in values.items()}
-        if any(stripped[k] is not values[k] for k in values):
-            result = QTupleType(stripped["fields"]) if isinstance(node, QTupleType) else type(node)(**stripped)
+    match node:
+        case QAliasType():
+            result = strip_aliases(node.target, memo)
+        case QTypeMeta():
+            pruned = node.prune()
+            result = node if pruned is node else strip_aliases(pruned, memo)
+        case tuple():
+            items = tuple(strip_aliases(item, memo) for item in node)
+            if any(a is not b for a, b in zip(items, node)):
+                result = items
+        case _ if isinstance(type(node), _InternedNode) and dataclasses.is_dataclass(node):
+            values = {f.name: getattr(node, f.name) for f in dataclasses.fields(node)}
+            stripped = {k: strip_aliases(v, memo) for k, v in values.items()}
+            if any(stripped[k] is not values[k] for k in values):
+                result = QTupleType(stripped["fields"]) if isinstance(node, QTupleType) else type(node)(**stripped)
     memo[key] = result
     if isinstance(type(node), _InternedNode) and not getattr(node, "_has_meta", False):
         if len(_STRIPPED) > 200_000:
@@ -1441,55 +1441,56 @@ def find_path_types(typ: QType) -> list[QPathType]:
             return
         visited.add(t_id)
 
-        if isinstance(t, QPathType):
-            result.append(t)
-            if isinstance(t.bound, QPowerKind):
-                visit(t.bound.bound)
-        elif isinstance(t, QFunType):
-            for p in t.params:
-                visit(p.type_val)
-            visit(t.result_type)
-        elif isinstance(t, QTupleType):
-            for f in t.fields:
-                if isinstance(f, (QTupleField, QTupleTypeBinding)):
-                    visit(f.type_val)
-                elif isinstance(f, QTupleTypeFormal):
-                    if isinstance(f.bound, QPowerKind):
-                        visit(f.bound.bound)
-        elif isinstance(t, QRecordType):
-            for rf in t.fields:
-                visit(rf.type_val)
-        elif isinstance(t, QAllType):
-            for q in t.quantifiers:
-                if isinstance(q.bound, QPowerKind):
-                    visit(q.bound.bound)
-            visit(t.body)
-        elif isinstance(t, QAutoType):
-            for rf in t.signature:
-                visit(rf.type_val)
-        elif isinstance(t, QOptionType):
-            for of in t.options:
-                if of.payload_type is not None:
-                    visit(of.payload_type)
-        elif isinstance(t, QVariantType):
-            for vf in t.variants:
-                if vf.type_val is not None:
-                    visit(vf.type_val)
-        elif isinstance(t, (QVarType, QArrayType, QOutType)):
-            visit(t.element_type)
-        elif isinstance(t, QTypeApp):
-            visit(t.constructor)
-            for arg in t.arguments:
-                visit(arg)
-        elif isinstance(t, QRecType):
-            visit(t.body)
-        elif isinstance(t, QRecGroupType):
-            for b in t.bindings:
-                visit(b[3])
-        elif isinstance(t, QExceptionType):
-            visit(t.payload_type)
-        elif isinstance(t, QAliasType):
-            visit(t.target)
+        match t:
+            case QPathType():
+                result.append(t)
+                if isinstance(t.bound, QPowerKind):
+                    visit(t.bound.bound)
+            case QFunType():
+                for p in t.params:
+                    visit(p.type_val)
+                visit(t.result_type)
+            case QTupleType():
+                for f in t.fields:
+                    if isinstance(f, (QTupleField, QTupleTypeBinding)):
+                        visit(f.type_val)
+                    elif isinstance(f, QTupleTypeFormal):
+                        if isinstance(f.bound, QPowerKind):
+                            visit(f.bound.bound)
+            case QRecordType():
+                for rf in t.fields:
+                    visit(rf.type_val)
+            case QAllType():
+                for q in t.quantifiers:
+                    if isinstance(q.bound, QPowerKind):
+                        visit(q.bound.bound)
+                visit(t.body)
+            case QAutoType():
+                for rf in t.signature:
+                    visit(rf.type_val)
+            case QOptionType():
+                for of in t.options:
+                    if of.payload_type is not None:
+                        visit(of.payload_type)
+            case QVariantType():
+                for vf in t.variants:
+                    if vf.type_val is not None:
+                        visit(vf.type_val)
+            case QVarType() | QArrayType() | QOutType():
+                visit(t.element_type)
+            case QTypeApp():
+                visit(t.constructor)
+                for arg in t.arguments:
+                    visit(arg)
+            case QRecType():
+                visit(t.body)
+            case QRecGroupType():
+                for b in t.bindings:
+                    visit(b[3])
+            case QExceptionType():
+                visit(t.payload_type)
+            case QAliasType():
+                visit(t.target)
 
     visit(typ)
     return result
@@ -1507,47 +1508,48 @@ def type_mentions_symbol_ids(typ: QType, sym_ids: set[int]) -> bool:
             return False
         visited.add(t_id)
 
-        if isinstance(t, (QTypeVar, QAbstractType)):
-            if t.symbol_id in sym_ids:
-                return True
-        elif isinstance(t, QPathType):
-            if isinstance(t.bound, QPowerKind) and visit(t.bound.bound):
-                return True
-        elif isinstance(t, QFunType):
-            if any(visit(p.type_val) for p in t.params) or visit(t.result_type):
-                return True
-        elif isinstance(t, QTupleType):
-            for f in t.fields:
-                if isinstance(f, (QTupleField, QTupleTypeBinding)) and visit(f.type_val):
+        match t:
+            case QTypeVar() | QAbstractType():
+                if t.symbol_id in sym_ids:
                     return True
-                elif isinstance(f, QTupleTypeFormal) and isinstance(f.bound, QPowerKind):
-                    if visit(f.bound.bound):
+            case QPathType():
+                if isinstance(t.bound, QPowerKind) and visit(t.bound.bound):
+                    return True
+            case QFunType():
+                if any(visit(p.type_val) for p in t.params) or visit(t.result_type):
+                    return True
+            case QTupleType():
+                for f in t.fields:
+                    if isinstance(f, (QTupleField, QTupleTypeBinding)) and visit(f.type_val):
                         return True
-        elif isinstance(t, QRecordType):
-            if any(visit(rf.type_val) for rf in t.fields):
-                return True
-        elif isinstance(t, QAllType):
-            if any(isinstance(q.bound, QPowerKind) and visit(q.bound.bound) for q in t.quantifiers):
-                return True
-            return visit(t.body)
-        elif isinstance(t, QAutoType):
-            return any(visit(rf.type_val) for rf in t.signature)
-        elif isinstance(t, QOptionType):
-            return any(of.payload_type is not None and visit(of.payload_type) for of in t.options)
-        elif isinstance(t, QVariantType):
-            return any(vf.type_val is not None and visit(vf.type_val) for vf in t.variants)
-        elif isinstance(t, (QVarType, QArrayType, QOutType)):
-            return visit(t.element_type)
-        elif isinstance(t, QTypeApp):
-            return visit(t.constructor) or any(visit(arg) for arg in t.arguments)
-        elif isinstance(t, QRecType):
-            return visit(t.body)
-        elif isinstance(t, QRecGroupType):
-            return any(visit(b[3]) for b in t.bindings)
-        elif isinstance(t, QExceptionType):
-            return visit(t.payload_type)
-        elif isinstance(t, QAliasType):
-            return visit(t.target)
+                    elif isinstance(f, QTupleTypeFormal) and isinstance(f.bound, QPowerKind):
+                        if visit(f.bound.bound):
+                            return True
+            case QRecordType():
+                if any(visit(rf.type_val) for rf in t.fields):
+                    return True
+            case QAllType():
+                if any(isinstance(q.bound, QPowerKind) and visit(q.bound.bound) for q in t.quantifiers):
+                    return True
+                return visit(t.body)
+            case QAutoType():
+                return any(visit(rf.type_val) for rf in t.signature)
+            case QOptionType():
+                return any(of.payload_type is not None and visit(of.payload_type) for of in t.options)
+            case QVariantType():
+                return any(vf.type_val is not None and visit(vf.type_val) for vf in t.variants)
+            case QVarType() | QArrayType() | QOutType():
+                return visit(t.element_type)
+            case QTypeApp():
+                return visit(t.constructor) or any(visit(arg) for arg in t.arguments)
+            case QRecType():
+                return visit(t.body)
+            case QRecGroupType():
+                return any(visit(b[3]) for b in t.bindings)
+            case QExceptionType():
+                return visit(t.payload_type)
+            case QAliasType():
+                return visit(t.target)
         return False
 
     return visit(typ)

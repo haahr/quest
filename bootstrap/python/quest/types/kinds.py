@@ -201,21 +201,22 @@ def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
                 env.push_scope("tuple_kind_check")
                 try:
                     for f in fields:
-                        if isinstance(f, QTupleTypeFormal):
-                            check_kind_well_formed(f.bound, env)
-                            env.current_scope.declare_type_variable(
-                                name=f.name, symbol_id=f.symbol_id, kind=f.bound
-                            )
-                        elif isinstance(f, QTupleField):
-                            check_kind(f.type_val, TYPE_KIND, env)
-                        elif isinstance(f, QTupleTypeBinding):
-                            check_kind(f.type_val, TYPE_KIND, env)
-                            env.current_scope.declare_type_variable(
-                                name=f.name,
-                                symbol_id=env.fresh_symbol_id(),
-                                kind=f.bound or TYPE_KIND,
-                                definition=f.type_val,
-                            )
+                        match f:
+                            case QTupleTypeFormal():
+                                check_kind_well_formed(f.bound, env)
+                                env.current_scope.declare_type_variable(
+                                    name=f.name, symbol_id=f.symbol_id, kind=f.bound
+                                )
+                            case QTupleField():
+                                check_kind(f.type_val, TYPE_KIND, env)
+                            case QTupleTypeBinding():
+                                check_kind(f.type_val, TYPE_KIND, env)
+                                env.current_scope.declare_type_variable(
+                                    name=f.name,
+                                    symbol_id=env.fresh_symbol_id(),
+                                    kind=f.bound or TYPE_KIND,
+                                    definition=f.type_val,
+                                )
                 finally:
                     env.pop_scope()
             else:

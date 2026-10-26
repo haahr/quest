@@ -17,21 +17,22 @@ def resolve_typed_metas(node: Any, memo: Optional[dict[int, Any]] = None) -> Any
     if key in memo:
         return memo[key]
     result = node
-    if isinstance(node, QType):
-        result = resolve_metas(node)
-    elif isinstance(node, tuple):
-        items = tuple(resolve_typed_metas(item, memo) for item in node)
-        if any(a is not b for a, b in zip(items, node)):
-            result = items
-    elif isinstance(node, TypedNode):
-        changes = {}
-        for f in dataclasses.fields(node):
-            if f.init:
-                old = getattr(node, f.name)
-                new = resolve_typed_metas(old, memo)
-                if new is not old:
-                    changes[f.name] = new
-        if changes:
-            result = dataclasses.replace(node, **changes)
+    match node:
+        case QType():
+            result = resolve_metas(node)
+        case tuple():
+            items = tuple(resolve_typed_metas(item, memo) for item in node)
+            if any(a is not b for a, b in zip(items, node)):
+                result = items
+        case TypedNode():
+            changes = {}
+            for f in dataclasses.fields(node):
+                if f.init:
+                    old = getattr(node, f.name)
+                    new = resolve_typed_metas(old, memo)
+                    if new is not old:
+                        changes[f.name] = new
+            if changes:
+                result = dataclasses.replace(node, **changes)
     memo[key] = result
     return result
