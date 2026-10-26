@@ -25,7 +25,7 @@ from quest.modules.module_compiler import compile_module_file
 from quest.modules.paths import resolve_interface_file
 
 CALC_INT = "interface Calc export add(a: Int b: Int): Int end;\n"
-CALC_MOD = "module calc : Calc export let add(a: Int b: Int): Int = a + b; end;\n"
+CALC_MOD = "module calc : Calc export let add(a: Int b: Int): Int = a + b end;\n"
 APP = (
     "import c = calc : Calc;\n"
     "import writer: Writer;\n"

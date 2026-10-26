@@ -13,7 +13,7 @@ class TestDesugar(unittest.TestCase):
     """Each sugared form becomes its core form, positioned at the syntax it replaces."""
 
     def test_unchanged_node_is_returned_as_is(self) -> None:
-        expr = parse_expr("begin let x = 1 + 2; if x is 3 then x end end")
+        expr = parse_expr("begin let x = 1 + 2 if x is 3 then x end end")
         self.assertIs(desugar(expr), expr)
 
     def test_elsif_chain_with_else(self) -> None:

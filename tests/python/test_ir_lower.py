@@ -72,8 +72,8 @@ class TestLowering(unittest.TestCase):
         # A nested function may use it: it is a value, not a mutable variable
         _, text = lower(
             "let f(x: Int): Int = begin "
-            "let a: Int = try raise exception I: Int end with x end when I with n then n end; "
-            "let h(): Int = try raise I with 2 end when I with n then n end; "
+            "let a: Int = try raise exception I: Int end with x end when I with n then n end "
+            "let h(): Int = try raise I with 2 end when I with n then n end "
             "a + h() end; f(1)"
         )
         self.assertIn("raise I with 2", text)
@@ -88,7 +88,7 @@ class TestLowering(unittest.TestCase):
     def test_recursive_values(self) -> None:
         _, text = lower(
             "Let Rec T = Tuple me(): T end; "
-            "let mk(): T = begin let rec self: T = tuple let me(): T = self end; self end; mk()"
+            "let mk(): T = begin let rec self: T = tuple let me(): T = self end self end; mk()"
         )
         self.assertIn("let rec (self: T) {", text)
 

@@ -51,10 +51,10 @@ class TestModuleCompiler(unittest.TestCase):
         mod_file = self.dir_path / "counter.mod.quest"
         mod_file.write_text(
             "module counter: Counter export\n"
-            "    Let T = Record var count: Int end;\n"
-            "    let create(): T = record var count = 0 end;\n"
-            "    let read(c: T): Int = c.count;\n"
-            "    let inc(c: T): Ok = c.count := c.count + 1;\n"
+            "    Let T = Record var count: Int end\n"
+            "    let create(): T = record var count = 0 end\n"
+            "    let read(c: T): Int = c.count\n"
+            "    let inc(c: T): Ok = c.count := c.count + 1\n"
             "end;\n",
             encoding="utf-8",
         )
@@ -107,7 +107,7 @@ class TestModuleCompiler(unittest.TestCase):
         base_mod = self.dir_path / "base.mod.quest"
         base_mod.write_text(
             "module base: Base export\n"
-            "    let val: Int = 100;\n"
+            "    let val: Int = 100\n"
             "end;\n",
             encoding="utf-8",
         )
@@ -128,7 +128,7 @@ class TestModuleCompiler(unittest.TestCase):
             "module client: Client\n"
             "    import base: Base\n"
             "export\n"
-            "    let compute(): Int = base.val + 42;\n"
+            "    let compute(): Int = base.val + 42\n"
             "end;\n",
             encoding="utf-8",
         )
@@ -163,8 +163,8 @@ class TestModuleCompiler(unittest.TestCase):
         mod_file = self.dir_path / "mathops.mod.quest"
         mod_file.write_text(
             "module mathops: MathOps export\n"
-            "    let add(a: Int b: Int): Int = a + b;\n"
-            "    let multiply(a: Int b: Int): Int = a * b;\n"
+            "    let add(a: Int b: Int): Int = a + b\n"
+            "    let multiply(a: Int b: Int): Int = a * b\n"
             "end;\n",
             encoding="utf-8",
         )
@@ -244,7 +244,7 @@ class TestModuleCompiler(unittest.TestCase):
         mod_file = self.dir_path / "store.mod.quest"
         mod_file.write_text(
             "module store: Store export\n"
-            "    let val: Int = 99;\n"
+            "    let val: Int = 99\n"
             "end;\n",
             encoding="utf-8",
         )
@@ -263,7 +263,7 @@ class TestModuleCompiler(unittest.TestCase):
         self.assertEqual(quest_driver.run_driver(["-c", str(intf_c), "-I", str(self.dir_path)]), 0)
 
         mod_c = self.dir_path / "depc.mod.quest"
-        mod_c.write_text("module depc: DepC export let val: Int = 10; end;\n", encoding="utf-8")
+        mod_c.write_text("module depc: DepC export let val: Int = 10 end;\n", encoding="utf-8")
         ret_c = quest_driver.run_driver(["--emit-deps", "-c", str(mod_c), "-I", str(self.dir_path)])
         self.assertEqual(ret_c, 0)
         dep_c_file = self.dir_path / ".deps" / "depc.d"
@@ -279,7 +279,7 @@ class TestModuleCompiler(unittest.TestCase):
 
         mod_b = self.dir_path / "depb.mod.quest"
         mod_b.write_text(
-            "module depb: DepB import c = depc : DepC export let val: Int = c.val + 20; end;\n",
+            "module depb: DepB import c = depc : DepC export let val: Int = c.val + 20 end;\n",
             encoding="utf-8",
         )
         ret_b = quest_driver.run_driver(["--emit-deps", "-c", str(mod_b), "-I", str(self.dir_path)])
@@ -296,7 +296,7 @@ class TestModuleCompiler(unittest.TestCase):
         self.assertEqual(quest_driver.run_driver(["-c", str(intf_c), "-I", str(self.dir_path)]), 0)
 
         mod_c = self.dir_path / "basec.mod.quest"
-        mod_c.write_text("module basec: BaseC export let getVal(): Int = 42; end;\n", encoding="utf-8")
+        mod_c.write_text("module basec: BaseC export let getVal(): Int = 42 end;\n", encoding="utf-8")
         self.assertEqual(
             quest_driver.run_driver(["--emit-deps", "-c", str(mod_c), "-I", str(self.dir_path)]),
             0,
@@ -308,7 +308,7 @@ class TestModuleCompiler(unittest.TestCase):
 
         mod_b = self.dir_path / "midb.mod.quest"
         mod_b.write_text(
-            "module midb: MidB import c = basec : BaseC export let compute(): Int = c.getVal() * 2; end;\n",
+            "module midb: MidB import c = basec : BaseC export let compute(): Int = c.getVal() * 2 end;\n",
             encoding="utf-8",
         )
         self.assertEqual(
@@ -339,7 +339,7 @@ class TestModuleCompiler(unittest.TestCase):
         compile_interface_with_header(intf_c, output_dir=self.dir_path, include_paths=[self.dir_path])
 
         mod_c = self.dir_path / "depc.mod.quest"
-        mod_c.write_text("module depc: DepC export let val: Int = 10; end;\n", encoding="utf-8")
+        mod_c.write_text("module depc: DepC export let val: Int = 10 end;\n", encoding="utf-8")
         compile_module_file(mod_c, output_dir=self.dir_path, include_paths=[self.dir_path])
 
         intf_b = self.dir_path / "depb.int.quest"
@@ -351,7 +351,7 @@ class TestModuleCompiler(unittest.TestCase):
 
         mod_b = self.dir_path / "depb.mod.quest"
         mod_b.write_text(
-            "module depb: DepB import c = depc : DepC export let val: Int = c.val + 20; end;\n",
+            "module depb: DepB import c = depc : DepC export let val: Int = c.val + 20 end;\n",
             encoding="utf-8",
         )
         res_b = compile_module_file(mod_b, output_dir=self.dir_path, include_paths=[self.dir_path])
@@ -382,7 +382,7 @@ class TestModuleCompiler(unittest.TestCase):
 
         mod = self.dir_path / "calc.mod.quest"
         mod.write_text(
-            "module calc: Calc export let add(a: Int b: Int): Int = a + b; end;\n",
+            "module calc: Calc export let add(a: Int b: Int): Int = a + b end;\n",
             encoding="utf-8",
         )
         res = compile_module_file(mod, build_dir=build_dir, include_paths=[self.dir_path])

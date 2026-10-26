@@ -126,7 +126,7 @@ class TestInterfaceResolution(unittest.TestCase):
 
         mod_a = self.dir_path / "moda.mod.quest"
         mod_a.write_text(
-            "module moda: ModA import b = depb : DepB export let run(): Int = b.getValue() + 1; end;\n",
+            "module moda: ModA import b = depb : DepB export let run(): Int = b.getValue() + 1 end;\n",
             encoding="utf-8",
         )
 

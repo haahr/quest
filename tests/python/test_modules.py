@@ -85,9 +85,9 @@ class TestModulesElaboration(unittest.TestCase):
         mod_code = """
         module box : Box
         export
-            Let T = Int;
-            let make(x: Int): T = x;
-            let unbox(b: T): Int = b;
+            Let T = Int
+            let make(x: Int): T = x
+            let unbox(b: T): Int = b
         end;
         """
         mod_node = desugar(parse_phrase(mod_code))

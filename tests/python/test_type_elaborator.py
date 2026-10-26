@@ -164,7 +164,7 @@ class TestTypeElaborator(unittest.TestCase):
     def test_function_isolates_loop_depth_for_exit(self) -> None:
         """Function bodies isolate loop depth so exit within a nested function fails."""
         el = TypeElaborator()
-        expr = parse_expr("loop begin let f = fun(): Ok exit; f() end end")
+        expr = parse_expr("loop begin let f = fun(): Ok exit f() end end")
         with self.assertRaises(QuestTypeError) as cm:
             el.synth(expr)
         self.assertIn("Exit statement outside of any loop", str(cm.exception))

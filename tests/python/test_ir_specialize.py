@@ -57,7 +57,7 @@ class TestSpecialization(unittest.TestCase):
 
     def test_local_functions_capturing_variables(self) -> None:
         text, out = specialize(
-            PRELUDE + "let f(n: Int): Int = begin let pick(A::TYPE x: A y: A): A = if n > 0 then x else y end; "
+            PRELUDE + "let f(n: Int): Int = begin let pick(A::TYPE x: A y: A): A = if n > 0 then x else y end "
             "pick(:P record a = 1 end record a = 2 end).a end; f(1) + f(0)"
         )
         self.assertIn("fun pick_spec(", text)
@@ -94,7 +94,7 @@ class TestSpecialization(unittest.TestCase):
     def test_module_functions_specialize_as_members(self) -> None:
         text, out = specialize(
             PRELUDE + "interface Pick export first(A::TYPE x: A y: A): A end; "
-            "module pick: Pick export let first(A::TYPE x: A y: A): A = x; end; "
+            "module pick: Pick export let first(A::TYPE x: A y: A): A = x end; "
             "pick.first(:P record a = 5 end record a = 6 end).a"
         )
         self.assertIn("first_spec1 = first_spec", text)

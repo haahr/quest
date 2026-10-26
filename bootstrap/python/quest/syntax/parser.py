@@ -96,11 +96,12 @@ class Optional(Construct):
 
 
 class Repeated(Construct):
-    """Matches inner construct(s) 0 or more times: {...} in EBNF."""
+    """Matches inner construct(s) 0 or more times: {...} in EBNF. Repeating a silent construct is silent."""
     can_match_empty: bool = True
 
     def __init__(self, *items: Construct):
         self.inner = _sequence_of(items)
+        self.silent = self.inner.silent
 
     def evaluate(self, parser: Parser, pos: int) -> tuple[Opt[Any], int]:
         results: list[Any] = []

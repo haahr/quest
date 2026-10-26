@@ -72,11 +72,11 @@ class Phase6ModulesInterfacesTest(unittest.TestCase):
             Let Stack = Tuple
                 items: Array(Int)
                 top: Int
-            end;
+            end
             let empty = tuple
-                let items = array of (10 0);
-                let top = 0;
-            end;
+                let items = array of (10 0)
+                let top = 0
+            end
         end;
         """
         module_decl = parse_phrase(module_src)
@@ -113,15 +113,15 @@ class Phase6ModulesInterfacesTest(unittest.TestCase):
             Let Stack = Tuple
                 items: Array(Int)
                 top: Int
-            end;
+            end
 
             let empty = tuple
                 let items = array of(10 0)
                 let top = 0
-            end;
+            end
 
-            let push(s: Stack x: Int): Stack = s;
-            let pop(s: Stack): Int = 0;
+            let push(s: Stack x: Int): Stack = s
+            let pop(s: Stack): Int = 0
         end;
         """
         res = run_source(source, env=env)
@@ -154,8 +154,8 @@ class Phase6ModulesInterfacesTest(unittest.TestCase):
         end;
 
         module math : Math export
-            Let Number = Int;
-            let zero = 0;
+            Let Number = Int
+            let zero = 0
         end;
         """
         res = run_source(source, env=env)
@@ -174,7 +174,7 @@ class Phase6ModulesInterfacesTest(unittest.TestCase):
             init: T
         end;
 
-        interface Extended import T, init : Base; export
+        interface Extended import T, init : Base export
             step(x: T): T
         end;
         """

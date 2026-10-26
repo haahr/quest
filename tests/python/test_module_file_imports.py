@@ -68,7 +68,7 @@ class TestModuleFileImports(unittest.TestCase):
             """
             module greeter : Greeter
             export
-                let greet(name: String): String = "Hello " <> name;
+                let greet(name: String): String = "Hello " <> name
             end;
             """,
             directory=lib_dir,
@@ -110,7 +110,7 @@ class TestModuleFileImports(unittest.TestCase):
             """
             module config : Config
             export
-                let value = 100;
+                let value = 100
             end;
             """,
             directory=inc_dir,
@@ -133,7 +133,7 @@ class TestModuleFileImports(unittest.TestCase):
             """
             module config : Config
             export
-                let value = 999;
+                let value = 999
             end;
             """,
             directory=app_dir,
@@ -166,7 +166,7 @@ class TestDiagnosticsInImportedUnits(unittest.TestCase):
         self.temp_dir = Path(self.temp_dir_obj.name)
         (self.temp_dir / "cnt.int.quest").write_text("interface Cnt\nexport\n    get(): Int\nend;\n")
         (self.temp_dir / "cnt.mod.quest").write_text(
-            'module cnt : Cnt\nexport\n\n    let get(): Int = "oops";\nend;\n'
+            'module cnt : Cnt\nexport\n\n    let get(): Int = "oops"\nend;\n'
         )
         (self.temp_dir / "usecnt.quest").write_text("import cnt: Cnt;\ncnt.get();\n")
 
@@ -192,7 +192,7 @@ class TestDiagnosticsInImportedUnits(unittest.TestCase):
             with self.subTest(phase=phase):
                 stderr = self._driver_stderr(phase)
                 self.assertIn("cnt.mod.quest:4:22: error: Type mismatch", stderr)
-                self.assertIn('let get(): Int = "oops";', stderr)
+                self.assertIn('let get(): Int = "oops"', stderr)
                 self.assertNotIn("Traceback", stderr)
 
     def test_import_that_loaded_the_unit_is_noted(self):

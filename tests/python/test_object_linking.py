@@ -40,10 +40,10 @@ class TestObjectLinking(unittest.TestCase):
         self.mod_file = self.dir_path / "counter.mod.quest"
         self.mod_file.write_text(
             "module counter : Counter export\n"
-            "    Let T = Record var count: Int end;\n"
-            "    let create(init: Int): T = record var count = init end;\n"
-            "    let inc(c: T): Ok = c.count := c.count + 5;\n"
-            "    let get(c: T): Int = c.count;\n"
+            "    Let T = Record var count: Int end\n"
+            "    let create(init: Int): T = record var count = init end\n"
+            "    let inc(c: T): Ok = c.count := c.count + 5\n"
+            "    let get(c: T): Int = c.count\n"
             "end;\n",
             encoding="utf-8",
         )

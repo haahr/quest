@@ -132,6 +132,10 @@ While this implementation strives for high fidelity to Luca Cardelli's
    along with two-tier local signature aliasing (`import rnd : Rnd = util/random : util/Random;` and
    `import :Rnd = :util/Random;`).
 
+4. **Optional Semicolons:**
+   The paper ends every top-level phrase with `;`. This implementation accepts a semicolon only there too, but does
+   not require it, in files or at the REPL: Quest's grammar never needs one to find where a phrase ends.
+
 For full details on language extensions (including the `System` OS interface and native `external` syntax) as well as
 runtime additions, see [docs/extensions.md](docs/extensions.md).
 

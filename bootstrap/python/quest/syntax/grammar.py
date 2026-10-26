@@ -705,7 +705,7 @@ def build_quest_grammar() -> None:
 
     # [var] IdeList HasType (Record/Variant type signatures)
     VALUE_SIGNATURE.add_rule(
-        (Rep(Opt(T(TK.KW_VAR)), IDE_LIST, HAS_TYPE, Opt(P(TK.SEMICOLON))),),
+        (Rep(Opt(T(TK.KW_VAR)), IDE_LIST, HAS_TYPE),),
         lambda fields: tuple(
             ast.RecordFieldSig(name=name, type_sig=field_type, is_var=bool(var_token), offset=field_type.offset)
             for var_token, names, field_type in fields
@@ -1069,12 +1069,12 @@ def build_quest_grammar() -> None:
     # ------------------------------------------------------------------------
     # Bindings (Inside Blocks, Tuples, Phrases)
     # ------------------------------------------------------------------------
-    BINDING.add_rule((Rep(PHRASE, Opt(P(TK.SEMICOLON))),), lambda phrases: phrases)
+    BINDING.add_rule((Rep(PHRASE),), lambda phrases: phrases)
 
     TYPE_BINDING.add_rule((Rep(TYPE),), lambda types: types)
 
     VALUE_BINDING.add_rule(
-        (Rep(Opt(T(TK.KW_VAR)), T(TK.IDENT), P(TK.EQUAL), VALUE, Opt(P(TK.SEMICOLON))),),
+        (Rep(Opt(T(TK.KW_VAR)), T(TK.IDENT), P(TK.EQUAL), VALUE),),
         lambda items: tuple(
             ast.RecordBinding(
                 name=ident_token.lexeme, value=value, is_var=bool(var_token), offset=ident_token.offset
@@ -1308,10 +1308,11 @@ def build_quest_grammar() -> None:
     #    m1 = p1, m2 = p2 : IfacePath  OR  p1, p2 : IfacePath
     IMPORT_ITEM.add_rule((MODULE_ENTRY_LIST, T(TK.COLON), PATH), _module_import)
 
-    IMPORT.add_rule((Rep(IMPORT_ITEM, Opt(P(TK.SEMICOLON))),), lambda items: items)
+    IMPORT.add_rule((Rep(IMPORT_ITEM),), lambda items: items)
 
+    # Semicolons appear only here, ending top-level phrases ({[Phrase] ";"} in the paper), and are optional
     PROGRAM.add_rule(
-        (Rep(PHRASE, Opt(P(TK.SEMICOLON))),),
+        (Rep(P(TK.SEMICOLON)), Rep(PHRASE, Rep(P(TK.SEMICOLON)))),
         lambda phrases: ast.Program(phrases=phrases, offset=phrases[0].offset if phrases else 0),
     )
 

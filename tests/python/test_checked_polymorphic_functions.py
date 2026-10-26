@@ -80,7 +80,7 @@ class TestCheckedPolymorphicFunctions(unittest.TestCase):
 
     def test_nested_polymorphic_functions(self) -> None:
         funs = self.polymorphic_funs(
-            "let outer(A::TYPE x: A): A = begin let inner(B::TYPE y: B): B = y; inner(:A x) end;"
+            "let outer(A::TYPE x: A): A = begin let inner(B::TYPE y: B): B = y inner(:A x) end;"
         )
         self.assertEqual(len(funs), 2)
         for fun in funs:

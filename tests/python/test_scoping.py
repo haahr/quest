@@ -53,8 +53,8 @@ def _replace_first(node, cls, fn):
 class TestScoping(unittest.TestCase):
     def test_well_scoped_programs(self) -> None:
         for source in (
-            "let f(x: Int): Int = begin let y = x + 1; let rec g(n: Int): Int = if n is 0 then y else g(n - 1) end; g(x) end; f(2)",
-            "let id(A::TYPE x: A): A = begin let inner(B::TYPE y: B): B = y; inner(:A x) end; id(:Int 1)",
+            "let f(x: Int): Int = begin let y = x + 1 let rec g(n: Int): Int = if n is 0 then y else g(n - 1) end g(x) end; f(2)",
+            "let id(A::TYPE x: A): A = begin let inner(B::TYPE y: B): B = y inner(:A x) end; id(:Int 1)",
             "let g(A::TYPE B <: A x: B): A = x; g(:Int :Int 4)",
             "let x = 1; let x = x + 1 and y = x; for i = 0 upto 2 do ok end; x + y",
             "let f: All(B::TYPE x: B) B = fun(A::TYPE x: A): A x; f(:Int 3)",
@@ -63,7 +63,7 @@ class TestScoping(unittest.TestCase):
                 self.assertEqual(check_well_scoped(_typecheck(source)), [])
 
     def test_variable_outside_its_block(self) -> None:
-        prog = _typecheck("let f(x: Int): Int = begin let y = x + 1; y end; let z = 0; f(z)")
+        prog = _typecheck("let f(x: Int): Int = begin let y = x + 1 y end; let z = 0; f(z)")
         # Give the program's last use of a top-level variable the symbol of the block-local y
         fun = prog.phrases[0].value
         local_y = fun.body.bindings[0].symbol

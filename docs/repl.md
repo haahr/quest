@@ -15,7 +15,7 @@ Key features:
   for subsequent phrases.
 - **Semicolon-Optional Multi-line Buffering:** Evaluates syntactically complete phrases immediately. If input is
   incomplete (e.g. open block, unclosed delimiter, or missing operand), the REPL automatically prompts for continuation
-  lines until the phrase is closed. Semicolons are supported but optional.
+  lines until the phrase is closed. Semicolons may end a phrase but are optional.
 - **Uniform 4-Column Alignment:** Clean visual structure using 4-character prompts and response prefixes.
 - **Transactional Error Rollback:** If a phrase fails typechecking or raises an uncaught runtime exception, any partial
   environment bindings from that phrase are rolled back, preserving a consistent environment.
@@ -65,7 +65,8 @@ The REPL enforces strict 4-character columnar alignment:
 | **Response Prefix** | `"==  "` | Prefixes the evaluated result of each non-`ok` phrase. |
 
 ### 3.1. Single-Line and Semicolon Behavior
-Semicolons are optional at phrase boundaries. Both forms are valid:
+Semicolons are optional at the end of a top-level phrase (see [extensions.md](extensions.md#semicolons)). Both
+forms are valid:
 
 ```quest
 >>  let x = 1
@@ -74,8 +75,8 @@ Semicolons are optional at phrase boundaries. Both forms are valid:
 ==  let y:Int = 2
 ```
 
-Multiple phrases separated by semicolons on a single line are evaluated sequentially, and each non-`ok` phrase outputs
-its result on its own line prefixed with `"==  "`:
+Multiple phrases on a single line, with or without semicolons between them, are evaluated sequentially, and each
+non-`ok` phrase outputs its result on its own line prefixed with `"==  "`:
 
 ```quest
 >>  let x = 1; let y = 2; x + y
@@ -106,6 +107,11 @@ The continuation heuristic checks:
 2. **Grammar parsing:** If the parser reaches `EOF` while expecting a closing token or operand, it continues prompting.
 3. **Syntax errors:** If a syntax error occurs on a non-EOF token (e.g. `let 123 = 4`), the diagnostic is emitted
    immediately, the buffer is cleared, and the REPL resets to `">>  "`.
+
+Since a line that completes a phrase ends it, a phrase continues onto the next line only if the line leaves it
+incomplete. In a file, `let total = a` followed by a line `+ b` is one phrase; at the REPL, `let total = a` is
+evaluated when its line ends, and `+ b` is then a syntax error. Break a long phrase after an operator, `=`, or `and`,
+or inside an open bracket or block, rather than before.
 
 ### 3.3. Silent `ok` Phrases
 Statements and expressions that evaluate to `ok` (assignments, loops, imports, or explicit `ok;`) produce no output:

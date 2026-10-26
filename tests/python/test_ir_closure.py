@@ -51,7 +51,7 @@ class TestClosureConversion(unittest.TestCase):
 
     def test_captures_through_nested_functions(self) -> None:
         text, out = convert(
-            "let f(x: Int): Int = begin let g(): Int = begin let h(): Int = x * 2; h() end; g() end; f(5)"
+            "let f(x: Int): Int = begin let g(): Int = begin let h(): Int = x * 2 h() end g() end; f(5)"
         )
         # g captures x for h, which it makes
         self.assertRegex(text, r"fun g \{env(\.\d+)?\}\(\): Int \{")
@@ -71,14 +71,14 @@ class TestClosureConversion(unittest.TestCase):
         text, out = convert(
             "let f(n: Int): Bool = begin "
             "let rec even(k: Int): Bool = if k is 0 then true else odd(k - 1) end "
-            "and odd(k: Int): Bool = if k is 0 then false else even(k - 1) end; even(n) end; f(7)"
+            "and odd(k: Int): Bool = if k is 0 then false else even(k - 1) end even(n) end; f(7)"
         )
         self.assertIn("let rec (even", text)
         self.assertEqual(out, "false : Bool\n")
 
     def test_enclosing_type_parameters(self) -> None:
         text, out = convert(
-            "let f(A::TYPE x: A): A = begin let g(): A = x; g() end; f(:Int 3)"
+            "let f(A::TYPE x: A): A = begin let g(): A = x g() end; f(:Int 3)"
         )
         # g's types mention f's A, which g's closure supplies
         self.assertIn("fun g {env} [A::TYPE](): A {", text)
@@ -88,7 +88,7 @@ class TestClosureConversion(unittest.TestCase):
     def test_recursive_values(self) -> None:
         _, out = convert(
             "Let Rec T = Tuple me(): T n: Int end; "
-            "let mk(k: Int): T = begin let rec self: T = tuple let me(): T = self let n = k end; self end; "
+            "let mk(k: Int): T = begin let rec self: T = tuple let me(): T = self let n = k end self end; "
             "mk(4).me().me().n"
         )
         self.assertEqual(out, "4 : Int\n")

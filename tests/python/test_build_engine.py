@@ -70,7 +70,7 @@ class TestBuildEngine(unittest.TestCase):
 
         mod_file = self.root / "calc.mod.quest"
         mod_file.write_text(
-            "module calc : Calc export let add(a: Int b: Int): Int = a + b; end;\n",
+            "module calc : Calc export let add(a: Int b: Int): Int = a + b end;\n",
             encoding="utf-8",
         )
 
@@ -106,7 +106,7 @@ class TestBuildEngine(unittest.TestCase):
         helper_intf.write_text("interface Helper export multiply(x: Int y: Int): Int end;\n", encoding="utf-8")
         helper_mod = self.root / "helper.mod.quest"
         helper_mod.write_text(
-            "module helper : Helper export let multiply(x: Int y: Int): Int = x * y; end;\n",
+            "module helper : Helper export let multiply(x: Int y: Int): Int = x * y end;\n",
             encoding="utf-8",
         )
 
@@ -115,8 +115,8 @@ class TestBuildEngine(unittest.TestCase):
         service_mod = self.root / "service.mod.quest"
         service_mod.write_text(
             "module service : Service\n"
-            "import h = helper : Helper;\n"
-            "export let compute(n: Int): Int = h.multiply(n 3) + 1;\n"
+            "import h = helper : Helper\n"
+            "export let compute(n: Int): Int = h.multiply(n 3) + 1\n"
             "end;\n",
             encoding="utf-8",
         )
@@ -145,7 +145,7 @@ class TestBuildEngine(unittest.TestCase):
         intf_file = self.root / "arith.int.quest"
         intf_file.write_text("interface Arith export double(n: Int): Int end;\n", encoding="utf-8")
         mod_file = self.root / "arith.mod.quest"
-        mod_file.write_text("module arith : Arith export let double(n: Int): Int = n * 2; end;\n", encoding="utf-8")
+        mod_file.write_text("module arith : Arith export let double(n: Int): Int = n * 2 end;\n", encoding="utf-8")
 
         main_file = self.root / "driver.quest"
         main_file.write_text(
@@ -169,7 +169,7 @@ class TestBuildEngine(unittest.TestCase):
         intf_file = self.root / "foo.int.quest"
         intf_file.write_text("interface Foo export getVal(): Int end;\n", encoding="utf-8")
         mod_file = self.root / "foo.mod.quest"
-        mod_file.write_text("module foo : Foo export let getVal(): Int = 10; end;\n", encoding="utf-8")
+        mod_file.write_text("module foo : Foo export let getVal(): Int = 10 end;\n", encoding="utf-8")
 
         main_file = self.root / "run_foo.quest"
         main_file.write_text(
@@ -186,7 +186,7 @@ class TestBuildEngine(unittest.TestCase):
         # Sleep and update foo.mod.quest
         time.sleep(0.05)
         future = time.time() + 2.0
-        mod_file.write_text("module foo : Foo export let getVal(): Int = 99; end;\n", encoding="utf-8")
+        mod_file.write_text("module foo : Foo export let getVal(): Int = 99 end;\n", encoding="utf-8")
         os.utime(mod_file, (future, future))
 
         res2 = engine.build_main(main_file)
@@ -201,7 +201,7 @@ class TestBuildEngine(unittest.TestCase):
         intf_file = self.root / "shared.int.quest"
         intf_file.write_text("interface Shared export value(): Int end;\n", encoding="utf-8")
         mod_file = self.root / "shared.mod.quest"
-        mod_file.write_text("module shared : Shared export let value(): Int = 123; end;\n", encoding="utf-8")
+        mod_file.write_text("module shared : Shared export let value(): Int = 123 end;\n", encoding="utf-8")
 
         main_file = self.root / "show.quest"
         main_file.write_text(
@@ -220,7 +220,7 @@ class TestBuildEngine(unittest.TestCase):
         future = time.time() + 2.0
         intf_file.write_text("interface Shared export value(): Int reset(): Ok end;\n", encoding="utf-8")
         mod_file.write_text(
-            "module shared : Shared export let value(): Int = 123; let reset(): Ok = ok; end;\n",
+            "module shared : Shared export let value(): Int = 123 let reset(): Ok = ok end;\n",
             encoding="utf-8",
         )
         os.utime(intf_file, (future, future))
@@ -233,7 +233,7 @@ class TestBuildEngine(unittest.TestCase):
         """Tests that m.quest and m.mod.quest can share a directory, since their artifacts have different names."""
         (self.root / "pair.int.quest").write_text("interface Pair export get(): Int end;\n", encoding="utf-8")
         (self.root / "pair.mod.quest").write_text(
-            "module pair : Pair export let get(): Int = 8; end;\n", encoding="utf-8"
+            "module pair : Pair export let get(): Int = 8 end;\n", encoding="utf-8"
         )
         main_file = self.root / "pair.quest"
         main_file.write_text(
@@ -264,12 +264,12 @@ class TestBuildEngine(unittest.TestCase):
         # Precompile CycA and CycB with circular manifests
         mod_a = self.root / "cyca.mod.quest"
         mod_a.write_text(
-            "module cyca : CycA import b = cycb : CycB export let ping(): Int = 1; end;\n",
+            "module cyca : CycA import b = cycb : CycB export let ping(): Int = 1 end;\n",
             encoding="utf-8",
         )
         mod_b = self.root / "cycb.mod.quest"
         mod_b.write_text(
-            "module cycb : CycB import a = cyca : CycA export let pong(): Int = 2; end;\n",
+            "module cycb : CycB import a = cyca : CycA export let pong(): Int = 2 end;\n",
             encoding="utf-8",
         )
         compile_module_file(mod_a, build_dir=self.build_dir, include_paths=[self.build_dir, self.root])
@@ -309,7 +309,7 @@ class TestBuildEngine(unittest.TestCase):
         compile_interface_with_header(intf_actual, build_dir=self.build_dir, include_paths=[self.root])
 
         mod_prov = self.root / "prov.mod.quest"
-        mod_prov.write_text("module prov : Actual export let get(): Int = 42; end;\n", encoding="utf-8")
+        mod_prov.write_text("module prov : Actual export let get(): Int = 42 end;\n", encoding="utf-8")
 
         main_file = self.root / "bad_import.quest"
         main_file.write_text("import p = prov : Expected;\n", encoding="utf-8")
@@ -335,12 +335,12 @@ class TestBuildEngine(unittest.TestCase):
 
         # prov implements IfaceC
         mod_prov = self.root / "prov2.mod.quest"
-        mod_prov.write_text("module prov2 : IfaceC export let valC(): Int = 99; end;\n", encoding="utf-8")
+        mod_prov.write_text("module prov2 : IfaceC export let valC(): Int = 99 end;\n", encoding="utf-8")
 
         # mid implements IfaceB, but imports prov2 as IfaceA (mismatch!)
         mod_mid = self.root / "mid.mod.quest"
         mod_mid.write_text(
-            "module mid : IfaceB import p = prov2 : IfaceA export let valB(): Int = p.valA(); end;\n",
+            "module mid : IfaceB import p = prov2 : IfaceA export let valB(): Int = p.valA() end;\n",
             encoding="utf-8",
         )
 
@@ -369,7 +369,7 @@ class TestBuildEngine(unittest.TestCase):
         compile_interface_with_header(intf_os, build_dir=self.build_dir, include_paths=[self.root])
 
         mod_gui = gui_dir / "window.mod.quest"
-        mod_gui.write_text("module window : Window export let show(): Int = 1; end;\n", encoding="utf-8")
+        mod_gui.write_text("module window : Window export let show(): Int = 1 end;\n", encoding="utf-8")
 
         main_file = self.root / "mismatch.quest"
         main_file.write_text("import w = gui/window : os/Window;\n", encoding="utf-8")
@@ -391,7 +391,7 @@ class TestBuildEngine(unittest.TestCase):
         compile_interface_with_header(intf_file, build_dir=self.build_dir, include_paths=[self.root])
 
         mod_file = util_dir / "path.mod.quest"
-        mod_file.write_text("module path : Path export let get(): Int = 42; end;\n", encoding="utf-8")
+        mod_file.write_text("module path : Path export let get(): Int = 42 end;\n", encoding="utf-8")
 
         main_file = self.root / "app_path.quest"
         main_file.write_text(
@@ -430,13 +430,13 @@ class TestSameNamedUnitsSharingBuildDir(unittest.TestCase):
             "interface Counter export inc(n: Int): Int end;\n", encoding="utf-8"
         )
         (self.a / "counter.mod.quest").write_text(
-            "module counter : Counter export let inc(n: Int): Int = n + 1; end;\n", encoding="utf-8"
+            "module counter : Counter export let inc(n: Int): Int = n + 1 end;\n", encoding="utf-8"
         )
         (self.b / "counter.int.quest").write_text(
             "interface Counter export inc(n: Int): Int base(): Int end;\n", encoding="utf-8"
         )
         (self.b / "counter.mod.quest").write_text(
-            "module counter : Counter export let inc(n: Int): Int = n + 100; let base(): Int = 7; end;\n",
+            "module counter : Counter export let inc(n: Int): Int = n + 100 let base(): Int = 7 end;\n",
             encoding="utf-8",
         )
         main_text = (
@@ -525,7 +525,7 @@ class TestMainRoutineAndModuleWithSameName(unittest.TestCase):
             lib.mkdir()
             (lib / "tool.int.quest").write_text("interface Tool export get(): Int end;\n", encoding="utf-8")
             (lib / "tool.mod.quest").write_text(
-                "module tool : Tool export let get(): Int = 5; end;\n", encoding="utf-8"
+                "module tool : Tool export let get(): Int = 5 end;\n", encoding="utf-8"
             )
             (prog / "tool.quest").write_text(
                 "import t = tool : Tool;\n"
@@ -563,7 +563,7 @@ class TestImportsResolvedAgain(unittest.TestCase):
         (self.lib / "user.int.quest").write_text("interface User export show(): String end;\n", encoding="utf-8")
         (self.lib / "user.mod.quest").write_text(
             "module user : User import helper: Helper conv: Conv export\n"
-            "    let show(): String = conv.int(helper.get());\n"
+            "    let show(): String = conv.int(helper.get())\n"
             "end;\n",
             encoding="utf-8",
         )
@@ -587,7 +587,7 @@ class TestImportsResolvedAgain(unittest.TestCase):
     def _write_helper(d: Path, result_type: str, value: str) -> None:
         (d / "helper.int.quest").write_text(f"interface Helper export get(): {result_type} end;\n", encoding="utf-8")
         (d / "helper.mod.quest").write_text(
-            f"module helper : Helper export let get(): {result_type} = {value}; end;\n", encoding="utf-8"
+            f"module helper : Helper export let get(): {result_type} = {value} end;\n", encoding="utf-8"
         )
 
     def _build(self, helper_dir: str) -> tuple[list[str], str]:
@@ -657,13 +657,13 @@ class TestIndirectlyImportedInterfaces(unittest.TestCase):
         "Int": (
             "interface Base export Def T = Int one(): T two(): T pair(x: T y: T): String end;\n",
             "module base : Base import conv: Conv export\n"
-            "    Def T = Int; let one(): T = 1; let two(): T = 2; let pair(x: T y: T): String = conv.int(x);\n"
+            "    Def T = Int let one(): T = 1 let two(): T = 2 let pair(x: T y: T): String = conv.int(x)\n"
             "end;\n",
         ),
         "Real": (
             "interface Base export Def T = Real one(): T two(): T pair(x: T y: T): String end;\n",
             "module base : Base import conv: Conv export\n"
-            "    Def T = Real; let one(): T = 1.25; let two(): T = 2.5; let pair(x: T y: T): String = conv.real(x);\n"
+            "    Def T = Real let one(): T = 1.25 let two(): T = 2.5 let pair(x: T y: T): String = conv.real(x)\n"
             "end;\n",
         ),
     }
@@ -682,15 +682,15 @@ class TestIndirectlyImportedInterfaces(unittest.TestCase):
         )
         (self.lib / "helper.mod.quest").write_text(
             "module helper : Helper import base: Base export\n"
-            "    let one(): base.T = base.one(); let two(): base.T = base.two();\n"
-            "    let pair(x: base.T y: base.T): String = base.pair(x y);\n"
+            "    let one(): base.T = base.one() let two(): base.T = base.two()\n"
+            "    let pair(x: base.T y: base.T): String = base.pair(x y)\n"
             "end;\n",
             encoding="utf-8",
         )
         (self.lib / "user.int.quest").write_text("interface User export show(): String end;\n", encoding="utf-8")
         (self.lib / "user.mod.quest").write_text(
             "module user : User import helper: Helper export\n"
-            "    let show(): String = begin let a = helper.one(); let b = helper.two(); helper.pair(a b) end;\n"
+            "    let show(): String = begin let a = helper.one() let b = helper.two() helper.pair(a b) end\n"
             "end;\n",
             encoding="utf-8",
         )

@@ -45,7 +45,7 @@ class TestUnitGraph(unittest.TestCase):
             "interface Counter import :Base export new(): Base.T end;\n", encoding="utf-8"
         )
         (self.util / "counter.mod.quest").write_text(
-            "module counter : Counter export Def T = Int; let new(): T = 0; end;\n", encoding="utf-8"
+            "module counter : Counter export Def T = Int let new(): T = 0 end;\n", encoding="utf-8"
         )
         self.roots = Roots.of([self.lib], self.prog)
 
@@ -94,7 +94,7 @@ class TestUnitGraph(unittest.TestCase):
     def test_forget_finds_files_created_since(self) -> None:
         resolver = Resolver()
         self.assertIsNone(resolver.module("extra", self.prog, self.roots).source)
-        (self.prog / "extra.mod.quest").write_text("module extra : Base export Def T = Int; end;\n", encoding="utf-8")
+        (self.prog / "extra.mod.quest").write_text("module extra : Base export Def T = Int end;\n", encoding="utf-8")
         self.assertIsNone(resolver.module("extra", self.prog, self.roots).source)
         resolver.forget()
         self.assertEqual(resolver.module("extra", self.prog, self.roots).source, self.prog / "extra.mod.quest")

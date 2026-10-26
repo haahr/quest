@@ -147,10 +147,10 @@ A module provides concrete implementations for the members specified in its inte
 (* util/counter.mod.quest *)
 module counter : Counter
 export
-    Let T = Int;
-    let new(init: Int): T = init;
-    let inc(c: T): T = c + 1;
-    let get(c: T): Int = c;
+    Let T = Int
+    let new(init: Int): T = init
+    let inc(c: T): T = c + 1
+    let get(c: T): Int = c
 end;
 ```
 
@@ -160,7 +160,7 @@ Modules can declare internal imports before their export block:
 module app : App
 import util/counter: util/Counter
 export
-    let run(): Int = counter.get(counter.inc(counter.new(10)));
+    let run(): Int = counter.get(counter.inc(counter.new(10)))
 end;
 ```
 
@@ -342,10 +342,10 @@ end;
 module fileio : FileIO
 import writer: Writer
 export
-    Let Handle = external "QWriter *";
-    let stdout: Handle = external "quest_writer_output";
+    Let Handle = external "QWriter *"
+    let stdout: Handle = external "quest_writer_output"
     let writeHello(h: Handle): Ok =
-        writer.putString(h "Hello Native!\n");
+        writer.putString(h "Hello Native!\n")
 end;
 ```
 Inside `fileio`, `writeHello` is a pure Quest function that calls into `writer`, while `Handle` and `stdout` bind

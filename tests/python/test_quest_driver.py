@@ -50,7 +50,7 @@ class TestQuestDriverCLI(unittest.TestCase):
         mod_file = self.root / "arith.mod.quest"
         mod_file.write_text(
             "module arith : Arith export\n"
-            "    let double(x: Int): Int = x + x;\n"
+            "    let double(x: Int): Int = x + x\n"
             "end;\n",
             encoding="utf-8",
         )
@@ -87,7 +87,7 @@ class TestQuestDriverCLI(unittest.TestCase):
         mod_file = self.root / "calc.mod.quest"
         mod_file.write_text(
             "module calc : Calc export\n"
-            "    let add(a: Int b: Int): Int = a + b;\n"
+            "    let add(a: Int b: Int): Int = a + b\n"
             "end;\n",
             encoding="utf-8",
         )
@@ -174,7 +174,7 @@ class TestQuestDriverCLI(unittest.TestCase):
         iface_file.write_text("interface M export f(c: Bool): Ok end;\n", encoding="utf-8")
         mod_file = self.root / "m.mod.quest"
         mod_file.write_text(
-            "module m : M export\n    let f(c: Bool): Ok = begin if c then ok else 3 end; ok end;\nend;\n",
+            "module m : M export\n    let f(c: Bool): Ok = begin if c then ok else 3 end ok end\nend;\n",
             encoding="utf-8",
         )
         build = ["--build-dir", str(self.build_dir), "-I", str(self.root)]
@@ -204,7 +204,7 @@ class TestQuestDriverCLI(unittest.TestCase):
         iface_file = self.root / "m.int.quest"
         iface_file.write_text("interface M export f(c: Bool): Ok end;\n", encoding="utf-8")
         mod_file = self.root / "m.mod.quest"
-        mod_file.write_text("module m : M export let f(c: Bool): Ok = ok; end;\n", encoding="utf-8")
+        mod_file.write_text("module m : M export let f(c: Bool): Ok = ok end;\n", encoding="utf-8")
         return iface_file, mod_file
 
     def _unit_artifacts(self) -> list[Path]:

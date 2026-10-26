@@ -35,10 +35,10 @@ end;
     "geo/coord.mod.quest": """
 module coord : Coord
 export
-    Let Pair = Tuple x: Int y: Int end;
-    Let P = Pair;
-    let make(x: Int y: Int): P = tuple let x = x let y = y end;
-    let pair(p: P): Pair = p;
+    Let Pair = Tuple x: Int y: Int end
+    Let P = Pair
+    let make(x: Int y: Int): P = tuple let x = x let y = y end
+    let pair(p: P): Pair = p
 end;
 """,
     "geo/region.int.quest": """
@@ -56,9 +56,9 @@ module region : Region
 import
     geo/coord : geo/Coord
 export
-    Let R = coord.P;
-    let around(p: coord.P): R = p;
-    let corner(r: R): coord.Pair = coord.pair(r);
+    Let R = coord.P
+    let around(p: coord.P): R = p
+    let corner(r: R): coord.Pair = coord.pair(r)
 end;
 """,
     "counter.int.quest": """
@@ -72,17 +72,17 @@ end;
     "ca.mod.quest": """
 module ca : Counter
 export
-    Let T = Int;
-    let new(): T = 1;
-    let get(c: T): Int = c;
+    Let T = Int
+    let new(): T = 1
+    let get(c: T): Int = c
 end;
 """,
     "cb.mod.quest": """
 module cb : Counter
 export
-    Let T = Int;
-    let new(): T = 2;
-    let get(c: T): Int = c;
+    Let T = Int
+    let new(): T = 2
+    let get(c: T): Int = c
 end;
 """,
     "cnt/counter.int.quest": """
@@ -96,17 +96,17 @@ end;
     "cnt/ha.mod.quest": """
 module ha : cnt/Counter
 export
-    Let T = Int;
-    let new(): T = 1;
-    let get(c: T): Int = c;
+    Let T = Int
+    let new(): T = 1
+    let get(c: T): Int = c
 end;
 """,
     "cnt/hb.mod.quest": """
 module hb : cnt/Counter
 export
-    Let T = Int;
-    let new(): T = 2;
-    let get(c: T): Int = c;
+    Let T = Int
+    let new(): T = 2
+    let get(c: T): Int = c
 end;
 """,
     "mix_hierarchical_counters.quest": """

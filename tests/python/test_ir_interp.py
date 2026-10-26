@@ -60,7 +60,7 @@ class TestInterpreter(unittest.TestCase):
         # Made where its scope begins (docs/type-system.md §6.14)
         out = run(
             "let f(c: Bool): Int = begin "
-            "let e: Exception = if c then exception I end else exception J end end; "
+            "let e: Exception = if c then exception I end else exception J end end "
             "try raise I end when I then 1 when J then 2 end end; f(false)"
         )
         self.assertEqual(out, "1 : Int\n")

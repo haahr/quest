@@ -142,14 +142,14 @@ import system: System;
 import writer: Writer;
 
 if arrayOp.size(system.args) < 2 then
-    writer.putString(writer.err "Usage: check_file <filename>\n");
-    system.sysexit(1);
+    writer.putString(writer.err "Usage: check_file <filename>\n")
+    system.sysexit(1)
 end;
 
 let filename = system.args[1];
 if not system.fileExists(filename) then
-    writer.putString(writer.err {{"Error: file not found: " <> filename} <> "\n"});
-    system.sysexit(1);
+    writer.putString(writer.err {{"Error: file not found: " <> filename} <> "\n"})
+    system.sysexit(1)
 end;
 ```
 
@@ -197,6 +197,49 @@ In emitted C code and precompiled object files, slashes are mangled to `__` (dou
 - Module initializer: `qv_mod_util__random_init`
 - Direct functions: `qv_util__random_next`
 Single underscores (`_`) continue to separate module prefixes from member names, preventing symbol collisions.
+
+---
+
+## Semicolons
+
+*Typeful Programming* uses semicolons only to end top-level phrases (§3.3, and the syntax in §11.1): the sole rule
+that mentions one is
+
+```
+Program ::= {[Interface | Module | Linkage | Binding] ";"}
+```
+
+Everywhere else (the phrases of a `begin ... end` block or a module's `export` binding, the actual parameters of a
+call, the components of a tuple, the fields of a record type, the items of an import) elements are simply written one
+after another.
+
+This implementation accepts a semicolon only where the paper does: after a top-level phrase, which may be an
+interface, a module, an import, or a binding of several phrases (`let a = 1 let b = 2;` is one top-level sentence).
+Empty phrases (`;;`, or a `;` at the start) are accepted, as in the paper. A semicolon anywhere else is a syntax
+error:
+
+```quest
+let n = begin let a = 1; a + 1 end   (* ERROR: Unexpected token ';' *)
+```
+
+The one relaxation is that the top-level semicolon is optional, in files and at the REPL, including after the last
+phrase.
+
+Leaving semicolons out changes no program's meaning. Every phrase begins with a keyword, a name, a literal, `:`,
+`::`, `@`, or `{`, and none of these can continue the phrase before it. A phrase can run on into the next only
+through `(` (a call), `[` (indexing), `.`, `?`, or `!` (selection), `of` (a listfix value), `and` (a
+simultaneous declaration), or an infix operator followed by its right operand, and no phrase begins with any of
+these. Juxtaposition is never application, and grouping uses `{...}`, not parentheses, which is what makes this
+work.
+
+Two consequences are worth knowing:
+
+- **At the REPL, a newline ends a complete phrase.** The REPL evaluates input as soon as it forms a complete phrase,
+  so a phrase continues onto the next line only if the line leaves it incomplete: break after an operator, `=`, or
+  `and`, not before. In a file, where the grammar alone finds the end of a phrase, both work (see
+  [repl.md](repl.md) §3.2).
+- **The items of an import are not separated by semicolons.** `import a: A; b: B` is an import of `a`, followed by
+  the phrases `b` and `:B`, not an import of `a` and `b`. Write `import a: A b: B`, or two imports.
 
 ---
 

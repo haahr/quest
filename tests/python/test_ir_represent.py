@@ -88,7 +88,7 @@ class TestRepresent(unittest.TestCase):
     def test_a_generic_var_parameter_takes_a_shadow_cell(self) -> None:
         # Called through a first-class value (a direct call would be specialized, for its var parameters)
         unit = represent(
-            "let swap(A::TYPE var x: A var y: A): Ok = begin let t = x; x := y; y := t end; "
+            "let swap(A::TYPE var x: A var y: A): Ok = begin let t = x x := y y := t end; "
             "let s: All(A::TYPE var x: A var y: A) Ok = swap; let var a = 1; let var b = 2; s(:Int @a @b); a"
         )
         cells = [s for s in walk_statements(unit.main, into_functions=False)
@@ -164,7 +164,7 @@ class TestRepresent(unittest.TestCase):
     def test_located_records_are_boxed(self) -> None:
         unit = represent(
             "Let P = Record a: Int end; let set(var r: P): Ok = r := record a = 2 end; "
-            "let f(): Int = begin let var p: P = record a = 1 end; set(@p); p.a end; f()"
+            "let f(): Int = begin let var p: P = record a = 1 end set(@p) p.a end; f()"
         )
         decls = [s.var for f in unit.functions for s in walk_statements(f.body, into_functions=False)
                  if isinstance(s, ir.VarDecl)]

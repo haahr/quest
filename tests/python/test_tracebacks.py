@@ -30,9 +30,9 @@ end;
 
 M_MODULE = """module m : M
 export
-    let failure: Exception = exception failure end;
-    let fail(n: Int): Int = if n > 0 then n else raise failure end end;
-    let apply(f(): Int): Int = f();
+    let failure: Exception = exception failure end
+    let fail(n: Int): Int = if n > 0 then n else raise failure end end
+    let apply(f(): Int): Int = f()
 end;
 """
 
@@ -44,8 +44,8 @@ end;
 
 BROKEN_MODULE = """module broken : Broken
 export
-    let zero = 0;
-    let x = 1 / zero;
+    let zero = 0
+    let x = 1 / zero
 end;
 """
 
@@ -55,7 +55,7 @@ CASES = {
         """exception Boom end;
 let rec inner(n: Int): Int = if n is 0 then raise Boom end else inner(n - 1) end;
 let outer(n: Int): Int = begin
-  let step(k: Int): Int = inner(k);
+  let step(k: Int): Int = inner(k)
   step(n) + 1
 end;
 let twice(f(x: Int): Int n: Int): Int = f(f(n));

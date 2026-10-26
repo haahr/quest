@@ -141,7 +141,7 @@ class TestHierarchicalModuleExecution(unittest.TestCase):
         mod_file.write_text(
             "module calc : Calc\n"
             "export\n"
-            "    let multiply(a: Int b: Int): Int = a * b;\n"
+            "    let multiply(a: Int b: Int): Int = a * b\n"
             "end;\n",
             encoding="utf-8",
         )
@@ -222,13 +222,13 @@ def _write_units(directory: Path, units: dict[str, str]) -> None:
 # util/arith imports its sibling util/helper by its bare name.
 ARITH_UNITS = {
     "util/helper.int.quest": "interface Helper\nexport\n    offset: Int\nend;\n",
-    "util/helper.mod.quest": "module helper : Helper\nexport\n    let offset: Int = 5;\nend;\n",
+    "util/helper.mod.quest": "module helper : Helper\nexport\n    let offset: Int = 5\nend;\n",
     "util/arith.int.quest": "interface Arith\nexport\n    addWithOffset(a: Int): Int\nend;\n",
     "util/arith.mod.quest": (
         "module arith : Arith\n"
-        "import helper : Helper;\n"
+        "import helper : Helper\n"
         "export\n"
-        "    let addWithOffset(a: Int): Int = a + helper.offset;\n"
+        "    let addWithOffset(a: Int): Int = a + helper.offset\n"
         "end;\n"
     ),
     "main.quest": "import m : M = util/arith : util/Arith;\nm.addWithOffset(100)\n",
@@ -239,9 +239,9 @@ COUNTER_UNITS = {
     "counter.mod.quest": (
         "module counter : Counter\n"
         "export\n"
-        "    Let T = Int;\n"
-        "    let new(n: Int): T = n;\n"
-        "    let get(c: T): Int = c * {scale};\n"
+        "    Let T = Int\n"
+        "    let new(n: Int): T = n\n"
+        "    let get(c: T): Int = c * {scale}\n"
         "end;\n"
     ),
     "main.quest": "import counter : Counter;\ncounter.get(counter.new(7))\n",

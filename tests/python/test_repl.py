@@ -209,8 +209,8 @@ end;
 
 COUNTER_MODULE = """module counter : Counter
 export
-    let var n = 0;
-    let next(): Int = begin n := n + 1; n end;
+    let var n = 0
+    let next(): Int = begin n := n + 1 n end
 end;
 """
 
@@ -298,7 +298,7 @@ class TestREPLUnits(unittest.TestCase):
         _, stderr = self.session(["import later: Later"])
         self.assertIn("later", stderr.lower())
         (self.dir / "later.int.quest").write_text("interface Later export x: Int end;\n", encoding="utf-8")
-        (self.dir / "later.mod.quest").write_text("module later : Later export let x = 7; end;\n",
+        (self.dir / "later.mod.quest").write_text("module later : Later export let x = 7 end;\n",
                                                   encoding="utf-8")
         stdout, stderr = self.session(["import later: Later", "later.x"])
         self.assertEqual(stderr, "")

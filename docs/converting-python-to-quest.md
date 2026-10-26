@@ -462,15 +462,15 @@ import
 export
     let wordCounts(words: vector.T(String)): hashMap.T(String Int) =
         begin
-            let counts = hashMap.new(:String :Int stringOp.equal hash.string);
+            let counts = hashMap.new(:String :Int stringOp.equal hash.string)
             vector.forEach(:String words fun(w: String): Ok
                 begin
-                    let cur = maybe.unwrapOr(:Int hashMap.get(:String :Int counts w) 0);
-                    hashMap.insert(:String :Int counts w {cur + 1});
+                    let cur = maybe.unwrapOr(:Int hashMap.get(:String :Int counts w) 0)
+                    hashMap.insert(:String :Int counts w {cur + 1})
                     ok
-                end);
+                end)
             counts
-        end;
+        end
 ```
 
 This example applies several rules at once: library imports by hierarchical name with aliasing (31), explicit type
