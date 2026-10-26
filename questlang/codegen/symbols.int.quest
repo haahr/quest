@@ -1,0 +1,29 @@
+(* Quest Self-Hosted Compiler: Linked Symbols Interface
+ *
+ * bootstrap/python/quest/codegen/symbols.py: the names of what units link
+ * against (values, functions, and modules), mangled into C identifiers
+ * (docs/name-mangling.md). Every backend's units use them, so that they link
+ * with one another and with the C runtime. *)
+
+interface Symbols
+export
+    (* Whether an identifier has symbolic operator characters (a dot, which
+     * separates a module's name, does not count) *)
+    isSymbolicName(name: String): Bool
+    (* An identifier with symbolic characters as a C identifier: qv_sym_ and
+     * its parts, each character spelled by name, joined by underscores *)
+    mangleSymbolicIdent(name: String): String
+    (* A Quest identifier as a C identifier prefixed with qv_ *)
+    mangleIdent(name: String): String
+    (* A hierarchical module name as a C identifier: lowercase, with __ for
+     * each slash *)
+    mangleModuleName(moduleName: String): String
+    (* The C identifier of a module's record, from its mangled name: under its
+     * own prefix, qm_, since under qv_ module m's record would be named as a
+     * user identifier m is *)
+    moduleRecordPrefix: String
+    moduleRecordIdent(cleanMod: String): String
+    (* A module-scoped identifier as a C identifier prefixed with
+     * qv_<module>_ *)
+    mangleModuleIdent(moduleName: String name: String): String
+end

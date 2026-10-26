@@ -1,0 +1,85 @@
+(* Quest Self-Hosted Compiler: C Declarations Interface
+ *
+ * bootstrap/python/quest/codegen/c/declarations.py: the declarations of the C
+ * the IR's printer writes (codegen/c/printer) and of interfaces' C headers
+ * (codegen/c/headers): aggregate structs, offset tables, coercion tables, type
+ * descriptors, function type adapters, and modules' exported functions. Each
+ * emitter returns lines of C. *)
+
+interface Declarations
+import
+    questlang/types/model : questlang/types/Model
+    questlang/codegen/c/types : questlang/codegen/c/Types
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    (* The C function a module file exports for a member of its interface that
+     * is a function or a polymorphic value (qv_<module>_<member>, taking its
+     * type parameters' descriptors and then its parameters, at the
+     * interface's types): its result's C type, its name, and its parameters'
+     * declarations; none for other members *)
+    Def FunctionSignature = Tuple result: String name: String params: vector.T(String) end
+    moduleFunctionSignature(cleanMod: String name: String t: model.Type): maybe.T(FunctionSignature)
+    (* The names of the parameters moduleFunctionSignature declares, in
+     * order *)
+    moduleFunctionArguments(t: model.Type): vector.T(String)
+
+    (* A (possibly polymorphic) function type's signature, from its shape: the
+     * POWER bounds of its type parameters (none for a parameter without one),
+     * its parameters, and its result type *)
+    Def ShapeSignature = Tuple
+        bounds: vector.T(maybe.T(model.Type))
+        params: vector.T(model.Param)
+        result: model.Type
+    end
+    funShapeSignature(t: model.Type): ShapeSignature
+
+    (* The aggregate types (tuples, records, options, variants) reached from
+     * types, from their shapes, each by its struct's name and its shape's
+     * structure, in the order first reached (which interfaces' C headers pin,
+     * tests/abi); the variant types; and every type's structure reached *)
+    Def Aggregate = Tuple name: String type: model.Type end
+    Def Aggregates = Tuple
+        aggregates: vector.T(Aggregate)
+        variants: vector.T(model.Type)
+        all: vector.T(model.Type)
+    end
+    collectAggregateTypes(ts: Array(model.Type) ctx: types.RecordNaming): Aggregates
+
+    (* A pair of types a static table relates *)
+    Def Pair = Tuple target: model.Type source: model.Type end
+
+    (* Emits declarations, remembering the descriptors and structs emitted, so
+     * that a later call emits only those earlier calls did not *)
+    Def Emitter = Tuple
+        ctx: types.RecordNaming
+        (* The descriptor tags the last emitTypeDescriptors emitted, sorted *)
+        var emittedDescriptorTags: vector.T(String)
+        (* The function types with descriptors the last emitTypeDescriptors
+         * reached, whose adapters emitFunTypeAdapters defines *)
+        var emittedFunTypes: vector.T(Aggregate)
+        emittedBefore: hashMap.T(String Bool)
+        definedStructs: hashMap.T(String Bool)
+    end
+    newEmitter(ctx: types.RecordNaming): Emitter
+
+    emitForwardTypedefs(e: Emitter aggregates: vector.T(Aggregate)): vector.T(String)
+    (* The extern declarations of the functions modules compiled on their own
+     * export, for each module by its canonical name and its interface's record
+     * type *)
+    Def ModuleRecord = Tuple name: String recordType: maybe.T(model.Type) end
+    emitPrecompiledModuleDeclarations(e: Emitter modules: vector.T(ModuleRecord)): vector.T(String)
+    emitAggregateStructs(e: Emitter aggregates: vector.T(Aggregate)): vector.T(String)
+    emitEvidenceDictionaries(e: Emitter aggregates: vector.T(Aggregate) needed: vector.T(Pair)): vector.T(String)
+    emitCoercionTables(e: Emitter tuples: vector.T(Pair) variants: vector.T(Pair)): vector.T(String)
+    (* The static descriptors of types (and those that echo uses for
+     * echoTypes), each with the descriptors of its parts, for those that have
+     * one; descriptorOf gives the static descriptor expression of a part's
+     * type, and definedStructs names the structs already defined *)
+    emitTypeDescriptors(e: Emitter ts: vector.T(model.Type) descriptorOf: All(t: model.Type) String
+        echoTypes: vector.T(model.Type) definedStructs: vector.T(String)): vector.T(String)
+    (* The adapter and the invoker of each function type that has a runtime
+     * descriptor *)
+    emitFunTypeAdapters(e: Emitter funs: vector.T(Aggregate)): vector.T(String)
+end

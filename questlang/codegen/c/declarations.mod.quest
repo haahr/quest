@@ -1,0 +1,1214 @@
+(* Quest Self-Hosted Compiler: C Declarations Implementation *)
+
+module declarations : Declarations
+import
+    questlang/types/model : questlang/types/Model
+    questlang/types/dump : questlang/types/Dump
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/ir/slots : questlang/ir/Slots
+    questlang/ir/written : questlang/ir/Written
+    questlang/codegen/syntax : questlang/codegen/Syntax
+    questlang/codegen/layout : questlang/codegen/Layout
+    questlang/codegen/symbols : questlang/codegen/Symbols
+    questlang/codegen/c/types : questlang/codegen/c/Types
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    stringOp = string : StringOp
+export
+    Let Type = model.Type
+    Let Shape = shapes.Shape
+    Let Lines = vector.T(String)
+    Let DescriptorForm = types.DescriptorForm
+
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+    let intEqual(a: Int b: Int): Bool = a is b
+    let cInt(n: Int): String = syntax.cInt(n)
+    let items(xs: Array(String)): vector.T(String) = vector.fromArray(:String xs)
+    let add(lines: Lines line: String): Ok = vector.append(:String lines line)
+    let addAll(lines: Lines more: Lines): Ok =
+        begin
+            for i = 0 upto {vector.length(:String more) - 1} do add(lines vector.get(:String more i)) end
+            ok
+        end
+    let boolText(b: Bool): String = if b then "true" else "false" end
+    let cType(t: Type): String = types.qtypeToCType(t)
+    let isOk(t: Type): Bool = model.same(t model.okType)
+
+    let recordFields(t: Type): Array(model.RecordField) =
+        case t.form
+            when typeRecord with r then r.fields
+            else vector.toArray(:model.RecordField vector.new(:model.RecordField))
+        end
+    let sortedFields(t: Type): Array(model.RecordField) =
+        begin
+            let compare(a: model.RecordField b: model.RecordField): Int = sort.stringCompare(a.name b.name)
+            sort.sorted(:model.RecordField recordFields(t) compare)
+        end
+    let valueFields(t: Type): Array(model.ValueField) =
+        case t.form
+            when typeTuple with x then model.tupleValueFields(x.fields)
+            else vector.toArray(:model.ValueField vector.new(:model.ValueField))
+        end
+    let kindBound(k: maybe.T(model.Kind)): maybe.T(Type) =
+        if maybe.isSome(:model.Kind k) andif model.isPower(maybe.unwrap(:model.Kind k)) then
+            maybe.some(:Type model.powerBound(maybe.unwrap(:model.Kind k)))
+        else
+            maybe.none(:Type)
+        end
+    let variableBound(t: Type): maybe.T(Type) =
+        case t.form when typeVariable with v then kindBound(v.bound) else maybe.none(:Type) end
+
+    (* =========================================================================
+     * Signatures
+     * ====================================================================== *)
+
+    Let FunctionSignature = Tuple result: String name: String params: vector.T(String) end
+
+    let moduleFunctionSignature(cleanMod: String name: String t: Type): maybe.T(FunctionSignature) =
+        begin
+            let q = written.quantified(t)
+            let isFun = case q.body.form when typeFun then true else false end
+            if not(isFun) andif {extent q.quantifiers is 0} then
+                maybe.none(:FunctionSignature)
+            else
+                let sig = written.funSignature(t)
+                let retKind = shapes.shape(sig.result).kind
+                let ret = if eq(retKind "ok") then "void" elsif eq(retKind "record") then "QRecordVal"
+                    else cType(sig.result)
+                end
+                let params = vector.new(:String)
+                for i = 0 upto {extent q.quantifiers - 1} do
+                    add(params "const QTypeDescriptor *descriptor_" <> q.quantifiers[i].name)
+                end
+                for i = 0 upto {extent sig.params - 1} do
+                    let p = sig.params[i]
+                    if p.isOut orif p.isVar then
+                        add(params layout.locationRepresentation(p.type) <> " *qv_p_" <> p.name)
+                    else
+                        add(params cType(p.type) <> " qv_p_" <> p.name)
+                    end
+                end
+                maybe.some(:FunctionSignature tuple
+                    let result = ret let name = symbols.mangleModuleIdent(cleanMod name) let params = params
+                end)
+            end
+        end
+
+    let moduleFunctionArguments(t: Type): vector.T(String) =
+        begin
+            let q = written.quantified(t)
+            let sig = written.funSignature(t)
+            let names = vector.new(:String)
+            for i = 0 upto {extent q.quantifiers - 1} do add(names "descriptor_" <> q.quantifiers[i].name) end
+            for i = 0 upto {extent sig.params - 1} do add(names "qv_p_" <> sig.params[i].name) end
+            names
+        end
+
+    Let ShapeSignature = Tuple
+        bounds: vector.T(maybe.T(Type))
+        params: vector.T(model.Param)
+        result: Type
+    end
+
+    let funShapeSignature(t: Type): ShapeSignature =
+        begin
+            let var s = shapes.shape(t)
+            let bounds = vector.new(:maybe.T(Type))
+            while eq(s.kind "all") do
+                for i = 0 upto {extent s.typeParams - 1} do
+                    let b = s.typeParams[i].bound
+                    vector.append(:maybe.T(Type) bounds
+                        if maybe.isSome(:Shape b) then maybe.some(:Type maybe.unwrap(:Shape b).type)
+                        else maybe.none(:Type)
+                        end)
+                end
+                s := shapes.body(s)
+            end
+            let params = vector.new(:model.Param)
+            if not(eq(s.kind "fun")) then
+                tuple let bounds = bounds let params = params let result = s.type end
+            else
+                for i = 0 upto {extent s.params - 1} do
+                    let p = s.params[i]
+                    vector.append(:model.Param params tuple
+                        let name = p.name let type = p.shape.type
+                        let isVar = eq(p.mode "var") let isOut = eq(p.mode "out")
+                    end)
+                end
+                tuple let bounds = bounds let params = params let result = shapes.result(s).type end
+            end
+        end
+
+    (* =========================================================================
+     * The aggregates types reach
+     * ====================================================================== *)
+
+    Let Aggregate = Tuple name: String type: Type end
+    Let Aggregates = Tuple
+        aggregates: vector.T(Aggregate)
+        variants: vector.T(Type)
+        all: vector.T(Type)
+    end
+
+    let collectAggregateTypes(ts: Array(Type) ctx: types.RecordNaming): Aggregates =
+        begin
+            let result = vector.new(:Aggregate)
+            let variantTypes = vector.new(:Type)
+            let allTypes = vector.new(:Type)
+            let names = hashMap.new(:String :Bool eq hash.string)
+            let visitedTypes = hashMap.new(:Int :Bool intEqual hash.int)
+            let visitedNodes = hashMap.new(:Int :Bool intEqual hash.int)
+            let visitedKinds = hashMap.new(:Int :Bool intEqual hash.int)
+            let visitedShapes = hashMap.new(:Int :Bool intEqual hash.int)
+            let variantShapes = hashMap.new(:Int :Bool intEqual hash.int)
+            let addAggregate(name: String t: Type): Ok =
+                if not(hashMap.contains(:String :Bool names name)) then
+                    hashMap.insert(:String :Bool names name true)
+                    vector.append(:Aggregate result tuple let name = name let type = t end)
+                end
+            (* Shapes, not types as written: equal types share one shape, whose
+             * structure declares the struct, and records are named from it *)
+            let rec visitShape(ms: maybe.T(Shape)): Ok =
+                if maybe.isSome(:Shape ms)
+                    andif not(hashMap.contains(:Int :Bool visitedShapes maybe.unwrap(:Shape ms).id)) then
+                    let s = maybe.unwrap(:Shape ms)
+                    hashMap.insert(:Int :Bool visitedShapes s.id true)
+                    let t = s.structure
+                    vector.append(:Type allTypes t)
+                    let held = layout.resolvedShape(s)
+                    if eq(s.kind "tuple") then
+                        for i = 0 upto {extent s.components - 1} do visitShape(s.components[i].shape) end
+                        addAggregate(layout.shapeTag(s) t)
+                    elsif eq(s.kind "record") then
+                        for i = 0 upto {extent s.components - 1} do visitShape(s.components[i].shape) end
+                        addAggregate(types.recordStructName(t maybe.some(:types.RecordNaming ctx)) t)
+                    elsif eq(held.kind "option") then
+                        (* An option, or a type parameter bounded by one, whose
+                         * values are held in the bound's representation *)
+                        for i = 0 upto {extent held.cases - 1} do visitShape(held.cases[i].shape) end
+                        addAggregate(layout.shapeTag(held) held.structure)
+                    elsif eq(s.kind "auto") then
+                        (* Auto payloads are stored in the witness-independent
+                         * layout *)
+                        visitType(model.autoPayloadType(t maybe.none(:Type)))
+                    elsif eq(s.kind "variant") then
+                        if not(hashMap.contains(:Int :Bool variantShapes s.id)) then
+                            hashMap.insert(:Int :Bool variantShapes s.id true)
+                            vector.append(:Type variantTypes t)
+                        end
+                        for i = 0 upto {extent s.cases - 1} do visitShape(s.cases[i].shape) end
+                    else
+                        let children = shapes.children(s)
+                        for i = 0 upto {extent children - 1} do visitShape(maybe.some(:Shape children[i])) end
+                    end
+                    if {eq(s.kind "typevar") orif eq(s.kind "abstract")} andif maybe.isSome(:Shape s.bound) then
+                        visitShape(s.bound)
+                    end
+                end
+            and visitType(t: Type): Ok =
+                if not(hashMap.contains(:Int :Bool visitedTypes t.id)) then
+                    hashMap.insert(:Int :Bool visitedTypes t.id true)
+                    visitShape(maybe.some(:Shape shapes.shape(t)))
+                end
+            let rec visitNode(t: Type): Ok =
+                if not(hashMap.contains(:Int :Bool visitedNodes t.id)) then
+                    hashMap.insert(:Int :Bool visitedNodes t.id true)
+                    visitType(t)
+                    (* A recursive type's bodies mention its variables free;
+                     * visitType has visited its unfolding *)
+                    let recursive = case t.form when typeRec, typeRecGroup then true else false end
+                    if not(recursive) then visitParts(model.typeParts(t)) end
+                end
+            and visitKind(k: model.Kind): Ok =
+                if not(hashMap.contains(:Int :Bool visitedKinds k.id)) then
+                    hashMap.insert(:Int :Bool visitedKinds k.id true)
+                    visitParts(model.kindParts(k))
+                end
+            and visitParts(parts: vector.T(model.Part)): Ok =
+                begin
+                    for i = 0 upto {vector.length(:model.Part parts) - 1} do
+                        case vector.get(:model.Part parts i)
+                            when partType with x then visitNode(x.t)
+                            when partKind with x then visitKind(x.k)
+                        end
+                    end
+                    ok
+                end
+            for i = 0 upto {extent ts - 1} do visitNode(ts[i]) end
+            tuple let aggregates = result let variants = variantTypes let all = allTypes end
+        end
+
+    (* =========================================================================
+     * The emitter
+     * ====================================================================== *)
+
+    Let Pair = Tuple target: Type source: Type end
+    Let ModuleRecord = Tuple name: String recordType: maybe.T(Type) end
+
+    Let Emitter = Tuple
+        ctx: types.RecordNaming
+        var emittedDescriptorTags: vector.T(String)
+        var emittedFunTypes: vector.T(Aggregate)
+        emittedBefore: hashMap.T(String Bool)
+        definedStructs: hashMap.T(String Bool)
+    end
+
+    let newEmitter(ctx: types.RecordNaming): Emitter =
+        tuple
+            let ctx = ctx
+            let var emittedDescriptorTags = vector.new(:String)
+            let var emittedFunTypes = vector.new(:Aggregate)
+            let emittedBefore = hashMap.new(:String :Bool eq hash.string)
+            let definedStructs = hashMap.new(:String :Bool eq hash.string)
+        end
+
+    let emitForwardTypedefs(e: Emitter aggregates: vector.T(Aggregate)): Lines =
+        begin
+            let lines = vector.new(:String)
+            if not(vector.empty(:Aggregate aggregates)) then
+                add(lines "/* Forward declarations for aggregate types */")
+                let seen = hashMap.new(:String :Bool eq hash.string)
+                for i = 0 upto {vector.length(:Aggregate aggregates) - 1} do
+                    let name = vector.get(:Aggregate aggregates i).name
+                    if not(hashMap.contains(:String :Bool seen name)) then
+                        hashMap.insert(:String :Bool seen name true)
+                        add(lines "#ifndef QUEST_TYPE_" <> name <> "_TYPEDEF")
+                        add(lines "#define QUEST_TYPE_" <> name <> "_TYPEDEF")
+                        add(lines "typedef struct " <> name <> " " <> name <> ";")
+                        add(lines "#endif")
+                    end
+                end
+                add(lines "")
+            end
+            lines
+        end
+
+    let emitPrecompiledModuleDeclarations(e: Emitter modules: vector.T(ModuleRecord)): Lines =
+        begin
+            let lines = vector.new(:String)
+            if not(vector.empty(:ModuleRecord modules)) then
+                add(lines "/* External declarations for precompiled module functions */")
+                for i = 0 upto {vector.length(:ModuleRecord modules) - 1} do
+                    let m = vector.get(:ModuleRecord modules i)
+                    let clean = symbols.mangleModuleName(m.name)
+                    if maybe.isSome(:Type m.recordType) then
+                        let fields = recordFields(maybe.unwrap(:Type m.recordType))
+                        for j = 0 upto {extent fields - 1} do
+                            let sig = moduleFunctionSignature(clean fields[j].name fields[j].type)
+                            if maybe.isSome(:FunctionSignature sig) then
+                                let f = maybe.unwrap(:FunctionSignature sig)
+                                let params = if vector.empty(:String f.params) then items(array of "void" end)
+                                    else f.params
+                                end
+                                add(lines "extern " <> f.result <> " " <> syntax.call(f.name params) <> ";")
+                            end
+                        end
+                    end
+                end
+                add(lines "")
+            end
+            lines
+        end
+
+    let emitAggregateStructs(e: Emitter aggregates: vector.T(Aggregate)): Lines =
+        begin
+            let lines = vector.new(:String)
+            if not(vector.empty(:Aggregate aggregates)) then
+                add(lines "/* Aggregate struct definitions */")
+                let seen = hashMap.new(:String :Bool eq hash.string)
+                for i = 0 upto {vector.length(:Aggregate aggregates) - 1} do
+                    let a = vector.get(:Aggregate aggregates i)
+                    let name = a.name
+                    if not(hashMap.contains(:String :Bool seen name)) then
+                        hashMap.insert(:String :Bool seen name true)
+                        add(lines "#ifndef QUEST_TYPE_" <> name <> "_DEFINED")
+                        add(lines "#define QUEST_TYPE_" <> name <> "_DEFINED")
+                        add(lines "struct " <> name <> " {")
+                        case a.type.form
+                            when typeTuple then
+                                let fields = valueFields(a.type)
+                                if extent fields is 0 then
+                                    add(lines "    char _unused;")
+                                else
+                                    for j = 0 upto {extent fields - 1} do
+                                        add(lines "    " <> layout.slotRepresentation(fields[j].type) <> " _"
+                                            <> cInt(j) <> ";")
+                                    end
+                                end
+                            when typeRecord with r then
+                                add(lines "    QRecordHeader header;")
+                                if extent r.fields is 0 then
+                                    add(lines "    char _unused;")
+                                else
+                                    let fields = sortedFields(a.type)
+                                    for j = 0 upto {extent fields - 1} do
+                                        add(lines "    " <> layout.slotRepresentation(fields[j].type) <> " qf_"
+                                            <> fields[j].name
+                                            <> ";")
+                                    end
+                                end
+                            when typeOption with o then
+                                add(lines "    int64_t tag;")
+                                let var anyPayload = false
+                                for j = 0 upto {extent o.options - 1} do
+                                    if maybe.isSome(:Type o.options[j].payload) then anyPayload := true end
+                                end
+                                if anyPayload then
+                                    add(lines "    union {")
+                                    for j = 0 upto {extent o.options - 1} do
+                                        let c = o.options[j]
+                                        if maybe.isSome(:Type c.payload) then
+                                            (* A case's payload is a tuple,
+                                             * whose shape gives its components
+                                             * (in a canonical form, it may be
+                                             * written as a recursive type) *)
+                                            let payloadType = maybe.unwrap(:Type c.payload)
+                                            let payload = shapes.shape(payloadType)
+                                            if eq(payload.kind "tuple") orif eq(payload.kind "record") then
+                                                add(lines "        struct " <> name <> "_" <> c.name <> "_payload {")
+                                                if eq(payload.kind "tuple") then
+                                                    for k = 0 upto {extent payload.components - 1} do
+                                                        let cs = maybe.unwrap(:Shape payload.components[k].shape)
+                                                        add(lines "            " <> layout.slotRepresentation(cs.type)
+                                                            <> " _"
+                                                            <> cInt(k) <> ";")
+                                                    end
+                                                else
+                                                    let sorted = shapes.sortedComponents(payload)
+                                                    for k = 0 upto {extent sorted - 1} do
+                                                        let cs = maybe.unwrap(:Shape sorted[k].shape)
+                                                        add(lines "            " <> layout.slotRepresentation(cs.type)
+                                                            <> " qf_"
+                                                            <> maybe.unwrap(:String sorted[k].name) <> ";")
+                                                    end
+                                                end
+                                                add(lines "        } " <> c.name <> ";")
+                                            else
+                                                add(lines "        struct { "
+                                                    <> layout.slotRepresentation(payloadType) <> " val; } "
+                                                    <> c.name <> ";")
+                                            end
+                                        end
+                                    end
+                                    add(lines "    } u;")
+                                end
+                            else ok
+                        end
+                        add(lines "};")
+                        add(lines "#endif")
+                        add(lines "")
+                    end
+                end
+            end
+            lines
+        end
+
+    (* The pairs sorted by the names keyOf gives their types *)
+    let sortedPairs(pairs: vector.T(Pair) keyOf: All(t: Type) String): Array(Pair) =
+        begin
+            let compare(a: Pair b: Pair): Int =
+                begin
+                    let c = sort.stringCompare(keyOf(a.target) keyOf(b.target))
+                    if c is 0 then sort.stringCompare(keyOf(a.source) keyOf(b.source)) else c end
+                end
+            sort.sorted(:Pair vector.toArray(:Pair pairs) compare)
+        end
+
+    let emitEvidenceDictionaries(e: Emitter aggregates: vector.T(Aggregate) needed: vector.T(Pair)): Lines =
+        begin
+            let lines = vector.new(:String)
+            let records = vector.new(:Type)
+            for i = 0 upto {vector.length(:Aggregate aggregates) - 1} do
+                let t = vector.get(:Aggregate aggregates i).type
+                case t.form when typeRecord then vector.append(:Type records t) else ok end
+            end
+            if not(vector.empty(:Type records)) then
+                add(lines "/* Evidence dictionary struct definitions */")
+                for i = 0 upto {vector.length(:Type records) - 1} do
+                    let t = vector.get(:Type records i)
+                    let dictType = types.offsetDictStructName(e.ctx t)
+                    types.recordName(e.ctx t)
+                    add(lines "typedef struct " <> dictType <> " " <> dictType <> ";")
+                    add(lines "struct " <> dictType <> " {")
+                    let fields = sortedFields(t)
+                    if extent fields is 0 then
+                        add(lines "    size_t _unused;")
+                    else
+                        for j = 0 upto {extent fields - 1} do add(lines "    size_t offset_" <> fields[j].name
+                            <> ";") end
+                    end
+                    add(lines "    QRecordStoredTypes stored_types;")
+                    add(lines "};")
+                end
+                add(lines "")
+            end
+            if not(vector.empty(:Pair needed)) then
+                add(lines "/* Static evidence dictionaries for record subtyping */")
+                let nameOf(t: Type): String = types.recordName(e.ctx t)
+                let pairs = sortedPairs(needed nameOf)
+                for i = 0 upto {extent pairs - 1} do
+                    let target = pairs[i].target
+                    let source = pairs[i].source
+                    let instance = types.offsetDictInstanceName(e.ctx target source)
+                    let dictType = types.offsetDictStructName(e.ctx target)
+                    let sourceStruct = types.recordStructName(source maybe.some(:types.RecordNaming e.ctx))
+                    (* Static tables only relate records whose shared fields
+                     * have equal types, so no field is stored at a different
+                     * type (stored_types is NULL) *)
+                    let fields = sortedFields(target)
+                    if extent fields is 0 then
+                        add(lines "static const " <> dictType <> " " <> instance <> " = { 0, NULL };")
+                    else
+                        let entries = vector.new(:String)
+                        for j = 0 upto {extent fields - 1} do
+                            add(entries "offsetof(" <> sourceStruct <> ", qf_" <> fields[j].name <> ")")
+                        end
+                        add(lines "static const " <> dictType <> " " <> instance <> " = { " <> syntax.comma(entries)
+                            <> ", NULL };")
+                    end
+                end
+                add(lines "")
+            end
+            lines
+        end
+
+    let emitCoercionTables(e: Emitter tuples: vector.T(Pair) variants: vector.T(Pair)): Lines =
+        begin
+            let lines = vector.new(:String)
+            if not(vector.empty(:Pair tuples)) then
+                add(lines "/* Compile-time static assertions for tuple subtyping */")
+                let pairs = sortedPairs(tuples layout.tupleStructName)
+                for i = 0 upto {extent pairs - 1} do
+                    let targetName = layout.tupleStructName(pairs[i].target)
+                    let sourceName = layout.tupleStructName(pairs[i].source)
+                    for j = 0 upto {extent valueFields(pairs[i].target) - 1} do
+                        add(lines "static_assert(offsetof(" <> sourceName <> ", _" <> cInt(j) <> ") == offsetof("
+                            <> targetName
+                            <> ", _" <> cInt(j) <> "), tuple_coercion_" <> targetName <> "_" <> sourceName <> "_"
+                            <> cInt(j)
+                            <> ");")
+                    end
+                end
+                add(lines "")
+            end
+            if not(vector.empty(:Pair variants)) then
+                add(lines "/* Static tag remapping tables for variant subtyping */")
+                let pairs = sortedPairs(variants layout.typeTag)
+                let variantsOf(t: Type): Array(model.VariantField) =
+                    case t.form
+                        when typeVariant with v then v.variants
+                        else vector.toArray(:model.VariantField vector.new(:model.VariantField))
+                    end
+                for i = 0 upto {extent pairs - 1} do
+                    let targetTag = layout.typeTag(pairs[i].target)
+                    let sourceTag = layout.typeTag(pairs[i].source)
+                    let targetCases = variantsOf(pairs[i].target)
+                    let sourceCases = variantsOf(pairs[i].source)
+                    let entries = vector.new(:String)
+                    for j = 0 upto {extent sourceCases - 1} do
+                        let var index = ~1
+                        for k = 0 upto {extent targetCases - 1} do
+                            if {index < 0} andif eq(targetCases[k].name sourceCases[j].name) then index := k end
+                        end
+                        add(entries cInt(index))
+                    end
+                    add(lines "static const int64_t tagmap_" <> targetTag <> "_" <> sourceTag <> "["
+                        <> cInt(extent sourceCases) <> "] = { " <> syntax.comma(entries) <> " };")
+                end
+                add(lines "")
+            end
+            lines
+        end
+
+    (* =========================================================================
+     * Type descriptors
+     * ====================================================================== *)
+
+    let descriptorKinds = array of "opaque" "stored" "hole" "fun" "auto" "exception" "array" "record" "tuple"
+        "variant" "option" end
+
+    let typeDescriptor(lines: Lines tag: String kind: String name: String size: String extra: String): Ok =
+        begin
+            add(lines "static const QTypeDescriptor quest_type_" <> tag <> " Q_UNUSED = {")
+            add(lines "    .kind = " <> kind <> ",")
+            add(lines "    .name = " <> syntax.cString(name) <> ",")
+            add(lines "    .size = " <> size <> ",")
+            add(lines "    .alignment = sizeof(void *),")
+            add(lines "    .is_subtype = quest_is_subtype,")
+            add(lines "    .extra = " <> extra <> ",")
+            add(lines "};")
+        end
+
+    let typeOf(f: DescriptorForm): Type = maybe.unwrap(:Type f.type)
+
+    (* A case of a variant or option, as its descriptor lists it *)
+    Let Case = Tuple name: String payload: maybe.T(Type) isVar: Bool end
+
+    let emitTypeDescriptors(e: Emitter ts: vector.T(Type) descriptorOf: All(t: Type) String
+        echoTypes: vector.T(Type) definedStructs: vector.T(String)): Lines =
+        begin
+            let lines = vector.new(:String)
+            let ctx = maybe.some(:types.RecordNaming e.ctx)
+            let forms = hashMap.new(:String :vector.T(DescriptorForm) eq hash.string)
+            for i = 0 upto {extent descriptorKinds - 1} do
+                hashMap.insert(:String :vector.T(DescriptorForm) forms descriptorKinds[i] vector.new(:DescriptorForm))
+            end
+            let formsOf(kind: String): vector.T(DescriptorForm) =
+                hashMap.find(:String :vector.T(DescriptorForm) forms kind)
+            let seen = hashMap.new(:String :Bool eq hash.string)
+            let seenTags = vector.new(:String)
+            let isNew(tag: String): Bool =
+                not(hashMap.contains(:String :Bool seen tag))
+                    andif not(hashMap.contains(:String :Bool e.emittedBefore tag))
+            let remember(f: DescriptorForm): Ok =
+                begin
+                    hashMap.insert(:String :Bool seen f.tag true)
+                    add(seenTags f.tag)
+                    vector.append(:DescriptorForm formsOf(f.kind) f)
+                end
+
+            let rec visit(t: Type): Ok =
+                begin
+                    let form = try maybe.some(:DescriptorForm types.descriptorForm(t ctx))
+                        when types.missingDescriptor then maybe.none(:DescriptorForm)
+                    end
+                    if maybe.isSome(:DescriptorForm form) then
+                        let f = maybe.unwrap(:DescriptorForm form)
+                        if not(eq(f.kind "base")) andif not(eq(f.kind "bound_var")) andif isNew(f.tag) then
+                            remember(f)
+                            visitParts(f)
+                        end
+                    end
+                    ok
+                end
+            and visitMaybe(t: maybe.T(Type)): Ok = if maybe.isSome(:Type t) then visit(maybe.unwrap(:Type t)) end
+            and visitParts(f: DescriptorForm): Ok =
+                begin
+                    let kind = f.kind
+                    if eq(kind "record") then
+                        let fields = recordFields(typeOf(f))
+                        for i = 0 upto {extent fields - 1} do visit(fields[i].type) end
+                    elsif eq(kind "tuple") then
+                        let fields = valueFields(typeOf(f))
+                        for i = 0 upto {extent fields - 1} do visit(fields[i].type) end
+                    elsif eq(kind "variant") then
+                        case typeOf(f).form
+                            when typeVariant with v then
+                                for i = 0 upto {extent v.variants - 1} do visitMaybe(v.variants[i].type) end
+                            else ok
+                        end
+                    elsif eq(kind "option") then
+                        case typeOf(f).form
+                            when typeOption with o then
+                                for i = 0 upto {extent o.options - 1} do visitMaybe(o.options[i].payload) end
+                            else ok
+                        end
+                    elsif eq(kind "array") then
+                        case typeOf(f).form when typeArray with a then visit(a.element) else ok end
+                    elsif eq(kind "exception") then
+                        case typeOf(f).form when typeException with x then visit(x.payload) else ok end
+                    elsif eq(kind "hole") orif eq(kind "stored") then
+                        visitMaybe(variableBound(typeOf(f)))
+                    elsif eq(kind "opaque") andif maybe.isSome(:Type f.type) then
+                        case typeOf(f).form
+                            when typeApp with x then
+                                for i = 0 upto {extent x.arguments - 1} do visit(x.arguments[i]) end
+                            else ok
+                        end
+                    elsif eq(kind "auto") then
+                        case typeOf(f).form
+                            when typeAuto with x then
+                                visitMaybe(kindBound(maybe.some(:model.Kind x.kindBound)))
+                                for i = 0 upto {extent x.signature - 1} do visit(x.signature[i].type) end
+                            else ok
+                        end
+                    elsif eq(kind "fun") then
+                        let sig = funShapeSignature(typeOf(f))
+                        for i = 0 upto {vector.length(:maybe.T(Type) sig.bounds) - 1} do
+                            visitMaybe(vector.get(:maybe.T(Type) sig.bounds i))
+                        end
+                        for i = 0 upto {vector.length(:model.Param sig.params) - 1} do
+                            visit(vector.get(:model.Param sig.params i).type)
+                        end
+                        visit(sig.result)
+                    end
+                    ok
+                end
+
+            (* An echo-only descriptor, and those of its parts (echo-only too
+             * where they write type components) *)
+            let rec visitEcho(t: Type): Ok =
+                begin
+                    visit(t)
+                    let form = types.echoDescriptorForm(t ctx)
+                    if maybe.isSome(:DescriptorForm form) then
+                        let f = maybe.unwrap(:DescriptorForm form)
+                        if isNew(f.tag) then
+                            remember(f)
+                            let children = written.echoChildren(maybe.unwrap(:Type f.display))
+                            for i = 0 upto {extent children - 1} do visitEcho(children[i].type) end
+                        end
+                    end
+                    ok
+                end
+
+            for i = 0 upto {vector.length(:Type ts) - 1} do visit(vector.get(:Type ts i)) end
+            for i = 0 upto {vector.length(:Type echoTypes) - 1} do visitEcho(vector.get(:Type echoTypes i)) end
+
+            let funs = vector.new(:Aggregate)
+            let funForms = formsOf("fun")
+            for i = 0 upto {vector.length(:DescriptorForm funForms) - 1} do
+                let f = vector.get(:DescriptorForm funForms i)
+                vector.append(:Aggregate funs tuple let name = f.tag let type = typeOf(f) end)
+            end
+            e.emittedFunTypes := funs
+            if vector.empty(:String seenTags) then
+                lines
+            else
+                for i = 0 upto {vector.length(:String seenTags) - 1} do
+                    hashMap.insert(:String :Bool e.emittedBefore vector.get(:String seenTags i) true)
+                end
+
+                (* Descriptors of unfolded recursive types may name tuple,
+                 * record, and option structs that the program's own types do
+                 * not; their layouts are the same, but the structs must be
+                 * defined for offsetof and sizeof *)
+                for i = 0 upto {vector.length(:String definedStructs) - 1} do
+                    hashMap.insert(:String :Bool e.definedStructs vector.get(:String definedStructs i) true)
+                end
+                let missing = vector.new(:Aggregate)
+                let need(name: String t: Type): Ok =
+                    if not(hashMap.contains(:String :Bool e.definedStructs name)) then
+                        hashMap.insert(:String :Bool e.definedStructs name true)
+                        vector.append(:Aggregate missing tuple let name = name let type = t end)
+                    end
+                let structOr(f: DescriptorForm otherwise: String): String =
+                    if stringOp.length(f.struct) > 0 then f.struct else otherwise end
+                let tuples = formsOf("tuple")
+                for i = 0 upto {vector.length(:DescriptorForm tuples) - 1} do
+                    let f = vector.get(:DescriptorForm tuples i)
+                    need(layout.tupleStructName(typeOf(f)) typeOf(f))
+                end
+                let records = formsOf("record")
+                for i = 0 upto {vector.length(:DescriptorForm records) - 1} do
+                    let f = vector.get(:DescriptorForm records i)
+                    need(structOr(f f.tag) typeOf(f))
+                end
+                let options = formsOf("option")
+                for i = 0 upto {vector.length(:DescriptorForm options) - 1} do
+                    let f = vector.get(:DescriptorForm options i)
+                    need(structOr(f layout.optionStructName(typeOf(f))) typeOf(f))
+                end
+                let autos = formsOf("auto")
+                for i = 0 upto {vector.length(:DescriptorForm autos) - 1} do
+                    let payload = model.autoPayloadType(typeOf(vector.get(:DescriptorForm autos i)) maybe.none(:Type))
+                    if extent valueFields(payload) > 0 then need(layout.tupleStructName(payload) payload) end
+                end
+                if not(vector.empty(:Aggregate missing)) then
+                    addAll(lines emitForwardTypedefs(e missing))
+                    addAll(lines emitAggregateStructs(e missing))
+                end
+
+                (* The descriptor of a part of a form's type (keyed as
+                 * echoChildren keys it): for an echo-only descriptor, the
+                 * part's echo-only descriptor if it has one *)
+                let partDesc(f: DescriptorForm key: String t: maybe.T(Type)): String =
+                    if maybe.isNone(:Type t) then
+                        "NULL"
+                    else
+                        let var shown = maybe.none(:DescriptorForm)
+                        if maybe.isSome(:Type f.display) then
+                            let children = written.echoChildren(maybe.unwrap(:Type f.display))
+                            for i = 0 upto {extent children - 1} do
+                                if maybe.isNone(:DescriptorForm shown) andif eq(children[i].key key) then
+                                    shown := types.echoDescriptorForm(children[i].type ctx)
+                                end
+                            end
+                        end
+                        if maybe.isSome(:DescriptorForm shown) then types.cExpr(maybe.unwrap(:DescriptorForm shown))
+                        else descriptorOf(maybe.unwrap(:Type t))
+                        end
+                    end
+
+                let sortedTags = sort.sorted(:String vector.toArray(:String seenTags) sort.stringCompare)
+                e.emittedDescriptorTags := vector.fromArray(:String sortedTags)
+                add(lines "/* Forward declarations for static type descriptors */")
+                for i = 0 upto {extent sortedTags - 1} do
+                    add(lines "static const QTypeDescriptor quest_type_" <> sortedTags[i] <> " Q_UNUSED;")
+                end
+                add(lines "")
+
+                if not(vector.empty(:Aggregate funs)) then
+                    add(lines "/* Adapters for function types (defined after the descriptors) */")
+                    for i = 0 upto {vector.length(:Aggregate funs) - 1} do
+                        let tag = vector.get(:Aggregate funs i).name
+                        add(lines "static QClosure *quest_adapt_" <> tag
+                            <> "(const QClosure *orig, const QTypeDescriptor *from, "
+                            <> "const QTypeDescriptor *to);")
+                        add(lines "static QVal quest_invoke_" <> tag <> "(const QClosure *c, const QVal *args);")
+                    end
+                    add(lines "")
+                end
+
+                add(lines "/* Static runtime type descriptors for compound and opaque types */")
+                let opaques = formsOf("opaque")
+                for i = 0 upto {vector.length(:DescriptorForm opaques) - 1} do
+                    let f = vector.get(:DescriptorForm opaques i)
+                    let var extra = "NULL"
+                    if maybe.isSome(:Type f.type) then
+                        case typeOf(f).form
+                            when typeApp with x then
+                                (* An application of an abstract type operator:
+                                 * its arguments are part of its identity *)
+                                let args = vector.new(:String)
+                                for j = 0 upto {extent x.arguments - 1} do add(args descriptorOf(x.arguments[j])) end
+                                let shown = if vector.empty(:String args) then items(array of "NULL" end) else args end
+                                let count = if extent x.arguments > 1 then extent x.arguments else 1 end
+                                add(lines "static const QTypeDescriptor *const qopaque_args_" <> f.tag <> "["
+                                    <> cInt(count)
+                                    <> "] Q_UNUSED = { " <> syntax.comma(shown) <> " };")
+                                add(lines "static const QOpaqueTypeDescriptor qopaque_desc_" <> f.tag <> " Q_UNUSED = "
+                                    <> "{ .arg_count = " <> cInt(extent x.arguments) <> ", .args = qopaque_args_"
+                                    <> f.tag
+                                    <> " };")
+                                extra := "&qopaque_desc_" <> f.tag
+                            else ok
+                        end
+                    end
+                    typeDescriptor(lines f.tag "QTYPE_KIND_OPAQUE" f.name "sizeof(QVal)" extra)
+                    add(lines "")
+                end
+
+                let storeds = formsOf("stored")
+                for i = 0 upto {vector.length(:DescriptorForm storeds) - 1} do
+                    (* A module's bounded abstract type: its opaque type, held
+                     * as a value of its bound *)
+                    let f = vector.get(:DescriptorForm storeds i)
+                    let bound = maybe.unwrap(:Type variableBound(typeOf(f)))
+                    typeDescriptor(lines f.tag <> "_abstract" "QTYPE_KIND_OPAQUE" f.name "sizeof(QVal)" "NULL")
+                    add(lines "static const QStoredDescriptor qstored_desc_" <> f.tag <> " Q_UNUSED = "
+                        <> "{ .type = &quest_type_" <> f.tag <> "_abstract, .storage = " <> descriptorOf(bound)
+                        <> ", .viewed = true };")
+                    typeDescriptor(lines f.tag "QTYPE_KIND_STORED" f.name "sizeof(" <> cType(typeOf(f)) <> ")"
+                        "&qstored_desc_" <> f.tag)
+                    add(lines "")
+                end
+
+                let holes = formsOf("hole")
+                for i = 0 upto {vector.length(:DescriptorForm holes) - 1} do
+                    (* A type parameter in a template, stored as a QVal or as
+                     * its bound *)
+                    let f = vector.get(:DescriptorForm holes i)
+                    let bound = variableBound(typeOf(f))
+                    let bounded = maybe.isSome(:Type bound)
+                    let storage = if bounded then descriptorOf(maybe.unwrap(:Type bound)) else "NULL" end
+                    let size = if bounded then "sizeof(" <> cType(typeOf(f)) <> ")" else "sizeof(QVal)" end
+                    add(lines "static const QHoleDescriptor qhole_desc_" <> f.tag <> " Q_UNUSED = "
+                        <> "{ .index = " <> f.name <> ", .storage = " <> storage <> " };")
+                    typeDescriptor(lines f.tag "QTYPE_KIND_HOLE" "?" <> f.name size "&qhole_desc_" <> f.tag)
+                    add(lines "")
+                end
+
+                for i = 0 upto {vector.length(:Aggregate funs) - 1} do
+                    let tag = vector.get(:Aggregate funs i).name
+                    let funType = vector.get(:Aggregate funs i).type
+                    let sig = funShapeSignature(funType)
+                    let quants = sig.bounds
+                    let params = sig.params
+                    let var bounds = "NULL"
+                    if not(vector.empty(:maybe.T(Type) quants)) then
+                        let boundDescs = vector.new(:String)
+                        for j = 0 upto {vector.length(:maybe.T(Type) quants) - 1} do
+                            let b = vector.get(:maybe.T(Type) quants j)
+                            let d = if maybe.isSome(:Type b) then descriptorOf(maybe.unwrap(:Type b)) else "NULL" end
+                            add(boundDescs d)
+                        end
+                        add(lines "static const QTypeDescriptor *const qfun_bounds_" <> tag <> "["
+                            <> cInt(vector.length(:maybe.T(Type) quants)) <> "] Q_UNUSED = { "
+                            <> syntax.comma(boundDescs)
+                            <> " };")
+                        bounds := "qfun_bounds_" <> tag
+                    end
+                    let header = vector.new(:String)
+                    add(header "    .param_count = " <> cInt(vector.length(:model.Param params)) <> ",")
+                    add(header "    .result_type = " <> descriptorOf(sig.result) <> ",")
+                    add(header "    .adapt = quest_adapt_" <> tag <> ",")
+                    add(header "    .invoke = quest_invoke_" <> tag <> ",")
+                    add(header "    .quantifier_count = " <> cInt(vector.length(:maybe.T(Type) quants)) <> ",")
+                    add(header "    .quantifier_bounds = " <> bounds <> ",")
+                    if not(vector.empty(:model.Param params)) then
+                        add(lines "static const struct {")
+                        add(lines "    size_t param_count;")
+                        add(lines "    const QTypeDescriptor *result_type;")
+                        add(lines "    QFunAdapter adapt;")
+                        add(lines "    QFunInvoker invoke;")
+                        add(lines "    size_t quantifier_count;")
+                        add(lines "    const QTypeDescriptor *const *quantifier_bounds;")
+                        add(lines "    const QFunParamDescriptor params[" <> cInt(vector.length(:model.Param params))
+                            <> "];")
+                        add(lines "} qfun_desc_" <> tag <> " Q_UNUSED = {")
+                        addAll(lines header)
+                        add(lines "    .params = {")
+                        for j = 0 upto {vector.length(:model.Param params) - 1} do
+                            let p = vector.get(:model.Param params j)
+                            add(lines "        { .type = " <> descriptorOf(p.type) <> ", .is_var = "
+                                <> boolText(p.isVar)
+                                <> ", .is_out = " <> boolText(p.isOut) <> " },")
+                        end
+                        add(lines "    }")
+                        add(lines "};")
+                    else
+                        add(lines "static const QFunTypeDescriptor qfun_desc_" <> tag <> " Q_UNUSED = {")
+                        addAll(lines header)
+                        add(lines "};")
+                    end
+                    typeDescriptor(lines tag "QTYPE_KIND_FUN" dump.shortTypeName(funType) "sizeof(QClosure *)"
+                        "&qfun_desc_" <> tag)
+                    add(lines "")
+                end
+
+                for i = 0 upto {vector.length(:DescriptorForm autos) - 1} do
+                    let f = vector.get(:DescriptorForm autos i)
+                    let autoType = typeOf(f)
+                    let payload = model.autoPayloadType(autoType maybe.none(:Type))
+                    let structName = layout.tupleStructName(payload)
+                    let n = extent valueFields(payload)
+                    case autoType.form
+                        when typeAuto with x then
+                            let boundType = kindBound(maybe.some(:model.Kind x.kindBound))
+                            let bound = if maybe.isNone(:Type boundType) then "NULL"
+                                else descriptorOf(maybe.unwrap(:Type boundType))
+                            end
+                            let payloadSize = if n > 0 then "sizeof(struct " <> structName <> ")" else "0" end
+                            add(lines "static const struct {")
+                            add(lines "    const QTypeDescriptor *bound;")
+                            add(lines "    size_t payload_size;")
+                            add(lines "    size_t component_count;")
+                            add(lines "    const QAutoComponentDescriptor components["
+                                <> cInt(if n > 1 then n else 1 end) <> "];")
+                            add(lines "} qauto_desc_" <> f.tag <> " Q_UNUSED = {")
+                            add(lines "    .bound = " <> bound <> ",")
+                            add(lines "    .payload_size = " <> payloadSize <> ",")
+                            add(lines "    .component_count = " <> cInt(n) <> ",")
+                            add(lines "    .components = {")
+                            for j = 0 upto {extent x.signature - 1} do
+                                let s = x.signature[j]
+                                add(lines "        { .name = " <> syntax.cString(s.name) <> ", .type = "
+                                    <> descriptorOf(s.type)
+                                    <> ", .offset = offsetof(struct " <> structName <> ", _" <> cInt(j)
+                                    <> "), .is_var = "
+                                    <> boolText(s.isVar) <> " },")
+                            end
+                            add(lines "    }")
+                            add(lines "};")
+                            typeDescriptor(lines f.tag "QTYPE_KIND_AUTO" dump.shortTypeName(autoType) "sizeof(QAuto *)"
+                                "&qauto_desc_" <> f.tag)
+                            add(lines "")
+                        else ok
+                    end
+                end
+
+                let exceptions = formsOf("exception")
+                for i = 0 upto {vector.length(:DescriptorForm exceptions) - 1} do
+                    let f = vector.get(:DescriptorForm exceptions i)
+                    case typeOf(f).form
+                        when typeException with x then
+                            add(lines "static const QExceptionTypeDescriptor qexc_desc_" <> f.tag <> " Q_UNUSED = {")
+                            add(lines "    .payload_type = " <> descriptorOf(x.payload) <> ",")
+                            add(lines "};")
+                            typeDescriptor(lines f.tag "QTYPE_KIND_EXCEPTION" dump.shortTypeName(typeOf(f))
+                                "sizeof(void *)" "&qexc_desc_" <> f.tag)
+                            add(lines "")
+                        else ok
+                    end
+                end
+
+                let arrays = formsOf("array")
+                for i = 0 upto {vector.length(:DescriptorForm arrays) - 1} do
+                    let f = vector.get(:DescriptorForm arrays i)
+                    case typeOf(f).form
+                        when typeArray with x then
+                            add(lines "static const QArrayTypeDescriptor qarr_desc_" <> f.tag <> " Q_UNUSED = {")
+                            add(lines "    .element_type = " <> partDesc(f "" maybe.some(:Type x.element)) <> ",")
+                            add(lines "};")
+                            typeDescriptor(lines f.tag "QTYPE_KIND_ARRAY" dump.shortTypeName(typeOf(f)) "sizeof(void *)"
+                                "&qarr_desc_" <> f.tag)
+                            add(lines "")
+                        else ok
+                    end
+                end
+
+                for i = 0 upto {vector.length(:DescriptorForm records) - 1} do
+                    let f = vector.get(:DescriptorForm records i)
+                    let structName = structOr(f f.tag)
+                    let fields = sortedFields(typeOf(f))
+                    let n = extent fields
+                    if n > 0 then
+                        add(lines "static const struct {")
+                        add(lines "    size_t field_count;")
+                        add(lines "    const QRecordFieldDescriptor fields[" <> cInt(n) <> "];")
+                        add(lines "} qrec_desc_" <> f.tag <> " Q_UNUSED = {")
+                        add(lines "    .field_count = " <> cInt(n) <> ",")
+                        add(lines "    .fields = {")
+                        for j = 0 upto {n - 1} do
+                            let fld = fields[j]
+                            add(lines "        { .name = " <> syntax.cString(fld.name) <> ", .type = "
+                                <> partDesc(f fld.name maybe.some(:Type fld.type)) <> ", .offset = offsetof(struct "
+                                <> structName <> ", qf_" <> fld.name <> "), .is_var = " <> boolText(fld.isVar) <> " },")
+                        end
+                        add(lines "    }")
+                        add(lines "};")
+                        typeDescriptor(lines f.tag "QTYPE_KIND_RECORD" dump.shortTypeName(typeOf(f))
+                            "sizeof(struct " <> structName <> ")" "&qrec_desc_" <> f.tag)
+                    else
+                        add(lines "static const QRecordTypeDescriptor qrec_desc_" <> f.tag
+                            <> " Q_UNUSED = { .field_count = 0 };")
+                        typeDescriptor(lines f.tag "QTYPE_KIND_RECORD" "Record end" "sizeof(void *)" "&qrec_desc_"
+                            <> f.tag)
+                    end
+                    add(lines "")
+                end
+
+                for i = 0 upto {vector.length(:DescriptorForm tuples) - 1} do
+                    let f = vector.get(:DescriptorForm tuples i)
+                    let t = typeOf(f)
+                    let structName = layout.tupleStructName(t)
+                    let fields = valueFields(t)
+                    let n = extent fields
+                    (* Its type components, which only echo writes: with alias
+                     * names in an echo-only descriptor *)
+                    let components = written.tupleTypeComponents(maybe.unwrapOr(:Type f.display t))
+                    if extent components > 0 then
+                        add(lines "static const QTupleTypeComponentDescriptor qtup_components_" <> f.tag <> "["
+                            <> cInt(extent components) <> "] Q_UNUSED = {")
+                        for j = 0 upto {extent components - 1} do
+                            add(lines "    { .position = " <> cInt(components[j].position) <> ", .text = "
+                                <> syntax.cString(components[j].text) <> " },")
+                        end
+                        add(lines "};")
+                    end
+                    add(lines "static const struct {")
+                    add(lines "    size_t component_count;")
+                    add(lines "    const QTupleTypeComponentDescriptor *components;")
+                    add(lines "    size_t element_count;")
+                    (* (C99 has no empty arrays: a tuple of type components
+                     * alone has one unused element) *)
+                    add(lines "    const QTupleElementDescriptor elements[" <> cInt(if n > 1 then n else 1 end) <> "];")
+                    add(lines "} qtup_desc_" <> f.tag <> " Q_UNUSED = {")
+                    add(lines "    .component_count = " <> cInt(extent components) <> ",")
+                    add(lines "    .components = " <> if extent components > 0 then "qtup_components_"
+                        <> f.tag else "NULL" end
+                        <> ",")
+                    add(lines "    .element_count = " <> cInt(n) <> ",")
+                    add(lines "    .elements = {")
+                    for j = 0 upto {n - 1} do
+                        let fld = fields[j]
+                        let name = if maybe.isSome(:String fld.name) then syntax.cString(maybe.unwrap(:String fld.name))
+                            else "NULL"
+                        end
+                        add(lines "        { .name = " <> name <> ", .type = "
+                            <> partDesc(f cInt(j) maybe.some(:Type fld.type))
+                            <> ", .offset = offsetof(struct " <> structName <> ", _" <> cInt(j) <> "), .is_var = "
+                            <> boolText(fld.isVar) <> " },")
+                    end
+                    if n is 0 then add(lines "        { .name = NULL },") end
+                    add(lines "    }")
+                    add(lines "};")
+                    typeDescriptor(lines f.tag "QTYPE_KIND_TUPLE" dump.shortTypeName(t) "sizeof(struct " <> structName
+                        <> ")"
+                        "&qtup_desc_" <> f.tag)
+                    add(lines "")
+                end
+
+                let sums = vector.concat(:DescriptorForm formsOf("variant") options)
+                for i = 0 upto {vector.length(:DescriptorForm sums) - 1} do
+                    let f = vector.get(:DescriptorForm sums i)
+                    let t = typeOf(f)
+                    let cases = vector.new(:Case)
+                    let var isVariant = false
+                    case t.form
+                        when typeVariant with v then
+                            isVariant := true
+                            for j = 0 upto {extent v.variants - 1} do
+                                let c = v.variants[j]
+                                vector.append(:Case cases
+                                    tuple let name = c.name let payload = c.type let isVar = c.isVar end)
+                            end
+                        when typeOption with o then
+                            for j = 0 upto {extent o.options - 1} do
+                                let c = o.options[j]
+                                vector.append(:Case cases
+                                    tuple let name = c.name let payload = c.payload let isVar = false end)
+                            end
+                        else ok
+                    end
+                    let n = vector.length(:Case cases)
+                    add(lines "static const struct {")
+                    add(lines "    size_t case_count;")
+                    add(lines "    const QVariantCaseDescriptor cases[" <> cInt(if n > 1 then n else 1 end) <> "];")
+                    add(lines "} qvar_desc_" <> f.tag <> " Q_UNUSED = {")
+                    add(lines "    .case_count = " <> cInt(n) <> ",")
+                    add(lines "    .cases = {")
+                    for j = 0 upto {n - 1} do
+                        let c = vector.get(:Case cases j)
+                        add(lines "        { .name = " <> syntax.cString(c.name) <> ", .payload_type = "
+                            <> partDesc(f c.name c.payload) <> ", .tag_index = " <> syntax.cIntLiteral(j)
+                            <> ", .is_var = "
+                            <> boolText(c.isVar) <> " },")
+                    end
+                    add(lines "    }")
+                    add(lines "};")
+                    if isVariant then
+                        typeDescriptor(lines f.tag "QTYPE_KIND_VARIANT" dump.shortTypeName(t) "sizeof(QVariantVal)"
+                            "&qvar_desc_" <> f.tag)
+                    else
+                        let structName = structOr(f layout.optionStructName(t))
+                        typeDescriptor(lines f.tag "QTYPE_KIND_OPTION" dump.shortTypeName(t)
+                            "sizeof(struct " <> structName <> ")" "&qvar_desc_" <> f.tag)
+                    end
+                    add(lines "")
+                end
+                lines
+            end
+        end
+
+    (* =========================================================================
+     * Function type adapters
+     *
+     * Run-time conversions of a closure to a function type T, by dynamic.be,
+     * inspect, or the read of a record field stored at a subtype, are known
+     * only to be from some subtype of T. The adapter for T wraps the closure in
+     * a thunk with T's C signature, which converts arguments and result as
+     * described by the two descriptors. The closure is called through T's
+     * signature when it has the same C signature (as types related by
+     * subtyping do), and otherwise, when one of the two types is laid out
+     * generically (a template's instance), through the invoker of the
+     * closure's own type, which takes and returns QVal forms.
+     * ====================================================================== *)
+
+    let emitFunTypeAdapters(e: Emitter funs: vector.T(Aggregate)): Lines =
+        begin
+            let lines = vector.new(:String)
+            if not(vector.empty(:Aggregate funs)) then
+                add(lines "/* Adapters for function types: thunks converting arguments and results by descriptor */")
+                for i = 0 upto {vector.length(:Aggregate funs) - 1} do
+                    let tag = vector.get(:Aggregate funs i).name
+                    let funType = vector.get(:Aggregate funs i).type
+                    (* A polymorphic function type takes its type parameters'
+                     * descriptors first; they are passed through *)
+                    let sig = funShapeSignature(funType)
+                    let ret = sig.result
+                    let retC = if isOk(ret) then "void" else cType(ret) end
+                    let fnPtr = types.closureFnPtrType(funType)
+                    let nq = vector.length(:maybe.T(Type) sig.bounds)
+                    let np = vector.length(:model.Param sig.params)
+                    let paramDecls = vector.new(:String)
+                    add(paramDecls "void *_raw_env")
+                    for k = 0 upto {nq - 1} do add(paramDecls "const QTypeDescriptor *qv_desc_" <> cInt(k)) end
+                    let direct = vector.new(:String)
+                    let uniform = vector.new(:String)
+                    add(uniform "QVal qv_args[" <> cInt(if {nq + np} > 1 then nq + np else 1 end) <> "];")
+                    for k = 0 upto {nq - 1} do add(uniform "qv_args[" <> cInt(k) <> "].p = (void *)qv_desc_"
+                        <> cInt(k) <> ";") end
+                    let callArgs = vector.new(:String)
+                    add(callArgs "e->orig->env")
+                    for k = 0 upto {nq - 1} do add(callArgs "qv_desc_" <> cInt(k)) end
+                    for j = 0 upto {np - 1} do
+                        let p = vector.get(:model.Param sig.params j)
+                        let name = "qv_arg_" <> cInt(j)
+                        let slot = "qv_args[" <> cInt(nq + j) <> "]"
+                        if p.isVar orif p.isOut then
+                            add(paramDecls layout.locationRepresentation(p.type) <> " *" <> name)
+                            add(uniform slot <> ".p = (void *)" <> name <> ";")
+                        elsif isOk(p.type) then
+                            add(paramDecls "QVal " <> name)
+                            add(uniform slot <> " = " <> name <> ";")
+                        else
+                            add(paramDecls cType(p.type) <> " " <> name)
+                            let toFrom = "to->params[" <> cInt(j) <> "].type, from->params[" <> cInt(j) <> "].type"
+                            add(uniform slot <> " = quest_convert(" <> types.qvalWrap(name p.type) <> ", " <> toFrom
+                                <> ");")
+                            if slots.mayBeStoredAsSubtype(shapes.shape(p.type)) then
+                                let converted = types.qvalUnwrap("quest_convert(" <> types.qvalWrap(name p.type) <> ", "
+                                    <> toFrom <> ")" p.type)
+                                add(direct name <> " = " <> converted <> ";")
+                            end
+                        end
+                        add(callArgs name)
+                    end
+                    let callExpr = syntax.call("((" <> fnPtr <> ")(e->orig->fn))" callArgs)
+                    let invokeExpr = "from->invoke(e->orig, qv_args)"
+                    if isOk(ret) then
+                        add(direct callExpr <> ";")
+                        add(direct "return;")
+                        add(uniform "(void)" <> invokeExpr <> ";")
+                    else
+                        if slots.mayBeStoredAsSubtype(shapes.shape(ret)) then
+                            add(direct retC <> " qv_result = " <> callExpr <> ";")
+                            let converted = types.qvalUnwrap("quest_convert(" <> types.qvalWrap("qv_result" ret)
+                                <> ", from->result_type, to->result_type)" ret)
+                            add(direct "return " <> converted <> ";")
+                        else
+                            add(direct "return " <> callExpr <> ";")
+                        end
+                        add(uniform "return " <> types.qvalUnwrap("quest_convert(" <> invokeExpr
+                            <> ", from->result_type, to->result_type)" ret) <> ";")
+                    end
+                    let thunk = "quest_thunk_" <> tag
+                    add(lines "static " <> retC <> " " <> syntax.call(thunk paramDecls) <> " {")
+                    add(lines "    const QFunAdapterEnv *e = (const QFunAdapterEnv *)_raw_env;")
+                    add(lines "    const QFunTypeDescriptor *from = (const QFunTypeDescriptor *)e->from->extra;")
+                    add(lines "    const QFunTypeDescriptor *to = (const QFunTypeDescriptor *)e->to->extra;")
+                    add(lines "    if (e->direct) {")
+                    for k = 0 upto {vector.length(:String direct) - 1} do add(lines "        "
+                        <> vector.get(:String direct k)) end
+                    add(lines "    }")
+                    for k = 0 upto {vector.length(:String uniform) - 1} do add(lines "    "
+                        <> vector.get(:String uniform k)) end
+                    add(lines "}")
+                    add(lines "static QClosure *quest_adapt_" <> tag
+                        <> "(const QClosure *orig, const QTypeDescriptor *from, "
+                        <> "const QTypeDescriptor *to) {")
+                    add(lines "    QFunAdapterEnv *e = (QFunAdapterEnv *)quest_alloc(sizeof(QFunAdapterEnv));")
+                    add(lines "    e->orig = orig;")
+                    add(lines "    e->from = from;")
+                    add(lines "    e->to = to;")
+                    add(lines "    e->direct = quest_fun_signature_equivalent(from, to);")
+                    add(lines "    QClosure *adapted = (QClosure *)quest_alloc(sizeof(QClosure));")
+                    add(lines "    adapted->fn = (void *)" <> thunk <> ";")
+                    add(lines "    adapted->env = e;")
+                    add(lines "    return adapted;")
+                    add(lines "}")
+                    (* The invoker: a call with QVal forms, for adapters whose
+                     * closure has this type's C signature *)
+                    let invArgs = vector.new(:String)
+                    add(invArgs "c->env")
+                    for k = 0 upto {nq - 1} do add(invArgs "(const QTypeDescriptor *)args[" <> cInt(k) <> "].p") end
+                    for j = 0 upto {np - 1} do
+                        let p = vector.get(:model.Param sig.params j)
+                        let arg = "args[" <> cInt(nq + j) <> "]"
+                        if p.isVar orif p.isOut then add(invArgs "(" <> layout.locationRepresentation(p.type) <> " *)"
+                            <> arg <> ".p")
+                        elsif isOk(p.type) then add(invArgs arg)
+                        else add(invArgs types.qvalUnwrap(arg p.type))
+                        end
+                    end
+                    let invCall = syntax.call("((" <> fnPtr <> ")(c->fn))" invArgs)
+                    add(lines "static QVal quest_invoke_" <> tag <> "(const QClosure *c, const QVal *args) {")
+                    add(lines "    (void)args;")
+                    if isOk(ret) then
+                        add(lines "    " <> invCall <> ";")
+                        add(lines "    return Q_OK_VAL;")
+                    else
+                        add(lines "    return " <> types.qvalWrap(invCall ret) <> ";")
+                    end
+                    add(lines "}")
+                    add(lines "")
+                end
+            end
+            lines
+        end
+end

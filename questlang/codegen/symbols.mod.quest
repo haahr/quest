@@ -1,0 +1,108 @@
+(* Quest Self-Hosted Compiler: Linked Symbols Implementation *)
+
+module symbols : Symbols
+import
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    ascii : Ascii
+export
+    (* The name each symbolic character is spelled by *)
+    let symbolName(c: Char): maybe.T(String) =
+        begin
+            let some(s: String): maybe.T(String) = maybe.some(:String s)
+            if c is '+' then some("plus") elsif c is '-' then some("minus") elsif c is '*' then some("star")
+            elsif c is '/' then some("slash") elsif c is '=' then some("equals") elsif c is '<' then some("lt")
+            elsif c is '>' then some("gt") elsif c is '!' then some("bang") elsif c is '?' then some("question")
+            elsif c is ':' then some("colon") elsif c is '@' then some("at") elsif c is '#' then some("hash")
+            elsif c is '$' then some("dollar") elsif c is '%' then some("percent") elsif c is '^' then some("caret")
+            elsif c is '&' then some("amp") elsif c is '|' then some("pipe") elsif c is '~' then some("tilde")
+            elsif c is '\\' then some("backslash") elsif c is '.' then some("dot") elsif c is '\'' then some("prime")
+            else maybe.none(:String)
+            end
+        end
+
+    let isSymbolic(c: Char): Bool = maybe.isSome(:String symbolName(c)) andif not(c is '.')
+
+    let isSymbolicName(name: String): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {stringOp.length(name) - 1} do
+                if isSymbolic(stringOp.getChar(name i)) then found := true end
+            end
+            found
+        end
+
+    (* s without leading and trailing underscores, as Python's strip("_") *)
+    let stripUnderscores(s: String): String =
+        begin
+            let var start = 0
+            let var stop = stringOp.length(s)
+            while {start < stop} andif {stringOp.getChar(s start) is '_'} do start := start + 1 end
+            while {stop > start} andif {stringOp.getChar(s {stop - 1}) is '_'} do stop := stop - 1 end
+            stringOp.getSub(s start {stop - start})
+        end
+
+    let mangleSymbolicIdent(name: String): String =
+        begin
+            let parts = vector.new(:String)
+            let curr = stringBuilder.new()
+            let flush(): Ok =
+                begin
+                    let s = stripUnderscores(curr.toString())
+                    if stringOp.length(s) > 0 then vector.append(:String parts s) end
+                    curr.clear()
+                    ok
+                end
+            for i = 0 upto {stringOp.length(name) - 1} do
+                let c = stringOp.getChar(name i)
+                if isSymbolic(c) then
+                    flush()
+                    vector.append(:String parts maybe.unwrap(:String symbolName(c)))
+                elsif c is '.' then
+                    flush()
+                else
+                    curr.char(c)
+                    ok
+                end
+            end
+            flush()
+            "qv_sym_" <> strutil.join("_" parts)
+        end
+
+    let mangleIdent(name: String): String =
+        if isSymbolicName(name) then mangleSymbolicIdent(name) else "qv_" <> strutil.replace(name "." "_") end
+
+    (* s in lowercase (ASCII) *)
+    let lower(s: String): String =
+        begin
+            let b = stringBuilder.new()
+            for i = 0 upto {stringOp.length(s) - 1} do
+                let c = stringOp.getChar(s i)
+                let code = ascii.val(c)
+                if {code >= 65} andif {code <= 90} then b.char(ascii.char(code + 32)) else b.char(c) end
+            end
+            b.toString()
+        end
+
+    let mangleModuleName(moduleName: String): String =
+        strutil.replace(strutil.replace(lower(moduleName) "/" "__") "." "_")
+
+    let moduleRecordPrefix = "qm_"
+
+    let moduleRecordIdent(cleanMod: String): String = moduleRecordPrefix <> cleanMod
+
+    let mangleModuleIdent(moduleName: String name: String): String =
+        begin
+            let cleanMod = mangleModuleName(moduleName)
+            if isSymbolicName(name) then
+                (* The symbolic mangling without its leading qv_ *)
+                let sym = mangleSymbolicIdent(name)
+                "qv_" <> cleanMod <> "_" <> stringOp.getSub(sym 3 {stringOp.length(sym) - 3})
+            else
+                "qv_" <> cleanMod <> "_" <> strutil.replace(name "." "_")
+            end
+        end
+end

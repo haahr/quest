@@ -14,6 +14,7 @@ bootstrap's goldens and error expectations (docs/milestone-2.md §3).
 import argparse
 import concurrent.futures
 import difflib
+import hashlib
 import os
 import queue
 import re
@@ -55,7 +56,7 @@ DRIVER_SCRIPT = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
 # expected to pass, and where the errors it reports after the bootstrap's one
 # are recorded (docs/milestone-2.md §3)
 SELF_HOSTED_DRIVER = ROOT_DIR / "questlang" / "driver" / "main.quest"
-SELF_HOSTED_PHASES = ("tokenize", "parse", "typecheck", *IR_DUMP_PHASES, *IR_RUN_PHASES, "interpret")
+SELF_HOSTED_PHASES = ("tokenize", "parse", "typecheck", *IR_DUMP_PHASES, *IR_RUN_PHASES, "interpret", "codegen_c")
 SELF_HOSTED_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending.txt"
 SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 # Tests of several errors, which only the self-hosted driver reports:
@@ -201,6 +202,35 @@ SUBSET_PHASES = IR_DUMP_PHASES[1:]
 # The phases that run programs, whose output is compared with the run goldens
 RUN_PHASES = ("interpret", "run_c_compiled", *IR_RUN_PHASES)
 
+# The phase printing each run program's C as run_c_compiled compiles it (with
+# --print-result, and --echo where the program asks for it). Its goldens are
+# digests of the C (c_digest), as the C is about 37 KB a program.
+CODEGEN_PHASE = "codegen_c"
+
+
+def c_digest(c_text: str) -> str:
+    """The golden of a program's C: the SHA-256 of its text, with the paths in
+    it under the checkout relative to it (raise sites name the program's
+    file), so that the digest does not depend on where the checkout is."""
+    text = relativize_root_paths(c_text, ROOT_DIR)
+    return hashlib.sha256(text.encode(BYTE_ENCODING)).hexdigest() + "\n"
+
+
+def bootstrap_c(source_file: Path, echo: bool, python_executable: str, build_dir: Path, timeout: float) -> str:
+    """The bootstrap's C for a program, to show how another compiler's
+    differs."""
+    command = [python_executable, str(DRIVER_SCRIPT), "--stop-after", CODEGEN_PHASE, "--print-result",
+               "--build-dir", str(build_dir)]
+    if echo:
+        command.append("--echo")
+    command.append(str(source_file.resolve()))
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = str(ROOT_DIR / "bootstrap" / "python")
+    with tempfile.TemporaryDirectory(prefix="quest-test-") as scratch_dir:
+        process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding=BYTE_ENCODING,
+                                 env=environment, timeout=timeout, cwd=scratch_dir)
+    return process.stdout
+
 
 def golden_dir_for_phase(phase_name: str) -> Path:
     if phase_name in RUN_PHASES:
@@ -281,8 +311,10 @@ def run_single_golden_test(
         command.extend(["--build-dir", str(build_dir)])
     if expected_exit != 0:
         command.extend(["--expected-exit", str(expected_exit)])
-    if directives.echo and phase_name in RUN_PHASES:
+    if directives.echo and phase_name in (*RUN_PHASES, CODEGEN_PHASE):
         command.append("--echo")
+    if phase_name == CODEGEN_PHASE:
+        command.append("--print-result")
 
     command.append(str(source_file.resolve()))
 
@@ -338,16 +370,31 @@ def run_single_golden_test(
             msg += f"\n{process.stderr.rstrip()}"
         return False, "[FAIL]", msg
 
+    output = c_digest(process.stdout) if phase_name == CODEGEN_PHASE else process.stdout
     if update_golden and driver_command is None:
-        out_file.write_text(process.stdout, encoding=BYTE_ENCODING)
+        out_file.write_text(output, encoding=BYTE_ENCODING)
         return True, "[UPDATED]", ""
 
     if not out_file.exists():
         return False, "[MISSING GOLDEN]", f"  (expected {out_file.relative_to(ROOT_DIR)})"
 
     expected_output = out_file.read_text(encoding=BYTE_ENCODING)
-    if process.stdout == expected_output:
+    if output == expected_output:
         return True, "[PASS]", ""
+
+    if phase_name == CODEGEN_PHASE:
+        # A digest tells nothing of the difference: the bootstrap's C shows it
+        msg = "  (C digest mismatch)"
+        if driver_command is not None and build_dir is not None:
+            expected_c = bootstrap_c(source_file, directives.echo, python_executable, build_dir, effective_timeout)
+            diff = list(difflib.unified_diff(
+                relativize_root_paths(expected_c, ROOT_DIR).splitlines(keepends=True),
+                relativize_root_paths(process.stdout, ROOT_DIR).splitlines(keepends=True),
+                fromfile=f"bootstrap/{rel_source.with_suffix('.c')}",
+                tofile=f"actual/{rel_source.with_suffix('.c')}",
+            ))
+            msg += "\n" + "".join(diff[:80]).rstrip()
+        return False, "[FAIL]", msg
 
     diff = difflib.unified_diff(
         expected_output.splitlines(keepends=True),
@@ -594,6 +641,7 @@ def main() -> int:
         *IR_DUMP_PHASES,
         *IR_RUN_PHASES,
         "interpret",
+        CODEGEN_PHASE,
         "run_c_compiled",
         "repl",
     ]
@@ -767,6 +815,12 @@ def run_all_tests(
                         if phase in SUBSET_PHASES and not (golden_dir / rel_source.with_suffix(".out")).exists():
                             # Dumped for a subset of the programs only: those
                             # with goldens
+                            continue
+                        if phase == CODEGEN_PHASE and (
+                            "run_c_compiled" in skipped_phases
+                            or not (golden_dir_for_phase("run_c_compiled") / rel_source.with_suffix(".out")).exists()
+                        ):
+                            # The C of the programs run_c_compiled runs
                             continue
 
                         def make_golden_runner(

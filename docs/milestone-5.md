@@ -11,8 +11,10 @@ the compiler it builds builds the same compiler again. It follows Milestone 4 (t
 
 The decisions this plan rests on (2026-10-26):
 - **The C is checked by digest.** A new golden phase, `codegen_c`, holds the SHA-256 of the bootstrap's C for each
-  run program (`tests/golden/codegen_c`, about 1,500 small files; the C embeds no paths, so the digests do not depend
-  on the checkout). The self-hosted suite compares the digest of its own C; on a mismatch the runner regenerates the
+  run program (`tests/golden/codegen_c`, 198 small files), as `run_c_compiled` compiles it (with `--print-result`, and
+  `--echo` where the program asks for it). Raise sites name the program's file, so the paths in the C under the
+  checkout are made relative to it before digesting, and the digests do not depend on where the checkout is. The
+  self-hosted suite compares the digest of its own C; on a mismatch the runner regenerates the
   bootstrap's C and shows the difference. This holds while the two compilers are kept in step. When they are allowed
   to diverge, and only the self-hosted compiler is maintained, the check changes (its goldens would be its own).
 - **New system primitives.** `system.run(args: Array(String)): Tuple code: Int stdout: String stderr: String end` runs a
@@ -118,12 +120,17 @@ reads its output, exit code, and a file's time. If the runtime's interface chang
 corpus regenerated. [quest-self-hosting-prerequisites.md](quest-self-hosting-prerequisites.md) §2 records the
 primitives. The bootstrap's suites run.
 
-### Step 1: The C backend
+### Step 1: The C backend (done)
 
-Port `config/abi` and `options`, `codegen/symbols` and `backend`, and `codegen/c/types`, `declarations`, `printer`,
-and `backend`; the driver's `--stop-after codegen_c` prints a program's C as the bootstrap's does. The runner gains
-the `codegen_c` phase and its digest goldens (bootstrap and self-hosted), and the self-hosted suite runs it on every
-run program.
+Port `codegen/symbols` and `codegen/c/types`, `declarations`, and `printer`; the driver's `--stop-after codegen_c`
+(with `--print-result`) prints a program's C as the bootstrap's does. The runner gains the `codegen_c` phase and its
+digest goldens (bootstrap and self-hosted), and the self-hosted suite runs it on every run program. The self-hosted
+compiler's C matches all 198 digests.
+
+`config` comes with the steps that use it (`abi` with the artifacts in Step 2, `options` with the build in Step 3),
+and `codegen/backend`'s passes are the driver's `lowered`, as they were for the IR's runs; its `implicit_imports`
+comes with the build engine. Divergences: the printer names keyword-named variables of the bootstrap's otherwise
+(`rec`, `out`, `record`, `inspect`), and keys its thunks by text rather than by tuples.
 
 ### Step 2: Interfaces, manifests, and compiled modules
 

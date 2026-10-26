@@ -1,0 +1,91 @@
+(* Quest Self-Hosted Compiler: C Spellings Interface
+ *
+ * bootstrap/python/quest/codegen/c/types.py: C spellings for the C backend:
+ * the C types of representations (codegen/layout), function pointer types,
+ * QVal wrapping and unwrapping, loading from and storing into aggregate slots
+ * (a record or variant boxed), record struct and offset table names, and how
+ * each type is described at run time. *)
+
+interface Types
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/shapes : questlang/ir/Shapes
+    collections/hashMap : collections/HashMap
+    util/maybe : util/Maybe
+export
+    (* A type that has no runtime type descriptor (such as Var(T) or a type
+     * operator), with the message the bootstrap's MissingDescriptorError
+     * has *)
+    missingDescriptor: Exception(String)
+
+    (* How a type is described at run time. kind is base or boundVar (expr is
+     * the descriptor expression), or record, tuple, variant, option, array,
+     * exception, fun, auto, opaque, stored, and hole (the descriptor is
+     * quest_type_<tag>, describing type; an opaque descriptor is compared by
+     * name and, for an application of an abstract type operator, its
+     * arguments; a hole's name is its index). struct is the C struct laid out
+     * as type, when its name is not derived from type itself, and display, for
+     * a descriptor that only echo uses, the type as written, with alias names,
+     * whose type components the descriptor writes. The kinds are spelled as
+     * the bootstrap's are: base, bound_var, and so on. *)
+    Def DescriptorForm = Tuple
+        kind: String
+        tag: String
+        type: maybe.T(model.Type)
+        name: String
+        expr: String
+        struct: String
+        display: maybe.T(model.Type)
+    end
+    (* The C expression of a descriptor: expr, or the address of
+     * quest_type_<tag> *)
+    cExpr(f: DescriptorForm): String
+
+    (* Names record types and offset tables in C, after a type alias for the
+     * record where there is one. Every name ends with a digest of the record's
+     * shape, so a name stands for one layout in every C unit. *)
+    Def RecordNaming = Tuple
+        aliasByShape: hashMap.T(String String)
+        canonicalNames: hashMap.T(String String)
+    end
+    newRecordNaming(): RecordNaming
+    registerAlias(ctx: RecordNaming aliasName: String t: model.Type): Ok
+    (* A record type's name (record_<digest>, or an alias's name with the
+     * digest) *)
+    recordName(ctx: RecordNaming t: model.Type): String
+    (* A record's struct name: QT_ and its name, or without a naming context,
+     * its layout tag *)
+    recordStructName(t: model.Type ctx: maybe.T(RecordNaming)): String
+    offsetDictStructName(ctx: RecordNaming t: model.Type): String
+    offsetDictInstanceName(ctx: RecordNaming target: model.Type source: model.Type): String
+
+    (* How a closed type is described at run time (type parameters in scope
+     * are the printer's business); raises missingDescriptor for a type that
+     * has none *)
+    descriptorForm(t: model.Type ctx: maybe.T(RecordNaming)): DescriptorForm
+    (* The descriptor echo writes a value of the closed type t by, when t's
+     * shared descriptor would leave out its type components or write them
+     * without their alias names *)
+    echoDescriptorForm(t: model.Type ctx: maybe.T(RecordNaming)): maybe.T(DescriptorForm)
+
+    (* The C type of a value of t: its representation *)
+    qtypeToCType(t: model.Type): String
+
+    (* A value as a QVal word, and back (a value of a bounded type parameter is
+     * a value of its bound) *)
+    qvalWrap(e: String t: model.Type): String
+    shapeQvalWrap(e: String s: shapes.Shape): String
+    qvalUnwrap(e: String t: model.Type): String
+    shapeQvalUnwrap(e: String s: shapes.Shape): String
+    (* A value held in a slot (a record or variant read from its box), and a
+     * value as a slot holds it (a record or variant in a new box) *)
+    shapeSlotLoad(e: String s: shapes.Shape): String
+    shapeSlotStore(e: String s: shapes.Shape): String
+    (* A slot's contents as a QVal word, and back (a box is its QVal form) *)
+    shapeSlotToQval(e: String s: shapes.Shape): String
+    shapeQvalToSlot(e: String s: shapes.Shape): String
+
+    (* The C function pointer type a closure of a (possibly polymorphic)
+     * function type is called through *)
+    closureFnPtrType(t: model.Type): String
+end

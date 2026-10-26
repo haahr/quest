@@ -1,0 +1,2687 @@
+(* Quest Self-Hosted Compiler: The C Printer Implementation
+ *
+ * Names and temporaries are numbered as they are made, so the printer makes
+ * them in the bootstrap's order: each function's signature, prologue, locals,
+ * and body in turn, and within an expression, its parts left to right. *)
+
+module printer : Printer
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/model : questlang/types/Model
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/ir/describe : questlang/ir/Describe
+    questlang/codegen/syntax : questlang/codegen/Syntax
+    questlang/codegen/layout : questlang/codegen/Layout
+    questlang/codegen/symbols : questlang/codegen/Symbols
+    questlang/codegen/c/types : questlang/codegen/c/Types
+    questlang/codegen/c/declarations : questlang/codegen/c/Declarations
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Let Type = model.Type
+    Let Shape = shapes.Shape
+    Let Variable = nodes.Variable
+    Let Atom = nodes.Atom
+    Let Lines = vector.T(String)
+
+    let unsupported: Exception(String) = exception unsupported: String end
+
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+    let intEqual(a: Int b: Int): Bool = a is b
+    let cInt(n: Int): String = syntax.cInt(n)
+    let lit(n: Int): String = syntax.cIntLiteral(n)
+    let strings(xs: Array(String)): vector.T(String) = vector.fromArray(:String xs)
+    let add(lines: Lines line: String): Ok = vector.append(:String lines line)
+    let addAll(lines: Lines more: Lines): Ok =
+        begin
+            for i = 0 upto {vector.length(:String more) - 1} do add(lines vector.get(:String more i)) end
+            ok
+        end
+    let joinedWith(first: vector.T(String) rest: vector.T(String)): vector.T(String) =
+        begin
+            let v = vector.copy(:String first)
+            addAll(v rest)
+            v
+        end
+    let one(s: String): vector.T(String) = strings(array of s end)
+    let removePrefix(s: String prefix: String): String =
+        if strutil.startsWith(s prefix) then
+            stringOp.getSub(s stringOp.length(prefix) {stringOp.length(s) - stringOp.length(prefix)})
+        else s
+        end
+    (* Adds or replaces a map's entry *)
+    let put(K::TYPE V::TYPE m: hashMap.T(K V) key: K value: V): Ok =
+        begin
+            hashMap.insert(:K :V m key value)
+            ok
+        end
+    let shapeOf(t: Type): Shape = shapes.shape(t)
+    let isOk(t: Type): Bool = eq(shapeOf(t).kind "ok")
+    let componentShape(s: Shape i: Int): Shape = maybe.unwrap(:Shape s.components[i].shape)
+    let atomType(a: Atom): Type = nodes.atomType(a)
+    let atomVar(a: Atom): maybe.T(Variable) = nodes.atomVarOf(a)
+    let some(s: String): maybe.T(String) = maybe.some(:String s)
+
+    (* The shape of t's values as held, if it is of the kind: t's own, or a
+     * bounded type parameter's bound's (ir/represent's held_shape) *)
+    let heldShape(t: Type kind: String): maybe.T(Shape) =
+        begin
+            let held = layout.resolvedShape(shapeOf(t))
+            if eq(held.kind kind) then maybe.some(:Shape held) else maybe.none(:Shape) end
+        end
+
+    let typeParameterCount(t: Type): Int =
+        begin
+            let var s = shapeOf(t)
+            let var count = 0
+            while eq(s.kind "all") do
+                count := count + extent s.typeParams
+                s := shapes.body(s)
+            end
+            count
+        end
+
+    let isFunction(t: Type): Bool =
+        begin
+            let var s = shapeOf(t)
+            while eq(s.kind "all") do s := shapes.body(s) end
+            eq(s.kind "fun")
+        end
+
+    (* The index of a case of a variant or option shape (0 if it has none of
+     * the name) *)
+    let tagIndex(s: Shape tag: maybe.T(String)): Int =
+        begin
+            let var index = ~1
+            for i = 0 upto {extent s.cases - 1} do
+                if {index < 0} andif maybe.isSome(:String tag) andif maybe.isSome(:String s.cases[i].name)
+                    andif eq(maybe.unwrap(:String s.cases[i].name) maybe.unwrap(:String tag)) then
+                    index := i
+                end
+            end
+            if index < 0 then 0 else index end
+        end
+    let tagIndexOf(s: Shape tag: String): Int = tagIndex(s some(tag))
+    let caseOf(s: Shape tag: String): maybe.T(shapes.Component) = shapes.caseOf(s tag)
+    let caseShape(s: Shape tag: String): maybe.T(Shape) =
+        begin
+            let c = caseOf(s tag)
+            if maybe.isSome(:shapes.Component c) then
+                maybe.unwrap(:shapes.Component c).shape else maybe.none(:Shape) end
+        end
+
+    (* =========================================================================
+     * The printer's state
+     * ====================================================================== *)
+
+    Let Local = Tuple cType: String name: String end
+    (* What printing one C function needs: its locals and the labels and
+     * handlers in scope *)
+    Let FnState = Tuple
+        function: maybe.T(nodes.Function)
+        locals: vector.T(Local)
+        (* Labels used by jumps, breaks, and continues (only used labels are
+         * printed) *)
+        usedLabels: hashMap.T(String Bool)
+        (* The try handlers entered, innermost last, and for each label the
+         * number entered where it is defined *)
+        handlers: vector.T(String)
+        labelDepth: hashMap.T(String Int)
+        joinParams: hashMap.T(String Array(Variable))
+        var volatile: hashMap.T(Int Bool)
+    end
+    let newFnState(f: maybe.T(nodes.Function)): FnState =
+        tuple
+            let function = f
+            let locals = vector.new(:Local)
+            let usedLabels = hashMap.new(:String :Bool eq hash.string)
+            let handlers = vector.new(:String)
+            let labelDepth = hashMap.new(:String :Int eq hash.string)
+            let joinParams = hashMap.new(:String :Array(Variable) eq hash.string)
+            let var volatile = hashMap.new(:Int :Bool intEqual hash.int)
+        end
+
+    (* A field of an aggregate being made: its C expression, a record or
+     * variant to be stored in a box sharing the aggregate's allocation, or
+     * that box once made room for *)
+    Let Field = Option
+        fieldText with s: String end
+        fieldFresh with value: String shape: Shape end
+        fieldBox with k: Int box: String value: String end
+    end
+    let text(s: String): Field = option fieldText of Field with let s = s end
+
+    Let Pending = Tuple boxes: String block: String end
+    Let DeferredCapture = Tuple env: String index: Int a: Atom end
+    Let Deferred = Tuple vars: hashMap.T(Int Bool) captures: vector.T(DeferredCapture) end
+
+    Let P = Tuple
+        unit: nodes.Unit
+        interfaceHeader: maybe.T(String)
+        ctx: types.RecordNaming
+        globals: hashMap.T(Int Bool)
+        names: hashMap.T(Int String)
+        usedNames: hashMap.T(String Bool)
+        nameCounts: hashMap.T(String Int)
+        codeNames: hashMap.T(Int String)
+        (* Closures bound by lets (by variable), whose calls call their
+         * functions directly, and external C functions bound by lets, which
+         * are called directly *)
+        closures: hashMap.T(Int nodes.OpMakeClosure)
+        externals: hashMap.T(Int String)
+        handlerVars: hashMap.T(Int Bool)
+        (* The pairs of tuple types converted by casts (whose layouts agree,
+         * which the C asserts), in the order first cast *)
+        tupleCastKeys: vector.T(String)
+        tupleCasts: hashMap.T(String declarations.Pair)
+        var fs: FnState
+        var lines: Lines
+        var indent: Int
+        var tmp: Int
+        (* The thunks printed (adapters, type applications, and external
+         * functions as values), by what they convert *)
+        thunks: hashMap.T(String String)
+        thunkDecls: Lines
+        thunkDefs: Lines
+        var pending: maybe.T(Pending)
+        var deferred: maybe.T(Deferred)
+        var emitter: maybe.T(declarations.Emitter)
+    end
+
+    (* =========================================================================
+     * Names
+     * ====================================================================== *)
+
+    let freshName(p: P base: String): String =
+        begin
+            (* The search for a base's next name starts where its last one
+             * stopped: every name before it is taken *)
+            let var n = maybe.unwrapOr(:Int hashMap.get(:String :Int p.nameCounts base) 1)
+            let var name = if n is 1 then base else base <> "_" <> cInt(n) end
+            while hashMap.contains(:String :Bool p.usedNames name) do
+                n := n + 1
+                name := base <> "_" <> cInt(n)
+            end
+            put(:String :Int p.nameCounts base n)
+            put(:String :Bool p.usedNames name true)
+            name
+        end
+
+    let name(p: P v: Variable): String =
+        begin
+            if not(hashMap.contains(:Int :String p.names v.id))
+                andif {model.same(v.type nodes.descriptorType) orif model.same(v.type nodes.viewMapType)} then
+                (* A descriptor variable (a function's descriptor parameter), or
+                 * a view map *)
+                put(:Int :String p.names v.id freshName(p v.hint))
+            end
+            if not(hashMap.contains(:Int :String p.names v.id)) then
+                let base = symbols.mangleIdent(if stringOp.length(v.hint) > 0 then v.hint else "t" end)
+                let prefix = if hashMap.contains(:Int :Bool p.globals v.id) then "g_" else "l_" end
+                put(:Int :String p.names v.id freshName(p prefix <> removePrefix(base "qv_")))
+            end
+            hashMap.find(:Int :String p.names v.id)
+        end
+
+    let atomName(p: P a: Atom): String = name(p maybe.unwrap(:Variable atomVar(a)))
+
+    let codeName(p: P f: nodes.Function): String =
+        begin
+            if not(hashMap.contains(:Int :String p.codeNames f.id)) then
+                let base = symbols.mangleIdent(if stringOp.length(f.v.hint) > 0 then f.v.hint else "fun" end)
+                put(:Int :String p.codeNames f.id freshName(p "qf_" <> removePrefix(base "qv_")))
+            end
+            hashMap.find(:Int :String p.codeNames f.id)
+        end
+
+    let temp(p: P cType: String): String =
+        begin
+            p.tmp := p.tmp + 1
+            let n = "_t" <> cInt(p.tmp)
+            vector.append(:Local p.fs.locals tuple let cType = cType let name = n end)
+            n
+        end
+
+    let emit(p: P line: String): Ok = add(p.lines stringOp.new(4 * p.indent ' ') <> line)
+
+    (* =========================================================================
+     * Types
+     * ====================================================================== *)
+
+    let cType(t: Type): String = types.qtypeToCType(t)
+    let slotCType(s: Shape): String = layout.shapeSlotRepresentation(s)
+    let locationCType(t: Type): String = layout.shapeLocationRepresentation(shapeOf(t))
+
+    let held(t: Type kind: String): Shape =
+        begin
+            let s = heldShape(t kind)
+            if maybe.isNone(:Shape s) then
+                raise unsupported with "C printing of a " <> kind <> " operation on a value of type "
+                    <> model.show(t) end
+            end
+            maybe.unwrap(:Shape s)
+        end
+
+    let tagShape(t: Type): Shape =
+        begin
+            let v = heldShape(t "variant")
+            let s = if maybe.isSome(:Shape v) then v else heldShape(t "option") end
+            if maybe.isNone(:Shape s) then
+                raise unsupported with "C printing of a tag test on a value of type " <> model.show(t) end
+            end
+            maybe.unwrap(:Shape s)
+        end
+
+    let elementShape(a: Atom): Shape =
+        begin
+            let s = shapeOf(atomType(a))
+            if not(eq(s.kind "array")) then
+                raise unsupported with
+                    "C printing of an array operation on a value of type " <> model.show(atomType(a))
+                end
+            end
+            shapes.element(s)
+        end
+
+    let isPointerParam(p: P v: Variable): Bool =
+        begin
+            let var found = false
+            if maybe.isSome(:nodes.Function p.fs.function) then
+                let params = maybe.unwrap(:nodes.Function p.fs.function).params
+                for i = 0 upto {extent params - 1} do
+                    if nodes.same(params[i].v v) andif not(eq(params[i].mode "value")) then found := true end
+                end
+            end
+            found
+        end
+
+    let varCType(p: P v: Variable): String =
+        if hashMap.contains(:Int :Bool p.handlerVars v.id) then "QExceptionState"
+        elsif v.boxed then slotCType(shapeOf(v.type))
+        else cType(v.type)
+        end
+
+    (* =========================================================================
+     * Descriptors
+     * ====================================================================== *)
+
+    let staticForm(p: P t: Type): types.DescriptorForm =
+        try types.descriptorForm(t maybe.some(:types.RecordNaming p.ctx))
+        when types.missingDescriptor with m then raise unsupported with "C code generation: " <> m end
+        end
+
+    let staticDescriptor(p: P t: Type): String = types.cExpr(staticForm(p t))
+
+    let staticDescriptorOf(p: P d: nodes.StaticDescriptor): String =
+        begin
+            let form = if d.echo then types.echoDescriptorForm(d.type maybe.some(:types.RecordNaming p.ctx))
+                else maybe.none(:types.DescriptorForm)
+            end
+            types.cExpr(if maybe.isSome(:types.DescriptorForm form) then maybe.unwrap(:types.DescriptorForm form)
+                else staticForm(p d.type)
+            end)
+        end
+
+    (* A descriptor operand (ir/describe): a descriptor variable, a static
+     * descriptor, or a template instantiated at run time with its holes'
+     * descriptors *)
+    let rec descriptor(p: P d: nodes.Descriptor): String =
+        case d
+            when descVar with x then name(p x.v)
+            when descStatic with x then staticDescriptorOf(p x.d)
+            when descInstantiate with x then
+                let form = staticForm(p x.template)
+                if eq(form.kind "base") orif eq(form.kind "bound_var") then
+                    types.cExpr(form)
+                else
+                    let args = vector.new(:String)
+                    for i = 0 upto {extent x.args - 1} do add(args descriptor(p x.args[i])) end
+                    "quest_instantiate_descriptor(" <> types.cExpr(form) <> ", " <> cInt(extent x.args)
+                        <> ", (const QTypeDescriptor *const[]){ " <> syntax.comma(args) <> " })"
+                end
+        end
+
+    let maybeDescriptor(p: P d: maybe.T(nodes.Descriptor)): String =
+        if maybe.isSome(:nodes.Descriptor d) then descriptor(p maybe.unwrap(:nodes.Descriptor d))
+        else raise unsupported with "C code generation: a run-time use of a type without its descriptor" end
+        end
+
+    (* =========================================================================
+     * Atoms
+     * ====================================================================== *)
+
+    let const(c: nodes.Const): String =
+        case c.value
+            when constOk then "Q_OK_VAL"
+            when constBool with x then if x.b then "true" else "false" end
+            when constInt with x then
+                if eq(c.shape.kind "int") then lit(x.n)
+                else raise unsupported with "constant " <> conv.int(x.n) <> " of shape " <> c.shape.kind end
+                end
+            when constReal with x then syntax.cReal(x.r)
+            when constChar with x then syntax.cChar(x.c)
+            when constString with x then
+                syntax.call("quest_string_new" strings(array of syntax.cString(x.s) lit(stringOp.length(x.s)) end))
+        end
+
+    let atom(p: P a: Atom): String =
+        case a
+            when atomConst with x then const(x.c)
+            when atomVar with x then
+                let v = x.v
+                if isOk(v.type) then
+                    "Q_OK_VAL"
+                else
+                    let n = name(p v)
+                    if hashMap.contains(:Int :Bool p.handlerVars v.id) then n <> ".exc"
+                    elsif v.isMutable andif isPointerParam(p v) then
+                        if v.boxed then "(*(*" <> n <> "))" else "(*" <> n <> ")" end
+                    elsif v.boxed andif v.isMutable then
+                        (* A boxed mutable variable holds its location's box (a
+                         * boxed value is the box itself) *)
+                        "(*" <> n <> ")"
+                    else
+                        n
+                    end
+                end
+        end
+
+    let varAtom(p: P v: Variable): String = atom(p nodes.atomOfVar(v))
+
+    let atoms(p: P xs: Array(Atom)): vector.T(String) =
+        begin
+            let res = vector.new(:String)
+            for i = 0 upto {extent xs - 1} do add(res atom(p xs[i])) end
+            res
+        end
+
+    (* The site of a raise at offset in the unit's file, as a C string
+     * ("file:line:col"), or NULL if it is not known *)
+    let site(p: P offset: maybe.T(Int)): String =
+        if maybe.isNone(:Int offset) orif maybe.isNone(:location.SourceMap p.unit.sourceMap) then
+            "NULL"
+        else
+            let sm = maybe.unwrap(:location.SourceMap p.unit.sourceMap)
+            let pos = location.locate(sm maybe.unwrap(:Int offset))
+            syntax.cString(location.file(sm) <> ":" <> cInt(pos.line) <> ":" <> cInt(pos.col))
+        end
+
+    (* =========================================================================
+     * Proxies (docs/c-representation.md section 5.8): a value of a tuple or
+     * option type that may be proxied may be a view of an object of a subtype,
+     * whose components are read (and var components written) through the
+     * runtime, as the represent pass decided
+     * ====================================================================== *)
+
+    (* The slot form of component i of the tuple t of shape ts, read as access
+     * says *)
+    let tupleComponent(p: P t: String ts: Shape i: Int access: String): String =
+        if eq(access nodes.direct) then
+            "(" <> t <> ")->_" <> cInt(i)
+        elsif eq(access nodes.original) then
+            (* Read from the original as it is (its slot at the same offset) *)
+            "((" <> cType(ts.type) <> ")quest_unproxy(" <> t <> "))->_" <> cInt(i)
+        else
+            let comp = componentShape(ts i)
+            let tmp = temp(p slotCType(comp))
+            let through = types.shapeQvalToSlot("quest_proxy_element(" <> t <> ", " <> cInt(i) <> ")" comp)
+            emit(p tmp <> " = quest_is_proxy(" <> t <> ") ? " <> through <> " : (" <> t <> ")->_" <> cInt(i) <> ";")
+            tmp
+        end
+
+    (* The tag of the option v, in its type's numbering, read as access says *)
+    let optionTag(v: String access: String): String =
+        if eq(access nodes.direct) then "((" <> v <> ")->tag)"
+        else "(quest_is_proxy(" <> v <> ") ? quest_proxy_tag(" <> v <> ") : (" <> v <> ")->tag)"
+        end
+
+    (* The tag of the variant or option v, of shape ts, in its numbering: read
+     * as access says, or for a bounded type parameter's value, through the
+     * view map of its type argument at the bound ts *)
+    let tagOf(p: P v: String ts: Shape access: String viewMap: maybe.T(Variable)): String =
+        if maybe.isSome(:Variable viewMap) then
+            let vm = name(p maybe.unwrap(:Variable viewMap))
+            if eq(ts.kind "variant") then "(" <> vm <> "->index[" <> v <> ".tag])"
+            else "quest_view_option_tag(" <> v <> ", " <> vm <> ")"
+            end
+        elsif eq(ts.kind "variant") then
+            v <> ".tag"
+        else
+            optionTag(v access)
+        end
+
+    (* The slot form of component i (none: the payload, when it is not a tuple)
+     * of the payload of case tag of the option v of shape os, read as access
+     * says *)
+    let optionComponent(p: P v: String os: Shape tag: String i: maybe.T(Int) access: String): String =
+        begin
+            let part = if maybe.isNone(:Int i) then ".val" else "._" <> cInt(maybe.unwrap(:Int i)) end
+            let raw = v <> "->u." <> tag <> part
+            if eq(access nodes.direct) then
+                raw
+            elsif eq(access nodes.original) then
+                "((" <> layout.shapeRepresentation(os) <> ")quest_unproxy(" <> v <> "))->u." <> tag <> part
+            else
+                let cs = maybe.unwrap(:Shape caseShape(os tag))
+                let comp = if maybe.isNone(:Int i) then cs else componentShape(cs maybe.unwrap(:Int i)) end
+                let tmp = temp(p slotCType(comp))
+                let through = types.shapeQvalToSlot("quest_proxy_option_element(" <> v <> ", "
+                    <> cInt(maybe.unwrapOr(:Int i 0)) <> ")" comp)
+                emit(p tmp <> " = quest_is_proxy(" <> v <> ") ? " <> through <> " : " <> raw <> ";")
+                tmp
+            end
+        end
+
+    (* The payload of case tag of a variant held at its own view, read through
+     * the view map and converted to the bound's type for it, or a new tuple of
+     * an option's case components (after its ordinal, when t has one more
+     * component than the case), read so, as a value of type t *)
+    let viewPayload(p: P v: String ts: Shape tag: String viewMap: Variable t: Type): String =
+        begin
+            let vm = name(p viewMap)
+            let b = tagIndexOf(ts tag)
+            let cs = caseShape(ts tag)
+            if eq(ts.kind "variant") then
+                let caseS = if maybe.isSome(:Shape cs) then maybe.unwrap(:Shape cs) else shapeOf(t) end
+                types.shapeQvalUnwrap("quest_view_part(" <> vm <> ", " <> cInt(b) <> ", " <> v <> ".payload)" caseS)
+            else
+                let tupleS = shapeOf(t)
+                if not(eq(tupleS.kind "tuple")) then
+                    (* A payload that is not a tuple: its one component *)
+                    types.shapeQvalUnwrap("quest_view_option_component(" <> v <> ", " <> vm <> ", " <> conv.int(b)
+                        <> ", 0)" tupleS)
+                else
+                    let struct = layout.shapeTag(tupleS)
+                    let tmp = temp(p struct <> " *")
+                    emit(p tmp <> " = (" <> struct <> " *)quest_alloc(sizeof(" <> struct <> "));")
+                    let comps = vector.new(:Shape)
+                    if maybe.isSome(:Shape cs) then
+                        let pt = maybe.unwrap(:Shape cs)
+                        if eq(pt.kind "tuple") then
+                            for i = 0 upto {extent pt.components - 1} do
+                                vector.append(:Shape comps componentShape(pt i)) end
+                        else
+                            vector.append(:Shape comps pt)
+                        end
+                    end
+                    let offset = extent tupleS.components - vector.length(:Shape comps)
+                    if offset > 0 then emit(p tmp <> "->_0 = 0LL;") end
+                    for j = 0 upto {vector.length(:Shape comps) - 1} do
+                        let word = "quest_view_option_component(" <> v <> ", " <> vm <> ", " <> cInt(b) <> ", "
+                            <> cInt(j) <> ")"
+                        let slot = types.shapeQvalToSlot(word componentShape(tupleS j + offset))
+                        emit(p tmp <> "->_" <> cInt(j + offset) <> " = " <> slot <> ";")
+                    end
+                    tmp
+                end
+            end
+        end
+
+    (* =========================================================================
+     * Aggregates being made, and their fields' boxes
+     * ====================================================================== *)
+
+    (* The fields of an aggregate being made: the atoms' C expressions (their
+     * slot forms), or for those the represent pass embedded, fresh boxes,
+     * which the aggregate's allocation makes room for *)
+    let slotFields(p: P args: Array(Atom) shapesOf: Array(Shape) embedded: Array(Int)): vector.T(Field) =
+        begin
+            let res = vector.new(:Field)
+            let n = if extent args < extent shapesOf then extent args else extent shapesOf end
+            for i = 0 upto {n - 1} do
+                let var isEmbedded = false
+                for j = 0 upto {extent embedded - 1} do if embedded[j] is i then isEmbedded := true end end
+                let value = atom(p args[i])
+                vector.append(:Field res if isEmbedded then
+                    option fieldFresh of Field with let value = value let shape = shapesOf[i] end
+                else
+                    text(value)
+                end)
+            end
+            res
+        end
+
+    Let Sized = Tuple size: String fields: vector.T(Field) end
+
+    (* The size of an aggregate's allocation with room after it (size, at
+     * block) for the boxes of its fields that are fresh, and the fields,
+     * those boxes' addresses in place of the fresh ones: a field's box is
+     * immutable, so it may share the aggregate's allocation *)
+    let embeddedBoxes(p: P block: String size: String fields: vector.T(Field)): Sized =
+        begin
+            let var fresh = 0
+            for i = 0 upto {vector.length(:Field fields) - 1} do
+                case vector.get(:Field fields i) when fieldFresh then fresh := fresh + 1 else ok end
+            end
+            if fresh is 0 then
+                tuple let size = size let fields = fields end
+            else
+                let boxes = temp(p "QRecordVal *")
+                p.pending := maybe.some(:Pending tuple let boxes = boxes let block = block end)
+                let res = vector.new(:Field)
+                let var k = 0
+                for i = 0 upto {vector.length(:Field fields) - 1} do
+                    let f = vector.get(:Field fields i)
+                    case f
+                        when fieldFresh with x then
+                            let box = "((" <> slotCType(x.shape) <> ")&" <> boxes <> "[" <> cInt(k) <> "])"
+                            vector.append(:Field res option fieldBox of Field with let k = k let box = box let value =
+                                x.value end)
+                            k := k + 1
+                        else vector.append(:Field res f)
+                    end
+                end
+                tuple let size = size <> " + " <> cInt(fresh) <> " * sizeof(QRecordVal)" let fields = res end
+            end
+        end
+
+    (* Fills in the embedded boxes of fields, returning the fields' slot
+     * forms *)
+    let fillEmbedded(p: P fields: vector.T(Field)): vector.T(String) =
+        begin
+            let res = vector.new(:String)
+            if maybe.isSome(:Pending p.pending) then
+                let pending = maybe.unwrap(:Pending p.pending)
+                p.pending := maybe.none(:Pending)
+                emit(p pending.boxes <> " = (QRecordVal *)(" <> pending.block <> " + 1);")
+                for i = 0 upto {vector.length(:Field fields) - 1} do
+                    case vector.get(:Field fields i)
+                        when fieldBox with x then
+                            emit(p "*" <> x.box <> " = " <> x.value <> ";")
+                            add(res x.box)
+                        when fieldText with x then add(res x.s)
+                        when fieldFresh with x then add(res x.value)
+                    end
+                end
+            else
+                for i = 0 upto {vector.length(:Field fields) - 1} do
+                    case vector.get(:Field fields i)
+                        when fieldText with x then add(res x.s)
+                        when fieldFresh with x then add(res x.value)
+                        when fieldBox with x then add(res x.box)
+                    end
+                end
+            end
+            res
+        end
+
+    (* A new tuple of type t of the fields *)
+    let makeTuple(p: P t: Type fields: vector.T(Field)): String =
+        begin
+            let struct = layout.shapeTag(shapeOf(t))
+            cType(t)
+            let tmp = temp(p struct <> " *")
+            let sized = embeddedBoxes(p tmp "sizeof(" <> struct <> ")" fields)
+            emit(p tmp <> " = (" <> struct <> " *)quest_alloc(" <> sized.size <> ");")
+            let values = fillEmbedded(p sized.fields)
+            for i = 0 upto {vector.length(:String values) - 1} do
+                emit(p tmp <> "->_" <> cInt(i) <> " = " <> vector.get(:String values i) <> ";")
+            end
+            tmp
+        end
+
+    let textFields(xs: vector.T(String)): vector.T(Field) =
+        begin
+            let res = vector.new(:Field)
+            for i = 0 upto {vector.length(:String xs) - 1} do
+                vector.append(:Field res text(vector.get(:String xs i))) end
+            res
+        end
+
+    (* The address of a slot holding values of shape s, as the address of a
+     * location of the value: a record's or variant's box, a Bool's or Char's
+     * word through its first byte *)
+    let slotAddress(ptr: String s: Shape): String =
+        begin
+            let slot = slotCType(s)
+            let c = layout.shapeLocationRepresentation(s)
+            if eq(slot c) then ptr else "((" <> c <> " *)" <> ptr <> ")" end
+        end
+
+    (* The address of the slot of a field of a record of shape rs, through its
+     * offset table (and for a bounded type parameter's value, the view map of
+     * its type argument at the bound rs), and the field's shape *)
+    Let Slot = Tuple ptr: String shape: Shape end
+    let fieldIndex(rs: Shape field: String): Int =
+        begin
+            let fields = shapes.sortedComponents(rs)
+            let var index = ~1
+            for i = 0 upto {extent fields - 1} do
+                if {index < 0} andif eq(maybe.unwrap(:String fields[i].name) field) then index := i end
+            end
+            index
+        end
+    let recordSlot(p: P recC: String rs: Shape field: String viewMap: maybe.T(Variable)): Slot =
+        begin
+            let fields = shapes.sortedComponents(rs)
+            let k = fieldIndex(rs field)
+            let fs = maybe.unwrap(:Shape fields[k].shape)
+            if maybe.isSome(:Variable viewMap) then
+                let slot = syntax.call("quest_view_record_slot"
+                    strings(array of recC name(p maybe.unwrap(:Variable viewMap)) cInt(k) end))
+                tuple let ptr = "((" <> slotCType(fs) <> " *)" <> slot <> ")" let shape = fs end
+            else
+                let dictType = types.offsetDictStructName(p.ctx rs.structure)
+                tuple
+                    let ptr = "((" <> slotCType(fs) <> " *)((char *)" <> recC <> ".val + ((const " <> dictType <> " *)"
+                        <> recC <> ".dict)->offset_" <> field <> "))"
+                    let shape = fs
+                end
+            end
+        end
+
+    (* =========================================================================
+     * Conversions
+     * ====================================================================== *)
+
+    let planOf(plans: Array(maybe.T(nodes.Plan)) i: Int): maybe.T(nodes.Plan) = plans[i]
+
+    let typeKey(t: Type): String = layout.typeIdentityKey(t)
+
+    let layoutKey(l: maybe.T(nodes.PlanLayout)): String =
+        if maybe.isNone(:nodes.PlanLayout l) then
+            "()"
+        else
+            let layoutOf = maybe.unwrap(:nodes.PlanLayout l)
+            let keys = sort.sorted(:Int vector.toArray(:Int layoutOf.keys) sort.intCompare)
+            let parts = vector.new(:String)
+            add(parts if layoutOf.toGeneric then "True" else "False" end)
+            for i = 0 upto {extent keys - 1} do
+                let t = maybe.unwrap(:Type hashMap.get(:Int :Type layoutOf.subst keys[i]))
+                add(parts conv.int(keys[i]) <> "=" <> typeKey(t))
+            end
+            syntax.joined("\n" parts)
+        end
+
+    (* Prints an auxiliary function (a thunk) while printing another: the
+     * printing state is saved, and restored after *)
+    Let Saved = Tuple fs: FnState lines: Lines indent: Int end
+    let save(p: P): Saved =
+        begin
+            let saved = tuple let fs = p.fs let lines = p.lines let indent = p.indent end
+            p.fs := newFnState(maybe.none(:nodes.Function))
+            p.lines := vector.new(:String)
+            p.indent := 1
+            saved
+        end
+    let restore(p: P saved: Saved): Ok =
+        begin
+            p.fs := saved.fs
+            p.lines := saved.lines
+            p.indent := saved.indent
+            ok
+        end
+
+    (* A thunk's parameter declarations (after its environment), and the names
+     * of its descriptor parameters (its descriptor variables, or as many as
+     * count says) and value parameters *)
+    Let ThunkParams = Tuple decls: vector.T(String) descs: vector.T(String) names: vector.T(String) end
+    let thunkParams(p: P descriptorParams: maybe.T(Array(nodes.DescriptorParam)) count: Int
+        params: vector.T(model.Param)): ThunkParams =
+        begin
+            let decls = vector.new(:String)
+            let descs = vector.new(:String)
+            let names = vector.new(:String)
+            let n = if maybe.isSome(:Array(nodes.DescriptorParam) descriptorParams) then
+                extent maybe.unwrap(:Array(nodes.DescriptorParam) descriptorParams)
+            else
+                count
+            end
+            for k = 0 upto {n - 1} do
+                add(descs "qd_" <> cInt(k))
+                add(decls "const QTypeDescriptor *qd_" <> cInt(k))
+                if maybe.isSome(:Array(nodes.DescriptorParam) descriptorParams) then
+                    let d = maybe.unwrap(:Array(nodes.DescriptorParam) descriptorParams)[k]
+                    put(:Int :String p.names d.v.id "qd_" <> cInt(k))
+                end
+            end
+            for i = 0 upto {vector.length(:model.Param params) - 1} do
+                let prm = vector.get(:model.Param params i)
+                add(names "qa_" <> cInt(i))
+                if prm.isVar orif prm.isOut then
+                    add(decls locationCType(prm.type) <> " *qa_" <> cInt(i))
+                else
+                    add(decls if isOk(prm.type) then "QVal" else cType(prm.type) end <> " qa_" <> cInt(i))
+                end
+            end
+            tuple let decls = decls let descs = descs let names = names end
+        end
+
+    (* Adds a thunk's definition, from the lines printed and its own
+     * declarations *)
+    let thunk(p: P thunkName: String ret: String decls: vector.T(String) prologue: vector.T(String)): Ok =
+        begin
+            let body = vector.new(:String)
+            for i = 0 upto {vector.length(:String prologue) - 1} do add(body "    "
+                <> vector.get(:String prologue i)) end
+            for i = 0 upto {vector.length(:Local p.fs.locals) - 1} do
+                let l = vector.get(:Local p.fs.locals i)
+                add(body "    " <> l.cType <> " " <> l.name <> ";")
+            end
+            addAll(body p.lines)
+            let sig = "static Q_UNUSED " <> ret <> " " <> syntax.call(thunkName joinedWith(one("void *_raw_env") decls))
+            add(p.thunkDecls sig <> ";")
+            add(p.thunkDefs sig <> " {")
+            addAll(p.thunkDefs body)
+            add(p.thunkDefs "}")
+            add(p.thunkDefs "")
+        end
+
+    let voids(descs: vector.T(String)): vector.T(String) =
+        begin
+            let res = vector.new(:String)
+            for i = 0 upto {vector.length(:String descs) - 1} do add(res "(void)" <> vector.get(:String descs i)
+                <> ";") end
+            res
+        end
+
+    let rec convert(p: P c: String plan: nodes.Plan): String =
+        begin
+            let kind = plan.kind
+            if eq(kind "box") then
+                types.qvalWrap(c plan.source)
+            elsif eq(kind "unbox") then
+                types.qvalUnwrap(c plan.target)
+            elsif eq(kind "record_view") then
+                "quest_record_view(" <> c <> ", " <> descriptor(p plan.descriptors[0]) <> ")"
+            elsif eq(kind "variant_tags") then
+                let table = maybe.unwrap(:nodes.TagMap plan.tagMap)
+                let v = temp(p "QVariantVal")
+                emit(p v <> " = " <> c <> ";")
+                let tagmap = "tagmap_" <> layout.typeTag(table.target) <> "_" <> layout.typeTag(table.source)
+                "((QVariantVal){ .tag = " <> tagmap <> "[" <> v <> ".tag], .payload = " <> v <> ".payload })"
+            elsif eq(kind "cast") then
+                let sourceS = shapeOf(plan.source)
+                let targetS = shapeOf(plan.target)
+                if eq(sourceS.kind "tuple") andif eq(targetS.kind "tuple")
+                    andif not(eq(layout.shapeTag(sourceS) layout.shapeTag(targetS))) then
+                    let key = layout.shapeTag(targetS) <> "\n" <> layout.shapeTag(sourceS)
+                    if not(hashMap.contains(:String :declarations.Pair p.tupleCasts key)) then
+                        add(p.tupleCastKeys key) end
+                    put(:String :declarations.Pair p.tupleCasts key
+                        tuple let target = targetS.structure let source = sourceS.structure end)
+                end
+                "((" <> cType(plan.target) <> ")" <> c <> ")"
+            elsif eq(kind "unproxy") then
+                "((" <> cType(plan.target) <> ")quest_unproxy(" <> c <> "))"
+            elsif eq(kind "slot_box") then
+                types.shapeSlotStore(c shapeOf(plan.source))
+            elsif eq(kind "slot_unbox") then
+                "(*" <> c <> ")"
+            elsif eq(kind "view") then
+                let sourceD = descriptor(p plan.descriptors[0])
+                let targetD = descriptor(p plan.descriptors[1])
+                let converted = "quest_convert(" <> types.qvalWrap(c plan.source) <> ", " <> sourceD <> ", "
+                    <> targetD <> ")"
+                types.qvalUnwrap(converted plan.target)
+            elsif eq(kind "adapt") then
+                let thunkName = adapter(p plan)
+                let clos = temp(p "QClosure *")
+                emit(p clos <> " = (QClosure *)quest_alloc(sizeof(QClosure));")
+                emit(p clos <> "->fn = (void *)" <> thunkName <> ";")
+                emit(p clos <> "->env = (void *)(" <> c <> ");")
+                clos
+            elsif eq(kind "runtime") then
+                let l = maybe.unwrap(:nodes.PlanLayout plan.layout)
+                let genericType = if l.toGeneric then plan.target else plan.source end
+                let nativeType = model.substitute(genericType l.subst)
+                let fromType = if l.toGeneric then nativeType else genericType end
+                let toType = if l.toGeneric then genericType else nativeType end
+                let fromD = descriptor(p plan.descriptors[0])
+                let toD = descriptor(p plan.descriptors[1])
+                let converted = "quest_convert(" <> types.qvalWrap(c fromType) <> ", " <> fromD <> ", " <> toD <> ")"
+                types.qvalUnwrap(converted toType)
+            elsif eq(kind "copy") then
+                let src = temp(p cType(plan.source))
+                emit(p src <> " = " <> c <> ";")
+                let fields = vector.new(:Field)
+                let sourceS = shapeOf(plan.source)
+                let targetS = shapeOf(plan.target)
+                let n = if extent targetS.components < extent plan.fields then extent targetS.components
+                    else extent plan.fields
+                end
+                for i = 0 upto {n - 1} do
+                    let tc = componentShape(targetS i)
+                    let fp = plan.fields[i]
+                    let sc = componentShape(sourceS i)
+                    let fc = tupleComponent(p src sourceS i plan.access[i])
+                    if maybe.isSome(:nodes.Plan fp) andif eq(maybe.unwrap(:nodes.Plan fp).kind "view") then
+                        (* Converted by descriptor, from the slot's QVal form to
+                         * the target slot's *)
+                        let f = maybe.unwrap(:nodes.Plan fp)
+                        let sourceD = descriptor(p f.descriptors[0])
+                        let targetD = descriptor(p f.descriptors[1])
+                        let converted = "quest_convert(" <> types.shapeSlotToQval(fc sc) <> ", " <> sourceD <> ", "
+                            <> targetD <> ")"
+                        vector.append(:Field fields text(types.shapeQvalToSlot(converted tc)))
+                    elsif maybe.isSome(:nodes.Plan fp) then
+                        vector.append(:Field fields
+                            text(types.shapeSlotStore(convert(p types.shapeSlotLoad(fc sc)
+                                maybe.unwrap(:nodes.Plan fp)) tc)))
+                    elsif eq(slotCType(sc) slotCType(tc)) then
+                        vector.append(:Field fields text(fc))
+                    else
+                        vector.append(:Field fields text(types.shapeQvalToSlot(types.shapeSlotToQval(fc sc) tc)))
+                    end
+                end
+                makeTuple(p plan.target fields)
+            else
+                raise unsupported with "conversion plan " <> kind end
+            end
+        end
+
+    and finishThunkCall(p: P called: String sourceResult: Type targetResult: Type resultPlan: maybe.T(nodes.Plan)): Ok =
+        if isOk(targetResult) then
+            emit(p called <> ";")
+            emit(p "return;")
+        elsif isOk(sourceResult) then
+            (* A closure returning Ok returns nothing in C; adapted to a generic
+             * result (Ok at a type parameter), it returns Ok's value *)
+            emit(p called <> ";")
+            emit(p "return Q_OK_VAL;")
+        elsif maybe.isNone(:nodes.Plan resultPlan) then
+            emit(p "return " <> called <> ";")
+        else
+            let r = temp(p cType(sourceResult))
+            emit(p r <> " = " <> called <> ";")
+            emit(p "return " <> convert(p r maybe.unwrap(:nodes.Plan resultPlan)) <> ";")
+        end
+
+    (* The thunk adapting a closure of plan.source's type to plan.target's *)
+    and adapter(p: P plan: nodes.Plan): String =
+        begin
+            let key = "adapt\n" <> typeKey(plan.source) <> "\n" <> typeKey(plan.target) <> "\n"
+                <> layoutKey(plan.layout)
+            let found = hashMap.get(:String :String p.thunks key)
+            if maybe.isSome(:String found) then
+                maybe.unwrap(:String found)
+            else
+                let thunkName = freshName(p "qa_adapt")
+                put(:String :String p.thunks key thunkName)
+                let sourceSig = declarations.funShapeSignature(plan.source)
+                let targetSig = declarations.funShapeSignature(plan.target)
+                let saved = save(p)
+                (* The thunk's descriptor parameters are its descriptor
+                 * variables, which its plans' descriptors use *)
+                let tp = thunkParams(p maybe.some(:Array(nodes.DescriptorParam) plan.thunkParams) 0 targetSig.params)
+                let args = vector.new(:String)
+                let n = vector.length(:model.Param targetSig.params)
+                for i = 0 upto {n - 1} do
+                    if i < extent plan.fields then
+                        let nm = vector.get(:String tp.names i)
+                        let fp = plan.fields[i]
+                        add(args if maybe.isNone(:nodes.Plan fp) then
+                            nm else convert(p nm maybe.unwrap(:nodes.Plan fp)) end)
+                    end
+                end
+                let fn = "((" <> types.closureFnPtrType(plan.source) <> ")(orig->fn))"
+                let callArgs = joinedWith(joinedWith(one("orig->env") tp.descs) args)
+                let last = if extent plan.fields > 0 then
+                    plan.fields[extent plan.fields - 1] else maybe.none(:nodes.Plan) end
+                finishThunkCall(p syntax.call(fn callArgs) sourceSig.result targetSig.result last)
+                let ret = if isOk(targetSig.result) then "void" else cType(targetSig.result) end
+                thunk(p thunkName ret tp.decls
+                    joinedWith(one("QClosure *orig = (QClosure *)_raw_env;") voids(tp.descs)))
+                restore(p saved)
+                thunkName
+            end
+        end
+
+    (* =========================================================================
+     * Aggregates (laid out as docs/c-representation.md section 5 says)
+     * ====================================================================== *)
+
+    (* A new record, made in its box (the payload following it in one
+     * allocation): the box, for a boxed variable, or the record *)
+    let makeRecord(p: P o: nodes.OpMakeRecord result: Variable): String =
+        begin
+            let fields = vector.new(:model.RecordField)
+            for i = 0 upto {extent o.fields - 1} do
+                let f = o.fields[i]
+                vector.append(:model.RecordField fields tuple
+                    let name = f.name let type = atomType(f.atom) let isVar = f.isVar
+                end)
+            end
+            let concrete = model.recordType(vector.toArray(:model.RecordField fields) maybe.none(:String))
+            let struct = types.recordStructName(concrete maybe.some(:types.RecordNaming p.ctx))
+            let box = temp(p "QRecordVal *")
+            let payload = temp(p struct <> " *")
+            Let Stored = Tuple index: Int name: String a: Atom end
+            let stored = vector.new(:Stored)
+            for i = 0 upto {extent o.fields - 1} do
+                if not(isOk(atomType(o.fields[i].atom))) then
+                    vector.append(:Stored stored tuple let index = i let name = o.fields[i].name let a =
+                        o.fields[i].atom end)
+                end
+            end
+            let values = vector.new(:Field)
+            for j = 0 upto {vector.length(:Stored stored) - 1} do
+                let s = vector.get(:Stored stored j)
+                let var isEmbedded = false
+                for k = 0 upto {extent o.embedded - 1} do if o.embedded[k] is s.index then isEmbedded := true end end
+                let value = atom(p s.a)
+                vector.append(:Field values if isEmbedded then
+                    option fieldFresh of Field with let value = value let shape = shapeOf(atomType(s.a)) end
+                else
+                    text(value)
+                end)
+            end
+            let sized = embeddedBoxes(p payload "sizeof(QRecordVal) + sizeof(" <> struct <> ")" values)
+            emit(p box <> " = (QRecordVal *)quest_alloc(" <> sized.size <> ");")
+            emit(p payload <> " = (" <> struct <> " *)(" <> box <> " + 1);")
+            emit(p payload <> "->header.descriptor = " <> maybeDescriptor(p o.descriptor) <> ";")
+            let filled = fillEmbedded(p sized.fields)
+            for j = 0 upto {vector.length(:Stored stored) - 1} do
+                emit(p payload <> "->qf_" <> vector.get(:Stored stored j).name <> " = "
+                    <> vector.get(:String filled j) <> ";")
+            end
+            let dictExpr = if o.runtimeOffsets then
+                "quest_record_dict(" <> maybeDescriptor(p o.viewDescriptor) <> ", " <> maybeDescriptor(p o.descriptor)
+                    <> ")"
+            else
+                let table = maybe.unwrap(:nodes.OffsetTable o.offsets)
+                "(const void *)&" <> types.offsetDictInstanceName(p.ctx table.view table.layout)
+            end
+            emit(p "*" <> box <> " = (QRecordVal){ .val = (void *)" <> payload <> ", .dict = " <> dictExpr <> " };")
+            if result.boxed then box else "(*" <> box <> ")" end
+        end
+
+    (* A field of a record of shape rs, through its offset table: its slot
+     * form, or when stored (a field the payload may store at another type)
+     * read as stored and converted to the field's type, by its descriptor *)
+    let recordField(p: P recC: String rs: Shape field: String o: nodes.OpRecordField): String =
+        begin
+            let slot = recordSlot(p recC rs field o.viewMap)
+            if not(o.stored) then
+                "(*" <> slot.ptr <> ")"
+            elsif maybe.isSome(:Variable o.viewMap) then
+                (* Through the view map: read as stored, converted to the
+                 * bound's type for it *)
+                let k = fieldIndex(rs field)
+                types.shapeQvalUnwrap("quest_view_record_field(" <> recC <> ", "
+                    <> name(p maybe.unwrap(:Variable o.viewMap))
+                    <> ", " <> cInt(k) <> ")" slot.shape)
+            else
+                let index = fieldIndex(rs field)
+                let cField = layout.shapeRepresentation(slot.shape)
+                let dictType = types.offsetDictStructName(p.ctx rs.structure)
+                let val = temp(p cField)
+                let stored = "((const " <> dictType <> " *)" <> recC <> ".dict)->stored_types"
+                let converted = types.shapeQvalUnwrap("quest_convert(quest_slot_read(" <> slot.ptr <> "), " <> stored
+                    <> "["
+                    <> cInt(index) <> "], " <> maybeDescriptor(p o.descriptor) <> ")" slot.shape)
+                emit(p "if (" <> stored <> " != NULL && " <> stored <> "[" <> cInt(index) <> "] != NULL) " <> val
+                    <> " = "
+                    <> converted <> ";")
+                emit(p "else " <> val <> " = " <> types.shapeSlotLoad("*" <> slot.ptr slot.shape) <> ";")
+                val
+            end
+        end
+
+    (* A new option: its tag, and its payload's components (a tuple's read as
+     * the represent pass decided, a payload that is not a tuple in its slot
+     * form) *)
+    let makeOption(p: P o: nodes.OpMakeOption t: Type): String =
+        begin
+            let os = held(t "option")
+            let struct = layout.shapeTag(os)
+            let tmp = temp(p struct <> " *")
+            emit(p tmp <> " = (" <> struct <> " *)quest_alloc(sizeof(" <> struct <> "));")
+            let var tag = o.tag
+            if maybe.isSome(:Atom o.ordinalAtom) then
+                (* The ordinal counts in the type's cases as written; the tag
+                 * numbers the shape's, ordered by name *)
+                let ordinalValue = maybe.unwrap(:Atom o.ordinalAtom)
+                let checked = syntax.call("quest_check_option_ordinal_at"
+                    strings(array of atom(p ordinalValue) lit(extent os.cases) site(p o.offset) end))
+                let tags = array of(extent o.cases 0)
+                let var identity = true
+                for i = 0 upto {extent o.cases - 1} do
+                    tags[i] := tagIndexOf(os o.cases[i])
+                    if not(tags[i] is i) then identity := false end
+                end
+                let mapped = if identity then checked else syntax.indexTable(tags) <> "[" <> checked <> "]" end
+                emit(p tmp <> "->tag = " <> mapped <> ";")
+                (* The payload is stored as the case of a constant ordinal
+                 * stores it, and otherwise as the first case does, whose
+                 * components the union overlays on the other cases' *)
+                let n = case ordinalValue
+                    when atomConst with x then case x.c.value when constInt with y then y.n else ~1 end
+                    else ~1
+                end
+                tag := if {n >= 0} andif {n < extent o.cases} then some(o.cases[n])
+                    else os.cases[0].name
+                end
+            else
+                emit(p tmp <> "->tag = " <> lit(tagIndex(os tag)) <> ";")
+            end
+            if maybe.isSome(:Atom o.payload) andif maybe.isSome(:String tag) then
+                let tagName = maybe.unwrap(:String tag)
+                let pt = caseShape(os tagName)
+                let payloadAtom = maybe.unwrap(:Atom o.payload)
+                let pv = atom(p payloadAtom)
+                if maybe.isSome(:Shape pt) andif eq(maybe.unwrap(:Shape pt).kind "tuple") then
+                    let ps = shapeOf(atomType(payloadAtom))
+                    for i = 0 upto {extent maybe.unwrap(:Shape pt).components - 1} do
+                        emit(p tmp <> "->u." <> tagName <> "._" <> cInt(i) <> " = "
+                            <> tupleComponent(p pv ps i o.access[i]) <> ";")
+                    end
+                else
+                    emit(p tmp <> "->u." <> tagName <> ".val = " <> pv <> ";")
+                end
+            end
+            tmp
+        end
+
+    (* A component of an option's case, read from the case's struct, in the C
+     * type of wanted *)
+    let optionField(src: String stored: maybe.T(Shape) index: Int wanted: Shape): String =
+        if maybe.isNone(:Shape stored) orif not(eq(maybe.unwrap(:Shape stored).kind "tuple"))
+            orif {index >= extent maybe.unwrap(:Shape stored).components} then
+            src
+        else
+            let storedC = slotCType(componentShape(maybe.unwrap(:Shape stored) index))
+            let wantedC = slotCType(wanted)
+            if eq(storedC "QVal") andif not(eq(wantedC "QVal")) then types.shapeQvalToSlot(src wanted)
+            elsif strutil.endsWith(storedC "*") andif strutil.endsWith(wantedC "*") andif not(eq(storedC wantedC)) then
+                "(" <> wantedC <> ")(" <> src <> ")"
+            else src
+            end
+        end
+
+    (* A new tuple of an option's case components (after offset components of
+     * tupleType: the case's ordinal), read as access says *)
+    let optionCaseTuple(p: P opt: String os: Shape tag: String tupleType: Type offset: Int access: Array(String)
+        ordinalValue: Int): String =
+        begin
+            let ts = shapeOf(tupleType)
+            let struct = layout.shapeTag(ts)
+            cType(tupleType)
+            let tmp = temp(p struct <> " *")
+            emit(p tmp <> " = (" <> struct <> " *)quest_alloc(sizeof(" <> struct <> "));")
+            let pt = caseShape(os tag)
+            if offset > 0 then emit(p tmp <> "->_0 = " <> lit(ordinalValue) <> ";") end
+            if maybe.isSome(:Shape pt) andif eq(maybe.unwrap(:Shape pt).kind "tuple") then
+                let ptShape = maybe.unwrap(:Shape pt)
+                for i = 0 upto {extent ptShape.components - 1} do
+                    if {i + offset} < extent ts.components then
+                        let src = optionField(optionComponent(p opt os tag maybe.some(:Int i) access[i]) pt i
+                            componentShape(ts i + offset))
+                        emit(p tmp <> "->_" <> cInt(i + offset) <> " = " <> src <> ";")
+                    end
+                end
+            elsif maybe.isSome(:Shape pt) then
+                emit(p tmp <> "->_" <> cInt(offset) <> " = "
+                    <> optionComponent(p opt os tag maybe.none(:Int) access[0]) <> ";")
+            end
+            tmp
+        end
+
+    (* The payload of an option's case, a tuple, which a case's binder shares
+     * (var components included): the option's own, which follows its tag (a
+     * tuple's struct), or through a proxy, the original's, viewed at the
+     * proxy's payload type (proxied where a component changes view) *)
+    let optionCasePayload(opt: String tupleType: Type tagAccess: String access: Array(String)): String =
+        begin
+            cType(tupleType)
+            let struct = layout.shapeTag(shapeOf(tupleType))
+            let own(o: String): String = "((" <> struct <> " *)((const char *)(" <> o <> ") + sizeof(int64_t)))"
+            let var proxied = false
+            for i = 0 upto {extent access - 1} do if eq(access[i] nodes.proxy) then proxied := true end end
+            if eq(tagAccess nodes.direct) then own(opt)
+            elsif not(proxied) then own("quest_unproxy(" <> opt <> ")")
+            else "(quest_is_proxy(" <> opt <> ") ? (" <> struct <> " *)quest_proxy_option_payload(" <> opt <> ") : "
+                <> own(opt) <> ")"
+            end
+        end
+
+    let payload(p: P o: nodes.OpPayload t: Type): String =
+        begin
+            let ts = tagShape(atomType(o.value))
+            let st = site(p o.offset)
+            if maybe.isSome(:Variable o.viewMap) then
+                let tagC = tagOf(p atom(p o.value) ts o.access o.viewMap)
+                emit(p "if (" <> tagC <> " != " <> lit(tagIndexOf(ts o.tag)) <> ") quest_raise_variant_error_at("
+                    <> st <> ");")
+                let result = viewPayload(p atom(p o.value) ts o.tag maybe.unwrap(:Variable o.viewMap) t)
+                if eq(ts.kind "option") then
+                    emit(p result <> "->_0 = " <> lit(maybe.unwrapOr(:Int o.ordinalIndex 0)) <> ";")
+                end
+                result
+            else
+                let index = tagIndexOf(ts o.tag)
+                if eq(ts.kind "variant") then
+                    emit(p "if (" <> atom(p o.value) <> ".tag != " <> lit(index) <> ") quest_raise_variant_error_at("
+                        <> st <> ");")
+                    let cs = caseShape(ts o.tag)
+                    let caseS = if maybe.isSome(:Shape cs) then maybe.unwrap(:Shape cs) else shapeOf(t) end
+                    (* In its slot form (a record or variant, for a boxed
+                     * variable) *)
+                    types.shapeQvalToSlot(atom(p o.value) <> ".payload" caseS)
+                else
+                    let tagC = optionTag(atom(p o.value) o.access)
+                    emit(p "if (" <> tagC <> " != " <> lit(index) <> ") quest_raise_variant_error_at(" <> st <> ");")
+                    optionCaseTuple(p atom(p o.value) ts o.tag t 1 o.components maybe.unwrapOr(:Int o.ordinalIndex 0))
+                end
+            end
+        end
+
+    (* An atom (in its slot form) as an array element of shape elem holds it:
+     * its QVal form *)
+    let arrayElement(p: P a: Atom elem: Shape): String = types.shapeSlotToQval(atom(p a) elem)
+
+    let arraySlot(p: P arr: String idx: String elem: Shape offset: maybe.T(Int)): String =
+        begin
+            emit(p "quest_check_array_bounds_at(" <> arr <> ", " <> idx <> ", " <> site(p offset) <> ");")
+            let cElem = layout.shapeLocationRepresentation(elem)
+            if eq(cElem "QVal") then "(&(" <> arr <> "->data[" <> idx <> "]))"
+            elsif eq(elem.kind "int") then "(&(" <> arr <> "->data[" <> idx <> "].i))"
+            elsif eq(elem.kind "real") then "(&(" <> arr <> "->data[" <> idx <> "].r))"
+            (* A Bool or Char in its word's low byte, a pointer in its word *)
+            else "((" <> cElem <> " *)(&(" <> arr <> "->data[" <> idx <> "])))"
+            end
+        end
+
+    let makeArray(p: P elements: vector.T(String) t: Type): String =
+        begin
+            let n = vector.length(:String elements)
+            let arr = temp(p cType(t))
+            emit(p arr <> " = (QArray *)quest_alloc(sizeof(QArray) + (size_t)(" <> lit(n) <> ") * sizeof(QVal));")
+            emit(p arr <> "->length = " <> lit(n) <> ";")
+            for i = 0 upto {n - 1} do emit(p arr <> "->data[" <> lit(i) <> "] = " <> vector.get(:String elements i)
+                <> ";") end
+            arr
+        end
+
+    (* =========================================================================
+     * Primitives and calls
+     * ====================================================================== *)
+
+    let intOp(op: String): maybe.T(String) =
+        if eq(op "+") orif eq(op "-") orif eq(op "*") orif eq(op "<") orif eq(op "<=") orif eq(op ">") orif eq(op ">=")
+            then some(op)
+        else maybe.none(:String)
+        end
+    let realOp(op: String): maybe.T(String) =
+        if eq(op "++") then some("quest_real_add") elsif eq(op "--") then some("quest_real_sub")
+        elsif eq(op "**") then some("quest_real_mul") elsif eq(op "//") then some("quest_real_divide")
+        else maybe.none(:String)
+        end
+    let realRelation(op: String): maybe.T(String) =
+        if eq(op "<<") then some("<") elsif eq(op "<<=") then some("<=") elsif eq(op ">>") then some(">")
+        elsif eq(op ">>=") then some(">=")
+        else maybe.none(:String)
+        end
+
+    let prim(p: P o: nodes.OpPrim): String =
+        begin
+            let op = o.op
+            let cs = atoms(p o.args)
+            if eq(op "not") then
+                "(!(" <> vector.get(:String cs 0) <> "))"
+            elsif eq(op "extent") then
+                "((" <> vector.get(:String cs 0) <> ")->length)"
+            else
+                let var left = vector.get(:String cs 0)
+                let var right = vector.get(:String cs 1)
+                let st(): String = site(p o.offset)
+                if eq(op "/") then
+                    "quest_int_div_at(" <> left <> ", " <> right <> ", " <> st() <> ")"
+                elsif eq(op "%") orif eq(op "mod") then
+                    "quest_int_mod_at(" <> left <> ", " <> right <> ", " <> st() <> ")"
+                elsif maybe.isSome(:String realOp(op)) then
+                    maybe.unwrap(:String realOp(op)) <> "_at(" <> left <> ", " <> right <> ", " <> st() <> ")"
+                elsif eq(op "^^") then
+                    "quest_real_pow_at(" <> left <> ", " <> right <> ", " <> st() <> ")"
+                elsif eq(op "<>") then
+                    "quest_string_concat(" <> left <> ", " <> right <> ")"
+                elsif eq(op "is") orif eq(op "isnot") then
+                    let first = o.args[0]
+                    let var t = maybe.some(:Type atomType(first))
+                    case first
+                        when atomVar with x then
+                            if hashMap.contains(:Int :Bool p.handlerVars x.v.id) then t := maybe.none(:Type) end
+                        else ok
+                    end
+                    if maybe.isSome(:Type t) andif eq(cType(maybe.unwrap(:Type t)) "QVal") then
+                        let negate = if eq(op "is") then "" else "!" end
+                        "(" <> negate <> "quest_val_is(" <> maybeDescriptor(p o.descriptor) <> ", " <> left <> ", "
+                            <> right <> "))"
+                    else
+                        let t2 = if maybe.isSome(:Type t) then
+                            maybe.some(:Type atomType(o.args[1])) else maybe.none(:Type) end
+                        if eq(o.access nodes.original) then
+                            (* A proxy is the object it views *)
+                            left := "quest_unproxy(" <> left <> ")"
+                            right := "quest_unproxy(" <> right <> ")"
+                        elsif maybe.isSome(:Type t2)
+                            andif not(eq(cType(maybe.unwrap(:Type t)) cType(maybe.unwrap(:Type t2))))
+                            andif strutil.endsWith(cType(maybe.unwrap(:Type t)) "*") then
+                            (* Pointers to aggregates of different (subtype-
+                             * related) types: compared as addresses *)
+                            left := "(const void *)(" <> left <> ")"
+                            right := "(const void *)(" <> right <> ")"
+                        end
+                        "((" <> left <> ") " <> if eq(op "is") then "==" else "!=" end <> " (" <> right <> "))"
+                    end
+                elsif maybe.isSome(:String intOp(op)) then
+                    "((" <> left <> ") " <> maybe.unwrap(:String intOp(op)) <> " (" <> right <> "))"
+                elsif maybe.isSome(:String realRelation(op)) then
+                    "((" <> left <> ") " <> maybe.unwrap(:String realRelation(op)) <> " (" <> right <> "))"
+                elsif eq(op "/\\") then
+                    "((" <> left <> ") && (" <> right <> "))"
+                elsif eq(op "\\/") then
+                    "((" <> left <> ") || (" <> right <> "))"
+                else
+                    raise unsupported with "primitive '" <> op <> "'" end
+                end
+            end
+        end
+
+    let descriptors(p: P ds: Array(nodes.Descriptor)): vector.T(String) =
+        begin
+            let res = vector.new(:String)
+            for i = 0 upto {extent ds - 1} do add(res descriptor(p ds[i])) end
+            res
+        end
+
+    let moduleOf(r: nodes.ModuleRef): maybe.T(nodes.Module) =
+        case r when refModule with x then maybe.some(:nodes.Module x.m) else maybe.none(:nodes.Module) end
+    let importOf(r: nodes.ModuleRef): maybe.T(nodes.Import) =
+        case r when refImport with x then maybe.some(:nodes.Import x.i) else maybe.none(:nodes.Import) end
+    let memberOf(m: nodes.Module member: String): Variable = maybe.unwrap(:Variable nodes.member(m.members member))
+
+    let callClosure(p: P callee: Variable descs: vector.T(String) args: Array(Atom)): String =
+        begin
+            let cArgs = joinedWith(descs atoms(p args))
+            let externalSymbol = hashMap.get(:Int :String p.externals callee.id)
+            let known = hashMap.get(:Int :nodes.OpMakeClosure p.closures callee.id)
+            if maybe.isSome(:String externalSymbol) then
+                syntax.call(maybe.unwrap(:String externalSymbol) atoms(p args))
+            elsif maybe.isSome(:nodes.OpMakeClosure known)
+                andif {extent maybe.unwrap(:nodes.OpMakeClosure known).typeArgs is 0} then
+                let k = maybe.unwrap(:nodes.OpMakeClosure known)
+                let env = if extent k.captures is 0 then "NULL" else name(p callee) <> "->env" end
+                syntax.call(codeName(p k.code) joinedWith(one(env) cArgs))
+            else
+                let fnPtr = types.closureFnPtrType(callee.type)
+                let clos = varAtom(p callee)
+                syntax.call("((" <> fnPtr <> ")(" <> clos <> "->fn))" joinedWith(one(clos <> "->env") cArgs))
+            end
+        end
+
+    let callOp(p: P o: nodes.OpCall): String =
+        begin
+            let descs = descriptors(p o.descriptors)
+            if maybe.isNone(:Variable o.callee) then
+                let r = maybe.unwrap(:nodes.ModuleRef o.moduleRef)
+                let member = maybe.unwrap(:String o.member)
+                if maybe.isSome(:nodes.Module moduleOf(r)) then
+                    callClosure(p memberOf(maybe.unwrap(:nodes.Module moduleOf(r)) member) descs o.args)
+                else
+                    let clean = symbols.mangleModuleName(maybe.unwrap(:nodes.Import importOf(r)).canonicalPath)
+                    syntax.call(symbols.mangleModuleIdent(clean member) joinedWith(descs atoms(p o.args)))
+                end
+            else
+                callClosure(p maybe.unwrap(:Variable o.callee) descs o.args)
+            end
+        end
+
+    let moduleMember(p: P r: nodes.ModuleRef member: maybe.T(String)): String =
+        case r
+            when refModule with x then
+                if maybe.isNone(:String member) then symbols.moduleRecordIdent(symbols.mangleModuleName(x.m.name))
+                else varAtom(p memberOf(x.m maybe.unwrap(:String member)))
+                end
+            when refImport with x then
+                let clean = symbols.mangleModuleName(x.i.canonicalPath)
+                let recordIdent = symbols.moduleRecordIdent(clean)
+                if maybe.isNone(:String member) then
+                    recordIdent
+                else
+                    if maybe.isNone(:Type x.i.recordType) then
+                        raise unsupported with "module " <> x.i.name <> ": its interface is unknown" end
+                    end
+                    let recType = maybe.unwrap(:Type x.i.recordType)
+                    let fieldName = maybe.unwrap(:String member)
+                    let fields = case recType.form
+                        when typeRecord with rt then rt.fields
+                        else vector.toArray(:model.RecordField vector.new(:model.RecordField))
+                    end
+                    let var fieldType = maybe.none(:Type)
+                    for i = 0 upto {extent fields - 1} do
+                        if maybe.isNone(:Type fieldType) andif eq(fields[i].name fieldName) then
+                            fieldType := maybe.some(:Type fields[i].type)
+                        end
+                    end
+                    let cField = slotCType(shapeOf(maybe.unwrap(:Type fieldType)))
+                    let dictType = types.offsetDictStructName(p.ctx recType)
+                    (* In its slot form (a record or variant, for a boxed
+                     * variable) *)
+                    "(*((" <> cField <> " *)((char *)" <> recordIdent <> ".val + ((const " <> dictType <> " *)"
+                        <> recordIdent
+                        <> ".dict)->offset_" <> fieldName <> ")))"
+                end
+        end
+
+    (* An external C function as a value: a static closure over a thunk
+     * calling it *)
+    let externalClosure(p: P symbol: String t: Type): String =
+        begin
+            let key = "external\n" <> symbol <> "\n" <> typeKey(t)
+            let found = hashMap.get(:String :String p.thunks key)
+            if maybe.isSome(:String found) then
+                "(&" <> maybe.unwrap(:String found) <> "_closure)"
+            else
+                let thunkName = freshName(p "qx_" <> removePrefix(symbols.mangleIdent(symbol) "qv_"))
+                put(:String :String p.thunks key thunkName)
+                let sig = declarations.funShapeSignature(t)
+                let saved = save(p)
+                let tp =
+                    thunkParams(p maybe.none(:Array(nodes.DescriptorParam)) vector.length(:maybe.T(Type) sig.bounds)
+                    sig.params)
+                let called = syntax.call(symbol tp.names)
+                let ret = if isOk(sig.result) then "void" else cType(sig.result) end
+                emit(p if eq(ret "void") then called <> ";" else "return " <> called <> ";" end)
+                thunk(p thunkName ret tp.decls joinedWith(one("(void)_raw_env;") voids(tp.descs)))
+                restore(p saved)
+                add(p.thunkDecls "static Q_UNUSED QClosure " <> thunkName <> "_closure = { (void *)" <> thunkName
+                    <> ", NULL };")
+                "(&" <> thunkName <> "_closure)"
+            end
+        end
+
+    let makeClosure(p: P o: nodes.OpMakeClosure): String =
+        begin
+            let code = codeName(p o.code)
+            if {extent o.captures is 0} andif {extent o.typeArgs is 0} then
+                "(&" <> code <> "_closure)"
+            else
+                let env = temp(p "struct QEnv_" <> code <> " *")
+                emit(p env <> " = (struct QEnv_" <> code <> " *)quest_alloc(sizeof(struct QEnv_" <> code <> "));")
+                for i = 0 upto {extent o.descriptors - 1} do
+                    emit(p env <> "->d" <> cInt(i) <> " = " <> descriptor(p o.descriptors[i]) <> ";")
+                end
+                for i = 0 upto {extent o.captures - 1} do
+                    let a = o.captures[i]
+                    let v = atomVar(a)
+                    let var isDeferred = false
+                    if maybe.isSome(:Deferred p.deferred) andif maybe.isSome(:Variable v) then
+                        let d = maybe.unwrap(:Deferred p.deferred)
+                        if hashMap.contains(:Int :Bool d.vars maybe.unwrap(:Variable v).id) then
+                            (* A variable of the let rec being made, which holds
+                             * its value once the let rec's body has run *)
+                            vector.append(:DeferredCapture d.captures tuple let env = env let index = i let a = a end)
+                            isDeferred := true
+                        end
+                    end
+                    if not(isDeferred) then emit(p env <> "->c" <> cInt(i) <> " = " <> atom(p a) <> ";") end
+                end
+                let clos = temp(p "QClosure *")
+                emit(p clos <> " = (QClosure *)quest_alloc(sizeof(QClosure));")
+                emit(p clos <> "->fn = (void *)" <> code <> ";")
+                emit(p clos <> "->env = (void *)" <> env <> ";")
+                clos
+            end
+        end
+
+    (* The thunk of a type application (and its environment's struct),
+     * converting its arguments and result by the plans the represent pass
+     * made, with the descriptors the describe pass gave them *)
+    let typeAppThunk(p: P origType: Type targetType: Type o: nodes.OpTypeApp): String =
+        begin
+            let typeArgKeys = vector.new(:String)
+            for i = 0 upto {extent o.typeArgs - 1} do add(typeArgKeys typeKey(o.typeArgs[i])) end
+            let key = "type_app\n" <> typeKey(origType) <> "\n" <> typeKey(targetType) <> "\n"
+                <> syntax.joined("\t" typeArgKeys)
+            let found = hashMap.get(:String :String p.thunks key)
+            if maybe.isSome(:String found) then
+                maybe.unwrap(:String found)
+            else
+                let thunkName = freshName(p "qa_type_app")
+                let envStruct = "QTypeAppEnv_" <> thunkName
+                put(:String :String p.thunks key thunkName)
+                let n = extent o.typeArgs
+                add(p.thunkDecls "typedef struct { QClosure *orig; const QTypeDescriptor *desc["
+                    <> cInt(if n > 1 then n else 1 end)
+                    <> "]; } " <> envStruct <> ";")
+                let origSig = declarations.funShapeSignature(origType)
+                let targetSig = declarations.funShapeSignature(targetType)
+                let saved = save(p)
+                let tp = thunkParams(p o.thunkParams 0 targetSig.params)
+                let args = vector.new(:String)
+                let count = vector.length(:String tp.names)
+                let planCount = extent o.plans - 1
+                for i = 0 upto {if count < planCount then count - 1 else planCount - 1 end} do
+                    let a = vector.get(:String tp.names i)
+                    let pl = o.plans[i]
+                    add(args if maybe.isNone(:nodes.Plan pl) then a else convert(p a maybe.unwrap(:nodes.Plan pl)) end)
+                end
+                let envDescs = vector.new(:String)
+                for i = 0 upto {n - 1} do add(envDescs "_env->desc[" <> cInt(i) <> "]") end
+                let callArgs = joinedWith(joinedWith(joinedWith(one("_env->orig->env") envDescs) tp.descs) args)
+                let fn = "((" <> types.closureFnPtrType(origType) <> ")(_env->orig->fn))"
+                finishThunkCall(p syntax.call(fn callArgs) origSig.result targetSig.result o.plans[extent o.plans - 1])
+                let ret = if isOk(targetSig.result) then "void" else cType(targetSig.result) end
+                thunk(p thunkName ret tp.decls
+                    joinedWith(one(envStruct <> " *_env = (" <> envStruct <> " *)_raw_env;") voids(tp.descs)))
+                restore(p saved)
+                thunkName
+            end
+        end
+
+    (* A polymorphic value applied to types: a closure binding the type
+     * arguments' descriptors (converting its arguments to the function's
+     * generic layouts and its result back), or, for a polymorphic value of no
+     * parameters, its value at the type arguments *)
+    let typeApp(p: P o: nodes.OpTypeApp result: Variable): String =
+        begin
+            let var origType = model.okType
+            let var clos = ""
+            if maybe.isSome(:Variable o.callee) then
+                origType := maybe.unwrap(:Variable o.callee).type
+                clos := varAtom(p maybe.unwrap(:Variable o.callee))
+            else
+                let r = maybe.unwrap(:nodes.ModuleRef o.moduleRef)
+                if maybe.isSome(:nodes.Module moduleOf(r)) then
+                    let member = memberOf(maybe.unwrap(:nodes.Module moduleOf(r)) maybe.unwrap(:String o.member))
+                    origType := member.type
+                    clos := varAtom(p member)
+                else
+                    origType := maybe.unwrap(:Type o.calleeType)
+                    clos := moduleMember(p r o.member)
+                end
+            end
+            let descs = descriptors(p o.descriptors)
+            if maybe.isNone(:Array(nodes.DescriptorParam) o.thunkParams) then
+                let isImport = maybe.isNone(:Variable o.callee)
+                    andif maybe.isSome(:nodes.Import importOf(maybe.unwrap(:nodes.ModuleRef o.moduleRef)))
+                let called = if isImport then
+                    let imp = maybe.unwrap(:nodes.Import importOf(maybe.unwrap(:nodes.ModuleRef o.moduleRef)))
+                    syntax.call(symbols.mangleModuleIdent(symbols.mangleModuleName(imp.canonicalPath)
+                        maybe.unwrap(:String o.member))
+                        descs)
+                else
+                    let fnPtr = types.closureFnPtrType(origType)
+                    syntax.call("((" <> fnPtr <> ")(" <> clos <> "->fn))" joinedWith(one(clos <> "->env") descs))
+                end
+                let pl = o.plans[0]
+                if maybe.isNone(:nodes.Plan pl) then called else convert(p called maybe.unwrap(:nodes.Plan pl)) end
+            else
+                let thunkName = typeAppThunk(p origType result.type o)
+                let envStruct = "QTypeAppEnv_" <> thunkName
+                let env = temp(p envStruct <> " *")
+                emit(p env <> " = (" <> envStruct <> " *)quest_alloc(sizeof(" <> envStruct <> "));")
+                emit(p env <> "->orig = " <> clos <> ";")
+                for i = 0 upto {vector.length(:String descs) - 1} do
+                    emit(p env <> "->desc[" <> cInt(i) <> "] = " <> vector.get(:String descs i) <> ";")
+                end
+                let c = temp(p "QClosure *")
+                emit(p c <> " = (QClosure *)quest_alloc(sizeof(QClosure));")
+                emit(p c <> "->fn = (void *)" <> thunkName <> ";")
+                emit(p c <> "->env = (void *)" <> env <> ";")
+                c
+            end
+        end
+
+    (* =========================================================================
+     * Operations
+     * ====================================================================== *)
+
+    let makeAuto(p: P witness: maybe.T(nodes.Descriptor) autoType: Type payloadAtom: Atom): String =
+        begin
+            let storedType = model.autoPayloadType(autoType maybe.none(:Type))
+            "quest_auto_new(" <> maybeDescriptor(p witness) <> ", "
+                <> types.shapeSlotToQval(atom(p payloadAtom) shapeOf(storedType))
+                <> ")"
+        end
+
+    let operation(p: P o: nodes.Op result: maybe.T(Variable)): String =
+        case o
+            when opAtom with x then atom(p x.atom)
+            when opPrim with x then prim(p x)
+            when opOrdinal with x then
+                (* The tag numbers the shape's cases, ordered by name; the
+                 * ordinal counts in the static type's order *)
+                let ts = tagShape(atomType(x.value))
+                let tag = tagOf(p atom(p x.value) ts x.access x.viewMap)
+                let var same = extent ts.cases is extent x.cases
+                let indices = array of(extent ts.cases 0)
+                for i = 0 upto {extent ts.cases - 1} do
+                    let caseName = maybe.unwrap(:String ts.cases[i].name)
+                    let var index = ~1
+                    for j = 0 upto {extent x.cases - 1} do if {index < 0}
+                        andif eq(x.cases[j] caseName) then index := j end end
+                    indices[i] := index
+                    if not(index is i) then same := false end
+                end
+                if same then tag else syntax.indexTable(indices) <> "[" <> tag <> "]" end
+            when opCall with x then callOp(p x)
+            when opModuleMember with x then moduleMember(p x.moduleRef x.member)
+            when opBuiltin with x then "(&" <> symbols.mangleIdent(x.name) <> "_closure)"
+            when opExternal with x then
+                if maybe.isSome(:Variable result) andif isFunction(maybe.unwrap(:Variable result).type) then
+                    externalClosure(p x.symbol maybe.unwrap(:Variable result).type)
+                else
+                    x.symbol
+                end
+            when opCallExternal with x then
+                syntax.call(x.symbol joinedWith(descriptors(p x.descriptors) atoms(p x.args)))
+            when opMakeClosure with x then makeClosure(p x)
+            when opEnvField with x then atomName(p x.env) <> "->c" <> cInt(x.index)
+            when opConvert with x then
+                let v = atomVar(x.value)
+                if eq(x.plan.kind "unbox") andif maybe.isSome(:Variable result)
+                    andif maybe.unwrap(:Variable result).boxed then
+                    (* A QVal word holds a record or variant as its box *)
+                    types.shapeQvalToSlot(atom(p x.value) shapeOf(x.plan.target))
+                elsif eq(x.plan.kind "box") andif maybe.isSome(:Variable v) andif maybe.unwrap(:Variable v).boxed
+                    andif not(maybe.unwrap(:Variable v).isMutable) then
+                    (* A box is a record's or variant's QVal word *)
+                    types.shapeSlotToQval(atom(p x.value) shapeOf(x.plan.source))
+                else
+                    convert(p atom(p x.value) x.plan)
+                end
+            when opMakeException with x then syntax.call("quest_alloc_exception" one(syntax.cString(x.name)))
+            when opExceptionPayload with x then
+                (* In its slot form (a record or variant, for a boxed
+                 * variable) *)
+                types.shapeQvalToSlot(atomName(p x.exc) <> ".payload" shapeOf(maybe.unwrap(:Variable result).type))
+            when opAddrVar with x then
+                if isPointerParam(p x.v) then name(p x.v)
+                elsif hashMap.contains(:Int :Bool p.fs.volatile x.v.id) then
+                    "((" <> locationCType(x.v.type) <> " *)&" <> name(p x.v) <> ")"
+                else "(&" <> name(p x.v) <> ")"
+                end
+            when opAddrCell with x then
+                let cell = temp(p locationCType(atomType(x.init)))
+                emit(p cell <> " = " <> atom(p x.init) <> ";")
+                "(&" <> cell <> ")"
+            when opLoad with x then "(*" <> atom(p x.address) <> ")"
+            when opAddrField with x then
+                let slot = recordSlot(p atom(p x.base) held(atomType(x.base) "record") x.name x.viewMap)
+                slotAddress(slot.ptr slot.shape)
+            when opAddrComponent with x then
+                if maybe.isSome(:Variable x.viewMap) then
+                    let component = componentShape(layout.resolvedShape(shapeOf(atomType(x.base))) x.index)
+                    let slot = "quest_view_tuple_slot(" <> atom(p x.base) <> ", "
+                        <> name(p maybe.unwrap(:Variable x.viewMap)) <> ", "
+                        <> cInt(x.index) <> ")"
+                    slotAddress("((" <> slotCType(component) <> " *)" <> slot <> ")" component)
+                else
+                    let ts = shapeOf(atomType(x.base))
+                    let component = componentShape(ts x.index)
+                    let b = atom(p x.base)
+                    let address = slotAddress("(&(" <> b <> "->_" <> cInt(x.index) <> "))" component)
+                    if eq(x.access nodes.direct) then
+                        address
+                    elsif eq(x.access nodes.original) then
+                        let unproxied = "((" <> cType(ts.type) <> ")quest_unproxy(" <> b <> "))"
+                        slotAddress("(&(" <> unproxied <> "->_" <> cInt(x.index) <> "))" component)
+                    else
+                        let through = "((" <> layout.shapeLocationRepresentation(component) <> " *)quest_proxy_slot("
+                            <> b <> ", "
+                            <> cInt(x.index) <> "))"
+                        "(quest_is_proxy(" <> b <> ") ? " <> through <> " : " <> address <> ")"
+                    end
+                end
+            when opAddrElement with x then arraySlot(p atom(p x.base) atom(p x.index) elementShape(x.base) x.offset)
+            when opMakeTuple with x then
+                let rs = shapeOf(maybe.unwrap(:Variable result).type)
+                let shapesOf = array of(extent rs.components rs)
+                for i = 0 upto {extent rs.components - 1} do shapesOf[i] := componentShape(rs i) end
+                makeTuple(p maybe.unwrap(:Variable result).type slotFields(p x.args shapesOf x.embedded))
+            when opTupleField with x then
+                if maybe.isSome(:Variable x.viewMap) then
+                    (* A tuple-bounded type parameter's value: through the view
+                     * map, converted to the bound's type *)
+                    let comp = componentShape(layout.resolvedShape(shapeOf(atomType(x.tup))) x.index)
+                    let element = syntax.call("quest_view_tuple_element"
+                        strings(array of atom(p x.tup) name(p maybe.unwrap(:Variable x.viewMap)) cInt(x.index) end))
+                    types.shapeQvalUnwrap(element comp)
+                else
+                    tupleComponent(p atom(p x.tup) shapeOf(atomType(x.tup)) x.index x.access)
+                end
+            when opMakeRecord with x then makeRecord(p x maybe.unwrap(:Variable result))
+            when opRecordField with x then
+                recordField(p atom(p x.recordAtom) held(atomType(x.recordAtom) "record") x.name x)
+            when opMakeVariant with x then
+                let vs = held(maybe.unwrap(:Variable result).type "variant")
+                let index = tagIndexOf(vs x.tag)
+                if maybe.isNone(:Atom x.payload) then
+                    "((QVariantVal){ .tag = " <> lit(index) <> ", .payload = Q_OK_VAL })"
+                else
+                    let pa = maybe.unwrap(:Atom x.payload)
+                    let cs = caseShape(vs x.tag)
+                    let caseS = if maybe.isSome(:Shape cs) then maybe.unwrap(:Shape cs) else shapeOf(atomType(pa)) end
+                    let word = types.shapeSlotToQval(atom(p pa) caseS)
+                    "((QVariantVal){ .tag = " <> lit(index) <> ", .payload = " <> word <> " })"
+                end
+            when opMakeOption with x then makeOption(p x maybe.unwrap(:Variable result).type)
+            when opIsTag with x then
+                let ts = tagShape(atomType(x.value))
+                let tagC = tagOf(p atom(p x.value) ts x.access x.viewMap)
+                "(" <> tagC <> " == " <> lit(tagIndexOf(ts x.tag)) <> ")"
+            when opPayload with x then payload(p x maybe.unwrap(:Variable result).type)
+            when opMakeArray with x then
+                let elem = shapes.element(shapeOf(maybe.unwrap(:Variable result).type))
+                let elements = vector.new(:String)
+                for i = 0 upto {extent x.args - 1} do add(elements arrayElement(p x.args[i] elem)) end
+                makeArray(p elements maybe.unwrap(:Variable result).type)
+            when opArrayRep with x then
+                let n = "quest_check_array_count_at(" <> atom(p x.count) <> ", " <> site(p x.offset) <> ")"
+                "quest_array_new(" <> n <> ", "
+                    <> arrayElement(p x.init shapes.element(shapeOf(maybe.unwrap(:Variable result).type)))
+                    <> ")"
+            when opTypeApp with x then typeApp(p x maybe.unwrap(:Variable result))
+            when opMakeAuto with x then makeAuto(p x.descriptor x.autoType x.payload)
+            when opIndex with x then
+                let arr = atom(p x.arr)
+                let idx = atom(p x.index)
+                emit(p "quest_check_array_bounds_at(" <> arr <> ", " <> idx <> ", " <> site(p x.offset) <> ");")
+                (* In its slot form (a record or variant, for a boxed
+                 * variable) *)
+                types.shapeQvalToSlot("(" <> arr <> "->data[" <> idx <> "])" elementShape(x.arr))
+        end
+
+    (* =========================================================================
+     * Statements
+     * ====================================================================== *)
+
+    (* Assigns a variable (a boxed one, its box: a var or out parameter's
+     * location, or a boxed mutable variable's own) *)
+    let assign(p: P v: Variable value: String): Ok =
+        if isOk(v.type) then
+            if not(eq(value "Q_OK_VAL")) then emit(p "(void)(" <> value <> ");") end
+        else
+            let pointer = v.isMutable andif isPointerParam(p v)
+            let target = if pointer then "(*" <> name(p v) <> ")" else name(p v) end
+            emit(p target <> " = " <> value <> ";")
+        end
+
+    (* Pops the try handlers entered since depth, for a jump out of them *)
+    let leaveTo(p: P depth: Int): Ok =
+        if vector.length(:String p.fs.handlers) > depth then
+            emit(p "quest_current_exception_handler = " <> vector.get(:String p.fs.handlers depth) <> ".prev;")
+        end
+
+    (* Records in a try's handler what it catches (docs/exceptions.md section
+     * 5.1) *)
+    let emitCatches(p: P handler: String catching: String catches: Array(Atom)): Ok =
+        if eq(catching nodes.catchAll) then
+            emit(p handler <> ".catches = NULL;")
+            emit(p handler <> ".n_catches = Q_CATCH_ALL;")
+        elsif eq(catching nodes.catchUnknown) then
+            emit(p handler <> ".catches = NULL;")
+            emit(p handler <> ".n_catches = Q_CATCH_UNKNOWN;")
+        else
+            let catchArray = freshName(p "_qc")
+            emit(p "const QException *" <> catchArray <> "[] = { " <> syntax.comma(atoms(p catches)) <> " };")
+            emit(p handler <> ".catches = " <> catchArray <> ";")
+            emit(p handler <> ".n_catches = " <> cInt(extent catches) <> ";")
+        end
+
+    (* Prints a top-level phrase's value as the interpreter does: by its type's
+     * kind, or by the descriptor the describe pass gave it. The value is in
+     * its slot form, its QVal word. *)
+    let echo(p: P prefix: String value: String t: Type d: maybe.T(nodes.Descriptor) suffix: String): Ok =
+        begin
+            let wrapped = types.shapeSlotToQval(value shapeOf(t))
+            let kind = describe.echoValueKind(t)
+            if stringOp.length(kind) > 0 then
+                emit(p syntax.call("quest_print_value"
+                    strings(array of syntax.cString(prefix) wrapped syntax.cString(kind) syntax.cString(suffix) end))
+                        <> ";")
+            else
+                emit(p syntax.call("quest_print_typed"
+                    strings(array of syntax.cString(prefix) wrapped maybeDescriptor(p d) syntax.cString(suffix) end))
+                        <> ";")
+            end
+        end
+
+    (* The components S[T] of an auto value, converted by descriptor from the
+     * stored ones as the case's arm says, by the descriptors the describe pass
+     * gave the arm *)
+    let autoArmConverted(p: P arm: nodes.InspectArm stored: String storedType: Type armType: Type): String =
+        begin
+            let armStruct = layout.tupleStructName(armType)
+            let a = temp(p armStruct <> " *")
+            emit(p a <> " = (" <> armStruct <> " *)quest_alloc(sizeof(" <> armStruct <> "));")
+            let storedFields = case storedType.form
+                when typeTuple with x then model.tupleValueFields(x.fields)
+                else vector.toArray(:model.ValueField vector.new(:model.ValueField))
+            end
+            let armFields = case armType.form
+                when typeTuple with x then model.tupleValueFields(x.fields)
+                else vector.toArray(:model.ValueField vector.new(:model.ValueField))
+            end
+            let var n = extent arm.descriptors
+            if extent storedFields < n then n := extent storedFields end
+            if extent armFields < n then n := extent armFields end
+            for i = 0 upto {n - 1} do
+                let src = stored <> "->_" <> cInt(i)
+                let pair = arm.descriptors[i]
+                if maybe.isNone(:nodes.DescriptorPair pair) then
+                    emit(p a <> "->_" <> cInt(i) <> " = " <> src <> ";")
+                else
+                    let pr = maybe.unwrap(:nodes.DescriptorPair pair)
+                    let fromDesc = descriptor(p pr.source)
+                    let toDesc = descriptor(p pr.target)
+                    let viewed = "quest_convert(" <> types.shapeSlotToQval(src shapeOf(storedFields[i].type)) <> ", "
+                        <> fromDesc
+                        <> ", " <> toDesc <> ")"
+                    emit(p a <> "->_" <> cInt(i) <> " = " <> types.shapeQvalToSlot(viewed shapeOf(armFields[i].type))
+                        <> ";")
+                end
+            end
+            a
+        end
+
+    let rec statement(p: P s: nodes.Stmt): Ok =
+        case s
+            when sLet with x then
+                case x.value when opMakeClosure with c then
+                    put(:Int :nodes.OpMakeClosure p.closures x.v.id c) else ok end
+                assign(p x.v operation(p x.value maybe.some(:Variable x.v)))
+            when sDo with x then
+                let c = operation(p x.value maybe.none(:Variable))
+                emit(p c <> ";")
+            when sVarDecl with x then
+                if maybe.isSome(:Atom x.init) then assign(p x.v atom(p maybe.unwrap(:Atom x.init))) end
+            when sAssign with x then assign(p x.v atom(p x.value))
+            when sStoreAt with x then emit(p "*" <> atom(p x.address) <> " = " <> atom(p x.value) <> ";")
+            when sStoreField with x then
+                let slot = recordSlot(p atom(p x.base) held(atomType(x.base) "record") x.name x.viewMap)
+                emit(p "*" <> slot.ptr <> " = " <> atom(p x.value) <> ";")
+            when sStoreComponent with x then
+                if maybe.isSome(:Variable x.viewMap) then
+                    let component = componentShape(layout.resolvedShape(shapeOf(atomType(x.base))) x.index)
+                    let slot = "quest_view_tuple_slot(" <> atom(p x.base) <> ", "
+                        <> name(p maybe.unwrap(:Variable x.viewMap)) <> ", "
+                        <> cInt(x.index) <> ")"
+                    emit(p "*((" <> slotCType(component) <> " *)" <> slot <> ") = " <> atom(p x.value) <> ";")
+                else
+                    let ts = shapeOf(atomType(x.base))
+                    let component = componentShape(ts x.index)
+                    let b = atom(p x.base)
+                    let v = atom(p x.value)
+                    if eq(x.access nodes.original) then
+                        (* Stored into the original as it is *)
+                        emit(p "((" <> cType(ts.type) <> ")quest_unproxy(" <> b <> "))->_" <> cInt(x.index) <> " = "
+                            <> v <> ";")
+                    elsif eq(x.access nodes.proxy) then
+                        (* A var component of a proxy is the original's *)
+                        emit(p "if (quest_is_proxy(" <> b <> ")) quest_proxy_store(" <> b <> ", " <> cInt(x.index)
+                            <> ", "
+                            <> types.shapeSlotToQval(v component) <> ");")
+                        emit(p "else " <> b <> "->_" <> cInt(x.index) <> " = " <> v <> ";")
+                    else
+                        emit(p b <> "->_" <> cInt(x.index) <> " = " <> v <> ";")
+                    end
+                end
+            when sStoreElement with x then
+                let arr = atom(p x.base)
+                let idx = atom(p x.index)
+                let elem = elementShape(x.base)
+                emit(p "quest_check_array_bounds_at(" <> arr <> ", " <> idx <> ", " <> site(p x.offset) <> ");")
+                emit(p arr <> "->data[" <> idx <> "] = " <> arrayElement(p x.value elem) <> ";")
+            when sSwitch with x then switch(p x)
+            when sInspect with x then inspectAuto(p x)
+            when sLetRec with x then
+                let saved = p.deferred
+                let vars = hashMap.new(:Int :Bool intEqual hash.int)
+                for i = 0 upto {extent x.vars - 1} do put(:Int :Bool vars x.vars[i].id true) end
+                let d = tuple let vars = vars let captures = vector.new(:DeferredCapture) end
+                p.deferred := maybe.some(:Deferred d)
+                body(p x.body)
+                for i = 0 upto {vector.length(:DeferredCapture d.captures) - 1} do
+                    let c = vector.get(:DeferredCapture d.captures i)
+                    emit(p c.env <> "->c" <> cInt(c.index) <> " = " <> atom(p c.a) <> ";")
+                end
+                p.deferred := saved
+            when sIf with x then
+                emit(p "if (" <> atom(p x.cond) <> ") {")
+                block(p x.thenBody)
+                if not(vector.empty(:nodes.Stmt x.elseBody.statements)) then
+                    emit(p "} else {")
+                    block(p x.elseBody)
+                end
+                emit(p "}")
+            when sLoop with x then
+                put(:String :Int p.fs.labelDepth x.label vector.length(:String p.fs.handlers))
+                emit(p "for (;;) {")
+                block(p x.body)
+                if hashMap.contains(:String :Bool p.fs.usedLabels x.label <> "_continue") then
+                    emit(p "    " <> x.label <> "_continue:;")
+                end
+                emit(p "}")
+                if hashMap.contains(:String :Bool p.fs.usedLabels x.label <> "_break") then emit(p x.label
+                    <> "_break:;") end
+            when sBreak with x then jumpOut(p x.label "break")
+            when sContinue with x then jumpOut(p x.label "continue")
+            when sJoin with x then
+                (* Labels are unique within a function (a clone keeps its
+                 * original's) *)
+                put(:String :Array(Variable) p.fs.joinParams x.label x.params)
+                put(:String :Int p.fs.labelDepth x.label vector.length(:String p.fs.handlers))
+                emit(p "{")
+                block(p x.body)
+                emit(p "}")
+                let finish = x.label <> "_end"
+                if not(nodes.terminated(x.body)) then
+                    put(:String :Bool p.fs.usedLabels finish true)
+                    emit(p "goto " <> finish <> ";")
+                end
+                emit(p x.label <> ":;")
+                emit(p "{")
+                block(p x.continuation)
+                emit(p "}")
+                if hashMap.contains(:String :Bool p.fs.usedLabels finish) then emit(p finish <> ":;") end
+            when sJump with x then
+                let params = hashMap.find(:String :Array(Variable) p.fs.joinParams x.label)
+                let n = if extent params < extent x.args then extent params else extent x.args end
+                for i = 0 upto {n - 1} do assign(p params[i] atom(p x.args[i])) end
+                leaveTo(p hashMap.find(:String :Int p.fs.labelDepth x.label))
+                emit(p "goto " <> x.label <> ";")
+            when sTry with x then
+                let h = freshName(p "_qh")
+                emit(p "{")
+                p.indent := p.indent + 1
+                emit(p "QExceptionHandler " <> h <> ";")
+                emit(p h <> ".prev = quest_current_exception_handler;")
+                emitCatches(p h x.catching x.catches)
+                emit(p "quest_current_exception_handler = &" <> h <> ";")
+                emit(p "if (setjmp(" <> h <> ".env_jmp) == 0) {")
+                add(p.fs.handlers h)
+                block(p x.body)
+                vector.pop(:String p.fs.handlers)
+                if not(nodes.terminated(x.body)) then emit(p "    quest_current_exception_handler = " <> h
+                    <> ".prev;") end
+                emit(p "} else {")
+                emit(p "    quest_current_exception_handler = " <> h <> ".prev;")
+                emit(p "    " <> name(p x.exc) <> " = quest_current_exception;")
+                block(p x.handler)
+                emit(p "}")
+                p.indent := p.indent - 1
+                emit(p "}")
+            when sReturn with x then
+                leaveTo(p 0)
+                if maybe.isSome(:nodes.Function p.fs.function)
+                    andif isOk(maybe.unwrap(:nodes.Function p.fs.function).resultType) then
+                    emit(p "return;")
+                else
+                    emit(p "return " <> atom(p x.value) <> ";")
+                end
+            when sRaise with x then
+                let pl = if maybe.isNone(:Atom x.payload) then "Q_OK_VAL"
+                    else types.shapeSlotToQval(atom(p maybe.unwrap(:Atom x.payload))
+                        shapeOf(atomType(maybe.unwrap(:Atom x.payload))))
+                end
+                emit(p "quest_raise_at(" <> atom(p x.exc) <> ", " <> pl <> ", " <> site(p x.offset) <> ");")
+            when sReraise with x then emit(p "quest_reraise(" <> name(p x.exc) <> ");")
+            when sUnreachable then emit(p "abort();")
+            when sEcho with x then
+                let value = atom(p x.value)
+                echo(p x.prefix value x.type x.descriptor
+                    if stringOp.length(x.prefix) > 0 then "" else " : " <> layout.qtypeToNameStr(x.type) end)
+            when sEchoText with x then emit(p syntax.call("puts" one(syntax.cString(x.text))) <> ";")
+            when sFuns then raise unsupported with "C printing of Funs" end
+        end
+
+    and jumpOut(p: P label: String which: String): Ok =
+        begin
+            leaveTo(p hashMap.find(:String :Int p.fs.labelDepth label))
+            put(:String :Bool p.fs.usedLabels label <> "_" <> which true)
+            emit(p "goto " <> label <> "_" <> which <> ";")
+        end
+
+    and body(p: P b: nodes.Body): Ok =
+        begin
+            for i = 0 upto {vector.length(:nodes.Stmt b.statements) - 1} do
+                statement(p vector.get(:nodes.Stmt b.statements i)) end
+            ok
+        end
+
+    and block(p: P b: nodes.Body): Ok =
+        begin
+            p.indent := p.indent + 1
+            body(p b)
+            p.indent := p.indent - 1
+            ok
+        end
+
+    and switch(p: P x: nodes.StmtSwitch): Ok =
+        begin
+            let v = atom(p x.value)
+            let t = tagShape(atomType(x.value))
+            let isVariant = eq(t.kind "variant")
+            emit(p "switch (" <> tagOf(p v t x.access x.viewMap) <> ") {")
+            p.indent := p.indent + 1
+            for ci = 0 upto {extent x.cases - 1} do
+                let c = x.cases[ci]
+                for ti = 0 upto {extent c.tags - 1} do emit(p "case " <> lit(tagIndexOf(t c.tags[ti])) <> ":") end
+                emit(p "{")
+                p.indent := p.indent + 1
+                if maybe.isSome(:Variable c.binder) andif not(isOk(maybe.unwrap(:Variable c.binder).type)) then
+                    let binder = maybe.unwrap(:Variable c.binder)
+                    let binderKind = shapeOf(binder.type).kind
+                    if maybe.isSome(:Variable x.viewMap) andif not(isVariant) andif eq(binderKind "tuple") then
+                        (* A bounded type parameter's value: its payload, viewed
+                         * at the bound's payload type *)
+                        cType(binder.type)
+                        let struct = layout.shapeTag(shapeOf(binder.type))
+                        assign(p binder "((" <> struct <> " *)quest_view_option_payload(" <> v <> ", "
+                            <> name(p maybe.unwrap(:Variable x.viewMap)) <> "))")
+                    elsif maybe.isSome(:Variable x.viewMap) then
+                        (* A bounded type parameter's value: its payload read
+                         * through the view map, converted *)
+                        assign(p binder viewPayload(p v t c.tags[0] maybe.unwrap(:Variable x.viewMap) binder.type))
+                    elsif isVariant then
+                        (* In its slot form (a record or variant, for a boxed
+                         * variable) *)
+                        assign(p binder types.shapeQvalToSlot(v <> ".payload" shapeOf(binder.type)))
+                    elsif eq(binderKind "tuple") then
+                        assign(p binder optionCasePayload(v binder.type x.access c.components))
+                    else
+                        (* In its slot form (a record or variant, for a boxed
+                         * variable) *)
+                        assign(p binder optionComponent(p v t c.tags[0] maybe.none(:Int) c.components[0]))
+                    end
+                end
+                body(p c.body)
+                emit(p "break;")
+                p.indent := p.indent - 1
+                emit(p "}")
+            end
+            emit(p "default: {")
+            if maybe.isSome(:nodes.Body x.elseBody) then block(p maybe.unwrap(:nodes.Body x.elseBody))
+            else emit(p "    quest_raise_variant_error();")
+            end
+            emit(p "    break;")
+            emit(p "}")
+            p.indent := p.indent - 1
+            emit(p "}")
+        end
+
+    and inspectAuto(p: P x: nodes.StmtInspect): Ok =
+        begin
+            let autoType = maybe.unwrap(:Type x.autoType)
+            let storedType = model.autoPayloadType(autoType maybe.none(:Type))
+            let storedStruct = layout.tupleStructName(storedType)
+            let tgt = temp(p "const QAuto *")
+            emit(p tgt <> " = " <> atom(p x.value) <> ";")
+            if maybe.isSome(:nodes.DescriptorParam x.witness) then
+                (* The value's type component, the descriptor variable the arms'
+                 * descriptors use *)
+                put(:Int :String p.names maybe.unwrap(:nodes.DescriptorParam x.witness).v.id tgt <> "->type_desc")
+            end
+            let stored = temp(p storedStruct <> " *")
+            emit(p stored <> " = (" <> storedStruct <> " *)" <> tgt <> "->payload.p;")
+            for i = 0 upto {extent x.cases - 1} do
+                let c = x.cases[i]
+                let matchDesc = maybeDescriptor(p c.descriptor)
+                let var cond = "quest_is_subtype(" <> tgt <> "->type_desc, " <> matchDesc <> ")"
+                if c.exact then cond := cond <> " && quest_is_subtype(" <> matchDesc <> ", " <> tgt
+                    <> "->type_desc)" end
+                emit(p if i is 0 then "if" else "} else if" end <> " (" <> cond <> ") {")
+                p.indent := p.indent + 1
+                if extent c.binders > 0 then
+                    let arm = maybe.unwrap(:nodes.InspectArm c.arm)
+                    let armType = model.autoPayloadType(autoType maybe.some(:Type c.matchType))
+                    let var a = ""
+                    if arm.exact then
+                        let armStruct = layout.tupleStructName(armType)
+                        a := temp(p armStruct <> " *")
+                        emit(p "if (quest_layout_equivalent(" <> tgt <> "->type_desc, " <> matchDesc <> ")) {")
+                        if arm.shared then
+                            (* The binders share the stored components (and so
+                             * see updates of var components) *)
+                            emit(p "    " <> a <> " = (" <> armStruct <> " *)" <> stored <> ";")
+                        else
+                            p.indent := p.indent + 1
+                            let converted = if maybe.isNone(:nodes.Plan arm.plan) then stored
+                                else convert(p stored maybe.unwrap(:nodes.Plan arm.plan))
+                            end
+                            emit(p a <> " = " <> converted <> ";")
+                            p.indent := p.indent - 1
+                        end
+                        emit(p "} else {")
+                        p.indent := p.indent + 1
+                        if arm.layoutError then
+                            emit(p "quest_layout_conversion_error(" <> tgt <> "->type_desc, " <> matchDesc <> ");")
+                        end
+                        let converted = autoArmConverted(p arm stored storedType armType)
+                        emit(p a <> " = " <> converted <> ";")
+                        p.indent := p.indent - 1
+                        emit(p "}")
+                    else
+                        a := autoArmConverted(p arm stored storedType armType)
+                    end
+                    for j = 0 upto {extent c.binders - 1} do assign(p c.binders[j] a) end
+                end
+                body(p c.body)
+                p.indent := p.indent - 1
+            end
+            if extent x.cases > 0 then
+                emit(p "} else {")
+                p.indent := p.indent + 1
+            end
+            if maybe.isSome(:nodes.Body x.elseBody) then body(p maybe.unwrap(:nodes.Body x.elseBody))
+            else emit(p "quest_raise_dynamic_error_at(" <> site(p x.offset) <> ");")
+            end
+            if extent x.cases > 0 then
+                p.indent := p.indent - 1
+                emit(p "}")
+            end
+            ok
+        end
+
+    (* =========================================================================
+     * Functions
+     * ====================================================================== *)
+
+    (* The C declarations of the variables a function (or a top level) binds,
+     * but for exclude's *)
+    let declareLocals(p: P b: nodes.Body exclude: hashMap.T(Int Bool)): vector.T(Local) =
+        begin
+            let decls = vector.new(:Local)
+            let seen = hashMap.new(:Int :Bool intEqual hash.int)
+            let statements = walk.walkStatements(b false)
+            for i = 0 upto {vector.length(:nodes.Stmt statements) - 1} do
+                let s = vector.get(:nodes.Stmt statements i)
+                case s when sTry with x then put(:Int :Bool p.handlerVars x.exc.id true) else ok end
+                let binders = walk.statementBinders(s)
+                for j = 0 upto {extent binders - 1} do
+                    let v = binders[j]
+                    (* A let rec's variable is bound by the let rec and by the
+                     * let in it that computes its value *)
+                    if not(hashMap.contains(:Int :Bool seen v.id)) andif not(hashMap.contains(:Int :Bool exclude v.id))
+                        andif not(isOk(v.type)) then
+                        put(:Int :Bool seen v.id true)
+                        let c = varCType(p v)
+                        let typed = if hashMap.contains(:Int :Bool p.fs.volatile v.id) then c <> " volatile" else c end
+                        vector.append(:Local decls tuple let cType = typed let name = name(p v) end)
+                    end
+                end
+            end
+            decls
+        end
+
+    (* The variables a try body assigns, which C must declare volatile for the
+     * handler to read them after longjmp *)
+    let volatileVars(b: nodes.Body): hashMap.T(Int Bool) =
+        begin
+            let found = hashMap.new(:Int :Bool intEqual hash.int)
+            let statements = walk.walkStatements(b false)
+            for i = 0 upto {vector.length(:nodes.Stmt statements) - 1} do
+                case vector.get(:nodes.Stmt statements i)
+                    when sTry with x then
+                        let inner = walk.walkStatements(x.body false)
+                        for j = 0 upto {vector.length(:nodes.Stmt inner) - 1} do
+                            case vector.get(:nodes.Stmt inner j)
+                                when sAssign with y then put(:Int :Bool found y.v.id true)
+                                else ok
+                            end
+                        end
+                    else ok
+                end
+            end
+            found
+        end
+
+    let functionSignature(p: P f: nodes.Function): String =
+        begin
+            let count = typeParameterCount(f.v.type)
+            let params = vector.new(:String)
+            add(params "void *_raw_env")
+            if count > 0 then
+                let n = extent f.descriptorParams
+                for i = n - count upto {n - 1} do
+                    add(params "const QTypeDescriptor *" <> name(p f.descriptorParams[i].v))
+                end
+            end
+            for i = 0 upto {extent f.params - 1} do
+                let entry = f.params[i]
+                if not(eq(entry.mode "value")) then
+                    add(params locationCType(entry.v.type) <> " *" <> name(p entry.v))
+                else
+                    let c = if isOk(entry.v.type) then "QVal" else cType(entry.v.type) end
+                    add(params c <> " " <> name(p entry.v))
+                end
+            end
+            let ret = if isOk(f.resultType) then "void" else cType(f.resultType) end
+            "static Q_UNUSED " <> ret <> " " <> syntax.call(codeName(p f) params)
+        end
+
+    let function(p: P f: nodes.Function): Lines =
+        begin
+            p.fs := newFnState(maybe.some(:nodes.Function f))
+            p.fs.volatile := volatileVars(f.body)
+            let nCaptured = extent f.typeParams - typeParameterCount(f.v.type)
+            let signature = functionSignature(p f)
+            let prologue = vector.new(:String)
+            for i = nCaptured upto {extent f.descriptorParams - 1} do
+                add(prologue "(void)" <> name(p f.descriptorParams[i].v) <> ";")
+            end
+            if maybe.isSome(:Variable f.env) then
+                let envStruct = "struct QEnv_" <> codeName(p f)
+                let envName = name(p maybe.unwrap(:Variable f.env))
+                add(prologue envStruct <> " *" <> envName <> " = (" <> envStruct <> " *)_raw_env;")
+                (* The descriptors of the type parameters its closure
+                 * supplies *)
+                for i = 0 upto {nCaptured - 1} do
+                    let d = name(p f.descriptorParams[i].v)
+                    add(prologue "const QTypeDescriptor *" <> d <> " = " <> name(p maybe.unwrap(:Variable f.env))
+                        <> "->d" <> cInt(i)
+                        <> ";")
+                    add(prologue "(void)" <> d <> ";")
+                end
+            else
+                add(prologue "(void)_raw_env;")
+            end
+            for i = 0 upto {extent f.viewMaps - 1} do
+                (* The view maps of type parameters whose values the body reads
+                 * through their bounds *)
+                let m = f.viewMaps[i]
+                add(prologue "const QViewMap *" <> name(p m.v) <> " = quest_view_map(" <> name(p m.descriptor) <> ", "
+                    <> descriptor(p m.bound) <> ");")
+            end
+            let exclude = hashMap.new(:Int :Bool intEqual hash.int)
+            for i = 0 upto {extent f.params - 1} do put(:Int :Bool exclude f.params[i].v.id true) end
+            let decls = declareLocals(p f.body exclude)
+            p.lines := vector.new(:String)
+            p.indent := 1
+            body(p f.body)
+            let bodyLines = p.lines
+            let res = vector.new(:String)
+            add(res signature <> " {")
+            for i = 0 upto {vector.length(:String prologue) - 1} do add(res "    "
+                <> vector.get(:String prologue i)) end
+            for i = 0 upto {vector.length(:Local decls) - 1} do
+                let l = vector.get(:Local decls i)
+                add(res "    " <> l.cType <> " " <> l.name <> ";")
+            end
+            for i = 0 upto {vector.length(:Local p.fs.locals) - 1} do
+                let l = vector.get(:Local p.fs.locals i)
+                add(res "    " <> l.cType <> " " <> l.name <> ";")
+            end
+            addAll(res bodyLines)
+            add(res "}")
+            add(res "")
+            res
+        end
+
+    let envStruct(p: P f: nodes.Function closure: nodes.OpMakeClosure): Lines =
+        begin
+            let lines = vector.new(:String)
+            add(lines "struct QEnv_" <> codeName(p f) <> " {")
+            for i = 0 upto {extent closure.typeArgs - 1} do add(lines "    const QTypeDescriptor *d" <> cInt(i)
+                <> ";") end
+            for i = 0 upto {extent closure.captures - 1} do
+                add(lines "    " <> cType(atomType(closure.captures[i])) <> " c" <> cInt(i) <> ";")
+            end
+            if {extent closure.typeArgs is 0}
+                andif {extent closure.captures is 0} then add(lines "    char _unused;") end
+            add(lines "};")
+            lines
+        end
+
+    (* =========================================================================
+     * The unit
+     * ====================================================================== *)
+
+    (* A top level's local declarations (its variables bound in loops) and its
+     * statements *)
+    Let TopLevel = Tuple decls: vector.T(Local) lines: Lines end
+    let topLevel(p: P b: nodes.Body): TopLevel =
+        begin
+            p.fs := newFnState(maybe.none(:nodes.Function))
+            p.fs.volatile := volatileVars(b)
+            let decls = declareLocals(p b p.globals)
+            p.lines := vector.new(:String)
+            p.indent := 1
+            body(p b)
+            let all = vector.copy(:Local decls)
+            for i = 0 upto {vector.length(:Local p.fs.locals) - 1} do
+                vector.append(:Local all vector.get(:Local p.fs.locals i)) end
+            tuple let decls = all let lines = p.lines end
+        end
+
+    let staticData(p: P): nodes.StaticData = maybe.unwrap(:nodes.StaticData p.unit.staticData)
+
+    (* The declarations of the types the unit uses: structs, offset tables,
+     * descriptors, and adapters *)
+    let declarationLines(p: P): Lines =
+        begin
+            let data = staticData(p)
+            let e = declarations.newEmitter(p.ctx)
+            p.emitter := maybe.some(:declarations.Emitter e)
+            (* The aggregates of the types the describe pass listed *)
+            let aggregates = declarations.collectAggregateTypes(vector.toArray(:Type data.types) p.ctx).aggregates
+            (* The static tables the unit's operations refer to, by their C
+             * names *)
+            let ctx = maybe.some(:types.RecordNaming p.ctx)
+            let tableKeys = vector.new(:String)
+            let tables = hashMap.new(:String :declarations.Pair eq hash.string)
+            for i = 0 upto {vector.length(:nodes.OffsetTable data.offsetTables) - 1} do
+                let t = vector.get(:nodes.OffsetTable data.offsetTables i)
+                let key = types.recordStructName(t.view ctx) <> "\n" <> types.recordStructName(t.layout ctx)
+                if not(hashMap.contains(:String :declarations.Pair tables key)) then add(tableKeys key) end
+                put(:String :declarations.Pair tables key tuple let target = t.view let source = t.layout end)
+            end
+            let mapKeys = vector.new(:String)
+            let maps = hashMap.new(:String :declarations.Pair eq hash.string)
+            for i = 0 upto {vector.length(:nodes.TagMap data.tagMaps) - 1} do
+                let t = vector.get(:nodes.TagMap data.tagMaps i)
+                let key = layout.typeTag(t.target) <> "\n" <> layout.typeTag(t.source)
+                if not(hashMap.contains(:String :declarations.Pair maps key)) then add(mapKeys key) end
+                put(:String :declarations.Pair maps key tuple let target = t.target let source = t.source end)
+            end
+            let valuesOf(keys: vector.T(String) m: hashMap.T(String declarations.Pair)): vector.T(declarations.Pair) =
+                begin
+                    let res = vector.new(:declarations.Pair)
+                    for i = 0 upto {vector.length(:String keys) - 1} do
+                        vector.append(:declarations.Pair res
+                            hashMap.find(:String :declarations.Pair m vector.get(:String keys i)))
+                    end
+                    res
+                end
+            let plain = vector.new(:Type)
+            let echoed = vector.new(:Type)
+            for i = 0 upto {vector.length(:nodes.StaticDescriptor data.descriptors) - 1} do
+                let d = vector.get(:nodes.StaticDescriptor data.descriptors i)
+                vector.append(:Type if d.echo then echoed else plain end d.type)
+            end
+            let structNames = vector.new(:String)
+            for i = 0 upto {vector.length(:declarations.Aggregate aggregates) - 1} do
+                add(structNames vector.get(:declarations.Aggregate aggregates i).name)
+            end
+            let lines = vector.new(:String)
+            addAll(lines declarations.emitForwardTypedefs(e aggregates))
+            addAll(lines declarations.emitAggregateStructs(e aggregates))
+            addAll(lines declarations.emitEvidenceDictionaries(e aggregates valuesOf(tableKeys tables)))
+            addAll(lines
+                declarations.emitCoercionTables(e valuesOf(p.tupleCastKeys p.tupleCasts) valuesOf(mapKeys maps)))
+            let static(t: Type): String = staticDescriptor(p t)
+            addAll(lines declarations.emitTypeDescriptors(e plain static echoed structNames))
+            addAll(lines declarations.emitFunTypeAdapters(e e.emittedFunTypes))
+            lines
+        end
+
+    let importDeclarations(p: P): Lines =
+        begin
+            let imports = vector.new(:nodes.Import)
+            let seen = hashMap.new(:String :Bool eq hash.string)
+            for i = 0 upto {extent p.unit.imports - 1} do
+                let imp = p.unit.imports[i]
+                if not(hashMap.contains(:String :Bool seen imp.canonicalPath)) then
+                    put(:String :Bool seen imp.canonicalPath true)
+                    vector.append(:nodes.Import imports imp)
+                end
+            end
+            let lines = vector.new(:String)
+            let records = vector.new(:declarations.ModuleRecord)
+            for i = 0 upto {vector.length(:nodes.Import imports) - 1} do
+                let imp = vector.get(:nodes.Import imports i)
+                let clean = symbols.mangleModuleName(imp.canonicalPath)
+                add(lines "extern QRecordVal " <> symbols.moduleRecordIdent(clean) <> ";")
+                add(lines "extern void qv_mod_" <> clean <> "_init(void);")
+                vector.append(:declarations.ModuleRecord records
+                    tuple let name = imp.canonicalPath let recordType = imp.recordType end)
+            end
+            addAll(lines
+                declarations.emitPrecompiledModuleDeclarations(maybe.unwrap(:declarations.Emitter p.emitter) records))
+            lines
+        end
+
+    Let GlobalDecl = Tuple name: String cType: String end
+    let globalDeclarations(p: P): vector.T(GlobalDecl) =
+        begin
+            let found = vector.new(:GlobalDecl)
+            let seen = hashMap.new(:Int :Bool intEqual hash.int)
+            let bodies = vector.new(:nodes.Body)
+            vector.append(:nodes.Body bodies p.unit.main)
+            for i = 0 upto {vector.length(:nodes.Module p.unit.modules) - 1} do
+                vector.append(:nodes.Body bodies vector.get(:nodes.Module p.unit.modules i).init)
+            end
+            for b = 0 upto {vector.length(:nodes.Body bodies) - 1} do
+                let statements = walk.walkStatements(vector.get(:nodes.Body bodies b) false)
+                for i = 0 upto {vector.length(:nodes.Stmt statements) - 1} do
+                    let binders = walk.statementBinders(vector.get(:nodes.Stmt statements i))
+                    for j = 0 upto {extent binders - 1} do
+                        let v = binders[j]
+                        if hashMap.contains(:Int :Bool p.globals v.id) andif not(hashMap.contains(:Int :Bool seen v.id))
+                            andif not(isOk(v.type)) then
+                            put(:Int :Bool seen v.id true)
+                            vector.append(:GlobalDecl found tuple let name = name(p v) let cType = varCType(p v) end)
+                        end
+                    end
+                end
+            end
+            found
+        end
+
+    let isModuleFile(p: P): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {vector.length(:nodes.Module p.unit.modules) - 1} do
+                if maybe.isSome(:nodes.Members vector.get(:nodes.Module p.unit.modules i).exports) then
+                    found := true end
+            end
+            found
+        end
+
+    (* The C functions of the unit that have frames in tracebacks, and their
+     * frame names: its functions with names (not those the passes made), its
+     * modules' initializers, and a program's main *)
+    Let FuncEntry = Tuple cName: String frame: String end
+    let funcTableEntries(p: P): vector.T(FuncEntry) =
+        begin
+            let entries = vector.new(:FuncEntry)
+            for i = 0 upto {vector.length(:nodes.Function p.unit.functions) - 1} do
+                let f = vector.get(:nodes.Function p.unit.functions i)
+                if maybe.isSome(:String f.traceName) then
+                    vector.append(:FuncEntry entries tuple let cName = codeName(p f) let frame =
+                        maybe.unwrap(:String f.traceName) end)
+                end
+            end
+            for i = 0 upto {vector.length(:nodes.Module p.unit.modules) - 1} do
+                let m = vector.get(:nodes.Module p.unit.modules i)
+                vector.append(:FuncEntry entries tuple
+                    let cName = "qv_mod_" <> symbols.mangleModuleName(m.name) <> "_init"
+                    let frame = diagnostics.initFrame(m.name)
+                end)
+            end
+            if not(isModuleFile(p)) then
+                vector.append(:FuncEntry entries tuple let cName = "main" let frame = diagnostics.mainFrame end)
+            end
+            entries
+        end
+
+    (* Registers a module's abstract types with their representations, for
+     * dynamic values (docs/dynamic.md section 2.3), as the describe pass
+     * listed them; a representation without a descriptor is not registered *)
+    let abstractTypeRegistrations(p: P m: nodes.Module): Lines =
+        begin
+            let res = vector.new(:String)
+            for i = 0 upto {extent m.abstractTypes - 1} do
+                let entry = m.abstractTypes[i]
+                let form = try maybe.some(:types.DescriptorForm types.descriptorForm(entry.descriptor.type
+                        maybe.some(:types.RecordNaming p.ctx)))
+                    when types.missingDescriptor then maybe.none(:types.DescriptorForm)
+                end
+                if maybe.isSome(:types.DescriptorForm form) then
+                    let registered = syntax.call("quest_register_abstract_type"
+                        strings(array of syntax.cString(entry.name) cInt(entry.arity)
+                            types.cExpr(maybe.unwrap(:types.DescriptorForm form)) end))
+                    add(res "    " <> registered <> ";")
+                end
+            end
+            res
+        end
+
+    (* A module file's exported functions (qv_<module>_<member>), one for each
+     * of its interface's functions and polymorphic values, which call its
+     * export's closure *)
+    let exportedFunctions(p: P m: nodes.Module): Lines =
+        begin
+            let clean = symbols.mangleModuleName(m.name)
+            let res = vector.new(:String)
+            let exports = maybe.unwrap(:nodes.Members m.exports)
+            for i = 0 upto {vector.length(:String exports.names) - 1} do
+                let exportName = vector.get(:String exports.names i)
+                let exportVar = maybe.unwrap(:Variable nodes.member(exports exportName))
+                let sig = declarations.moduleFunctionSignature(clean exportName exportVar.type)
+                if maybe.isSome(:declarations.FunctionSignature sig) then
+                    let fsig = maybe.unwrap(:declarations.FunctionSignature sig)
+                    let args = declarations.moduleFunctionArguments(exportVar.type)
+                    let known = hashMap.get(:Int :nodes.OpMakeClosure p.closures exportVar.id)
+                    let direct = maybe.isSome(:nodes.OpMakeClosure known)
+                        andif {extent maybe.unwrap(:nodes.OpMakeClosure known).typeArgs is 0}
+                        andif {extent maybe.unwrap(:nodes.OpMakeClosure known).captures is 0}
+                    let called = if direct then
+                        syntax.call(codeName(p maybe.unwrap(:nodes.OpMakeClosure known).code)
+                            joinedWith(one("NULL") args))
+                    else
+                        let fnPtr = types.closureFnPtrType(exportVar.type)
+                        let clos = name(p exportVar)
+                        syntax.call("((" <> fnPtr <> ")(" <> clos <> "->fn))" joinedWith(one(clos <> "->env") args))
+                    end
+                    let params = if vector.empty(:String fsig.params) then one("void") else fsig.params end
+                    add(res fsig.result <> " " <> syntax.call(fsig.name params) <> " {")
+                    add(res if eq(fsig.result "void") then "    " <> called <> ";" else "    return " <> called
+                        <> ";" end)
+                    add(res "}")
+                    add(res "")
+                end
+            end
+            res
+        end
+
+    (* A module's initializer, whose body makes its record, stored in the
+     * module's global. A module file's is extern, as are its record and its
+     * exported functions, and initializes the modules it imports first, as a
+     * program's main does. *)
+    let moduleInit(p: P m: nodes.Module): Lines =
+        begin
+            let clean = symbols.mangleModuleName(m.name)
+            let top = topLevel(p m.init)
+            let exported = maybe.isSome(:nodes.Members m.exports)
+            let linkage = if exported then "" else "static " end
+            let res = vector.new(:String)
+            add(res linkage <> "void qv_mod_" <> clean <> "_init(void) {")
+            add(res "    if (qv_mod_" <> clean <> "_initialized) return;")
+            add(res "    qv_mod_" <> clean <> "_initialized = true;")
+            for i = 0 upto {vector.length(:Local top.decls) - 1} do
+                let l = vector.get(:Local top.decls i)
+                add(res "    " <> l.cType <> " " <> l.name <> ";")
+            end
+            addAll(res abstractTypeRegistrations(p m))
+            if exported then
+                add(res "    qr_register_dicts();")
+                for i = 0 upto {extent p.unit.imports - 1} do
+                    add(res "    qv_mod_" <> symbols.mangleModuleName(p.unit.imports[i].canonicalPath) <> "_init();")
+                end
+            end
+            addAll(res top.lines)
+            (* The record the initializer made last *)
+            add(res "    " <> symbols.moduleRecordIdent(clean) <> " = "
+                <> varAtom(p maybe.unwrap(:Variable m.recordVar)) <> ";")
+            add(res "}")
+            add(res "")
+            if exported then addAll(res exportedFunctions(p m)) end
+            res
+        end
+
+    let printUnit(p: P): String =
+        begin
+            let unit = p.unit
+            (* The closures of each function (for its environment's struct), and
+             * those bound by lets (direct calls) *)
+            let closuresOf = hashMap.new(:Int :nodes.OpMakeClosure intEqual hash.int)
+            let bodies = vector.new(:nodes.Body)
+            vector.append(:nodes.Body bodies unit.main)
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                vector.append(:nodes.Body bodies vector.get(:nodes.Module unit.modules i).init)
+            end
+            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                vector.append(:nodes.Body bodies vector.get(:nodes.Function unit.functions i).body)
+            end
+            for b = 0 upto {vector.length(:nodes.Body bodies) - 1} do
+                let statements = walk.walkStatements(vector.get(:nodes.Body bodies b) false)
+                for i = 0 upto {vector.length(:nodes.Stmt statements) - 1} do
+                    case vector.get(:nodes.Stmt statements i)
+                        when sLet with x then
+                            case x.value
+                                when opMakeClosure with c then
+                                    if not(hashMap.contains(:Int :nodes.OpMakeClosure closuresOf c.code.id)) then
+                                        put(:Int :nodes.OpMakeClosure closuresOf c.code.id c)
+                                    end
+                                    put(:Int :nodes.OpMakeClosure p.closures x.v.id c)
+                                when opExternal with c then
+                                    (* Called directly *)
+                                    if isFunction(x.v.type) then put(:Int :String p.externals x.v.id c.symbol) end
+                                else ok
+                            end
+                        else ok
+                    end
+                end
+            end
+
+            let functions = vector.new(:String)
+            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                addAll(functions function(p vector.get(:nodes.Function unit.functions i)))
+            end
+            let moduleInits = vector.new(:String)
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                addAll(moduleInits moduleInit(p vector.get(:nodes.Module unit.modules i)))
+            end
+            let main = topLevel(p unit.main)
+
+            let moduleFile = isModuleFile(p)
+            let res = vector.new(:String)
+            add(res "/* Emitted by the Quest IR C printer */")
+            add(res "#include \"quest_runtime.h\"")
+            if maybe.isSome(:String p.interfaceHeader) then
+                add(res "#include \"" <> maybe.unwrap(:String p.interfaceHeader) <> "\"")
+            end
+            add(res "")
+            addAll(res declarationLines(p))
+            addAll(res importDeclarations(p))
+            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                let f = vector.get(:nodes.Function unit.functions i)
+                let closure = hashMap.get(:Int :nodes.OpMakeClosure closuresOf f.id)
+                if maybe.isSome(:Variable f.env) andif maybe.isSome(:nodes.OpMakeClosure closure) then
+                    addAll(res envStruct(p f maybe.unwrap(:nodes.OpMakeClosure closure)))
+                end
+            end
+            add(res "")
+            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                let f = vector.get(:nodes.Function unit.functions i)
+                add(res functionSignature(p f) <> ";")
+                let code = codeName(p f)
+                add(res "static Q_UNUSED QClosure " <> code <> "_closure = { (void *)" <> code <> ", NULL };")
+            end
+            add(res "")
+            let globalDecls = globalDeclarations(p)
+            for i = 0 upto {vector.length(:GlobalDecl globalDecls) - 1} do
+                let g = vector.get(:GlobalDecl globalDecls i)
+                add(res "static " <> g.cType <> " " <> g.name <> ";")
+            end
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                let m = vector.get(:nodes.Module unit.modules i)
+                let clean = symbols.mangleModuleName(m.name)
+                let linkage = if maybe.isSome(:nodes.Members m.exports) then "" else "static " end
+                add(res linkage <> "QRecordVal " <> symbols.moduleRecordIdent(clean) <> ";")
+                add(res "static bool qv_mod_" <> clean <> "_initialized = false;")
+                if maybe.isSome(:nodes.Members m.exports) then add(res "void qv_mod_" <> clean <> "_init(void);") end
+            end
+            add(res "")
+            addAll(res p.thunkDecls)
+            add(res "")
+            (* The unit's functions with frames in tracebacks
+             * (docs/exceptions.md section 5.2) *)
+            let funcs = funcTableEntries(p)
+            if not(vector.empty(:FuncEntry funcs)) then
+                for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                    let m = vector.get(:nodes.Module unit.modules i)
+                    if maybe.isNone(:nodes.Members m.exports) then
+                        add(res "static void qv_mod_" <> symbols.mangleModuleName(m.name) <> "_init(void);")
+                    end
+                end
+                if not(moduleFile) then add(res "int main(int argc, char **argv);") end
+                add(res "static const QFuncEntry qr_funcs[] = {")
+                for i = 0 upto {vector.length(:FuncEntry funcs) - 1} do
+                    let f = vector.get(:FuncEntry funcs i)
+                    add(res "    { (const void *)&" <> f.cName <> ", " <> syntax.cString(f.frame) <> " },")
+                end
+                add(res "};")
+                add(res "")
+            end
+            (* The offset tables of the records the unit views at supertypes,
+             * registered for dynamic values, and its function table *)
+            add(res "static void qr_register_dicts(void) {")
+            if not(vector.empty(:FuncEntry funcs)) then
+                add(res "    quest_register_funcs(qr_funcs, sizeof qr_funcs / sizeof qr_funcs[0]);")
+            end
+            let registered = hashMap.new(:String :Bool eq hash.string)
+            let tables = staticData(p).offsetTables
+            for i = 0 upto {vector.length(:nodes.OffsetTable tables) - 1} do
+                let table = vector.get(:nodes.OffsetTable tables i)
+                let dictName = types.offsetDictInstanceName(p.ctx table.view table.layout)
+                if maybe.isSome(:nodes.Registered table.registered)
+                    andif not(hashMap.contains(:String :Bool registered dictName)) then
+                    put(:String :Bool registered dictName true)
+                    let r = maybe.unwrap(:nodes.Registered table.registered)
+                    let viewD = staticDescriptorOf(p r.view)
+                    let layoutD = staticDescriptorOf(p r.layout)
+                    add(res "    quest_register_record_dict(" <> viewD <> ", " <> layoutD <> ", &" <> dictName <> ");")
+                end
+            end
+            add(res "}")
+            add(res "")
+            addAll(res functions)
+            addAll(res p.thunkDefs)
+            addAll(res moduleInits)
+            if moduleFile then
+                syntax.linesText(res)
+            else
+                add(res "int main(int argc, char **argv) {")
+                add(res "    quest_gc_init();")
+                add(res "    quest_builtins_init(argc, argv);")
+                add(res "    qr_register_dicts();")
+                for i = 0 upto {extent unit.imports - 1} do
+                    add(res "    qv_mod_" <> symbols.mangleModuleName(unit.imports[i].canonicalPath) <> "_init();")
+                end
+                for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                    add(res "    qv_mod_" <> symbols.mangleModuleName(vector.get(:nodes.Module unit.modules i).name)
+                        <> "_init();")
+                end
+                for i = 0 upto {vector.length(:Local main.decls) - 1} do
+                    let l = vector.get(:Local main.decls i)
+                    add(res "    " <> l.cType <> " " <> l.name <> ";")
+                end
+                addAll(res main.lines)
+                add(res "    return 0;")
+                add(res "}")
+                add(res "")
+                syntax.linesText(res)
+            end
+        end
+
+    let printC(unit: nodes.Unit interfaceHeader: maybe.T(String)): String =
+        printUnit(tuple
+            let unit = unit
+            let interfaceHeader = interfaceHeader
+            let ctx = types.newRecordNaming()
+            let globals = walk.globalVariables(unit)
+            let names = hashMap.new(:Int :String intEqual hash.int)
+            let usedNames = hashMap.new(:String :Bool eq hash.string)
+            let nameCounts = hashMap.new(:String :Int eq hash.string)
+            let codeNames = hashMap.new(:Int :String intEqual hash.int)
+            let closures = hashMap.new(:Int :nodes.OpMakeClosure intEqual hash.int)
+            let externals = hashMap.new(:Int :String intEqual hash.int)
+            let handlerVars = hashMap.new(:Int :Bool intEqual hash.int)
+            let tupleCastKeys = vector.new(:String)
+            let tupleCasts = hashMap.new(:String :declarations.Pair eq hash.string)
+            let var fs = newFnState(maybe.none(:nodes.Function))
+            let var lines = vector.new(:String)
+            let var indent = 1
+            let var tmp = 0
+            let thunks = hashMap.new(:String :String eq hash.string)
+            let thunkDecls = vector.new(:String)
+            let thunkDefs = vector.new(:String)
+            let var pending = maybe.none(:Pending)
+            let var deferred = maybe.none(:Deferred)
+            let var emitter = maybe.none(:declarations.Emitter)
+        end)
+end

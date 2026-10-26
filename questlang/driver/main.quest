@@ -9,7 +9,9 @@
  * interpreter and prints its last phrase's result (or, with --echo, every
  * phrase's); `-e PROGRAM` runs a program given as a string. The arguments after
  * FILE are the program's, as are those after a `--` (which is how `-e` gets
- * any). run_tests.py --self-hosted compiles it and checks it against the
+ * any). The codegen_c phase prints the program's C (with --print-result, a C
+ * program that prints its last phrase's result, as compiled runs do).
+ * run_tests.py --self-hosted compiles it and checks it against the
  * bootstrap's goldens (docs/milestone-2.md and docs/milestone-3.md, section
  * 3). *)
 
@@ -42,6 +44,7 @@ import
     questlang/ir/represent : questlang/ir/Represent
     questlang/ir/describe : questlang/ir/Describe
     questlang/interpreter/irInterp : questlang/interpreter/IrInterp
+    cPrinter = questlang/codegen/c/printer : questlang/codegen/c/Printer
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/stringBuilder : util/StringBuilder
@@ -58,14 +61,16 @@ let irStages = array of "core" "specialized" "closed" "represented" "described" 
 let phases = array of
     "tokenize" "parse" "desugar" "typecheck" "ir_core" "ir_specialized" "ir_closed" "ir_represented" "ir_described"
     "run_ir_core" "run_ir_specialized" "run_ir_closed" "run_ir_represented" "run_ir_described" "interpret"
+    "codegen_c"
 end;
 
 let usage(message: String): Ok =
     begin
         writer.putString(writer.err "main: " <> message <> "\n")
         writer.putString(writer.err
-            "usage: main [--stop-after tokenize|parse|desugar|typecheck|ir_STAGE|run_ir_STAGE|interpret] [--show-offsets] [--echo] "
-            <> "[--expected-exit N] (FILE [ARG...] | -e PROGRAM [-- ARG...])\n")
+            "usage: main [--stop-after tokenize|parse|desugar|typecheck|ir_STAGE|run_ir_STAGE|interpret|codegen_c] "
+            <> "[--show-offsets] [--echo] [--print-result] [--expected-exit N] "
+            <> "(FILE [ARG...] | -e PROGRAM [-- ARG...])\n")
         system.sysexit(2)
     end;
 
@@ -78,6 +83,7 @@ let options =
         let var code = maybe.none(:String)
         let var showOffsets = false
         let var echo = false
+        let var printResult = false
         let programArgs = vector.new(:String)
         let var i = 1
         while i < extent system.args do
@@ -97,6 +103,9 @@ let options =
                 i := i + 1
             elsif stringOp.equal(arg "--echo") then
                 echo := true
+                i := i + 1
+            elsif stringOp.equal(arg "--print-result") then
+                printResult := true
                 i := i + 1
             else
                 (* The arguments after a -- or the file are the program's *)
@@ -118,6 +127,7 @@ let options =
             let code = code
             let showOffsets = showOffsets
             let echo = echo
+            let printResult = printResult
             let programArgs = vector.toArray(:String programArgs)
         end
     end;
@@ -165,7 +175,8 @@ let runErrorDiagnostic(err: model.RunError mainFile: String): diagnostics.Diagno
             location.span("" ~1 ~1)
         end
         let d = diagnostics.error(model.runErrorMessage(err) sp)
-        if maybe.isSome(:Array(String) err.frames) then diagnostics.setTrace(d maybe.unwrap(:Array(String) err.frames)) end
+        if maybe.isSome(:Array(String) err.frames) then
+            diagnostics.setTrace(d maybe.unwrap(:Array(String) err.frames)) end
         d
     end;
 
@@ -214,6 +225,22 @@ let dumpIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagba
         when represent.unsupportedConversion with m then internal(m)
         when represent.rejectedConversion with m then internal(m)
         when describe.unsupportedDescriptor with m then internal(m)
+        end
+    end;
+
+(* Prints a type-checked program's C, as the bootstrap's codegen_c phase does *)
+let codegenC(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
+    begin
+        let internal = fun(message: String): Ok diagbag.add(bag diagnostics.error(message location.span("" ~1 ~1)))
+        try
+            print(cPrinter.printC(lowered(program e sm options.printResult "described") maybe.none(:String)))
+        when lower.loweringError with m then internal(m)
+        when verify.verifyError with m then internal(m)
+        when closure.capturesMutable with m then internal(m)
+        when represent.unsupportedConversion with m then internal(m)
+        when represent.rejectedConversion with m then internal(m)
+        when describe.unsupportedDescriptor with m then internal(m)
+        when cPrinter.unsupported with m then internal(m)
         end
     end;
 
@@ -277,7 +304,8 @@ let interpret(program: typedAst.Program e: env.T sm: location.SourceMap bag: dia
 
 let run(): Ok =
     begin
-        let source = if maybe.isSome(:String options.code) then maybe.unwrap(:String options.code) else readFile(options.file) end
+        let source = if maybe.isSome(:String options.code) then maybe.unwrap(:String options.code) else
+            readFile(options.file) end
         let sm = location.newSourceMap(options.file source)
         let bag = diagbag.new()
         try
@@ -310,9 +338,13 @@ let run(): Ok =
                         if stringOp.equal(options.stopAfter "typecheck") then
                             print(typedAstPrint.dumpProgram(typed))
                         elsif maybe.isSome(:String irStage("ir_")) then
-                            if not(diagbag.hasErrors(bag)) then dumpIr(typed e sm bag maybe.unwrap(:String irStage("ir_"))) end
+                            if not(diagbag.hasErrors(bag)) then
+                                dumpIr(typed e sm bag maybe.unwrap(:String irStage("ir_"))) end
                         elsif maybe.isSome(:String irStage("run_ir_")) then
-                            if not(diagbag.hasErrors(bag)) then runIr(typed e sm bag maybe.unwrap(:String irStage("run_ir_"))) end
+                            if not(diagbag.hasErrors(bag)) then
+                                runIr(typed e sm bag maybe.unwrap(:String irStage("run_ir_"))) end
+                        elsif stringOp.equal(options.stopAfter "codegen_c") then
+                            if not(diagbag.hasErrors(bag)) then codegenC(typed e sm bag) end
                         elsif not(diagbag.hasErrors(bag)) then
                             interpret(typed e sm bag)
                         end
