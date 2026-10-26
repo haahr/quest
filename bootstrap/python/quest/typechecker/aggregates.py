@@ -528,7 +528,21 @@ class AggregateMixin(Checker):
             )
 
     def _synth_select_expr(self, expr: ast.ExprSelect, env: Environment, loop_depth: int) -> TypedSelect:
-        """Synthesizes a field selection on a record, tuple, or module: target.field."""
+        """Synthesizes a selection target.field from a module, a record, or a tuple.
+
+        m.f, where m names an imported module that no value shadows, has the type the module gives f. A record's field
+        has the type it was declared with. A tuple's field is the interesting case, because its type may mention the
+        tuple's own type components: in a value t of type Tuple A::TYPE f: A end, the field f has type A, a name that
+        means nothing outside the tuple. When t is a variable, t.f has the path type t.A instead (see elaborate_type),
+        which names "t's A" without revealing what it is. Such a field can be selected only from an immutable
+        variable: an arbitrary expression has no name to root a path type at, and a mutable variable's components
+        could change. A component the tuple's type defines (A = Int) is known, and is replaced by its definition
+        (_outside_tuple). A value whose type is a type parameter bounded by a record or tuple type is selected from as
+        a value of its bound.
+
+        A path type must not outlive its root: a block, function, or case branch whose type mentions a path type rooted
+        at one of its own variables is rejected (check_no_escaping_path_types).
+        """
         if isinstance(expr.target, ast.ExprId):
             module_scope = env.lookup_module(expr.target.name)
             mod_sym = env.lookup_value(expr.target.name)
