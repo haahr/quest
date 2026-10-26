@@ -133,7 +133,11 @@ def check_kind_well_formed(kind: QKind, env: Optional[Any] = None) -> None:
 
 
 def check_kind(type_val: QType, expected_kind: QKind, env: Optional[Any] = None) -> None:
-    """Checks that type_val has a kind that is a subkind of expected_kind."""
+    """Checks that type_val has a kind that is a subkind of expected_kind.
+
+    Against POWER(B) the check is subtyping, type_val <: B, rather than a comparison of kinds: a type's synthesized
+    kind is TYPE (or its bound, for a type variable), not the POWER of each of its supertypes.
+    """
     expected_lazy = expected_kind.evaluate_lazily(env)
     if isinstance(expected_lazy, QPowerKind):
         if is_subtype(type_val, expected_lazy.bound, env):
@@ -185,7 +189,20 @@ def synth_kind(type_val: QType, env: Optional[Any] = None) -> QKind:
 
 
 def _synth_kind_uncached(type_val: QType, env: Optional[Any] = None) -> QKind:
-    """Synthesizes the kind of type_val; recursive checks go through the memoizing synth_kind."""
+    """Synthesizes the kind of type_val; recursive checks go through the memoizing synth_kind.
+
+    Kinds classify types as types classify values. TYPE is the kind of the types of values. POWER(B) is the kind of
+    B's subtypes, which is how a bounded type parameter is expressed: A <: Record x: Int end declares A with kind
+    POWER(Record x: Int end). ALL(A::K) K' is the kind of a type operator, which applied to a type of kind K gives one
+    of kind K'. Subkinding follows: POWER(B) is included in TYPE, and in POWER(B') when B <: B'.
+
+    The kind synthesized is the most specific one: TYPE for a type built by a constructor (a record type is a type of
+    values), a type variable's bound, ALL for a type operator, and for an application, the operator's result kind with
+    the arguments substituted. Synthesis also checks that the type's parts are well kinded: that a field's type is a
+    type of values, that each binder's bound is a well-formed kind, and that an operator's arguments have its parameter
+    kinds. A binder's variables are declared in a scope pushed on env while its body is checked; without an
+    environment, a variable is known by the bound it carries.
+    """
     match type_val:
         case (QIntType() | QRealType() | QBoolType() | QCharType() | QStringType()
               | QOkType() | QExceptionType() | QExternalType()):

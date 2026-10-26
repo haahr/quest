@@ -383,7 +383,30 @@ def register_type_formatter(fn: Callable[[QType, Optional[Any]], str]) -> None:
 
 
 class QType(metaclass=_InternedNode):
-    """Base class for all semantic Quest types."""
+    """Base class for semantic Quest types: the types the checker reasons about, as opposed to types as written
+    (ast.Type), which elaboration translates into these.
+
+    A type is an immutable structure of nodes, one class per constructor (QRecordType, QFunType, ...) or kind of name
+    (QTypeVar and its relatives, described above QTypeVar), with every name resolved to its symbol. Identical
+    structures are one object (they are interned; see the comment above _INTERN_TABLE), so types are compared with
+    is_subtype and is_type_equal, never with ==. A recursive type, Rec(X) T, stands for an infinite tree but is kept
+    finite: unfolding it substitutes the Rec node itself for X in T.
+
+    evaluate_lazily is the operation most code needs before looking at a type. It returns a type whose outermost node is
+    a constructor, or a name that cannot be expanded: it looks through aliases, unfolds recursive types, reduces
+    applications of type operators, and, given an environment, expands a type variable whose symbol has a definition.
+    It takes only the outermost step, and the parts are left as written; that keeps alias names for messages, and
+    makes evaluating a recursive type terminate (recursive types are contractive, so an unfolding's outermost node is a
+    constructor). Code that tests a type's constructor (isinstance or match) must evaluate it first, or it will meet an
+    alias where it expects a record.
+
+    substitute(subst) replaces type variables, by symbol id, avoiding capture: inside a binder (All, a type operator, a
+    recursive type, a tuple's type components), the binder's own variables are not replaced. Each node records the ids
+    a substitution could replace in it (_fv) and whether it contains a metavariable (_has_meta), so that substitute
+    returns a type untouched, without walking it, when nothing in it would change. A new class of type must set both in
+    __post_init__ (_init_free_vars), override _substitute_full if it has parts, and register its fields and rebuilder
+    (_TYPE_FIELDS, _REBUILD_TYPE), through which interning and the generic walkers reach its parts.
+    """
 
     _fv: frozenset[int] = _NO_FREE_VARS
     _has_meta: bool = False
@@ -1373,6 +1396,22 @@ class QRecGroupType(QType):
 _TYPE_FIELDS[QRecGroupType] = lambda node: (node.bindings, node.active_index)
 _REBUILD_TYPE[QRecGroupType] = lambda node, values: QRecGroupType(bindings=values[0], active_index=values[1])
 
+
+# Five kinds of type stand for a type by name rather than by structure. They differ in where they come from and in what
+# evaluate_lazily, and so subtyping, sees through:
+#
+# - QTypeVar, a name referring to a type symbol: a type parameter (of a function, an All type, a type operator, or a
+#   recursive type), a type component of a tuple type, or an interface's abstract type. Two are the same type when they
+#   refer to the same symbol, and otherwise all that is known of one is its bound. Given an environment in which its
+#   symbol has a definition, though, evaluate_lazily expands it, so a type may compare differently with an environment
+#   and without (the subtype cache keeps the two apart).
+# - QAbstractType, a type known only by its bound, never expanded: an auto type's type parameter in the layout that
+#   stores auto values' payloads whatever their witnesses (auto_payload_type).
+# - QPathType, x.A: the type component A of the value x, whose type hides it (see elaborate_type). It is identified by
+#   x's symbol and A, and never expanded.
+# - QAliasType, a reference to a type alias, kept to print the name written: always seen through, to its target.
+# - QTypeMeta, ?A: a placeholder for a type argument being inferred, solved by subtyping (see _prove_subtype_step). It
+#   is the only mutable type, and so is never shared by interning.
 
 @dataclass(frozen=True)
 class QTypeVar(QType):

@@ -236,7 +236,30 @@ def _prove_subtype(sub: QType, sup: QType, env: Optional[Any], trail: SubtypeTra
 
 
 def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: SubtypeTrail, fuel: int) -> bool:
-    """Decides sub <: sup structurally; nested goals go through _prove_subtype."""
+    """Decides one goal, sub <: sup, by the structure of the two types. Each nested goal goes back through
+    _prove_subtype, which consults the cache and records the result.
+
+    Recursive types are equi-recursive: a recursive type is equal to its unfolding, and so stands for an infinite tree,
+    which a structural comparison would never finish walking. So a pair of types being compared is assumed to hold while
+    their parts are compared, and meeting the same pair again counts as proved (a coinductive proof; the comment above
+    _commit_proof explains why this is sound, and what may be cached). The trail of assumptions is consulted twice: for
+    the types as written, and again after evaluate_lazily has exposed their outermost constructors, since a goal can
+    recur in either form.
+
+    Metavariables are solved here, greedily: a goal ?A <: T or T <: ?A with ?A unsolved makes T the solution of ?A and
+    succeeds, without checking ?A's bound. That is all the solving that type inference does (see
+    _synth_polymorphic_app), and it is why a solution can depend on the order in which goals are posed.
+
+    A type variable, abstract type, or path type bounded by POWER(B), and so known to be a subtype of B, is a subtype of
+    whatever B is. Otherwise the outermost constructors must match, and their parts are compared by the rules given at
+    each case: immutable parts covariantly, mutable ones (var fields, Var, arrays) invariantly, and function parameters
+    contravariantly. Records and tuples have width subtyping: a record with more fields is a subtype of one with fewer,
+    and a tuple of a tuple with a prefix of its components. A type component that sup leaves abstract (A::K) may be
+    matched by one that sub defines (A = T), and the definition is substituted into sup's later components.
+
+    fuel bounds the steps of one proof. Subtyping of bounded polymorphic types is undecidable, and running out raises
+    TypeRecursionLimitExceeded rather than looping.
+    """
     if fuel <= 0:
         raise TypeRecursionLimitExceeded(
             f"Subtyping proof exceeded step limit of {MAX_SUBTYPE_FUEL} steps "
