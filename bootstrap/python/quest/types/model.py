@@ -152,6 +152,8 @@ def _init_free_vars(node: Any, *parts: Any, bound_ids: Any = ()) -> None:
 # structural identity. The key is the class and every field, display-only fields included (record
 # provenance, binder and path names), so two nodes that would print differently are never merged.
 # Child nodes appear in keys by identity, which is sound because they are canonical already.
+# Structural identity is not type equality: an alias and its target, a recursive type and its
+# unfolding, and types differing only in binder names are equal (is_type_equal) but distinct objects.
 # Nodes containing a metavariable are not interned: a metavariable is mutable, and a node that is
 # shared must not change meaning when one inside it is solved. The table holds canonical nodes
 # weakly, so types no longer referenced can be freed.

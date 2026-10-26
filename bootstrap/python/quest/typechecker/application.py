@@ -392,7 +392,10 @@ class ApplicationMixin(Checker):
                 offset=expr.offset,
             )
 
-        # 2. Metavariable inference for implicit type arguments
+        # 2. Metavariable inference for implicit type arguments. Each quantifier is replaced by a metavariable
+        #    (QTypeMeta, printed ?A), a placeholder that is_subtype solves as a side effect: comparing ?A with a type
+        #    makes that type ?A's solution, the first one found. Metavariables exist only during this call: they are
+        #    replaced by their solutions before its node is returned, and an assertion below fails if any remain.
         fn_body = all_type.body.evaluate_lazily(env)
         # An empty application of a polymorphic constant instantiates it (Cardelli: nil()).
         is_instantiation = not isinstance(fn_body, QFunType)

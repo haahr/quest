@@ -31,7 +31,13 @@ class Checker:
 
     def __init__(self, env: Optional[Environment] = None, loop_depth: int = 0) -> None:
         self.env: Environment = env if env is not None else Environment(builtin_registry=BuiltinModuleRegistry)
+        # The number of loops enclosing the code being checked, for checking exit. The loop_depth argument threaded
+        # through the elaboration methods is authoritative; this field is only the counter that in_loop and in_function
+        # adjust, set from the argument just before (see the while case of synth_expr).
         self.loop_depth: int = loop_depth
+        # The number of functions enclosing the code being checked; one more inside each function body (in_function).
+        # A symbol records the depth it was declared at, and a use from a deeper function is a capture
+        # (_check_capturable).
         self.function_depth: int = 0
         # Implicit type arguments of the polymorphic call whose arguments are being checked, as
         # (metavariable, quantifier, call offset); nested calls may defer theirs to it.
