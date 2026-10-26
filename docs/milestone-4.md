@@ -123,9 +123,10 @@ the driver and the runner's self-hosted phases, with every IR phase's goldens an
 
 Each stage's phases were added to the runner as they came to pass, so the pending list was not needed. Divergences:
 the IR's operations and atoms are one option (`Op`, an atom being `opAtom`), and its `Var` is `Variable` (`Var` is a
-type keyword); the fields named with keywords are renamed (nodes.int.quest). Compiled Quest copies an option's
-payload when a case binds it (the interpreter shares it, its var components being cells), so an operation's or
-statement's fields are a tuple, its case's one component `n`, which a binding shares and the passes assign. Lowering
+type keyword); the fields named with keywords are renamed (nodes.int.quest). Compiled Quest then copied an option's
+payload when a case bound it (the interpreter shared it, its var components being cells), so an operation's or
+statement's fields were a tuple, its case's one component `n`, which a binding shared and the passes assigned; once
+case binders shared the payload in every backend (type-system.md §6.8), the fields became the cases' own. Lowering
 takes `echo` and `printResult` rather than the compiler's options. The verifier's scopes are one mutable scope whose
 additions in a body are undone when it ends, rather than values copied at each binding.
 

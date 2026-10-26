@@ -386,17 +386,17 @@ export
     let operation(d: Describer o: Op result: maybe.T(Variable)): Ok =
         begin
             case o
-                when opRecordField with xPayload then let x = xPayload.n x.viewMap := viewMap(d x.recordAtom)
-                when opTupleField with xPayload then let x = xPayload.n x.viewMap := viewMap(d x.tup)
-                when opAddrField with xPayload then let x = xPayload.n x.viewMap := viewMap(d x.base)
-                when opAddrComponent with xPayload then let x = xPayload.n x.viewMap := viewMap(d x.base)
-                when opIsTag with xPayload then let x = xPayload.n x.viewMap := viewMap(d x.value)
-                when opPayload with xPayload then let x = xPayload.n x.viewMap := viewMap(d x.value)
-                when opOrdinal with xPayload then let x = xPayload.n x.viewMap := viewMap(d x.value)
+                when opRecordField with x then x.viewMap := viewMap(d x.recordAtom)
+                when opTupleField with x then x.viewMap := viewMap(d x.tup)
+                when opAddrField with x then x.viewMap := viewMap(d x.base)
+                when opAddrComponent with x then x.viewMap := viewMap(d x.base)
+                when opIsTag with x then x.viewMap := viewMap(d x.value)
+                when opPayload with x then x.viewMap := viewMap(d x.value)
+                when opOrdinal with x then x.viewMap := viewMap(d x.value)
                 else ok
             end
             case o
-                when opPrim with xPayload then let x = xPayload.n
+                when opPrim with x then
                     if {eq(x.op "is") orif eq(x.op "isnot")} andif {extent x.args > 0} then
                         let a = x.args[0]
                         let isHandler = case a when atomVar with y then hashMap.contains(:Int :Bool d.handlerVars y.v.id) else false end
@@ -404,10 +404,10 @@ export
                             x.descriptor := maybe.some(:Descriptor describeType(d typeOf(a)))
                         end
                     end
-                when opCall with xPayload then let x = xPayload.n x.descriptors := describeTypes(d x.typeArgs)
-                when opCallExternal with xPayload then let x = xPayload.n x.descriptors := describeTypes(d x.typeArgs)
-                when opMakeClosure with xPayload then let x = xPayload.n x.descriptors := describeTypes(d x.typeArgs)
-                when opTypeApp with xPayload then let x = xPayload.n
+                when opCall with x then x.descriptors := describeTypes(d x.typeArgs)
+                when opCallExternal with x then x.descriptors := describeTypes(d x.typeArgs)
+                when opMakeClosure with x then x.descriptors := describeTypes(d x.typeArgs)
+                when opTypeApp with x then
                     x.descriptors := describeTypes(d x.typeArgs)
                     let origType = if maybe.isSome(:Variable x.callee) then
                         maybe.unwrap(:Variable x.callee).type
@@ -432,8 +432,8 @@ export
                     else
                         for i = 0 upto {extent x.plans - 1} do describePlan(d x.plans[i]) end
                     end
-                when opConvert with xPayload then let x = xPayload.n describePlan(d maybe.some(:Plan x.plan))
-                when opMakeRecord with xPayload then let x = xPayload.n
+                when opConvert with x then describePlan(d maybe.some(:Plan x.plan))
+                when opMakeRecord with x then
                     let fields = array of(extent x.fields tuple let name = "" let type = model.okType let isVar = false end)
                     for i = 0 upto {extent x.fields - 1} do
                         fields[i] := tuple let name = x.fields[i].name let type = typeOf(x.fields[i].atom) let isVar = x.fields[i].isVar end
@@ -449,7 +449,7 @@ export
                         let registered = maybe.unwrap(:Descriptor x.descriptor)?descStatic andif targetD?descStatic
                         x.offsets := maybe.some(:nodes.OffsetTable offsetTable(d target concrete registered))
                     end
-                when opRecordField with xPayload then let x = xPayload.n
+                when opRecordField with x then
                     if x.stored then
                         let rs = maybe.unwrap(:Shape heldShape(typeOf(x.recordAtom) "record"))
                         let fields = shapes.sortedComponents(rs)
@@ -459,7 +459,7 @@ export
                         end
                         x.descriptor := maybe.some(:Descriptor describeType(d shapes.componentShape(field).type))
                     end
-                when opMakeAuto with xPayload then let x = xPayload.n x.descriptor := maybe.some(:Descriptor describeType(d x.witness))
+                when opMakeAuto with x then x.descriptor := maybe.some(:Descriptor describeType(d x.witness))
                 else ok
             end
         end
@@ -520,20 +520,20 @@ export
         begin
             let var replaced = maybe.none(:Stmt)
             case s
-                when sLet with xPayload then let x = xPayload.n operation(d x.value maybe.some(:Variable x.v))
-                when sDo with xPayload then let x = xPayload.n operation(d x.value maybe.none(:Variable))
-                when sInspect with xPayload then let x = xPayload.n describeInspect(d x)
-                when sTry with xPayload then let x = xPayload.n begin hashMap.insert(:Int :Bool d.handlerVars x.exc.id true) ok end
-                when sStoreField with xPayload then let x = xPayload.n x.viewMap := viewMap(d x.base)
-                when sStoreComponent with xPayload then let x = xPayload.n x.viewMap := viewMap(d x.base)
-                when sSwitch with xPayload then let x = xPayload.n x.viewMap := viewMap(d x.value)
-                when sEcho with xPayload then let x = xPayload.n
+                when sLet with x then operation(d x.value maybe.some(:Variable x.v))
+                when sDo with x then operation(d x.value maybe.none(:Variable))
+                when sInspect with x then describeInspect(d x)
+                when sTry with x then begin hashMap.insert(:Int :Bool d.handlerVars x.exc.id true) ok end
+                when sStoreField with x then x.viewMap := viewMap(d x.base)
+                when sStoreComponent with x then x.viewMap := viewMap(d x.base)
+                when sSwitch with x then x.viewMap := viewMap(d x.value)
+                when sEcho with x then
                     let text = if stringOp.isEmpty(x.prefix) then maybe.none(:String) else written.packageText(x.type) end
                     if maybe.isSome(:String text) then
                         (* A package's components are hidden, so its line is known statically, from its type as
                          * written *)
                         replaced := maybe.some(:Stmt option sEchoText of Stmt with
-                            let n = tuple let text = x.prefix <> maybe.unwrap(:String text) end
+                            let text = x.prefix <> maybe.unwrap(:String text)
                         end)
                     elsif stringOp.isEmpty(echoValueKind(x.type)) then
                         let closed = extent freeTypeVars(x.type fun(sid: Int): Bool hashMap.contains(:Int :Variable d.scope sid)) is 0
@@ -733,11 +733,11 @@ export
 
     and opTypes(c: Collector o: Op): Ok =
         case o
-            when opAtom with xPayload then let x = xPayload.n atom(c x.atom)
-            when opPrim with xPayload then let x = xPayload.n atoms(c x.args)
-            when opCall with xPayload then let x = xPayload.n
+            when opAtom with x then atom(c x.atom)
+            when opPrim with x then atoms(c x.args)
+            when opCall with x then
                 begin optVariable(c x.callee) types(c x.typeArgs) atoms(c x.args) optModuleRef(c x.moduleRef) addOpt(c x.calleeType) end
-            when opTypeApp with xPayload then let x = xPayload.n
+            when opTypeApp with x then
                 begin
                     optVariable(c x.callee)
                     types(c x.typeArgs)
@@ -745,18 +745,18 @@ export
                     addOpt(c x.calleeType)
                     for i = 0 upto {extent x.plans - 1} do planTypes(c x.plans[i]) end
                 end
-            when opModuleMember with xPayload then let x = xPayload.n moduleRefTypes(c x.moduleRef)
-            when opCallExternal with xPayload then let x = xPayload.n begin types(c x.typeArgs) atoms(c x.args) end
-            when opMakeClosure with xPayload then let x = xPayload.n begin functionTypes(c x.code) atoms(c x.captures) types(c x.typeArgs) end
-            when opEnvField with xPayload then let x = xPayload.n atom(c x.env)
-            when opConvert with xPayload then let x = xPayload.n begin atom(c x.value) planTypes(c maybe.some(:Plan x.plan)) end
-            when opMakeTuple with xPayload then let x = xPayload.n
+            when opModuleMember with x then moduleRefTypes(c x.moduleRef)
+            when opCallExternal with x then begin types(c x.typeArgs) atoms(c x.args) end
+            when opMakeClosure with x then begin functionTypes(c x.code) atoms(c x.captures) types(c x.typeArgs) end
+            when opEnvField with x then atom(c x.env)
+            when opConvert with x then begin atom(c x.value) planTypes(c maybe.some(:Plan x.plan)) end
+            when opMakeTuple with x then
                 begin
                     atoms(c x.args)
                     for i = 0 upto {extent x.typeComponents - 1} do add(c x.typeComponents[i].type) end
                 end
-            when opTupleField with xPayload then let x = xPayload.n atom(c x.tup)
-            when opMakeRecord with xPayload then let x = xPayload.n
+            when opTupleField with x then atom(c x.tup)
+            when opMakeRecord with x then
                 begin
                     let fields = array of(extent x.fields tuple let name = "" let type = model.okType let isVar = false end)
                     for i = 0 upto {extent x.fields - 1} do
@@ -765,24 +765,24 @@ export
                     add(c model.recordType(fields maybe.none(:String)))
                     for i = 0 upto {extent x.fields - 1} do atom(c x.fields[i].atom) end
                 end
-            when opRecordField with xPayload then let x = xPayload.n atom(c x.recordAtom)
-            when opMakeVariant with xPayload then let x = xPayload.n optAtom(c x.payload)
-            when opMakeOption with xPayload then let x = xPayload.n begin optAtom(c x.payload) optAtom(c x.ordinalAtom) end
-            when opIsTag with xPayload then let x = xPayload.n atom(c x.value)
-            when opPayload with xPayload then let x = xPayload.n atom(c x.value)
-            when opOrdinal with xPayload then let x = xPayload.n atom(c x.value)
-            when opMakeArray with xPayload then let x = xPayload.n atoms(c x.args)
-            when opArrayRep with xPayload then let x = xPayload.n begin atom(c x.count) atom(c x.init) end
-            when opIndex with xPayload then let x = xPayload.n begin atom(c x.arr) atom(c x.index) end
-            when opMakeAuto with xPayload then let x = xPayload.n begin add(c x.autoType) atom(c x.payload) end
-            when opMakeException with xPayload then let x = xPayload.n addOpt(c x.payloadType)
-            when opExceptionPayload with xPayload then let x = xPayload.n atom(c x.exc)
-            when opAddrVar with xPayload then let x = xPayload.n variable(c x.v)
-            when opAddrCell with xPayload then let x = xPayload.n atom(c x.init)
-            when opAddrField with xPayload then let x = xPayload.n atom(c x.base)
-            when opAddrComponent with xPayload then let x = xPayload.n atom(c x.base)
-            when opAddrElement with xPayload then let x = xPayload.n begin atom(c x.base) atom(c x.index) end
-            when opLoad with xPayload then let x = xPayload.n atom(c x.address)
+            when opRecordField with x then atom(c x.recordAtom)
+            when opMakeVariant with x then optAtom(c x.payload)
+            when opMakeOption with x then begin optAtom(c x.payload) optAtom(c x.ordinalAtom) end
+            when opIsTag with x then atom(c x.value)
+            when opPayload with x then atom(c x.value)
+            when opOrdinal with x then atom(c x.value)
+            when opMakeArray with x then atoms(c x.args)
+            when opArrayRep with x then begin atom(c x.count) atom(c x.init) end
+            when opIndex with x then begin atom(c x.arr) atom(c x.index) end
+            when opMakeAuto with x then begin add(c x.autoType) atom(c x.payload) end
+            when opMakeException with x then addOpt(c x.payloadType)
+            when opExceptionPayload with x then atom(c x.exc)
+            when opAddrVar with x then variable(c x.v)
+            when opAddrCell with x then atom(c x.init)
+            when opAddrField with x then atom(c x.base)
+            when opAddrComponent with x then atom(c x.base)
+            when opAddrElement with x then begin atom(c x.base) atom(c x.index) end
+            when opLoad with x then atom(c x.address)
             else ok
         end
 
@@ -790,22 +790,22 @@ export
 
     and stmtTypes(c: Collector s: Stmt): Ok =
         case s
-            when sLet with xPayload then let x = xPayload.n begin variable(c x.v) opTypes(c x.value) end
-            when sVarDecl with xPayload then let x = xPayload.n begin variable(c x.v) optAtom(c x.init) end
-            when sAssign with xPayload then let x = xPayload.n begin variable(c x.v) atom(c x.value) end
-            when sStoreAt with xPayload then let x = xPayload.n begin atom(c x.value) atom(c x.address) end
-            when sStoreField with xPayload then let x = xPayload.n begin atom(c x.value) atom(c x.base) end
-            when sStoreComponent with xPayload then let x = xPayload.n begin atom(c x.value) atom(c x.base) end
-            when sStoreElement with xPayload then let x = xPayload.n begin atom(c x.value) atom(c x.base) atom(c x.index) end
-            when sDo with xPayload then let x = xPayload.n opTypes(c x.value)
-            when sFuns with xPayload then let x = xPayload.n for i = 0 upto {extent x.functions - 1} do functionTypes(c x.functions[i]) end
-            when sLetRec with xPayload then let x = xPayload.n
+            when sLet with x then begin variable(c x.v) opTypes(c x.value) end
+            when sVarDecl with x then begin variable(c x.v) optAtom(c x.init) end
+            when sAssign with x then begin variable(c x.v) atom(c x.value) end
+            when sStoreAt with x then begin atom(c x.value) atom(c x.address) end
+            when sStoreField with x then begin atom(c x.value) atom(c x.base) end
+            when sStoreComponent with x then begin atom(c x.value) atom(c x.base) end
+            when sStoreElement with x then begin atom(c x.value) atom(c x.base) atom(c x.index) end
+            when sDo with x then opTypes(c x.value)
+            when sFuns with x then for i = 0 upto {extent x.functions - 1} do functionTypes(c x.functions[i]) end
+            when sLetRec with x then
                 begin
                     for i = 0 upto {extent x.vars - 1} do variable(c x.vars[i]) end
                     bodyTypes(c x.body)
                 end
-            when sIf with xPayload then let x = xPayload.n begin atom(c x.cond) bodyTypes(c x.thenBody) bodyTypes(c x.elseBody) end
-            when sSwitch with xPayload then let x = xPayload.n
+            when sIf with x then begin atom(c x.cond) bodyTypes(c x.thenBody) bodyTypes(c x.elseBody) end
+            when sSwitch with x then
                 begin
                     atom(c x.value)
                     for i = 0 upto {extent x.cases - 1} do
@@ -814,7 +814,7 @@ export
                     end
                     optBodyTypes(c x.elseBody)
                 end
-            when sInspect with xPayload then let x = xPayload.n
+            when sInspect with x then
                 begin
                     if maybe.isSome(:Type x.autoType) then
                         for i = 0 upto {extent x.cases - 1} do
@@ -834,20 +834,20 @@ export
                     optBodyTypes(c x.elseBody)
                     addOpt(c x.autoType)
                 end
-            when sLoop with xPayload then let x = xPayload.n bodyTypes(c x.body)
-            when sTry with xPayload then let x = xPayload.n
+            when sLoop with x then bodyTypes(c x.body)
+            when sTry with x then
                 begin bodyTypes(c x.body) variable(c x.exc) bodyTypes(c x.handler) atoms(c x.catches) end
-            when sJoin with xPayload then let x = xPayload.n
+            when sJoin with x then
                 begin
                     for i = 0 upto {extent x.params - 1} do variable(c x.params[i]) end
                     bodyTypes(c x.continuation)
                     bodyTypes(c x.body)
                 end
-            when sEcho with xPayload then let x = xPayload.n begin atom(c x.value) add(c x.type) end
-            when sReturn with xPayload then let x = xPayload.n atom(c x.value)
-            when sJump with xPayload then let x = xPayload.n atoms(c x.args)
-            when sRaise with xPayload then let x = xPayload.n begin atom(c x.exc) optAtom(c x.payload) end
-            when sReraise with xPayload then let x = xPayload.n variable(c x.exc)
+            when sEcho with x then begin atom(c x.value) add(c x.type) end
+            when sReturn with x then atom(c x.value)
+            when sJump with x then atoms(c x.args)
+            when sRaise with x then begin atom(c x.exc) optAtom(c x.payload) end
+            when sReraise with x then variable(c x.exc)
             else ok
         end
 

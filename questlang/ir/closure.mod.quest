@@ -43,7 +43,7 @@ export
             for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
                 let s = vector.get(:Stmt b.statements i)
                 case s
-                    when sFuns with xPayload then let x = xPayload.n
+                    when sFuns with x then
                         let lets = funs(c x.functions x.recursive typeParams)
                         for j = 0 upto {extent lets - 1} do vector.append(:Stmt statements lets[j]) end
                     else
@@ -74,17 +74,17 @@ export
                 end
                 let captures = array of(extent lifted.captures nodes.atomOfVar(f.v))
                 for j = 0 upto {extent lifted.captures - 1} do captures[j] := nodes.atomOfVar(lifted.captures[j]) end
-                vector.append(:Stmt lets nodes.letStmt(f.v option opMakeClosure of nodes.Op with let n = tuple
+                vector.append(:Stmt lets nodes.letStmt(f.v option opMakeClosure of nodes.Op with
                     let var code = lifted.code
                     let var captures = captures
                     let var typeArgs = typeArgs
                     let var descriptors = array of :nodes.Descriptor end
-                end end))
+                end))
             end
             if recursive andif capturesGroup then
                 let vars = array of(extent functions functions[0].v)
                 for i = 0 upto {extent functions - 1} do vars[i] := functions[i].v end
-                array of option sLetRec of Stmt with let n = tuple let var vars = vars let var body = nodes.bodyOf(vector.toArray(:Stmt lets)) end end end
+                array of option sLetRec of Stmt with let var vars = vars let var body = nodes.bodyOf(vector.toArray(:Stmt lets)) end end
             else
                 vector.toArray(:Stmt lets)
             end
@@ -139,10 +139,10 @@ export
                     end
                     let local = nodes.newVar(captured.hint captured.type false)
                     hashMap.insert(:Int :Variable renamed captured.id local)
-                    vector.append(:Stmt prologue nodes.letStmt(local option opEnvField of nodes.Op with let n = tuple
+                    vector.append(:Stmt prologue nodes.letStmt(local option opEnvField of nodes.Op with
                         let var env = nodes.atomOfVar(e)
                         let index = i
-                    end end))
+                    end))
                 end
                 rename(f.body renamed)
                 for i = 0 upto {vector.length(:Stmt f.body.statements) - 1} do

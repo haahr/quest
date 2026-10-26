@@ -18,34 +18,34 @@ export
 
     let statementBodies(s: Stmt): Array(Body) =
         case s
-            when sIf with xPayload then let x = xPayload.n array of x.thenBody x.elseBody end
-            when sSwitch with xPayload then let x = xPayload.n
+            when sIf with x then array of x.thenBody x.elseBody end
+            when sSwitch with x then
                 let bodies = vector.new(:Body)
                 for i = 0 upto {extent x.cases - 1} do vector.append(:Body bodies x.cases[i].body) end
                 if maybe.isSome(:Body x.elseBody) then vector.append(:Body bodies maybe.unwrap(:Body x.elseBody)) end
                 vector.toArray(:Body bodies)
-            when sInspect with xPayload then let x = xPayload.n
+            when sInspect with x then
                 let bodies = vector.new(:Body)
                 for i = 0 upto {extent x.cases - 1} do vector.append(:Body bodies x.cases[i].body) end
                 if maybe.isSome(:Body x.elseBody) then vector.append(:Body bodies maybe.unwrap(:Body x.elseBody)) end
                 vector.toArray(:Body bodies)
-            when sLoop with xPayload then let x = xPayload.n array of x.body end
-            when sLetRec with xPayload then let x = xPayload.n array of x.body end
-            when sTry with xPayload then let x = xPayload.n array of x.body x.handler end
-            when sJoin with xPayload then let x = xPayload.n array of x.continuation x.body end
+            when sLoop with x then array of x.body end
+            when sLetRec with x then array of x.body end
+            when sTry with x then array of x.body x.handler end
+            when sJoin with x then array of x.continuation x.body end
             else array of :Body end
         end
 
     let statementBinders(s: Stmt): Array(Variable) =
         case s
-            when sLet with xPayload then let x = xPayload.n array of x.v end
-            when sVarDecl with xPayload then let x = xPayload.n array of x.v end
-            when sFuns with xPayload then let x = xPayload.n
+            when sLet with x then array of x.v end
+            when sVarDecl with x then array of x.v end
+            when sFuns with x then
                 let vars = vector.new(:Variable)
                 for i = 0 upto {extent x.functions - 1} do vector.append(:Variable vars x.functions[i].v) end
                 vector.toArray(:Variable vars)
-            when sLetRec with xPayload then let x = xPayload.n x.vars
-            when sSwitch with xPayload then let x = xPayload.n
+            when sLetRec with x then x.vars
+            when sSwitch with x then
                 let vars = vector.new(:Variable)
                 for i = 0 upto {extent x.cases - 1} do
                     if maybe.isSome(:Variable x.cases[i].binder) then
@@ -53,14 +53,14 @@ export
                     end
                 end
                 vector.toArray(:Variable vars)
-            when sInspect with xPayload then let x = xPayload.n
+            when sInspect with x then
                 let vars = vector.new(:Variable)
                 for i = 0 upto {extent x.cases - 1} do
                     for j = 0 upto {extent x.cases[i].binders - 1} do vector.append(:Variable vars x.cases[i].binders[j]) end
                 end
                 vector.toArray(:Variable vars)
-            when sTry with xPayload then let x = xPayload.n array of x.exc end
-            when sJoin with xPayload then let x = xPayload.n x.params
+            when sTry with x then array of x.exc end
+            when sJoin with x then x.params
             else array of :Variable end
         end
 
@@ -75,39 +75,39 @@ export
         begin
             let u = vector.new(:Atom)
             case o
-                when opAtom with xPayload then let x = xPayload.n use(u x.atom)
-                when opPrim with xPayload then let x = xPayload.n useAll(u x.args)
-                when opCall with xPayload then let x = xPayload.n
+                when opAtom with x then use(u x.atom)
+                when opPrim with x then useAll(u x.args)
+                when opCall with x then
                     begin
                         if maybe.isSome(:Variable x.callee) then useVar(u maybe.unwrap(:Variable x.callee)) end
                         useAll(u x.args)
                     end
-                when opTypeApp with xPayload then let x = xPayload.n
+                when opTypeApp with x then
                     if maybe.isSome(:Variable x.callee) then useVar(u maybe.unwrap(:Variable x.callee)) end
-                when opCallExternal with xPayload then let x = xPayload.n useAll(u x.args)
-                when opMakeClosure with xPayload then let x = xPayload.n useAll(u x.captures)
-                when opEnvField with xPayload then let x = xPayload.n use(u x.env)
-                when opConvert with xPayload then let x = xPayload.n use(u x.value)
-                when opMakeTuple with xPayload then let x = xPayload.n useAll(u x.args)
-                when opTupleField with xPayload then let x = xPayload.n use(u x.tup)
-                when opMakeRecord with xPayload then let x = xPayload.n for i = 0 upto {extent x.fields - 1} do use(u x.fields[i].atom) end
-                when opRecordField with xPayload then let x = xPayload.n use(u x.recordAtom)
-                when opMakeVariant with xPayload then let x = xPayload.n useOpt(u x.payload)
-                when opMakeOption with xPayload then let x = xPayload.n begin useOpt(u x.payload) useOpt(u x.ordinalAtom) end
-                when opIsTag with xPayload then let x = xPayload.n use(u x.value)
-                when opPayload with xPayload then let x = xPayload.n use(u x.value)
-                when opOrdinal with xPayload then let x = xPayload.n use(u x.value)
-                when opMakeArray with xPayload then let x = xPayload.n useAll(u x.args)
-                when opArrayRep with xPayload then let x = xPayload.n begin use(u x.count) use(u x.init) end
-                when opIndex with xPayload then let x = xPayload.n begin use(u x.arr) use(u x.index) end
-                when opMakeAuto with xPayload then let x = xPayload.n use(u x.payload)
-                when opExceptionPayload with xPayload then let x = xPayload.n use(u x.exc)
-                when opAddrVar with xPayload then let x = xPayload.n useVar(u x.v)
-                when opAddrCell with xPayload then let x = xPayload.n use(u x.init)
-                when opAddrField with xPayload then let x = xPayload.n use(u x.base)
-                when opAddrComponent with xPayload then let x = xPayload.n use(u x.base)
-                when opAddrElement with xPayload then let x = xPayload.n begin use(u x.base) use(u x.index) end
-                when opLoad with xPayload then let x = xPayload.n use(u x.address)
+                when opCallExternal with x then useAll(u x.args)
+                when opMakeClosure with x then useAll(u x.captures)
+                when opEnvField with x then use(u x.env)
+                when opConvert with x then use(u x.value)
+                when opMakeTuple with x then useAll(u x.args)
+                when opTupleField with x then use(u x.tup)
+                when opMakeRecord with x then for i = 0 upto {extent x.fields - 1} do use(u x.fields[i].atom) end
+                when opRecordField with x then use(u x.recordAtom)
+                when opMakeVariant with x then useOpt(u x.payload)
+                when opMakeOption with x then begin useOpt(u x.payload) useOpt(u x.ordinalAtom) end
+                when opIsTag with x then use(u x.value)
+                when opPayload with x then use(u x.value)
+                when opOrdinal with x then use(u x.value)
+                when opMakeArray with x then useAll(u x.args)
+                when opArrayRep with x then begin use(u x.count) use(u x.init) end
+                when opIndex with x then begin use(u x.arr) use(u x.index) end
+                when opMakeAuto with x then use(u x.payload)
+                when opExceptionPayload with x then use(u x.exc)
+                when opAddrVar with x then useVar(u x.v)
+                when opAddrCell with x then use(u x.init)
+                when opAddrField with x then use(u x.base)
+                when opAddrComponent with x then use(u x.base)
+                when opAddrElement with x then begin use(u x.base) use(u x.index) end
+                when opLoad with x then use(u x.address)
                 else ok
             end
             vector.toArray(:Atom u)
@@ -115,24 +115,24 @@ export
 
     let statementUses(s: Stmt): Array(Atom) =
         case s
-            when sLet with xPayload then let x = xPayload.n opUses(x.value)
-            when sDo with xPayload then let x = xPayload.n opUses(x.value)
-            when sVarDecl with xPayload then let x = xPayload.n if maybe.isSome(:Atom x.init) then array of maybe.unwrap(:Atom x.init) end else array of :Atom end end
-            when sAssign with xPayload then let x = xPayload.n array of nodes.atomOfVar(x.v) x.value end
-            when sStoreAt with xPayload then let x = xPayload.n array of x.value x.address end
-            when sStoreField with xPayload then let x = xPayload.n array of x.value x.base end
-            when sStoreComponent with xPayload then let x = xPayload.n array of x.value x.base end
-            when sStoreElement with xPayload then let x = xPayload.n array of x.value x.base x.index end
-            when sIf with xPayload then let x = xPayload.n array of x.cond end
-            when sSwitch with xPayload then let x = xPayload.n array of x.value end
-            when sInspect with xPayload then let x = xPayload.n array of x.value end
-            when sEcho with xPayload then let x = xPayload.n array of x.value end
-            when sReturn with xPayload then let x = xPayload.n array of x.value end
-            when sJump with xPayload then let x = xPayload.n x.args
-            when sRaise with xPayload then let x = xPayload.n
+            when sLet with x then opUses(x.value)
+            when sDo with x then opUses(x.value)
+            when sVarDecl with x then if maybe.isSome(:Atom x.init) then array of maybe.unwrap(:Atom x.init) end else array of :Atom end end
+            when sAssign with x then array of nodes.atomOfVar(x.v) x.value end
+            when sStoreAt with x then array of x.value x.address end
+            when sStoreField with x then array of x.value x.base end
+            when sStoreComponent with x then array of x.value x.base end
+            when sStoreElement with x then array of x.value x.base x.index end
+            when sIf with x then array of x.cond end
+            when sSwitch with x then array of x.value end
+            when sInspect with x then array of x.value end
+            when sEcho with x then array of x.value end
+            when sReturn with x then array of x.value end
+            when sJump with x then x.args
+            when sRaise with x then
                 if maybe.isSome(:Atom x.payload) then array of x.exc maybe.unwrap(:Atom x.payload) end else array of x.exc end end
-            when sReraise with xPayload then let x = xPayload.n array of nodes.atomOfVar(x.exc) end
-            when sTry with xPayload then let x = xPayload.n x.catches
+            when sReraise with x then array of nodes.atomOfVar(x.exc) end
+            when sTry with x then x.catches
             else array of :Atom end
         end
 
@@ -145,7 +145,7 @@ export
                     vector.append(:Stmt found s)
                     if intoFunctions then
                         case s
-                            when sFuns with xPayload then let x = xPayload.n for j = 0 upto {extent x.functions - 1} do visit(x.functions[j].body) end
+                            when sFuns with x then for j = 0 upto {extent x.functions - 1} do visit(x.functions[j].body) end
                             else ok
                         end
                     end
@@ -222,42 +222,42 @@ export
 
     let replaceVarsInOp(o: Op f: Rename): Ok =
         case o
-            when opAtom with xPayload then let x = xPayload.n x.atom := atom(x.atom f)
-            when opPrim with xPayload then let x = xPayload.n
+            when opAtom with x then x.atom := atom(x.atom f)
+            when opPrim with x then
                 begin
                     x.args := atoms(x.args f)
                     x.descriptor := optDescriptor(x.descriptor f)
                 end
-            when opCall with xPayload then let x = xPayload.n
+            when opCall with x then
                 begin
                     x.callee := optVar(x.callee f)
                     x.args := atoms(x.args f)
                     x.descriptors := descriptors(x.descriptors f)
                 end
-            when opTypeApp with xPayload then let x = xPayload.n
+            when opTypeApp with x then
                 begin
                     x.callee := optVar(x.callee f)
                     x.descriptors := descriptors(x.descriptors f)
                 end
-            when opCallExternal with xPayload then let x = xPayload.n
+            when opCallExternal with x then
                 begin
                     x.args := atoms(x.args f)
                     x.descriptors := descriptors(x.descriptors f)
                 end
-            when opMakeClosure with xPayload then let x = xPayload.n
+            when opMakeClosure with x then
                 begin
                     x.captures := atoms(x.captures f)
                     x.descriptors := descriptors(x.descriptors f)
                 end
-            when opEnvField with xPayload then let x = xPayload.n x.env := atom(x.env f)
-            when opConvert with xPayload then let x = xPayload.n x.value := atom(x.value f)
-            when opMakeTuple with xPayload then let x = xPayload.n x.args := atoms(x.args f)
-            when opTupleField with xPayload then let x = xPayload.n
+            when opEnvField with x then x.env := atom(x.env f)
+            when opConvert with x then x.value := atom(x.value f)
+            when opMakeTuple with x then x.args := atoms(x.args f)
+            when opTupleField with x then
                 begin
                     x.tup := atom(x.tup f)
                     x.viewMap := optVar(x.viewMap f)
                 end
-            when opMakeRecord with xPayload then let x = xPayload.n
+            when opMakeRecord with x then
                 begin
                     let fields = vector.new(:nodes.FieldAtom)
                     for i = 0 upto {extent x.fields - 1} do
@@ -268,159 +268,159 @@ export
                     x.descriptor := optDescriptor(x.descriptor f)
                     x.viewDescriptor := optDescriptor(x.viewDescriptor f)
                 end
-            when opRecordField with xPayload then let x = xPayload.n
+            when opRecordField with x then
                 begin
                     x.recordAtom := atom(x.recordAtom f)
                     x.descriptor := optDescriptor(x.descriptor f)
                     x.viewMap := optVar(x.viewMap f)
                 end
-            when opMakeVariant with xPayload then let x = xPayload.n x.payload := optAtom(x.payload f)
-            when opMakeOption with xPayload then let x = xPayload.n
+            when opMakeVariant with x then x.payload := optAtom(x.payload f)
+            when opMakeOption with x then
                 begin
                     x.payload := optAtom(x.payload f)
                     x.ordinalAtom := optAtom(x.ordinalAtom f)
                 end
-            when opIsTag with xPayload then let x = xPayload.n
+            when opIsTag with x then
                 begin
                     x.value := atom(x.value f)
                     x.viewMap := optVar(x.viewMap f)
                 end
-            when opPayload with xPayload then let x = xPayload.n
+            when opPayload with x then
                 begin
                     x.value := atom(x.value f)
                     x.viewMap := optVar(x.viewMap f)
                 end
-            when opOrdinal with xPayload then let x = xPayload.n
+            when opOrdinal with x then
                 begin
                     x.value := atom(x.value f)
                     x.viewMap := optVar(x.viewMap f)
                 end
-            when opMakeArray with xPayload then let x = xPayload.n x.args := atoms(x.args f)
-            when opArrayRep with xPayload then let x = xPayload.n
+            when opMakeArray with x then x.args := atoms(x.args f)
+            when opArrayRep with x then
                 begin
                     x.count := atom(x.count f)
                     x.init := atom(x.init f)
                 end
-            when opIndex with xPayload then let x = xPayload.n
+            when opIndex with x then
                 begin
                     x.arr := atom(x.arr f)
                     x.index := atom(x.index f)
                 end
-            when opMakeAuto with xPayload then let x = xPayload.n
+            when opMakeAuto with x then
                 begin
                     x.payload := atom(x.payload f)
                     x.descriptor := optDescriptor(x.descriptor f)
                 end
-            when opExceptionPayload with xPayload then let x = xPayload.n x.exc := atom(x.exc f)
-            when opAddrVar with xPayload then let x = xPayload.n x.v := f(x.v)
-            when opAddrCell with xPayload then let x = xPayload.n x.init := atom(x.init f)
-            when opAddrField with xPayload then let x = xPayload.n
+            when opExceptionPayload with x then x.exc := atom(x.exc f)
+            when opAddrVar with x then x.v := f(x.v)
+            when opAddrCell with x then x.init := atom(x.init f)
+            when opAddrField with x then
                 begin
                     x.base := atom(x.base f)
                     x.viewMap := optVar(x.viewMap f)
                 end
-            when opAddrComponent with xPayload then let x = xPayload.n
+            when opAddrComponent with x then
                 begin
                     x.base := atom(x.base f)
                     x.viewMap := optVar(x.viewMap f)
                 end
-            when opAddrElement with xPayload then let x = xPayload.n
+            when opAddrElement with x then
                 begin
                     x.base := atom(x.base f)
                     x.index := atom(x.index f)
                 end
-            when opLoad with xPayload then let x = xPayload.n x.address := atom(x.address f)
+            when opLoad with x then x.address := atom(x.address f)
             else ok
         end
 
     let replaceVarsInStmt(s: Stmt f: Rename): Ok =
         case s
-            when sLet with xPayload then let x = xPayload.n
+            when sLet with x then
                 begin
                     x.v := f(x.v)
                     replaceVarsInOp(x.value f)
                 end
-            when sVarDecl with xPayload then let x = xPayload.n
+            when sVarDecl with x then
                 begin
                     x.v := f(x.v)
                     x.init := optAtom(x.init f)
                 end
-            when sAssign with xPayload then let x = xPayload.n
+            when sAssign with x then
                 begin
                     x.v := f(x.v)
                     x.value := atom(x.value f)
                 end
-            when sStoreAt with xPayload then let x = xPayload.n
+            when sStoreAt with x then
                 begin
                     x.value := atom(x.value f)
                     x.address := atom(x.address f)
                 end
-            when sStoreField with xPayload then let x = xPayload.n
+            when sStoreField with x then
                 begin
                     x.value := atom(x.value f)
                     x.base := atom(x.base f)
                     x.viewMap := optVar(x.viewMap f)
                 end
-            when sStoreComponent with xPayload then let x = xPayload.n
+            when sStoreComponent with x then
                 begin
                     x.value := atom(x.value f)
                     x.base := atom(x.base f)
                     x.viewMap := optVar(x.viewMap f)
                 end
-            when sStoreElement with xPayload then let x = xPayload.n
+            when sStoreElement with x then
                 begin
                     x.value := atom(x.value f)
                     x.base := atom(x.base f)
                     x.index := atom(x.index f)
                 end
-            when sDo with xPayload then let x = xPayload.n replaceVarsInOp(x.value f)
-            when sLetRec with xPayload then let x = xPayload.n x.vars := vars(x.vars f)
-            when sIf with xPayload then let x = xPayload.n x.cond := atom(x.cond f)
-            when sSwitch with xPayload then let x = xPayload.n
+            when sDo with x then replaceVarsInOp(x.value f)
+            when sLetRec with x then x.vars := vars(x.vars f)
+            when sIf with x then x.cond := atom(x.cond f)
+            when sSwitch with x then
                 begin
                     x.value := atom(x.value f)
                     x.viewMap := optVar(x.viewMap f)
                 end
-            when sInspect with xPayload then let x = xPayload.n x.value := atom(x.value f)
-            when sTry with xPayload then let x = xPayload.n
+            when sInspect with x then x.value := atom(x.value f)
+            when sTry with x then
                 begin
                     x.exc := f(x.exc)
                     x.catches := atoms(x.catches f)
                 end
-            when sJoin with xPayload then let x = xPayload.n x.params := vars(x.params f)
-            when sEcho with xPayload then let x = xPayload.n
+            when sJoin with x then x.params := vars(x.params f)
+            when sEcho with x then
                 begin
                     x.value := atom(x.value f)
                     x.descriptor := optDescriptor(x.descriptor f)
                 end
-            when sReturn with xPayload then let x = xPayload.n x.value := atom(x.value f)
-            when sJump with xPayload then let x = xPayload.n x.args := atoms(x.args f)
-            when sRaise with xPayload then let x = xPayload.n
+            when sReturn with x then x.value := atom(x.value f)
+            when sJump with x then x.args := atoms(x.args f)
+            when sRaise with x then
                 begin
                     x.exc := atom(x.exc f)
                     x.payload := optAtom(x.payload f)
                 end
-            when sReraise with xPayload then let x = xPayload.n x.exc := f(x.exc)
+            when sReraise with x then x.exc := f(x.exc)
             else ok
         end
 
     let opViewMap(o: Op): maybe.T(Variable) =
         case o
-            when opTupleField with xPayload then let x = xPayload.n x.viewMap
-            when opRecordField with xPayload then let x = xPayload.n x.viewMap
-            when opIsTag with xPayload then let x = xPayload.n x.viewMap
-            when opPayload with xPayload then let x = xPayload.n x.viewMap
-            when opOrdinal with xPayload then let x = xPayload.n x.viewMap
-            when opAddrField with xPayload then let x = xPayload.n x.viewMap
-            when opAddrComponent with xPayload then let x = xPayload.n x.viewMap
+            when opTupleField with x then x.viewMap
+            when opRecordField with x then x.viewMap
+            when opIsTag with x then x.viewMap
+            when opPayload with x then x.viewMap
+            when opOrdinal with x then x.viewMap
+            when opAddrField with x then x.viewMap
+            when opAddrComponent with x then x.viewMap
             else maybe.none(:Variable)
         end
 
     let stmtViewMap(s: Stmt): maybe.T(Variable) =
         case s
-            when sStoreField with xPayload then let x = xPayload.n x.viewMap
-            when sStoreComponent with xPayload then let x = xPayload.n x.viewMap
-            when sSwitch with xPayload then let x = xPayload.n x.viewMap
+            when sStoreField with x then x.viewMap
+            when sStoreComponent with x then x.viewMap
+            when sSwitch with x then x.viewMap
             else maybe.none(:Variable)
         end
 end

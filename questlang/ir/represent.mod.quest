@@ -692,7 +692,7 @@ export
     end
 
     let convertOp(a: Atom p: Plan): Op =
-        option opConvert of Op with let n = tuple let var value = a let var plan = p end end
+        option opConvert of Op with let var value = a let var plan = p end
 
     let letConvert(v: Variable a: Atom p: Plan): Stmt = nodes.letStmt(v convertOp(a p))
 
@@ -763,7 +763,7 @@ export
                     let var init = maybe.none(:Atom)
                     if not(param.isOut) then
                         let current = nodes.newVar("" locationType false)
-                        vector.append(:Stmt before nodes.letStmt(current option opLoad of Op with let n = tuple let var address = address end end))
+                        vector.append(:Stmt before nodes.letStmt(current option opLoad of Op with let var address = address end))
                         init := maybe.some(:Atom nodes.atomOfVar(current))
                         if maybe.isSome(:Plan pIn) then
                             let converted = nodes.newVar("" paramType false)
@@ -771,8 +771,8 @@ export
                             init := maybe.some(:Atom nodes.atomOfVar(converted))
                         end
                     end
-                    vector.append(:Stmt before option sVarDecl of Stmt with let n = tuple let var v = temp let var init = init end end)
-                    vector.append(:Stmt before nodes.letStmt(tempAddress option opAddrVar of Op with let n = tuple let var v = temp end end))
+                    vector.append(:Stmt before option sVarDecl of Stmt with let var v = temp let var init = init end)
+                    vector.append(:Stmt before nodes.letStmt(tempAddress option opAddrVar of Op with let var v = temp end))
                     let var written = nodes.newVar("" paramType false)
                     vector.append(:Stmt after nodes.letStmt(written nodes.opOfVar(temp)))
                     if maybe.isSome(:Plan pOut) then
@@ -781,7 +781,7 @@ export
                         written := converted
                     end
                     vector.append(:Stmt after option sStoreAt of Stmt with
-                        let n = tuple let var value = nodes.atomOfVar(written) let var address = address end
+                        let var value = nodes.atomOfVar(written) let var address = address
                     end)
                     nodes.atomOfVar(tempAddress)
                 end
@@ -894,7 +894,7 @@ export
      * operation gives it (none when that is the let's own) *)
     let operation(r: Representer o: Op resultType: Type before: vector.T(Stmt)): maybe.T(Type) =
         case o
-            when opMakeTuple with xPayload then let x = xPayload.n
+            when opMakeTuple with x then
                 let w = written.writtenStructure(resultType "tuple")
                 if maybe.isSome(:Type w) then
                     case maybe.unwrap(:Type w).form
@@ -907,7 +907,7 @@ export
                     end
                 end
                 maybe.none(:Type)
-            when opMakeVariant with xPayload then let x = xPayload.n
+            when opMakeVariant with x then
                 if maybe.isSome(:Atom x.payload) then
                     let caseType = writtenVariantCase(resultType x.tag)
                     if maybe.isSome(:Type caseType) then
@@ -915,7 +915,7 @@ export
                     end
                 end
                 maybe.none(:Type)
-            when opMakeOption with xPayload then let x = xPayload.n
+            when opMakeOption with x then
                 if maybe.isSome(:Atom x.payload) andif maybe.isSome(:String x.tag) then
                     let w = written.writtenStructure(resultType "option")
                     if maybe.isSome(:Type w) then
@@ -931,16 +931,16 @@ export
                     end
                 end
                 maybe.none(:Type)
-            when opMakeArray with xPayload then let x = xPayload.n
+            when opMakeArray with x then
                 let elem = arrayElement(resultType)
                 let args = vector.new(:Atom)
                 for i = 0 upto {extent x.args - 1} do vector.append(:Atom args convert(x.args[i] elem before noLayout)) end
                 x.args := vector.toArray(:Atom args)
                 maybe.none(:Type)
-            when opArrayRep with xPayload then let x = xPayload.n
+            when opArrayRep with x then
                 x.init := convert(x.init arrayElement(resultType) before noLayout)
                 maybe.none(:Type)
-            when opMakeAuto with xPayload then let x = xPayload.n
+            when opMakeAuto with x then
                 let storedType = model.autoPayloadType(x.autoType maybe.none(:Type))
                 let p = autoPayloadPlan(typeOf(x.payload) storedType x.autoType)
                 if maybe.isSome(:Plan p) then
@@ -949,17 +949,17 @@ export
                     x.payload := nodes.atomOfVar(stored)
                 end
                 maybe.none(:Type)
-            when opTupleField with xPayload then let x = xPayload.n writtenComponent(typeOf(x.tup) x.index)
-            when opRecordField with xPayload then let x = xPayload.n writtenField(typeOf(x.recordAtom) "record" x.name)
-            when opIndex with xPayload then let x = xPayload.n maybe.some(:Type arrayElement(typeOf(x.arr)))
-            when opModuleMember with xPayload then let x = xPayload.n
+            when opTupleField with x then writtenComponent(typeOf(x.tup) x.index)
+            when opRecordField with x then writtenField(typeOf(x.recordAtom) "record" x.name)
+            when opIndex with x then maybe.some(:Type arrayElement(typeOf(x.arr)))
+            when opModuleMember with x then
                 case x.moduleRef
                     when refModule with m then
                         if maybe.isSome(:String x.member) then maybe.some(:Type memberType(m.m maybe.unwrap(:String x.member)))
                         else maybe.none(:Type) end
                     else maybe.none(:Type)
                 end
-            when opTypeApp with xPayload then let x = xPayload.n
+            when opTypeApp with x then
                 let origType = if maybe.isSome(:Variable x.callee) then
                     maybe.unwrap(:Variable x.callee).type
                 else
@@ -977,16 +977,16 @@ export
                 x.plans := plans.plans
                 x.thunkSymbols := plans.thunkSymbols
                 maybe.none(:Type)
-            when opPayload with xPayload then let x = xPayload.n writtenVariantCase(typeOf(x.value) x.tag)
+            when opPayload with x then writtenVariantCase(typeOf(x.value) x.tag)
             else maybe.none(:Type)
         end
 
     (* The type of the location a store stores into (none for one through an address) *)
     let storedType(s: Stmt): maybe.T(Type) =
         case s
-            when sStoreField with xPayload then let x = xPayload.n writtenField(typeOf(x.base) "record" x.name)
-            when sStoreComponent with xPayload then let x = xPayload.n writtenComponent(typeOf(x.base) x.index)
-            when sStoreElement with xPayload then let x = xPayload.n maybe.some(:Type arrayElement(typeOf(x.base)))
+            when sStoreField with x then writtenField(typeOf(x.base) "record" x.name)
+            when sStoreComponent with x then writtenComponent(typeOf(x.base) x.index)
+            when sStoreElement with x then maybe.some(:Type arrayElement(typeOf(x.base)))
             else maybe.none(:Type)
         end
 
@@ -1018,11 +1018,11 @@ export
             let before = vector.new(:Stmt)
             let after = vector.new(:Stmt)
             case s
-                when sLet with xPayload then let x = xPayload.n
+                when sLet with x then
                     case x.value
-                        when opAtom with yPayload then let y = yPayload.n
+                        when opAtom with y then
                             x.value := nodes.opOfAtom(convert(y.atom x.v.type before noLayout))
-                        when opCall with cPayload then let c = cPayload.n
+                        when opCall with c then
                             let writebacks = vector.new(:Stmt)
                             r.genericResults := vector.new(:GenericResult)
                             let resultType = call(r c before writebacks)
@@ -1055,38 +1055,38 @@ export
                             let resultType = operation(r x.value x.v.type before)
                             if maybe.isSome(:Type resultType) then result(x maybe.unwrap(:Type resultType) after) end
                     end
-                when sDo with xPayload then let x = xPayload.n
+                when sDo with x then
                     case x.value
-                        when opCall with cPayload then let c = cPayload.n begin call(r c before after) ok end
+                        when opCall with c then begin call(r c before after) ok end
                         else ok
                     end
-                when sVarDecl with xPayload then let x = xPayload.n
+                when sVarDecl with x then
                     if maybe.isSome(:Atom x.init) then
                         x.init := maybe.some(:Atom convert(maybe.unwrap(:Atom x.init) x.v.type before noLayout))
                     end
-                when sAssign with xPayload then let x = xPayload.n x.value := convert(x.value x.v.type before noLayout)
+                when sAssign with x then x.value := convert(x.value x.v.type before noLayout)
                 when sStoreAt then ok
-                when sStoreField with xPayload then let x = xPayload.n
+                when sStoreField with x then
                     let t = storedType(s)
                     if maybe.isSome(:Type t) then x.value := convert(x.value maybe.unwrap(:Type t) before noLayout) end
-                when sStoreComponent with xPayload then let x = xPayload.n
+                when sStoreComponent with x then
                     let t = storedType(s)
                     if maybe.isSome(:Type t) then x.value := convert(x.value maybe.unwrap(:Type t) before noLayout) end
-                when sStoreElement with xPayload then let x = xPayload.n
+                when sStoreElement with x then
                     let t = storedType(s)
                     if maybe.isSome(:Type t) then x.value := convert(x.value maybe.unwrap(:Type t) before noLayout) end
-                when sReturn with xPayload then let x = xPayload.n
+                when sReturn with x then
                     if maybe.isSome(:nodes.Function function) then
                         x.value := convert(x.value maybe.unwrap(:nodes.Function function).resultType before noLayout)
                     end
-                when sJump with xPayload then let x = xPayload.n
+                when sJump with x then
                     let params = hashMap.find(:String :Array(Variable) r.joins x.label)
                     let args = vector.new(:Atom)
                     for i = 0 upto {extent x.args - 1} do
                         vector.append(:Atom args if i < extent params then convert(x.args[i] params[i].type before noLayout) else x.args[i] end)
                     end
                     x.args := vector.toArray(:Atom args)
-                when sRaise with xPayload then let x = xPayload.n
+                when sRaise with x then
                     if maybe.isSome(:Atom x.payload) then
                         let w = written.writtenStructure(typeOf(x.exc) "exception")
                         if maybe.isSome(:Type w) then
@@ -1097,7 +1097,7 @@ export
                             end
                         end
                     end
-                when sInspect with xPayload then let x = xPayload.n
+                when sInspect with x then
                     if maybe.isSome(:Type x.autoType) then
                         for i = 0 upto {extent x.cases - 1} do inspectCase(maybe.unwrap(:Type x.autoType) x.cases[i]) end
                     end
@@ -1116,7 +1116,7 @@ export
             for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
                 let s = vector.get(:Stmt b.statements i)
                 case s
-                    when sJoin with xPayload then let x = xPayload.n
+                    when sJoin with x then
                         begin hashMap.insert(:String :Array(Variable) r.joins x.label x.params) ok end
                     else ok
                 end
