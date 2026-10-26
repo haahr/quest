@@ -75,4 +75,17 @@ export
     (* Takes interfaces and export scopes another environment loaded (the
      * standard library's) *)
     adopt(g: UnitGraph interfaceScopes: Array(NamedScope) exportScopes: Array(NamedScope)): Ok
+
+    (* Starts a new compilation session on the graph: imports are resolved
+     * again, so that files created since are found, and the units loaded stay
+     * loaded, as they were elaborated (the REPL starts one for each input) *)
+    newSession(g: UnitGraph): Ok
+    (* The units' typed forms, for restore (the REPL rolls back an input that
+     * failed) *)
+    Def Snapshot = Array(Unit)
+    snapshot(g: UnitGraph): Snapshot
+    (* Puts the units' typed forms back as snap found them, forgetting the units
+     * loaded since. The graph is changed in place, so every holder of it (the
+     * interpreter's root) sees the change *)
+    restore(g: UnitGraph snap: Snapshot): Ok
 end

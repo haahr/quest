@@ -1136,7 +1136,9 @@ export
 
     let installed = begin hooks.loadModule := loadModuleForInterpreter ok end
 
-    let evalProgramPhrases(p: typedAst.Program f0: Frame on: All(r: PhraseResult) Ok): Array(PhraseResult) =
+    Let Evaluated = Tuple results: Array(PhraseResult) frame: Frame end
+
+    let evalProgramPhrasesIn(p: typedAst.Program f0: Frame on: All(r: PhraseResult) Ok): Evaluated =
         begin
             let results = vector.new(:PhraseResult)
             let var f = f0
@@ -1147,6 +1149,26 @@ export
                 vector.append(:PhraseResult results r)
                 on(r)
             end
-            vector.toArray(:PhraseResult results)
+            tuple let results = vector.toArray(:PhraseResult results) let frame = f end
+        end
+
+    let evalProgramPhrases(p: typedAst.Program f: Frame on: All(r: PhraseResult) Ok): Array(PhraseResult) =
+        evalProgramPhrasesIn(p f on).results
+
+    Let Snapshot = Tuple bindings: hashMap.T(String Value) moduleValues: hashMap.T(String Value) end
+
+    (* A copy of m, with its equality and hash *)
+    let copyValues(m: hashMap.T(String Value)): hashMap.T(String Value) =
+        hashMap.filter(:String :Value m fun(k: String v: Value): Bool true)
+
+    let snapshot(f: Frame): Snapshot =
+        tuple let bindings = copyValues(f.bindings) let moduleValues = copyValues(f.root.moduleValues) end
+
+    let restore(f: Frame snap: Snapshot): Ok =
+        begin
+            f.bindings := copyValues(snap.bindings)
+            hashMap.clear(:String :Value f.root.moduleValues)
+            hashMap.forEach(:String :Value snap.moduleValues fun(k: String v: Value): Ok
+                begin hashMap.insert(:String :Value f.root.moduleValues k v) ok end)
         end
 end

@@ -204,4 +204,27 @@ export
                 unit(g option moduleUnit of units.UnitKind end n.name).exportScope := maybe.some(:symbols.Scope n.scope)
             end
         end
+
+    let newSession(g: UnitGraph): Ok = hashMap.clear(:String :Resolved g.resolver.memo)
+
+    Let Snapshot = Array(Unit)
+
+    (* A unit with u's state *)
+    let copyUnit(u: Unit): Unit =
+        tuple
+            let kind = u.kind let canonicalName = u.canonicalName let var scope = u.scope
+            let var typedModule = u.typedModule let var exportScope = u.exportScope let var precompiled = u.precompiled
+        end
+
+    let snapshot(g: UnitGraph): Snapshot =
+        vector.toArray(:Unit vector.map(:Unit :Unit hashMap.values(:String :Unit g.units) copyUnit))
+
+    let restore(g: UnitGraph snap: Snapshot): Ok =
+        begin
+            hashMap.clear(:String :Unit g.units)
+            (* Copies, so that the snapshot can be restored again *)
+            for i = 0 upto {extent snap - 1} do
+                hashMap.insert(:String :Unit g.units unitKey(snap[i].kind snap[i].canonicalName) copyUnit(snap[i]))
+            end
+        end
 end

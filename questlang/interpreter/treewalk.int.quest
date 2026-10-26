@@ -14,6 +14,7 @@ import
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/modules/graph : questlang/modules/Graph
     questlang/values/model : questlang/values/Model
+    collections/hashMap : collections/HashMap
     util/maybe : util/Maybe
 export
     (* ======================================================================
@@ -43,6 +44,10 @@ export
      * as it is evaluated *)
     Def PhraseResult = Tuple phrase: typedAst.Binding value: model.Value end
     evalProgramPhrases(p: typedAst.Program f: model.Frame on: All(r: PhraseResult) Ok): Array(PhraseResult)
+    (* The same, with the frame the phrases after these would be evaluated in,
+     * where the REPL's next input runs *)
+    Def Evaluated = Tuple results: Array(PhraseResult) frame: model.Frame end
+    evalProgramPhrasesIn(p: typedAst.Program f: model.Frame on: All(r: PhraseResult) Ok): Evaluated
     (* Records on an error the frames running where it was raised, the first
      * time it leaves a frame *)
     noteFrames(e: model.RunError f: model.Frame): Ok
@@ -57,4 +62,14 @@ export
     runClosure(c: model.Closure args: Array(model.Value)): model.Value
     (* A closure with its next unbound type parameters bound to typeArgs *)
     instantiate(c: model.Closure typeArgs: Array(tm.Type)): model.Closure
+
+    (* A frame's bindings and its root's module values, for restore (the REPL
+     * rolls back an input that failed). A frame's parent never changes, so it
+     * needs no saving, unlike the bootstrap's *)
+    Def Snapshot = Tuple bindings: hashMap.T(String model.Value) moduleValues: hashMap.T(String model.Value) end
+    snapshot(f: model.Frame): Snapshot
+    (* Puts the bindings and module values back as snap found them; the module
+     * values are restored in place, since every frame shares them, so the
+     * modules run since are forgotten, and run again when imported again *)
+    restore(f: model.Frame snap: Snapshot): Ok
 end

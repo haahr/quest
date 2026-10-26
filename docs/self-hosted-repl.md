@@ -115,11 +115,20 @@ The interface and module (§1), the C runtime file and its detection in `compile
 `repl.py` reads lines and keeps history through the Step 1 functions (§1.2). The transcripts do not change; the
 pseudo-terminal test runs against `quest` itself too.
 
-### Step 3: Rollback and sessions in `questlang/`
+### Step 3: Rollback and sessions in `questlang/` (done)
 
 The snapshots, `newSession`, and the frame-returning `evalProgramPhrases` of §2, with nothing calling them yet beyond a
 questlang test that elaborates and runs two inputs, fails a third, and checks that the first two's bindings and
 modules are as they were.
+
+`env.snapshot` and `restore`, `graph.newSession`, `snapshot`, and `restore`, and `treewalk.snapshot`, `restore`, and
+`evalProgramPhrasesIn` (the phrases' results and the frame after them). `tests/source/questlang/repl_sessions.quest`
+runs the scenarios of the REPL transcripts through them. Two divergences from the bootstrap, both because the
+bootstrap's step does nothing that the self-hosted compiler can observe:
+- The environment's snapshot does not record a symbol counter. The bootstrap's records `_symbol_counter`, but its ids
+  come from the global `allocate_symbol_id`, which no restore resets, so ids are never reused there either.
+- A frame's snapshot does not record its parent, which cannot change in `model.Frame`. The REPL keeps the frame the
+  next input runs in, and goes back to the one an input that fails started in, as the bootstrap's does.
 
 ### Step 4: `questlang/driver/repl`
 

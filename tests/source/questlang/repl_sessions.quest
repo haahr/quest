@@ -1,0 +1,156 @@
+(* The self-hosted compiler's REPL sessions (docs/self-hosted-repl.md, Step 3): inputs are elaborated into one
+   environment and run in one frame, each in a session of its own on the unit graph, and an input that fails is
+   rolled back, environment, units, frame, and module values, with env.snapshot, graph.snapshot, and
+   treewalk.snapshot. Side effects are not undone. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+(* @timeout: 300.0 *)
+
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
+    questlang/syntax/parser : questlang/syntax/Parser
+    questlang/syntax/desugar : questlang/syntax/Desugar
+    questlang/types/env : questlang/types/Env
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/typechecker/typecheck : questlang/typechecker/Typecheck
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/units : questlang/modules/Units
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/stdlib : questlang/modules/Stdlib
+    questlang/values/model : questlang/values/Model
+    questlang/interpreter/formatting : questlang/interpreter/Formatting
+    questlang/interpreter/treewalk : questlang/interpreter/Treewalk
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    writer : Writer
+;
+
+let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+
+(* An error's message, without the directories searched, which name the scratch directory and the checkout *)
+let message(err: diagnostics.CompilerError): String =
+    begin
+        let cut = strutil.find(err.message " (looked for")
+        if cut < 0 then err.message else stringOp.getSub(err.message 0 cut) end
+    end;
+
+let save(name: String text: String): Ok =
+    begin let w = writer.file(name) writer.putString(w text) writer.close(w) end;
+
+stdlib.install();
+let e = env.new();
+let dir = paths.absolute(".");
+e.currentDir := maybe.some(:String dir);
+e.programDir := maybe.some(:String dir);
+e.sourceFile := "<repl>";
+
+(* The frame the next input runs in *)
+let var f = treewalk.newRoot(e.units);
+f.currentDir := e.currentDir;
+vector.append(:String f.root.callStack diagnostics.mainFrame);
+
+(* Elaborates and runs an input as a transaction, showing its phrases' results, or why it failed *)
+let input(text: String): Ok =
+    begin
+        emit(">> " <> text)
+        let envSnapshot = env.snapshot(e)
+        let start = f
+        let frameSnapshot = treewalk.snapshot(f)
+        graph.newSession(e.units)
+        let sm = location.newSourceMap("<repl>" text)
+        let bag = diagbag.new()
+        let var failed = false
+        try
+            let program = parser.parseProgram(tokenizer.tokenizeAll(tokenizer.new(sm bag)) sm bag)
+            let result = typecheck.elaborateProgram(desugar.program(program) e)
+            if extent result.errors > 0 then
+                emit("type error: " <> message(result.errors[0]))
+                failed := true
+            else
+                f.sourceMap := maybe.some(:location.SourceMap sm)
+                try
+                    let ran = treewalk.evalProgramPhrasesIn(maybe.unwrap(:typedAst.Program result.program) f
+                        fun(r: treewalk.PhraseResult): Ok
+                            begin
+                                let shown = formatting.formatInteractiveResult(r.phrase r.value)
+                                if stringOp.length(shown) > 0 then emit(shown) end
+                            end)
+                    f := ran.frame
+                when model.runError with err then
+                    emit("raised: " <> model.runErrorMessage(err))
+                    failed := true
+                end
+            end
+        when diagbag.fatalError then
+            emit("syntax error")
+            failed := true
+        end
+        if failed then
+            env.restore(e envSnapshot)
+            f := start
+            treewalk.restore(f frameSnapshot)
+        end
+    end;
+
+(* Whether the session knows the module counter: as a unit, and as a module value *)
+let known(name: String): Ok =
+    begin
+        let unit = graph.find(e.units option moduleUnit of units.UnitKind end name)
+        emit("  " <> name <> ": unit " <> if maybe.isSome(:graph.Unit unit) then "loaded" else "absent" end
+            <> ", value " <> if hashMap.contains(:String :model.Value f.root.moduleValues name) then "run" else "absent" end)
+    end;
+
+save("counter.int.quest" "interface Counter export next(): Int end\n");
+save("counter.mod.quest" "module counter: Counter export let var n = 0 let next(): Int = begin n := n + 1 n end end\n");
+
+(* Bindings stay for later inputs, and a failed input's are rolled back *)
+input("let a = 10");
+input("let a = 99; let b: Int = \"type error\"");
+input("a");
+input("let a = 99; 1 / 0");
+input("a");
+input("b");
+
+(* An input that fails forgets the modules it loaded and ran *)
+input("import counter: Counter; counter.next(); 1 / 0");
+known("counter");
+input("import counter: Counter; let c: Int = \"x\"");
+known("counter");
+
+(* A module imported by successive inputs runs once; a failed input keeps the modules imported before it, and their
+   state is not undone *)
+input("import counter: Counter");
+known("counter");
+input("counter.next()");
+input("import counter: Counter");
+input("counter.next()");
+input("counter.next(); 1 / 0");
+known("counter");
+input("counter.next()");
+
+(* Rebinding is lexical, and a failed rebinding is rolled back *)
+input("let x = 1");
+input("let g(): Int = x");
+input("let x = 2");
+input("g() + x");
+input("let x = 3; 1 / 0");
+input("g() + x");
+
+(* Each input resolves its imports again, finding files created since *)
+input("import later: Later");
+save("later.int.quest" "interface Later export x: Int end\n");
+save("later.mod.quest" "module later: Later export let x = 7 end\n");
+input("import later: Later; later.x");
+
+(* A module declared again is the new one; one declared by an input that fails is forgotten *)
+input("interface I export x: Int end");
+input("module m: I export let x = 1 end");
+input("module m: I export let x = 2 end");
+input("m.x");
+input("module k: I export let x = 3 end; 1 / 0");
+input("k");
