@@ -84,7 +84,9 @@ remaining OS primitive is:
 
 ## 5. Language-Level Architectural Adaptations
 
-Migrating the Python object-oriented codebase to Quest requires structural adaptations to match Quest's type system:
+Migrating the Python object-oriented codebase to Quest requires structural adaptations to match Quest's type system.
+[self-hosting-refactorings.md](self-hosting-refactorings.md) plans the ones best made in the Python compiler first
+(formatting C, reflective traversals, nodes discriminated by which fields are set, duck typing).
 
 ### 5.1. Class Hierarchies to Algebraic Data Types (`Variant`)
 - In Python, AST nodes (`ExprIf`, `ExprFun`, `ExprRecord`) and types (`QFunType`, `QRecordType`) are classes
