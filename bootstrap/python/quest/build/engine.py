@@ -47,7 +47,7 @@ from quest.modules.paths import (
     resolve_object_file,
 )
 from quest.config import CompilerOptions
-from quest.syntax.sources import SourceMap, display_file_name
+from quest.syntax.sources import SourceMap, display_file_name, read_source
 from quest.modules.units import parse_unit
 from quest.typechecker.typecheck import TypeElaborator
 
@@ -256,7 +256,7 @@ class BuildEngine:
         qm_path, c_path, o_path = self.main_artifact_paths(main_file)
         c_path.parent.mkdir(parents=True, exist_ok=True)
 
-        source_text = main_file.read_text(encoding="utf-8")
+        source_text = read_source(main_file)
         source_map = SourceMap(source_text, display_file_name(main_file))
         ast_prog = parse_unit(source_text, main_file, source_map)
 

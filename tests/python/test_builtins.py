@@ -18,7 +18,7 @@ from quest.interpreter.builtins import (
 )
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.interpreter.primitives import QuestRuntimeError
-from quest.values.model import TRUE_VALUE, QuestException, QArray, QBuiltinFun, QExceptionVal, QInt, QString, QValue
+from quest.values.model import QuestException, QArray, QBuiltinFun, QExceptionVal, QInt, QString, QValue
 
 
 class TestBuiltinWrappers(unittest.TestCase):
@@ -76,7 +76,7 @@ class TestBuiltinWrappers(unittest.TestCase):
     def test_external_symbols_populated(self):
         self.assertGreaterEqual(len(EXTERNAL_FUNCTIONS) + len(EXTERNAL_VALUES), 150)
         self.assertIn("quest_writer_put_string", EXTERNAL_FUNCTIONS)
-        self.assertIsInstance(resolve_external_symbol("quest_system_args"), QArray)
+        self.assertIn("quest_system_args", EXTERNAL_VALUES)
         self.assertIn("QUEST_INT_MIN", EXTERNAL_VALUES)
         self.assertIn("(&quest_exc_writer_error)", EXTERNAL_VALUES)
         # Functions and values are told apart by their tables
@@ -107,6 +107,7 @@ class TestBuiltinWrappers(unittest.TestCase):
         self.assertIn("Undefined external symbol", str(ctx.exception))
 
     def test_set_system_args(self):
+        orig_args = EXTERNAL_VALUES.get("quest_system_args")
         try:
             set_system_args(["foo", "bar"])
             args_val = resolve_external_symbol("quest_system_args")
@@ -114,16 +115,7 @@ class TestBuiltinWrappers(unittest.TestCase):
             self.assertEqual(len(args_val.elements), 2)
             self.assertEqual([e.value for e in args_val.elements], ["foo", "bar"])
         finally:
-            set_system_args(None)
-
-    def test_non_ascii_system_arg_raises_system_error(self):
-        try:
-            set_system_args(["foo", "caf\u00e9"])
-            with self.assertRaises(QuestException) as ctx:
-                resolve_external_symbol("quest_system_args")
-            self.assertEqual(ctx.exception.exc_val, resolve_external_symbol("quest_exc_system_error"))
-        finally:
-            set_system_args(None)
+            EXTERNAL_VALUES["quest_system_args"] = orig_args
 
     def test_ensure_interface_and_module(self):
         iface = BuiltinModuleRegistry.ensure_interface("Writer")
@@ -135,61 +127,66 @@ class TestBuiltinWrappers(unittest.TestCase):
         self.assertIn("putString", mod.values)
 
 
-
-class TestAsciiCharacters(unittest.TestCase):
-    """A character is ASCII, as in Typeful Programming: the builtins that would produce another raise their module's
-    error."""
+class TestByteCharacters(unittest.TestCase):
+    """A character is a byte, as in Typeful Programming and C: the builtins pass bytes above 127 through unchanged."""
 
     def call(self, name: str, *args: QValue) -> QValue:
         return EXTERNAL_FUNCTIONS[name](*args)
 
-    def assert_raises(self, exc_name: str, name: str, *args: QValue) -> None:
-        with self.assertRaises(QuestException) as ctx:
-            self.call(name, *args)
-        self.assertEqual(ctx.exception.exc_val, EXTERNAL_VALUES[exc_name])
-
-    def non_ascii_file(self, content: bytes) -> str:
+    def directory(self) -> str:
         directory = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, directory)
-        path = os.path.join(directory, "input.txt")
-        with open(path, "wb") as f:
-            f.write(content)
-        return path
+        return directory
 
     def test_ascii_char_range(self):
-        self.assertEqual(self.call("quest_ascii_char", QInt(127)).value, "\x7f")
-        self.assert_raises("quest_exc_ascii_error", "quest_ascii_char", QInt(128))
+        self.assertEqual(self.call("quest_ascii_char", QInt(255)).value, "\xff")
+        with self.assertRaises(QuestException) as ctx:
+            self.call("quest_ascii_char", QInt(256))
+        self.assertEqual(ctx.exception.exc_val, EXTERNAL_VALUES["quest_exc_ascii_error"])
 
-    def test_reader_get_char_rejects_non_ascii_byte(self):
-        rd = self.call("quest_reader_file", QString(self.non_ascii_file(b"a\xc3\xa9")))
+    def test_files_are_read_and_written_a_byte_per_character(self):
+        # The file's name is bytes too: the UTF-8 of é, as the OS sees it
+        path = os.path.join(self.directory(), "caf\u00e9").encode()
+        name = QString(path.decode("latin-1"))
+        w = self.call("quest_writer_file", name)
+        self.call("quest_writer_put_string", w, QString("a\xc3\xa9\xff"))
+        self.call("quest_writer_close", w)
+        with open(path, "rb") as f:
+            self.assertEqual(f.read(), b"a\xc3\xa9\xff")
+        rd = self.call("quest_reader_file", name)
         self.addCleanup(self.call, "quest_reader_close", rd)
         self.assertEqual(self.call("quest_reader_get_char", rd).value, "a")
-        self.assertEqual(self.call("quest_reader_more", rd), TRUE_VALUE)
-        self.assert_raises("quest_exc_reader_error", "quest_reader_get_char", rd)
+        self.assertEqual(self.call("quest_reader_get_string", rd, QInt(3)).value, "\xc3\xa9\xff")
 
-    def test_reader_get_string_rejects_non_ascii_byte(self):
-        rd = self.call("quest_reader_file", QString(self.non_ascii_file(b"ab\xff")))
-        self.addCleanup(self.call, "quest_reader_close", rd)
-        self.assert_raises("quest_exc_reader_error", "quest_reader_get_string", rd, QInt(3))
+    def test_os_strings_are_bytes(self):
+        directory = self.directory()
+        open(os.path.join(directory, "caf\u00e9"), "w").close()
+        names = self.call("quest_system_list_directory", QString(directory))
+        self.assertEqual([n.value for n in names.elements], ["caf\xc3\xa9"])
+        os.environ["QUEST_TEST_BYTES"] = "na\u00efve"
+        self.addCleanup(os.environ.pop, "QUEST_TEST_BYTES")
+        self.assertEqual(self.call("quest_system_getenv", QString("QUEST_TEST_BYTES")).value, "na\xc3\xafve")
+        try:
+            set_system_args(["program", "caf\u00e9"])
+            args = resolve_external_symbol("quest_system_args")
+            self.assertEqual([a.value for a in args.elements], ["program", "caf\xc3\xa9"])
+        finally:
+            set_system_args(sys.argv)
 
-    def test_dynamic_intern_rejects_non_ascii(self):
+    def test_dynamic_strings_are_bytes(self):
         document = '{"quest":1,"types":[],"type":"String","value":%s}'
-        rd = self.call("quest_reader_file", QString(self.non_ascii_file((document % '"\\u00e9"').encode())))
-        self.addCleanup(self.call, "quest_reader_close", rd)
-        self.assert_raises("quest_exc_dynamic_error", "quest_dynamic_intern", rd)
-        rd = self.call("quest_reader_file", QString(self.non_ascii_file((document % '"\xc3\xa9"').encode("latin-1"))))
-        self.addCleanup(self.call, "quest_reader_close", rd)
-        self.assert_raises("quest_exc_dynamic_error", "quest_dynamic_intern", rd)
-
-    def test_getenv_rejects_non_ascii_value(self):
-        os.environ["QUEST_TEST_NON_ASCII"] = "caf\u00e9"
-        self.addCleanup(os.environ.pop, "QUEST_TEST_NON_ASCII")
-        self.assert_raises("quest_exc_system_error", "quest_system_getenv", QString("QUEST_TEST_NON_ASCII"))
-
-    def test_list_directory_rejects_non_ascii_name(self):
-        path = self.non_ascii_file(b"")
-        os.rename(path, os.path.join(os.path.dirname(path), "caf\u00e9"))
-        self.assert_raises("quest_exc_system_error", "quest_system_list_directory", QString(os.path.dirname(path)))
+        path = os.path.join(self.directory(), "document.json")
+        for value, expected in (('"\\u00e9\xe9"', "\xe9\xc3\xa9"), ('"\\u0100"', None)):
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(document % value)
+            rd = self.call("quest_reader_file", QString(path))
+            self.addCleanup(self.call, "quest_reader_close", rd)
+            if expected is None:
+                with self.assertRaises(QuestException) as ctx:
+                    self.call("quest_dynamic_intern", rd)
+                self.assertEqual(ctx.exception.exc_val, EXTERNAL_VALUES["quest_exc_dynamic_error"])
+            else:
+                self.assertEqual(self.call("quest_dynamic_intern", rd).value.elements[0].value, expected)
 
 
 if __name__ == "__main__":

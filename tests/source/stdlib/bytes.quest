@@ -1,0 +1,63 @@
+(* Characters are bytes, as in Typeful Programming: only ASCII has a defined meaning, and the bytes above 127 pass
+   through unchanged, whether from source text, escapes, ascii.char, the standard input, arguments, environment
+   variables, files, or dynamic.intern. This file is UTF-8, so é is two characters here: naïve, café. *)
+(* @echo *)
+(* @args: café *)
+(* @env: QUEST_BYTES=naïve *)
+(* @stdin:
+crème
+*)
+import ascii: Ascii
+import arrayOp: ArrayOp
+import dynamic: Dynamic
+import reader: Reader
+import string: StringOp
+import system: System
+import writer: Writer
+
+(* A UTF-8 character in a literal is its bytes *)
+"café"
+string.length("café")
+ascii.val(string.getChar("café" 3))
+ascii.val(string.getChar("café" 4))
+string.equal("café" "caf\xc3\xa9")
+string.equal("café" "caf\195\169")
+
+(* Escapes and ascii.char give any byte, which Python's repr shows as itself if printable *)
+"\x80\xa0\xad\xe9\xff"
+'\233'
+ascii.val('\xff')
+ascii.char(200)
+try ascii.char(256) when ascii.error then 'x' end
+string.precedes("z" "\x80")
+
+(* The bytes are written as they are *)
+writer.putString(writer.output "café\n")
+writer.putChar(writer.output '\xc3')
+writer.putChar(writer.output '\xa9')
+writer.putString(writer.output "\n")
+
+(* And read as they are *)
+let line = reader.getString(reader.input 7)
+string.length(line)
+writer.putString(writer.output line)
+
+(* From the OS too *)
+arrayOp.size(system.args)
+string.equal(arrayOp.get(system.args 1) "café")
+system.getEnv("QUEST_BYTES")
+string.length(system.getEnv("QUEST_BYTES"))
+
+(* A file name is its bytes, and dynamic.extern writes a byte above 127 as a \u escape that dynamic.intern reads back *)
+let w = writer.file("café.json")
+dynamic.extern(w dynamic.new(:String "naïve \xff"))
+writer.close(w)
+system.isFile("caf\xc3\xa9.json")
+let r = reader.file("caf\xc3\xa9.json")
+let back = dynamic.be(:String dynamic.intern(r))
+reader.close(r)
+string.equal(back "naïve \xff")
+let r2 = reader.file("café.json")
+writer.putString(writer.output reader.getString(r2 72))
+writer.putString(writer.output "\n")
+reader.close(r2)

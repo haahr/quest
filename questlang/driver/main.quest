@@ -73,21 +73,14 @@ let options =
         tuple let stopAfter = stopAfter let file = file let showOffsets = showOffsets end
     end;
 
-(* The text of a file, up to its first byte that is not ASCII, if any: a character is ASCII, and a reader raises
- * reader.error rather than read another (the bootstrap's tokenizer rejects such a file first) *)
-let readFile(name: String): Tuple text: String isAscii: Bool end =
+(* The text of a file *)
+let readFile(name: String): String =
     begin
         let r = reader.file(name)
         let b = stringBuilder.new()
-        let isAscii =
-            try
-                while reader.more(r) do b.char(reader.getChar(r)) end
-                true
-            when reader.error then
-                false
-            end
+        while reader.more(r) do b.char(reader.getChar(r)) end
         reader.close(r)
-        tuple let text = b.toString() let isAscii = isAscii end
+        b.toString()
     end;
 
 let print(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
@@ -104,13 +97,9 @@ let finish(bag: diagbag.T sm: location.SourceMap): Ok =
 let run(): Ok =
     begin
         let source = readFile(options.file)
-        let sm = location.newSourceMap(options.file source.text)
+        let sm = location.newSourceMap(options.file source)
         let bag = diagbag.new()
         try
-            if not(source.isAscii) then
-                let offset = stringOp.length(source.text)
-                diagbag.addStoppingError(bag location.span(options.file offset {offset + 1}) "Non-ASCII character")
-            end
             let toks = tokenizer.tokenizeAll(tokenizer.new(sm bag))
             if diagbag.hasErrors(bag) then
                 ok

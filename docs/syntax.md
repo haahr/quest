@@ -7,7 +7,8 @@ Quest compiler.
 
 ## 1. Overview of the Syntactic Front-End
 
-The front-end pipeline translates Quest source text, which is ASCII (§2.3), into an immutable Abstract Syntax Tree:
+The front-end pipeline translates Quest source text, a character per byte (§2.3), into an immutable Abstract Syntax
+Tree:
 
 ```
   Source Text
@@ -74,12 +75,10 @@ coordinates on demand:
 - **Strings (`STRING_LIT`):** Delimited by double quotes `"..."`. Supports escapes `\n`, `\t`, `\"`, `\\`, and
   embedded character codes, hexadecimal `\xH` or `\xHH` and decimal `\d`, `\dd`, or `\ddd`.
 - **Characters (`CHAR_LIT`):** Delimited by single quotes `'a'`, with the same escapes.
-- **Characters are ASCII**, as in Typeful Programming: a character's code is 0 to 127. A source file must be ASCII,
-  comments included (`Non-ASCII character`, without its code, which the self-hosted compiler's reader cannot see), and
-  an escape giving a code above 127 is an error (`Character code 128 out of ASCII range`). The library keeps to ASCII
-  too: `ascii.char` of a code above 127, a reader reading a byte above 127, `dynamic.intern` of a string that is not
-  ASCII, and a `system` string from the OS (an argument, an environment variable, a directory or file name) that is
-  not ASCII raise the module's `error`.
+- **Characters are bytes**, as in Typeful Programming, whose `ascii.char` takes codes 0 to 255: only the ASCII range,
+  0 to 127, has a defined meaning, and Quest does not support UTF-8 (README.md). A source file is read a character per
+  byte, so it may hold any bytes, in comments and literals; a UTF-8 character in a string literal is several
+  characters of the string. An escape giving a code above 255 is an error (`Character code 256 out of byte range`).
 
 ### 2.4. Nested Block Comments
 Quest comments nest to arbitrary depth using `(*` and `*)`:

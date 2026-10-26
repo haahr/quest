@@ -1,17 +1,19 @@
 """The standard library's external C functions and values, implemented in Python for the interpreters: each
 `external "symbol"` of lib/ resolves to a Python function, value, or exception (resolve_external_symbol), and
-system.args is the driver's arguments, or those set_system_args sets. A character is ASCII, as in Typeful
-Programming, so a function that would produce another raises its module's error. The library's interfaces and modules,
-which the type checker loads, are quest.modules.stdlib's."""
+system.args is set from the driver's arguments (set_system_args). A character is a byte, as in C, so files, the
+standard streams (use_byte_streams), and strings from the OS are read and written a byte per character. The library's
+interfaces and modules, which the type checker loads, are quest.modules.stdlib's."""
 
 from __future__ import annotations
 
+import io
 import math
 import os
 import struct
 import sys
 from typing import Any, Callable, Optional
 
+from quest.syntax.sources import BYTE_ENCODING, os_text
 from quest.values.dynamic_json import jsog_decode, jsog_encode
 from quest.interpreter.primitives import (
     ARRAY_OP_ERROR_EXC,
@@ -77,15 +79,13 @@ def qchecked(error_exc: Optional[QExceptionVal], *expected_types: type) -> Calla
         return wrapper
     return decorator
 
-def _ascii(text: str, exc: Any) -> str:
-    """The text, if its characters are ASCII, as a Quest character is; otherwise raises exc."""
-    if not text.isascii():
-        raise QuestException(exc)
-    return text
+def _os_path(s: QString) -> bytes:
+    """The bytes of a string, which the OS takes as C passes them."""
+    return s.value.encode(BYTE_ENCODING)
 
 def _writer_file(name_val: QString) -> QWriter:
     try:
-        f = open(name_val.value, "w", encoding="utf-8", newline="")
+        f = open(_os_path(name_val), "w", encoding=BYTE_ENCODING, newline="")
         return QWriter(stream=f, is_file=True, file_name=name_val.value)
     except OSError:
         raise QuestException(WRITER_ERROR_EXC)
@@ -143,8 +143,7 @@ def _writer_close(w: QWriter) -> QOk:
 
 def _reader_file(name_val: QString) -> QReader:
     try:
-        # Latin-1 makes each byte a character, so a byte outside ASCII is a character the reads reject, as in C
-        f = open(name_val.value, "r", encoding="latin-1", newline="")
+        f = open(_os_path(name_val), "r", encoding=BYTE_ENCODING, newline="")
         return QReader(stream=f, is_file=True, file_name=name_val.value)
     except OSError:
         raise QuestException(READER_ERROR_EXC)
@@ -168,7 +167,7 @@ def _reader_more(r: QReader) -> QBool:
             return FALSE_VALUE
         r.peek = ch
         return TRUE_VALUE
-    except (OSError, ValueError):
+    except OSError:
         raise QuestException(READER_ERROR_EXC)
 
 def _reader_ready(r: QReader) -> QInt:
@@ -183,8 +182,8 @@ def _reader_get_char(r: QReader) -> QChar:
         ch = _reader_read_one(r)
         if not ch:
             raise QuestException(READER_ERROR_EXC)
-        return QChar(_ascii(ch, READER_ERROR_EXC))
-    except (OSError, ValueError):
+        return QChar(ch)
+    except OSError:
         raise QuestException(READER_ERROR_EXC)
 
 def _reader_get_string(r: QReader, size: QInt) -> QString:
@@ -203,9 +202,9 @@ def _reader_get_string(r: QReader, size: QInt) -> QString:
         try:
             chunk = r.stream.read(sz)
             buf.append(chunk)
-        except (OSError, ValueError):
+        except OSError:
             raise QuestException(READER_ERROR_EXC)
-    return QString(_ascii("".join(buf), READER_ERROR_EXC))
+    return QString("".join(buf))
 
 def _reader_get_sub_string(r: QReader, s: QString, start: QInt, size: QInt) -> QOk:
     if r.is_closed:
@@ -248,7 +247,7 @@ def _conv_real(r: QValue) -> QString:
     return QString(f"~{s}" if is_neg else s)
 
 def _ascii_char(n: QInt) -> QChar:
-    if n.value < 0 or n.value > 127:
+    if n.value < 0 or n.value > 255:
         raise QuestException(ASCII_ERROR_EXC)
     return QChar(chr(n.value))
 
@@ -386,10 +385,10 @@ def _dynamic_intern(rd: QReader) -> QAutoVal:
         peek = rd.peek
         if peek is not None:
             rd.peek = None
-            return _ascii(peek, DYNAMIC_ERROR_EXC)
+            return peek
         try:
-            return _ascii(rd.stream.read(1), DYNAMIC_ERROR_EXC)
-        except (OSError, ValueError):
+            return rd.stream.read(1)
+        except OSError:
             raise QuestException(DYNAMIC_ERROR_EXC)
 
     # Skip leading whitespace
@@ -446,12 +445,12 @@ def _dynamic_intern(rd: QReader) -> QAutoVal:
                 try:
                     c = rd.stream.read(1)
                     rd.peek = c
-                except (OSError, ValueError):
+                except OSError:
                     c = ""
             if not c or c in " \t\r\n,]}":
                 break
             rd.peek = None
-            buf.append(_ascii(c, DYNAMIC_ERROR_EXC))
+            buf.append(c)
 
     raw = "".join(buf)
     return jsog_decode(raw)
@@ -485,62 +484,62 @@ def _system_exit(code: QInt) -> QOk:
     sys.exit(code.value)
 
 def _system_getenv(name_val: QString) -> QString:
-    return QString(_ascii(os.environ.get(name_val.value, ""), SYSTEM_ERROR_EXC))
+    return QString(os.environb.get(_os_path(name_val), b"").decode(BYTE_ENCODING))
 
 def _system_file_exists(path_val: QString) -> QBool:
-    return TRUE_VALUE if os.path.exists(path_val.value) else FALSE_VALUE
+    return TRUE_VALUE if os.path.exists(_os_path(path_val)) else FALSE_VALUE
 
 def _system_is_file(path_val: QString) -> QBool:
-    return TRUE_VALUE if os.path.isfile(path_val.value) else FALSE_VALUE
+    return TRUE_VALUE if os.path.isfile(_os_path(path_val)) else FALSE_VALUE
 
 def _system_is_directory(path_val: QString) -> QBool:
-    return TRUE_VALUE if os.path.isdir(path_val.value) else FALSE_VALUE
+    return TRUE_VALUE if os.path.isdir(_os_path(path_val)) else FALSE_VALUE
 
 def _system_make_directory(path_val: QString) -> QOk:
     try:
-        os.makedirs(path_val.value, exist_ok=True)
+        os.makedirs(_os_path(path_val), exist_ok=True)
         return OK_VALUE
     except OSError:
         raise QuestException(SYSTEM_ERROR_EXC)
 
 def _system_remove_file(path_val: QString) -> QOk:
     try:
-        os.remove(path_val.value)
+        os.remove(_os_path(path_val))
         return OK_VALUE
     except OSError:
         raise QuestException(SYSTEM_ERROR_EXC)
 
 def _system_remove_directory(path_val: QString) -> QOk:
     try:
-        os.rmdir(path_val.value)
+        os.rmdir(_os_path(path_val))
         return OK_VALUE
     except OSError:
         raise QuestException(SYSTEM_ERROR_EXC)
 
 def _system_rename_file(old_path_val: QString, new_path_val: QString) -> QOk:
     try:
-        os.rename(old_path_val.value, new_path_val.value)
+        os.rename(_os_path(old_path_val), _os_path(new_path_val))
         return OK_VALUE
     except OSError:
         raise QuestException(SYSTEM_ERROR_EXC)
 
 def _system_current_directory() -> QString:
     try:
-        return QString(_ascii(os.getcwd(), SYSTEM_ERROR_EXC))
+        return QString(os.getcwdb().decode(BYTE_ENCODING))
     except OSError:
         raise QuestException(SYSTEM_ERROR_EXC)
 
 def _system_change_directory(path_val: QString) -> QOk:
     try:
-        os.chdir(path_val.value)
+        os.chdir(_os_path(path_val))
         return OK_VALUE
     except OSError:
         raise QuestException(SYSTEM_ERROR_EXC)
 
 def _system_list_directory(path_val: QString) -> QArray:
     try:
-        names = sorted(os.listdir(path_val.value))
-        return QArray(tuple(QString(_ascii(n, SYSTEM_ERROR_EXC)) for n in names))
+        names = sorted(os.listdir(_os_path(path_val)))
+        return QArray(tuple(QString(n.decode(BYTE_ENCODING)) for n in names))
     except OSError:
         raise QuestException(SYSTEM_ERROR_EXC)
 
@@ -945,6 +944,7 @@ EXTERNAL_VALUES: dict[str, QValue] = {
     # System
     "(&quest_exc_system_error)": SYSTEM_ERROR_EXC,
     "quest_exc_system_error": SYSTEM_ERROR_EXC,
+    "quest_system_args": QArray(tuple(QString(os_text(a)) for a in sys.argv)),
 
     # Dynamic
     "(&quest_exc_dynamic_error)": DYNAMIC_ERROR_EXC,
@@ -960,20 +960,17 @@ def resolve_external_symbol(symbol: str) -> QValue:
             return QBuiltinFun(symbol, EXTERNAL_FUNCTIONS[name])
         if name in EXTERNAL_VALUES:
             return EXTERNAL_VALUES[name]
-        if name == "quest_system_args":
-            # Made when the program uses it, as C makes it at startup, so a non-ASCII argument raises system.error
-            args = sys.argv if _system_args is None else _system_args
-            return QArray(tuple(QString(_ascii(a, SYSTEM_ERROR_EXC)) for a in args))
     raise QuestRuntimeError(f"Undefined external symbol '{symbol}' in interpreter")
 
 
-# system.args, if not the driver's arguments
-_system_args: list[str] | None = None
+def set_system_args(args: list[str]) -> None:
+    """Updates system.args with the provided argument list, as Python decoded it from the OS."""
+    EXTERNAL_VALUES["quest_system_args"] = QArray(tuple(QString(os_text(a)) for a in args))
 
 
-def set_system_args(args: list[str] | None) -> None:
-    """Sets system.args to args, or to the driver's arguments if args is None."""
-    global _system_args
-    _system_args = None if args is None else list(args)
-
-
+def use_byte_streams() -> None:
+    """Makes the standard streams read and write a byte per character, as C's do. Text the compiler itself writes that
+    is not a character per byte, a file name from the OS, say, is written with escapes."""
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper):
+            stream.reconfigure(encoding=BYTE_ENCODING, errors="strict" if stream is sys.stdin else "backslashreplace")

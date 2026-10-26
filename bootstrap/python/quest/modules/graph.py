@@ -49,6 +49,7 @@ from quest.modules.paths import (
     strip_unit_suffix,
 )
 from quest.modules.units import unit_kind
+from quest.syntax.sources import read_source
 
 if TYPE_CHECKING:
     from quest.types.symbols import Scope
@@ -269,7 +270,7 @@ def interface_import_paths(source: Path) -> list[str]:
         return cached
     paths: list[str] = []
     try:
-        text = source.read_text(encoding="utf-8")
+        text = read_source(source)
         prog = parse_quest_program(Tokenizer(text, str(source)).tokenize_all(), SourceMap(text, str(source)))
         if isinstance(prog, ast.Program) and len(prog.phrases) == 1 and isinstance(prog.phrases[0], ast.InterfaceDecl):
             paths = [imp.effective_interface_path for imp in prog.phrases[0].imports]

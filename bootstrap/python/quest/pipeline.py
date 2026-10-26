@@ -53,7 +53,7 @@ from quest.interpreter.treewalk import (
 from quest.values.model import QuestException, OK_VALUE, QOk, QValue, qvalue_to_str
 from quest.syntax.parser import ParserError
 from quest.syntax.tokenizer import Tokenizer, TokenizerError
-from quest.syntax.sources import SourceMap
+from quest.syntax.sources import SourceMap, read_source
 from quest.syntax.tokens import Token, TokenKind
 from quest.typechecker.typecheck import (
     elaborate_phrase,
@@ -576,7 +576,7 @@ def binary_error_diagnostic(stderr: str, source_map: SourceMap) -> Diagnostic:
     site_map: Optional[SourceMap] = source_map if file_name == source_map.file_name else None
     if site_map is None:
         try:
-            site_map = SourceMap(Path(file_name).read_text(encoding="utf-8"), file_name)
+            site_map = SourceMap(read_source(Path(file_name)), file_name)
         except OSError:
             return Diagnostic(Severity.ERROR, f"{message}\n  at {file_name}:{line}:{column}", trace=trace)
     label = DiagnosticLabel(offset=site_map.offset_of(line, column), length=1, is_primary=True)
@@ -727,7 +727,7 @@ class PhasePipeline:
         ctx: Optional[CompilerContext] = None,
     ) -> PipelineResult:
         """Executes the pipeline on a file from disk."""
-        source_text = path.read_text(encoding="utf-8")
+        source_text = read_source(path)
         return self.execute(source_text, str(path), options=options, ctx=ctx)
 
     def compile_phrase(

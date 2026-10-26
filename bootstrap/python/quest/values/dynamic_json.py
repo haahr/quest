@@ -617,6 +617,7 @@ def jsog_encode(dyn: QAutoVal) -> str:
     for out, witness in w.nested:
         out["@type"] = mapped(witness)
     document = {"quest": FORMAT_VERSION, "types": table, "type": mapped(root), "value": value}
+    # ASCII, with a \u escape for each byte above 127, as C writes it
     return json.dumps(document, separators=(",", ":"), allow_nan=False)
 
 
@@ -981,10 +982,10 @@ class _Reader:
                 return QReal(special[data])
         if ref == "Bool" and isinstance(data, bool):
             return TRUE_VALUE if data else FALSE_VALUE
-        # A character is ASCII, as in Typeful Programming, even one a \u escape gives
-        if ref == "Char" and isinstance(data, str) and len(data) == 1 and data.isascii():
+        # A character is a byte, so a \u escape above \u00ff gives none
+        if ref == "Char" and isinstance(data, str) and len(data) == 1 and _is_bytes(data):
             return QChar(data)
-        if ref == "String" and isinstance(data, str) and data.isascii():
+        if ref == "String" and isinstance(data, str) and _is_bytes(data):
             return QString(data)
         if ref == "Ok" and data is None:
             return OK_VALUE
@@ -1001,6 +1002,11 @@ class _Reader:
 def _reject_json_constant(name: str) -> Any:
     """Rejects the non-JSON tokens NaN, Infinity, and -Infinity that Python's json module accepts."""
     raise _fail()
+
+
+def _is_bytes(text: str) -> bool:
+    """Whether each character of text is a byte, as a Quest character is."""
+    return max(text, default="\0") <= "\xff"
 
 
 def jsog_decode(raw_json: str) -> QAutoVal:

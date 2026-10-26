@@ -14,6 +14,7 @@ from typing import Callable, Optional
 
 import quest.syntax.ast as ast
 from quest.diagnostics import Diagnostic, QuestCompilerError, QuestTypeError, at_import, diagnostic_of
+from quest.syntax.sources import read_source
 from quest.typechecker.elaborate_types import (
     elaborate_kind,
     elaborate_kind_binding,
@@ -228,7 +229,7 @@ def extract_module_external_types(src: Optional[Path]) -> dict[str, QType]:
     if src is None or not src.is_file():
         return {}
     try:
-        source_text = src.read_text(encoding="utf-8")
+        source_text = read_source(src)
         from quest.syntax.grammar import parse_quest_program
         from quest.syntax.sources import SourceMap
         from quest.syntax.tokenizer import Tokenizer

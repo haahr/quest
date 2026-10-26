@@ -150,26 +150,18 @@ export
             maybe.unwrapOr(:String rel p)
         end
 
-    Let Text = Tuple text: String isAscii: Bool end
-
-    let readText(file: String): maybe.T(Text) =
+    let readText(file: String): maybe.T(String) =
         if not(system.isFile(file)) then
-            maybe.none(:Text)
+            maybe.none(:String)
         else
             try
                 let r = reader.file(file)
                 let b = stringBuilder.new()
-                let isAscii =
-                    try
-                        while reader.more(r) do b.char(reader.getChar(r)) end
-                        true
-                    when reader.error then
-                        false
-                    end
+                while reader.more(r) do b.char(reader.getChar(r)) end
                 reader.close(r)
-                maybe.some(:Text tuple let text = b.toString() let isAscii = isAscii end)
+                maybe.some(:String b.toString())
             when system.error then
-                maybe.none(:Text)
+                maybe.none(:String)
             end
         end
 
@@ -208,12 +200,12 @@ export
     let declaredModuleName(file: maybe.T(String) canonName: String): String =
         begin
             let fallback = lastSegment(canonName)
-            let text = if maybe.isSome(:String file) then readText(maybe.unwrap(:String file)) else maybe.none(:Text) end
-            if maybe.isNone(:Text text) then
+            let text = if maybe.isSome(:String file) then readText(maybe.unwrap(:String file)) else maybe.none(:String) end
+            if maybe.isNone(:String text) then
                 fallback
             else
                 try
-                    let sm = location.newSourceMap(maybe.unwrap(:String file) maybe.unwrap(:Text text).text)
+                    let sm = location.newSourceMap(maybe.unwrap(:String file) maybe.unwrap(:String text))
                     let toks = tokenizer.tokenizeAll(tokenizer.new(sm diagbag.new()))
                     let var name = fallback
                     let var found = false

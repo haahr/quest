@@ -43,7 +43,7 @@ from quest.modules.paths import (
     is_typecheck_only,
     resolve_object_file,
 )
-from quest.syntax.sources import SourceMap, display_file_name
+from quest.syntax.sources import SourceMap, display_file_name, read_source
 from quest.modules.units import parse_unit
 
 if TYPE_CHECKING:
@@ -157,7 +157,7 @@ def load_interface(name: str, env: Environment) -> Scope:
         return _register(_load_qi(file_path))
 
     try:
-        source_text = file_path.read_text(encoding="utf-8")
+        source_text = read_source(file_path)
     except OSError as err:
         raise QuestTypeError(f"Error reading interface file '{file_path}': {err}")
 
@@ -288,7 +288,7 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
         )
 
     try:
-        source_text = file_path.read_text(encoding="utf-8")
+        source_text = read_source(file_path)
     except OSError as err:
         raise QuestTypeError(f"Error reading module file '{file_path}': {err}")
 

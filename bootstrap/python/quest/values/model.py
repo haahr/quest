@@ -195,7 +195,7 @@ class QReal(QValue):
 
 
 class QChar(QValue):
-    """Single ASCII character value."""
+    """A character value: a byte, with code 0 to 255, of which only ASCII has a defined meaning."""
 
     def __init__(self, value: str):
         if len(value) != 1:

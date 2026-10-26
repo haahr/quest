@@ -14,7 +14,7 @@ from typing import Optional
 import quest.syntax.ast as ast
 from quest.modules.graph import Resolver, Roots
 from quest.syntax.grammar import parse_quest_program
-from quest.syntax.sources import SourceMap
+from quest.syntax.sources import BYTE_ENCODING, SourceMap
 from quest.syntax.tokenizer import Tokenizer
 
 
@@ -69,7 +69,7 @@ def _unit_imports(path: Path, resolver: Resolver) -> list[Path]:
     without search paths) that the unit or program in it imports, including a module's own interface; none if it
     does not parse. Units found elsewhere (the standard library's) are not beside it."""
     try:
-        text = path.read_text(encoding="utf-8")
+        text = path.read_text(encoding=BYTE_ENCODING)
         prog = parse_quest_program(Tokenizer(text, str(path)).tokenize_all(), SourceMap(text, str(path)))
     except Exception:
         return []
@@ -116,7 +116,7 @@ def expected_diagnostics_of(source_file: Path) -> list[ExpectedDiagnostic]:
     (docs/testing.md §3.3), each matched only by a diagnostic in its own file."""
     expectations: list[ExpectedDiagnostic] = []
     for file in [source_file.resolve(), *imported_unit_files(source_file)]:
-        expectations.extend(extract_expected_diagnostics(file.read_text(encoding="utf-8"), file))
+        expectations.extend(extract_expected_diagnostics(file.read_text(encoding=BYTE_ENCODING), file))
     return expectations
 
 
@@ -272,7 +272,7 @@ def execute_phase(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
+                encoding=BYTE_ENCODING,
                 input=stdin_data,
                 env=env,
                 timeout=timeout,
@@ -281,10 +281,10 @@ def execute_phase(
         return process.returncode, process.stdout, process.stderr
     except subprocess.TimeoutExpired as exc:
         stdout = exc.stdout if isinstance(exc.stdout, str) else (
-            exc.stdout.decode("utf-8", errors="replace") if exc.stdout else ""
+            exc.stdout.decode(BYTE_ENCODING, errors="replace") if exc.stdout else ""
         )
         stderr = exc.stderr if isinstance(exc.stderr, str) else (
-            exc.stderr.decode("utf-8", errors="replace") if exc.stderr else ""
+            exc.stderr.decode(BYTE_ENCODING, errors="replace") if exc.stderr else ""
         )
         timeout_msg = f"Phase '{phase_name}' timed out after {timeout} seconds"
         full_err = f"{stderr}\n{timeout_msg}" if stderr else timeout_msg
@@ -317,14 +317,14 @@ def _check_further_errors(
         return True, "", blocks[0]
     if update_golden:
         further_errors_file.parent.mkdir(parents=True, exist_ok=True)
-        further_errors_file.write_text(full, encoding="utf-8")
+        further_errors_file.write_text(full, encoding=BYTE_ENCODING)
     elif not further_errors_file.exists():
         shown = "\n".join(f"    | {line}" for line in full.strip().splitlines())
         where = further_errors_file.relative_to(root_dir)
         return False, f"  Further errors are not recorded in {where} (review, then --update-golden):\n{shown}", stderr
-    elif further_errors_file.read_text(encoding="utf-8") != full:
+    elif further_errors_file.read_text(encoding=BYTE_ENCODING) != full:
         diff = difflib.unified_diff(
-            further_errors_file.read_text(encoding="utf-8").splitlines(keepends=True),
+            further_errors_file.read_text(encoding=BYTE_ENCODING).splitlines(keepends=True),
             full.splitlines(keepends=True),
             fromfile=str(further_errors_file.relative_to(root_dir)),
             tofile="actual",
@@ -396,11 +396,11 @@ def run_error_test(
         if update_golden and driver_command is None:
             golden_content = format_canonical_error_golden(stderr)
             golden_error_file.parent.mkdir(parents=True, exist_ok=True)
-            golden_error_file.write_text(golden_content, encoding="utf-8")
+            golden_error_file.write_text(golden_content, encoding=BYTE_ENCODING)
             return True, "[UPDATED]"
 
         if golden_error_file.exists():
-            patterns = extract_expected_patterns(golden_error_file.read_text(encoding="utf-8"))
+            patterns = extract_expected_patterns(golden_error_file.read_text(encoding=BYTE_ENCODING))
             ok, unmatched = match_error_patterns(stderr, patterns)
             if ok:
                 return True, ""

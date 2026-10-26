@@ -97,7 +97,7 @@ Standard scalar constants are defined for `Ok` and boolean values:
 ```
 
 ### 3.2. String Representation (`QString`)
-Quest strings are heap-allocated, length-prefixed buffers of ASCII bytes supporting $O(1)$ length queries and in-place
+Quest strings are heap-allocated, length-prefixed byte buffers supporting $O(1)$ length queries and in-place
 character/substring mutation (`string.setChar`, `string.setSub`, §5.5):
 ```c
 typedef struct QString {
@@ -565,7 +565,7 @@ In Quest, strings are mutable character sequences (supporting Cardelli's `String
 typedef struct QString {
     int64_t length;
     int64_t capacity;
-    char   *data;     /* Null-terminated ASCII buffer */
+    char   *data;     /* Null-terminated bytes, ASCII or not */
 } QString;
 ```
 

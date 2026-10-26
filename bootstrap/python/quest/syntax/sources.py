@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import bisect
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,6 +18,21 @@ class SourceLocation:
 
     def __str__(self) -> str:
         return f"{self.line}:{self.column}"
+
+
+# A character is a byte, as in C; only its ASCII range has a defined meaning. Latin-1 decodes each byte of a file to
+# the character with the byte's code, so the interpreter sees the same characters as compiled code.
+BYTE_ENCODING = "latin-1"
+
+
+def read_source(path: str | Path) -> str:
+    """The text of a Quest source file, a character per byte."""
+    return Path(path).read_text(encoding=BYTE_ENCODING)
+
+
+def os_text(text: str) -> str:
+    """A string Python decoded from the OS (an argument, say), a character per byte, as a Quest program sees it."""
+    return os.fsencode(text).decode(BYTE_ENCODING)
 
 
 def display_file_name(path: Path) -> str:

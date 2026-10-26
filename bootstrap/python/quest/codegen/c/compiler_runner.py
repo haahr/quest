@@ -10,6 +10,8 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
+from quest.syntax.sources import BYTE_ENCODING
+
 
 def find_c_compiler() -> str:
     """Locates host C compiler (clang preferred, fallback to gcc)."""
@@ -136,13 +138,13 @@ def run_binary(
     input_data: Optional[str] = None,
     timeout: float = 10.0,
 ) -> subprocess.CompletedProcess[str]:
-    """Executes a compiled binary and returns stdout/stderr/returncode."""
+    """Executes a compiled binary and returns stdout/stderr/returncode, a character per byte."""
     cmd = [str(binary_path)] + (args or [])
     return subprocess.run(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
+        encoding=BYTE_ENCODING,
         env=env,
         input=input_data,
         timeout=timeout,

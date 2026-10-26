@@ -218,16 +218,6 @@ export
             end
         end
 
-    (* The character of a code that an escape sequence from start to the cursor gives; a character is ASCII, as in
-     * Typeful Programming *)
-    let escapedChar(tok: T start: Int code: Int): Char =
-        if code > 127 then
-            error(tok start "Character code " <> conv.int(code) <> " out of ASCII range")
-            ascii.char(0)
-        else
-            ascii.char(code)
-        end
-
     (* The character an escape sequence denotes; the backslash is already consumed *)
     let lexEscapeSequence(tok: T): Char =
         begin
@@ -255,7 +245,7 @@ export
                         error(tok start "Invalid hexadecimal escape sequence")
                         ascii.char(0)
                     else
-                        escapedChar(tok start code)
+                        ascii.char(code)
                     end
                 elsif strutil.isDigit(c) then
                     (* \d, \dd, or \ddd *)
@@ -265,7 +255,12 @@ export
                         code := {code * 10} + {ascii.val(advanceChar(tok)) - 48}
                         digits := digits + 1
                     end
-                    escapedChar(tok start code)
+                    if code > 255 then
+                        error(tok start "Character code " <> conv.int(code) <> " out of byte range")
+                        ascii.char(0)
+                    else
+                        ascii.char(code)
+                    end
                 else
                     error(tok start "Unknown escape sequence '\\" <> stringOp.new(1 c) <> "'")
                     c

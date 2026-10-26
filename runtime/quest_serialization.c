@@ -156,7 +156,8 @@ static void quest_write_json_string(QWriter *wr, const char *s, size_t len) {
             case '\r': quest_write_raw(wr, "\\r"); break;
             case '\t': quest_write_raw(wr, "\\t"); break;
             default:
-                if (c < 0x20) {
+                /* ASCII, with a \u escape for each byte above 127, as the interpreter writes it */
+                if (c < 0x20 || c > 0x7F) {
                     char hex[8];
                     snprintf(hex, sizeof(hex), "\\u%04x", c);
                     quest_write_raw(wr, hex);
@@ -1113,9 +1114,7 @@ static int quest_json_peek(QJsonReader *jr) {
     if (jr->peek != -1) return jr->peek;
     if (jr->rd == NULL || jr->rd->is_closed) return -1;
     if (!quest_reader_more(jr->rd)) return -1;
-    /* A character is ASCII, as in Typeful Programming, so another fails as the document's, not as the reader's */
-    if (jr->rd->peek_char > 127) quest_raise_dynamic_error();
-    jr->peek = (int)quest_reader_get_char(jr->rd);
+    jr->peek = (int)(unsigned char)quest_reader_get_char(jr->rd);
     return jr->peek;
 }
 
@@ -1169,8 +1168,8 @@ static QJsonValue *quest_parse_json_string(QJsonReader *jr) {
                         else if (h >= 'A' && h <= 'F') hex = (hex << 4) | (h - 'A' + 10);
                         else quest_raise_dynamic_error();
                     }
-                    /* A character is ASCII */
-                    if (hex > 0x7F) quest_raise_dynamic_error();
+                    /* A character is a byte, so an escape above \u00ff gives none */
+                    if (hex > 0xFF) quest_raise_dynamic_error();
                     ch = (int)hex;
                     break;
                 }

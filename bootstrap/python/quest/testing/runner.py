@@ -38,6 +38,7 @@ from quest.pipeline import (
     ir_run_pipeline,
 )
 from quest.modules.graph import UnitKind, file_unit_kind
+from quest.syntax.sources import BYTE_ENCODING
 from quest.testing.errors import run_error_test
 
 TESTS_SOURCE_DIR = ROOT_DIR / "tests" / "source"
@@ -93,9 +94,14 @@ class TestDirectives:
     echo: bool = False
 
 
+def _os_arg(text: str) -> str:
+    """Text from a test's source, a character per byte, as a string that subprocess gives the OS as those bytes."""
+    return os.fsdecode(text.encode(BYTE_ENCODING))
+
+
 def parse_test_directives(source_file: Path) -> TestDirectives:
     """Extracts test directives (@skip-phase, @args, @env, @exit, @timeout, @stdin, @echo) from comments."""
-    text = source_file.read_text(encoding="utf-8")
+    text = source_file.read_text(encoding=BYTE_ENCODING)
 
     skipped: set[str] = set()
     for match in SKIP_PHASE_PATTERN.finditer(text):
@@ -109,7 +115,7 @@ def parse_test_directives(source_file: Path) -> TestDirectives:
     for match in ARGS_PATTERN.finditer(text):
         raw_args = match.group(1).strip()
         if raw_args:
-            args.extend(shlex.split(raw_args))
+            args.extend(_os_arg(a) for a in shlex.split(raw_args))
 
     env: dict[str, str] = {}
     for match in ENV_PATTERN.finditer(text):
@@ -118,9 +124,9 @@ def parse_test_directives(source_file: Path) -> TestDirectives:
             for item in shlex.split(raw_env):
                 if "=" in item:
                     k, v = item.split("=", 1)
-                    env[k] = v
+                    env[_os_arg(k)] = _os_arg(v)
                 else:
-                    env[item] = ""
+                    env[_os_arg(item)] = ""
 
     exit_code = 0
     for match in EXIT_PATTERN.finditer(text):
@@ -282,7 +288,7 @@ def run_single_golden_test(
                 command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True,
+                encoding=BYTE_ENCODING,
                 input=directives.stdin_data if phase_name in RUN_PHASES else None,
                 env=environment,
                 timeout=effective_timeout,
@@ -291,7 +297,7 @@ def run_single_golden_test(
     except subprocess.TimeoutExpired as exc:
         msg = f"  (TIMED OUT after {effective_timeout:.1f}s)"
         stderr = exc.stderr if isinstance(exc.stderr, str) else (
-            exc.stderr.decode("utf-8", errors="replace") if exc.stderr else ""
+            exc.stderr.decode(BYTE_ENCODING, errors="replace") if exc.stderr else ""
         )
         if stderr:
             for line in stderr.strip().splitlines()[:15]:
@@ -307,13 +313,13 @@ def run_single_golden_test(
         return False, "[FAIL]", msg
 
     if update_golden and driver_command is None:
-        out_file.write_text(process.stdout, encoding="utf-8")
+        out_file.write_text(process.stdout, encoding=BYTE_ENCODING)
         return True, "[UPDATED]", ""
 
     if not out_file.exists():
         return False, "[MISSING GOLDEN]", f"  (expected {out_file.relative_to(ROOT_DIR)})"
 
-    expected_output = out_file.read_text(encoding="utf-8")
+    expected_output = out_file.read_text(encoding=BYTE_ENCODING)
     if process.stdout == expected_output:
         return True, "[PASS]", ""
 

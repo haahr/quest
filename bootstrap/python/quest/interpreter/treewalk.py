@@ -27,7 +27,7 @@ from quest.interpreter.primitives import (
     real_relational,
 )
 from quest.modules.graph import Roots, UnitGraph, UnitKind
-from quest.syntax.sources import SourceMap, display_file_name
+from quest.syntax.sources import SourceMap, display_file_name, read_source
 from quest.values.model import (
     DYNAMIC_ERROR_EXC,
     QuestException,
@@ -1177,7 +1177,7 @@ def load_module_for_interpreter(
     mod_env = r_env.push_scope()
     if file_path is not None:
         mod_env.current_dir = file_path.parent
-        mod_env.source_map = SourceMap(file_path.read_text(encoding="utf-8"), display_file_name(file_path))
+        mod_env.source_map = SourceMap(read_source(file_path), display_file_name(file_path))
     mod_env = run_module_init(typed_mod.name, typed_mod.bindings, mod_env)
 
     exported_fields = {}

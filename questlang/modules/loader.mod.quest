@@ -49,17 +49,11 @@ export
     let readUnit(file: String what: String): location.SourceMap =
         begin
             let text = paths.readText(file)
-            if maybe.isNone(:paths.Text text) then
+            if maybe.isNone(:String text) then
                 diagnostics.fail(:Ok "Error reading " <> what <> " file '" <> file <> "'" 0)
             end
-            let t = maybe.unwrap(:paths.Text text)
-            let sm = location.newSourceMap(paths.displayName(file) t.text)
+            let sm = location.newSourceMap(paths.displayName(file) maybe.unwrap(:String text))
             diagnostics.registerSource(sm)
-            if not(t.isAscii) then
-                let offset = stringOp.length(t.text)
-                diagnostics.raiseError(:Ok diagnostics.inFile(diagnostics.errorAt("Non-ASCII character" offset)
-                    location.file(sm)))
-            end
             sm
         end
 

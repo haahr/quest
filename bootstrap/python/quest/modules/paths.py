@@ -21,6 +21,7 @@ from typing import Any, Optional, Union
 from quest.config.abi import built_from, has_current_abi
 from quest.config import CompilerOptions
 from quest.diagnostics import QuestCompilerError, QuestTypeError
+from quest.syntax.sources import read_source
 from quest.syntax.tokens import TokenKind
 from quest.syntax.tokenizer import Tokenizer
 
@@ -107,7 +108,7 @@ def declared_module_name(file_path: Optional[Path], canon_name: str) -> str:
     if file_path is None or not file_path.is_file():
         return fallback
     try:
-        tokens = Tokenizer(file_path.read_text(encoding="utf-8"), str(file_path)).tokenize_all()
+        tokens = Tokenizer(read_source(file_path), str(file_path)).tokenize_all()
     except (OSError, QuestCompilerError):
         return fallback
     for tok, nxt in zip(tokens, tokens[1:]):

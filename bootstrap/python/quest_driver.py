@@ -16,7 +16,7 @@ from typing import Optional
 # Ensure bootstrap/python is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from quest.interpreter.builtins import set_system_args
+from quest.interpreter.builtins import set_system_args, use_byte_streams
 from quest.diagnostics import DiagnosticRenderer, QuestCompilerError, Severity, diagnostic_of
 from quest.config import CompilerOptions
 from quest.interpreter.formatting import format_interactive_result
@@ -36,7 +36,7 @@ from quest.codegen.c.compiler_runner import compile_c_source
 from quest.modules.graph import UnitKind, file_unit_kind
 from quest.repl import run_repl
 from quest.values.model import QOk, qvalue_to_str
-from quest.syntax.sources import SourceMap
+from quest.syntax.sources import SourceMap, os_text, read_source
 
 
 def report_error(prog: str, error: Exception, source_file: Optional[Path] = None) -> None:
@@ -48,7 +48,7 @@ def report_error(prog: str, error: Exception, source_file: Optional[Path] = None
         source_map = None
         if diag.source_map is None and source_file is not None:
             try:
-                source_map = SourceMap(source_file.read_text(encoding="utf-8"), str(source_file))
+                source_map = SourceMap(read_source(source_file), str(source_file))
             except OSError:
                 pass
         if diag.source_map is not None or source_map is not None:
@@ -77,7 +77,7 @@ def run_unit_phases(prog: str, file_path: Path, parsed_args: argparse.Namespace)
             return 1
     last = max(requested, key=phases.index)
 
-    source_text = file_path.read_text(encoding="utf-8")
+    source_text = read_source(file_path)
     file_name = str(file_path)
     options = CompilerOptions(
         stop_after=last,
@@ -270,7 +270,7 @@ def run_driver(args: list[str]) -> int:
             return 1
 
     if is_inline_code:
-        source_text = parsed_args.code
+        source_text = os_text(parsed_args.code)
         file_name = "<string>"
     elif source_file is None:
         if parsed_args.interactive or sys.stdin.isatty():
@@ -290,7 +290,7 @@ def run_driver(args: list[str]) -> int:
         if file_unit_kind(file_path) != UnitKind.PROGRAM:
             return run_unit_file("quest", file_path, parsed_args)
         try:
-            source_text = file_path.read_text(encoding="utf-8")
+            source_text = read_source(file_path)
             file_name = str(file_path)
         except OSError as error:
             sys.stderr.write(f"quest: error reading '{file_path}': {error}\n")
@@ -564,7 +564,7 @@ def run_compile(args: list[str]) -> int:
             return 1
 
     if is_inline_code:
-        source_text = parsed_args.code
+        source_text = os_text(parsed_args.code)
         file_name = "<string>"
         default_out = Path("a.out")
     elif source_file is None:
@@ -586,7 +586,7 @@ def run_compile(args: list[str]) -> int:
         if file_unit_kind(file_path) != UnitKind.PROGRAM:
             return run_unit_file("quest compile", file_path, parsed_args)
         try:
-            source_text = file_path.read_text(encoding="utf-8")
+            source_text = read_source(file_path)
             file_name = str(file_path)
             if file_path.suffix == ".quest":
                 default_out = file_path.with_suffix("")
@@ -699,6 +699,7 @@ def run_compile(args: list[str]) -> int:
 
 
 def main() -> int:
+    use_byte_streams()
     return run_driver(sys.argv[1:])
 
 

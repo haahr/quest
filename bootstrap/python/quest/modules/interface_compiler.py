@@ -56,7 +56,7 @@ from quest.values.model import (
     QString,
 )
 from quest.syntax.tokenizer import Tokenizer
-from quest.syntax.sources import SourceMap, display_file_name
+from quest.syntax.sources import SourceMap, display_file_name, read_source
 from quest.types import (
     QAliasType,
     BOOL_TYPE,
@@ -564,7 +564,7 @@ def _compile_interface_file(
     resolver: Resolver,
 ) -> CompiledInterface:
     try:
-        source_text = file_path.read_text(encoding="utf-8")
+        source_text = read_source(file_path)
     except OSError as err:
         raise QuestTypeError(f"Error reading interface file '{file_path}': {err}")
 

@@ -37,7 +37,7 @@ from quest.modules.units import parse_unit, unit_declaration
 from quest.modules.loader import load_interface
 from quest.modules.graph import Resolver, Roots, UnitGraph, resolve_interface, resolve_module, unit_artifact_dir
 from quest.modules.paths import DEFAULT_LIB_DIR, DEFAULT_PROJECT_DIR, resolve_object_file
-from quest.syntax.sources import SourceMap, display_file_name
+from quest.syntax.sources import SourceMap, display_file_name, read_source
 
 
 class ModuleCompileResult(tuple):
@@ -281,7 +281,7 @@ def compile_module_file(
     if not mod_path.is_file():
         raise FileNotFoundError(f"Module file not found: '{mod_path}'")
 
-    source_text = mod_path.read_text(encoding="utf-8")
+    source_text = read_source(mod_path)
     source_map = SourceMap(source_text, display_file_name(mod_path))
     # Errors are located in this file, and the imports it makes are located in it (docs/diagnostics.md §4.4)
     with in_unit(source_map):

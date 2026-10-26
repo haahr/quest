@@ -141,6 +141,22 @@ runtime additions, see [docs/extensions.md](docs/extensions.md).
 
 ---
 
+## Characters and Strings: Bytes, Not UTF-8
+
+**This implementation of Quest does not support UTF-8**, at least not yet. As in Typeful Programming, whose `Ascii`
+interface converts between characters and the codes 0 to 255, a `Char` is a byte and a `String` is a sequence of bytes.
+Only the ASCII range, 0 to 127, has a defined meaning; what a byte from 128 to 255 means is up to whoever reads it, as
+it was for C programs in 1987.
+
+Bytes pass through unchanged. A source file may hold any bytes, in comments and in string and character literals, and
+the escapes `\ddd` and `\xHH` give any code up to 255. Readers and writers, the standard streams, command-line
+arguments, environment variables, and file names are all read and written a byte per character, by the interpreter as
+by compiled code. So a UTF-8 file can be copied, and UTF-8 text in a string literal printed, correctly. But
+`string.length` counts bytes, not characters, and `string.getChar` gets a byte, which may be part of a multi-byte
+character.
+
+---
+
 ## Documentation Index
 
 The documentation in `docs/` is organized to take you from Quest's language foundations through the front end, type

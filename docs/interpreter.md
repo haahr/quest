@@ -73,8 +73,8 @@ a human-readable `type_name` and a `to_str(visited)` method supporting cycle det
 | `QBool` | `Bool` | Singletons `TRUE_VALUE`, `FALSE_VALUE` | `"true"`, `"false"` |
 | `QInt` | `Int` | 64-bit signed integer (`int`) | `"42"`, `"-7"` |
 | `QReal` | `Real` | 64-bit IEEE float (`float`) | `"2.0"`, `"3.14"` (guarantees decimal) |
-| `QChar` | `Char` | 1-character string (`str`) | `"'a'"`, `"'\\n'"`, `"'\\''"` |
-| `QString` | `String` | ASCII string (`str`) | `"\"hello\\n\""` |
+| `QChar` | `Char` | 1-character string (`str`), a byte (code 0-255) | `"'a'"`, `"'\\n'"`, `"'\\''"` |
+| `QString` | `String` | string of bytes (`str`, codes 0-255) | `"\"hello\\n\""` |
 
 ### 2.2. Aggregates and Data Structures
 
