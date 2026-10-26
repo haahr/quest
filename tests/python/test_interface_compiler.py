@@ -38,8 +38,9 @@ class TestInterfaceCompiler(unittest.TestCase):
         self.assertEqual(format_type_for_qi(t), "Tuple A::TYPE x: A Let B= Int end")
 
     def test_mutable_components_in_qi_types(self) -> None:
-        """An option's case keeps its payload's var fields and nameless components, and a variant its cases' var
-        marks, so that a manifest type read back from a .qi is the one its interface declares."""
+        """An option's case keeps its payload's var fields and nameless
+        components, and a variant its cases' var marks, so that a manifest type
+        read back from a .qi is the one its interface declares."""
         payload = QTupleType((QTupleField("x", INT_TYPE, True), QTupleField(None, INT_TYPE, False)))
         option = QOptionType((QOptionField("a", payload), QOptionField("b", None)))
         self.assertEqual(format_type_for_qi(option), "Option a with var x: Int :Int end b end")

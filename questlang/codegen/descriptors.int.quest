@@ -1,30 +1,38 @@
 (* Quest Self-Hosted Compiler: Type Descriptors' Type-Level Forms Interface
  *
- * bootstrap/python/quest/codegen/descriptors.py: runtime type descriptors' type-level forms, for every backend
- * (docs/c-representation.md section 6.4): the placeholders for bound type parameters and template holes, the
- * canonical forms of function and auto types that descriptors compare, and descriptor tags. *)
+ * bootstrap/python/quest/codegen/descriptors.py: runtime type descriptors'
+ * type-level forms, for every backend (docs/c-representation.md section 6.4):
+ * the placeholders for bound type parameters and template holes, the canonical
+ * forms of function and auto types that descriptors compare, and descriptor
+ * tags. *)
 
 interface Descriptors
 import
     questlang/types/model : questlang/types/Model
     util/maybe : util/Maybe
 export
-    (* The global name of a module's abstract type (docs/dynamic.md section 2.3), if t is one *)
+    (* The global name of a module's abstract type (docs/dynamic.md section
+     * 2.3), if t is one *)
     moduleAbstractTypeName(t: model.Type): maybe.T(String)
-    (* The tag of the runtime descriptor of a function type: equal types that differ only in the names of their type
-     * and value parameters share a tag *)
+    (* The tag of the runtime descriptor of a function type: equal types that
+     * differ only in the names of their type and value parameters share a
+     * tag *)
     funDescriptorTag(t: model.Type): String
 
-    (* The placeholder for the bound type parameter with de Bruijn index index, keeping its bound *)
+    (* The placeholder for the bound type parameter with de Bruijn index index,
+     * keeping its bound *)
     boundVar(index: Int bound: maybe.T(model.Kind)): model.Type
     boundVarIndex(t: model.Type): maybe.T(Int)
-    (* The hole for the index'th type parameter of a descriptor template, keeping the parameter's bound *)
+    (* The hole for the index'th type parameter of a descriptor template,
+     * keeping the parameter's bound *)
     holeVar(index: Int bound: maybe.T(model.Kind)): model.Type
     holeIndex(t: model.Type): maybe.T(Int)
 
-    (* The canonical form of a function type, which equal types share: value parameters lose their names, and the type
-     * parameters of a polymorphic function type are replaced by placeholders (de Bruijn indices) *)
+    (* The canonical form of a function type, which equal types share: value
+     * parameters lose their names, and the type parameters of a polymorphic
+     * function type are replaced by placeholders (de Bruijn indices) *)
     canonicalFunType(t: model.Type): model.Type
-    (* The canonical form of an auto type: its type parameter is the placeholder with de Bruijn index 0 *)
+    (* The canonical form of an auto type: its type parameter is the placeholder
+     * with de Bruijn index 0 *)
     canonicalAutoType(t: model.Type): model.Type
 end

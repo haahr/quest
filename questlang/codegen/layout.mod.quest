@@ -38,9 +38,10 @@ export
     (* =========================================================================
      * Layouts of shapes
      *
-     * A type's layout (its tag and representation) depends only on its shape, and shapes are built once per
-     * canonical type, so each layout is computed once per shape.
-     * ========================================================================= *)
+     * A type's layout (its tag and representation) depends only on its shape,
+     * and shapes are built once per canonical type, so each layout is computed
+     * once per shape.
+     * ====================================================================== *)
 
     Let Layout = Tuple
         shape: Shape
@@ -148,8 +149,9 @@ export
 
     and typeTag(t: Type): String = shapeTag(shapes.shape(t))
 
-    (* The tag of a recursive type whose unfolding's tag is built from its parts' tags: its body, its variable
-     * replaced by a placeholder numbered by nesting depth, so that the tag is finite and the same for
+    (* The tag of a recursive type whose unfolding's tag is built from its
+     * parts' tags: its body, its variable replaced by a placeholder numbered by
+     * nesting depth, so that the tag is finite and the same for
      * alpha-equivalent types *)
     and recursiveTag(s: Shape): String =
         begin
@@ -174,11 +176,12 @@ export
             end
         end
 
-    (* The tag of a component's shape inside another type's tag: an aggregate's tag is closed with _end, so that
-     * tags of different nestings differ *)
+    (* The tag of a component's shape inside another type's tag: an aggregate's
+     * tag is closed with _end, so that tags of different nestings differ *)
     and elementTag(s: Shape): String =
         begin
-            (* A component is named as its type is: a type containing recursion by its own canonical form *)
+            (* A component is named as its type is: a type containing recursion
+             * by its own canonical form *)
             let tag = shapeTag(shapes.shape(s.type))
             let var aggregate = false
             for i = 0 upto {extent aggregateTagPrefixes - 1} do
@@ -195,7 +198,8 @@ export
             if maybe.isSome(:Int selfLevel) then
                 "Self" <> syntax.cInt(maybe.unwrap(:Int selfLevel))
             elsif not(shapes.same(canonicalShape s)) then
-                (* Equal types share a tag: a type containing recursion is named by its canonical form *)
+                (* Equal types share a tag: a type containing recursion is named
+                 * by its canonical form *)
                 shapeTag(canonicalShape)
             elsif shapes.isRecursive(s) andif isOneOf(s.kind selfNamedKinds) then
                 recursiveTag(s)
@@ -303,7 +307,8 @@ export
             elsif maybe.isSome(:String scalar) then
                 maybe.unwrap(:String scalar)
             elsif eq(kind "auto") then
-                (* An auto value (including a dynamic value): its type component's descriptor and its payload *)
+                (* An auto value (including a dynamic value): its type
+                 * component's descriptor and its payload *)
                 "QAuto *"
             elsif eq(kind "external") then
                 s.name
@@ -336,15 +341,16 @@ export
     let tupleStructName(t: Type): String = typeTag(t)
     let optionStructName(t: Type): String = typeTag(t)
 
-    (* =========================================================================
+    (* ======================================================================
      * Proxies
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let Seen = hashMap.T(Int Bool)
     let newSeen(): Seen = hashMap.new(:Int :Bool intEqual hash.int)
 
-    (* Whether a component of shape s may hold a proxy as a subtype's value, though a value of s itself may not be a
-     * proxy: a tuple, or an option with a payload *)
+    (* Whether a component of shape s may hold a proxy as a subtype's value,
+     * though a value of s itself may not be a proxy: a tuple, or an option with
+     * a payload *)
     let holdsProxies(s: Shape): Bool =
         if eq(s.kind "tuple") then
             true
@@ -360,9 +366,10 @@ export
 
     let rec componentChangesView(s: Shape seen: Seen): Bool = holdsProxies(s) orif viewSensitive(s seen)
 
-    (* Whether values of subtypes of s may be represented differently at s: records and variants, options of several
-     * cases, tuples and options that may be proxies, type variables, and functions whose signatures mention any of
-     * these *)
+    (* Whether values of subtypes of s may be represented differently at s:
+     * records and variants, options of several cases, tuples and options that
+     * may be proxies, type variables, and functions whose signatures mention
+     * any of these *)
     and viewSensitive(s: Shape seen: Seen): Bool =
         begin
             let kind = s.kind
@@ -445,10 +452,12 @@ export
     (* =========================================================================
      * Digests of types
      *
-     * Digests of types stand for their printed text, which is the same in every compilation. A type whose text is
-     * at most printedTextLimit long is digested from its text; a longer one from the text of its outermost node with
-     * the digests of its parts in place of theirs, computed once per hash-consed node.
-     * ========================================================================= *)
+     * Digests of types stand for their printed text, which is the same in every
+     * compilation. A type whose text is at most printedTextLimit long is
+     * digested from its text; a longer one from the text of its outermost node
+     * with the digests of its parts in place of theirs, computed once per
+     * hash-consed node.
+     * ====================================================================== *)
 
     let printedTextLimit = 1024
 
@@ -497,8 +506,9 @@ export
 
     let pieces(items: Array(Piece)): vector.T(Piece) = vector.fromArray(:Piece items)
 
-    (* The text of a node as a list of literal strings and the parts printed in between, mirroring the bootstrap's
-     * __str__ methods; a node not listed prints as one string *)
+    (* The text of a node as a list of literal strings and the parts printed in
+     * between, mirroring the bootstrap's __str__ methods; a node not listed
+     * prints as one string *)
     let printedParts(node: Printable): vector.T(Piece) =
         case node
             when pType with x then
@@ -724,22 +734,25 @@ export
 
     let textDigest(text: String): String = stringOp.getSub(sha256.hexDigest(text) 0 16)
 
-    (* =========================================================================
+    (* ======================================================================
      * Generic layouts
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     (* The C types of scalar values, which a slot holds in a word of its own *)
     let wordScalars = array of "QInt" "QReal" "QBool" "QChar" "QVal" "void" end
     let registerWords = array of "QInt" "QVal" end
-    (* The C types of native values that a QVal cell holds in the same eight bytes *)
+    (* The C types of native values that a QVal cell holds in the same eight
+     * bytes *)
     let cellWords = array of "QInt" "QReal" "QVal" "uint64_t" end
 
-    (* Where a value is held: in an aggregate slot, in a register, or in a cell a var or out parameter points to *)
+    (* Where a value is held: in an aggregate slot, in a register, or in a cell
+     * a var or out parameter points to *)
     let slotPlace = "slot"
     let registerPlace = "register"
     let cellPlace = "cell"
 
-    (* Whether the type of shape s mentions one of the type parameters in subst *)
+    (* Whether the type of shape s mentions one of the type parameters in
+     * subst *)
     let mentions(s: Shape subst: model.Subst): Bool =
         begin
             let var found = false
@@ -749,18 +762,19 @@ export
             found
         end
 
-    (* Whether a native value of arg agrees with a value of the type parameter of shape v as generic code holds it in
-     * the place *)
+    (* Whether a native value of arg agrees with a value of the type parameter
+     * of shape v as generic code holds it in the place *)
     let storedValueAgrees(v: Shape arg: Type place: String): Bool =
         begin
             let argC = representation(arg)
             if maybe.isSome(:Shape v.bound) andif ownView(v) then
-                (* Held as arg's own value, in the representation of the bound *)
+                (* Held as arg's own value, in the representation of the
+                 * bound *)
                 let boundC = shapeRepresentation(maybe.unwrap(:Shape v.bound))
                 eq(argC boundC) orif {endsWith(argC "*") andif endsWith(boundC "*")}
             elsif maybe.isSome(:Shape v.bound) then
-                (* Held as a value of the bound, viewed at it, which agrees with one of arg only when both are the same
-                 * scalar *)
+                (* Held as a value of the bound, viewed at it, which agrees with
+                 * one of arg only when both are the same scalar *)
                 eq(argC shapeRepresentation(maybe.unwrap(:Shape v.bound))) andif isOneOf(argC wordScalars)
                     andif {not(eq(place registerPlace)) orif isOneOf(argC registerWords)}
             elsif eq(place registerPlace) then
@@ -795,7 +809,8 @@ export
                 let slot = fun(component: Shape): Bool agrees(component subst slotPlace seen)
                 let kind = s.kind
                 if eq(kind "abstract") andif s.type.form?typeApp then
-                    (* An application of an abstract operator, whose values are opaque pointers *)
+                    (* An application of an abstract operator, whose values are
+                     * opaque pointers *)
                     true
                 elsif isOneOf(kind array of "tuple" "record" end) then
                     let var all = true
@@ -826,8 +841,8 @@ export
                 elsif eq(kind "all") then
                     agrees(shapes.body(s) subst place seen)
                 else
-                    (* Anything else that mentions a type parameter (auto types, exception types, path types) may
-                     * differ *)
+                    (* Anything else that mentions a type parameter (auto types,
+                     * exception types, path types) may differ *)
                     false
                 end
             end
@@ -853,7 +868,8 @@ export
                     elsif isOneOf(kind array of "cell" "out" end) then
                         disagrees(shapes.element(s) cellPlace) orif visit(shapes.element(s))
                     elsif eq(kind "tuple") then
-                        (* A tuple is converted through a proxy, which reads and writes its original's components *)
+                        (* A tuple is converted through a proxy, which reads and
+                         * writes its original's components *)
                         let var any = false
                         for i = 0 upto {extent s.components - 1} do
                             if not(any) andif visit(shapes.componentShape(s.components[i])) then any := true end

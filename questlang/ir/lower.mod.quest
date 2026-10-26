@@ -40,7 +40,8 @@ export
     let eq(a: String b: String): Bool = stringOp.equal(a b)
     let isOk(t: Type): Bool = model.same(t model.okType)
 
-    (* The built-in functions lowered to primitives: the infix operators, is, isnot, not, extent, and ordinal *)
+    (* The built-in functions lowered to primitives: the infix operators, is,
+     * isnot, not, extent, and ordinal *)
     let builtinFunction(name: String): Bool =
         maybe.isSome(:env.InfixOperator env.infixOperator(name))
             orif eq(name "is") orif eq(name "isnot") orif eq(name "not") orif eq(name "extent") orif eq(name "ordinal")
@@ -48,7 +49,8 @@ export
     (* The standard library's array operations, which are lowered to the IR's *)
     let arrayOp(name: String): Bool = eq(name "new") orif eq(name "size") orif eq(name "get") orif eq(name "set")
 
-    (* The standard library's module of a name, by its name or its name lowercased *)
+    (* The standard library's module of a name, by its name or its name
+     * lowercased *)
     let standardModuleName(name: String): maybe.T(String) =
         begin
             let var found = maybe.none(:String)
@@ -75,8 +77,9 @@ export
             found
         end
 
-    (* The parameter types of a function's variable's type (varType), as written, for a function of count parameters
-     * and type funType, in the function's own type parameters; none when they are not known *)
+    (* The parameter types of a function's variable's type (varType), as
+     * written, for a function of count parameters and type funType, in the
+     * function's own type parameters; none when they are not known *)
     let expectedParams(varType: Type funType: Type count: Int): maybe.T(Array(Type)) =
         begin
             let funQuants = case funType.form
@@ -106,7 +109,8 @@ export
             end
         end
 
-    (* The names of the cases of t as written, if it is an option type (or a type parameter bounded by one) *)
+    (* The names of the cases of t as written, if it is an option type (or a
+     * type parameter bounded by one) *)
     let optionCases(t: Type): maybe.T(Array(String)) =
         try maybe.some(:Array(String) canonical.optionCaseNames(t)) when canonical.notAnOption then maybe.none(:Array(String)) end
 
@@ -124,18 +128,22 @@ export
         env: env.T
         echo: Bool
         printResult: Bool
-        (* The source file's map, in which the offsets of the nodes that can raise are *)
+        (* The source file's map, in which the offsets of the nodes that can
+         * raise are *)
         sourceMap: maybe.T(location.SourceMap)
-        (* The frame of the code being lowered, which names the functions it makes *)
+        (* The frame of the code being lowered, which names the functions it
+         * makes *)
         var frame: String
         var body: Body
         var loops: vector.T(String)
         labelCounts: hashMap.T(String Int)
         imports: vector.T(nodes.Import)
-        (* The modules the unit defines and imports, by the symbols their names bind *)
+        (* The modules the unit defines and imports, by the symbols their names
+         * bind *)
         moduleRefs: hashMap.T(Int nodes.ModuleRef)
-        (* Exceptions made inside an expression, whose names the enclosing scope sees: made before the binding
-         * containing them, and not yet reached where they are written (by variable id) *)
+        (* Exceptions made inside an expression, whose names the enclosing scope
+         * sees: made before the binding containing them, and not yet reached
+         * where they are written (by variable id) *)
         made: hashMap.T(Int Bool)
     end
 
@@ -167,7 +175,8 @@ export
 
     let emit(l: Lowerer s: Stmt): Ok = vector.append(:Stmt l.body.statements s)
 
-    (* Emits a terminator; what follows it is unreachable, and goes into a body that is discarded *)
+    (* Emits a terminator; what follows it is unreachable, and goes into a body
+     * that is discarded *)
     let terminate(l: Lowerer s: Stmt): Ok =
         begin
             emit(l s)
@@ -235,14 +244,16 @@ export
     let none: maybe.T(Variable) = maybe.none(:Variable)
     let offsetOf(e: Expr): maybe.T(Int) = maybe.some(:Int e.offset)
 
-    (* The variable of the value symbol of e, if it is a variable whose binder the unit has *)
+    (* The variable of the value symbol of e, if it is a variable whose binder
+     * the unit has *)
     let boundVar(l: Lowerer e: Expr): maybe.T(Variable) =
         case e.form
             when exprVar with x then hashMap.get(:Int :Variable l.vars x.symbol.symbolId)
             else maybe.none(:Variable)
         end
 
-    (* An imported module, with the record type of the interface it is imported through *)
+    (* An imported module, with the record type of the interface it is imported
+     * through *)
     let makeImport(l: Lowerer name: String modulePath: String canonicalPath: String interfacePath: String): nodes.Import =
         begin
             let var scope = env.lookupModule(l.env canonicalPath)
@@ -257,7 +268,8 @@ export
             nodes.newImport(name modulePath canonicalPath interfacePath recordType)
         end
 
-    (* The module e refers to, if it is a reference to a module rather than a value *)
+    (* The module e refers to, if it is a reference to a module rather than a
+     * value *)
     let moduleRefOf(l: Lowerer e: Expr): maybe.T(nodes.ModuleRef) =
         case e.form
             when exprVar with x then
@@ -266,7 +278,8 @@ export
                 else
                     let found = hashMap.get(:Int :nodes.ModuleRef l.moduleRefs x.symbol.symbolId)
                     if maybe.isNone(:nodes.ModuleRef found) andif model.bindsModule(x.name e.type) then
-                        (* A standard library module, which a unit uses without importing it *)
+                        (* A standard library module, which a unit uses without
+                         * importing it *)
                         let std = standardModuleName(x.name)
                         if maybe.isNone(:String std) then
                             fail(:Ok "module '" <> x.name <> "' (#" <> conv.int(x.symbol.symbolId) <> ") is neither defined nor imported")
@@ -286,7 +299,8 @@ export
 
     let tupleIndex(tupleType: Type index: Int field: maybe.T(String)): Int =
         begin
-            (* A type parameter bounded by a tuple type is indexed as its bound *)
+            (* A type parameter bounded by a tuple type is indexed as its
+             * bound *)
             let s = layout.resolvedShape(shapes.shape(tupleType))
             if not(eq(s.kind "tuple")) then fail(:Ok "tuple component of a " <> s.kind) end
             let var found = ~1
@@ -483,7 +497,8 @@ export
                 if maybe.isSome(:Variable bound) then
                     let v = maybe.unwrap(:Variable bound)
                     if v.isMutable then
-                        (* A mutable variable not read through a dereference is passed by address *)
+                        (* A mutable variable not read through a dereference is
+                         * passed by address *)
                         letOp(l option opAddrVar of Op with let var v = v end e.type into)
                     else
                         copyInto(l va(v) into)
@@ -511,7 +526,8 @@ export
             else fail(:Atom "not a variable")
         end
 
-    (* What a call or type application applies: a variable, or a module's member *)
+    (* What a call or type application applies: a variable, or a module's
+     * member *)
     and calleeOf(l: Lowerer func: Expr): Callee =
         begin
             let m = case func.form
@@ -586,7 +602,8 @@ export
             else fail(:Atom "not a call")
         end
 
-    (* A call of the standard library's arrayOp, as the array operation it is; its errors are located at the call *)
+    (* A call of the standard library's arrayOp, as the array operation it is;
+     * its errors are located at the call *)
     and arrayOperation(l: Lowerer member: String args: Array(Atom) t: Type into: maybe.T(Variable) offset: maybe.T(Int)): Atom =
         if eq(member "new") then
             letOp(l option opArrayRep of Op with let var count = args[0] let var init = args[1] let offset = offset end t into)
@@ -633,7 +650,8 @@ export
                 let setValue = fun(i: Int a: Atom): Ok begin hashMap.insert(:Int :Atom values i a) ok end
                 let typeComponents = vector.new(:nodes.TypeComponent)
                 let isWitness = fun(el: Expr): Bool el.form?exprTypeWitness
-                (* The first index of each recursive group, and the members of all *)
+                (* The first index of each recursive group, and the members of
+                 * all *)
                 let groupAt = fun(i: Int): maybe.T(Array(Int))
                     begin
                         let var found = maybe.none(:Array(Int))
@@ -660,7 +678,8 @@ export
                             vector.append(:nodes.TypeComponent typeComponents tuple let name = w.name let type = w.witnessType end)
                         else
                             if maybe.isSome(:Array(Int) group) then
-                                (* Recursive components: functions that see one another, through their labels *)
+                                (* Recursive components: functions that see one
+                                 * another, through their labels *)
                                 let members = maybe.unwrap(:Array(Int) group)
                                 let funVars = vector.new(:Variable)
                                 for k = 0 upto {extent members - 1} do
@@ -685,7 +704,8 @@ export
                                 if maybe.isNone(:symbols.ValueSymbol lbl) then
                                     setValue(i value(l element none))
                                 else
-                                    (* A label names its component's value for the later components *)
+                                    (* A label names its component's value for
+                                     * the later components *)
                                     let v = bindSymbol(l maybe.unwrap(:symbols.ValueSymbol lbl) maybe.some(:Type element.type) false)
                                     setValue(i value(l element some(v)))
                                 end
@@ -700,7 +720,8 @@ export
             else fail(:Atom "not a tuple")
         end
 
-    (* A value produced on several paths: each path jumps to a join point with its value *)
+    (* A value produced on several paths: each path jumps to a join point with
+     * its value *)
     and joined(l: Lowerer e: Expr into: maybe.T(Variable)): Atom =
         begin
             let result = if maybe.isSome(:Variable into) then maybe.unwrap(:Variable into) else fresh("r" e.type false) end
@@ -874,7 +895,8 @@ export
             else fail(:Ok "not a for loop")
         end
 
-    (* Lowers the branches of an if, case, inspect, or try, each with lowerBranch (into the branch's body) *)
+    (* Lowers the branches of an if, case, inspect, or try, each with
+     * lowerBranch (into the branch's body) *)
     and branches(l: Lowerer e: Expr lowerBranch: All(b: Expr) Ok): Ok =
         case e.form
             when exprIf with x then
@@ -917,8 +939,9 @@ export
                 emit(l nodes.inspectStmt(v vector.toArray(:nodes.InspectCase cases) elseBody x.autoType offsetOf(e)))
             when exprTry with x then
                 let exc = fresh("e" model.exceptionType false)
-                (* What the handler catches, when that is known before the try: its patterns' values, computed before
-                 * the try when computing them there gives the same values *)
+                (* What the handler catches, when that is known before the try:
+                 * its patterns' values, computed before the try when computing
+                 * them there gives the same values *)
                 let var catching = nodes.catchUnknown
                 let var patterns = maybe.none(:Array(Atom))
                 if maybe.isSome(:Expr x.elseBranch) then
@@ -959,8 +982,8 @@ export
             maybe.none(:Body)
         end
 
-    (* Whether a try's pattern has the same value computed before the try as in its handler: an immutable variable
-     * already bound, or a module's member *)
+    (* Whether a try's pattern has the same value computed before the try as in
+     * its handler: an immutable variable already bound, or a module's member *)
     and purePattern(l: Lowerer e: Expr): Bool =
         case e.form
             when exprVar then
@@ -970,8 +993,9 @@ export
             else false
         end
 
-    (* A try's handler: the branches' patterns (or their values, computed before the try) tested in order against the
-     * exception, else the else branch, or the exception raised again *)
+    (* A try's handler: the branches' patterns (or their values, computed before
+     * the try) tested in order against the exception, else the else branch, or
+     * the exception raised again *)
     and handler(l: Lowerer exc: Variable branches: Array(typedAst.TryBranch) first: Int elseBranch: maybe.T(Expr)
             lowerBranch: All(b: Expr) Ok patterns: maybe.T(Array(Atom))): Ok =
         if first >= extent branches then
@@ -1001,9 +1025,10 @@ export
 
     (* Functions *)
 
-    (* The function e, bound to binder if it is let-bound. A function checked against its variable's type may annotate
-     * a value parameter with a supertype of the type's: its parameter has the variable's type's, which callers pass,
-     * and a let at its entry binds the annotation's *)
+    (* The function e, bound to binder if it is let-bound. A function checked
+     * against its variable's type may annotate a value parameter with a
+     * supertype of the type's: its parameter has the variable's type's, which
+     * callers pass, and a let at its entry binds the annotation's *)
     and function(l: Lowerer e: Expr v: Variable binder: maybe.T(String)): nodes.Function =
         case e.form
             when exprFun with x then
@@ -1061,7 +1086,8 @@ export
                         let result = case x.body.form
                             when exprExternal with ext then externalCall(l ext.symbol t paramArray resultType)
                             else
-                                (* The body is a scope of its own: exceptions made inside it are visible throughout it *)
+                                (* The body is a scope of its own: exceptions
+                                 * made inside it are visible throughout it *)
                                 makeScopeExceptions(l typedAst.exprScopeExceptions(x.body))
                                 value(l x.body none)
                         end
@@ -1108,8 +1134,8 @@ export
 
     (* Bindings *)
 
-    (* Makes, before a binding, the named exceptions it makes for its scope, which the expressions that make them then
-     * refer to *)
+    (* Makes, before a binding, the named exceptions it makes for its scope,
+     * which the expressions that make them then refer to *)
     and makeScopeExceptions(l: Lowerer excs: Array(Expr)): Ok =
         for i = 0 upto {extent excs - 1} do
             case excs[i].form
@@ -1146,8 +1172,8 @@ export
                         mv
                     else
                         if lv.isRec then fail(:Ok "recursive values other than functions") end
-                        (* The value is lowered before the variable is bound, so that it refers to any binding it
-                         * shadows *)
+                        (* The value is lowered before the variable is bound, so
+                         * that it refers to any binding it shadows *)
                         let bound = fresh(symbol.name symbol.type false)
                         value(l lv.value some(bound))
                         if hashMap.contains(:Int :Variable l.vars symbol.symbolId) then
@@ -1191,9 +1217,10 @@ export
                             for i = 0 upto {extent x.members - 1} do emit(l funText(x.members[i].name x.members[i].symbol.type)) end
                         end
                     else
-                        (* Simultaneous: every member's value refers to the bindings the members shadow, which their
-                         * symbols keep apart, so lowering them in order and binding each as it is computed is the
-                         * same *)
+                        (* Simultaneous: every member's value refers to the
+                         * bindings the members shadow, which their symbols keep
+                         * apart, so lowering them in order and binding each as
+                         * it is computed is the same *)
                         for i = 0 upto {extent x.members - 1} do
                             binding(l typedAst.binding(x.members[i].offset
                                 option bindLetValue of typedAst.BindingForm with let value = x.members[i] end) show)
@@ -1224,8 +1251,9 @@ export
             end
         end
 
-    (* Recursive values (and functions) declared together: each member's value is computed into its variable in a
-     * let rec, where closures may refer to all of them *)
+    (* Recursive values (and functions) declared together: each member's value
+     * is computed into its variable in a let rec, where closures may refer to
+     * all of them *)
     and recValues(l: Lowerer members: Array(typedAst.LetValue) show: Bool): Ok =
         begin
             let vars = vector.new(:Variable)
@@ -1387,7 +1415,8 @@ export
             nodes.newUnit(main modules vector.toArray(:nodes.Import l.imports) l.sourceMap)
         end
 
-    (* Ends a module's initializer by making its record: of its members, or of its exports *)
+    (* Ends a module's initializer by making its record: of its members, or of
+     * its exports *)
     let addModuleRecord(m: nodes.Module): Ok =
         begin
             let fields = maybe.unwrapOr(:nodes.Members m.exports m.members)

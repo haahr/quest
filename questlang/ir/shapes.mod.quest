@@ -158,13 +158,15 @@ export
             end
         end
 
-    (* Shapes by the id of the type node they were built from (canonical forms, their unfoldings and parts) *)
+    (* Shapes by the id of the type node they were built from (canonical forms,
+     * their unfoldings and parts) *)
     let built = hashMap.new(:Int :Shape intEqual hash.int)
     (* The shapes of the types asked for (shape), by the id of the type node *)
     let asked = hashMap.new(:Int :Shape intEqual hash.int)
 
-    (* Whether a recursive type refers to itself: its body mentions its variable, or for a group's member, its own
-     * variable is reachable from its body through the members' bodies *)
+    (* Whether a recursive type refers to itself: its body mentions its
+     * variable, or for a group's member, its own variable is reachable from its
+     * body through the members' bodies *)
     let usesRecursion(t: Type): Bool =
         case t.form
             when typeRec with x then
@@ -254,9 +256,10 @@ export
             if maybe.isSome(:Shape cached) then
                 maybe.unwrap(:Shape cached)
             elsif isRecursive2(t) andif usesRecursion(t) then
-                (* The recursive type's shape is its unfolding's, whose recursive occurrences are this node: enter the
-                 * shape before building the unfolding's, so that they refer to it, and fill it in from the
-                 * unfolding's *)
+                (* The recursive type's shape is its unfolding's, whose
+                 * recursive occurrences are this node: enter the shape before
+                 * building the unfolding's, so that they refer to it, and fill
+                 * it in from the unfolding's *)
                 let s = newShape("pending" t)
                 hashMap.insert(:Int :Shape built t.id s)
                 fillFrom(s shapeOf(model.unfoldLazily(t)))
@@ -264,15 +267,16 @@ export
             else
                 let s = case t.form
                     when typeAlias with x then shapeOf(x.target)
-                    (* A recursive type that does not use its variables is the type it unfolds to, and has its
-                     * shape, so that its values are its unfolding's however its type is written *)
+                    (* A recursive type that does not use its variables is the
+                     * type it unfolds to, and has its shape, so that its values
+                     * are its unfolding's however its type is written *)
                     when typeRec then shapeOf(model.unfoldLazily(t))
                     when typeRecGroup then shapeOf(model.unfoldLazily(t))
                     when typeApp then
                         let reduced = canonical.normalizeType(t)
                         if model.same(reduced t) then build(t) else shapeOf(reduced) end
-                    (* Equal types whose cases are listed in different orders have one shape, its cases ordered by
-                     * name *)
+                    (* Equal types whose cases are listed in different orders
+                     * have one shape, its cases ordered by name *)
                     when typeVariant then
                         let ordered = casesByName(t)
                         if model.same(ordered t) then build(t) else shapeOf(ordered) end
@@ -433,7 +437,8 @@ export
                         s.bound := if maybe.isSome(:model.Kind x.bound) then kindBound(maybe.unwrap(:model.Kind x.bound))
                             else maybe.none(:Shape) end
                         s
-                    (* An abstract type elaborated as such, or a path type (x.T): opaque, with its bound *)
+                    (* An abstract type elaborated as such, or a path type
+                     * (x.T): opaque, with its bound *)
                     when typeAbstract with x then
                         let s = newShape("abstract" t)
                         s.name := dump.shortTypeName(t)
@@ -444,7 +449,8 @@ export
                         s.name := dump.shortTypeName(t)
                         s.bound := kindBound(x.bound)
                         s
-                    (* An application of an abstract type operator (normalizeType reduced every other): opaque *)
+                    (* An application of an abstract type operator
+                     * (normalizeType reduced every other): opaque *)
                     when typeApp then
                         let s = newShape("abstract" t)
                         s.name := dump.shortTypeName(t)
@@ -466,7 +472,8 @@ export
             if maybe.isSome(:Shape cached) then
                 maybe.unwrap(:Shape cached)
             elsif t.hasMeta then
-                (* Solved metavariables stand for their solutions, which are cached; the type itself is not *)
+                (* Solved metavariables stand for their solutions, which are
+                 * cached; the type itself is not *)
                 let resolved = model.resolveMetas(t)
                 if resolved.hasMeta then
                     raise noShape with "the type " <> model.show(t) <> " has unsolved metavariables and no shape" end

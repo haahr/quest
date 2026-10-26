@@ -92,8 +92,9 @@ export
             if eq(s.kind "cell") orif eq(s.kind "out") then shapes.element(s) else s end
         end
 
-    (* The case whose layout an option being made stores its payload in: its tag's, or for a computed ordinal, a
-     * constant one's, else the first case's *)
+    (* The case whose layout an option being made stores its payload in: its
+     * tag's, or for a computed ordinal, a constant one's, else the first
+     * case's *)
     let optionCaseTag(os: Shape cases: Array(String) tag: maybe.T(String) ordinalAtom: maybe.T(Atom)): maybe.T(String) =
         if maybe.isNone(:Atom ordinalAtom) then
             tag
@@ -116,16 +117,19 @@ export
         option opConvert of Op with let var value = nodes.atomOfVar(box) let var plan = nodes.newPlan("slot_unbox" t t) end
 
     Let SlotState = Tuple
-        (* The boxes of the records and variants read from slots (by the variable bound to the value) *)
+        (* The boxes of the records and variants read from slots (by the
+         * variable bound to the value) *)
         var boxes: hashMap.T(Int Variable)
-        (* The tuples and options the function made (by variable), which are not proxies *)
+        (* The tuples and options the function made (by variable), which are not
+         * proxies *)
         var fresh: hashMap.T(Int Bool)
     end
 
     let isFresh(st: SlotState a: Atom): Bool =
         case a when atomVar with x then hashMap.contains(:Int :Bool st.fresh x.v.id) else false end
 
-    (* A record or variant atom in its slot form: its box (remembered, or a new one, made by a let added to before) *)
+    (* A record or variant atom in its slot form: its box (remembered, or a new
+     * one, made by a let added to before) *)
     let slot(st: SlotState a: Atom before: vector.T(Stmt)): Atom =
         begin
             let own = case a
@@ -156,7 +160,8 @@ export
     let optSlotIfBoxed(st: SlotState a: maybe.T(Atom) s: maybe.T(Shape) before: vector.T(Stmt)): maybe.T(Atom) =
         if maybe.isSome(:Atom a) then maybe.some(:Atom slotIfBoxed(st maybe.unwrap(:Atom a) s before)) else a end
 
-    (* Binds a case's binder to its payload's box, from which a let at the case's start reads the value *)
+    (* Binds a case's binder to its payload's box, from which a let at the
+     * case's start reads the value *)
     let unboxBinder(st: SlotState c: nodes.Case): Ok =
         begin
             let b = maybe.unwrap(:Variable c.binder)
@@ -180,7 +185,8 @@ export
             end
         end
 
-    (* A switch's case of a variant, whose binder takes the payload: a record or variant in its slot form *)
+    (* A switch's case of a variant, whose binder takes the payload: a record or
+     * variant in its slot form *)
     let variantCase(st: SlotState vs: Shape c: nodes.Case): Ok =
         if maybe.isSome(:Variable c.binder) then
             let b = maybe.unwrap(:Variable c.binder)
@@ -189,8 +195,9 @@ export
             end
         end
 
-    (* A switch's case of an option, whose binder takes the payload: a tuple of its components, read as decided, or a
-     * payload that is not a tuple in its slot form *)
+    (* A switch's case of an option, whose binder takes the payload: a tuple of
+     * its components, read as decided, or a payload that is not a tuple in its
+     * slot form *)
     let optionCase(st: SlotState os: Shape c: nodes.Case): Ok =
         if maybe.isSome(:Variable c.binder) then
             let b = maybe.unwrap(:Variable c.binder)
@@ -202,8 +209,9 @@ export
             end
         end
 
-    (* Whether the offset table of a record literal's view is found at run time: when the view is not the literal's
-     * type or a supertype of it by width alone *)
+    (* Whether the offset table of a record literal's view is found at run time:
+     * when the view is not the literal's type or a supertype of it by width
+     * alone *)
     let runtimeOffsets(fields: Array(nodes.FieldAtom) v: maybe.T(Variable)): Bool =
         if maybe.isNone(:Variable v) then
             false
@@ -224,15 +232,17 @@ export
             else false
         end
 
-    (* Decides how an operation reads and stores slots, converting the atoms it stores to their slot forms (by lets
-     * added to before); whether it yields a record or variant in its slot form, which the let binding it then binds to
-     * a boxed variable *)
+    (* Decides how an operation reads and stores slots, converting the atoms it
+     * stores to their slot forms (by lets added to before); whether it yields a
+     * record or variant in its slot form, which the let binding it then binds
+     * to a boxed variable *)
     let operation(st: SlotState o: Op v: maybe.T(Variable) before: vector.T(Stmt)): Bool =
         case o
             when opTupleField with x then
                 let ts = shapes.shape(typeOf(x.tup))
                 if layout.ownView(ts) then
-                    (* A tuple-bounded type parameter's value: read through the view map, converted, as a value *)
+                    (* A tuple-bounded type parameter's value: read through the
+                     * view map, converted, as a value *)
                     false
                 else
                     x.access := tupleAccess(ts x.index isFresh(st x.tup))
@@ -251,8 +261,10 @@ export
                     let fieldShape = shapes.componentShape(field)
                     let own = layout.ownView(shapes.shape(typeOf(x.recordAtom)))
                     if not(field.isVar) andif {own orif eq(layout.shapeRepresentation(fieldShape) "QVal") orif mayBeStoredAsSubtype(fieldShape)} then
-                        (* A subtype's payload may store it at another type, or a bounded type parameter's value at its
-                         * type argument's type for it: read through the offset table and converted, as a value *)
+                        (* A subtype's payload may store it at another type, or
+                         * a bounded type parameter's value at its type
+                         * argument's type for it: read through the offset table
+                         * and converted, as a value *)
                         x.stored := true
                         false
                     else
@@ -278,13 +290,15 @@ export
                         case x.value
                             when atomVar with y then
                                 let remembered = hashMap.get(:Int :Variable st.boxes y.v.id)
-                                (* A record's or variant's QVal word is its box: the one it was read from serves *)
+                                (* A record's or variant's QVal word is its box:
+                                 * the one it was read from serves *)
                                 if maybe.isSome(:Variable remembered) then x.value := nodes.atomOfVar(maybe.unwrap(:Variable remembered)) end
                             else ok
                         end
                     end
                     if eq(p.kind "copy") andif isFresh(st x.value) then
-                        (* A copy of a tuple the function made reads its components directly *)
+                        (* A copy of a tuple the function made reads its
+                         * components directly *)
                         let copy = nodes.newPlan(p.kind p.source p.target)
                         copy.fields := p.fields
                         copy.layout := p.layout
@@ -459,8 +473,9 @@ export
                         vector.append(:Stmt before s)
                         vector.toArray(:Stmt before)
                     else
-                        (* The operation reads the value in its slot form, a box: bound to a boxed variable, from which
-                         * the value is read *)
+                        (* The operation reads the value in its slot form, a
+                         * box: bound to a boxed variable, from which the value
+                         * is read *)
                         let box = newBox(if stringOp.isEmpty(v.hint) then "box" else v.hint <> "_box" end v.type)
                         x.v := box
                         hashMap.insert(:Int :Variable st.boxes v.id box)
@@ -495,7 +510,8 @@ export
                 when sStoreComponent with x then
                     let bs = shapes.shape(typeOf(x.base))
                     if layout.ownView(bs) then
-                        (* Into a tuple-bounded type parameter's value, through the view map *)
+                        (* Into a tuple-bounded type parameter's value, through
+                         * the view map *)
                         let ts = layout.resolvedShape(bs)
                         x.value := slotIfBoxed(st x.value ts.components[x.index].shape before)
                     else
@@ -507,8 +523,8 @@ export
                 when sSwitch with x then
                     let ts = tagShape(typeOf(x.value))
                     if layout.ownView(shapes.shape(typeOf(x.value))) then
-                        (* A bounded type parameter's value: its payloads are read through the view map, converted, as
-                         * values *)
+                        (* A bounded type parameter's value: its payloads are
+                         * read through the view map, converted, as values *)
                         ok
                     elsif maybe.isSome(:Shape ts) andif eq(maybe.unwrap(:Shape ts).kind "option") then
                         x.access := optionTagAccess(maybe.unwrap(:Shape ts))
@@ -548,8 +564,9 @@ export
             for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do vector.append(:Body bodies vector.get(:nodes.Module unit.modules i).init) end
             vector.append(:Body bodies unit.main)
             for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do vector.append(:Body bodies vector.get(:nodes.Function unit.functions i).body) end
-            (* The mutable variables of record or variant types whose addresses are taken are held boxed, as are var and
-             * out parameters of those types *)
+            (* The mutable variables of record or variant types whose addresses
+             * are taken are held boxed, as are var and out parameters of those
+             * types *)
             for i = 0 upto {vector.length(:Body bodies) - 1} do
                 let stmts = walk.walkStatements(vector.get(:Body bodies i) false)
                 for j = 0 upto {vector.length(:Stmt stmts) - 1} do

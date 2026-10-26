@@ -728,14 +728,15 @@ def _sb_append(b: QStringBuilder, text: str) -> QOk:
     return OK_VALUE
 
 
-# io/readline (runtime/quest_readline.c): line editing through Python's readline, which input() uses, and a history
-# kept here, as the C runtime keeps its own, so that its file is plain lines whatever the line editor
+# io/readline (runtime/quest_readline.c): line editing through Python's
+# readline, which input() uses, and a history kept here, as the C runtime keeps
+# its own, so that its file is plain lines whatever the line editor
 _readline_history: list[str] = []
 
 
 def readline_editing() -> bool:
-    """Whether readLine edits lines: standard input and output are terminals, TERM is not empty, dumb, or emacs, and
-    Python has a line editor."""
+    """Whether readLine edits lines: standard input and output are terminals,
+    TERM is not empty, dumb, or emacs, and Python has a line editor."""
     if line_editor is None:
         return False
     try:
@@ -796,7 +797,8 @@ def _readline_read_history(path: QString) -> QOk:
     except OSError:
         raise QuestException(READLINE_ERROR_EXC)
     lines = data.split("\n")
-    # A last line without a newline is a line; the empty string after a last newline is not
+    # A last line without a newline is a line; the empty string after a last
+    # newline is not
     for line in lines if lines[-1] else lines[:-1]:
         _readline_remember(line)
     return OK_VALUE
@@ -814,7 +816,8 @@ def _readline_write_history(path: QString, max_lines: QInt) -> QOk:
     return OK_VALUE
 
 
-# The same for Python callers (quest.repl): strings as Python has them, and paths as it decodes them from the OS
+# The same for Python callers (quest.repl): strings as Python has them, and
+# paths as it decodes them from the OS
 def readline_read_line(prompt: str) -> str:
     return _readline_read_line(QString(prompt)).value
 

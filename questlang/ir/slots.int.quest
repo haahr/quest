@@ -1,9 +1,11 @@
 (* Quest Self-Hosted Compiler: Slots and Proxies Interface
  *
- * bootstrap/python/quest/ir/slots.py, the represent pass's last step (docs/ir.md section 8.3): how values are stored
- * into and read from aggregates' slots, which hold records and variants boxed, and how tuples and options that may be
- * proxies are read (DIRECT, ORIGINAL, or PROXY). Also how a record's field is read (through the offset table's stored
- * types) and whether a record literal's offset table is known statically. *)
+ * bootstrap/python/quest/ir/slots.py, the represent pass's last step
+ * (docs/ir.md section 8.3): how values are stored into and read from
+ * aggregates' slots, which hold records and variants boxed, and how tuples and
+ * options that may be proxies are read (DIRECT, ORIGINAL, or PROXY). Also how a
+ * record's field is read (through the offset table's stored types) and whether
+ * a record literal's offset table is known statically. *)
 
 interface Slots
 import
@@ -11,15 +13,19 @@ import
     questlang/ir/nodes : questlang/ir/Nodes
     util/maybe : util/Maybe
 export
-    (* Whether a value of shape s may be laid out as a subtype's value, and so need converting when read at s's type
-     * (records, variants, options, nonempty tuples, and functions) *)
+    (* Whether a value of shape s may be laid out as a subtype's value, and so
+     * need converting when read at s's type (records, variants, options,
+     * nonempty tuples, and functions) *)
     mayBeStoredAsSubtype(s: shapes.Shape): Bool
-    (* How component index of a tuple of shape ts is read (or written); fresh: made by the function reading it *)
+    (* How component index of a tuple of shape ts is read (or written); fresh:
+     * made by the function reading it *)
     tupleAccess(ts: shapes.Shape index: Int fresh: Bool): String
     (* How the tag of an option of shape os is read *)
     optionTagAccess(os: shapes.Shape): String
-    (* How the payload components of case tag of an option of shape os are read *)
+    (* How the payload components of case tag of an option of shape os are
+     * read *)
     optionComponentAccesses(os: shapes.Shape tag: maybe.T(String)): Array(String)
-    (* Decides, in place, how the unit's values are stored into and read from slots, and read through proxies *)
+    (* Decides, in place, how the unit's values are stored into and read from
+     * slots, and read through proxies *)
     decideSlots(unit: nodes.Unit): Ok
 end

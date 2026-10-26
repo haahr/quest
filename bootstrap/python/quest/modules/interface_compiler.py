@@ -197,7 +197,8 @@ def format_type_for_qi(
             for o in t.options:
                 if o.payload_type is not None:
                     if isinstance(o.payload_type, QTupleType):
-                        # Its components as a tuple type's, var fields and type components among them
+                        # Its components as a tuple type's, var fields and type
+                        # components among them
                         opts.append(f"{o.name} with {' '.join(tuple_parts(o.payload_type.fields))} end")
                     else:
                         opts.append(f"{o.name} with {format_type_for_qi(o.payload_type, visited)} end")

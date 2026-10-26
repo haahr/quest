@@ -1,11 +1,14 @@
 (* Quest Self-Hosted Compiler: The IR Interpreter Implementation
  *
- * Variables are looked up by identity in frames: a frame per function activation, its parent the frame its closure
- * was made in, and a frame per loop iteration, so that a closure made in one iteration keeps that iteration's values.
- * A mutable variable holds a cell, which addr x yields and a var or out parameter receives. Statements give no signal
- * when they fall through, or the terminator's (return, jump, break, continue); a raise is model.runError, as in the
- * tree-walking interpreter. A handler's exception variable holds the exception raised; its frame keeps the error, for
- * its payload and for raising it again. *)
+ * Variables are looked up by identity in frames: a frame per function
+ * activation, its parent the frame its closure was made in, and a frame per
+ * loop iteration, so that a closure made in one iteration keeps that
+ * iteration's values. A mutable variable holds a cell, which addr x yields and
+ * a var or out parameter receives. Statements give no signal when they fall
+ * through, or the terminator's (return, jump, break, continue); a raise is
+ * model.runError, as in the tree-walking interpreter. A handler's exception
+ * variable holds the exception raised; its frame keeps the error, for its
+ * payload and for raising it again. *)
 
 module irInterp : IrInterp
 import
@@ -57,19 +60,22 @@ export
     let realArithmeticOps = array of "++" "--" "**" "//" "^^" end
     let realRelationalOps = array of "<<" "<<=" ">>" ">>=" end
 
-    (* =========================================================================
+    (* ======================================================================
      * Frames
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let Rec Frame = Tuple
         parent: maybe.T(Frame)
-        (* A variable's value by its id; none for a let rec's variable before its value is computed *)
+        (* A variable's value by its id; none for a let rec's variable before
+         * its value is computed *)
         values: hashMap.T(Int maybe.T(Value))
-        (* The type arguments of the type parameters (by symbol id) of the functions being run *)
+        (* The type arguments of the type parameters (by symbol id) of the
+         * functions being run *)
         types: hashMap.T(Int Type)
         (* The errors raised that handlers' exception variables (by id) hold *)
         raised: hashMap.T(Int model.RunError)
-        (* The frame of the top level this frame runs in (none: this one), the parent of lifted functions' frames *)
+        (* The frame of the top level this frame runs in (none: this one), the
+         * parent of lifted functions' frames *)
         top: maybe.T(Frame)
     end
 
@@ -143,7 +149,8 @@ export
             else lookupType(maybe.unwrap(:Frame f.parent) symbolId) end
         end
 
-    (* t with the type arguments of the type parameters it mentions substituted *)
+    (* t with the type arguments of the type parameters it mentions
+     * substituted *)
     let resolve(f: Frame t: Type): Type =
         begin
             let subst = tm.newSubst()
@@ -161,13 +168,14 @@ export
             result
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * The interpreter
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* An IR function value: its function, the frame it was made in, the types bound to its type parameters, and after
-     * closure conversion, the values it captured. It is a builtin to the tree-walking interpreter, so that library
-     * functions written in Quest can call it. *)
+    (* An IR function value: its function, the frame it was made in, the types
+     * bound to its type parameters, and after closure conversion, the values it
+     * captured. It is a builtin to the tree-walking interpreter, so that
+     * library functions written in Quest can call it. *)
     Let IrClosure = Tuple
         function: nodes.Function
         frame: Frame
@@ -185,23 +193,27 @@ export
     let noSignal: Signals = maybe.none(:Signal)
     let signal(s: Signal): Signals = maybe.some(:Signal s)
 
-    (* A capture of a closure made in a let rec of a variable it has yet to bind *)
+    (* A capture of a closure made in a let rec of a variable it has yet to
+     * bind *)
     Let Fixup = Tuple values: Array(Value) index: Int v: Variable frame: Frame end
 
     let builtinEqual(a: model.Builtin b: model.Builtin): Bool = a is b
     let builtinHash(b: model.Builtin): word.T = hash.identityHash(:model.Builtin b)
 
     Let Interpreter = Tuple
-        (* The tree-walking interpreter's frame, whose root has the call stack and runs imported modules *)
+        (* The tree-walking interpreter's frame, whose root has the call stack
+         * and runs imported modules *)
         renv: model.Frame
         (* The builtins: true, false, ok, and the operators as functions *)
         root: model.Frame
-        (* The unit's modules and those it imports (by id), as records of their members *)
+        (* The unit's modules and those it imports (by id), as records of their
+         * members *)
         modules: hashMap.T(Int Value)
         declared: hashMap.T(Int Bool)
         fixups: vector.T(vector.T(Fixup))
         var sourceMap: maybe.T(location.SourceMap)
-        (* The symbols of the type parameters the unit's functions' descriptor variables describe (by variable) *)
+        (* The symbols of the type parameters the unit's functions' descriptor
+         * variables describe (by variable) *)
         descriptorSymbols: hashMap.T(Int Int)
         (* The IR closures, by their builtin values *)
         closures: hashMap.T(model.Builtin IrClosure)
@@ -209,7 +221,8 @@ export
 
     let stack(it: Interpreter): vector.T(String) = it.renv.root.callStack
 
-    (* error, raised by an operation at offset in the unit, located there unless it already is *)
+    (* error, raised by an operation at offset in the unit, located there unless
+     * it already is *)
     let located(it: Interpreter e: model.RunError offset: maybe.T(Int)): model.RunError =
         begin
             if maybe.isNone(:Int e.offset) andif maybe.isNone(:location.SourceMap e.sourceMap) andif maybe.isSome(:Int offset) then
@@ -289,7 +302,8 @@ export
             values
         end
 
-    (* The element of a tuple holding its index'th value component (its type components are elements too) *)
+    (* The element of a tuple holding its index'th value component (its type
+     * components are elements too) *)
     let elementIndex(t: model.TupleValue index: Int): Int =
         begin
             let var n = ~1
@@ -356,7 +370,8 @@ export
             end
         end
 
-    (* Whether a polymorphic function, applied to all its types, is a function *)
+    (* Whether a polymorphic function, applied to all its types, is a
+     * function *)
     let isFunctionType(f: nodes.Function): Bool =
         begin
             let var t = formatting.exposedType(f.v.type)
@@ -442,8 +457,8 @@ export
             else model.internalError(:Value "Cannot call non-function of type " <> model.typeName(callee) none)
         end
 
-    (* A polymorphic value applied to types: its instance (the value, for a polymorphic function with no value
-     * parameters) *)
+    (* A polymorphic value applied to types: its instance (the value, for a
+     * polymorphic function with no value parameters) *)
     and typeApply(it: Interpreter callee: Value typeArgs: Array(Type)): Value =
         begin
             let irc = irClosureOf(it callee)
@@ -488,7 +503,8 @@ export
                 tm.substitute(resolve(f x.template) args)
         end
 
-    (* Checks that descriptor operands describe the types they stand for (after the describe pass) *)
+    (* Checks that descriptor operands describe the types they stand for (after
+     * the describe pass) *)
     and checkDescriptors(it: Interpreter ds: Array(nodes.Descriptor) types: Array(Type) f: Frame): Ok =
         for i = 0 upto {extent ds - 1} do
             if i < extent types then
@@ -500,7 +516,8 @@ export
             end
         end
 
-    (* A closure of a lifted function, whose frames see only the globals of the top level that makes it *)
+    (* A closure of a lifted function, whose frames see only the globals of the
+     * top level that makes it *)
     and makeClosure(it: Interpreter code: nodes.Function captures: Array(Atom) typeArgs: Array(Type) f: Frame): Value =
         begin
             let values = array of(extent captures model.okValue)
@@ -510,7 +527,8 @@ export
                     else false
                 end
                 if pending then
-                    (* A variable of an enclosing let rec, bound once its body has run *)
+                    (* A variable of an enclosing let rec, bound once its body
+                     * has run *)
                     case captures[i]
                         when atomVar with x then
                             vector.append(:Fixup vector.last(:vector.T(Fixup) it.fixups)
@@ -528,7 +546,8 @@ export
             closureValue(it tuple let function = code let frame = topOf(f) let typeBindings = bindings let env = maybe.some(:Array(Value) values) end)
         end
 
-    (* A tuple laid out as the tree-walking interpreter lays it out: its type components are elements too *)
+    (* A tuple laid out as the tree-walking interpreter lays it out: its type
+     * components are elements too *)
     and makeTuple(it: Interpreter values: Array(Value) typeComponents: Array(nodes.TypeComponent) result: maybe.T(Variable)
             f: Frame): Value =
         begin
@@ -1024,7 +1043,8 @@ export
                 let descriptorSymbols = symbols
                 let closures = hashMap.new(:model.Builtin :IrClosure builtinEqual builtinHash)
             end
-            (* Everything runs in the program's frame, imported modules' initializers included *)
+            (* Everything runs in the program's frame, imported modules'
+             * initializers included *)
             vector.append(:String stack(it) diagnostics.mainFrame)
             try
                 for i = 0 upto {extent unit.imports - 1} do

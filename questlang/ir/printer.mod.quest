@@ -74,7 +74,8 @@ export
             end
         end
 
-    (* A variable used before (or without) its binder prints with a mark, which the verifier reports *)
+    (* A variable used before (or without) its binder prints with a mark, which
+     * the verifier reports *)
     let name(p: Printer v: Variable): String =
         maybe.unwrapOr(:String hashMap.get(:Int :String p.names v.id) v.hint <> "?")
 
@@ -137,7 +138,8 @@ export
             ""
         end
 
-    (* The view map an operation reads a value through its type's bound by, if it has one *)
+    (* The view map an operation reads a value through its type's bound by, if
+     * it has one *)
     let through(p: Printer viewMap: maybe.T(Variable)): String =
         if maybe.isSome(:Variable viewMap) then " through " <> name(p maybe.unwrap(:Variable viewMap)) else "" end
 
@@ -148,17 +150,20 @@ export
     let offsets(table: nodes.OffsetTable): String =
         "offsets(" <> typeText(table.view) <> " <- " <> typeText(table.layout) <> ")"
 
-    (* A boxed variable (after the represent pass) holds its record or variant boxed *)
+    (* A boxed variable (after the represent pass) holds its record or variant
+     * boxed *)
     let decl(p: Printer v: Variable): String =
         begin
             let t = typeText(v.type)
             bind(p v) <> ": " <> if v.boxed then "box(" <> t <> ")" else t end
         end
 
-    (* How a component of a tuple or option is read, after the represent pass: nothing for direct *)
+    (* How a component of a tuple or option is read, after the represent pass:
+     * nothing for direct *)
     let access(a: String): String = if eq(a nodes.direct) then "" else " via " <> a end
 
-    (* How the components of a tuple or option are read: nothing if all are direct *)
+    (* How the components of a tuple or option are read: nothing if all are
+     * direct *)
     let accesses(items: Array(String)): String =
         begin
             let var allDirect = true
@@ -173,7 +178,8 @@ export
             found
         end
 
-    (* Atoms, those the represent pass boxes in the aggregate's allocation marked box *)
+    (* Atoms, those the represent pass boxes in the aggregate's allocation
+     * marked box *)
     let boxedAtoms(p: Printer items: Array(Atom) embedded: Array(Int)): String =
         begin
             let texts = vector.new(:String)
@@ -183,7 +189,8 @@ export
             joinWith(", " texts)
         end
 
-    (* Whether a plan, or one in it, has descriptors (after the describe pass) *)
+    (* Whether a plan, or one in it, has descriptors (after the describe
+     * pass) *)
     let rec described(plan: maybe.T(Plan)): Bool =
         if maybe.isNone(:Plan plan) then
             false
@@ -331,7 +338,8 @@ export
             when opLoad with x then "load " <> atom(p x.address)
         end
 
-    (* How an inspect case's components are obtained, after the represent pass *)
+    (* How an inspect case's components are obtained, after the represent
+     * pass *)
     let arm(p: Printer a: maybe.T(nodes.InspectArm)): String =
         if maybe.isNone(:nodes.InspectArm a) then
             ""
@@ -387,7 +395,8 @@ export
             else
                 ""
             end
-            (* Its type parameters' descriptors (after the describe pass), then its parameters *)
+            (* Its type parameters' descriptors (after the describe pass), then
+             * its parameters *)
             let params = vector.new(:String)
             for i = 0 upto {extent f.descriptorParams - 1} do vector.append(:String params decl(p f.descriptorParams[i].v)) end
             for i = 0 upto {extent f.params - 1} do
@@ -397,7 +406,8 @@ export
             (* A lifted function's environment, which has no Quest type *)
             let env = if maybe.isSome(:Variable f.env) then " {" <> bind(p maybe.unwrap(:Variable f.env)) <> "}" else "" end
             emit(p depth "fun " <> name(p f.v) <> env <> tps <> "(" <> joinWith(", " params) <> "): " <> typeText(f.resultType) <> " {")
-            (* The view maps it reads its type parameters' values through their bounds by (after the describe pass) *)
+            (* The view maps it reads its type parameters' values through their
+             * bounds by (after the describe pass) *)
             for i = 0 upto {extent f.viewMaps - 1} do
                 let m = f.viewMaps[i]
                 emit(p depth + 1 "view_map " <> bind(p m.v) <> " = view_map(" <> name(p m.descriptor) <> ", "
@@ -428,7 +438,8 @@ export
             when sDo with x then emit(p depth "do " <> op(p x.value) <> through(p walk.opViewMap(x.value)))
             when sFuns with x then
                 begin
-                    (* Members of a recursive group are named before their bodies, which refer to one another *)
+                    (* Members of a recursive group are named before their
+                     * bodies, which refer to one another *)
                     if x.recursive then
                         for i = 0 upto {extent x.functions - 1} do bind(p x.functions[i].v) end
                     end
@@ -555,8 +566,9 @@ export
                     emit(p 0 "static tag_map(" <> typeText(table.target) <> " <- " <> typeText(table.source) <> ")")
                 end
             end
-            (* The unit's functions, after closure conversion, are named before any is printed, as closures refer to
-             * them, and so are the globals they use (the variables the top levels bind outside loops) *)
+            (* The unit's functions, after closure conversion, are named before
+             * any is printed, as closures refer to them, and so are the globals
+             * they use (the variables the top levels bind outside loops) *)
             let functionCount = vector.length(:nodes.Function unit.functions)
             for i = 0 upto {functionCount - 1} do bind(p vector.get(:nodes.Function unit.functions i).v) end
             if functionCount > 0 then

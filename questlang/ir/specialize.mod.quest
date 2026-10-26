@@ -27,8 +27,8 @@ export
     let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
-    (* The depth of clones made for calls in clones, beyond which calls stay generic: polymorphic recursion would
-     * otherwise specialize without end *)
+    (* The depth of clones made for calls in clones, beyond which calls stay
+     * generic: polymorphic recursion would otherwise specialize without end *)
     let maxDepth = 16
 
     Let Ids = hashMap.T(Int Bool)
@@ -85,8 +85,8 @@ export
 
     let shouldSpecialize(f: nodes.Function typeArgs: Array(Type)): Bool =
         begin
-            (* A type operator (the argument of a higher-kinded type parameter) is not the type of values, and has no
-             * shape *)
+            (* A type operator (the argument of a higher-kinded type parameter)
+             * is not the type of values, and has no shape *)
             let var found = false
             for i = 0 upto {extent typeArgs - 1} do
                 if not(found) andif not(written.isTypeOperator(typeArgs[i])) andif holdsRecordOrVariant(shapes.shape(typeArgs[i])) then
@@ -104,10 +104,11 @@ export
             found orif {eq(shapes.shape(f.resultType).kind "tuple") andif mentionsAny(f.resultType ids)}
         end
 
-    (* =========================================================================
-     * Cloning: a function copied with types substituted; every variable it binds is a fresh one, and every other node
-     * is copied, except module references and the free variables it uses
-     * ========================================================================= *)
+    (* ======================================================================
+     * Cloning: a function copied with types substituted; every variable it
+     * binds is a fresh one, and every other node is copied, except module
+     * references and the free variables it uses
+     * ====================================================================== *)
 
     Let Cloner = Tuple subst: model.Subst vars: hashMap.T(Int Variable) end
 
@@ -242,7 +243,8 @@ export
             vector.toArray(:nodes.TypeComponent result)
         end
 
-    (* Makes fresh variables for every binder in body (and in the functions it binds) *)
+    (* Makes fresh variables for every binder in body (and in the functions it
+     * binds) *)
     let rec bindAll(c: Cloner b: Body): Ok =
         for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
             let s = vector.get(:Stmt b.statements i)
@@ -509,15 +511,18 @@ export
             tuple let id = nodes.newBody().id let var statements = statements end
         end
 
-    (* The clone of a function the substitution instantiates (its type parameters are substituted away) *)
+    (* The clone of a function the substitution instantiates (its type
+     * parameters are substituted away) *)
     let cloneFunction(c: Cloner f: nodes.Function): nodes.Function =
         begin
             bindAll(c f.body)
             let params = array of(extent f.params tuple let v = f.v let mode = "" end)
             for i = 0 upto {extent f.params - 1} do params[i] := tuple let v = fresh(c f.params[i].v) let mode = f.params[i].mode end end
             let resultType = ty(c f.resultType)
-            (* The clone's type is made from its parameters and result: the type of the variable naming the original may
-             * be elaborated with quantifiers of other symbols than the function's own type parameters *)
+            (* The clone's type is made from its parameters and result: the type
+             * of the variable naming the original may be elaborated with
+             * quantifiers of other symbols than the function's own type
+             * parameters *)
             let inner = written.quantified(f.v.type).body
             let names = case inner.form
                 when typeFun with x then
@@ -544,12 +549,13 @@ export
             nodes.newFunction(v array of :nodes.TypeParam end params resultType copyBody(c f.body) f.traceName)
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * The specializer
-     * ========================================================================= *)
+     * ====================================================================== *)
 
-    (* A function bound by a funs statement, and where: its statement, the module whose member it is (if any), and the
-     * type parameters of the functions enclosing it *)
+    (* A function bound by a funs statement, and where: its statement, the
+     * module whose member it is (if any), and the type parameters of the
+     * functions enclosing it *)
     Let Definition = Tuple function: nodes.Function funs: Stmt owner: maybe.T(nodes.Module) enclosing: Ids end
     Let Pending = Tuple clone: nodes.Function enclosing: Ids depth: Int end
 
@@ -595,7 +601,8 @@ export
     let clone(sp: Specializer definition: Definition typeArgs: Array(Type)): maybe.T(nodes.Function) =
         begin
             let f = definition.function
-            (* By function and type arguments (by symbol and type identity, never by name) *)
+            (* By function and type arguments (by symbol and type identity,
+             * never by name) *)
             let keyBuilder = vector.new(:String)
             vector.append(:String keyBuilder conv.int(f.id))
             for i = 0 upto {extent typeArgs - 1} do vector.append(:String keyBuilder layout.typeIdentityKey(typeArgs[i])) end
@@ -628,7 +635,8 @@ export
                 end
                 hashMap.insert(:Int :Definition sp.definitions cloned.v.id
                     tuple let function = cloned let funs = definition.funs let owner = definition.owner let enclosing = definition.enclosing end)
-                (* The clone's local functions are definitions too, whose calls (in the clone) may be specialized *)
+                (* The clone's local functions are definitions too, whose calls
+                 * (in the clone) may be specialized *)
                 collect(sp cloned.body maybe.none(:nodes.Module) definition.enclosing)
                 vector.append(:Pending sp.pending tuple let clone = cloned let enclosing = definition.enclosing let depth = sp.depth + 1 end)
                 maybe.some(:nodes.Function cloned)
@@ -647,7 +655,8 @@ export
                                 let member = nodes.member(r.m.members maybe.unwrapOr(:String call.member ""))
                                 if maybe.isSome(:Variable member) then hashMap.get(:Int :Definition sp.definitions maybe.unwrap(:Variable member).id)
                                 else maybe.none(:Definition) end
-                            (* A function of another unit, whose IR this unit does not have *)
+                            (* A function of another unit, whose IR this unit
+                             * does not have *)
                             else maybe.none(:Definition)
                         end
                     else

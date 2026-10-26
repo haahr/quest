@@ -65,8 +65,9 @@ SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 EVAL_CASES = ROOT_DIR / "tests" / "eval" / "cases.quest"
 EVAL_GOLDEN = TESTS_GOLDEN_DIR / "self-hosted" / "eval.out"
 SELF_HOSTED_ERRORS_DIR = ROOT_DIR / "tests" / "self-hosted" / "errors"
-# REPL transcripts: each tests/repl/NAME.quest is the input to quest -i, and tests/golden/repl/NAME.out what it writes
-# (docs/testing.md §2.7); tests/repl/files holds what they load
+# REPL transcripts: each tests/repl/NAME.quest is the input to quest -i, and
+# tests/golden/repl/NAME.out what it writes (docs/testing.md §2.7);
+# tests/repl/files holds what they load
 TESTS_REPL_DIR = ROOT_DIR / "tests" / "repl"
 TESTS_REPL_GOLDEN_DIR = TESTS_GOLDEN_DIR / "repl"
 TELEMETRY_LOG_PATH = Path("/tmp/quest_run_tests_telemetry.log")
@@ -483,9 +484,11 @@ def discover_repl_tests() -> list[Path]:
 
 
 def repl_transcript(source_file: Path, command: list[str], timeout: float) -> tuple[str, int]:
-    """What a driver writes when source_file is the input to its REPL (quest -i), in a fresh directory of its own:
-    its standard output and error, and its exit status. An @load directive names a file, relative to tests/repl, for
-    -i to run first; the @args are the program's arguments, after the file or a --."""
+    """What a driver writes when source_file is the input to its REPL
+    (quest -i), in a fresh directory of its own: its standard output and error,
+    and its exit status. An @load directive names a file, relative to
+    tests/repl, for -i to run first; the @args are the program's arguments,
+    after the file or a --."""
     directives = parse_test_directives(source_file)
     text = source_file.read_text(encoding=BYTE_ENCODING)
     load = LOAD_PATTERN.search(text)
@@ -513,8 +516,8 @@ def repl_transcript(source_file: Path, command: list[str], timeout: float) -> tu
             cwd=scratch_dir,
         )
         transcript = f"--- stdout\n{process.stdout}--- stderr\n{process.stderr}--- exit {process.returncode}\n"
-        # The scratch directory and the checkout, which the module system's errors name, and the checkout's files,
-        # by relative paths
+        # The scratch directory and the checkout, which the module system's
+        # errors name, and the checkout's files, by relative paths
         for scratch in sorted({scratch_dir, os.path.realpath(scratch_dir)}, key=len, reverse=True):
             transcript = transcript.replace(scratch, "<scratch>")
     transcript = relativize_root_paths(transcript, ROOT_DIR)
@@ -531,7 +534,8 @@ def run_repl_test(
     build_dir: Path,
     driver_command: Optional[list[str]],
 ) -> tuple[bool, str, str]:
-    """A REPL transcript (repl_transcript) against its golden, with the bootstrap's driver or driver_command."""
+    """A REPL transcript (repl_transcript) against its golden, with the
+    bootstrap's driver or driver_command."""
     command = driver_command or [python_executable, str(DRIVER_SCRIPT), "--build-dir", str(build_dir)]
     out_file = TESTS_REPL_GOLDEN_DIR / source_file.with_suffix(".out").name
     try:

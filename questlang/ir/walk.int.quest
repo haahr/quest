@@ -1,9 +1,11 @@
 (* Quest Self-Hosted Compiler: IR Traversals Interface
  *
- * bootstrap/python/quest/ir/walk.py: traversals of the IR shared by the passes and the verifier: the bodies a
- * statement contains, the variables it binds, the atoms it uses, and the global variables of a unit; and replacing
- * the variables a node holds. The bootstrap's reflective traversal (fields_of, rebuild, contents) has no counterpart:
- * each walker that used it lists the fields it reads, case by case. *)
+ * bootstrap/python/quest/ir/walk.py: traversals of the IR shared by the passes
+ * and the verifier: the bodies a statement contains, the variables it binds,
+ * the atoms it uses, and the global variables of a unit; and replacing the
+ * variables a node holds. The bootstrap's reflective traversal (fields_of,
+ * rebuild, contents) has no counterpart: each walker that used it lists the
+ * fields it reads, case by case. *)
 
 interface Walk
 import
@@ -12,28 +14,34 @@ import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 export
-    (* The bodies a statement contains (not those of the functions a funs statement binds) *)
+    (* The bodies a statement contains (not those of the functions a funs
+     * statement binds) *)
     statementBodies(s: nodes.Stmt): Array(nodes.Body)
-    (* The variables a statement binds itself (not those bound in the bodies it contains) *)
+    (* The variables a statement binds itself (not those bound in the bodies it
+     * contains) *)
     statementBinders(s: nodes.Stmt): Array(nodes.Variable)
-    (* The atoms an operation uses directly, in the order of its fields (not its descriptor operands) *)
+    (* The atoms an operation uses directly, in the order of its fields (not its
+     * descriptor operands) *)
     opUses(o: nodes.Op): Array(nodes.Atom)
-    (* The atoms a statement uses directly: its operation's, or its own; not those of the bodies or functions it
-     * contains, nor its binders *)
+    (* The atoms a statement uses directly: its operation's, or its own; not
+     * those of the bodies or functions it contains, nor its binders *)
     statementUses(s: nodes.Stmt): Array(nodes.Atom)
-    (* Every statement in body and the bodies it contains (and in the functions funs statements bind, if
-     * intoFunctions), in order *)
+    (* Every statement in body and the bodies it contains (and in the functions
+     * funs statements bind, if intoFunctions), in order *)
     walkStatements(body: nodes.Body intoFunctions: Bool): vector.T(nodes.Stmt)
-    (* The variables (by id) a unit's main body and its modules' initializers bind outside loops and functions *)
+    (* The variables (by id) a unit's main body and its modules' initializers
+     * bind outside loops and functions *)
     globalVariables(unit: nodes.Unit): hashMap.T(Int Bool)
 
-    (* Replaces, in place, each variable v that a statement or operation holds in its fields (directly, in arrays,
-     * and a let's or do's operation's) by f(v); not those in the bodies, functions, cases, or plans it contains, nor
-     * a closure's code *)
+    (* Replaces, in place, each variable v that a statement or operation holds
+     * in its fields (directly, in arrays, and a let's or do's operation's) by
+     * f(v); not those in the bodies, functions, cases, or plans it contains,
+     * nor a closure's code *)
     replaceVarsInStmt(s: nodes.Stmt f: All(v: nodes.Variable) nodes.Variable): Ok
     replaceVarsInOp(o: nodes.Op f: All(v: nodes.Variable) nodes.Variable): Ok
 
-    (* The view map an operation or a statement reads a value through its type's bound by, if it has one *)
+    (* The view map an operation or a statement reads a value through its type's
+     * bound by, if it has one *)
     opViewMap(o: nodes.Op): maybe.T(nodes.Variable)
     stmtViewMap(s: nodes.Stmt): maybe.T(nodes.Variable)
 end

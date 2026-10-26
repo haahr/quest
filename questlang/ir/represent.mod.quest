@@ -41,7 +41,8 @@ export
 
     let some(p: Plan): maybe.T(Plan) = maybe.some(:Plan p)
     let newPlan(kind: String source: Type target: Type): maybe.T(Plan) = some(nodes.newPlan(kind source target))
-    (* A polymorphic callee's type parameters' instantiation, its symbols in the order they were bound *)
+    (* A polymorphic callee's type parameters' instantiation, its symbols in the
+     * order they were bound *)
     Let Instantiation = Tuple subst: model.Subst keys: vector.T(Int) end
 
     let newInstantiation(): Instantiation = tuple let subst = model.newSubst() let keys = vector.new(:Int) end
@@ -73,12 +74,12 @@ export
             maybe.unwrap(:Type element)
         end
 
-    (* Whether s is a module's abstract type's (or an abstract or path type's) bounded by a record, variant, or option
-     * type, held viewed at its bound *)
+    (* Whether s is a module's abstract type's (or an abstract or path type's)
+     * bounded by a record, variant, or option type, held viewed at its bound *)
     let boundedView(s: Shape): Bool = layout.heldAtBound(s) andif isViewedKind(layout.resolvedShape(s).kind)
 
-    (* Whether s is a type parameter's bounded by a record, variant, option, or tuple type, whose values are held at
-     * their own view *)
+    (* Whether s is a type parameter's bounded by a record, variant, option, or
+     * tuple type, whose values are held at their own view *)
     let ownViewed(s: Shape): Bool =
         layout.ownView(s) andif {isViewedKind(layout.resolvedShape(s).kind) orif eq(layout.resolvedShape(s).kind "tuple")}
 
@@ -163,7 +164,8 @@ export
             found
         end
 
-    (* Whether every case of the variant shape s is a case of t, with an equal payload *)
+    (* Whether every case of the variant shape s is a case of t, with an equal
+     * payload *)
     let variantSubtype(s: Shape t: Shape): Bool =
         begin
             let var all = true
@@ -188,8 +190,9 @@ export
             all
         end
 
-    (* How a value passed to or returned from a polymorphic callee converts between the callee's generic layout of its
-     * type and the native layout at the call's type arguments *)
+    (* How a value passed to or returned from a polymorphic callee converts
+     * between the callee's generic layout of its type and the native layout at
+     * the call's type arguments *)
     let layoutPlan(source: Type target: Type lay: nodes.PlanLayout): maybe.T(Plan) =
         begin
             let genericType = if lay.toGeneric then target else source end
@@ -222,7 +225,8 @@ export
 
     Def Shared = Tuple sParams: Array(model.Param) sResult: Type tParams: Array(model.Param) tResult: Type end
 
-    (* Two function types' parameters and results as written, target's type parameters renamed to source's *)
+    (* Two function types' parameters and results as written, target's type
+     * parameters renamed to source's *)
     let sharedSignatures(source: Type target: Type): Shared =
         begin
             let s = written.quantified(source)
@@ -255,8 +259,9 @@ export
             end
         end
 
-    (* The pairs of shapes being planned (with their layouts), and of function types being adapted, for recursive types,
-     * which are compared coinductively *)
+    (* The pairs of shapes being planned (with their layouts), and of function
+     * types being adapted, for recursive types, which are compared
+     * coinductively *)
     let planning = hashMap.new(:String :Bool stringOp.equal hash.string)
     let adapting = hashMap.new(:String :Bool stringOp.equal hash.string)
 
@@ -274,7 +279,8 @@ export
         else
             let key = conv.int(shapes.shape(source).id) <> "," <> conv.int(shapes.shape(target).id) <> "," <> layoutKey(lay)
             if hashMap.contains(:String :Bool planning key) then
-                (* A pair being planned (a recursive type's component): needs no conversion of its own *)
+                (* A pair being planned (a recursive type's component): needs no
+                 * conversion of its own *)
                 none
             else
                 hashMap.insert(:String :Bool planning key true)
@@ -284,7 +290,8 @@ export
             end
         end
 
-    (* p, or for a cast from a tuple or option type that may be proxied to one that may not, an unproxy plan *)
+    (* p, or for a cast from a tuple or option type that may be proxied to one
+     * that may not, an unproxy plan *)
     and unproxied(p: maybe.T(Plan)): maybe.T(Plan) =
         if maybe.isNone(:Plan p) orif not(eq(maybe.unwrap(:Plan p).kind "cast")) then
             p
@@ -299,7 +306,8 @@ export
             end
         end
 
-    (* How a closure of type source is used at type target: as it is, or wrapped in a thunk of target's signature *)
+    (* How a closure of type source is used at type target: as it is, or wrapped
+     * in a thunk of target's signature *)
     and adaptPlan(source: Type target: Type lay: Layout): maybe.T(Plan) =
         if equal(source target) andif not(hasInstantiation(lay)) then
             none
@@ -333,8 +341,8 @@ export
                 if allNone andif eq(layout.signatureRepresentation(source) layout.signatureRepresentation(target)) then
                     none
                 else
-                    (* The thunk takes target's type parameters, which the fields' types name by source's symbols or
-                     * target's own *)
+                    (* The thunk takes target's type parameters, which the
+                     * fields' types name by source's symbols or target's own *)
                     let sQuants = written.quantified(source).quantifiers
                     let tQuants = written.quantified(target).quantifiers
                     let thunkSymbols = array of(extent tQuants array of :Int end)
@@ -365,7 +373,8 @@ export
                 else
                     let laid = if hasInstantiation(lay) andif not(eq(cs "QVal")) andif not(eq(ct "QVal")) then
                         let lp = layoutPlan(source target maybe.unwrap(:nodes.PlanLayout lay))
-                        (* A module's abstract type's value is held viewed at its bound, whatever the layouts *)
+                        (* A module's abstract type's value is held viewed at
+                         * its bound, whatever the layouts *)
                         if maybe.isSome(:Plan lp) orif not(boundedView(ss) orif boundedView(ts)) then maybe.some(:maybe.T(Plan) lp)
                         else maybe.none(:maybe.T(Plan)) end
                     else
@@ -381,7 +390,8 @@ export
         end
 
     and viewPlan(source: Type target: Type ss: Shape ts: Shape cs: String ct: String): maybe.T(Plan) =
-        (* A value of a type parameter, held as a QVal word: a scalar or pointer in its bits, a record or variant boxed *)
+        (* A value of a type parameter, held as a QVal word: a scalar or pointer
+         * in its bits, a record or variant boxed *)
         if eq(ct "QVal") andif not(eq(cs "QVal")) then
             newPlan("box" source target)
         elsif eq(cs "QVal") andif not(eq(ct "QVal")) then
@@ -389,11 +399,13 @@ export
         elsif eq(cs "QVal") orif {equal(source target) andif sameViews(source target)} then
             none
         elsif layout.ownView(ss) andif layout.ownView(ts) andif {ss.symbolId is ts.symbolId} then
-            (* One type parameter, at whatever bounds: its values are held at their own view either way *)
+            (* One type parameter, at whatever bounds: its values are held at
+             * their own view either way *)
             none
         elsif ownViewed(ss) orif ownViewed(ts) then
-            (* A bounded type parameter's value is held at its own view: used at another type, it is converted by the
-             * runtime between the two types' descriptors *)
+            (* A bounded type parameter's value is held at its own view: used at
+             * another type, it is converted by the runtime between the two
+             * types' descriptors *)
             newPlan("view" source target)
         else
             let sHeld = layout.resolvedShape(ss)
@@ -412,19 +424,22 @@ export
                 end
                 if sameIndices then
                     if not(variantPayloadsChange(sHeld tHeld)) then none
-                    (* A payload changes view: converted by the runtime, which converts the payload *)
+                    (* A payload changes view: converted by the runtime, which
+                     * converts the payload *)
                     else newPlan("view" sHeld.structure tHeld.structure) end
                 elsif variantSubtype(sHeld tHeld) then
                     newPlan("variant_tags" source target)
                 else
-                    (* From a bounded type parameter's view at its bound back to the type the caller holds it at *)
+                    (* From a bounded type parameter's view at its bound back to
+                     * the type the caller holds it at *)
                     newPlan("view" sHeld.structure tHeld.structure)
                 end
             elsif eq(sHeld.kind "option") andif eq(tHeld.kind "option") andif not(equal(sHeld.type tHeld.type)) then
                 if not(boundedView(ss) orif boundedView(ts)) andif optionCasesAgree(sHeld tHeld) then
                     if eq(cs ct) then none else newPlan("cast" source target) end
                 else
-                    (* A proxy (made by the runtime, between the two views' descriptors) *)
+                    (* A proxy (made by the runtime, between the two views'
+                     * descriptors) *)
                     newPlan("view" sHeld.structure tHeld.structure)
                 end
             elsif eq(ss.kind "tuple") andif eq(ts.kind "tuple") then
@@ -434,7 +449,8 @@ export
                     let var changing = false
                     for i = 0 upto {extent ts.components - 1} do
                         let p = plan(shapes.componentShape(ss.components[i]).type shapes.componentShape(ts.components[i]).type noLayout)
-                        (* A box or unbox changes no slot: a slot holds a value's QVal form *)
+                        (* A box or unbox changes no slot: a slot holds a
+                         * value's QVal form *)
                         if maybe.isSome(:Plan p) andif not(eq(maybe.unwrap(:Plan p).kind "box") orif eq(maybe.unwrap(:Plan p).kind "unbox")) then
                             changing := true
                         end
@@ -442,7 +458,8 @@ export
                     if not(changing) then
                         if eq(cs ct) then none else newPlan("cast" source target) end
                     else
-                        (* Components change view: a proxy of the tuple, which converts them as they are read *)
+                        (* Components change view: a proxy of the tuple, which
+                         * converts them as they are read *)
                         newPlan("view" source target)
                     end
                 end
@@ -450,8 +467,9 @@ export
                 none
             else
                 let arrayServes = if eq(ss.kind "array") andif eq(ts.kind "array") andif eq(cs ct) then
-                    (* An array is shared and assigned through, so its elements cannot change view: it serves as it is
-                     * when they need no conversion either way, or only a box or unbox *)
+                    (* An array is shared and assigned through, so its elements
+                     * cannot change view: it serves as it is when they need no
+                     * conversion either way, or only a box or unbox *)
                     let there = plan(shapes.element(ss).type shapes.element(ts).type noLayout)
                     let back = plan(shapes.element(ts).type shapes.element(ss).type noLayout)
                     let fine = fun(p: maybe.T(Plan)): Bool
@@ -469,7 +487,8 @@ export
             end
         end
 
-    (* Whether a payload of a variant of shape s changes representation as one of t's *)
+    (* Whether a payload of a variant of shape s changes representation as one
+     * of t's *)
     and variantPayloadsChange(s: Shape t: Shape): Bool =
         begin
             let var changes = false
@@ -487,8 +506,9 @@ export
             changes
         end
 
-    (* Whether an option of shape s is laid out as one of shape t: each of its cases has the same index in t, with a
-     * payload that converts by a cast at most *)
+    (* Whether an option of shape s is laid out as one of shape t: each of its
+     * cases has the same index in t, with a payload that converts by a cast at
+     * most *)
     and optionCasesAgree(s: Shape t: Shape): Bool =
         begin
             let var agree = true
@@ -517,7 +537,8 @@ export
             else false
         end
 
-    (* Whether a slot of shape source holds its value as a slot of shape target does *)
+    (* Whether a slot of shape source holds its value as a slot of shape target
+     * does *)
     let slotsAgree(source: Shape target: Shape): Bool =
         begin
             let sc = layout.shapeSlotRepresentation(source)
@@ -533,7 +554,8 @@ export
             else unsupported(:AutoParts "not an auto type: " <> model.show(t))
         end
 
-    (* How an auto value's components are stored, in the auto type's witness-independent layout *)
+    (* How an auto value's components are stored, in the auto type's
+     * witness-independent layout *)
     let autoPayloadPlan(payloadType: Type storedType: Type autoType: Type): maybe.T(Plan) =
         begin
             let a = autoParts(autoType)
@@ -571,7 +593,8 @@ export
             end
         end
 
-    (* Whether an auto value's stored payload can be read in place as an inspect case's components *)
+    (* Whether an auto value's stored payload can be read in place as an inspect
+     * case's components *)
     let autoLayoutsAgree(storedType: Type armType: Type): Bool =
         begin
             let stored = shapes.shape(storedType).components
@@ -596,7 +619,8 @@ export
             agree
         end
 
-    (* How an inspect case of an auto value of type autoType obtains its components *)
+    (* How an inspect case of an auto value of type autoType obtains its
+     * components *)
     let inspectArm(autoType: Type c: nodes.InspectCase): nodes.InspectArm =
         begin
             let a = autoParts(autoType)
@@ -638,7 +662,8 @@ export
 
     Def TypeAppPlans = Tuple plans: Array(maybe.T(Plan)) thunkSymbols: Array(Array(Int)) end
 
-    (* How a polymorphic value of type origType applied to the type arguments is used at targetType *)
+    (* How a polymorphic value of type origType applied to the type arguments is
+     * used at targetType *)
     let typeAppPlans(origType: Type typeArgs: Array(Type) targetType: Type): TypeAppPlans =
         begin
             let q = written.quantified(origType)
@@ -679,9 +704,9 @@ export
             end
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * The pass
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Def GenericResult = Tuple generic: Type instantiated: Type instantiation: Instantiation end
 
@@ -696,7 +721,8 @@ export
 
     let letConvert(v: Variable a: Atom p: Plan): Stmt = nodes.letStmt(v convertOp(a p))
 
-    (* a, converted to be used at target (by a let added to before), or a itself *)
+    (* a, converted to be used at target (by a let added to before), or a
+     * itself *)
     let convert(a: Atom target: Type before: vector.T(Stmt) lay: Layout): Atom =
         begin
             let p = plan(typeOf(a) target lay)
@@ -719,7 +745,8 @@ export
             vector.toArray(:Atom result)
         end
 
-    (* Converts the result of a let's operation, of type resultType, to its variable's type *)
+    (* Converts the result of a let's operation, of type resultType, to its
+     * variable's type *)
     let result(s: nodes.StmtLet resultType: Type after: vector.T(Stmt)): Ok =
         begin
             let p = plan(resultType s.v.type noLayout)
@@ -732,8 +759,9 @@ export
 
     let memberType(m: nodes.Module name: String): Type = hashMap.find(:String :Variable m.members.vars name).type
 
-    (* The address passed for a var or out argument: the location's own, or that of a temporary of the parameter's
-     * representation, copied in from the location (for var) and out to it after the call *)
+    (* The address passed for a var or out argument: the location's own, or that
+     * of a temporary of the parameter's representation, copied in from the
+     * location (for var) and out to it after the call *)
     let refArgument(address: Atom param: model.Param instantiation: Instantiation before: vector.T(Stmt) after: vector.T(Stmt)): Atom =
         begin
             let locationType = case typeOf(address).form
@@ -753,7 +781,8 @@ export
                     maybe.isNone(:Plan p) orif eq(maybe.unwrap(:Plan p).kind "box") orif eq(maybe.unwrap(:Plan p).kind "unbox")
                 if layout.isBoxedInSlots(shapes.shape(locationType)) andif eq(layout.shapeRepresentation(shapes.shape(paramType)) "QVal")
                     andif boxOrNone(pIn) andif boxOrNone(pOut) then
-                    (* The location holds the record or variant boxed, as the generic parameter's QVal does *)
+                    (* The location holds the record or variant boxed, as the
+                     * generic parameter's QVal does *)
                     let cast = nodes.newVar("" refType false)
                     vector.append(:Stmt before letConvert(cast address nodes.newPlan("cast" typeOf(address) refType)))
                     nodes.atomOfVar(cast)
@@ -788,7 +817,8 @@ export
             end
         end
 
-    (* Converts a call's arguments to its callee's parameter types, returning its callee's result type *)
+    (* Converts a call's arguments to its callee's parameter types, returning
+     * its callee's result type *)
     let call(r: Representer c: nodes.OpCall before: vector.T(Stmt) after: vector.T(Stmt)): Type =
         begin
             r.genericResults := vector.new(:GenericResult)
@@ -797,8 +827,10 @@ export
             else
                 let fromModule = if maybe.isSome(:nodes.ModuleRef c.moduleRef) then
                     case maybe.unwrap(:nodes.ModuleRef c.moduleRef)
-                        (* A member of one of the unit's modules, called from outside it at its interface's types, works
-                         * at the module's own: its arguments and result convert at the boundary *)
+                        (* A member of one of the unit's modules, called from
+                         * outside it at its interface's types, works at the
+                         * module's own: its arguments and result convert at the
+                         * boundary *)
                         when refModule with m then maybe.some(:Type memberType(m.m maybe.unwrapOr(:String c.member "")))
                         else maybe.none(:Type)
                     end
@@ -890,8 +922,9 @@ export
             end
         end
 
-    (* Converts an operation's operands to the types it stores them at, returning the type of its result as the
-     * operation gives it (none when that is the let's own) *)
+    (* Converts an operation's operands to the types it stores them at,
+     * returning the type of its result as the operation gives it (none when
+     * that is the let's own) *)
     let operation(r: Representer o: Op resultType: Type before: vector.T(Stmt)): maybe.T(Type) =
         case o
             when opMakeTuple with x then
@@ -981,7 +1014,8 @@ export
             else maybe.none(:Type)
         end
 
-    (* The type of the location a store stores into (none for one through an address) *)
+    (* The type of the location a store stores into (none for one through an
+     * address) *)
     let storedType(s: Stmt): maybe.T(Type) =
         case s
             when sStoreField with x then writtenField(typeOf(x.base) "record" x.name)
@@ -990,7 +1024,8 @@ export
             else maybe.none(:Type)
         end
 
-    (* Decides how an inspect case obtains its components (its arm), and converts them to its binders' types *)
+    (* Decides how an inspect case obtains its components (its arm), and
+     * converts them to its binders' types *)
     let inspectCase(autoType: Type c: nodes.InspectCase): Ok =
         if extent c.binders > 0 then
             c.arm := maybe.some(:nodes.InspectArm inspectArm(autoType c))
@@ -1027,7 +1062,8 @@ export
                             r.genericResults := vector.new(:GenericResult)
                             let resultType = call(r c before writebacks)
                             if not(vector.empty(:GenericResult r.genericResults)) then
-                                (* The callee's generic result, converted to its type at the type arguments, then to the
+                                (* The callee's generic result, converted to its
+                                 * type at the type arguments, then to the
                                  * let's *)
                                 let g = vector.get(:GenericResult r.genericResults 0)
                                 let step = plan(g.generic g.instantiated layoutOf(g.instantiation false))
@@ -1044,7 +1080,8 @@ export
                                         vector.append(:Stmt after letConvert(v nodes.atomOfVar(instantiated) maybe.unwrap(:Plan final)))
                                     end
                                 else
-                                    (* The generic result is laid out as the native one at the type arguments *)
+                                    (* The generic result is laid out as the
+                                     * native one at the type arguments *)
                                     result(x g.instantiated after)
                                 end
                             else

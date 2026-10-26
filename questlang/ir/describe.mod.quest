@@ -122,8 +122,9 @@ export
         eq(kind "int") orif eq(kind "real") orif eq(kind "bool") orif eq(kind "char") orif eq(kind "string")
             orif eq(kind "ok") orif eq(kind "word")
 
-    (* Whether a template's descriptor is one of the runtime's own, whatever its holes: a scalar's, a word's, the empty
-     * tuple's, or a bound type parameter's placeholder *)
+    (* Whether a template's descriptor is one of the runtime's own, whatever its
+     * holes: a scalar's, a word's, the empty tuple's, or a bound type
+     * parameter's placeholder *)
     let isConstant(template: Type): Bool =
         begin
             let s = shapes.shape(template)
@@ -153,11 +154,14 @@ export
         staticKeys: hashMap.T(String nodes.StaticDescriptor)
         offsetKeys: hashMap.T(String nodes.OffsetTable)
         tagKeys: hashMap.T(String nodes.TagMap)
-        (* The descriptor variables in scope, by the symbols of the type parameters they describe, and the symbols of
-         * type parameters whose descriptors are not available here (an enclosing function's, in a thunk) *)
+        (* The descriptor variables in scope, by the symbols of the type
+         * parameters they describe, and the symbols of type parameters whose
+         * descriptors are not available here (an enclosing function's, in a
+         * thunk) *)
         var scope: hashMap.T(Int Variable)
         var unavailable: hashMap.T(Int Bool)
-        (* The view maps of the function being described, by the symbols of their type parameters, in order *)
+        (* The view maps of the function being described, by the symbols of
+         * their type parameters, in order *)
         var viewMaps: hashMap.T(Int nodes.ViewMapParam)
         var viewMapOrder: vector.T(nodes.ViewMapParam)
         (* Handlers' exception variables, which is compares as exceptions *)
@@ -166,7 +170,8 @@ export
 
     let newScope(): hashMap.T(Int Variable) = hashMap.new(:Int :Variable intEqual hash.int)
 
-    (* The static descriptor of t (a closed type, or a template), listed in the unit's static data *)
+    (* The static descriptor of t (a closed type, or a template), listed in the
+     * unit's static data *)
     let static(d: Describer t: Type echo: Bool): nodes.StaticDescriptor =
         begin
             let key = if echo then "e" <> conv.int(t.id) else "s" <> conv.int(shapes.shape(t).id) end
@@ -199,7 +204,8 @@ export
             end
         end
 
-    (* The descriptor of t with a hole for each of holes (type variables), instantiated with args *)
+    (* The descriptor of t with a hole for each of holes (type variables),
+     * instantiated with args *)
     let template(d: Describer t: Type holes: Array(Type) args: Array(Descriptor)): Descriptor =
         if extent holes is 0 then
             descStatic(static(d t false))
@@ -217,8 +223,9 @@ export
             end
         end
 
-    (* The descriptor of t here: a type parameter's variable, a closed type's static descriptor, or the template of a
-     * type mentioning type parameters in scope, instantiated with their descriptors *)
+    (* The descriptor of t here: a type parameter's variable, a closed type's
+     * static descriptor, or the template of a type mentioning type parameters
+     * in scope, instantiated with their descriptors *)
     let rec describeType(d: Describer t: Type): Descriptor =
         begin
             let v = shapes.shape(t).type
@@ -238,8 +245,8 @@ export
             end
         end
 
-    (* The descriptor of a polymorphic callee's type t laid out as the callee lays it out at the call's type
-     * arguments *)
+    (* The descriptor of a polymorphic callee's type t laid out as the callee
+     * lays it out at the call's type arguments *)
     let layoutDescriptor(d: Describer t: Type lay: nodes.PlanLayout): Descriptor =
         begin
             if not(hashMap.empty(:Int :Bool d.unavailable)) then checkAvailable(d t) end
@@ -258,7 +265,8 @@ export
             template(d t vector.toArray(:Type holes) vector.toArray(:Descriptor args))
         end
 
-    (* Runs f in the scope of a thunk taking type parameters named by symbols, with its descriptor parameters *)
+    (* Runs f in the scope of a thunk taking type parameters named by symbols,
+     * with its descriptor parameters *)
     let thunk(d: Describer symbols: Array(Array(Int)) f: All(params: Array(nodes.DescriptorParam)) Ok): Ok =
         begin
             let params = array of(extent symbols tuple let v = nodes.newVar("" nodes.descriptorType false) let symbols = array of :Int end end)
@@ -317,7 +325,8 @@ export
 
     (* Plans *)
 
-    (* Gives a plan (and the plans in it) the descriptors it converts by, in place *)
+    (* Gives a plan (and the plans in it) the descriptors it converts by, in
+     * place *)
     let rec describePlan(d: Describer p0: maybe.T(Plan)): Ok =
         if maybe.isSome(:Plan p0) then
             let p = maybe.unwrap(:Plan p0)
@@ -346,8 +355,9 @@ export
 
     (* Bodies *)
 
-    (* The view map a value is read through its type's bound by, if its type is a type parameter in scope bounded by a
-     * record, variant, option, or tuple type; made for the function on first use *)
+    (* The view map a value is read through its type's bound by, if its type is
+     * a type parameter in scope bounded by a record, variant, option, or tuple
+     * type; made for the function on first use *)
     let viewMap(d: Describer a: Atom): maybe.T(Variable) =
         begin
             let s = shapes.shape(typeOf(a))
@@ -423,7 +433,8 @@ export
                         if maybe.isSome(:Type fromModule) then maybe.unwrap(:Type fromModule) else maybe.unwrapOr(:Type x.calleeType model.okType) end
                     end
                     if isFunction(origType) then
-                        (* The instance is a thunk, whose plans convert its arguments and result *)
+                        (* The instance is a thunk, whose plans convert its
+                         * arguments and result *)
                         thunk(d x.thunkSymbols fun(params: Array(nodes.DescriptorParam)): Ok
                             begin
                                 x.thunkParams := maybe.some(:Array(nodes.DescriptorParam) params)
@@ -530,8 +541,8 @@ export
                 when sEcho with x then
                     let text = if stringOp.isEmpty(x.prefix) then maybe.none(:String) else written.packageText(x.type) end
                     if maybe.isSome(:String text) then
-                        (* A package's components are hidden, so its line is known statically, from its type as
-                         * written *)
+                        (* A package's components are hidden, so its line is
+                         * known statically, from its type as written *)
                         replaced := maybe.some(:Stmt option sEchoText of Stmt with
                             let text = x.prefix <> maybe.unwrap(:String text)
                         end)
@@ -572,8 +583,9 @@ export
             d.scope := newScope()
         end
 
-    (* A module's abstract types, each registered with its representation (an operator's as a template whose holes are
-     * its parameters), for dynamic values (docs/dynamic.md section 2.3) *)
+    (* A module's abstract types, each registered with its representation (an
+     * operator's as a template whose holes are its parameters), for dynamic
+     * values (docs/dynamic.md section 2.3) *)
     let abstractTypesOf(d: Describer canon: String): Array(nodes.AbstractTypeEntry) =
         begin
             let found = vector.new(:nodes.AbstractTypeEntry)
@@ -627,11 +639,13 @@ export
     (* =========================================================================
      * The types a unit's C declares the aggregates of
      *
-     * Those of its variables and functions' results, of the operations' and plans' types (and those plans convert
-     * inside), of the records its literals make and the payloads its inspect arms make, of its imports' interfaces,
-     * and of its offset tables, in the order first met: the order of the bootstrap's traversal of nodes' fields
-     * (walk.contents), which this lists case by case.
-     * ========================================================================= *)
+     * Those of its variables and functions' results, of the operations' and
+     * plans' types (and those plans convert inside), of the records its
+     * literals make and the payloads its inspect arms make, of its imports'
+     * interfaces, and of its offset tables, in the order first met: the order
+     * of the bootstrap's traversal of nodes' fields (walk.contents), which this
+     * lists case by case.
+     * ====================================================================== *)
 
     Let Collector = Tuple found: vector.T(Type) seenTypes: hashMap.T(Int Bool) seenNodes: hashMap.T(Int Bool) end
 

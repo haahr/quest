@@ -35,10 +35,12 @@ export
     (* =========================================================================
      * Scopes
      *
-     * What is in scope at a point: variables, join points (label and arity), loops, and the enclosing function. The
-     * bootstrap's scopes are values, extended for the rest of a body and the bodies within it; here they are one
-     * mutable scope whose additions in a body (or around one) are undone when it ends.
-     * ========================================================================= *)
+     * What is in scope at a point: variables, join points (label and arity),
+     * loops, and the enclosing function. The bootstrap's scopes are values,
+     * extended for the rest of a body and the bodies within it; here they are
+     * one mutable scope whose additions in a body (or around one) are undone
+     * when it ends.
+     * ====================================================================== *)
 
     Let JoinPoint = Tuple label: String arity: Int end
     Let Ids = hashMap.T(Int Bool)
@@ -49,12 +51,15 @@ export
         var joins: vector.T(JoinPoint)
         var loops: vector.T(String)
         var inFunction: Bool
-        (* Mutable variables of enclosing functions, which a nested function must not use *)
+        (* Mutable variables of enclosing functions, which a nested function
+         * must not use *)
         var outerMutables: Ids
-        (* Mutable variables of the current function (or top level), and whether this is a top level *)
+        (* Mutable variables of the current function (or top level), and whether
+         * this is a top level *)
         var localMutables: Ids
         var topLevel: Bool
-        (* The variables added in each body being checked, removed when it ends *)
+        (* The variables added in each body being checked, removed when it
+         * ends *)
         logs: vector.T(vector.T(Variable))
     end
 
@@ -102,16 +107,18 @@ export
             copy
         end
 
-    (* =========================================================================
+    (* ======================================================================
      * The core invariants
-     * ========================================================================= *)
+     * ====================================================================== *)
 
     Let Verifier = Tuple
         problems: vector.T(String)
         bound: Ids
-        (* The modules the unit defines and imports, which module references must be *)
+        (* The modules the unit defines and imports, which module references
+         * must be *)
         modules: Ids
-        (* After closure conversion, the unit's functions, which closures must be of *)
+        (* After closure conversion, the unit's functions, which closures must
+         * be of *)
         var functions: maybe.T(Ids)
         var represented: Bool
     end
@@ -236,8 +243,9 @@ export
     let rec function(v: Verifier f: nodes.Function scope: Scope): Ok =
         begin
             let where = "function '" <> f.v.hint <> "'"
-            (* A nested function may use the enclosing functions' values but not their mutable variables; the top
-             * level's mutable variables are globals *)
+            (* A nested function may use the enclosing functions' values but not
+             * their mutable variables; the top level's mutable variables are
+             * globals *)
             let savedJoins = scope.joins
             let savedLoops = scope.loops
             let savedInFunction = scope.inFunction
@@ -338,8 +346,8 @@ export
                 end
             when sLetRec with x then
                 begin
-                    (* The body computes the variables' values, and closures it makes may refer to them; they are in
-                     * scope after it *)
+                    (* The body computes the variables' values, and closures it
+                     * makes may refer to them; they are in scope after it *)
                     withVars(scope x.vars)
                     body(v x.body scope where)
                 end
@@ -468,10 +476,11 @@ export
     (* =========================================================================
      * Representations (after the represent pass)
      *
-     * The uses of values in another representation than their use requires: a value's representation is its type's,
-     * or for a boxed value its slot representation (a boxed mutable variable reads its value, and is assigned its
-     * box); and the slots of aggregates take records and variants boxed.
-     * ========================================================================= *)
+     * The uses of values in another representation than their use requires: a
+     * value's representation is its type's, or for a boxed value its slot
+     * representation (a boxed mutable variable reads its value, and is assigned
+     * its box); and the slots of aggregates take records and variants boxed.
+     * ====================================================================== *)
 
     let representationProblems(unit: nodes.Unit): vector.T(String) =
         begin
@@ -491,7 +500,8 @@ export
                         vector.append(:String problems where <> ": a " <> maybe.unwrap(:String had) <> " used as a " <> maybe.unwrap(:String want))
                     end
                 end
-            (* a, stored into a slot of shape s (embedded: boxed in the aggregate's allocation) *)
+            (* a, stored into a slot of shape s (embedded: boxed in the
+             * aggregate's allocation) *)
             let slot = fun(a: Atom s: maybe.T(shapes.Shape) where: String embedded: Bool): Ok
                 if maybe.isSome(:shapes.Shape s) andif not(eq(maybe.unwrap(:shapes.Shape s).kind "ok")) then
                     let boxedIn = layout.isBoxedInSlots(maybe.unwrap(:shapes.Shape s))
@@ -656,11 +666,13 @@ export
     (* =========================================================================
      * Descriptors (after the describe pass)
      *
-     * The descriptor operands missing, unbound, or ill-formed, and the static descriptors and tables operations
-     * refer to that are not the unit's static data.
-     * ========================================================================= *)
+     * The descriptor operands missing, unbound, or ill-formed, and the static
+     * descriptors and tables operations refer to that are not the unit's static
+     * data.
+     * ====================================================================== *)
 
-    (* The descriptor variables in scope, and the symbols of the type parameters a static descriptor must not mention *)
+    (* The descriptor variables in scope, and the symbols of the type parameters
+     * a static descriptor must not mention *)
     Let DescriptorScope = Tuple vars: Ids symbols: Ids end
 
     let thunkScope(scope: DescriptorScope params: Array(nodes.DescriptorParam)): DescriptorScope =
@@ -908,8 +920,8 @@ export
                     bind(f.descriptorParams where)
                     let inner = withParams(top f.descriptorParams)
                     body(f.body inner where)
-                    (* View maps: each of a type parameter of the function, at the bound, and every one used is the
-                     * function's *)
+                    (* View maps: each of a type parameter of the function, at
+                     * the bound, and every one used is the function's *)
                     let own = newIds()
                     for j = 0 upto {extent f.descriptorParams - 1} do hashMap.insert(:Int :Bool own f.descriptorParams[j].v.id true) end
                     let maps = newIds()
@@ -975,15 +987,17 @@ export
                 let var functions = functions
                 let var represented = nodes.atLeast(unit "represented")
             end
-            (* A module's members are visible to the code after its definition (by name, through the module), not as
-             * variables; each module's initializer is its own top level *)
+            (* A module's members are visible to the code after its definition
+             * (by name, through the module), not as variables; each module's
+             * initializer is its own top level *)
             for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
                 let m = vector.get(:nodes.Module unit.modules i)
                 body(v m.init newScope(newIds()) "module '" <> m.name <> "'")
             end
             body(v unit.main newScope(newIds()) "main")
             if nodes.atLeast(unit "closed") then
-                (* Lifted functions use their parameters, their environment, and the unit's globals *)
+                (* Lifted functions use their parameters, their environment, and
+                 * the unit's globals *)
                 let globals = walk.globalVariables(unit)
                 for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
                     function(v vector.get(:nodes.Function unit.functions i) newScope(copyIds(globals)))

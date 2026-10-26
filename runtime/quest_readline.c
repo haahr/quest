@@ -1,14 +1,19 @@
 /*
  * quest_readline.c
- * The io/readline library's externals: line editing and history through the readline API.
+ * The io/readline library's externals: line editing and history through the
+ * readline API.
  *
- * The build compiles this file with the line editor it finds (docs/self-hosted-repl.md §1.1): GNU readline
- * (QUEST_GNU_READLINE), libedit's readline-compatible API (neither flag), or none (QUEST_NOREADLINE), when readLine
- * reads plain lines. The history is the runtime's own, mirrored into the line editor's, and its file is plain lines.
+ * The build compiles this file with the line editor it finds
+ * (docs/self-hosted-repl.md §1.1): GNU readline (QUEST_GNU_READLINE), libedit's
+ * readline-compatible API (neither flag), or none (QUEST_NOREADLINE), when
+ * readLine reads plain lines. The history is the runtime's own, mirrored into
+ * the line editor's, and its file is plain lines.
  *
- * readLine edits through readline's callback interface, waiting for input with select, as CPython's readline module
- * does: a SIGINT, while it waits, sets a flag that ends the wait, and the line is abandoned and readline's state
- * cleaned up, with no longjmp out of the library. Without editing, readLine reads through reader.input's buffer.
+ * readLine edits through readline's callback interface, waiting for input with
+ * select, as CPython's readline module does: a SIGINT, while it waits, sets a
+ * flag that ends the wait, and the line is abandoned and readline's state
+ * cleaned up, with no longjmp out of the library. Without editing, readLine
+ * reads through reader.input's buffer.
  */
 
 #define _POSIX_C_SOURCE 200809L
@@ -40,7 +45,8 @@ bool quest_readline_editing(void) {
 #endif
 }
 
-/* A line of reader.input, without its newline; end of input before any byte is readline.endOfInput */
+/* A line of reader.input, without its newline; end of input before any byte is
+ * readline.endOfInput */
 static QString *quest_readline_plain(const QString *prompt) {
     quest_writer_put_string(quest_writer_output, prompt);
     quest_writer_flush(quest_writer_output);
@@ -77,7 +83,8 @@ static void quest_readline_on_sigint(int sig) {
     quest_readline_sigint = 1;
 }
 
-/* An edited line, or NULL at the end of input; *interrupted is set if Ctrl-C abandoned it */
+/* An edited line, or NULL at the end of input; *interrupted is set if Ctrl-C
+ * abandoned it */
 static char *quest_readline_edit(const char *prompt, bool *interrupted) {
     struct sigaction action, previous;
     memset(&action, 0, sizeof action);
@@ -91,7 +98,8 @@ static char *quest_readline_edit(const char *prompt, bool *interrupted) {
     *interrupted = false;
     rl_callback_handler_install(prompt, quest_readline_on_line);
     while (!quest_readline_done) {
-        /* Before waiting too, for a signal that came while readline handled a key */
+        /* Before waiting too, for a signal that came while readline handled a
+         * key */
         if (quest_readline_sigint) {
             rl_free_line_state();
 #ifdef QUEST_GNU_READLINE
@@ -146,8 +154,9 @@ QString *quest_readline_read_line(const QString *prompt) {
     return quest_readline_plain(prompt);
 }
 
-/* The history, which the runtime keeps itself, so that its file is plain lines whatever the line editor (whose own
- * files differ: libedit's escapes its lines), and the line editor's history mirrors */
+/* The history, which the runtime keeps itself, so that its file is plain lines
+ * whatever the line editor (whose own files differ: libedit's escapes its
+ * lines), and the line editor's history mirrors */
 static char **quest_readline_history;
 static int64_t quest_readline_history_length;
 static int64_t quest_readline_history_capacity;

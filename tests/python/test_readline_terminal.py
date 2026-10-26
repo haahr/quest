@@ -1,7 +1,8 @@
-"""io/readline at a terminal: line editing, history, Ctrl-C, and Ctrl-D, through a pseudo-terminal, compiled with each
-line editor installed and in the bootstrap's interpreter, and the REPL that reads its input through it
-(docs/self-hosted-repl.md §1). Golden tests and REPL transcripts cover what needs no terminal
-(tests/source/stdlib/readline.quest, tests/repl)."""
+"""io/readline at a terminal: line editing, history, Ctrl-C, and Ctrl-D, through
+a pseudo-terminal, compiled with each line editor installed and in the
+bootstrap's interpreter, and the REPL that reads its input through it
+(docs/self-hosted-repl.md §1). Golden tests and REPL transcripts cover what
+needs no terminal (tests/source/stdlib/readline.quest, tests/repl)."""
 
 from __future__ import annotations
 
@@ -22,8 +23,9 @@ sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
 from quest.codegen.c.compiler_runner import _sdk_has  # noqa: E402
 
-# Echoes each line it reads, and reports the exceptions readLine raises; at the end of the input, writes the history's
-# last three lines to $HIST, from which it read the history first
+# Echoes each line it reads, and reports the exceptions readLine raises; at the
+# end of the input, writes the history's last three lines to $HIST, from which
+# it read the history first
 PROGRAM = """import io/readline : io/Readline
 import writer: Writer
 import system: System
@@ -50,7 +52,8 @@ CTRL_A, CTRL_C, CTRL_D, CTRL_P = "\x01", "\x03", "\x04", "\x10"
 
 
 class Terminal:
-    """A program run on a pseudo-terminal, whose output is matched as it comes."""
+    """A program run on a pseudo-terminal, whose output is matched as it
+    comes."""
 
     def __init__(self, command: list[str], env: dict[str, str]) -> None:
         self.pid, self.fd = pty.fork()
@@ -60,7 +63,8 @@ class Terminal:
         self.seen = 0
 
     def expect(self, pattern: str, timeout: float = 30.0) -> str:
-        """Waits for pattern to appear after what earlier expects matched, and returns the match."""
+        """Waits for pattern to appear after what earlier expects matched, and
+        returns the match."""
         regex = re.compile(pattern)
         deadline = time.monotonic() + timeout
         while True:
@@ -85,8 +89,9 @@ class Terminal:
         os.write(self.fd, keys.encode("latin-1"))
 
     def wait(self, timeout: float = 30.0) -> int:
-        """The program's exit status, once it exits. Its output meanwhile is read: a line editor restoring the
-        terminal at exit (tcsetattr with TCSADRAIN) waits until its output has been read."""
+        """The program's exit status, once it exits. Its output meanwhile is
+        read: a line editor restoring the terminal at exit (tcsetattr with
+        TCSADRAIN) waits until its output has been read."""
         deadline = time.monotonic() + timeout
         while True:
             pid, status = os.waitpid(self.pid, os.WNOHANG)
@@ -134,7 +139,8 @@ class TestReadlineTerminal(unittest.TestCase):
         return [str(binary)]
 
     def commands(self) -> dict[str, list[str]]:
-        """The ways to run the program: compiled with each line editor installed, and interpreted."""
+        """The ways to run the program: compiled with each line editor
+        installed, and interpreted."""
         found = {"interpreted": [sys.executable, str(DRIVER), str(self.program)]}
         if Path("/opt/homebrew/opt/readline/include/readline/rlconf.h").exists() or Path(
                 "/usr/include/readline/rlconf.h").exists():
@@ -154,7 +160,8 @@ class TestReadlineTerminal(unittest.TestCase):
                 # Ctrl-A moves to the start of the line
                 term.send("abc" + CTRL_A + "X\r")
                 term.expect(r"\[LINE:Xabc\]")
-                # Up (Ctrl-P) recalls the line before, then the one the history file held
+                # Up (Ctrl-P) recalls the line before, then the one the history
+                # file held
                 term.expect("> ")
                 term.send(CTRL_P + "\r")
                 term.expect(r"\[LINE:Xabc\]")
@@ -190,8 +197,9 @@ class TestReadlineTerminal(unittest.TestCase):
 
 
 class TestReplTerminal(unittest.TestCase):
-    """The REPL at a terminal: it starts without -i, edits lines, keeps a history in ~/.quest_history, and Ctrl-C
-    abandons the phrase being typed (docs/repl.md)."""
+    """The REPL at a terminal: it starts without -i, edits lines, keeps a
+    history in ~/.quest_history, and Ctrl-C abandons the phrase being typed
+    (docs/repl.md)."""
 
     def drivers(self) -> dict[str, list[str]]:
         return {"bootstrap": [sys.executable, str(DRIVER)]}

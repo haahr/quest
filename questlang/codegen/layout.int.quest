@@ -1,63 +1,79 @@
 (* Quest Self-Hosted Compiler: Layouts of Values Interface
  *
- * bootstrap/python/quest/codegen/layout.py: how values are laid out, for every backend (docs/c-representation.md),
- * computed from shapes and cached per shape: each type's layout tag (which names its struct and descriptor), digests
- * and identity keys of types, its representation (the runtime's C type for it: a scalar, a QVal word, a 16-byte
- * record or variant value, or a pointer), and its slot representation (as an aggregate slot or a QVal word holds it:
- * a record or variant as a pointer to an immutable box, a Bool or Char in a word of its own). Also whether generic
- * code's layout of a type agrees with the native one, and whether a value of a tuple or option type may be a proxy. *)
+ * bootstrap/python/quest/codegen/layout.py: how values are laid out, for every
+ * backend (docs/c-representation.md), computed from shapes and cached per
+ * shape: each type's layout tag (which names its struct and descriptor),
+ * digests and identity keys of types, its representation (the runtime's C type
+ * for it: a scalar, a QVal word, a 16-byte record or variant value, or a
+ * pointer), and its slot representation (as an aggregate slot or a QVal word
+ * holds it: a record or variant as a pointer to an immutable box, a Bool or
+ * Char in a word of its own). Also whether generic code's layout of a type
+ * agrees with the native one, and whether a value of a tuple or option type may
+ * be a proxy. *)
 
 interface Layout
 import
     questlang/types/model : questlang/types/Model
     questlang/ir/shapes : questlang/ir/Shapes
 export
-    (* s, or for a type variable or abstract type bounded by POWER(T), the shape its bounds resolve to *)
+    (* s, or for a type variable or abstract type bounded by POWER(T), the shape
+     * its bounds resolve to *)
     resolvedShape(s: shapes.Shape): shapes.Shape
-    (* Whether values of shape s, of a type with a bound, are held viewed at the bound: a module's abstract type, an
-     * abstract type elaborated as such, or a path type *)
+    (* Whether values of shape s, of a type with a bound, are held viewed at the
+     * bound: a module's abstract type, an abstract type elaborated as such, or
+     * a path type *)
     heldAtBound(s: shapes.Shape): Bool
-    (* Whether s is a bounded type parameter's shape, whose values generic code holds at their own view *)
+    (* Whether s is a bounded type parameter's shape, whose values generic code
+     * holds at their own view *)
     ownView(s: shapes.Shape): Bool
     isWordType(t: model.Type): Bool
 
-    (* The representation of a value of t, named by the runtime's C type for it *)
+    (* The representation of a value of t, named by the runtime's C type for
+     * it *)
     representation(t: model.Type): String
     shapeRepresentation(s: shapes.Shape): String
     (* The C type of a value of t in an aggregate slot or a QVal word *)
     slotRepresentation(t: model.Type): String
     shapeSlotRepresentation(s: shapes.Shape): String
-    (* The C type of the location a var or out parameter points to (or a Var cell is) *)
+    (* The C type of the location a var or out parameter points to (or a Var
+     * cell is) *)
     locationRepresentation(t: model.Type): String
     shapeLocationRepresentation(s: shapes.Shape): String
 
-    (* Whether a value of shape s, a tuple or option, may be a proxy (docs/c-representation.md section 5.8) *)
+    (* Whether a value of shape s, a tuple or option, may be a proxy
+     * (docs/c-representation.md section 5.8) *)
     mayBeProxied(s: shapes.Shape): Bool
-    (* Whether a component of shape s may change view when its tuple or option is upcast *)
+    (* Whether a component of shape s may change view when its tuple or option
+     * is upcast *)
     changesView(s: shapes.Shape): Bool
     (* Whether a slot holds values of shape s boxed: records and variants *)
     isBoxedInSlots(s: shapes.Shape): Bool
 
-    (* A deterministic, valid C identifier component for a type, and for the types of shape s *)
+    (* A deterministic, valid C identifier component for a type, and for the
+     * types of shape s *)
     typeTag(t: model.Type): String
     shapeTag(s: shapes.Shape): String
     tupleStructName(t: model.Type): String
     optionStructName(t: model.Type): String
 
-    (* A short digest of a type's printed text, telling apart types that typeTag conflates *)
+    (* A short digest of a type's printed text, telling apart types that typeTag
+     * conflates *)
     typeDigest(t: model.Type): String
-    (* A key telling types apart where typeTag does not: the tag and a digest of the canonical type's text *)
+    (* A key telling types apart where typeTag does not: the tag and a digest of
+     * the canonical type's text *)
     typeIdentityKey(t: model.Type): String
     textDigest(text: String): String
 
-    (* Whether a value of t substituted by subst, laid out natively, is laid out as generic code lays out t, where
-     * each variable in subst is a type parameter of that code *)
+    (* Whether a value of t substituted by subst, laid out natively, is laid out
+     * as generic code lays out t, where each variable in subst is a type
+     * parameter of that code *)
     genericLayoutAgrees(t: model.Type subst: model.Subst): Bool
-    (* Whether converting a value of t between the generic layout and the native one at subst would copy mutable
-     * data whose layouts differ *)
+    (* Whether converting a value of t between the generic layout and the native
+     * one at subst would copy mutable data whose layouts differ *)
     genericLayoutCopiesMutableData(t: model.Type subst: model.Subst): Bool
-    (* The representation of a function type's calls (its result's and parameters' representations and its number of
-     * type parameters), as a key: closures of types with the same key are called alike *)
+    (* The representation of a function type's calls (its result's and
+     * parameters' representations and its number of type parameters), as a key:
+     * closures of types with the same key are called alike *)
     signatureRepresentation(t: model.Type): String
 
     (* The human-readable name of a type for runtime diagnostics and printing *)
