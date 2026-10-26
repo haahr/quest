@@ -8,6 +8,11 @@ from typing import Optional
 
 from quest.types.env import Environment, Scope, ValueSymbol
 from quest.types import QType
+from quest.modules.elaboration import (
+    build_record_type_from_scope,
+    load_interface,
+    separately_compiled_module_scope,
+)
 
 STANDARD_LIBRARY_MODULES: dict[str, str] = {
     "list": "List",
@@ -52,7 +57,6 @@ class BuiltinModuleRegistry:
         if target_iface is None:
             return None
         if target_iface not in cls._cached_interfaces:
-            from quest.modules.loader import load_interface
             base_env = Environment(builtin_registry=False)
             iface_scope = load_interface(target_iface, base_env)
             cls._cached_interfaces[target_iface] = iface_scope
@@ -77,10 +81,6 @@ class BuiltinModuleRegistry:
         iface_name = STANDARD_LIBRARY_MODULES[norm_mod]
         cls.ensure_interface(iface_name, env)
         if norm_mod not in cls._cached_mod_scopes:
-            from quest.modules.elaboration import (
-                build_record_type_from_scope,
-                separately_compiled_module_scope,
-            )
             base_env = Environment(builtin_registry=False)
             iface_scope = cls._cached_interfaces[iface_name]
             mod_scope = separately_compiled_module_scope(norm_mod, iface_scope, base_env)

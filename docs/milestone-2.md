@@ -11,10 +11,13 @@ The decisions this plan rests on (2026-10-26):
 - **Errors.** The self-hosted checker reports every error it can, not only the first, using exceptions where they are
   the right tool (§2).
 - **Maps.** Mutable maps are `collections/hashmap` (identity maps where the bootstrap keys a dictionary by `id()` or
-  by an object that hashes by identity).
+  by an object that hashes by identity). A hash map keeps insertion order, as a Python dictionary does (it is laid
+  out as CPython's is), so the bootstrap's reliance on that order carries over.
 - **Testing.** Golden tests only. The bootstrap's suites run only when the bootstrap changes. The full goldens run
   against the compiled self-hosted driver, never an interpreted one (§3).
 - **Layout.** `questlang/` follows the reorganized bootstrap module for module (§1), as the parser does.
+- **Pace.** The steps run straight through, each pushed when its runs pass, stopping only for a surprise that needs
+  a decision.
 
 Translation follows [converting-python-to-quest.md](converting-python-to-quest.md); the parser port (Milestone 1) set
 the conventions: identical messages and spans, divergences only where Quest cannot hold what Python does, and each
@@ -44,36 +47,38 @@ is the backends', so it comes with Milestone 4.
 
 ### 1.1. Import cycles
 
-Quest modules import each other acyclically; the bootstrap has two cycles (lazy imports inside functions), plus the
-mixins' calls back into the checker. Each is broken in the bootstrap first (Step 0), so that the two layouts stay the
-same:
+Quest modules import each other acyclically; the bootstrap had two cycles (lazy imports inside functions), plus the
+mixins' calls back into the checker. Step 0 broke each in the bootstrap, so that the two layouts stay the same:
 
-1. **`types.env`, `types.kinds`, `types.subtyping`, `modules.graph`.** Subtyping imports `allocate_symbol_id` from
-   `env`, and `env` and `graph` import each other (an `Environment` holds its `UnitGraph`; the graph resolves imports
-   from an `Environment`'s directory and search paths). Move the symbols and scopes (`Symbol`, `ValueSymbol`,
-   `TypeSymbol`, `KindSymbol`, `Scope`, `allocate_symbol_id`) to a new `types/symbols`, below `subtyping`, `kinds`,
-   and `graph`; give the graph's resolution functions the directory and search paths rather than the environment.
-2. **`typechecker.typecheck`, `typechecker.bindings`, `modules.elaboration`, `modules.loader`, `modules.stdlib`
-   (and `modules.interface_compiler`).** The checker elaborates interfaces, modules, and imports by calling
-   `modules.elaboration`, which calls back into the checker for bindings, and loads units through `loader`, which
-   elaborates them and loads `.qi` files through `interface_compiler`. Make the dependencies point one way, checker
-   above modules: the elaboration functions take the checker's entry points (`elaborate_binding`) as a parameter,
-   the loader takes the elaboration it runs on a loaded unit, and loading a `.qi` is a hook that the driver installs
-   when it has a build directory (so the type checker itself never imports `interface_compiler`).
-3. **The checker's mixins.** `TypeElaborator` combines one mixin per construct family, and each calls the others
-   through `self` (`self.check_expr` from `aggregates`, for instance). Move its state and shared helpers to
-   `typechecker/checker.py`, a class the mixin modules import, with the dispatch (`check_expr`, `synth_expr`,
-   `elaborate_binding`) reached through it. In Quest, `checker.T` is a tuple holding the state and `var` fields for
-   the dispatch functions, which `typecheck` fills when it makes a checker, so that the construct modules sit below
-   `typecheck` and call up through the tuple.
+1. **`types.env`, `types.kinds`, `types.subtyping`, `modules.graph`.** Subtyping imported `allocate_symbol_id` from
+   `env`, `env` cleared subtyping's cache, and `env` and `graph` imported each other. The symbols and scopes
+   (`Symbol`, `ValueSymbol`, `TypeSymbol`, `KindSymbol`, `Scope`, `allocate_symbol_id`, the global symbol indexes) are
+   now `types/symbols`, below `subtyping` and `graph`; a symbol gaining a meaning bumps a generation there, and the
+   subtype cache drops itself when the generation changes. `env` imports `graph`. The graph's resolution functions
+   still take an environment for its directory, search paths, and units (duck typed in Python); in Quest they take
+   those directly.
+2. **`typechecker.typecheck`, `typechecker.bindings`, `modules.elaboration`, `modules.loader`, `modules.stdlib`,
+   `modules.interface_compiler`.** Elaboration called back into the loader and the checker. Now elaboration is below
+   both: the loader registers its functions with it (`register_unit_loader`) when imported, `typecheck` registers
+   `elaborate_binding` (`register_binding_elaborator`) and imports the loader, and elaboration's `load_interface` and
+   `load_module` call the registered ones, as do `stdlib` and `interface_compiler`. (The `Environment`'s builtin
+   registry, which `stdlib` registers, already worked this way.) In Quest the hooks are `var` fields of a tuple that
+   `elaboration` exports.
+3. **The checker's mixins.** `TypeElaborator` combined one mixin per construct family, and each called the others and
+   the dispatch through `self`. The state and shared helpers are now `typechecker/checker.py`'s `Checker`, the base
+   of every family, which declares the dispatch (`check_expr`, `synth_expr`) that `TypeElaborator` defines. The
+   families call each other in one direction (`exceptions` and `auto_values` below `bindings` and `application`,
+   `bindings` below `aggregates` and `control`). In Quest, `checker.T` is a tuple holding the state and `var` fields
+   for the dispatch functions, which `typecheck` fills when it makes a checker; a family calls the families below it
+   directly.
 
 ### 1.2. Representations
 
 - **Types and kinds** are options (`model.Type`, `model.Kind`) inside a node tuple that carries what the bootstrap
   caches on its objects (free variables, the interning key). Interning, the subtype cache, and the kind cache are
   hash maps; a type's identity (Python's `is` after interning) is `hash.identityEqual`.
-- **Symbols and scopes** are tuples with `var` fields; a scope's members are a hash map from name to symbol, with the
-  insertion order the bootstrap's dictionaries keep (a vector of names beside the map) wherever output depends on it.
+- **Symbols and scopes** are tuples with `var` fields; a scope's members are a hash map from name to symbol, in
+  insertion order as the bootstrap's dictionaries are.
 - **The typed AST** follows `typed_ast.py` as `syntax/ast` follows `ast.py` (compiler-organization.md §3), and
   `typedastprint` prints what `TypedNode.dump` prints.
 - **Desugaring** is a pass over the self-hosted AST, before the checker, as in the bootstrap.
@@ -98,6 +103,7 @@ reports that error first, with the same message and span, and goes on to find ot
   poisons the names it would have bound.
 - **Fatal errors** stay fatal: an error that leaves nothing sensible to check (a cycle of imports, an internal error,
   the well-scopedness check of `scoping`) adds a fatal diagnostic and raises `diagbag.fatalError`, as syntax errors do.
+- **Limit.** After 20 errors the checker reports that it stopped (a fatal diagnostic) and stops.
 - **Output.** The typed AST is printed only when there are no errors. The errors are printed in the order found,
   which is source order, as the bootstrap renders its one.
 
@@ -147,17 +153,19 @@ Each step is one or more commits; each ends with its runs passing.
 
 ### Step 0: Bootstrap refactorings
 
-Break the cycles of §1.1 in the bootstrap: `types/symbols.py`; the graph's resolution without an `Environment`; the
-elaboration and loader hooks; `typechecker/checker.py`. No output changes; both bootstrap suites and the benchmarks
-(within 10% of main, `tests/perf/measure.py`) pass.
+Break the cycles of §1.1 in the bootstrap: `types/symbols.py`; the elaboration hooks; `typechecker/checker.py`. No
+output changes; both bootstrap suites pass. (The benchmarks, `tests/perf/measure.py`, time the C backend and compiled
+programs, which this step does not change.)
 
-**Done when** the bootstrap's import graph among `types`, `typechecker`, and `modules` (lazy imports included) is
-acyclic apart from `modules.interface_compiler`, `module_compiler`, and their users, which the driver wires.
+**Done when** the bootstrap's import graph among `types`, `typechecker`, `modules`, and `syntax` (lazy imports
+included) is acyclic.
 
 ### Step 1: Driver, desugaring, and the self-hosted suite
 
-Port `syntax/desugar`; write `driver/main` with the tokenize, parse, and desugar phases; add `--self-hosted` and the
-pending list to the runner; update testing.md and compiler-organization.md (§2, §5, §6).
+Port `syntax/desugar`; write `driver/main` with the
+tokenize, parse, and desugar phases; add `--self-hosted` and the pending list to the runner; remove the generated
+`astprint_*` tests and `tests/astprint/` (the driver checks every parse golden directly; the `parser_*` tests stay, for
+the grammar's rules and errors); update testing.md.
 
 **Done when** the driver passes every tokenize and parse golden and the tokenize and parse error tests, and the
 typecheck goldens are all pending. (This also checks the parser on every test program directly, beyond the
@@ -167,7 +175,7 @@ typecheck goldens are all pending. (This also checks the parser on every test pr
 
 Port `types/symbols`, `model` (types, kinds, substitution, free variables, interning), and `dump` (the canonical and
 compact formatters, which error messages and the typed AST dump use). Test with questlang tests that build types and
-print them, whose goldens a script (`tests/types/generate.py`, like `tests/astprint/generate.py`) gets from the
+print them, whose goldens a script (`tests/types/generate.py`, like `tests/parser/generate.py`) gets from the
 bootstrap building the same types.
 
 **Done when** those tests pass compiled.

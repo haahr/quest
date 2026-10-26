@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from typing import Any, Optional
 
 import quest.syntax.ast as ast
+from quest.typechecker.checker import Checker
 from quest.types import (
     INT_TYPE,
     QAllType,
@@ -49,11 +50,12 @@ from quest.typechecker.metas import resolve_typed_metas
 TypeError = QuestTypeError
 
 
-class ApplicationMixin:
+class ApplicationMixin(Checker):
     """Function application.
 
-    A mixin of `TypeElaborator` (in `typecheck.py`): its methods use the elaborator's state and its dispatch
-    (`check_expr`, `synth_expr`), and call the other families' methods through `self`.
+    A construct family of the checker (`checker.Checker`): its methods use the checker's state and helpers, reach
+    the dispatch (`check_expr`, `synth_expr`) through it, and call the families below this one (checker.py) through
+    `self`.
     """
 
     def _check_call_args(

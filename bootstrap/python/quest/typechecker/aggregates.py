@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Optional
 
 import quest.syntax.ast as ast
+from quest.typechecker.checker import Checker
 from quest.types import (
     BOOL_TYPE,
     binds_module,
@@ -83,11 +84,12 @@ _PHRASES_NOT_IN_TUPLES: dict[type, str] = {
 }
 
 
-class AggregateMixin:
+class AggregateMixin(Checker):
     """Records, tuples, selection, options, variants, and arrays.
 
-    A mixin of `TypeElaborator` (in `typecheck.py`): its methods use the elaborator's state and its dispatch
-    (`check_expr`, `synth_expr`), and call the other families' methods through `self`.
+    A construct family of the checker (`checker.Checker`): its methods use the checker's state and helpers, reach
+    the dispatch (`check_expr`, `synth_expr`) through it, and call the families below this one (checker.py) through
+    `self`.
     """
 
     def _resolve_variant_or_option_field(

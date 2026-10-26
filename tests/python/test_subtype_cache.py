@@ -10,10 +10,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstra
 
 import quest.types as types
 from quest.types.env import Environment, TypeSymbol
+from quest.types.subtyping import _subtype_cache_lookup
 from quest.types import (
     INT_TYPE,
     STRING_TYPE,
-    SUBTYPE_CACHE,
     TYPE_KIND,
     QRecordField,
     QRecordType,
@@ -27,8 +27,7 @@ from quest.types import (
 
 
 def _cached(sub, sup, env=None):
-    entry = SUBTYPE_CACHE.get((id(sub), id(sup), env is None))
-    return entry[2] if entry is not None and entry[0] is sub and entry[1] is sup else None
+    return _subtype_cache_lookup(sub, sup, env)
 
 
 def _stream(var_id: int, last_field_type) -> QRecType:

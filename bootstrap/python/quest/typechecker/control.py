@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Optional
 
 import quest.syntax.ast as ast
+from quest.typechecker.checker import Checker
 from quest.types import (
     BOOL_TYPE,
     INFIX_OPERATORS,
@@ -50,11 +51,12 @@ from quest.typechecker.escape import check_no_escaping_path_types
 TypeError = QuestTypeError
 
 
-class ControlMixin:
+class ControlMixin(Checker):
     """Case, infix operators, assignment, conditionals, for loops, and blocks.
 
-    A mixin of `TypeElaborator` (in `typecheck.py`): its methods use the elaborator's state and its dispatch
-    (`check_expr`, `synth_expr`), and call the other families' methods through `self`.
+    A construct family of the checker (`checker.Checker`): its methods use the checker's state and helpers, reach
+    the dispatch (`check_expr`, `synth_expr`) through it, and call the families below this one (checker.py) through
+    `self`.
     """
 
     def _elaborate_case_expr(

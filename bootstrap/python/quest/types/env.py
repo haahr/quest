@@ -1,14 +1,15 @@
-"""Quest Scoping, Symbol Tables, and Lexical Environments."""
+"""Quest Type-Checking Environments: the scope stack, the builtins, and the interfaces, modules, and units in
+scope. Symbols and scopes are quest.types.symbols's (and are re-exported here)."""
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Optional, Protocol
 
 from quest.diagnostics import in_unit
+from quest.modules.graph import UnitGraph
 from quest.types.kinds import INFIX_OPERATORS
 from quest.types.model import (
     BOOL_TYPE,
@@ -29,236 +30,23 @@ from quest.types.model import (
     STRING_TYPE,
     TYPE_KIND,
 )
-from quest.types.subtyping import clear_subtype_cache
+from quest.types.symbols import (
+    KindSymbol,
+    Scope,
+    Symbol,
+    TypeSymbol,
+    ValueSymbol,
+    _KIND_IDS_SEEN_UNDEFINED,
+    _KIND_SYMBOLS_BY_ID,
+    _TYPE_IDS_SEEN_UNDEFINED,
+    _TYPE_SYMBOLS_BY_ID,
+    allocate_symbol_id,
+)
 
 
 # ============================================================================
-# 1. Symbol Definitions
+# 1. Compiler Environment
 # ============================================================================
-
-class Symbol:
-    """Base class for all named compiler symbols."""
-    name: str
-
-
-@dataclass
-class ValueSymbol(Symbol):
-    """Value-level symbol: x : Type."""
-    name: str
-    type_val: QType
-    is_var: bool = False
-    is_out: bool = False
-    is_param: bool = False
-    function_depth: int = 0
-    symbol_id: int = 0
-
-    _counter: ClassVar[int] = field(default=0, init=False, repr=False)
-
-    def __post_init__(self) -> None:
-        if self.symbol_id == 0:
-            ValueSymbol._counter += 1
-            self.symbol_id = ValueSymbol._counter
-
-    def __str__(self) -> str:
-        var_prefix = "var " if self.is_var else ("out " if self.is_out else "")
-        return f"{var_prefix}{self.name}: {self.type_val}"
-
-
-@dataclass
-class TypeSymbol(Symbol):
-    """Type-level symbol: X :: Kind [= Definition]."""
-    name: str
-    symbol_id: int
-    kind: QKind
-    definition: Optional[QType] = None
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        if name == "definition":
-            # A symbol id must mean one thing for the life of the process (it is looked up globally), so
-            # a definition may be supplied after declaration (None -> T) but never replaced.
-            current = self.__dict__.get("definition")
-            if current is not None:
-                if value is current:
-                    return
-                raise RuntimeError(f"Type symbol '{self.name}' (#{self.symbol_id}) is already defined")
-            if value is not None and self.__dict__.get("symbol_id") in _TYPE_IDS_SEEN_UNDEFINED:
-                clear_subtype_cache()
-        super().__setattr__(name, value)
-
-    @property
-    def is_abstract(self) -> bool:
-        return self.definition is None
-
-    def __str__(self) -> str:
-        if self.definition is not None:
-            return f"{self.name} :: {self.kind} = {self.definition}"
-        return f"{self.name} :: {self.kind}"
-
-
-@dataclass
-class KindSymbol(Symbol):
-    """Kind-level symbol: K = Kind."""
-    name: str
-    symbol_id: int
-    kind: QKind
-
-    def __str__(self) -> str:
-        return f"{self.name} = {self.kind}"
-
-
-# ============================================================================
-# 2. Lexical Scope
-# ============================================================================
-
-# Every declared type symbol, by symbol id. Symbol ids are unique for the life of the process
-# (allocate_symbol_id), so a type variable can be resolved in O(1) regardless of the current scope.
-_TYPE_SYMBOLS_BY_ID: dict[int, TypeSymbol] = {}
-# Likewise every declared kind symbol.
-_KIND_SYMBOLS_BY_ID: dict[int, KindSymbol] = {}
-
-# Symbol ids that some lookup found undeclared (or, for types, without a definition). Meanings only
-# become more defined, so cached subtyping results can go stale only when one of these ids gains a
-# meaning; the subtype cache is cleared then (see the subtype cache notes in types.py).
-_TYPE_IDS_SEEN_UNDEFINED: set[int] = set()
-_KIND_IDS_SEEN_UNDEFINED: set[int] = set()
-
-class Scope:
-    """A single lexical scope frame maintaining ordered declarations."""
-
-    def __init__(self, parent: Optional[Scope] = None, name: str = "local"):
-        self.parent = parent
-        self.name = name
-        self.module_name: Optional[str] = None
-        self._declarations: list[Symbol] = []
-        self._values: dict[str, ValueSymbol] = {}
-        self._types: dict[str, TypeSymbol] = {}
-        self._types_by_id: dict[int, TypeSymbol] = {}
-        self._kinds: dict[str, KindSymbol] = {}
-        self._kinds_by_id: dict[int, KindSymbol] = {}
-
-    @property
-    def declarations(self) -> list[Symbol]:
-        """Returns all symbols declared in this scope in strict declaration order."""
-        return list(self._declarations)
-
-    @property
-    def values(self) -> dict[str, ValueSymbol]:
-        return dict(self._values)
-
-    @property
-    def types(self) -> dict[str, TypeSymbol]:
-        return dict(self._types)
-
-    @property
-    def kinds(self) -> dict[str, KindSymbol]:
-        return dict(self._kinds)
-
-    def declare_value(self, symbol: ValueSymbol) -> ValueSymbol:
-        self._declarations.append(symbol)
-        self._values[symbol.name] = symbol
-        return symbol
-
-    def declare_type(self, symbol: TypeSymbol) -> TypeSymbol:
-        self._declarations.append(symbol)
-        self._types[symbol.name] = symbol
-        self._types_by_id[symbol.symbol_id] = symbol
-        previous = _TYPE_SYMBOLS_BY_ID.get(symbol.symbol_id)
-        if symbol.definition is not None and (
-            symbol.symbol_id in _TYPE_IDS_SEEN_UNDEFINED
-            or (previous is not None and previous.definition is not symbol.definition)
-        ):
-            clear_subtype_cache()
-        _TYPE_SYMBOLS_BY_ID[symbol.symbol_id] = symbol
-        return symbol
-
-    def declare_type_variable(
-        self,
-        name: str,
-        symbol_id: int,
-        kind: QKind,
-        definition: Optional[QType] = None,
-    ) -> TypeSymbol:
-        """Declares a type symbol from its constituent attributes in the current scope."""
-        return self.declare_type(
-            TypeSymbol(
-                name=name,
-                symbol_id=symbol_id,
-                kind=kind,
-                definition=definition,
-            )
-        )
-
-    def declare_kind(self, symbol: KindSymbol) -> KindSymbol:
-        self._declarations.append(symbol)
-        self._kinds[symbol.name] = symbol
-        self._kinds_by_id[symbol.symbol_id] = symbol
-        previous = _KIND_SYMBOLS_BY_ID.get(symbol.symbol_id)
-        if symbol.symbol_id in _KIND_IDS_SEEN_UNDEFINED or (previous is not None and previous.kind is not symbol.kind):
-            clear_subtype_cache()
-        _KIND_SYMBOLS_BY_ID[symbol.symbol_id] = symbol
-        return symbol
-
-    # --- Local Lookups ---
-
-    def lookup_value_local(self, name: str) -> Optional[ValueSymbol]:
-        return self._values.get(name)
-
-    def lookup_type_local(self, name: str) -> Optional[TypeSymbol]:
-        return self._types.get(name)
-
-    def lookup_type_by_id_local(self, symbol_id: int) -> Optional[TypeSymbol]:
-        return self._types_by_id.get(symbol_id)
-
-    def lookup_kind_local(self, name: str) -> Optional[KindSymbol]:
-        return self._kinds.get(name)
-
-    def lookup_kind_by_id_local(self, symbol_id: int) -> Optional[KindSymbol]:
-        return self._kinds_by_id.get(symbol_id)
-
-    # --- Lexical Chain Lookups ---
-
-    def lookup_value(self, name: str) -> Optional[ValueSymbol]:
-        if name in self._values:
-            return self._values[name]
-        return self.parent.lookup_value(name) if self.parent else None
-
-    def lookup_type(self, name: str) -> Optional[TypeSymbol]:
-        if name in self._types:
-            return self._types[name]
-        return self.parent.lookup_type(name) if self.parent else None
-
-    def lookup_type_by_id(self, symbol_id: int) -> Optional[TypeSymbol]:
-        if symbol_id in self._types_by_id:
-            return self._types_by_id[symbol_id]
-        return self.parent.lookup_type_by_id(symbol_id) if self.parent else None
-
-    def lookup_kind(self, name: str) -> Optional[KindSymbol]:
-        if name in self._kinds:
-            return self._kinds[name]
-        return self.parent.lookup_kind(name) if self.parent else None
-
-    def lookup_kind_by_id(self, symbol_id: int) -> Optional[KindSymbol]:
-        if symbol_id in self._kinds_by_id:
-            return self._kinds_by_id[symbol_id]
-        return self.parent.lookup_kind_by_id(symbol_id) if self.parent else None
-
-    def __repr__(self) -> str:
-        return f"Scope({self.name!r}, {len(self._declarations)} decls)"
-
-
-# ============================================================================
-# 3. Compiler Environment
-# ============================================================================
-
-_GLOBAL_SYMBOL_COUNTER: int = 0
-
-
-def allocate_symbol_id() -> int:
-    """Allocates a globally unique positive integer symbol ID."""
-    global _GLOBAL_SYMBOL_COUNTER
-    _GLOBAL_SYMBOL_COUNTER += 1
-    return _GLOBAL_SYMBOL_COUNTER
-
 
 class BuiltinRegistry(Protocol):
     """Protocol for a registry that populates standard library modules and interfaces into an Environment."""
@@ -302,7 +90,7 @@ class Environment:
         self.source_map: Optional[Any] = None
         # The directory of the program being compiled, which names units under no include root (docs/modules.md §2.3)
         self.program_dir: Optional[Path] = None
-        self._units: Optional[Any] = None
+        self._units: Optional[UnitGraph] = None
         self._loading_interfaces: list[str] = []
         self._loading_modules: list[str] = []
         self.subtype_cache: dict[tuple[int, int], bool] = {}
@@ -320,16 +108,15 @@ class Environment:
         self._builtin_modules = dict(self._modules)
 
     @property
-    def units(self) -> Any:
+    def units(self) -> UnitGraph:
         """The units this environment has loaded, with their type-checked forms, and the resolver of its imports
         (quest.modules.graph.UnitGraph, docs/build-process.md §2.1)."""
         if self._units is None:
-            from quest.modules.graph import UnitGraph
             self._units = UnitGraph()
         return self._units
 
     @units.setter
-    def units(self, graph: Any) -> None:
+    def units(self, graph: UnitGraph) -> None:
         self._units = graph
 
     def fresh_symbol_id(self) -> int:

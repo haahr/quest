@@ -385,9 +385,11 @@ Following Cardelli §5.3:
 
 ---
 
-## 5. Environment and Scoping (`bootstrap/python/quest/types/env.py`)
+## 5. Environment and Scoping (`bootstrap/python/quest/types/symbols.py` and `types/env.py`)
 
-Compilation state is maintained across lexical scopes:
+Compilation state is maintained across lexical scopes. Symbols and scopes are `types/symbols.py`'s, below subtyping
+and the unit graph, which use them; the type-checking `Environment` (`types/env.py`) holds the scope stack, the
+builtins, and the interfaces, modules, and units in scope:
 - **`Scope`:** An ordered mapping of identifiers to `Symbol` instances. Ordered scope resolution ensures that
   dependent components (e.g. `Tuple X::TYPE init:X end`) are evaluated left-to-right.
 - **`Symbol`:**
@@ -418,11 +420,15 @@ The typechecking environment employs a two-tier root architecture:
 ## 6. Term Elaboration and Typechecking (`typechecker/elaborate_types.py` and `typechecker/typecheck.py`)
 
 Term typechecking translates syntactic AST expressions into decorated `TypedExpr` nodes. `typechecker/typecheck.py`
-holds `TypeElaborator`'s state, its dispatch on expression forms (`check_expr`, `synth_expr`), phrase and program
-elaboration, and the module-level entry points; the constructs are elaborated by mixins it combines, one module per
-family: `bindings.py` (functions and bindings), `application.py` (calls), `aggregates.py` (records, tuples,
-selection, options, variants, arrays), `control.py` (case, infix operators and assignment, conditionals, for loops,
-blocks), `exceptions.py` (exceptions, raise, try), and `auto_values.py` (auto values and `inspect`).
+holds `TypeElaborator`'s dispatch on expression forms (`check_expr`, `synth_expr`), phrase and program elaboration,
+and the module-level entry points. The checker's state and shared helpers are `typechecker/checker.py`'s `Checker`,
+the base of one construct family per module, which `TypeElaborator` combines: `bindings.py` (functions and bindings),
+`application.py` (calls), `aggregates.py` (records, tuples, selection, options, variants, arrays), `control.py` (case,
+infix operators and assignment, conditionals, for loops, blocks), `exceptions.py` (exceptions, raise, try), and
+`auto_values.py` (auto values and `inspect`). A family reaches the dispatch through `Checker` and calls the families
+below it directly, so the modules import one another acyclically. Module, interface, and import elaboration
+(`modules/elaboration.py`) is below the checker and the loader: they register the functions it calls back
+(`register_binding_elaborator`, `register_unit_loader`).
 
 The type checker's input is the desugared AST ([syntax.md](syntax.md) §5): short-circuit operators are conditionals,
 elsif chains are conditionals nested in else branches, user infix operators are calls, assignments to array

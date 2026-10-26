@@ -360,11 +360,11 @@ Layer 6: values/*, interpreter/* | ir/*, types/canonical | codegen/*, modules' a
 Layer 7: driver/*
 ```
 
-The bootstrap's lazy imports make cycles that this order does not allow; they are broken in the bootstrap before the
-port ([milestone-2.md](milestone-2.md) §1.1): symbols and scopes move to `types/symbols`; the unit graph resolves
-imports from a directory and search paths rather than an environment; module elaboration and loading take the
-checker's entry points as parameters rather than importing it; and the checker's construct families call the
-dispatch through `typechecker/checker` (in Quest, a tuple whose function fields `typecheck` fills).
+The bootstrap's lazy imports made cycles that this order does not allow; they were broken in the bootstrap before the
+port ([milestone-2.md](milestone-2.md) §1.1): symbols and scopes are `types/symbols`; the loader and the checker
+register the functions module elaboration calls back, rather than elaboration importing them; and the checker's
+construct families reach the dispatch through `typechecker/checker` (in Quest, a tuple whose function fields
+`typecheck` fills).
 
 ---
 

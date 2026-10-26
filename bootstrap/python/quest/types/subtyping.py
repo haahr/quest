@@ -50,6 +50,7 @@ from quest.types.model import (
     structurally_equal,
     unalias,
 )
+from quest.types.symbols import allocate_symbol_id, meaning_generation
 
 # ============================================================================
 # 9. Equi-Recursive Subtyping and Type Equivalence
@@ -82,7 +83,7 @@ from quest.types.model import (
 # - Conditional True results of a proof that returns False are discarded.
 #
 # Symbol meanings only become more defined (a definition may arrive once, later than a reference), so
-# the environment clears the cache when an id that some lookup saw as undefined gains a meaning.
+# the cache is dropped when an id that some lookup saw as undefined gains a meaning (types.symbols).
 
 SUBTYPE_CACHE: dict[tuple[int, int, bool], tuple[QType, QType, bool]] = {}
 SUBTYPE_CACHE_LIMIT = 250_000
@@ -90,11 +91,25 @@ _SUBTYPE_CACHE = SUBTYPE_CACHE
 _SUBTYPE_CACHE_LIMIT = SUBTYPE_CACHE_LIMIT
 
 
+# The meaning generation (types.symbols) the cache was filled in
+_subtype_cache_generation: int = meaning_generation()
+
+
 def clear_subtype_cache() -> None:
     _SUBTYPE_CACHE.clear()
 
 
+def _check_subtype_cache_generation() -> None:
+    """Drops the cache if a symbol has gained a meaning since it was filled."""
+    global _subtype_cache_generation
+    generation = meaning_generation()
+    if generation != _subtype_cache_generation:
+        _SUBTYPE_CACHE.clear()
+        _subtype_cache_generation = generation
+
+
 def _subtype_cache_lookup(sub: QType, sup: QType, env: Optional[Any]) -> Optional[bool]:
+    _check_subtype_cache_generation()
     entry = _SUBTYPE_CACHE.get((id(sub), id(sup), env is None))
     if entry is None or entry[0] is not sub or entry[1] is not sup:
         return None
@@ -104,6 +119,7 @@ def _subtype_cache_lookup(sub: QType, sup: QType, env: Optional[Any]) -> Optiona
 def _subtype_cache_store(sub: QType, sup: QType, env: Optional[Any], result: bool) -> None:
     if sub._has_meta or sup._has_meta:
         return
+    _check_subtype_cache_generation()
     if len(_SUBTYPE_CACHE) >= _SUBTYPE_CACHE_LIMIT:
         _SUBTYPE_CACHE.clear()
     _SUBTYPE_CACHE[(id(sub), id(sup), env is None)] = (sub, sup, result)
@@ -432,7 +448,6 @@ def _prove_subtype_step(sub: QType, sup: QType, env: Optional[Any], trail: Subty
                 return False
             # Both sides' quantifiers become fresh variables, with sup's bounds: either type may contain the other's
             # binders (a type compared with its own bound), which renaming one to the other's would capture
-            from quest.types.env import allocate_symbol_id  # env imports this module
 
             # The bounds are compared within this proof, so that they share its fuel, and each comparison of
             # quantifiers costs much of it: a search that diverges through bounds (Pierce, Bounded quantification is

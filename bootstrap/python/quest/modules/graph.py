@@ -51,7 +51,7 @@ from quest.modules.paths import (
 from quest.modules.units import unit_kind
 
 if TYPE_CHECKING:
-    from quest.types.env import Scope
+    from quest.types.symbols import Scope
 
 
 class UnitKind(Enum):

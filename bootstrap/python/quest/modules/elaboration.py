@@ -55,6 +55,46 @@ from quest.types import (
 )
 
 
+# The loader and the checker are above this module: they load and check units by elaborating them here, and it calls
+# back to them to load the units that imports name and to check a module's bindings. Each registers its functions
+# when it is imported (register_unit_loader, register_binding_elaborator).
+class _Hooks:
+    load_interface: Optional[Callable[[str, Environment], Scope]] = None
+    load_module: Optional[Callable[[str, str, Environment], TypedModule]] = None
+    elaborate_binding: Optional[Callable[[ast.BindingNode, Environment, int], TypedBinding]] = None
+
+
+_hooks = _Hooks()
+
+
+def register_unit_loader(
+    load_interface_fn: Callable[[str, Environment], Scope],
+    load_module_fn: Callable[[str, str, Environment], TypedModule],
+) -> None:
+    """Registers the loader's functions (quest.modules.loader), which load_interface and load_module call."""
+    _hooks.load_interface = load_interface_fn
+    _hooks.load_module = load_module_fn
+
+
+def register_binding_elaborator(
+    elaborate_binding_fn: Callable[[ast.BindingNode, Environment, int], TypedBinding],
+) -> None:
+    """Registers the checker's elaboration of a binding (quest.typechecker.typecheck), which checks modules' bodies."""
+    _hooks.elaborate_binding = elaborate_binding_fn
+
+
+def load_interface(name: str, env: Environment) -> Scope:
+    """Loads interface `name`, as imported from env.current_dir, with the registered loader."""
+    assert _hooks.load_interface is not None, "no unit loader is registered (import quest.modules.loader)"
+    return _hooks.load_interface(name, env)
+
+
+def load_module(name: str, expected_interface: str, env: Environment) -> TypedModule:
+    """Loads module `name`, as imported from env.current_dir, with the registered loader."""
+    assert _hooks.load_module is not None, "no unit loader is registered (import quest.modules.loader)"
+    return _hooks.load_module(name, expected_interface, env)
+
+
 def build_record_type_from_scope(scope: Scope, provenance: Optional[str] = None) -> QRecordType:
     """Constructs a QRecordType matching the values exposed by a module or interface scope."""
     fields = [
@@ -70,7 +110,6 @@ def import_interface(iface_path: str, local_name: str, env: Environment) -> Scop
     The path is resolved from env.current_dir, so an earlier import's binding of the same local name (`Counter`
     for both `counter.int.quest` and `util/counter.int.quest`) does not stand in for it (docs/modules.md §2.3).
     """
-    from quest.modules.loader import load_interface
     scope = load_interface(iface_path, env)
     env.register_interface(local_name, scope)
     if iface_path != local_name:
@@ -113,7 +152,6 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
                         interface_scope.declare_kind(kind_symbol)
                         continue
 
-                    from quest.modules.loader import load_module
                     mod_scope = None
                     if (
                         env.units.typed_module(mod_path) is not None
@@ -320,7 +358,6 @@ def elaborate_module(
     """Elaborates and typechecks a module against its interface, enforcing information hiding."""
     target_interface_scope = env.lookup_interface(decl.interface_name)
     if target_interface_scope is None:
-        from quest.modules.loader import load_interface
         target_interface_scope = load_interface(decl.interface_name, env)
 
     module_internal_scope = Scope(name=f"module_internal_{decl.name}", parent=env.base_scope)
@@ -355,7 +392,6 @@ def elaborate_module(
                         if kind_symbol is not None:
                             module_internal_scope.declare_kind(kind_symbol)
                             continue
-                    from quest.modules.loader import load_module
                     if is_c_compilation_mode(env):
                         mod_scope = separately_compiled_module_scope(mod_path, source_interface_scope, env)
                         mod_type = build_record_type_from_scope(
@@ -378,8 +414,7 @@ def elaborate_module(
 
     # 2. Elaborate module internal bindings
     if binding_elaborator is None:
-        from quest.typechecker.typecheck import elaborate_binding
-        binding_elaborator = elaborate_binding
+        binding_elaborator = _hooks.elaborate_binding
 
     saved_scope = env.current_scope
     env.current_scope = module_internal_scope
@@ -538,7 +573,6 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
                 # import mod1, mod2: Interface
                 symbols: list[ValueSymbol] = []
                 for local_mod_name, mod_path in zip(item.names, item.effective_module_paths):
-                    from quest.modules.loader import load_module
                     if is_c_compilation_mode(env):
                         # In separate compilation mode, type the module via its interface without loading source
                         mod_scope = separately_compiled_module_scope(mod_path, iface_scope, env)

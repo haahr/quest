@@ -1,32 +1,23 @@
 """Quest Term Elaboration and Bidirectional Typechecker (Phases 2, 3, 4 & 5).
 
 `TypeElaborator` checks (`check_expr`) and synthesizes (`synth_expr`) the types of expressions and elaborates
-bindings, phrases, and programs into the typed AST. This module holds its state, the dispatch on expression
-forms (with the literals, variables, dereference, and while and loop inline), the helpers shared by the
-construct families, phrase and program elaboration, and the module-level entry points. The constructs are
-elaborated by mixins, one module each: `bindings` (functions and bindings), `application`, `aggregates`,
-`control`, `exceptions`, and `auto_values` (auto values and inspect)."""
+bindings, phrases, and programs into the typed AST. This module holds the dispatch on expression forms (with the
+literals, variables, dereference, and while and loop inline), phrase and program elaboration, and the module-level
+entry points. The checker's state and shared helpers are `checker.Checker`'s; the constructs are elaborated by
+construct families, one module each, built on it: `bindings` (functions and bindings), `application`,
+`aggregates`, `control`, `exceptions`, and `auto_values` (auto values and inspect)."""
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
-from contextlib import contextmanager
-from typing import Any, Optional
+from typing import Optional
 
 import quest.syntax.ast as ast
 from quest.types import (
     BOOL_TYPE,
-    QQuantifier,
     QType,
-    QTypeMeta,
     QVarType,
 )
-from quest.modules.stdlib import BuiltinModuleRegistry
-from quest.types.env import (
-    Environment,
-    Scope,
-    ValueSymbol,
-)
+from quest.types.env import Environment
 from quest.diagnostics import (
     QuestCompilerError,
     QuestTypeError,
@@ -35,7 +26,9 @@ from quest.modules.elaboration import (
     elaborate_import,
     elaborate_interface,
     elaborate_module,
+    register_binding_elaborator,
 )
+import quest.modules.loader  # noqa: F401  (registers the loader with quest.modules.elaboration)
 from quest.typechecker.typed_ast import (
     TypedBinding,
     TypedBool,
@@ -72,104 +65,6 @@ TypeError = QuestTypeError
 
 class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixin, ExceptionMixin, AutoValueMixin):
     """Stateful term elaboration and bidirectional typechecker for Quest AST expressions and bindings."""
-
-    def __init__(self, env: Optional[Environment] = None, loop_depth: int = 0) -> None:
-        self.env: Environment = env if env is not None else Environment(builtin_registry=BuiltinModuleRegistry)
-        self.loop_depth: int = loop_depth
-        self.function_depth: int = 0
-        # Implicit type arguments of the polymorphic call whose arguments are being checked, as
-        # (metavariable, quantifier, call offset); nested calls may defer theirs to it.
-        self._pending_type_args: Optional[list[tuple[QTypeMeta, QQuantifier, int]]] = None
-
-    @contextmanager
-    def scope(self, name: str = "local") -> Iterator[Scope]:
-        """RAII scope context manager pushing and popping an environment scope."""
-        with self.env.scoped(name) as s:
-            yield s
-
-    @contextmanager
-    def in_loop(self) -> Iterator[None]:
-        """RAII loop depth tracking context manager for while/loop/for constructs."""
-        self.loop_depth += 1
-        try:
-            yield
-        finally:
-            self.loop_depth -= 1
-
-    @contextmanager
-    def in_function(self) -> Iterator[None]:
-        """RAII scope isolation for function bodies (loops inside cannot exit outer loops)."""
-        saved_depth = self.loop_depth
-        self.loop_depth = 0
-        self.function_depth += 1
-        try:
-            yield
-        finally:
-            self.loop_depth = saved_depth
-            self.function_depth -= 1
-
-    def _elaborate_subexpr(
-        self,
-        expr: ast.Expr,
-        expected_type: Optional[QType],
-        env: Environment,
-        loop_depth: int,
-    ) -> TypedExpr:
-        """Elaborates an expression in checking mode if expected_type is provided, else synthesis mode."""
-        if expected_type is not None:
-            return self.check_expr(expr, expected_type, env, loop_depth)
-        return self.synth_expr(expr, env, loop_depth)
-
-    def _elaborate_optional_branch(
-        self,
-        expr: Optional[ast.Expr],
-        expected_type: Optional[QType],
-        env: Environment,
-        loop_depth: int,
-    ) -> Optional[TypedExpr]:
-        """Elaborates an optional branch (e.g. else branch) if present, returning None otherwise."""
-        if expr is None:
-            return None
-        return self._elaborate_subexpr(expr, expected_type, env, loop_depth)
-
-    def _collect_branch_types(
-        self,
-        branches: Sequence[Any],
-        else_branch: Optional[TypedExpr] = None,
-        initial_type: Optional[QType] = None,
-    ) -> list[QType]:
-        """Collects body/result types from typed branch nodes and an optional else branch."""
-        types: list[QType] = [initial_type] if initial_type is not None else []
-        for b in branches:
-            types.append(b.body.type_val)
-        if else_branch is not None:
-            types.append(else_branch.type_val)
-        return types
-
-    def _check_subsumption(
-        self,
-        expr: ast.Expr,
-        expected_type: QType,
-        env: Environment,
-        loop_depth: int,
-        type_desc: Optional[str] = None,
-    ) -> TypedExpr:
-        """Synthesizes expr and asserts that the synthesized type is a subtype of expected_type."""
-        typed = self.synth_expr(expr, env, loop_depth)
-        return require_subtype(expr, typed, expected_type, env, type_desc)
-
-    def _check_capturable(self, sym: ValueSymbol, offset: int) -> None:
-        """Rejects a use, from a closure, of a var or out parameter or a mutable local variable of an enclosing
-        function: such locations live in that function's frame, so closures may not capture them. Module-level
-        variables (function depth 0) may be used anywhere."""
-        sym_depth = sym.function_depth
-        if (sym.is_out or sym.is_var) and sym_depth > 0 and self.function_depth > sym_depth:
-            kind_str = (
-                "'out' parameter"
-                if sym.is_out
-                else ("'var' parameter" if sym.is_param else "'var' variable")
-            )
-            raise TypeError(f"Cannot capture {kind_str} '{sym.name}' in closure", offset=offset)
 
     def check(
         self,
@@ -598,3 +493,6 @@ def elaborate_binding(
     return TypeElaborator(env=env, loop_depth=loop_depth)._elaborate_binding(
         binding, env=env, loop_depth=loop_depth
     )
+
+
+register_binding_elaborator(elaborate_binding)

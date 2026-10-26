@@ -21,6 +21,7 @@ from quest.modules.elaboration import (
     create_module_export_scope,
     elaborate_interface,
     elaborate_module,
+    register_unit_loader,
 )
 from quest.modules.graph import (
     Resolved,
@@ -364,3 +365,6 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
             env.register_module(canon_name, typed_mod.scope)
         unit.typed_module = typed_mod
         return typed_mod
+
+
+register_unit_loader(load_interface, load_module)

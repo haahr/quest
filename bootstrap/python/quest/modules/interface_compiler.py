@@ -42,7 +42,7 @@ from quest.values.dynamic_json import jsog_decode, jsog_encode, parse_type_strin
 from quest.typechecker.elaborate_types import elaborate_kind, elaborate_rec_type_operators, elaborate_type
 from quest.types.env import Environment, Scope, TypeSymbol, ValueSymbol
 from quest.syntax.grammar import parse_quest_program
-from quest.modules.elaboration import elaborate_interface
+from quest.modules.elaboration import elaborate_interface, load_interface, separately_compiled_module_scope
 from quest.modules.units import parse_unit, unit_declaration
 from quest.values.model import (
     FALSE_VALUE,
@@ -730,7 +730,6 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
 
     # 1. Resolve imported interfaces
     if "imports" in rec.fields and isinstance(rec.fields["imports"], QArray):
-        from quest.modules.loader import load_interface
 
         for imp_elem in rec.fields["imports"].elements:
             imp_str = str(imp_elem.value)
@@ -771,7 +770,6 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
                         imp_scope_frame.declare_kind(k_sym)
                 else:
                     for iname, mod_path in zip(names, mpaths):
-                        from quest.modules.elaboration import separately_compiled_module_scope
                         registered_scope = separately_compiled_module_scope(mod_path, imp_scope, env)
                         env.register_module(iname, registered_scope)
                         env.register_module(mod_path, registered_scope)
