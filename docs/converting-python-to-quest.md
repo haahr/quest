@@ -130,13 +130,19 @@ When building strings inside loops or accumulating large outputs (such as code g
 `<>` creates $O(N^2)$ copying allocations. Use `util/stringBuilder` instead:
 
 ```quest
-let sb = stringBuilder.new();
-sb.str("header\n").int(42).char('\n');
-let result = sb.toString();
+let sb = stringBuilder.new()
+sb.str("header\n").int(42).char('\n')
+let result = sb.toString()
 ```
 
 **7. Rename to Quest's case conventions.** Values and functions use lowerCamel (`word_count` becomes `wordCount`). Types
 and interfaces are Capitalized. Kinds are ALL CAPS. `let` binds values, `Let` binds types, and `DEF` binds kinds.
+
+Note on semicolons: write none. Python ends a statement at the end of a line; Quest needs no separator at all, since
+the grammar alone says where each phrase ends, and lines may break anywhere. The language accepts a semicolon only
+after a top-level phrase, where it is optional ([extensions.md](extensions.md#semicolons)), and the library and
+self-hosted compiler leave it out there too. To put several phrases on one line, write them one after another:
+`best := i bestKey := k`.
 
 ## Functions and types
 
@@ -239,7 +245,7 @@ vector.filterMap(:Int :Int xs fun(x: Int): maybe.T(Int)
 For reductions (such as `sum()`, `any()`, `all()`, or state accumulation), use `fold`:
 
 ```quest
-let sum = vector.fold(:Int :Int xs 0 fun(acc: Int x: Int): Int acc + x);
+let sum = vector.fold(:Int :Int xs 0 fun(acc: Int x: Int): Int acc + x)
 ```
 
 All of `Vector`, `HashMap`, and `HashSet` provide `forEach`, `map`, `filter`, `fold`, and `filterMap`.
@@ -317,7 +323,7 @@ let rec countLeaves(n: Node): Int =
     when leaf with val then 1
     when branch with arm then
         countLeaves(arm.left) + countLeaves(arm.right)
-    end;
+    end
 ```
 
 This pattern provides compile-time exhaustiveness checking and static type safety without needing dynamic `isinstance`
@@ -436,7 +442,7 @@ This binds `aUtil` and `bUtil` cleanly in the module environment.
 5. Put library imports first. Any Python file that uses `list`, `dict`, `set`, or `Optional` needs the matching
 `collections/vector`, `collections/hashMap`, `collections/hashSet`, or `util/maybe` import at the top of its module, and
 in its interface if exported signatures mention those types. Inside a module, these go in the module heading's `import`
-clause rather than as standalone `import ...;` statements.
+clause rather than as standalone `import ...` statements.
 
 ## Worked example
 

@@ -119,6 +119,9 @@ has traps that cost time:
   extra `end` usually shows up as an unexpected token later on.
 - **Type arguments are explicit or inferred:** `f(:Int x)`; a polymorphic constant is applied to types alone
   (`nil(:Int)`).
+- **No semicolons except after a top-level phrase,** where they are optional ([extensions.md](extensions.md#semicolons)).
+  `begin let a = 1; a end`, `f(1; 2)`, and `Record x: Int; y: Int end` are syntax errors. The style in `lib/`,
+  `questlang/`, and `examples/` is to write none at all; tests may end top-level phrases with them.
 
 ## 6. Tests
 

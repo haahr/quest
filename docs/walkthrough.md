@@ -47,11 +47,11 @@ Here it is in Quest, as [examples/argmax/argmax.quest](../examples/argmax/argmax
 (* @echo *)
 (* argmax: the first element of an array whose key is greatest *)
 
-import arrayOp: ArrayOp;
-import string: StringOp;
-import scoring: Scoring;
+import arrayOp: ArrayOp
+import string: StringOp
+import scoring: Scoring
 
-exception empty: Ok end;
+exception empty: Ok end
 
 let argmax(E::TYPE K::TYPE)(
            a: Array(E)
@@ -70,7 +70,7 @@ let argmax(E::TYPE K::TYPE)(
             end
         end
         tuple let index = best let element = a[best] end
-    end;
+    end
 ```
 
 Reading it as a Python programmer:
@@ -111,8 +111,8 @@ Reading it as a Python programmer:
 ```quest
 ...
 (* The longest string *)
-let words = array of "pear" "fig" "banana" "kiwi" end;
-let longest = argmax(words string.length {>});
+let words = array of "pear" "fig" "banana" "kiwi" end
+let longest = argmax(words string.length {>})
 ...
 ```
 
@@ -132,7 +132,7 @@ declared by an interface, [examples/argmax/scoring.int.quest](../examples/argmax
 interface Scoring export
     Def Candidate = Tuple name: String years: Int rating: Real end
     score(c: Candidate): Real
-end;
+end
 ```
 
 `Def Candidate = ...` gives a type a name for everyone who imports the interface, and `score(c: Candidate): Real` is
@@ -144,7 +144,7 @@ the signature of a function the module must provide. Elsewhere, a module impleme
 module scoring: Scoring export
     Let Candidate = Tuple name: String years: Int rating: Real end
     let score(c: Candidate): Real = c.rating
-end;
+end
 ```
 
 This is the reason to use a module: the program depends only on the interface. The module is compiled on its own
@@ -160,8 +160,8 @@ The program uses it like this:
 let candidates = array of
     tuple let name = "Ada" let years = 12 let rating = 4.5 end
     tuple let name = "Grace" let years = 30 let rating = 4.9 end
-end;
-let best = argmax(candidates scoring.score {>>});
+end
+let best = argmax(candidates scoring.score {>>})
 ```
 
 Each `tuple let ... end` makes a tuple whose components are named as the `let`s inside it name them. The scores are
@@ -229,7 +229,6 @@ newlines, and comments. Each token records where it came from, so that later pha
 4:8     IDENT           arrayOp
 4:15    COLON           :
 4:17    IDENT           ArrayOp
-4:24    SEMICOLON       ;
 ...
 10:1    KW_LET          let
 10:5    IDENT           argmax
@@ -259,7 +258,6 @@ newlines, and comments. Each token records where it came from, so that later pha
 31:43   SYMBOLIC_INFIX  >
 31:44   RBRACE          }
 31:45   RPAREN          )
-31:46   SEMICOLON       ;
 ...
 ```
 
@@ -708,10 +706,10 @@ let argmax(E::TYPE K::TYPE)(
            isGreater: All(x: K y: K) Bool): E =
 ...
         a[best]
-    end;
+    end
 
-let words = array of "pear" "fig" "banana" "kiwi" end;
-let longest = argmax(words string.length {>});
+let words = array of "pear" "fig" "banana" "kiwi" end
+let longest = argmax(words string.length {>})
 ```
 
 Here the represent and describe passes have work to do. After them, the call looks like this:

@@ -241,6 +241,9 @@ Two consequences are worth knowing:
 - **The items of an import are not separated by semicolons.** `import a: A; b: B` is an import of `a`, followed by
   the phrases `b` and `:B`, not an import of `a` and `b`. Write `import a: A b: B`, or two imports.
 
+As a matter of style, the library (`lib/`), the self-hosted compiler (`questlang/`), and the examples (`examples/`)
+use no semicolons at all; the tests use both forms, so that both stay accepted.
+
 ---
 
 ## The `Word` Interface & Module
