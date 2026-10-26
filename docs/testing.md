@@ -190,7 +190,12 @@ bootstrap's one: an error test passes when the driver's first diagnostic is the 
 when its whole output is `tests/golden/self-hosted/errors/PHASE/TEST.error`, which `--self-hosted --update-golden`
 writes for review. `tests/self-hosted/pending.txt` lists the tests the driver is not yet expected to pass
 (`PHASE:TEST`, or `errors/PHASE:TEST`): they are reported as pending, and one that passes fails, so that it is taken
-off the list.
+off the list. The tests of several errors, which only the self-hosted driver reports, are in
+`tests/self-hosted/errors/PHASE`: each diagnostic the driver reports must be one of the test's inline expectations,
+and each expectation must be reported.
+
+The runners set `QUEST_HOME` to the project directory, where the self-hosted driver, which runs in a scratch
+directory, finds `lib/`.
 
 **Which runs:** a change to the self-hosted compiler alone (`questlang/`) runs the self-hosted suite and the questlang
 tests compiled, `python3 run_tests.py --phase run_c_compiled -k questlang/`; interpreting the self-hosted compiler is

@@ -48,7 +48,7 @@ EXPECTATION_PATTERN = re.compile(
 # Matches standard compiler diagnostic header: file:line:col: severity: message
 # or file:line:col: severity[code]: message
 DIAGNOSTIC_HEADER_PATTERN = re.compile(
-    r"^(.*?):(\d+):(\d+):\s*(error|warning|info|fatal)(?:\[.*?\])?:\s*(.*)$",
+    r"^(.*?):(\d+):(\d+):\s*(error|warning|info|fatal)(?: error)?(?:\[.*?\])?:\s*(.*)$",
     re.IGNORECASE,
 )
 
@@ -260,6 +260,8 @@ def execute_phase(
     # Checks that typed programs are well scoped (quest/typechecker/scoping.py), as golden tests do
     env["QUEST_CHECK_SCOPES"] = "1"
     env["QUEST_CHECK_IR"] = "1"
+    # The project directory, whose lib/ the self-hosted driver reads the standard library from (it runs elsewhere)
+    env["QUEST_HOME"] = str(root_dir)
     if env_vars:
         env.update(env_vars)
 
@@ -348,12 +350,14 @@ def run_error_test(
     driver_args: Optional[list[str]] = None,
     driver_command: Optional[list[str]] = None,
     further_errors_file: Optional[Path] = None,
+    all_errors: bool = False,
 ) -> tuple[bool, str]:
     """Runs an error test with precursor validation, timeout, and pattern-based or diagnostic matching.
 
     With driver_command, the test runs the self-hosted driver, which may report errors after the bootstrap's one
     (docs/milestone-2.md §2): its first diagnostic must be the one expected, and when it reports more, its whole
-    output must be further_errors_file's, which --update-golden writes for review."""
+    output must be further_errors_file's, which --update-golden writes for review. With all_errors (a test of several
+    errors, tests/self-hosted/errors), its diagnostics must be the test's inline expectations, every one."""
     # Step 1: Precursor Phase Validation
     for pre_phase in precursor_phases:
         rc, _, stderr = execute_phase(
@@ -379,7 +383,7 @@ def run_error_test(
     if rc == 0:
         return False, f"Expected error in phase '{target_phase}', but command succeeded with return code 0"
 
-    if driver_command is not None:
+    if driver_command is not None and not all_errors:
         ok, report, stderr = _check_further_errors(stderr, root_dir, further_errors_file, update_golden)
         if not ok:
             return False, report

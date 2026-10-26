@@ -21,6 +21,8 @@ import
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/typechecker/typedAstPrint : questlang/typechecker/TypedAstPrint
     questlang/typechecker/typecheck : questlang/typechecker/Typecheck
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/stdlib : questlang/modules/Stdlib
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/stringBuilder : util/StringBuilder
@@ -122,7 +124,13 @@ let run(): Ok =
                 elsif stringOp.equal(options.stopAfter "desugar") then
                     print(show(desugar.program(program)))
                 else
-                    let result = typecheck.elaborateProgram(desugar.program(program) env.new())
+                    stdlib.install()
+                    let e = env.new()
+                    let dir = paths.parent(paths.absolute(options.file))
+                    e.currentDir := maybe.some(:String dir)
+                    e.programDir := maybe.some(:String dir)
+                    e.sourceFile := options.file
+                    let result = typecheck.elaborateProgram(desugar.program(program) e)
                     for i = 0 upto {extent result.errors - 1} do
                         diagbag.add(bag diagnostics.errorDiagnostic(result.errors[i] options.file))
                     end

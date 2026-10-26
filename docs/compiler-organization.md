@@ -352,10 +352,10 @@ between parts of the type checker:
 ```
 Layer 0: common/*
 Layer 1: syntax/* (tokens, tokenizer, ast, astprint, parser, parser/*, desugar)
-Layer 2: types/model → symbols, dump → subtyping
+Layer 2: types/model → symbols, dump → subtyping; typechecker/typedast
 Layer 3: modules/paths, units, graph
 Layer 4: types/env → kinds, contractiveness
-Layer 5: typechecker/typedast, typedastprint, elaboratetypes, checks, escape, lvalues, metas
+Layer 5: typechecker/typedastprint, elaboratetypes, checks, escape, lvalues, metas
 Layer 6: modules/abstracttypes, loader, elaboration, stdlib
 Layer 7: typechecker/checker → bindings, application, aggregates, control, exceptions, autovalues → typecheck,
          scoping

@@ -1,0 +1,123 @@
+(* Quest Self-Hosted Compiler: Unit Files Implementation *)
+
+module units : Units
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
+    questlang/syntax/parser : questlang/syntax/Parser
+    questlang/syntax/desugar : questlang/syntax/Desugar
+    questlang/modules/paths : questlang/modules/Paths
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+export
+    Let UnitKind = Option interfaceUnit moduleUnit programUnit end
+
+    let unitKind(path: String): UnitKind =
+        if strutil.endsWith(paths.baseName(path) ".int.quest") then
+            option interfaceUnit of UnitKind end
+        elsif strutil.endsWith(paths.baseName(path) ".mod.quest") then
+            option moduleUnit of UnitKind end
+        else
+            option programUnit of UnitKind end
+        end
+
+    let phraseClassName(p: ast.Phrase): String =
+        case p.form
+            when phraseImport then "ImportPhrase"
+            when phraseInterface then "InterfaceDecl"
+            when phraseModule then "ModuleDecl"
+            when phraseExpr with x then
+                case x.expr.form when typeArg then "TypeArgument" when kindArg then "KindArgument" else "Expr" end
+            when phraseDecl with x then
+                case x.decl.form
+                    when declLetVal then "LetValueBinding"
+                    when declLetValGroup then "LetValueBindingGroup"
+                    when declTypeBinding then "TypeBinding"
+                    when declTypeBindingGroup then "TypeBindingGroup"
+                    when declDefKind then "DefKindBinding"
+                    when declExprStmt then "ExprStmt"
+                    when exprException then "ExprException"
+                    else "Expr"
+                end
+        end
+
+    let parseUnit(sm: location.SourceMap): ast.Program =
+        begin
+            let bag = diagbag.new()
+            try
+                let toks = tokenizer.tokenizeAll(tokenizer.new(sm bag))
+                if diagbag.hasErrors(bag) then diagbag.addStoppingError(bag location.span(location.file(sm) 0 1) "") end
+                desugar.program(parser.parseProgram(toks sm bag))
+            when diagbag.fatalError with d then
+                (* The first error, as the bootstrap raises it *)
+                let first = if diagbag.count(bag) > 0 then diagbag.get(bag 0) else d end
+                let sp = diagnostics.span(first)
+                let err = diagnostics.errorAt(diagnostics.message(first) sp.startOffset)
+                diagnostics.raiseError(:ast.Program tuple
+                    let message = err.message
+                    let offset = sp.startOffset
+                    let length = if sp.endOffset > sp.startOffset then sp.endOffset - sp.startOffset else 1 end
+                    let isFatal = false
+                    let help = err.help
+                    let notes = err.notes
+                    let file = maybe.some(:String location.file(sm))
+                    let silent = false
+                    let labels = err.labels
+                end)
+            end
+        end
+
+    Let Declaration = Option
+        interfaceDecl with decl: ast.InterfaceDecl offset: Int end
+        moduleDecl with decl: ast.ModuleDecl offset: Int end
+    end
+
+    let unitDeclaration(prog: ast.Program path: String): Declaration =
+        begin
+            let phrases = prog.form.phrases
+            let name = paths.baseName(path)
+            let n = vector.length(:ast.Phrase phrases)
+            case unitKind(path)
+                when interfaceUnit then
+                    begin
+                        if n isnot 1 then
+                            diagnostics.fail(:Ok "Interface file '" <> name <> "' must contain exactly one interface declaration" 0)
+                        end
+                        let p = vector.get(:ast.Phrase phrases 0)
+                        case p.form
+                            when phraseInterface with x then
+                                begin
+                                    let stem = paths.lower(stringOp.getSub(name 0 strutil.find(name ".")))
+                                    if not(stringOp.equal(paths.lower(x.iface.name) stem)) then
+                                        diagnostics.fail(:Ok "Interface declared in '" <> name <> "' has name '" <> x.iface.name <>
+                                            "', which does not match file name" p.span.startOffset)
+                                    end
+                                    option interfaceDecl of Declaration with let decl = x.iface let offset = p.span.startOffset end
+                                end
+                            else
+                                diagnostics.fail(:Declaration "Expected interface declaration in '" <> name <> "', but found " <>
+                                    phraseClassName(p) 0)
+                        end
+                    end
+                else
+                    begin
+                        if n isnot 1 then
+                            diagnostics.fail(:Ok "Module file '" <> name <> "' must contain exactly one module declaration" 0)
+                        end
+                        let p = vector.get(:ast.Phrase phrases 0)
+                        case p.form
+                            when phraseModule with x then
+                                option moduleDecl of Declaration with let decl = x.modDecl let offset = p.span.startOffset end
+                            else
+                                diagnostics.fail(:Declaration "Expected module declaration in '" <> name <> "', found " <>
+                                    phraseClassName(p) 0)
+                        end
+                    end
+            end
+        end
+end

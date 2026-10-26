@@ -1,0 +1,65 @@
+(* Quest Self-Hosted Compiler: Modules' Abstract Types Implementation *)
+
+module abstractTypes : AbstractTypes
+import
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    Let ModuleAbstractType = Tuple globalName: String typeVar: model.Type linked: Bool var rep: maybe.T(model.Type) end
+
+    let intEqual(a: Int b: Int): Bool = a is b
+    let symbolIds = hashMap.new(:String :Int stringOp.equal hash.string)
+    let abstractSymbolIds = hashMap.new(:Int :Bool intEqual hash.int)
+    let bySymbol = hashMap.new(:Int :ModuleAbstractType intEqual hash.int)
+    let byName = hashMap.new(:String :ModuleAbstractType stringOp.equal hash.string)
+
+    let abstractTypeSymbolId(globalName: String): Int =
+        begin
+            let found = hashMap.get(:String :Int symbolIds globalName)
+            if maybe.isSome(:Int found) then
+                maybe.unwrap(:Int found)
+            else
+                let symbolId = symbols.allocateSymbolId()
+                hashMap.insert(:String :Int symbolIds globalName symbolId)
+                hashMap.insert(:Int :Bool abstractSymbolIds symbolId true)
+                symbolId
+            end
+        end
+
+    let isAbstractTypeSymbol(symbolId: Int): Bool = hashMap.contains(:Int :Bool abstractSymbolIds symbolId)
+
+    let recordType(globalName: String typeVar: model.Type linked: Bool): ModuleAbstractType =
+        begin
+            let found = hashMap.get(:String :ModuleAbstractType byName globalName)
+            let entry = if maybe.isSome(:ModuleAbstractType found) andif
+                    model.same(maybe.unwrap(:ModuleAbstractType found).typeVar typeVar) andif
+                    {maybe.unwrap(:ModuleAbstractType found).linked is linked} then
+                maybe.unwrap(:ModuleAbstractType found)
+            else
+                let e: ModuleAbstractType = tuple
+                    let globalName = globalName let typeVar = typeVar let linked = linked
+                    let var rep = maybe.none(:model.Type)
+                end
+                hashMap.insert(:String :ModuleAbstractType byName globalName e)
+                e
+            end
+            let symbolId = case typeVar.form when typeVariable with v then v.symbolId else 0 end
+            hashMap.insert(:Int :ModuleAbstractType bySymbol symbolId entry)
+            entry
+        end
+
+    let registerExportedAbstractType(globalName: String typeVar: model.Type): Ok =
+        begin recordType(globalName typeVar true) ok end
+
+    let registerAbstractTypeRepresentation(globalName: String typeVar: model.Type rep: model.Type): Ok =
+        recordType(globalName typeVar true).rep := maybe.some(:model.Type rep)
+
+    let abstractTypeBySymbol(symbolId: Int): maybe.T(ModuleAbstractType) =
+        hashMap.get(:Int :ModuleAbstractType bySymbol symbolId)
+    let abstractTypeByName(globalName: String): maybe.T(ModuleAbstractType) =
+        hashMap.get(:String :ModuleAbstractType byName globalName)
+end

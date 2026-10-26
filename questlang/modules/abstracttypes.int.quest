@@ -1,0 +1,23 @@
+(* Quest Self-Hosted Compiler: Modules' Abstract Types Interface
+ *
+ * bootstrap/python/quest/modules/abstract_types.py: the abstract types modules export, by global name (a module's
+ * canonical path, a dot, and the type's name: "geo/coord.P"), for serializing dynamic values (docs/dynamic.md section
+ * 2.3). Each global name has one opaque type symbol id in the process, so that every environment that elaborates or
+ * imports the module agrees on it. *)
+
+interface AbstractTypes
+import
+    questlang/types/model : questlang/types/Model
+    util/maybe : util/Maybe
+export
+    (* An abstract type exported by a module: linked if the program links the module; rep, its representation, once
+     * the module has been elaborated from its source *)
+    Def ModuleAbstractType = Tuple globalName: String typeVar: model.Type linked: Bool var rep: maybe.T(model.Type) end
+
+    abstractTypeSymbolId(globalName: String): Int
+    isAbstractTypeSymbol(symbolId: Int): Bool
+    registerExportedAbstractType(globalName: String typeVar: model.Type): Ok
+    registerAbstractTypeRepresentation(globalName: String typeVar: model.Type rep: model.Type): Ok
+    abstractTypeBySymbol(symbolId: Int): maybe.T(ModuleAbstractType)
+    abstractTypeByName(globalName: String): maybe.T(ModuleAbstractType)
+end

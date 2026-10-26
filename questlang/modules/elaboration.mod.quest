@@ -1,0 +1,680 @@
+(* Quest Self-Hosted Compiler: Interface, Module, and Import Elaboration Implementation *)
+
+module elaboration : Elaboration
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
+    questlang/syntax/parser : questlang/syntax/Parser
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/env : questlang/types/Env
+    questlang/types/kinds : questlang/types/Kinds
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/units : questlang/modules/Units
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    Let Type = model.Type
+    Let Scope = symbols.Scope
+
+    Let Hooks = Tuple
+        var loadInterface: All(name: String e: env.T) symbols.Scope
+        var loadModule: All(name: String expectedInterface: String e: env.T) typedAst.Binding
+        var elaborateBinding: All(b: ast.Decl e: env.T loopDepth: Int) maybe.T(typedAst.Binding)
+    end
+
+    let hooks: Hooks = tuple
+        let var loadInterface = fun(name: String e: env.T): symbols.Scope
+            diagnostics.fail(:symbols.Scope "internal: no unit loader is installed" 0)
+        let var loadModule = fun(name: String expectedInterface: String e: env.T): typedAst.Binding
+            diagnostics.fail(:typedAst.Binding "internal: no unit loader is installed" 0)
+        let var elaborateBinding = fun(b: ast.Decl e: env.T loopDepth: Int): maybe.T(typedAst.Binding)
+            diagnostics.fail(:maybe.T(typedAst.Binding) "internal: no binding elaborator is installed" 0)
+    end
+
+    let loadInterface(name: String e: env.T): Scope = hooks.loadInterface(name e)
+    let loadModule(name: String expectedInterface: String e: env.T): typedAst.Binding =
+        hooks.loadModule(name expectedInterface e)
+
+    let moduleScope(m: typedAst.Binding): Scope =
+        case m.form
+            when bindModule with x then x.scope
+            else diagnostics.fail(:Scope "internal: not a typed module" m.offset)
+        end
+
+    (* A map's entries, in insertion order *)
+    Let Pair(V::TYPE) = Tuple key: String value: V end
+    let pairs(V::TYPE m: hashMap.T(String V)): Array(Pair(V)) =
+        begin
+            let keys = hashMap.keys(:String :V m)
+            let values = hashMap.values(:String :V m)
+            let result = vector.new(:Pair(V))
+            for i = 0 upto {vector.length(:String keys) - 1} do
+                vector.append(:Pair(V) result tuple let key = vector.get(:String keys i) let value = vector.get(:V values i) end)
+            end
+            vector.toArray(:Pair(V) result)
+        end
+
+    let lookupLocal(A::TYPE m: hashMap.T(String A) name: String): maybe.T(A) = hashMap.get(:String :A m name)
+
+    let buildRecordTypeFromScope(scope: Scope provenance: maybe.T(String)): Type =
+        begin
+            let fields = vector.new(:model.RecordField)
+            let entries = pairs(:symbols.ValueSymbol scope.values)
+            for i = 0 upto {extent entries - 1} do
+                let entry = entries[i]
+                vector.append(:model.RecordField fields tuple
+                    let name = entry.key let type = entry.value.type let isVar = entry.value.isVar
+                end)
+            end
+            model.recordType(vector.toArray(:model.RecordField fields) provenance)
+        end
+
+    let importInterface(ifacePath: String localName: String e: env.T): Scope =
+        begin
+            let scope = loadInterface(ifacePath e)
+            env.registerInterface(e localName scope)
+            if not(stringOp.equal(ifacePath localName)) then env.registerInterface(e ifacePath scope) end
+            scope
+        end
+
+    let effectiveInterfacePath(imp: ast.ImportItem): String = maybe.unwrapOr(:String imp.interfacePath imp.interfaceName)
+    let effectiveModulePaths(imp: ast.ImportItem): vector.T(String) =
+        if maybe.isSome(:vector.T(String) imp.modulePaths) andif
+                not(vector.empty(:String maybe.unwrap(:vector.T(String) imp.modulePaths))) then
+            maybe.unwrap(:vector.T(String) imp.modulePaths)
+        else
+            imp.names
+        end
+    let stringArray(v: vector.T(String)): Array(String) = vector.toArray(:String v)
+
+    (* Declares every type and kind of a scope in another *)
+    let declareTypesAndKinds(from: Scope into: Scope): Ok =
+        begin
+            let types = hashMap.values(:String :symbols.TypeSymbol from.types)
+            for i = 0 upto {vector.length(:symbols.TypeSymbol types) - 1} do
+                symbols.declareType(into vector.get(:symbols.TypeSymbol types i))
+            end
+            let kinds = hashMap.values(:String :symbols.KindSymbol from.kinds)
+            for i = 0 upto {vector.length(:symbols.KindSymbol kinds) - 1} do
+                symbols.declareKind(into vector.get(:symbols.KindSymbol kinds i))
+            end
+        end
+
+    (* body with the current scope s, which is restored even if body raises an error *)
+    let inScope(A::TYPE e: env.T s: Scope body: All() A): A =
+        begin
+            let saved = e.currentScope
+            e.currentScope := s
+            let result = try
+                body()
+            when diagnostics.compilerError with err then
+                begin
+                    e.currentScope := saved
+                    diagnostics.raiseError(:A err)
+                end
+            end
+            e.currentScope := saved
+            result
+        end
+
+    (* =========================================================================
+     * Module export scopes
+     * ========================================================================= *)
+
+    let createModuleExportScope(
+        moduleName: String canon: String interfaceScope: Scope e: env.T concreteDefs: maybe.T(hashMap.T(String Type))
+    ): Scope =
+        begin
+            let exportScope = symbols.newScope(maybe.none(:Scope) "module_export_" <> moduleName)
+            exportScope.moduleName := maybe.some(:String moduleName)
+            let subst = model.newSubst()
+            let types = pairs(:symbols.TypeSymbol interfaceScope.types)
+            for i = 0 upto {extent types - 1} do
+                let entry = types[i]
+                let typeName = entry.key
+                let ifaceSym = entry.value
+                if maybe.isNone(:Type ifaceSym.definition) then
+                    let exportId = abstractTypes.abstractTypeSymbolId(canon <> "." <> typeName)
+                    let extDef = if maybe.isSome(:hashMap.T(String Type) concreteDefs) then
+                        let def = lookupLocal(:Type maybe.unwrap(:hashMap.T(String Type) concreteDefs) typeName)
+                        if maybe.isSome(:Type def) then
+                            case maybe.unwrap(:Type def).form when typeExternal then def else maybe.none(:Type) end
+                        else
+                            maybe.none(:Type)
+                        end
+                    else
+                        maybe.none(:Type)
+                    end
+                    symbols.declareType(exportScope symbols.newTypeSymbol(typeName exportId ifaceSym.kind extDef))
+                    let opaque = model.typeVariable(moduleName <> "." <> typeName exportId maybe.some(:model.Kind ifaceSym.kind))
+                    hashMap.insert(:Int :Type subst ifaceSym.symbolId opaque)
+                    if maybe.isNone(:Type extDef) then
+                        abstractTypes.registerExportedAbstractType(canon <> "." <> typeName opaque)
+                    end
+                else
+                    symbols.declareType(exportScope
+                        symbols.newTypeSymbol(typeName env.freshSymbolId(e) ifaceSym.kind ifaceSym.definition))
+                    ok
+                end
+            end
+            let values = pairs(:symbols.ValueSymbol interfaceScope.values)
+            for i = 0 upto {extent values - 1} do
+                let entry = values[i]
+                let v = entry.value
+                symbols.declareValue(exportScope symbols.newValueSymbol(entry.key model.substitute(v.type subst) v.isVar
+                    v.isOut false 0 0))
+            end
+            exportScope
+        end
+
+    (* The external type declarations (Let T = external "...") of a module's source file *)
+    let extractModuleExternalTypes(src: maybe.T(String)): hashMap.T(String Type) =
+        begin
+            let defs = hashMap.new(:String :Type stringOp.equal hash.string)
+            let text = if maybe.isSome(:String src) then paths.readText(maybe.unwrap(:String src)) else maybe.none(:paths.Text) end
+            if maybe.isSome(:paths.Text text) then
+                try
+                    let sm = location.newSourceMap(paths.baseName(maybe.unwrap(:String src)) maybe.unwrap(:paths.Text text).text)
+                    let bag = diagbag.new()
+                    let prog = parser.parseProgram(tokenizer.tokenizeAll(tokenizer.new(sm bag)) sm bag)
+                    if vector.length(:ast.Phrase prog.form.phrases) is 1 then
+                        case vector.get(:ast.Phrase prog.form.phrases 0).form
+                            when phraseModule with m then
+                                for i = 0 upto {vector.length(:ast.Decl m.modDecl.bindings) - 1} do
+                                    case vector.get(:ast.Decl m.modDecl.bindings i).form
+                                        when declTypeBinding with b then
+                                            case b.typeVal.form
+                                                when typeExternal with x then
+                                                    begin
+                                                        hashMap.insert(:String :Type defs b.name
+                                                            model.externalType(m.modDecl.name <> "." <> b.name x.cType))
+                                                        ok
+                                                    end
+                                                else ok
+                                            end
+                                        else ok
+                                    end
+                                end
+                            else ok
+                        end
+                    end
+                when diagbag.fatalError then
+                    ok
+                end
+            end
+            defs
+        end
+
+    let separatelyCompiledModuleScope(modPath: String interfaceScope: Scope e: env.T): Scope =
+        begin
+            let resolved = env.resolveModule(e modPath)
+            let canon = graph.canonicalName(resolved)
+            let u = graph.unit(e.units option moduleUnit of units.UnitKind end canon)
+            let existing = if maybe.isSome(:typedAst.Binding u.typedModule) then
+                maybe.some(:Scope moduleScope(maybe.unwrap(:typedAst.Binding u.typedModule)))
+            else
+                u.exportScope
+            end
+            let scope = if maybe.isSome(:Scope existing) then
+                maybe.unwrap(:Scope existing)
+            else
+                let concrete = extractModuleExternalTypes(resolved.source)
+                let s = createModuleExportScope(paths.declaredModuleName(resolved.source modPath) canon interfaceScope e
+                    maybe.some(:hashMap.T(String Type) concrete))
+                u.exportScope := maybe.some(:Scope s)
+                s
+            end
+            env.registerModule(e modPath scope)
+            scope
+        end
+
+    (* Records the abstract types a module exports with their representations (docs/dynamic.md section 2.3) *)
+    let registerAbstractTypes(canon: String exportScope: Scope internalScope: Scope): Ok =
+        begin
+            let types = pairs(:symbols.TypeSymbol exportScope.types)
+            for i = 0 upto {extent types - 1} do
+                let entry = types[i]
+                let exportSym = entry.value
+                let internal = lookupLocal(:symbols.TypeSymbol internalScope.types entry.key)
+                if maybe.isNone(:Type exportSym.definition) andif maybe.isSome(:symbols.TypeSymbol internal) andif
+                        maybe.isSome(:Type maybe.unwrap(:symbols.TypeSymbol internal).definition) then
+                    let typeVar = model.typeVariable(maybe.unwrapOr(:String exportScope.moduleName "") <> "." <> entry.key
+                        exportSym.symbolId maybe.some(:model.Kind exportSym.kind))
+                    abstractTypes.registerAbstractTypeRepresentation(canon <> "." <> entry.key typeVar
+                        maybe.unwrap(:Type maybe.unwrap(:symbols.TypeSymbol internal).definition))
+                end
+            end
+        end
+
+    (* =========================================================================
+     * Interfaces
+     * ========================================================================= *)
+
+    let elaborateInterface(decl: ast.InterfaceDecl offset: Int e: env.T): typedAst.Binding =
+        begin
+            let importScope = symbols.newScope(maybe.some(:Scope e.currentScope) "interface_imports_" <> decl.name)
+            let interfaceScope = symbols.newScope(maybe.some(:Scope importScope) "interface_" <> decl.name)
+            interfaceScope.moduleName := maybe.some(:String decl.name)
+
+            (* 1. Imports, into the import scope (available for signatures, not exported by the interface) *)
+            for i = 0 upto {vector.length(:ast.ImportItem decl.imports) - 1} do
+                let imp = vector.get(:ast.ImportItem decl.imports i)
+                env.atImport(:Ok e imp.offset 1 fun(): Ok
+                    begin
+                        let ifacePath = effectiveInterfacePath(imp)
+                        let source = importInterface(ifacePath imp.interfaceName e)
+                        if vector.empty(:String imp.names) then
+                            (* An unaliased interface import: interface inheritance *)
+                            let isAlias = maybe.isSome(:String imp.interfacePath) andif
+                                not(stringOp.equal(imp.interfaceName ifacePath))
+                            declareTypesAndKinds(source if isAlias then importScope else interfaceScope end)
+                        else
+                            let modPaths = effectiveModulePaths(imp)
+                            for j = 0 upto {vector.length(:String imp.names) - 1} do
+                                let name = vector.get(:String imp.names j)
+                                let modPath = vector.get(:String modPaths j)
+                                let typeSym = lookupLocal(:symbols.TypeSymbol source.types name)
+                                let valueSym = lookupLocal(:symbols.ValueSymbol source.values name)
+                                let kindSym = lookupLocal(:symbols.KindSymbol source.kinds name)
+                                if maybe.isSome(:symbols.TypeSymbol typeSym) then
+                                    symbols.declareType(interfaceScope maybe.unwrap(:symbols.TypeSymbol typeSym))
+                                    ok
+                                elsif maybe.isSome(:symbols.ValueSymbol valueSym) then
+                                    symbols.declareValue(interfaceScope maybe.unwrap(:symbols.ValueSymbol valueSym))
+                                    ok
+                                elsif maybe.isSome(:symbols.KindSymbol kindSym) then
+                                    symbols.declareKind(interfaceScope maybe.unwrap(:symbols.KindSymbol kindSym))
+                                    ok
+                                else
+                                    let available = maybe.isSome(:typedAst.Binding graph.typedModule(e.units modPath)) orif
+                                        graph.isPrecompiled(e.units modPath) orif
+                                        maybe.isSome(:String env.resolveModule(e modPath).source) orif
+                                        maybe.isSome(:String paths.resolveObjectFile(modPath e.currentDir
+                                            vector.toArray(:String e.includePaths)))
+                                    let var modScope = maybe.none(:Scope)
+                                    if available then
+                                        try
+                                            modScope := maybe.some(:Scope moduleScope(loadModule(modPath ifacePath e)))
+                                        when diagnostics.compilerError with err then
+                                            if err.isFatal then diagnostics.raiseError(:Ok err) end
+                                            if maybe.isSome(:All(err: diagnostics.CompilerError) Ok e.report) andif
+                                                    not(err.silent) then
+                                                maybe.unwrap(:All(err: diagnostics.CompilerError) Ok e.report)(err)
+                                            end
+                                        end
+                                    end
+                                    let registered = if maybe.isSome(:Scope modScope) then
+                                        maybe.unwrap(:Scope modScope)
+                                    else
+                                        separatelyCompiledModuleScope(modPath source e)
+                                    end
+                                    env.registerModule(e name registered)
+                                    if not(stringOp.equal(modPath name)) then env.registerModule(e modPath registered) end
+                                    symbols.declareValue(importScope symbols.valueSymbol(name
+                                        buildRecordTypeFromScope(registered maybe.some(:String name))))
+                                    ok
+                                end
+                            end
+                        end
+                    end)
+            end
+
+            (* 2. The signatures, in the interface's scope *)
+            inScope(:Ok e interfaceScope fun(): Ok
+                for i = 0 upto {vector.length(:ast.Signature decl.signatures) - 1} do
+                    case vector.get(:ast.Signature decl.signatures i)
+                        when sigType with x then
+                            begin
+                                let bound = elaborateTypes.elaborateKind(x.val.bound e)
+                                symbols.declareType(interfaceScope
+                                    symbols.newTypeSymbol(x.val.name env.freshSymbolId(e) bound maybe.none(:Type)))
+                                ok
+                            end
+                        when sigTypeBinding with x then
+                            begin
+                                symbols.declareType(interfaceScope elaborateTypes.elaborateTypeBinding(x.val e))
+                                ok
+                            end
+                        when sigTypeBindingGroup with x then
+                            begin
+                                let syms = elaborateTypes.elaborateTypeBindingGroup(x.val e)
+                                for j = 0 upto {extent syms - 1} do symbols.declareType(interfaceScope syms[j]) end
+                            end
+                        when sigValue with x then
+                            if maybe.isSome(:String x.val.name) andif
+                                    not(stringOp.equal(maybe.unwrap(:String x.val.name) "")) then
+                                let t = elaborateTypes.elaborateType(maybe.unwrap(:ast.TypeExpr x.val.typeSig) e)
+                                let isVar = case x.val.mode when modeVar then true else false end
+                                let isOut = case x.val.mode when modeOut then true else false end
+                                symbols.declareValue(interfaceScope
+                                    symbols.newValueSymbol(maybe.unwrap(:String x.val.name) t isVar isOut false 0 0))
+                                ok
+                            end
+                        when sigKindBinding with x then
+                            begin
+                                symbols.declareKind(interfaceScope
+                                    elaborateTypes.elaborateKindBinding(x.val.name x.val.kindVal e))
+                                ok
+                            end
+                    end
+                end)
+
+            env.registerInterface(e decl.name interfaceScope)
+            typedAst.binding(offset option bindInterface of typedAst.BindingForm with
+                let name = decl.name let signatures = array of :typedAst.Binding end let scope = interfaceScope
+            end)
+        end
+
+    (* =========================================================================
+     * Modules
+     * ========================================================================= *)
+
+    let typeOf(sym: symbols.TypeSymbol): Type =
+        if maybe.isSome(:Type sym.definition) then
+            maybe.unwrap(:Type sym.definition)
+        else
+            model.typeVariable(sym.name sym.symbolId maybe.some(:model.Kind sym.kind))
+        end
+
+    let importItem(
+        imp: ast.ImportItem canonical: maybe.T(Array(String)) symbolIds: maybe.T(Array(maybe.T(Int)))
+        modulePaths: maybe.T(Array(String))
+    ): typedAst.ImportItem =
+        tuple
+            let offset = imp.offset let names = stringArray(imp.names) let interfaceName = imp.interfaceName
+            let modulePaths = modulePaths let interfacePath = imp.interfacePath
+            let canonicalModulePaths = canonical let symbolIds = symbolIds
+        end
+
+    let canonicalPaths(imp: ast.ImportItem e: env.T): Array(String) =
+        begin
+            let result = vector.new(:String)
+            let modPaths = effectiveModulePaths(imp)
+            for i = 0 upto {vector.length(:String modPaths) - 1} do
+                vector.append(:String result graph.canonicalName(env.resolveModule(e vector.get(:String modPaths i))))
+            end
+            vector.toArray(:String result)
+        end
+
+    let maybePaths(paths0: maybe.T(vector.T(String))): maybe.T(Array(String)) =
+        if maybe.isSome(:vector.T(String) paths0) then
+            maybe.some(:Array(String) stringArray(maybe.unwrap(:vector.T(String) paths0)))
+        else
+            maybe.none(:Array(String))
+        end
+
+    (* 3. A module's conformance to its interface *)
+    let checkConformance(decl: ast.ModuleDecl offset: Int targetInterface: Scope internalScope: Scope e: env.T): Ok =
+        begin
+            let lookup = env.lookupOf(e)
+            let subst = model.newSubst()
+            let types = pairs(:symbols.TypeSymbol targetInterface.types)
+            for i = 0 upto {extent types - 1} do
+                let entry = types[i]
+                let typeName = entry.key
+                let ifaceSym = entry.value
+                let found = lookupLocal(:symbols.TypeSymbol internalScope.types typeName)
+                if maybe.isNone(:symbols.TypeSymbol found) then
+                    diagnostics.fail(:Ok "Module '" <> decl.name <> "' does not implement required type '" <> typeName <>
+                        "' from interface '" <> decl.interfaceName <> "'" offset)
+                end
+                let modSym = maybe.unwrap(:symbols.TypeSymbol found)
+                if maybe.isSome(:Type ifaceSym.definition) then
+                    if not(subtyping.isTypeEqual(typeOf(modSym) maybe.unwrap(:Type ifaceSym.definition) lookup)) then
+                        diagnostics.fail(:Ok "Module '" <> decl.name <> "' defines manifest type '" <> typeName <>
+                            "' incompatibly with interface '" <> decl.interfaceName <> "'" offset)
+                    end
+                end
+                (* A defined type has the interface's kind if it is a member of it, whatever kind it was declared with;
+                 * an undefined one must have been declared with a subkind *)
+                let satisfies = if maybe.isSome(:Type modSym.definition) then
+                    try
+                        kinds.checkKind(maybe.unwrap(:Type modSym.definition) ifaceSym.kind maybe.some(:env.T e))
+                        true
+                    when diagnostics.compilerError with err then
+                        if err.isFatal orif err.silent then diagnostics.raiseError(:Ok err) end
+                        false
+                    end
+                else
+                    subtyping.isSubkind(modSym.kind ifaceSym.kind lookup)
+                end
+                if not(satisfies) then
+                    diagnostics.fail(:Ok "Type '" <> typeName <> "' in module '" <> decl.name <>
+                        "' does not satisfy kind bound from interface '" <> decl.interfaceName <> "'" offset)
+                end
+                if maybe.isNone(:Type ifaceSym.definition) then
+                    hashMap.insert(:Int :Type subst ifaceSym.symbolId typeOf(modSym))
+                end
+            end
+            let values = pairs(:symbols.ValueSymbol targetInterface.values)
+            for i = 0 upto {extent values - 1} do
+                let entry = values[i]
+                let found = lookupLocal(:symbols.ValueSymbol internalScope.values entry.key)
+                if maybe.isNone(:symbols.ValueSymbol found) then
+                    diagnostics.fail(:Ok "Module '" <> decl.name <> "' does not implement required value '" <> entry.key <>
+                        "' from interface '" <> decl.interfaceName <> "'" offset)
+                end
+                let modSym = maybe.unwrap(:symbols.ValueSymbol found)
+                let expected = model.substitute(entry.value.type subst)
+                if not(subtyping.isSubtype(modSym.type expected lookup)) then
+                    diagnostics.fail(:Ok "Value '" <> entry.key <> "' in module '" <> decl.name <> "' has type '" <>
+                        model.show(modSym.type) <> "', which is not a subtype of interface signature '" <>
+                        model.show(expected) <> "'" offset)
+                end
+            end
+        end
+
+    let elaborateModule(decl: ast.ModuleDecl offset: Int e: env.T): typedAst.Binding =
+        begin
+            let found = env.lookupInterface(e decl.interfaceName)
+            let targetInterface = if maybe.isSome(:Scope found) then
+                maybe.unwrap(:Scope found)
+            else
+                loadInterface(decl.interfaceName e)
+            end
+            let internalScope = symbols.newScope(maybe.some(:Scope e.baseScope) "module_internal_" <> decl.name)
+
+            (* 1. Imports, into the module's internal scope *)
+            let importSymbols = vector.new(:vector.T(maybe.T(symbols.ValueSymbol)))
+            for i = 0 upto {vector.length(:ast.ImportItem decl.imports) - 1} do
+                let imp = vector.get(:ast.ImportItem decl.imports i)
+                let syms = vector.new(:maybe.T(symbols.ValueSymbol))
+                vector.append(:vector.T(maybe.T(symbols.ValueSymbol)) importSymbols syms)
+                env.atImport(:Ok e imp.offset 1 fun(): Ok
+                    begin
+                        let ifacePath = effectiveInterfacePath(imp)
+                        let source = importInterface(ifacePath imp.interfaceName e)
+                        if vector.empty(:String imp.names) then
+                            declareTypesAndKinds(source internalScope)
+                        else
+                            let modPaths = effectiveModulePaths(imp)
+                            for j = 0 upto {vector.length(:String imp.names) - 1} do
+                                let localName = vector.get(:String imp.names j)
+                                let modPath = vector.get(:String modPaths j)
+                                vector.append(:maybe.T(symbols.ValueSymbol) syms maybe.none(:symbols.ValueSymbol))
+                                let typeSym = lookupLocal(:symbols.TypeSymbol source.types localName)
+                                let valueSym = lookupLocal(:symbols.ValueSymbol source.values localName)
+                                let kindSym = lookupLocal(:symbols.KindSymbol source.kinds localName)
+                                let same = stringOp.equal(localName modPath)
+                                if same andif maybe.isSome(:symbols.TypeSymbol typeSym) then
+                                    symbols.declareType(internalScope maybe.unwrap(:symbols.TypeSymbol typeSym))
+                                    ok
+                                elsif same andif maybe.isSome(:symbols.ValueSymbol valueSym) then
+                                    symbols.declareValue(internalScope maybe.unwrap(:symbols.ValueSymbol valueSym))
+                                    ok
+                                elsif same andif maybe.isSome(:symbols.KindSymbol kindSym) then
+                                    symbols.declareKind(internalScope maybe.unwrap(:symbols.KindSymbol kindSym))
+                                    ok
+                                else
+                                    if maybe.isNone(:typedAst.Binding graph.typedModule(e.units modPath)) then
+                                        loadModule(modPath ifacePath e)
+                                        ok
+                                    end
+                                    let modScope = separatelyCompiledModuleScope(modPath source e)
+                                    let modType = buildRecordTypeFromScope(modScope maybe.some(:String localName))
+                                    env.registerModule(e modPath modScope)
+                                    if not(same) then env.registerModule(e localName modScope) end
+                                    let sym = symbols.valueSymbol(localName modType)
+                                    vector.set(:maybe.T(symbols.ValueSymbol) syms {vector.length(:maybe.T(symbols.ValueSymbol) syms) - 1}
+                                        maybe.some(:symbols.ValueSymbol sym))
+                                    symbols.declareValue(internalScope sym)
+                                    ok
+                                end
+                            end
+                        end
+                    end)
+            end
+
+            (* 2. The module's bindings, each a recovery point *)
+            let typedBindings = vector.new(:typedAst.Binding)
+            if not(vector.empty(:ast.ImportItem decl.imports)) then
+                let items = vector.new(:typedAst.ImportItem)
+                for i = 0 upto {vector.length(:ast.ImportItem decl.imports) - 1} do
+                    let imp = vector.get(:ast.ImportItem decl.imports i)
+                    let syms = vector.get(:vector.T(maybe.T(symbols.ValueSymbol)) importSymbols i)
+                    let ids = vector.new(:maybe.T(Int))
+                    for j = 0 upto {vector.length(:maybe.T(symbols.ValueSymbol) syms) - 1} do
+                        let s = vector.get(:maybe.T(symbols.ValueSymbol) syms j)
+                        vector.append(:maybe.T(Int) ids
+                            if maybe.isSome(:symbols.ValueSymbol s) then
+                                maybe.some(:Int maybe.unwrap(:symbols.ValueSymbol s).symbolId)
+                            else
+                                maybe.none(:Int)
+                            end)
+                    end
+                    vector.append(:typedAst.ImportItem items importItem(imp maybe.some(:Array(String) canonicalPaths(imp e))
+                        maybe.some(:Array(maybe.T(Int)) vector.toArray(:maybe.T(Int) ids)) maybePaths(imp.modulePaths)))
+                end
+                vector.append(:typedAst.Binding typedBindings typedAst.binding(offset option bindImport of typedAst.BindingForm with
+                    let items = vector.toArray(:typedAst.ImportItem items)
+                end))
+            end
+            inScope(:Ok e internalScope fun(): Ok
+                begin
+                    let state = tuple let var failed = false end
+                    for i = 0 upto {vector.length(:ast.Decl decl.bindings) - 1} do
+                        let typed = hooks.elaborateBinding(vector.get(:ast.Decl decl.bindings i) e 0)
+                        if maybe.isSome(:typedAst.Binding typed) then
+                            vector.append(:typedAst.Binding typedBindings maybe.unwrap(:typedAst.Binding typed))
+                        else
+                            state.failed := true
+                        end
+                    end
+                    (* A member that failed was reported: the module fails without another error *)
+                    if state.failed then diagnostics.raiseError(:Ok diagnostics.silentError) end
+                    checkConformance(decl offset targetInterface internalScope e)
+                end)
+
+            (* 4. The exported scope, opaque for the interface's abstract types *)
+            let canon = graph.canonicalName(env.resolveModule(e decl.name))
+            let u = graph.unit(e.units option moduleUnit of units.UnitKind end canon)
+            let exportScope = if maybe.isNone(:Scope u.exportScope) then
+                let concrete = hashMap.new(:String :Type stringOp.equal hash.string)
+                let types = pairs(:symbols.TypeSymbol internalScope.types)
+                for i = 0 upto {extent types - 1} do
+                    let entry = types[i]
+                    if maybe.isSome(:Type entry.value.definition) then
+                        (* An external type is named as extractModuleExternalTypes names it, as the bootstrap's
+                         * typecheck-only runs, which type modules with fresh artifacts through their interfaces, have
+                         * it (module.T) *)
+                        let def = maybe.unwrap(:Type entry.value.definition)
+                        let named = case def.form
+                            when typeExternal with x then model.externalType(decl.name <> "." <> entry.key x.cType)
+                            else def
+                        end
+                        hashMap.insert(:String :Type concrete entry.key named)
+                    end
+                end
+                let s = createModuleExportScope(decl.name canon targetInterface e maybe.some(:hashMap.T(String Type) concrete))
+                u.exportScope := maybe.some(:Scope s)
+                s
+            else
+                let s = maybe.unwrap(:Scope u.exportScope)
+                let types = pairs(:symbols.TypeSymbol internalScope.types)
+                for i = 0 upto {extent types - 1} do
+                    let entry = types[i]
+                    let exported = lookupLocal(:symbols.TypeSymbol s.types entry.key)
+                    if maybe.isSome(:symbols.TypeSymbol exported) andif
+                            maybe.isNone(:Type maybe.unwrap(:symbols.TypeSymbol exported).definition) andif
+                            maybe.isSome(:Type entry.value.definition) then
+                        case maybe.unwrap(:Type entry.value.definition).form
+                            when typeExternal then
+                                symbols.defineType(maybe.unwrap(:symbols.TypeSymbol exported) maybe.unwrap(:Type entry.value.definition))
+                            else ok
+                        end
+                    end
+                end
+                s
+            end
+            registerAbstractTypes(canon exportScope internalScope)
+            env.registerModule(e decl.name exportScope)
+
+            let moduleSymbol = symbols.valueSymbol(decl.name buildRecordTypeFromScope(exportScope maybe.some(:String decl.name)))
+            symbols.declareValue(e.currentScope moduleSymbol)
+            typedAst.binding(offset option bindModule of typedAst.BindingForm with
+                let name = decl.name let interfaceName = decl.interfaceName
+                let bindings = vector.toArray(:typedAst.Binding typedBindings) let scope = exportScope
+                let cInit = maybe.none(:String) let isPrecompiled = false
+                let symbolId = maybe.some(:Int moduleSymbol.symbolId)
+            end)
+        end
+
+    (* =========================================================================
+     * Imports
+     * ========================================================================= *)
+
+    let elaborateImport(phrase: ast.ImportPhrase offset: Int e: env.T): typedAst.Binding =
+        begin
+            let items = vector.new(:typedAst.ImportItem)
+            for i = 0 upto {vector.length(:ast.ImportItem phrase.items) - 1} do
+                let item = vector.get(:ast.ImportItem phrase.items i)
+                env.atImport(:Ok e item.offset 1 fun(): Ok
+                    begin
+                        let ifacePath = effectiveInterfacePath(item)
+                        let ifaceScope = importInterface(ifacePath item.interfaceName e)
+                        if vector.empty(:String item.names) then
+                            (* import : Interface binds the interface's types and kinds *)
+                            declareTypesAndKinds(ifaceScope e.currentScope)
+                            vector.append(:typedAst.ImportItem items importItem(item maybe.none(:Array(String))
+                                maybe.none(:Array(maybe.T(Int))) maybe.some(:Array(String) array of :String end)))
+                        else
+                            let ids = vector.new(:maybe.T(Int))
+                            let modPaths = effectiveModulePaths(item)
+                            for j = 0 upto {vector.length(:String item.names) - 1} do
+                                let localName = vector.get(:String item.names j)
+                                let modPath = vector.get(:String modPaths j)
+                                if maybe.isNone(:typedAst.Binding graph.typedModule(e.units modPath)) then
+                                    loadModule(modPath ifacePath e)
+                                    ok
+                                end
+                                let modScope = separatelyCompiledModuleScope(modPath ifaceScope e)
+                                let modType = buildRecordTypeFromScope(modScope maybe.some(:String localName))
+                                env.registerModule(e modPath modScope)
+                                if not(stringOp.equal(localName modPath)) then env.registerModule(e localName modScope) end
+                                let sym = symbols.valueSymbol(localName modType)
+                                symbols.declareValue(e.currentScope sym)
+                                vector.append(:maybe.T(Int) ids maybe.some(:Int sym.symbolId))
+                            end
+                            vector.append(:typedAst.ImportItem items importItem(item
+                                maybe.some(:Array(String) canonicalPaths(item e))
+                                maybe.some(:Array(maybe.T(Int)) vector.toArray(:maybe.T(Int) ids)) maybePaths(item.modulePaths)))
+                        end
+                    end)
+            end
+            typedAst.binding(offset option bindImport of typedAst.BindingForm with
+                let items = vector.toArray(:typedAst.ImportItem items)
+            end)
+        end
+end

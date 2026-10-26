@@ -233,12 +233,41 @@ def _cached(t: QType) -> Optional[Shape]:
     return entry[1] if entry is not None and entry[0] is t else None
 
 
+def _uses_recursion(t: QRecType | QRecGroupType) -> bool:
+    """Whether a recursive type refers to itself: its body mentions its variable, or for a group's member, its own
+    variable is reachable from its body through the members' bodies (a member that refers only to members that do not
+    refer back to it is not recursive)."""
+    if isinstance(t, QRecType):
+        return t.symbol_id in t.body._fv
+    ids = [b[1] for b in t.bindings]
+
+    def mentioned(index: int) -> list[int]:
+        fv = t.bindings[index][3]._fv
+        return [j for j, sym in enumerate(ids) if sym in fv]
+
+    seen: set[int] = set()
+    pending = mentioned(t.active_index)
+    while pending:
+        index = pending.pop()
+        if index == t.active_index:
+            return True
+        if index not in seen:
+            seen.add(index)
+            pending.extend(mentioned(index))
+    return False
+
+
 def _shape(t: QType) -> Shape:
     if (s := _cached(t)) is not None:
         return s
     match t:
         case QAliasType(target=target):
             s = _shape(target)
+        case QRecType() | QRecGroupType() if not _uses_recursion(t):
+            # A recursive type that does not use its variables (a member of a group that does not refer to the
+            # group) is the type it unfolds to, and has its shape, so that its values are its unfolding's however
+            # its type is written
+            s = _shape(t.unfold_lazily())
         case QRecType() | QRecGroupType():
             # The recursive type's shape is its unfolding's, whose recursive occurrences are this node: enter the
             # shape before building the unfolding's, so that they refer to it, and fill it in from the unfolding's

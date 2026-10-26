@@ -1,0 +1,150 @@
+(* Quest Self-Hosted Compiler: The Standard Library's Units Implementation *)
+
+module stdlib : Stdlib
+import
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/env : questlang/types/Env
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    Let Scope = symbols.Scope
+
+    let lower(s: String): String = paths.lower(s)
+
+    (* The standard library's modules and their interfaces *)
+    let standardModules = array of
+        array of "list" "List" end array of "string" "StringOp" end array of "conv" "Conv" end
+        array of "int" "IntOp" end array of "real" "RealOp" end array of "ascii" "Ascii" end
+        array of "arrayOp" "ArrayOp" end array of "word" "Word" end array of "writer" "Writer" end
+        array of "reader" "Reader" end array of "system" "System" end
+    end
+
+    let newStringMap(V::TYPE): hashMap.T(String V) = hashMap.new(:String :V stringOp.equal hash.string)
+
+    (* Every name of an interface (its own, lowercased, its module's, and that lowercased), and of a module *)
+    let interfaceNames: hashMap.T(String String) =
+        begin
+            let m = newStringMap(:String)
+            for i = 0 upto {extent standardModules - 1} do
+                let mod = standardModules[i][0]
+                let iface = standardModules[i][1]
+                hashMap.insert(:String :String m iface iface)
+                hashMap.insert(:String :String m lower(iface) iface)
+                hashMap.insert(:String :String m mod iface)
+                hashMap.insert(:String :String m lower(mod) iface)
+            end
+            m
+        end
+    let moduleNames: hashMap.T(String String) =
+        begin
+            let m = newStringMap(:String)
+            for i = 0 upto {extent standardModules - 1} do
+                let mod = standardModules[i][0]
+                hashMap.insert(:String :String m mod mod)
+                hashMap.insert(:String :String m lower(mod) mod)
+            end
+            m
+        end
+    let moduleInterfaces: hashMap.T(String String) =
+        begin
+            let m = newStringMap(:String)
+            for i = 0 upto {extent standardModules - 1} do
+                hashMap.insert(:String :String m standardModules[i][0] standardModules[i][1])
+            end
+            m
+        end
+
+    (* The interfaces and modules loaded, for the process *)
+    Let Cache = Tuple
+        interfaces: hashMap.T(String Scope)
+        modScopes: hashMap.T(String Scope)
+        modTypes: hashMap.T(String model.Type)
+        var loadedInterfaces: vector.T(graph.NamedScope)
+        var exportScopes: vector.T(graph.NamedScope)
+    end
+    let cache: Cache = tuple
+        let interfaces = newStringMap(:Scope)
+        let modScopes = newStringMap(:Scope)
+        let modTypes = newStringMap(:model.Type)
+        let var loadedInterfaces = vector.new(:graph.NamedScope)
+        let var exportScopes = vector.new(:graph.NamedScope)
+    end
+
+    (* Replaces the entries of the same names, as a dictionary update does *)
+    let update(into: vector.T(graph.NamedScope) from: Array(graph.NamedScope)): Ok =
+        for i = 0 upto {extent from - 1} do
+            let var replaced = false
+            for j = 0 upto {vector.length(:graph.NamedScope into) - 1} do
+                if stringOp.equal(vector.get(:graph.NamedScope into j).name from[i].name) then
+                    vector.set(:graph.NamedScope into j from[i])
+                    replaced := true
+                end
+            end
+            if not(replaced) then vector.append(:graph.NamedScope into from[i]) end
+        end
+
+    let ensureInterface(name: String e: env.T): maybe.T(Scope) =
+        begin
+            let target = hashMap.get(:String :String interfaceNames name)
+            if maybe.isNone(:String target) then
+                maybe.none(:Scope)
+            else
+                let iface = maybe.unwrap(:String target)
+                if not(hashMap.contains(:String :Scope cache.interfaces iface)) then
+                    let baseEnv = env.newWith(maybe.none(:env.Registry))
+                    let scope = elaboration.loadInterface(iface baseEnv)
+                    hashMap.insert(:String :Scope cache.interfaces iface scope)
+                    update(cache.loadedInterfaces graph.interfaceScopes(baseEnv.units))
+                    update(cache.exportScopes graph.exportScopes(baseEnv.units))
+                end
+                let scope = hashMap.find(:String :Scope cache.interfaces iface)
+                env.registerInterface(e iface scope)
+                if not(stringOp.equal(name iface)) then env.registerInterface(e name scope) end
+                hashMap.insert(:String :Scope e.builtinInterfaces iface scope)
+                graph.adopt(e.units vector.toArray(:graph.NamedScope cache.loadedInterfaces)
+                    vector.toArray(:graph.NamedScope cache.exportScopes))
+                maybe.some(:Scope scope)
+            end
+        end
+
+    let ensureModule(name: String e: env.T): maybe.T(Scope) =
+        begin
+            let norm = hashMap.get(:String :String moduleNames name)
+            if maybe.isNone(:String norm) then
+                maybe.none(:Scope)
+            else
+                let mod = maybe.unwrap(:String norm)
+                let iface = hashMap.find(:String :String moduleInterfaces mod)
+                ensureInterface(iface e)
+                if not(hashMap.contains(:String :Scope cache.modScopes mod)) then
+                    let baseEnv = env.newWith(maybe.none(:env.Registry))
+                    let ifaceScope = hashMap.find(:String :Scope cache.interfaces iface)
+                    let modScope = elaboration.separatelyCompiledModuleScope(mod ifaceScope baseEnv)
+                    hashMap.insert(:String :Scope cache.modScopes mod modScope)
+                    hashMap.insert(:String :model.Type cache.modTypes mod
+                        elaboration.buildRecordTypeFromScope(modScope maybe.some(:String mod)))
+                end
+                let modScope = hashMap.find(:String :Scope cache.modScopes mod)
+                let modType = hashMap.find(:String :model.Type cache.modTypes mod)
+                env.registerModule(e mod modScope)
+                if not(stringOp.equal(name mod)) then env.registerModule(e name modScope) end
+                hashMap.insert(:String :Scope e.builtinModules mod modScope)
+                if maybe.isNone(:symbols.ValueSymbol symbols.lookupValueLocal(e.globalScope mod)) then
+                    symbols.declareValue(e.globalScope symbols.valueSymbol(mod modType))
+                    ok
+                end
+                maybe.some(:Scope modScope)
+            end
+        end
+
+    let registry: env.Registry = tuple let ensureInterface = ensureInterface let ensureModule = ensureModule end
+
+    let install(): Ok = env.setDefaultRegistry(maybe.some(:env.Registry registry))
+end

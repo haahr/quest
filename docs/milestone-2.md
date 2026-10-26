@@ -231,17 +231,46 @@ Open question: `errors/typecheck:aggregates/tuple_unsupported_component_checked`
 for an import inside a tuple, which the self-hosted parser rejects as a syntax error (the self-hosted AST holds
 imports, interfaces, and modules only at the top level, Milestone 1). It stays pending until that is decided.
 
-### Step 6: Modules from source
+### Step 6: Modules from source (done)
 
 Port `modules/paths`, `units`, `graph` (resolution and the unit graph, without artifacts), `abstracttypes`,
 `loader` (from source only), `elaboration`, and `stdlib`. The remaining typecheck goldens, which import the standard
 library or the test's own modules, leave the pending list.
 
-### Step 7: Errors
+Every typecheck golden and error test passes, and the pending list holds only Step 5's open question. Where the two
+compilers differ:
+- **Paths** are strings, made absolute and normalized lexically, without following symbolic links. The project
+  directory, which the bootstrap knows as its own source tree, is `QUEST_HOME`, which the runners set (the driver runs
+  in a scratch directory), or else the current directory.
+- **Interfaces** are elaborated from source in the importer's environment, with the unit's own names
+  (`env.withUnitNames`), where the bootstrap driver compiles each to a `.qi` in an environment of its own and loads
+  that; the messages of unit files are those of that path (`units.unitDeclaration`). A module's external types are
+  named `module.T` in its export scope, as the bootstrap's typecheck-only runs, which type modules with fresh
+  artifacts through their interfaces, name them.
+- **Locations.** An error propagating out of an import is located there as the bootstrap's `at_import` and
+  `in_unit` do (`env.atImport`, `env.withUnitSource`, `diagnostics.atImport`, which adds the "imported here"
+  labels); one reported at a recovery point inside a unit is located as if it had propagated (`env.locate`, from the
+  stack of imports being loaded). Diagnostics render labels in other files from the source maps registered for them
+  (`diagnostics.registerSource`).
+- **Recovery.** An import, an interface, and a module declaration are recovery points, and a module's members too
+  (the elaboration hook is `bindings.elaborateRecovering`); a module with a failed member fails silently, and a failed
+  import or module poisons the names it would have bound.
+
+The step found and fixed a bug of the bootstrap's C backend: a member of a recursive type group that does not refer
+back to itself is not recursive, and has its unfolding's shape (`ir/shapes.py`), so that a tuple literal of it in
+another module has its representation (`modules/nonrecursive_group_member`; ABI version 37).
+
+### Step 7: Errors (done)
 
 Run the typecheck error tests; review and record each test's further errors (§3.2); add tests of several errors to
 `tests/self-hosted/errors` (independent errors in one file, errors after a failed declaration with and without a
 declared type, a failed import); and fix cascades the review finds.
+
+No typecheck error test reports a further error, so none is recorded. The tests of several errors are
+`tests/self-hosted/errors/typecheck` (independent errors, failed declarations with and without declared types, a
+block's errors, a failed import, and the limit of 20), which the runner's `--self-hosted` runs: every diagnostic must
+be one of the test's inline expectations, and every expectation must be reported. The error tests' harness now reads
+`fatal error:` diagnostics, which it had not recognized.
 
 **Done when** every typecheck error test reports the bootstrap's error first and its recorded output exactly.
 

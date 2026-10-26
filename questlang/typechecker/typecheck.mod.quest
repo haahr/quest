@@ -17,6 +17,8 @@ import
     questlang/typechecker/exceptions : questlang/typechecker/Exceptions
     questlang/typechecker/autoValues : questlang/typechecker/AutoValues
     questlang/typechecker/scoping : questlang/typechecker/Scoping
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/modules/loader : questlang/modules/Loader
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     stringOp = string : StringOp
@@ -223,25 +225,65 @@ export
             c
         end
 
+    (* Binds a name a failed import or module declaration would have bound to a poisoned value *)
+    let poisonValue(c: checker.T name: String e: env.T): Ok =
+        begin
+            let sym = symbols.newValueSymbol(name model.okType false false false c.functionDepth 0)
+            symbols.poisonValue(sym.symbolId)
+            symbols.declareValue(e.currentScope sym)
+            ok
+        end
+
+    (* body, or none if it fails, when the names are poisoned *)
+    let recovering(c: checker.T names: Array(String) e: env.T body: All() typedAst.Binding): maybe.T(typedAst.Binding) =
+        begin
+            let result = checker.attempt(:typedAst.Binding c body)
+            if maybe.isNone(:typedAst.Binding result) then
+                for i = 0 upto {extent names - 1} do poisonValue(c names[i] e) end
+            end
+            result
+        end
+
+    (* The module names an import binds *)
+    let importedNames(phrase: ast.ImportPhrase): Array(String) =
+        begin
+            let names = vector.new(:String)
+            for i = 0 upto {vector.length(:ast.ImportItem phrase.items) - 1} do
+                let item = vector.get(:ast.ImportItem phrase.items i)
+                for j = 0 upto {vector.length(:String item.names) - 1} do vector.append(:String names vector.get(:String item.names j)) end
+            end
+            vector.toArray(:String names)
+        end
+
     (* A top-level phrase (an import, interface, module, binding, or expression), or none if it fails *)
     let elaboratePhrase(c: checker.T p: ast.Phrase e: env.T): maybe.T(typedAst.Binding) =
         case p.form
             when phraseDecl with x then bindings.elaborateRecovering(c x.decl e 0)
+            when phraseImport with x then
+                recovering(c importedNames(x.phrase) e fun(): typedAst.Binding
+                    elaboration.elaborateImport(x.phrase p.span.startOffset e))
+            when phraseInterface with x then
+                recovering(c array of :String end e fun(): typedAst.Binding
+                    elaboration.elaborateInterface(x.iface p.span.startOffset e))
+            when phraseModule with x then
+                recovering(c array of x.modDecl.name end e fun(): typedAst.Binding
+                    elaboration.elaborateModule(x.modDecl p.span.startOffset e))
             when phraseExpr with x then
                 checker.attempt(:typedAst.Binding c fun(): typedAst.Binding
                     typedAst.binding(p.span.startOffset option bindExprStmt of typedAst.BindingForm with
                         let expr = synthExpr(c x.expr e 0 false)
                     end))
-            else
-                (* Imports, interfaces, and modules come with the module system (docs/milestone-2.md, Step 6) *)
-                checker.attempt(:typedAst.Binding c fun(): typedAst.Binding
-                    diagnostics.fail(:typedAst.Binding "internal: imports, interfaces, and modules are not yet supported"
-                        p.span.startOffset))
         end
 
     let elaborateProgram(program: ast.Program e: env.T): Result =
         begin
             let c = newChecker(e 0)
+            (* The module system calls back to load units and to check modules' members *)
+            loader.install()
+            elaboration.hooks.elaborateBinding := fun(b: ast.Decl en: env.T loopDepth: Int): maybe.T(typedAst.Binding)
+                bindings.elaborateRecovering(c b en loopDepth)
+            e.report := maybe.some(:All(err: diagnostics.CompilerError) Ok fun(err: diagnostics.CompilerError): Ok
+                checker.recordError(c err))
             let phrases = vector.new(:typedAst.Binding)
             try
                 for i = 0 upto {vector.length(:ast.Phrase program.form.phrases) - 1} do

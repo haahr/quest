@@ -1,0 +1,35 @@
+import groupItems = "groupItems" : GroupItems
+import itemBuilder = "itemBuilder" : ItemBuilder
+import maybe = "util/maybe" : util/Maybe
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  let %1: groupItems.Item = call itemBuilder.item(3, "x")
+  let %2: groupItems.Item = call itemBuilder.item(4, "y")
+  let %3: Array(Item) = array(%1, %2)
+  let n: Node = call groupItems.node(%3)
+  let %4: writer.T = member writer.output
+  let %5: Int = tuple_field(n, 0)
+  let %6: String = call conv.int(%5)
+  let %7: Array(Item) = tuple_field(n, 1)
+  let %8: Item = index(%7, 1)
+  let %9: Int = tuple_field(%8, 0)
+  let %10: String = call conv.int(%9)
+  let %11: Array(Item) = tuple_field(n, 1)
+  let %12: Item = index(%11, 0)
+  let %13: maybe.T(String) = tuple_field(%12, 2)
+  let %14: String = call maybe.unwrapOr [String](%13, "none")
+  let %15: Array(Item) = tuple_field(n, 1)
+  let %16: Item = index(%15, 0)
+  let %17: Array(String) = tuple_field(%16, 1)
+  let %18: String = index(%17, 1)
+  let %19: String = prim <>(%18, "\n")
+  let %20: String = prim <>(" ", %19)
+  let %21: String = prim <>(%14, %20)
+  let %22: String = prim <>(" ", %21)
+  let %23: String = prim <>(%10, %22)
+  let %24: String = prim <>(" ", %23)
+  let %25: String = prim <>(%6, %24)
+  do call writer.putString(%4, %25)
+}
+

@@ -58,6 +58,9 @@ export
      * ========================================================================= *)
 
     severityString(sev: Severity): String
+    (* The source maps of the files diagnostics may be in, besides the one format is given (units the program
+     * imports), by file name *)
+    registerSource(sm: location.SourceMap): Ok
     format(d: Diagnostic sm: location.SourceMap): String
     render(d: Diagnostic sm: location.SourceMap w: writer.T): Ok
 
@@ -81,6 +84,8 @@ export
         (* An error that is not reported: a use of a symbol a failed declaration poisoned, which fails the binding
          * that uses it without another error (docs/milestone-2.md section 2) *)
         silent: Bool
+        (* Secondary labels: the imports that loaded the unit the error was raised in *)
+        labels: vector.T(Label)
     end
 
     compilerError: Exception(CompilerError)
@@ -93,8 +98,11 @@ export
     raiseError(A::TYPE e: CompilerError): A
     (* Raises errorAt(message offset) *)
     fail(A::TYPE message: String offset: Int): A
-    (* An error located in file, unless it already is *)
+    (* An error located in file, unless it already is (the bootstrap's in_unit) *)
     inFile(e: CompilerError file: String): CompilerError
+    (* An error propagating out of the import at offset in file (the bootstrap's at_import): one not yet located in a
+     * file is located at the import, and one in another file gets an "imported here" label *)
+    atImport(e: CompilerError offset: Int length: Int file: String): CompilerError
     (* The diagnostic of an error, in its file, or else in file *)
     errorDiagnostic(e: CompilerError file: String): Diagnostic
 

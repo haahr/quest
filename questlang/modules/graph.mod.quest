@@ -1,0 +1,207 @@
+(* Quest Self-Hosted Compiler: The Unit Graph Implementation *)
+
+module graph : Graph
+import
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/modules/units : questlang/modules/Units
+    questlang/modules/paths : questlang/modules/Paths
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+    system : System
+export
+    Let Roots = Tuple searchPaths: Array(String) programDir: maybe.T(String) questLib: String end
+
+    let rootsOf(searchPaths: Array(String) programDir: maybe.T(String)): Roots =
+        tuple let searchPaths = searchPaths let programDir = programDir let questLib = system.getEnv("QUEST_LIB") end
+
+    Let Resolved = Tuple
+        kind: units.UnitKind
+        path: String
+        fromDir: maybe.T(String)
+        roots: Roots
+        source: maybe.T(String)
+        var canonical: maybe.T(String)
+        var ifaceName: maybe.T(String)
+    end
+
+    let isInterface(k: units.UnitKind): Bool = case k when interfaceUnit then true else false end
+
+    let canonicalName(r: Resolved): String =
+        if maybe.isSome(:String r.canonical) then
+            maybe.unwrap(:String r.canonical)
+        else
+            let name = if isInterface(r.kind) then
+                if maybe.isSome(:String r.source) then
+                    paths.canonicalizeModulePath(maybe.unwrap(:String r.source) r.roots.searchPaths r.roots.programDir)
+                else
+                    paths.lower(r.path)
+                end
+            else
+                paths.canonicalizeModuleName(r.source r.roots.searchPaths r.path r.roots.programDir)
+            end
+            r.canonical := maybe.some(:String name)
+            name
+        end
+
+    let interfaceName(r: Resolved): String =
+        if maybe.isSome(:String r.ifaceName) then
+            maybe.unwrap(:String r.ifaceName)
+        else
+            let name = paths.canonicalizeInterfaceName(r.source r.roots.searchPaths r.path r.roots.programDir)
+            r.ifaceName := maybe.some(:String name)
+            name
+        end
+
+    Let Resolver = Tuple memo: hashMap.T(String Resolved) end
+
+    let newResolver(): Resolver = tuple let memo = hashMap.new(:String :Resolved stringOp.equal hash.string) end
+
+    (* The memo's key of a resolution *)
+    let keyOf(kind: String path: String fromDir: maybe.T(String) roots: Roots): String =
+        begin
+            let var key = kind <> "\n" <> path <> "\n" <> maybe.unwrapOr(:String fromDir "") <> "\n" <>
+                maybe.unwrapOr(:String roots.programDir "") <> "\n" <> roots.questLib
+            for i = 0 upto {extent roots.searchPaths - 1} do key := key <> "\n" <> roots.searchPaths[i] end
+            key
+        end
+
+    let resolved(kind: units.UnitKind path: String fromDir: maybe.T(String) roots: Roots source: maybe.T(String)): Resolved =
+        tuple
+            let kind = kind let path = path let fromDir = fromDir let roots = roots let source = source
+            let var canonical = maybe.none(:String) let var ifaceName = maybe.none(:String)
+        end
+
+    let memoized(res: Resolver key: String make: All() Resolved): Resolved =
+        begin
+            let found = hashMap.get(:String :Resolved res.memo key)
+            if maybe.isSome(:Resolved found) then
+                maybe.unwrap(:Resolved found)
+            else
+                let r = make()
+                hashMap.insert(:String :Resolved res.memo key r)
+                r
+            end
+        end
+
+    let resolveInterface(res: Resolver path: String fromDir: maybe.T(String) roots: Roots): Resolved =
+        memoized(res keyOf("interface" path fromDir roots) fun(): Resolved
+            resolved(option interfaceUnit of units.UnitKind end path fromDir roots
+                paths.resolveInterfaceSourceFile(path fromDir roots.searchPaths)))
+
+    let resolveModule(res: Resolver path: String fromDir: maybe.T(String) roots: Roots): Resolved =
+        memoized(res keyOf("module" path fromDir roots) fun(): Resolved
+            resolved(option moduleUnit of units.UnitKind end path fromDir roots
+                paths.resolveModuleFile(path fromDir roots.searchPaths)))
+
+    let resolveFile(res: Resolver file: String roots: Roots): Resolved =
+        memoized(res keyOf("file" file maybe.none(:String) roots) fun(): Resolved
+            resolved(units.unitKind(file) paths.stripUnitSuffix(paths.baseName(file))
+                maybe.some(:String paths.parent(file)) roots maybe.some(:String file)))
+
+    Let Unit = Tuple
+        kind: units.UnitKind
+        canonicalName: String
+        var scope: maybe.T(symbols.Scope)
+        var typedModule: maybe.T(typedAst.Binding)
+        var exportScope: maybe.T(symbols.Scope)
+        var precompiled: Bool
+    end
+
+    Let UnitGraph = Tuple resolver: Resolver units: hashMap.T(String Unit) end
+
+    let newGraphWith(res: Resolver): UnitGraph =
+        tuple let resolver = res let units = hashMap.new(:String :Unit stringOp.equal hash.string) end
+    let newGraph(): UnitGraph = newGraphWith(newResolver())
+
+    let kindName(k: units.UnitKind): String =
+        case k when interfaceUnit then "interface" when moduleUnit then "module" when programUnit then "program" end
+
+    let unitKey(kind: units.UnitKind name: String): String = kindName(kind) <> " " <> name
+
+    let unit(g: UnitGraph kind: units.UnitKind canonicalName: String): Unit =
+        begin
+            let key = unitKey(kind canonicalName)
+            let found = hashMap.get(:String :Unit g.units key)
+            if maybe.isSome(:Unit found) then
+                maybe.unwrap(:Unit found)
+            else
+                let u: Unit = tuple
+                    let kind = kind let canonicalName = canonicalName let var scope = maybe.none(:symbols.Scope)
+                    let var typedModule = maybe.none(:typedAst.Binding) let var exportScope = maybe.none(:symbols.Scope)
+                    let var precompiled = false
+                end
+                hashMap.insert(:String :Unit g.units key u)
+                u
+            end
+        end
+
+    let find(g: UnitGraph kind: units.UnitKind canonicalName: String): maybe.T(Unit) =
+        hashMap.get(:String :Unit g.units unitKey(kind canonicalName))
+
+    let interfaceScope(g: UnitGraph canonicalName: String): maybe.T(symbols.Scope) =
+        begin
+            let found = find(g option interfaceUnit of units.UnitKind end canonicalName)
+            if maybe.isSome(:Unit found) then maybe.unwrap(:Unit found).scope else maybe.none(:symbols.Scope) end
+        end
+
+    let typedModule(g: UnitGraph canonicalName: String): maybe.T(typedAst.Binding) =
+        begin
+            let found = find(g option moduleUnit of units.UnitKind end canonicalName)
+            if maybe.isSome(:Unit found) then maybe.unwrap(:Unit found).typedModule else maybe.none(:typedAst.Binding) end
+        end
+
+    let isPrecompiled(g: UnitGraph name: String): Bool =
+        begin
+            let found = find(g option moduleUnit of units.UnitKind end name)
+            maybe.isSome(:Unit found) andif maybe.unwrap(:Unit found).precompiled
+        end
+
+    Let NamedScope = Tuple name: String scope: symbols.Scope end
+
+    let interfaceScopes(g: UnitGraph): Array(NamedScope) =
+        begin
+            let result = vector.new(:NamedScope)
+            let all = hashMap.values(:String :Unit g.units)
+            for i = 0 upto {vector.length(:Unit all) - 1} do
+                let u = vector.get(:Unit all i)
+                if isInterface(u.kind) andif maybe.isSome(:symbols.Scope u.scope) then
+                    vector.append(:NamedScope result tuple
+                        let name = u.canonicalName let scope = maybe.unwrap(:symbols.Scope u.scope)
+                    end)
+                end
+            end
+            vector.toArray(:NamedScope result)
+        end
+
+    let exportScopes(g: UnitGraph): Array(NamedScope) =
+        begin
+            let result = vector.new(:NamedScope)
+            let all = hashMap.values(:String :Unit g.units)
+            for i = 0 upto {vector.length(:Unit all) - 1} do
+                let u = vector.get(:Unit all i)
+                let isModule = case u.kind when moduleUnit then true else false end
+                if isModule andif maybe.isSome(:symbols.Scope u.exportScope) then
+                    vector.append(:NamedScope result tuple
+                        let name = u.canonicalName let scope = maybe.unwrap(:symbols.Scope u.exportScope)
+                    end)
+                end
+            end
+            vector.toArray(:NamedScope result)
+        end
+
+    let adopt(g: UnitGraph interfaceScopes: Array(NamedScope) exportScopes: Array(NamedScope)): Ok =
+        begin
+            for i = 0 upto {extent interfaceScopes - 1} do
+                let n = interfaceScopes[i]
+                unit(g option interfaceUnit of units.UnitKind end n.name).scope := maybe.some(:symbols.Scope n.scope)
+            end
+            for i = 0 upto {extent exportScopes - 1} do
+                let n = exportScopes[i]
+                unit(g option moduleUnit of units.UnitKind end n.name).exportScope := maybe.some(:symbols.Scope n.scope)
+            end
+        end
+end

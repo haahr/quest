@@ -1,0 +1,74 @@
+(* Quest Self-Hosted Compiler: Unit File Paths Interface
+ *
+ * bootstrap/python/quest/modules/paths.py, from source: finding the files of interfaces (<name>.int.quest), modules
+ * (<name>.mod.quest), and objects (<name>.o) on the search path (the importing unit's directory, the include paths,
+ * QUEST_LIB, lib/, and the project directory), and the canonical names of units (docs/modules.md section 2.3).
+ *
+ * Paths are strings, and are made absolute and normalized lexically (. and .. removed), not through the file system:
+ * the bootstrap's Path.resolve also follows symbolic links. The project directory, which the bootstrap knows as its
+ * own source tree, is QUEST_HOME, which the test runners set, or else the current directory. *)
+
+interface Paths
+import
+    util/maybe : util/Maybe
+export
+    (* =========================================================================
+     * Paths
+     * ========================================================================= *)
+
+    (* s with its ASCII capitals made lower case *)
+    lower(s: String): String
+    (* a/b, unless b is absolute *)
+    join(a: String b: String): String
+    (* p without . and .. components or repeated separators *)
+    normalize(p: String): String
+    (* p, normalized, relative to the current directory unless absolute *)
+    absolute(p: String): String
+    parent(p: String): String
+    baseName(p: String): String
+    (* The components of a path: an absolute one's first is "/" *)
+    parts(p: String): Array(String)
+    (* p relative to root, if p is root or under it (both absolute and normalized) *)
+    relativeTo(p: String root: String): maybe.T(String)
+    (* How diagnostics name a file the compiler found: relative to the current directory if inside it *)
+    displayName(p: String): String
+
+    (* The text of a file, up to its first byte that is not ASCII, if any (a reader raises reader.error rather than
+     * read it); none if it cannot be read *)
+    Def Text = Tuple text: String isAscii: Bool end
+    readText(file: String): maybe.T(Text)
+
+    projectDir(): String
+    libDir(): String
+
+    (* =========================================================================
+     * Units
+     * ========================================================================= *)
+
+    (* filename without a unit suffix (.int.quest, .mod.quest, .qi, .o) *)
+    stripUnitSuffix(filename: String): String
+    (* The name module declares in file (the token after `module`), else the last segment of canonName *)
+    declaredModuleName(file: maybe.T(String) canonName: String): String
+
+    (* <name.lower()>.int.quest (.mod.quest, .o) in currentDir, the include paths, QUEST_LIB, lib/, or the project
+     * directory *)
+    resolveInterfaceSourceFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String)
+    resolveModuleFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String)
+    resolveObjectFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String)
+    (* The directories that are searched, in order, as error messages list them *)
+    searchedDirs(currentDir: maybe.T(String) includePaths: Array(String)): Array(String)
+
+    (* The directories canonical names are relative to: the include roots, deepest first, then the program's
+     * directory *)
+    canonicalRoots(includePaths: Array(String) programDir: maybe.T(String)): Array(String)
+    (* The canonical name of the unit in a file (util/path): its path, without its suffix, relative to the first
+     * canonical root that contains it. Raises diagnostics.compilerError if a component is not letters and digits. *)
+    canonicalizeModulePath(file: String includePaths: Array(String) programDir: maybe.T(String)): String
+    (* An interface's canonical name (util/Path) *)
+    canonicalizeInterfaceName(
+        file: maybe.T(String) includePaths: Array(String) declaredName: String programDir: maybe.T(String)
+    ): String
+    canonicalizeModuleName(
+        file: maybe.T(String) includePaths: Array(String) rawName: String programDir: maybe.T(String)
+    ): String
+end

@@ -1,0 +1,306 @@
+(* Quest Self-Hosted Compiler: Unit Loader Implementation *)
+
+module loader : Loader
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/env : questlang/types/Env
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/units : questlang/modules/Units
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/types/model : questlang/types/Model
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Let Scope = symbols.Scope
+
+    let lastSegment(name: String): String =
+        begin
+            let i = strutil.rfind(name "/")
+            if i < 0 then name else stringOp.getSub(name {i + 1} {{stringOp.length(name) - i} - 1}) end
+        end
+
+    (* Python's repr of a list of strings *)
+    let reprList(xs: Array(String)): String =
+        begin
+            let var s = "["
+            for i = 0 upto {extent xs - 1} do
+                s := s <> {if i > 0 then ", " else "" end} <> diagnostics.pyRepr(xs[i])
+            end
+            s <> "]"
+        end
+
+    let chain(loading: vector.T(String) last: String): String =
+        begin
+            let var s = ""
+            for i = 0 upto {vector.length(:String loading) - 1} do s := s <> vector.get(:String loading i) <> " -> " end
+            s <> last
+        end
+
+    (* The text of a unit's file, with its source map registered for diagnostics *)
+    let readUnit(file: String what: String): location.SourceMap =
+        begin
+            let text = paths.readText(file)
+            if maybe.isNone(:paths.Text text) then
+                diagnostics.fail(:Ok "Error reading " <> what <> " file '" <> file <> "'" 0)
+            end
+            let t = maybe.unwrap(:paths.Text text)
+            let sm = location.newSourceMap(paths.displayName(file) t.text)
+            diagnostics.registerSource(sm)
+            if not(t.isAscii) then
+                let offset = stringOp.length(t.text)
+                diagnostics.raiseError(:Ok diagnostics.inFile(diagnostics.errorAt("Non-ASCII character" offset)
+                    location.file(sm)))
+            end
+            sm
+        end
+
+    (* body with e's current directory dir and name pushed on loading; both are restored if body raises an error *)
+    let loading(A::TYPE e: env.T dir: String stack: vector.T(String) name: String body: All() A): A =
+        begin
+            let savedDir = e.currentDir
+            e.currentDir := maybe.some(:String dir)
+            vector.append(:String stack name)
+            let restore = fun(): Ok
+                begin
+                    vector.pop(:String stack)
+                    e.currentDir := savedDir
+                end
+            let result = try
+                body()
+            when diagnostics.compilerError with err then
+                begin
+                    restore()
+                    diagnostics.raiseError(:A err)
+                end
+            end
+            restore()
+            result
+        end
+
+    let rec loadInterface(name: String e: env.T): Scope =
+        begin
+            let normName = paths.lower(name)
+            let resolved = env.resolveInterface(e name)
+            let unitFile = resolved.source
+            let canon = graph.canonicalName(resolved)
+            let register(scope: Scope): Scope =
+                begin
+                    env.registerInterface(e name scope)
+                    let declName = lastSegment(name)
+                    if not(stringOp.equal(declName name)) then env.registerInterface(e declName scope) end
+                    if not(stringOp.equal(canon name)) then env.registerInterface(e canon scope) end
+                    if maybe.isSome(:String unitFile) then
+                        graph.unit(e.units option interfaceUnit of units.UnitKind end canon).scope := maybe.some(:Scope scope)
+                    end
+                    scope
+                end
+            let existing = if maybe.isNone(:String unitFile) then
+                env.lookupInterface(e name)
+            else
+                let loaded = graph.interfaceScope(e.units canon)
+                if maybe.isSome(:Scope loaded) then maybe.some(:Scope register(maybe.unwrap(:Scope loaded))) else loaded end
+            end
+            if maybe.isSome(:Scope existing) then
+                maybe.unwrap(:Scope existing)
+            else
+                (* Cycle detection *)
+                for i = 0 upto {vector.length(:String e.loadingInterfaces) - 1} do
+                    if stringOp.equal(vector.get(:String e.loadingInterfaces i) canon) then
+                        diagnostics.fail(:Ok "Cyclic dependency detected in interface imports: " <>
+                            chain(e.loadingInterfaces canon) 0)
+                    end
+                end
+                if maybe.isNone(:String unitFile) then
+                    diagnostics.fail(:Ok "Undefined interface '" <> name <> "': cannot find interface file for '" <> name <>
+                        "' (looked for '" <> normName <> ".qi' or '" <> normName <> ".int.quest' in " <>
+                        reprList(paths.searchedDirs(e.currentDir vector.toArray(:String e.includePaths))) <> ")" 0)
+                end
+                let file = maybe.unwrap(:String unitFile)
+                let sm = readUnit(file "interface")
+                let scope = env.withUnitSource(:Scope e location.file(sm) fun(): Scope
+                    begin
+                        let prog = units.parseUnit(sm)
+                        let decl = case units.unitDeclaration(prog file)
+                            when interfaceDecl with d then d.decl
+                            else diagnostics.fail(:ast.InterfaceDecl "internal: not an interface" 0)
+                        end
+                        if not(stringOp.equal(paths.lower(decl.name) lastSegment(normName))) then
+                            diagnostics.fail(:Ok "Interface declared in '" <> paths.baseName(file) <> "' has name '" <>
+                                decl.name <> "', which does not match file name" 0)
+                        end
+                        let typed = loading(:typedAst.Binding e paths.parent(file) e.loadingInterfaces canon
+                            fun(): typedAst.Binding
+                                env.withUnitNames(:typedAst.Binding e fun(): typedAst.Binding
+                                    elaboration.elaborateInterface(decl 0 e)))
+                        let s = case typed.form
+                            when bindInterface with x then x.scope
+                            else diagnostics.fail(:Scope "internal: not an interface" 0)
+                        end
+                        if not(stringOp.equal(decl.name name)) then env.registerInterface(e decl.name s) end
+                        s
+                    end)
+                register(scope)
+            end
+        end
+
+    and loadModule(name: String expectedInterface: String e: env.T): typedAst.Binding =
+        begin
+            let resolved = env.resolveModule(e name)
+            let filePath = resolved.source
+            let canon = graph.canonicalName(resolved)
+            let u = graph.unit(e.units option moduleUnit of units.UnitKind end canon)
+            if maybe.isSome(:typedAst.Binding u.typedModule) then
+                maybe.unwrap(:typedAst.Binding u.typedModule)
+            else
+                (* Cycle detection *)
+                for i = 0 upto {vector.length(:String e.loadingModules) - 1} do
+                    if stringOp.equal(paths.lower(vector.get(:String e.loadingModules i)) paths.lower(canon)) then
+                        diagnostics.fail(:Ok "Cyclic dependency detected in module imports: " <>
+                            chain(e.loadingModules canon) 0)
+                    end
+                end
+                let synthesizePrecompiled(): typedAst.Binding =
+                    begin
+                        let found = env.lookupInterface(e expectedInterface)
+                        let target = if maybe.isSome(:Scope found) then
+                            maybe.unwrap(:Scope found)
+                        else
+                            loadInterface(expectedInterface e)
+                        end
+                        (* All importers share one export scope *)
+                        let exportScope = if maybe.isSome(:Scope u.exportScope) then
+                            maybe.unwrap(:Scope u.exportScope)
+                        else
+                            let s = elaboration.createModuleExportScope(paths.declaredModuleName(filePath canon) canon target e
+                                maybe.none(:hashMap.T(String model.Type)))
+                            u.exportScope := maybe.some(:Scope s)
+                            s
+                        end
+                        env.registerModule(e canon exportScope)
+                        if not(stringOp.equal(name canon)) then env.registerModule(e name exportScope) end
+                        let typed = typedAst.binding(0 option bindModule of typedAst.BindingForm with
+                            let name = canon let interfaceName = expectedInterface let bindings = array of :typedAst.Binding end
+                            let scope = exportScope let cInit = maybe.none(:String) let isPrecompiled = true
+                            let symbolId = maybe.none(:Int)
+                        end)
+                        u.typedModule := maybe.some(:typedAst.Binding typed)
+                        typed
+                    end
+                if u.precompiled then
+                    synthesizePrecompiled()
+                elsif maybe.isNone(:String filePath) then
+                    (* Without a source, the module's canonical name is the name imported *)
+                    let objFile = paths.resolveObjectFile(name e.currentDir vector.toArray(:String e.includePaths))
+                    if maybe.isSome(:String objFile) then
+                        u.precompiled := true
+                        synthesizePrecompiled()
+                    else
+                        let normName = paths.lower(name)
+                        diagnostics.fail(:typedAst.Binding "Undefined module '" <> name <> "': cannot find module file for '" <>
+                            name <> "' (looked for '" <> normName <> ".mod.quest' or '" <> normName <> ".o' in " <>
+                            reprList(paths.searchedDirs(e.currentDir vector.toArray(:String e.includePaths))) <> ")" 0)
+                    end
+                else
+                    loadModuleSource(name expectedInterface e maybe.unwrap(:String filePath) canon u)
+                end
+            end
+        end
+
+    and loadModuleSource(
+        name: String expectedInterface: String e: env.T file: String canon: String u: graph.Unit
+    ): typedAst.Binding =
+        begin
+            let sm = readUnit(file "module")
+            let fileName = paths.baseName(file)
+            let typed = env.withUnitSource(:typedAst.Binding e location.file(sm) fun(): typedAst.Binding
+                begin
+                    let prog = units.parseUnit(sm)
+                    let phrases = prog.form.phrases
+                    let n = vector.length(:ast.Phrase phrases)
+                    if n isnot 1 then
+                        diagnostics.fail(:Ok "Module file '" <> fileName <> "' must contain only a single module definition, " <>
+                            "but found " <> conv.int(n) <> " phrases" 0)
+                    end
+                    let p = vector.get(:ast.Phrase phrases 0)
+                    let decl = case p.form
+                        when phraseModule with x then x.modDecl
+                        else
+                            diagnostics.fail(:ast.ModuleDecl "Expected module definition in '" <> fileName <>
+                                "', but found " <> units.phraseClassName(p) 0)
+                    end
+                    let normName = paths.lower(name)
+                    let expectedBase = paths.lower(stringOp.getSub(fileName 0 strutil.find(fileName ".")))
+                    if not(stringOp.equal(paths.lower(decl.name) expectedBase)) orif
+                            not(stringOp.equal(paths.lower(decl.name) lastSegment(normName))) then
+                        diagnostics.fail(:Ok "Module declared in '" <> fileName <> "' has name '" <> decl.name <>
+                            "', which does not match file name" 0)
+                    end
+                    if not(stringOp.equal(decl.interfaceName expectedInterface)) andif
+                            not(stringOp.equal(lastSegment(decl.interfaceName) expectedInterface)) andif
+                            not(stringOp.equal(decl.interfaceName lastSegment(expectedInterface))) then
+                        diagnostics.fail(:Ok "Module '" <> decl.name <> "' in '" <> fileName <> "' implements interface '" <>
+                            decl.interfaceName <> "', expected '" <> expectedInterface <> "'" 0)
+                    end
+                    (* The interface the importer expects, which the module's header names unless it cannot be resolved
+                     * from the module's directory *)
+                    let importerInterface = env.lookupInterface(e expectedInterface)
+                    let savedScope = e.currentScope
+                    let restoreScope = fun(): Ok e.currentScope := savedScope
+                    let elaborated = try
+                        loading(:typedAst.Binding e paths.parent(file) e.loadingModules canon fun(): typedAst.Binding
+                            env.withUnitNames(:typedAst.Binding e fun(): typedAst.Binding
+                                begin
+                                    if maybe.isSome(:Scope importerInterface) andif
+                                            maybe.isNone(:String env.resolveInterface(e decl.interfaceName).source) then
+                                        env.registerInterface(e decl.interfaceName maybe.unwrap(:Scope importerInterface))
+                                    elsif maybe.isNone(:Scope env.lookupInterface(e decl.interfaceName)) then
+                                        loadInterface(decl.interfaceName e)
+                                        ok
+                                    end
+                                    e.currentScope := symbols.newScope(maybe.some(:Scope e.baseScope) "temp_load_" <> decl.name)
+                                    elaboration.elaborateModule(decl p.span.startOffset e)
+                                end))
+                    when diagnostics.compilerError with err then
+                        begin
+                            restoreScope()
+                            diagnostics.raiseError(:typedAst.Binding err)
+                        end
+                    end
+                    restoreScope()
+                    elaborated
+                end)
+            (* The module is named in C symbols by its canonical name, as importers refer to it *)
+            let named = case typed.form
+                when bindModule with x then
+                    if stringOp.equal(paths.lower(x.name) paths.lower(canon)) then
+                        typed
+                    else
+                        typedAst.binding(typed.offset option bindModule of typedAst.BindingForm with
+                            let name = canon let interfaceName = x.interfaceName let bindings = x.bindings let scope = x.scope
+                            let cInit = x.cInit let isPrecompiled = x.isPrecompiled let symbolId = x.symbolId
+                        end)
+                    end
+                else typed
+            end
+            let scope = elaboration.moduleScope(named)
+            env.registerModule(e name scope)
+            if not(stringOp.equal(canon name)) then env.registerModule(e canon scope) end
+            u.typedModule := maybe.some(:typedAst.Binding named)
+            named
+        end
+
+    let install(): Ok =
+        begin
+            elaboration.hooks.loadInterface := loadInterface
+            elaboration.hooks.loadModule := loadModule
+        end
+end

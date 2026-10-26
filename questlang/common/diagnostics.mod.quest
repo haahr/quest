@@ -89,6 +89,21 @@ export
             ok
         end
 
+    let sources = tuple let maps = vector.new(:location.SourceMap) end
+
+    let registerSource(sm: location.SourceMap): Ok = vector.append(:location.SourceMap sources.maps sm)
+
+    (* The source map of a file, if registered, else sm *)
+    let sourceOf(file: String sm: location.SourceMap): location.SourceMap =
+        begin
+            let var found = sm
+            for i = 0 upto {vector.length(:location.SourceMap sources.maps) - 1} do
+                let m = vector.get(:location.SourceMap sources.maps i)
+                if stringOp.equal(location.file(m) file) then found := m end
+            end
+            found
+        end
+
     let severityString(sev: Severity): String =
         case sev
             when fatal then "fatal error"
@@ -97,11 +112,12 @@ export
             when info then "info"
         end
 
-    let format(d: Diagnostic sm: location.SourceMap): String =
+    let format(d: Diagnostic sm0: location.SourceMap): String =
         begin
             let sb = stringBuilder.new()
             let sevStr = severityString(d.severity)
             let sp = d.sp
+            let sm = sourceOf(sp.file sm0)
             let located = {stringOp.length(sp.file) > 0} andif {sp.startOffset >= 0}
             let pos = location.locate(sm if located then sp.startOffset else 0 end)
             if located then
@@ -124,10 +140,36 @@ export
                 sb.str("    ").repeat(' ' padCount).repeat('^' spanLen).char('\n')
             end
 
+            (* Secondary labels, each in its own file (an import in the main file, say) *)
+            for i = 0 upto {vector.length(:Label d.labels) - 1} do
+                let label = vector.get(:Label d.labels i)
+                if not(label.isPrimary) then
+                    let lsm = sourceOf(label.sp.file sm)
+                    let lpos = location.locate(lsm label.sp.startOffset)
+                    let lline = location.getLine(lsm lpos.line)
+                    if {lpos.line >= 1} andif {lpos.line <= location.lineCount(lsm)} then
+                        let var dashes = label.sp.endOffset - label.sp.startOffset
+                        if dashes < 1 then dashes := 1 end
+                        sb.str("  ::: ").str(label.sp.file).char(':').int(lpos.line).char(':').int(lpos.col).char('\n')
+                        sb.str("    ").str(lline).char('\n')
+                        sb.str("    ").repeat(' ' if lpos.col > 1 then lpos.col - 1 else 0 end).repeat('-' dashes)
+                        if stringOp.length(label.message) > 0 then sb.str(" note: ").str(label.message) end
+                        sb.char('\n')
+                    end
+                end
+            end
+
+            (* A note's lines after its first are indented under it *)
             let noteCount = vector.length(:String d.notes)
             if noteCount > 0 then
                 for i = 0 upto {noteCount - 1} do
-                    sb.str("  = note: ").str(vector.get(:String d.notes i)).char('\n')
+                    let note = vector.get(:String d.notes i)
+                    sb.str("  = note: ")
+                    for j = 0 upto {stringOp.length(note) - 1} do
+                        let c = stringOp.getChar(note j)
+                        if ascii.val(c) is 10 then sb.str("\n          ") else sb.char(c) end
+                    end
+                    sb.char('\n')
                 end
             end
 
@@ -162,6 +204,7 @@ export
         (* The file of the unit the error was raised in, once it propagates out of it (the bootstrap's in_unit) *)
         file: maybe.T(String)
         silent: Bool
+        labels: vector.T(Label)
     end
 
     let compilerError: Exception(CompilerError) = exception compilerError: CompilerError end
@@ -176,6 +219,7 @@ export
             let notes = vector.new(:String)
             let file = maybe.none(:String)
             let silent = false
+            let labels = vector.new(:Label)
         end
 
     let silentError: CompilerError =
@@ -188,6 +232,7 @@ export
             let notes = vector.new(:String)
             let file = maybe.none(:String)
             let silent = true
+            let labels = vector.new(:Label)
         end
 
     let inFile(e: CompilerError file: String): CompilerError =
@@ -203,6 +248,34 @@ export
                 let notes = e.notes
                 let file = maybe.some(:String file)
                 let silent = e.silent
+                let labels = e.labels
+            end
+        end
+
+    let atImport(e: CompilerError offset: Int length: Int file: String): CompilerError =
+        if maybe.isNone(:String e.file) then
+            (* Raised before the unit was read: located at the import *)
+            let located = if e.offset is 0 then offset else e.offset end
+            tuple
+                let message = e.message
+                let offset = located
+                let length = if e.offset is 0 then length else e.length end
+                let isFatal = e.isFatal
+                let help = e.help
+                let notes = e.notes
+                let file = maybe.some(:String file)
+                let silent = e.silent
+                let labels = e.labels
+            end
+        elsif stringOp.equal(maybe.unwrap(:String e.file) file) then
+            e
+        else
+            begin
+                vector.append(:Label e.labels tuple
+                    let sp = location.span(file offset {offset + length}) let message = "imported here"
+                    let isPrimary = false
+                end)
+                e
             end
         end
 
@@ -216,6 +289,7 @@ export
             let d = if e.isFatal then fatal(e.message sp) else error(e.message sp) end
             if maybe.isSome(:String e.help) then setHelp(d maybe.unwrap(:String e.help)) end
             for i = 0 upto {vector.length(:String e.notes) - 1} do addNote(d vector.get(:String e.notes i)) end
+            for i = 0 upto {vector.length(:Label e.labels) - 1} do vector.append(:Label d.labels vector.get(:Label e.labels i)) end
             d
         end
 

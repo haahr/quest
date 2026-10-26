@@ -1,0 +1,385 @@
+(* Quest Self-Hosted Compiler: Unit File Paths Implementation *)
+
+module paths : Paths
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/syntax/tokens : questlang/syntax/Tokens
+    questlang/syntax/tokenizer : questlang/syntax/Tokenizer
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    reader : Reader
+    ascii : Ascii
+    system : System
+export
+    (* =========================================================================
+     * Paths
+     * ========================================================================= *)
+
+    let lower(s: String): String =
+        begin
+            let b = stringBuilder.new()
+            for i = 0 upto {stringOp.length(s) - 1} do
+                let ch = stringOp.getChar(s i)
+                let code = ascii.val(ch)
+                b.char(if {code >= 65} andif {code <= 90} then ascii.char(code + 32) else ch end)
+            end
+            b.toString()
+        end
+
+    let isAbsolute(p: String): Bool = {stringOp.length(p) > 0} andif {stringOp.getChar(p 0) is '/'}
+
+    let join(a: String b: String): String =
+        if isAbsolute(b) orif {stringOp.length(a) is 0} then
+            b
+        elsif stringOp.getChar(a {stringOp.length(a) - 1}) is '/' then
+            a <> b
+        else
+            a <> "/" <> b
+        end
+
+    (* The components between separators, without empty ones *)
+    let components(p: String): vector.T(String) =
+        begin
+            let result = vector.new(:String)
+            let n = stringOp.length(p)
+            let var start = 0
+            for i = 0 upto n do
+                if {i is n} orif {stringOp.getChar(p i) is '/'} then
+                    if i > start then vector.append(:String result stringOp.getSub(p start {i - start})) end
+                    start := i + 1
+                end
+            end
+            result
+        end
+
+    let normalize(p: String): String =
+        begin
+            let absolute = isAbsolute(p)
+            let kept = vector.new(:String)
+            let cs = components(p)
+            for i = 0 upto {vector.length(:String cs) - 1} do
+                let c = vector.get(:String cs i)
+                if stringOp.equal(c ".") then
+                    ok
+                elsif stringOp.equal(c "..") then
+                    if {vector.length(:String kept) > 0} andif not(stringOp.equal(vector.last(:String kept) "..")) then
+                        vector.pop(:String kept)
+                        ok
+                    elsif not(absolute) then
+                        vector.append(:String kept c)
+                    end
+                else
+                    vector.append(:String kept c)
+                end
+            end
+            let b = stringBuilder.new()
+            if absolute then b.char('/') end
+            for i = 0 upto {vector.length(:String kept) - 1} do
+                if i > 0 then b.char('/') end
+                b.str(vector.get(:String kept i))
+            end
+            let s = b.toString()
+            if stringOp.length(s) is 0 then "." else s end
+        end
+
+    let absolute(p: String): String = normalize(if isAbsolute(p) then p else join(system.currentDirectory() p) end)
+
+    let parent(p: String): String =
+        begin
+            let cs = components(p)
+            if vector.length(:String cs) <= 1 then
+                if isAbsolute(p) then "/" else "." end
+            else
+                vector.pop(:String cs)
+                let b = stringBuilder.new()
+                if isAbsolute(p) then b.char('/') end
+                for i = 0 upto {vector.length(:String cs) - 1} do
+                    if i > 0 then b.char('/') end
+                    b.str(vector.get(:String cs i))
+                end
+                b.toString()
+            end
+        end
+
+    let baseName(p: String): String =
+        begin
+            let cs = components(p)
+            if vector.empty(:String cs) then "" else vector.last(:String cs) end
+        end
+
+    let parts(p: String): Array(String) =
+        begin
+            let result = vector.new(:String)
+            if isAbsolute(p) then vector.append(:String result "/") end
+            let cs = components(p)
+            for i = 0 upto {vector.length(:String cs) - 1} do vector.append(:String result vector.get(:String cs i)) end
+            vector.toArray(:String result)
+        end
+
+    let relativeTo(p: String root: String): maybe.T(String) =
+        begin
+            let ps = parts(p)
+            let rs = parts(root)
+            let var under = extent rs <= extent ps
+            if under then
+                for i = 0 upto {extent rs - 1} do
+                    if not(stringOp.equal(ps[i] rs[i])) then under := false end
+                end
+            end
+            if under then
+                let b = stringBuilder.new()
+                for i = extent rs upto {extent ps - 1} do
+                    if i > extent rs then b.char('/') end
+                    b.str(ps[i])
+                end
+                let s = b.toString()
+                maybe.some(:String if stringOp.length(s) is 0 then "." else s end)
+            else
+                maybe.none(:String)
+            end
+        end
+
+    let displayName(p: String): String =
+        begin
+            let rel = relativeTo(absolute(p) absolute(system.currentDirectory()))
+            maybe.unwrapOr(:String rel p)
+        end
+
+    Let Text = Tuple text: String isAscii: Bool end
+
+    let readText(file: String): maybe.T(Text) =
+        if not(system.isFile(file)) then
+            maybe.none(:Text)
+        else
+            try
+                let r = reader.file(file)
+                let b = stringBuilder.new()
+                let isAscii =
+                    try
+                        while reader.more(r) do b.char(reader.getChar(r)) end
+                        true
+                    when reader.error then
+                        false
+                    end
+                reader.close(r)
+                maybe.some(:Text tuple let text = b.toString() let isAscii = isAscii end)
+            when system.error then
+                maybe.none(:Text)
+            end
+        end
+
+    let projectDir(): String =
+        begin
+            let home = system.getEnv("QUEST_HOME")
+            absolute(if stringOp.length(home) > 0 then home else system.currentDirectory() end)
+        end
+    let libDir(): String = join(projectDir() "lib")
+
+    (* =========================================================================
+     * Units
+     * ========================================================================= *)
+
+    let unitSuffixes = array of ".int.quest" ".mod.quest" ".qi" ".o" end
+
+    let stripUnitSuffix(filename: String): String =
+        begin
+            let var result = filename
+            let var found = false
+            for i = 0 upto {extent unitSuffixes - 1} do
+                if not(found) andif strutil.endsWith(filename unitSuffixes[i]) then
+                    result := stringOp.getSub(filename 0 {stringOp.length(filename) - stringOp.length(unitSuffixes[i])})
+                    found := true
+                end
+            end
+            result
+        end
+
+    let lastSegment(name: String): String =
+        begin
+            let cs = components(name)
+            if vector.empty(:String cs) then name else vector.last(:String cs) end
+        end
+
+    let declaredModuleName(file: maybe.T(String) canonName: String): String =
+        begin
+            let fallback = lastSegment(canonName)
+            let text = if maybe.isSome(:String file) then readText(maybe.unwrap(:String file)) else maybe.none(:Text) end
+            if maybe.isNone(:Text text) then
+                fallback
+            else
+                try
+                    let sm = location.newSourceMap(maybe.unwrap(:String file) maybe.unwrap(:Text text).text)
+                    let toks = tokenizer.tokenizeAll(tokenizer.new(sm diagbag.new()))
+                    let var name = fallback
+                    let var found = false
+                    for i = 0 upto {vector.length(:tokens.Token toks) - 2} do
+                        if not(found) then
+                            case vector.get(:tokens.Token toks i).kind
+                                when kwModule then
+                                    begin
+                                        name := vector.get(:tokens.Token toks {i + 1}).lexeme
+                                        found := true
+                                    end
+                                else ok
+                            end
+                        end
+                    end
+                    name
+                when diagbag.fatalError then
+                    fallback
+                end
+            end
+        end
+
+    (* The directories searched for a unit's file, in order *)
+    let searchDirs(currentDir: maybe.T(String) includePaths: Array(String)): vector.T(String) =
+        begin
+            let dirs = vector.new(:String)
+            if maybe.isSome(:String currentDir) then vector.append(:String dirs maybe.unwrap(:String currentDir)) end
+            for i = 0 upto {extent includePaths - 1} do vector.append(:String dirs includePaths[i]) end
+            let envLib = system.getEnv("QUEST_LIB")
+            if stringOp.length(envLib) > 0 then vector.append(:String dirs envLib) end
+            if system.isDirectory(libDir()) then vector.append(:String dirs libDir()) end
+            vector.append(:String dirs projectDir())
+            dirs
+        end
+
+    let findFile(filename: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String) =
+        begin
+            let dirs = searchDirs(currentDir includePaths)
+            let var found = maybe.none(:String)
+            for i = 0 upto {vector.length(:String dirs) - 1} do
+                if maybe.isNone(:String found) then
+                    let candidate = join(vector.get(:String dirs i) filename)
+                    if system.isFile(candidate) then found := maybe.some(:String absolute(candidate)) end
+                end
+            end
+            found
+        end
+
+    let resolveInterfaceSourceFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String) =
+        findFile(lower(name) <> ".int.quest" currentDir includePaths)
+    let resolveModuleFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String) =
+        findFile(lower(name) <> ".mod.quest" currentDir includePaths)
+    let resolveObjectFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String) =
+        findFile(lower(name) <> ".o" currentDir includePaths)
+
+    let searchedDirs(currentDir: maybe.T(String) includePaths: Array(String)): Array(String) =
+        begin
+            let dirs = vector.new(:String)
+            if maybe.isSome(:String currentDir) then vector.append(:String dirs maybe.unwrap(:String currentDir)) end
+            for i = 0 upto {extent includePaths - 1} do vector.append(:String dirs includePaths[i]) end
+            if system.isDirectory(libDir()) then vector.append(:String dirs libDir()) end
+            vector.append(:String dirs projectDir())
+            vector.toArray(:String dirs)
+        end
+
+    let canonicalRoots(includePaths: Array(String) programDir: maybe.T(String)): Array(String) =
+        begin
+            let roots = vector.new(:String)
+            let envLib = system.getEnv("QUEST_LIB")
+            if stringOp.length(envLib) > 0 then vector.append(:String roots absolute(envLib)) end
+            for i = 0 upto {extent includePaths - 1} do vector.append(:String roots absolute(includePaths[i])) end
+            if system.isDirectory(libDir()) then vector.append(:String roots libDir()) end
+            vector.append(:String roots projectDir())
+            (* Deepest first; a stable sort, as Python's *)
+            let n = vector.length(:String roots)
+            for i = 1 upto {n - 1} do
+                let var j = i
+                while {j > 0} andif
+                        {extent parts(vector.get(:String roots {j - 1})) < extent parts(vector.get(:String roots j))} do
+                    let t = vector.get(:String roots j)
+                    vector.set(:String roots j vector.get(:String roots {j - 1}))
+                    vector.set(:String roots {j - 1} t)
+                    j := j - 1
+                end
+            end
+            if maybe.isSome(:String programDir) then vector.append(:String roots absolute(maybe.unwrap(:String programDir))) end
+            (* Without repetitions, in order *)
+            let unique = vector.new(:String)
+            for i = 0 upto {vector.length(:String roots) - 1} do
+                let r = vector.get(:String roots i)
+                let var seen = false
+                for j = 0 upto {vector.length(:String unique) - 1} do
+                    if stringOp.equal(vector.get(:String unique j) r) then seen := true end
+                end
+                if not(seen) then vector.append(:String unique r) end
+            end
+            vector.toArray(:String unique)
+        end
+
+    let isNameComponent(s: String): Bool =
+        begin
+            let var good = stringOp.length(s) > 0
+            for i = 0 upto {stringOp.length(s) - 1} do
+                let ch = stringOp.getChar(s i)
+                if not(strutil.isDigit(ch) orif strutil.isAlpha(ch)) then good := false end
+            end
+            good
+        end
+
+    let canonicalizeModulePath(file: String includePaths: Array(String) programDir: maybe.T(String)): String =
+        begin
+            let resolved = absolute(file)
+            let var components = vector.fromArray(:String array of baseName(resolved) end)
+            let roots = canonicalRoots(includePaths programDir)
+            let var found = false
+            for i = 0 upto {extent roots - 1} do
+                if not(found) then
+                    let rel = relativeTo(resolved roots[i])
+                    if maybe.isSome(:String rel) then
+                        components := vector.fromArray(:String parts(maybe.unwrap(:String rel)))
+                        found := true
+                    end
+                end
+            end
+            let n = vector.length(:String components)
+            vector.set(:String components {n - 1} stripUnitSuffix(vector.get(:String components {n - 1})))
+            let b = stringBuilder.new()
+            let var bad = maybe.none(:String)
+            for i = 0 upto {n - 1} do
+                let c = vector.get(:String components i)
+                if i > 0 then b.char('/') end
+                b.str(c)
+                if maybe.isNone(:String bad) andif not(isNameComponent(c)) then bad := maybe.some(:String c) end
+            end
+            let name = b.toString()
+            if maybe.isSome(:String bad) then
+                diagnostics.fail(:Ok "Invalid module path '" <> name <> "' for '" <> resolved <> "': '" <>
+                    maybe.unwrap(:String bad) <> "' contains characters other than letters and digits, which are the " <>
+                    "only ones allowed in the directory and file names of interfaces and modules" 0)
+            end
+            name
+        end
+
+    let canonicalizeInterfaceName(
+        file: maybe.T(String) includePaths: Array(String) declaredName: String programDir: maybe.T(String)
+    ): String =
+        if maybe.isNone(:String file) then
+            declaredName
+        else
+            let canonMod = canonicalizeModulePath(maybe.unwrap(:String file) includePaths programDir)
+            let base = lastSegment(declaredName)
+            if strutil.contains(canonMod "/") then
+                parent(canonMod) <> "/" <> base
+            elsif strutil.contains(declaredName "/") then
+                declaredName
+            else
+                base
+            end
+        end
+
+    let canonicalizeModuleName(
+        file: maybe.T(String) includePaths: Array(String) rawName: String programDir: maybe.T(String)
+    ): String =
+        if maybe.isNone(:String file) then
+            rawName
+        else
+            canonicalizeModulePath(maybe.unwrap(:String file) includePaths programDir)
+        end
+end

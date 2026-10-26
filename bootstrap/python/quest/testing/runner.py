@@ -53,6 +53,8 @@ SELF_HOSTED_DRIVER = ROOT_DIR / "questlang" / "driver" / "main.quest"
 SELF_HOSTED_PHASES = ("tokenize", "parse", "typecheck")
 SELF_HOSTED_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending.txt"
 SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
+# Tests of several errors, which only the self-hosted driver reports: tests/self-hosted/errors/PHASE/NAME.quest
+SELF_HOSTED_ERRORS_DIR = ROOT_DIR / "tests" / "self-hosted" / "errors"
 TELEMETRY_LOG_PATH = Path("/tmp/quest_run_tests_telemetry.log")
 
 
@@ -267,6 +269,8 @@ def run_single_golden_test(
     environment["QUEST_CHECK_SCOPES"] = "1"
     # Checks the IR's invariants after lowering (quest/ir/verify.py)
     environment["QUEST_CHECK_IR"] = "1"
+    # The project directory, whose lib/ the self-hosted driver reads the standard library from (it runs elsewhere)
+    environment["QUEST_HOME"] = str(ROOT_DIR)
     if directives.env and phase_name in RUN_PHASES:
         environment.update(directives.env)
 
@@ -624,7 +628,7 @@ def run_all_tests(
                         ef for ef in error_files
                         if args.test in str(ef.relative_to(TESTS_ERRORS_DIR))
                     ]
-                if not error_files:
+                if not error_files and not (driver_command is not None and (SELF_HOSTED_ERRORS_DIR / phase).exists()):
                     continue
 
                 if not error_phases_found:
@@ -697,6 +701,46 @@ def run_all_tests(
                         ),
                     )
                     error_tasks.append(PhaseTask(test_id=rel_id, run_fn=run_fn))
+
+                # The self-hosted driver's tests of several errors, whose diagnostics must all be expected
+                multi_dir = SELF_HOSTED_ERRORS_DIR / phase
+                if driver_command is not None and multi_dir.exists():
+                    for multi_file in discover_tests(multi_dir):
+                        multi_id = "self-hosted/" + str(multi_file.relative_to(multi_dir).with_suffix(""))
+                        if args.test and args.test not in multi_id:
+                            continue
+                        multi_directives = parse_test_directives(multi_file)
+
+                        def make_multi_runner(
+                            mf: Path, p: str, d: TestDirectives, eff_timeout: float
+                        ) -> Callable[[Path], tuple[bool, str, str]]:
+                            def runner(w_dir: Path) -> tuple[bool, str, str]:
+                                passed, report = run_error_test(
+                                    source_file=mf,
+                                    target_phase=p,
+                                    precursor_phases=precursors,
+                                    python_executable=python_executable,
+                                    root_dir=ROOT_DIR,
+                                    extra_args=d.args,
+                                    env_vars=d.env,
+                                    stdin_data=d.stdin_data,
+                                    timeout=eff_timeout,
+                                    build_dir=w_dir,
+                                    driver_args=driver_args,
+                                    driver_command=driver_command,
+                                    all_errors=True,
+                                )
+                                return (True, "[PASS]", "") if passed else (False, "[FAIL]", report)
+
+                            return runner
+
+                        error_tasks.append(PhaseTask(
+                            test_id=multi_id,
+                            run_fn=make_multi_runner(
+                                multi_file, phase, multi_directives,
+                                multi_directives.timeout if multi_directives.timeout is not None else args.timeout,
+                            ),
+                        ))
 
                 e_total, e_passed = run_phase_tasks(
                     phase, error_tasks, worker_pool, executor, jobs

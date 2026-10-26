@@ -133,7 +133,7 @@ export
 
     let maxErrors = 20
 
-    let report(c: T err: diagnostics.CompilerError): Ok =
+    let recordError(c: T err: diagnostics.CompilerError): Ok =
         begin
             vector.append(:diagnostics.CompilerError c.errors err)
             if vector.length(:diagnostics.CompilerError c.errors) >= maxErrors then
@@ -146,9 +146,12 @@ export
                     let notes = vector.new(:String)
                     let file = err.file
                     let silent = false
+                    let labels = vector.new(:diagnostics.Label)
                 end)
             end
         end
+
+    let report(c: T err: diagnostics.CompilerError): Ok = recordError(c env.locate(c.env err))
 
     let attempt(A::TYPE c: T body: All() A): maybe.T(A) =
         try
