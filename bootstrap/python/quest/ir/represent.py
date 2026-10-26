@@ -347,6 +347,13 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
         return ir.Plan("view", source, target)
     if cs == ct and ts.kind not in ("fun", "all", "option", "array"):
         return None
+    if ss.kind == ts.kind == "array" and cs == ct:
+        # An array is shared and assigned through, so its elements cannot change view: it serves as it is when they
+        # need no conversion either way (as for a module's abstract type and its definition), or only a box or unbox,
+        # which changes no element (an element holds a value's QVal form)
+        both_ways = (plan(ss.element.type, ts.element.type), plan(ts.element.type, ss.element.type))
+        if all(p is None or p.kind in ("box", "unbox") for p in both_ways):
+            return None
     raise UnsupportedConversion(f"converting a value of type {source} ({cs}) to {target} ({ct})")
 
 
