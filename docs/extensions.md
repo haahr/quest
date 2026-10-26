@@ -109,7 +109,6 @@ this implementation of Quest provides first-class `external` syntax for types an
 ### 1. External Type Definitions
 In module files (`.mod.quest`) or source files, an opaque C data structure is declared using `external`:
 ```quest
-type Handle = external "QWriter *"
 Let Handle = external "QWriter *"
 ```
 - In the Quest type system, this is represented by `QExternalType(name, c_type)`.

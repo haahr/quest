@@ -273,7 +273,7 @@ Tuples in Quest can interleave type formals (`X::K`), value fields (`x: T`), and
 Let PointPackage = Tuple
   Point::TYPE
   origin: Point
-  distance(p1: Point, p2: Point): Real
+  distance(p1: Point p2: Point): Real
 end
 ```
 Signature elaboration (`bootstrap/python/quest/typechecker/elaborate_types.py`) proceeds sequentially in an ordered
@@ -323,7 +323,7 @@ Existential packages are constructed using tuple expressions with type witness b
 let p: PointPackage = tuple
   Let Point::TYPE = Tuple x: Real y: Real end
   let origin: Point = tuple 0.0 0.0 end
-  let distance(p1: Point, p2: Point): Real = ...
+  let distance(p1: Point p2: Point): Real = ...
 end
 ```
 - **Explicit Ascription Required:**

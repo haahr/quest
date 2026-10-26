@@ -305,12 +305,12 @@ Simple enums without payloads use tag-only options: `Let Day = Option mon tue we
 case d when sat,sun then "weekend" else "weekday" end
 ```
 
-When variants carry data (sum types / algebraic data types), give each tag a payload type:
+When variants carry data (sum types / algebraic data types), give each tag a payload signature:
 
 ```quest
-Let Node = Option
-    leaf: Int
-    branch: Tuple left: Node right: Node end
+Let Rec Node = Option
+    leaf with val: Int end
+    branch with left: Node right: Node end
 end
 ```
 
@@ -459,6 +459,7 @@ def word_counts(words: list[str]) -> dict[str, int]:
 Quest:
 
 ```quest
+module wordCount : WordCount
 import
     collections/vector : collections/Vector
     collections/hashMap : collections/HashMap
@@ -477,6 +478,7 @@ export
                 end)
             counts
         end
+end
 ```
 
 This example applies several rules at once: library imports by hierarchical name with aliasing (31), explicit type

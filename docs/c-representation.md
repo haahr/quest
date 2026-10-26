@@ -504,7 +504,7 @@ typedef struct QT_T {
 
 #### 2. Variant Types (Unordered, First-Class 16-Byte `QVariantVal`, Zero-Allocation Tag Remapping)
 Unlike options, variants are unordered and each branch has **exactly one type** $A_i$ (§6.3):
-```quest
+```
 Variant x1:A1 .. xn:An end
 variant x of A with a end
 ```

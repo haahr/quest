@@ -123,7 +123,7 @@ record holding a common `span` and a category-specific syntactic form:
 
 ```quest
 Let Node(Form::TYPE) = Record
-    span: location.Span,
+    span: location.Span
     form: Form
 end
 ```
@@ -141,7 +141,7 @@ end
   5. *Zero Collision with Type Kinds:* Naming the variant `form` (`node.form`) cleanly decouples AST structure from
      Quest's semantic `Kind` system.
 - **Cons:**
-  1. *Two-level matching:* Matching requires `case node.form of ... end` rather than matching on `node`
+  1. *Two-level matching:* Matching requires `case node.form when ... end` rather than matching on `node`
      directly.
   2. *Constructor wrapping:* Creating a node requires wrapping the variant in the outer record (mitigated with helper
      functions like `makeExpr(span form)`).
@@ -153,45 +153,43 @@ simplicity of variant definitions, and elimination of boilerplate across the com
 
 ### 3.2. Expression Nodes (`questlang/syntax/ast/expr`)
 ```quest
-Let ExprForm = Option
-    literal with val: Token end,
-    var with name: String end,
-    app with funExpr: Expr argExpr: Expr end,
-    record with fields: vector.T(FieldBinding) end,
-    tuple with elements: vector.T(Expr) end,
-    select with target: Expr field: String end,
-    subscript with target: Expr index: Expr end,
-    ifExpr with cond: Expr thenBranch: Expr elseBranch: maybe.T(Expr) end,
-    caseExpr with target: Expr arms: vector.T(CaseArm) elseArm: maybe.T(Expr) end,
-    seq with statements: vector.T(Expr) end,
+Let Rec ExprForm = Option
+    literal with val: Token end
+    variable with name: String end
+    app with funExpr: Expr argExpr: Expr end
+    recordExpr with fields: vector.T(FieldBinding) end
+    tupleExpr with elements: vector.T(Expr) end
+    select with target: Expr field: String end
+    subscript with target: Expr index: Expr end
+    ifExpr with cond: Expr thenBranch: Expr elseBranch: maybe.T(Expr) end
+    caseExpr with target: Expr arms: vector.T(CaseArm) elseArm: maybe.T(Expr) end
+    seq with statements: vector.T(Expr) end
     assign with target: Expr val: Expr end
 end
-
-Let Expr = Node(ExprForm)
+and Expr = Node(ExprForm)
 ```
 
 ### 3.3. Type Expression Nodes (`questlang/syntax/ast/type`)
 ```quest
-Let TypeExprForm = Option
-    ident with name: String end,
-    funType with domain: vector.T(ParamSig) range: TypeExpr end,
-    recordType with fields: vector.T(FieldSig) end,
-    tupleType with elements: vector.T(TypeExpr) end,
-    variantType with tags: vector.T(VariantSig) end,
-    optionType with tags: vector.T(OptionSig) end,
+Let Rec TypeExprForm = Option
+    ident with name: String end
+    funType with domain: vector.T(ParamSig) range: TypeExpr end
+    recordType with fields: vector.T(FieldSig) end
+    tupleType with elements: vector.T(TypeExpr) end
+    variantType with tags: vector.T(VariantSig) end
+    optionType with tags: vector.T(OptionSig) end
     appType with target: TypeExpr arg: TypeExpr end
 end
-
-Let TypeExpr = Node(TypeExprForm)
+and TypeExpr = Node(TypeExprForm)
 ```
 
 ### 3.4. Declaration Nodes (`questlang/syntax/ast/decl`)
 ```quest
 Let DeclForm = Option
-    letVal with name: String typeAnn: maybe.T(TypeExpr) init: Expr end,
-    letRec with bindings: vector.T(RecBinding) end,
-    letType with name: String kindAnn: maybe.T(KindExpr) defType: TypeExpr end,
-    valSig with name: String typeExpr: TypeExpr end,
+    letVal with name: String typeAnn: maybe.T(TypeExpr) init: Expr end
+    letRec with bindings: vector.T(RecBinding) end
+    letType with name: String kindAnn: maybe.T(KindExpr) defType: TypeExpr end
+    valSig with name: String typeExpr: TypeExpr end
     typeSig with name: String kindExpr: KindExpr end
 end
 
@@ -215,14 +213,14 @@ In accordance with Principle 7 (minimizing `dynamic.T`), intermediate values pro
 dedicated sum type (`Option`) rather than dynamic boxing:
 
 ```quest
-Let SemanticVal = Option
-    none,
-    tok with val: tokens.Token end,
-    expr with val: ast/expr.Expr end,
-    typeExpr with val: ast/type.TypeExpr end,
-    decl with val: ast/decl.Decl end,
-    phrase with val: ast/phrase.Phrase end,
-    list with val: vector.T(SemanticVal) end,
+Let Rec SemanticVal = Option
+    none
+    tok with val: tokens.Token end
+    expr with val: expr.Expr end
+    typeExpr with val: type.TypeExpr end
+    decl with val: decl.Decl end
+    phrase with val: phrase.Phrase end
+    list with val: vector.T(SemanticVal) end
     opt with val: maybe.T(SemanticVal) end
 end
 ```
@@ -231,11 +229,12 @@ in semantic actions.
 
 ### 4.2. Packrat Memoization & Syntax Target Identification
 Syntax targets (`SyntaxTarget`) are identified by instance identity using machine addresses (`identityHash`),
-matching Quest's `is` / `isnot` semantics. The packrat memoization table in `parser/engine` maps:
+matching Quest's `is` / `isnot` semantics. The packrat memoization table in `parser/engine` maps a target and a
+position to an optional entry:
 ```quest
-(target: SyntaxTarget, pos: Int) -> maybe.T(MemoEntry)
+Let MemoLookup = All(target: SyntaxTarget pos: Int) maybe.T(MemoEntry)
 ```
-using `identityHash` and `is` for $O(1)$ lookup and linear-time parsing guarantees.
+It hashes targets with `identityHash` and compares them with `is`, for $O(1)$ lookup and linear-time parsing.
 
 ---
 
