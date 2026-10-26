@@ -1,6 +1,5 @@
 """Unit tests for the Quest interactive REPL subsystem (Phase 3.6)."""
 
-import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,11 +7,7 @@ from pathlib import Path
 from quest.config import CompilerOptions
 from quest.modules.graph import UnitKind
 from quest.pipeline import CompilerContext
-from quest.repl import (
-    QuestREPL,
-    check_input_completeness,
-    _is_terminal_dumb_or_emacs,
-)
+from quest.repl import QuestREPL, check_input_completeness
 
 
 class TestQuestREPL(unittest.TestCase):
@@ -43,24 +38,6 @@ class TestQuestREPL(unittest.TestCase):
         is_inc, err = check_input_completeness("let 123 = 4")
         self.assertFalse(is_inc)
         self.assertIsNotNone(err)
-
-    def test_terminal_dumb_emacs_detection(self) -> None:
-        """Verifies dumb or emacs TERM values are recognized."""
-        orig_term = os.environ.get("TERM")
-        try:
-            os.environ["TERM"] = "dumb"
-            self.assertTrue(_is_terminal_dumb_or_emacs())
-            os.environ["TERM"] = "emacs"
-            self.assertTrue(_is_terminal_dumb_or_emacs())
-            os.environ["TERM"] = ""
-            self.assertTrue(_is_terminal_dumb_or_emacs())
-            os.environ["TERM"] = "xterm-256color"
-            self.assertFalse(_is_terminal_dumb_or_emacs())
-        finally:
-            if orig_term is not None:
-                os.environ["TERM"] = orig_term
-            else:
-                os.environ.pop("TERM", None)
 
 
 COUNTER_INTERFACE = """interface Counter

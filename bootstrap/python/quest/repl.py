@@ -4,30 +4,33 @@ Implements Phase 3.6 of the Quest bootstrap compiler:
 - Persistent CompilerContext (Environment and RuntimeEnvironment).
 - Semicolon-optional multi-line input buffering with unexpected-EOF continuation detection.
 - 4-column visual alignment: '>>  ' (main), '    ' (continuation), '==  ' (response).
-- History persistence to ~/.quest_history with terminal escape sequence safety (dumb/emacs detection).
+- Line editing and history in ~/.quest_history through io/readline's externals (interpreter/builtins), which a
+  dumb or emacs terminal turns off, as compiled code's do (docs/self-hosted-repl.md §1).
 - Clean rollback of environment state, units included, on typecheck error or runtime exception (QuestREPL.evaluate).
 """
 
 from __future__ import annotations
 
 import atexit
-import os
 import sys
 from pathlib import Path
 from typing import Any, Callable, Optional
-
-try:
-    import readline
-except ImportError:
-    readline = None  # type: ignore[assignment]
 
 from quest.diagnostics import DiagnosticRenderer
 from quest.syntax.grammar import parse_quest_program
 from quest.interpreter.formatting import format_interactive_result
 from quest.syntax.parser import ParserError
+from quest.interpreter.builtins import (
+    readline_add_history,
+    readline_editing,
+    readline_read_history,
+    readline_read_line,
+    readline_write_history,
+)
+from quest.interpreter.primitives import READLINE_END_OF_INPUT_EXC, READLINE_INTERRUPTED_EXC
 from quest.config import CompilerOptions
 from quest.pipeline import CompilerContext, InterpretPhase, PipelineResult, default_pipeline
-from quest.values.model import QOk, QValue
+from quest.values.model import QOk, QuestException, QValue
 from quest.syntax.tokenizer import Tokenizer, TokenizerError
 from quest.syntax.sources import SourceMap
 from quest.syntax.tokens import TokenKind
@@ -37,36 +40,39 @@ PROMPT_MAIN = ">>  "
 PROMPT_CONT = "    "
 PREFIX_RESP = "==  "
 HISTORY_FILE_NAME = ".quest_history"
+HISTORY_LENGTH = 1000
 
 
-def _is_terminal_dumb_or_emacs() -> bool:
-    """Checks whether TERM indicates a dumb or emacs terminal where escape sequences fail."""
-    term = os.environ.get("TERM", "").strip().lower()
-    return term in ("dumb", "emacs", "")
-
-
-def _setup_readline(history_path: Path) -> None:
-    """Configures readline for line editing and persistent history if the terminal supports it."""
-    if not sys.stdin.isatty() or _is_terminal_dumb_or_emacs() or readline is None:
-        return
-
+def read_input_line(prompt: str) -> str:
+    """A line of input, through io/readline: EOFError at the end of the input, and KeyboardInterrupt for Ctrl-C."""
     try:
+        return readline_read_line(prompt)
+    except QuestException as exc:
+        if exc.exc_val is READLINE_END_OF_INPUT_EXC:
+            raise EOFError() from None
+        if exc.exc_val is READLINE_INTERRUPTED_EXC:
+            raise KeyboardInterrupt() from None
+        raise
+
+
+def _setup_history(history_path: Path) -> bool:
+    """Reads the history file and arranges for it to be written at exit, if lines are being edited; returns whether
+    they are, and so whether to keep a history."""
+    if not readline_editing():
+        return False
+    try:
+        readline_read_history(str(history_path))
+    except QuestException:
+        pass
+
+    def save_history() -> None:
         try:
-            if history_path.exists():
-                readline.read_history_file(str(history_path))
-        except (OSError, UnicodeDecodeError):
+            readline_write_history(str(history_path), HISTORY_LENGTH)
+        except QuestException:
             pass
 
-        def save_history() -> None:
-            try:
-                readline.set_history_length(1000)
-                readline.write_history_file(str(history_path))
-            except OSError:
-                pass
-
-        atexit.register(save_history)
-    except ImportError:
-        pass
+    atexit.register(save_history)
+    return True
 
 
 def check_input_completeness(buffer: str) -> tuple[bool, Optional[str]]:
@@ -118,7 +124,7 @@ class QuestREPL:
     ):
         self.context = ctx or CompilerContext.create("", "<repl>", options=CompilerOptions())
         self.pipeline = default_pipeline()
-        self.input_fn = input_fn or input
+        self.input_fn = input_fn or read_input_line
         self.stdout_write = stdout_write or sys.stdout.write
         self.stderr_write = stderr_write or sys.stderr.write
 
@@ -163,8 +169,7 @@ class QuestREPL:
 
     def run(self) -> int:
         """Executes the main interactive REPL loop until EOF (Ctrl-D) or exit."""
-        history_path = Path.home() / HISTORY_FILE_NAME
-        _setup_readline(history_path)
+        keeps_history = self.input_fn is read_input_line and _setup_history(Path.home() / HISTORY_FILE_NAME)
 
         buffer_lines: list[str] = []
 
@@ -180,6 +185,8 @@ class QuestREPL:
                 buffer_lines.clear()
                 continue
 
+            if keeps_history and line.strip():
+                readline_add_history(line)
             buffer_lines.append(line)
             current_buffer = "\n".join(buffer_lines)
 

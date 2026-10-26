@@ -33,50 +33,33 @@ The decisions this plan rests on (2026-10-26):
 
 ## 1. The `io/readline` Interface
 
-```quest
-interface Readline export
-    (* Raised on a system error, such as an unreadable history file *)
-    error: Exception
-    (* Raised by readLine at the end of the input (Ctrl-D on an empty line) *)
-    endOfInput: Exception
-    (* Raised by readLine when the line is interrupted (Ctrl-C); the line read so far is discarded *)
-    interrupted: Exception
-
-    (* Whether readLine edits lines: standard input is a terminal, TERM is not empty, dumb, or emacs, and the runtime
-     * has a line editor *)
-    editing(): Bool
-    (* Writes prompt and reads a line, without its newline, editing it if editing() is true. Without editing, it
-     * reads from the same buffer as reader.input, so a program may mix the two *)
-    readLine(prompt: String): String
-
-    (* History, which the Up and Down keys move through; these do nothing unless editing() is true *)
-    addHistory(line: String): Ok
-    (* Reads a history file, if it exists *)
-    readHistory(path: String): Ok
-    (* Writes the history, its last maxLines lines, to a file *)
-    writeHistory(path: String maxLines: Int): Ok
-end
-```
-
-Strings are bytes ([syntax.md](syntax.md) §2.3): a line holds the bytes typed, whatever their encoding.
+The interface is `lib/io/readline.int.quest`, documented in [new-libraries.md](new-libraries.md) §3.1: `editing`,
+`readLine` (raising `endOfInput` and `interrupted`), and the history functions `addHistory`, `readHistory`, and
+`writeHistory`. Strings are bytes ([syntax.md](syntax.md) §2.3): a line holds the bytes typed, whatever their encoding.
 
 ### 1.1. The C runtime (`runtime/quest_readline.c`)
 
-- `editing` checks `isatty(0)` and `TERM`, once.
-- `readLine` with editing calls `readline(prompt)`. A null result is `endOfInput`. Ctrl-C: a `SIGINT` handler,
-  installed only for the call, `siglongjmp`s out of `readline`, which is then reset (`rl_free_line_state`,
-  `rl_cleanup_after_signal`, or libedit's equivalents) and raises `interrupted`. This is the riskiest part, since
-  libedit and GNU readline differ in their signal handling; Step 1 settles it with the pseudo-terminal test, against
-  both libraries where both are installed, before anything is built on it.
+- `editing` is true when standard input and output are terminals and `TERM` is not empty, `dumb`, or `emacs`.
+- `readLine` with editing uses readline's callback interface, waiting for input with `select`, as CPython's `readline`
+  module does. Its `SIGINT` handler, installed only while it reads, sets a flag that ends the wait (the handler has no
+  `SA_RESTART`); the line is then abandoned (`rl_free_line_state`, `rl_callback_sigcleanup` for GNU readline,
+  `rl_cleanup_after_signal`) and `interrupted` raised. Nothing `longjmp`s out of the library. Step 1's pseudo-terminal
+  test runs this against GNU readline and libedit both.
 - `readLine` without editing writes the prompt to `writer.output`, flushes it, and reads up to a newline through
   `quest_reader_input`'s buffer. End of input before any byte is `endOfInput`; a last line without a newline is a
   line.
-- `-DQUEST_NOREADLINE` makes `editing` false and the history functions do nothing.
+- The history is the runtime's own list, mirrored into the line editor's, and its file is plain lines. The line
+  editors' own files differ (libedit's starts with a cookie and escapes its lines), and the bootstrap's REPL, whose
+  Python may use libedit, shares `~/.quest_history` with compiled REPLs, which may use GNU readline.
+- The build (`compiler_runner.detect_readline_flags`) uses GNU readline where it is installed
+  (`-DQUEST_GNU_READLINE`), else libedit (`-ledit`), else neither (`-DQUEST_NOREADLINE`, when `editing` is false).
+  `QUEST_READLINE=gnu`, `edit`, or `none` chooses one.
 
 ### 1.2. The bootstrap
 
 `builtins.py` implements the externals with Python's `readline` module and `input()` with standard input read as
-bytes. `quest/repl.py` then reads its lines and history through these same functions, not through `readline`
+bytes, and keeps a history list of its own, as the C runtime does (Python's automatic history is off, since
+`readLine`'s caller adds lines). `quest/repl.py` then reads its lines and history through these same functions, not through `readline`
 directly, so the two REPLs share one definition of editing, dumb terminals, and the end of input. The self-hosted
 interpreter's builtins table (`questlang/interpreter/builtins.mod.quest`) gains the externals, calling the native
 library, as it does for `reader`.
@@ -96,7 +79,7 @@ the session, and puts them back when an input fails. The self-hosted compiler ha
   place, and the frame a session continues in. `evalProgramPhrases` already threads the frame through a program's
   phrases; a variant returns the last one, so that the next input continues in it (`eval_scoped_binding`).
 - **Elaboration**: `typecheck.elaborateProgram` checks into the environment it is given, so a phrase's bindings stay
-  for the next input; Step 2 checks that nothing in it assumes a fresh environment (`loader.install`, the hooks, and
+  for the next input; Step 3 checks that nothing in it assumes a fresh environment (`loader.install`, the hooks, and
   `e.report` are set again for each input, which is harmless).
 - **Completeness** (`check_input_completeness`): an input is incomplete when the tokenizer reports an unclosed comment
   or unterminated string, or the parser fails at the EOF token. The tokenizer's errors are diagnostics with those
@@ -107,7 +90,7 @@ the session, and puts them back when an input fails. The self-hosted compiler ha
 
 ## 3. Steps
 
-### Step 0: Transcript tests (bootstrap only)
+### Step 0: Transcript tests (bootstrap only) (done)
 
 A `tests/repl/` directory of transcripts, each a file of input lines (with the usual `@args`, `@env` directives where
 needed). The runner feeds each to `quest -i` on standard input and compares standard output, standard error, and the
@@ -117,7 +100,7 @@ uncaught exception, rebinding, a syntax error mid-line, modules run once per ses
 created since, a module declared again, and `-i` with a file. `test_repl.py` keeps what transcripts cannot show (the
 completeness function itself). No behavior changes; the goldens record the bootstrap's REPL as it is.
 
-### Step 1: `io/readline`
+### Step 1: `io/readline` (done)
 
 The interface and module (§1), the C runtime file and its detection in `compiler_runner.py`, the bootstrap's externals
 (§1.2), and the self-hosted builtins entries. Tests:
@@ -127,7 +110,7 @@ The interface and module (§1), the C runtime file and its detection in `compile
 - A pseudo-terminal unit test (Python's `pty`) of a compiled program: editing (Ctrl-A, Ctrl-K), Up to recall a history
   line, Ctrl-C raising `interrupted` with the program continuing, and Ctrl-D raising `endOfInput`.
 
-### Step 2: The bootstrap's REPL on `io/readline`
+### Step 2: The bootstrap's REPL on `io/readline` (done)
 
 `repl.py` reads lines and keeps history through the Step 1 functions (§1.2). The transcripts do not change; the
 pseudo-terminal test runs against `quest` itself too.

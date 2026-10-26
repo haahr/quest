@@ -19,8 +19,8 @@ Key features:
 - **Uniform 4-Column Alignment:** Clean visual structure using 4-character prompts and response prefixes.
 - **Transactional Error Rollback:** If a phrase fails typechecking or raises an uncaught runtime exception, any partial
   environment bindings from that phrase are rolled back, preserving a consistent environment.
-- **Terminal & History Safety:** Full GNU `readline` line editing and history saved to `~/.quest_history`, with
-  automatic fallback/bypass for `dumb` and `emacs` terminals.
+- **Line Editing & History:** Line editing and a history saved to `~/.quest_history`, through `io/readline`, with
+  plain lines for `dumb` and `emacs` terminals and input that is not a terminal.
 
 ---
 
@@ -139,14 +139,18 @@ with `"==  "` and subsequent lines are indented with 4 spaces (`"    "`):
 
 ## 4. Terminal Support & History
 
-### 4.1. History Persistence
-Interactive inputs are automatically recorded to `~/.quest_history`. Up to 1,000 commands are saved across sessions.
-Arrow keys (`Up`/`Down`) navigate history, and standard Emacs line editing shortcuts (`Ctrl-A`, `Ctrl-E`, `Ctrl-K`) are
-supported via Python's `readline` library.
+### 4.1. Line Editing and History
+The REPL reads its input through `io/readline` ([new-libraries.md](new-libraries.md) §3.1), whose line editor is
+Python's `readline` module in the bootstrap and GNU readline or libedit in compiled code. Arrow keys (`Up`/`Down`)
+move through the history, and the usual Emacs editing keys (`Ctrl-A`, `Ctrl-E`, `Ctrl-K`) work. Each non-blank line
+typed is added to the history, which is read from `~/.quest_history` at the start of the session and written back,
+its last 1,000 lines, at the end. The file holds a line per entry, whatever the line editor, so the bootstrap's REPL
+and a compiled one share it.
 
 ### 4.2. Dumb & Emacs Terminal Detection
-If the terminal is not a TTY or if the `TERM` environment variable is set to `"dumb"`, `"emacs"`, or is empty,
-`readline` escape sequences are disabled to avoid escape code corruption.
+Lines are edited only when standard input and output are terminals and the `TERM` environment variable is not
+`"dumb"`, `"emacs"`, or empty (`readline.editing()`). Otherwise the REPL writes its prompts and reads plain lines, with
+no history, which is how its transcripts are tested (docs/testing.md §2.7).
 
 ---
 
