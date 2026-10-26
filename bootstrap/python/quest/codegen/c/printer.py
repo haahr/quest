@@ -1061,14 +1061,12 @@ class CPrinter:
 
     @staticmethod
     def external_call(o, descs: list[str], args: list[str]) -> str:
-        """A call of an external C function (its template filled in, if it has one)."""
-        if o.inline_template:
-            return o.inline_template.format(*descs, *args)
+        """A call of an external C function."""
         return f"{o.symbol}({', '.join(descs + args)})"
 
     def external_closure(self, o: ir.External, t: QType) -> str:
         """An external C function as a value: a static closure over a thunk calling it."""
-        key = ("external", o.symbol, o.inline_template, o.pass_type_descriptors, type_identity_key(t))
+        key = ("external", o.symbol, type_identity_key(t))
         if key in self.thunks:
             return f"(&{self.thunks[key]}_closure)"
         name = self.fresh_name("qx_" + mangle_ident(o.symbol).removeprefix("qv_"))
@@ -1076,7 +1074,7 @@ class CPrinter:
         quants, params, result_t = fun_shape_signature(t)
         with self.auxiliary():
             decls, descs, names = self.thunk_params(len(quants), params)
-            call = self.external_call(o, descs if o.pass_type_descriptors else [], names)
+            call = self.external_call(o, [], names)
             ret = "void" if self.is_ok(result_t) else self.c_type(result_t)
             self.emit(f"{call};" if ret == "void" else f"return {call};")
             self.thunk(name, ret, decls, ["(void)_raw_env;"] + [f"(void){d};" for d in descs])
@@ -1087,7 +1085,7 @@ class CPrinter:
         c_args = descs + self.args((), args)
         external = self.externals.get(id(callee))
         if external is not None:
-            return self.external_call(external, descs if external.pass_type_descriptors else [], self.args((), args))
+            return self.external_call(external, [], self.args((), args))
         known = self.closures.get(id(callee))
         if known is not None and not known.type_args:
             env = "NULL" if not known.captures else f"{self.name(callee)}->env"

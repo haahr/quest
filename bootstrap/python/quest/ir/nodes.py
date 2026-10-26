@@ -233,11 +233,8 @@ class Builtin:
 
 @dataclass(eq=False)
 class External:
-    """An external C value or function (`external "symbol"`), and its inline C template if any. A function is passed
-    its type parameters' descriptors only if pass_type_descriptors (a native binding's choice)."""
+    """An external C value or function (`external "symbol"`), as a value; a function is passed no descriptors."""
     symbol: str
-    inline_template: Optional[str] = None
-    pass_type_descriptors: bool = False
 
 
 @dataclass(eq=False)
@@ -245,7 +242,6 @@ class CallExternal:
     """A call of an external C function: the body of a function defined as `external "symbol"`, which passes the C
     function its type parameters' descriptors (type_args) and its parameters (args; addresses for var and out)."""
     symbol: str
-    inline_template: Optional[str]
     type_args: tuple[QType, ...]
     args: tuple[Atom, ...]
     # The type arguments' descriptors (after the describe pass)

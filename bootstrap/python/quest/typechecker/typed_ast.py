@@ -185,8 +185,6 @@ class TypedExternal(TypedExpr):
     """External C symbol reference: external "c_symbol"."""
     symbol: str
     type_val: QType
-    inline_template: Optional[str] = None
-    c_val: Optional[str] = None
 
     def dump_header(self) -> str:
         return f"'{self.symbol}'"
@@ -830,20 +828,6 @@ class TypedLetValueGroup(TypedBinding):
 def binding_members(binding: Any) -> tuple[Any, ...]:
     """The bindings a binding declares: the members of a group of value declarations, or the binding itself."""
     return binding.members if isinstance(binding, TypedLetValueGroup) else (binding,)
-
-
-@dataclass(frozen=True)
-class TypedNativeBinding(TypedBinding):
-    """Module binding implemented natively in C."""
-    name: str
-    symbol: str
-    inline_template: Optional[str]
-    c_val: Optional[str]
-    type_val: QType
-    pass_type_descriptors: bool = False
-
-    def dump_header(self, env: Optional[Any] = None) -> str:
-        return f"'{self.name}' -> '{self.symbol}' :type {format_type_compact(self.type_val, env=env)}"
 
 
 @dataclass(frozen=True)

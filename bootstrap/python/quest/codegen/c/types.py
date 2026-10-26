@@ -272,8 +272,16 @@ def c_string_literal(s: str) -> str:
         elif 32 <= ord(ch) < 127:
             parts.append(ch)
         else:
-            parts.append(f"\\x{ord(ch):02x}")
+            parts.append(_octal_escape(ch))
     return "\"" + "".join(parts) + "\""
+
+
+def _octal_escape(ch: str) -> str:
+    """A character's three-digit octal escape: unlike a hex escape, which takes every hex digit after it, an octal
+    escape takes at most three digits, so it ends where it should whatever character follows."""
+    code = ord(ch)
+    assert code < 256, code
+    return "\\" + str(code // 64) + str(code // 8 % 8) + str(code % 8)
 
 
 def c_char_literal(ch: str) -> str:
@@ -290,7 +298,7 @@ def c_char_literal(ch: str) -> str:
         return "'\\r'"
     if 32 <= ord(ch) < 127:
         return f"'{ch}'"
-    return f"'\\x{ord(ch):02x}'"
+    return "'" + _octal_escape(ch) + "'"
 
 
 def qval_wrap(expr_str: str, t: QType) -> str:

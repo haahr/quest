@@ -59,7 +59,6 @@ from quest.typechecker.typed_ast import (
     TypedLetValueGroup,
     TypedLoop,
     TypedModule,
-    TypedNativeBinding,
     TypedNode,
     TypedOk,
     TypedOption,
@@ -233,8 +232,8 @@ class _Lowerer:
                     # Reading a mutable variable
                     return self.copy_into(var, into)
                 return self.let(ir.Load(self.value(target)), e.type_val, into)
-            case TypedExternal(symbol=symbol, inline_template=template):
-                return self.let(ir.External(symbol, template), e.type_val, into)
+            case TypedExternal(symbol=symbol):
+                return self.let(ir.External(symbol), e.type_val, into)
             case TypedFun():
                 var = into if into is not None else self.fresh("f", e.type_val)
                 self.emit(ir.Funs((self.function(e, var),)))
@@ -745,7 +744,7 @@ class _Lowerer:
             else:
                 ref_t = QVarType(element_type=var.type) if mode == "var" else QOutType(element_type=var.type)
                 args.append(self.let(ir.Addr(var=var), ref_t))
-        return self.let(ir.CallExternal(ext.symbol, ext.inline_template, type_args, tuple(args)), result_t)
+        return self.let(ir.CallExternal(ext.symbol, type_args, tuple(args)), result_t)
 
     # Bindings
 
@@ -821,7 +820,7 @@ class _Lowerer:
                 self.phrase_expr(b, show)
             case TypedImport(items=items):
                 self.add_imports(items)
-            case TypedInterface() | TypedNativeBinding() | TypedModule():
+            case TypedInterface() | TypedModule():
                 raise LoweringError(f"{type(b).__name__} inside a block")
             case TypedExpr():
                 self.phrase_expr(b, show)
@@ -898,11 +897,6 @@ class _Lowerer:
         with self.in_body(init):
             for b in m.bindings:
                 match b:
-                    case TypedNativeBinding(name=name, symbol=symbol, inline_template=template, type_val=t,
-                                            pass_type_descriptors=pass_descriptors):
-                        var = self.fresh(name, t)
-                        self.emit(ir.Let(var, ir.External(symbol, template, pass_descriptors)))
-                        members[name] = var
                     case TypedImport(items=items):
                         self.add_imports(items)
                     case _:

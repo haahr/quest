@@ -23,7 +23,7 @@ Python features that have no line-by-line Quest counterpart:
 
 The phases are independent of one another; the steps within a phase are ordered.
 
-**Status: not started.**
+**Status: in progress.** Phase 1 is done.
 
 ---
 
@@ -44,11 +44,17 @@ serves both.
 - Not in scope: `values/model.py` and the runtime's `quest_put_escaped_char` write `\xHH` too, but they display Quest
   values in Quest syntax, not C, and Quest's `\xHH` takes at most two digits.
 
+**Done.** Before the fix, `"\x01a"` silently became one character in C, and `"\xff0"` did not compile at all ("hex
+escape sequence out of range"). `language/string_escapes` and `tests/python/test_c_text.py` test the escapes.
+
 **1b. Delete external templates.** `TypedExternal.inline_template` and `TypedNativeBinding.inline_template`
 (`typechecker/typed_ast.py`) are never set, so `ir.External.inline_template`, `ir.CallExternal.inline_template`, their
 lowering (`ir/lower.py`), and the printer's `o.inline_template.format(*descs, *args)` and its thunk cache key
 (`codegen/c/printer.py`) are dead. Left in place, the Quest compiler would need an interpreter of Python format
 strings. Delete them and update [ir.md](ir.md) where it mentions them. No golden changes.
+
+**Done.** `TypedNativeBinding` itself was never constructed, so it is gone too, with `ir.External.pass_type_descriptors`
+(only a native binding set it) and `TypedExternal.c_val`. [ir.md](ir.md) did not mention templates.
 
 ---
 
