@@ -123,6 +123,12 @@ def format_type_for_qi(
     if visited is None:
         visited = set()
 
+    def format_param(p: QParam) -> str:
+        if not p.name:
+            return format_type_for_qi(p.type_val, visited)
+        mode = "var " if p.is_var else "out " if p.is_out else ""
+        return f"{mode}{p.name}: {format_type_for_qi(p.type_val, visited)}"
+
     if t is INT_TYPE:
         return "Int"
     if t is REAL_TYPE:
@@ -138,132 +144,107 @@ def format_type_for_qi(
     if t is DYNAMIC_TYPE:
         return "Dynamic"
 
-    if isinstance(t, QTypeVar):
-        return t.name
-    if isinstance(t, QAbstractType):
-        return t.name
-    if isinstance(t, QPathType):
-        return f"{t.module_name}.{t.type_name}"
-
-    if isinstance(t, QArrayType):
-        return f"Array({format_type_for_qi(t.element_type, visited)})"
-
-    if isinstance(t, QRecordType):
-        fields = " ".join(
-            f"{'var ' if f.is_var else ''}{f.name}: {format_type_for_qi(f.type_val, visited)}"
-            for f in t.fields
-        )
-        return f"Record {fields} end" if fields else "Record end"
-
-    if isinstance(t, QTupleType):
-        parts: list[str] = []
-        for f in t.fields:
-            if isinstance(f, QTupleField):
-                var_p = "var " if f.is_var else ""
-                if f.name:
-                    parts.append(f"{var_p}{f.name}: {format_type_for_qi(f.type_val, visited)}")
+    match t:
+        case QTypeVar() | QAbstractType():
+            return t.name
+        case QPathType():
+            return f"{t.module_name}.{t.type_name}"
+        case QArrayType():
+            return f"Array({format_type_for_qi(t.element_type, visited)})"
+        case QRecordType():
+            fields = " ".join(
+                f"{'var ' if f.is_var else ''}{f.name}: {format_type_for_qi(f.type_val, visited)}"
+                for f in t.fields
+            )
+            return f"Record {fields} end" if fields else "Record end"
+        case QTupleType():
+            parts: list[str] = []
+            for f in t.fields:
+                match f:
+                    case QTupleField():
+                        var_p = "var " if f.is_var else ""
+                        if f.name:
+                            parts.append(f"{var_p}{f.name}: {format_type_for_qi(f.type_val, visited)}")
+                        else:
+                            parts.append(f"{var_p}:{format_type_for_qi(f.type_val, visited)}")
+                    case QTupleTypeFormal():
+                        parts.append(f"{f.name}::{format_kind_for_qi(f.bound)}")
+                    case QTupleTypeBinding():
+                        b_str = f"::{format_kind_for_qi(f.bound)} " if f.bound else ""
+                        parts.append(f"Let {f.name}{b_str}= {format_type_for_qi(f.type_val, visited)}")
+            return f"Tuple {' '.join(parts)} end" if parts else "Tuple end"
+        case QVariantType():
+            variants = " ".join(
+                f"{v.name}: {format_type_for_qi(v.type_val, visited)}" if v.type_val is not OK_TYPE else v.name
+                for v in t.variants
+            )
+            return f"Variant {variants} end" if variants else "Variant end"
+        case QOptionType():
+            opts: list[str] = []
+            for o in t.options:
+                if o.payload_type is not None:
+                    if isinstance(o.payload_type, QTupleType):
+                        parts = [
+                            f"{f.name}: {format_type_for_qi(f.type_val, visited)}"
+                            if f.name else format_type_for_qi(f.type_val, visited)
+                            for f in o.payload_type.fields
+                        ]
+                        opts.append(f"{o.name} with {' '.join(parts)} end")
+                    else:
+                        opts.append(f"{o.name} with {format_type_for_qi(o.payload_type, visited)} end")
                 else:
-                    parts.append(f"{var_p}:{format_type_for_qi(f.type_val, visited)}")
-            elif isinstance(f, QTupleTypeFormal):
-                parts.append(f"{f.name}::{format_kind_for_qi(f.bound)}")
-            elif isinstance(f, QTupleTypeBinding):
-                b_str = f"::{format_kind_for_qi(f.bound)} " if f.bound else ""
-                parts.append(f"Let {f.name}{b_str}= {format_type_for_qi(f.type_val, visited)}")
-        return f"Tuple {' '.join(parts)} end" if parts else "Tuple end"
-
-    if isinstance(t, QVariantType):
-        variants = " ".join(
-            f"{v.name}: {format_type_for_qi(v.type_val, visited)}" if v.type_val is not OK_TYPE else v.name
-            for v in t.variants
-        )
-        return f"Variant {variants} end" if variants else "Variant end"
-
-    if isinstance(t, QOptionType):
-        opts: list[str] = []
-        for o in t.options:
-            if o.payload_type is not None:
-                if isinstance(o.payload_type, QTupleType):
-                    parts = [
-                        f"{f.name}: {format_type_for_qi(f.type_val, visited)}"
-                        if f.name else format_type_for_qi(f.type_val, visited)
-                        for f in o.payload_type.fields
-                    ]
-                    opts.append(f"{o.name} with {' '.join(parts)} end")
-                else:
-                    opts.append(f"{o.name} with {format_type_for_qi(o.payload_type, visited)} end")
-            else:
-                opts.append(o.name)
-        opts_str = " ".join(opts)
-        return f"Option {opts_str} end" if opts_str else "Option end"
-
-    if isinstance(t, QAutoType):
-        sig = " ".join(
-            f"{'var ' if f.is_var else ''}{f.name}: {format_type_for_qi(f.type_val, visited)}"
-            for f in t.signature
-        )
-        return f"Auto {t.type_param}::{format_kind_for_qi(t.kind_bound)} with {sig} end"
-
-    def format_param(p: QParam) -> str:
-        if not p.name:
-            return format_type_for_qi(p.type_val, visited)
-        mode = "var " if p.is_var else "out " if p.is_out else ""
-        return f"{mode}{p.name}: {format_type_for_qi(p.type_val, visited)}"
-
-    if isinstance(t, QFunType):
-        params_str = " ".join(format_param(p) for p in t.params)
-        return f"All({params_str}) {format_type_for_qi(t.result_type, visited)}"
-
-    if isinstance(t, QAllType):
-        quants_str = " ".join(f"{q.name}::{q.bound}" for q in t.quantifiers)
-        if isinstance(t.body, QFunType):
-            params_str = " ".join(format_param(p) for p in t.body.params)
-            return f"All({quants_str} {params_str}) {format_type_for_qi(t.body.result_type, visited)}"
-        return f"All({quants_str}) {format_type_for_qi(t.body, visited)}"
-
-    if isinstance(t, QTypeFun):
-        params_str = " ".join(f"{p.name}::{format_kind_for_qi(p.bound)}" for p in t.params)
-        return f"Fun({params_str}) {format_type_for_qi(t.body, visited)}"
-
-    if isinstance(t, QTypeApp):
-        args_str = " ".join(format_type_for_qi(a, visited) for a in t.arguments)
-        ctor_str = format_type_for_qi(t.constructor, visited)
-        if (
-            isinstance(t.constructor, (QTypeFun, QAllType, QRecType, QRecGroupType))
-            and not isinstance(t.constructor, QAliasType)
-        ):
-            ctor_str = f"{{{ctor_str}}}"
-        return f"{ctor_str}({args_str})"
-
-    if isinstance(t, QArrayType):
-        return f"Array({format_type_for_qi(t.element_type, visited)})"
-
-    if isinstance(t, QVarType):
-        return f"Var({format_type_for_qi(t.value_type, visited)})"
-
-    if isinstance(t, QOutType):
-        return f"Out({format_type_for_qi(t.value_type, visited)})"
-
-    if isinstance(t, (QRecType, QRecGroupType)):
-        t_id = id(t)
-        if t_id in visited:
+                    opts.append(o.name)
+            opts_str = " ".join(opts)
+            return f"Option {opts_str} end" if opts_str else "Option end"
+        case QAutoType():
+            sig = " ".join(
+                f"{'var ' if f.is_var else ''}{f.name}: {format_type_for_qi(f.type_val, visited)}"
+                for f in t.signature
+            )
+            return f"Auto {t.type_param}::{format_kind_for_qi(t.kind_bound)} with {sig} end"
+        case QFunType():
+            params_str = " ".join(format_param(p) for p in t.params)
+            return f"All({params_str}) {format_type_for_qi(t.result_type, visited)}"
+        case QAllType():
+            quants_str = " ".join(f"{q.name}::{q.bound}" for q in t.quantifiers)
+            if isinstance(t.body, QFunType):
+                params_str = " ".join(format_param(p) for p in t.body.params)
+                return f"All({quants_str} {params_str}) {format_type_for_qi(t.body.result_type, visited)}"
+            return f"All({quants_str}) {format_type_for_qi(t.body, visited)}"
+        case QTypeFun():
+            params_str = " ".join(f"{p.name}::{format_kind_for_qi(p.bound)}" for p in t.params)
+            return f"Fun({params_str}) {format_type_for_qi(t.body, visited)}"
+        case QTypeApp():
+            args_str = " ".join(format_type_for_qi(a, visited) for a in t.arguments)
+            ctor_str = format_type_for_qi(t.constructor, visited)
+            if (
+                isinstance(t.constructor, (QTypeFun, QAllType, QRecType, QRecGroupType))
+                and not isinstance(t.constructor, QAliasType)
+            ):
+                ctor_str = f"{{{ctor_str}}}"
+            return f"{ctor_str}({args_str})"
+        case QVarType():
+            return f"Var({format_type_for_qi(t.value_type, visited)})"
+        case QOutType():
+            return f"Out({format_type_for_qi(t.value_type, visited)})"
+        case QRecType() | QRecGroupType() if id(t) in visited:
             return getattr(t, "var_name", getattr(t, "current_name", "RecType"))
-        visited.add(t_id)
-
-    if isinstance(t, QRecType):
-        return (
-            f"Rec({t.var_name} :: {format_kind_for_qi(t.bound)}) "
-            f"{format_type_for_qi(t.body, visited)}"
-        )
-
-    if isinstance(t, QRecGroupType):
-        # Format the active recursive type definition
-        _, _, bound, body = t.bindings[t.active_index]
-        return (
-            f"Rec({t.current_name} :: {format_kind_for_qi(bound)}) "
-            f"{format_type_for_qi(body, visited)}"
-        )
-
-    return str(t)
+        case QRecType():
+            visited.add(id(t))
+            return (
+                f"Rec({t.var_name} :: {format_kind_for_qi(t.bound)}) "
+                f"{format_type_for_qi(t.body, visited)}"
+            )
+        case QRecGroupType():
+            # Format the active recursive type definition
+            visited.add(id(t))
+            _, _, bound, body = t.bindings[t.active_index]
+            return (
+                f"Rec({t.current_name} :: {format_kind_for_qi(bound)}) "
+                f"{format_type_for_qi(body, visited)}"
+            )
+        case _:
+            return str(t)
 
 
 def format_kind_for_qi(k: ast.Kind | QKind | None) -> str:
@@ -381,60 +362,61 @@ def compile_interface_to_qi(
     # Collect types. A member of a recursive group records its body, with the other members as their names, and
     # the group's number; the loader rebuilds the group from its members' records.
     for sig, group in _type_signatures(decl):
-        if isinstance(sig, ast.TypeFormal):
-            # The elaborated kind, whose bound (for POWER) is printed as a type, not as syntax
-            formal_sym = iface_scope.lookup_type_local(sig.name)
-            kind_str = format_kind_for_qi(formal_sym.kind if formal_sym is not None else sig.bound)
-            type_records.append(
-                QRecord(
-                    {
-                        "group": QInt(0),
-                        "name": QString(sig.name),
-                        "kind": QString(kind_str),
-                        "isManifest": FALSE_VALUE,
-                        "manifestType": QString(""),
-                    }
+        match sig:
+            case ast.TypeFormal():
+                # The elaborated kind, whose bound (for POWER) is printed as a type, not as syntax
+                formal_sym = iface_scope.lookup_type_local(sig.name)
+                kind_str = format_kind_for_qi(formal_sym.kind if formal_sym is not None else sig.bound)
+                type_records.append(
+                    QRecord(
+                        {
+                            "group": QInt(0),
+                            "name": QString(sig.name),
+                            "kind": QString(kind_str),
+                            "isManifest": FALSE_VALUE,
+                            "manifestType": QString(""),
+                        }
+                    )
                 )
-            )
-        elif isinstance(sig, ast.TypeBinding):
-            type_sym = iface_scope.lookup_type_local(sig.name)
-            concrete_t = type_sym.definition if type_sym and type_sym.definition else None
-            if group and isinstance(concrete_t, QRecGroupType):
-                concrete_t = concrete_t.bindings[concrete_t.active_index][3]
-            if group and isinstance(concrete_t, QTypeFun) and isinstance(concrete_t.body, QRecGroupType):
-                m_type_str = _format_rec_operator_member_for_qi(concrete_t, type_sym.kind)
-            else:
-                m_type_str = (
-                    format_type_for_qi(concrete_t)
-                    if concrete_t
-                    else str(sig.type_val)
+            case ast.TypeBinding():
+                type_sym = iface_scope.lookup_type_local(sig.name)
+                concrete_t = type_sym.definition if type_sym and type_sym.definition else None
+                if group and isinstance(concrete_t, QRecGroupType):
+                    concrete_t = concrete_t.bindings[concrete_t.active_index][3]
+                if group and isinstance(concrete_t, QTypeFun) and isinstance(concrete_t.body, QRecGroupType):
+                    m_type_str = _format_rec_operator_member_for_qi(concrete_t, type_sym.kind)
+                else:
+                    m_type_str = (
+                        format_type_for_qi(concrete_t)
+                        if concrete_t
+                        else str(sig.type_val)
+                    )
+                kind_str = format_kind_for_qi(type_sym.kind) if type_sym and type_sym.kind else "TYPE"
+                type_records.append(
+                    QRecord(
+                        {
+                            "group": QInt(group),
+                            "name": QString(sig.name),
+                            "kind": QString(kind_str),
+                            "isManifest": TRUE_VALUE,
+                            "manifestType": QString(m_type_str),
+                        }
+                    )
                 )
-            kind_str = format_kind_for_qi(type_sym.kind) if type_sym and type_sym.kind else "TYPE"
-            type_records.append(
-                QRecord(
-                    {
-                        "group": QInt(group),
-                        "name": QString(sig.name),
-                        "kind": QString(kind_str),
-                        "isManifest": TRUE_VALUE,
-                        "manifestType": QString(m_type_str),
-                    }
+            case ast.FieldSig() if sig.name:
+                val_sym = iface_scope.lookup_value_local(sig.name)
+                val_t = val_sym.type_val if val_sym else None
+                sig_str = format_type_for_qi(val_t) if val_t else ""
+                is_poly = isinstance(val_t, QAllType)
+                value_records.append(
+                    QRecord(
+                        {
+                            "name": QString(sig.name),
+                            "typeSig": QString(sig_str),
+                            "isPoly": TRUE_VALUE if is_poly else FALSE_VALUE,
+                        }
+                    )
                 )
-            )
-        elif isinstance(sig, ast.FieldSig) and sig.name:
-            val_sym = iface_scope.lookup_value_local(sig.name)
-            val_t = val_sym.type_val if val_sym else None
-            sig_str = format_type_for_qi(val_t) if val_t else ""
-            is_poly = isinstance(val_t, QAllType)
-            value_records.append(
-                QRecord(
-                    {
-                        "name": QString(sig.name),
-                        "typeSig": QString(sig_str),
-                        "isPoly": TRUE_VALUE if is_poly else FALSE_VALUE,
-                    }
-                )
-            )
 
     desc_record = QRecord(
         {

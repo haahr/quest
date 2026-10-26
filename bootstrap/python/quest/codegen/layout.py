@@ -437,69 +437,71 @@ def _printed_parts(node: Any) -> list[Any]:
     def framed(head: str, items: Any) -> list[Any]:
         return [f"{head} ", *joined(items), " end"] if items else [f"{head} end"]
 
-    if isinstance(node, QExceptionType):
-        return ["Exception"] if node.payload_type is OK_TYPE else ["Exception(", node.payload_type, ")"]
-    if isinstance(node, QTupleField):
-        prefix = "var " if node.is_var else ""
-        return [f"{prefix}{node.name}: " if node.name else f"{prefix}:", node.type_val]
-    if isinstance(node, QTupleTypeFormal):
-        return [f"{node.name}::", node.bound]
-    if isinstance(node, QTupleTypeBinding):
-        bound = ["::", node.bound] if node.bound else []
-        return [f"Let {node.name}", *bound, " = ", node.type_val]
-    if isinstance(node, QTupleType):
-        return framed("Tuple", node.fields)
-    if isinstance(node, QRecordField):
-        return [f"{'var ' if node.is_var else ''}{node.name}: ", node.type_val]
-    if isinstance(node, QRecordType):
-        if node.provenance:
-            return [f"Module '{node.provenance}'"]
-        return framed("Record", node.fields)
-    if isinstance(node, QVariantField):
-        prefix = "var " if node.is_var else ""
-        return [f"{prefix}{node.name}: ", node.type_val] if node.type_val else [f"{prefix}{node.name}"]
-    if isinstance(node, QVariantType):
-        return framed("Variant", node.variants)
-    if isinstance(node, QOptionField):
-        return [f"{node.name} with ", node.payload_type] if node.payload_type else [node.name]
-    if isinstance(node, QOptionType):
-        return framed("Option", node.options)
-    if isinstance(node, QParam):
-        prefix = "var " if node.is_var else ("out " if node.is_out else "")
-        return [f"{prefix}{node.name}: ", node.type_val]
-    if isinstance(node, QFunType):
-        return ["Fun(", *joined(node.params), "): ", node.result_type]
-    if isinstance(node, QVarType):
-        return ["Var(", node.element_type, ")"]
-    if isinstance(node, QArrayType):
-        return ["Array(", node.element_type, ")"]
-    if isinstance(node, QOutType):
-        return ["Out(", node.element_type, ")"]
-    if isinstance(node, QQuantifier):
-        if isinstance(node.bound, QPowerKind):
-            return [f"{node.name} <: ", node.bound.bound]
-        return [f"{node.name} :: ", node.bound]
-    if isinstance(node, QAllType):
-        return ["All(", *joined(node.quantifiers), ") ", node.body]
-    if isinstance(node, QAutoType):
-        if isinstance(node.kind_bound, QPowerKind):
-            head = [f"Auto {node.type_param} <: ", node.kind_bound.bound, " with "]
-        else:
-            head = [f"Auto {node.type_param} :: ", node.kind_bound, " with "]
-        return [*head, *joined(node.signature), " end"]
-    if isinstance(node, QTypeFormal):
-        return [f"{node.name} :: ", node.bound]
-    if isinstance(node, QTypeFun):
-        return ["Fun(", *joined(node.params), ") ", node.body]
-    if isinstance(node, QTypeApp):
-        return [node.constructor, "(", *joined(node.arguments), ")"]
-    if isinstance(node, QRecType):
-        return [f"Rec({node.var_name} :: ", node.bound, ") ", node.body]
-    if isinstance(node, QPowerKind):
-        return ["<: ", node.bound]
-    if isinstance(node, QAllKind):
-        return [f"ALL({node.param_name} :: ", node.param_kind, ") ", node.result_kind]
-    return [str(node)]
+    match node:
+        case QExceptionType():
+            return ["Exception"] if node.payload_type is OK_TYPE else ["Exception(", node.payload_type, ")"]
+        case QTupleField():
+            prefix = "var " if node.is_var else ""
+            return [f"{prefix}{node.name}: " if node.name else f"{prefix}:", node.type_val]
+        case QTupleTypeFormal():
+            return [f"{node.name}::", node.bound]
+        case QTupleTypeBinding():
+            bound = ["::", node.bound] if node.bound else []
+            return [f"Let {node.name}", *bound, " = ", node.type_val]
+        case QTupleType():
+            return framed("Tuple", node.fields)
+        case QRecordField():
+            return [f"{'var ' if node.is_var else ''}{node.name}: ", node.type_val]
+        case QRecordType():
+            if node.provenance:
+                return [f"Module '{node.provenance}'"]
+            return framed("Record", node.fields)
+        case QVariantField():
+            prefix = "var " if node.is_var else ""
+            return [f"{prefix}{node.name}: ", node.type_val] if node.type_val else [f"{prefix}{node.name}"]
+        case QVariantType():
+            return framed("Variant", node.variants)
+        case QOptionField():
+            return [f"{node.name} with ", node.payload_type] if node.payload_type else [node.name]
+        case QOptionType():
+            return framed("Option", node.options)
+        case QParam():
+            prefix = "var " if node.is_var else ("out " if node.is_out else "")
+            return [f"{prefix}{node.name}: ", node.type_val]
+        case QFunType():
+            return ["Fun(", *joined(node.params), "): ", node.result_type]
+        case QVarType():
+            return ["Var(", node.element_type, ")"]
+        case QArrayType():
+            return ["Array(", node.element_type, ")"]
+        case QOutType():
+            return ["Out(", node.element_type, ")"]
+        case QQuantifier():
+            if isinstance(node.bound, QPowerKind):
+                return [f"{node.name} <: ", node.bound.bound]
+            return [f"{node.name} :: ", node.bound]
+        case QAllType():
+            return ["All(", *joined(node.quantifiers), ") ", node.body]
+        case QAutoType():
+            if isinstance(node.kind_bound, QPowerKind):
+                head = [f"Auto {node.type_param} <: ", node.kind_bound.bound, " with "]
+            else:
+                head = [f"Auto {node.type_param} :: ", node.kind_bound, " with "]
+            return [*head, *joined(node.signature), " end"]
+        case QTypeFormal():
+            return [f"{node.name} :: ", node.bound]
+        case QTypeFun():
+            return ["Fun(", *joined(node.params), ") ", node.body]
+        case QTypeApp():
+            return [node.constructor, "(", *joined(node.arguments), ")"]
+        case QRecType():
+            return [f"Rec({node.var_name} :: ", node.bound, ") ", node.body]
+        case QPowerKind():
+            return ["<: ", node.bound]
+        case QAllKind():
+            return [f"ALL({node.param_name} :: ", node.param_kind, ") ", node.result_kind]
+        case _:
+            return [str(node)]
 
 
 def _printed_uncached(node: Any) -> tuple[int, str]:

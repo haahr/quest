@@ -98,18 +98,19 @@ def package_text(t: QType) -> Optional[str]:
         return None
     parts: list[str] = []
     for comp in bare.components:
-        if isinstance(comp, QTupleTypeFormal):
-            parts.append(f"<Hidden>::{comp.bound}")
-        elif isinstance(comp, QTupleTypeBinding):
-            parts.append(f"Let {comp.name} = {comp.type_val}")
-        elif isinstance(comp, QTupleField):
-            if isinstance(comp.type_val, (QPathType, QTypeVar)):
-                elem = "<hidden>"
-            elif isinstance(comp.type_val, (QFunType, QAllType)):
-                elem = "<fun>"
-            else:
-                elem = "<val>"
-            parts.append(f"{comp.name}={elem}" if comp.name else elem)
+        match comp:
+            case QTupleTypeFormal():
+                parts.append(f"<Hidden>::{comp.bound}")
+            case QTupleTypeBinding():
+                parts.append(f"Let {comp.name} = {comp.type_val}")
+            case QTupleField():
+                if isinstance(comp.type_val, (QPathType, QTypeVar)):
+                    elem = "<hidden>"
+                elif isinstance(comp.type_val, (QFunType, QAllType)):
+                    elem = "<fun>"
+                else:
+                    elem = "<val>"
+                parts.append(f"{comp.name}={elem}" if comp.name else elem)
     return f"tuple {' '.join(parts)} end" if parts else "tuple end"
 
 
@@ -119,12 +120,13 @@ def tuple_type_components(t: QTupleType) -> list[tuple[int, str]]:
     components: list[tuple[int, str]] = []
     position = 0
     for comp in t.components:
-        if isinstance(comp, QTupleTypeFormal):
-            components.append((position, f"<Hidden>::{comp.bound}"))
-        elif isinstance(comp, QTupleTypeBinding):
-            components.append((position, f"Let {comp.name} = {comp.type_val}"))
-        else:
-            position += 1
+        match comp:
+            case QTupleTypeFormal():
+                components.append((position, f"<Hidden>::{comp.bound}"))
+            case QTupleTypeBinding():
+                components.append((position, f"Let {comp.name} = {comp.type_val}"))
+            case _:
+                position += 1
     return components
 
 
@@ -157,14 +159,16 @@ def echo_children(t: QType) -> dict[str, QType]:
     variants' cases by name, and an array's elements by "". A recursive type's are its unfolding's (echo_head); a
     type application has none here: its unfolding is described by its shared descriptor."""
     t = echo_head(t)
-    if isinstance(t, QTupleType):
-        return {str(i): f.type_val for i, f in enumerate(t.value_fields)}
-    if isinstance(t, QRecordType):
-        return {f.name: f.type_val for f in t.fields}
-    if isinstance(t, QArrayType):
-        return {"": t.element_type}
-    if isinstance(t, QOptionType):
-        return {o.name: o.payload_type for o in t.options if o.payload_type is not None}
-    if isinstance(t, QVariantType):
-        return {v.name: v.type_val for v in t.variants if v.type_val is not None}
-    return {}
+    match t:
+        case QTupleType():
+            return {str(i): f.type_val for i, f in enumerate(t.value_fields)}
+        case QRecordType():
+            return {f.name: f.type_val for f in t.fields}
+        case QArrayType():
+            return {"": t.element_type}
+        case QOptionType():
+            return {o.name: o.payload_type for o in t.options if o.payload_type is not None}
+        case QVariantType():
+            return {v.name: v.type_val for v in t.variants if v.type_val is not None}
+        case _:
+            return {}
