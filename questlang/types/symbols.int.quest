@@ -1,0 +1,126 @@
+(* Quest Self-Hosted Compiler: Symbols and Lexical Scopes Interface
+ *
+ * The symbols and scopes of bootstrap/python/quest/types/symbols.py. Symbols name values, types, and kinds; a scope
+ * holds the symbols declared in it, in declaration order. Symbol ids are unique for the life of the process
+ * (allocateSymbolId), and every declared type and kind symbol is also found by its id, globally. This module is below
+ * subtyping and the unit graph, which need symbols and scopes but not the type-checking environment (types/env),
+ * which holds them. *)
+
+interface Symbols
+import
+    questlang/types/model : questlang/types/Model
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    (* Raised when a type symbol that has a definition is given another *)
+    redefined: Exception(String)
+
+    (* =========================================================================
+     * 1. Symbols
+     * ========================================================================= *)
+
+    (* A value: x : Type. Its id, if not given, comes from a counter of value symbols of its own. *)
+    Def ValueSymbol = Tuple
+        name: String
+        type: model.Type
+        isVar: Bool
+        isOut: Bool
+        isParam: Bool
+        functionDepth: Int
+        symbolId: Int
+    end
+
+    (* A type: X :: Kind [= Definition]. A definition may be supplied after declaration (defineType) but never
+     * replaced: a symbol id means one thing for the life of the process. *)
+    Def TypeSymbol = Tuple
+        name: String
+        symbolId: Int
+        kind: model.Kind
+        var definition: maybe.T(model.Type)
+    end
+
+    (* A kind: K = Kind *)
+    Def KindSymbol = Tuple name: String symbolId: Int kind: model.Kind end
+
+    Def Symbol = Option
+        valueSymbol with sym: ValueSymbol end
+        typeSymbol with sym: TypeSymbol end
+        kindSymbol with sym: KindSymbol end
+    end
+
+    (* A value symbol with the counter's next id if symbolId is 0 *)
+    newValueSymbol(
+        name: String type: model.Type isVar: Bool isOut: Bool isParam: Bool functionDepth: Int symbolId: Int
+    ): ValueSymbol
+    (* A plain value symbol: not var, out, or a parameter, at function depth 0 *)
+    valueSymbol(name: String type: model.Type): ValueSymbol
+
+    newTypeSymbol(name: String symbolId: Int kind: model.Kind definition: maybe.T(model.Type)): TypeSymbol
+    (* Supplies a type symbol's definition (the bootstrap's assignment to TypeSymbol.definition); raises redefined if
+     * it has another *)
+    defineType(sym: TypeSymbol definition: model.Type): Ok
+    isAbstract(sym: TypeSymbol): Bool
+
+    newKindSymbol(name: String symbolId: Int kind: model.Kind): KindSymbol
+
+    symbolName(s: Symbol): String
+
+    (* =========================================================================
+     * 2. Scopes
+     * ========================================================================= *)
+
+    Def Rec Scope = Tuple
+        parent: maybe.T(Scope)
+        name: String
+        var moduleName: maybe.T(String)
+        var declarations: vector.T(Symbol)
+        var values: hashMap.T(String ValueSymbol)
+        var types: hashMap.T(String TypeSymbol)
+        var typesById: hashMap.T(Int TypeSymbol)
+        var kinds: hashMap.T(String KindSymbol)
+        var kindsById: hashMap.T(Int KindSymbol)
+    end
+
+    newScope(parent: maybe.T(Scope) name: String): Scope
+
+    declareValue(s: Scope sym: ValueSymbol): ValueSymbol
+    declareType(s: Scope sym: TypeSymbol): TypeSymbol
+    declareTypeVariable(
+        s: Scope name: String symbolId: Int kind: model.Kind definition: maybe.T(model.Type)
+    ): TypeSymbol
+    declareKind(s: Scope sym: KindSymbol): KindSymbol
+
+    lookupValueLocal(s: Scope name: String): maybe.T(ValueSymbol)
+    lookupTypeLocal(s: Scope name: String): maybe.T(TypeSymbol)
+    lookupTypeByIdLocal(s: Scope symbolId: Int): maybe.T(TypeSymbol)
+    lookupKindLocal(s: Scope name: String): maybe.T(KindSymbol)
+    lookupKindByIdLocal(s: Scope symbolId: Int): maybe.T(KindSymbol)
+
+    (* Through the scope and its parents *)
+    lookupValue(s: Scope name: String): maybe.T(ValueSymbol)
+    lookupType(s: Scope name: String): maybe.T(TypeSymbol)
+    lookupTypeById(s: Scope symbolId: Int): maybe.T(TypeSymbol)
+    lookupKind(s: Scope name: String): maybe.T(KindSymbol)
+    lookupKindById(s: Scope symbolId: Int): maybe.T(KindSymbol)
+
+    (* =========================================================================
+     * 3. Symbol ids and meanings
+     * ========================================================================= *)
+
+    (* A globally unique positive symbol id *)
+    allocateSymbolId(): Int
+
+    (* Every declared type or kind symbol of an id, which a lookup that finds none, or a type without a definition,
+     * records as seen undefined (the bootstrap's Environment.lookup_type_by_id and lookup_kind_by_id) *)
+    typeSymbolById(symbolId: Int): maybe.T(TypeSymbol)
+    kindSymbolById(symbolId: Int): maybe.T(KindSymbol)
+
+    (* The definitions and kinds of symbols by id, globally, for lazy evaluation *)
+    lookup: model.Lookup
+
+    (* The number of times a symbol id gained a meaning after some lookup saw it without one: judgments cached about
+     * types (the subtype cache) go stale only then *)
+    meaningsChanged(): Ok
+    meaningGeneration(): Int
+end

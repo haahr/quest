@@ -1,0 +1,260 @@
+(* Quest Self-Hosted Compiler: Symbols and Lexical Scopes Implementation *)
+
+module symbols : Symbols
+import
+    questlang/types/model : questlang/types/Model
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    let redefined: Exception(String) = exception redefined: String end
+
+    (* =========================================================================
+     * 1. Symbols
+     * ========================================================================= *)
+
+    Let ValueSymbol = Tuple
+        name: String
+        type: model.Type
+        isVar: Bool
+        isOut: Bool
+        isParam: Bool
+        functionDepth: Int
+        symbolId: Int
+    end
+
+    Let TypeSymbol = Tuple
+        name: String
+        symbolId: Int
+        kind: model.Kind
+        var definition: maybe.T(model.Type)
+    end
+
+    Let KindSymbol = Tuple name: String symbolId: Int kind: model.Kind end
+
+    Let Symbol = Option
+        valueSymbol with sym: ValueSymbol end
+        typeSymbol with sym: TypeSymbol end
+        kindSymbol with sym: KindSymbol end
+    end
+
+    Let Counters = Tuple var values: Int var symbols: Int var generation: Int end
+    let counters: Counters = tuple let var values = 0 let var symbols = 0 let var generation = 0 end
+
+    let intEqual(a: Int b: Int): Bool = a is b
+
+    (* Every declared type and kind symbol, by id, and the ids some lookup found undeclared (or, for types, without a
+     * definition): meanings only become more defined, so cached judgments go stale only when one of these gains one *)
+    let typesById = hashMap.new(:Int :TypeSymbol intEqual hash.int)
+    let kindsById = hashMap.new(:Int :KindSymbol intEqual hash.int)
+    let typeIdsSeenUndefined = hashMap.new(:Int :Bool intEqual hash.int)
+    let kindIdsSeenUndefined = hashMap.new(:Int :Bool intEqual hash.int)
+
+    let meaningsChanged(): Ok = counters.generation := counters.generation + 1
+    let meaningGeneration(): Int = counters.generation
+
+    let newValueSymbol(
+        name: String type: model.Type isVar: Bool isOut: Bool isParam: Bool functionDepth: Int symbolId: Int
+    ): ValueSymbol =
+        begin
+            let id = if symbolId is 0 then
+                counters.values := counters.values + 1
+                counters.values
+            else
+                symbolId
+            end
+            tuple
+                let name = name
+                let type = type
+                let isVar = isVar
+                let isOut = isOut
+                let isParam = isParam
+                let functionDepth = functionDepth
+                let symbolId = id
+            end
+        end
+
+    let valueSymbol(name: String type: model.Type): ValueSymbol = newValueSymbol(name type false false false 0 0)
+
+    let newTypeSymbol(name: String symbolId: Int kind: model.Kind definition: maybe.T(model.Type)): TypeSymbol =
+        tuple let name = name let symbolId = symbolId let kind = kind let var definition = definition end
+
+    let defineType(sym: TypeSymbol definition: model.Type): Ok =
+        if maybe.isSome(:model.Type sym.definition) then
+            if not(model.same(maybe.unwrap(:model.Type sym.definition) definition)) then
+                raise redefined with "Type symbol '" <> sym.name <> "' is already defined" end
+            end
+        else
+            if hashMap.contains(:Int :Bool typeIdsSeenUndefined sym.symbolId) then meaningsChanged() end
+            sym.definition := maybe.some(:model.Type definition)
+        end
+
+    let isAbstract(sym: TypeSymbol): Bool = maybe.isNone(:model.Type sym.definition)
+
+    let newKindSymbol(name: String symbolId: Int kind: model.Kind): KindSymbol =
+        tuple let name = name let symbolId = symbolId let kind = kind end
+
+    let symbolName(s: Symbol): String =
+        case s
+            when valueSymbol with x then x.sym.name
+            when typeSymbol with x then x.sym.name
+            when kindSymbol with x then x.sym.name
+        end
+
+    (* =========================================================================
+     * 2. Scopes
+     * ========================================================================= *)
+
+    Let Rec Scope = Tuple
+        parent: maybe.T(Scope)
+        name: String
+        var moduleName: maybe.T(String)
+        var declarations: vector.T(Symbol)
+        var values: hashMap.T(String ValueSymbol)
+        var types: hashMap.T(String TypeSymbol)
+        var typesById: hashMap.T(Int TypeSymbol)
+        var kinds: hashMap.T(String KindSymbol)
+        var kindsById: hashMap.T(Int KindSymbol)
+    end
+
+    let newScope(parent: maybe.T(Scope) name: String): Scope =
+        tuple
+            let parent = parent
+            let name = name
+            let var moduleName = maybe.none(:String)
+            let var declarations = vector.new(:Symbol)
+            let var values = hashMap.new(:String :ValueSymbol stringOp.equal hash.string)
+            let var types = hashMap.new(:String :TypeSymbol stringOp.equal hash.string)
+            let var typesById = hashMap.new(:Int :TypeSymbol intEqual hash.int)
+            let var kinds = hashMap.new(:String :KindSymbol stringOp.equal hash.string)
+            let var kindsById = hashMap.new(:Int :KindSymbol intEqual hash.int)
+        end
+
+    let declareValue(s: Scope sym: ValueSymbol): ValueSymbol =
+        begin
+            vector.append(:Symbol s.declarations option valueSymbol of Symbol with let sym = sym end)
+            hashMap.insert(:String :ValueSymbol s.values sym.name sym)
+            sym
+        end
+
+    let sameDefinition(a: maybe.T(model.Type) b: maybe.T(model.Type)): Bool =
+        if maybe.isSome(:model.Type a) andif maybe.isSome(:model.Type b) then
+            model.same(maybe.unwrap(:model.Type a) maybe.unwrap(:model.Type b))
+        else
+            maybe.isNone(:model.Type a) andif maybe.isNone(:model.Type b)
+        end
+
+    let declareType(s: Scope sym: TypeSymbol): TypeSymbol =
+        begin
+            vector.append(:Symbol s.declarations option typeSymbol of Symbol with let sym = sym end)
+            hashMap.insert(:String :TypeSymbol s.types sym.name sym)
+            hashMap.insert(:Int :TypeSymbol s.typesById sym.symbolId sym)
+            let previous = hashMap.get(:Int :TypeSymbol typesById sym.symbolId)
+            if maybe.isSome(:model.Type sym.definition) andif
+                {hashMap.contains(:Int :Bool typeIdsSeenUndefined sym.symbolId) orif
+                    {maybe.isSome(:TypeSymbol previous) andif
+                        not(sameDefinition(maybe.unwrap(:TypeSymbol previous).definition sym.definition))}} then
+                meaningsChanged()
+            end
+            hashMap.insert(:Int :TypeSymbol typesById sym.symbolId sym)
+            sym
+        end
+
+    let declareTypeVariable(
+        s: Scope name: String symbolId: Int kind: model.Kind definition: maybe.T(model.Type)
+    ): TypeSymbol =
+        declareType(s newTypeSymbol(name symbolId kind definition))
+
+    let declareKind(s: Scope sym: KindSymbol): KindSymbol =
+        begin
+            vector.append(:Symbol s.declarations option kindSymbol of Symbol with let sym = sym end)
+            hashMap.insert(:String :KindSymbol s.kinds sym.name sym)
+            hashMap.insert(:Int :KindSymbol s.kindsById sym.symbolId sym)
+            let previous = hashMap.get(:Int :KindSymbol kindsById sym.symbolId)
+            if hashMap.contains(:Int :Bool kindIdsSeenUndefined sym.symbolId) orif
+                {maybe.isSome(:KindSymbol previous) andif
+                    not(model.sameKind(maybe.unwrap(:KindSymbol previous).kind sym.kind))} then
+                meaningsChanged()
+            end
+            hashMap.insert(:Int :KindSymbol kindsById sym.symbolId sym)
+            sym
+        end
+
+    let lookupValueLocal(s: Scope name: String): maybe.T(ValueSymbol) = hashMap.get(:String :ValueSymbol s.values name)
+    let lookupTypeLocal(s: Scope name: String): maybe.T(TypeSymbol) = hashMap.get(:String :TypeSymbol s.types name)
+    let lookupTypeByIdLocal(s: Scope symbolId: Int): maybe.T(TypeSymbol) =
+        hashMap.get(:Int :TypeSymbol s.typesById symbolId)
+    let lookupKindLocal(s: Scope name: String): maybe.T(KindSymbol) = hashMap.get(:String :KindSymbol s.kinds name)
+    let lookupKindByIdLocal(s: Scope symbolId: Int): maybe.T(KindSymbol) =
+        hashMap.get(:Int :KindSymbol s.kindsById symbolId)
+
+    (* A lookup through a scope and its parents *)
+    let chain(A::TYPE K::TYPE)(local: All(s: Scope key: K) maybe.T(A)): All(s: Scope key: K) maybe.T(A) =
+        begin
+            let rec find(s: Scope key: K): maybe.T(A) =
+                begin
+                    let found = local(s key)
+                    if maybe.isSome(:A found) orif maybe.isNone(:Scope s.parent) then found
+                    else find(maybe.unwrap(:Scope s.parent) key) end
+                end
+            find
+        end
+
+    let lookupValue(s: Scope name: String): maybe.T(ValueSymbol) = chain(:ValueSymbol :String)(lookupValueLocal)(s name)
+    let lookupType(s: Scope name: String): maybe.T(TypeSymbol) = chain(:TypeSymbol :String)(lookupTypeLocal)(s name)
+    let lookupTypeById(s: Scope symbolId: Int): maybe.T(TypeSymbol) =
+        chain(:TypeSymbol :Int)(lookupTypeByIdLocal)(s symbolId)
+    let lookupKind(s: Scope name: String): maybe.T(KindSymbol) = chain(:KindSymbol :String)(lookupKindLocal)(s name)
+    let lookupKindById(s: Scope symbolId: Int): maybe.T(KindSymbol) =
+        chain(:KindSymbol :Int)(lookupKindByIdLocal)(s symbolId)
+
+    (* =========================================================================
+     * 3. Symbol ids and meanings
+     * ========================================================================= *)
+
+    let allocateSymbolId(): Int =
+        begin
+            counters.symbols := counters.symbols + 1
+            counters.symbols
+        end
+
+    let typeSymbolById(symbolId: Int): maybe.T(TypeSymbol) =
+        begin
+            let sym = hashMap.get(:Int :TypeSymbol typesById symbolId)
+            if maybe.isNone(:TypeSymbol sym) orif isAbstract(maybe.unwrap(:TypeSymbol sym)) then
+                hashMap.insert(:Int :Bool typeIdsSeenUndefined symbolId true)
+            end
+            sym
+        end
+
+    let kindSymbolById(symbolId: Int): maybe.T(KindSymbol) =
+        begin
+            let sym = hashMap.get(:Int :KindSymbol kindsById symbolId)
+            if maybe.isNone(:KindSymbol sym) then hashMap.insert(:Int :Bool kindIdsSeenUndefined symbolId true) end
+            sym
+        end
+
+    let lookup: model.Lookup =
+        tuple
+            let typeDefinition = fun(symbolId: Int): maybe.T(model.Type)
+                begin
+                    let sym = typeSymbolById(symbolId)
+                    if maybe.isSome(:TypeSymbol sym) then
+                        maybe.unwrap(:TypeSymbol sym).definition
+                    else
+                        maybe.none(:model.Type)
+                    end
+                end
+            let kindOf = fun(symbolId: Int): maybe.T(model.Kind)
+                begin
+                    let sym = kindSymbolById(symbolId)
+                    if maybe.isSome(:KindSymbol sym) then
+                        maybe.some(:model.Kind maybe.unwrap(:KindSymbol sym).kind)
+                    else
+                        maybe.none(:model.Kind)
+                    end
+                end
+        end
+end

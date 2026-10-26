@@ -1,0 +1,522 @@
+(* Quest Self-Hosted Compiler: Type Printers Implementation *)
+
+module dump : Dump
+import
+    questlang/types/model : questlang/types/Model
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Let Type = model.Type
+    Let Kind = model.Kind
+
+    let joined(parts: vector.T(String)): String = strutil.join(" " parts)
+
+    let hasId(ids: Array(Int) id: Int): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent ids - 1} do if ids[i] is id then found := true end end
+            found
+        end
+
+    let withIds(ids: Array(Int) more: vector.T(Int)): Array(Int) =
+        begin
+            let all = vector.fromArray(:Int ids)
+            for i = 0 upto {vector.length(:Int more) - 1} do vector.append(:Int all vector.get(:Int more i)) end
+            vector.toArray(:Int all)
+        end
+
+    (* =========================================================================
+     * 1. The compact formatter (format_type_compact)
+     * ========================================================================= *)
+
+    let rec compact(t: Type visited: Array(Int) depth: Int): String =
+        if model.same(t model.intType) then "Int"
+        elsif model.same(t model.realType) then "Real"
+        elsif model.same(t model.boolType) then "Bool"
+        elsif model.same(t model.charType) then "Char"
+        elsif model.same(t model.stringType) then "String"
+        elsif model.same(t model.okType) then "Ok"
+        elsif model.same(t model.dynamicType) then "Dynamic"
+        elsif model.same(t model.bottomType) then "Bottom"
+        elsif model.same(t model.exceptionType) then "Exception"
+        else
+            case t.form
+                when typeAlias with x then x.name
+                when typeVariable with x then x.name
+                when typeAbstract with x then x.name
+                when typePath with x then x.rootName <> "." <> x.fieldName
+                when typeExternal with x then
+                    if stringOp.length(x.name) > 0 then x.name else "external \"" <> x.cType <> "\"" end
+                when typeArray with x then "Array(" <> compact(x.element visited depth) <> ")"
+                when typeVar with x then "Var(" <> compact(x.element visited depth) <> ")"
+                when typeOut with x then "Out(" <> compact(x.element visited depth) <> ")"
+                when typeApp with x then
+                    begin
+                        let args = vector.new(:String)
+                        for i = 0 upto {extent x.arguments - 1} do
+                            vector.append(:String args compact(x.arguments[i] visited depth))
+                        end
+                        compact(x.constructor visited depth) <> "(" <> joined(args) <> ")"
+                    end
+                when typeOperator with x then
+                    if depth > 2 then
+                        "Fun(...)"
+                    else
+                        let params = vector.new(:String)
+                        for i = 0 upto {extent x.params - 1} do
+                            let bound = compactKind(x.params[i].bound visited {depth + 1})
+                            vector.append(:String params x.params[i].name <> " :: " <> bound)
+                        end
+                        "Fun(" <> joined(params) <> ") " <> compact(x.body visited {depth + 1})
+                    end
+                when typeFun with x then
+                    if depth > 3 then
+                        "Fun(...)"
+                    else
+                        let params = vector.new(:String)
+                        for i = 0 upto {extent x.params - 1} do
+                            let p = x.params[i]
+                            let prefix = if p.isVar then "var " elsif p.isOut then "out " else "" end
+                            let ts = compact(p.type visited {depth + 1})
+                            vector.append(:String params
+                                if stringOp.length(p.name) > 0 then prefix <> p.name <> ": " <> ts else ts end)
+                        end
+                        "Fun(" <> joined(params) <> "): " <> compact(x.result visited {depth + 1})
+                    end
+                when typeAll with x then
+                    if depth > 3 then
+                        "All(...) ..."
+                    else
+                        let quantifiers = vector.new(:String)
+                        for i = 0 upto {extent x.quantifiers - 1} do
+                            vector.append(:String quantifiers model.showQuantifier(x.quantifiers[i]))
+                        end
+                        "All(" <> joined(quantifiers) <> ") " <> compact(x.body visited {depth + 1})
+                    end
+                when typeRecord with x then
+                    if maybe.isSome(:String x.provenance) then
+                        "Module '" <> maybe.unwrap(:String x.provenance) <> "'"
+                    elsif depth > 3 then
+                        "Record ... end"
+                    else
+                        let fields = vector.new(:String)
+                        for i = 0 upto {extent x.fields - 1} do
+                            let f = x.fields[i]
+                            let prefix = if f.isVar then "var " else "" end
+                            let ts = compact(f.type visited {depth + 1})
+                            vector.append(:String fields prefix <> f.name <> ": " <> ts)
+                        end
+                        if vector.empty(:String fields) then "Record end" else "Record " <> joined(fields) <> " end" end
+                    end
+                when typeTuple with x then
+                    if depth > 3 then
+                        "Tuple ... end"
+                    else
+                        let parts = vector.new(:String)
+                        for i = 0 upto {extent x.fields - 1} do
+                            vector.append(:String parts case x.fields[i]
+                                when tupleField with f then
+                                    begin
+                                        let prefix = if f.isVar then "var " else "" end
+                                        let ts = compact(f.type visited {depth + 1})
+                                        let name = maybe.unwrapOr(:String f.name "")
+                                        if stringOp.length(name) > 0 then
+                                            prefix <> name <> ": " <> ts
+                                        else
+                                            prefix <> ts
+                                        end
+                                    end
+                                when tupleTypeBinding with f then
+                                    "Let " <> f.name <> " = " <> compact(f.type visited {depth + 1})
+                                when tupleTypeFormal with f then
+                                    "Type " <> f.name <> " :: " <> compactKind(f.bound visited {depth + 1})
+                            end)
+                        end
+                        if vector.empty(:String parts) then "Tuple end" else "Tuple " <> joined(parts) <> " end" end
+                    end
+                when typeVariant with x then
+                    if depth > 3 then
+                        "Variant ... end"
+                    else
+                        let parts = vector.new(:String)
+                        for i = 0 upto {extent x.variants - 1} do
+                            let v = x.variants[i]
+                            let payload = maybe.unwrapOr(:Type v.type model.okType)
+                            vector.append(:String parts if not(model.same(payload model.okType)) then
+                                {if v.isVar then "var " else "" end} <> v.name <> ": " <>
+                                    compact(payload visited {depth + 1})
+                            else
+                                v.name
+                            end)
+                        end
+                        if vector.empty(:String parts) then "Variant end" else "Variant " <> joined(parts) <> " end" end
+                    end
+                when typeOption with x then
+                    if depth > 3 then
+                        "Option ... end"
+                    else
+                        let parts = vector.new(:String)
+                        for i = 0 upto {extent x.options - 1} do
+                            let o = x.options[i]
+                            vector.append(:String parts if maybe.isSome(:Type o.payload) then
+                                o.name <> " with " <> compact(maybe.unwrap(:Type o.payload) visited {depth + 1})
+                            else
+                                o.name
+                            end)
+                        end
+                        if vector.empty(:String parts) then "Option end" else "Option " <> joined(parts) <> " end" end
+                    end
+                when typeRec with x then
+                    if hasId(visited x.symbolId) orif {depth > 1} then
+                        x.varName
+                    else
+                        let seen = withIds(visited vector.fromArray(:Int array of x.symbolId end))
+                        "Rec(" <> x.varName <> " :: " <> compactKind(x.bound seen {depth + 1}) <> ") " <>
+                            compact(x.body seen {depth + 1})
+                    end
+                when typeRecGroup with x then
+                    begin
+                        let b = x.bindings[x.activeIndex]
+                        if hasId(visited b.symbolId) orif {depth > 1} then
+                            b.name
+                        else
+                            let ids = vector.new(:Int)
+                            for i = 0 upto {extent x.bindings - 1} do vector.append(:Int ids x.bindings[i].symbolId) end
+                            let seen = withIds(visited ids)
+                            "Rec(" <> b.name <> " :: " <> compactKind(b.bound seen {depth + 1}) <> ") " <>
+                                compact(b.body seen {depth + 1})
+                        end
+                    end
+                else model.show(t)
+            end
+        end
+    and compactKind(k: Kind visited: Array(Int) depth: Int): String =
+        case k.form
+            when kindType then "TYPE"
+            when kindPower with x then "POWER(" <> compact(x.bound visited depth) <> ")"
+            when kindAll with x then
+                "All(" <> x.paramName <> " :: " <> compactKind(x.paramKind visited depth) <> ") " <>
+                    compactKind(x.resultKind visited depth)
+            else model.showKind(k)
+        end
+
+    let formatCompact(t: Type): String = compact(t array of :Int end 0)
+    let formatKindCompact(k: Kind): String = compactKind(k array of :Int end 0)
+
+    (* =========================================================================
+     * 2. The canonical dump (qtype_dump)
+     * ========================================================================= *)
+
+    let className(t: Type): String =
+        case t.form
+            when typeInt then "QIntType"
+            when typeReal then "QRealType"
+            when typeBool then "QBoolType"
+            when typeChar then "QCharType"
+            when typeString then "QStringType"
+            when typeOk then "QOkType"
+            when typeBottom then "QBottomType"
+            when typeException then "QExceptionType"
+            when typeExternal then "QExternalType"
+            when typeTuple then "QTupleType"
+            when typeRecord then "QRecordType"
+            when typeVariant then "QVariantType"
+            when typeOption then "QOptionType"
+            when typeFun then "QFunType"
+            when typeVar then "QVarType"
+            when typeArray then "QArrayType"
+            when typeOut then "QOutType"
+            when typeAll then "QAllType"
+            when typeAuto then "QAutoType"
+            when typeOperator then "QTypeFun"
+            when typeApp then "QTypeApp"
+            when typeRec then "QRecType"
+            when typeRecGroup then "QRecGroupType"
+            when typeVariable then "QTypeVar"
+            when typeAbstract then "QAbstractType"
+            when typePath then "QPathType"
+            when typeAlias then "QAliasType"
+            when typeMeta then "QTypeMeta"
+        end
+
+    let pad(indent: Int): String = stringBuilder.new().repeat(' ' {2 * indent}).toString()
+
+    let joinLines(lines: vector.T(String)): String = strutil.join("\n" lines)
+
+    let rec typeDump(t: Type indent: Int): String =
+        begin
+            let p = pad(indent)
+            case t.form
+                when typeInt then "(QIntType)"
+                when typeReal then "(QRealType)"
+                when typeBool then "(QBoolType)"
+                when typeChar then "(QCharType)"
+                when typeString then "(QStringType)"
+                when typeOk then "(QOkType)"
+                when typeException then "(QExceptionType)"
+                when typeVariable with x then "(QTypeVar '" <> x.name <> "' #" <> conv.int(x.symbolId) <> ")"
+                when typeAbstract with x then "(QAbstractType '" <> x.name <> "' #" <> conv.int(x.symbolId) <> ")"
+                when typePath with x then
+                    "(QPathType '" <> x.rootName <> "." <> x.fieldName <> "' #" <> conv.int(x.rootSymbolId) <> ")"
+                when typeTuple with x then
+                    if extent x.fields is 0 then
+                        "(QTupleType)"
+                    else
+                        let lines = vector.new(:String)
+                        for i = 0 upto {extent x.fields - 1} do
+                            vector.append(:String lines case x.fields[i]
+                                when tupleTypeFormal with f then
+                                    p <> "    (QTupleTypeFormal '" <> f.name <> "' #" <> conv.int(f.symbolId) <>
+                                        " :: " <> model.showKind(f.bound) <> ")"
+                                when tupleField with f then
+                                    p <> "    (QTupleField " <> maybe.unwrapOr(:String f.name "") <>
+                                        {if f.isVar then " :var" else "" end} <> " " <> typeDump(f.type {indent + 2}) <>
+                                        ")"
+                                when tupleTypeBinding with f then
+                                    p <> "    (QTupleTypeBinding '" <> f.name <> "' = " <>
+                                        typeDump(f.type {indent + 2}) <> ")"
+                            end)
+                        end
+                        "(QTupleType\n" <> p <> "  :fields (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
+                    end
+                when typeRecord with x then
+                    if extent x.fields is 0 then
+                        "(QRecordType)"
+                    else
+                        let lines = vector.new(:String)
+                        for i = 0 upto {extent x.fields - 1} do
+                            let f = x.fields[i]
+                            vector.append(:String lines p <> "    (QRecordField '" <> f.name <> "'" <>
+                                {if f.isVar then " :var" else "" end} <> " " <> typeDump(f.type {indent + 2}) <> ")")
+                        end
+                        "(QRecordType\n" <> p <> "  :fields (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
+                    end
+                when typeVariant with x then
+                    if extent x.variants is 0 then
+                        "(QVariantType)"
+                    else
+                        let lines = vector.new(:String)
+                        for i = 0 upto {extent x.variants - 1} do
+                            let v = x.variants[i]
+                            let payload = if maybe.isSome(:Type v.type) then
+                                " " <> typeDump(maybe.unwrap(:Type v.type) {indent + 2})
+                            else
+                                ""
+                            end
+                            vector.append(:String lines p <> "    (QVariantField '" <> v.name <> "'" <> payload <> ")")
+                        end
+                        "(QVariantType\n" <> p <> "  :variants (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
+                    end
+                when typeOption with x then
+                    if extent x.options is 0 then
+                        "(QOptionType)"
+                    else
+                        let lines = vector.new(:String)
+                        for i = 0 upto {extent x.options - 1} do
+                            let o = x.options[i]
+                            let payload = if maybe.isSome(:Type o.payload) then
+                                " " <> typeDump(maybe.unwrap(:Type o.payload) {indent + 2})
+                            else
+                                ""
+                            end
+                            vector.append(:String lines p <> "    (QOptionField '" <> o.name <> "'" <> payload <> ")")
+                        end
+                        "(QOptionType\n" <> p <> "  :options (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
+                    end
+                when typeFun with x then
+                    begin
+                        let lines = vector.new(:String)
+                        for i = 0 upto {extent x.params - 1} do
+                            let q = x.params[i]
+                            let modes = {if q.isVar then " :var" else "" end} <> {if q.isOut then " :out" else "" end}
+                            vector.append(:String lines
+                                p <> "    (QParam '" <> q.name <> "'" <> modes <> " " <>
+                                    typeDump(q.type {indent + 2}) <> ")")
+                        end
+                        "(QFunType\n" <> p <> "  :params (\n" <> joinLines(lines) <> "\n" <> p <> "  )\n" <> p <>
+                            "  :result " <> typeDump(x.result {indent + 1}) <> ")"
+                    end
+                when typeVar with x then "(QVarType\n" <> p <> "  :element " <> typeDump(x.element {indent + 1}) <> ")"
+                when typeArray with x then
+                    "(QArrayType\n" <> p <> "  :element " <> typeDump(x.element {indent + 1}) <> ")"
+                when typeOut with x then "(QOutType\n" <> p <> "  :element " <> typeDump(x.element {indent + 1}) <> ")"
+                when typeAll with x then
+                    begin
+                        let lines = vector.new(:String)
+                        for i = 0 upto {extent x.quantifiers - 1} do
+                            let q = x.quantifiers[i]
+                            vector.append(:String lines p <> "    (QQuantifier '" <> q.name <> "' #" <>
+                                conv.int(q.symbolId) <> " " <> kindDump(q.bound {indent + 2}) <> ")")
+                        end
+                        "(QAllType\n" <> p <> "  :quantifiers (\n" <> joinLines(lines) <> "\n" <> p <> "  )\n" <> p <>
+                            "  :body " <> typeDump(x.body {indent + 1}) <> ")"
+                    end
+                when typeApp with x then
+                    begin
+                        let lines = vector.new(:String)
+                        for i = 0 upto {extent x.arguments - 1} do
+                            vector.append(:String lines p <> "    " <> typeDump(x.arguments[i] {indent + 2}))
+                        end
+                        "(QTypeApp\n" <> p <> "  :constructor " <> typeDump(x.constructor {indent + 1}) <> "\n" <> p <>
+                            "  :arguments (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
+                    end
+                when typeRec with x then
+                    "(QRecType '" <> x.varName <> "' #" <> conv.int(x.symbolId) <> "\n" <> p <> "  :bound " <>
+                        kindDump(x.bound {indent + 1}) <> "\n" <> p <> "  :body " <> typeDump(x.body {indent + 1}) <>
+                        ")"
+                when typeRecGroup with x then
+                    begin
+                        let lines = vector.new(:String)
+                        for i = 0 upto {extent x.bindings - 1} do
+                            let b = x.bindings[i]
+                            vector.append(:String lines p <> "    (Binding '" <> b.name <> "' #" <>
+                                conv.int(b.symbolId) <> " " <> kindDump(b.bound {indent + 2}) <> " " <>
+                                typeDump(b.body {indent + 2}) <> ")")
+                        end
+                        "(QRecGroupType\n" <> p <> "  :bindings (\n" <> joinLines(lines) <> "\n" <> p <> "  ))"
+                    end
+                else "(" <> className(t) <> ")"
+            end
+        end
+    and kindDump(k: Kind indent: Int): String =
+        begin
+            let p = pad(indent)
+            case k.form
+                when kindType then "(QTypeKind)"
+                when kindPower with x then "(QPowerKind\n" <> p <> "  :bound " <> typeDump(x.bound {indent + 1}) <> ")"
+                when kindAll with x then
+                    "(QAllKind\n" <> p <> "  :param '" <> x.paramName <> "'\n" <> p <> "  :param_kind " <>
+                        kindDump(x.paramKind {indent + 1}) <> "\n" <> p <> "  :result_kind " <>
+                        kindDump(x.resultKind {indent + 1}) <> ")"
+                when kindVar with x then "(QKindVar '" <> x.name <> "' #" <> conv.int(x.symbolId) <> ")"
+            end
+        end
+
+    (* =========================================================================
+     * 3. Short names (short_type_name)
+     * ========================================================================= *)
+
+    let displayNameLimit = 80
+
+    Let Name = Tuple b: stringBuilder.T var full: Bool end
+
+    let shortTypeName(t: Type): String =
+        begin
+            let name: Name = tuple let b = stringBuilder.new() let var full = false end
+            let emit = fun(text: String): Ok
+                if not(name.full) then
+                    name.b.str(text)
+                    if name.b.length() > displayNameLimit then name.full := true end
+                end
+            let rec walk(x: Type): Ok =
+                if not(name.full) then
+                    let u = model.unalias(model.pruned(x))
+                    case u.form
+                        when typeRecord with r then
+                            begin
+                                emit("Record")
+                                for i = 0 upto {extent r.fields - 1} do
+                                    let f = r.fields[i]
+                                    emit(" " <> {if f.isVar then "var " else "" end} <> f.name <> ": ")
+                                    walk(f.type)
+                                end
+                                emit(" end")
+                            end
+                        when typeTuple with r then
+                            begin
+                                emit("Tuple")
+                                let fields = model.tupleValueFields(r.fields)
+                                for i = 0 upto {extent fields - 1} do
+                                    let f = fields[i]
+                                    let fieldName = maybe.unwrapOr(:String f.name "")
+                                    if stringOp.length(fieldName) > 0 then
+                                        emit(" " <> {if f.isVar then "var " else "" end} <> fieldName <> ": ")
+                                    else
+                                        emit(" :")
+                                    end
+                                    walk(f.type)
+                                end
+                                emit(" end")
+                            end
+                        when typeVariant with r then
+                            begin
+                                emit("Variant")
+                                for i = 0 upto {extent r.variants - 1} do
+                                    emit(" " <> r.variants[i].name)
+                                    if maybe.isSome(:Type r.variants[i].type) then
+                                        emit(": ")
+                                        walk(maybe.unwrap(:Type r.variants[i].type))
+                                    end
+                                end
+                                emit(" end")
+                            end
+                        when typeOption with r then
+                            begin
+                                emit("Option")
+                                for i = 0 upto {extent r.options - 1} do
+                                    emit(" " <> r.options[i].name)
+                                    if maybe.isSome(:Type r.options[i].payload) then
+                                        emit(": ")
+                                        walk(maybe.unwrap(:Type r.options[i].payload))
+                                    end
+                                end
+                                emit(" end")
+                            end
+                        when typeArray with r then begin emit("Array(") walk(r.element) emit(")") end
+                        when typeException with r then begin emit("Exception(") walk(r.payload) emit(")") end
+                        when typeFun with r then
+                            begin
+                                emit("Fun(")
+                                for i = 0 upto {extent r.params - 1} do
+                                    let q = r.params[i]
+                                    let mode = if q.isVar then "var " elsif q.isOut then "out " else "" end
+                                    emit({if i > 0 then " " else "" end} <> mode <> q.name <> ": ")
+                                    walk(q.type)
+                                end
+                                emit(") ")
+                                walk(r.result)
+                            end
+                        when typeAll with r then
+                            begin
+                                let names = vector.new(:String)
+                                for i = 0 upto {extent r.quantifiers - 1} do
+                                    vector.append(:String names r.quantifiers[i].name)
+                                end
+                                emit("All(" <> joined(names) <> ") ")
+                                walk(r.body)
+                            end
+                        when typeAuto with r then
+                            begin
+                                emit("Auto " <> r.typeParam <> " with")
+                                for i = 0 upto {extent r.signature - 1} do
+                                    let f = r.signature[i]
+                                    emit(" " <> {if f.isVar then "var " else "" end} <> f.name <> ": ")
+                                    walk(f.type)
+                                end
+                                emit(" end")
+                            end
+                        when typeRec with r then emit(r.varName)
+                        when typeApp with r then
+                            begin
+                                walk(r.constructor)
+                                emit("(")
+                                for i = 0 upto {extent r.arguments - 1} do
+                                    if i > 0 then emit(" ") end
+                                    walk(r.arguments[i])
+                                end
+                                emit(")")
+                            end
+                        when typeRecGroup then emit("QRecGroupType")
+                        when typeOperator then emit("QTypeFun")
+                        else emit(model.show(u))
+                    end
+                end
+            walk(t)
+            let text = name.b.toString()
+            if name.full then stringOp.getSub(text 0 displayNameLimit) <> "..." else text end
+        end
+end

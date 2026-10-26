@@ -106,7 +106,8 @@ questlang/
     └── main                 # Main routine: the front end's phases from Milestone 2, growing with each milestone
 ```
 
-So far `common/*`, `syntax/*`, and `driver/main` (the front end's phases) exist; the rest of the tree is the plan.
+So far `common/*`, `syntax/*`, `types/symbols`, `model`, and `dump`, and `driver/main` (the front end's phases) exist;
+the rest of the tree is the plan.
 
 ---
 

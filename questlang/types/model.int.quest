@@ -1,0 +1,267 @@
+(* Quest Self-Hosted Compiler: Semantic Types and Kinds Interface
+ *
+ * The semantic types and kinds of bootstrap/python/quest/types/model.py: their forms, hash-consing, free variables,
+ * substitution, lazy evaluation of aliases, applications, and recursive types, and inference metavariables.
+ *
+ * A type or a kind is a node: its form, which holds its parts, and what the bootstrap caches on its objects (the
+ * symbol ids a substitution could replace inside it, and whether it contains a metavariable). Nodes are hash-consed
+ * as the bootstrap's are: constructing a node gives the canonical node of its structure, so two nodes are the same
+ * type (Python's `is`) when their ids are equal (same). A node containing a metavariable is not hash-consed, since a
+ * metavariable is mutable. The components of types (fields, parameters, quantifiers, ...) are plain tuples; their
+ * identity is that of the types they hold. *)
+
+interface Model
+import
+    collections/hashMap : collections/HashMap
+    util/maybe : util/Maybe
+export
+    (* Raised on an internal error: a limit of the model reached *)
+    internalError: Exception(String)
+
+    (* =========================================================================
+     * 1. Reserved symbol ids
+     *
+     * Symbol ids from the environment are positive, and inference metavariables count down from -1. A few type
+     * variables are made outside any environment; their ids are negative too: the negation of a prefix naming
+     * their use, times 2**32, plus an index within that use.
+     * ========================================================================= *)
+
+    Def ReservedSymbolUse = Option
+        dynamicParam
+        boundVar
+        canonicalQuantifier
+        recSelf
+        canonicalRec
+        canonicalBinder
+        hole
+    end
+
+    reservedSymbolId(use: ReservedSymbolUse index: Int): Int
+    (* The use and index of a reserved symbol id, if it is one *)
+    Def Decoded = Tuple use: ReservedSymbolUse index: Int end
+    reservedSymbolUse(symbolId: Int): maybe.T(Decoded)
+
+    (* =========================================================================
+     * 2. Types, kinds, and their components
+     * ========================================================================= *)
+
+    Def Rec Type = Tuple
+        (* The node's identity: hash-consed nodes of one structure have one id *)
+        id: Int
+        form: TypeForm
+        (* The symbol ids a substitution could replace inside the node, sorted *)
+        fv: Array(Int)
+        hasMeta: Bool
+        (* A recursive type's, or an alias of one's, unfolding, computed once; a group binding's siblings *)
+        var unfolded: maybe.T(Type)
+        var siblings: Array(Type)
+    end
+    and TypeForm = Option
+        typeInt
+        typeReal
+        typeBool
+        typeChar
+        typeString
+        typeOk
+        typeBottom
+        typeException with payload: Type end
+        typeExternal with name: String cType: String end
+        typeTuple with fields: Array(TupleComponent) end
+        typeRecord with fields: Array(RecordField) provenance: maybe.T(String) end
+        typeVariant with variants: Array(VariantField) end
+        typeOption with options: Array(OptionField) end
+        typeFun with params: Array(Param) result: Type end
+        typeVar with element: Type end
+        typeArray with element: Type end
+        typeOut with element: Type end
+        typeAll with quantifiers: Array(Quantifier) body: Type end
+        typeAuto with typeParam: String symbolId: Int kindBound: Kind signature: Array(RecordField) end
+        typeOperator with params: Array(TypeFormal) body: Type end
+        typeApp with constructor: Type arguments: Array(Type) end
+        typeRec with varName: String symbolId: Int bound: Kind body: Type end
+        typeRecGroup with bindings: Array(RecBinding) activeIndex: Int end
+        typeVariable with name: String symbolId: Int bound: maybe.T(Kind) end
+        typeAbstract with name: String symbolId: Int bound: Kind end
+        typePath with rootName: String rootSymbolId: Int fieldName: String bound: Kind end
+        typeAlias with name: String symbolId: Int target: Type end
+        typeMeta with meta: Meta end
+    end
+    and Kind = Tuple
+        id: Int
+        form: KindForm
+        fv: Array(Int)
+        hasMeta: Bool
+    end
+    and KindForm = Option
+        kindType
+        kindPower with bound: Type end
+        kindAll with paramName: String paramId: Int paramKind: Kind resultKind: Kind end
+        kindVar with name: String symbolId: Int end
+    end
+    and TupleComponent = Option
+        tupleField with name: maybe.T(String) type: Type isVar: Bool end
+        tupleTypeFormal with name: String symbolId: Int bound: Kind end
+        tupleTypeBinding with name: String type: Type bound: maybe.T(Kind) end
+    end
+    and RecordField = Tuple name: String type: Type isVar: Bool end
+    and VariantField = Tuple name: String type: maybe.T(Type) isVar: Bool end
+    and OptionField = Tuple name: String payload: maybe.T(Type) end
+    and Param = Tuple name: String type: Type isVar: Bool isOut: Bool end
+    and Quantifier = Tuple name: String symbolId: Int bound: Kind end
+    and TypeFormal = Tuple name: String symbolId: Int bound: Kind end
+    and RecBinding = Tuple name: String symbolId: Int bound: Kind body: Type end
+    (* An inference metavariable (?T1), which a solution instantiates *)
+    and Meta = Tuple symbolId: Int bound: Kind name: String var instance: maybe.T(Type) end
+
+    (* Whether two types, or two kinds, are the same node (the bootstrap's `is`) *)
+    same(a: Type b: Type): Bool
+    sameKind(a: Kind b: Kind): Bool
+
+    (* =========================================================================
+     * 3. Constructors, which hash-cons
+     * ========================================================================= *)
+
+    typeKind: Kind
+    powerKind(bound: Type): Kind
+    allKind(paramName: String paramId: Int paramKind: Kind resultKind: Kind): Kind
+    kindVar(name: String symbolId: Int): Kind
+
+    intType: Type
+    realType: Type
+    boolType: Type
+    charType: Type
+    stringType: Type
+    okType: Type
+    bottomType: Type
+    exceptionType: Type
+    exceptionOf(payload: Type): Type
+    externalType(name: String cType: String): Type
+    tupleType(fields: Array(TupleComponent)): Type
+    recordType(fields: Array(RecordField) provenance: maybe.T(String)): Type
+    variantType(variants: Array(VariantField)): Type
+    optionType(options: Array(OptionField)): Type
+    funType(params: Array(Param) result: Type): Type
+    varType(element: Type): Type
+    arrayType(element: Type): Type
+    outType(element: Type): Type
+    allType(quantifiers: Array(Quantifier) body: Type): Type
+    autoType(typeParam: String symbolId: Int kindBound: Kind signature: Array(RecordField)): Type
+    typeOperator(params: Array(TypeFormal) body: Type): Type
+    typeApp(constructor: Type arguments: Array(Type)): Type
+    recType(varName: String symbolId: Int bound: Kind body: Type): Type
+    recGroupType(bindings: Array(RecBinding) activeIndex: Int): Type
+    typeVariable(name: String symbolId: Int bound: maybe.T(Kind)): Type
+    abstractType(name: String symbolId: Int bound: Kind): Type
+    pathType(rootName: String rootSymbolId: Int fieldName: String bound: Kind): Type
+    aliasType(name: String symbolId: Int target: Type): Type
+    (* A new unsolved metavariable, of bound typeKind unless given *)
+    newMeta(bound: Kind name: maybe.T(String)): Type
+    (* Starts metavariable ids over (the bootstrap's QTypeMeta.reset_counter) *)
+    resetMetaCounter(): Ok
+
+    (* A tuple's value component *)
+    tupleField(name: maybe.T(String) type: Type isVar: Bool): TupleComponent
+
+    (* Cardelli's Dynamic: Auto A::TYPE with a: A end, its parameter's id reserved *)
+    dynamicType: Type
+
+    (* =========================================================================
+     * 4. Looking up symbols, and lazy evaluation
+     * ========================================================================= *)
+
+    (* What evaluation needs of an environment: the definition of a type symbol, and the kind of a kind symbol, by
+     * id (the bootstrap's TypeLookupEnv and KindLookupEnv) *)
+    Def Lookup = Tuple
+        typeDefinition: All(symbolId: Int) maybe.T(Type)
+        kindOf: All(symbolId: Int) maybe.T(Kind)
+    end
+    (* The lookup that finds nothing, as evaluation without an environment does *)
+    noLookup: Lookup
+
+    (* A type with its aliases, applications, and recursive types evaluated until its outermost constructor shows *)
+    evaluateLazily(t: Type env: Lookup): Type
+    evaluateKindLazily(k: Kind env: Lookup): Kind
+    (* Rec(X) T unfolded to T[Rec(X) T/X] (or, for an alias of a recursive type or a group binding, as model.py
+     * describes), computed once *)
+    unfoldLazily(t: Type): Type
+    (* The nodes of a recursive group's bindings, shared by all of them *)
+    siblings(t: Type): Array(Type)
+
+    (* =========================================================================
+     * 5. Substitution
+     * ========================================================================= *)
+
+    Def Subst = hashMap.T(Int Type)
+    Def KindSubst = hashMap.T(Int Kind)
+    newSubst(): Subst
+    newKindSubst(): KindSubst
+    (* A substitution of one id *)
+    singleSubst(symbolId: Int t: Type): Subst
+
+    (* Capture-avoiding substitution by symbol id; t itself when nothing it holds is substituted *)
+    substitute(t: Type subst: Subst): Type
+    substituteInKind(k: Kind subst: Subst): Kind
+    substituteKinds(k: Kind subst: KindSubst): Kind
+
+    (* =========================================================================
+     * 6. Components and queries
+     * ========================================================================= *)
+
+    (* A tuple's value components *)
+    Def ValueField = Tuple name: maybe.T(String) type: Type isVar: Bool end
+    tupleValueFields(fields: Array(TupleComponent)): Array(ValueField)
+    (* The types of a tuple's value components and type bindings *)
+    tupleElements(fields: Array(TupleComponent)): Array(Type)
+    tupleTypeFormals(fields: Array(TupleComponent)): Array(TypeFormal)
+    isExistential(fields: Array(TupleComponent)): Bool
+    componentName(c: TupleComponent): maybe.T(String)
+    (* The first component, field, or case of a name *)
+    tupleGetField(fields: Array(TupleComponent) name: String): maybe.T(TupleComponent)
+    recordGetField(fields: Array(RecordField) name: String): maybe.T(RecordField)
+    variantGetField(variants: Array(VariantField) name: String): maybe.T(VariantField)
+    optionGetField(options: Array(OptionField) name: String): maybe.T(OptionField)
+    isPower(k: Kind): Bool
+    (* A power kind's bound *)
+    powerBound(k: Kind): Type
+
+    (* Whether a value binding of name with type t is the module bound to that name *)
+    bindsModule(name: String t: Type): Bool
+    (* The tuple type of an auto value's payload, at a witness, or at its abstract type parameter *)
+    autoPayloadType(t: Type witness: maybe.T(Type)): Type
+    autoMatchesSubtypes(t: Type): Bool
+    (* A reference to an alias: an alias node, but a builtin primitive's own name is the primitive *)
+    aliasReference(name: String symbolId: Int target: Type): Type
+    unalias(t: Type): Type
+    (* The path types occurring in t, in the order found *)
+    findPathTypes(t: Type): Array(Type)
+    typeMentionsSymbolIds(t: Type ids: hashMap.T(Int Bool)): Bool
+
+    (* A type with every alias reference replaced by what replace gives, or kept (none) *)
+    mapAliases(t: Type replace: All(alias: Type) maybe.T(Type)): Type
+    stripAliases(t: Type): Type
+
+    (* =========================================================================
+     * 7. Metavariables
+     * ========================================================================= *)
+
+    isSolved(m: Meta): Bool
+    (* A metavariable's solution, its chains flattened, or the metavariable itself if unsolved *)
+    prune(t: Type): Type
+    (* t, or if a metavariable, what it stands for *)
+    pruned(t: Type): Type
+    (* The unsolved metavariables in t, in order *)
+    unsolvedMetas(t: Type): Array(Type)
+    unsolvedMetasInKind(k: Kind): Array(Type)
+    (* t with solved metavariables replaced by their solutions *)
+    resolveMetas(t: Type): Type
+
+    (* =========================================================================
+     * 8. Printing, as the bootstrap's __str__ methods do
+     * ========================================================================= *)
+
+    show(t: Type): String
+    showKind(k: Kind): String
+    showQuantifier(q: Quantifier): String
+    showComponent(c: TupleComponent): String
+    showField(f: RecordField): String
+end

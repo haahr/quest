@@ -171,14 +171,15 @@ the grammar's rules and errors); update testing.md.
 typecheck goldens are all pending. (This also checks the parser on every test program directly, beyond the
 `parser_*` tests.)
 
-### Step 2: Symbols, types, kinds, and their printer
+### Step 2: Symbols, types, kinds, and their printer (done)
 
 Port `types/symbols`, `model` (types, kinds, substitution, free variables, interning), and `dump` (the canonical and
 compact formatters, which error messages and the typed AST dump use). Test with questlang tests that build types and
 print them, whose goldens a script (`tests/types/generate.py`, like `tests/parser/generate.py`) gets from the
 bootstrap building the same types.
 
-**Done when** those tests pass compiled.
+**Done when** those tests pass compiled. (`structurally_equal` is not ported: nothing uses it. The model's components
+are plain tuples, whose identity is that of the types they hold; nodes record their identity as an id.)
 
 ### Step 3: Subtyping, kinds, contractiveness, environments
 
