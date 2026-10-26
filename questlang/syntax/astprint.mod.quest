@@ -6,12 +6,12 @@
 
 module astprint : AstPrint
 import
+    questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/syntax/ast : questlang/syntax/Ast
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
-    ascii : Ascii
     conv : Conv
 export
     (* =========================================================================
@@ -31,37 +31,6 @@ export
 
     Let Field = Tuple name: String value: S end
 
-    let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n)
-
-    (* Python's repr of a string: single quotes unless the string holds a single quote and no double quote *)
-    let pyRepr(s: String): String =
-        begin
-            let size = stringOp.length(s)
-            let var hasSingle = false
-            let var hasDouble = false
-            for i = 0 upto {size - 1} do
-                let c = stringOp.getChar(s i)
-                if c is '\'' then hasSingle := true elsif c is '"' then hasDouble := true end
-            end
-            let quote = if hasSingle andif not(hasDouble) then '"' else '\'' end
-            let b = stringBuilder.new()
-            b.char(quote)
-            for i = 0 upto {size - 1} do
-                let c = stringOp.getChar(s i)
-                let code = ascii.val(c)
-                if c is '\\' then b.str("\\\\")
-                elsif c is quote then b.char('\\').char(quote)
-                elsif code is 10 then b.str("\\n")
-                elsif code is 13 then b.str("\\r")
-                elsif code is 9 then b.str("\\t")
-                elsif {code < 32} orif {code is 127} then
-                    b.str("\\x").char(hexDigit(code / 16)).char(hexDigit(code % 16))
-                else b.char(c)
-                end
-            end
-            b.char(quote).toString()
-        end
-
     (* Python writes negative numbers with -, Quest with ~ *)
     let pyNumber(s: String): String =
         if {stringOp.length(s) > 0} andif {stringOp.getChar(s 0) is '~'} then
@@ -73,7 +42,7 @@ export
     let none: S = option nil of S end
     let flag(value: Bool): S = option flag of S with let value = value end
     let atom(text: String): S = option atom of S with let text = text end
-    let str(s: String): S = atom(pyRepr(s))
+    let str(s: String): S = atom(diagnostics.pyRepr(s))
     let int(n: Int): S = atom(pyNumber(conv.int(n)))
     let real(r: Real): S = atom(pyNumber(conv.real(r)))
     let strs(items: vector.T(String)): S = option strs of S with let items = items end
@@ -400,7 +369,7 @@ export
         begin
             for i = 0 upto {vector.length(:String items) - 1} do
                 if i > 0 then b.str(sep) end
-                b.str(pyRepr(vector.get(:String items i)))
+                b.str(diagnostics.pyRepr(vector.get(:String items i)))
             end
             b
         end
