@@ -18,7 +18,10 @@ import unittest
 from quest.types.env import Environment
 from quest.codegen.c.headers import compile_interface_with_header
 from quest.modules.interface_compiler import format_type_for_qi, load_interface_from_qi_file
-from quest.types import INT_TYPE, TYPE_KIND, QTupleField, QTupleType, QTypeVar
+from quest.types import (
+    INT_TYPE, TYPE_KIND, QOptionField, QOptionType, QTupleField, QTupleType, QTypeVar, QVariantField,
+    QVariantType,
+)
 from quest.types.model import QTupleTypeBinding, QTupleTypeFormal
 from quest.modules.loader import load_interface
 
@@ -32,6 +35,15 @@ class TestInterfaceCompiler(unittest.TestCase):
         x = QTupleField("x", QTypeVar("A", 70001, TYPE_KIND), False)
         t = QTupleType((a, x, QTupleTypeBinding("B", INT_TYPE, None)))
         self.assertEqual(format_type_for_qi(t), "Tuple A::TYPE x: A Let B= Int end")
+
+    def test_mutable_components_in_qi_types(self) -> None:
+        """An option's case keeps its payload's var fields and nameless components, and a variant its cases' var
+        marks, so that a manifest type read back from a .qi is the one its interface declares."""
+        payload = QTupleType((QTupleField("x", INT_TYPE, True), QTupleField(None, INT_TYPE, False)))
+        option = QOptionType((QOptionField("a", payload), QOptionField("b", None)))
+        self.assertEqual(format_type_for_qi(option), "Option a with var x: Int :Int end b end")
+        variant = QVariantType((QVariantField("c", INT_TYPE, True), QVariantField("d", None, False)))
+        self.assertEqual(format_type_for_qi(variant), "Variant var c: Int d end")
 
     def test_compile_simple_interface(self) -> None:
         src = """

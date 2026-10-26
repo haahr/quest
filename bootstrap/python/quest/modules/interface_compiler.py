@@ -132,6 +132,24 @@ def format_type_for_qi(
         mode = "var " if p.is_var else "out " if p.is_out else ""
         return f"{mode}{p.name}: {format_type_for_qi(p.type_val, visited)}"
 
+    def tuple_parts(fields: tuple) -> list[str]:
+        # A tuple's components, as a tuple type or an option's case lists them
+        parts: list[str] = []
+        for f in fields:
+            match f:
+                case QTupleField():
+                    var_p = "var " if f.is_var else ""
+                    if f.name:
+                        parts.append(f"{var_p}{f.name}: {format_type_for_qi(f.type_val, visited)}")
+                    else:
+                        parts.append(f"{var_p}:{format_type_for_qi(f.type_val, visited)}")
+                case QTupleTypeFormal():
+                    parts.append(f"{f.name}::{format_kind_for_qi(f.bound)}")
+                case QTupleTypeBinding():
+                    b_str = f"::{format_kind_for_qi(f.bound)} " if f.bound else ""
+                    parts.append(f"Let {f.name}{b_str}= {format_type_for_qi(f.type_val, visited)}")
+        return parts
+
     if t is INT_TYPE:
         return "Int"
     if t is REAL_TYPE:
@@ -161,24 +179,13 @@ def format_type_for_qi(
             )
             return f"Record {fields} end" if fields else "Record end"
         case QTupleType():
-            parts: list[str] = []
-            for f in t.fields:
-                match f:
-                    case QTupleField():
-                        var_p = "var " if f.is_var else ""
-                        if f.name:
-                            parts.append(f"{var_p}{f.name}: {format_type_for_qi(f.type_val, visited)}")
-                        else:
-                            parts.append(f"{var_p}:{format_type_for_qi(f.type_val, visited)}")
-                    case QTupleTypeFormal():
-                        parts.append(f"{f.name}::{format_kind_for_qi(f.bound)}")
-                    case QTupleTypeBinding():
-                        b_str = f"::{format_kind_for_qi(f.bound)} " if f.bound else ""
-                        parts.append(f"Let {f.name}{b_str}= {format_type_for_qi(f.type_val, visited)}")
+            parts = tuple_parts(t.fields)
             return f"Tuple {' '.join(parts)} end" if parts else "Tuple end"
         case QVariantType():
+            # A case's var mark, and its payload, if it has one
             variants = " ".join(
-                f"{v.name}: {format_type_for_qi(v.type_val, visited)}" if v.type_val is not OK_TYPE else v.name
+                f"{'var ' if v.is_var else ''}{v.name}"
+                + (f": {format_type_for_qi(v.type_val, visited)}" if v.type_val is not None else "")
                 for v in t.variants
             )
             return f"Variant {variants} end" if variants else "Variant end"
@@ -187,12 +194,8 @@ def format_type_for_qi(
             for o in t.options:
                 if o.payload_type is not None:
                     if isinstance(o.payload_type, QTupleType):
-                        parts = [
-                            f"{f.name}: {format_type_for_qi(f.type_val, visited)}"
-                            if f.name else format_type_for_qi(f.type_val, visited)
-                            for f in o.payload_type.fields
-                        ]
-                        opts.append(f"{o.name} with {' '.join(parts)} end")
+                        # Its components as a tuple type's, var fields and type components among them
+                        opts.append(f"{o.name} with {' '.join(tuple_parts(o.payload_type.fields))} end")
                     else:
                         opts.append(f"{o.name} with {format_type_for_qi(o.payload_type, visited)} end")
                 else:
