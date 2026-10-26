@@ -396,9 +396,7 @@ class Interpreter:
 
                 ext = resolve_external_symbol(symbol)
                 values = self.atoms(args, frame)
-                if isinstance(ext, QBuiltinFun):
-                    return ext.fn(*values)
-                return ext(*values) if callable(ext) else ext
+                return ext.fn(*values) if isinstance(ext, QBuiltinFun) else ext
             case ir.MakeTuple(args=args, type_components=type_components):
                 return self.make_tuple(self.atoms(args, frame), type_components, result, frame)
             case ir.TupleField(tuple=t, index=index):

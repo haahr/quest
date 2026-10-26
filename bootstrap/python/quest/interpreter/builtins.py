@@ -142,23 +142,23 @@ def _reader_file(name_val: QString) -> QReader:
         raise QuestException(READER_ERROR_EXC)
 
 def _reader_read_one(r: QReader) -> str:
-    peek = getattr(r, "_peek_char", None)
+    peek = r.peek
     if peek is not None:
-        r._peek_char = None
+        r.peek = None
         return peek
     return r.stream.read(1)
 
 def _reader_more(r: QReader) -> QBool:
     if r.is_closed:
         raise QuestException(READER_ERROR_EXC)
-    peek = getattr(r, "_peek_char", None)
+    peek = r.peek
     if peek is not None:
         return TRUE_VALUE
     try:
         ch = r.stream.read(1)
         if not ch:
             return FALSE_VALUE
-        r._peek_char = ch
+        r.peek = ch
         return TRUE_VALUE
     except OSError:
         raise QuestException(READER_ERROR_EXC)
@@ -186,10 +186,10 @@ def _reader_get_string(r: QReader, size: QInt) -> QString:
     if sz < 0:
         raise QuestException(READER_ERROR_EXC)
     buf = []
-    peek = getattr(r, "_peek_char", None)
+    peek = r.peek
     if peek is not None and sz > 0:
         buf.append(peek)
-        r._peek_char = None
+        r.peek = None
         sz -= 1
     if sz > 0:
         try:
@@ -375,9 +375,9 @@ def _dynamic_intern(rd: QReader) -> QAutoVal:
         raise QuestException(DYNAMIC_ERROR_EXC)
 
     def read_ch() -> str:
-        peek = getattr(rd, "_peek_char", None)
+        peek = rd.peek
         if peek is not None:
-            rd._peek_char = None
+            rd.peek = None
             return peek
         try:
             return rd.stream.read(1)
@@ -431,18 +431,18 @@ def _dynamic_intern(rd: QReader) -> QAutoVal:
                 break
     else:
         while True:
-            peek = getattr(rd, "_peek_char", None)
+            peek = rd.peek
             if peek is not None:
                 c = peek
             else:
                 try:
                     c = rd.stream.read(1)
-                    rd._peek_char = c
+                    rd.peek = c
                 except OSError:
                     c = ""
             if not c or c in " \t\r\n,]}":
                 break
-            rd._peek_char = None
+            rd.peek = None
             buf.append(c)
 
     raw = "".join(buf)
@@ -731,12 +731,9 @@ def _sb_append(b: QStringBuilder, text: str) -> QOk:
     return OK_VALUE
 
 
-EXTERNAL_SYMBOLS: dict[str, Any] = {
+# The external C functions the interpreter implements, by symbol
+EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     # Writer
-    "(&quest_exc_writer_error)": WRITER_ERROR_EXC,
-    "quest_exc_writer_error": WRITER_ERROR_EXC,
-    "quest_writer_output": QWriter(sys.stdout, is_file=False),
-    "quest_writer_err": QWriter(sys.stderr, is_file=False),
     "quest_writer_file": _writer_file,
     "quest_writer_put_string": _writer_put_string,
     "quest_writer_put_char": _writer_put_char,
@@ -745,9 +742,6 @@ EXTERNAL_SYMBOLS: dict[str, Any] = {
     "quest_writer_close": _writer_close,
 
     # Reader
-    "(&quest_exc_reader_error)": READER_ERROR_EXC,
-    "quest_exc_reader_error": READER_ERROR_EXC,
-    "quest_reader_input": QReader(sys.stdin, is_file=False),
     "quest_reader_file": _reader_file,
     "quest_reader_get_string": _reader_get_string,
     "quest_reader_get_substring": _reader_get_sub_string,
@@ -761,34 +755,19 @@ EXTERNAL_SYMBOLS: dict[str, Any] = {
     "quest_conv_real": _conv_real,
     "quest_conv_string": lambda s: QString(s.to_str() if isinstance(s, QString) else ""),
     "quest_conv_char": lambda c: QString(c.to_str() if isinstance(c, QChar) else ""),
-    "quest_conv_bool": lambda b: QString("true" if getattr(b, "value", False) else "false"),
+    "quest_conv_bool": lambda b: QString("true" if isinstance(b, QBool) and b.value else "false"),
     "quest_conv_okay": lambda _: QString("ok"),
 
     # Ascii
-    "(&quest_exc_ascii_error)": ASCII_ERROR_EXC,
-    "quest_exc_ascii_error": ASCII_ERROR_EXC,
     "quest_ascii_val": _ascii_val,
     "quest_ascii_char": _ascii_char,
 
     # IntOp
-    "(&quest_exc_int_error)": INT_ERROR_EXC,
-    "quest_exc_int_error": INT_ERROR_EXC,
-    "QUEST_INT_MIN": QInt(-(2**63)),
-    "QUEST_INT_MAX": QInt(2**63 - 1),
     "quest_int_abs": lambda n: QInt(abs(n.value)),
     "quest_int_min": lambda a, b: QInt(min(a.value, b.value)),
     "quest_int_max": lambda a, b: QInt(max(a.value, b.value)),
 
     # RealOp
-    "(&quest_exc_real_error)": REAL_ERROR_EXC,
-    "quest_exc_real_error": REAL_ERROR_EXC,
-    "QUEST_REAL_MIN": QReal(-sys.float_info.max),
-    "QUEST_REAL_MAX": QReal(sys.float_info.max),
-    "QUEST_REAL_POS_EPSILON": QReal(sys.float_info.epsilon),
-    "QUEST_REAL_NEG_EPSILON": QReal(-sys.float_info.epsilon),
-    "QUEST_REAL_EPSILON": QReal(2.220446049250313e-16),
-    "QUEST_REAL_E": QReal(math.e),
-    "QUEST_REAL_PI": QReal(math.pi),
     "quest_real_floor": lambda r: _real_to_int(math.floor(r.value) if math.isfinite(r.value) else r.value),
     "quest_real_round": lambda r: _real_to_int(_real_round(r.value)),
     "quest_real_from_int": lambda n: QReal(float(n.value)),
@@ -817,8 +796,6 @@ EXTERNAL_SYMBOLS: dict[str, Any] = {
     "trunc": lambda r: QReal(math.trunc(r.value)),
 
     # StringOp
-    "(&quest_exc_string_error)": STRING_ERROR_EXC,
-    "quest_exc_string_error": STRING_ERROR_EXC,
     "quest_string_alloc": _string_new,
     "quest_string_length": lambda s: QInt(len(s.value)),
     "quest_string_is_empty": lambda s: QBool(len(s.value) == 0),
@@ -852,14 +829,9 @@ EXTERNAL_SYMBOLS: dict[str, Any] = {
     "quest_sb_to_string": _sb_to_string,
 
     # ArrayOp
-    "(&quest_exc_arrayOp_error)": ARRAY_OP_ERROR_EXC,
-    "quest_exc_arrayOp_error": ARRAY_OP_ERROR_EXC,
     "quest_array_size": lambda arr: QInt(len(arr.elements)),
 
     # Word
-    "(&quest_exc_word_error)": WORD_ERROR_EXC,
-    "quest_exc_word_error": WORD_ERROR_EXC,
-    "64": QInt(64),
     "quest_word_from_int": _word_from_int,
     "quest_word_to_int": _word_to_int,
     "quest_word_from_real_val": _word_from_real,
@@ -895,9 +867,6 @@ EXTERNAL_SYMBOLS: dict[str, Any] = {
     "quest_identity_hash": _quest_identity_hash,
 
     # System
-    "(&quest_exc_system_error)": SYSTEM_ERROR_EXC,
-    "quest_exc_system_error": SYSTEM_ERROR_EXC,
-    "quest_system_args": QArray(tuple(QString(a) for a in sys.argv)),
     "quest_system_getenv": _system_getenv,
     "quest_system_current_directory": _system_current_directory,
     "quest_system_change_directory": _system_change_directory,
@@ -912,25 +881,81 @@ EXTERNAL_SYMBOLS: dict[str, Any] = {
     "quest_system_exit": _system_exit,
 
     # Dynamic
-    "(&quest_exc_dynamic_error)": DYNAMIC_ERROR_EXC,
-    "quest_exc_dynamic_error": DYNAMIC_ERROR_EXC,
     "quest_dynamic_copy": _dynamic_copy,
     "quest_dynamic_intern": _dynamic_intern,
     "quest_dynamic_extern": _dynamic_extern,
 }
 
 
+# The external C values the interpreter has (exceptions, the standard streams, numeric limits), by symbol
+EXTERNAL_VALUES: dict[str, QValue] = {
+    # Writer
+    "(&quest_exc_writer_error)": WRITER_ERROR_EXC,
+    "quest_exc_writer_error": WRITER_ERROR_EXC,
+    "quest_writer_output": QWriter(sys.stdout, is_file=False),
+    "quest_writer_err": QWriter(sys.stderr, is_file=False),
+
+    # Reader
+    "(&quest_exc_reader_error)": READER_ERROR_EXC,
+    "quest_exc_reader_error": READER_ERROR_EXC,
+    "quest_reader_input": QReader(sys.stdin, is_file=False),
+
+    # Ascii
+    "(&quest_exc_ascii_error)": ASCII_ERROR_EXC,
+    "quest_exc_ascii_error": ASCII_ERROR_EXC,
+
+    # IntOp
+    "(&quest_exc_int_error)": INT_ERROR_EXC,
+    "quest_exc_int_error": INT_ERROR_EXC,
+    "QUEST_INT_MIN": QInt(-(2**63)),
+    "QUEST_INT_MAX": QInt(2**63 - 1),
+
+    # RealOp
+    "(&quest_exc_real_error)": REAL_ERROR_EXC,
+    "quest_exc_real_error": REAL_ERROR_EXC,
+    "QUEST_REAL_MIN": QReal(-sys.float_info.max),
+    "QUEST_REAL_MAX": QReal(sys.float_info.max),
+    "QUEST_REAL_POS_EPSILON": QReal(sys.float_info.epsilon),
+    "QUEST_REAL_NEG_EPSILON": QReal(-sys.float_info.epsilon),
+    "QUEST_REAL_EPSILON": QReal(2.220446049250313e-16),
+    "QUEST_REAL_E": QReal(math.e),
+    "QUEST_REAL_PI": QReal(math.pi),
+
+    # StringOp
+    "(&quest_exc_string_error)": STRING_ERROR_EXC,
+    "quest_exc_string_error": STRING_ERROR_EXC,
+
+    # ArrayOp
+    "(&quest_exc_arrayOp_error)": ARRAY_OP_ERROR_EXC,
+    "quest_exc_arrayOp_error": ARRAY_OP_ERROR_EXC,
+
+    # Word
+    "(&quest_exc_word_error)": WORD_ERROR_EXC,
+    "quest_exc_word_error": WORD_ERROR_EXC,
+    "64": QInt(64),
+
+    # System
+    "(&quest_exc_system_error)": SYSTEM_ERROR_EXC,
+    "quest_exc_system_error": SYSTEM_ERROR_EXC,
+    "quest_system_args": QArray(tuple(QString(a) for a in sys.argv)),
+
+    # Dynamic
+    "(&quest_exc_dynamic_error)": DYNAMIC_ERROR_EXC,
+    "quest_exc_dynamic_error": DYNAMIC_ERROR_EXC,
+}
+
+
 def resolve_external_symbol(symbol: str) -> QValue:
-    """Resolves an external C symbol into a Python QValue for interpreter evaluation."""
+    """Resolves an external C symbol into a value for interpreter evaluation: a QBuiltinFun for a function."""
     clean = symbol.strip("(&)").strip()
-    val = EXTERNAL_SYMBOLS.get(symbol) or EXTERNAL_SYMBOLS.get(clean)
-    if val is None:
-        raise QuestRuntimeError(f"Undefined external symbol '{symbol}' in interpreter")
-    if callable(val) and not isinstance(val, QValue):
-        return QBuiltinFun(symbol, val)
-    return val
+    for name in (symbol, clean):
+        if name in EXTERNAL_FUNCTIONS:
+            return QBuiltinFun(symbol, EXTERNAL_FUNCTIONS[name])
+        if name in EXTERNAL_VALUES:
+            return EXTERNAL_VALUES[name]
+    raise QuestRuntimeError(f"Undefined external symbol '{symbol}' in interpreter")
 
 
 def set_system_args(args: list[str]) -> None:
     """Updates system.args with the provided argument list."""
-    EXTERNAL_SYMBOLS["quest_system_args"] = QArray(tuple(QString(a) for a in args))
+    EXTERNAL_VALUES["quest_system_args"] = QArray(tuple(QString(a) for a in args))

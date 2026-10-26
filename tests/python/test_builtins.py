@@ -7,10 +7,16 @@ import unittest
 # Ensure bootstrap/python is in sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest.interpreter.builtins import EXTERNAL_SYMBOLS, qchecked, resolve_external_symbol, set_system_args
+from quest.interpreter.builtins import (
+    EXTERNAL_FUNCTIONS,
+    EXTERNAL_VALUES,
+    qchecked,
+    resolve_external_symbol,
+    set_system_args,
+)
 from quest.modules.stdlib import BuiltinModuleRegistry
 from quest.interpreter.primitives import QuestRuntimeError
-from quest.values.model import QuestException, QArray, QBuiltinFun, QExceptionVal, QInt, QString
+from quest.values.model import QuestException, QArray, QBuiltinFun, QExceptionVal, QInt, QString, QValue
 
 
 class TestBuiltinWrappers(unittest.TestCase):
@@ -66,11 +72,15 @@ class TestBuiltinWrappers(unittest.TestCase):
         self.assertIn("Expected 1 arguments, got 0", str(ctx.exception))
 
     def test_external_symbols_populated(self):
-        self.assertGreaterEqual(len(EXTERNAL_SYMBOLS), 150)
-        self.assertIn("quest_writer_put_string", EXTERNAL_SYMBOLS)
-        self.assertIn("quest_system_args", EXTERNAL_SYMBOLS)
-        self.assertIn("QUEST_INT_MIN", EXTERNAL_SYMBOLS)
-        self.assertIn("(&quest_exc_writer_error)", EXTERNAL_SYMBOLS)
+        self.assertGreaterEqual(len(EXTERNAL_FUNCTIONS) + len(EXTERNAL_VALUES), 150)
+        self.assertIn("quest_writer_put_string", EXTERNAL_FUNCTIONS)
+        self.assertIn("quest_system_args", EXTERNAL_VALUES)
+        self.assertIn("QUEST_INT_MIN", EXTERNAL_VALUES)
+        self.assertIn("(&quest_exc_writer_error)", EXTERNAL_VALUES)
+        # Functions and values are told apart by their tables
+        self.assertTrue(all(callable(f) and not isinstance(f, QValue) for f in EXTERNAL_FUNCTIONS.values()))
+        self.assertTrue(all(isinstance(v, QValue) for v in EXTERNAL_VALUES.values()))
+        self.assertEqual(set(EXTERNAL_FUNCTIONS) & set(EXTERNAL_VALUES), set())
 
     def test_resolve_external_symbol_function(self):
         sym_val = resolve_external_symbol("quest_writer_put_string")
@@ -95,7 +105,7 @@ class TestBuiltinWrappers(unittest.TestCase):
         self.assertIn("Undefined external symbol", str(ctx.exception))
 
     def test_set_system_args(self):
-        orig_args = EXTERNAL_SYMBOLS.get("quest_system_args")
+        orig_args = EXTERNAL_VALUES.get("quest_system_args")
         try:
             set_system_args(["foo", "bar"])
             args_val = resolve_external_symbol("quest_system_args")
@@ -103,7 +113,7 @@ class TestBuiltinWrappers(unittest.TestCase):
             self.assertEqual(len(args_val.elements), 2)
             self.assertEqual([e.value for e in args_val.elements], ["foo", "bar"])
         finally:
-            EXTERNAL_SYMBOLS["quest_system_args"] = orig_args
+            EXTERNAL_VALUES["quest_system_args"] = orig_args
 
     def test_ensure_interface_and_module(self):
         iface = BuiltinModuleRegistry.ensure_interface("Writer")

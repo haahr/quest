@@ -14,7 +14,7 @@ import atexit
 import os
 import sys
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 try:
     import readline
@@ -26,7 +26,7 @@ from quest.syntax.grammar import parse_quest_program
 from quest.interpreter.formatting import format_interactive_result
 from quest.syntax.parser import ParserError
 from quest.config import CompilerOptions
-from quest.pipeline import CompilerContext, PipelineResult, default_pipeline
+from quest.pipeline import CompilerContext, InterpretPhase, PipelineResult, default_pipeline
 from quest.values.model import QOk, QValue
 from quest.syntax.tokenizer import Tokenizer, TokenizerError
 from quest.syntax.sources import SourceMap
@@ -206,7 +206,7 @@ class QuestREPL:
 
             # Output evaluated results for all non-ok phrases on this input
             interpret_phase = self.pipeline.get_phase("interpret")
-            phrase_results = getattr(interpret_phase, "last_phrase_results", [])
+            phrase_results = interpret_phase.last_phrase_results if isinstance(interpret_phase, InterpretPhase) else []
 
             if phrase_results:
                 for phrase, val in phrase_results:

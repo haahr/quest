@@ -53,9 +53,9 @@ class TypedNode:
         """Returns structured children as [(':label', child_or_sequence), ...]."""
         return []
 
-    def dump_show_type(self) -> bool:
-        """Controls whether :type <type_val> is automatically appended to the header."""
-        return hasattr(self, "type_val")
+    def dump_type(self) -> Optional[QType]:
+        """The type appended to the header as :type, if any."""
+        return None
 
     def dump(self, indent: int = 0, env: Optional[Any] = None) -> str:
         """Recursively formats this node into a canonical 2-space indented S-expression."""
@@ -63,15 +63,12 @@ class TypedNode:
 
         # 1. Construct header parts
         parts = [self.__class__.__name__]
-        try:
-            extra = self.dump_header(env=env)
-        except TypeError:
-            extra = self.dump_header()
+        extra = self.dump_header(env=env)
         if extra:
             parts.append(extra)
 
-        if self.dump_show_type():
-            t_val = getattr(self, "type_val")
+        t_val = self.dump_type()
+        if t_val is not None:
             parts.append(f":type {format_type_compact(t_val, env=env)}")
 
         header_str = " ".join(parts)
@@ -110,14 +107,17 @@ class TypedNode:
 @dataclass(frozen=True)
 class TypedExpr(TypedNode):
     """Base class for all typed value expressions."""
-    pass
+
+    def dump_type(self) -> Optional[QType]:
+        # Every expression has its type (type_val)
+        return self.type_val
 
 
 @dataclass(frozen=True)
 class TypedBinding(TypedNode):
     """Base class for declarations and statements inside blocks and programs."""
-    def dump_show_type(self) -> bool:
-        return False
+    def dump_type(self) -> Optional[QType]:
+        return None
 
 
 # ============================================================================
@@ -129,7 +129,7 @@ class TypedInt(TypedExpr):
     value: int
     type_val: QType = INT_TYPE
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return repr(self.value)
 
 
@@ -138,7 +138,7 @@ class TypedReal(TypedExpr):
     value: float
     type_val: QType = REAL_TYPE
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return repr(self.value)
 
 
@@ -147,11 +147,11 @@ class TypedBool(TypedExpr):
     value: bool
     type_val: QType = BOOL_TYPE
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return "true" if self.value else "false"
 
-    def dump_show_type(self) -> bool:
-        return False
+    def dump_type(self) -> Optional[QType]:
+        return None
 
 
 @dataclass(frozen=True)
@@ -159,7 +159,7 @@ class TypedChar(TypedExpr):
     value: str
     type_val: QType = CHAR_TYPE
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return repr(self.value)
 
 
@@ -168,7 +168,7 @@ class TypedString(TypedExpr):
     value: str
     type_val: QType = STRING_TYPE
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return repr(self.value)
 
 
@@ -176,8 +176,8 @@ class TypedString(TypedExpr):
 class TypedOk(TypedExpr):
     type_val: QType = OK_TYPE
 
-    def dump_show_type(self) -> bool:
-        return False
+    def dump_type(self) -> Optional[QType]:
+        return None
 
 
 @dataclass(frozen=True)
@@ -186,7 +186,7 @@ class TypedExternal(TypedExpr):
     symbol: str
     type_val: QType
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f"'{self.symbol}'"
 
 
@@ -197,7 +197,7 @@ class TypedVar(TypedExpr):
     symbol: ValueSymbol
     type_val: QType
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f"'{self.name}'"
 
 
@@ -214,7 +214,10 @@ class TypedParam(TypedNode):
     is_var: bool = False
     is_out: bool = False
 
-    def dump_header(self) -> str:
+    def dump_type(self) -> Optional[QType]:
+        return self.type_val
+
+    def dump_header(self, env: Optional[Any] = None) -> str:
         var_tag = " :var" if self.is_var else (" :out" if self.is_out else "")
         return f"'{self.name}'{var_tag}"
 
@@ -275,7 +278,7 @@ class TypedInfix(TypedExpr):
     right: TypedExpr
     type_val: QType
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return repr(self.op)
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -293,7 +296,7 @@ class TypedRecordField(TypedNode):
     value: TypedExpr
     is_var: bool = False
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         var_tag = " :var" if self.is_var else ""
         return f"'{self.name}'{var_tag}"
 
@@ -319,11 +322,11 @@ class TypedTypeWitness(TypedExpr):
     bound: Optional[Any] = None
     type_val: QType = field(default_factory=lambda: TYPE_KIND)
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f"'{self.name}' = {self.witness_type}"
 
-    def dump_show_type(self) -> bool:
-        return False
+    def dump_type(self) -> Optional[QType]:
+        return None
 
 
 @dataclass(frozen=True)
@@ -358,7 +361,7 @@ class TypedSelect(TypedExpr):
     field: str
     type_val: QType
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f"'{self.field}'"
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -384,8 +387,8 @@ class TypedIndexAssign(TypedExpr):
     value: TypedExpr
     type_val: QType = OK_TYPE
 
-    def dump_show_type(self) -> bool:
-        return False
+    def dump_type(self) -> Optional[QType]:
+        return None
 
     def dump_children(self) -> list[tuple[str, Any]]:
         return [(":target", self.target), (":index", self.index), (":value", self.value)]
@@ -443,7 +446,7 @@ class TypedSelectRef(TypedExpr):
     field: str
     type_val: QType
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f".{self.field} (ref)"
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -457,7 +460,7 @@ class TypedIndexRef(TypedExpr):
     index: TypedExpr
     type_val: QType
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return "[] (ref)"
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -472,7 +475,7 @@ class TypedTupleSelectRef(TypedExpr):
     field: Optional[str]
     type_val: QType
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         fld_desc = f".{self.field}" if self.field else f"._{self.index}"
         return f"{fld_desc} (ref)"
 
@@ -487,8 +490,8 @@ class TypedAssign(TypedExpr):
     value: TypedExpr
     type_val: QType = OK_TYPE
 
-    def dump_show_type(self) -> bool:
-        return False
+    def dump_type(self) -> Optional[QType]:
+        return None
 
     def dump_children(self) -> list[tuple[str, Any]]:
         return [(":target", self.target), (":value", self.value)]
@@ -505,7 +508,7 @@ class TypedVariant(TypedExpr):
     type_val: QVariantType
     payload: Optional[TypedExpr] = None
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f"'{self.tag}'"
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -520,7 +523,7 @@ class TypedOption(TypedExpr):
     payload: Optional[TypedExpr] = None
     ordinal_expr: Optional[TypedExpr] = None
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f"'{self.tag}'" if self.tag is not None else "ordinal"
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -540,7 +543,7 @@ class TypedAuto(TypedExpr):
     payload: TypedExpr
     type_val: QType
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f":{self.witness_type}"
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -554,7 +557,7 @@ class TypedVariantCheck(TypedExpr):
     tag: str
     type_val: QType
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f"'{self.tag}'"
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -568,7 +571,7 @@ class TypedVariantAssert(TypedExpr):
     tag: str
     type_val: QType
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f"'{self.tag}'"
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -582,7 +585,7 @@ class TypedCaseBranch(TypedNode):
     body: TypedExpr
     binder: Optional[ValueSymbol] = None
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         binder_str = f" :binder '{self.binder.name}'" if self.binder else ""
         return f"tags=({', '.join(self.tags)}){binder_str}"
 
@@ -616,7 +619,7 @@ class TypedInspectBranch(TypedNode):
     body: TypedExpr
     exact: bool = False
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f"match={self.match_type}" + (" exact" if self.exact else "")
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -677,8 +680,8 @@ class TypedWhile(TypedExpr):
     body: TypedExpr
     type_val: QType = OK_TYPE
 
-    def dump_show_type(self) -> bool:
-        return False
+    def dump_type(self) -> Optional[QType]:
+        return None
 
     def dump_children(self) -> list[tuple[str, Any]]:
         return [(":cond", self.cond), (":body", self.body)]
@@ -690,8 +693,8 @@ class TypedLoop(TypedExpr):
     body: TypedExpr
     type_val: QType = OK_TYPE
 
-    def dump_show_type(self) -> bool:
-        return False
+    def dump_type(self) -> Optional[QType]:
+        return None
 
     def dump_children(self) -> list[tuple[str, Any]]:
         return [(":body", self.body)]
@@ -708,10 +711,10 @@ class TypedFor(TypedExpr):
     body: TypedExpr
     type_val: QType = OK_TYPE
 
-    def dump_show_type(self) -> bool:
-        return False
+    def dump_type(self) -> Optional[QType]:
+        return None
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         dir_tag = " :downto" if self.is_downto else " :upto"
         return f"'{self.var_name}'{dir_tag}"
 
@@ -724,8 +727,8 @@ class TypedExit(TypedExpr):
     """Exit statement exiting the innermost loop."""
     type_val: QType = OK_TYPE
 
-    def dump_show_type(self) -> bool:
-        return False
+    def dump_type(self) -> Optional[QType]:
+        return None
 
 
 # ============================================================================
@@ -741,7 +744,7 @@ class TypedException(TypedExpr):
     type_val: QType = EXCEPTION_TYPE
     symbol: Optional[ValueSymbol] = None
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f"'{self.name}'"
 
 
@@ -818,7 +821,7 @@ class TypedLetValueGroup(TypedBinding):
     def is_rec(self) -> bool:
         return self.members[0].is_rec
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return " ".join(f"'{member.name}'" for member in self.members)
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -830,13 +833,22 @@ def binding_members(binding: Any) -> tuple[Any, ...]:
     return binding.members if isinstance(binding, TypedLetValueGroup) else (binding,)
 
 
+def declared_name(binding: Any) -> Optional[str]:
+    """The name a binding declares by itself, if it declares one (not a group's, a statement's, or an import's)."""
+    match binding:
+        case TypedLetValue(name=name) | TypedLetType(name=name) | TypedDefKind(name=name) | TypedInterface(name=name) | \
+                TypedModule(name=name):
+            return name
+    return None
+
+
 @dataclass(frozen=True)
 class TypedLetType(TypedBinding):
     """Type let declaration: Let T = Type."""
     name: str
     symbol: TypeSymbol
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f"'{self.name}' :kind {self.symbol.kind}"
 
 
@@ -845,7 +857,7 @@ class TypedLetTypeGroup(TypedBinding):
     """Simultaneous type declarations: Let [Rec] T1 = Type and T2 = Type ..."""
     members: tuple[TypedLetType, ...]
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return " ".join(f"'{member.name}'" for member in self.members)
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -858,7 +870,7 @@ class TypedDefKind(TypedBinding):
     name: str
     symbol: KindSymbol
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f"'{self.name}' :kind {self.symbol.kind}"
 
 
@@ -878,7 +890,7 @@ class TypedInterface(TypedBinding):
     signatures: tuple[TypedBinding, ...]
     scope: Scope
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f"'{self.name}'"
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -898,7 +910,7 @@ class TypedModule(TypedBinding):
     is_precompiled: bool = False
     symbol_id: Optional[int] = field(default=None, compare=False)
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         return f"'{self.name}' implements '{self.interface_name}'"
 
     def dump_children(self) -> list[tuple[str, Any]]:
@@ -933,7 +945,7 @@ class TypedImportItem(TypedNode):
             return self.canonical_module_paths
         return self.effective_module_paths
 
-    def dump_header(self) -> str:
+    def dump_header(self, env: Optional[Any] = None) -> str:
         if self.names:
             return f"({' '.join(repr(n) for n in self.names)}) : '{self.interface_name}'"
         return f": '{self.interface_name}'"

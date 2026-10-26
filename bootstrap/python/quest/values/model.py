@@ -728,6 +728,8 @@ class QReader(QValue):
         self.is_file = is_file
         self.file_name = file_name
         self.is_closed = False
+        # The character reader.more read ahead, which the next read takes
+        self.peek: Optional[str] = None
 
     @property
     def type_name(self) -> str:
@@ -789,9 +791,9 @@ def qvalue_is(v1: QValue, v2: QValue) -> bool:
         case QOk():
             return isinstance(v2, QOk)
         case QBool(value=b_val):
-            return b_val is getattr(v2, "value", None)
+            return b_val is v2.value
         case QInt(value=n_val) | QWord(value=n_val) | QReal(value=n_val) | QChar(value=n_val):
-            return n_val == getattr(v2, "value", None)
+            return n_val == v2.value
         case QTypeValue(type_val=t1):
             assert isinstance(v2, QTypeValue)
             return t1 is v2.type_val or is_type_equal(t1, v2.type_val)

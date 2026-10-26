@@ -298,7 +298,8 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
   - Standalone modules (`module ... end`) are isolated from top-level pre-linked module records and must explicitly
     import any required modules using `import mod: Interface`.
   - Standard library interfaces and prelinked modules are resolved on-demand from disk (`lib/`) via the
-    unified module loader, with `BuiltinModuleRegistry` providing the runtime external C symbol bridge.
+    unified module loader; their external C symbols are the interpreter's builtins (`builtins.py`:
+    `EXTERNAL_FUNCTIONS` and `EXTERNAL_VALUES`).
 - **List Operations (`list: List`):**
   - Built-in `list` module backed by runtime `QList` values.
   - Provides `nil`, `cons`, `null`, `head`, `tail`, `length`, `enum`, and `error`.

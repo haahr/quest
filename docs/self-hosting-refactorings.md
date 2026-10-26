@@ -244,9 +244,62 @@ components raised `NameError`; it imports them now, and `test_interface_compiler
 
 ---
 
-## 5. Not in This Plan
+## 5. Phase 5: The Typed AST's Printer and the Interpreter
+
+What phase 4c did for the compiler, for the parts of Milestones 2 and 3 it left out.
+
+**5a. The typed AST's printer.** `TypedNode.dump` prints the `typecheck` goldens. It decides whether to show a node's
+type with `hasattr(self, "type_val")` and `getattr(self, "type_val")`, and calls `dump_header` with an environment,
+catching `TypeError` to call it without one, because 31 of its 36 overrides take none.
+
+- Every `dump_header` takes `env` (unused by most), so `dump` calls it one way.
+- `dump_show_type` becomes `dump_type()`, the type to show or None: None for a `TypedNode`, the node's `type_val` for
+  a `TypedExpr` and a `TypedParam` (the only nodes with types), None for the ten classes that hide theirs.
+
+The class name that heads each node stays `self.__class__.__name__`: a Quest printer writes it per case.
+
+**Done** as planned.
+
+**5b. The interpreter's, values', and REPL's probes.**
+
+- `QReader` declares `peek: Optional[str]`, the character `reader.more` read ahead, which the builtins set on it as an
+  undeclared `_peek_char` attribute and read with `getattr(r, "_peek_char", None)` (five places).
+- `quest_conv_bool` reads its argument's `value` when it is a `QBool`, rather than `getattr(b, "value", False)`.
+- `values_equal` (`values/model.py`) reads `v2.value` directly: it has checked that `v2` is of `v1`'s class.
+- The tree-walking interpreter reads an unhandled expression's `offset` directly (every typed node has one), and
+  whether a binding's members are bound already by `declared_name`, a match over the bindings that declare a name,
+  rather than `getattr(member, "name", None)`.
+- The REPL reads the interpret phase's results through the pipeline's `InterpretPhase`, rather than
+  `getattr(interpret_phase, "last_phrase_results", [])`.
+
+**Done** as planned; no `getattr` or `hasattr` is left outside the test harness. (`repl.py` also imports `Any` now,
+which an annotation named without importing.)
+
+**5c. The externals table.** `EXTERNAL_SYMBOLS` mixes the interpreter's builtin functions (124) and its constant
+values (34: exceptions, readers and writers, numeric limits), told apart by `callable()` in
+`resolve_external_symbol` and again in both interpreters' calls of externals. It becomes two tables,
+`EXTERNAL_FUNCTIONS` and `EXTERNAL_VALUES`, and `resolve_external_symbol` returns a `QBuiltinFun` for a function and
+the value for a value, so callers apply a `QBuiltinFun` and take anything else as it is. The builtins keep their
+signatures and the `qchecked` decorator (by decision).
+
+**Done** as planned; `test_builtins` checks that each table holds only its kind.
+
+The interpreter's output, and so every golden, is unchanged; both suites pass at every commit.
+
+---
+
+## 6. Not in This Plan
 
 - **Porting.** No Quest code is written here.
-- **The interpreter, REPL, and test harness** (`interpreter/`, `repl.py`, `testing/`), which the self-hosted compiler
-  does not need.
+- **The test harness** (`testing/`), which the self-hosted system does not need. (This plan first left out the
+  interpreter and REPL too, but the self-hosted system includes both: [compiler-organization.md](compiler-organization.md)
+  Milestone 3. Phase 5 covers them.)
 - **Spelling changes to generated C** beyond 1a, such as normalizing parenthesization.
+- **The parser's grammar actions** (`syntax/grammar.py`), by decision: they stay as they are, though the Quest
+  parser's actions take a uniform `SemanticVal` list ([compiler-organization.md](compiler-organization.md) §4.1) and
+  the Python ones mixed positional values, and though the postfix operators' actions return closures. The Quest code
+  may diverge there.
+- **Exceptions**, by decision until there is more experience with the compiler in Quest: the Python errors' class
+  hierarchy (`QuestCompilerError` and its subclasses, some caught by subclass) and the catches of Python's own errors
+  (`ValueError` from `Path.relative_to` and `int`, `except Exception` in the pipeline), against the Quest side's one
+  exception carrying a diagnostic (`diagbag.fatalError`).

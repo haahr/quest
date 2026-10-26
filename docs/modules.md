@@ -307,8 +307,8 @@ standard library modules, and hybrid Quest/C modules through a single pipeline:
 ### 8.1. Declarative Module Architecture
 - Standard library modules reside on disk in `lib/` as regular Quest units (`.int.quest` and `.mod.quest`), compiled to
   pre-built `.qi`, `.int.h`, `.mod.c`, `.o`, and `.qm` artifacts on demand.
-- `BuiltinModuleRegistry` (`quest/modules/stdlib.py`) serves as the runtime C symbol bridge (`EXTERNAL_SYMBOLS`) for the
-  tree-walking and IR interpreters, mapping external C symbol names to Python functions, constants, and exceptions.
+- The tree-walking and IR interpreters bridge external C symbols to Python (`quest/interpreter/builtins.py`): external
+  C symbol names map to Python functions (`EXTERNAL_FUNCTIONS`) and to constants and exceptions (`EXTERNAL_VALUES`).
   Only `dynamic` (`Dynamic`) remains a purely runtime-synthesized module without a `.mod.quest` implementation file.
 - Within a `.mod.quest` file, declarations can be pure Quest bindings or `external "..."` bindings (`TypedExternal` /
   `ir.External`) that bind directly to C runtime types, functions, or global values.

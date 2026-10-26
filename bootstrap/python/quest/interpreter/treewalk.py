@@ -66,10 +66,14 @@ from quest.types import (
     is_type_equal,
 )
 from quest.typechecker.typed_ast import (
+    binding_members,
+    declared_name,
+    scope_exceptions,
     TypedApp,
     TypedArray,
     TypedArrayRep,
     TypedAssign,
+    TypedAuto,
     TypedBinding,
     TypedBlock,
     TypedBool,
@@ -79,29 +83,27 @@ from quest.typechecker.typed_ast import (
     TypedDerefCell,
     TypedException,
     TypedExit,
-    TypedNode,
-    scope_exceptions,
     TypedExpr,
     TypedExprStmt,
     TypedExternal,
     TypedFor,
     TypedFun,
     TypedIf,
+    TypedImport,
     TypedIndex,
     TypedIndexAssign,
     TypedIndexRef,
     TypedInfix,
-    TypedImport,
-    TypedAuto,
     TypedInspect,
-    TypedInterface,
     TypedInt,
+    TypedInterface,
     TypedLetType,
     TypedLetTypeGroup,
-    TypedLetValueGroup,
     TypedLetValue,
+    TypedLetValueGroup,
     TypedLoop,
     TypedModule,
+    TypedNode,
     TypedOk,
     TypedOption,
     TypedProgram,
@@ -110,10 +112,10 @@ from quest.typechecker.typed_ast import (
     TypedRecord,
     TypedSelect,
     TypedSelectRef,
-    TypedTupleSelectRef,
     TypedString,
     TypedTry,
     TypedTuple,
+    TypedTupleSelectRef,
     TypedTypeApp,
     TypedTypeWitness,
     TypedVar,
@@ -122,7 +124,6 @@ from quest.typechecker.typed_ast import (
     TypedVariantAssert,
     TypedVariantCheck,
     TypedWhile,
-    binding_members,
 )
 
 
@@ -908,7 +909,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
         case _:
             raise QuestRuntimeError(
                 f"Unhandled expression node: {expr.__class__.__name__}",
-                offset=getattr(expr, "offset", 0),
+                offset=expr.offset,
             )
 
 
@@ -954,11 +955,7 @@ def run_closure(closure: QClosure, args: list[QValue]) -> QValue:
             from quest.interpreter.builtins import resolve_external_symbol
 
             ext_val = resolve_external_symbol(closure.body.symbol)
-            if isinstance(ext_val, QBuiltinFun):
-                return ext_val.fn(*args)
-            if callable(ext_val):
-                return ext_val(*args)
-            return ext_val
+            return ext_val.fn(*args) if isinstance(ext_val, QBuiltinFun) else ext_val
         call_env = env.push_scope()
         call_env.bind_types(closure.type_bindings)
         for param_name, arg_val in zip(closure.params, args):
@@ -1093,7 +1090,7 @@ def eval_scoped_binding(binding: TypedBinding, env: RuntimeEnvironment) -> tuple
         env = env.push_scope()
         _define_members(binding.members, values, env)
         return QTuple(values, tuple(member.name for member in binding.members)), env
-    if any(getattr(member, "name", None) in env.bindings for member in binding_members(binding)):
+    if any(declared_name(member) in env.bindings for member in binding_members(binding)):
         env = env.push_scope()
     return eval_binding(binding, env), env
 
