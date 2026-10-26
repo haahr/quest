@@ -1,7 +1,9 @@
 # Quest Intermediate Representation (IR)
 
 This document specifies the intermediate representation between the typed AST and the C backend
-(`bootstrap/python/quest/ir/`).
+(`bootstrap/python/quest/ir/`). The self-hosted compiler's IR (`questlang/ir/`, [milestone-4.md](milestone-4.md))
+follows it module for module, and its printer writes the same textual form (§10), which the self-hosted suite compares
+at every stage.
 The IR is one data structure, refined by a sequence of small passes (nanopass style); each pass establishes invariants
 that the IR verifier checks. The C printer consumes the last stage. A future native AArch64 backend
 ([roadmap.md](roadmap.md) step 6) would consume the same stage, adding its own late passes.

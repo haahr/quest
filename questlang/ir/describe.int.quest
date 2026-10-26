@@ -1,0 +1,29 @@
+(* Quest Self-Hosted Compiler: The Describe Pass Interface
+ *
+ * bootstrap/python/quest/ir/describe.py (docs/ir.md sections 7, 8.4): the pass after represent that makes run-time
+ * types explicit, producing the described stage. Every run-time use of a type gets a descriptor operand: a type
+ * parameter in scope is its descriptor variable, a type that mentions none is its static descriptor, and a type that
+ * mentions some is its template, a hole for each, instantiated with their descriptors. The pass also lists the unit's
+ * static data (static descriptors, offset tables, tag maps, and the types whose aggregates a backend declares) and
+ * each module's abstract types' registrations. *)
+
+interface Describe
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/nodes : questlang/ir/Nodes
+export
+    (* A descriptor the pass cannot make: in a thunk, of a type mentioning a type parameter of the enclosing
+     * function, whose descriptor the thunk is not passed *)
+    unsupportedDescriptor: Exception(String)
+
+    (* How echo writes a value of type t without a descriptor: "Word", "fun", "hidden", or a base type's name; "" if
+     * it writes it by a descriptor of its type *)
+    echoValueKind(t: model.Type): String
+    (* The type variables (and abstract types) occurring free in t for which wanted(symbolId) holds, in order of
+     * appearance *)
+    freeTypeVars(t: model.Type wanted: All(symbolId: Int) Bool): Array(model.Type)
+    (* The types a unit's C declares the aggregates of, in the order first met *)
+    unitTypes(unit: nodes.Unit): Array(model.Type)
+    (* Gives the unit's run-time uses of types their descriptors, in place, returning it *)
+    describeUnit(unit: nodes.Unit): nodes.Unit
+end

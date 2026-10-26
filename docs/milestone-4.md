@@ -91,48 +91,84 @@ checked, as in the bootstrap's tests.
 
 Each step is one or more commits; each ends with its runs passing.
 
-### Step 0: Break the IR's import cycle
+### Step 0: Break the IR's import cycle (done)
 
 §1.1, in the bootstrap. Both bootstrap suites pass.
 
 **Done when** the bootstrap's imports among `ir`, `codegen` (but `codegen/c`), `types/canonical`, and
 `interpreter/ir_interp`, lazy ones included, are acyclic.
 
-### Step 1: Canonical forms, shapes, and layout
+### Step 1: Canonical forms, shapes, and layout (done)
 
 Complete `types/canonical` (canonical forms of types, their graphs, the recursion binders, and the guard), and port
 `ir/shapes`, `codegen/syntax`, `codegen/layout`, and `codegen/descriptors`. They are tested through the dumps of the
 steps after this one, which print shapes and representations.
 
-### Step 2: Core IR
+Divergences: the graph's node shapes, which the bootstrap keys dictionaries by as tuples, are an option with a key
+text of their own (`shapeKey`); the caches keyed by a node's identity are keyed by its id. Layout tags and type
+digests hash with `codegen/sha256`, the SHA-256 of a text's bytes encoded as UTF-8 encodes them (as Python's
+`hashlib` does), whose results match the bootstrap's. A shape's element, result, and body are `maybe`s, unwrapped by
+`shapes.element`, `result`, and `body`. `signatureRepresentation` gives the bootstrap's tuple as a text, which only
+equality compares.
+
+The step found a bug of the bootstrap: a `.qi` wrote an option's case as its payload's names and types alone, so that
+a module defining `Option a with var x: T end` was incompatible with its own interface. It was fixed first (ABI
+version 38).
+
+### Step 2: Core IR (done)
 
 Port `ir/nodes`, `walk`, `printer`, and `lower`, with the verifier's checks of Core IR, and add the `ir_core` phase to
 the driver and the runner's self-hosted phases, with every IR phase's goldens and tests on the pending list. The
 `ir_core` goldens leave it.
 
-### Step 3: The IR interpreter
+Each stage's phases were added to the runner as they came to pass, so the pending list was not needed. Divergences:
+the IR's operations and atoms are one option (`Op`, an atom being `opAtom`), and its `Var` is `Variable` (`Var` is a
+type keyword); the fields named with keywords are renamed (nodes.int.quest). Compiled Quest copies an option's
+payload when a case binds it (the interpreter shares it, its var components being cells), so an operation's or
+statement's fields are a tuple, its case's one component `n`, which a binding shares and the passes assign. Lowering
+takes `echo` and `printResult` rather than the compiler's options. The verifier's scopes are one mutable scope whose
+additions in a body are undone when it ends, rather than values copied at each binding.
+
+### Step 3: The IR interpreter (done)
 
 Port `interpreter/irinterp` and the `run_ir_core` phase. The run goldens and run-time error tests at Core leave the
 list.
 
-### Step 4: Specialize and closure-convert
+Divergences: an IR function's value is a tree-walker builtin whose IR closure the interpreter finds in a table by the
+builtin's identity; a handler's exception variable holds the exception's value, and its frame keeps the error raised,
+for its payload and for raising it again. A run-time error's offset is now a var field (values/model), so that the
+interpreter can locate an error after it is raised, as the bootstrap's does.
+
+### Step 4: Specialize and closure-convert (done)
 
 Port `ir/written`, `specialize`, and `closure`, with their stages' verifier checks, and the `ir_specialized`,
 `ir_closed`, `run_ir_specialized`, and `run_ir_closed` phases. Their tests leave the list.
 
-### Step 5: Represent
+Divergence: specialization's clone, which the bootstrap makes by copying nodes' fields by reflection, lists each node's
+fields.
+
+### Step 5: Represent (done)
 
 Port `ir/slots` and `represent`, with the stage's checks, and the `ir_represented` and `run_ir_represented` phases.
 
-### Step 6: Describe
+Divergence: the sets of pairs being planned and adapted, which the bootstrap keys by the instantiation dictionary's
+identity, key it by its identity hash; a plan's layout keeps its instantiation's symbols in the order they were bound
+(`PlanLayout.keys`), as the dictionary does, for the describe pass's `unitTypes`.
+
+### Step 6: Describe (done)
 
 Port `ir/describe`, with the stage's checks (the rest of `verify`), and the `ir_described` and `run_ir_described`
 phases. The pending list is empty.
 
-### Step 7: Done
+Divergence: `unitTypes`, which the bootstrap computes by its reflective traversal (`walk.contents`), lists each node's
+fields in that traversal's order. `modules/abstracttypes` gains `moduleAbstractTypes`.
+
+### Step 7: Done (done)
 
 Update compiler-organization.md (§2's "so far", §6's Milestone 4 status), ir.md (the self-hosted IR beside the
 bootstrap's), and testing.md; record the divergences in this document.
+
+The divergences are recorded in Steps 1 to 6.
 
 ---
 

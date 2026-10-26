@@ -8,6 +8,8 @@ import
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/strutil : util/Strutil
     stringOp = string : StringOp
 export
     Let Instance = Tuple args: Array(model.Type) rep: model.Type end
@@ -74,4 +76,17 @@ export
         hashMap.get(:Int :ModuleAbstractType bySymbol symbolId)
     let abstractTypeByName(globalName: String): maybe.T(ModuleAbstractType) =
         hashMap.get(:String :ModuleAbstractType byName globalName)
+
+    let moduleAbstractTypes(canon: String): Array(ModuleAbstractType) =
+        begin
+            let prefix = canon <> "."
+            let found = vector.new(:ModuleAbstractType)
+            hashMap.forEach(:String :ModuleAbstractType byName fun(name: String e: ModuleAbstractType): Ok
+                if e.linked andif maybe.isSome(:model.Type e.rep) andif strutil.startsWith(name prefix)
+                    andif not(strutil.contains(stringOp.getSub(name stringOp.length(prefix) {stringOp.length(name) - stringOp.length(prefix)}) ".")) then
+                    vector.append(:ModuleAbstractType found e)
+                end)
+            vector.toArray(:ModuleAbstractType sort.sortedVector(:ModuleAbstractType found
+                fun(a: ModuleAbstractType b: ModuleAbstractType): Int sort.stringCompare(a.globalName b.globalName)))
+        end
 end

@@ -41,8 +41,22 @@ export
 
     let some(p: Plan): maybe.T(Plan) = maybe.some(:Plan p)
     let newPlan(kind: String source: Type target: Type): maybe.T(Plan) = some(nodes.newPlan(kind source target))
-    let layoutOf(subst: model.Subst toGeneric: Bool): Layout =
-        maybe.some(:nodes.PlanLayout tuple let subst = subst let toGeneric = toGeneric end)
+    (* A polymorphic callee's type parameters' instantiation, its symbols in the order they were bound *)
+    Let Instantiation = Tuple subst: model.Subst keys: vector.T(Int) end
+
+    let newInstantiation(): Instantiation = tuple let subst = model.newSubst() let keys = vector.new(:Int) end
+
+    let bind(inst: Instantiation symbolId: Int t: Type): Ok =
+        begin
+            if not(hashMap.contains(:Int :Type inst.subst symbolId)) then vector.append(:Int inst.keys symbolId) end
+            hashMap.insert(:Int :Type inst.subst symbolId t)
+            ok
+        end
+
+    let isEmpty(inst: Instantiation): Bool = hashMap.empty(:Int :Type inst.subst)
+
+    let layoutOf(inst: Instantiation toGeneric: Bool): Layout =
+        maybe.some(:nodes.PlanLayout tuple let subst = inst.subst let keys = inst.keys let toGeneric = toGeneric end)
     let hasInstantiation(layout: Layout): Bool =
         maybe.isSome(:nodes.PlanLayout layout) andif not(hashMap.empty(:Int :Type maybe.unwrap(:nodes.PlanLayout layout).subst))
 
@@ -301,7 +315,8 @@ export
                     unsupported(:Ok "converting a function of type " <> model.show(source) <> " to " <> model.show(target))
                 end
                 let flipped = if maybe.isSome(:nodes.PlanLayout lay) then
-                    layoutOf(maybe.unwrap(:nodes.PlanLayout lay).subst not(maybe.unwrap(:nodes.PlanLayout lay).toGeneric))
+                    let l = maybe.unwrap(:nodes.PlanLayout lay)
+                    layoutOf(tuple let subst = l.subst let keys = l.keys end not(l.toGeneric))
                 else
                     noLayout
                 end
@@ -627,9 +642,9 @@ export
     let typeAppPlans(origType: Type typeArgs: Array(Type) targetType: Type): TypeAppPlans =
         begin
             let q = written.quantified(origType)
-            let instantiation = model.newSubst()
+            let instantiation = newInstantiation()
             for i = 0 upto {extent q.quantifiers - 1} do
-                if i < extent typeArgs then hashMap.insert(:Int :Type instantiation q.quantifiers[i].symbolId typeArgs[i]) end
+                if i < extent typeArgs then bind(instantiation q.quantifiers[i].symbolId typeArgs[i]) end
             end
             case q.body.form
                 when typeFun with inner then
@@ -638,7 +653,7 @@ export
                     for i = extent typeArgs upto {extent q.quantifiers - 1} do
                         if k < extent t.quantifiers then
                             let tq = t.quantifiers[k]
-                            hashMap.insert(:Int :Type instantiation q.quantifiers[i].symbolId
+                            bind(instantiation q.quantifiers[i].symbolId
                                 model.typeVariable(tq.name tq.symbolId maybe.some(:model.Kind tq.bound)))
                         end
                         k := k + 1
@@ -668,7 +683,7 @@ export
      * The pass
      * ========================================================================= *)
 
-    Def GenericResult = Tuple generic: Type instantiated: Type instantiation: model.Subst end
+    Def GenericResult = Tuple generic: Type instantiated: Type instantiation: Instantiation end
 
     Let Representer = Tuple
         unit: nodes.Unit
@@ -719,7 +734,7 @@ export
 
     (* The address passed for a var or out argument: the location's own, or that of a temporary of the parameter's
      * representation, copied in from the location (for var) and out to it after the call *)
-    let refArgument(address: Atom param: model.Param instantiation: model.Subst before: vector.T(Stmt) after: vector.T(Stmt)): Atom =
+    let refArgument(address: Atom param: model.Param instantiation: Instantiation before: vector.T(Stmt) after: vector.T(Stmt)): Atom =
         begin
             let locationType = case typeOf(address).form
                 when typeVar with x then x.element
@@ -727,7 +742,7 @@ export
                 else typeOf(address)
             end
             let paramType = param.type
-            let instantiated = not(hashMap.empty(:Int :Type instantiation))
+            let instantiated = not(isEmpty(instantiation))
             let pOut = plan(paramType locationType if instantiated then layoutOf(instantiation false) else noLayout end)
             let pIn = if param.isOut then none else plan(locationType paramType if instantiated then layoutOf(instantiation true) else noLayout end) end
             if maybe.isNone(:Plan pOut) andif maybe.isNone(:Plan pIn) then
@@ -800,11 +815,11 @@ export
             let params = signature.params
             (* A polymorphic callee's parameters at the call's type arguments *)
             let quants = written.quantified(callee).quantifiers
-            let instantiation = model.newSubst()
+            let instantiation = newInstantiation()
             for i = 0 upto {extent quants - 1} do
-                if i < extent c.typeArgs then hashMap.insert(:Int :Type instantiation quants[i].symbolId c.typeArgs[i]) end
+                if i < extent c.typeArgs then bind(instantiation quants[i].symbolId c.typeArgs[i]) end
             end
-            let instantiated = not(hashMap.empty(:Int :Type instantiation))
+            let instantiated = not(isEmpty(instantiation))
             let args = vector.new(:Atom)
             for i = 0 upto {extent c.args - 1} do
                 let var a = c.args[i]
@@ -813,7 +828,7 @@ export
                     if p.isOut orif p.isVar then
                         a := refArgument(a p instantiation before after)
                     else
-                        if instantiated then a := convert(a model.substitute(p.type instantiation) before noLayout) end
+                        if instantiated then a := convert(a model.substitute(p.type instantiation.subst) before noLayout) end
                         a := convert(a p.type before layoutOf(instantiation true))
                     end
                 end
@@ -823,7 +838,7 @@ export
             if instantiated then
                 vector.append(:GenericResult r.genericResults tuple
                     let generic = signature.result
-                    let instantiated = model.substitute(signature.result instantiation)
+                    let instantiated = model.substitute(signature.result instantiation.subst)
                     let instantiation = instantiation
                 end)
             end

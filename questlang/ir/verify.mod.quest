@@ -7,6 +7,7 @@ import
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/walk : questlang/ir/Walk
     questlang/ir/written : questlang/ir/Written
+    questlang/ir/describe : questlang/ir/Describe
     questlang/codegen/layout : questlang/codegen/Layout
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
@@ -652,6 +653,305 @@ export
             problems
         end
 
+    (* =========================================================================
+     * Descriptors (after the describe pass)
+     *
+     * The descriptor operands missing, unbound, or ill-formed, and the static descriptors and tables operations
+     * refer to that are not the unit's static data.
+     * ========================================================================= *)
+
+    (* The descriptor variables in scope, and the symbols of the type parameters a static descriptor must not mention *)
+    Let DescriptorScope = Tuple vars: Ids symbols: Ids end
+
+    let thunkScope(scope: DescriptorScope params: Array(nodes.DescriptorParam)): DescriptorScope =
+        begin
+            let vars = newIds()
+            let symbols = copyIds(scope.symbols)
+            for i = 0 upto {extent params - 1} do
+                hashMap.insert(:Int :Bool vars params[i].v.id true)
+                for j = 0 upto {extent params[i].symbols - 1} do hashMap.insert(:Int :Bool symbols params[i].symbols[j] true) end
+            end
+            tuple let vars = vars let symbols = symbols end
+        end
+
+    let withParams(scope: DescriptorScope params: Array(nodes.DescriptorParam)): DescriptorScope =
+        begin
+            let vars = copyIds(scope.vars)
+            let symbols = copyIds(scope.symbols)
+            for i = 0 upto {extent params - 1} do
+                hashMap.insert(:Int :Bool vars params[i].v.id true)
+                for j = 0 upto {extent params[i].symbols - 1} do hashMap.insert(:Int :Bool symbols params[i].symbols[j] true) end
+            end
+            tuple let vars = vars let symbols = symbols end
+        end
+
+    let descriptorProblems(unit: nodes.Unit): vector.T(String) =
+        begin
+            let problems = vector.new(:String)
+            if maybe.isNone(:nodes.StaticData unit.staticData) then
+                vector.append(:String problems "the described unit has no static data")
+            else
+                let data = maybe.unwrap(:nodes.StaticData unit.staticData)
+                let staticKey = fun(echo: Bool t: model.Type): String
+                    if echo then "e" <> conv.int(t.id) else "s" <> conv.int(shapes.shape(t).id) end
+                let staticKeys = hashMap.new(:String :Bool stringOp.equal hash.string)
+                for i = 0 upto {vector.length(:nodes.StaticDescriptor data.descriptors) - 1} do
+                    let d = vector.get(:nodes.StaticDescriptor data.descriptors i)
+                    hashMap.insert(:String :Bool staticKeys staticKey(d.echo d.type) true)
+                end
+                let offsetTables = newIds()
+                for i = 0 upto {vector.length(:nodes.OffsetTable data.offsetTables) - 1} do
+                    hashMap.insert(:Int :Bool offsetTables vector.get(:nodes.OffsetTable data.offsetTables i).id true)
+                end
+                let tagMaps = newIds()
+                for i = 0 upto {vector.length(:nodes.TagMap data.tagMaps) - 1} do
+                    hashMap.insert(:Int :Bool tagMaps vector.get(:nodes.TagMap data.tagMaps i).id true)
+                end
+                let bound = newIds()
+                let handlerVars = newIds()
+                let problem = fun(text: String): Ok vector.append(:String problems text)
+                let bind = fun(params: Array(nodes.DescriptorParam) where: String): Ok
+                    for i = 0 upto {extent params - 1} do
+                        let p = params[i]
+                        if hashMap.contains(:Int :Bool bound p.v.id) then
+                            problem(where <> ": descriptor variable '" <> p.v.hint <> "' is bound more than once")
+                        end
+                        hashMap.insert(:Int :Bool bound p.v.id true)
+                        if not(model.same(p.v.type nodes.descriptorType)) then
+                            problem(where <> ": descriptor variable '" <> p.v.hint <> "' is not of the descriptor type")
+                        end
+                    end
+                let closed = fun(t: model.Type scope: DescriptorScope where: String): Ok
+                    begin
+                        let mentioned = describe.freeTypeVars(t fun(sid: Int): Bool hashMap.contains(:Int :Bool scope.symbols sid))
+                        if extent mentioned > 0 then
+                            let names = vector.new(:String)
+                            for i = 0 upto {extent mentioned - 1} do
+                                vector.append(:String names case mentioned[i].form
+                                    when typeVariable with x then x.name
+                                    when typeAbstract with x then x.name
+                                    else ""
+                                end)
+                            end
+                            problem(where <> ": the static descriptor of " <> model.show(t) <> " mentions " <> strutil.join(", " names)
+                                <> ", whose descriptor is a variable")
+                        end
+                    end
+                let rec descriptor(d: maybe.T(nodes.Descriptor) scope: DescriptorScope where: String): Ok =
+                    if maybe.isNone(:nodes.Descriptor d) then
+                        problem(where <> ": a descriptor operand is missing")
+                    else
+                        case maybe.unwrap(:nodes.Descriptor d)
+                            when descVar with x then
+                                if not(hashMap.contains(:Int :Bool scope.vars x.v.id)) then
+                                    problem(where <> ": descriptor variable '" <> x.v.hint <> "' is used outside its scope")
+                                end
+                            when descStatic with x then
+                                begin
+                                    if not(hashMap.contains(:String :Bool staticKeys staticKey(x.d.echo x.d.type))) then
+                                        problem(where <> ": the static descriptor of " <> model.show(x.d.type) <> " is not in the unit's static data")
+                                    end
+                                    closed(x.d.type scope where)
+                                end
+                            when descInstantiate with x then
+                                begin
+                                    if not(hashMap.contains(:String :Bool staticKeys staticKey(false x.template))) then
+                                        problem(where <> ": the template " <> model.show(x.template) <> " is not in the unit's static data")
+                                    end
+                                    closed(x.template scope where)
+                                    for i = 0 upto {extent x.args - 1} do descriptor(maybe.some(:nodes.Descriptor x.args[i]) scope where) end
+                                end
+                        end
+                    end
+                let descriptorList = fun(ds: Array(nodes.Descriptor) n: Int scope: DescriptorScope where: String): Ok
+                    begin
+                        if extent ds isnot n then
+                            problem(where <> ": " <> conv.int(extent ds) <> " descriptors for " <> conv.int(n) <> " type arguments")
+                        end
+                        for i = 0 upto {extent ds - 1} do descriptor(maybe.some(:nodes.Descriptor ds[i]) scope where) end
+                    end
+                let rec plan(p0: maybe.T(nodes.Plan) scope: DescriptorScope where: String): Ok =
+                    if maybe.isSome(:nodes.Plan p0) then
+                        let p = maybe.unwrap(:nodes.Plan p0)
+                        let wanted = if eq(p.kind "record_view") then 1 elsif eq(p.kind "view") orif eq(p.kind "runtime") then 2 else 0 end
+                        if extent p.descriptors isnot wanted then
+                            problem(where <> ": a " <> p.kind <> " plan with " <> conv.int(extent p.descriptors) <> " descriptors")
+                        end
+                        for i = 0 upto {extent p.descriptors - 1} do descriptor(maybe.some(:nodes.Descriptor p.descriptors[i]) scope where) end
+                        if eq(p.kind "variant_tags") andif {maybe.isNone(:nodes.TagMap p.tagMap)
+                            orif not(hashMap.contains(:Int :Bool tagMaps maybe.unwrap(:nodes.TagMap p.tagMap).id))} then
+                            problem(where <> ": a variant_tags plan whose tag map is not in the unit's static data")
+                        end
+                        let var inner = scope
+                        if eq(p.kind "adapt") then
+                            if extent p.thunkParams isnot extent p.thunkSymbols then
+                                problem(where <> ": an adapt plan's thunk has " <> conv.int(extent p.thunkParams) <> " descriptor parameters")
+                            end
+                            bind(p.thunkParams where)
+                            inner := thunkScope(scope p.thunkParams)
+                        end
+                        let fieldScope = inner
+                        for i = 0 upto {extent p.fields - 1} do plan(p.fields[i] fieldScope where) end
+                    end
+                let operation = fun(o: Op scope: DescriptorScope where: String): Ok
+                    case o
+                        when opCall with xPayload then let x = xPayload.n descriptorList(x.descriptors extent x.typeArgs scope where)
+                        when opCallExternal with xPayload then let x = xPayload.n descriptorList(x.descriptors extent x.typeArgs scope where)
+                        when opMakeClosure with xPayload then let x = xPayload.n descriptorList(x.descriptors extent x.typeArgs scope where)
+                        when opTypeApp with xPayload then let x = xPayload.n
+                            descriptorList(x.descriptors extent x.typeArgs scope where)
+                            let var inner = scope
+                            if maybe.isSome(:Array(nodes.DescriptorParam) x.thunkParams) then
+                                let params = maybe.unwrap(:Array(nodes.DescriptorParam) x.thunkParams)
+                                if extent params isnot extent x.thunkSymbols then
+                                    problem(where <> ": a type application's thunk has " <> conv.int(extent params) <> " descriptor parameters")
+                                end
+                                bind(params where)
+                                inner := thunkScope(scope params)
+                            end
+                            let planScope = inner
+                            for i = 0 upto {extent x.plans - 1} do plan(x.plans[i] planScope where) end
+                        when opConvert with xPayload then let x = xPayload.n plan(maybe.some(:nodes.Plan x.plan) scope where)
+                        when opPrim with xPayload then let x = xPayload.n
+                            if {eq(x.op "is") orif eq(x.op "isnot")} andif {extent x.args > 0} then
+                                let a = x.args[0]
+                                let isHandler = case a when atomVar with y then hashMap.contains(:Int :Bool handlerVars y.v.id) else false end
+                                if not(isHandler) andif eq(layout.representation(nodes.atomType(a)) "QVal") then
+                                    descriptor(x.descriptor scope where)
+                                end
+                            end
+                        when opMakeAuto with xPayload then let x = xPayload.n descriptor(x.descriptor scope where)
+                        when opRecordField with xPayload then let x = xPayload.n if x.stored then descriptor(x.descriptor scope where) end
+                        when opMakeRecord with xPayload then let x = xPayload.n
+                            descriptor(x.descriptor scope where)
+                            if x.runtimeOffsets then
+                                descriptor(x.viewDescriptor scope where)
+                            elsif maybe.isNone(:nodes.OffsetTable x.offsets)
+                                orif not(hashMap.contains(:Int :Bool offsetTables maybe.unwrap(:nodes.OffsetTable x.offsets).id)) then
+                                problem(where <> ": a record whose offset table is not in the unit's static data")
+                            end
+                        else ok
+                    end
+                let rec body(b: Body scope: DescriptorScope where: String): Ok =
+                    for si = 0 upto {vector.length(:Stmt b.statements) - 1} do
+                        let s = vector.get(:Stmt b.statements si)
+                        case s
+                            when sLet with xPayload then let x = xPayload.n operation(x.value scope where)
+                            when sDo with xPayload then let x = xPayload.n operation(x.value scope where)
+                            when sTry with xPayload then let x = xPayload.n begin hashMap.insert(:Int :Bool handlerVars x.exc.id true) ok end
+                            when sEcho with xPayload then let x = xPayload.n
+                                if maybe.isSome(:nodes.Descriptor x.descriptor) then descriptor(x.descriptor scope where) end
+                            when sInspect with xPayload then let x = xPayload.n
+                                if maybe.isSome(:model.Type x.autoType) then
+                                    let armed = if maybe.isNone(:nodes.DescriptorParam x.witness) then
+                                        begin
+                                            problem(where <> ": an inspect of an auto value without its witness")
+                                            scope
+                                        end
+                                    else
+                                        let w = array of maybe.unwrap(:nodes.DescriptorParam x.witness) end
+                                        bind(w where)
+                                        withParams(scope w)
+                                    end
+                                    for i = 0 upto {extent x.cases - 1} do
+                                        let c = x.cases[i]
+                                        descriptor(c.descriptor scope where)
+                                        if {extent c.binders > 0} andif maybe.isSome(:nodes.InspectArm c.arm) then
+                                            let arm = maybe.unwrap(:nodes.InspectArm c.arm)
+                                            if extent arm.descriptors isnot extent arm.converted then
+                                                problem(where <> ": an inspect arm without its components' descriptors")
+                                            end
+                                            let n = if extent arm.descriptors < extent arm.converted then extent arm.descriptors else extent arm.converted end
+                                            for j = 0 upto {n - 1} do
+                                                let how = arm.converted[j]
+                                                let pair = arm.descriptors[j]
+                                                if maybe.isNone(:String how) isnot maybe.isNone(:nodes.DescriptorPair pair) then
+                                                    problem(where <> ": an inspect arm's component " <> maybe.unwrapOr(:String how "None")
+                                                        <> " has descriptors " <> if maybe.isNone(:nodes.DescriptorPair pair) then "None" else "(...)" end)
+                                                end
+                                                if maybe.isSome(:nodes.DescriptorPair pair) then
+                                                    descriptor(maybe.some(:nodes.Descriptor maybe.unwrap(:nodes.DescriptorPair pair).source) armed where)
+                                                    descriptor(maybe.some(:nodes.Descriptor maybe.unwrap(:nodes.DescriptorPair pair).target) armed where)
+                                                end
+                                            end
+                                            plan(arm.plan armed where)
+                                        end
+                                    end
+                                end
+                            else ok
+                        end
+                        let bodies = walk.statementBodies(s)
+                        for i = 0 upto {extent bodies - 1} do body(bodies[i] scope where) end
+                    end
+                let top = tuple let vars = newIds() let symbols = newIds() end
+                for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                    let m = vector.get(:nodes.Module unit.modules i)
+                    let where = "module '" <> m.name <> "'"
+                    body(m.init top where)
+                    for j = 0 upto {extent m.abstractTypes - 1} do
+                        descriptor(maybe.some(:nodes.Descriptor option descStatic of nodes.Descriptor with let d = m.abstractTypes[j].descriptor end)
+                            top where)
+                    end
+                end
+                body(unit.main top "main")
+                for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                    let f = vector.get(:nodes.Function unit.functions i)
+                    let where = "function '" <> f.v.hint <> "'"
+                    let var matching = extent f.descriptorParams is extent f.typeParams
+                    if matching then
+                        for j = 0 upto {extent f.typeParams - 1} do
+                            let syms = f.descriptorParams[j].symbols
+                            if {extent syms isnot 1} orif {syms[0] isnot f.typeParams[j].symbolId} then matching := false end
+                        end
+                    end
+                    if not(matching) then problem(where <> ": its descriptor parameters are not its type parameters'") end
+                    bind(f.descriptorParams where)
+                    let inner = withParams(top f.descriptorParams)
+                    body(f.body inner where)
+                    (* View maps: each of a type parameter of the function, at the bound, and every one used is the
+                     * function's *)
+                    let own = newIds()
+                    for j = 0 upto {extent f.descriptorParams - 1} do hashMap.insert(:Int :Bool own f.descriptorParams[j].v.id true) end
+                    let maps = newIds()
+                    for j = 0 upto {extent f.viewMaps - 1} do
+                        let m = f.viewMaps[j]
+                        if not(model.same(m.v.type nodes.viewMapType)) orif not(hashMap.contains(:Int :Bool own m.descriptor.id)) then
+                            problem(where <> ": view map " <> m.v.hint <> " is not of one of its type parameters")
+                        end
+                        descriptor(maybe.some(:nodes.Descriptor m.bound) inner where)
+                        hashMap.insert(:Int :Bool maps m.v.id true)
+                    end
+                    let stmts = walk.walkStatements(f.body false)
+                    for j = 0 upto {vector.length(:Stmt stmts) - 1} do
+                        let s = vector.get(:Stmt stmts j)
+                        let maps0 = walk.stmtViewMap(s)
+                        let maps1 = case s
+                            when sLet with xPayload then let x = xPayload.n walk.opViewMap(x.value)
+                            when sDo with xPayload then let x = xPayload.n walk.opViewMap(x.value)
+                            else maybe.none(:Variable)
+                        end
+                        let check = fun(vm: maybe.T(Variable)): Ok
+                            if maybe.isSome(:Variable vm) andif not(hashMap.contains(:Int :Bool maps maybe.unwrap(:Variable vm).id)) then
+                                problem(where <> ": an operation reads through a view map that is not the function's")
+                            end
+                        check(maps0)
+                        check(maps1)
+                    end
+                end
+                for i = 0 upto {vector.length(:nodes.OffsetTable data.offsetTables) - 1} do
+                    let table = vector.get(:nodes.OffsetTable data.offsetTables i)
+                    if maybe.isSome(:nodes.Registered table.registered) then
+                        let r = maybe.unwrap(:nodes.Registered table.registered)
+                        descriptor(maybe.some(:nodes.Descriptor option descStatic of nodes.Descriptor with let d = r.view end) top
+                            "the unit's offset tables")
+                        descriptor(maybe.some(:nodes.Descriptor option descStatic of nodes.Descriptor with let d = r.layout end) top
+                            "the unit's offset tables")
+                    end
+                end
+            end
+            problems
+        end
+
     let verifyUnit(unit: nodes.Unit): Array(String) =
         begin
             let modules = newIds()
@@ -691,6 +991,10 @@ export
             end
             if nodes.atLeast(unit "represented") then
                 let found = representationProblems(unit)
+                for i = 0 upto {vector.length(:String found) - 1} do vector.append(:String v.problems vector.get(:String found i)) end
+            end
+            if nodes.atLeast(unit "described") then
+                let found = descriptorProblems(unit)
                 for i = 0 upto {vector.length(:String found) - 1} do vector.append(:String v.problems vector.get(:String found i)) end
             end
             vector.toArray(:String v.problems)

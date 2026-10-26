@@ -97,8 +97,9 @@ questlang/
 ├── ir/                      # IR lowering and passes (Milestone 4; docs/ir.md)
 │   └── nodes, walk, lower, specialize, closure, shapes, represent, slots, describe, written, verify, printer
 │
-├── codegen/                 # Backends (Milestone 5)
-│   ├── backend, descriptors, layout, symbols, syntax
+├── codegen/                 # Backends (the shared layer, Milestone 4; the C backend, Milestone 5)
+│   ├── syntax, layout, descriptors, sha256   # C spelling, layouts and digests, descriptors' type-level forms
+│   ├── backend, symbols
 │   └── c/                   # backend, declarations, headers, printer, types, compilerrunner
 │
 ├── config/, build/          # ABI, options, build engine (Milestone 5)
@@ -107,10 +108,11 @@ questlang/
     └── main                 # Main routine: the front end's phases from Milestone 2, growing with each milestone
 ```
 
-So far `common/*`, `syntax/*`, `types/*` (of `canonical`, the part the interpreter uses), `typechecker/*`,
-`modules/*` (but the artifacts' `interfacecompiler`, `modulecompiler`, and `manifest`), `values/*`, `interpreter/*`
-(but `irinterp`), and `driver/main` (the front end's phases, the interpret phase, and `-e`) exist; the rest of the
-tree is the plan.
+So far `common/*`, `syntax/*`, `types/*`, `typechecker/*`, `modules/*` (but the artifacts' `interfacecompiler`,
+`modulecompiler`, and `manifest`), `values/*`, `interpreter/*`, `ir/*`, `codegen/syntax`, `layout`, `descriptors`, and
+`sha256`, and `driver/main` (the front end's phases, the IR's dumps and runs at every stage, the interpret phase, and
+`-e`) exist; the rest of the tree is the plan. (`codegen/sha256` is the SHA-256 that the bootstrap takes from Python's
+`hashlib`, for layout tags and type digests.)
 
 ---
 
@@ -405,9 +407,12 @@ The plan is [milestone-3.md](milestone-3.md): `values/model`, `interpreter/primi
 run-time error tests, and `-e` against a generated transcript of the bootstrap's (`tests/eval`); see
 [testing.md](testing.md).
 
-### Milestone 4: IR (`ir`, `types/canonical`, the IR interpreter)
-- `ir/lower` and the IR passes, `types/canonical`, and `interpreter/irinterp`, which runs the IR of each pass and is
-  verified against the `run_ir_*` goldens.
+### Milestone 4: IR (`ir`, `types/canonical`, the IR interpreter) — done
+The plan is [milestone-4.md](milestone-4.md): the rest of `types/canonical` (canonical forms of recursive types),
+`ir/*` (lowering, the passes, the printer, and the verifier), `codegen/syntax`, `layout`, and `descriptors`, and
+`interpreter/irinterp`. The self-hosted suite verifies each stage's dumps against the `ir_*` goldens and runs every
+program at every stage (`run_ir_*`) against the run goldens and run-time error tests, with the verifier and the
+canonical-form guard on; see [testing.md](testing.md).
 
 ### Milestone 5: C Code Generation & Self-Hosting (`codegen`, artifacts, `driver`)
 - `codegen` C emission, the build artifacts (`.qi`, `.qm`, headers) and build engine, the full driver, and
