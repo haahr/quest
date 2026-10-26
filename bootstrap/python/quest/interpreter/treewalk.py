@@ -157,16 +157,20 @@ class RuntimeEnvironment:
             self.current_dir: Optional[Path] = parent.current_dir
             self.program_dir: Optional[Path] = parent.program_dir
             self.units: UnitGraph = parent.units
+            self.module_values: dict[str, QValue] = parent.module_values
             self.source_map: Optional[Any] = parent.source_map
             self.call_stack: list[str] = parent.call_stack
         else:
             self.include_paths: list[Path] = []
             self.current_dir: Optional[Path] = None
             self.program_dir: Optional[Path] = None
-            # The program's units (docs/build-process.md §2.1), whose typed modules the interpreter evaluates, and
-            # which hold the values of the modules it has run; the type checker's graph itself, when the program was
-            # type checked by a pipeline (CompilerContext.runtime_env)
+            # The program's units (docs/build-process.md §2.1), whose typed modules the interpreter evaluates; the
+            # type checker's graph itself, when the program was type checked by a pipeline
+            # (CompilerContext.runtime_env)
             self.units: UnitGraph = UnitGraph()
+            # The values of the modules run so far, the records of their members, by canonical name, shared by every
+            # scope: each module is run once per program (load_module_for_interpreter)
+            self.module_values: dict[str, QValue] = {}
             # The source map of the file whose code runs in this scope (the program's, or a module file's), where
             # the offsets of the errors that code raises are (docs/exceptions.md §3.2)
             self.source_map: Optional[Any] = None
@@ -253,16 +257,21 @@ class RuntimeEnvironment:
         raise QuestRuntimeError(f"Cannot assign to undefined symbol '{name}'", offset=offset)
 
     def snapshot(self) -> dict[str, Any]:
-        """Captures a shallow copy of the current bindings and parent pointer."""
+        """Captures a shallow copy of the current bindings, parent pointer, and module values."""
         return {
             "bindings": dict(self.bindings),
             "parent": self.parent,
+            "module_values": dict(self.module_values),
         }
 
     def restore(self, snap: dict[str, Any]) -> None:
-        """Restores bindings and parent from a previous snapshot."""
+        """Restores bindings, parent, and module values from a previous snapshot. The module values are restored in
+        place, since every scope shares them: the modules run since are forgotten, and run again when imported again,
+        as the unit graph's restore forgets their typed forms."""
         self.bindings = dict(snap["bindings"])
         self.parent = snap["parent"]
+        self.module_values.clear()
+        self.module_values.update(snap["module_values"])
 
     _cached_base_bindings: Optional[dict[str, QValue]] = None
 
@@ -1143,25 +1152,23 @@ def load_module_for_interpreter(
 
     The module is the unit r_env.units resolves the import to; it is evaluated from that unit's typed module, which
     the type checker elaborated, or which is elaborated here in an environment of its own (a module the program
-    uses without importing it, such as a standard library module named in an expression). Its value is kept in the
-    unit, so each module is evaluated once, whatever path imports it (docs/modules.md §2.3), until a REPL input
-    that loaded it is rolled back (UnitGraph.restore). An import that knows the module's canonical name (from the
-    type checker) passes it, and a module already run is found by it without resolving the import again.
+    uses without importing it, such as a standard library module named in an expression). Its value is kept by
+    canonical name (r_env.module_values), so each module is evaluated once, whatever path imports it
+    (docs/modules.md §2.3), until a REPL input that loaded it is rolled back (RuntimeEnvironment.restore). An import
+    that knows the module's canonical name (from the type checker) passes it, and a module already run is found by
+    it without resolving the import again.
     """
     from quest.types.env import Environment
     from quest.modules.loader import load_module
 
     graph = r_env.units
-    if canonical_name is not None:
-        known = graph.find(UnitKind.MODULE, canonical_name)
-        if known is not None and known.value is not None:
-            return known.value
+    if canonical_name is not None and canonical_name in r_env.module_values:
+        return r_env.module_values[canonical_name]
     resolved = graph.resolver.module(name, r_env.current_dir, Roots.of(r_env.include_paths, r_env.program_dir))
     file_path = resolved.source
     canon_name = resolved.canonical_name
-    loaded = graph.find(UnitKind.MODULE, canon_name)
-    if loaded is not None and loaded.value is not None:
-        return loaded.value
+    if canon_name in r_env.module_values:
+        return r_env.module_values[canon_name]
 
     typed_mod = graph.typed_module(canon_name)
     if typed_mod is None:
@@ -1185,5 +1192,5 @@ def load_module_for_interpreter(
         exported_fields[val_name] = mod_env.lookup(val_name)
 
     rec = QRecord(exported_fields)
-    graph.unit(UnitKind.MODULE, canon_name).value = rec
+    r_env.module_values[canon_name] = rec
     return rec

@@ -393,8 +393,8 @@ class Unit:
     An interface has its scope once elaborated (from source or from its .qi). A module has its typed module once
     elaborated or synthesized from its interface, and an export scope when it is known only through its interface
     (separate compilation); precompiled marks a module typed through its interface alone (a prebuilt object, a
-    module built separately, or one with fresh artifacts in a typecheck-only run). A module the interpreter has
-    run has its value: the record of its members, made once per program (load_module_for_interpreter).
+    module built separately, or one with fresh artifacts in a typecheck-only run). The values of modules the
+    interpreter has run are the interpreter's (RuntimeEnvironment.module_values), not the unit's.
     """
     kind: UnitKind
     canonical_name: str
@@ -402,10 +402,9 @@ class Unit:
     typed_module: Optional[Any] = None
     export_scope: Optional[Scope] = None
     precompiled: bool = False
-    value: Optional[Any] = None
 
     def state(self) -> tuple[Any, ...]:
-        return (self.scope, self.typed_module, self.export_scope, self.precompiled, self.value)
+        return (self.scope, self.typed_module, self.export_scope, self.precompiled)
 
 
 @dataclass
@@ -414,14 +413,15 @@ class UnitGraph:
     resolves its imports.
 
     Loaded units are shared by canonical name (docs/modules.md §2.3): every importer of a file, through any path,
-    gets the same unit, and so the same interface scope, export scope (with the same abstract types), typed module,
-    and, once the interpreter has run it, value. The interpreter's RuntimeEnvironment holds the graph of the
-    Environment that type checked its program (CompilerContext.runtime_env), the same object, so that the two never
-    disagree about which units are loaded: restore changes the graph in place.
+    gets the same unit, and so the same interface scope, export scope (with the same abstract types), and typed
+    module. The interpreter's RuntimeEnvironment holds the graph of the Environment that type checked its program
+    (CompilerContext.runtime_env), the same object, so that the two never disagree about which units are loaded:
+    restore changes the graph in place.
 
     A graph outlives a session when the REPL keeps it from one input to the next. Each input is a session of its
-    own (new_session), and one that fails is rolled back (snapshot, restore), forgetting the units it loaded, typed
-    forms and values alike, so that importing them again elaborates and runs them again.
+    own (new_session), and one that fails is rolled back (snapshot, restore), forgetting the units it loaded, so
+    that importing them again elaborates them again (and the runtime environment's rollback forgets their values, so
+    that they run again).
     """
     resolver: Resolver = field(default_factory=Resolver)
     _units: dict[tuple[UnitKind, str], Unit] = field(default_factory=dict)
@@ -488,10 +488,10 @@ class UnitGraph:
             self.unit(UnitKind.MODULE, obj.name.split(".")[0]).precompiled = True
 
     def snapshot(self) -> dict[tuple[UnitKind, str], tuple[Any, ...]]:
-        """The units' typed forms and values, for restore (the REPL rolls back an input that failed)."""
+        """The units' typed forms, for restore (the REPL rolls back an input that failed)."""
         return {key: u.state() for key, u in self._units.items()}
 
     def restore(self, snap: dict[tuple[UnitKind, str], tuple[Any, ...]]) -> None:
-        """Puts the units' typed forms and values back as snapshot found them, forgetting units loaded since. The
+        """Puts the units' typed forms back as snapshot found them, forgetting units loaded since. The
         graph is changed in place, so every holder of it (the interpreter's RuntimeEnvironment) sees the change."""
         self._units = {key: Unit(key[0], key[1], *state) for key, state in snap.items()}

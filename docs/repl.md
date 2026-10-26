@@ -160,9 +160,9 @@ If a phrase fails during parsing, typechecking, or runtime evaluation:
 The rollback (`QuestREPL.evaluate`) restores the type checker's environment and the runtime environment: their
 bindings, the frame evaluation continues in, and the units the input loaded. The REPL keeps one unit graph
 (`docs/build-process.md` §2.1) for its whole session, which holds the interfaces and modules loaded so far, with their
-typed forms and, for modules the interpreter has run, their values; the runtime environment holds that same graph.
-An input that fails forgets the units it loaded, typed forms and values alike, so that importing a module again
-elaborates and runs it again, as if the failed input had never been. Side effects are not undone: output already
+typed forms; the runtime environment holds that same graph, and the values of the modules the interpreter has run
+(`module_values`). An input that fails forgets the units it loaded and the modules it ran, so that importing a module
+again elaborates and runs it again, as if the failed input had never been. Side effects are not undone: output already
 written stays written, and a variable of an earlier binding or module assigned by the failed input keeps its new value.
 
 Each input is also a compilation session of its own (`UnitGraph.new_session`): its imports are resolved again, so

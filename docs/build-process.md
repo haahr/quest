@@ -125,13 +125,13 @@ resolving imports and placing artifacts in its own way:
   through its interface, and whether a module is typed through its interface alone (precompiled). Typed forms hold
   the symbols one elaboration minted, so each Environment has its own graph; the graphs of one session (an
   interface compiled for an importer, a module the interpreter elaborates on demand) share its resolver. A module the
-  interpreter has run also has its value, the record of its members, so each module is run once per program. The
-  interpreter's runtime environment holds the graph of the Environment that type checked its program, the same
-  object. Prebuilt objects given to the driver mark their modules precompiled (`add_prebuilt_objects`).
+  interpreter has run has its value, the record of its members, in the interpreter's runtime environment
+  (`module_values`, by canonical name), so each module is run once per program. The runtime environment holds the
+  graph of the Environment that type checked its program, the same object. Prebuilt objects given to the driver mark their modules precompiled (`add_prebuilt_objects`).
 - **The REPL's graph.** The REPL keeps one graph across its inputs ([repl.md §5](repl.md)). Each input is a session
   (`new_session`); units loaded by earlier inputs stay loaded. An input that fails is rolled back with `snapshot` and
-  `restore`, which forget the units it loaded, typed forms and values alike, and change the graph in place, so the
-  runtime environment, holding the same graph, is rolled back with it.
+  `restore`, which forget the units it loaded and change the graph in place, so the runtime environment, holding
+  the same graph, sees the rollback; the runtime environment's own `restore` forgets the modules the input ran.
 - **Artifacts.** A unit's artifacts are named by its canonical name under a build directory (§3.2):
   `unit_artifact_dir`, `interface_qi_file`, and `ModuleArtifacts` (`.qm`, `.mod.c`, `.o`). Their staleness rules
   are §5 (interfaces, `ensure_resolved_interface_artifacts`), §5.3 (headers), and §7.1 (modules and main routines,

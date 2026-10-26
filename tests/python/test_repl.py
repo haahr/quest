@@ -258,7 +258,7 @@ class TestREPLUnits(unittest.TestCase):
         self.assertEqual(stderr, "")
         self.assertIn("==  1 : Int\n", stdout)
         self.assertIn("==  2 : Int\n", stdout)
-        self.assertIsNotNone(self.counter_unit().value)
+        self.assertIn("counter", self.repl.context.runtime_env.module_values)
 
     def test_runtime_failure_forgets_imported_module(self) -> None:
         """An input that imports a module and then fails at run time is rolled back: the module is forgotten, typed
@@ -269,6 +269,7 @@ class TestREPLUnits(unittest.TestCase):
         ctx = self.repl.context
         # The runtime environment holds the type checker's graph, which the rollback changed in place
         self.assertIs(ctx.runtime_env.units, ctx.env.units)
+        self.assertNotIn("counter", ctx.runtime_env.module_values)
         stdout, stderr = self.session(["import counter: Counter", "counter.next()"])
         self.assertEqual(stderr, "")
         self.assertIn(">>  counter.next()\n==  1 : Int\n", stdout)
@@ -291,7 +292,7 @@ class TestREPLUnits(unittest.TestCase):
         self.assertIn("error: Exception: int.error", stderr)
         # The failed input's call changed the module's state, which a rollback does not undo
         self.assertIn(">>  counter.next()\n==  3 : Int\n", stdout)
-        self.assertIsNotNone(self.counter_unit().value)
+        self.assertIn("counter", self.repl.context.runtime_env.module_values)
 
     def test_input_finds_files_created_since(self) -> None:
         """Each input resolves its imports again, finding files created since an earlier input failed to."""

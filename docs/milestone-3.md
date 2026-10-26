@@ -111,7 +111,7 @@ status is the bootstrap's. `-e PROGRAM` runs a program given as a string (`<stri
 
 Each step is one or more commits; each ends with its runs passing.
 
-### Step 0: Module values leave the unit graph
+### Step 0: Module values leave the unit graph (done)
 
 §1.1, in the bootstrap. `tests/python/test_unit_graph.py`'s tests of the values a snapshot keeps and forgets move
 to the interpreter's table, and both bootstrap suites pass.

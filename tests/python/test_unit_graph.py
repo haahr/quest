@@ -15,6 +15,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from quest.interpreter.treewalk import RuntimeEnvironment
 from quest.modules.graph import (
     ModuleArtifacts,
     Resolver,
@@ -29,6 +30,7 @@ from quest.modules.graph import (
 )
 from quest.modules.loader import load_interface, load_module
 from quest.types.env import Environment
+from quest.values.model import QRecord
 
 
 class TestUnitGraph(unittest.TestCase):
@@ -174,7 +176,7 @@ class TestUnitGraph(unittest.TestCase):
         snap = env.units.snapshot()
         load_interface("util/Counter", env)
         env.units.unit(UnitKind.MODULE, "prebuilt").precompiled = True
-        env.units.unit(UnitKind.MODULE, "run").value = object()
+        env.units.unit(UnitKind.MODULE, "run")
         graph = env.units
         env.units.restore(snap)
         self.assertIs(env.units, graph)
@@ -183,14 +185,27 @@ class TestUnitGraph(unittest.TestCase):
         self.assertFalse(env.units.is_precompiled("prebuilt"))
         self.assertIsNone(env.units.find(UnitKind.MODULE, "run"))
 
-    def test_restore_keeps_values_of_units_loaded_before(self) -> None:
+    def test_restore_keeps_typed_modules_of_units_loaded_before(self) -> None:
         graph = UnitGraph()
-        value = object()
-        graph.unit(UnitKind.MODULE, "util/counter").value = value
+        typed = object()
+        graph.unit(UnitKind.MODULE, "util/counter").typed_module = typed
         snap = graph.snapshot()
-        graph.unit(UnitKind.MODULE, "util/counter").value = None
+        graph.unit(UnitKind.MODULE, "util/counter").typed_module = None
         graph.restore(snap)
-        self.assertIs(graph.find(UnitKind.MODULE, "util/counter").value, value)
+        self.assertIs(graph.typed_module("util/counter"), typed)
+
+    def test_runtime_restore_forgets_modules_run_since(self) -> None:
+        root = RuntimeEnvironment.create_root_env()
+        before = QRecord({})
+        root.module_values["util/counter"] = before
+        snap = root.snapshot()
+        scope = root.push_scope()
+        scope.module_values["util/counter"] = QRecord({})
+        scope.module_values["run"] = QRecord({})
+        root.restore(snap)
+        self.assertIs(scope.module_values, root.module_values)
+        self.assertIs(root.module_values["util/counter"], before)
+        self.assertNotIn("run", root.module_values)
 
     def test_new_session_resolves_again(self) -> None:
         graph = UnitGraph()

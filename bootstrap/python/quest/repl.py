@@ -139,8 +139,9 @@ class QuestREPL:
         Each input is a compilation session of its own on the context's unit graph (UnitGraph.new_session), so that
         its imports find files created since the last input; units loaded by earlier inputs stay loaded. When the
         input fails, in type checking or at run time, the type checker's environment is restored, units and all
-        (the units it loaded are forgotten, typed forms and values alike, so that importing them again elaborates
-        and runs them again), and so is the runtime environment: its bindings, and the frame it continues in. The
+        (the units it loaded are forgotten, so that importing them again elaborates them again), and so is the
+        runtime environment: its bindings, the frame it continues in, and the values of the modules it has run (so
+        that they run again). The
         runtime environment holds the type checker's unit graph itself, which restoring changes in place
         (docs/repl.md §5).
         """
