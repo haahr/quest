@@ -202,7 +202,14 @@ class TestReplTerminal(unittest.TestCase):
     (docs/repl.md)."""
 
     def drivers(self) -> dict[str, list[str]]:
-        return {"bootstrap": [sys.executable, str(DRIVER)]}
+        """The bootstrap's driver, and the self-hosted driver when
+        QUEST_SELF_HOSTED_DRIVER names one already compiled (compiling it here
+        would take minutes)."""
+        drivers = {"bootstrap": [sys.executable, str(DRIVER)]}
+        self_hosted = os.environ.get("QUEST_SELF_HOSTED_DRIVER")
+        if self_hosted:
+            drivers["self-hosted"] = [self_hosted]
+        return drivers
 
     def test_editing_history_interrupt_and_end(self) -> None:
         for name, command in self.drivers().items():

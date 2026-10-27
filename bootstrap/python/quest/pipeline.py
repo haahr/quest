@@ -767,6 +767,8 @@ class PhasePipeline:
         # Update source_text and source_map for this specific phrase
         context.source_text = phrase_text
         context.source_map = SourceMap(phrase_text, context.file_name)
+        # Errors in the phrase's imports are located in it
+        context.env.source_map = context.source_map
         return self.execute(phrase_text, context.file_name, options=options, ctx=context)
 
 

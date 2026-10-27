@@ -1,0 +1,36 @@
+(* Quest Self-Hosted Compiler: The REPL Interface
+ *
+ * bootstrap/python/quest/repl.py: reads phrases a line at a time through
+ * io/readline, continuing a phrase while its lines leave it incomplete, and
+ * elaborates and runs each input in one environment and frame, rolling back an
+ * input that fails (docs/repl.md). *)
+
+interface Repl
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/env : questlang/types/Env
+    questlang/values/model : questlang/values/Model
+export
+    (* The prompts, and the prefix of a phrase's result *)
+    promptMain: String
+    promptContinue: String
+    prefixResult: String
+
+    (* Whether text needs more lines to complete a phrase: an unclosed comment
+     * or string, or a syntax error at the end of the input
+     * (check_input_completeness) *)
+    incomplete(text: String): Bool
+
+    (* The diagnostic of an error raised while running, in the file whose code
+     * raised it, with its frames (the driver's too) *)
+    runErrorDiagnostic(err: model.RunError mainFile: String): diagnostics.Diagnostic
+
+    (* A session: the environment inputs are elaborated in, and the frame the
+     * next input runs in *)
+    Def T = Tuple e: env.T var frame: model.Frame end
+    (* A session continuing in e and f, after a file -i ran, say *)
+    new(e: env.T f: model.Frame): T
+    (* Reads, elaborates, and runs inputs until the end of the input, keeping a
+     * history in ~/.quest_history when lines are edited; the exit status *)
+    run(r: T): Int
+end

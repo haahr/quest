@@ -13,7 +13,9 @@
  * program that prints its last phrase's result, as compiled runs do). A unit
  * file given without --stop-after is compiled alone: an interface file to its
  * .qi and C header, under --build-dir, else beside -o, else beside the file
- * (-c, which says so, is optional for a unit file).
+ * (-c, which says so, is optional for a unit file). `-i` enters the REPL
+ * (questlang/driver/repl) after running FILE, in its environment and frame,
+ * and with neither FILE nor `-e`, the driver enters the REPL too.
  * run_tests.py --self-hosted compiles it and checks it against the
  * bootstrap's goldens (docs/milestone-2.md and docs/milestone-3.md, section
  * 3). *)
@@ -54,6 +56,7 @@ import
     questlang/ir/describe : questlang/ir/Describe
     questlang/interpreter/irInterp : questlang/interpreter/IrInterp
     cPrinter = questlang/codegen/c/printer : questlang/codegen/c/Printer
+    questlang/driver/repl : questlang/driver/Repl
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/stringBuilder : util/StringBuilder
@@ -79,8 +82,8 @@ let usage(message: String): Ok =
         writer.putString(writer.err
             "usage: main [--stop-after tokenize|parse|desugar|typecheck|ir_STAGE|run_ir_STAGE|interpret|codegen_c] "
             <> "[--show-offsets] [--echo] [--print-result] [--expected-exit N] [-c] [-I DIR] [-o FILE] "
-            <> "[--build-dir DIR] "
-            <> "(FILE [ARG...] | -e PROGRAM [-- ARG...])\n")
+            <> "[--build-dir DIR] [-i] "
+            <> "[FILE [ARG...] | -e PROGRAM [-- ARG...] | -- ARG...]\n")
         system.sysexit(2)
     end;
 
@@ -98,6 +101,7 @@ let options =
         let var showOffsets = false
         let var echo = false
         let var printResult = false
+        let var interactive = false
         let programArgs = vector.new(:String)
         let var i = 1
         while i < extent system.args do
@@ -133,6 +137,9 @@ let options =
             elsif stringOp.equal(arg "--print-result") then
                 printResult := true
                 i := i + 1
+            elsif stringOp.equal(arg "-i") then
+                interactive := true
+                i := i + 1
             else
                 (* The arguments after a -- or the file are the program's *)
                 if not(stringOp.equal(arg "--")) then file := arg end
@@ -145,11 +152,13 @@ let options =
             if stringOp.equal(phases[j] stopAfter) then known := true end
         end
         if not(known) then usage("unknown phase '" <> stopAfter <> "'") end
-        if stringOp.equal(file "") andif maybe.isNone(:String code) then usage("no file") end
+        let hasFile = not(stringOp.equal(file ""))
         tuple
             let stopAfter = stopAfter
-            (* The program's name, as the bootstrap's diagnostics name it *)
-            let file = if maybe.isSome(:String code) then "<string>" else file end
+            (* The program's name, as the bootstrap's diagnostics name it, and
+             * as system.args gives it *)
+            let file = if maybe.isSome(:String code) then "<string>" elsif hasFile then file else "<repl>" end
+            let hasFile = hasFile
             let code = code
             let showOffsets = showOffsets
             let echo = echo
@@ -158,6 +167,9 @@ let options =
             let buildDir = buildDir
             let output = output
             let includePaths = vector.toArray(:String includePaths)
+            (* With neither a file nor a program, the REPL starts on an empty
+             * program *)
+            let interactive = interactive orif {not(hasFile) andif maybe.isNone(:String code)}
             let programArgs = vector.toArray(:String programArgs)
         end
     end;
@@ -188,26 +200,6 @@ let finish(bag: diagbag.T sm: location.SourceMap): Ok =
         writer.flush(writer.output)
         writer.flush(writer.err)
         system.sysexit(if diagbag.hasErrors(bag) then 1 else 0 end)
-    end;
-
-(* The diagnostic of an error raised while running, in the file whose code
- * raised it, with its frames *)
-let runErrorDiagnostic(err: model.RunError mainFile: String): diagnostics.Diagnostic =
-    begin
-        let file = if maybe.isSome(:location.SourceMap err.sourceMap) then
-            location.file(maybe.unwrap(:location.SourceMap err.sourceMap))
-        else
-            mainFile
-        end
-        let sp = if maybe.isSome(:Int err.offset) then
-            location.span(file maybe.unwrap(:Int err.offset) {maybe.unwrap(:Int err.offset) + 1})
-        else
-            location.span("" ~1 ~1)
-        end
-        let d = diagnostics.error(model.runErrorMessage(err) sp)
-        if maybe.isSome(:Array(String) err.frames) then
-            diagnostics.setTrace(d maybe.unwrap(:Array(String) err.frames)) end
-        d
     end;
 
 (* The stage a phase dumps or runs the IR at (the phase's name after its
@@ -301,7 +293,7 @@ let runIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag
             try
                 irInterp.runUnit(unit f)
             when model.runError with err then
-                diagbag.add(bag runErrorDiagnostic(err options.file))
+                diagbag.add(bag repl.runErrorDiagnostic(err options.file))
             end
         when lower.loweringError with m then internal(m)
         when verify.verifyError with m then internal(m)
@@ -313,23 +305,37 @@ let runIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag
         end
     end;
 
-(* Runs a type-checked program, as the bootstrap's interpret phase does *)
-let interpret(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
+(* Runs a type-checked program, as the bootstrap's interpret phase does: the
+ * frame the phrases after it would run in, where the REPL continues *)
+let interpret(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): model.Frame =
     begin
         let f = runFrame(e sm)
         (* The program's phrases run in the outermost frame (docs/exceptions.md
          * section 4) *)
         vector.append(:String f.root.callStack diagnostics.mainFrame)
         try
-            let results = treewalk.evalProgramPhrases(program f fun(r: treewalk.PhraseResult): Ok
+            let ran = treewalk.evalProgramPhrasesIn(program f fun(r: treewalk.PhraseResult): Ok
                 if options.echo then printResult(r.phrase r.value) end)
+            let results = ran.results
             if not(options.echo) andif {extent results > 0} then
                 printResult(results[extent results - 1].phrase results[extent results - 1].value)
             end
+            ran.frame
         when model.runError with err then
             treewalk.noteFrames(err f)
-            diagbag.add(bag runErrorDiagnostic(err options.file))
+            diagbag.add(bag repl.runErrorDiagnostic(err options.file))
+            f
         end
+    end;
+
+(* Enters the REPL in the program's environment and frame, after reporting the
+ * program's diagnostics, and exits with its status *)
+let interactive(e: env.T f: model.Frame bag: diagbag.T sm: location.SourceMap): Ok =
+    begin
+        writer.flush(writer.output)
+        diagbag.renderAll(bag sm writer.err)
+        writer.flush(writer.err)
+        system.sysexit(repl.run(repl.new(e f)))
     end;
 
 (* Compiles a unit file alone, as the bootstrap's compile_unit_file does *)
@@ -373,8 +379,13 @@ let compileUnitFile(): Ok =
 
 let run(): Ok =
     begin
-        let source = if maybe.isSome(:String options.code) then maybe.unwrap(:String options.code) else
-            readFile(options.file) end
+        let source = if maybe.isSome(:String options.code) then
+            maybe.unwrap(:String options.code)
+        elsif options.hasFile then
+            readFile(options.file)
+        else
+            ""
+        end
         let sm = location.newSourceMap(options.file source)
         let bag = diagbag.new()
         try
@@ -393,8 +404,8 @@ let run(): Ok =
                 else
                     stdlib.install()
                     let e = env.new()
-                    let dir = if maybe.isSome(:String options.code) then paths.absolute(".")
-                        else paths.parent(paths.absolute(options.file)) end
+                    let dir = if options.hasFile then paths.parent(paths.absolute(options.file))
+                        else paths.absolute(".") end
                     e.currentDir := maybe.some(:String dir)
                     e.programDir := maybe.some(:String dir)
                     e.sourceFile := options.file
@@ -415,7 +426,8 @@ let run(): Ok =
                         elsif stringOp.equal(options.stopAfter "codegen_c") then
                             if not(diagbag.hasErrors(bag)) then codegenC(typed e sm bag) end
                         elsif not(diagbag.hasErrors(bag)) then
-                            interpret(typed e sm bag)
+                            let f = interpret(typed e sm bag)
+                            if options.interactive andif not(diagbag.hasErrors(bag)) then interactive(e f bag sm) end
                         end
                     end
                 end
