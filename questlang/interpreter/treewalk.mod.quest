@@ -480,6 +480,35 @@ export
             found
         end
 
+    (* Evaluates a typed expression in f and returns its value.
+     *
+     * This interpreter is the most direct reading of the typed AST: each node
+     * is evaluated by the case for its form, recursively, with the
+     * interpreter's own stack serving as the program's. Values are
+     * model.Values (values/model): an Int is a vInt, a record a vRecord of
+     * named fields, and a function a vClosure holding its parameters' names,
+     * its body, and the frame it was made in. A Frame is a chain of frames
+     * mapping names to values. Names suffice, without symbols, because the
+     * checker has already resolved every name, and a binding that rebinds a
+     * name of its frame gets a frame of its own (evalScopedBinding), so that
+     * closures made before it keep what they captured. A mutable variable is
+     * bound to a vRef, a cell, which an explicit dereference (exprDerefCell)
+     * reads, and which a var argument passes in place of its contents.
+     *
+     * Control flow beyond expressions uses Quest's exceptions: exit raises
+     * loopExit, which the nearest loop catches, and a Quest raise raises
+     * model.runError with the cause raised, which the nearest try with a
+     * branch for that exception catches. One that nothing catches propagates
+     * out of the interpreter, to be reported as an error.
+     *
+     * Types are mostly unneeded at run time, but a few operations use them:
+     * inspect, auto values, and dynamic values. So a polymorphic function's
+     * type arguments are carried at run time. A type application
+     * (exprTypeApp) binds them in a copy of the closure (instantiate), the
+     * body runs with them bound (the frame's typeBindings), and resolveType
+     * replaces a type's parameters by their bindings. A polymorphic constant,
+     * such as list.nil, is a closure without value parameters, so
+     * instantiating it, as list.nil() does, also runs it. *)
     let rec evalExpr(e: Expr f: Frame): Value =
         begin
             let offset = at(e.offset)

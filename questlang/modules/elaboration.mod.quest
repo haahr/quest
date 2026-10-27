@@ -500,6 +500,42 @@ export
             end
         end
 
+    (* Elaborates a module declaration, module m: I import ... bindings end,
+     * checks it against its interface I, and declares m.
+     *
+     * A module is a set of bindings that the code outside sees only through
+     * the module's interface. Its elaboration has four steps, numbered in the
+     * code:
+     *
+     * 1. A module sees only what it imports. Its scope's parent is
+     *    e.baseScope, which holds the built-in types and operators, rather
+     *    than the scope it is declared in or the standard library's modules
+     *    (Cardelli section 11.3), and its imports are declared into that
+     *    scope.
+     * 2. Its bindings are elaborated there, as any bindings are, by
+     *    hooks.elaborateBinding (the type checker's, which typecheck
+     *    registers, since this module is below the checker).
+     * 3. The module must conform to its interface (checkConformance). It must
+     *    define every type the interface names: a type the interface defines
+     *    (T = ...) the same way, and a type the interface leaves abstract with
+     *    a kind that fits its bound. It must define every value, with a type
+     *    that is a subtype of the interface's, in which the interface's
+     *    abstract types are replaced by the module's definitions, since inside
+     *    the module they are known.
+     * 4. What the outside sees is built from the interface, not from the
+     *    module (createModuleExportScope). The export scope holds the
+     *    interface's values and types, with each abstract type replaced by a
+     *    new opaque type, m.T, whose definition is withheld (except for an
+     *    external C type, which code generation needs). This is where
+     *    information hiding happens: code outside cannot tell m.T from any
+     *    other type, so it can use m.T's values only through m's operations.
+     *    The opaque type's symbol is derived from m's canonical name (its name
+     *    however an importer spells its path), so it is the same type in every
+     *    unit that imports m, and the export scope is kept with m's unit
+     *    (exportScope), so that they all share it.
+     *
+     * Finally m is declared as a value, a record of its exported values, from
+     * which m.f selects. *)
     let elaborateModule(decl: ast.ModuleDecl offset: Int e: env.T): typedAst.Binding =
         begin
             let found = env.lookupInterface(e decl.interfaceName)

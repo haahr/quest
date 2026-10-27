@@ -306,11 +306,18 @@ export
     (* =========================================================================
      * 4. Hash-consing
      *
-     * Constructing a node gives the canonical node of its structure. The key is
-     * the form's tag and every field, display-only fields included (record
-     * provenance, binder and path names), so nodes that would print differently
-     * are never merged; child nodes appear in keys by id, since they are
-     * canonical already. Nodes containing a metavariable are not hash-consed.
+     * Types, kinds, and their components are hash-consed: constructing a node
+     * (make, makeKind) gives the canonical node of its structure, so
+     * structurally identical nodes are one node, and same decides structural
+     * identity. The key is the form's tag and every field, display-only fields
+     * included (record provenance, binder and path names), so two nodes that
+     * would print differently are never merged. Child nodes appear in keys by
+     * id, which is sound because they are canonical already. Structural
+     * identity is not type equality: an alias and its target, a recursive type
+     * and its unfolding, and types differing only in binder names are equal
+     * (subtyping.isTypeEqual) but distinct nodes. Nodes containing a
+     * metavariable are not hash-consed: a metavariable is mutable, and a node
+     * that is shared must not change meaning when one inside it is solved.
      * ====================================================================== *)
 
     Let Counters = Tuple var node: Int var meta: Int end

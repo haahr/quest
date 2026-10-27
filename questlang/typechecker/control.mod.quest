@@ -59,8 +59,43 @@ export
             vector.toArray(:Tag tags)
         end
 
-    (* Validates tags, binders, and exhaustiveness, and elaborates the
-     * branches *)
+    (* Checks a case expression's branches against the cases of its target's
+     * type, and elaborates each branch's body.
+     *
+     * A case expression chooses a branch by the tag of an option or variant
+     * value, and a branch may bind the tag's payload to a name, its binder:
+     *
+     *     Let Shape = Option
+     *         circle with r: Int end
+     *         rect with w: Int h: Int end
+     *         point
+     *     end;
+     *     let area(s: Shape): Int =
+     *         case s
+     *             when circle with c then 3 * c.r * c.r
+     *             when rect with b: Tuple w: Int end then b.w * b.w
+     *             else 0
+     *         end;
+     *
+     * The target's type must be an option or variant type, or have one as its
+     * bound (kinds.resolveSumBound: an abstract type A <: Shape, say). Then:
+     *
+     * - Every tag a branch names must be one of the type's cases; a branch may
+     *   name several (when circle, rect then ...).
+     * - A binder is typed by its tag's payload, the tuple circle carries, or
+     *   by the type it is declared with, which must be a supertype of the
+     *   payload: b sees only rect's w. The paper reads a branch naming several
+     *   tags as one branch per tag, its binder getting the same type in each
+     *   (docs/TypefulProgramming.md section 4.5). So a declared type must be a
+     *   supertype of every tag's payload, and without one the payloads must
+     *   all be equal types.
+     * - Each body is checked against the expected type if there is one, and
+     *   otherwise synthesized, its caller joining the branches' types. A
+     *   synthesized type must not mention a type component of the binder (as
+     *   c.T for a payload Tuple T::TYPE x: T end), which means nothing outside
+     *   the branch (escape.checkNoEscapingPathTypes).
+     * - Without an else branch, every case must be covered: here, point's
+     *   branch could be left out only because of the else. *)
     let elaborateCaseBranches(
         c: checker.T x0: ast.Expr target: ast.Expr branches: vector.T(ast.CaseBranch) elseBranch: maybe.T(ast.Expr)
         targetType: Type expected: maybe.T(Type) e: env.T loopDepth: Int
@@ -214,6 +249,31 @@ export
     let assignForm(target: typedAst.Expr value: typedAst.Expr): typedAst.ExprForm =
         option exprAssign of typedAst.ExprForm with let target = target let value = value end
 
+    (* Synthesizes an assignment, target := value, whose type is Ok.
+     *
+     * Only a mutable location can be assigned, and there are two kinds of
+     * target:
+     *
+     *     let var n = 0;
+     *     let p = tuple let var x = 1 let y = 2 end;
+     *     n := 1;          (* a variable declared var, or an out parameter *)
+     *     p.x := n + 1;    (* a component of a tuple or record declared var *)
+     *
+     * In each case the value is checked against the location's type, which is
+     * the variable's type, not the type Var(Int) the target has as a location
+     * (the exprVar node built below). A component is found in the target's
+     * type: a tuple type, a record type, or a type bounded by one, so that a
+     * function over A <: Record var count: Int end can assign a.count.
+     *
+     * A closure may not assign a var variable or parameter of an enclosing
+     * function (checker.checkCapturable), since the location lives in that
+     * function's frame:
+     *
+     *     let h(): Ok = begin let var m = 0 let g(): Ok = m := 2 g() end;
+     *
+     * is rejected, while module-level variables may be assigned anywhere.
+     * Assignments to array elements, a[i] := v, never reach here: desugaring
+     * made them exprIndexAssign nodes. *)
     let synthAssignment(c: checker.T x0: ast.Expr left: ast.Expr right: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
         begin
             let offset = x0.span.startOffset

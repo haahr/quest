@@ -273,6 +273,53 @@ export
             conv.int(word.toInt(hash.identityHash(:model.Subst l.subst))) <> if l.toGeneric then "t" else "f" end
         end
 
+    (* The plan converting a value of type source for use at type target, or
+     * none if it serves as it is, decided from the two types' shapes and their
+     * C representations.
+     *
+     * A shape is a type reduced to what decides how C holds its values
+     * (ir/shapes), its representation: an Int as an int64_t, a tuple as a
+     * pointer to its struct, and so on. A view is the type a value's layout is
+     * read at, which a record, variant, or option seen at a supertype may
+     * change, and a proxy is a small object that shows a tuple or option at
+     * another view (docs/c-representation.md section 5.8).
+     *
+     * planInner and viewPlan make the tests in order, and the first that
+     * applies decides:
+     *
+     * 1. Ok on either side: nothing to convert.
+     * 2. A function type on each side: adaptPlan, which wraps the closure in
+     *    a thunk if its C signature, or an argument or result, changes.
+     * 3. A value passed to or returned from a polymorphic callee (lay given)
+     *    whose generic layout there differs from its layout at the call's
+     *    type arguments: layoutPlan. (If that finds nothing to do but either
+     *    side is a module's abstract type held at its bound, the tests go
+     *    on.)
+     * 4. Into or out of a QVal, the one word in which generic code holds an
+     *    unbounded type parameter's values: box or unbox. A call id(:Int 2) of
+     *    id(A::TYPE x: A): A, not specialized, boxes 2 and unboxes the result.
+     *    Both QVals, or equal types at the same views: nothing.
+     * 5. A type parameter bounded by a record, variant, option, or tuple type,
+     *    whose values are held at their own view, their type argument's: view,
+     *    converted at run time between the two types' descriptors. The same
+     *    parameter on both sides needs nothing.
+     * 6. Records: record_view, since a record seen at a supertype has another
+     *    table of field offsets (docs/c-representation.md section 5.2).
+     * 7. Variants: nothing if both number the cases alike and no payload
+     *    changes view; variant_tags to renumber a subtype's tags; otherwise
+     *    view.
+     * 8. Options: nothing, or a cast between C types, if their cases agree;
+     *    otherwise a view, a proxy of the original.
+     * 9. Tuples: nothing, or a cast, if no component changes but by boxing;
+     *    otherwise a view (a proxy). A tuple cannot gain components.
+     * 10. The same representation (but for functions, options, and arrays),
+     *     or arrays whose elements need at most boxing either way: nothing.
+     *
+     * Anything else raises unsupportedConversion, rather than leave the C
+     * printer to print it wrong. A pair met again while it is being planned (a
+     * recursive type's component) needs nothing of its own, and a cast to a
+     * tuple or option type that cannot be a proxy, from one that may be,
+     * becomes unproxy (unproxied). *)
     let rec plan(source: Type target: Type lay: Layout): maybe.T(Plan) =
         if model.same(source target) then
             none

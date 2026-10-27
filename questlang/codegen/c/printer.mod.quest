@@ -784,6 +784,42 @@ export
             res
         end
 
+    (* The C expression for the value of C expression c converted as plan
+     * says: the C for a convert operation, whose plan the represent pass chose
+     * (plan in ir/represent; nodes.Plan lists the kinds). A plan that needs
+     * more than an expression emits statements first, and returns a temporary
+     * holding the result.
+     *
+     * For example, where the plan's kind is (a cast's star is written apart
+     * from its parenthesis here, since together they would end this comment)
+     *
+     * - box: a native value into a QVal, the one word in which generic code
+     *   holds a value of an unbounded type parameter, and unbox, back:
+     *       ((QVal){ .i = (int64_t)(2LL) })        (l_t_2.i)
+     * - record_view: a record seen at a supertype, which needs the table of
+     *   field offsets for that type, looked up by the runtime:
+     *       quest_record_view(g_r0, (&quest_type_QT_record_48ec741d...))
+     * - variant_tags: a variant's tag renumbered for a supertype, through a
+     *   static table (emitCoercionTables in codegen/c/declarations):
+     *       ((QVariantVal){ .tag = tagmap_..._a_Int_c_Int[_t3.tag],
+     *                       .payload = _t3.payload })
+     * - cast: the same pointer through another struct type whose layout
+     *   agrees. A cast between two tuple types is recorded (tupleCasts), so
+     *   that a static assertion checks that the layouts do agree:
+     *       ((QTuple_Int * )g_t0)
+     * - unproxy: a tuple or option that may be a proxy (a stand-in showing
+     *   the original at another view, docs/c-representation.md section 5.8)
+     *   used where it cannot be one, which the original serves:
+     *       ((QTuple_Int * )quest_unproxy(c))
+     * - slot_box and slot_unbox: a record or variant into, or out of, the box
+     *   an aggregate's slot holds it in, a dereference of c for slot_unbox;
+     * - view and runtime: converted by the runtime between the descriptors of
+     *   two types (quest_convert), through a QVal;
+     * - adapt: a closure wrapped in a new closure whose function is a thunk
+     *   (adapter) converting the arguments and the result, and whose
+     *   environment is the original closure;
+     * - copy: a new tuple, each component read from the source and converted
+     *   by its own plan. *)
     let rec convert(p: P c: String plan: nodes.Plan): String =
         begin
             let kind = plan.kind
@@ -1959,6 +1995,45 @@ export
             ok
         end
 
+    (* Prints a case on a variant or option as a C switch on its tag.
+     *
+     * Cases are numbered in the order of their names, so for
+     *
+     *     Let Shape = Option circle with r: Int end square with side: Int end
+     *         point end
+     *
+     * circle is 0, point 1, and square 2, and a case with two branches and an
+     * else prints as (a cast's star written apart from its parenthesis, since
+     * together they would end this comment)
+     *
+     *     switch ((quest_is_proxy(l_s) ? quest_proxy_tag(l_s) : (l_s)->tag)) {
+     *         case 0LL:
+     *         {
+     *             l_c = ((QTuple_Int * )((const char * )(quest_unproxy(l_s))
+     *                                   + sizeof(int64_t)));
+     *             ...
+     *             break;
+     *         }
+     *         case 2LL: ...
+     *         default: { l_r = 0LL; ... break; }
+     *     }
+     *
+     * An option may be a proxy, so its tag is read as x.access says (here,
+     * through the proxy if it is one). A branch naming several tags gets one
+     * case label for each. Its binder is bound to the payload: a variant's is
+     * read from the variant's payload word (l_v.payload.i, for an Int); an
+     * option's is its case's components, a tuple, which the binder shares
+     * with the option: the components follow the option's tag in memory, laid
+     * out as that tuple's struct, so the binder points at them and sees any
+     * update of a var component.
+     *
+     * A value of a type parameter bounded by the variant or option type
+     * (A <: Shape) is held at its own type's view, which may number the cases
+     * differently: its tag is translated, and its payload read, through the
+     * type argument's view map (x.viewMap; quest_view_option_tag). Without an
+     * else branch the cases cover every tag, as the type checker requires, and
+     * the default case only raises a variant error
+     * (quest_raise_variant_error), should the tag be none of them. *)
     and switch(p: P x: nodes.StmtSwitch): Ok =
         begin
             let v = atom(p x.value)
@@ -2012,6 +2087,50 @@ export
             emit(p "}")
         end
 
+    (* Prints an inspect on an auto value as a chain of if statements, one per
+     * case, testing the value's type at run time.
+     *
+     * An auto value (QAuto) holds its type component's descriptor, type_desc,
+     * and its other components, stored in a layout that does not depend on
+     * that type (docs/c-representation.md section 8.1): the layout of the
+     * components with A an abstract type (model.autoPayloadType without a
+     * witness), so that a component of type A is a QVal word when A is
+     * unbounded. For Pack = Auto A::TYPE with a: A end,
+     *
+     *     inspect p when Int with x then x.a when String with y then 1
+     *         else 0 end
+     *
+     * prints as (a cast's star written apart from its parenthesis, since
+     * together they would end this comment)
+     *
+     *     _t1 = l_p;
+     *     _t2 = (QTuple_QVal * )_t1->payload.p;
+     *     if (quest_is_subtype(_t1->type_desc, &quest_type_Int)) {
+     *         _t3 = (QTuple_Int * )quest_alloc(sizeof(QTuple_Int));
+     *         _t3->_0 = (quest_convert(_t2->_0, _t1->type_desc,
+     *                                  &quest_type_Int).i);
+     *         l_x = _t3;
+     *         ...
+     *     } else if (quest_is_subtype(_t1->type_desc, &quest_type_String)) {
+     *         ...
+     *     } else {
+     *         l_r = 0LL;
+     *         ...
+     *     }
+     *
+     * A case matches if the type component is a subtype of its type, or for
+     * an exact case, equal to it (a subtype both ways; see nodes.InspectCase).
+     * A case's binders get a new tuple of the components at the case's type,
+     * each converted from its stored form as the represent pass decided
+     * (the case's arm, autoArmConverted). An exact case first checks whether
+     * the stored layout is already the case's (quest_layout_equivalent): if
+     * so, the stored components serve, shared or converted by one plan, and
+     * if not, they are converted one by one as for any case. Without an else
+     * branch, a value no case matches raises a dynamic error.
+     *
+     * Inside the cases, the auto type's type parameter is the value's type
+     * component: x.witness names the descriptor variable that stands for it,
+     * which here is _t1->type_desc. *)
     and inspectAuto(p: P x: nodes.StmtInspect): Ok =
         begin
             let autoType = maybe.unwrap(:Type x.autoType)

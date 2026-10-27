@@ -122,6 +122,50 @@ export
             else t
         end
 
+    (* The state of lowering a unit's typed program (or module) to Core IR.
+     *
+     * Core IR (docs/ir.md) is flat: an operation's operands are atoms,
+     * variables and constants, never nested expressions, so every
+     * intermediate value is named by a let. Where control paths meet again,
+     * as after an if expression's branches, the IR has a join point, a local
+     * block that the paths jump to with their values. So
+     *
+     *     let abs(n: Int): Int = if n < 0 then 0 - n else n end;
+     *
+     * is lowered to (as --stop-after ir_core prints it)
+     *
+     *     fun abs(n: Int): Int {
+     *       join k1(r: Int) {
+     *         return r
+     *       } in {
+     *         let %1: Bool = prim <(n, 0)
+     *         if %1 {
+     *           let %2: Int = prim -(0, n)
+     *           jump k1(%2)
+     *         } else {
+     *           jump k1(n)
+     *         }
+     *       }
+     *     }
+     *
+     * Statements are appended to the current body, body, which a construct
+     * with bodies of its own (the if's branches, a function, a join point)
+     * replaces while it lowers them (inBody). The rest of the state:
+     *
+     * - vars, the IR variable of each typed-AST symbol whose binder has been
+     *   lowered, and builtins, the builtin values' names by symbol;
+     * - loops, the labels of the enclosing loops, innermost last: an exit
+     *   expression leaves the innermost; labelCounts numbers the labels made;
+     * - imports and moduleRefs, the modules the unit imports and defines;
+     * - frame, the name of the code being lowered as exception tracebacks
+     *   show it, and made, the exceptions created ahead of the bindings that
+     *   declare them (makeScopeExceptions);
+     * - echo and printResult, whether every phrase's result is printed
+     *   (--echo) or only the last one's (--print-result), and sourceMap, the
+     *   file in which the offsets of nodes that can raise are.
+     *
+     * value and effect, the entry points for expressions, are described in
+     * the interface's header comment. *)
     Let Lowerer = Tuple
         vars: hashMap.T(Int Variable)
         builtins: hashMap.T(Int String)
@@ -640,6 +684,27 @@ export
             end
         end
 
+    (* Lowers a tuple expression: each component is computed, in order, then
+     * a make-tuple operation collects them (into, if given).
+     *
+     *     tuple let a = 1 let b = a + 1 end    let a: Int = 1
+     *                                          let b: Int = prim +(a, 1)
+     *                                          let t: ... = tuple(a, b)
+     *
+     * A label (let a = ...) names its component for the components after it,
+     * so a labelled component is computed into a variable bound to the label.
+     * Components declared with let rec ... and ... are functions that see one
+     * another: they become one funs rec statement, whose closures are the
+     * components. A type component (Let T = Int) is a witness, the type it
+     * stands for, not a value: it computes nothing, and becomes one of the
+     * make-tuple's type components,
+     *
+     *     tuple Let T = Int let x: T = 3 end  ->  tuple(Let T = Int x)
+     *
+     * Binding each label as soon as its value is computed is right even for a
+     * simultaneous group (let a = ... and b = ...), whose members do not see
+     * one another: a member refers to a binding that a label shadows by that
+     * binding's own symbol, never the label's. *)
     and lowerTuple(l: Lowerer e: Expr into: maybe.T(Variable)): Atom =
         case e.form
             when exprTuple with x then
@@ -1186,6 +1251,40 @@ export
             end
         end
 
+    (* Lowers one declaration of a block or a unit's top level, emitting its
+     * statements into the current body. With show, as for a top-level phrase
+     * run with --echo, it also emits what the interactive system prints for
+     * it.
+     *
+     *     let x = 1;                  let x: Int = 1
+     *     let var y = x + 1;          let %1: Int = prim +(x, 1)
+     *                                 var y: Int = %1
+     *     let x = x + 2;              let x.1: Int = prim +(x, 2)
+     *     let f(n: Int): Int = n + x; funs { fun f(n: Int): Int {...} }
+     *     Let T = Int;                (nothing)
+     *
+     * - A value is computed straight into the variable that binds it
+     *   (letValue, through value's into). The variable is entered in vars,
+     *   where uses look it up, only after its value is lowered, so that the
+     *   value sees the binding it shadows: the second x reads the first, and
+     *   is printed x.1.
+     * - A var is a mutable variable (sVarDecl), initialized from its value.
+     * - A function becomes a funs statement, which makes closures. Functions
+     *   declared together with let rec ... and ... are one funs rec, whose
+     *   functions see one another. A let rec of values that are not all
+     *   functions (a record of functions, say) goes to recValues.
+     * - A simultaneous let ... and ... (without rec) is lowered member by
+     *   member: its members' values refer to the bindings the members shadow,
+     *   which are other symbols, so binding each as it is computed means the
+     *   same.
+     * - Type and kind declarations exist only for the type checker; they
+     *   lower to nothing, but for their echoed text.
+     * - An expression statement goes to phraseExpr: lowered for its effect
+     *   alone if its type is Ok, and otherwise for its value, which --echo
+     *   prints. An import adds the imported modules to the unit.
+     *
+     * The named exceptions b makes for its scope are made before it
+     * (makeScopeExceptions). *)
     and binding(l: Lowerer b: Binding show: Bool): Ok =
         begin
             makeScopeExceptions(l typedAst.scopeExceptions(b))

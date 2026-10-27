@@ -268,6 +268,12 @@ export
                     let name = name let witnessType = t let bound = bound
                 end)
 
+            (* 2. Elaborate the components in order, in a scope of their own,
+             *    so that each type component and each label (a value
+             *    component's name) is in scope for the components after it.
+             *    Each component falls into one of four cases, chosen by what
+             *    the expected type says of it (expKind, checking) or what it
+             *    is (synthesizing). *)
             for index = 0 upto {n - 1} do
                 declareKinds(index)
                 let item = vector.get(:Item items index)
@@ -288,6 +294,13 @@ export
                     0
                 end
                 if expKind is 1 then
+                    (* A type formal of the expected type, A::K: the component
+                     * is A's witness, the type hidden behind A. It must have
+                     * A's bound. A is declared under the formal's own symbol
+                     * with the witness as its definition, so that the later
+                     * components see through it, while the tuple's type, the
+                     * expected one, keeps A abstract; witnessSubst carries the
+                     * witness into the later expected fields. *)
                     case maybe.unwrap(:model.TupleComponent expF)
                         when tupleTypeFormal with f then
                             case item
@@ -313,6 +326,8 @@ export
                         else ok
                     end
                 elsif expKind is 2 then
+                    (* A type defined by the expected type, A = T: the
+                     * component must define A as T *)
                     case maybe.unwrap(:model.TupleComponent expF)
                         when tupleTypeBinding with f then
                             case item
@@ -340,6 +355,10 @@ export
                         else ok
                     end
                 elsif isTypeItem then
+                    (* Synthesizing, a type component: it is declared for the
+                     * components after it, and is a defined type component of
+                     * the tuple's type (against an expected value field, an
+                     * error) *)
                     case item
                         when typeItem with t then
                             begin
@@ -361,8 +380,11 @@ export
                         else ok
                     end
                 else
-                    (* A value component *)
-                    let expFieldType = if maybe.isSome(:model.TupleComponent expF) then
+                    (* A value component. The members of a let rec are all
+                     * declared when the first is reached, so that each can
+                     * refer to the others; those of a let ... and ... have
+                     * their labels declared after the last. *)
+                    let expFieldType =if maybe.isSome(:model.TupleComponent expF) then
                         case maybe.unwrap(:model.TupleComponent expF)
                             when tupleField with f then
                                 begin
@@ -539,6 +561,8 @@ export
             for i = 0 upto {extent elements - 1} do
                 vector.append(:maybe.T(symbols.ValueSymbol) labelArray hashMap.get(:Int :symbols.ValueSymbol labels i))
             end
+            (* 3. Checking, the tuple has the expected type; synthesizing, the
+             *    type made of its components' types *)
             let tupleType = if maybe.isSome(:Type expectedTupleType) then
                 maybe.unwrap(:Type expectedTupleType)
             else
@@ -558,6 +582,17 @@ export
     ): typedAst.Expr =
         begin
             let checking = maybe.isSome(:Array(model.TupleComponent) expectedTuple)
+            (* 1. Flatten the components. A group (let ... and ..., or a group
+             *    of type bindings) contributes each of its members, so that
+             *    items[i] lines up with the expected type's i-th field; the
+             *    groups (typeGroups, recGroupsAst, simGroups) remember the
+             *    group each member came from, since a group's members are
+             *    declared together. Then the count is checked.
+             *
+             * The manifest kinds declared just before a component are kept in
+             * kindsBefore, under the index of the component that follows them.
+             * Against an expected type, the names in groups are checked here,
+             * before the arity; synthesized, as each group is reached. *)
             let items = vector.new(:Item)
             let typeGroups = vector.new(:TypeGroup)
             let recGroupsAst = vector.new(:RecGroup)
@@ -766,6 +801,27 @@ export
             expr(offset outsideTuple(selected fields) selectForm(targetTyped field))
         end
 
+    (* Synthesizes a selection target.field from a module, a record, or a
+     * tuple.
+     *
+     * m.f, where m names an imported module that no value shadows, has the
+     * type the module gives f. A record's field has the type it was declared
+     * with. A tuple's field is the interesting case (selectTupleField),
+     * because its type may mention the tuple's own type components: in a
+     * value t of type Tuple A::TYPE f: A end, the field f has type A, a name
+     * that means nothing outside the tuple. When t is a variable, t.f has the
+     * path type t.A instead (see elaborateTypes.elaborateType), which names
+     * "t's A" without revealing what it is. Such a field can be selected only
+     * from an immutable variable: an arbitrary expression has no name to root
+     * a path type at, and a mutable variable's components could change. A
+     * component the tuple's type defines (A = Int) is known, and is replaced
+     * by its definition (outsideTuple). A value whose type is a type parameter
+     * bounded by a record or tuple type is selected from as a value of its
+     * bound.
+     *
+     * A path type must not outlive its root: a block, function, or case
+     * branch whose type mentions a path type rooted at one of its own
+     * variables is rejected (escape.checkNoEscapingPathTypes). *)
     let synthSelect(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
         case x0.form
             when exprSelect with x then

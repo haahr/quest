@@ -206,6 +206,46 @@ export
         end
     and both(a: Type b: Type env: Env trail: Trail fuel: Int): Bool =
         prove(a b env trail fuel) andif prove(b a env trail fuel)
+    (* Decides one goal, sub <: sup, by the structure of the two types.
+     *
+     * The basic rule is structural. Once evaluate has exposed each type's
+     * outermost constructor (Record, Fun, Option, ...), the constructors must
+     * match, and the goal becomes goals about their parts (structural), each
+     * decided by prove. Immutable parts are compared covariantly (in the same
+     * direction), mutable ones (var fields, Var, arrays) invariantly (in both
+     * directions, both), and function parameters contravariantly (reversed).
+     * Records and tuples have width subtyping: a record with more fields is a
+     * subtype of one with fewer, as Record a: Int b: Int end <: Record a: Int
+     * end, and a tuple is a subtype of a tuple made of a prefix of its
+     * components. A type variable has no constructor, but its bound is known
+     * (namedBound): a type parameter declared A <: B is a subtype of whatever
+     * B is.
+     *
+     * Recursive types are the first complication. Quest's are equi-recursive:
+     * Rec(X) T is the same type as its unfolding, T with the Rec type itself
+     * put in for X, so it stands for an infinite tree, which comparing part by
+     * part would never finish. Instead, a goal is assumed to hold while its
+     * parts are compared (assume enters it on the trail), and meeting the same
+     * goal again counts as proved. Given
+     *
+     *     Let Rec P = Record x: Int y: Int next: P end
+     *     Let Rec Q = Record x: Int next: Q end
+     *
+     * P <: Q holds if its fields' goals do. x gives Int <: Int, and next gives
+     * P <: Q again, which is assumed, so P <: Q is proved. This is a
+     * coinductive proof; section 1 above explains why it is sound, and when
+     * commitProof may cache its results.
+     *
+     * Metavariables are the second. During type inference (synthPolymorphicApp
+     * in typechecker/application) an unknown type argument is a placeholder, a
+     * metavariable ?A, and this is where it is solved: a goal ?A <: T or
+     * T <: ?A, with ?A unsolved, makes T the solution (solve) and succeeds.
+     * Solving is greedy, with no backtracking, so a solution can depend on the
+     * order in which goals are posed.
+     *
+     * fuel bounds the number of steps in one proof. Subtyping of bounded
+     * polymorphic types is undecidable, so a proof that runs out raises a
+     * fatal diagnostic rather than looping. *)
     and step(sub0: Type sup0: Type env: Env trail: Trail fuel0: Int): Bool =
         begin
             if fuel0 <= 0 then
@@ -251,7 +291,9 @@ export
                     if bottom then
                         true
                     elsif subMeta then
-                        (* 3. Metavariable resolution and unification *)
+                        (* 3. Metavariable resolution and unification. A
+                         *    solution's bound is not checked here;
+                         *    synthPolymorphicApp checks it. *)
                         let p = model.prune(sub)
                         if not(model.same(p sub)) then
                             prove(p sup env trail fuel)
@@ -266,7 +308,9 @@ export
                             begin solve(sup sub) true end
                         end
                     else
-                        (* 5. Coinductive trail check *)
+                        (* 5. Coinductive trail check, again after unfolding
+                         *    (step 0 checked the types as written), since a
+                         *    goal can recur in either form *)
                         let lazyPair = pairKey(sub sup)
                         if isAssumed(trail lazyPair) then
                             true
@@ -527,8 +571,11 @@ export
                 end
             else false
         end
-    (* Tuples: a prefix match, with matching names, covariant elements, and
-     * subkinds *)
+    (* Tuples: a prefix match (Cardelli section 7.1, section 10.2), with
+     * matching names, covariant elements, and subkinds. A type component that
+     * sup leaves abstract (A::K) may be matched by one that sub defines
+     * (A = T), and the definition is substituted into sup's later components
+     * (rename). *)
     and tuples(
         subFields: Array(model.TupleComponent) supFields0: Array(model.TupleComponent) env: Env trail: Trail fuel: Int
     ): Bool =

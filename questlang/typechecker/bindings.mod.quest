@@ -160,11 +160,19 @@ export
             let params = params let body = body let typeParamIds = typeParamIds(quants)
         end
 
-    (* Checks a function abstraction against an expected polymorphic type
-     * All(X::K ...) T. The function's type parameters are the expected
-     * quantifiers renamed by position, with fresh symbols, the names the
-     * function gives them (or the expected names), and the expected bounds,
-     * with earlier quantifiers renamed. *)
+    (* Checks a function against an expected polymorphic type, All(B::K) T.
+     *
+     * The function is made polymorphic in the expected type parameters, under
+     * its own names. Checking fun(A::TYPE x: A): A x against
+     * All(B::TYPE x: B) B declares A, with a fresh symbol and B's bound, and
+     * checks the rest of the function against Fun(x: A): A. A function that
+     * writes no type parameters, fun(x: B) x, takes the expected ones, names
+     * and all. The symbols are fresh because the expected type's own may
+     * already be in scope. A bound the function writes may be weaker than the
+     * expected one, as subtyping of polymorphic types allows (Cardelli's
+     * [TIncl Pi]), and the body is checked under the expected, stronger bound.
+     * The function's type is the renamed one, All(A::TYPE) Fun(x: A): A, so
+     * that its parameters and body refer to its own type parameters. *)
     let rec checkPolymorphicFun(
         c: checker.T expr: ast.Expr expectedType: Type expectedLazy: Type e: env.T loopDepth: Int
     ): typedAst.Expr =
@@ -252,6 +260,34 @@ export
             else internal(:typedAst.Expr "a function" expr.span.startOffset)
         end
 
+    (* Elaborates a function, fun[(type params)](params)[: R] body, into a
+     * typed function (exprFun).
+     *
+     * The function opens a scope, declares its type parameters and parameters
+     * in it, and elaborates its body inside checker.inFunction, so that an
+     * exit cannot leave the function and the body's uses of enclosing mutable
+     * variables count as captures (see checker.T). Its type is assembled from
+     * what it declares: Fun(params): R, under All(type params) if it has any
+     * (elaborateFunBody). The typed function's typeParamIds records which type
+     * symbols are the function's own, and a type mentioning one of them may
+     * occur only inside the function (the scoping module checks this).
+     * Likewise, the result type may not mention a path type rooted at a
+     * parameter, the type of one of a parameter's hidden type components.
+     *
+     * Checked against an expected function type, the function lets the
+     * expected type supply what it leaves unwritten: passed where the type
+     * All(x: Int) Int is expected, fun(x: Int) x + 1 needs no result
+     * annotation, because its body is checked against Int, and the function
+     * has the expected result type. What the function does write is held to
+     * what subsumption would require (docs/type-system.md section 6.1): its
+     * parameters' modes must match, and its annotations must fit the expected
+     * types (requireParamType). A parameter without an annotation would take
+     * its expected type, but the grammar requires one. Against an expected
+     * polymorphic type, see checkPolymorphicFun. A function with type
+     * parameters checked against a plain function type, or any function
+     * checked against a type of another form, is synthesized and must be a
+     * subtype (checker.checkSubsumption). Synthesized, the body is checked
+     * against the result annotation if there is one. *)
     and elaborateFun(c: checker.T expr: ast.Expr expected: maybe.T(Type) e: env.T loopDepth: Int): typedAst.Expr =
         case expr.form
             when exprFun with x then
@@ -390,6 +426,26 @@ export
             vector.toArray(:model.Param formals)
         end
 
+    (* Declares the symbol of a recursive value declaration (let rec) before
+     * its value is checked, so that the value, and the other members of its
+     * group, can refer to it:
+     *
+     *     let rec even(n: Int): Bool = if n is 0 then true else odd(n - 1) end
+     *     and odd(n: Int): Bool = if n is 0 then false else even(n - 1) end;
+     *
+     * Every member's type must be known before any body is checked, since
+     * each body may use the others, and a type cannot be taken from a body
+     * that has not been checked yet. So it is taken from the annotations
+     * alone (annotatedParams):
+     *
+     * - A function, as even, needs a type on each parameter and a result
+     *   type, from which its type is built: Fun(n: Int): Bool.
+     * - Any other value needs a type for the whole:
+     *   let rec ones: Tuple head: Int tail: All() Int end = tuple ... end.
+     *
+     * So let rec fact(n: Int) = ... is rejected for want of a result type,
+     * though without rec its result type would be synthesized from its body.
+     * checkRecValue then checks each value against its declared type. *)
     let declareRecValue(c: checker.T b: ast.Decl e: env.T): symbols.ValueSymbol =
         case b.form
             when declLetVal with x then
@@ -451,6 +507,46 @@ export
     let exprStmt(offset: Int t: typedAst.Expr): typedAst.Binding =
         typedAst.binding(offset option bindExprStmt of typedAst.BindingForm with let expr = t end)
 
+    (* Elaborates one binding and declares the names it binds in e's current
+     * scope, so that the bindings after it can use them.
+     *
+     * A block, a module, and a program are each a sequence of bindings,
+     * Cardelli's term for both declarations (let x = e) and statements (an
+     * expression evaluated for its effect, which declares nothing). They are
+     * elaborated in order, so each binding sees exactly the names declared
+     * before it.
+     *
+     * For a value declaration, the question is whether its own name is in
+     * scope in its value. An ordinary let checks the value first and declares
+     * the name afterward, so a use of the name inside the value refers to an
+     * earlier binding:
+     *
+     *     let x = 1
+     *     let x = x + 1        (the second x is the first one; x is now 2)
+     *
+     * A let rec declares the name first (declareRecValue), so that the value
+     * can refer to itself, as a recursive function must:
+     *
+     *     let rec fact(n: Int): Int =
+     *         if n is 0 then 1 else n * fact(n - 1) end
+     *
+     * Since the name is used before its value has been checked, its type must
+     * come from the annotations alone, so a recursive function annotates
+     * every parameter and its result.
+     *
+     * Otherwise the name's type is its annotation, if it has one, and the
+     * value's synthesized type if not. An annotation may be less specific
+     * than the value, and it is what the name gets, so that here r.q is an
+     * error:
+     *
+     *     let r: Record p: Int end = record p = 1 q = 2 end
+     *
+     * Declarations joined by and (let x = ... and y = ...) are declared
+     * together: after all their values, or, with rec, before any, so that
+     * they can refer to one another (elaborateValueGroup). An external
+     * function is implemented in C, so its annotations are its type
+     * (elaborateExternal). Type and kind declarations are elaborated by the
+     * elaborateTypes module, to which this function passes them. *)
     let rec elaborateBinding(c: checker.T b: ast.Decl e: env.T loopDepth: Int): typedAst.Binding =
         begin
             let offset = b.span.startOffset

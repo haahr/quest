@@ -188,6 +188,29 @@ export
      * 2. Type Elaboration
      * ====================================================================== *)
 
+    (* Elaborates a type as written (an ast.TypeExpr) into the checker's
+     * semantic type (a model.Type).
+     *
+     * Annotations and type declarations are syntax, but the checker reasons
+     * about model.Types, in which every name has been resolved to its symbol,
+     * so that a type means the same thing wherever it is carried, even out of
+     * the scope it was written in. Elaboration is a recursive walk that
+     * resolves names in e, opens a scope for each construct that binds type
+     * names (a tuple with type components, a type operator, All, Auto, Rec),
+     * and checks some of what constructs require of their parts: that a
+     * field's type is a type of values (kind TYPE, not a type operator), and
+     * that a recursive type is contractive (its recursion passes through a
+     * constructor, so that it is not defined as itself). The kind of a
+     * declared type as a whole is checked by its declaration
+     * (typeBindingSymbol). A name with a definition (a type alias) becomes a
+     * typeAlias, which the checker sees through to its definition but which
+     * keeps the name written, for printing; a name without one (a type
+     * parameter, or an interface's abstract type) becomes a typeVariable
+     * referring to its symbol (reference).
+     *
+     * Most cases translate directly. The two that do not, names with paths
+     * (elaboratePath) and All (elaborateAll), are explained where they are
+     * handled. *)
     and elaborateType(t: ast.TypeExpr e: env.T): Type =
         begin
             let offset = t.span.startOffset
@@ -355,6 +378,26 @@ export
             vector.toArray(:model.TypeFormal formals)
         end
 
+    (* A name T is looked up in scope. A path A.B.T names a type inside
+     * something else, tried in this order:
+     *
+     * 1. A module or interface: m.T is looked up in its scope, and is an
+     *    alias or a variable as above, named by its whole path. Modules come
+     *    first, so a value of the same name does not hide a module's types.
+     *    Scopes hold no nested modules, so a longer path names none.
+     * 2. An immutable value x (or a field of one, x.y) whose type is a tuple
+     *    with type components, such as Tuple A::TYPE f: A end
+     *    (elaborateProjection): x.A is a path type, standing for whatever
+     *    type x's component A is, unknown here. Such a component is how Quest
+     *    hides a type behind a signature, and x.A lets code use values of that
+     *    type without knowing it. Two path types are the same type when they
+     *    have the same root symbol and component, so the root must be
+     *    immutable: were x reassigned, x.A could change under code that relied
+     *    on it. What x.A's bound (what is known of it) says of other
+     *    components B is restated in terms of x.B, since outside the tuple
+     *    only x.B names them (pathSubst). A component defined in the tuple's
+     *    type (A = Int) is known, and its definition is returned instead.
+     * 3. Otherwise the path is undefined. *)
     and elaboratePath(path: vector.T(String) offset: Int e: env.T): Type =
         begin
             let n = vector.length(:String path)
@@ -547,6 +590,14 @@ export
             end
         end
 
+    (* All(...) R lists type parameters (A::K or A <: B) and value parameters
+     * (x: T) together, as a function's signature does. The parser makes each
+     * a quantifier: a type parameter marked isType, and a value parameter with
+     * the kind POWER(T), the kind whose members are T's subtypes. Here they
+     * part again: the type parameters become the quantifiers of an All type
+     * and the value parameters the parameters of a function type, giving
+     * All(A::K) Fun(x: T): R; with no type parameters, just the function type,
+     * and with no value parameters (but some type parameters), All(A::K) R. *)
     and elaborateAll(quantifiers: vector.T(ast.Quantifier) resultType: ast.TypeExpr e: env.T): Type =
         env.scoped(:Type e "all_type" fun(s: symbols.Scope): Type
             begin
@@ -903,6 +954,34 @@ export
             symbols.newTypeSymbol(b.name symbolId elaborated.kind maybe.some(:Type elaborated.type))
         end
 
+    (* Elaborates a group of mutually recursive type declarations, whose
+     * bodies may refer to any member of the group, each member a type (a
+     * group with type operators goes to elaborateRecTypeOperators):
+     *
+     *     Let Rec Tree = Variant leaf: Int node: Forest end
+     *     and Forest = Option nil cons with head: Tree tail: Forest end end;
+     *
+     * Each member is declared as a typeRecGroup, which holds the whole group,
+     * every member's body, with activeIndex saying which member it stands for:
+     * Tree is the group with index 0, Forest the group with index 1. A single
+     * Let Rec T = ... is the special case, a Rec(T) whose body names itself.
+     * In the bodies, a member's name is a variable that the group binds, as T
+     * is in Rec(T); and a group type is equal to its unfolding, the active
+     * member's body with each name standing for its member's group type.
+     *
+     * 1. Each member gets a symbol id and its kind: the one it is declared
+     *    with (Let Rec A::K = ...) or TYPE.
+     * 2. In a scope of their own, the members are declared with those kinds
+     *    and no definitions, so that each body can refer to every member,
+     *    before or after it.
+     * 3. Each body is elaborated in that scope, and checked to have its
+     *    member's kind and to be contractive
+     *    (contractiveness.checkTypeContractive): every reference to a member
+     *    is guarded by a constructor (a tuple, option, function type, and so
+     *    on), so that Let Rec A = B and B = A, which defines nothing, is
+     *    rejected.
+     * 4. The group types are declared in the enclosing scope, under the
+     *    members' symbol ids. *)
     and elaborateMutualRecTypeGroup(members: vector.T(ast.TypeBinding) e: env.T): Array(symbols.TypeSymbol) =
         begin
             Let Pre = Tuple name: String symbolId: Int bound: Kind b: ast.TypeBinding end

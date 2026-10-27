@@ -827,8 +827,62 @@ export
             let depth = 0
         end
 
-    (* The minimized graph of the nodes reachable from a type, from which
-     * canonical forms are written *)
+    (* The graph of a type's parts, minimized so that equal types have the same
+     * graph, from which their canonical form is written
+     * (docs/c-representation.md section 5.7).
+     *
+     * Recursive types are equal to their unfoldings, so one type can be
+     * written in many ways. These two are equal, the second unrolled once
+     * inside its Rec:
+     *
+     *     Rec(L::TYPE) Option nil cons with head: Int tail: L end end
+     *     Rec(L::TYPE)
+     *       Option nil
+     *         cons with head: Int
+     *                   tail: Option nil cons with head: Int tail: L end end
+     *              end
+     *       end
+     *
+     * The C backend must give both one tag (the name of its C struct) and one
+     * descriptor (its description at run time), so it computes them from a
+     * canonical form, which every type equal to these has:
+     *
+     *     Rec(Rec.0::TYPE)
+     *       Option cons with Tuple head: Int tail: Rec.0 end nil end
+     *
+     * The graph is built in three steps:
+     *
+     * 1. newGraph walks the type, making a node for each part it meets (an
+     *    option, a tuple, a function type, and so on; canonicalNode lists
+     *    them) with an edge to each of the part's own parts. A recursive type
+     *    is not a node: it is replaced by its unfolding, so recursion becomes
+     *    a cycle. The first type above has two nodes, the option and its
+     *    payload tuple, the tuple's tail an edge back to the option; the
+     *    second has four in a cycle. Types without parts, such as Int, are
+     *    leaves, compared by identity.
+     *
+     * 2. The nodes are partitioned into classes that cannot be told apart,
+     *    the coarsest partition in which nodes of a class have the same shape
+     *    (the constructor and its labels) and parts in the same classes. As in
+     *    DFA minimization, classes start as one per shape and are split until
+     *    no class splits. The second type's two options end in one class and
+     *    its two tuples in another, so both types have the same two-class
+     *    graph, the quotient, in which each class is a node.
+     *
+     * 3. build writes a class back as a type, with a Rec wherever the quotient
+     *    has a cycle (newGraph finds the cycles, as strongly connected
+     *    components; recursiveTerm writes them).
+     *
+     * Type parameters add one twist. A node that binds parameters (a
+     * polymorphic function type, a type operator, an auto type) is a node
+     * like any other, and an occurrence of a parameter is a node whose shape
+     * holds the parameter's position, not its name, with a scope edge to its
+     * binder node, which refinement follows like any edge. So binders that
+     * differ only in their parameters' names fall into one class. Since one
+     * type node can mean different things under different binders, a graph
+     * node is the type together with the binder nodes its free variables
+     * refer to. Written back, parameters get reserved ids numbered by depth,
+     * so that no binder captures another's. *)
     Let Graph = Tuple
         (* The structure of each node, whether its free variables are all free
          * in the root, and the root's node *)
@@ -1167,9 +1221,26 @@ export
             else isAggregateShape(s)
         end
 
-    (* Whether every cycle of a cyclic component passes through a tuple, record,
-     * variant, or option: whether its other nodes have no cycle among
-     * themselves *)
+    (* Whether every cycle of a cyclic component passes through a tuple,
+     * record, variant, or option, tested by looking for a cycle among its
+     * other nodes.
+     *
+     * If every cycle does, recursion variables bind only those nodes
+     * (isRecShape), so that every Rec in a canonical form unfolds to a tuple,
+     * record, variant, or option, as recursive types are usually written. A
+     * stream of integers has a cycle through a tuple and a function type:
+     *
+     *     Rec(S::TYPE) Tuple head: Int tail: All() S end
+     *
+     * Its canonical form is a recursive tuple, and the canonical form of its
+     * tail's type, All() S, has one as its result, though the function type
+     * is on the same cycle:
+     *
+     *     All() Rec(Rec.0::TYPE) Tuple head: Int tail: All() Rec.0 end
+     *
+     * not Rec(F::TYPE) All() Tuple head: Int tail: F end. Only when some cycle
+     * passes through none of them, as in Rec(F::TYPE) All() F, may a recursion
+     * variable bind any node that a recursive type may unfold to. *)
     let aggregateCycles(g: Graph comp: Int): Bool =
         begin
             let memo = hashMap.get(:Int :Bool g.aggregateMemo comp)
@@ -1320,6 +1391,19 @@ export
                 end
         end
 
+    (* Writes back class k as one type constructor applied to its parts, each
+     * written back by build.
+     *
+     * Most nodes become the constructor their shape names, applied to their
+     * parts (rebuildNode). A function type's parameters are named x1, x2, and
+     * so on, since their names are not part of the type. A node that binds
+     * type parameters goes to buildBinder.
+     *
+     * An occurrence of a type parameter needs care, because the graph does
+     * not name parameters: it is an sBound node holding its position in its
+     * binder, with a scope edge to the binder's node. Written back, it is the
+     * parameter that ctx.scope records for that binder node, at that
+     * position. *)
     and buildNode(g: Graph k: Int ctx: Context): Node =
         begin
             let s = g.shapes[k]
@@ -1356,9 +1440,29 @@ export
             end
         end
 
-    (* A binder: its parameters are numbered by the number of enclosing ones, so
-     * that no two enclosing each other share an id; each parameter's kind may
-     * refer to the parameters before it *)
+    (* Writes back class k, a binder node (All, a type operator, an auto type,
+     * a kind ALL, or a tuple with type components), with count new
+     * parameters.
+     *
+     * Their symbol ids are reserved ids numbered by depth: the number of
+     * parameters of the binders enclosing them as written back, which
+     * ctx.depth counts. So
+     *
+     *     Rec(S::TYPE) Tuple f: All(A::TYPE) All(B::TYPE) All(x: A y: B) S
+     *         end
+     *
+     * is written back as
+     *
+     *     Rec(Rec.0::TYPE) Tuple f: All(T0::TYPE) All(T1::TYPE)
+     *         Fun(x1: T0 x2: T1): Rec.0 end
+     *
+     * Numbering by depth makes equal types come out identical, whatever their
+     * parameters were called, and keeps a parameter from being captured: a
+     * binder never declares the id of a parameter of a binder around it. Each
+     * parameter is named T and its number, except a tuple's type component,
+     * which is selected by name (p.T) and keeps it. A parameter's bound is
+     * written back with the earlier parameters of the same binder in scope,
+     * since it may mention them (All(A::TYPE B <: Array(A)) ...). *)
     and buildBinder(g: Graph k: Int ctx: Context count: Int): Node =
         begin
             let s = g.shapes[k]
@@ -1669,6 +1773,44 @@ export
     (* The canonical form found for each type (none if it has none) *)
     let canonicalCache = hashMap.new(:Int :maybe.T(Type) intEqual hash.int)
 
+    (* canonicalType's work, done once per type: t's canonical form, or none
+     * when t should be used as it is.
+     *
+     * The answer is none when
+     *
+     * - t contains no recursion: no Rec, alias, or type operator application
+     *   that might hide one (mayRecur). Tuple a: Int b: Bool end is its own
+     *   canonical form;
+     * - t is the body of a recursive type whose tag is being made, its
+     *   recursion variables replaced by placeholders (recSelfVar): see
+     *   recursiveTag in codegen/layout;
+     * - t's graph cannot be built or written back (notCanonicalizable): it has
+     *   more than maxCanonicalNodes nodes, or a type parameter would be
+     *   written outside the binder that declares it;
+     * - the canonical form is t itself.
+     *
+     * Otherwise the answer is a new type equal to t. For example, both
+     *
+     *     Rec(L::TYPE) Option nil cons with head: Int tail: L end end
+     *     Option nil cons with head: Int tail: L1 end end
+     *
+     * (the second unrolls the first, named L1, once) have the canonical form
+     *
+     *     Rec(Rec.0::TYPE) Option cons with Tuple head: Int tail: Rec.0 end
+     *         nil end
+     *
+     * The graph of t is reused if an earlier graph already contains t's
+     * structure as one of its nodes (canonicalNodes); otherwise it is built
+     * and its nodes are recorded for later types (registerGraph).
+     *
+     * Two checks guard against a bug in the construction. Merging nodes
+     * compares type parameters by their position in their binders, not their
+     * names, and a mistake there could produce a canonical form that is not
+     * equal to t. So the form is used only if subtyping.isTypeEqual accepts
+     * it. And a canonical form must be its own canonical form (a fixed point).
+     * When QUEST_CHECK_CANONICAL=1, as in the tests, both are checked and a
+     * failure raises canonicalError. Otherwise only equality is checked, and
+     * if it fails, a warning is printed and t is used as written. *)
     let rec canonicalUncached(t: Type): maybe.T(Type) =
         begin
             let var selfNamed = false

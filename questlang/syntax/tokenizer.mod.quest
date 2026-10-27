@@ -276,6 +276,25 @@ export
             end
         end
 
+    (* Lexes an integer or real literal at the cursor, which is at a digit, or
+     * at a ~ before one.
+     *
+     * Quest writes a negative number with a tilde (~3), as Cardelli's Quest
+     * does, since - is an infix operator: x-1 is a subtraction, and ~1 one
+     * token. A real has a fraction, a dot followed by at least one digit, and
+     * then may have an exponent, e or E, an optional sign (+, -, or ~), and
+     * digits. As the tokenize phase prints the tokens:
+     *
+     *     ~3        INT_LIT ~3, the value -3
+     *     1.5e~2    REAL_LIT, 0.015
+     *     7.x       INT_LIT 7, DOT, IDENT x (a dot not before a digit)
+     *     1e5       INT_LIT 1, IDENT e5 (an exponent needs a fraction)
+     *     3..5      INT_LIT 3, DOT, DOT, INT_LIT 5
+     *     2.0e      error: Malformed real exponent
+     *
+     * An integer must fit in 64 bits, so 9223372036854775808 is out of range
+     * but ~9223372036854775808 is the least Int. The token's lexeme is the
+     * source text, and its value the number. *)
     let lexNumber(tok: T): tokens.Token =
         begin
             let start = tok.cursor

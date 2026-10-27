@@ -167,6 +167,37 @@ export
         known with outcome: Outcome end
     end
 
+    (* A packrat parser, which runs a parsing expression grammar (PEG; the
+     * grammar is the grammar module's) over a token list and builds the syntax
+     * tree with the grammar's actions (the actions module's).
+     *
+     * The grammar is data. Each nonterminal is a Target holding an ordered
+     * list of Rules, and each Rule is a sequence of Constructs (a token to
+     * match, a target, or an optional, repeated, or separated construct) with
+     * an action that builds an AST node from what the sequence matched.
+     * Parsing a target (parseTarget) tries its rules in order and commits to
+     * the first that matches. A PEG's choice is ordered, so a grammar is never
+     * ambiguous, but the order of a target's rules is part of its meaning: a
+     * rule that matches a prefix of what a later one would match hides it. A
+     * rule that fails consumes nothing, and parsing backtracks to the target's
+     * start to try the next.
+     *
+     * Backtracking alone can take exponential time, so each target's outcome
+     * at each position is memoized (memo): a target is parsed at most once per
+     * position, and parsing takes time linear in the number of tokens. The
+     * memo also stops left recursion, which a PEG cannot express: a target
+     * reached again at the position where it is already being parsed fails
+     * (inProgress) instead of recursing forever. Rules are therefore written
+     * without it, a chain of operators as a repetition rather than as a rule
+     * that begins with itself. Since a match's value may be reused, and may
+     * belong to an alternative that is later abandoned, actions build nodes
+     * and do nothing else.
+     *
+     * When a parse fails, the error is reported at the farthest token at which
+     * any construct failed, with everything expected there (farthest,
+     * expected; syntaxError). Every alternative backtracks, so the failure
+     * that got deepest into the input is the best guess at where the program
+     * goes wrong. *)
     Let Parser = Tuple
         file: String
         bag: diagbag.T

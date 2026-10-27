@@ -51,6 +51,40 @@ export
      * 2. Types, kinds, and their components
      * ====================================================================== *)
 
+    (* A semantic Quest type: a type the checker reasons about, as opposed to
+     * a type as written (ast.TypeExpr), which elaboration translates into
+     * these.
+     *
+     * A type is an immutable structure of nodes, each with a form, one per
+     * constructor (typeRecord, typeFun, ...) or kind of name (typeVariable and
+     * its relatives, described in TypeForm), with every name resolved to its
+     * symbol. Identical structures are one node (they are hash-consed; see
+     * section 4 of model.mod.quest), so same(a b) decides structural
+     * identity, and types are compared with subtyping.isSubtype and
+     * subtyping.isTypeEqual. A recursive type, Rec(X) T, stands for an
+     * infinite tree but is kept finite: unfolding it substitutes the Rec node
+     * itself for X in T.
+     *
+     * evaluateLazily is the operation most code needs before looking at a
+     * type. It returns a type whose outermost node is a constructor, or a name
+     * that cannot be expanded: it looks through aliases, unfolds recursive
+     * types, reduces applications of type operators, and, given a lookup,
+     * expands a type variable whose symbol has a definition. It takes only the
+     * outermost step, and the parts are left as written; that keeps alias
+     * names for messages, and makes evaluating a recursive type terminate
+     * (recursive types are contractive, so an unfolding's outermost node is a
+     * constructor). Code that cases on a type's form must evaluate it first,
+     * or it will meet an alias where it expects a record.
+     *
+     * substitute(t subst) replaces type variables, by symbol id, avoiding
+     * capture: inside a binder (All, a type operator, a recursive type, a
+     * tuple's type components), the binder's own variables are not replaced.
+     * Each node records the ids a substitution could replace in it (fv) and
+     * whether it contains a metavariable (hasMeta), so that substitute returns
+     * a type untouched, without walking it, when nothing in it would change. A
+     * new form must be given its free variables (formFree), its hash-consing
+     * key (typeKey), its substitution, and its parts (typeParts), through which
+     * the generic walkers reach them. *)
     Def Rec Type = Tuple
         (* The node's identity: hash-consed nodes of one structure have one
          * id *)
@@ -89,6 +123,30 @@ export
         typeApp with constructor: Type arguments: Array(Type) end
         typeRec with varName: String symbolId: Int bound: Kind body: Type end
         typeRecGroup with bindings: Array(RecBinding) activeIndex: Int end
+        (* Five forms stand for a type by name rather than by structure. They
+         * differ in where they come from and in what evaluateLazily, and so
+         * subtyping, sees through:
+         *
+         * - typeVariable, a name referring to a type symbol: a type parameter
+         *   (of a function, an All type, a type operator, or a recursive
+         *   type), a type component of a tuple type, or an interface's
+         *   abstract type. Two are the same type when they refer to the same
+         *   symbol, and otherwise all that is known of one is its bound. Given
+         *   a lookup in which its symbol has a definition, though,
+         *   evaluateLazily expands it, so a type may compare differently with
+         *   an environment and without (the subtype cache keeps the two
+         *   apart).
+         * - typeAbstract, a type known only by its bound, never expanded: an
+         *   auto type's type parameter in the layout that stores auto values'
+         *   payloads whatever their witnesses (autoPayloadType).
+         * - typePath, x.A: the type component A of the value x, whose type
+         *   hides it. It is identified by x's symbol and A, and never
+         *   expanded.
+         * - typeAlias, a reference to a type alias, kept to print the name
+         *   written: always seen through, to its target.
+         * - typeMeta, ?A: a placeholder for a type argument being inferred,
+         *   solved by subtyping (subtyping's step). It is the only mutable
+         *   type, and so is never shared by hash-consing. *)
         typeVariable with name: String symbolId: Int bound: maybe.T(Kind) end
         typeAbstract with name: String symbolId: Int bound: Kind end
         typePath with rootName: String rootSymbolId: Int fieldName: String bound: Kind end
