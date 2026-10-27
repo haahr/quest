@@ -2,12 +2,12 @@
 
 module model : Model
 import
+    questlang/common/keys : questlang/common/Keys
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
-    util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
     stringOp = string : StringOp
     conv : Conv
@@ -316,190 +316,204 @@ export
     Let Counters = Tuple var node: Int var meta: Int end
     let counters: Counters = tuple let var node = 0 let var meta = 0 end
 
-    let typeTable = hashMap.new(:String :Type stringOp.equal hash.string)
-    let kindTable = hashMap.new(:String :Kind stringOp.equal hash.string)
+    (* Types and kinds are interned (hash-consed) by their forms: a form's key
+     * is its components as integers (a tag for each constructor and label, the
+     * ids of its types and kinds, its names, and the counts of its lists).
+     * Two forms have the same key exactly when they have the same components.
+     * Types' and kinds' keys start with different tags, and share a table, by
+     * whose numbers the interned types and kinds are found. *)
+    let formKeys = keys.new()
+    let typesByKey = vector.new(:maybe.T(Type))
+    let kindsByKey = vector.new(:maybe.T(Kind))
 
-    let keyStr(b: stringBuilder.T s: String): Ok = begin b.char('s').int(stringOp.length(s)).char(':').str(s) ok end
-    let keyInt(b: stringBuilder.T n: Int): Ok = begin b.char('i').int(n).char(';') ok end
-    let keyBool(b: stringBuilder.T v: Bool): Ok = begin b.char(if v then 't' else 'f' end) ok end
-    let keyType(b: stringBuilder.T t: Type): Ok = begin b.char('#').int(t.id).char(';') ok end
-    let keyKind(b: stringBuilder.T k: Kind): Ok = begin b.char('k').int(k.id).char(';') ok end
-    let keyNone(b: stringBuilder.T): Ok = begin b.char('n') ok end
-    let keyOptStr(b: stringBuilder.T s: maybe.T(String)): Ok =
-        if maybe.isSome(:String s) then keyStr(b maybe.unwrap(:String s)) else keyNone(b) end
-    let keyOptType(b: stringBuilder.T t: maybe.T(Type)): Ok =
-        if maybe.isSome(:Type t) then keyType(b maybe.unwrap(:Type t)) else keyNone(b) end
-    let keyOptKind(b: stringBuilder.T k: maybe.T(Kind)): Ok =
-        if maybe.isSome(:Kind k) then keyKind(b maybe.unwrap(:Kind k)) else keyNone(b) end
-    let keyTag(b: stringBuilder.T tag: String): Ok = begin b.str(tag) ok end
-    let keyCount(b: stringBuilder.T n: Int): Ok = begin b.char('[').int(n).char(']') ok end
+    let kTag(n: Int): Ok = keys.int(formKeys n)
+    let kInt(n: Int): Ok = keys.int(formKeys n)
+    let kStr(s: String): Ok = keys.str(formKeys s)
+    let kBool(v: Bool): Ok = keys.bool(formKeys v)
+    let kType(t: Type): Ok = keys.int(formKeys t.id)
+    let kKind(k: Kind): Ok = keys.int(formKeys k.id)
+    let kCount(n: Int): Ok = keys.int(formKeys n)
+    (* An optional component: whether it is there, then it *)
+    let kOptStr(s: maybe.T(String)): Ok =
+        if maybe.isSome(:String s) then begin kBool(true) kStr(maybe.unwrap(:String s)) end else kBool(false) end
+    let kOptType(t: maybe.T(Type)): Ok =
+        if maybe.isSome(:Type t) then begin kBool(true) kType(maybe.unwrap(:Type t)) end else kBool(false) end
+    let kOptKind(k: maybe.T(Kind)): Ok =
+        if maybe.isSome(:Kind k) then begin kBool(true) kKind(maybe.unwrap(:Kind k)) end else kBool(false) end
 
-    let typeKey(form: TypeForm): String =
+    (* The value at a key's number, if one was put there *)
+    let atKey(A::TYPE values: vector.T(maybe.T(A)) number: Int): maybe.T(A) =
+        if number < vector.length(:maybe.T(A) values) then vector.get(:maybe.T(A) values number) else maybe.none(:A) end
+    let putAtKey(A::TYPE values: vector.T(maybe.T(A)) number: Int value: A): Ok =
         begin
-            let b = stringBuilder.new()
+            while vector.length(:maybe.T(A) values) <= number do vector.append(:maybe.T(A) values maybe.none(:A)) end
+            vector.set(:maybe.T(A) values number maybe.some(:A value))
+        end
+
+    let typeKey(form: TypeForm): Ok =
+        begin
+            keys.start(formKeys)
             case form
-                when typeInt then keyTag(b "Int")
-                when typeReal then keyTag(b "Real")
-                when typeBool then keyTag(b "Bool")
-                when typeChar then keyTag(b "Char")
-                when typeString then keyTag(b "String")
-                when typeOk then keyTag(b "Ok")
-                when typeBottom then keyTag(b "Bottom")
-                when typeException with x then begin b.str("Exception") keyType(b x.payload) end
-                when typeExternal with x then begin b.str("External") keyStr(b x.name) keyStr(b x.cType) end
+                when typeInt then kTag(1)
+                when typeReal then kTag(2)
+                when typeBool then kTag(3)
+                when typeChar then kTag(4)
+                when typeString then kTag(5)
+                when typeOk then kTag(6)
+                when typeBottom then kTag(7)
+                when typeException with x then begin kTag(9) kType(x.payload) end
+                when typeExternal with x then begin kTag(10) kStr(x.name) kStr(x.cType) end
                 when typeTuple with x then
                     begin
-                        b.str("Tuple")
-                        keyCount(b extent x.fields)
+                        kTag(11)
+                        kCount(extent x.fields)
                         for i = 0 upto {extent x.fields - 1} do
                             case x.fields[i]
                                 when tupleField with f then
-                                    begin b.char('F') keyOptStr(b f.name) keyType(b f.type) keyBool(b f.isVar) end
+                                    begin kTag(33) kOptStr(f.name) kType(f.type) kBool(f.isVar) end
                                 when tupleTypeFormal with f then
-                                    begin b.char('X') keyStr(b f.name) keyInt(b f.symbolId) keyKind(b f.bound) end
+                                    begin kTag(34) kStr(f.name) kInt(f.symbolId) kKind(f.bound) end
                                 when tupleTypeBinding with f then
-                                    begin b.char('L') keyStr(b f.name) keyType(b f.type) keyOptKind(b f.bound) end
+                                    begin kTag(35) kStr(f.name) kType(f.type) kOptKind(f.bound) end
                             end
                         end
                     end
                 when typeRecord with x then
                     begin
-                        b.str("Record")
-                        keyCount(b extent x.fields)
+                        kTag(12)
+                        kCount(extent x.fields)
                         for i = 0 upto {extent x.fields - 1} do
-                            keyStr(b x.fields[i].name)
-                            keyType(b x.fields[i].type)
-                            keyBool(b x.fields[i].isVar)
+                            kStr(x.fields[i].name)
+                            kType(x.fields[i].type)
+                            kBool(x.fields[i].isVar)
                         end
-                        keyOptStr(b x.provenance)
+                        kOptStr(x.provenance)
                     end
                 when typeVariant with x then
                     begin
-                        b.str("Variant")
-                        keyCount(b extent x.variants)
+                        kTag(13)
+                        kCount(extent x.variants)
                         for i = 0 upto {extent x.variants - 1} do
-                            keyStr(b x.variants[i].name)
-                            keyOptType(b x.variants[i].type)
-                            keyBool(b x.variants[i].isVar)
+                            kStr(x.variants[i].name)
+                            kOptType(x.variants[i].type)
+                            kBool(x.variants[i].isVar)
                         end
                     end
                 when typeOption with x then
                     begin
-                        b.str("Option")
-                        keyCount(b extent x.options)
+                        kTag(14)
+                        kCount(extent x.options)
                         for i = 0 upto {extent x.options - 1} do
-                            keyStr(b x.options[i].name)
-                            keyOptType(b x.options[i].payload)
+                            kStr(x.options[i].name)
+                            kOptType(x.options[i].payload)
                         end
                     end
                 when typeFun with x then
                     begin
-                        b.str("Fun")
-                        keyCount(b extent x.params)
+                        kTag(15)
+                        kCount(extent x.params)
                         for i = 0 upto {extent x.params - 1} do
-                            keyStr(b x.params[i].name)
-                            keyType(b x.params[i].type)
-                            keyBool(b x.params[i].isVar)
-                            keyBool(b x.params[i].isOut)
+                            kStr(x.params[i].name)
+                            kType(x.params[i].type)
+                            kBool(x.params[i].isVar)
+                            kBool(x.params[i].isOut)
                         end
-                        keyType(b x.result)
+                        kType(x.result)
                     end
-                when typeVar with x then begin b.str("Var") keyType(b x.element) end
-                when typeArray with x then begin b.str("Array") keyType(b x.element) end
-                when typeOut with x then begin b.str("Out") keyType(b x.element) end
+                when typeVar with x then begin kTag(16) kType(x.element) end
+                when typeArray with x then begin kTag(17) kType(x.element) end
+                when typeOut with x then begin kTag(18) kType(x.element) end
                 when typeAll with x then
                     begin
-                        b.str("All")
-                        keyCount(b extent x.quantifiers)
+                        kTag(19)
+                        kCount(extent x.quantifiers)
                         for i = 0 upto {extent x.quantifiers - 1} do
-                            keyStr(b x.quantifiers[i].name)
-                            keyInt(b x.quantifiers[i].symbolId)
-                            keyKind(b x.quantifiers[i].bound)
+                            kStr(x.quantifiers[i].name)
+                            kInt(x.quantifiers[i].symbolId)
+                            kKind(x.quantifiers[i].bound)
                         end
-                        keyType(b x.body)
+                        kType(x.body)
                     end
                 when typeAuto with x then
                     begin
-                        b.str("Auto")
-                        keyStr(b x.typeParam)
-                        keyInt(b x.symbolId)
-                        keyKind(b x.kindBound)
-                        keyCount(b extent x.signature)
+                        kTag(20)
+                        kStr(x.typeParam)
+                        kInt(x.symbolId)
+                        kKind(x.kindBound)
+                        kCount(extent x.signature)
                         for i = 0 upto {extent x.signature - 1} do
-                            keyStr(b x.signature[i].name)
-                            keyType(b x.signature[i].type)
-                            keyBool(b x.signature[i].isVar)
+                            kStr(x.signature[i].name)
+                            kType(x.signature[i].type)
+                            kBool(x.signature[i].isVar)
                         end
                     end
                 when typeOperator with x then
                     begin
-                        b.str("Operator")
-                        keyCount(b extent x.params)
+                        kTag(21)
+                        kCount(extent x.params)
                         for i = 0 upto {extent x.params - 1} do
-                            keyStr(b x.params[i].name)
-                            keyInt(b x.params[i].symbolId)
-                            keyKind(b x.params[i].bound)
+                            kStr(x.params[i].name)
+                            kInt(x.params[i].symbolId)
+                            kKind(x.params[i].bound)
                         end
-                        keyType(b x.body)
+                        kType(x.body)
                     end
                 when typeApp with x then
                     begin
-                        b.str("App")
-                        keyType(b x.constructor)
-                        keyCount(b extent x.arguments)
-                        for i = 0 upto {extent x.arguments - 1} do keyType(b x.arguments[i]) end
+                        kTag(22)
+                        kType(x.constructor)
+                        kCount(extent x.arguments)
+                        for i = 0 upto {extent x.arguments - 1} do kType(x.arguments[i]) end
                     end
                 when typeRec with x then
-                    begin b.str("Rec") keyStr(b x.varName) keyInt(b x.symbolId) keyKind(b x.bound) keyType(b x.body) end
+                    begin kTag(23) kStr(x.varName) kInt(x.symbolId) kKind(x.bound) kType(x.body) end
                 when typeRecGroup with x then
                     begin
-                        b.str("RecGroup")
-                        keyCount(b extent x.bindings)
+                        kTag(24)
+                        kCount(extent x.bindings)
                         for i = 0 upto {extent x.bindings - 1} do
-                            keyStr(b x.bindings[i].name)
-                            keyInt(b x.bindings[i].symbolId)
-                            keyKind(b x.bindings[i].bound)
-                            keyType(b x.bindings[i].body)
+                            kStr(x.bindings[i].name)
+                            kInt(x.bindings[i].symbolId)
+                            kKind(x.bindings[i].bound)
+                            kType(x.bindings[i].body)
                         end
-                        keyInt(b x.activeIndex)
+                        kInt(x.activeIndex)
                     end
                 when typeVariable with x then
-                    begin b.str("Variable") keyStr(b x.name) keyInt(b x.symbolId) keyOptKind(b x.bound) end
+                    begin kTag(25) kStr(x.name) kInt(x.symbolId) kOptKind(x.bound) end
                 when typeAbstract with x then
-                    begin b.str("Abstract") keyStr(b x.name) keyInt(b x.symbolId) keyKind(b x.bound) end
+                    begin kTag(26) kStr(x.name) kInt(x.symbolId) kKind(x.bound) end
                 when typePath with x then
                     begin
-                        b.str("Path")
-                        keyStr(b x.rootName)
-                        keyInt(b x.rootSymbolId)
-                        keyStr(b x.fieldName)
-                        keyKind(b x.bound)
+                        kTag(27)
+                        kStr(x.rootName)
+                        kInt(x.rootSymbolId)
+                        kStr(x.fieldName)
+                        kKind(x.bound)
                     end
                 when typeAlias with x then
-                    begin b.str("Alias") keyStr(b x.name) keyInt(b x.symbolId) keyType(b x.target) end
+                    begin kTag(28) kStr(x.name) kInt(x.symbolId) kType(x.target) end
                 when typeMeta with x then
-                    begin b.str("Meta") keyInt(b x.meta.symbolId) end
+                    begin kTag(29) kInt(x.meta.symbolId) end
             end
-            b.toString()
         end
 
-    let kindKey(form: KindForm): String =
+    let kindKey(form: KindForm): Ok =
         begin
-            let b = stringBuilder.new()
+            keys.start(formKeys)
             case form
-                when kindType then keyTag(b "TYPE")
-                when kindPower with x then begin b.str("POWER") keyType(b x.bound) end
+                when kindType then kTag(8)
+                when kindPower with x then begin kTag(30) kType(x.bound) end
                 when kindAll with x then
                     begin
-                        b.str("ALL")
-                        keyStr(b x.paramName)
-                        keyInt(b x.paramId)
-                        keyKind(b x.paramKind)
-                        keyKind(b x.resultKind)
+                        kTag(31)
+                        kStr(x.paramName)
+                        kInt(x.paramId)
+                        kKind(x.paramKind)
+                        kKind(x.resultKind)
                     end
-                when kindVar with x then begin b.str("KindVar") keyStr(b x.name) keyInt(b x.symbolId) end
+                when kindVar with x then begin kTag(32) kStr(x.name) kInt(x.symbolId) end
             end
-            b.toString()
         end
 
     let newNode(form: TypeForm acc: Acc): Type =
@@ -523,13 +537,14 @@ export
             if acc.hasMeta then
                 newNode(form acc)
             else
-                let key = typeKey(form)
-                let found = hashMap.get(:String :Type typeTable key)
+                typeKey(form)
+                let number = keys.intern(formKeys)
+                let found = atKey(:Type typesByKey number)
                 if maybe.isSome(:Type found) then
                     maybe.unwrap(:Type found)
                 else
                     let t = newNode(form acc)
-                    hashMap.insert(:String :Type typeTable key t)
+                    putAtKey(:Type typesByKey number t)
                     t
                 end
             end
@@ -548,13 +563,14 @@ export
             if acc.hasMeta then
                 build()
             else
-                let key = kindKey(form)
-                let found = hashMap.get(:String :Kind kindTable key)
+                kindKey(form)
+                let number = keys.intern(formKeys)
+                let found = atKey(:Kind kindsByKey number)
                 if maybe.isSome(:Kind found) then
                     maybe.unwrap(:Kind found)
                 else
                     let k = build()
-                    hashMap.insert(:String :Kind kindTable key k)
+                    putAtKey(:Kind kindsByKey number k)
                     k
                 end
             end
@@ -1645,6 +1661,11 @@ export
             mapType(t)
         end
 
+    (* The types without metavariables stripped of their aliases, by id, kept
+     * across calls (the bootstrap's _STRIPPED), and cleared when they grow
+     * past a bound *)
+    let strippedTypes = newMemo(:Type)
+
     let stripAliases(t: Type): Type =
         begin
             let memo = newMemo(:Type)
@@ -1652,8 +1673,10 @@ export
             let rec strip(x: Type): Type =
                 begin
                     let cached = hashMap.get(:Int :Type memo x.id)
-                    if maybe.isSome(:Type cached) then
-                        maybe.unwrap(:Type cached)
+                    let known = if maybe.isSome(:Type cached) then cached
+                        else hashMap.get(:Int :Type strippedTypes x.id) end
+                    if maybe.isSome(:Type known) then
+                        maybe.unwrap(:Type known)
                     else
                         let result = case x.form
                             when typeAlias with a then strip(a.target)
@@ -1662,6 +1685,12 @@ export
                             else rebuild(x strip stripKind)
                         end
                         hashMap.insert(:Int :Type memo x.id result)
+                        if not(x.hasMeta) then
+                            if hashMap.size(:Int :Type strippedTypes) > 200000 then
+                                hashMap.clear(:Int :Type strippedTypes)
+                            end
+                            hashMap.insert(:Int :Type strippedTypes x.id result)
+                        end
                         result
                     end
                 end

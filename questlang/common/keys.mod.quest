@@ -1,0 +1,120 @@
+(* Quest Self-Hosted Compiler: Integer Keys Implementation *)
+
+module keys : Keys
+import
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+    word : Word
+export
+    Let Entry = Tuple key: Array(Int) number: Int end
+    Let T = Tuple
+        var data: Array(Int)
+        var length: Int
+        (* The keys interned, by their hashes *)
+        buckets: hashMap.T(Int vector.T(Entry))
+        var count: Int
+        strings: hashMap.T(String Int)
+    end
+
+    let sameInt(a: Int b: Int): Bool = a is b
+
+    let new(): T =
+        tuple
+            let var data = array of(16 0)
+            let var length = 0
+            let buckets = hashMap.new(:Int :vector.T(Entry) sameInt hash.int)
+            let var count = 0
+            let strings = hashMap.new(:String :Int stringOp.equal hash.string)
+        end
+
+    let start(k: T): Ok = begin k.length := 0 ok end
+
+    let int(k: T n: Int): Ok =
+        begin
+            if k.length is extent k.data then
+                let grown = array of({2 * extent k.data} 0)
+                for i = 0 upto {k.length - 1} do grown[i] := k.data[i] end
+                k.data := grown
+            end
+            k.data[k.length] := n
+            k.length := k.length + 1
+        end
+
+    let bool(k: T v: Bool): Ok = int(k if v then 1 else 0 end)
+
+    let str(k: T s: String): Ok =
+        begin
+            let known = hashMap.get(:String :Int k.strings s)
+            if maybe.isSome(:Int known) then
+                int(k maybe.unwrap(:Int known))
+            else
+                let n = hashMap.size(:String :Int k.strings)
+                hashMap.insert(:String :Int k.strings s n)
+                int(k n)
+            end
+        end
+
+    let bufferHash(k: T): Int =
+        begin
+            let var h = hash.int(k.length)
+            for i = 0 upto {k.length - 1} do h := hash.combine(h hash.int(k.data[i])) end
+            word.toInt(h)
+        end
+
+    let isBuffer(k: T key: Array(Int)): Bool =
+        if not(extent key is k.length) then
+            false
+        else
+            let var same = true
+            let var i = 0
+            while same andif {i < k.length} do
+                if not(key[i] is k.data[i]) then same := false end
+                i := i + 1
+            end
+            same
+        end
+
+    let lookup(k: T bucket: maybe.T(vector.T(Entry))): maybe.T(Int) =
+        begin
+            let var found = maybe.none(:Int)
+            if maybe.isSome(:vector.T(Entry) bucket) then
+                let entries = maybe.unwrap(:vector.T(Entry) bucket)
+                for i = 0 upto {vector.length(:Entry entries) - 1} do
+                    if maybe.isNone(:Int found) andif isBuffer(k vector.get(:Entry entries i).key) then
+                        found := maybe.some(:Int vector.get(:Entry entries i).number)
+                    end
+                end
+            end
+            found
+        end
+
+    let find(k: T): maybe.T(Int) = lookup(k hashMap.get(:Int :vector.T(Entry) k.buckets bufferHash(k)))
+
+    let intern(k: T): Int =
+        begin
+            let h = bufferHash(k)
+            let bucket = hashMap.get(:Int :vector.T(Entry) k.buckets h)
+            let found = lookup(k bucket)
+            if maybe.isSome(:Int found) then
+                maybe.unwrap(:Int found)
+            else
+                let key = array of(k.length 0)
+                for i = 0 upto {k.length - 1} do key[i] := k.data[i] end
+                let n = k.count
+                k.count := n + 1
+                let entry = tuple let key = key let number = n end
+                if maybe.isSome(:vector.T(Entry) bucket) then
+                    vector.append(:Entry maybe.unwrap(:vector.T(Entry) bucket) entry)
+                else
+                    hashMap.insert(:Int :vector.T(Entry) k.buckets h vector.fromArray(:Entry array of entry end))
+                    ok
+                end
+                n
+            end
+        end
+
+    let size(k: T): Int = k.count
+end
