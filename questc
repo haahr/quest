@@ -1,0 +1,30 @@
+#!/bin/sh
+# Launcher for the self-hosted compiler (docs/milestone-5.md section 2.3): runs
+# stage 2, the compiler questlang/driver/main.quest builds when compiled by the
+# bootstrap's build of it (stage 1). It is rebuilt first when any file it is
+# built from (under questlang/, lib/, or runtime/) is newer than it: the
+# bootstrap brings stage 1 up to date, and stage 1 stage 2, each compiling only
+# the units that are stale. Set QUESTC_VERBOSE=1 to see the builds' steps.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BUILD="$SCRIPT_DIR/.build/questc"
+STAGE1="$BUILD/stage1/questc"
+STAGE2="$BUILD/stage2/questc"
+DRIVER="questlang/driver/main.quest"
+
+stale() {
+    [ ! -x "$STAGE2" ] && return 0
+    [ -n "$(cd "$SCRIPT_DIR" && find questlang lib runtime -type f -newer "$STAGE2" 2>/dev/null | head -n 1)" ]
+}
+
+if stale; then
+    VERBOSE=""
+    [ -n "$QUESTC_VERBOSE" ] && VERBOSE="-v"
+    mkdir -p "$BUILD/stage1" "$BUILD/stage2" || exit 1
+    echo "questc: building stage 1 (the bootstrap compiling $DRIVER)..." >&2
+    (cd "$SCRIPT_DIR" && ./quest $VERBOSE --build-dir "$BUILD/stage1/build" -o "$STAGE1" "$DRIVER") || exit 1
+    echo "questc: building stage 2 (stage 1 compiling $DRIVER)..." >&2
+    (cd "$SCRIPT_DIR" && QUEST_HOME="$SCRIPT_DIR" "$STAGE1" $VERBOSE --build-dir "$BUILD/stage2/build" -o "$STAGE2" "$DRIVER") \
+        || exit 1
+fi
+
+QUEST_HOME="${QUEST_HOME:-$SCRIPT_DIR}" exec "$STAGE2" "$@"

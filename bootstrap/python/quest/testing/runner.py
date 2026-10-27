@@ -545,6 +545,99 @@ def build_self_hosted_driver(python_executable: str, build_dir: Path) -> Path:
     return binary
 
 
+def build_driver_with(driver: Path, build_dir: Path, binary: Path) -> float:
+    """Compiles the self-hosted driver with the compiled driver `driver`, as
+    -o does, into binary, its units' artifacts in build_dir. Returns the time
+    the build took, in seconds."""
+    environment = os.environ.copy()
+    environment["QUEST_HOME"] = str(ROOT_DIR)
+    start = time.perf_counter()
+    process = subprocess.run(
+        [str(driver), "--build-dir", str(build_dir), "-o", str(binary), str(SELF_HOSTED_DRIVER)],
+        capture_output=True, encoding=BYTE_ENCODING, env=environment, cwd=ROOT_DIR,
+    )
+    if process.returncode != 0:
+        sys.exit(f"{driver} failed to compile {SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)}:\n"
+                 f"{process.stdout}{process.stderr}")
+    return time.perf_counter() - start
+
+
+# The artifacts a build directory holds for each unit, compared by
+# --self-hosting
+ARTIFACT_SUFFIXES = (".mod.c", ".main.c", ".int.h", ".qi", ".qm")
+
+
+def normalized_artifact(path: Path, build_dir: Path) -> str:
+    """An artifact's text, without what differs between compilers and build
+    directories: the producer (informational) and the build directory's path."""
+    text = path.read_text(encoding=BYTE_ENCODING)
+    if path.name.endswith(".int.h"):
+        lines = text.split("\n")
+        if lines and lines[0].startswith("/* quest abi"):
+            lines = lines[1:]
+        text = "\n".join(lines)
+    elif path.suffix in (".qi", ".qm"):
+        text = re.sub(r'"producer": ?"[^"]*"', '"producer": ""', text)
+    for build in sorted({str(build_dir), str(build_dir.resolve())}, key=len, reverse=True):
+        text = text.replace(build, "<build>")
+    return text
+
+
+def compare_build_dirs(expected_dir: Path, actual_dir: Path, what: str) -> list[str]:
+    """How the artifacts in actual_dir differ from those in expected_dir: the
+    files missing from either, and those whose normalized texts differ."""
+    def artifacts(d: Path) -> dict[str, Path]:
+        return {
+            str(f.relative_to(d)): f for f in d.rglob("*")
+            if f.is_file() and f.name.endswith(ARTIFACT_SUFFIXES) and "runtime" not in f.relative_to(d).parts
+        }
+
+    expected, actual = artifacts(expected_dir), artifacts(actual_dir)
+    problems = [f"{what}: missing {name}" for name in sorted(expected.keys() - actual.keys())]
+    problems += [f"{what}: extra {name}" for name in sorted(actual.keys() - expected.keys())]
+    for name in sorted(expected.keys() & actual.keys()):
+        a = normalized_artifact(expected[name], expected_dir)
+        b = normalized_artifact(actual[name], actual_dir)
+        if a != b:
+            diff = list(difflib.unified_diff(a.splitlines(keepends=True), b.splitlines(keepends=True),
+                                             fromfile=f"expected/{name}", tofile=f"actual/{name}", n=1))
+            problems.append(f"{what}: {name} differs\n" + "".join(diff[:40]).rstrip())
+    return problems
+
+
+def check_self_hosting(python_executable: str, build_dir: Path) -> Path:
+    """Builds the three stages of the self-hosted compiler (docs/milestone-5.md
+    section 2.3) and checks the fixed point: stage 1 (the bootstrap's build of
+    the self-hosted driver) writes the bootstrap's artifacts for every unit of
+    the driver, and stage 2 (stage 1's build) stage 1's. Stage 3, stage 2's
+    build, must be stage 2's binary, up to the C compiler's own nondeterminism.
+    Returns stage 2, which the self-hosted suite then runs."""
+    print(f"Compiling stage 1 ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)}, by the bootstrap)...")
+    stage1 = build_self_hosted_driver(python_executable, build_dir)
+    stages = build_dir / "self-hosting"
+    shutil.rmtree(stages, ignore_errors=True)
+    stage2 = stages / "stage2" / "questlang-driver"
+    stage3 = stages / "stage3" / "questlang-driver"
+    print("Compiling stage 2 (by stage 1)...")
+    seconds = build_driver_with(stage1, stages / "stage2" / "build", stage2)
+    print(f"  {seconds:.1f}s")
+    print("Compiling stage 3 (by stage 2)...")
+    seconds = build_driver_with(stage2, stages / "stage3" / "build", stage3)
+    print(f"  {seconds:.1f}s")
+    problems = compare_build_dirs(build_dir / "self-hosted", stages / "stage2" / "build", "stage 1 against the bootstrap")
+    problems += compare_build_dirs(stages / "stage2" / "build", stages / "stage3" / "build", "stage 2 against stage 1")
+    if problems:
+        print("\n\n".join(problems))
+        sys.exit("The self-hosting check failed")
+    count = sum(1 for f in (stages / "stage2" / "build").rglob("*") if f.name.endswith(ARTIFACT_SUFFIXES))
+    print(f"Fixed point: the {count} artifacts of stages 1 and 2 are the bootstrap's and stage 1's")
+    if stage2.read_bytes() != stage3.read_bytes():
+        print("Note: the binaries of stages 2 and 3 differ, from identical C")
+    else:
+        print("Stages 2 and 3 are the same binary")
+    return stage2
+
+
 def eval_programs() -> list[str]:
     """The programs of tests/eval/cases.quest, one per line, after its opening
     comment."""
@@ -778,6 +871,13 @@ def main() -> int:
     )
 
     arg_parser.add_argument(
+        "--self-hosting",
+        action="store_true",
+        help="Check that the self-hosted compiler compiles itself to a fixed point (stages 1 to 3), then run the "
+        "self-hosted suite with stage 2.",
+    )
+
+    arg_parser.add_argument(
         "--build-dir",
         help="Build directory for C phases, reused across runs (default: a fresh temporary directory per run, "
         "so that results never depend on artifacts from earlier compiler versions).",
@@ -820,6 +920,9 @@ def run_all_tests(
     driver_command: Optional[list[str]] = None
     pending: set[str] = set()
     pending_counts = {"pending": 0}
+    if args.self_hosting:
+        args.self_hosted = True
+        args.self_hosted_driver = str(check_self_hosting(python_executable, build_dir))
     if args.self_hosted:
         phases_to_run = [phase for phase in phases_to_run if phase in SELF_HOSTED_PHASES]
         if args.self_hosted_driver:

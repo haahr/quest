@@ -173,10 +173,22 @@ its own; a compiled program runs without the bootstrap's 10-second timeout; an e
 (a C compiler's failure, say) is reported at the program's first character, without the bootstrap's Python
 traceback; and `--dump-after` is ported for the C phases only.
 
-### Step 4: Self-hosting
+### Step 4: Self-hosting (done)
 
 The runner's `--self-hosting` mode (§2.3) and the `./questc` launcher. Stage 2 passes the self-hosted suite, and the
-fixed point holds.
+fixed point holds: the artifacts of all of the driver's units, as stages 1 and 2 write them, are the bootstrap's and
+stage 1's, up to the producer and the build directory's path, and stages 2 and 3 are the same binary.
+
+`./questc` builds its stages under `.build/questc` (stage 1 by `./quest`, stage 2 by stage 1) when it has none or any
+file under `questlang/`, `lib/`, or `runtime/` is newer than stage 2, each build compiling only its stale units, and
+then runs stage 2 with `QUEST_HOME` set to the tree. Building both from nothing takes about 20 minutes, most of it
+the bootstrap's.
+
+Divergences: the check compares every artifact a stage writes (`.mod.c`, `.main.c`, `.int.h`, `.qi`, and `.qm`) and
+not the runtime's cached objects. The self-hosted compiler became fast enough to build itself only once its type
+tables were keyed by integers rather than strings (`common/keys`, which the bootstrap doesn't need: Python hashes the
+tuples it keys them by) and its `stripAliases` cached its results globally, as the bootstrap's does. Before that,
+stage 2 took more than 30 minutes; it now takes about 8.
 
 ### Step 5: Done
 
