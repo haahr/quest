@@ -279,6 +279,39 @@ def _uses_recursion(t: QRecType | QRecGroupType) -> bool:
 
 
 def _shape(t: QType) -> Shape:
+    """The shape of t, made once for each type object and cached by its
+    identity. shape calls it on a type it has stripped of aliases and put in
+    canonical form, and _build on the parts of the type it is building, which
+    may be aliases.
+
+    Most types are built by _build, one constructor at a time, from the shapes
+    of their parts. The cases handled here are those where the shape is some
+    other type's:
+
+    - an alias (Let Point = Tuple x: Int y: Int end) has its meaning's;
+    - a Rec whose body never mentions its variable, such as
+      Rec(X::TYPE) Tuple a: Int end, has the shape of the type it unfolds to,
+      as does a member of a group of mutually recursive types that does not
+      refer back to itself;
+    - an application of a type operator (List(Int)) has the shape of the type
+      it reduces to;
+    - a variant or option type has the shape of the same type with its cases
+      sorted by name, since Option b a end and Option a b end are equal types
+      and so must share a shape and a C representation.
+
+    A recursive type's shape is a cycle. The shape of
+
+        Rec(L::TYPE) Option nil cons with head: Int tail: L end end
+
+    is an option shape whose cons case is a tuple shape whose tail is that
+    same option shape object. To build it, a placeholder shape (kind
+    "pending") is cached for t before t's unfolding is shaped: when the
+    unfolding reaches t again at the tail, the lookup finds the placeholder,
+    and the tail points to it. The placeholder is then filled in from the
+    unfolding's shape (fill_from), keeping t as its type.
+
+    The cache is keyed by id(t), and an entry is used only if it holds t
+    itself, since an id can be reused once its object is gone."""
     if (s := _cached(t)) is not None:
         return s
     match t:

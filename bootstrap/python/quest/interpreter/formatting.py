@@ -83,6 +83,30 @@ def exposed_type(typ: QType) -> QType:
 
 
 def _format_typed(val: QValue, typ: QType, visited: set[int]) -> str:
+    """The text of val as a value of type typ (format_value_with_type).
+
+    The type, not the value, decides what is shown: a record of more fields
+    than its type is printed with its type's fields alone, and
+
+        let q: Tuple T::TYPE x: T end = tuple Let T = Int let x: T = 3 end
+
+    prints as tuple <Hidden>::TYPE x=<hidden> end, since its type hides what T
+    is. A value of an abstract type or of a type parameter is <hidden> (but
+    for a Word.T, which has literals of its own), and a type component
+    <Hidden>::TYPE (or <Hidden>:: and its bound), since compiled code, which
+    cannot see a separately compiled module's representation, must hide
+    them too. Functions are <fun>.
+    An auto value is shown with its type component's name, as a descriptor
+    names it: auto :Int with a=5 end.
+
+    visited holds the tuples, records, and arrays being printed, those that
+    enclose val. A cyclic value reaches one of them again, which is printed
+    as record ... end (or tuple, or array of) to stop:
+
+        record next=option some with tuple n=record ... end end end v=1 end
+
+    A value shared but not cyclic, reached twice, is printed in full both
+    times, since an aggregate leaves visited once it has been printed."""
     if isinstance(val, QRef):
         val = val.deref()
     typ = exposed_type(typ)

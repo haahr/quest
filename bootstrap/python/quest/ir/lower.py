@@ -494,7 +494,28 @@ class _Lowerer:
         return self.let(ir.RecordField(base, fld), e.type_val, into)
 
     def tuple(self, e: TypedTuple, into: Optional[ir.Var]) -> ir.Atom:
-        labels = e.labels if e.labels else (None,) * len(e.elements)
+        """Lowers a tuple expression: each component is computed, in order,
+        then a make-tuple operation collects them (into, if given).
+
+            tuple let a = 1 let b = a + 1 end    let a: Int = 1
+                                                 let b: Int = prim +(a, 1)
+                                                 let t: ... = tuple(a, b)
+
+        A label (let a = ...) names its component for the components after it,
+        so a labelled component is computed into a variable bound to the label.
+        Components declared with let rec ... and ... are functions that see one
+        another: they become one funs rec statement, whose closures are the
+        components. A type component (Let T = Int) is a witness, the type it
+        stands for, not a value: it computes nothing, and becomes one of the
+        make-tuple's type components,
+
+            tuple Let T = Int let x: T = 3 end  ->  tuple(Let T = Int x)
+
+        Binding each label as soon as its value is computed is right even for
+        a simultaneous group (let a = ... and b = ...), whose members do not
+        see one another: a member refers to a binding that a label shadows by
+        that binding's own symbol, never the label's."""
+        labels =e.labels if e.labels else (None,) * len(e.elements)
         values: dict[int, ir.Atom] = {}
         type_components: list[tuple[str, QType]] = []
         rec_first = {group[0]: group for group in e.rec_groups}
@@ -833,6 +854,39 @@ class _Lowerer:
             self.emit(ir.Let(var, ir.MakeException(exc.name, exc.payload_type)))
 
     def binding(self, b: TypedNode, show: bool = False) -> None:
+        """Lowers one declaration of a block or a unit's top level, emitting
+        its statements into the current body. With show, as for a top-level
+        phrase run with --echo, it also emits what the interactive system
+        prints for it.
+
+            let x = 1;                  let x: Int = 1
+            let var y = x + 1;          let %1: Int = prim +(x, 1)
+                                        var y: Int = %1
+            let x = x + 2;              let x.1: Int = prim +(x, 2)
+            let f(n: Int): Int = n + x; funs { fun f(n: Int): Int {...} }
+            Let T = Int;                (nothing)
+
+        - A value is computed straight into the variable that binds it (value's
+          into). The variable is entered in vars, where uses look it up, only
+          after its value is lowered, so that the value sees the binding it
+          shadows: the second x reads the first, and is printed x.1.
+        - A var is a mutable variable (VarDecl), initialized from its value.
+        - A function becomes a funs statement, which makes closures. Functions
+          declared together with let rec ... and ... are one funs rec, whose
+          functions see one another. A let rec of values that are not all
+          functions (a record of functions, say) goes to rec_values.
+        - A simultaneous let ... and ... (without rec) is lowered member by
+          member: its members' values refer to the bindings the members
+          shadow, which are other symbols, so binding each as it is computed
+          means the same.
+        - Type and kind declarations exist only for the type checker; they
+          lower to nothing, but for their echoed text.
+        - An expression statement goes to phrase_expr: lowered for its effect
+          alone if its type is Ok, and otherwise for its value, which --echo
+          prints. An import adds the imported modules to the unit.
+
+        The named exceptions b makes for its scope are made before it
+        (make_scope_exceptions)."""
         self.make_scope_exceptions(b)
         match b:
             case TypedLetValue(value=value, is_rec=True) if not isinstance(value, TypedFun):

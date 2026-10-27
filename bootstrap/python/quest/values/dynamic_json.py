@@ -762,6 +762,23 @@ class _Reader:
             raise _fail()
 
     def _check_node(self, node: Any) -> None:
+        """Checks that one entry of a document's type table has the form
+        docs/dynamic.md §2.2 gives, raising dynamic.error (_fail) if not.
+
+        A document may come from anywhere, so the reader checks the whole table
+        before reading anything with it, and the rest of the reader can then
+        index the table and take a node's parts apart without checking. An
+        entry is an object with one key, naming a type constructor, such as
+
+            {"tuple": [["head", "Int"], ["tail", 0]]}
+
+        or an abstract type, {"abstract": ..., "args": [...], "rep": ...}, whose
+        args are optional but not empty. Every type reference must be the name
+        of a built-in type ("Int") or the index of an entry in the table (0). An
+        option case's reference, if any, must be to a tuple entry, the case's
+        components. A function parameter's mode is "", "var", or "out", and a
+        param entry's count of auto types is a non-negative integer. Labels
+        are checked only to be strings."""
         if isinstance(node, dict) and "abstract" in node:
             if set(node) - {"abstract", "args", "rep"} or "rep" not in node or not isinstance(node["abstract"], str):
                 raise _fail()

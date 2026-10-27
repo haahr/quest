@@ -791,6 +791,40 @@ class _CanonicalGraph:
         return built
 
     def _build_node(self, k: int, ctx: _BuildContext) -> QType:
+        """Writes back class k as one type constructor applied to its parts,
+        each written back by build.
+
+        Most nodes become the constructor their shape names, applied to their
+        parts (_rebuild_node). A function type's parameters are named x1, x2,
+        and so on, since their names are not part of the type.
+
+        Nodes involving type parameters need care, because the graph does not
+        name parameters: an occurrence of one is a "bound" node holding its
+        position in its binder, with a scope edge to the binder's node. Written
+        back, it is the parameter that ctx.scope records for that binder node,
+        at that position.
+
+        A binder node (All, a type operator, an auto type, a kind ALL, or a
+        tuple with type components) gets new parameters. Their symbol ids are
+        reserved ids numbered by depth: the number of parameters of the binders
+        enclosing them as written back, which ctx.depth counts. So
+
+            Rec(S::TYPE) Tuple f: All(A::TYPE) All(B::TYPE) All(x: A y: B) S
+                end
+
+        is written back as
+
+            Rec(Rec.0::TYPE) Tuple f: All(T0::TYPE) All(T1::TYPE)
+                Fun(x1: T0 x2: T1): Rec.0 end
+
+        Numbering by depth makes equal types come out identical, whatever
+        their parameters were called, and keeps a parameter from being
+        captured: a binder never declares the id of a parameter of a binder
+        around it. Each parameter is named T and its number, except a tuple's
+        type component, which is selected by name (p.T) and keeps it. A
+        parameter's bound is written back with the earlier parameters of the
+        same binder in scope, since it may mention them (All(A::TYPE
+        B <: Array(A)) ...)."""
         shape = self.shapes[k]
         kids = self.children[k]
         kind = shape[0]
@@ -970,6 +1004,43 @@ def _may_recur(node: Any) -> bool:
 
 
 def _canonical_type_uncached(t: QType) -> Optional[QType]:
+    """canonical_type's work, done once per type: t's canonical form, or None
+    when t should be used as it is.
+
+    The answer is None when
+
+    - t contains no recursion: no Rec, alias, or type operator application
+      that might hide one (_may_recur). Tuple a: Int b: Bool end is its own
+      canonical form;
+    - t is the body of a recursive type whose tag is being made, its recursion
+      variables replaced by placeholders (rec_self_var): see _recursive_tag;
+    - t's graph cannot be built or written back (_NotCanonicalizable): it has
+      more than _MAX_CANONICAL_NODES nodes, or a type parameter would be
+      written outside the binder that declares it;
+    - the canonical form is t itself.
+
+    Otherwise the answer is a new type equal to t. For example, both
+
+        Rec(L::TYPE) Option nil cons with head: Int tail: L end end
+        Option nil cons with head: Int tail: L1 end end
+
+    (the second unrolls the first, named L1, once) have the canonical form
+
+        Rec(Rec.0::TYPE) Option cons with Tuple head: Int tail: Rec.0 end
+            nil end
+
+    The graph of t is reused if an earlier graph already contains t's
+    structure as one of its nodes; otherwise it is built and its nodes are
+    recorded for later types (_register_graph).
+
+    Two checks guard against a bug in the construction. Merging nodes compares
+    type parameters by their position in their binders, not their names, and
+    a mistake there could produce a canonical form that is not equal to t. So
+    the form is used only if is_type_equal accepts it. And a canonical form must
+    be its own canonical form (a fixed point). When QUEST_CHECK_CANONICAL=1, as
+    in the tests, both are checked and a failure is an AssertionError.
+    Otherwise only equality is checked, and if it fails, a warning is printed
+    and t is used as written."""
     if not _may_recur(t):
         return None
     if any(is_rec_self_symbol(sym) for sym in t._fv):

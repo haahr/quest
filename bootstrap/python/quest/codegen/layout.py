@@ -349,6 +349,37 @@ def _component_tag(s: Shape) -> str:
 
 
 def _shape_tag(s: Shape) -> str:
+    """The tag of shape s: a C identifier made from the structure of its type,
+    which names the type's struct, descriptor, and tables in C.
+
+    A tag depends only on the type, not on the unit or the order in which
+    types are met, so that separately compiled units name a type alike and
+    agree on its struct. Equal types have one tag: a type containing recursion
+    is named by its canonical form, and cases and record fields are listed in
+    the order of their names. For example,
+
+        Tuple :Int :Int end               QTuple_Int_Int
+        Tuple end                         QTuple_empty
+        Record y: Bool x: Int end         QRecord_x_Int_y_Bool
+        Variant red: Ok green: Int end    QVariant_green_Int_red_Ok
+        Array(String)                     QArray_String
+        All(x: Int) Int                   QClosure
+        List(Int)
+            Rec0_QOption_cons_QTuple_Int_Self0_end_nil
+        Tuple :Tuple :Int :Bool end :String end
+            QTuple_QTuple_Int_Bool_end_String
+        Tuple :Tuple :Int end :Bool :String end
+            QTuple_QTuple_Int_end_Bool_String
+
+    A tuple's tag lists its components' tags but not their names, which do not
+    change its layout: Tuple x: Int y: Int end is QTuple_Int_Int too. An
+    aggregate's tag nested in another's ends with _end, so that the last two
+    tuples above, which nest differently, have different tags. A
+    recursive tuple, record, variant, option, array, or auto type is named by
+    its body, with Self and its nesting depth for its recursion variable
+    (_recursive_tag), so that its tag is finite. Every function type is
+    QClosure, since every closure has one representation, and a type it does
+    not otherwise name is QVal."""
     s = resolved_shape(s)
     if s.kind == "typevar" and (self_level := rec_self_level(s.type)) is not None:
         return f"Self{c_int(self_level)}"

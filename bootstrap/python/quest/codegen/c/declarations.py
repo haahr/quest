@@ -305,6 +305,36 @@ class CDeclarationEmitter:
         return lines
 
     def emit_aggregate_structs(self, agg_types: list[tuple[str, QType]]) -> list[str]:
+        """The definitions of the structs of the tuple, record, and option
+        types agg_types names, each by its tag, once.
+
+        Each is guarded by #ifndef, since a unit's C includes the headers of
+        the interfaces it imports, which may define the same structs. A
+        component is held in its slot representation (slot_representation): a
+        record or variant boxed, a Bool or Char widened to a word. For
+
+            Let Shape = Option circle with r: Int end square with side: Int end
+                point end
+
+        the option's struct is a tag and a union of its cases' components
+        (point has none):
+
+            struct QOption_circle_QTuple_Int_end_point_square_QTuple_Int_end {
+                int64_t tag;
+                union {
+                    struct ..._circle_payload { QInt _0; } circle;
+                    struct ..._square_payload { QInt _0; } square;
+                } u;
+            };
+
+        A case's components are laid out as the struct of their tuple type
+        (QTuple_Int here), so that a case's binder can point at them inside the
+        option (CPrinter.switch). A tuple's components are _0, _1, and so on;
+        a record's struct starts with a header holding its layout's descriptor,
+        and has a field qf_<name> for each field, in the order of their names,
+        so that equal record types, however their fields are listed, have one
+        struct. A record type's struct is named QT_record_ and a digest of the
+        type's structure (record_struct_name), rather than its tag."""
         lines: list[str] = []
         if not agg_types:
             return lines
@@ -364,6 +394,37 @@ class CDeclarationEmitter:
         agg_types: list[tuple[str, QType]],
         needed_dicts: Sequence[tuple[QRecordType, QRecordType]],
     ) -> list[str]:
+        """The structs of the record types' offset tables (evidence
+        dictionaries), and the static tables the unit's code uses.
+
+        A record value (QRecordVal) is a pointer to the struct it was made as
+        and a pointer to a table giving, for each field of the type it is seen
+        at, the byte offset of that field in the struct
+        (docs/c-representation.md §5.2). The table's struct has an
+        offset_<name> for each field of the type, in the order of their names,
+        then stored_types, which says which fields are stored at another type
+        than the view's (NULL if none). For Record x: Int y: Bool end,
+
+            struct OffsetDict_record_08559eb1cc2208e3 {
+                size_t offset_x;
+                size_t offset_y;
+                QRecordStoredTypes stored_types;
+            };
+
+        needed_dicts lists the (view, layout) pairs the code uses statically.
+        For example, a record made at its own type gets the table of that type
+        at itself,
+
+            static const OffsetDict_record_08559eb1cc2208e3
+                offsetdict_record_08559eb1cc2208e3_record_08559eb1cc2208e3 =
+                { offsetof(QT_record_08559eb1cc2208e3, qf_x),
+                  offsetof(QT_record_08559eb1cc2208e3, qf_y), NULL };
+
+        Its stored_types is NULL: a static table only relates records whose
+        common fields have equal types. The unit's initialization registers
+        each static table (quest_register_record_dict), and the runtime makes
+        the tables of other pairs, for a record seen at a supertype
+        (quest_record_view), when they are first needed."""
         lines: list[str] = []
         all_records = [t for _, t in agg_types if isinstance(t, QRecordType)]
         if all_records:
@@ -414,6 +475,28 @@ class CDeclarationEmitter:
         tuple_coercions: Sequence[tuple[QTupleType, QTupleType]],
         variant_coercions: Sequence[tuple[QVariantType, QVariantType]],
     ) -> list[str]:
+        """The checks behind tuple casts, and the tables behind variant tag
+        renumbering, for the (supertype, subtype) pairs the unit's code
+        converts between.
+
+        A tuple is used at a supertype, which may have fewer components, by
+        casting its pointer (a cast plan, CPrinter.convert): Tuple :Int :Int
+        end seen as Tuple :Int end. That is right only if each component the
+        supertype has is at the same offset in both structs, which a static
+        assertion makes the C compiler check:
+
+            static_assert(offsetof(QTuple_Int_Int, _0)
+                          == offsetof(QTuple_Int, _0), ...);
+
+        A variant's tag is the index of its case in its type, cases numbered in
+        the order of their names, so a variant seen at a supertype with more
+        cases needs a new tag (a variant_tags plan). The table is indexed by the
+        subtype's tag and holds the supertype's: from Variant a: Int c: Int end
+        (a is 0, c 1) to Variant a: Int b: Bool c: Int end (a 0, b 1, c 2),
+
+            static const int64_t
+                tagmap_QVariant_a_Int_b_Bool_c_Int_QVariant_a_Int_c_Int[2] =
+                { 0, 2 };"""
         lines: list[str] = []
         if tuple_coercions:
             lines.append("/* Compile-time static assertions for tuple subtyping */")
