@@ -111,7 +111,19 @@ export
 
     let sources = tuple let maps = vector.new(:location.SourceMap) end
 
-    let registerSource(sm: location.SourceMap): Ok = vector.append(:location.SourceMap sources.maps sm)
+    (* A file registered again (each unit of a build that reads it) replaces its
+     * earlier map *)
+    let registerSource(sm: location.SourceMap): Ok =
+        begin
+            let var replaced = false
+            for i = 0 upto {vector.length(:location.SourceMap sources.maps) - 1} do
+                if stringOp.equal(location.file(vector.get(:location.SourceMap sources.maps i)) location.file(sm)) then
+                    vector.set(:location.SourceMap sources.maps i sm)
+                    replaced := true
+                end
+            end
+            if not(replaced) then vector.append(:location.SourceMap sources.maps sm) end
+        end
 
     (* The source map of a file, if registered, else sm *)
     let sourceOf(file: String sm: location.SourceMap): location.SourceMap =

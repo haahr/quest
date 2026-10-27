@@ -73,10 +73,12 @@ SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 # of them (docs/milestone-3.md §3.2), which tests/eval/generate.py writes
 EVAL_CASES = ROOT_DIR / "tests" / "eval" / "cases.quest"
 # The checks of the self-hosted driver's unit files (-c): interfaces against the
-# ABI corpus, and lib/'s modules against the bootstrap's artifacts
+# ABI corpus, and lib/'s modules against the bootstrap's artifacts; and of the
+# errors its builds report, against the bootstrap's
 UNIT_CHECKS = (
     ("self-hosted/abi_corpus", ROOT_DIR / "tests" / "abi" / "corpus.py", ("--compiler",)),
     ("self-hosted/unit_artifacts", ROOT_DIR / "tests" / "self-hosted" / "unit_artifacts.py", ()),
+    ("self-hosted/build_errors", ROOT_DIR / "tests" / "self-hosted" / "build_errors.py", ()),
 )
 EVAL_GOLDEN = TESTS_GOLDEN_DIR / "self-hosted" / "eval.out"
 SELF_HOSTED_ERRORS_DIR = ROOT_DIR / "tests" / "self-hosted" / "errors"

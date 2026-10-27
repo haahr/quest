@@ -199,7 +199,10 @@ writes for review. `tests/self-hosted/pending.txt` lists the tests the driver is
 (`PHASE:TEST`, or `errors/PHASE:TEST`): they are reported as pending, and one that passes fails, so that it is taken
 off the list. The tests of several errors, which only the self-hosted driver reports, are in
 `tests/self-hosted/errors/PHASE`: each diagnostic the driver reports must be one of the test's inline expectations,
-and each expectation must be reported.
+and each expectation must be reported. The error tests check one file at a time; `self-hosted/build_errors`
+(`tests/self-hosted/build_errors.py`) checks the errors of builds. Each directory under
+`tests/self-hosted/build-errors` is a program whose `-o` build fails in a unit it imports, and the driver must report
+what the bootstrap does: the error in the unit's file, with its line.
 
 The runners set `QUEST_HOME` to the project directory, where the self-hosted driver, which runs in a scratch
 directory, finds `lib/`. `--self-hosted-driver PATH` runs a driver already compiled (as by `./quest -o build/questlang/main
