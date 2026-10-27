@@ -520,6 +520,13 @@ export
     Let Compiling = Tuple file: String name: String end
     let compiling = vector.new(:Compiling)
 
+    (* The interfaces compiled to .qi files, by .qi file, so that writing a
+     * header does not elaborate one again *)
+    let compiledByQi = hashMap.new(:String :CompiledInterface eq hash.string)
+
+    let compiledInterface(qiFile: String): maybe.T(CompiledInterface) =
+        hashMap.get(:String :CompiledInterface compiledByQi paths.absolute(qiFile))
+
     let rec compileInterfaceFile(file: String outputDir: maybe.T(String) includePaths: Array(String)
         buildDir: maybe.T(String) programDir: maybe.T(String) writeQi: Bool onCompiled: maybe.T(OnCompiled)
         res: graph.Resolver): CompiledInterface =
@@ -545,6 +552,9 @@ export
                 diagnostics.raiseError(:CompiledInterface err)
             end
             vector.pop(:Compiling compiling)
+            if writeQi then
+                hashMap.insert(:String :CompiledInterface compiledByQi paths.absolute(compiled.qiFile) compiled)
+            end
             if maybe.isSome(:OnCompiled onCompiled) then maybe.unwrap(:OnCompiled onCompiled)(compiled) end
             compiled
         end
@@ -560,6 +570,9 @@ export
             let sm = location.newSourceMap(paths.displayName(file) maybe.unwrap(:String text))
             let e = env.new()
             e.compilingUnit := true
+            (* An interface is typed against the interfaces of the modules it
+             * imports, without elaborating their sources *)
+            e.compilingC := true
             e.units := graph.newGraphWith(res)
             for i = 0 upto {extent includePaths - 1} do vector.append(:String e.includePaths includePaths[i]) end
             let build = if maybe.isSome(:String buildDir) then

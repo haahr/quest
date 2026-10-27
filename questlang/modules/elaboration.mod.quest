@@ -24,6 +24,7 @@ import
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
+    util/strutil : util/Strutil
     stringOp = string : StringOp
 export
     Let Type = model.Type
@@ -183,11 +184,20 @@ export
 
     (* The external type declarations (Let T = external "...") of a module's
      * source file *)
+    let externalsByText = hashMap.new(:String :hashMap.T(String Type) stringOp.equal hash.string)
+
     let extractModuleExternalTypes(src: maybe.T(String)): hashMap.T(String Type) =
         begin
             let defs = hashMap.new(:String :Type stringOp.equal hash.string)
             let text = if maybe.isSome(:String src) then paths.readText(maybe.unwrap(:String src)) else maybe.none(:String) end
-            if maybe.isSome(:String text) then
+            let known = if maybe.isSome(:String text) then
+                hashMap.get(:String :hashMap.T(String Type) externalsByText maybe.unwrap(:String text))
+            else
+                maybe.none(:hashMap.T(String Type))
+            end
+            if maybe.isSome(:hashMap.T(String Type) known) then
+                ok
+            elsif maybe.isSome(:String text) andif strutil.contains(maybe.unwrap(:String text) "external") then
                 try
                     let sm = location.newSourceMap(paths.baseName(maybe.unwrap(:String src)) maybe.unwrap(:String text))
                     let bag = diagbag.new()
@@ -217,7 +227,14 @@ export
                     ok
                 end
             end
-            defs
+            if maybe.isSome(:hashMap.T(String Type) known) then
+                maybe.unwrap(:hashMap.T(String Type) known)
+            else
+                if maybe.isSome(:String text) then
+                    hashMap.insert(:String :hashMap.T(String Type) externalsByText maybe.unwrap(:String text) defs)
+                end
+                defs
+            end
         end
 
     let separatelyCompiledModuleScope(modPath: String interfaceScope: Scope e: env.T): Scope =

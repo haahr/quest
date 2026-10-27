@@ -18,10 +18,18 @@ import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
+    util/hash : util/Hash
     system : System
     stringOp = string : StringOp
+    real : RealOp
     conv : Conv
 export
+    (* The scopes of the .qi files loaded in this process, with their
+     * modification times: an interface is elaborated once for all the units
+     * that import it *)
+    Let LoadedQi = Tuple mtime: Real scope: symbols.Scope end
+    let loadedQis = hashMap.new(:String :LoadedQi stringOp.equal hash.string)
+
     Let Scope = symbols.Scope
 
     let lastSegment(name: String): String =
@@ -175,7 +183,17 @@ export
                                 vector.append(:String e.includePaths vector.get(:String others i))
                             end
                         end
-                        fromArtifacts := maybe.some(:Scope register(loadQi(qi)))
+                        let mtime = system.modifiedTime(qi)
+                        let cached = hashMap.get(:String :LoadedQi loadedQis qi)
+                        let scope = if maybe.isSome(:LoadedQi cached) andif
+                                real.greaterEq(maybe.unwrap(:LoadedQi cached).mtime mtime) then
+                            maybe.unwrap(:LoadedQi cached).scope
+                        else
+                            let s = loadQi(qi)
+                            hashMap.insert(:String :LoadedQi loadedQis qi tuple let mtime = mtime let scope = s end)
+                            s
+                        end
+                        fromArtifacts := maybe.some(:Scope register(scope))
                     end
                 end
                 (* A fresh .qi on the search path (from a standalone

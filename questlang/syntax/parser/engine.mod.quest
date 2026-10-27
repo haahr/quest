@@ -8,6 +8,8 @@ import
     questlang/syntax/tokens : questlang/syntax/Tokens
     questlang/syntax/ast : questlang/syntax/Ast
     collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/strutil : util/Strutil
@@ -53,7 +55,7 @@ export
      * ====================================================================== *)
 
     Let Rec Construct = Option
-        token with kind: tokens.TokenKind lexeme: maybe.T(String) silent: Bool end
+        token with kind: tokens.TokenKind lexeme: maybe.T(String) silent: Bool name: String end
         target with target: Target end
         optional with inner: Construct silent: Bool end
         repeated with inner: Construct silent: Bool end
@@ -84,8 +86,19 @@ export
                 raise error with "rule: not a syntax target" end
         end
 
+    (* A failed token's name in the expected list: its kind, with its lexeme if
+     * it has one *)
+    let tokenName(kind: tokens.TokenKind lexeme: maybe.T(String)): String =
+        if maybe.isSome(:String lexeme) then
+            tokens.tokenKindName(kind) <> "('" <> maybe.unwrap(:String lexeme) <> "')"
+        else
+            tokens.tokenKindName(kind)
+        end
+
     let token(kind: tokens.TokenKind lexeme: maybe.T(String) silent: Bool): Construct =
-        option token of Construct with let kind = kind let lexeme = lexeme let silent = silent end
+        option token of Construct with
+            let kind = kind let lexeme = lexeme let silent = silent let name = tokenName(kind lexeme)
+        end
 
     let t(kind: tokens.TokenKind): Construct = token(kind maybe.none(:String) false)
     let tLex(kind: tokens.TokenKind lexeme: String): Construct = token(kind maybe.some(:String lexeme) false)
@@ -166,6 +179,7 @@ export
          * what failed there *)
         var farthest: Int
         expected: vector.T(String)
+        expectedSet: hashMap.T(String Bool)
     end
 
     let isEof(tok: tokens.Token): Bool = case tok.kind when eof then true else false end
@@ -187,6 +201,7 @@ export
                 var memo = array of :Memo end
                 var farthest = 0
                 let expected = vector.new(:String)
+                let expectedSet = hashMap.new(:String :Bool stringOp.equal hash.string)
             end
         end
 
@@ -197,20 +212,14 @@ export
         if pos > ps.farthest then
             ps.farthest := pos
             vector.clear(:String ps.expected)
+            hashMap.clear(:String :Bool ps.expectedSet)
             vector.append(:String ps.expected expected)
-        elsif {pos is ps.farthest} andif
-            not(vector.fold(:String :Bool ps.expected false
-                fun(found: Bool name: String): Bool found orif stringOp.equal(name expected))) then
+            hashMap.insert(:String :Bool ps.expectedSet expected true)
+            ok
+        elsif {pos is ps.farthest} andif not(hashMap.contains(:String :Bool ps.expectedSet expected)) then
             vector.append(:String ps.expected expected)
-        end
-
-    (* A failed token's name in the expected list: its kind, with its lexeme if
-     * it has one *)
-    let tokenName(kind: tokens.TokenKind lexeme: maybe.T(String)): String =
-        if maybe.isSome(:String lexeme) then
-            tokens.tokenKindName(kind) <> "('" <> maybe.unwrap(:String lexeme) <> "')"
-        else
-            tokens.tokenKindName(kind)
+            hashMap.insert(:String :Bool ps.expectedSet expected true)
+            ok
         end
 
     let sameKind(a: tokens.TokenKind b: tokens.TokenKind): Bool = ordinal(a) is ordinal(b)
@@ -223,7 +232,7 @@ export
                     {maybe.isNone(:String x.lexeme) orif stringOp.equal(tok.lexeme maybe.unwrap(:String x.lexeme))} then
                     matched(option tok of Val with let val = tok end {pos + 1})
                 else
-                    recordFailure(ps pos tokenName(x.kind x.lexeme))
+                    recordFailure(ps pos x.name)
                     failed
                 end
             when target with x then
@@ -355,13 +364,27 @@ export
             absent
         end
 
+    (* The memo array of the last parse, reused by the next so that parsing
+     * does not allocate a table the size of tokens times targets each time *)
+    let spare: Tuple var memo: Array(Memo) end = tuple var memo = array of :Memo end end
+
     let parse(ps: Parser start: Construct): Val =
         begin
-            ps.memo := array of({extent(ps.toks) * ps.targets} option unknown of Memo end)
+            let size = extent(ps.toks) * ps.targets
+            let unknown = option unknown of Memo end
+            if extent(spare.memo) >= size then
+                ps.memo := spare.memo
+                for i = 0 upto {size - 1} do ps.memo[i] := unknown end
+            else
+                ps.memo := array of(size unknown)
+            end
+            spare.memo := array of :Memo end
             ps.farthest := 0
             vector.clear(:String ps.expected)
+            hashMap.clear(:String :Bool ps.expectedSet)
             (* The start target itself does not count as expected *)
             let outcome = case start when target with x then parseTarget(ps x.target 0) else evaluate(ps start 0) end
+            spare.memo := ps.memo
             case outcome
                 when matched with m then
                     if isEof(peek(ps m.next)) then m.val else syntaxError(ps) end

@@ -6,10 +6,11 @@ This plan replaces the bootstrap as the compiler that builds new self-hosted com
 working tree. The bootstrap becomes a fallback for making the first release, and later for nothing. It is also the
 step that lets `questlang/` and the bootstrap diverge, as the Milestone 5 decisions anticipate.
 
-The plan expected builds to get faster too. They do not, yet. The self-hosted compiler builds `questlang/driver/main`
-from nothing in about 8 minutes, against the bootstrap's 10, and a seeded build takes two stages. The release pays
-off in incremental builds (`./questc` rebuilds only stale units) and in freedom from the bootstrap. Parallel builds
-([tasklist.md](tasklist.md)) are what would make full builds fast.
+The plan expected builds to get faster too, and they have. The self-hosted compiler builds `questlang/driver/main`
+from nothing in about a minute, against the bootstrap's 10, so a seeded build's two stages take about two minutes
+(with a release cut after the speedups of 2026-10-27; an older release takes 8 minutes for stage 1). The release also
+pays off in incremental builds (`./questc` rebuilds only stale units) and in freedom from the bootstrap. Parallel
+builds ([tasklist.md](tasklist.md)) would make full builds faster still.
 
 The decisions (2026-10-26): a release seeds in two stages, against its own `lib/` and `runtime/` (§2); releases are
 cut by hand; one previous release is kept; and the plan is carried out after Milestone 5.

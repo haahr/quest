@@ -10,6 +10,18 @@
 
 #include "quest_runtime.h"
 
+#ifndef QUEST_NOGC
+/* The collector grows the heap rather than collect once its free space falls
+ * below a third of the heap (Boehm's default free space divisor, 3); with a
+ * divisor of 1, the heap grows to about twice the live data. Collection took
+ * most of the self-hosted compiler's time, and the larger heap cut its build of
+ * itself by more than a quarter. It is set before main calls GC_INIT, which
+ * lets GC_FREE_SPACE_DIVISOR in the environment override it. */
+__attribute__((constructor)) static void quest_gc_configure(void) {
+    GC_set_free_space_divisor(1);
+}
+#endif
+
 QString *quest_string_new(const char *src, int64_t len) {
     if (len < 0 && src != NULL) {
         len = (int64_t)strlen(src);

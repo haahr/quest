@@ -404,8 +404,8 @@ export
             cycle
         end
 
-    let buildModules(eng: T roots: Array(manifest.ImportedModuleRef) importer: String programDir: maybe.T(String))
-        : Array(String) =
+    let unflushedBuildModules(eng: T roots: Array(manifest.ImportedModuleRef) importer: String
+        programDir: maybe.T(String)): Array(String) =
         begin
             let search = searchPaths(eng)
             let queue = vector.new(:String)
@@ -649,7 +649,7 @@ export
             vector.toArray(:String linked)
         end
 
-    let buildMain(eng: T mainFile: String output: maybe.T(String)): Ok =
+    let unflushedBuildMain(eng: T mainFile: String output: maybe.T(String)): Ok =
         begin
             let main = paths.absolute(mainFile)
             if not(system.isFile(main)) then fail(:Ok "Main routine file not found: " <> main) end
@@ -669,7 +669,7 @@ export
                 log(eng "EVAL STALENESS" quoted(item) <> " -> UP TO DATE")
                 maybe.unwrap(:manifest.ModuleManifest manifest.readQm(a.qm)).importedModules
             end
-            let objects = buildModules(eng imported item maybe.some(:String paths.parent(main)))
+            let objects = unflushedBuildModules(eng imported item maybe.some(:String paths.parent(main)))
             let n = extent eng.extraObjects
             let linked = vector.new(:String)
             for i = 0 upto {n - 1} do vector.append(:String linked objects[i]) end
@@ -679,4 +679,33 @@ export
             compilerRunner.linkObjects(vector.toArray(:String linked) target eng.nogc eng.compiler eng.extraCFlags)
             log(eng "BUILD COMPLETE" "exit_code=0 binary=" <> target)
         end
+
+    let runnerFailure(A::TYPE message: String): A = raise compilerRunner.failure with message end
+
+    (* body, with the log's batched entries appended to its file when it
+     * returns or fails with an error the driver reports *)
+    let flushingLog(A::TYPE eng: T body: All() A): A =
+        begin
+            let result = try
+                body()
+            when diagnostics.compilerError with err then
+                logger.flush(eng.logger)
+                diagnostics.raiseError(:A err)
+            when buildError with m then
+                logger.flush(eng.logger)
+                fail(:A m)
+            when compilerRunner.failure with m then
+                logger.flush(eng.logger)
+                runnerFailure(:A m)
+            end
+            logger.flush(eng.logger)
+            result
+        end
+
+    let buildModules(eng: T roots: Array(manifest.ImportedModuleRef) importer: String programDir: maybe.T(String))
+        : Array(String) =
+        flushingLog(:Array(String) eng fun(): Array(String) unflushedBuildModules(eng roots importer programDir))
+
+    let buildMain(eng: T mainFile: String output: maybe.T(String)): Ok =
+        flushingLog(:Ok eng fun(): Ok unflushedBuildMain(eng mainFile output))
 end

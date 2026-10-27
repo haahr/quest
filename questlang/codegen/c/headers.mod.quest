@@ -323,10 +323,16 @@ export
                 let inBuildDir =
                     stringOp.equal(paths.absolute(paths.parent(artifacts.qiFile)) paths.absolute(artifacts.targetDir))
                 system.makeDirectory(artifacts.targetDir)
-                let compiled = interfaceCompiler.compileInterfaceFile(maybe.unwrap(:String artifacts.source)
-                    maybe.some(:String artifacts.targetDir) artifacts.searchPaths maybe.some(:String buildDir)
-                        programDir
-                    not(inBuildDir) maybe.none(:interfaceCompiler.OnCompiled) res)
+                let known = if inBuildDir then interfaceCompiler.compiledInterface(artifacts.qiFile)
+                    else maybe.none(:interfaceCompiler.CompiledInterface) end
+                let compiled = if maybe.isSome(:interfaceCompiler.CompiledInterface known) then
+                    maybe.unwrap(:interfaceCompiler.CompiledInterface known)
+                else
+                    interfaceCompiler.compileInterfaceFile(maybe.unwrap(:String artifacts.source)
+                        maybe.some(:String artifacts.targetDir) artifacts.searchPaths maybe.some(:String buildDir)
+                            programDir
+                        not(inBuildDir) maybe.none(:interfaceCompiler.OnCompiled) res)
+                end
                 tuple
                     let header = writeInterfaceHeader(compiled maybe.some(:String buildDir) programDir res)
                     let qi = compiled.qiFile

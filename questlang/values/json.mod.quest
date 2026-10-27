@@ -240,6 +240,22 @@ export
             v
         end
 
+    (* The documents parseShared has parsed, by their text: a build reads each
+     * artifact many times *)
+    let parsed = hashMap.new(:String :Value stringOp.equal hash.string)
+
+    let parseShared(text: String): Value =
+        begin
+            let known = hashMap.get(:String :Value parsed text)
+            if maybe.isSome(:Value known) then
+                maybe.unwrap(:Value known)
+            else
+                let v = parse(text)
+                hashMap.insert(:String :Value parsed text v)
+                v
+            end
+        end
+
     (* ======================================================================
      * 3. Printing (json.dumps)
      * ====================================================================== *)

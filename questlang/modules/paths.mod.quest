@@ -11,6 +11,8 @@ import
     questlang/syntax/tokens : questlang/syntax/Tokens
     questlang/syntax/tokenizer : questlang/syntax/Tokenizer
     collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
     util/stringBuilder : util/StringBuilder
@@ -136,12 +138,22 @@ export
             if vector.empty(:String cs) then name else vector.last(:String cs) end
         end
 
+    (* The name each module source text declares *)
+    let declaredNames = hashMap.new(:String :String stringOp.equal hash.string)
+
     let declaredModuleName(file: maybe.T(String) canonName: String): String =
         begin
             let fallback = lastSegment(canonName)
             let text = if maybe.isSome(:String file) then readText(maybe.unwrap(:String file)) else maybe.none(:String) end
+            let known = if maybe.isSome(:String text) then
+                hashMap.get(:String :String declaredNames maybe.unwrap(:String text))
+            else
+                maybe.none(:String)
+            end
             if maybe.isNone(:String text) then
                 fallback
+            elsif maybe.isSome(:String known) then
+                maybe.unwrap(:String known)
             else
                 try
                     let sm = location.newSourceMap(maybe.unwrap(:String file) maybe.unwrap(:String text))
@@ -160,6 +172,7 @@ export
                             end
                         end
                     end
+                    hashMap.insert(:String :String declaredNames maybe.unwrap(:String text) name)
                     name
                 when diagbag.fatalError then
                     fallback
@@ -224,7 +237,7 @@ export
                         else maybe.none(:String) end
                     end
                 try
-                    let value = member(json.parse(maybe.unwrap(:String text)) "value")
+                    let value = member(json.parseShared(maybe.unwrap(:String text)) "value")
                     let deps = if maybe.isSome(:json.Value value) then member(maybe.unwrap(:json.Value value) "deps")
                         else maybe.none(:json.Value)
                     end

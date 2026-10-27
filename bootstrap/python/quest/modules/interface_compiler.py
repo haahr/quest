@@ -610,14 +610,17 @@ def _compile_interface_file(
         env = Environment(builtin_registry=BuiltinModuleRegistry)
         env.units = UnitGraph(resolver=resolver)
         env.include_paths = list(include_paths) if include_paths else []
+        b_dir = None
         if build_dir is not None:
             b_dir = Path(build_dir).resolve()
             if b_dir not in env.include_paths:
                 env.include_paths.insert(0, b_dir)
-            # Imported interfaces are loaded from their (fresh or rebuilt)
-            # artifacts in the same build directory rather than re-elaborated
-            # from source in every nested compilation.
-            env.options = CompilerOptions(build_dir=b_dir, include_paths=list(env.include_paths))
+        # Imported interfaces are loaded from their (fresh or rebuilt) artifacts
+        # in the same build directory rather than re-elaborated from source in
+        # every nested compilation. Compiling for C, the interface is typed
+        # against the interfaces of the modules it imports, without elaborating
+        # their sources.
+        env.options = CompilerOptions(stop_after="codegen_c", build_dir=b_dir, include_paths=list(env.include_paths))
         env.current_dir = file_path.parent
         env.program_dir = program_dir
         env.source_map = source_map

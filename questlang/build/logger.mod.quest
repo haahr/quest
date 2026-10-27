@@ -3,7 +3,9 @@
 module logger : Logger
 import
     questlang/modules/paths : questlang/modules/Paths
+    collections/vector : collections/Vector
     util/maybe : util/Maybe
+    stringOp = string : StringOp
     writer : Writer
     system : System
 export
@@ -21,13 +23,43 @@ export
     let appendScript = "entry=$(printf '[%s] %s' \"$(date +%Y-%m-%dT%H:%M:%S)\" \"$1\"); "
         <> "if [ -n \"$0\" ]; then printf '%s\\n' \"$entry\" >> \"$0\"; fi; printf '%s' \"$entry\""
 
+    (* Entries not yet appended to the log file. Starting a shell for each one
+     * took a tenth of a build's time, so when not verbose a shell appends them
+     * in batches, each stamped with the time of its batch *)
+    let pending = vector.new(:String)
+    let batchScript = "t=$(date +%Y-%m-%dT%H:%M:%S); f=$0; "
+        <> "for e in \"$@\"; do printf '[%s] %s\\n' \"$t\" \"$e\" >> \"$f\"; done"
+    let batchSize = 64
+
+    let flushTo(file: String): Ok =
+        if not(vector.empty(:String pending)) then
+            let args = vector.new(:String)
+            vector.append(:String args "sh")
+            vector.append(:String args "-c")
+            vector.append(:String args batchScript)
+            vector.append(:String args file)
+            for i = 0 upto {vector.length(:String pending) - 1} do
+                vector.append(:String args vector.get(:String pending i))
+            end
+            system.run(vector.toArray(:String args))
+            vector.clear(:String pending)
+        end
+
     let log(l: T tag: String message: String): Ok =
         begin
             let file = maybe.unwrapOr(:String l.logFile "")
-            let entry = system.run(array of "sh" "-c" appendScript file tag <> ": " <> message end).stdout
-            if l.verbose then
-                writer.putString(writer.err entry <> "\n")
-                writer.flush(writer.err)
+            if l.verbose orif stringOp.isEmpty(file) then
+                if not(stringOp.isEmpty(file)) then flushTo(file) end
+                let entry = system.run(array of "sh" "-c" appendScript file tag <> ": " <> message end).stdout
+                if l.verbose then
+                    writer.putString(writer.err entry <> "\n")
+                    writer.flush(writer.err)
+                end
+            else
+                vector.append(:String pending tag <> ": " <> message)
+                if vector.length(:String pending) >= batchSize then flushTo(file) end
             end
         end
+
+    let flush(l: T): Ok = if maybe.isSome(:String l.logFile) then flushTo(maybe.unwrap(:String l.logFile)) end
 end
