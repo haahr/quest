@@ -349,8 +349,10 @@ def _component_tag(s: Shape) -> str:
 
 
 def _shape_tag(s: Shape) -> str:
-    """The tag of shape s: a C identifier made from the structure of its type,
-    which names the type's struct, descriptor, and tables in C.
+    """The tag of shape s, before Layout.tag shortens it: a C identifier made
+    from the structure of its type, which names the type's struct, descriptor,
+    and tables in C. A tag longer than 64 characters is shortened to its first
+    24, an underscore, and 16 hex digits of its SHA-256 digest.
 
     A tag depends only on the type, not on the unit or the order in which
     types are met, so that separately compiled units name a type alike and
