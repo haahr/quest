@@ -209,6 +209,7 @@ The pending list is empty, and the divergences are recorded in Steps 1 and 5.
 
 ## 6. Not in This Plan
 
-- The REPL and `--interactive`.
+- The REPL and `--interactive`, since done by [self-hosted-repl.md](self-hosted-repl.md) (`questlang/driver/repl`,
+  `io/readline`, and the driver's `-i`).
 - The IR, `types/canonical` beyond §1's part, and the IR interpreter (Milestone 4).
 - `.qi` and `.qm` artifacts, build directories, and code generation (Milestone 5).

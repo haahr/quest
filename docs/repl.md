@@ -10,6 +10,11 @@ rules, prompt formatting, terminal handling, and error recovery.
 The Quest REPL provides an interactive top-level environment for evaluating Quest expressions, defining variables and
 functions, importing modules, and experimenting with types.
 
+Both drivers have one, and they behave the same: the bootstrap's (`bootstrap/python/quest/repl.py`, in Python) and the
+self-hosted compiler's (`questlang/driver/repl`, in Quest, compiled with the driver). Each reads its input through
+`io/readline` (§4) and interprets each input in the tree-walking interpreter; the same transcripts test both
+(docs/testing.md §2.7). Section 7 describes how the two are built.
+
 Key features:
 - **Persistent Lexical and Dynamic Environments:** Types, bindings, and modules defined in one phrase remain in scope
   for subsequent phrases.
@@ -27,7 +32,10 @@ Key features:
 ## 2. Invocation Modes
 
 ### 2.1. Direct REPL Launch
-Running `quest` without arguments from an interactive terminal (TTY) enters the REPL directly:
+Running `quest` without a file or `-e` enters the REPL when standard input is a terminal (`system.isTerminal(0)` in
+the self-hosted driver). Otherwise the driver reads a program from standard input and runs it, naming it `<stdin>`,
+as it does for a file of `-`. The arguments after a `--` are the program's, and the REPL's `system.args` is `<repl>`
+followed by them.
 
 ```bash
 $ quest
@@ -51,6 +59,9 @@ $ quest -i tests/source/03_functions_closures.quest
 
 If the loaded file contains a compile error (syntax, kind, or type error) or encounters an uncaught runtime exception,
 the diagnostic is emitted to `stderr` and the process exits immediately with code `1` without launching the REPL.
+Inputs continue in the file's environment and in the frame its last phrase left, and `system.args` is the file
+followed by the arguments after it. `-i` alone enters the REPL whatever standard input is, which is how the
+transcripts feed it their lines.
 
 ---
 
@@ -161,7 +172,7 @@ If a phrase fails during parsing, typechecking, or runtime evaluation:
 2. The environment is restored to its exact state prior to that phrase.
 3. The session remains active and prompts for the next command.
 
-The rollback (`QuestREPL.evaluate`) restores the type checker's environment and the runtime environment: their
+The rollback (`QuestREPL.evaluate`, and `evaluate` in `questlang/driver/repl`) restores the type checker's environment and the runtime environment: their
 bindings, the frame evaluation continues in, and the units the input loaded. The REPL keeps one unit graph
 (`docs/build-process.md` §2.1) for its whole session, which holds the interfaces and modules loaded so far, with their
 typed forms; the runtime environment holds that same graph, and the values of the modules the interpreter has run
@@ -196,3 +207,22 @@ Notice `a` remains `10` because the failed line was rolled back transactionally.
 - **`Ctrl-D` (EOF):** On an empty input line, exits the REPL cleanly with exit code `0`.
 - **`Ctrl-C` (Interrupt):** Cancels the current multi-line input buffer without terminating the session, returning to
   `">>  "`.
+
+---
+
+## 7. The Two Implementations
+
+The two REPLs are the same loop over the same steps; only their languages differ.
+
+| Step | Bootstrap (`quest/repl.py`) | Self-hosted (`questlang/driver/repl`) |
+| :--- | :--- | :--- |
+| Completeness | `check_input_completeness` | `incomplete`: an unclosed comment or string, or a syntax error at the end of the input |
+| Snapshots | `Environment.snapshot`, `RuntimeEnvironment.snapshot` (the unit graph inside) | `env.snapshot`, `graph.snapshot`, `treewalk.snapshot` |
+| Sessions | `UnitGraph.new_session` | `graph.newSession` |
+| Running | `compile_phrase`, then the interpret phase's phrase results | `treewalk.evalProgramPhrasesIn`, which also gives the frame the next input runs in |
+| Input | `io/readline` through the interpreter's Python `readline` | `io/readline` through `runtime/quest_readline.c` |
+
+The self-hosted snapshots leave out two things the bootstrap's record, neither observable: a symbol counter (the
+bootstrap's ids come from a global allocator that no restore resets, so they are never reused either) and a frame's
+parent (which cannot change in `model.Frame`). docs/self-hosted-repl.md is the plan the self-hosted REPL was built
+by.

@@ -205,7 +205,9 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
   - Completely silent by default (Option A).
   - Emits only explicit runtime I/O side effects (e.g. from `writer.putString`).
   - Top-level bindings and expressions execute silently when executing files.
-  - If `--interactive` is passed on the CLI, top-level binding signatures and evaluated results are echoed.
+  - With `--echo`, every top-level phrase's result is printed in the interactive notation below; with `-i`, the file
+    runs (printing its last phrase's result), and the REPL continues in its environment and frame ([repl.md](repl.md)
+    §2.2).
 - **Inline Execution (`quest -e '<program>'`) and Interactive Mode:**
   - Evaluates phrases sequentially; only the final phrase produces output (consistent with batch phase semantics).
   - Uses Cardelli's canonical top-level interactive output notation:
@@ -218,6 +220,10 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
 - **Phase Output:**
   - `InterpretPhase` returns the final phrase `QValue`.
   - Phase dump output (`InterpretPhase.dump`) formats the final phrase via `format_interactive_result`.
+- **REPL Inputs:** The REPL prints every phrase of an input, each in the notation above, and runs each input in the
+  frame the previous one left, since a phrase that binds a name continues in a new frame. The bootstrap keeps that
+  frame in the context's runtime environment; the self-hosted interpreter returns it with the phrases' results
+  (`treewalk.evalProgramPhrasesIn`). An input that fails goes back to the frame it started in ([repl.md](repl.md) §5).
 
 ### 4.2. Cardelli Standard Library Modules for I/O
 - Rather than inventing custom I/O primitives, runtime I/O strictly follows Cardelli's standard library modules:
@@ -330,7 +336,7 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
 
 ## See Also
 
-- [docs/repl.md](repl.md): Interactive REPL guide, prompts, multi-line rules, and terminal handling.
+- [docs/repl.md](repl.md): Interactive REPL guide, prompts, multi-line rules, terminal handling, and the two REPLs.
 - [docs/pipeline.md](pipeline.md): Compiler phase pipeline and unified CLI driver options.
 - [docs/type-system.md](type-system.md): Typechecker architecture, semantic types, and term typing rules.
 - [docs/TypefulProgramming.md](TypefulProgramming.md): Cardelli's foundational treatise on Quest and language semantics.

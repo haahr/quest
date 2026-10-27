@@ -7,6 +7,9 @@ the C library's readline API; the bootstrap implements the same externals with P
 bootstrap's REPL and Quest programs edit lines the same way. It follows Milestone 3 ([milestone-3.md](milestone-3.md)),
 which left the REPL and `--interactive` out (§6), and does not depend on Milestone 4.
 
+**Status:** complete (2026-10-26). Every step is done; §3 records what each step found, and repl.md §7 describes the
+two REPLs side by side.
+
 The decisions this plan rests on (2026-10-26):
 - **Library.** `lib/io/readline.{int,mod}.quest`, `import io/readline : io/Readline`, a new category beside
   `collections` and `util` ([new-libraries.md](new-libraries.md)). It is small and Cardelli-style: errors and the end
@@ -153,10 +156,17 @@ program from standard input, as the bootstrap's does, and as it does for a file 
 the self-hosted driver when `QUEST_SELF_HOSTED_DRIVER` names one already compiled, since compiling it there would take
 minutes.
 
-### Step 6: Done
+### Step 6: Done (done)
 
 Update repl.md (both REPLs, and `io/readline` underneath), new-libraries.md (`io/readline`), interpreter.md,
 testing.md (transcripts), compiler-organization.md (status), and milestone-3.md §6; record the divergences here.
+
+The divergences between the two REPLs are all internal, and none shows in a transcript:
+- The self-hosted snapshots record no symbol counter and no frame parent (Step 3).
+- The self-hosted interpreter's `io/readline` is the compiled library, built with GNU readline or libedit, where the
+  bootstrap's is Python's `readline` (§1.2); the history file's format is the same for both.
+- Each driver decides whether standard input is a terminal its own way: Python's `isatty` in the bootstrap's,
+  `system.isTerminal` in the self-hosted one (Step 5).
 
 ---
 

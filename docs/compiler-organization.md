@@ -105,13 +105,14 @@ questlang/
 ├── config/, build/          # ABI, options, build engine (Milestone 5)
 │
 └── driver/                  # Compiler driver (bootstrap pipeline and quest/__main__)
-    └── main                 # Main routine: the front end's phases from Milestone 2, growing with each milestone
+    ├── main                 # Main routine: the front end's phases from Milestone 2, growing with each milestone
+    └── repl                 # The REPL: input completeness, rollback, the loop over io/readline
 ```
 
 So far `common/*`, `syntax/*`, `types/*`, `typechecker/*`, `modules/*` (but the artifacts' `interfacecompiler`,
 `modulecompiler`, and `manifest`), `values/*`, `interpreter/*`, `ir/*`, `codegen/syntax`, `layout`, `descriptors`, and
-`sha256`, and `driver/main` (the front end's phases, the IR's dumps and runs at every stage, the interpret phase, and
-`-e`) exist; the rest of the tree is the plan. (`codegen/sha256` is the SHA-256 that the bootstrap takes from Python's
+`sha256`, `driver/main` (the front end's phases, the IR's dumps and runs at every stage, the interpret phase, `-e`,
+and `-i`), and `driver/repl` exist; the rest of the tree is the plan. (`codegen/sha256` is the SHA-256 that the bootstrap takes from Python's
 `hashlib`, for layout tags and type digests.)
 
 ---
@@ -405,7 +406,8 @@ The plan is [milestone-3.md](milestone-3.md): `values/model`, `interpreter/primi
 (which call the native standard library), and `treewalk`; `values/json` and `dynamicjson` for `dynamic.extern` and
 `intern`; and the driver's interpret phase and `-e`. The self-hosted suite verifies it against the run goldens and
 run-time error tests, and `-e` against a generated transcript of the bootstrap's (`tests/eval`); see
-[testing.md](testing.md).
+[testing.md](testing.md). The REPL, which Milestone 3 left out, followed ([self-hosted-repl.md](self-hosted-repl.md)):
+`driver/repl` on the `io/readline` library, verified against the bootstrap's REPL transcripts and at a terminal.
 
 ### Milestone 4: IR (`ir`, `types/canonical`, the IR interpreter) — done
 The plan is [milestone-4.md](milestone-4.md): the rest of `types/canonical` (canonical forms of recursive types),

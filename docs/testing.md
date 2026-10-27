@@ -372,6 +372,16 @@ and the scratch directory as `<scratch>`.
 Comment lines are inputs too, so a transcript's opening comment shows as a prompt (and a continuation prompt per extra
 line). Line editing, history, and Ctrl-C need a terminal, and are not tested here.
 
+The self-hosted suite runs the same transcripts against the compiled self-hosted driver, comparing its output with the
+bootstrap's goldens, so the two REPLs must agree exactly.
+
+**At a terminal:** `tests/python/test_readline_terminal.py` runs programs that use `io/readline` (compiled with GNU
+readline and with libedit, and interpreted) and the REPL in a pseudo-terminal: the REPL starts without `-i`, recalls
+a line from the history file, edits it, abandons a continued phrase on Ctrl-C, ends on Ctrl-D, and writes the
+history back. It runs the bootstrap's driver, and the self-hosted one too when `QUEST_SELF_HOSTED_DRIVER` names one
+already compiled (as `run_tests.py --self-hosted --build-dir DIR` leaves in `DIR/questlang-driver`), since compiling
+it there would take minutes.
+
 ---
 
 ## 3. Diagnostic & Error Testing Framework (`tests/errors/`)

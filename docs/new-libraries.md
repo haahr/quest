@@ -604,9 +604,12 @@ end
 
 ### 3.1. `io/readline : io/Readline`
 
-Lines read from the user, edited at a terminal, with a history; the REPL reads its input through it
-([self-hosted-repl.md](self-hosted-repl.md) §1). Its externals are `runtime/quest_readline.c`'s, built with GNU readline
-or libedit (or neither, when lines are not edited), and the interpreter's are Python's `readline`.
+Lines read from the user, edited at a terminal, with a history; both REPLs, the bootstrap's and the self-hosted one,
+read their input through it ([repl.md](repl.md) §4, [self-hosted-repl.md](self-hosted-repl.md) §1). Its externals are
+`runtime/quest_readline.c`'s, built with GNU readline when it is installed, else libedit, else neither (lines are then
+not edited); `QUEST_READLINE=gnu|edit|none` chooses. The bootstrap's interpreters implement them with Python's
+`readline`, and the self-hosted interpreter with the compiled library's own (`questlang/interpreter/builtins`), so a
+program interpreted by the self-hosted driver edits lines as a compiled one does.
 
 #### Interface Summary
 
