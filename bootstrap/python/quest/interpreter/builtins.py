@@ -555,6 +555,12 @@ def _system_modified_time(path_val: QString) -> QReal:
     except OSError:
         raise QuestException(SYSTEM_ERROR_EXC)
 
+def _system_is_terminal(fd: QInt) -> QBool:
+    try:
+        return TRUE_VALUE if os.isatty(fd.value) else FALSE_VALUE
+    except (OSError, OverflowError, ValueError):
+        return FALSE_VALUE
+
 def _word_not_bits(w: QWord) -> QWord:
     return QWord((~w.value) & 0xFFFF_FFFF_FFFF_FFFF)
 
@@ -1007,6 +1013,7 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_system_rename_file": _system_rename_file,
     "quest_system_run": _system_run,
     "quest_system_modified_time": _system_modified_time,
+    "quest_system_is_terminal": _system_is_terminal,
     "quest_system_exit": _system_exit,
 
     # io/readline

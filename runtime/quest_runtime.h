@@ -506,6 +506,7 @@ QArray  *quest_system_list_directory(const QString *path);
  * String stderr: String end */
 void    *quest_system_run(const QArray *args);
 QReal    quest_system_modified_time(const QString *path);
+bool     quest_system_is_terminal(int64_t fd);
 
 /* io/readline module primitives (quest_readline.c) */
 extern const QException quest_exc_readline_error;

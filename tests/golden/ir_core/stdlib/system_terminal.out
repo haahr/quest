@@ -1,0 +1,34 @@
+import system = "system" : System
+import writer = "writer" : Writer
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs {
+    fun show(fd: Int): Ok {
+      join k1(r: String) {
+        let %4: Ok = call print(r)
+        return %4
+      } in {
+        let %5: Bool = call system.isTerminal(fd)
+        if %5 {
+          jump k1("terminal")
+        } else {
+          jump k1("not a terminal")
+        }
+      }
+    }
+  }
+  do call show(0)
+  do call show(1)
+  do call show(2)
+  do call show(-1)
+  do call show(1000)
+  do call show(4611686018427387903)
+}
+

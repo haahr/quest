@@ -2977,6 +2977,7 @@ QAuto *quest_dynamic_copy(const QAuto *d) {
 /* Standard Library Implementation                                           */
 /* ------------------------------------------------------------------------- */
 
+#include <limits.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <dirent.h>
@@ -3299,6 +3300,10 @@ QReal quest_system_modified_time(const QString *path) {
 #else
     return (double)st.st_mtim.tv_sec + (double)st.st_mtim.tv_nsec * 1e-9;
 #endif
+}
+
+bool quest_system_is_terminal(int64_t fd) {
+    return fd >= 0 && fd <= INT_MAX && isatty((int)fd);
 }
 
 /* Writer module primitives */

@@ -1,0 +1,17 @@
+(* system.isTerminal is false for the test's standard streams, which are pipes
+   (its standard input given by @stdin), and for descriptors that are not open;
+   tests/python/test_readline_terminal.py runs the REPL at a terminal, which the
+   self-hosted driver enters only when standard input is one. *)
+(* @stdin:
+not a terminal
+*)
+import system: System;
+import writer: Writer;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let show(fd: Int): Ok = print(if system.isTerminal(fd) then "terminal" else "not a terminal" end);
+show(0);
+show(1);
+show(2);
+show(~1);
+show(1000);
+show(4611686018427387903)

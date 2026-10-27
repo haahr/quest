@@ -14,8 +14,10 @@
  * file given without --stop-after is compiled alone: an interface file to its
  * .qi and C header, under --build-dir, else beside -o, else beside the file
  * (-c, which says so, is optional for a unit file). `-i` enters the REPL
- * (questlang/driver/repl) after running FILE, in its environment and frame,
- * and with neither FILE nor `-e`, the driver enters the REPL too.
+ * (questlang/driver/repl) after running FILE, in its environment and frame;
+ * with neither FILE nor `-e`, the driver enters the REPL when standard input is
+ * a terminal, and otherwise runs the program standard input holds, as it does
+ * for a FILE of `-`.
  * run_tests.py --self-hosted compiles it and checks it against the
  * bootstrap's goldens (docs/milestone-2.md and docs/milestone-3.md, section
  * 3). *)
@@ -83,7 +85,7 @@ let usage(message: String): Ok =
             "usage: main [--stop-after tokenize|parse|desugar|typecheck|ir_STAGE|run_ir_STAGE|interpret|codegen_c] "
             <> "[--show-offsets] [--echo] [--print-result] [--expected-exit N] [-c] [-I DIR] [-o FILE] "
             <> "[--build-dir DIR] [-i] "
-            <> "[FILE [ARG...] | -e PROGRAM [-- ARG...] | -- ARG...]\n")
+            <> "[FILE|- [ARG...] | -e PROGRAM [-- ARG...] | -- ARG...]\n")
         system.sysexit(2)
     end;
 
@@ -152,13 +154,23 @@ let options =
             if stringOp.equal(phases[j] stopAfter) then known := true end
         end
         if not(known) then usage("unknown phase '" <> stopAfter <> "'") end
-        let hasFile = not(stringOp.equal(file ""))
+        (* With neither a file nor a program, the REPL starts on an empty
+         * program at a terminal; otherwise standard input holds the program,
+         * as it does for a file of - *)
+        let noProgram = stringOp.equal(file "") andif maybe.isNone(:String code)
+        let atTerminal = system.isTerminal(0)
+        let fromStdin = stringOp.equal(file "-") orif {noProgram andif not(interactive) andif not(atTerminal)}
+        let fromFile = not(stringOp.equal(file "")) andif not(fromStdin)
         tuple
             let stopAfter = stopAfter
             (* The program's name, as the bootstrap's diagnostics name it, and
              * as system.args gives it *)
-            let file = if maybe.isSome(:String code) then "<string>" elsif hasFile then file else "<repl>" end
-            let hasFile = hasFile
+            let file = if maybe.isSome(:String code) then "<string>"
+                elsif fromStdin then "<stdin>"
+                elsif fromFile then file
+                else "<repl>" end
+            let fromFile = fromFile
+            let fromStdin = fromStdin
             let code = code
             let showOffsets = showOffsets
             let echo = echo
@@ -167,21 +179,26 @@ let options =
             let buildDir = buildDir
             let output = output
             let includePaths = vector.toArray(:String includePaths)
-            (* With neither a file nor a program, the REPL starts on an empty
-             * program *)
-            let interactive = interactive orif {not(hasFile) andif maybe.isNone(:String code)}
+            let interactive = interactive orif {noProgram andif atTerminal}
             let programArgs = vector.toArray(:String programArgs)
         end
+    end;
+
+(* The text a reader holds *)
+let readAll(r: reader.T): String =
+    begin
+        let b = stringBuilder.new()
+        while reader.more(r) do b.char(reader.getChar(r)) end
+        b.toString()
     end;
 
 (* The text of a file *)
 let readFile(name: String): String =
     begin
         let r = reader.file(name)
-        let b = stringBuilder.new()
-        while reader.more(r) do b.char(reader.getChar(r)) end
+        let text = readAll(r)
         reader.close(r)
-        b.toString()
+        text
     end;
 
 let print(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
@@ -381,7 +398,9 @@ let run(): Ok =
     begin
         let source = if maybe.isSome(:String options.code) then
             maybe.unwrap(:String options.code)
-        elsif options.hasFile then
+        elsif options.fromStdin then
+            readAll(reader.input)
+        elsif options.fromFile then
             readFile(options.file)
         else
             ""
@@ -404,7 +423,7 @@ let run(): Ok =
                 else
                     stdlib.install()
                     let e = env.new()
-                    let dir = if options.hasFile then paths.parent(paths.absolute(options.file))
+                    let dir = if options.fromFile then paths.parent(paths.absolute(options.file))
                         else paths.absolute(".") end
                     e.currentDir := maybe.some(:String dir)
                     e.programDir := maybe.some(:String dir)

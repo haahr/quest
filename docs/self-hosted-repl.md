@@ -130,19 +130,28 @@ bootstrap's step does nothing that the self-hosted compiler can observe:
 - A frame's snapshot does not record its parent, which cannot change in `model.Frame`. The REPL keeps the frame the
   next input runs in, and goes back to the one an input that fails started in, as the bootstrap's does.
 
-### Step 4: `questlang/driver/repl`
+### Step 4: `questlang/driver/repl` (done)
 
 The completeness check, the loop (prompts `">>  "` and `"    "`, results prefixed `"==  "` with continuation lines
 indented, diagnostics rendered against the input's `<repl>` source map), `evaluate` as a transaction, Ctrl-C clearing
 the buffer, the end of input ending the session with a newline and status 0, and history in `$HOME/.quest_history`
 (1,000 lines), all through `io/readline`.
 
-### Step 5: The driver
+`questlang/driver/repl.{int,mod}.quest`, which also holds `runErrorDiagnostic`, the driver's before. The transcripts
+found one bootstrap bug, which is fixed: `compile_phrase` left the environment's source map on the session's first,
+empty input, so an error in an input's import was reported at 1:1 with no source line.
+
+### Step 5: The driver (done)
 
 `main.quest` enters the REPL with no file when standard input is a terminal, and with `-i`: alone, or after running a
 file (whose errors exit with 1 before the REPL starts), with `system.args` holding `<repl>` or the file and the
 arguments after `--` ([extensions.md](extensions.md)). The usage line gains `-i`. The self-hosted suite runs the
 transcripts against the compiled driver; the pseudo-terminal test runs against it too.
+
+`system.isTerminal(fd)` (ABI 42) tells the driver whether standard input is a terminal; without one, it reads the
+program from standard input, as the bootstrap's does, and as it does for a file of `-`. The pseudo-terminal test runs
+the self-hosted driver when `QUEST_SELF_HOSTED_DRIVER` names one already compiled, since compiling it there would take
+minutes.
 
 ### Step 6: Done
 
