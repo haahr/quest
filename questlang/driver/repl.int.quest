@@ -7,9 +7,11 @@
 
 interface Repl
 import
+    questlang/common/location : questlang/common/Location
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/types/env : questlang/types/Env
     questlang/values/model : questlang/values/Model
+    util/maybe : util/Maybe
 export
     (* The prompts, and the prefix of a phrase's result *)
     promptMain: String
@@ -25,9 +27,10 @@ export
      * raised it, with its frames (the driver's too) *)
     runErrorDiagnostic(err: model.RunError mainFile: String): diagnostics.Diagnostic
 
-    (* A session: the environment inputs are elaborated in, and the frame the
-     * next input runs in *)
-    Def T = Tuple e: env.T var frame: model.Frame end
+    (* A session: the environment inputs are elaborated in, the frame the next
+     * input runs in, and the source an input's error was raised in, when it is
+     * not the input's own (a function an earlier input made), to render it in *)
+    Def T = Tuple e: env.T var frame: model.Frame var errorSource: maybe.T(location.SourceMap) end
     (* A session continuing in e and f, after a file -i ran, say *)
     new(e: env.T f: model.Frame): T
     (* Reads, elaborates, and runs inputs until the end of the input, keeping a

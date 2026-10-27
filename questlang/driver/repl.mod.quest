@@ -86,9 +86,10 @@ export
             d
         end
 
-    Let T = Tuple e: env.T var frame: model.Frame end
+    Let T = Tuple e: env.T var frame: model.Frame var errorSource: maybe.T(location.SourceMap) end
 
-    let new(e: env.T f: model.Frame): T = tuple let e = e let var frame = f end
+    let new(e: env.T f: model.Frame): T =
+        tuple let e = e let var frame = f let var errorSource = maybe.none(:location.SourceMap) end
 
     (* An input's phrases' results, if it ran; the errors it found are in bag *)
     let compileAndRun(r: T text: String sm: location.SourceMap bag: diagbag.T): maybe.T(Array(treewalk.PhraseResult)) =
@@ -107,7 +108,10 @@ export
                     if diagbag.hasErrors(bag) orif maybe.isNone(:typedAst.Program result.program) then
                         failed
                     else
-                        let f = r.frame
+                        (* The input runs in a scope of its own, which holds its
+                         * source, so that the functions earlier inputs made go
+                         * on locating errors in theirs *)
+                        let f = treewalk.pushScope(r.frame)
                         f.sourceMap := maybe.some(:location.SourceMap sm)
                         try
                             let ran = treewalk.evalProgramPhrasesIn(maybe.unwrap(:typedAst.Program result.program) f
@@ -116,6 +120,7 @@ export
                             maybe.some(:Array(treewalk.PhraseResult) ran.results)
                         when model.runError with err then
                             treewalk.noteFrames(err f)
+                            r.errorSource := err.sourceMap
                             diagbag.add(bag runErrorDiagnostic(err inputName))
                             failed
                         end
@@ -132,6 +137,7 @@ export
      * created since; units loaded by earlier inputs stay loaded *)
     let evaluate(r: T text: String sm: location.SourceMap bag: diagbag.T): maybe.T(Array(treewalk.PhraseResult)) =
         begin
+            r.errorSource := maybe.none(:location.SourceMap)
             let envSnapshot = env.snapshot(r.e)
             let start = r.frame
             let frameSnapshot = treewalk.snapshot(start)
@@ -206,7 +212,7 @@ export
                                 for i = 0 upto {extent shown - 1} do showResult(shown[i]) end
                             else
                                 writer.flush(writer.output)
-                                diagbag.renderAll(bag sm writer.err)
+                                diagbag.renderAll(bag maybe.unwrapOr(:location.SourceMap r.errorSource sm) writer.err)
                                 writer.flush(writer.err)
                             end
                         end

@@ -320,7 +320,11 @@ class InterpretPhase(Phase):
 
     def run(self, input_data: Any, ctx: CompilerContext) -> Optional[QValue]:
         # The program's code raises errors located in its file; a module's, in
-        # the module's (docs/exceptions.md §3.2)
+        # the module's (docs/exceptions.md §3.2). A REPL input after the first
+        # runs in a scope of its own, which holds the input's source, so that
+        # the functions earlier inputs made go on locating errors in theirs
+        if ctx.runtime_env.source_map is not None and ctx.runtime_env.source_map is not ctx.source_map:
+            ctx.runtime_env = ctx.runtime_env.push_scope()
         ctx.runtime_env.source_map = ctx.source_map
         # The program's phrases run in the outermost frame (docs/exceptions.md
         # §4)
