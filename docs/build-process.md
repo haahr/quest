@@ -875,7 +875,38 @@ The log records structured timestamps, queue transitions, staleness evaluations,
 
 ---
 
-## 10. Summary of Architectural Guarantees
+## 10. SHA-256 Digests of Files
+
+Staleness (§5) compares file times, never contents: no source or artifact is hashed to decide whether a unit is
+stale. The build hashes the contents of files in these places, each with SHA-256:
+
+1. **The runtime's objects** (both compilers, on every link: `runtime_objects` in
+   `bootstrap/python/quest/codegen/c/compiler_runner.py`, `runtimeObjects` in
+   `questlang/codegen/c/compilerrunner`). The key of the cache directory the objects are kept in
+   (`.build/runtime/KEY/`, or `$QUEST_RUNTIME_CACHE/KEY/`) is the first 24 hex digits of a digest of the C compiler's
+   name, its `--version` output, the compile flags, and the name and contents of every `.c` and `.h` file in
+   `runtime/` ([codegen-c.md](codegen-c.md) §11.3). Changing any of them compiles the runtime again.
+2. **The release's compiler** ([release-compiler.md](release-compiler.md)):
+   - `./questc` hashes `release/current/questc` (with `shasum -a 256`) each time it runs with the release as its
+     seed, and refuses a binary whose digest is not the one `release.json` records. The digest is also the seed's
+     identity, recorded in `.build/questc/seed`: when it changes, the stages are built again from nothing.
+   - `run_tests.py --seed release` (`current_release` in `bootstrap/python/quest/testing/runner.py`) makes the same
+     check before building from the release.
+   - `tools/release` records the digest of the new `questc` in `release.json` when it cuts a release, and checks it
+     again in `--verify` and before installing a new release.
+
+The tests hash files too, though no build does: the `codegen_c` goldens are digests of each program's generated C,
+with paths in the checkout made relative (`c_digest` in the runner), and the ABI corpus records a digest of
+`runtime/quest_runtime.h` (§5.2.3).
+
+The C backend's other digests are of text it makes, not of files: the names of generated C types (a type's printed
+form, in `layout.type_digest` and `layout.text_digest`, `questlang/codegen/layout` in the self-hosted compiler), and
+the tags of long shapes. The self-hosted compiler computes these with SHA-256 written in Quest
+(`questlang/codegen/sha256`), which is a measurable part of its time ([tasklist.md](tasklist.md)).
+
+---
+
+## 11. Summary of Architectural Guarantees
 
 1. **Deterministic Staleness:** Interface and module updates propagate reliably through the transitive closure via the
    `.qm` invalidation rules, eliminating runtime struct offset mismatches and stale object crashes.

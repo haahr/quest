@@ -7,10 +7,10 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ## Parallel builds in the self-hosted engine
 
-**Problem.** The self-hosted build engine (`questlang/build/engine`) compiles one unit at a time, in its own process,
-so a build uses a single core. Building `questlang/driver/main` takes about 8 minutes. Building the questlang tests
-for the self-hosted suite takes several more, nearly all of it compiling the questlang modules they share. The tests
-build one after another into a shared build directory (`build_questlang_tests` in
+**Problem.** The self-hosted build engine (`questlang/build/engine`) compiles one unit at a time, in its own process, so
+a build uses a single core. Building `questlang/driver/main` takes about a minute, a third of it in clang. Building the
+questlang tests for the self-hosted suite takes several more, nearly all of it compiling the questlang modules they
+share. The tests build one after another into a shared build directory (`build_questlang_tests` in
 `bootstrap/python/quest/testing/runner.py`), because the engine takes no locks: two builds at once could both find a
 unit stale and write its artifacts at the same time.
 
@@ -103,3 +103,29 @@ name, stem, suffix, `withSuffix`, `relativeTo`, `resolve`) and on `os/filestats`
 
 **Done when.** The library is documented in docs/new-libraries.md, has goldens in every run phase, and at least the
 build engine uses it in place of string paths.
+
+---
+
+## Faster word operations in compiled code
+
+**Problem.** Each `word` operation in compiled code (`word.xorBits`, `word.shift`, `word.rotate`, and the rest of
+`lib/word.int.quest`) costs three calls. The caller calls the importer's wrapper `qv_word_xorBits`, which calls
+through the closure in the `word` module record, which calls the external `quest_word_xor_bits` in the runtime. None
+of them can be inlined, because the module record is only filled in at run time. The self-hosted compiler hashes
+type text with SHA-256 written in Quest (`questlang/codegen/sha256`) and hashes keys in `util/hash`, both made of word
+operations. Profiling the compiler building itself (2026-10-27) put about 7.5% of its time in these call layers.
+
+**Reproduce.** Build `questlang/driver/main` with `./questc` from nothing under `sample` (macOS) or `perf`, and
+compare the time in the `qv_word_*` wrappers and closures with the time in the `quest_word_*` functions.
+
+**Where to start.** Compile a call to a `word` operation whose target is known statically into a direct call to its
+runtime function, or into the C operator (`^`, `<<`, ...) for the simple ones. An importer does not know today which
+members of `word` are externals, or which runtime functions they are: neither the `.qi` nor the `.qm` records it, so
+either the artifacts record it (an ABI change) or the backend treats `word` as a builtin it knows. Do the same in the
+bootstrap, and in the same commit, while the two compilers are kept in step. Every compiled program's C changes, so the
+`codegen_c` digests are regenerated. A native SHA-256 primitive would remove most of the remaining cost of `layout`'s
+digests, but needs a new runtime primitive and so a release before `questlang/` can use it (docs/release-compiler.md
+§2).
+
+**Done when.** Word operations in generated C are direct calls or C operators, the self-hosted build of
+`questlang/driver/main` spends no measurable time in the call layers, and both compilers produce the same C.
