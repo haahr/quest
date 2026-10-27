@@ -1,0 +1,33 @@
+(* Quest Self-Hosted Compiler: The Build Logger Implementation *)
+
+module logger : Logger
+import
+    questlang/modules/paths : questlang/modules/Paths
+    util/maybe : util/Maybe
+    writer : Writer
+    system : System
+export
+    Let T = Tuple logFile: maybe.T(String) verbose: Bool end
+
+    let new(logFile: maybe.T(String) verbose: Bool): T =
+        begin
+            if maybe.isSome(:String logFile) then system.makeDirectory(paths.parent(maybe.unwrap(:String logFile))) end
+            tuple let logFile = logFile let verbose = verbose end
+        end
+
+    (* A Quest writer cannot append to a file, nor can a Quest program read the
+     * clock, so a shell does both: it formats the entry with date's time,
+     * appends it to the log file ($0), and prints it *)
+    let appendScript = "entry=$(printf '[%s] %s' \"$(date +%Y-%m-%dT%H:%M:%S)\" \"$1\"); "
+        <> "if [ -n \"$0\" ]; then printf '%s\\n' \"$entry\" >> \"$0\"; fi; printf '%s' \"$entry\""
+
+    let log(l: T tag: String message: String): Ok =
+        begin
+            let file = maybe.unwrapOr(:String l.logFile "")
+            let entry = system.run(array of "sh" "-c" appendScript file tag <> ": " <> message end).stdout
+            if l.verbose then
+                writer.putString(writer.err entry <> "\n")
+                writer.flush(writer.err)
+            end
+        end
+end

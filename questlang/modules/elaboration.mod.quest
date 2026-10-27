@@ -525,7 +525,10 @@ export
                                     symbols.declareKind(internalScope maybe.unwrap(:symbols.KindSymbol kindSym))
                                     ok
                                 else
-                                    if maybe.isNone(:typedAst.Binding graph.typedModule(e.units modPath)) then
+                                    (* Compiled to C, the module is known
+                                     * through its interface alone *)
+                                    if not(e.compilingC)
+                                        andif maybe.isNone(:typedAst.Binding graph.typedModule(e.units modPath)) then
                                         loadModule(modPath ifacePath e)
                                         ok
                                     end
@@ -671,7 +674,10 @@ export
                             for j = 0 upto {vector.length(:String item.names) - 1} do
                                 let localName = vector.get(:String item.names j)
                                 let modPath = vector.get(:String modPaths j)
-                                if maybe.isNone(:typedAst.Binding graph.typedModule(e.units modPath)) then
+                                (* Compiled to C, the module is typed through
+                                 * its interface, without loading its source *)
+                                if not(e.compilingC)
+                                    andif maybe.isNone(:typedAst.Binding graph.typedModule(e.units modPath)) then
                                     loadModule(modPath ifacePath e)
                                     ok
                                 end

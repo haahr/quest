@@ -57,7 +57,13 @@ DRIVER_SCRIPT = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
 # expected to pass, and where the errors it reports after the bootstrap's one
 # are recorded (docs/milestone-2.md §3)
 SELF_HOSTED_DRIVER = ROOT_DIR / "questlang" / "driver" / "main.quest"
-SELF_HOSTED_PHASES = ("tokenize", "parse", "typecheck", *IR_DUMP_PHASES, *IR_RUN_PHASES, "interpret", "codegen_c", "repl")
+SELF_HOSTED_PHASES = (
+    "tokenize", "parse", "typecheck", *IR_DUMP_PHASES, *IR_RUN_PHASES, "interpret", "codegen_c", "run_c_compiled", "repl",
+)
+# Where the self-hosted driver builds the units of the programs it compiles to
+# C, under each worker's build directory: apart from the bootstrap's artifacts,
+# which it would otherwise find fresh and reuse
+SELF_HOSTED_UNITS_SUBDIR = "self-hosted-units"
 SELF_HOSTED_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending.txt"
 SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 # Tests of several errors, which only the self-hosted driver reports:
@@ -246,23 +252,25 @@ def bootstrap_c(source_file: Path, echo: bool, python_executable: str, build_dir
 QUESTLANG_TESTS_DIR = TESTS_SOURCE_DIR / "questlang"
 QUESTLANG_INTERPRETED_PHASES = ("interpret", *IR_RUN_PHASES)
 QUESTLANG_BUILD_SUBDIR = "questlang-tests"
+QUESTLANG_SELF_HOSTED_BUILD_SUBDIR = "self-hosted-questlang-tests"
 
 
 def is_questlang_test(source_file: Path) -> bool:
     return source_file.is_relative_to(QUESTLANG_TESTS_DIR)
 
 
-def build_questlang_tests(python_executable: str, source_files: list[Path], build_dir: Path) -> None:
-    """Compiles and links the questlang tests in build_dir, one at a time, so
-    that the modules they import are compiled once. The tests then run in
-    parallel in build_dir, reading the fresh artifacts and writing only their
-    own programs'. A test that fails to build here fails when it runs, and
-    reports why."""
+def build_questlang_tests(
+    python_executable: str, source_files: list[Path], build_dir: Path, driver_command: Optional[list[str]] = None
+) -> None:
+    """Compiles and links the questlang tests in build_dir, one at a time, with
+    the bootstrap's driver or driver_command, so that the modules they import
+    are compiled once. The tests then run in parallel in build_dir, reading the
+    fresh artifacts and writing only their own programs'. A test that fails to
+    build here fails when it runs, and reports why."""
     build_dir.mkdir(parents=True, exist_ok=True)
     for source_file in source_files:
         command = [
-            python_executable,
-            str(DRIVER_SCRIPT),
+            *(driver_command or [python_executable, str(DRIVER_SCRIPT)]),
             "--build-dir",
             str(build_dir),
             "-o",
@@ -270,6 +278,13 @@ def build_questlang_tests(python_executable: str, source_files: list[Path], buil
             str(source_file.resolve()),
         ]
         subprocess.run(command, capture_output=True, env=golden_environment(), cwd=ROOT_DIR)
+
+
+def self_hosted_units_dir(build_dir: Path) -> Path:
+    """Where the self-hosted driver builds the units of programs compiled to C
+    for a worker whose build directory is build_dir: the questlang tests' shared
+    directory itself, else a subdirectory of the worker's."""
+    return build_dir if build_dir.name == QUESTLANG_SELF_HOSTED_BUILD_SUBDIR else build_dir / SELF_HOSTED_UNITS_SUBDIR
 
 
 def golden_dir_for_phase(phase_name: str) -> Path:
@@ -351,6 +366,9 @@ def run_single_golden_test(
 
     if driver_command is not None:
         command = [*driver_command, "--stop-after", phase_name]
+        # The units of programs compiled to C are built and reused there
+        if phase_name in (CODEGEN_PHASE, "run_c_compiled") and build_dir is not None:
+            command.extend(["--build-dir", str(self_hosted_units_dir(build_dir))])
     else:
         command = [
             python_executable,
@@ -847,11 +865,14 @@ def run_all_tests(
                 sf for sf in source_files
                 if is_questlang_test(sf) and "run_c_compiled" not in parse_skipped_phases(sf)
             ]
-            questlang_build_dir = build_dir / QUESTLANG_BUILD_SUBDIR
+            questlang_build_dir = build_dir / (
+                QUESTLANG_BUILD_SUBDIR if driver_command is None else QUESTLANG_SELF_HOSTED_BUILD_SUBDIR
+            )
             questlang_build: Optional[threading.Thread] = None
-            if driver_command is None and "run_c_compiled" in phases_to_run and questlang_files:
+            if "run_c_compiled" in phases_to_run and questlang_files:
                 questlang_build = threading.Thread(
-                    target=build_questlang_tests, args=(python_executable, questlang_files, questlang_build_dir)
+                    target=build_questlang_tests,
+                    args=(python_executable, questlang_files, questlang_build_dir, driver_command),
                 )
                 questlang_build.start()
             if source_files or runs_eval or repl_files:

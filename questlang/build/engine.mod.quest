@@ -1,0 +1,682 @@
+(* Quest Self-Hosted Compiler: The Build Engine Implementation *)
+
+module engine : Engine
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/types/env : questlang/types/Env
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/typechecker/typecheck : questlang/typechecker/Typecheck
+    questlang/config/abi : questlang/config/Abi
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/units : questlang/modules/Units
+    questlang/modules/stdlib : questlang/modules/Stdlib
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/modules/manifest : questlang/modules/Manifest
+    questlang/modules/interfaceCompiler : questlang/modules/InterfaceCompiler
+    questlang/modules/moduleCompiler : questlang/modules/ModuleCompiler
+    questlang/build/logger : questlang/build/Logger
+    passes = questlang/codegen/backend : questlang/codegen/Backend
+    cBackend = questlang/codegen/c/backend : questlang/codegen/c/Backend
+    questlang/codegen/c/compilerRunner : questlang/codegen/c/CompilerRunner
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+    writer : Writer
+    system : System
+export
+    let buildError: Exception(String) = exception buildError: String end
+
+    Let T = Tuple
+        buildDir: String
+        resolver: graph.Resolver
+        includePaths: Array(String)
+        extraObjects: Array(String)
+        logger: logger.T
+        nogc: Bool
+        compiler: maybe.T(String)
+        extraCFlags: Array(String)
+    end
+    Let ImportRef = Tuple interfacePath: String names: Array(String) modulePaths: Array(String) end
+
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+    let fail(A::TYPE message: String): A = raise buildError with message end
+    let quoted(s: String): String = "'" <> s <> "'"
+    (* Paths as Python prints a list of them *)
+    let pyList(xs: Array(String)): String =
+        begin
+            let parts = vector.new(:String)
+            for i = 0 upto {extent xs - 1} do vector.append(:String parts "PosixPath('" <> xs[i] <> "')") end
+            "[" <> strutil.join(", " parts) <> "]"
+        end
+
+    let contains(xs: vector.T(String) x: String): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {vector.length(:String xs) - 1} do if eq(vector.get(:String xs i) x) then
+                found := true end end
+            found
+        end
+
+    let new(buildDir: maybe.T(String) includePaths: Array(String) verbose: Bool nogc: Bool extraObjects: Array(String)
+        resolver: maybe.T(graph.Resolver)): T =
+        begin
+            let dir = paths.absolute(maybe.unwrapOr(:String buildDir ".build"))
+            let includes = array of(extent includePaths "")
+            for i = 0 upto {extent includePaths - 1} do includes[i] := paths.absolute(includePaths[i]) end
+            let objects = array of(extent extraObjects "")
+            for i = 0 upto {extent extraObjects - 1} do objects[i] := paths.absolute(extraObjects[i]) end
+            let l = logger.new(maybe.some(:String paths.join(dir "build.log")) verbose)
+            system.makeDirectory(dir)
+            tuple
+                let buildDir = dir
+                let resolver = maybe.unwrapOr(:graph.Resolver resolver graph.newResolver())
+                let includePaths = includes
+                let extraObjects = objects
+                let logger = l
+                let nogc = nogc
+                let compiler = maybe.none(:String)
+                let extraCFlags = array of :String end
+            end
+        end
+
+    let log(eng: T tag: String message: String): Ok = logger.log(eng.logger tag message)
+
+    (* The include paths of the units the engine compiles: the build directory,
+     * the extra objects' directories, the include paths, lib/, and the project
+     * directory. The program's directory is not one of them: it is searched
+     * only from the main routine, and names only units under no include root
+     * (docs/modules.md section 2.3). *)
+    let searchPaths(eng: T): Array(String) =
+        begin
+            let dirs = vector.new(:String)
+            let add = fun(d: String): Ok if not(contains(dirs d)) then vector.append(:String dirs d) end
+            add(eng.buildDir)
+            for i = 0 upto {extent eng.extraObjects - 1} do add(paths.parent(eng.extraObjects[i])) end
+            for i = 0 upto {extent eng.includePaths - 1} do add(eng.includePaths[i]) end
+            if system.isDirectory(paths.libDir()) then add(paths.absolute(paths.libDir())) end
+            if system.isDirectory(paths.projectDir()) then add(paths.absolute(paths.projectDir())) end
+            vector.toArray(:String dirs)
+        end
+
+    (* A file name without its last suffix (Python's Path.stem) *)
+    let stem(file: String): String =
+        begin
+            let name = paths.baseName(file)
+            let var dot = ~1
+            for i = 1 upto {stringOp.length(name) - 1} do if stringOp.getChar(name i) is '.' then dot := i end end
+            if dot < 0 then name else stringOp.getSub(name 0 dot) end
+        end
+
+    (* Where a main routine's artifacts go: build/<dir>/<stem>, <dir> being its
+     * directory relative to the current directory, if it is inside it
+     * (docs/build-process.md section 3.2) *)
+    let mainArtifactBase(eng: T mainFile: String): String =
+        begin
+            let main = paths.absolute(mainFile)
+            let rel = paths.relativeTo(paths.parent(main) paths.absolute(system.currentDirectory()))
+            let dir = if maybe.isSome(:String rel) andif {stringOp.length(maybe.unwrap(:String rel)) > 0} then
+                paths.join(eng.buildDir maybe.unwrap(:String rel))
+            else
+                eng.buildDir
+            end
+            paths.normalize(paths.join(dir stem(main)))
+        end
+
+    (* A main routine's .main.qm, .main.c, and .main.o: the .main suffix keeps
+     * them apart from a module's with the same canonical name *)
+    let mainArtifacts(eng: T mainFile: String): graph.ModuleArtifacts =
+        begin
+            let base = mainArtifactBase(eng mainFile)
+            tuple let qm = base <> ".main.qm" let c = base <> ".main.c" let o = base <> ".main.o" end
+        end
+
+    let unitModuleRefs(imports: Array(ImportRef) implicit: Array(passes.ImplicitImport) currentDir: maybe.T(String)
+        includePaths: Array(String) programDir: maybe.T(String) res: graph.Resolver):
+            Array(manifest.ImportedModuleRef) =
+        begin
+            let roots = graph.rootsOf(includePaths programDir)
+            let refs = vector.new(:manifest.ImportedModuleRef)
+            let seen = vector.new(:String)
+            let add = fun(name: String interfaceName: String source: maybe.T(String) path: String): Ok
+                if not(contains(seen name)) then
+                    vector.append(:String seen name)
+                    vector.append(:manifest.ImportedModuleRef refs tuple
+                        let name = name let interfaceName = interfaceName
+                        let source = maybe.unwrapOr(:String source "") let path = path
+                    end)
+                end
+            for i = 0 upto {extent imports - 1} do
+                let it = imports[i]
+                let iface = graph.interfaceName(graph.resolveInterface(res it.interfacePath currentDir roots))
+                let n = if extent it.names < extent it.modulePaths then extent it.names else extent it.modulePaths end
+                for j = 0 upto {n - 1} do
+                    let modRef = if stringOp.length(it.modulePaths[j]) > 0 then it.modulePaths[j] else it.names[j] end
+                    let m = graph.resolveModule(res modRef currentDir roots)
+                    add(graph.canonicalName(m) iface m.source modRef)
+                end
+            end
+            for i = 0 upto {extent implicit - 1} do
+                let m = graph.resolveModule(res implicit[i].canonicalPath currentDir roots)
+                let iface = if stringOp.length(implicit[i].interfacePath) > 0 then
+                    graph.interfaceName(graph.resolveInterface(res implicit[i].interfacePath currentDir roots))
+                else
+                    ""
+                end
+                add(graph.canonicalName(m) iface m.source implicit[i].canonicalPath)
+            end
+            vector.toArray(:manifest.ImportedModuleRef refs)
+        end
+
+    let orNoSource(s: String): String = if stringOp.length(s) > 0 then s else "no source" end
+
+    (* How a unit's recorded imports would now resolve differently, if they
+     * would: each interface and module path it imported, resolved again as its
+     * compilation resolves it (an interface it depends on through another's
+     * imports from that interface's directory, recorded with it) *)
+    let importResolutionChange(m: manifest.ModuleManifest currentDir: maybe.T(String) includePaths: Array(String)
+        programDir: maybe.T(String) res: graph.Resolver): maybe.T(String) =
+        begin
+            let roots = graph.rootsOf(includePaths programDir)
+            let var change = maybe.none(:String)
+            for i = 0 upto {extent m.importedInterfaces - 1} do
+                let iface = m.importedInterfaces[i]
+                if maybe.isNone(:String change) andif {stringOp.length(iface.path) > 0} then
+                    let from = if stringOp.length(iface.dir) > 0 then maybe.some(:String iface.dir) else currentDir end
+                    let found = graph.resolveInterface(res iface.path from roots)
+                    if not(paths.sameSource(found.source iface.source)) then
+                        change := maybe.some(:String "interface " <> quoted(iface.path) <> " now resolves to "
+                            <> orNoSource(maybe.unwrapOr(:String found.source "")) <> ", not "
+                                <> orNoSource(iface.source))
+                    elsif not(eq(graph.interfaceName(found) iface.name)) then
+                        change := maybe.some(:String "interface " <> quoted(iface.path) <> " is now named "
+                            <> quoted(graph.interfaceName(found)) <> ", not " <> quoted(iface.name))
+                    end
+                end
+            end
+            for i = 0 upto {extent m.importedModules - 1} do
+                let mod = m.importedModules[i]
+                if maybe.isNone(:String change) andif {stringOp.length(mod.path) > 0} then
+                    let found = graph.resolveModule(res mod.path currentDir roots)
+                    if not(paths.sameSource(found.source mod.source)) then
+                        change := maybe.some(:String "module " <> quoted(mod.path) <> " now resolves to "
+                            <> orNoSource(maybe.unwrapOr(:String found.source "")) <> ", not "
+                                <> orNoSource(mod.source))
+                    elsif not(eq(graph.canonicalName(found) mod.name)) then
+                        change := maybe.some(:String "module " <> quoted(mod.path) <> " is now named "
+                            <> quoted(graph.canonicalName(found)) <> ", not " <> quoted(mod.name))
+                    end
+                end
+            end
+            change
+        end
+
+    (* Why a unit with a source file must be recompiled, if it must
+     * (docs/build-process.md section 7.1): its artifacts' own freshness, and
+     * its imports still resolving to the files it was compiled against *)
+    let unitStaleness(eng: T source: String a: graph.ModuleArtifacts programDir: maybe.T(String)): maybe.T(String) =
+        begin
+            let search = searchPaths(eng)
+            let changed = fun(m: manifest.ModuleManifest): maybe.T(String)
+                importResolutionChange(m maybe.some(:String paths.parent(source)) search programDir eng.resolver)
+            manifest.unitStaleness(source a.qm a.c a.o
+                maybe.some(:All(m: manifest.ModuleManifest) maybe.T(String) changed))
+        end
+
+    let effectiveModulePaths(item: ast.ImportItem): vector.T(String) =
+        if maybe.isSome(:vector.T(String) item.modulePaths) then maybe.unwrap(:vector.T(String) item.modulePaths)
+        else item.names
+        end
+
+    let interfaceRef(resolved: graph.Resolved path: String): manifest.ImportedInterfaceRef =
+        begin
+            let src = resolved.source
+            let hasSource = maybe.isSome(:String src) andif system.isFile(maybe.unwrap(:String src))
+            tuple
+                let name = graph.interfaceName(resolved)
+                let source = if maybe.isSome(:String src) then paths.absolute(maybe.unwrap(:String src)) else "" end
+                let mtime = if hasSource then system.modifiedTime(maybe.unwrap(:String src)) else 0.0 end
+                let path = path let dir = ""
+            end
+        end
+
+    (* Compiles a main routine into its .main.qm, .main.c, and .main.o,
+     * returning the modules it imports *)
+    let compileMainUnit(eng: T mainFile: String): Array(manifest.ImportedModuleRef) =
+        begin
+            let a = mainArtifacts(eng mainFile)
+            system.makeDirectory(paths.parent(a.c))
+            let text = maybe.unwrapOr(:String paths.readText(mainFile) "")
+            let sm = location.newSourceMap(paths.displayName(mainFile) text)
+            (* The module system's callbacks, which loading the program's
+             * interfaces needs before the program is checked *)
+            stdlib.install()
+            typecheck.install()
+            let e = env.new()
+            env.withUnitSource(:Array(manifest.ImportedModuleRef) e location.file(sm) fun():
+                Array(manifest.ImportedModuleRef)
+                begin
+                    let prog = units.parseUnit(sm)
+                    for i = 0 upto {vector.length(:ast.Phrase prog.form.phrases) - 1} do
+                        case vector.get(:ast.Phrase prog.form.phrases i).form
+                            when phraseModule then fail(:Ok "File " <> quoted(mainFile)
+                                <> " contains a module/interface declaration; use module compiler for libraries.")
+                            when phraseInterface then fail(:Ok "File " <> quoted(mainFile)
+                                <> " contains a module/interface declaration; use module compiler for libraries.")
+                            else ok
+                        end
+                    end
+                    let search = searchPaths(eng)
+                    let dir = paths.parent(mainFile)
+                    e.units := graph.newGraphWith(eng.resolver)
+                    e.currentDir := maybe.some(:String dir)
+                    e.programDir := maybe.some(:String dir)
+                    for i = 0 upto {extent search - 1} do vector.append(:String e.includePaths search[i]) end
+                    e.sourceFile := location.file(sm)
+                    (* Compiled to C, with the build directory's artifacts *)
+                    e.compilingC := true
+                    e.buildDir := maybe.some(:String eng.buildDir)
+
+                    let interfaces = vector.new(:manifest.ImportedInterfaceRef)
+                    let imports = vector.new(:ImportRef)
+                    for i = 0 upto {vector.length(:ast.Phrase prog.form.phrases) - 1} do
+                        case vector.get(:ast.Phrase prog.form.phrases i).form
+                            when phraseImport with x then
+                                for j = 0 upto {vector.length(:ast.ImportItem x.phrase.items) - 1} do
+                                    let it = vector.get(:ast.ImportItem x.phrase.items j)
+                                    let ifacePath = maybe.unwrapOr(:String it.interfacePath it.interfaceName)
+                                    log(eng "RESOLVE INTERFACE" quoted(ifacePath))
+                                    if maybe.isNone(:symbols.Scope env.lookupInterface(e ifacePath))
+                                        andif maybe.isNone(:symbols.Scope env.lookupInterface(e it.interfaceName)) then
+                                        elaboration.loadInterface(ifacePath e)
+                                        ok
+                                    end
+                                    vector.append(:manifest.ImportedInterfaceRef interfaces
+                                        interfaceRef(env.resolveInterface(e ifacePath) ifacePath))
+                                    vector.append(:ImportRef imports tuple
+                                        let interfacePath = ifacePath
+                                        let names = vector.toArray(:String it.names)
+                                        let modulePaths = vector.toArray(:String effectiveModulePaths(it))
+                                    end)
+                                end
+                            else ok
+                        end
+                    end
+
+                    let result = typecheck.elaborateProgram(prog e)
+                    (* The first error, as the bootstrap raises it *)
+                    if extent result.errors > 0 then diagnostics.raiseError(:Ok result.errors[0]) end
+                    let typed = maybe.unwrap(:typedAst.Program result.program)
+                    let translated = cBackend.programToC(typed e maybe.some(:location.SourceMap sm) false false)
+                    let modules = unitModuleRefs(vector.toArray(:ImportRef imports)
+                        passes.implicitImports(translated.unit typed) e.currentDir
+                            vector.toArray(:String e.includePaths)
+                        e.programDir eng.resolver)
+
+                    log(eng "EMIT C" a.c)
+                    let w = writer.file(a.c)
+                    writer.putString(w translated.c)
+                    writer.close(w)
+                    log(eng "HOST COMPILE" "clang -c " <> a.c <> " -o " <> a.o)
+                    compilerRunner.compileCToObject(a.c a.o search eng.nogc eng.compiler eng.extraCFlags)
+
+                    let direct = vector.toArray(:manifest.ImportedInterfaceRef interfaces)
+                    let indirect = interfaceCompiler.indirectInterfaceRefs(direct vector.toArray(:String e.includePaths)
+                        e.programDir eng.resolver)
+                    log(eng "WRITE QM" a.qm)
+                    manifest.writeQm(manifest.newManifest("<main>" maybe.none(:String) paths.absolute(mainFile)
+                        paths.absolute(a.o) modules
+                        vector.toArray(:manifest.ImportedInterfaceRef vector.concat(:manifest.ImportedInterfaceRef
+                            interfaces vector.fromArray(:manifest.ImportedInterfaceRef indirect)))) a.qm)
+                    modules
+                end)
+        end
+
+    (* The canonical module name a .qm records, if it can be read *)
+    let manifestName(qm: String): maybe.T(String) =
+        begin
+            let m = manifest.readQm(qm)
+            if maybe.isSome(:manifest.ModuleManifest m) then
+                maybe.some(:String maybe.unwrap(:manifest.ModuleManifest m).name)
+            else maybe.none(:String) end
+        end
+
+    (* An importer's expectation of a module's interface *)
+    Let Expected = Tuple importer: String interfaceName: String end
+    Let NamedExpected = Tuple name: String expected: vector.T(Expected) end
+    Let NamedManifest = Tuple name: String m: manifest.ModuleManifest end
+    Let Edges = Tuple node: String neighbors: Array(String) end
+
+    let conformanceError(importer: String name: String expected: String actual: String): String =
+        "Type error: " <> quoted(importer) <> " imports module " <> quoted(name) <> " as interface " <> quoted(expected)
+            <> ", but module " <> quoted(name) <> " implements interface " <> quoted(actual)
+
+    (* A cycle in the modules' import graph, if there is one, found by
+     * depth-first search: the path from the module that starts it back to
+     * that module *)
+    let detectModuleCycle(g: vector.T(Edges)): maybe.T(Array(String)) =
+        begin
+            let visited = vector.new(:String)
+            let stack = vector.new(:String)
+            let neighbors = fun(node: String): Array(String)
+                begin
+                    let var found = array of :String end
+                    for i = 0 upto {vector.length(:Edges g) - 1} do
+                        if eq(vector.get(:Edges g i).node node) then found := vector.get(:Edges g i).neighbors end
+                    end
+                    found
+                end
+            let rec dfs(node: String): maybe.T(Array(String)) =
+                begin
+                    vector.append(:String visited node)
+                    vector.append(:String stack node)
+                    let var cycle = maybe.none(:Array(String))
+                    let next = neighbors(node)
+                    for i = 0 upto {extent next - 1} do
+                        if maybe.isNone(:Array(String) cycle) then
+                            if not(contains(visited next[i])) then
+                                cycle := dfs(next[i])
+                            elsif contains(stack next[i]) then
+                                let path = vector.new(:String)
+                                let var on = false
+                                for j = 0 upto {vector.length(:String stack) - 1} do
+                                    if eq(vector.get(:String stack j) next[i]) then on := true end
+                                    if on then vector.append(:String path vector.get(:String stack j)) end
+                                end
+                                vector.append(:String path next[i])
+                                cycle := maybe.some(:Array(String) vector.toArray(:String path))
+                            end
+                        end
+                    end
+                    if maybe.isNone(:Array(String) cycle) then vector.pop(:String stack) ok end
+                    cycle
+                end
+            let var cycle = maybe.none(:Array(String))
+            for i = 0 upto {vector.length(:Edges g) - 1} do
+                let node = vector.get(:Edges g i).node
+                if maybe.isNone(:Array(String) cycle) andif not(contains(visited node)) then cycle := dfs(node) end
+            end
+            cycle
+        end
+
+    let buildModules(eng: T roots: Array(manifest.ImportedModuleRef) importer: String programDir: maybe.T(String))
+        : Array(String) =
+        begin
+            let search = searchPaths(eng)
+            let queue = vector.new(:String)
+            let var head = 0
+            let discovered = vector.new(:String)
+            let sourceNames = vector.new(:String)
+            let sourceFiles = vector.new(:String)
+            let linked = vector.fromArray(:String eng.extraObjects)
+            for i = 0 upto {extent eng.extraObjects - 1} do
+                vector.append(:String discovered stem(eng.extraObjects[i]))
+                vector.append(:String discovered paths.lower(stem(eng.extraObjects[i])))
+            end
+            let moduleGraph = vector.new(:Edges)
+            let expected = vector.new(:NamedExpected)
+            let manifests = vector.new(:NamedManifest)
+
+            let manifestOf = fun(name: String): maybe.T(manifest.ModuleManifest)
+                begin
+                    let var found = maybe.none(:manifest.ModuleManifest)
+                    for i = 0 upto {vector.length(:NamedManifest manifests) - 1} do
+                        if eq(vector.get(:NamedManifest manifests i).name name) then
+                            found := maybe.some(:manifest.ModuleManifest vector.get(:NamedManifest manifests i).m)
+                        end
+                    end
+                    found
+                end
+            let setManifest = fun(name: String m: manifest.ModuleManifest): Ok
+                begin
+                    let var placed = false
+                    for i = 0 upto {vector.length(:NamedManifest manifests) - 1} do
+                        if eq(vector.get(:NamedManifest manifests i).name name) then
+                            vector.set(:NamedManifest manifests i tuple let name = name let m = m end)
+                            placed := true
+                        end
+                    end
+                    if not(placed) then vector.append(:NamedManifest manifests tuple let name = name let m = m end) end
+                end
+            let expectedOf = fun(name: String): vector.T(Expected)
+                begin
+                    let var found = maybe.none(:vector.T(Expected))
+                    for i = 0 upto {vector.length(:NamedExpected expected) - 1} do
+                        if eq(vector.get(:NamedExpected expected i).name name) then
+                            found := maybe.some(:vector.T(Expected) vector.get(:NamedExpected expected i).expected)
+                        end
+                    end
+                    if maybe.isSome(:vector.T(Expected) found) then
+                        maybe.unwrap(:vector.T(Expected) found)
+                    else
+                        let fresh = vector.new(:Expected)
+                        vector.append(:NamedExpected expected tuple let name = name let expected = fresh end)
+                        fresh
+                    end
+                end
+
+            let recordExpectedInterface = fun(importer: String name: String iface: String): Ok
+                if stringOp.length(iface) > 0 then
+                    (* Modules are keyed by their canonical names, ignoring case
+                     * as mangling does (docs/modules.md section 2.3) *)
+                    let norm = paths.lower(name)
+                    vector.append(:Expected expectedOf(norm) tuple let importer = importer let interfaceName =
+                        iface end)
+                    let existing = manifestOf(norm)
+                    if maybe.isSome(:manifest.ModuleManifest existing)
+                        andif maybe.isSome(:String maybe.unwrap(:manifest.ModuleManifest existing).interfaceName) then
+                        let actual = maybe.unwrap(:String maybe.unwrap(:manifest.ModuleManifest existing).interfaceName)
+                        if not(eq(actual iface)) then fail(:Ok conformanceError(importer name iface actual)) end
+                        log(eng "VERIFY INTERFACE" quoted(name) <> " implements " <> quoted(actual) <> ", satisfies "
+                            <> quoted(iface) <> " (from " <> importer <> ")")
+                    end
+                end
+            let verifyModuleInterface = fun(key: String actual: maybe.T(String)): Ok
+                if maybe.isSome(:String actual) andif {stringOp.length(maybe.unwrap(:String actual)) > 0} then
+                    let iface = maybe.unwrap(:String actual)
+                    let reqs = expectedOf(key)
+                    for i = 0 upto {vector.length(:Expected reqs) - 1} do
+                        let r = vector.get(:Expected reqs i)
+                        if not(eq(iface r.interfaceName)) then
+                            fail(:Ok conformanceError(r.importer key r.interfaceName iface))
+                        end
+                        log(eng "VERIFY INTERFACE" quoted(key) <> " implements " <> quoted(iface) <> ", satisfies "
+                            <> quoted(r.interfaceName) <> " (from " <> r.importer <> ")")
+                    end
+                end
+            let enqueueImports = fun(name: String imported: Array(manifest.ImportedModuleRef)): Ok
+                for i = 0 upto {extent imported - 1} do
+                    let dep = imported[i]
+                    recordExpectedInterface(name dep.name dep.interfaceName)
+                    let norm = paths.lower(dep.name)
+                    if not(contains(discovered dep.name)) andif not(contains(discovered norm)) then
+                        if stringOp.length(dep.source) > 0 then
+                            vector.append(:String sourceNames dep.name)
+                            vector.append(:String sourceFiles dep.source)
+                        end
+                        vector.append(:String discovered dep.name)
+                        vector.append(:String discovered norm)
+                        log(eng "ENQUEUE MODULE" quoted(dep.name) <> " (from " <> name <> " import)")
+                        vector.append(:String queue dep.name)
+                    end
+                end
+            let recordedSource = fun(name: String): maybe.T(String)
+                begin
+                    let var found = maybe.none(:String)
+                    for i = 0 upto {vector.length(:String sourceNames) - 1} do
+                        if maybe.isNone(:String found) andif eq(vector.get(:String sourceNames i) name) then
+                            found := maybe.some(:String vector.get(:String sourceFiles i))
+                        end
+                    end
+                    found
+                end
+
+            enqueueImports(importer roots)
+
+            while head < vector.length(:String queue) do
+                let item = vector.get(:String queue head)
+                head := head + 1
+                log(eng "POP QUEUE" quoted(item) <> " (kind=module)")
+
+                (* The importer records the source it found; a manifest without
+                 * one names its modules only by their canonical names *)
+                let recorded = recordedSource(item)
+                let src = if maybe.isSome(:String recorded) andif system.isFile(maybe.unwrap(:String recorded)) then
+                    recorded
+                else
+                    paths.findCanonicalModuleSource(item search programDir)
+                end
+                let canon = if maybe.isSome(:String src) then
+                    graph.canonicalName(graph.resolveFile(eng.resolver maybe.unwrap(:String src)
+                        graph.rootsOf(search programDir)))
+                else
+                    paths.lower(item)
+                end
+                let targetDir = graph.unitArtifactDir(eng.buildDir canon)
+                system.makeDirectory(targetDir)
+                let artifactStem = graph.artifactStem(canon)
+                let var a = graph.moduleArtifacts(eng.buildDir canon)
+                let var reason = maybe.none(:String)
+                if maybe.isNone(:String src) then
+                    (* A binary distribution: a prebuilt object (and .qm)
+                     * without source is up to date *)
+                    let var foundObject = maybe.none(:String)
+                    for i = 0 upto {extent eng.extraObjects - 1} do
+                        let s = paths.lower(stem(eng.extraObjects[i]))
+                        if maybe.isNone(:String foundObject)
+                            andif {eq(s artifactStem) orif eq(s paths.lower(item))} then
+                            foundObject := maybe.some(:String eng.extraObjects[i])
+                        end
+                    end
+                    if maybe.isNone(:String foundObject) then
+                        foundObject := paths.resolveObjectFile(item programDir search)
+                    end
+                    if maybe.isSome(:String foundObject) andif system.isFile(maybe.unwrap(:String foundObject)) then
+                        let o = maybe.unwrap(:String foundObject)
+                        let qmCandidate = stringOp.getSub(o 0 {stringOp.length(o) - stringOp.length(paths.baseName(o))})
+                            <> stem(o) <> ".qm"
+                        a := tuple let qm = if system.isFile(qmCandidate) then qmCandidate else a.qm end
+                            let c = a.c let o = o end
+                        if system.isFile(qmCandidate) andif not(abi.hasCurrentAbi(qmCandidate)) then
+                            fail(:Ok abi.incompatibleArtifactMessage(qmCandidate))
+                        end
+                    elsif not(system.isFile(a.qm) andif system.isFile(a.o)) then
+                        fail(:Ok "Undefined module " <> quoted(item)
+                            <> ": cannot find source file or precompiled object in "
+                            <> pyList(search))
+                    end
+                else
+                    reason := unitStaleness(eng maybe.unwrap(:String src) a programDir)
+                    if maybe.isSome(:String reason) then
+                        (* Fresh artifacts next to the source (from a standalone
+                         * compilation) are used like those in the build
+                         * directory (docs/build-process.md section 5.2) *)
+                        let beside = graph.artifactsIn(paths.parent(maybe.unwrap(:String src)) artifactStem)
+                        if not(eq(beside.qm a.qm))
+                            andif maybe.isNone(:String unitStaleness(eng maybe.unwrap(:String src) beside programDir))
+                            andif eq(maybe.unwrapOr(:String manifestName(beside.qm) "") canon)
+                            andif maybe.isSome(:String manifestName(beside.qm)) then
+                            a := beside
+                            reason := maybe.none(:String)
+                        end
+                    end
+                end
+
+                let m = if maybe.isSome(:String reason) then
+                    log(eng "EVAL STALENESS" quoted(item) <> " -> STALE (" <> maybe.unwrap(:String reason) <> ")")
+                    log(eng "COMPILE MODULE" quoted(item))
+                    typecheck.install()
+                    moduleCompiler.compileModuleFile(maybe.unwrap(:String src) maybe.some(:String targetDir) search
+                        eng.compiler
+                        eng.nogc eng.extraCFlags maybe.some(:String eng.buildDir) programDir
+                        maybe.some(:graph.Resolver eng.resolver))
+                    manifest.readQm(a.qm)
+                else
+                    log(eng "EVAL STALENESS" quoted(item) <> " -> UP TO DATE")
+                    if system.isFile(a.qm) then manifest.readQm(a.qm) else maybe.none(:manifest.ModuleManifest) end
+                end
+
+                if maybe.isSome(:manifest.ModuleManifest m) then
+                    let mf = maybe.unwrap(:manifest.ModuleManifest m)
+                    setManifest(paths.lower(item) mf)
+                    verifyModuleInterface(paths.lower(item) mf.interfaceName)
+                    if {stringOp.length(mf.name) > 0} andif not(eq(paths.lower(mf.name) paths.lower(item))) then
+                        setManifest(paths.lower(mf.name) mf)
+                        verifyModuleInterface(paths.lower(mf.name) mf.interfaceName)
+                    end
+                end
+                let imported = if maybe.isSome(:manifest.ModuleManifest m) then
+                    maybe.unwrap(:manifest.ModuleManifest m).importedModules
+                else
+                    array of :manifest.ImportedModuleRef end
+                end
+                if not(contains(linked a.o)) then vector.append(:String linked a.o) end
+                let deps = array of(extent imported "")
+                for i = 0 upto {extent imported - 1} do deps[i] := imported[i].name end
+                vector.append(:Edges moduleGraph tuple let node = item let neighbors = deps end)
+                enqueueImports(item imported)
+            end
+
+            log(eng "QUEUE EMPTY" "transitive closure verified (" <> conv.int(vector.length(:String linked))
+                <> " units)")
+
+            (* Every expected interface, across the transitive closure *)
+            for i = 0 upto {vector.length(:NamedExpected expected) - 1} do
+                let entry = vector.get(:NamedExpected expected i)
+                let mf = manifestOf(entry.name)
+                if maybe.isSome(:manifest.ModuleManifest mf)
+                    andif maybe.isSome(:String maybe.unwrap(:manifest.ModuleManifest mf).interfaceName) then
+                    let actual = maybe.unwrap(:String maybe.unwrap(:manifest.ModuleManifest mf).interfaceName)
+                    for j = 0 upto {vector.length(:Expected entry.expected) - 1} do
+                        let r = vector.get(:Expected entry.expected j)
+                        if not(eq(actual r.interfaceName)) then
+                            fail(:Ok conformanceError(r.importer entry.name r.interfaceName actual))
+                        end
+                    end
+                end
+            end
+
+            let cycle = detectModuleCycle(moduleGraph)
+            if maybe.isSome(:Array(String) cycle) then
+                fail(:Ok "Cyclic module dependency detected: " <> strutil.join(" -> "
+                    vector.fromArray(:String maybe.unwrap(:Array(String) cycle))))
+            end
+            vector.toArray(:String linked)
+        end
+
+    let buildMain(eng: T mainFile: String output: maybe.T(String)): Ok =
+        begin
+            let main = paths.absolute(mainFile)
+            if not(system.isFile(main)) then fail(:Ok "Main routine file not found: " <> main) end
+            let target = if maybe.isSome(:String output) then paths.absolute(maybe.unwrap(:String output))
+                else mainArtifactBase(eng main) end
+            log(eng "BUILD START" "target=" <> main <> " mode=separate build_dir=" <> eng.buildDir)
+            let item = stem(main)
+            log(eng "QUEUE INIT" "enqueued main routine " <> quoted(item))
+            log(eng "POP QUEUE" quoted(item) <> " (kind=main)")
+            let a = mainArtifacts(eng main)
+            let reason = unitStaleness(eng main a maybe.some(:String paths.parent(main)))
+            let imported = if maybe.isSome(:String reason) then
+                log(eng "EVAL STALENESS" quoted(item) <> " -> STALE (" <> maybe.unwrap(:String reason) <> ")")
+                log(eng "COMPILE MAIN" quoted(item))
+                compileMainUnit(eng main)
+            else
+                log(eng "EVAL STALENESS" quoted(item) <> " -> UP TO DATE")
+                maybe.unwrap(:manifest.ModuleManifest manifest.readQm(a.qm)).importedModules
+            end
+            let objects = buildModules(eng imported item maybe.some(:String paths.parent(main)))
+            let n = extent eng.extraObjects
+            let linked = vector.new(:String)
+            for i = 0 upto {n - 1} do vector.append(:String linked objects[i]) end
+            vector.append(:String linked a.o)
+            for i = n upto {extent objects - 1} do vector.append(:String linked objects[i]) end
+            log(eng "HOST LINK" "linking " <> conv.int(vector.length(:String linked)) <> " objects into " <> target)
+            compilerRunner.linkObjects(vector.toArray(:String linked) target eng.nogc eng.compiler eng.extraCFlags)
+            log(eng "BUILD COMPLETE" "exit_code=0 binary=" <> target)
+        end
+end

@@ -28,4 +28,21 @@ export
     (* Compiles a C file to an object file *)
     compileCToObject(c: String o: String includePaths: Array(String) nogc: Bool compiler: maybe.T(String)
         extraFlags: Array(String)): Ok
+    (* The runtime's object files, compiled once and kept for every link
+     * (docs/testing.md section 5.2) under QUEST_RUNTIME_CACHE or the project's
+     * .build/runtime, by a key of what they are compiled from: the runtime's
+     * sources and headers, the compiler and its version, and the flags *)
+    runtimeObjects(compiler: String nogc: Bool extraFlags: Array(String)): Array(String)
+    (* Compiles a program's C, with the runtime and extraObjects, to the
+     * executable output *)
+    compileCSource(source: String output: String nogc: Bool compiler: maybe.T(String)
+        extraObjects: Array(String)): Ok
+    (* Links object files and the runtime's into the executable output *)
+    linkObjects(objects: Array(String) output: String nogc: Bool compiler: maybe.T(String)
+        extraFlags: Array(String)): Ok
+    (* A new empty file in the temporary directory, for an executable *)
+    temporaryBinary(): String
+    (* Runs an executable with arguments, in this process's environment and
+     * standard input: its exit status and output *)
+    runBinary(binary: String args: Array(String)): Tuple code: Int stdout: String stderr: String end
 end

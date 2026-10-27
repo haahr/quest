@@ -2,13 +2,19 @@
  *
  * bootstrap/python/quest/codegen/backend.py: what every backend does with a
  * unit before writing its code (docs/ir.md): the IR's passes after
- * lowering. *)
+ * lowering, and the modules a unit uses without importing them. *)
 
 interface Backend
 import
     questlang/ir/nodes : questlang/ir/Nodes
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
 export
     (* The unit, described: every pass run, each result verified when
      * QUEST_CHECK_IR=1 *)
     runPasses(unit: nodes.Unit): nodes.Unit
+    (* The modules (by canonical name and interface) a program's unit uses
+     * without importing them: standard library modules, which it links
+     * against too *)
+    Def ImplicitImport = Tuple canonicalPath: String interfacePath: String end
+    implicitImports(unit: nodes.Unit program: typedAst.Program): Array(ImplicitImport)
 end

@@ -3,11 +3,17 @@
 module compilerRunner : CompilerRunner
 import
     questlang/modules/paths : questlang/modules/Paths
+    questlang/codegen/sha256 : questlang/codegen/Sha256
     collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
     util/maybe : util/Maybe
+    util/hash : util/Hash
+    util/sort : util/Sort
     util/strutil : util/Strutil
     stringOp = string : StringOp
+    ascii : Ascii
     conv : Conv
+    writer : Writer
     system : System
 export
     let failure: Exception(String) = exception failure: String end
@@ -40,8 +46,20 @@ export
             maybe.unwrap(:String found)
         end
 
+    (* The compilers' versions, each found once (the bootstrap's lru_cache) *)
+    let versions = hashMap.new(:String :String stringOp.equal hash.string)
+
     let compilerVersion(compiler: String): String =
-        try system.run(array of compiler "--version" end).stdout when system.error then "" end
+        begin
+            let known = hashMap.get(:String :String versions compiler)
+            if maybe.isSome(:String known) then
+                maybe.unwrap(:String known)
+            else
+                let version = try system.run(array of compiler "--version" end).stdout when system.error then "" end
+                hashMap.insert(:String :String versions compiler version)
+                version
+            end
+        end
 
     (* Flags that keep tracebacks' frames (docs/exceptions.md section 5.3): GCC
      * moves the cold paths of functions, which hold the calls that raise, into
@@ -173,5 +191,182 @@ export
                 end
             end
             ok
+        end
+
+    (* The runtime's C files, which every program is linked with *)
+    let runtimeSources = array of "quest_runtime.c" "quest_serialization.c" "quest_readline.c" end
+
+    let isLinkerFlag(flag: String): Bool = strutil.startsWith(flag "-L") orif strutil.startsWith(flag "-l")
+
+    (* flags without the linker's (-L and -l), which compiling alone does not
+     * use *)
+    let compileFlagsOf(flags: Array(String)): vector.T(String) =
+        begin
+            let kept = vector.new(:String)
+            for i = 0 upto {extent flags - 1} do if not(isLinkerFlag(flags[i])) then
+                vector.append(:String kept flags[i]) end end
+            kept
+        end
+
+    let appendAll(v: vector.T(String) xs: Array(String)): Ok =
+        for i = 0 upto {extent xs - 1} do vector.append(:String v xs[i]) end
+
+    let nonEmpty(s: String): maybe.T(String) = if stringOp.length(s) > 0 then
+        maybe.some(:String s) else maybe.none(:String) end
+
+    let runtimeCacheDir(): String =
+        begin
+            let configured = system.getEnv("QUEST_RUNTIME_CACHE")
+            if stringOp.length(configured) > 0 then
+                configured else paths.join(paths.parent(runtimeDir()) ".build/runtime") end
+        end
+
+    (* A new empty file (or with directory, a directory), by mktemp *)
+    let temporary(directory: Bool template: String): String =
+        begin
+            let args = if directory then array of "mktemp" "-d" template end else array of "mktemp" template end end
+            let r = system.run(args)
+            if not(r.code is 0) then raise failure with "mktemp failed: " <> r.stderr end end
+            strutil.strip(r.stdout)
+        end
+
+    let removeQuietly(file: String): Ok =
+        if system.fileExists(file) then try system.removeFile(file) when system.error then ok end end
+
+    let runtimeObjects(compiler: String nogc: Bool extraFlags: Array(String)): Array(String) =
+        begin
+            let dir = runtimeDir()
+            let flags = vector.new(:String)
+            appendAll(flags baseCFlags(compiler))
+            vector.append(:String flags "-I" <> dir)
+            let libraries = vector.new(:String)
+            appendAll(libraries gcFlags(nogc))
+            appendAll(libraries readlineFlags())
+            appendAll(libraries extraFlags)
+            appendAll(flags vector.toArray(:String compileFlagsOf(vector.toArray(:String libraries))))
+            (* The key of what the objects are compiled from: the compiler, its
+             * version, the flags, and the runtime's sources and headers *)
+            let key = vector.new(:String)
+            let nul = stringOp.new(1 ascii.char(0))
+            vector.append(:String key compiler <> nul)
+            vector.append(:String key compilerVersion(compiler) <> nul)
+            for i = 0 upto {vector.length(:String flags) - 1} do
+                vector.append(:String key vector.get(:String flags i) <> nul) end
+            let entries = system.listDirectory(dir)
+            let sources = vector.new(:String)
+            for i = 0 upto {extent entries - 1} do
+                if strutil.endsWith(entries[i] ".c") orif strutil.endsWith(entries[i] ".h") then
+                    vector.append(:String sources entries[i])
+                end
+            end
+            sort.sortVector(:String sources sort.stringCompare)
+            for i = 0 upto {vector.length(:String sources) - 1} do
+                let name = vector.get(:String sources i)
+                vector.append(:String key
+                    name <> nul <> maybe.unwrapOr(:String paths.readText(paths.join(dir name)) "") <> nul)
+            end
+            let cache = paths.join(runtimeCacheDir() stringOp.getSub(sha256.hexDigest(strutil.join("" key)) 0 24))
+            let objects = array of(extent runtimeSources "")
+            for i = 0 upto {extent runtimeSources - 1} do
+                let name = runtimeSources[i]
+                let o = paths.join(cache stringOp.getSub(name 0 {stringOp.length(name) - 2}) <> ".o")
+                if not(system.fileExists(o)) then
+                    (* Written to a temporary file and renamed, so that builds
+                     * linking at once never see half of one *)
+                    system.makeDirectory(cache)
+                    let temp = temporary(false paths.join(cache "tmpXXXXXXXX"))
+                    let command = vector.new(:String)
+                    vector.append(:String command compiler)
+                    appendAll(command vector.toArray(:String flags))
+                    vector.append(:String command "-c")
+                    vector.append(:String command paths.join(dir name))
+                    vector.append(:String command "-o")
+                    vector.append(:String command temp)
+                    let r = system.run(vector.toArray(:String command))
+                    if not(r.code is 0) then
+                        removeQuietly(temp)
+                        raise failure with
+                            "C runtime compilation failed with exit code " <> pyInt(r.code) <> ":\n"
+                            <> "Command: " <> strutil.join(" " command) <> "\n" <> r.stderr
+                        end
+                    end
+                    system.renameFile(temp o)
+                end
+                objects[i] := o
+            end
+            objects
+        end
+
+    let compileCSource(source: String output: String nogc: Bool compiler: maybe.T(String)
+        extraObjects: Array(String)): Ok =
+        begin
+            let cc = if maybe.isSome(:String compiler) then maybe.unwrap(:String compiler) else findCCompiler() end
+            let dir = runtimeDir()
+            (* The source, in a temporary file of its own *)
+            let tempDir = temporary(true paths.join(maybe.unwrapOr(:String nonEmpty(system.getEnv("TMPDIR")) "/tmp")
+                "questXXXXXXXX"))
+            let cFile = paths.join(tempDir "program.c")
+            let w = writer.file(cFile)
+            writer.putString(w source)
+            writer.close(w)
+            let command = vector.new(:String)
+            vector.append(:String command cc)
+            appendAll(command baseCFlags(cc))
+            vector.append(:String command "-I" <> dir)
+            vector.append(:String command cFile)
+            appendAll(command runtimeObjects(cc nogc array of :String end))
+            appendAll(command extraObjects)
+            vector.append(:String command "-o")
+            vector.append(:String command output)
+            appendAll(command gcFlags(nogc))
+            appendAll(command readlineFlags())
+            let r = system.run(vector.toArray(:String command))
+            removeQuietly(cFile)
+            system.removeDirectory(tempDir)
+            if not(r.code is 0) then
+                raise failure with
+                    "C compilation failed with exit code " <> pyInt(r.code) <> ":\n"
+                    <> "Command: " <> strutil.join(" " command) <> "\n" <> r.stderr
+                end
+            end
+            ok
+        end
+
+    let linkObjects(objects: Array(String) output: String nogc: Bool compiler: maybe.T(String)
+        extraFlags: Array(String)): Ok =
+        begin
+            system.makeDirectory(paths.parent(paths.absolute(output)))
+            let cc = if maybe.isSome(:String compiler) then maybe.unwrap(:String compiler) else findCCompiler() end
+            let command = vector.new(:String)
+            vector.append(:String command cc)
+            appendAll(command runtimeObjects(cc nogc extraFlags))
+            appendAll(command objects)
+            vector.append(:String command "-o")
+            vector.append(:String command output)
+            (* The libraries' linker flags; the runtime's objects were compiled
+             * with the rest *)
+            let gc = gcFlags(nogc)
+            for i = 0 upto {extent gc - 1} do if isLinkerFlag(gc[i]) then vector.append(:String command gc[i]) end end
+            let rl = readlineFlags()
+            for i = 0 upto {extent rl - 1} do if isLinkerFlag(rl[i]) then vector.append(:String command rl[i]) end end
+            appendAll(command extraFlags)
+            let r = system.run(vector.toArray(:String command))
+            if not(r.code is 0) then
+                raise failure with
+                    "Linker failed with exit code " <> pyInt(r.code) <> ":\n"
+                    <> "Command: " <> strutil.join(" " command) <> "\n" <> r.stderr
+                end
+            end
+            ok
+        end
+
+    let temporaryBinary(): String =
+        temporary(false paths.join(maybe.unwrapOr(:String nonEmpty(system.getEnv("TMPDIR")) "/tmp") "questXXXXXXXX"))
+
+    let runBinary(binary: String args: Array(String)): Tuple code: Int stdout: String stderr: String end =
+        begin
+            let command = array of({extent args + 1} binary)
+            for i = 0 upto {extent args - 1} do command[i + 1] := args[i] end
+            system.run(command)
         end
 end

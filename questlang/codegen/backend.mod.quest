@@ -8,7 +8,12 @@ import
     questlang/ir/represent : questlang/ir/Represent
     questlang/ir/describe : questlang/ir/Describe
     questlang/ir/verify : questlang/ir/Verify
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    collections/vector : collections/Vector
+    stringOp = string : StringOp
 export
+    Let ImplicitImport = Tuple canonicalPath: String interfacePath: String end
+
     let checked(unit: nodes.Unit): nodes.Unit =
         begin
             if verify.irChecksEnabled() then verify.checkUnit(unit) end
@@ -18,4 +23,32 @@ export
     let runPasses(unit: nodes.Unit): nodes.Unit =
         checked(describe.describeUnit(checked(represent.representUnit(checked(closure.closureConvertUnit(
             checked(specialize.specializeUnit(unit))))))))
+
+    let implicitImports(unit: nodes.Unit program: typedAst.Program): Array(ImplicitImport) =
+        begin
+            let imported = vector.new(:String)
+            for i = 0 upto {extent program.phrases - 1} do
+                case program.phrases[i].form
+                    when bindImport with x then
+                        for j = 0 upto {extent x.items - 1} do
+                            let names = x.items[j].names
+                            for k = 0 upto {extent names - 1} do vector.append(:String imported names[k]) end
+                        end
+                    else ok
+                end
+            end
+            let found = vector.new(:ImplicitImport)
+            for i = 0 upto {extent unit.imports - 1} do
+                let imp = unit.imports[i]
+                let var known = false
+                for j = 0 upto {vector.length(:String imported) - 1} do
+                    if stringOp.equal(vector.get(:String imported j) imp.name) then known := true end
+                end
+                if not(known) then
+                    vector.append(:ImplicitImport found
+                        tuple let canonicalPath = imp.canonicalPath let interfacePath = imp.interfacePath end)
+                end
+            end
+            vector.toArray(:ImplicitImport found)
+        end
 end

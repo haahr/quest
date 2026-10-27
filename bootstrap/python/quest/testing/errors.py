@@ -248,9 +248,13 @@ def execute_phase(
 ) -> tuple[int, str, str]:
     """Executes the compiler driver up to the specified phase with an optional
     timeout: the bootstrap's, or the one driver_command runs (the self-hosted
-    driver, which has no build directory)."""
+    driver, which has a build directory only for the C phases)."""
     if driver_command is not None:
         command = [*driver_command, "--stop-after", phase_name]
+        # The units of programs compiled to C are built and reused there, apart
+        # from the bootstrap's artifacts
+        if phase_name in ("codegen_c", "run_c_compiled") and build_dir is not None:
+            command.extend(["--build-dir", str(build_dir / "self-hosted-units")])
     else:
         driver_script = root_dir / "bootstrap" / "python" / "quest_driver.py"
         command = [

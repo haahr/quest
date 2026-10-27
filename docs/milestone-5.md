@@ -153,12 +153,25 @@ its interface in a typecheck-only run, as the bootstrap does; it names a module'
 bootstrap's runs do, except in a unit file's compile (the environment's `compilingUnit`), which names them as their
 bindings do (`T`), as the bootstrap's elaborating the module's source does, so that headers' layout tags agree.
 
-### Step 3: The build engine and compiled runs
+### Step 3: The build engine and compiled runs (done)
 
 Port `build/engine` and `logger` and the rest of `codegen/c/compilerrunner` (the runtime's cached objects, linking,
 running a binary); the driver's `-o`, `-v`, `--build-dir`, `-I`, `--whole-program`, `--print-result`,
 `--expected-exit`, and `--stop-after run_c_compiled`, with its run-time error diagnostics. The self-hosted suite adds
 `run_c_compiled`. This step rebases onto the REPL plan's driver commits on main.
+
+The C phases compile the program as the bootstrap's do: its modules through their interfaces (C mode), with the
+build directory's artifacts, searched first. The self-hosted suite's C phases give the driver a build directory of
+its own under each worker's (`self-hosted-units`), apart from the bootstrap's artifacts, which it would otherwise find
+fresh and reuse; the questlang tests are built once, as the bootstrap's are, by the self-hosted driver. All of
+`run_c_compiled`'s run goldens and run-time error tests pass but `questlang/repl_sessions`, which times out compiled
+as it does with the bootstrap.
+
+Divergences: a Quest program can neither read the clock nor append to a file, so the logger runs `sh` (with `date`)
+to append each entry to the log; temporary files are made by `mktemp`, the program's C in a temporary directory of
+its own; a compiled program runs without the bootstrap's 10-second timeout; an error that is not a compiler error
+(a C compiler's failure, say) is reported at the program's first character, without the bootstrap's Python
+traceback; and `--dump-after` is ported for the C phases only.
 
 ### Step 4: Self-hosting
 

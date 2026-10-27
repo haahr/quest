@@ -1,0 +1,67 @@
+(* Quest Self-Hosted Compiler: The Build Engine Interface
+ *
+ * bootstrap/python/quest/build/engine.py: builds a program by separate
+ * compilation (docs/build-process.md). Each unit (the main program, or a module
+ * it imports, directly or through other modules) is compiled on its own to C
+ * and to an object file, against the interfaces of the modules it imports, and
+ * only the units whose artifacts are stale are compiled again. buildMain
+ * compiles the main program, learns from the manifest (.qm) its compilation
+ * writes which modules it imports, and buildModules brings them up to date
+ * from a first-in, first-out queue, each once, queueing the modules each one's
+ * manifest lists. Then every module's interface is checked to conform to the
+ * interface each importer expects of it, the modules are checked not to import
+ * one another in a cycle, and the objects are linked: the engine's extra
+ * objects, the main program's, and the modules', in the order they were
+ * queued. Each step is logged (build/logger) to build.log in the build
+ * directory, and with verbose, to standard error. *)
+
+interface Engine
+import
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/manifest : questlang/modules/Manifest
+    questlang/build/logger : questlang/build/Logger
+    passes = questlang/codegen/backend : questlang/codegen/Backend
+    util/maybe : util/Maybe
+export
+    (* A build that failed: a cycle, an interface that does not conform, a
+     * missing module, or a file that is not a program, with the bootstrap's
+     * message *)
+    buildError: Exception(String)
+
+    Def T = Tuple
+        buildDir: String
+        (* Resolves the imports of every unit the build compiles or checks,
+         * each once (docs/build-process.md section 2.1) *)
+        resolver: graph.Resolver
+        includePaths: Array(String)
+        extraObjects: Array(String)
+        logger: logger.T
+        nogc: Bool
+        compiler: maybe.T(String)
+        extraCFlags: Array(String)
+    end
+    (* An engine building in buildDir (.build if none), which it makes *)
+    new(buildDir: maybe.T(String) includePaths: Array(String) verbose: Bool nogc: Bool extraObjects: Array(String)
+        resolver: maybe.T(graph.Resolver)): T
+
+    (* A program's import item: its interface path and module paths, as written
+     * or else its names and interface name, and its names *)
+    Def ImportRef = Tuple interfacePath: String names: Array(String) modulePaths: Array(String) end
+    (* The modules a compiled C unit links against, with the interfaces it
+     * expects of them: the modules it imports, then those it uses without
+     * importing them (implicit, by canonical name and interface name), each
+     * resolved from currentDir by the resolver *)
+    unitModuleRefs(imports: Array(ImportRef) implicit: Array(passes.ImplicitImport)
+        currentDir: maybe.T(String) includePaths: Array(String) programDir: maybe.T(String) res: graph.Resolver)
+        : Array(manifest.ImportedModuleRef)
+
+    (* The objects that link the modules importer imports (roots, with the
+     * interfaces it expects of them) and the modules they import, after
+     * compiling those that are stale: the engine's extra objects first, then
+     * one per module in queue order *)
+    buildModules(eng: T roots: Array(manifest.ImportedModuleRef) importer: String programDir: maybe.T(String))
+        : Array(String)
+    (* Builds the program in mainFile and links it to output (else to its
+     * artifacts' base in the build directory) *)
+    buildMain(eng: T mainFile: String output: maybe.T(String)): Ok
+end

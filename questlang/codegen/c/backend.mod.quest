@@ -5,12 +5,23 @@ import
     questlang/common/location : questlang/common/Location
     questlang/types/env : questlang/types/Env
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/lower : questlang/ir/Lower
     questlang/ir/verify : questlang/ir/Verify
     passes = questlang/codegen/backend : questlang/codegen/Backend
     questlang/codegen/c/printer : questlang/codegen/c/Printer
     util/maybe : util/Maybe
 export
+    let programToC(program: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult:
+        Bool)
+        : Tuple c: String unit: nodes.Unit end =
+        begin
+            let lowered = lower.lowerProgram(program e sourceMap echo printResult)
+            if verify.irChecksEnabled() then verify.checkUnit(lowered) end
+            let unit = passes.runPasses(lowered)
+            tuple let c = printer.printC(unit maybe.none(:String)) let unit = unit end
+        end
+
     let moduleFileToC(m: typedAst.Binding e: env.T sourceMap: maybe.T(location.SourceMap)
         interfaceHeader: maybe.T(String)): String =
         begin

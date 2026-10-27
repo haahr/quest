@@ -436,4 +436,20 @@ export
         else
             canonicalizeModulePath(maybe.unwrap(:String file) includePaths programDir)
         end
+
+    let findCanonicalModuleSource(canonName: String includePaths: Array(String) programDir: maybe.T(String))
+        : maybe.T(String) =
+        begin
+            let relative = lower(canonName) <> ".mod.quest"
+            let roots = canonicalRoots(includePaths programDir)
+            let var found = maybe.none(:String)
+            for i = 0 upto {extent roots - 1} do
+                let candidate = join(roots[i] relative)
+                if maybe.isNone(:String found) andif system.isFile(candidate)
+                    andif stringOp.equal(canonicalizeModulePath(candidate includePaths programDir) canonName) then
+                    found := maybe.some(:String absolute(candidate))
+                end
+            end
+            found
+        end
 end
