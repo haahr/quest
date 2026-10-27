@@ -3,9 +3,13 @@
 This plan replaces the bootstrap as the compiler that builds new self-hosted compilers. Once Milestone 5 ends
 ([milestone-5.md](milestone-5.md)), the self-hosted compiler compiles itself to a fixed point. From then on, a
 *released* self-hosted compiler, a binary kept in `release/` (ignored by git), builds each new compiler from the
-working tree. The bootstrap becomes a fallback for making the first release, and later for nothing. Builds get faster:
-the bootstrap takes minutes to compile `questlang/driver/main`, and the self-hosted compiler takes seconds. It is also
-the step that lets `questlang/` and the bootstrap diverge, as the Milestone 5 decisions anticipate.
+working tree. The bootstrap becomes a fallback for making the first release, and later for nothing. It is also the
+step that lets `questlang/` and the bootstrap diverge, as the Milestone 5 decisions anticipate.
+
+The plan expected builds to get faster too. They do not, yet. The self-hosted compiler builds `questlang/driver/main`
+from nothing in about 8 minutes, against the bootstrap's 10, and a seeded build takes two stages. The release pays
+off in incremental builds (`./questc` rebuilds only stale units) and in freedom from the bootstrap. Parallel builds
+([tasklist.md](tasklist.md)) are what would make full builds fast.
 
 The decisions (2026-10-26): a release seeds in two stages, against its own `lib/` and `runtime/` (§2); releases are
 cut by hand; one previous release is kept; and the plan is carried out after Milestone 5.
@@ -29,11 +33,18 @@ release/                  (in .gitignore)
 - **The release carries its own `lib/` and `runtime/`** (`home/`, run as its `QUEST_HOME`). The binary was compiled
   against them, and the C it generates is for their ABI. So the working tree's runtime can change, ABI version
   included, without breaking the seed. Copying the snapshot is cheap: both are small.
-- **Cutting a release** (`./tools/release`, or `run_tests.py --release`):
-  1. Run the self-hosting check (`run_tests.py --self-hosting`, §3).
-  2. Run the self-hosted suite with stage 2.
-  3. If both pass, write the new release into `release/new/`, then rename: `current` to `previous`, and `new` to
-     `current`. The renames are atomic, so an interrupted release never leaves a half-written `current`.
+- **Cutting a release** (`tools/release`, which takes about half an hour):
+  1. Check that the tree is clean and HEAD is on `origin/main`.
+  2. Run the self-hosting check and the self-hosted suite with stage 2 (`run_tests.py --self-hosting`, §3), building
+     in `.build/release-check` (`--check-dir`).
+  3. If both pass, write the new release into `release/new/`: stage 2 as `questc`, `git archive` of the commit's
+     `lib/` and `runtime/` as `home/`, and `release.json`.
+  4. Check it as `--verify` does: its digest, and a small program it builds against its own `home/` and runs.
+  5. Rename `current` to `previous` and `new` to `current`. The renames are atomic, so an interrupted release never
+     leaves a half-written `current`.
+
+  `tools/release --verify` checks the current release, `--rollback` swaps `previous` and `current`, and `--show`
+  describes both. A release lives in the checkout that cut it, so each checkout or worktree has its own.
 - **When to cut one:** by hand, when the working tree needs something the current release cannot compile (§2), and
   otherwise when convenient, for example at the end of each milestone. A release is never cut automatically by a push.
 
@@ -50,9 +61,15 @@ Stage 2 is the new compiler. Each stage has its own build directory, and the eng
 - **`./questc`** checks that the release exists and that its `questc` has the sha256 its `release.json` records.
   Then it brings stages 1 and 2 up to date (when anything under `questlang/`, `lib/`, or `runtime/` is newer than
   stage 2) and runs stage 2. With no release, it says how to make one and falls back to the bootstrap seed
-  (`QUESTC_SEED=bootstrap` forces that).
-- **The runner's `--self-hosted`** builds the driver it tests the same way: from the release when there is one,
-  else from the bootstrap. `--seed bootstrap|release` chooses.
+  (`QUESTC_SEED=bootstrap` forces that, and also watches `bootstrap/`). It records the seed that built its stages
+  (`.build/questc/seed`) and starts over when the seed changes. A release's `home/` carries its commit's times, so
+  artifacts built against one release could look fresh against the next one's older sources.
+- **The release finds the tree's `questlang/` through `-I`,** because its `QUEST_HOME` is its own `home/`, which
+  holds only `lib/` and `runtime/`.
+- **The runner's `--self-hosted`** builds the driver it tests from the bootstrap by default, and from the release
+  with `--seed release`. The plan had the release as the default. But the runner builds from nothing every time, where
+  the bootstrap's single build is quicker than the release's two, and the goldens are the bootstrap's anyway while it
+  is kept in step.
 - **The one rule this imposes:** `questlang/` must be compilable by the current release against the release's own
   `lib/`. Using a new language feature, a new `lib/` function, or a new runtime primitive in `questlang/` takes two
   commits: one that adds the feature, then a release, then one that uses it. While the bootstrap is maintained, it
@@ -60,8 +77,10 @@ Stage 2 is the new compiler. Each stage has its own build directory, and the eng
 
 ## 3. Checking
 
-- **The self-hosting check** (`run_tests.py --self-hosting`) starts from the seed:
-  1. The seed builds stage 1, stage 1 builds stage 2, and stage 2 builds stage 3.
+- **The self-hosting check** (`run_tests.py --self-hosting`, with `--seed release` to start from the release) starts
+  from the seed:
+  1. The seed builds stage 1, stage 1 builds stage 2, and stage 2 builds stage 3. With the release as the seed, the
+     bootstrap's build of the driver runs alongside stage 1, for the comparison in the next step.
   2. Stage 3's artifacts must equal stage 2's (the fixed point). Stage 2's must equal the bootstrap's only while the
      two compilers are kept in step.
   3. The self-hosted suite runs with stage 2.
@@ -71,10 +90,10 @@ Stage 2 is the new compiler. Each stage has its own build directory, and the eng
 
 ## 4. Steps
 
-1. **`release/` and `tools/release`:** cutting, verifying, and rolling back (`tools/release --rollback` swaps
-   `previous` and `current`); `.gitignore` gains `/release/`.
-2. **Seeding from a release:** `./questc` and the runner's `--self-hosted` build stages 1 and 2 from the release
-   (`--seed`, `QUESTC_SEED`); `--self-hosting` starts from the seed.
+1. **`release/` and `tools/release` (done):** cutting, verifying, and rolling back (`tools/release --rollback` swaps
+   `previous` and `current`); `.gitignore` gains `/release/`. The first release was c21ae1aa.
+2. **Seeding from a release (done):** `./questc` and the runner's `--self-hosted` build stages 1 and 2 from the
+   release (`--seed`, `QUESTC_SEED`); `--self-hosting` starts from the seed.
 3. **Documentation:** build-process.md, testing.md, and compiler-organization.md describe the release, the stages,
    and the rule of §2. instructions.md says when to cut a release.
 

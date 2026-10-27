@@ -15,6 +15,7 @@ import argparse
 import concurrent.futures
 import difflib
 import hashlib
+import json
 import os
 import queue
 import re
@@ -545,21 +546,57 @@ def build_self_hosted_driver(python_executable: str, build_dir: Path) -> Path:
     return binary
 
 
-def build_driver_with(driver: Path, build_dir: Path, binary: Path) -> float:
+def build_driver_with(driver: Path, build_dir: Path, binary: Path, home: Path = ROOT_DIR) -> float:
     """Compiles the self-hosted driver with the compiled driver `driver`, as
-    -o does, into binary, its units' artifacts in build_dir. Returns the time
-    the build took, in seconds."""
+    -o does, into binary, its units' artifacts in build_dir, against the lib/
+    and runtime/ in home (a release's own, or the tree's). Returns the time the
+    build took, in seconds."""
     environment = os.environ.copy()
-    environment["QUEST_HOME"] = str(ROOT_DIR)
+    environment["QUEST_HOME"] = str(home)
+    # Against a release's home, the tree's questlang/ is found through -I
+    include = ["-I", str(ROOT_DIR)] if home != ROOT_DIR else []
     start = time.perf_counter()
     process = subprocess.run(
-        [str(driver), "--build-dir", str(build_dir), "-o", str(binary), str(SELF_HOSTED_DRIVER)],
+        [str(driver), *include, "--build-dir", str(build_dir), "-o", str(binary), str(SELF_HOSTED_DRIVER)],
         capture_output=True, encoding=BYTE_ENCODING, env=environment, cwd=ROOT_DIR,
     )
     if process.returncode != 0:
         sys.exit(f"{driver} failed to compile {SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)}:\n"
                  f"{process.stdout}{process.stderr}")
     return time.perf_counter() - start
+
+
+# The current release of the self-hosted compiler (docs/release-compiler.md)
+RELEASE_DIR = ROOT_DIR / "release" / "current"
+
+
+def current_release() -> Path:
+    """The current release's compiler, after checking that it is the binary
+    its release.json describes."""
+    binary = RELEASE_DIR / "questc"
+    description = RELEASE_DIR / "release.json"
+    if not binary.is_file() or not description.is_file():
+        sys.exit("There is no release in release/current; make one with tools/release, or use --seed bootstrap")
+    recorded = json.loads(description.read_text(encoding="utf-8"))["sha256"]
+    if hashlib.sha256(binary.read_bytes()).hexdigest() != recorded:
+        sys.exit("release/current/questc is not the binary its release.json describes")
+    return binary
+
+
+def build_seeded_driver(build_dir: Path) -> Path:
+    """Compiles the self-hosted driver from the current release in two stages
+    (docs/release-compiler.md section 2), in build_dir/seeded: the release
+    builds stage 1 against its own lib/ and runtime/, and stage 1 builds stage 2
+    against the tree's. Returns stage 2."""
+    release = current_release()
+    seeded = build_dir / "seeded"
+    stage1 = seeded / "stage1" / "questlang-driver"
+    stage2 = seeded / "stage2" / "questlang-driver"
+    print("  stage 1 (by the release)...")
+    print(f"    {build_driver_with(release, seeded / 'stage1' / 'build', stage1, RELEASE_DIR / 'home'):.1f}s")
+    print("  stage 2 (by stage 1)...")
+    print(f"    {build_driver_with(stage1, seeded / 'stage2' / 'build', stage2):.1f}s")
+    return stage2
 
 
 # The artifacts a build directory holds for each unit, compared by
@@ -605,17 +642,31 @@ def compare_build_dirs(expected_dir: Path, actual_dir: Path, what: str) -> list[
     return problems
 
 
-def check_self_hosting(python_executable: str, build_dir: Path) -> Path:
+def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "bootstrap") -> Path:
     """Builds the three stages of the self-hosted compiler (docs/milestone-5.md
-    section 2.3) and checks the fixed point: stage 1 (the bootstrap's build of
-    the self-hosted driver) writes the bootstrap's artifacts for every unit of
-    the driver, and stage 2 (stage 1's build) stage 1's. Stage 3, stage 2's
-    build, must be stage 2's binary, up to the C compiler's own nondeterminism.
-    Returns stage 2, which the self-hosted suite then runs."""
-    print(f"Compiling stage 1 ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)}, by the bootstrap)...")
-    stage1 = build_self_hosted_driver(python_executable, build_dir)
+    section 2.3) and checks the fixed point: stage 1 (the seed's build of the
+    self-hosted driver) writes the bootstrap's artifacts for every unit of the
+    driver, and stage 2 (stage 1's build) stage 1's. Stage 3, stage 2's build,
+    must be stage 2's binary, up to the C compiler's own nondeterminism. With
+    the release as the seed (docs/release-compiler.md section 3), the release
+    builds stage 1 against its own lib/ and runtime/, and the bootstrap's build,
+    whose artifacts are compared, runs alongside it. Returns stage 2, which the
+    self-hosted suite then runs."""
     stages = build_dir / "self-hosting"
     shutil.rmtree(stages, ignore_errors=True)
+    if seed == "release":
+        release = current_release()
+        print(f"Compiling stage 1 ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)}, by the release), and the "
+              "bootstrap's build alongside it...")
+        stage1 = stages / "stage1" / "questlang-driver"
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            bootstrap = executor.submit(build_self_hosted_driver, python_executable, build_dir)
+            seconds = build_driver_with(release, stages / "stage1" / "build", stage1, RELEASE_DIR / "home")
+            bootstrap.result()
+        print(f"  {seconds:.1f}s")
+    else:
+        print(f"Compiling stage 1 ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)}, by the bootstrap)...")
+        stage1 = build_self_hosted_driver(python_executable, build_dir)
     stage2 = stages / "stage2" / "questlang-driver"
     stage3 = stages / "stage3" / "questlang-driver"
     print("Compiling stage 2 (by stage 1)...")
@@ -876,6 +927,13 @@ def main() -> int:
         help="Check that the self-hosted compiler compiles itself to a fixed point (stages 1 to 3), then run the "
         "self-hosted suite with stage 2.",
     )
+    arg_parser.add_argument(
+        "--seed",
+        choices=["bootstrap", "release"],
+        default="bootstrap",
+        help="What builds the self-hosted driver for --self-hosted and --self-hosting: the bootstrap (the default, "
+        "one build), or the current release in release/current (two stages, docs/release-compiler.md).",
+    )
 
     arg_parser.add_argument(
         "--build-dir",
@@ -922,11 +980,14 @@ def run_all_tests(
     pending_counts = {"pending": 0}
     if args.self_hosting:
         args.self_hosted = True
-        args.self_hosted_driver = str(check_self_hosting(python_executable, build_dir))
+        args.self_hosted_driver = str(check_self_hosting(python_executable, build_dir, args.seed))
     if args.self_hosted:
         phases_to_run = [phase for phase in phases_to_run if phase in SELF_HOSTED_PHASES]
         if args.self_hosted_driver:
             driver_command = [str(Path(args.self_hosted_driver).resolve())]
+        elif args.seed == "release":
+            print(f"Compiling the self-hosted driver ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)}), from the release:")
+            driver_command = [str(build_seeded_driver(build_dir))]
         else:
             print(f"Compiling the self-hosted driver ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)})...")
             driver_command = [str(build_self_hosted_driver(python_executable, build_dir))]
