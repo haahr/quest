@@ -87,10 +87,12 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
         (TypedApp :type Int
           :func (TypedTypeApp [Int] :type Fun(x: Int): Int
             :func (TypedVar 'id' :type All(A :: TYPE) Fun(x: A): A))
-          :args ((TypedInfix '+' :type Int
-                   :left (TypedDerefCell :type Int
-                           :target (TypedVar 'n' :type Var(Int)))
-                   :right (TypedInt 1 :type Int))))
+          :args (
+            (TypedInfix '+' :type Int
+              :left (TypedDerefCell :type Int
+                :target (TypedVar 'n' :type Var(Int)))
+              :right (TypedInt 1 :type Int))
+          ))
 
     The tree has two readers: the interpreter, which evaluates it, and lowering,
     which translates it into the compiler's intermediate representation, from
