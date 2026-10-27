@@ -10,7 +10,10 @@
  * phrase's); `-e PROGRAM` runs a program given as a string. The arguments after
  * FILE are the program's, as are those after a `--` (which is how `-e` gets
  * any). The codegen_c phase prints the program's C (with --print-result, a C
- * program that prints its last phrase's result, as compiled runs do).
+ * program that prints its last phrase's result, as compiled runs do). A unit
+ * file given without --stop-after is compiled alone: an interface file to its
+ * .qi and C header, under --build-dir, else beside -o, else beside the file
+ * (-c, which says so, is optional for a unit file).
  * run_tests.py --self-hosted compiles it and checks it against the
  * bootstrap's goldens (docs/milestone-2.md and docs/milestone-3.md, section
  * 3). *)
@@ -31,6 +34,12 @@ import
     questlang/typechecker/typecheck : questlang/typechecker/Typecheck
     questlang/modules/paths : questlang/modules/Paths
     questlang/modules/stdlib : questlang/modules/Stdlib
+    questlang/modules/units : questlang/modules/Units
+    questlang/modules/loader : questlang/modules/Loader
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/moduleCompiler : questlang/modules/ModuleCompiler
+    questlang/codegen/c/headers : questlang/codegen/c/Headers
+    questlang/codegen/c/compilerRunner : questlang/codegen/c/CompilerRunner
     questlang/values/model : questlang/values/Model
     questlang/interpreter/builtins : questlang/interpreter/Builtins
     questlang/interpreter/formatting : questlang/interpreter/Formatting
@@ -69,7 +78,8 @@ let usage(message: String): Ok =
         writer.putString(writer.err "main: " <> message <> "\n")
         writer.putString(writer.err
             "usage: main [--stop-after tokenize|parse|desugar|typecheck|ir_STAGE|run_ir_STAGE|interpret|codegen_c] "
-            <> "[--show-offsets] [--echo] [--print-result] [--expected-exit N] "
+            <> "[--show-offsets] [--echo] [--print-result] [--expected-exit N] [-c] [-I DIR] [-o FILE] "
+            <> "[--build-dir DIR] "
             <> "(FILE [ARG...] | -e PROGRAM [-- ARG...])\n")
         system.sysexit(2)
     end;
@@ -79,6 +89,10 @@ let usage(message: String): Ok =
 let options =
     begin
         let var stopAfter = "interpret"
+        let var stopGiven = false
+        let var buildDir = maybe.none(:String)
+        let var output = maybe.none(:String)
+        let includePaths = vector.new(:String)
         let var file = ""
         let var code = maybe.none(:String)
         let var showOffsets = false
@@ -90,7 +104,19 @@ let options =
             let arg = system.args[i]
             if {stringOp.equal(arg "--stop-after")} andif {{i + 1} < extent system.args} then
                 stopAfter := system.args[i + 1]
+                stopGiven := true
                 i := i + 2
+            elsif {stringOp.equal(arg "--build-dir")} andif {{i + 1} < extent system.args} then
+                buildDir := maybe.some(:String system.args[i + 1])
+                i := i + 2
+            elsif {stringOp.equal(arg "-o")} andif {{i + 1} < extent system.args} then
+                output := maybe.some(:String system.args[i + 1])
+                i := i + 2
+            elsif {stringOp.equal(arg "-I")} andif {{i + 1} < extent system.args} then
+                vector.append(:String includePaths system.args[i + 1])
+                i := i + 2
+            elsif stringOp.equal(arg "-c") then
+                i := i + 1
             elsif {stringOp.equal(arg "--expected-exit")} andif {{i + 1} < extent system.args} then
                 (* What a compiled program's exit status must be; the
                  * interpreter's is the program's own *)
@@ -128,6 +154,10 @@ let options =
             let showOffsets = showOffsets
             let echo = echo
             let printResult = printResult
+            let stopGiven = stopGiven
+            let buildDir = buildDir
+            let output = output
+            let includePaths = vector.toArray(:String includePaths)
             let programArgs = vector.toArray(:String programArgs)
         end
     end;
@@ -302,6 +332,45 @@ let interpret(program: typedAst.Program e: env.T sm: location.SourceMap bag: dia
         end
     end;
 
+(* Compiles a unit file alone, as the bootstrap's compile_unit_file does *)
+let compileUnitFile(): Ok =
+    begin
+        let bag = diagbag.new()
+        let sm = location.newSourceMap(options.file maybe.unwrapOr(:String paths.readText(options.file) ""))
+        stdlib.install()
+        typecheck.install()
+        let includes = array of(extent options.includePaths "")
+        for i = 0 upto {extent options.includePaths - 1} do includes[i] := paths.absolute(options.includePaths[i]) end
+        let outputDir = if maybe.isSome(:String options.output) then
+            maybe.some(:String paths.parent(paths.absolute(maybe.unwrap(:String options.output))))
+        else
+            maybe.none(:String)
+        end
+        try
+            case units.unitKind(options.file)
+                when interfaceUnit then
+                    if maybe.isSome(:String outputDir) then system.makeDirectory(maybe.unwrap(:String outputDir)) end
+                    headers.compileInterfaceWithHeader(paths.absolute(options.file) outputDir includes options.buildDir
+                        maybe.none(:String))
+                    ok
+                when moduleUnit then
+                    if maybe.isSome(:String outputDir) then system.makeDirectory(maybe.unwrap(:String outputDir)) end
+                    moduleCompiler.compileModuleFile(paths.absolute(options.file) outputDir includes maybe.none(:String)
+                        false vector.toArray(:String vector.new(:String)) options.buildDir maybe.none(:String)
+                        maybe.none(:graph.Resolver))
+                    ok
+                else
+                    diagbag.add(bag diagnostics.error("'" <> options.file <> "' is a program, not a unit file"
+                        location.span("" ~1 ~1)))
+            end
+        when diagnostics.compilerError with err then
+            diagbag.add(bag diagnostics.errorDiagnostic(err options.file))
+        when compilerRunner.failure with m then
+            diagbag.add(bag diagnostics.error(m location.span("" ~1 ~1)))
+        end
+        finish(bag sm)
+    end;
+
 let run(): Ok =
     begin
         let source = if maybe.isSome(:String options.code) then maybe.unwrap(:String options.code) else
@@ -357,4 +426,7 @@ let run(): Ok =
         finish(bag sm)
     end;
 
-run();
+case units.unitKind(options.file)
+    when programUnit then run()
+    else if options.stopGiven orif maybe.isSome(:String options.code) then run() else compileUnitFile() end
+end;

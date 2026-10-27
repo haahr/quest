@@ -1,0 +1,28 @@
+(* Quest Self-Hosted Compiler: The Artifact Contract Interface
+ *
+ * bootstrap/python/quest/config/abi.py: the artifact contract (ABI) version
+ * recorded in every .qi, .qm, and generated header. Artifacts are reused only
+ * when they record the running compiler's version (docs/build-process.md
+ * section 5.2). The version is the bootstrap's, which tests/python checks. *)
+
+interface Abi
+import
+    util/maybe : util/Maybe
+export
+    abiVersion: Int
+    (* The compiler that wrote an artifact: informational, for diagnostics
+     * only *)
+    producer: String
+    (* The first line of every generated interface header *)
+    headerStamp: String
+
+    (* The ABI version a .qi or .qm file records, if it records one and can be
+     * read *)
+    recordedAbi(artifact: String): maybe.T(Int)
+    hasCurrentAbi(artifact: String): Bool
+    (* Whether a .qi or .qm file records source as the file it was built
+     * from *)
+    builtFrom(artifact: String source: String): Bool
+    (* Why an artifact of another ABI version cannot be used *)
+    incompatibleArtifactMessage(artifact: String): String
+end

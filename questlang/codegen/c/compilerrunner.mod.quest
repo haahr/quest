@@ -1,0 +1,177 @@
+(* Quest Self-Hosted Compiler: The C Compiler Runner Implementation *)
+
+module compilerRunner : CompilerRunner
+import
+    questlang/modules/paths : questlang/modules/Paths
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+    system : System
+export
+    let failure: Exception(String) = exception failure: String end
+
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+    let strings(xs: vector.T(String)): Array(String) = vector.toArray(:String xs)
+    (* An integer as Python writes it (conv.int writes negative ones with ~) *)
+    let pyInt(n: Int): String = if n < 0 then "-" <> conv.int(~1 * n) else conv.int(n) end
+
+    (* The file name is found as on PATH (Python's shutil.which) *)
+    let which(name: String): maybe.T(String) =
+        begin
+            let dirs = strutil.split(system.getEnv("PATH") ":")
+            let var found = maybe.none(:String)
+            for i = 0 upto {vector.length(:String dirs) - 1} do
+                let d = vector.get(:String dirs i)
+                if maybe.isNone(:String found) andif {stringOp.length(d) > 0} then
+                    let candidate = paths.join(d name)
+                    if system.isFile(candidate) then found := maybe.some(:String candidate) end
+                end
+            end
+            found
+        end
+
+    let findCCompiler(): String =
+        begin
+            let clang = which("clang")
+            let found = if maybe.isSome(:String clang) then clang else which("gcc") end
+            if maybe.isNone(:String found) then raise failure with "No C compiler (clang or gcc) found in PATH" end end
+            maybe.unwrap(:String found)
+        end
+
+    let compilerVersion(compiler: String): String =
+        try system.run(array of compiler "--version" end).stdout when system.error then "" end
+
+    (* Flags that keep tracebacks' frames (docs/exceptions.md section 5.3): GCC
+     * moves the cold paths of functions, which hold the calls that raise, into
+     * separate sections that tracebacks cannot attribute to the functions *)
+    let tracebackFlags(compiler: String): vector.T(String) =
+        begin
+            let flags = vector.new(:String)
+            if strutil.contains(compilerVersion(compiler) "Free Software Foundation") then
+                vector.append(:String flags "-fno-reorder-blocks-and-partition")
+            end
+            flags
+        end
+
+    let runtimeDir(): String =
+        begin
+            let d = paths.join(paths.projectDir() "runtime")
+            if not(system.isDirectory(d)) then raise failure with "Runtime directory not found at " <> d end end
+            d
+        end
+
+    let baseCFlags(compiler: String): Array(String) =
+        strings(vector.concat(:String
+            vector.fromArray(:String array of "-std=c99" "-pedantic-errors" "-Wno-overlength-strings" "-Wall"
+                "-Wextra" "-O2" end)
+            tracebackFlags(compiler)))
+
+    let gcFlags(nogc: Bool): Array(String) =
+        if nogc then
+            array of "-DQUEST_NOGC" end
+        else
+            let prefixes = array of "/opt/homebrew/opt/bdw-gc" "/usr/local/opt/bdw-gc" "/usr" end
+            let var found = maybe.none(:Array(String))
+            for i = 0 upto {extent prefixes - 1} do
+                if maybe.isNone(:Array(String) found) then
+                    let inc = paths.join(prefixes[i] "include")
+                    let lib = paths.join(prefixes[i] "lib")
+                    if system.isFile(paths.join(inc "gc.h")) then
+                        let hasLib = system.isFile(paths.join(lib "libgc.dylib"))
+                            orif system.isFile(paths.join(lib "libgc.so"))
+                            orif system.isFile(paths.join(lib "libgc.a"))
+                        if hasLib then
+                            found := maybe.some(:Array(String) array of "-I" <> inc "-L" <> lib "-lgc" end) end
+                    end
+                end
+            end
+            (* Without it, no collection *)
+            maybe.unwrapOr(:Array(String) found array of "-DQUEST_NOGC" end)
+        end
+
+    (* Whether the system's headers (on macOS, the SDK's) include header *)
+    let sdkHas(header: String): Bool =
+        begin
+            let roots = vector.new(:String)
+            vector.append(:String roots "/usr/include")
+            let sdk = try strutil.strip(system.run(array of "xcrun" "--show-sdk-path" end).stdout) when system.error
+                then "" end
+            if stringOp.length(sdk) > 0 then vector.append(:String roots paths.join(sdk "usr/include")) end
+            let var found = false
+            for i = 0 upto {vector.length(:String roots) - 1} do
+                if system.fileExists(paths.join(vector.get(:String roots i) header)) then found := true end
+            end
+            found
+        end
+
+    let readlineFlags(): Array(String) =
+        begin
+            let choice = system.getEnv("QUEST_READLINE")
+            if not(eq(choice "")) andif not(eq(choice "gnu")) andif not(eq(choice "edit"))
+                andif not(eq(choice "none")) then
+                raise failure with "QUEST_READLINE must be gnu, edit, or none, not '" <> choice <> "'" end
+            end
+            let var found = maybe.none(:Array(String))
+            if eq(choice "") orif eq(choice "gnu") then
+                let prefixes = array of "/opt/homebrew/opt/readline" "/usr/local/opt/readline" "/usr" end
+                for i = 0 upto {extent prefixes - 1} do
+                    if maybe.isNone(:Array(String) found) then
+                        let inc = paths.join(prefixes[i] "include")
+                        let lib = paths.join(prefixes[i] "lib")
+                        (* GNU readline's own headers, which libedit's
+                         * compatibility headers do not have *)
+                        let hasLib = system.fileExists(paths.join(lib "libreadline.dylib"))
+                            orif system.fileExists(paths.join(lib "libreadline.so"))
+                            orif system.fileExists(paths.join(lib "libreadline.a"))
+                        if system.fileExists(paths.join(inc "readline/rlconf.h")) andif hasLib then
+                            found := maybe.some(:Array(String)
+                                array of "-I" <> inc "-DQUEST_GNU_READLINE" "-L" <> lib "-lreadline" end)
+                        end
+                    end
+                end
+                if maybe.isNone(:Array(String) found) andif eq(choice "gnu") then
+                    raise failure with "QUEST_READLINE=gnu, but GNU readline is not installed" end
+                end
+            end
+            if maybe.isNone(:Array(String) found) andif {eq(choice "") orif eq(choice "edit")} then
+                if sdkHas("readline/readline.h") then
+                    found := maybe.some(:Array(String) array of "-ledit" end)
+                elsif eq(choice "edit") then
+                    raise failure with "QUEST_READLINE=edit, but libedit's readline.h is not installed" end
+                end
+            end
+            maybe.unwrapOr(:Array(String) found array of "-DQUEST_NOREADLINE" end)
+        end
+
+    let compileCToObject(c: String o: String includePaths: Array(String) nogc: Bool compiler: maybe.T(String)
+        extraFlags: Array(String)): Ok =
+        begin
+            let cc = if maybe.isSome(:String compiler) then maybe.unwrap(:String compiler) else findCCompiler() end
+            let command = vector.new(:String)
+            vector.append(:String command cc)
+            let base = baseCFlags(cc)
+            for i = 0 upto {extent base - 1} do vector.append(:String command base[i]) end
+            vector.append(:String command "-I" <> runtimeDir())
+            for i = 0 upto {extent includePaths - 1} do vector.append(:String command "-I" <> includePaths[i]) end
+            let gc = gcFlags(nogc)
+            for i = 0 upto {extent gc - 1} do
+                if strutil.startsWith(gc[i] "-I")
+                    orif strutil.startsWith(gc[i] "-D") then vector.append(:String command gc[i]) end
+            end
+            for i = 0 upto {extent extraFlags - 1} do vector.append(:String command extraFlags[i]) end
+            vector.append(:String command "-c")
+            vector.append(:String command c)
+            vector.append(:String command "-o")
+            vector.append(:String command o)
+            let r = system.run(vector.toArray(:String command))
+            if not(r.code is 0) then
+                raise failure with
+                    "C object compilation failed with exit code " <> pyInt(r.code) <> ":\n"
+                    <> "Command: " <> strutil.join(" " command) <> "\n" <> r.stderr
+                end
+            end
+            ok
+        end
+end

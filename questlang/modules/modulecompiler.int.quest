@@ -1,0 +1,22 @@
+(* Quest Self-Hosted Compiler: The Module Compiler Interface
+ *
+ * bootstrap/python/quest/modules/module_compiler.py: compiles module files
+ * (.mod.quest) into C (<name>.mod.c, which includes its interface's header and
+ * defines the module's record, initializer, and exported functions), an
+ * object (<name>.o, by the host C compiler), and a manifest (<name>.qm). *)
+
+interface ModuleCompiler
+import
+    questlang/modules/graph : questlang/modules/Graph
+    util/maybe : util/Maybe
+export
+    Def ModuleCompileResult = Tuple c: String o: String qm: String end
+
+    (* Compiles a module file: its artifacts go in outputDir, else under
+     * buildDir, else beside it. programDir is the directory of the program the
+     * module is built for, which names units under no include root; res
+     * resolves its imports (a new resolver if none). *)
+    compileModuleFile(file: String outputDir: maybe.T(String) includePaths: Array(String) compiler: maybe.T(String)
+        nogc: Bool extraFlags: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
+        res: maybe.T(graph.Resolver)): ModuleCompileResult
+end

@@ -597,12 +597,16 @@ export
                     if maybe.isSome(:Type entry.value.definition) then
                         (* An external type is named as
                          * extractModuleExternalTypes names it, as the
-                         * bootstrap's typecheck-only runs, which type modules
-                         * with fresh artifacts through their interfaces, have
-                         * it (module.T) *)
+                         * bootstrap's runs, which type modules with fresh
+                         * artifacts through their interfaces, have it
+                         * (module.T); in a unit file's compile, as its binding
+                         * names it, as the bootstrap's elaborating the module's
+                         * source does *)
                         let def = maybe.unwrap(:Type entry.value.definition)
                         let named = case def.form
-                            when typeExternal with x then model.externalType(decl.name <> "." <> entry.key x.cType)
+                            when typeExternal with x then
+                                if not(e.compilingUnit) then
+                                    model.externalType(decl.name <> "." <> entry.key x.cType) else def end
                             else def
                         end
                         hashMap.insert(:String :Type concrete entry.key named)

@@ -1,0 +1,96 @@
+(* Quest Self-Hosted Compiler: The Interface Compiler Interface
+ *
+ * bootstrap/python/quest/modules/interface_compiler.py: compiles interface
+ * files (.int.quest) to .qi files, portable JSON documents in the dynamic
+ * format (values/dynamicjson) holding a shadow record of the interface: its
+ * imports, its types' kinds and definitions, and its values' types, as Quest
+ * type syntax. Importers load interfaces from them, and the build keeps them
+ * up to date (docs/build-process.md section 5). An interface's C header is the
+ * C backend's (codegen/c/headers). *)
+
+interface InterfaceCompiler
+import
+    questlang/common/location : questlang/common/Location
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/env : questlang/types/Env
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/manifest : questlang/modules/Manifest
+    util/maybe : util/Maybe
+export
+    (* The type of the shadow record a .qi holds *)
+    qiSchemaType: String
+
+    (* A type, and a kind, as Quest syntax for .qi metadata: alias references
+     * keep their names *)
+    formatTypeForQi(t: model.Type): String
+    formatKindForQi(k: model.Kind): String
+
+    (* A type written as Quest syntax (the bootstrap's parse_type_string, for
+     * fixed schema types), elaborated in an environment of its own *)
+    parseTypeString(text: String): model.Type
+
+    (* The signatures of an interface with each simultaneous type declaration
+     * replaced by its members, paired with the number of the recursive group
+     * each belongs to (counting from 1), or 0 if it is not in one *)
+    Def GroupedSignature = Tuple sig: ast.Signature group: Int end
+    typeSignatures(decl: ast.InterfaceDecl): Array(GroupedSignature)
+
+    (* An interface's .qi: its declaration and elaborated scope, the source it
+     * was compiled from, and the interfaces it depends on *)
+    compileInterfaceToQi(decl: ast.InterfaceDecl scope: symbols.Scope source: maybe.T(String)
+        deps: Array(paths.InterfaceDependency)): String
+
+    (* An interface compiled from its source: its declaration and elaborated
+     * scope, from which the C backend writes its header, and its .qi (written
+     * unless the compilation only elaborated it), with the search paths its
+     * imports were resolved from *)
+    Def CompiledInterface = Tuple
+        decl: ast.InterfaceDecl
+        scope: symbols.Scope
+        source: String
+        sourceMap: location.SourceMap
+        qiFile: String
+        includePaths: Array(String)
+    end
+    (* What a caller does with each interface compiled, including those
+     * compiled because it imports them (the C backend writes their headers) *)
+    Def OnCompiled = All(c: CompiledInterface) Ok
+
+    (* Compiles an interface file to its .qi (into outputDir, else under
+     * buildDir, else beside it), or with writeQi false only elaborates it. With
+     * a build directory, the interfaces it imports are brought up to date there
+     * first. onCompiled is called for each interface compiled, those it imports
+     * first. *)
+    compileInterfaceFile(file: String outputDir: maybe.T(String) includePaths: Array(String) buildDir: maybe.T(String)
+        programDir: maybe.T(String) writeQi: Bool onCompiled: maybe.T(OnCompiled) res: graph.Resolver)
+        : CompiledInterface
+
+    (* Where an interface's .qi is, as ensureResolvedInterfaceArtifacts found
+     * or rebuilt it: the .qi (which may not exist for a builtin), the
+     * interface's canonical name and source (none without one), and where its
+     * artifacts are rebuilt in the build directory, with the search paths *)
+    Def InterfaceArtifacts = Tuple
+        qiFile: String
+        canonicalName: String
+        source: maybe.T(String)
+        targetDir: String
+        searchPaths: Array(String)
+    end
+    (* Rebuilds the .qi of a resolved interface under buildDir if it is
+     * stale *)
+    ensureResolvedInterfaceArtifacts(resolved: graph.Resolved buildDir: String onCompiled: maybe.T(OnCompiled)
+        res: graph.Resolver): InterfaceArtifacts
+
+    (* The manifest entries for the interfaces a unit depends on through the
+     * interfaces it imports itself (direct): each records the directory its
+     * path was resolved from, so that the staleness checks resolve it again
+     * the same way; those it also imports directly are left out *)
+    indirectInterfaceRefs(direct: Array(manifest.ImportedInterfaceRef) includePaths: Array(String)
+        programDir: maybe.T(String) res: graph.Resolver): Array(manifest.ImportedInterfaceRef)
+
+    (* An interface's scope, loaded from its .qi *)
+    loadInterfaceFromQiFile(file: String e: env.T): symbols.Scope
+end

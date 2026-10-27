@@ -282,6 +282,14 @@ export
                     end))
         end
 
+    let install(): Ok =
+        begin
+            loader.install()
+            elaboration.hooks.elaborateBinding := fun(b: ast.Decl en: env.T loopDepth: Int): maybe.T(typedAst.Binding)
+                maybe.some(:typedAst.Binding bindings.elaborateBinding(newChecker(en loopDepth) b en loopDepth))
+            ok
+        end
+
     let elaborateProgram(program: ast.Program e: env.T): Result =
         begin
             let c = newChecker(e 0)

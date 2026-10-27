@@ -1,0 +1,31 @@
+(* Quest Self-Hosted Compiler: The C Compiler Runner Interface
+ *
+ * bootstrap/python/quest/codegen/c/compiler_runner.py: the host C compiler,
+ * found on PATH (clang, else gcc), and the flags C units are compiled with: the
+ * runtime's directory, the garbage collector's and the line editor's headers
+ * and libraries, and the warnings and optimization every C file gets. *)
+
+interface CompilerRunner
+import
+    util/maybe : util/Maybe
+export
+    (* A C compilation or link that failed, or a missing tool, with the
+     * bootstrap's message *)
+    failure: Exception(String)
+
+    (* The host C compiler: clang, else gcc, on PATH *)
+    findCCompiler(): String
+    (* The runtime's directory: runtime/ in the project directory *)
+    runtimeDir(): String
+    (* The flags every C file is compiled with *)
+    baseCFlags(compiler: String): Array(String)
+    (* Boehm GC's include and library flags, or -DQUEST_NOGC without it (or
+     * with nogc) *)
+    gcFlags(nogc: Bool): Array(String)
+    (* The line editor quest_readline.c is compiled with: GNU readline where it
+     * is installed, else libedit, else none (QUEST_READLINE chooses) *)
+    readlineFlags(): Array(String)
+    (* Compiles a C file to an object file *)
+    compileCToObject(c: String o: String includePaths: Array(String) nogc: Bool compiler: maybe.T(String)
+        extraFlags: Array(String)): Ok
+end

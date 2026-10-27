@@ -132,12 +132,26 @@ and `codegen/backend`'s passes are the driver's `lowered`, as they were for the 
 comes with the build engine. Divergences: the printer names keyword-named variables of the bootstrap's otherwise
 (`rec`, `out`, `record`, `inspect`), and keys its thunks by text rather than by tuples.
 
-### Step 2: Interfaces, manifests, and compiled modules
+### Step 2: Interfaces, manifests, and compiled modules (done)
 
-Port `codegen/c/headers`, `modules/interfacecompiler`, `manifest`, and `modulecompiler`; the driver's `-c` writes an
-interface's `.qi` and `.int.h` and a module's C, object, and `.qm`, and the loader reads an interface's `.qi` when it
-is fresh, as the bootstrap's does. The corpus comparison (§2.2) is added. (A module's object needs the C compiler, so
-this step ports the part of `compilerrunner` that compiles one C file; Step 3 ports the rest.)
+Port `config/abi`, `codegen/c/headers`, `modules/interfacecompiler`, `manifest`, and `modulecompiler`, with
+`codegen/backend` and `codegen/c/backend` (a module file's C) and the part of `codegen/c/compilerrunner` that compiles
+one C file (Step 3 ports the rest); the driver's `-c` writes an interface's `.qi` and `.int.h` and a module's C,
+object, and `.qm`, and the loader reads an interface's `.qi` when it is fresh, as the bootstrap's does. `graph` gains
+the artifacts' places and interfaces' dependencies, `paths` the `.qi` resolution and recorded dependencies, and the
+environment a build directory and C compilation, in which modules are known through their interfaces. The
+self-hosted suite's `codegen_c` phase checks the unit files: `self-hosted/abi_corpus` (the ABI corpus, regenerated
+by the driver, is the checked-in one: all 60 files) and `self-hosted/unit_artifacts` (each of `lib/`'s modules
+compiled alone by both compilers: the same C, `.qm`, `.qi`, and headers; all 23).
+
+Divergences: path strings and files' text are `common/files`, which `config/abi` shares with `paths` (Python's
+`pathlib`); a recorded source is compared with a source as normalized absolute paths, without resolving symbolic
+links; `values/json` gains `json.dumps(indent=2)`'s format for manifests; unit-file compiles install the module
+system's callbacks with a binding elaborator that stops at the first error (`typecheck.install`), as the
+bootstrap's registrations at import do. The self-hosted compiler doesn't type a module with fresh artifacts through
+its interface in a typecheck-only run, as the bootstrap does; it names a module's external types `module.T`, as the
+bootstrap's runs do, except in a unit file's compile (the environment's `compilingUnit`), which names them as their
+bindings do (`T`), as the bootstrap's elaborating the module's source does, so that headers' layout tags agree.
 
 ### Step 3: The build engine and compiled runs
 

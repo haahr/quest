@@ -1,0 +1,21 @@
+(* Quest Self-Hosted Compiler: Backend Implementation *)
+
+module backend : Backend
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/specialize : questlang/ir/Specialize
+    questlang/ir/closure : questlang/ir/Closure
+    questlang/ir/represent : questlang/ir/Represent
+    questlang/ir/describe : questlang/ir/Describe
+    questlang/ir/verify : questlang/ir/Verify
+export
+    let checked(unit: nodes.Unit): nodes.Unit =
+        begin
+            if verify.irChecksEnabled() then verify.checkUnit(unit) end
+            unit
+        end
+
+    let runPasses(unit: nodes.Unit): nodes.Unit =
+        checked(describe.describeUnit(checked(represent.representUnit(checked(closure.closureConvertUnit(
+            checked(specialize.specializeUnit(unit))))))))
+end

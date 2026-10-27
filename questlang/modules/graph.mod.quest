@@ -6,11 +6,16 @@ import
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/modules/units : questlang/modules/Units
     questlang/modules/paths : questlang/modules/Paths
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/syntax/ast : questlang/syntax/Ast
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
+    util/strutil : util/Strutil
     stringOp = string : StringOp
+    conv : Conv
     system : System
 export
     Let Roots = Tuple searchPaths: Array(String) programDir: maybe.T(String) questLib: String end
@@ -24,6 +29,7 @@ export
         fromDir: maybe.T(String)
         roots: Roots
         source: maybe.T(String)
+        prebuilt: maybe.T(String)
         var canonical: maybe.T(String)
         var ifaceName: maybe.T(String)
     end
@@ -35,8 +41,10 @@ export
             maybe.unwrap(:String r.canonical)
         else
             let name = if isInterface(r.kind) then
-                if maybe.isSome(:String r.source) then
-                    paths.canonicalizeModulePath(maybe.unwrap(:String r.source) r.roots.searchPaths r.roots.programDir)
+                (* Its unit file: its source, else its prebuilt .qi *)
+                let file = if maybe.isSome(:String r.source) then r.source else r.prebuilt end
+                if maybe.isSome(:String file) then
+                    paths.canonicalizeModulePath(maybe.unwrap(:String file) r.roots.searchPaths r.roots.programDir)
                 else
                     paths.lower(r.path)
                 end
@@ -69,9 +77,11 @@ export
             key
         end
 
-    let resolved(kind: units.UnitKind path: String fromDir: maybe.T(String) roots: Roots source: maybe.T(String)): Resolved =
+    let resolved(kind: units.UnitKind path: String fromDir: maybe.T(String) roots: Roots source: maybe.T(String)
+        prebuilt: maybe.T(String)): Resolved =
         tuple
             let kind = kind let path = path let fromDir = fromDir let roots = roots let source = source
+            let prebuilt = prebuilt
             let var canonical = maybe.none(:String) let var ifaceName = maybe.none(:String)
         end
 
@@ -89,18 +99,139 @@ export
 
     let resolveInterface(res: Resolver path: String fromDir: maybe.T(String) roots: Roots): Resolved =
         memoized(res keyOf("interface" path fromDir roots) fun(): Resolved
-            resolved(option interfaceUnit of units.UnitKind end path fromDir roots
-                paths.resolveInterfaceSourceFile(path fromDir roots.searchPaths)))
+            begin
+                let source = paths.resolveInterfaceSourceFile(path fromDir roots.searchPaths)
+                (* Without a source, the first .qi on the search path, whatever
+                 * its ABI version (loading it reports an incompatible one) *)
+                let prebuilt = if maybe.isNone(:String source) then
+                    paths.resolveInterfaceFile(path fromDir roots.searchPaths)
+                    else maybe.none(:String)
+                end
+                resolved(option interfaceUnit of units.UnitKind end path fromDir roots source prebuilt)
+            end)
 
     let resolveModule(res: Resolver path: String fromDir: maybe.T(String) roots: Roots): Resolved =
         memoized(res keyOf("module" path fromDir roots) fun(): Resolved
             resolved(option moduleUnit of units.UnitKind end path fromDir roots
-                paths.resolveModuleFile(path fromDir roots.searchPaths)))
+                paths.resolveModuleFile(path fromDir roots.searchPaths) maybe.none(:String)))
 
     let resolveFile(res: Resolver file: String roots: Roots): Resolved =
         memoized(res keyOf("file" file maybe.none(:String) roots) fun(): Resolved
             resolved(units.unitKind(file) paths.stripUnitSuffix(paths.baseName(file))
-                maybe.some(:String paths.parent(file)) roots maybe.some(:String file)))
+                maybe.some(:String paths.parent(file)) roots maybe.some(:String file) maybe.none(:String)))
+
+    let artifactName(r: Resolved): String =
+        if maybe.isNone(:String r.source) then paths.lower(r.path)
+        else paths.canonicalizeModulePath(maybe.unwrap(:String r.source) r.roots.searchPaths r.roots.programDir)
+        end
+
+    let freshInterfaceQi(r: Resolved): maybe.T(String) =
+        if maybe.isNone(:String r.source) then r.prebuilt
+        else paths.resolveInterfaceFile(r.path r.fromDir r.roots.searchPaths)
+        end
+
+    let interfaceSource(res: Resolver path: String fromDir: maybe.T(String) searchPaths: Array(String)):
+        maybe.T(String) =
+        resolveInterface(res path fromDir rootsOf(searchPaths maybe.none(:String))).source
+
+    (* The interface paths each interface source imports, by path and
+     * modification time *)
+    let importPathsMemo = hashMap.new(:String :Array(String) stringOp.equal hash.string)
+
+    let interfaceImportPaths(source: String): Array(String) =
+        if not(system.isFile(source)) then
+            vector.toArray(:String vector.new(:String))
+        else
+            let key = paths.absolute(source) <> "\n" <> conv.real(system.modifiedTime(source))
+            let found = hashMap.get(:String :Array(String) importPathsMemo key)
+            if maybe.isSome(:Array(String) found) then
+                maybe.unwrap(:Array(String) found)
+            else
+                let result = vector.new(:String)
+                (* A file that cannot be read or parsed imports nothing here;
+                 * compiling it reports why *)
+                try
+                    let text = paths.readText(source)
+                    if maybe.isSome(:String text) then
+                        let prog = units.parseUnit(location.newSourceMap(source maybe.unwrap(:String text)))
+                        if vector.length(:ast.Phrase prog.form.phrases) is 1 then
+                            case vector.get(:ast.Phrase prog.form.phrases 0).form
+                                when phraseInterface with x then
+                                    for i = 0 upto {vector.length(:ast.ImportItem x.iface.imports) - 1} do
+                                        let imp = vector.get(:ast.ImportItem x.iface.imports i)
+                                        vector.append(:String result
+                                            maybe.unwrapOr(:String imp.interfacePath imp.interfaceName))
+                                    end
+                                else ok
+                            end
+                        end
+                    end
+                when diagnostics.compilerError then
+                    ok
+                end
+                let imports = vector.toArray(:String result)
+                hashMap.insert(:String :Array(String) importPathsMemo key imports)
+                imports
+            end
+        end
+
+    let interfaceDependencies(res: Resolver source: String searchPaths: Array(String)):
+        Array(paths.InterfaceDependency) =
+        begin
+            let roots = rootsOf(searchPaths maybe.none(:String))
+            let deps = vector.new(:paths.InterfaceDependency)
+            let seen = hashMap.new(:String :Bool stringOp.equal hash.string)
+            let visited = hashMap.new(:String :Bool stringOp.equal hash.string)
+            hashMap.insert(:String :Bool visited paths.absolute(source) true)
+            let rec visit(importer: String): Ok =
+                begin
+                    let importerDir = paths.absolute(paths.parent(importer))
+                    let imported = interfaceImportPaths(importer)
+                    for i = 0 upto {extent imported - 1} do
+                        let path = imported[i]
+                        let key = importerDir <> "\n" <> path
+                        if not(hashMap.contains(:String :Bool seen key)) then
+                            hashMap.insert(:String :Bool seen key true)
+                            let depSource =
+                                resolveInterface(res path maybe.some(:String paths.parent(importer)) roots).source
+                            vector.append(:paths.InterfaceDependency deps tuple
+                                let path = path let dir = importerDir let source = maybe.unwrapOr(:String depSource "")
+                            end)
+                            if maybe.isSome(:String depSource)
+                                andif
+                                    not(hashMap.contains(:String :Bool visited
+                                    paths.absolute(maybe.unwrap(:String depSource)))) then
+                                hashMap.insert(:String :Bool visited paths.absolute(maybe.unwrap(:String depSource))
+                                    true)
+                                visit(maybe.unwrap(:String depSource))
+                            end
+                        end
+                    end
+                    ok
+                end
+            visit(source)
+            vector.toArray(:paths.InterfaceDependency deps)
+        end
+
+    let unitArtifactDir(buildDir: String canonicalName: String): String =
+        if strutil.contains(canonicalName "/") then paths.join(buildDir paths.parent(canonicalName)) else buildDir end
+
+    let artifactStem(canonicalName: String): String = paths.lower(paths.baseName(canonicalName))
+
+    let interfaceQiFile(buildDir: String canonicalName: String): String =
+        paths.join(unitArtifactDir(buildDir canonicalName) artifactStem(canonicalName) <> ".qi")
+
+    Let ModuleArtifacts = Tuple qm: String c: String o: String end
+
+    let artifactsIn(directory: String stem: String): ModuleArtifacts =
+        tuple
+            let qm = paths.join(directory stem <> ".qm")
+            let c = paths.join(directory stem <> ".mod.c")
+            let o = paths.join(directory stem <> ".o")
+        end
+
+    let moduleArtifacts(buildDir: String canonicalName: String): ModuleArtifacts =
+        artifactsIn(unitArtifactDir(buildDir canonicalName) artifactStem(canonicalName))
 
     Let Unit = Tuple
         kind: units.UnitKind

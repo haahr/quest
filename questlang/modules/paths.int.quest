@@ -60,6 +60,32 @@ export
     resolveInterfaceSourceFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String)
     resolveModuleFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String)
     resolveObjectFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String)
+    (* Interface name on the search path: a fresh .qi if there is one (one that
+     * records this compiler's ABI version and the source it was built from,
+     * is at least as new as that source, and whose dependencies have not
+     * changed), else its .int.quest. Without a source, the first .qi found,
+     * whatever its ABI version. *)
+    resolveInterfaceFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String)
+
+    (* An interface that an interface imports, directly or through the
+     * interfaces it imports: the path as written in the importing interface,
+     * the importing interface's directory, and the .int.quest it resolved to,
+     * or "" if none. A .qi records its interface's, so that it is stale when
+     * one of them changes or would resolve elsewhere. *)
+    Def InterfaceDependency = Tuple path: String dir: String source: String end
+    (* Whether found, a resolved source or none, is the file recorded ("" for
+     * none) *)
+    sameSource(found: maybe.T(String) recorded: String): Bool
+    (* The interface dependencies a .qi records, if it can be read and records
+     * them *)
+    recordedDependencies(qi: String): maybe.T(Array(InterfaceDependency))
+    (* How an interface's recorded dependencies changed since an artifact built
+     * from them, if they did: a path that would now resolve to another source
+     * (by resolveSource, from the directory recorded with it, then the include
+     * paths), or a source newer than the artifact *)
+    dependencyChange(deps: Array(InterfaceDependency) includePaths: Array(String) artifactTime: Real
+        resolveSource: All(path: String fromDir: maybe.T(String) includePaths: Array(String)) maybe.T(String))
+        : maybe.T(String)
     (* The directories that are searched, in order, as error messages list
      * them *)
     searchedDirs(currentDir: maybe.T(String) includePaths: Array(String)): Array(String)

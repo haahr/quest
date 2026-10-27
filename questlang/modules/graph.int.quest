@@ -1,16 +1,17 @@
 (* Quest Self-Hosted Compiler: The Unit Graph Interface
  *
- * bootstrap/python/quest/modules/graph.py, without artifacts (Milestone 5):
- * resolving an import path, from a directory with given search paths and
- * program directory, to the unit's file and its names, once per path; and the
- * units an environment has loaded, by kind and canonical name, with their
- * type-checked forms (docs/build-process.md section 2.1). *)
+ * bootstrap/python/quest/modules/graph.py: resolving an import path, from a
+ * directory with given search paths and program directory, to the unit's file
+ * and its names, once per path; the units an environment has loaded, by kind
+ * and canonical name, with their type-checked forms (docs/build-process.md
+ * section 2.1); and where units' artifacts are under a build directory. *)
 
 interface Graph
 import
     questlang/types/symbols : questlang/types/Symbols
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/modules/units : questlang/modules/Units
+    questlang/modules/paths : questlang/modules/Paths
     collections/hashMap : collections/HashMap
     util/maybe : util/Maybe
 export
@@ -20,13 +21,15 @@ export
     rootsOf(searchPaths: Array(String) programDir: maybe.T(String)): Roots
 
     (* An import path resolved from a directory: the unit it names (its source
-     * file, if it has one) *)
+     * file, if it has one, or for an interface without one, the first .qi on
+     * the search path, a binary distribution's) *)
     Def Resolved = Tuple
         kind: units.UnitKind
         path: String
         fromDir: maybe.T(String)
         roots: Roots
         source: maybe.T(String)
+        prebuilt: maybe.T(String)
         var canonical: maybe.T(String)
         var ifaceName: maybe.T(String)
     end
@@ -37,6 +40,14 @@ export
     canonicalName(r: Resolved): String
     (* An interface's canonical name as importers record it (util/Path) *)
     interfaceName(r: Resolved): String
+    (* The name an interface's artifacts are placed by under a build directory:
+     * its source's canonical name, or without a source the path imported,
+     * lowercased *)
+    artifactName(r: Resolved): String
+    (* The file an interface is loaded from when it has no artifacts of its own
+     * in a build directory: a fresh .qi on the search path if there is one,
+     * else its source (or prebuilt .qi) *)
+    freshInterfaceQi(r: Resolved): maybe.T(String)
 
     Def Resolver = Tuple memo: hashMap.T(String Resolved) end
     newResolver(): Resolver
@@ -44,6 +55,27 @@ export
     resolveModule(res: Resolver path: String fromDir: maybe.T(String) roots: Roots): Resolved
     (* The unit in a file given directly, rather than imported *)
     resolveFile(res: Resolver file: String roots: Roots): Resolved
+    (* The .int.quest an interface path imported from fromDir resolves to *)
+    interfaceSource(res: Resolver path: String fromDir: maybe.T(String) searchPaths: Array(String)): maybe.T(String)
+    (* The interfaces the interface in source depends on: those it imports,
+     * those they import, and so on, each import resolved as compiling the
+     * importing interface resolves it; every import path of every importing
+     * directory appears once, in depth-first order *)
+    interfaceDependencies(res: Resolver source: String searchPaths: Array(String)): Array(paths.InterfaceDependency)
+    (* The interface paths an interface source file imports, as written *)
+    interfaceImportPaths(source: String): Array(String)
+
+    (* Where the artifacts of the unit named canonicalName are under buildDir:
+     * its canonical path's directory, and their base name, without suffix *)
+    unitArtifactDir(buildDir: String canonicalName: String): String
+    artifactStem(canonicalName: String): String
+    (* The .qi of the interface named canonicalName under buildDir *)
+    interfaceQiFile(buildDir: String canonicalName: String): String
+    (* A module's artifacts in one directory: its manifest, C translation, and
+     * object *)
+    Def ModuleArtifacts = Tuple qm: String c: String o: String end
+    artifactsIn(directory: String stem: String): ModuleArtifacts
+    moduleArtifacts(buildDir: String canonicalName: String): ModuleArtifacts
 
     (* An interface or module an environment has loaded, with its type-checked
      * forms: an interface's scope, a module's typed module (a typedAst

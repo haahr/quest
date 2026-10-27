@@ -12,11 +12,13 @@ import
     questlang/modules/units : questlang/modules/Units
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/modules/interfaceCompiler : questlang/modules/InterfaceCompiler
     questlang/types/model : questlang/types/Model
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
+    system : System
     stringOp = string : StringOp
     conv : Conv
 export
@@ -82,11 +84,41 @@ export
             result
         end
 
+    (* Where an interface's artifacts are written and read: the build
+     * directory; or when compiling C without one, beside its source, under the
+     * search root that gives it its canonical name (adding the source's own
+     * directory as a root would change that name); else none, and the
+     * interface is elaborated from source *)
+    let resolvedArtifactRoot(e: env.T resolved: graph.Resolved): maybe.T(String) =
+        begin
+            let ancestor(path: String levels: Int): String =
+                begin
+                    let var d = path
+                    for i = 1 upto levels do d := paths.parent(d) end
+                    paths.absolute(d)
+                end
+            if maybe.isSome(:String e.buildDir) then
+                maybe.some(:String paths.absolute(maybe.unwrap(:String e.buildDir)))
+            elsif not(e.compilingC) then
+                maybe.none(:String)
+            elsif maybe.isSome(:String resolved.source) then
+                maybe.some(:String ancestor(maybe.unwrap(:String resolved.source)
+                    extent paths.parts(graph.canonicalName(resolved))))
+            elsif maybe.isSome(:String resolved.prebuilt) andif strutil.contains(resolved.path "/") then
+                maybe.some(:String ancestor(maybe.unwrap(:String resolved.prebuilt)
+                    extent paths.parts(paths.lower(resolved.path))))
+            else
+                maybe.some(:String paths.absolute(maybe.unwrapOr(:String e.currentDir ".")))
+            end
+        end
+
     let rec loadInterface(name: String e: env.T): Scope =
         begin
             let normName = paths.lower(name)
             let resolved = env.resolveInterface(e name)
-            let unitFile = resolved.source
+            let intSource = resolved.source
+            (* Its source, else its prebuilt .qi *)
+            let unitFile = if maybe.isSome(:String resolved.source) then resolved.source else resolved.prebuilt end
             let canon = graph.canonicalName(resolved)
             let register(scope: Scope): Scope =
                 begin
@@ -115,36 +147,78 @@ export
                             chain(e.loadingInterfaces canon) 0)
                     end
                 end
-                if maybe.isNone(:String unitFile) then
-                    diagnostics.fail(:Ok "Undefined interface '" <> name <> "': cannot find interface file for '" <> name <>
+                (* The .qi records the interface's imports as written in its
+                 * source, so they are resolved from there *)
+                let loadQi = fun(qi: String): Scope
+                    loading(:Scope e paths.parent(maybe.unwrapOr(:String intSource qi)) e.loadingInterfaces canon
+                        fun(): Scope
+                        env.withUnitNames(:Scope e fun(): Scope interfaceCompiler.loadInterfaceFromQiFile(qi e)))
+                (* With a build directory, or in C compilation, the interface is
+                 * loaded from its .qi, which is rebuilt first if stale
+                 * (docs/build-process.md section 5) *)
+                let root = resolvedArtifactRoot(e resolved)
+                let var fromArtifacts = maybe.none(:Scope)
+                if maybe.isSome(:String root) then
+                    let outRoot = maybe.unwrap(:String root)
+                    let qi = interfaceCompiler.ensureResolvedInterfaceArtifacts(resolved outRoot
+                        maybe.none(:interfaceCompiler.OnCompiled) e.units.resolver).qiFile
+                    if system.isFile(qi) then
+                        let var listed = false
+                        for i = 0 upto {vector.length(:String e.includePaths) - 1} do
+                            if stringOp.equal(vector.get(:String e.includePaths i) outRoot) then listed := true end
+                        end
+                        if not(listed) then
+                            let others = vector.copy(:String e.includePaths)
+                            vector.clear(:String e.includePaths)
+                            vector.append(:String e.includePaths outRoot)
+                            for i = 0 upto {vector.length(:String others) - 1} do
+                                vector.append(:String e.includePaths vector.get(:String others i))
+                            end
+                        end
+                        fromArtifacts := maybe.some(:Scope register(loadQi(qi)))
+                    end
+                end
+                (* A fresh .qi on the search path (from a standalone
+                 * compilation), else the source *)
+                let fresh = if maybe.isSome(:Scope fromArtifacts) then
+                    maybe.none(:String) else graph.freshInterfaceQi(resolved) end
+                if maybe.isSome(:Scope fromArtifacts) then
+                    maybe.unwrap(:Scope fromArtifacts)
+                elsif maybe.isNone(:String fresh) then
+                    diagnostics.fail(:Scope "Undefined interface '" <> name <> "': cannot find interface file for '"
+                        <> name <>
                         "' (looked for '" <> normName <> ".qi' or '" <> normName <> ".int.quest' in " <>
                         reprList(paths.searchedDirs(e.currentDir vector.toArray(:String e.includePaths))) <> ")" 0)
+                elsif strutil.endsWith(maybe.unwrap(:String fresh) ".qi") then
+                    register(loadQi(maybe.unwrap(:String fresh)))
+                else
+                    let file = maybe.unwrap(:String fresh)
+                    let sm = readUnit(file "interface")
+                    let scope = env.withUnitSource(:Scope e location.file(sm) fun(): Scope
+                        begin
+                            let prog = units.parseUnit(sm)
+                            let decl = case units.unitDeclaration(prog file)
+                                when interfaceDecl with d then d.decl
+                                else diagnostics.fail(:ast.InterfaceDecl "internal: not an interface" 0)
+                            end
+                            if not(stringOp.equal(paths.lower(decl.name) lastSegment(normName))) then
+                                diagnostics.fail(:Ok "Interface declared in '" <> paths.baseName(file)
+                                    <> "' has name '" <>
+                                    decl.name <> "', which does not match file name" 0)
+                            end
+                            let typed = loading(:typedAst.Binding e paths.parent(file) e.loadingInterfaces canon
+                                fun(): typedAst.Binding
+                                    env.withUnitNames(:typedAst.Binding e fun(): typedAst.Binding
+                                        elaboration.elaborateInterface(decl 0 e)))
+                            let s = case typed.form
+                                when bindInterface with x then x.scope
+                                else diagnostics.fail(:Scope "internal: not an interface" 0)
+                            end
+                            if not(stringOp.equal(decl.name name)) then env.registerInterface(e decl.name s) end
+                            s
+                        end)
+                    register(scope)
                 end
-                let file = maybe.unwrap(:String unitFile)
-                let sm = readUnit(file "interface")
-                let scope = env.withUnitSource(:Scope e location.file(sm) fun(): Scope
-                    begin
-                        let prog = units.parseUnit(sm)
-                        let decl = case units.unitDeclaration(prog file)
-                            when interfaceDecl with d then d.decl
-                            else diagnostics.fail(:ast.InterfaceDecl "internal: not an interface" 0)
-                        end
-                        if not(stringOp.equal(paths.lower(decl.name) lastSegment(normName))) then
-                            diagnostics.fail(:Ok "Interface declared in '" <> paths.baseName(file) <> "' has name '" <>
-                                decl.name <> "', which does not match file name" 0)
-                        end
-                        let typed = loading(:typedAst.Binding e paths.parent(file) e.loadingInterfaces canon
-                            fun(): typedAst.Binding
-                                env.withUnitNames(:typedAst.Binding e fun(): typedAst.Binding
-                                    elaboration.elaborateInterface(decl 0 e)))
-                        let s = case typed.form
-                            when bindInterface with x then x.scope
-                            else diagnostics.fail(:Scope "internal: not an interface" 0)
-                        end
-                        if not(stringOp.equal(decl.name name)) then env.registerInterface(e decl.name s) end
-                        s
-                    end)
-                register(scope)
             end
         end
 
@@ -192,6 +266,14 @@ export
                         typed
                     end
                 if u.precompiled then
+                    synthesizePrecompiled()
+                elsif e.compilingC andif {strutil.contains(canon "/") orif strutil.contains(name "/")}
+                    andif maybe.isSome(:String filePath) then
+                    (* Separate compilation of hierarchical modules: importers
+                     * are typed against the module's interface, and building
+                     * its object is left to the build (docs/build-process.md
+                     * section 7.3) *)
+                    u.precompiled := true
                     synthesizePrecompiled()
                 elsif maybe.isNone(:String filePath) then
                     (* Without a source, the module's canonical name is the name

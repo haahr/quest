@@ -1,0 +1,21 @@
+(* Quest Self-Hosted Compiler: The C Backend's Entry Points Implementation *)
+
+module backend : Backend
+import
+    questlang/common/location : questlang/common/Location
+    questlang/types/env : questlang/types/Env
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/ir/lower : questlang/ir/Lower
+    questlang/ir/verify : questlang/ir/Verify
+    passes = questlang/codegen/backend : questlang/codegen/Backend
+    questlang/codegen/c/printer : questlang/codegen/c/Printer
+    util/maybe : util/Maybe
+export
+    let moduleFileToC(m: typedAst.Binding e: env.T sourceMap: maybe.T(location.SourceMap)
+        interfaceHeader: maybe.T(String)): String =
+        begin
+            let unit = lower.lowerModuleFile(m e sourceMap)
+            if verify.irChecksEnabled() then verify.checkUnit(unit) end
+            printer.printC(passes.runPasses(unit) interfaceHeader)
+        end
+end

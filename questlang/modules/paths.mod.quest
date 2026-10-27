@@ -3,6 +3,9 @@
 module paths : Paths
 import
     questlang/common/location : questlang/common/Location
+    questlang/common/files : questlang/common/Files
+    questlang/config/abi : questlang/config/Abi
+    questlang/values/json : questlang/values/Json
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/common/diagbag : questlang/common/DiagBag
     questlang/syntax/tokens : questlang/syntax/Tokens
@@ -12,6 +15,7 @@ import
     util/strutil : util/Strutil
     util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
+    real : RealOp
     reader : Reader
     ascii : Ascii
     system : System
@@ -31,63 +35,11 @@ export
             b.toString()
         end
 
-    let isAbsolute(p: String): Bool = {stringOp.length(p) > 0} andif {stringOp.getChar(p 0) is '/'}
-
-    let join(a: String b: String): String =
-        if isAbsolute(b) orif {stringOp.length(a) is 0} then
-            b
-        elsif stringOp.getChar(a {stringOp.length(a) - 1}) is '/' then
-            a <> b
-        else
-            a <> "/" <> b
-        end
-
-    (* The components between separators, without empty ones *)
-    let components(p: String): vector.T(String) =
-        begin
-            let result = vector.new(:String)
-            let n = stringOp.length(p)
-            let var start = 0
-            for i = 0 upto n do
-                if {i is n} orif {stringOp.getChar(p i) is '/'} then
-                    if i > start then vector.append(:String result stringOp.getSub(p start {i - start})) end
-                    start := i + 1
-                end
-            end
-            result
-        end
-
-    let normalize(p: String): String =
-        begin
-            let absolute = isAbsolute(p)
-            let kept = vector.new(:String)
-            let cs = components(p)
-            for i = 0 upto {vector.length(:String cs) - 1} do
-                let c = vector.get(:String cs i)
-                if stringOp.equal(c ".") then
-                    ok
-                elsif stringOp.equal(c "..") then
-                    if {vector.length(:String kept) > 0} andif not(stringOp.equal(vector.last(:String kept) "..")) then
-                        vector.pop(:String kept)
-                        ok
-                    elsif not(absolute) then
-                        vector.append(:String kept c)
-                    end
-                else
-                    vector.append(:String kept c)
-                end
-            end
-            let b = stringBuilder.new()
-            if absolute then b.char('/') end
-            for i = 0 upto {vector.length(:String kept) - 1} do
-                if i > 0 then b.char('/') end
-                b.str(vector.get(:String kept i))
-            end
-            let s = b.toString()
-            if stringOp.length(s) is 0 then "." else s end
-        end
-
-    let absolute(p: String): String = normalize(if isAbsolute(p) then p else join(system.currentDirectory() p) end)
+    let isAbsolute(p: String): Bool = files.isAbsolute(p)
+    let join(a: String b: String): String = files.join(a b)
+    let components(p: String): vector.T(String) = files.components(p)
+    let normalize(p: String): String = files.normalize(p)
+    let absolute(p: String): String = files.absolute(p)
 
     let parent(p: String): String =
         begin
@@ -150,20 +102,7 @@ export
             maybe.unwrapOr(:String rel p)
         end
 
-    let readText(file: String): maybe.T(String) =
-        if not(system.isFile(file)) then
-            maybe.none(:String)
-        else
-            try
-                let r = reader.file(file)
-                let b = stringBuilder.new()
-                while reader.more(r) do b.char(reader.getChar(r)) end
-                reader.close(r)
-                maybe.some(:String b.toString())
-            when system.error then
-                maybe.none(:String)
-            end
-        end
+    let readText(file: String): maybe.T(String) = files.readText(file)
 
     let projectDir(): String =
         begin
@@ -260,6 +199,129 @@ export
         findFile(lower(name) <> ".mod.quest" currentDir includePaths)
     let resolveObjectFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String) =
         findFile(lower(name) <> ".o" currentDir includePaths)
+
+    Let InterfaceDependency = Tuple path: String dir: String source: String end
+
+    let sameSource(found: maybe.T(String) recorded: String): Bool =
+        if maybe.isNone(:String found) orif {stringOp.length(recorded) is 0} then
+            maybe.isNone(:String found) andif {stringOp.length(recorded) is 0}
+        else
+            stringOp.equal(absolute(maybe.unwrap(:String found)) absolute(recorded))
+        end
+
+    let recordedDependencies(qi: String): maybe.T(Array(InterfaceDependency)) =
+        begin
+            let none = maybe.none(:Array(InterfaceDependency))
+            let text = readText(qi)
+            if maybe.isNone(:String text) then
+                none
+            else
+                let member(v: json.Value name: String): maybe.T(json.Value) =
+                    case v when jObject with x then json.get(x.o name) else maybe.none(:json.Value) end
+                let str(v: maybe.T(json.Value)): maybe.T(String) =
+                    if maybe.isNone(:json.Value v) then maybe.none(:String)
+                    else case maybe.unwrap(:json.Value v) when jString with x then maybe.some(:String x.s)
+                        else maybe.none(:String) end
+                    end
+                try
+                    let value = member(json.parse(maybe.unwrap(:String text)) "value")
+                    let deps = if maybe.isSome(:json.Value value) then member(maybe.unwrap(:json.Value value) "deps")
+                        else maybe.none(:json.Value)
+                    end
+                    if maybe.isNone(:json.Value deps) then
+                        none
+                    else
+                        case maybe.unwrap(:json.Value deps)
+                            when jArray with x then
+                                let result = vector.new(:InterfaceDependency)
+                                let var valid = true
+                                for i = 0 upto {vector.length(:json.Value x.items) - 1} do
+                                    let d = vector.get(:json.Value x.items i)
+                                    let path = str(member(d "path"))
+                                    let dir = str(member(d "dir"))
+                                    let source = str(member(d "source"))
+                                    if maybe.isSome(:String path) andif maybe.isSome(:String dir)
+                                        andif maybe.isSome(:String source) then
+                                        vector.append(:InterfaceDependency result tuple
+                                            let path = maybe.unwrap(:String path) let dir = maybe.unwrap(:String dir)
+                                            let source = maybe.unwrap(:String source)
+                                        end)
+                                    else
+                                        valid := false
+                                    end
+                                end
+                                if valid then
+                                    maybe.some(:Array(InterfaceDependency) vector.toArray(:InterfaceDependency result))
+                                else none
+                                end
+                            else none
+                        end
+                    end
+                when json.error then
+                    none
+                end
+            end
+        end
+
+    let dependencyChange(deps: Array(InterfaceDependency) includePaths: Array(String) artifactTime: Real
+        resolveSource: All(path: String fromDir: maybe.T(String) includePaths: Array(String)) maybe.T(String))
+        : maybe.T(String) =
+        begin
+            let var change = maybe.none(:String)
+            for i = 0 upto {extent deps - 1} do
+                if maybe.isNone(:String change) then
+                    let dep = deps[i]
+                    let fromDir = if stringOp.length(dep.dir) > 0 then
+                        maybe.some(:String dep.dir) else maybe.none(:String) end
+                    let src = resolveSource(dep.path fromDir includePaths)
+                    let shown(s: String): String = if stringOp.length(s) > 0 then s else "no source" end
+                    if not(sameSource(src dep.source)) then
+                        change := maybe.some(:String "interface '" <> dep.path <> "' now resolves to "
+                            <> shown(maybe.unwrapOr(:String src "")) <> ", not " <> shown(dep.source))
+                    elsif maybe.isSome(:String src)
+                        andif real.greater(system.modifiedTime(maybe.unwrap(:String src)) artifactTime) then
+                        change := maybe.some(:String "imported interface " <> maybe.unwrap(:String src) <> " is newer")
+                    end
+                end
+            end
+            change
+        end
+
+    (* Whether a .qi records its interface's dependencies and none has changed
+     * since it was built *)
+    let dependenciesUnchanged(qi: String includePaths: Array(String)): Bool =
+        begin
+            let deps = recordedDependencies(qi)
+            maybe.isSome(:Array(InterfaceDependency) deps)
+                andif maybe.isNone(:String dependencyChange(maybe.unwrap(:Array(InterfaceDependency) deps) includePaths
+                    system.modifiedTime(qi) resolveInterfaceSourceFile))
+        end
+
+    let resolveInterfaceFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String) =
+        begin
+            let source = resolveInterfaceSourceFile(name currentDir includePaths)
+            let dirs = searchDirs(currentDir includePaths)
+            let var found = maybe.none(:String)
+            for i = 0 upto {vector.length(:String dirs) - 1} do
+                if maybe.isNone(:String found) then
+                    let candidate = join(vector.get(:String dirs i) lower(name) <> ".qi")
+                    if system.isFile(candidate) then
+                        if maybe.isNone(:String source) then
+                            found := maybe.some(:String absolute(candidate))
+                        else
+                            let src = maybe.unwrap(:String source)
+                            if abi.hasCurrentAbi(candidate)
+                                andif real.greaterEq(system.modifiedTime(candidate) system.modifiedTime(src))
+                                andif abi.builtFrom(candidate src)
+                                    andif dependenciesUnchanged(candidate includePaths) then
+                                found := maybe.some(:String absolute(candidate))
+                            end
+                        end
+                    end
+                end
+            end
+            if maybe.isSome(:String found) then found else source end
+        end
 
     let searchedDirs(currentDir: maybe.T(String) includePaths: Array(String)): Array(String) =
         begin

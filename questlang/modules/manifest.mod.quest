@@ -1,0 +1,226 @@
+(* Quest Self-Hosted Compiler: Module Manifests Implementation *)
+
+module manifest : Manifest
+import
+    questlang/common/files : questlang/common/Files
+    questlang/config/abi : questlang/config/Abi
+    questlang/values/json : questlang/values/Json
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    real : RealOp
+    writer : Writer
+    system : System
+export
+    Let ImportedModuleRef = Tuple name: String interfaceName: String source: String path: String end
+    Let ImportedInterfaceRef = Tuple name: String source: String mtime: Real path: String dir: String end
+    Let ModuleManifest = Tuple
+        name: String
+        interfaceName: maybe.T(String)
+        source: String
+        object: String
+        importedModules: Array(ImportedModuleRef)
+        importedInterfaces: Array(ImportedInterfaceRef)
+        abi: maybe.T(Int)
+        producer: maybe.T(String)
+    end
+
+    let newManifest(name: String interfaceName: maybe.T(String) source: String object: String
+        importedModules: Array(ImportedModuleRef) importedInterfaces: Array(ImportedInterfaceRef)): ModuleManifest =
+        begin
+            let version = abi.abiVersion
+            let compiler = abi.producer
+            tuple
+            let name = name let interfaceName = interfaceName let source = source let object = object
+            let importedModules = importedModules let importedInterfaces = importedInterfaces
+            let abi = maybe.some(:Int version) let producer = maybe.some(:String compiler)
+            end
+        end
+
+    let maybeString(s: maybe.T(String)): json.Value =
+        if maybe.isSome(:String s) then json.string(maybe.unwrap(:String s)) else json.null end
+
+    let writeQm(m: ModuleManifest file: String): Ok =
+        begin
+            let top = json.newObject()
+            json.put(top "abi" if maybe.isSome(:Int m.abi) then json.int(maybe.unwrap(:Int m.abi)) else json.null end)
+            json.put(top "producer" maybeString(m.producer))
+            json.put(top "name" json.string(m.name))
+            json.put(top "interface" maybeString(m.interfaceName))
+            json.put(top "source" json.string(m.source))
+            json.put(top "object" json.string(m.object))
+            let modules = vector.new(:json.Value)
+            for i = 0 upto {extent m.importedModules - 1} do
+                let r = m.importedModules[i]
+                let o = json.newObject()
+                json.put(o "name" json.string(r.name))
+                json.put(o "interface" json.string(r.interfaceName))
+                json.put(o "source" json.string(r.source))
+                json.put(o "path" json.string(r.path))
+                vector.append(:json.Value modules json.object(o))
+            end
+            json.put(top "imported_modules" json.arrayValue(modules))
+            let interfaces = vector.new(:json.Value)
+            for i = 0 upto {extent m.importedInterfaces - 1} do
+                let r = m.importedInterfaces[i]
+                let o = json.newObject()
+                json.put(o "name" json.string(r.name))
+                json.put(o "source" json.string(r.source))
+                json.put(o "mtime" json.real(r.mtime))
+                json.put(o "path" json.string(r.path))
+                json.put(o "dir" json.string(r.dir))
+                vector.append(:json.Value interfaces json.object(o))
+            end
+            json.put(top "imported_interfaces" json.arrayValue(interfaces))
+            let dir = files.normalize(file <> "/..")
+            system.makeDirectory(dir)
+            let w = writer.file(file)
+            writer.putString(w json.dumpIndented(json.object(top) 2) <> "\n")
+            writer.close(w)
+        end
+
+    (* A member, if the value is an object that has it *)
+    let member(v: json.Value name: String): maybe.T(json.Value) =
+        case v when jObject with x then json.get(x.o name) else maybe.none(:json.Value) end
+    let stringMember(v: json.Value name: String default: String): String =
+        begin
+            let m = member(v name)
+            if maybe.isNone(:json.Value m) then default
+            else case maybe.unwrap(:json.Value m) when jString with x then x.s else default end
+            end
+        end
+
+    (* Raised on a manifest whose fields are missing or of the wrong kind *)
+    let malformed: Exception = exception malformed end
+
+    let readQm(file: String): maybe.T(ModuleManifest) =
+        begin
+            let text = if system.isFile(file) then files.readText(file) else maybe.none(:String) end
+            if maybe.isNone(:String text) then
+                maybe.none(:ModuleManifest)
+            else
+                try
+                    let data = json.parse(maybe.unwrap(:String text))
+                    let stringValue(v: maybe.T(json.Value)): maybe.T(String) =
+                        if maybe.isNone(:json.Value v) then maybe.none(:String)
+                        else case maybe.unwrap(:json.Value v) when jString with y then
+                            maybe.some(:String y.s) else maybe.none(:String) end
+                        end
+                    let required(v: json.Value key: String): String =
+                        begin
+                            let found = stringValue(member(v key))
+                            if maybe.isNone(:String found) then raise malformed end end
+                            maybe.unwrap(:String found)
+                        end
+                    let itemsOf(v: maybe.T(json.Value)): vector.T(json.Value) =
+                        if maybe.isNone(:json.Value v) then vector.new(:json.Value)
+                        else case maybe.unwrap(:json.Value v) when jArray with x then
+                            x.items else raise malformed as vector.T(json.Value) end end
+                        end
+                    let name = required(data "name")
+                    let interfaceName = stringValue(member(data "interface"))
+                    let modules = itemsOf(member(data "imported_modules"))
+                    let mods = vector.new(:ImportedModuleRef)
+                    for i = 0 upto {vector.length(:json.Value modules) - 1} do
+                        let m = vector.get(:json.Value modules i)
+                        vector.append(:ImportedModuleRef mods tuple
+                            let name = required(m "name") let interfaceName = required(m "interface")
+                            let source = stringMember(m "source" "") let path = stringMember(m "path" "")
+                        end)
+                    end
+                    let interfaces = itemsOf(member(data "imported_interfaces"))
+                    let ifaces = vector.new(:ImportedInterfaceRef)
+                    for i = 0 upto {vector.length(:json.Value interfaces) - 1} do
+                        let m = vector.get(:json.Value interfaces i)
+                        let t = member(m "mtime")
+                        let mtime = if maybe.isNone(:json.Value t) then 0.0
+                            else case maybe.unwrap(:json.Value t) when jNumber with y then
+                                strutil.toReal(y.text) else raise malformed as Real end end
+                            end
+                        vector.append(:ImportedInterfaceRef ifaces tuple
+                            let name = required(m "name") let source = stringMember(m "source" "") let mtime = mtime
+                            let path = stringMember(m "path" "") let dir = stringMember(m "dir" "")
+                        end)
+                    end
+                    let a = member(data "abi")
+                    let abiVersion = if maybe.isNone(:json.Value a) then maybe.none(:Int)
+                        else case maybe.unwrap(:json.Value a)
+                            when jNumber with y then if y.isInteger then
+                                strutil.tryToInt(y.text) else maybe.none(:Int) end
+                            else maybe.none(:Int)
+                        end
+                        end
+                    maybe.some(:ModuleManifest tuple
+                        let name = name let interfaceName = interfaceName let source = stringMember(data "source" "")
+                        let object = stringMember(data "object" "")
+                        let importedModules = vector.toArray(:ImportedModuleRef mods)
+                        let importedInterfaces = vector.toArray(:ImportedInterfaceRef ifaces)
+                        let abi = abiVersion let producer = stringValue(member(data "producer"))
+                    end)
+                when json.error then
+                    maybe.none(:ModuleManifest)
+                when malformed then
+                    maybe.none(:ModuleManifest)
+                end
+            end
+        end
+
+    let newer(a: String b: String): Bool = real.greater(system.modifiedTime(a) system.modifiedTime(b))
+
+    let isManifestStale(m: ModuleManifest qm: String): Bool =
+        if not(maybe.isSome(:Int m.abi) andif {maybe.unwrap(:Int m.abi) is abi.abiVersion}) then
+            true
+        elsif not(system.isFile(m.object)) then
+            true
+        elsif {stringOp.length(m.source) > 0} andif system.isFile(m.source) then
+            if newer(m.source qm) orif newer(m.source m.object) then
+                true
+            else
+                (* Transitive interface staleness *)
+                let var stale = false
+                for i = 0 upto {extent m.importedInterfaces - 1} do
+                    let src = m.importedInterfaces[i].source
+                    if {stringOp.length(src) > 0} andif system.isFile(src) andif newer(src qm) then stale := true end
+                end
+                stale
+            end
+        elsif {stringOp.length(m.source) is 0} orif not(system.fileExists(m.source)) then
+            (* Precompiled (binary) mode: a .qm and .o without a source are up
+             * to date *)
+            false
+        else
+            let var stale = false
+            for i = 0 upto {extent m.importedInterfaces - 1} do
+                let src = m.importedInterfaces[i].source
+                if {stringOp.length(src) > 0} andif system.isFile(src) andif newer(src qm) then stale := true end
+            end
+            stale
+        end
+
+    let unitStaleness(source: String qm: String c: String o: String
+        importsChanged: maybe.T(All(m: ModuleManifest) maybe.T(String))): maybe.T(String) =
+        if not(system.isFile(qm)) orif not(system.isFile(c)) orif not(system.isFile(o)) then
+            maybe.some(:String "missing artifacts in " <> files.normalize(qm <> "/.."))
+        elsif newer(source qm) orif newer(source c) orif newer(c o) then
+            maybe.some(:String "source file newer than artifacts")
+        else
+            let m = readQm(qm)
+            if maybe.isNone(:ModuleManifest m) then
+                maybe.some(:String "cannot parse " <> qm)
+            else
+                let man = maybe.unwrap(:ModuleManifest m)
+                if {stringOp.length(man.source) is 0}
+                    orif not(stringOp.equal(files.absolute(man.source) files.absolute(source))) then
+                    let recorded = if stringOp.length(man.source) > 0 then man.source else "none recorded" end
+                    maybe.some(:String "artifacts built from a different source (" <> recorded <> ")")
+                elsif isManifestStale(man qm) then
+                    maybe.some(:String "manifest indicates stale")
+                elsif maybe.isSome(:All(m: ModuleManifest) maybe.T(String) importsChanged) then
+                    maybe.unwrap(:All(m: ModuleManifest) maybe.T(String) importsChanged)(man)
+                else
+                    maybe.none(:String)
+                end
+            end
+        end
+end

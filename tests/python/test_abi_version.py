@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -52,6 +53,14 @@ class TestAbiVersion(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
+
+    def test_self_hosted_compiler_declares_the_same_version(self) -> None:
+        # The self-hosted compiler's artifacts are the bootstrap's, so either
+        # can reuse the other's (docs/milestone-5.md)
+        source = Path(__file__).resolve().parents[2] / "questlang" / "config" / "abi.mod.quest"
+        declared = re.search(r"let abiVersion = (\d+)", source.read_text(encoding="utf-8"))
+        self.assertIsNotNone(declared)
+        self.assertEqual(int(declared.group(1)), ABI_VERSION)
 
     def test_artifacts_record_abi_and_producer(self) -> None:
         h_file, qi_file = compile_interface_with_header(self.root / "calc.int.quest", output_dir=self.root)

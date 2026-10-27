@@ -64,6 +64,12 @@ SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 # The programs the self-hosted driver's -e runs, and the bootstrap's transcript
 # of them (docs/milestone-3.md §3.2), which tests/eval/generate.py writes
 EVAL_CASES = ROOT_DIR / "tests" / "eval" / "cases.quest"
+# The checks of the self-hosted driver's unit files (-c): interfaces against the
+# ABI corpus, and lib/'s modules against the bootstrap's artifacts
+UNIT_CHECKS = (
+    ("self-hosted/abi_corpus", ROOT_DIR / "tests" / "abi" / "corpus.py", ("--compiler",)),
+    ("self-hosted/unit_artifacts", ROOT_DIR / "tests" / "self-hosted" / "unit_artifacts.py", ()),
+)
 EVAL_GOLDEN = TESTS_GOLDEN_DIR / "self-hosted" / "eval.out"
 SELF_HOSTED_ERRORS_DIR = ROOT_DIR / "tests" / "self-hosted" / "errors"
 # REPL transcripts: each tests/repl/NAME.quest is the input to quest -i, and
@@ -525,6 +531,17 @@ def run_eval_test(driver_command: list[str], timeout: float) -> tuple[bool, str,
     return False, "[FAIL]", "  (transcript mismatch)\n" + "".join(diff).rstrip()
 
 
+def run_unit_check(python_executable: str, script: Path, args: tuple[str, ...], driver: str) -> tuple[bool, str, str]:
+    """Runs one of UNIT_CHECKS on the self-hosted driver: it passes if the
+    script exits with 0."""
+    process = subprocess.run([python_executable, str(script), *args, driver], capture_output=True,
+                             encoding=BYTE_ENCODING)
+    if process.returncode == 0:
+        return True, "[PASS]", ""
+    return False, "[FAIL]", "  (" + script.relative_to(ROOT_DIR).as_posix() + " failed)\n" + (
+        process.stdout + process.stderr).rstrip()[-4000:]
+
+
 def discover_repl_tests() -> list[Path]:
     """The REPL transcripts: the .quest files directly in tests/repl."""
     return sorted(TESTS_REPL_DIR.glob("*.quest"))
@@ -853,6 +870,19 @@ def run_all_tests(
                                 lambda w_dir: run_eval_test(eval_command, args.timeout),
                             ),
                         ))
+
+                    if phase == CODEGEN_PHASE and driver_command is not None:
+                        for check_id, script, script_args in UNIT_CHECKS:
+                            if args.test and args.test not in check_id:
+                                continue
+                            phase_tasks.append(PhaseTask(
+                                test_id=check_id,
+                                run_fn=with_pending(
+                                    f"{phase}:{check_id}", pending, pending_counts,
+                                    lambda w_dir, s=script, a=script_args: run_unit_check(
+                                        python_executable, s, a, driver_command[0]),
+                                ),
+                            ))
 
                     p_total, p_passed = run_phase_tasks(
                         phase, phase_tasks, worker_pool, executor, jobs

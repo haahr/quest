@@ -1,0 +1,49 @@
+(* Quest Self-Hosted Compiler: Module Manifests Interface
+ *
+ * bootstrap/python/quest/modules/manifest.py: the build metadata of a module
+ * file or a program (its .qm): the modules and interfaces it imports, with the
+ * sources they were found in, and the ABI version and compiler of its
+ * artifacts. A .qm is JSON, written as the bootstrap writes it (two-space
+ * indentation), so that the compilers can reuse each other's. *)
+
+interface Manifest
+import
+    util/maybe : util/Maybe
+export
+    (* An imported module and its declared interface. source is the module's
+     * source file as the importer found it, or "" for none; path the module
+     * path the importer resolved. *)
+    Def ImportedModuleRef = Tuple name: String interfaceName: String source: String path: String end
+    (* An imported interface: its canonical name, source file, and time. path is
+     * the interface path the importer resolved; dir is "" for an interface the
+     * unit imports itself, else the directory of the interface that imports
+     * it. *)
+    Def ImportedInterfaceRef = Tuple name: String source: String mtime: Real path: String dir: String end
+    Def ModuleManifest = Tuple
+        name: String
+        interfaceName: maybe.T(String)
+        source: String
+        object: String
+        importedModules: Array(ImportedModuleRef)
+        importedInterfaces: Array(ImportedInterfaceRef)
+        (* none when read from a manifest that records none *)
+        abi: maybe.T(Int)
+        producer: maybe.T(String)
+    end
+    (* A manifest of this compiler's artifacts *)
+    newManifest(name: String interfaceName: maybe.T(String) source: String object: String
+        importedModules: Array(ImportedModuleRef) importedInterfaces: Array(ImportedInterfaceRef)): ModuleManifest
+
+    writeQm(m: ModuleManifest file: String): Ok
+    (* A .qm's manifest, if it can be read *)
+    readQm(file: String): maybe.T(ModuleManifest)
+    (* Whether a unit's compiled artifacts are out of date *)
+    isManifestStale(m: ModuleManifest qm: String): Bool
+    (* Why a unit with a source must be recompiled, if it must: its .qm, .c,
+     * and .o must exist, be no older than the source (the .o no older than
+     * the .c), and record this source, this ABI version, and no newer
+     * interface; importsChanged says why its imports would now resolve
+     * elsewhere *)
+    unitStaleness(source: String qm: String c: String o: String
+        importsChanged: maybe.T(All(m: ModuleManifest) maybe.T(String))): maybe.T(String)
+end

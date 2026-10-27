@@ -306,4 +306,52 @@ export
             write(b v)
             b.toString()
         end
+
+    let rec writeIndented(b: stringBuilder.T v: Value indent: Int level: Int): Ok =
+        begin
+            let newline(depth: Int): Ok = begin b.char('\n').repeat(' ' indent * depth) ok end
+            case v
+                when jArray with x then
+                    if vector.empty(:Value x.items) then
+                        b.str("[]")
+                        ok
+                    else
+                        b.char('[')
+                        for i = 0 upto {vector.length(:Value x.items) - 1} do
+                            if i > 0 then b.char(',') end
+                            newline(level + 1)
+                            writeIndented(b vector.get(:Value x.items i) indent {level + 1})
+                        end
+                        newline(level)
+                        b.char(']')
+                        ok
+                    end
+                when jObject with x then
+                    if vector.empty(:String x.o.names) then
+                        b.str("{}")
+                        ok
+                    else
+                        b.char('{')
+                        for i = 0 upto {vector.length(:String x.o.names) - 1} do
+                            if i > 0 then b.char(',') end
+                            newline(level + 1)
+                            let name = vector.get(:String x.o.names i)
+                            quoted(b name)
+                            b.str(": ")
+                            writeIndented(b hashMap.find(:String :Value x.o.members name) indent {level + 1})
+                        end
+                        newline(level)
+                        b.char('}')
+                        ok
+                    end
+                else write(b v)
+            end
+        end
+
+    let dumpIndented(v: Value indent: Int): String =
+        begin
+            let b = stringBuilder.new()
+            writeIndented(b v indent 0)
+            b.toString()
+        end
 end

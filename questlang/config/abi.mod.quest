@@ -1,0 +1,90 @@
+(* Quest Self-Hosted Compiler: The Artifact Contract Implementation *)
+
+module abi : Abi
+import
+    questlang/common/files : questlang/common/Files
+    questlang/values/json : questlang/values/Json
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+export
+    let abiVersion = 41
+
+    let producer = "questlang 0.1"
+
+    let headerStamp = "/* quest abi " <> conv.int(abiVersion) <> " producer " <> producer <> " */"
+
+    (* A top-level field of a .qi or .qm file (a .qi's is its serialized
+     * dynamic value's), if it has one and the file can be read *)
+    let recordedField(artifact: String key: String): maybe.T(json.Value) =
+        begin
+            let text = files.readText(artifact)
+            if maybe.isNone(:String text) then
+                maybe.none(:json.Value)
+            else
+                try
+                    let top = json.parse(maybe.unwrap(:String text))
+                    let data = case top
+                        when jObject with x then
+                            let value = json.get(x.o "value")
+                            let isObject = maybe.isSome(:json.Value value)
+                                andif case maybe.unwrap(:json.Value value) when jObject then true else false end
+                            if isObject then maybe.unwrap(:json.Value value) else top end
+                        else top
+                    end
+                    case data
+                        when jObject with x then json.get(x.o key)
+                        else maybe.none(:json.Value)
+                    end
+                when json.error then
+                    maybe.none(:json.Value)
+                end
+            end
+        end
+
+    let recordedAbi(artifact: String): maybe.T(Int) =
+        begin
+            let field = recordedField(artifact "abi")
+            if maybe.isNone(:json.Value field) then
+                maybe.none(:Int)
+            else
+                case maybe.unwrap(:json.Value field)
+                    when jNumber with x then if x.isInteger then strutil.tryToInt(x.text) else maybe.none(:Int) end
+                    else maybe.none(:Int)
+                end
+            end
+        end
+
+    let hasCurrentAbi(artifact: String): Bool =
+        begin
+            let found = recordedAbi(artifact)
+            maybe.isSome(:Int found) andif {maybe.unwrap(:Int found) is abiVersion}
+        end
+
+    let builtFrom(artifact: String source: String): Bool =
+        begin
+            let field = recordedField(artifact "source")
+            if maybe.isNone(:json.Value field) then
+                false
+            else
+                case maybe.unwrap(:json.Value field)
+                    when jString with x then
+                        {stringOp.length(x.s) > 0}
+                            andif stringOp.equal(files.absolute(x.s) files.absolute(source))
+                    else false
+                end
+            end
+        end
+
+    let incompatibleArtifactMessage(artifact: String): String =
+        begin
+            let found = recordedAbi(artifact)
+            let foundText = if maybe.isSome(:Int found) then "ABI version " <> conv.int(maybe.unwrap(:Int found))
+                else "no ABI version"
+            end
+            "Precompiled artifact '" <> artifact <> "' records " <> foundText
+                <> ", but this compiler requires ABI version " <> conv.int(abiVersion)
+                <> ", and its source is not available to rebuild it"
+        end
+end
