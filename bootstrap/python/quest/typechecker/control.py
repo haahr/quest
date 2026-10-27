@@ -21,6 +21,7 @@ from quest.types import (
     QVarType,
     QVariantType,
     is_subtype,
+    is_type_equal,
     resolve_record_bound,
     resolve_sum_bound,
     resolve_tuple_bound,
@@ -135,10 +136,11 @@ class ControlMixin(Checker):
           may name several (when circle, rect then ...).
         - A binder is typed by its tag's payload, the tuple circle carries, or
           by the type it is declared with, which must be a supertype of the
-          payload: b sees only rect's w. In a branch naming several tags, the
-          binder is typed by the first tag's payload alone; the others' are not
-          checked against it yet, though the paper reads such a branch as one
-          branch per tag (docs/TypefulProgramming.md §4.5).
+          payload: b sees only rect's w. The paper reads a branch naming
+          several tags as one branch per tag, its binder getting the same type
+          in each (docs/TypefulProgramming.md §4.5). So a declared type must
+          be a supertype of every tag's payload, and without one the payloads
+          must all be equal types.
         - Each body is checked against the expected type if there is one, and
           otherwise synthesized, its caller joining the branches' types. A
           synthesized type must not mention a type component of the binder (as
@@ -173,23 +175,34 @@ class ControlMixin(Checker):
                 covered_tags.add(tag)
 
             if branch.binder is not None:
-                first_payload = available_tags[branch.tags[0]]
-                if first_payload is None:
-                    raise TypeError(
-                        f"Tag '{branch.tags[0]}' has no payload to bind to '{branch.binder}'",
-                        offset=branch.offset,
-                    )
+                payloads: list[QType] = []
+                for tag in branch.tags:
+                    payload = available_tags[tag]
+                    if payload is None:
+                        raise TypeError(
+                            f"Tag '{tag}' has no payload to bind to '{branch.binder}'",
+                            offset=branch.offset,
+                        )
+                    payloads.append(payload)
 
                 if branch.binder_type is not None:
                     binder_t = elaborate_type(branch.binder_type, env)
-                    if not is_subtype(first_payload, binder_t, env):
-                        raise TypeError(
-                            f"Binder '{branch.binder}' type '{binder_t}' is not "
-                            f"compatible with payload '{first_payload}'",
-                            offset=branch.offset,
-                        )
+                    for payload in payloads:
+                        if not is_subtype(payload, binder_t, env):
+                            raise TypeError(
+                                f"Binder '{branch.binder}' type '{binder_t}' is not "
+                                f"compatible with payload '{payload}'",
+                                offset=branch.offset,
+                            )
                 else:
-                    binder_t = first_payload
+                    binder_t = payloads[0]
+                    for tag, payload in zip(branch.tags[1:], payloads[1:]):
+                        if not is_type_equal(binder_t, payload, env):
+                            raise TypeError(
+                                f"Binder '{branch.binder}' would have payload type '{binder_t}' for tag "
+                                f"'{branch.tags[0]}' but '{payload}' for tag '{tag}'; declare a type for it",
+                                offset=branch.offset,
+                            )
 
                 with env.scoped(f"case_{branch.binder}"):
                     binder_sym = ValueSymbol(

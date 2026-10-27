@@ -1,0 +1,48 @@
+(* Language: a case branch naming several tags reads as one branch per tag,
+   its binder getting the same type in each (docs/TypefulProgramming.md
+   section 4.5). Without a declared type the tags' payloads must be equal;
+   with one, it must be a supertype of each payload, and the body sees each
+   payload through it. *)
+(* @echo *)
+
+(* 1. Equal payloads, no declared type *)
+Let Move = Option north with steps: Int end south with steps: Int end stay end;
+let distance(m: Move): Int =
+    case m
+        when north, south with d then d.steps
+        when stay then 0
+    end;
+let distances = tuple distance(option north of Move with 3 end) distance(option south of Move with 4 end) end;
+
+(* 2. Tuple payloads sharing a prefix, seen through a declared supertype *)
+Let Shape = Option
+    square with side: Int end
+    circle with side: Int r: Int end
+    rect with side: Int w: Int end
+end;
+let side(s: Shape): Int =
+    case s
+        when circle, square, rect with x: Tuple side: Int end then x.side
+    end;
+let sides = tuple
+    side(option circle of Shape with 2 1 end)
+    side(option square of Shape with 3 end)
+    side(option rect of Shape with 4 5 end)
+end;
+
+(* 3. Record payloads with the field at different positions *)
+Let V = Variant
+    a: Record x: Int y: Int end
+    b: Record y: Bool z: Int x: Int end
+    c: Int
+end;
+let getX(v: V): Int =
+    case v
+        when a, b with p: Record x: Int end then p.x
+        when c with n then n
+    end;
+let xs = tuple
+    getX(variant a of V with record x = 1 y = 2 end end)
+    getX(variant b of V with record y = true z = 7 x = 8 end end)
+    getX(variant c of V with 9 end)
+end;

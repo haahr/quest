@@ -603,6 +603,10 @@ Option types provide ordered sum types with ordinal reflection and extraction (C
   type of `e`, the ordinal component of `opt!tag` in the static type of `opt`, and construction by ordinal in
   `OptionType`. After `let p: Option b a end = option b of Option a b end end`, `ordinal(p)` is 0
   (`language/option_case_order`).
+- **Several Tags:** a branch `when x, y with z then a` is `when x with z then a` and `when y with z then a`, with `z`
+  of the same type in both (Cardelli §4.5). So a declared type `with z: T` must be a supertype of every tag's
+  payload, and without one the payloads must be equal types; every tag must have a payload
+  (`language/case_multi_tag_binder`).
 - **Payload Sharing:** an option is a tag and a binding (the paper, §5.4), and a case's binder (`when tag with p`)
   is that binding itself: assigning a `var` component through `p` changes the option, seen by every later case and
   binding, however the option is reached (through an aggregate, an upcast, or a bounded type parameter). `opt!tag`

@@ -103,21 +103,38 @@ export
                 Let Arm = Tuple body: typedAst.Expr binder: maybe.T(symbols.ValueSymbol) end
                 let arm: Arm = if maybe.isSome(:String branch.binder) then
                     let binder = maybe.unwrap(:String branch.binder)
-                    let firstTag = vector.get(:String branch.tags 0)
-                    let firstPayload = hashMap.find(:String :Tag available firstTag).payload
-                    if maybe.isNone(:Type firstPayload) then
-                        diagnostics.fail(:Ok "Tag '" <> firstTag <> "' has no payload to bind to '" <> binder <> "'" branch.offset)
+                    let tagCount = vector.length(:String branch.tags)
+                    let payloads = vector.new(:Type)
+                    for j = 0 upto {tagCount - 1} do
+                        let tag = vector.get(:String branch.tags j)
+                        let payload = hashMap.find(:String :Tag available tag).payload
+                        if maybe.isNone(:Type payload) then
+                            diagnostics.fail(:Ok "Tag '" <> tag <> "' has no payload to bind to '" <> binder <> "'" branch.offset)
+                        end
+                        vector.append(:Type payloads maybe.unwrap(:Type payload))
                     end
-                    let payload = maybe.unwrap(:Type firstPayload)
                     let binderT = if maybe.isSome(:ast.TypeExpr branch.binderType) then
                         let t = elaborateTypes.elaborateType(maybe.unwrap(:ast.TypeExpr branch.binderType) e)
-                        if not(isSubtype(payload t e)) then
-                            diagnostics.fail(:Ok "Binder '" <> binder <> "' type '" <> model.show(t) <>
-                                "' is not compatible with payload '" <> model.show(payload) <> "'" branch.offset)
+                        for j = 0 upto {tagCount - 1} do
+                            let payload = vector.get(:Type payloads j)
+                            if not(isSubtype(payload t e)) then
+                                diagnostics.fail(:Ok "Binder '" <> binder <> "' type '" <> model.show(t) <>
+                                    "' is not compatible with payload '" <> model.show(payload) <> "'" branch.offset)
+                            end
                         end
                         t
                     else
-                        payload
+                        let first = vector.get(:Type payloads 0)
+                        for j = 1 upto {tagCount - 1} do
+                            let payload = vector.get(:Type payloads j)
+                            if not(subtyping.isTypeEqual(first payload env.lookupOf(e))) then
+                                diagnostics.fail(:Ok "Binder '" <> binder <> "' would have payload type '" <> model.show(first) <>
+                                    "' for tag '" <> vector.get(:String branch.tags 0) <> "' but '" <> model.show(payload) <>
+                                    "' for tag '" <> vector.get(:String branch.tags j) <> "'; declare a type for it"
+                                    branch.offset)
+                            end
+                        end
+                        first
                     end
                     env.scoped(:Arm e "case_" <> binder fun(s: symbols.Scope): Arm
                         begin
