@@ -9,6 +9,8 @@ as `quest -o` does, writing the bootstrap's C and artifacts byte for byte, and i
 the compiler it builds builds the same compiler again. It follows Milestone 4 (the IR and its interpreter,
 [milestone-4.md](milestone-4.md)).
 
+**Status:** complete (2026-10-27). Every step is done, and the fixed point holds (Step 4).
+
 The decisions this plan rests on (2026-10-26):
 - **The C is checked by digest.** A new golden phase, `codegen_c`, holds the SHA-256 of the bootstrap's C for each
   run program (`tests/golden/codegen_c`, 198 small files), as `run_c_compiled` compiles it (with `--print-result`, and
@@ -111,7 +113,7 @@ seconds (the bootstrap takes 289), with an identical dump, and runs it through `
 
 Each step is one or more commits; each ends with its runs passing.
 
-### Step 0: System primitives
+### Step 0: System primitives (done)
 
 `system.run` and `system.modifiedTime` in `lib/system` and the runtime (`posix_spawn` with pipes for standard output
 and error, read without deadlock), the bootstrap's interpreters' builtins for them, and the self-hosted interpreters'
@@ -190,11 +192,13 @@ tables were keyed by integers rather than strings (`common/keys`, which the boot
 tuples it keys them by) and its `stripAliases` cached its results globally, as the bootstrap's does. Before that,
 stage 2 took more than 30 minutes; it now takes about 8.
 
-### Step 5: Done
+### Step 5: Documentation (done)
 
 Update compiler-organization.md (§2's "so far", §6's Milestone 5 status), roadmap.md (Step 5's fixed point),
 build-process.md (the self-hosted compiler's artifacts), testing.md (the new phases and `--self-hosting`), and
-quest-self-hosting-prerequisites.md; record the divergences in this document.
+quest-self-hosting-prerequisites.md; record the divergences in this document. Each step's section records its own
+divergences. Parallel builds, and the `os/process`, `os/filestats`, and `os/pathlib` libraries, which would replace
+some of those divergences' workarounds, are on [tasklist.md](tasklist.md).
 
 ---
 

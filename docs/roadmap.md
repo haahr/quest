@@ -30,7 +30,7 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
 +-----------------------------------------------------------------------------------+
 | SELF-HOSTING & NATIVE TARGETING IN QUEST (Located in src/)                        |
 |                                                                                   |
-|  [Step 5] Self-Hosted Front-End, Typechecker, & C Compiler (Ported to Quest)       |
+|  [Step 5] Self-Hosted Front-End, Typechecker, & C Compiler (Ported) [COMPLETE]    |
 |       │   • Compile self-hosted Quest using Python bootstrap C emitter            |
 |       │   • Achieve self-compilation loop: Quest compiles Quest                   |
 |       ▼                                                                           |
@@ -107,7 +107,7 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   [codegen-c.md](codegen-c.md), [modules.md](modules.md), [build-process.md](build-process.md), and
   [extensions.md](extensions.md).
 
-### Step 5: Self-Hosted Compiler & Interpreter (Written in Quest) — *In Progress*
+### Step 5: Self-Hosted Compiler & Interpreter (Written in Quest) — *Complete*
 - Port the compiler and interpreter into idiomatic, modular Quest under `questlang/` (see
   [compiler-organization.md](compiler-organization.md) and
   [quest-self-hosting-prerequisites.md](quest-self-hosting-prerequisites.md)).
@@ -115,7 +115,9 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   `collections/hashSet`, `util/maybe`, `util/stringBuilder`, `util/strutil`, `util/path`, `util/argParse`, `util/hash`;
   see [new-libraries.md](new-libraries.md)).
 - Compile the self-hosted Quest compiler using the Python bootstrap C compiler and validate the bootstrap fixed-point:
-  `Quest(Quest) == Quest`.
+  `Quest(Quest) == Quest`. Done ([milestone-5.md](milestone-5.md)): the bootstrap's build of the self-hosted compiler
+  writes the bootstrap's artifacts for every unit of the compiler, its own build writes the same ones, and that build
+  rebuilds itself as the same binary (`run_tests.py --self-hosting`). `./questc` runs it.
 
 ### Step 6: Native AArch64 Code Generator (Written in Quest)
 - Replace C emission with native AArch64 machine code generation consuming the represented IR ([ir.md](ir.md) §8.6):

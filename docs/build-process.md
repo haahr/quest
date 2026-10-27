@@ -407,8 +407,8 @@ Every `.qi` and `.qm` records:
   test (§5.2.3) keeps them in step. That is not fully satisfying: if the self-hosted compiler gains a Makefile, it
   should generate its constant from the Python compiler's (`bootstrap/python/quest/config/abi.py`).
 - **`producer`: the compiler that wrote the artifact,** its name and an ordinary version number bumped by hand (for
-  example `quest-bootstrap 0.1` or `questc 0.1`). It is informational, for diagnostics only, and never affects
-  whether an artifact is used.
+  example `quest-bootstrap 0.1`, or `questlang 0.1` for the self-hosted compiler). It is informational, for
+  diagnostics only, and never affects whether an artifact is used.
 
 The ABI version covers:
 - the layout and meaning of `.qi` and `.qm` files, including the syntax and meaning of the type strings in `.qi`;
@@ -452,8 +452,15 @@ interfaces first.
 
 `tests/python/test_abi_corpus.py` regenerates the corpus and fails if anything differs while `ABI_VERSION` is unchanged ("artifact contract
 changed: bump ABI_VERSION and update the corpus"). Reading compiler and runtime sources here is a test's business, not
-the compiler's. Once the self-hosted compiler exists, the same corpus serves as a cross-check: at the same ABI
-version, both compilers must produce the same `.qi` and `.qm` files and compatible headers.
+the compiler's. The same corpus serves as a cross-check of the self-hosted compiler: at the same ABI version, both
+compilers must produce the same `.qi` and `.qm` files and compatible headers. The self-hosted suite regenerates the
+corpus with the self-hosted driver and compares it with the committed one (`self-hosted/abi_corpus`).
+
+The self-hosted compiler (`questlang/`, run by `./questc`) writes the same artifacts as the bootstrap, in the same
+places, under the same rules, and with the same engine (`questlang/build/engine`, a port of this document's
+`BuildEngine`). They differ only in their producer. `run_tests.py --self-hosting` checks this for every unit of the
+compiler itself (docs/milestone-5.md §2.3). Each compiler can therefore reuse the other's fresh artifacts. The test
+suites keep them apart anyway (docs/testing.md), so that each compiler's tests exercise its own output.
 
 What this misses: a contract change that nothing in the corpus exercises. The corpus covers the whole library and the
 test suite's interfaces, and grows when a gap is found.

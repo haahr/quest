@@ -113,13 +113,20 @@ Migrating the Python object-oriented codebase to Quest requires structural adapt
 
 ## 6. Implementation Roadmap & Priority Matrix
 
-Completed subsystems (`collections/vector`, `collections/hashMap`, `collections/hashSet`, `util/maybe`,
-`util/stringBuilder`, `util/strutil`, `util/path`, `util/argParse`, and `util/hash`) are documented in
-`docs/new-libraries.md`. Remaining prerequisites:
+Every prerequisite is met, and the self-hosted compiler compiles itself (Milestone 5,
+[milestone-5.md](milestone-5.md)). The libraries (`collections/vector`, `collections/hashMap`, `collections/hashSet`,
+`util/maybe`, `util/stringBuilder`, `util/strutil`, `util/path`, `util/argParse`, `util/hash`, and `util/sort`) are
+documented in `docs/new-libraries.md`. The OS primitives are `system.run` and `system.modifiedTime` (§2). Binary search
+and the topological sort are written in Quest where they are used. The AST and type models are
+[compiler-organization.md](compiler-organization.md) §3's.
 
-| Subsystem | Components | Priority | Strategy |
-| :--- | :--- | :--- | :--- |
-| **OS Primitives** | `system.exec` | **P1** | Extend `System` (native C backing) |
-| **Algorithms** | Binary search, Quicksort, Topological sort | **P1** | Pure Quest algorithms |
-| **AST & Type Models** | Parameterized `Node(Form)` definitions | **P2** | Compiler architecture |
+Two of the bootstrap's needs turned out to be missing, and are worked around for now:
+- **A clock and appending to a file.** The build log's timestamps and appends run `sh` with `date`
+  (`questlang/build/logger`).
+- **Hashing structured keys.** The bootstrap keys its type tables by tuples, which Python hashes. Keys built as
+  strings made the self-hosted compiler several times slower, so the tables use integer keys interned through
+  `questlang/common/keys`.
+
+Planned libraries that would replace workarounds and serve later work are on [tasklist.md](tasklist.md): `os/process`
+(processes that run in parallel, for parallel builds), `os/filestats`, and `os/pathlib`.
 

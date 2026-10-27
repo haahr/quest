@@ -187,9 +187,10 @@ headers for a frozen snapshot of the library's interfaces) change without a bump
 
 **Self-hosted compiler:** `python3 run_tests.py --self-hosted` compiles the self-hosted compiler's driver
 (`questlang/driver/main.quest`) to C with the bootstrap, then runs it, instead of the bootstrap's driver, on every test
-of the phases it has (now tokenize, parse, typecheck, the IR's dumps and runs at every stage, `ir_STAGE` and
-`run_ir_STAGE`, and interpret; [milestone-2.md](milestone-2.md) §3, [milestone-3.md](milestone-3.md) §3,
-[milestone-4.md](milestone-4.md) §2), against the bootstrap's goldens and
+of the phases it has (tokenize, parse, typecheck, the IR's dumps and runs at every stage, `ir_STAGE` and
+`run_ir_STAGE`, interpret, `codegen_c`, and `run_c_compiled`; [milestone-2.md](milestone-2.md) §3,
+[milestone-3.md](milestone-3.md) §3, [milestone-4.md](milestone-4.md) §2, [milestone-5.md](milestone-5.md) §2),
+against the bootstrap's goldens and
 error expectations, which it never writes. The driver takes the bootstrap driver's `--stop-after PHASE FILE` and prints
 the phase's dump in the bootstrap's format (it also has `desugar`, which has no goldens). It reports errors after the
 bootstrap's one: an error test passes when the driver's first diagnostic is the expected one and, if it reports more,
@@ -202,7 +203,25 @@ and each expectation must be reported.
 
 The runners set `QUEST_HOME` to the project directory, where the self-hosted driver, which runs in a scratch
 directory, finds `lib/`. `--self-hosted-driver PATH` runs a driver already compiled (as by `./quest -o build/questlang/main
-questlang/driver/main.quest`) rather than compiling one, which takes minutes.
+questlang/driver/main.quest`, or `./questc`'s stage 2 in `.build/questc/stage2/questc`) rather than compiling one,
+which takes minutes.
+
+`codegen_c` compares a digest of each run program's C, as the driver prints it, with `tests/golden/codegen_c`, which
+holds the SHA-256 of the bootstrap's C for the same program. The bootstrap's suite runs the phase too, so
+`--update-golden` writes the digests and a change to the bootstrap's C shows as a golden change. `run_c_compiled`
+compiles and runs every run program and run-time error test with the self-hosted driver. Its C phases build into a
+directory of their own under each worker's (`self-hosted-units`), so that they don't reuse the bootstrap's fresh
+artifacts. The self-hosted driver builds the questlang tests once, one after another, into a shared directory
+(`self-hosted-questlang-tests`).
+
+**Self-hosting:** `python3 run_tests.py --self-hosting` checks the self-hosted compiler's fixed point
+([milestone-5.md](milestone-5.md) §2.3), then runs the self-hosted suite with stage 2. Stage 1 is the bootstrap's
+build of the driver. Stage 2 is stage 1's build of it, and stage 3 is stage 2's. The check requires two things:
+- every artifact stage 1 writes for the driver's units (`.mod.c`, `.main.c`, `.int.h`, `.qi`, and `.qm`) must be the
+  bootstrap's, and every one stage 2 writes must be stage 1's, up to the producer and the build directory's path;
+- stages 2 and 3 should be the same binary, and the check says so if they are not.
+
+It takes about half an hour, most of it the three builds, and isn't part of the routine runs.
 
 The driver's `-e`, which no golden uses, is tested against the bootstrap's: `tests/eval/cases.quest` holds programs,
 one per line, and `python tests/eval/generate.py` writes the bootstrap driver's transcript of them
@@ -479,6 +498,7 @@ bidirectional matching:
 | **REPL** | REPL transcripts (section 2.7) | `python3 run_tests.py --phase repl` |
 | **Self-Hosted** | The self-hosted compiler against the bootstrap's goldens | `python3 run_tests.py --self-hosted` |
 | **Questlang** | The self-hosted compiler's modules, compiled | `python3 run_tests.py -k questlang/` |
+| **Self-Hosting** | The self-hosted compiler's fixed point, then the self-hosted suite with stage 2 | `python3 run_tests.py --self-hosting` |
 
 ---
 

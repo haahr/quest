@@ -40,7 +40,9 @@ questlang/
 ├── common/                  # Cross-cutting foundational utilities
 │   ├── location             # Source coordinates (Pos, Span) and source maps (bootstrap syntax/sources)
 │   ├── diagnostics          # Diagnostic messages, error severity
-│   └── diagbag              # Diagnostic accumulator and reporter
+│   ├── diagbag              # Diagnostic accumulator and reporter
+│   ├── files                # Path strings and files' text (the bootstrap's pathlib)
+│   └── keys                 # Integer keys for the type tables (the bootstrap keys them by tuples)
 │
 ├── syntax/                  # Concrete syntax and parsing (Milestone 1; desugar, Milestone 2)
 │   ├── tokens               # TokenKind and Token definitions
@@ -102,18 +104,18 @@ questlang/
 │   ├── backend, symbols
 │   └── c/                   # backend, declarations, headers, printer, types, compilerrunner
 │
-├── config/, build/          # ABI, options, build engine (Milestone 5)
+├── config/                  # The ABI version and artifacts' format (Milestone 5)
+├── build/                   # The build engine and its log (Milestone 5)
 │
 └── driver/                  # Compiler driver (bootstrap pipeline and quest/__main__)
-    ├── main                 # Main routine: the front end's phases from Milestone 2, growing with each milestone
+    ├── main                 # Main routine: every phase, -e, -i, and the bootstrap's compiling options
     └── repl                 # The REPL: input completeness, rollback, the loop over io/readline
 ```
 
-So far `common/*`, `syntax/*`, `types/*`, `typechecker/*`, `modules/*` (but the artifacts' `interfacecompiler`,
-`modulecompiler`, and `manifest`), `values/*`, `interpreter/*`, `ir/*`, `codegen/syntax`, `layout`, `descriptors`, and
-`sha256`, `driver/main` (the front end's phases, the IR's dumps and runs at every stage, the interpret phase, `-e`,
-and `-i`), and `driver/repl` exist; the rest of the tree is the plan. (`codegen/sha256` is the SHA-256 that the bootstrap takes from Python's
-`hashlib`, for layout tags and type digests.)
+The whole tree exists. The self-hosted compiler compiles itself, and its output is the bootstrap's (Milestone 5).
+`./questc` runs it. The bootstrap's `config/options` was not ported, because the driver and the build engine take
+their options directly. (`codegen/sha256` is the SHA-256 that the bootstrap takes from Python's `hashlib`, for layout
+tags and type digests.)
 
 ---
 
@@ -416,9 +418,14 @@ The plan is [milestone-4.md](milestone-4.md): the rest of `types/canonical` (can
 program at every stage (`run_ir_*`) against the run goldens and run-time error tests, with the verifier and the
 canonical-form guard on; see [testing.md](testing.md).
 
-### Milestone 5: C Code Generation & Self-Hosting (`codegen`, artifacts, `driver`)
-- `codegen` C emission, the build artifacts (`.qi`, `.qm`, headers) and build engine, the full driver, and
-  self-hosting verification (`questc` compiling `questc`).
+### Milestone 5: C Code Generation & Self-Hosting (`codegen`, artifacts, `driver`) — done
+The plan is [milestone-5.md](milestone-5.md): `codegen/backend`, `symbols`, and `c/*`; `config/abi`; the artifacts
+(`modules/interfacecompiler`, `manifest`, and `modulecompiler`); `build/engine` and `logger`; and the driver's
+compiling options. The self-hosted suite checks the C of every run program against digests of the bootstrap's
+(`codegen_c`), and compiles and runs every program (`run_c_compiled`) against the run goldens and run-time error
+tests. `run_tests.py --self-hosting` checks the fixed point: the bootstrap's build of the driver writes the
+bootstrap's artifacts for every unit of the driver, its own build writes the same artifacts again, and that build
+rebuilds itself as the same binary. See [testing.md](testing.md).
 
 ---
 
