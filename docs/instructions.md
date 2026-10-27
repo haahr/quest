@@ -41,6 +41,11 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
 - **The driver:** `python3.11 bootstrap/python/quest_driver.py --stop-after PHASE file.quest`, with `PHASE` one of
   `tokenize`, `parse`, `typecheck`, `interpret`, `codegen_c` (prints the C), `run_c_compiled`; `--echo` echoes
   top-level phrases; `--build-dir DIR` keeps a program's compiled interfaces and modules out of the source tree.
+- **The self-hosted compiler:** `./questc` takes the same options, building itself first when its sources have
+  changed: from the current release in `release/current` when there is one, else from the bootstrap
+  ([release-compiler.md](release-compiler.md)).
+- **Releases:** `tools/release` cuts one from a clean tree at a commit on `main`, after the self-hosting check
+  (about half an hour); `--verify`, `--rollback`, and `--show` check, undo, and describe them.
 - **Scratch files** go outside the repository (a temporary or scratchpad directory), never into `tests/` or `docs/`
   unless they become tests or documents.
 - **Shared git state.** Several sessions may work in worktrees of one repository, sharing its stash. Do not use bare
@@ -148,6 +153,19 @@ See [testing.md](testing.md) for the framework. In practice:
   (`tests/conversions/generate.py`) lists cells that fail in C, each with its reason, and cells C generation rejects.
 - **Name tests for what they test,** with a comment at the top saying what and why, and section comments
   (`(* 1. ... *)`) whose numbers appear in their output where that helps locate a failure.
+- **The self-hosting check,** `run_tests.py --self-hosting` (with `--seed release` to start from the release), runs
+  before pushes that change `questlang/` or the bootstrap's backend substantially, and when a milestone ends.
+
+### 6.1. Releases
+
+- **`questlang/` may use only what the current release compiles,** against the release's own `lib/` and `runtime/`.
+  Using a new language feature, `lib/` function, or runtime primitive in `questlang/` takes a commit that adds it, a
+  release cut from that commit, and then a commit that uses it. `QUESTC_SEED=bootstrap` builds past such a gap while
+  the bootstrap is kept in step.
+- **Cut a release** by hand, never automatically: when `questlang/` needs something the current release cannot
+  compile, at the end of a milestone, and otherwise when convenient. Only the owner asks for one, as for a push.
+- **Roll back** (`tools/release --rollback`) when a release turns out to be bad, and say so; one previous release is
+  kept.
 
 ## 7. Documentation
 
@@ -185,6 +203,8 @@ See [testing.md](testing.md) for the framework. In practice:
   bounded type parameters, and tagged `QProxy` views for depth-upcast tuples and options
   ([runtime-design.md](runtime-design.md), [c-representation.md](c-representation.md)).
 - Open bugs and planned follow-up work for the compiler are tracked in [tasklist.md](tasklist.md).
-- The bootstrap compiler will compile the self-hosted compiler ([roadmap.md](roadmap.md) step 5,
-  [compiler-organization.md](compiler-organization.md)), so correctness of the bootstrap matters for a long time; prefer
-  clarity over cleverness, since the code will be ported to Quest.
+- The self-hosted compiler compiles itself to a fixed point ([roadmap.md](roadmap.md) step 5,
+  [milestone-5.md](milestone-5.md)), seeded by a release ([release-compiler.md](release-compiler.md)). The bootstrap
+  remains the reference the goldens come from, and the two compilers are kept in step, writing the same C and
+  artifacts. So a change to one is ported to the other. Prefer clarity over cleverness in the bootstrap, since its
+  code is the model the self-hosted compiler follows.

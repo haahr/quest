@@ -223,6 +223,15 @@ build of the driver. Stage 2 is stage 1's build of it, and stage 3 is stage 2's.
 
 It takes about half an hour, most of it the three builds, and isn't part of the routine runs.
 
+**Seeds:** `--seed release` makes the current release (`release/current`, [release-compiler.md](release-compiler.md))
+build the driver, rather than the bootstrap.
+- `--self-hosted` then builds it in two stages, the release's against its own `lib/` and `runtime/` and that build's
+  against the tree's, and tests the second.
+- `--self-hosting` then starts from the release, with the bootstrap's build alongside stage 1 for the comparison.
+
+The default stays the bootstrap. Its single build is quicker from nothing, which is how the runner always builds, and
+the goldens are its own.
+
 The driver's `-e`, which no golden uses, is tested against the bootstrap's: `tests/eval/cases.quest` holds programs,
 one per line, and `python tests/eval/generate.py` writes the bootstrap driver's transcript of them
 (`tests/golden/self-hosted/eval.out`, each program's output, errors, and exit status), which the self-hosted suite
@@ -499,6 +508,7 @@ bidirectional matching:
 | **Self-Hosted** | The self-hosted compiler against the bootstrap's goldens | `python3 run_tests.py --self-hosted` |
 | **Questlang** | The self-hosted compiler's modules, compiled | `python3 run_tests.py -k questlang/` |
 | **Self-Hosting** | The self-hosted compiler's fixed point, then the self-hosted suite with stage 2 | `python3 run_tests.py --self-hosting` |
+| **Release** | The self-hosting check, then a new release in `release/current` | `tools/release` |
 
 ---
 

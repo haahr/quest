@@ -113,9 +113,10 @@ questlang/
 ```
 
 The whole tree exists. The self-hosted compiler compiles itself, and its output is the bootstrap's (Milestone 5).
-`./questc` runs it. The bootstrap's `config/options` was not ported, because the driver and the build engine take
-their options directly. (`codegen/sha256` is the SHA-256 that the bootstrap takes from Python's `hashlib`, for layout
-tags and type digests.)
+`./questc` runs it, built from the tree by a released self-hosted compiler ([release-compiler.md](release-compiler.md))
+or by the bootstrap. So `questlang/` may use only what the current release compiles. The bootstrap's `config/options`
+was not ported, because the driver and the build engine take their options directly. (`codegen/sha256` is the SHA-256
+that the bootstrap takes from Python's `hashlib`, for layout tags and type digests.)
 
 ---
 

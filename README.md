@@ -94,6 +94,10 @@ As with `python script.py`, the driver's options come before the program file: e
 included, is the program's. (`quest compile`, which does not run the program, takes options anywhere, as does the
 driver for an interface or module file.)
 
+`./quest` runs the Python bootstrap. `./questc` runs the self-hosted compiler (`questlang/`), which takes the same
+options apart from `compile`. It builds itself first when its sources have changed: from the current release, when
+`tools/release` has cut one, else from the bootstrap ([docs/release-compiler.md](docs/release-compiler.md)).
+
 ### Running Tests
 The project includes comprehensive unit tests, golden-file integration tests, and inline diagnostic error tests:
 
@@ -239,4 +243,6 @@ system, intermediate representation, and native runtime design. If you are new t
   self-hosted Quest compiler (`questlang/`).
 - [docs/quest-self-hosting-prerequisites.md](docs/quest-self-hosting-prerequisites.md): Library and runtime
   prerequisites for self-hosting.
+- [docs/release-compiler.md](docs/release-compiler.md): Releases of the self-hosted compiler (`tools/release`), which
+  seed `./questc` in two stages.
 - [docs/tasklist.md](docs/tasklist.md): Open bugs and planned tasks.

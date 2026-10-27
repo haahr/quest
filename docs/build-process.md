@@ -462,6 +462,15 @@ places, under the same rules, and with the same engine (`questlang/build/engine`
 compiler itself (docs/milestone-5.md §2.3). Each compiler can therefore reuse the other's fresh artifacts. The test
 suites keep them apart anyway (docs/testing.md), so that each compiler's tests exercise its own output.
 
+`./questc` builds the self-hosted compiler in two stages under `.build/questc`, each an ordinary incremental build
+with its own build directory (docs/release-compiler.md §2):
+1. The seed builds stage 1. The seed is the current release in `release/current`, compiling against its own `lib/`
+   and `runtime/` (its `home/`) and finding the tree's `questlang/` through `-I`, or the bootstrap.
+2. Stage 1 builds stage 2 against the tree's `lib/` and `runtime/`.
+
+The stages record their seed and are discarded when it changes. A release's `home/` has its commit's file times, so
+§5's timestamp rules cannot compare artifacts built against one release with another release's sources.
+
 What this misses: a contract change that nothing in the corpus exercises. The corpus covers the whole library and the
 test suite's interfaces, and grows when a gap is found.
 

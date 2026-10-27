@@ -94,8 +94,8 @@ Stage 2 is the new compiler. Each stage has its own build directory, and the eng
    `previous` and `current`); `.gitignore` gains `/release/`. The first release was c21ae1aa.
 2. **Seeding from a release (done):** `./questc` and the runner's `--self-hosted` build stages 1 and 2 from the
    release (`--seed`, `QUESTC_SEED`); `--self-hosting` starts from the seed.
-3. **Documentation:** build-process.md, testing.md, and compiler-organization.md describe the release, the stages,
-   and the rule of §2. instructions.md says when to cut a release.
+3. **Documentation (done):** build-process.md, testing.md, and compiler-organization.md describe the release, the
+   stages, and the rule of §2. instructions.md says when to cut a release.
 
 ## 5. Not in This Plan
 
