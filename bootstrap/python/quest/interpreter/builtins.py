@@ -393,6 +393,25 @@ def _dynamic_extern(wr: QWriter, d: QAutoVal) -> QOk:
         raise QuestException(DYNAMIC_ERROR_EXC)
 
 def _dynamic_intern(rd: QReader) -> QAutoVal:
+    """dynamic.intern(rd): reads one dynamic value from rd, as dynamic.extern
+    writes it, and decodes it (jsog_decode: JSOG is JSON with @id and @ref for
+    objects reached more than once).
+
+    A reader may hold several documents in a row, or a document followed by
+    other text, so intern reads one JSON value, a character at a time, and no
+    further. It skips whitespace, and then reads:
+
+    - an object or array, {...} or [...], to the bracket closing it, counting
+      the brackets it nests and ignoring those in strings (in which \\" does
+      not end the string);
+    - a string, to its closing quote;
+    - anything else (a number, true, ...), to whitespace, a comma, or a
+      closing bracket, which is left unread, in rd.peek, the reader's one
+      character of lookahead.
+
+    A document is an object, so the last two only reach jsog_decode to be
+    rejected. dynamic.error is raised for a closed reader, input that ends
+    inside the value, a failed read, and a document that does not decode."""
     if rd.is_closed:
         raise QuestException(DYNAMIC_ERROR_EXC)
 

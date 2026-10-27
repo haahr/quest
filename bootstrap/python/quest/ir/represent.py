@@ -301,6 +301,47 @@ def _unproxied(p: Optional[ir.Plan]) -> Optional[ir.Plan]:
 
 
 def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType], bool]]) -> Optional[ir.Plan]:
+    """The plan converting a value of type source for use at type target, or
+    None if it serves as it is, decided from the two types' shapes and their C
+    representations (plan wraps it).
+
+    A shape is a type reduced to what decides how C holds its values
+    (ir/shapes.py), its representation: an Int as an int64_t, a tuple as a
+    pointer to its struct, and so on. A view is the type a value's layout is
+    read at, which a record, variant, or option seen at a supertype may change,
+    and a proxy is a small object that shows a tuple or option at another view
+    (docs/c-representation.md §5.8).
+
+    The tests are made in order, and the first that applies decides:
+
+    1. Ok on either side: nothing to convert.
+    2. A function type on each side: adapt_plan, which wraps the closure in a
+       thunk if its C signature, or an argument or result, changes.
+    3. A value passed to or returned from a polymorphic callee (layout given)
+       whose generic layout there differs from its layout at the call's type
+       arguments: layout_plan. (If that finds nothing to do but either side is
+       a module's abstract type held at its bound, the tests go on.)
+    4. Into or out of a QVal, the one word in which generic code holds an
+       unbounded type parameter's values: box or unbox. A call id(:Int 2) of
+       id(A::TYPE x: A): A, not specialized, boxes 2 and unboxes the result.
+       Both QVals, or equal types at the same views: nothing.
+    5. A type parameter bounded by a record, variant, option, or tuple type,
+       whose values are held at their own view, their type argument's: view,
+       converted at run time between the two types' descriptors. The same
+       parameter on both sides needs nothing.
+    6. Records: record_view, since a record seen at a supertype has another
+       table of field offsets (docs/c-representation.md §5.2).
+    7. Variants: nothing if both number the cases alike and no payload changes
+       view; variant_tags to renumber a subtype's tags; otherwise view.
+    8. Options: nothing, or a cast between C types, if their cases agree;
+       otherwise a view, a proxy of the original.
+    9. Tuples: nothing, or a cast, if no component changes but by boxing;
+       otherwise a view (a proxy). A tuple cannot gain components.
+    10. The same representation (but for functions, options, and arrays), or
+        arrays whose elements need at most boxing either way: nothing.
+
+    Anything else raises UnsupportedConversion, rather than leave the C
+    printer to print it wrong."""
     ss, ts = shape(source), shape(target)
     if ss.kind == "ok" or ts.kind == "ok":
         return None

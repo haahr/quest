@@ -875,8 +875,32 @@ def elaborate_mutual_rec_type_group(
     bindings: list[ast.TypeBinding],
     env: Environment,
 ) -> list[TypeSymbol]:
-    """Elaborates a mutually recursive group of type declarations (Let Rec T1 =
-    ... and T2 = ...)."""
+    """Elaborates a group of mutually recursive type declarations, whose bodies
+    may refer to any member of the group, each member a type (a group with type
+    operators goes to elaborate_rec_type_operators):
+
+        Let Rec Tree = Variant leaf: Int node: Forest end
+        and Forest = Option nil cons with head: Tree tail: Forest end end;
+
+    Each member is declared as a QRecGroupType, which holds the whole group,
+    every member's body, with active_index saying which member it stands for:
+    Tree is the group with index 0, Forest the group with index 1. A single
+    Let Rec T = ... is the special case, a Rec(T) whose body names itself. In
+    the bodies, a member's name is a variable that the group binds, as T is in
+    Rec(T); and a group type is equal to its unfolding, the active member's body
+    with each name standing for its member's group type.
+
+    1. Each member gets a symbol id and its kind: the one it is declared with
+       (Let Rec A::K = ...) or TYPE.
+    2. In a scope of their own, the members are declared with those kinds and
+       no definitions, so that each body can refer to every member, before or
+       after it.
+    3. Each body is elaborated in that scope, and checked to have its member's
+       kind and to be contractive: every reference to a member is guarded by a
+       constructor (a tuple, option, function type, and so on), so that
+       Let Rec A = B and B = A, which defines nothing, is rejected.
+    4. The group types are declared in the enclosing scope, under the members'
+       symbol ids."""
     # 1. Allocate symbol IDs and declared bounds for all bindings
     pre_symbols: list[tuple[str, int, QKind, ast.TypeBinding]] = []
     for b in bindings:

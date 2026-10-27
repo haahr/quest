@@ -180,7 +180,43 @@ def _manifest_name(qm_path: Path) -> Optional[str]:
 
 
 class BuildEngine:
-    """Drives incremental separate compilation and linking via a FIFO queue."""
+    """Builds a program by separate compilation: each unit (a source file:
+    the main program, or a module it imports, directly or through other
+    modules) is compiled on its own to C and to an object file, and only the
+    units whose artifacts are stale are compiled again (docs/build-process.md).
+
+    A unit is compiled against the interfaces of the modules it imports, not
+    their implementations. So build_main compiles the main program first, and
+    only then learns which modules to build, from the manifest (.qm) that its
+    compilation writes, a record of what it was compiled from and against.
+    build_modules takes them from a FIFO queue: it compiles each module it pops
+    if it is stale, and queues the modules that its manifest lists, each once.
+    For a main.quest that imports counter: Counter, building with -v logs, in
+    part,
+
+        POP QUEUE: 'main' (kind=main)
+        EVAL STALENESS: 'main' -> STALE (missing artifacts in .../build)
+        COMPILE MAIN: 'main'
+        ENQUEUE MODULE: 'counter' (from main import)
+        POP QUEUE: 'counter' (kind=module)
+        COMPILE MODULE: 'counter'
+        VERIFY INTERFACE: 'counter' implements 'Counter', satisfies ...
+        HOST LINK: linking 2 objects into .../main
+
+    and leaves in the build directory main.main.qm, main.main.c, and
+    main.main.o; counter.qm, counter.mod.c, and counter.o; and the interface's
+    counter.qi and counter.int.h.
+
+    A unit is stale (_unit_staleness) if an artifact is missing or older than
+    the source, if its artifacts were made for another ABI version (another
+    layout of data and calls, which this compiler's code cannot be linked with),
+    if an interface it was compiled against has changed since, or if one of its
+    imports would now find another file. Since each module is compiled alone,
+    two checks are made over the whole program: every module's interface
+    conforms to the interface each of its importers expects of it (VERIFY
+    INTERFACE), and no modules import one another in a cycle. Then the objects
+    are linked: the engine's extra objects, the main program's, and the
+    modules', in the order they were queued."""
 
     def __init__(
         self,

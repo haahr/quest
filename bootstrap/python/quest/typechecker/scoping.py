@@ -100,6 +100,32 @@ def _local_binders(node: Any) -> Iterator[tuple[ValueSymbol, str]]:
 
 
 class _Checker:
+    """Walks a typed program with the binders in scope, and records each
+    problem it finds as a message in problems (check_well_scoped's result).
+
+    Two sets are first collected over the whole program:
+
+    - local_ids, the symbols bound locally (_local_binders). Only their uses are
+      checked; any other variable (a top-level binding, a module member, a
+      builtin) is global, in scope everywhere.
+    - param_ids, the type parameters of every polymorphic function (whose
+      type_param_ids are checked, on the way, to be its type's quantifiers).
+
+    walk(n, values, types) carries the local values and the type parameters in
+    scope at n, adding a binder's symbols where its scope begins: a function's
+    parameters and type parameters for its body, a block's let for the
+    bindings after it (and for itself and its group, if rec), a for loop's
+    variable for its body, and a case, try, or inspect binder for its branch.
+    In
+
+        let f(A::TYPE x: A): A = begin let y = x y end
+
+    the block sees x and A, and its result sees y too. A use of y outside the
+    block, or a type mentioning A outside f, as a pass that moved code out of
+    them could leave, is a problem. The types each node holds (in its fields
+    and its symbols' types) are checked against the type parameters in scope;
+    a variable is checked against the local values."""
+
     def __init__(self, prog: TypedProgram) -> None:
         self.problems: list[str] = []
         self.local_ids = {sym.symbol_id for sym, _ in _local_binders(prog)}

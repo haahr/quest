@@ -788,7 +788,27 @@ def qvalue_structural_eq(
     v2: QValue,
     visited: Optional[set[tuple[int, int]]] = None,
 ) -> bool:
-    """Deep recursive structural equality with cycle detection (for testing)."""
+    """Whether two values have the same structure, comparing their parts all
+    the way down, for tests: not Quest's own is, which compares aggregates by
+    identity.
+
+    Two values are equal if they are of the same class and:
+
+    - scalars (Bool, Int, Word, Real, Char, String) hold equal Python values,
+      so that 0.0 equals -0.0 and NaN equals nothing;
+    - records have the same field names, tuples the same labels, arrays the
+      same length, and their components are equal;
+    - options, variants, and exceptions have the same tag or name and equal
+      payloads, or none;
+    - var cells (QRef) hold equal values, whether or not they are one cell;
+    - auto values have equal types (==, on the type objects) and equal
+      contents, and type values equal types (is_type_equal);
+    - closures and builtins are the same object.
+
+    Sharing is not compared: a tuple holding one record twice equals one
+    holding two equal records. Cycles are compared coinductively: a pair of
+    values met again while it is being compared is taken to be equal, so that
+    two cyclic lists of the same elements are equal however they were built."""
     if v1 is v2:
         return True
 

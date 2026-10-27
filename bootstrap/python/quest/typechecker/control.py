@@ -110,8 +110,42 @@ class ControlMixin(Checker):
         env: Environment,
         loop_depth: int,
     ) -> list[TypedCaseBranch]:
-        """Validates tags, binders, exhaustiveness, and elaborates typed case
-        branches."""
+        """Checks a case expression's branches against the cases of its target's
+        type, and elaborates each branch's body.
+
+        A case expression chooses a branch by the tag of an option or variant
+        value, and a branch may bind the tag's payload to a name, its binder:
+
+            Let Shape = Option
+                circle with r: Int end
+                rect with w: Int h: Int end
+                point
+            end;
+            let area(s: Shape): Int =
+                case s
+                    when circle with c then 3 * c.r * c.r
+                    when rect with b: Tuple w: Int end then b.w * b.w
+                    else 0
+                end;
+
+        The target's type must be an option or variant type, or have one as its
+        bound (resolve_sum_bound: an abstract type A <: Shape, say). Then:
+
+        - Every tag a branch names must be one of the type's cases; a branch
+          may name several (when circle, rect then ...).
+        - A binder is typed by its tag's payload, the tuple circle carries, or
+          by the type it is declared with, which must be a supertype of the
+          payload: b sees only rect's w. In a branch naming several tags, the
+          binder is typed by the first tag's payload alone; the others' are not
+          checked against it yet, though the paper reads such a branch as one
+          branch per tag (docs/TypefulProgramming.md §4.5).
+        - Each body is checked against the expected type if there is one, and
+          otherwise synthesized, its caller joining the branches' types. A
+          synthesized type must not mention a type component of the binder (as
+          c.T for a payload Tuple T::TYPE x: T end), which means nothing outside
+          the branch.
+        - Without an else branch, every case must be covered: here, point's
+          branch could be left out only because of the else."""
         if isinstance(target_type, QOptionType):
             available_tags = {opt.name: opt.payload_type for opt in target_type.options}
         elif isinstance(target_type, QVariantType):
@@ -256,7 +290,32 @@ class ControlMixin(Checker):
         raise not_desugared(expr)
 
     def _synth_assignment(self, expr: ast.ExprInfix, env: Environment, loop_depth: int) -> TypedAssign:
-        """Synthesizes an assignment expression: lhs := rhs."""
+        """Synthesizes an assignment, target := value, whose type is Ok.
+
+        Only a mutable location can be assigned, and there are two kinds of
+        target:
+
+            let var n = 0;
+            let p = tuple let var x = 1 let y = 2 end;
+            n := 1;          (* a variable declared var, or an out parameter *)
+            p.x := n + 1;    (* a component of a tuple or record declared var *)
+
+        In each case the value is checked against the location's type, which
+        is the variable's type, not the type Var(Int) the target has as a
+        location (the TypedVar built below). A component is found in the
+        target's type: a tuple type, a record type, or a type bounded by one,
+        so that a function over A <: Record var count: Int end can assign
+        a.count.
+
+        A closure may not assign a var variable or parameter of an enclosing
+        function (_check_capturable), since the location lives in that
+        function's frame:
+
+            let h(): Ok = begin let var m = 0 let g(): Ok = m := 2 g() end;
+
+        is rejected, while module-level variables may be assigned anywhere.
+        Assignments to array elements, a[i] := v, never reach here: desugaring
+        made them ExprIndexAssign nodes."""
         match expr.left:
             # Target 1: Variable identifier
             case ast.ExprId(name=name, offset=id_off):

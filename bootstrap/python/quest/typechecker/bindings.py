@@ -355,9 +355,26 @@ class BindingMixin(Checker):
             )
 
     def _declare_rec_value(self, binding: ast.LetValueBinding, env: Environment) -> ValueSymbol:
-        """Declares the symbol of a recursive value declaration (let rec), typed
-        by its annotations, before its value is checked, so that the value (and
-        the other members of its group) can refer to it."""
+        """Declares the symbol of a recursive value declaration (let rec) before
+        its value is checked, so that the value, and the other members of its
+        group, can refer to it:
+
+            let rec even(n: Int): Bool = if n is 0 then true else odd(n - 1) end
+            and odd(n: Int): Bool = if n is 0 then false else even(n - 1) end;
+
+        Every member's type must be known before any body is checked, since
+        each body may use the others, and a type cannot be taken from a body
+        that has not been checked yet. So it is taken from the annotations
+        alone:
+
+        - A function, as even, needs a type on each parameter and a result
+          type, from which its type is built: Fun(n: Int): Bool.
+        - Any other value needs a type for the whole:
+          let rec ones: Tuple head: Int tail: All() Int end = tuple ... end.
+
+        So let rec fact(n: Int) = ... is rejected for want of a result type,
+        though without rec its result type would be synthesized from its body.
+        _check_rec_value then checks each value against its declared type."""
         if binding.params:
             if binding.type_annot is None:
                 raise TypeError(

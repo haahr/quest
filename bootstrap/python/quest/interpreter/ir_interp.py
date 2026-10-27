@@ -206,6 +206,34 @@ class _Closure(QBuiltinFun):
 
 
 class Interpreter:
+    """Runs one IR unit, at any stage, sharing the source interpreter's runtime
+    environment (renv): its values, its call stack, and the modules it has
+    loaded.
+
+    run runs the unit's imports (by the source interpreter), then each of its
+    modules' initializers, in a frame of its own whose variables become the
+    module's members, and then its main body.
+
+    Control flow inside a function is by signals, not Python exceptions: a
+    statement returns None to fall through, or the terminator it reached as a
+    tuple, ("return", value), ("jump", label, values), ("break", label), or
+    ("continue", label), which each enclosing statement passes up until one
+    that handles it. The abs function in _Lowerer's docstring (ir/lower.py),
+
+        join k1(r: Int) { return r }
+        in { ... if %1 { ... jump k1(%2) } else { jump k1(n) } }
+
+    runs the join's body (after in), whose jump signal reaches the join; the
+    join binds r and runs its continuation, whose return signal ends the call.
+    A raise is a Python exception (QuestException), which a try catches.
+
+    After closure conversion (the pass that makes each local function code of
+    its own, with the values it uses from around it passed in as captures), a
+    closure is made by MakeClosure, which copies the values it captures. A let
+    rec's closures may capture variables it has yet to bind, so make_closure
+    records each such capture in fixups, and the let rec fills them in once its
+    body has bound the variables."""
+
     def __init__(self, runtime_env: RuntimeEnvironment) -> None:
         self.renv = runtime_env
         self.root = RuntimeEnvironment.create_root_env()

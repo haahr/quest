@@ -110,7 +110,30 @@ _TYPE_IDS_SEEN_UNDEFINED: set[int] = set()
 _KIND_IDS_SEEN_UNDEFINED: set[int] = set()
 
 class Scope:
-    """A single lexical scope frame maintaining ordered declarations."""
+    """One frame of a chain of lexical scopes: the symbols declared directly in
+    one block, function, interface, module, or other construct, and a link to
+    the frame around it (parent).
+
+    Values, types, and kinds have namespaces of their own, so that Let T = Int
+    and let T: T = 1 may stand side by side. In a namespace, a later
+    declaration of a name hides an earlier one in the same frame, as in
+
+        begin let x = 1 let x = x + 1 x end
+
+    where the second x is a new symbol; declarations keeps both, in order.
+
+    lookup_value, lookup_type, and lookup_kind search this frame and then each
+    enclosing one, out to the outermost (for a program's scopes, the
+    environment's base scope, which holds the builtins); the *_local lookups
+    search this frame alone. Types and kinds are also found by symbol id, since
+    the types that refer to them hold ids (a QTypeVar holds its symbol_id), not
+    names.
+
+    Declaring a type or kind also records it by id in a table global to the
+    process. If that gives a meaning to an id that a lookup had found without
+    one, or changes the meaning an id had, the declaration calls
+    meanings_changed, so that cached subtyping results, which may depend on the
+    old meaning, are not reused."""
 
     def __init__(self, parent: Optional[Scope] = None, name: str = "local"):
         self.parent = parent

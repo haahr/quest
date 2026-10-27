@@ -241,8 +241,35 @@ def _var_label(name: str, is_var: bool) -> str:
 
 
 class _TypeGraph:
-    """The graph of the types a value mentions, keyed by the identity of their
-    (hash-consed) structures."""
+    """The graph of the types a value mentions, from which the document's type
+    table is made (_canonical_table).
+
+    ref(t) returns how the table refers to t: a built-in type by its name
+    ("Int", "String", "Dynamic"), and any other type by the index of its node,
+    which it adds, with the nodes of its parts, the first time it meets the
+    type. A node is a shape (its constructor and labels: a record's field
+    names, an option's case names) and the refs of its parts, so that
+
+        Let Rec L = Option nil cons with head: Int tail: L end end
+
+    is two nodes, the option and its payload tuple, and the tuple's tail
+    refers back to the option:
+
+        {"option": {"cons": 1, "nil": null}}
+        {"tuple": [["head", "Int"], ["tail", 0]]}
+
+    Nodes are keyed by the identity of a type's structure: types are
+    hash-consed (made once for each structure), so equal types written alike
+    share one, and a recursive type
+    becomes a cycle as its unfolding reaches the type again. Equal types
+    written differently may make separate nodes, which the canonical table
+    merges.
+
+    Inside an auto type (a value packed with a type it hides, its witness), an
+    occurrence of its type parameter is a param node
+    numbered by how many auto types lie between it and its binder (0 for the
+    nearest), and a type that mentions such parameters is a node for each way
+    it refers to them."""
 
     def __init__(self) -> None:
         self.nodes: list[Optional[tuple[tuple[Any, ...], tuple[TypeRef, ...]]]] = []
@@ -422,6 +449,26 @@ def _is_var_label(label: str) -> bool:
 
 
 class _Writer:
+    """Writes a value as the document's value, by its type, in two passes.
+
+    scan walks the value first and finds the objects reached more than once:
+    records, arrays, and nonempty tuples, which have identity. encode then
+    writes it as JSON, following its type: a record as an object, a tuple as
+    an array, an option as {case: payload} or the case's name alone, and a
+    shared object with an @id where it is first written and as {"@ref": n}
+    where it is met again. So a pair of one point twice,
+
+        tuple let a = p let b = p end
+
+    is written
+
+        [{"@id": 1, "x": 10, "y": 20}, {"@ref": 1}]
+
+    and a cycle of objects ends in a @ref. Writing adds the types it meets to
+    the graph; an abstract type's value is written at its representation's
+    type, and an auto value's components at their types with the auto value's
+    witness, the type it hides, for its type parameter (witnesses)."""
+
     def __init__(self) -> None:
         self.graph = _TypeGraph()
         self.roots: list[TypeRef] = []
@@ -676,6 +723,17 @@ def _operator_kind(arity: int) -> QKind:
 
 
 class _Reader:
+    """Reads a document's value back by its type, from the document's type
+    table, raising dynamic.error (_fail) at anything ill-formed.
+
+    The constructor checks every node of the table before anything is read
+    (_check_node). type_of makes the QType of a node, once: a node reached
+    again while its own type is being made, as the option above is from its
+    tail, becomes a recursive type. value decodes JSON by its type, the
+    reverse of _Writer.encode: an object with an @id is recorded in objects
+    as it is made, so that a later {"@ref": n} returns that same object,
+    shared as it was when written."""
+
     def __init__(self, table: Any) -> None:
         if not isinstance(table, list):
             raise _fail()

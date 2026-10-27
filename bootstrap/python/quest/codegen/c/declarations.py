@@ -223,8 +223,46 @@ def collect_aggregate_types(
 
 
 class CDeclarationEmitter:
-    """Emits forward declarations, structs, typedefs, evidence dictionaries, and
-    trampolines."""
+    """Writes the declarations at the top of a unit's C, and of an interface's
+    C header, section by section: each method returns the lines of one section.
+    The printer asks for them in this order (CPrinter.declarations, then
+    import_declarations):
+
+    - emit_forward_typedefs and emit_aggregate_structs: a struct for each
+      tuple, record, and option type the unit uses, named by the type's tag (a
+      name made from the type's structure, the same in every unit). Every
+      struct is declared before any is defined, so that structs can point to
+      one another, as a recursive type's do. Let Point = Record x: Int y: Int
+      end gives
+
+          struct QT_record_4c2b32032208f9d9 {
+              QRecordHeader header;
+              QInt qf_x;
+              QInt qf_y;
+          };
+
+    - emit_evidence_dictionaries: records have structural subtyping, so a
+      function of p: Record x: Int end may be passed a Point, whose x is where
+      Point's struct puts it. A record value is therefore a pair: a pointer to
+      its struct and a pointer to a table of the offsets of the fields its
+      static type has, its evidence dictionary. The function reads p.x at
+      p.val plus p.dict's offset_x. This section defines each record type's
+      dictionary struct and the static dictionaries the unit's code uses
+      (docs/c-representation.md §5.2).
+    - emit_coercion_tables: static assertions that a tuple's components are
+      where its supertype's are, so that it is used at the supertype as it is,
+      and the tables renumbering a variant's tags as a supertype's.
+    - emit_type_descriptors: each type's runtime description (a
+      QTypeDescriptor, quest_type_<tag>), which dynamic values, inspect,
+      printing, and conversions at run time read.
+    - emit_fun_type_adapters: for each function type with a descriptor, the
+      functions that convert a closure to it at run time.
+    - emit_precompiled_module_declarations: extern declarations of the
+      functions exported by the modules the unit imports, which are compiled
+      on their own.
+
+    An interface's header (c/headers.py) takes only the forward typedefs and
+    structs from this class."""
 
     def __init__(self, record_ctx: RecordNamingContext, c_type_fn: Callable[[QType], str]):
         self.record_ctx = record_ctx

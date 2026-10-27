@@ -140,6 +140,49 @@ class LoweringError(Exception):
 
 
 class _Lowerer:
+    """Lowers a unit's typed program (or module) to Core IR, holding what the
+    lowering needs as it goes.
+
+    Core IR (docs/ir.md) is flat: an operation's operands are atoms, variables
+    and constants, never nested expressions, so every intermediate value is
+    named by a let. Where control paths meet again, as after an if
+    expression's branches, the IR has a join point, a local block that the
+    paths jump to with their values. So
+
+        let abs(n: Int): Int = if n < 0 then 0 - n else n end;
+
+    is lowered to (as --stop-after ir_core prints it)
+
+        fun abs(n: Int): Int {
+          join k1(r: Int) {
+            return r
+          } in {
+            let %1: Bool = prim <(n, 0)
+            if %1 {
+              let %2: Int = prim -(0, n)
+              jump k1(%2)
+            } else {
+              jump k1(n)
+            }
+          }
+        }
+
+    Statements are appended to the current body, self.body, which a construct
+    with bodies of its own (the if's branches, a function, a join point)
+    replaces while it lowers them (in_body). The rest of the state:
+
+    - vars, the IR variable of each typed-AST symbol whose binder has been
+      lowered, and builtins, the builtin values' names by symbol;
+    - loops, the labels of the enclosing loops, innermost last: an exit
+      expression leaves the innermost;
+    - imports and module_refs, the modules the unit imports and defines;
+    - frame, the name of the code being lowered as exception tracebacks show
+      it, and made, the exceptions created ahead of the bindings that declare
+      them (make_scope_exceptions).
+
+    value and effect, the entry points for expressions, are described in the
+    module's docstring."""
+
     def __init__(self, env: Environment, echo: bool, print_result: bool) -> None:
         self.vars: dict[int, ir.Var] = {}
         self.builtins: dict[int, str] = {

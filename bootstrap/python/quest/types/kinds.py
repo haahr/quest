@@ -488,8 +488,32 @@ def resolve_tuple_bound(t: QType, env: Optional[Any] = None) -> Optional[QTupleT
 
 
 def resolve_option_bound(t: QType, env: Optional[Any] = None) -> Optional[QOptionType]:
-    """Resolves an option type, unwrapping type applications, recursive types,
-    or bounds."""
+    """The option type that t is, stands for, or is bounded by, or None if
+    there is none.
+
+    The type checker uses it to check that ordinal's argument is an option
+    (ordinal(v) is the position of v's case in its option type), which may be
+    written in several ways. Each step below takes t one closer to
+    an option type, until one is reached or no step applies:
+
+    - An alias is replaced by what it names.
+    - A recursive type, Rec(L::TYPE) Option nil cons with ... end, is replaced
+      by its body. Its variable L is not substituted: only the outermost
+      constructor matters here.
+    - An application of a type operator is reduced, its arguments substituted
+      for the operator's parameters: Maybe(Int), for
+      Let Maybe = Fun(A::TYPE) Option none some with x: A end end, becomes
+      Option none some with x: Int end end.
+    - A type variable, abstract type, or path type (m.T, a type component of
+      a value m, such as a module) bounded by a type (as A in
+      All(A <: Option a b end x: A) Int) is replaced by its bound. A bound may
+      itself be a bounded variable, and the walk stops if it meets one twice.
+    - Given an environment, any other type is evaluated (evaluate_lazily) to
+      what it is defined as, if that changes its class.
+
+    It differs from _resolve_bound(t, env, (QOptionType,)), which walks bounds
+    in the same way, in reducing applications by substitution rather than by
+    unfold_head, and in not unfolding mutually recursive groups."""
     curr = t
     visited = set()
     while True:

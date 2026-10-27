@@ -96,6 +96,40 @@ class _Definition:
 
 
 class _Specializer:
+    """Specializes a unit: finds the functions that its funs statements (the
+    IR's binders of groups of functions) bind, then redirects calls of them to
+    clones made for the calls' type arguments.
+
+        let id(A::TYPE x: A): A = x;
+        let p = id(:Record x: Int end record x = 1 end);
+        let n = id(:Int 2);
+
+    The first call is specialized and the second is not (should_specialize:
+    generic code boxes a record, not an Int), so after the pass, as
+    --stop-after ir_specialized prints it (condensed),
+
+        fun id [A::TYPE](x: A): A { return x }
+        fun id_spec(x.1: Record x: Int end): Record x: Int end { return x.1 }
+        let p: Record x: Int end = call id_spec(%1)
+        let n: Int = call id [Int](2)
+
+    A call is specialized only when its type arguments are closed: one that
+    mentions a type parameter of a function around the call (enclosing) has no
+    single type to clone for.
+
+    - definitions holds each function, by its variable's identity, with its
+      funs statement, its module, and the type parameters of the functions
+      around it. collect fills it, and clone adds each clone and the local
+      functions inside it.
+    - clones holds each clone, by function and type arguments, so that calls
+      with the same arguments share one; counts numbers the clones of each
+      function, which names those that are module members (f_spec1, ...).
+    - pending holds the clones whose bodies are still to be specialized, each
+      with its depth, the number of clones that led to it (depth is that of
+      the body being specialized). A clone's body may call for more clones;
+      past MAX_DEPTH none is made, so that polymorphic recursion (a function
+      of A calling itself at List(A)) does not clone without end."""
+
     def __init__(self) -> None:
         self.definitions: dict[int, _Definition] = {}
         self.clones: dict[tuple[int, tuple[str, ...]], ir.Function] = {}

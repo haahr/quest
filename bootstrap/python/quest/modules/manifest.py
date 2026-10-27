@@ -132,8 +132,24 @@ def read_qm(path: Path) -> Optional[ModuleManifest]:
 
 
 def is_manifest_stale(manifest: ModuleManifest, qm_path: Path) -> bool:
-    """Checks whether the compiled artifacts for a module or main routine are
-    out of date."""
+    """Whether a unit's manifest says that its artifacts are out of date; the
+    checks on the artifacts' own files are unit_staleness's.
+
+    They are out of date if any of these holds:
+
+    - The manifest was written by a compiler of another ABI version
+      (config/abi.py), whose artifacts lay out data or make calls in other
+      ways, so that this compiler cannot link with them.
+    - The object file it records is missing.
+    - The source it records exists and is newer than the manifest or the
+      object file.
+    - An interface the unit was compiled against, which it imports directly or
+      through other interfaces, has a source newer than the manifest: the
+      unit's C may depend on what it declared.
+
+    A manifest that records no source, or a source that does not exist, is
+    that of a prebuilt unit distributed without its source (an object and its
+    .qm), which is up to date as long as its object and ABI version are."""
     if manifest.abi != ABI_VERSION:
         return True
     obj_path = Path(manifest.object)

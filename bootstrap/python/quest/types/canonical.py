@@ -475,8 +475,58 @@ _Ref = Any  # a class of a canonical graph (an int) or a _Leaf
 
 
 class _CanonicalGraph:
-    """The minimized graph of the nodes reachable from a type, from which
-    canonical forms are written."""
+    """The graph of a type's parts, minimized so that equal types have the same
+    graph, from which their canonical form is written (docs/c-representation.md
+    §5.7).
+
+    Recursive types are equal to their unfoldings, so one type can be written in
+    many ways. These two are equal, the second unrolled once inside its Rec:
+
+        Rec(L::TYPE) Option nil cons with head: Int tail: L end end
+        Rec(L::TYPE)
+          Option nil
+            cons with head: Int
+                      tail: Option nil cons with head: Int tail: L end end
+                 end
+          end
+
+    The C backend must give both one tag (the name of its C struct) and one
+    descriptor (its description at run time), so it computes them from a
+    canonical form, which every type equal to these has:
+
+        Rec(Rec.0::TYPE)
+          Option cons with Tuple head: Int tail: Rec.0 end nil end
+
+    The graph is built in three steps:
+
+    1. The constructor walks the type, making a node for each part it meets (an
+       option, a tuple, a function type, and so on; _canonical_node lists them)
+       with an edge to each of the part's own parts. A recursive type is not a
+       node: it is replaced by its unfolding, so recursion becomes a cycle. The
+       first type above has two nodes, the option and its payload tuple, the
+       tuple's tail an edge back to the option; the second has four in a cycle.
+       Types without parts, such as Int, are leaves, compared by identity.
+
+    2. The nodes are partitioned into classes that cannot be told apart, the
+       coarsest partition in which nodes of a class have the same shape (the
+       constructor and its labels) and parts in the same classes. As in DFA
+       minimization, classes start as one per shape and are split until no
+       class splits. The second type's two options end in one class and its two
+       tuples in another, so both types have the same two-class graph, the
+       quotient, in which each class is a node.
+
+    3. build() writes a class back as a type, with a Rec wherever the quotient
+       has a cycle (_find_components finds them, _recursive_term writes them).
+
+    Type parameters add one twist. A node that binds parameters (a polymorphic
+    function type, a type operator, an auto type) is a node like any other, and
+    an occurrence of a parameter is a node whose shape holds the parameter's
+    position, not its name, with a scope edge to its binder node, which
+    refinement follows like any edge. So binders that differ only in their
+    parameters' names fall into one class. Since one type object can mean
+    different things under different binders, a node is the object together
+    with the binder nodes its free variables refer to. Written back, parameters
+    get reserved ids numbered by depth, so that no binder captures another's."""
 
     def __init__(self, root: QType) -> None:
         index: dict[Any, int] = {}
@@ -649,8 +699,26 @@ class _CanonicalGraph:
 
     def _aggregate_cycles(self, comp: int) -> bool:
         """Whether every cycle of a cyclic component passes through a tuple,
-        record, variant, or option: whether its other nodes have no cycle among
-        themselves."""
+        record, variant, or option, tested by looking for a cycle among its
+        other nodes.
+
+        If every cycle does, recursion variables bind only those nodes
+        (_is_rec_shape), so that every Rec in a canonical form unfolds to a
+        tuple, record, variant, or option, as recursive types are usually
+        written. A stream of integers has a cycle through a tuple and a function
+        type:
+
+            Rec(S::TYPE) Tuple head: Int tail: All() S end
+
+        Its canonical form is a recursive tuple, and the canonical form of its
+        tail's type, All() S, has one as its result, though the function type
+        is on the same cycle:
+
+            All() Rec(Rec.0::TYPE) Tuple head: Int tail: All() Rec.0 end
+
+        not Rec(F::TYPE) All() Tuple head: Int tail: F end. Only when some cycle
+        passes through none of them, as in Rec(F::TYPE) All() F, may a
+        recursion variable bind any node that a recursive type may unfold to."""
         if comp in self._aggregate_cycle_memo:
             return self._aggregate_cycle_memo[comp]
         others = [k for k in range(len(self.shapes))
