@@ -3,6 +3,11 @@
  * Part of Step 4: Bootstrap C Transpiler
  */
 
+/* pthread_getattr_np, for the stack guard on Linux (glibc) */
+#if defined(__linux__) && !defined(_GNU_SOURCE)
+#define _GNU_SOURCE
+#endif
+
 #include "quest_runtime.h"
 
 QString *quest_string_new(const char *src, int64_t len) {
@@ -3904,11 +3909,81 @@ uint64_t quest_identity_hash(const QTypeDescriptor *t, QVal x) {
     return quest_hash_mix64(x.u);
 }
 
+/* ============================================================================
+ * Running out of stack
+ *
+ * Compiled code does not check its depth, so runaway recursion runs into the
+ * guard page below the main thread's stack. A handler for the fault, on a stack
+ * of its own, reports it as an uncaught stack.overflow, with the frames
+ * running, and ends the program, as quest_reraise ends it for any uncaught
+ * exception; the interpreters raise stack.overflow as an exception a program
+ * can catch (docs/exceptions.md §6). Reporting is not async-signal-safe, but
+ * the program is ending, and a fault in the middle of the allocator or stdio
+ * is unlikely. Any other fault is left to the default action.
+ * ============================================================================
+ */
+
+#if defined(__APPLE__) || (defined(__linux__) && defined(__GLIBC__))
+#include <pthread.h>
+#include <signal.h>
+#define Q_HAVE_STACK_GUARD 1
+
+/* How far a fault's address may be from the stack's low end, below it (a large
+ * frame skips past the guard page) or above it, to be an overflow */
+#define Q_STACK_REACH_BELOW ((uintptr_t)1 << 20)
+#define Q_STACK_REACH_ABOVE ((uintptr_t)1 << 16)
+
+static uintptr_t quest_stack_low = 0;
+static char quest_signal_stack[1 << 18];
+
+static void quest_on_fault(int sig, siginfo_t *info, void *context) {
+    (void)context;
+    uintptr_t addr = (uintptr_t)info->si_addr;
+    if (quest_stack_low != 0 && addr + Q_STACK_REACH_BELOW >= quest_stack_low &&
+        addr < quest_stack_low + Q_STACK_REACH_ABOVE) {
+        fflush(stdout);
+        fprintf(stderr, "Exception: stack.overflow\n");
+        quest_fail_with(NULL, NULL);
+    }
+    /* Returning faults again, with the default action */
+    signal(sig, SIG_DFL);
+}
+
+static void quest_install_stack_guard(void) {
+    pthread_t self = pthread_self();
+#ifdef __APPLE__
+    quest_stack_low = (uintptr_t)pthread_get_stackaddr_np(self) - pthread_get_stacksize_np(self);
+#else
+    pthread_attr_t attr;
+    void *low = NULL;
+    size_t size = 0;
+    if (pthread_getattr_np(self, &attr) != 0) return;
+    if (pthread_attr_getstack(&attr, &low, &size) == 0) quest_stack_low = (uintptr_t)low;
+    pthread_attr_destroy(&attr);
+#endif
+    stack_t ss;
+    ss.ss_sp = quest_signal_stack;
+    ss.ss_size = sizeof quest_signal_stack;
+    ss.ss_flags = 0;
+    if (sigaltstack(&ss, NULL) != 0) return;
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_sigaction = quest_on_fault;
+    sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGSEGV, &sa, NULL);
+    sigaction(SIGBUS, &sa, NULL);
+}
+#endif
+
 /* Builtins initialization */
 void quest_builtins_init(int argc, char **argv) {
     quest_writer_init_std();
     quest_reader_init_std();
     quest_system_init(argc, argv);
+#ifdef Q_HAVE_STACK_GUARD
+    quest_install_stack_guard();
+#endif
 }
 
 /* ============================================================================

@@ -571,7 +571,7 @@ export
                         else ok
                     end
                     case callee
-                        when vClosure with c then if extent c.c.params is 0 then runClosure(c.c array of :Value end) else callee end
+                        when vClosure with c then if extent c.c.params is 0 then runClosure(c.c array of :Value end offset) else callee end
                         else callee
                     end
                 when exprApp with x then
@@ -589,7 +589,7 @@ export
                             else
                                 b.b.fn(args)
                             end
-                        when vClosure with c then runClosure(c.c args)
+                        when vClosure with c then runClosure(c.c args offset)
                         else model.internalError(:Value "Cannot call non-function of type " <> model.typeName(callee) offset)
                     end
                 when exprInfix with x then
@@ -928,9 +928,14 @@ export
             model.tupleValue(elems labels)
         end
 
-    and runClosure(c: model.Closure args: Array(Value)): Value =
+    and runClosure(c: model.Closure args: Array(Value) offset: maybe.T(Int)): Value =
         begin
             let env = c.env
+            (* A call that would make more than maxCallDepth calls active raises
+             * stack.overflow at offset, which the caller locates in its file *)
+            if vector.length(:String env.root.callStack) >= primitives.maxCallDepth then
+                model.raiseException(:Ok primitives.stackOverflow offset)
+            end
             vector.append(:String env.root.callStack c.traceName)
             let result = try
                 case c.body.form

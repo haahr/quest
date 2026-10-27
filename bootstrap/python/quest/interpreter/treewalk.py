@@ -11,6 +11,7 @@ by their types quest.interpreter.formatting's; the IR interpreter
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -22,7 +23,9 @@ from quest.diagnostics import (
 )
 from quest.interpreter.primitives import (
     ARRAY_OP_ERROR_EXC,
+    MAX_CALL_DEPTH,
     QuestRuntimeError,
+    STACK_OVERFLOW_EXC,
     VARIANT_ERROR_EXC,
     int_arithmetic,
     int_relational,
@@ -127,6 +130,12 @@ from quest.typechecker.typed_ast import (
     TypedVariantCheck,
     TypedWhile,
 )
+
+# Python frames enough for MAX_CALL_DEPTH Quest calls, each of which takes
+# several (more in a body of nested blocks), so that the interpreter raises
+# stack.overflow at the same depth as the self-hosted one
+PYTHON_FRAMES_PER_CALL = 50
+sys.setrecursionlimit(max(sys.getrecursionlimit(), MAX_CALL_DEPTH * PYTHON_FRAMES_PER_CALL))
 
 
 # ============================================================================
@@ -530,7 +539,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             if isinstance(callee, QClosure) and callee.type_param_ids:
                 callee = callee.instantiate(type_args)
             if isinstance(callee, QClosure) and len(callee.params) == 0:
-                return run_closure(callee, [])
+                return run_closure(callee, [], offset=expr.offset)
             return callee
 
         case TypedApp(func=func, args=args, offset=offset):
@@ -546,7 +555,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                 case QBuiltinFun(fn=fn):
                     return fn(*arg_vals)
                 case QClosure():
-                    return run_closure(callee_val, arg_vals)
+                    return run_closure(callee_val, arg_vals, offset=offset)
                 case _:
                     raise QuestRuntimeError(
                         f"Cannot call non-function of type {callee_val.type_name}",
@@ -1007,12 +1016,17 @@ def note_frames(error: QuestCompilerError, env: RuntimeEnvironment) -> None:
         error.frames = tuple(reversed(env.call_stack))
 
 
-def run_closure(closure: QClosure, args: list[QValue]) -> QValue:
+def run_closure(closure: QClosure, args: list[QValue], offset: Optional[int] = None) -> QValue:
     """Applies a closure to its arguments, in its frame: an external's built-in
     implementation, or the closure's body. An error raised inside is located in
     the file the closure was made in, unless code it called located it already,
-    and records the frames running (docs/exceptions.md §3.2, §4)."""
+    and records the frames running (docs/exceptions.md §3.2, §4). A call that
+    would make more than MAX_CALL_DEPTH calls active raises stack.overflow at
+    offset, the call's, which the caller's frame locates in its file; so does
+    one that exhausts Python's own stack first."""
     env = closure.env
+    if len(env.call_stack) >= MAX_CALL_DEPTH:
+        raise QuestException(STACK_OVERFLOW_EXC, offset=offset)
     env.call_stack.append(closure.trace_name)
     try:
         if isinstance(closure.body, TypedExternal):
@@ -1033,6 +1047,11 @@ def run_closure(closure: QClosure, args: list[QValue]) -> QValue:
             error.source_map = env.source_map
         note_frames(error, env)
         raise
+    except RecursionError:
+        error = QuestException(STACK_OVERFLOW_EXC)
+        error.source_map = env.source_map
+        note_frames(error, env)
+        raise error from None
     finally:
         env.call_stack.pop()
 

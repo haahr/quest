@@ -1,0 +1,66 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs rec {
+    fun down(n: Int): Int {
+      let %4: Int = prim +(n, 1)
+      let %5: Int = call down(%4)
+      let %6: Int = prim +(1, %5)
+      return %6
+    }
+  }
+  join k1(r: String) {
+    do call print(r)
+    funs rec {
+      fun depth(n.1: Int): Int {
+        join k2(r.1: Int) {
+          return r.1
+        } in {
+          let %7: Bool = prim is(n.1, 0)
+          if %7 {
+            jump k2(0)
+          } else {
+            let %8: Int = prim -(n.1, 1)
+            let %9: Int = call depth(%8)
+            let %10: Int = prim +(1, %9)
+            jump k2(%10)
+          }
+        }
+      }
+    }
+    let %11: Int = call depth(900)
+    let %12: String = call conv.int(%11)
+    do call print(%12)
+    let %13: Int = call depth(10)
+    let %14: String = call conv.int(%13)
+    do call print(%14)
+    join k3(r.2: String) {
+      do call print(r.2)
+    } in {
+      try catching all {
+        let %15: Int = call down(0)
+        let %16: String = call conv.int(%15)
+        jump k3(%16)
+      } handle (e: Exception) {
+        jump k3("again")
+      }
+    }
+  } in {
+    try catching all {
+      let %17: Int = call down(0)
+      let %18: String = call conv.int(%17)
+      jump k1(%18)
+    } handle (e.1: Exception) {
+      jump k1("stack overflow")
+    }
+  }
+}
+

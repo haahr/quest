@@ -45,6 +45,15 @@ READLINE_END_OF_INPUT_EXC = QExceptionVal("readline.endOfInput")
 READLINE_INTERRUPTED_EXC = QExceptionVal("readline.interrupted")
 VARIANT_ERROR_EXC = QExceptionVal("variant.tagMismatch")
 
+# Raised by a call that would make more than MAX_CALL_DEPTH calls of Quest
+# functions active at once, so that runaway recursion in an interpreter is an
+# exception a program, or the REPL, can catch, rather than the interpreter's own
+# crash. Both interpreters, the bootstrap's and the self-hosted one, stop at the
+# same depth; compiled code reports running out of stack, uncaught, instead
+# (docs/exceptions.md §6).
+STACK_OVERFLOW_EXC = QExceptionVal("stack.overflow")
+MAX_CALL_DEPTH = 1000
+
 
 def truncating_div(a: int, b: int) -> int:
     """a / b rounded toward zero, as in C; exact, unlike int(a / b), which

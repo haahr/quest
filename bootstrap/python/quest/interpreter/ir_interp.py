@@ -34,7 +34,9 @@ from quest.diagnostics import MAIN_FRAME, QuestCompilerError, init_frame
 from quest.interpreter.formatting import exposed_type, format_value_with_type
 from quest.interpreter.primitives import (
     ARRAY_OP_ERROR_EXC,
+    MAX_CALL_DEPTH,
     QuestRuntimeError,
+    STACK_OVERFLOW_EXC,
     VARIANT_ERROR_EXC,
     int_arithmetic,
     int_relational,
@@ -344,6 +346,9 @@ class Interpreter:
     def apply(self, callee: QValue, args: list[QValue]) -> QValue:
         match callee:
             case _Closure(function=f):
+                # IR calls have no offsets, so stack.overflow is not located
+                if len(self.renv.call_stack) >= MAX_CALL_DEPTH:
+                    raise QuestException(STACK_OVERFLOW_EXC)
                 frame = _Frame(callee.frame, dict(callee.type_bindings))
                 if f.env is not None:
                     frame.values[id(f.env)] = callee.env

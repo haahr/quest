@@ -1,0 +1,17 @@
+(* Runaway recursion raises stack.overflow in the interpreters, which a handler
+   catches like any other exception, after which the program goes on; compiled
+   code ends with it instead (docs/exceptions.md section 6). *)
+(* @skip-phase: run_c_compiled *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let rec down(n: Int): Int = 1 + down(n + 1);
+print(try conv.int(down(0)) else "stack overflow" end);
+
+(* A recursion within the limit runs every call *)
+let rec depth(n: Int): Int = if n is 0 then 0 else 1 + depth(n - 1) end;
+print(conv.int(depth(900)));
+
+(* After an overflow, calls run as before, and overflow again *)
+print(conv.int(depth(10)));
+print(try conv.int(down(0)) else "again" end)

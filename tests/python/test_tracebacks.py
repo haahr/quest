@@ -176,5 +176,50 @@ class TestInterpreterTracebacks(unittest.TestCase):
                 self.assertTrue(_is_subsequence(compiled_frames, _expanded(frames)), compiled)
 
 
+# Two calls, so that the C compiler cannot make the recursion a loop
+RUNAWAY = """let rec down(n: Int): Int = down(n + 1) + down(n + 2);
+down(0);
+"""
+
+
+class TestStackOverflow(unittest.TestCase):
+    """Runaway recursion (docs/exceptions.md §6): every interpreter raises
+    stack.overflow at the same depth, with the same frames, and compiled code
+    reports it, uncaught, when it runs out of stack."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.temp_dir = tempfile.TemporaryDirectory()
+        cls.root = Path(cls.temp_dir.name)
+        cls.build_dir = cls.root / ".build"
+        cls.program = cls.root / "runaway.quest"
+        cls.program.write_text(RUNAWAY, encoding="utf-8")
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.temp_dir.cleanup()
+
+    def stderr_of(self, phase: str) -> str:
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(
+                run_driver(["--stop-after", phase, "--build-dir", str(self.build_dir), str(self.program)]), 1)
+        return err.getvalue()
+
+    def test_interpreters_raise_it_at_the_same_depth(self) -> None:
+        for phase in INTERPRETER_PHASES:
+            with self.subTest(phase=phase):
+                stderr = self.stderr_of(phase)
+                self.assertIn("error: Exception: stack.overflow", stderr)
+                self.assertEqual(_frames(stderr), ["in down", "... down repeated 998 more times", "in <main>"])
+
+    def test_compiled_code_reports_it(self) -> None:
+        stderr = self.stderr_of("run_c_compiled")
+        self.assertIn("error: Exception: stack.overflow", stderr)
+        frames = _expanded(_frames(stderr))
+        self.assertEqual(frames[-1], "in <main>", stderr)
+        self.assertIn("in down", frames, stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

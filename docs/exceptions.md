@@ -287,7 +287,44 @@ output ends with `  ... (traceback truncated)`.
 
 ---
 
-## 6. Testing
+## 6. Running Out of Stack
+
+Runaway recursion, such as `let rec f(n: Int): Int = f(n + 1)`, ends differently in the interpreters and in compiled
+code.
+
+**The interpreters raise `stack.overflow`.** A call that would make more than 1,000 calls of Quest functions active
+at once (`MAX_CALL_DEPTH` in `quest/interpreter/primitives.py`, `maxCallDepth` in `questlang/interpreter/primitives`,
+`<main>` counting as one) raises the exception `stack.overflow` instead of calling. It is an ordinary exception: a
+handler's `else` catches it, and the program goes on, and the REPL reports it and rolls the input back
+([repl.md](repl.md) §5). Uncaught, it is reported like any other, its frames collapsed:
+
+```
+fib.quest:1:49: error: Exception: stack.overflow
+    let rec fib(n: Int): Int = if n < 2 then n else fib(n - 1) + fib(n + 2) end; fib(10)
+                                                    ^
+  in fib
+  ... fib repeated 998 more times
+  in <main>
+```
+
+The tree-walking interpreters locate it at the call that would have gone too deep; the IR interpreters' calls have no
+offsets, so theirs has no site. The limit is the same in both implementations so that their output agrees, and low
+enough for both to reach it before their own stacks run out: the bootstrap raises Python's recursion limit to 50
+frames per call, and a `RecursionError` that comes first (a body of very deeply nested blocks) is raised as
+`stack.overflow` too; the self-hosted interpreter, compiled code itself, uses about 2 KB of C stack per call of a
+simple function, well within the 8 MB of the main thread's.
+
+**Compiled code ends.** Compiled code does not count its calls. Runaway recursion runs into the guard page below the
+main thread's stack, and a handler for the fault, on a signal stack of its own (`quest_install_stack_guard` in
+`runtime/quest_runtime.c`, on macOS and on Linux with glibc), prints `Exception: stack.overflow` and the frames
+running, with no site, and exits with status 1, as for any uncaught exception (§2.2); output written before is
+flushed. A handler cannot catch it. Other faults keep their default action. The C compiler may turn some runaway recursion
+into a loop, such as `1 + f(n + 1)`, which then runs forever rather than overflowing. Since the self-hosted interpreter is
+compiled code, the handler also reports the rare overflow of its own stack that comes before its limit.
+
+---
+
+## 7. Testing
 
 1. **Run-error goldens** (`tests/golden/errors/run/*.error`) remain only for errors with no site (raised inside an
    external, or a layout conversion error), and match the unchanged header.
@@ -305,3 +342,6 @@ output ends with `  ... (traceback truncated)`.
    (not the same frames, §2.4).
    Separate cases cover each outcome of §5.1: an exception caught by a listed handler, by `else`, not caught, and
    re-raised through an `UNKNOWN` handler.
+5. **Running out of stack** (§6): `language/stack_overflow_caught` catches `stack.overflow` in every interpreter
+   phase, the run error test `stack_overflow` checks its site in `interpret`, the REPL transcript `stack_overflow`
+   goes on after it, and `test_tracebacks.py` checks its frames in every interpreter and the compiled report.

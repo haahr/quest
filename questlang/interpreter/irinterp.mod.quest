@@ -434,6 +434,10 @@ export
 
     and applyClosure(it: Interpreter c: IrClosure args: Array(Value)): Value =
         begin
+            (* IR calls have no offsets, so stack.overflow is not located *)
+            if vector.length(:String stack(it)) >= primitives.maxCallDepth then
+                model.raiseException(:Ok primitives.stackOverflow none)
+            end
             let types = newTypes()
             hashMap.forEach(:Int :Type c.typeBindings fun(k: Int t: Type): Ok begin hashMap.insert(:Int :Type types k t) ok end)
             let f = newFrame(maybe.some(:Frame c.frame) types)
@@ -453,7 +457,7 @@ export
     and apply(it: Interpreter callee: Value args: Array(Value)): Value =
         case callee
             when vBuiltin with x then x.b.fn(args)
-            when vClosure with x then treewalk.runClosure(x.c args)
+            when vClosure with x then treewalk.runClosure(x.c args none)
             else model.internalError(:Value "Cannot call non-function of type " <> model.typeName(callee) none)
         end
 
@@ -476,7 +480,7 @@ export
                 case callee
                     when vClosure with x then
                         let inst = if extent x.c.typeParamIds > 0 then treewalk.instantiate(x.c typeArgs) else x.c end
-                        if extent inst.params is 0 then treewalk.runClosure(inst array of :Value end)
+                        if extent inst.params is 0 then treewalk.runClosure(inst array of :Value end none)
                         else option vClosure of Value with let c = inst end end
                     else callee
                 end
