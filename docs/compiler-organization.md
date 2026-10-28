@@ -421,11 +421,12 @@ canonical-form guard on; see [testing.md](testing.md).
 ### Milestone 5: C Code Generation & Self-Hosting (`codegen`, artifacts, `driver`) — done
 The plan is [milestone-5.md](milestone-5.md): `codegen/backend`, `symbols`, and `c/*`; `config/abi`; the artifacts
 (`modules/interfacecompiler`, `manifest`, and `modulecompiler`); `build/engine` and `logger`; and the driver's
-compiling options. The self-hosted suite checks the C of every run program against digests of the bootstrap's
+compiling options. The self-hosted suite checks the C of every run program against digests of its own
 (`codegen_c`), and compiles and runs every program (`run_c_compiled`) against the run goldens and run-time error
-tests. `run_tests.py --self-hosting` checks the fixed point: the bootstrap's build of the driver writes the
-bootstrap's artifacts for every unit of the driver, its own build writes the same artifacts again, and that build
-rebuilds itself as the same binary. See [testing.md](testing.md).
+tests, which the two compilers share. `run_tests.py --self-hosting` checks the fixed point: the driver's build of
+itself writes the artifacts its seed's build wrote, and rebuilds itself as the same binary; seeded by the release, it
+also checks that the bootstrap's build of the driver compiles as the release's does. Until 2026-10-28, the
+self-hosted compiler wrote the bootstrap's artifacts and C; now optimizations go into it alone (testing.md §2.8).
 
 ---
 

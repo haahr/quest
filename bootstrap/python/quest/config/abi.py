@@ -8,8 +8,11 @@ mangling and calling conventions, and the runtime interface
 (runtime/quest_runtime.h). Bump it whenever any of these change incompatibly;
 tests/python/test_abi_corpus.py fails until you do.
 
-The self-hosted compiler declares the same constant; if it gains a Makefile,
-that should generate its copy from this file.
+The self-hosted compiler declares the same constant, bumped when either
+compiler's contract changes (tests/python/test_abi_version.py checks that they
+agree), but each compiler uses only the artifacts it wrote (PRODUCER,
+has_current_abi). If the self-hosted compiler gains a Makefile, it should
+generate its copy from this file.
 """
 
 from __future__ import annotations
@@ -20,7 +23,7 @@ from typing import Optional
 
 ABI_VERSION = 47
 
-# The compiler that wrote an artifact: informational, for diagnostics only.
+# The compiler that wrote an artifact: this one uses only its own.
 PRODUCER = "quest-bootstrap 0.1"
 
 
@@ -48,8 +51,19 @@ def recorded_abi(artifact: Path) -> Optional[int]:
     return abi if isinstance(abi, int) and not isinstance(abi, bool) else None
 
 
+def recorded_producer(artifact: Path) -> Optional[str]:
+    """The compiler a .qi or .qm file records as having written it, or None if
+    it records none or cannot be read."""
+    producer = _recorded_field(artifact, "producer")
+    return producer if isinstance(producer, str) else None
+
+
 def has_current_abi(artifact: Path) -> bool:
-    return recorded_abi(artifact) == ABI_VERSION
+    """Whether this compiler can use an artifact: one it wrote itself, for this
+    ABI version. The self-hosted compiler shares the ABI version, but its
+    artifacts are its own (docs/testing.md section 2.8), so each compiler
+    rebuilds the other's."""
+    return recorded_abi(artifact) == ABI_VERSION and recorded_producer(artifact) == PRODUCER
 
 
 def built_from(artifact: Path, source: Path) -> bool:
@@ -65,6 +79,13 @@ def built_from(artifact: Path, source: Path) -> bool:
 
 def incompatible_artifact_message(artifact: Path) -> str:
     found = recorded_abi(artifact)
+    if found == ABI_VERSION:
+        producer = recorded_producer(artifact)
+        found_str = f"producer '{producer}'" if producer is not None else "no producer"
+        return (
+            f"Precompiled artifact '{artifact}' records {found_str}, but this compiler is '{PRODUCER}', and its "
+            "source is not available to rebuild it"
+        )
     found_str = f"ABI version {found}" if found is not None else "no ABI version"
     return (
         f"Precompiled artifact '{artifact}' records {found_str}, but this compiler requires ABI version "

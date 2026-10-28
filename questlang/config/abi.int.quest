@@ -3,15 +3,16 @@
  * bootstrap/python/quest/config/abi.py: the artifact contract (ABI) version
  * recorded in every .qi, .qm, and generated header. Artifacts are reused only
  * when they record the running compiler's version (docs/build-process.md
- * section 5.2). The version is the bootstrap's, which tests/python checks. *)
+ * section 5.2), and only when this compiler wrote them (producer). The
+ * version is shared with the bootstrap, which tests/python checks. *)
 
 interface Abi
 import
     util/maybe : util/Maybe
 export
     abiVersion: Int
-    (* The compiler that wrote an artifact: informational, for diagnostics
-     * only *)
+    (* This compiler, as the artifacts it writes record it; it uses only
+     * artifacts it wrote itself *)
     producer: String
     (* The first line of every generated interface header *)
     headerStamp: String
@@ -19,10 +20,14 @@ export
     (* The ABI version a .qi or .qm file records, if it records one and can be
      * read *)
     recordedAbi(artifact: String): maybe.T(Int)
+    (* Whether this compiler can use a .qi or .qm file: one it wrote itself
+     * (its producer), for this ABI version. The bootstrap shares the ABI
+     * version, but its artifacts are its own (docs/testing.md section 2.8),
+     * so each compiler rebuilds the other's. *)
     hasCurrentAbi(artifact: String): Bool
     (* Whether a .qi or .qm file records source as the file it was built
      * from *)
     builtFrom(artifact: String source: String): Bool
-    (* Why an artifact of another ABI version cannot be used *)
+    (* Why an artifact of another ABI version or producer cannot be used *)
     incompatibleArtifactMessage(artifact: String): String
 end

@@ -1,5 +1,5 @@
-"""Artifacts record the ABI version, and only fresh artifacts with the current
-version are reused."""
+"""Artifacts record the ABI version and their producer, and only fresh artifacts
+with the current version, written by this compiler, are reused."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "bootstrap", "python"))
 
-from quest.config.abi import ABI_VERSION, PRODUCER, recorded_abi
+from quest.config.abi import ABI_VERSION, PRODUCER, incompatible_artifact_message, recorded_abi
 from quest.build.engine import BuildEngine, BuildError
 from quest.diagnostics import QuestTypeError
 from quest.types.env import Environment
@@ -42,6 +42,16 @@ def _set_recorded_abi(artifact: Path, abi: int) -> None:
     artifact.write_text(json.dumps(data), encoding="utf-8")
 
 
+def _set_recorded_producer(artifact: Path, producer: str) -> None:
+    data = json.loads(artifact.read_text(encoding="utf-8"))
+    (data["value"] if "value" in data else data)["producer"] = producer
+    artifact.write_text(json.dumps(data), encoding="utf-8")
+
+
+# What the self-hosted compiler records as its artifacts' producer
+OTHER_PRODUCER = "questlang 0.1"
+
+
 class TestAbiVersion(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -55,8 +65,8 @@ class TestAbiVersion(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_self_hosted_compiler_declares_the_same_version(self) -> None:
-        # The self-hosted compiler's artifacts are the bootstrap's, so either
-        # can reuse the other's (docs/milestone-5.md)
+        # The two compilers share the version, which is bumped when either
+        # one's artifact contract changes (docs/testing.md section 2.8)
         source = Path(__file__).resolve().parents[2] / "questlang" / "config" / "abi.mod.quest"
         declared = re.search(r"let abiVersion = (\d+)", source.read_text(encoding="utf-8"))
         self.assertIsNotNone(declared)
@@ -87,6 +97,23 @@ class TestAbiVersion(unittest.TestCase):
         with self.assertRaises(QuestTypeError):
             load_interface_from_qi_file(qi_file, Environment())
 
+    def test_interface_by_another_compiler_is_rebuilt(self) -> None:
+        qi_file = ensure_interface_artifacts("Calc", self.root, [self.root], self.build_dir).qi_file
+        _set_recorded_producer(qi_file, OTHER_PRODUCER)
+        time.sleep(0.01)
+        qi_file = ensure_interface_artifacts("Calc", self.root, [self.root], self.build_dir).qi_file
+        self.assertEqual(json.loads(qi_file.read_text(encoding="utf-8"))["value"]["producer"], PRODUCER)
+
+    def test_precompiled_interface_by_another_compiler_is_an_error(self) -> None:
+        _, qi_file = compile_interface_with_header(self.root / "calc.int.quest", output_dir=self.root)
+        (self.root / "calc.int.quest").unlink()
+        _set_recorded_producer(qi_file, OTHER_PRODUCER)
+        self.assertIn(f"producer '{OTHER_PRODUCER}'", incompatible_artifact_message(qi_file))
+        with self.assertRaises(QuestTypeError):
+            ensure_interface_artifacts("Calc", self.root, [self.root], self.build_dir)
+        with self.assertRaises(QuestTypeError):
+            load_interface_from_qi_file(qi_file, Environment())
+
     def test_fresh_qi_is_preferred_to_source_only_with_current_abi(self) -> None:
         source = (self.root / "calc.int.quest").resolve()
         self.assertEqual(resolve_interface_file("Calc", self.root, []), source)
@@ -103,6 +130,11 @@ class TestAbiVersion(unittest.TestCase):
         self.assertIn("calc", self._engine().build_main(self.root / "app.quest").compiled_units)
         self.assertNotIn("calc", self._engine().build_main(self.root / "app.quest").compiled_units)
         _set_recorded_abi(self.build_dir / "calc.qm", ABI_VERSION + 1)
+        self.assertIn("calc", self._engine().build_main(self.root / "app.quest").compiled_units)
+
+    def test_module_by_another_compiler_is_recompiled(self) -> None:
+        self.assertIn("calc", self._engine().build_main(self.root / "app.quest").compiled_units)
+        _set_recorded_producer(self.build_dir / "calc.qm", OTHER_PRODUCER)
         self.assertIn("calc", self._engine().build_main(self.root / "app.quest").compiled_units)
 
     def test_fresh_artifacts_next_to_the_source_are_used(self) -> None:

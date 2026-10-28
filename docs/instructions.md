@@ -161,8 +161,8 @@ See [testing.md](testing.md) for the framework. In practice:
 
 - **`questlang/` may use only what the current release compiles,** against the release's own `lib/` and `runtime/`.
   Using a new language feature, `lib/` function, or runtime primitive in `questlang/` takes a commit that adds it, a
-  release cut from that commit, and then a commit that uses it. `QUESTC_SEED=bootstrap` builds past such a gap while
-  the bootstrap is kept in step.
+  release cut from that commit, and then a commit that uses it. `QUESTC_SEED=bootstrap` builds past such a gap when
+  the bootstrap has the feature too.
 - **Cut a release** by hand, never automatically: when `questlang/` needs something the current release cannot
   compile, at the end of a milestone, and otherwise when convenient. Only the owner asks for one, as for a push.
 - **Roll back** (`tools/release --rollback`) when a release turns out to be bad, and say so; one previous release is
@@ -205,7 +205,15 @@ See [testing.md](testing.md) for the framework. In practice:
   ([runtime-design.md](runtime-design.md), [c-representation.md](c-representation.md)).
 - Open bugs and planned follow-up work for the compiler are tracked in [tasklist.md](tasklist.md).
 - The self-hosted compiler compiles itself to a fixed point ([roadmap.md](roadmap.md) step 5,
-  [milestone-5.md](milestone-5.md)), seeded by a release ([release-compiler.md](release-compiler.md)). The bootstrap
-  remains the reference the goldens come from, and the two compilers are kept in step, writing the same C and
-  artifacts. So a change to one is ported to the other. Prefer clarity over cleverness in the bootstrap, since its
-  code is the model the self-hosted compiler follows.
+  [milestone-5.md](milestone-5.md)), seeded by a release ([release-compiler.md](release-compiler.md)). It is the
+  primary compiler; the bootstrap is kept so that the compiler can be rebuilt from nothing ([testing.md](testing.md)
+  §2.8):
+  - **Both compilers get** language changes, `lib/` changes, and fixes to bugs in what programs do or what errors
+    they report. Each such change comes with a test in a shared phase (a run, error, or front-end test), which both
+    suites run, so that a change made in one alone fails the other's.
+  - **The self-hosted compiler alone gets** optimizations and other changes to how it compiles (its IR and C), with
+    goldens of its own (`--self-hosted --update-golden`).
+  - **The runtime is shared:** a change to it must keep the bootstrap's C working.
+  - **`questlang/` uses only what the bootstrap compiles,** as well as what the release does, so that the bootstrap
+    can still build it.
+  - Prefer clarity over cleverness in the bootstrap.

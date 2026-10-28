@@ -65,10 +65,25 @@ export
             end
         end
 
+    let recordedProducer(artifact: String): maybe.T(String) =
+        begin
+            let field = recordedField(artifact "producer")
+            if maybe.isNone(:json.Value field) then
+                maybe.none(:String)
+            else
+                case maybe.unwrap(:json.Value field)
+                    when jString with x then maybe.some(:String x.s)
+                    else maybe.none(:String)
+                end
+            end
+        end
+
     let hasCurrentAbi(artifact: String): Bool =
         begin
             let found = recordedAbi(artifact)
+            let by = recordedProducer(artifact)
             maybe.isSome(:Int found) andif {maybe.unwrap(:Int found) is abiVersion}
+                andif maybe.isSome(:String by) andif stringOp.equal(maybe.unwrap(:String by) producer)
         end
 
     let builtFrom(artifact: String source: String): Bool =
@@ -89,11 +104,20 @@ export
     let incompatibleArtifactMessage(artifact: String): String =
         begin
             let found = recordedAbi(artifact)
-            let foundText = if maybe.isSome(:Int found) then "ABI version " <> conv.int(maybe.unwrap(:Int found))
-                else "no ABI version"
+            let by = recordedProducer(artifact)
+            if maybe.isSome(:Int found) andif {maybe.unwrap(:Int found) is abiVersion} then
+                let byText = if maybe.isSome(:String by) then "producer '" <> maybe.unwrap(:String by) <> "'"
+                    else "no producer"
+                end
+                "Precompiled artifact '" <> artifact <> "' records " <> byText <> ", but this compiler is '"
+                    <> producer <> "', and its source is not available to rebuild it"
+            else
+                let foundText = if maybe.isSome(:Int found) then "ABI version " <> conv.int(maybe.unwrap(:Int found))
+                    else "no ABI version"
+                end
+                "Precompiled artifact '" <> artifact <> "' records " <> foundText
+                    <> ", but this compiler requires ABI version " <> conv.int(abiVersion)
+                    <> ", and its source is not available to rebuild it"
             end
-            "Precompiled artifact '" <> artifact <> "' records " <> foundText
-                <> ", but this compiler requires ABI version " <> conv.int(abiVersion)
-                <> ", and its source is not available to rebuild it"
         end
 end

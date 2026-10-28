@@ -140,6 +140,8 @@ def is_manifest_stale(manifest: ModuleManifest, qm_path: Path) -> bool:
     - The manifest was written by a compiler of another ABI version
       (config/abi.py), whose artifacts lay out data or make calls in other
       ways, so that this compiler cannot link with them.
+    - It was written by another compiler (the self-hosted one): the compilers
+      share the ABI version, but each uses only its own artifacts.
     - The object file it records is missing.
     - The source it records exists and is newer than the manifest or the
       object file.
@@ -149,8 +151,9 @@ def is_manifest_stale(manifest: ModuleManifest, qm_path: Path) -> bool:
 
     A manifest that records no source, or a source that does not exist, is
     that of a prebuilt unit distributed without its source (an object and its
-    .qm), which is up to date as long as its object and ABI version are."""
-    if manifest.abi != ABI_VERSION:
+    .qm), which is up to date as long as its object and ABI version are, and
+    this compiler wrote it."""
+    if manifest.abi != ABI_VERSION or manifest.producer != PRODUCER:
         return True
     obj_path = Path(manifest.object)
     if not obj_path.is_file():

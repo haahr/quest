@@ -407,14 +407,16 @@ Two distinct concerns are involved:
 #### 5.2.1. The ABI Version
 Every `.qi` and `.qm` records:
 - **`abi`: the artifact contract version,** an integer starting at 1, declared as an ordinary constant
-  (`ABI_VERSION`) by every Quest compiler. The Python and self-hosted compilers implement the same contract, so
-  artifacts from either are interchangeable at the same version. A packaged compiler carries the constant in its
-  code; nothing reads compiler sources at run time. The two compilers declare the constant separately and the corpus
-  test (§5.2.3) keeps them in step. That is not fully satisfying: if the self-hosted compiler gains a Makefile, it
-  should generate its constant from the Python compiler's (`bootstrap/python/quest/config/abi.py`).
-- **`producer`: the compiler that wrote the artifact,** its name and an ordinary version number bumped by hand (for
-  example `quest-bootstrap 0.1`, or `questlang 0.1` for the self-hosted compiler). It is informational, for
-  diagnostics only, and never affects whether an artifact is used.
+  (`ABI_VERSION`) by every Quest compiler. The Python and self-hosted compilers share the number, which is bumped when
+  either compiler's contract changes, but their artifacts may differ (docs/testing.md §2.8). A packaged compiler
+  carries the constant in its code; nothing reads compiler sources at run time. The two compilers declare the
+  constant separately, and `tests/python/test_abi_version.py` checks that they agree. If the self-hosted compiler
+  gains a Makefile, it should generate its constant from the Python compiler's
+  (`bootstrap/python/quest/config/abi.py`).
+- **`producer`: the compiler that wrote the artifact,** its name and an ordinary version number bumped by hand
+  (`quest-bootstrap 0.1`, or `questlang 0.1` for the self-hosted compiler). A compiler uses only the artifacts it
+  wrote itself: one of the other's is out of date, as one of another ABI version is (§5.2.2), and rebuilt if its
+  source is there.
 
 The ABI version covers:
 - the layout and meaning of `.qi` and `.qm` files, including the syntax and meaning of the type strings in `.qi`;
@@ -459,14 +461,16 @@ interfaces first.
 `tests/python/test_abi_corpus.py` regenerates the corpus and fails if anything differs while `ABI_VERSION` is unchanged ("artifact contract
 changed: bump ABI_VERSION and update the corpus"). Reading compiler and runtime sources here is a test's business, not
 the compiler's. The same corpus serves as a cross-check of the self-hosted compiler: at the same ABI version, both
-compilers must produce the same `.qi` and `.qm` files and compatible headers. The self-hosted suite regenerates the
-corpus with the self-hosted driver and compares it with the committed one (`self-hosted/abi_corpus`).
+compilers keep corpora of their own: `tests/abi/corpus` is the bootstrap's, and `tests/abi/corpus-self-hosted` the
+self-hosted compiler's, which its suite regenerates with the self-hosted driver and compares
+(`self-hosted/abi_corpus`).
 
-The self-hosted compiler (`questlang/`, run by `./questc`) writes the same artifacts as the bootstrap, in the same
-places, under the same rules, and with the same engine (`questlang/build/engine`, a port of this document's
-`BuildEngine`). They differ only in their producer. `run_tests.py --self-hosting` checks this for every unit of the
-compiler itself (docs/milestone-5.md §2.3). Each compiler can therefore reuse the other's fresh artifacts. The test
-suites keep them apart anyway (docs/testing.md), so that each compiler's tests exercise its own output.
+The self-hosted compiler (`questlang/`, run by `./questc`) writes its artifacts in the same places, under the same
+rules, and with the same engine (`questlang/build/engine`, a port of this document's `BuildEngine`). Until the two
+compilers diverged (2026-10-28), it wrote the same artifacts as the bootstrap, up to the producer. Now they may
+differ, as optimizations go into the self-hosted compiler alone, so neither compiler uses the other's artifacts
+(§5.2.1). `run_tests.py --self-hosting` checks the self-hosted compiler's fixed point, and that the bootstrap still
+builds the compiler the release does (docs/testing.md §2.3).
 
 `./questc` builds the self-hosted compiler in two stages under `.build/questc`, each an ordinary incremental build
 with its own build directory (docs/release-compiler.md §2):

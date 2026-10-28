@@ -116,8 +116,10 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   see [new-libraries.md](new-libraries.md)).
 - Compile the self-hosted Quest compiler using the Python bootstrap C compiler and validate the bootstrap fixed-point:
   `Quest(Quest) == Quest`. Done ([milestone-5.md](milestone-5.md)): the bootstrap's build of the self-hosted compiler
-  writes the bootstrap's artifacts for every unit of the compiler, its own build writes the same ones, and that build
-  rebuilds itself as the same binary (`run_tests.py --self-hosting`). `./questc` runs it.
+  wrote the bootstrap's artifacts for every unit of the compiler, its own build writes the same ones, and that build
+  rebuilds itself as the same binary (`run_tests.py --self-hosting`). `./questc` runs it. Since 2026-10-28 it is the
+  primary compiler: the two compilers share what programs do, not how they compile them
+  ([testing.md](testing.md) §2.8).
 
 ### Step 6: Native AArch64 Code Generator (Written in Quest)
 - Replace C emission with native AArch64 machine code generation consuming the represented IR ([ir.md](ir.md) §8.6):

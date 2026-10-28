@@ -72,9 +72,9 @@ SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 # The programs the self-hosted driver's -e runs, and the bootstrap's transcript
 # of them (docs/milestone-3.md §3.2), which tests/eval/generate.py writes
 EVAL_CASES = ROOT_DIR / "tests" / "eval" / "cases.quest"
-# The checks of the self-hosted driver's unit files (-c): interfaces against the
-# ABI corpus, and lib/'s modules against the bootstrap's artifacts; and of the
-# errors its builds report, against the bootstrap's
+# The checks of the self-hosted driver's unit files (-c): interfaces against its
+# ABI corpus (tests/abi/corpus-self-hosted), and that lib/'s modules compile;
+# and of the errors its builds report, against the bootstrap's
 UNIT_CHECKS = (
     ("self-hosted/abi_corpus", ROOT_DIR / "tests" / "abi" / "corpus.py", ("--compiler",)),
     ("self-hosted/unit_artifacts", ROOT_DIR / "tests" / "self-hosted" / "unit_artifacts.py", ()),
@@ -223,6 +223,23 @@ RUN_PHASES = ("interpret", "run_c_compiled", *IR_RUN_PHASES)
 # digests of the C (c_digest), as the C is about 37 KB a program.
 CODEGEN_PHASE = "codegen_c"
 
+# The goldens of how a compiler compiles, rather than of what programs do, are
+# each compiler's own (docs/testing.md section 2.8): the IR dumps are the
+# self-hosted compiler's alone, and the C digests are its in
+# tests/golden/codegen_c and the bootstrap's in tests/golden/bootstrap/codegen_c.
+# The other phases' goldens are shared: both compilers must match them, and the
+# bootstrap writes them, since what programs do changes in both.
+BOOTSTRAP_GOLDEN_DIR = TESTS_GOLDEN_DIR / "bootstrap"
+SELF_HOSTED_OWN_PHASES = (*IR_DUMP_PHASES, CODEGEN_PHASE)
+
+
+def writes_golden(phase_name: str, self_hosted: bool) -> bool:
+    """Whether --update-golden with the self-hosted compiler (or with the
+    bootstrap) writes a phase's goldens."""
+    if self_hosted:
+        return phase_name in SELF_HOSTED_OWN_PHASES
+    return phase_name not in IR_DUMP_PHASES
+
 
 def c_digest(c_text: str) -> str:
     """The golden of a program's C: the SHA-256 of its text, with the paths in
@@ -293,9 +310,11 @@ def self_hosted_units_dir(build_dir: Path) -> Path:
     return build_dir if build_dir.name == QUESTLANG_SELF_HOSTED_BUILD_SUBDIR else build_dir / SELF_HOSTED_UNITS_SUBDIR
 
 
-def golden_dir_for_phase(phase_name: str) -> Path:
+def golden_dir_for_phase(phase_name: str, self_hosted: bool = False) -> Path:
     if phase_name in RUN_PHASES:
         return TESTS_GOLDEN_DIR / "run"
+    if phase_name == CODEGEN_PHASE and not self_hosted:
+        return BOOTSTRAP_GOLDEN_DIR / phase_name
     return TESTS_GOLDEN_DIR / phase_name
 
 
@@ -358,9 +377,10 @@ def run_single_golden_test(
     driver_command: Optional[list[str]] = None,
 ) -> tuple[bool, str, str]:
     """Runs a golden test with the bootstrap driver, or the one driver_command
-    runs (the self-hosted driver, whose output is compared with the bootstrap's
-    goldens and never written to them)."""
-    golden_base = golden_dir_for_phase(phase_name)
+    runs (the self-hosted driver), against the phase's goldens for that compiler
+    (golden_dir_for_phase), writing them with update_golden if it writes them
+    (writes_golden)."""
+    golden_base = golden_dir_for_phase(phase_name, driver_command is not None)
     rel_source = golden_test_id(source_file)
     target_dir = golden_base / rel_source.parent
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -441,7 +461,7 @@ def run_single_golden_test(
         return False, "[FAIL]", msg
 
     output = c_digest(process.stdout) if phase_name == CODEGEN_PHASE else process.stdout
-    if update_golden and driver_command is None:
+    if update_golden and writes_golden(phase_name, driver_command is not None):
         out_file.write_text(output, encoding=BYTE_ENCODING)
         return True, "[UPDATED]", ""
 
@@ -453,7 +473,9 @@ def run_single_golden_test(
         return True, "[PASS]", ""
 
     if phase_name == CODEGEN_PHASE:
-        # A digest tells nothing of the difference: the bootstrap's C shows it
+        # A digest tells nothing of the difference. For the self-hosted
+        # compiler, the bootstrap's C shows how it differs from that, which
+        # was the same C until the compilers diverged.
         msg = "  (C digest mismatch)"
         if driver_command is not None and build_dir is not None:
             expected_c = bootstrap_c(source_file, directives.echo, python_executable, build_dir, effective_timeout)
@@ -649,14 +671,17 @@ def compare_build_dirs(expected_dir: Path, actual_dir: Path, what: str) -> list[
 
 def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "bootstrap") -> Path:
     """Builds the three stages of the self-hosted compiler (docs/milestone-5.md
-    section 2.3) and checks the fixed point: stage 1 (the seed's build of the
-    self-hosted driver) writes the bootstrap's artifacts for every unit of the
-    driver, and stage 2 (stage 1's build) stage 1's. Stage 3, stage 2's build,
-    must be stage 2's binary, up to the C compiler's own nondeterminism. With
-    the release as the seed (docs/release-compiler.md section 3), the release
-    builds stage 1 against its own lib/ and runtime/, and the bootstrap's build,
-    whose artifacts are compared, runs alongside it. Returns stage 2, which the
-    self-hosted suite then runs."""
+    section 2.3) and checks the fixed point: stage 2 (stage 1's build, stage 1
+    being the seed's build of the self-hosted driver) writes the artifacts stage
+    1 wrote, for every unit of the driver. Stage 3, stage 2's build, should be
+    stage 2's binary, up to the C compiler's own nondeterminism.
+
+    With the release as the seed (docs/release-compiler.md section 3), the
+    release builds stage 1 against its own lib/ and runtime/. The bootstrap's
+    build of the driver runs alongside it, and builds a stage 2 of its own,
+    whose artifacts must be the release's stage 1's: that is, the bootstrap
+    still builds the compiler the release does (docs/testing.md section 2.8).
+    Returns stage 2, which the self-hosted suite then runs."""
     stages = build_dir / "self-hosting"
     shutil.rmtree(stages, ignore_errors=True)
     if seed == "release":
@@ -667,7 +692,7 @@ def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "boo
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             bootstrap = executor.submit(build_self_hosted_driver, python_executable, build_dir)
             seconds = build_driver_with(release, stages / "stage1" / "build", stage1, RELEASE_DIR / "home")
-            bootstrap.result()
+            bootstrap_stage1 = bootstrap.result()
         print(f"  {seconds:.1f}s")
     else:
         print(f"Compiling stage 1 ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)}, by the bootstrap)...")
@@ -680,13 +705,23 @@ def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "boo
     print("Compiling stage 3 (by stage 2)...")
     seconds = build_driver_with(stage2, stages / "stage3" / "build", stage3)
     print(f"  {seconds:.1f}s")
-    problems = compare_build_dirs(build_dir / "self-hosted", stages / "stage2" / "build", "stage 1 against the bootstrap")
-    problems += compare_build_dirs(stages / "stage2" / "build", stages / "stage3" / "build", "stage 2 against stage 1")
+    problems = compare_build_dirs(stages / "stage2" / "build", stages / "stage3" / "build", "stage 2 against stage 1")
+    if seed == "release":
+        print("Compiling stage 2 again, by the bootstrap's stage 1...")
+        seconds = build_driver_with(bootstrap_stage1, stages / "stage2-bootstrap" / "build",
+                                    stages / "stage2-bootstrap" / "questlang-driver")
+        print(f"  {seconds:.1f}s")
+        problems += compare_build_dirs(stages / "stage2" / "build", stages / "stage2-bootstrap" / "build",
+                                       "the bootstrap's stage 1 against the release's")
     if problems:
         print("\n\n".join(problems))
         sys.exit("The self-hosting check failed")
     count = sum(1 for f in (stages / "stage2" / "build").rglob("*") if f.name.endswith(ARTIFACT_SUFFIXES))
-    print(f"Fixed point: the {count} artifacts of stages 1 and 2 are the bootstrap's and stage 1's")
+    print(f"Fixed point: stage 2 writes the {count} artifacts stage 1 wrote")
+    if seed == "release":
+        print("Bootstrappable: the bootstrap's stage 1 writes the release's stage 1's artifacts")
+    else:
+        print("(Seeded by the bootstrap: --seed release also checks that the bootstrap builds the release's compiler)")
     if stage2.read_bytes() != stage3.read_bytes():
         print("Note: the binaries of stages 2 and 3 differ, from identical C")
     else:
@@ -918,7 +953,7 @@ def main() -> int:
         "--self-hosted",
         action="store_true",
         help="Test the self-hosted compiler: compile its driver, and run it on the tests of the phases it has, "
-        "against the bootstrap's goldens.",
+        "against the shared goldens and its own (docs/testing.md section 2.8).",
     )
     arg_parser.add_argument(
         "--self-hosted-driver",
@@ -986,6 +1021,10 @@ def run_all_tests(
     if args.self_hosting:
         args.self_hosted = True
         args.self_hosted_driver = str(check_self_hosting(python_executable, build_dir, args.seed))
+    if not args.self_hosted and args.phase == "all":
+        # The IR dumps are the self-hosted compiler's; --phase runs one with the
+        # bootstrap, to compare its IR with them
+        phases_to_run = [phase for phase in phases_to_run if phase not in IR_DUMP_PHASES]
     if args.self_hosted:
         phases_to_run = [phase for phase in phases_to_run if phase in SELF_HOSTED_PHASES]
         if args.self_hosted_driver:
@@ -1047,7 +1086,7 @@ def run_all_tests(
             if source_files or runs_eval or repl_files:
                 print("=== Golden Tests ===")
                 for phase in phases_to_run:
-                    golden_dir = golden_dir_for_phase(phase)
+                    golden_dir = golden_dir_for_phase(phase, driver_command is not None)
                     if not golden_dir.exists():
                         continue
                     print(f"--- Phase: {phase} ---")

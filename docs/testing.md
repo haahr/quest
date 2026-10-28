@@ -190,8 +190,8 @@ headers for a frozen snapshot of the library's interfaces) change without a bump
 of the phases it has (tokenize, parse, typecheck, the IR's dumps and runs at every stage, `ir_STAGE` and
 `run_ir_STAGE`, interpret, `codegen_c`, and `run_c_compiled`; [milestone-2.md](milestone-2.md) §3,
 [milestone-3.md](milestone-3.md) §3, [milestone-4.md](milestone-4.md) §2, [milestone-5.md](milestone-5.md) §2),
-against the bootstrap's goldens and
-error expectations, which it never writes. The driver takes the bootstrap driver's `--stop-after PHASE FILE` and prints
+against the shared goldens and error expectations, which the bootstrap writes, and against its own (§2.8). The driver
+takes the bootstrap driver's `--stop-after PHASE FILE` and prints
 the phase's dump in the bootstrap's format (it also has `desugar`, which has no goldens). It reports errors after the
 bootstrap's one: an error test passes when the driver's first diagnostic is the expected one and, if it reports more,
 when its whole output is `tests/golden/self-hosted/errors/PHASE/TEST.error`, which `--self-hosted --update-golden`
@@ -209,31 +209,39 @@ directory, finds `lib/`. `--self-hosted-driver PATH` runs a driver already compi
 questlang/driver/main.quest`, or `./questc`'s stage 2 in `.build/questc/stage2/questc`) rather than compiling one,
 which takes minutes.
 
-`codegen_c` compares a digest of each run program's C, as the driver prints it, with `tests/golden/codegen_c`, which
-holds the SHA-256 of the bootstrap's C for the same program. The bootstrap's suite runs the phase too, so
-`--update-golden` writes the digests and a change to the bootstrap's C shows as a golden change. `run_c_compiled`
+`codegen_c` compares a digest of each run program's C, as the driver prints it, with `tests/golden/codegen_c`, the
+SHA-256 of the self-hosted compiler's C for the program, which `--self-hosted --update-golden` writes. The bootstrap's
+suite compares its own C with `tests/golden/bootstrap/codegen_c` (§2.8). When a digest differs, the failure shows a
+diff of the driver's C against the bootstrap's for the same program. `run_c_compiled`
 compiles and runs every run program and run-time error test with the self-hosted driver. Its C phases build into a
 directory of their own under each worker's (`self-hosted-units`), so that they don't reuse the bootstrap's fresh
 artifacts. The self-hosted driver builds the questlang tests once, one after another, into a shared directory
 (`self-hosted-questlang-tests`).
 
 **Self-hosting:** `python3 run_tests.py --self-hosting` checks the self-hosted compiler's fixed point
-([milestone-5.md](milestone-5.md) §2.3), then runs the self-hosted suite with stage 2. Stage 1 is the bootstrap's
-build of the driver. Stage 2 is stage 1's build of it, and stage 3 is stage 2's. The check requires two things:
-- every artifact stage 1 writes for the driver's units (`.mod.c`, `.main.c`, `.int.h`, `.qi`, and `.qm`) must be the
-  bootstrap's, and every one stage 2 writes must be stage 1's, up to the producer and the build directory's path;
-- stages 2 and 3 should be the same binary, and the check says so if they are not.
+([milestone-5.md](milestone-5.md) §2.3), then runs the self-hosted suite with stage 2. Stage 1 is the seed's
+build of the driver: the bootstrap's by default. Stage 2 is stage 1's build of it, and stage 3 is stage 2's. The check
+requires:
+- **The fixed point:** every artifact stage 2 writes for the driver's units (`.mod.c`, `.main.c`, `.int.h`, `.qi`, and
+  `.qm`) must be the one stage 1 wrote, up to the producer and the build directory's path. Stages 2 and 3 should be
+  the same binary, and the check says so if they are not.
+- **Bootstrappability,** with `--seed release`: the bootstrap's build of the driver, which runs alongside the release's
+  stage 1, builds a stage 2 of its own, whose artifacts must be the release's stage 1's. The two stage 1s are the same
+  compiler built by different compilers, so they must compile the same way. This is what keeps the bootstrap able to
+  rebuild the compiler from nothing once the two compilers' outputs differ (§2.8). `tools/release` runs the check
+  this way.
 
-It takes about half an hour, most of it the three builds, and isn't part of the routine runs.
+The bootstrap's own artifacts are no longer compared with the self-hosted compiler's. The check takes a few minutes
+plus the bootstrap's build of the driver, about ten, and isn't part of the routine runs.
 
 **Seeds:** `--seed release` makes the current release (`release/current`, [release-compiler.md](release-compiler.md))
 build the driver, rather than the bootstrap.
 - `--self-hosted` then builds it in two stages, the release's against its own `lib/` and `runtime/` and that build's
   against the tree's, and tests the second.
-- `--self-hosting` then starts from the release, with the bootstrap's build alongside stage 1 for the comparison.
+- `--self-hosting` then starts from the release, and also checks bootstrappability.
 
-The default stays the bootstrap. Its single build is quicker from nothing, which is how the runner always builds, and
-the goldens are its own.
+The default stays the bootstrap for `--self-hosted`. Its single build of the driver is all that suite needs, and it
+keeps the bootstrap able to build the tree's compiler between releases.
 
 The driver's `-e`, which no golden uses, is tested against the bootstrap's: `tests/eval/cases.quest` holds programs,
 one per line, and `python tests/eval/generate.py` writes the bootstrap driver's transcript of them
@@ -414,6 +422,40 @@ already compiled (as `run_tests.py --self-hosted --build-dir DIR` leaves in `DIR
 it there would take minutes.
 
 ---
+
+### 2.8. Two Compilers: Shared and Own Goldens
+
+The self-hosted compiler is the primary one; the bootstrap is kept so that the compiler can be rebuilt from nothing.
+The two must agree on what programs do, but not on how they compile them, so that optimizations and other internal
+changes go into the self-hosted compiler alone, while language changes and bug fixes go into both.
+
+| Phase | Goldens | Written by |
+| :--- | :--- | :--- |
+| `tokenize`, `parse`, `typecheck` | shared: `tests/golden/PHASE` | the bootstrap |
+| `interpret`, `run_ir_STAGE`, `run_c_compiled` | shared: `tests/golden/run` | the bootstrap |
+| `repl`, error tests, `-e` (`self-hosted/eval`) | shared | the bootstrap |
+| `ir_STAGE` (the IR's dumps) | the self-hosted compiler's alone: `tests/golden/ir_STAGE` | the self-hosted compiler |
+| `codegen_c` (digests of the C) | each compiler's own: `tests/golden/codegen_c` (self-hosted), `tests/golden/bootstrap/codegen_c` | each compiler |
+| the ABI corpus | each compiler's own: `tests/abi/corpus` (bootstrap), `tests/abi/corpus-self-hosted` | each compiler |
+
+- **Shared goldens** describe what programs do and what errors they report. Both suites must match them, and only the
+  bootstrap's `--update-golden` writes them, since a change to them is a change to the language or a bug fix, which
+  lands in both compilers. So **every bug fix adds or changes a test in a shared phase,** most often a run test: if
+  only one compiler has the fix, the other's suite fails until it has it too. A bug in what only the self-hosted
+  compiler does (an optimization, say) is fixed there alone, but still gets a run test.
+- **Own goldens** describe how a compiler compiles: its IR and its C. `--self-hosted --update-golden` writes the
+  self-hosted compiler's, and plain `--update-golden` the bootstrap's C digests. The bootstrap's suite skips the IR
+  dumps: when its later phases agree, its IR adds nothing, and `--phase ir_STAGE` still runs one, to compare the
+  bootstrap's IR with the self-hosted compiler's goldens when a bootstrap test fails. The bootstrap's goldens change
+  only when the bootstrap does, which is rarely.
+- **The self-hosting check** keeps the bootstrap honest: its build of the compiler must compile as the release does
+  (§2.3, bootstrappability).
+- **Artifacts are each compiler's own.** The compilers share `ABI_VERSION`, which changes when either one's artifact
+  contract does, and each corpus pins its compiler's. Each compiler uses only the `.qi` and `.qm` files whose
+  `producer` is its own (`quest-bootstrap 0.1` or `questlang 0.1`), and rebuilds the other's, or reports them when it
+  cannot (`config/abi`).
+- **The runtime is shared,** so a change to it must keep the bootstrap's C working: adding a function for the
+  self-hosted compiler is fine, but changing what existing C relies on means changing the bootstrap too.
 
 ## 3. Diagnostic & Error Testing Framework (`tests/errors/`)
 

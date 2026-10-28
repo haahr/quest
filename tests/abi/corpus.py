@@ -10,12 +10,19 @@ digest of the runtime interface (runtime/quest_runtime.h) and the ABI version
 the corpus was generated with. tests/python/test_abi_corpus.py regenerates it
 and fails if it changed while ABI_VERSION did not.
 
-    # After bumping ABI_VERSION, regenerate the corpus:
+Each compiler has its own corpus, since each compiler's artifacts are its own
+(docs/testing.md section 2.8): tests/abi/corpus is the bootstrap's, and
+tests/abi/corpus-self-hosted the self-hosted compiler's, which run_tests.py
+--self-hosted checks. The two share ABI_VERSION, which changes when either does.
+
+    # After bumping ABI_VERSION, regenerate the bootstrap's corpus:
     python tests/abi/corpus.py --update
-    # Re-snapshot lib/ and questlang/ interfaces, then regenerate:
+    # Re-snapshot lib/ and questlang/ interfaces, then regenerate it:
     python tests/abi/corpus.py --refresh-inputs
-    # Generate it with another compiler (the self-hosted driver), and compare:
+    # Generate the self-hosted compiler's with its driver, and compare:
     python tests/abi/corpus.py --compiler PATH
+    # ... or regenerate it:
+    python tests/abi/corpus.py --update --compiler PATH
 """
 
 from __future__ import annotations
@@ -38,6 +45,7 @@ from quest.codegen.c.headers import compile_interface_with_header  # noqa: E402
 
 ABI_DIR = Path(__file__).resolve().parent
 CORPUS_DIR = ABI_DIR / "corpus"
+SELF_HOSTED_CORPUS_DIR = ABI_DIR / "corpus-self-hosted"
 INPUTS_DIR = ABI_DIR / "inputs"
 # Snapshot layout mirrors the search roots: inputs/lib/... (like lib/) and
 # inputs/questlang/... (under the project).
@@ -102,12 +110,12 @@ def generate(compiler: str | None = None) -> dict[str, str]:
     return corpus
 
 
-def read_checked_in() -> dict[str, str]:
-    if not CORPUS_DIR.is_dir():
+def read_checked_in(corpus_dir: Path = CORPUS_DIR) -> dict[str, str]:
+    if not corpus_dir.is_dir():
         return {}
     return {
-        p.relative_to(CORPUS_DIR).as_posix(): p.read_text(encoding="utf-8")
-        for p in sorted(CORPUS_DIR.rglob("*"))
+        p.relative_to(corpus_dir).as_posix(): p.read_text(encoding="utf-8")
+        for p in sorted(corpus_dir.rglob("*"))
         if p.is_file()
     }
 
@@ -122,19 +130,24 @@ def refresh_inputs() -> None:
             shutil.copyfile(src, dest)
 
 
-def update() -> None:
-    if CORPUS_DIR.exists():
-        shutil.rmtree(CORPUS_DIR)
-    for rel, content in generate().items():
-        path = CORPUS_DIR / rel
+def update(compiler: str | None = None) -> Path:
+    """Regenerates the bootstrap's corpus, or with compiler the self-hosted
+    compiler's; returns its directory."""
+    corpus_dir = CORPUS_DIR if compiler is None else SELF_HOSTED_CORPUS_DIR
+    if corpus_dir.exists():
+        shutil.rmtree(corpus_dir)
+    for rel, content in generate(compiler).items():
+        path = corpus_dir / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
+    return corpus_dir
 
 
 def compare(compiler: str) -> int:
-    """Generates the corpus with compiler and reports where it differs from the
-    checked-in one; returns the number of differing files."""
-    expected = read_checked_in()
+    """Generates the corpus with compiler, the self-hosted driver, and reports
+    where it differs from the self-hosted compiler's checked-in one; returns the
+    number of differing files."""
+    expected = read_checked_in(SELF_HOSTED_CORPUS_DIR)
     actual = generate(compiler)
     differing = 0
     for rel in sorted(set(expected) | set(actual)):
@@ -148,12 +161,15 @@ def compare(compiler: str) -> int:
 if __name__ == "__main__":
     if len(sys.argv) == 3 and sys.argv[1] == "--compiler":
         sys.exit(1 if compare(sys.argv[2]) else 0)
-    if sys.argv[1:] in (["--update"], ["--refresh-inputs"]):
+    if len(sys.argv) == 4 and sys.argv[1:3] == ["--update", "--compiler"]:
+        written = update(sys.argv[3])
+        print(f"Wrote ABI corpus for ABI version {ABI_VERSION} to {written}")
+    elif sys.argv[1:] in (["--update"], ["--refresh-inputs"]):
         if sys.argv[1] == "--refresh-inputs":
             refresh_inputs()
             print(f"Snapshotted interfaces into {INPUTS_DIR}")
-        update()
-        print(f"Wrote ABI corpus for ABI version {ABI_VERSION} to {CORPUS_DIR}")
+        written = update()
+        print(f"Wrote ABI corpus for ABI version {ABI_VERSION} to {written}")
     else:
         print(__doc__)
         sys.exit(2)

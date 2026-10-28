@@ -73,26 +73,26 @@ Stage 2 is the new compiler. Each stage has its own build directory, and the eng
 - **The release finds the tree's `questlang/` through `-I`,** because its `QUEST_HOME` is its own `home/`, which
   holds only `lib/` and `runtime/`.
 - **The runner's `--self-hosted`** builds the driver it tests from the bootstrap by default, and from the release
-  with `--seed release`. The plan had the release as the default. But the runner builds from nothing every time, where
-  the bootstrap's single build is quicker than the release's two, and the goldens are the bootstrap's anyway while it
-  is kept in step.
+  with `--seed release`. The plan had the release as the default. But the runner builds from nothing every time, and
+  building with the bootstrap keeps it able to build the tree's compiler between releases.
 - **The one rule this imposes:** `questlang/` must be compilable by the current release against the release's own
   `lib/`. Using a new language feature, a new `lib/` function, or a new runtime primitive in `questlang/` takes two
   commits: one that adds the feature, then a release, then one that uses it. While the bootstrap is maintained, it
-  can be used instead to build past such a gap (`QUESTC_SEED=bootstrap`).
+  can be used instead to build past such a gap (`QUESTC_SEED=bootstrap`), as long as the feature is in the bootstrap
+  too.
 
 ## 3. Checking
 
 - **The self-hosting check** (`run_tests.py --self-hosting`, with `--seed release` to start from the release) starts
   from the seed:
   1. The seed builds stage 1, stage 1 builds stage 2, and stage 2 builds stage 3. With the release as the seed, the
-     bootstrap's build of the driver runs alongside stage 1, for the comparison in the next step.
-  2. Stage 3's artifacts must equal stage 2's (the fixed point). Stage 2's must equal the bootstrap's only while the
-     two compilers are kept in step.
+     bootstrap's build of the driver runs alongside stage 1, and builds a stage 2 of its own.
+  2. The artifacts stage 2 writes must equal those stage 1 wrote (the fixed point). With the release as the seed, the
+     bootstrap's stage 1 must write the release's stage 1's artifacts: the bootstrap still builds the same compiler.
   3. The self-hosted suite runs with stage 2.
-- **The goldens.** While the bootstrap is kept in step, the goldens stay the bootstrap's, and the `codegen_c` digests
-  are the bootstrap's C. Once the compilers diverge (a separate decision, §5), the goldens and digests become stage
-  2's, written by `--update-golden` with the self-hosted driver.
+- **The goldens.** The compilers diverged on 2026-10-28 (testing.md §2.8). The goldens of what programs do stay
+  shared, and the bootstrap writes them; the self-hosted compiler's IR dumps and C digests are its own, written by
+  `--update-golden` with the self-hosted driver, and the bootstrap keeps C digests of its own.
 
 ## 4. Steps
 
@@ -105,7 +105,8 @@ Stage 2 is the new compiler. Each stage has its own build directory, and the eng
 
 ## 5. Not in This Plan
 
-- **Retiring the bootstrap** (deleting it, or no longer keeping it in step) and making the goldens the self-hosted
-  compiler's. Once the bootstrap is not kept in step, the release is the only seed, and the chain of releases, each
-  rebuildable from its commit by the one before, is the compiler's provenance.
+- **Retiring the bootstrap.** It is kept as a correct compiler rather than an identical one (testing.md §2.8): it
+  gets the language's changes and bug fixes, not the self-hosted compiler's optimizations, and the self-hosting
+  check confirms that it still builds the compiler the release does. Deleting it would leave the chain of releases,
+  each rebuildable from its commit by the one before, as the compiler's only provenance.
 - **Publishing releases** outside the checkout (GitHub releases, or a shared directory), for other machines or a CI.
