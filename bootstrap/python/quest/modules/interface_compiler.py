@@ -817,6 +817,14 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
                         env.register_module(iname, registered_scope)
                         env.register_module(mod_path, registered_scope)
                         env.register_module(imp_name, registered_scope)
+                        # The interface's types name an imported module's
+                        # abstract types by the module's own name (vector.T),
+                        # whatever the interface imported it as (vec =
+                        # collections/vector), so the module is known by that
+                        # name too, unless something else already is
+                        own = registered_scope.module_name
+                        if own and not env.has_module(own):
+                            env.register_module(own, registered_scope)
 
     iface_scope = Scope(name=f"interface_{name}", parent=imp_scope_frame)
     for t_name, t_sym in imp_scope_frame.types.items():

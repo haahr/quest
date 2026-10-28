@@ -267,6 +267,9 @@ To avoid exponential code expansion and multi-megabyte interface metadata files:
   interface compiler writes them under the name written in the interface source (e.g. `ast.TypeExpr`, `ast.Expr`,
   `FormalParam`) rather than expanding their definitions. On load the names resolve in the `.qi`'s own imports and
   declarations, so alias names survive the round trip.
+- **Abstract Types by Their Modules' Names:** An imported module's abstract type is written under the module's own
+  name (`vector.T`), not the name the interface imported it as (`vec = collections/vector`). So the loader registers
+  each module a `.qi` imports under its own name too, unless another module is already registered under that name.
 - **Two-Pass Type Deserialization:** When loading `.qi` files in `load_interface_from_qi_file`, type declarations are
   processed in two passes:
   1. *Symbol Registration Pass:* All type symbols are declared with fresh symbol IDs and kinds into the interface scope.

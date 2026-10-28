@@ -247,6 +247,11 @@ class Environment:
     def register_module(self, name: str, scope: Scope) -> None:
         self._modules[name] = scope
 
+    def has_module(self, name: str) -> bool:
+        """Whether a module is registered under name (builtin modules not yet
+        loaded are not)."""
+        return name in self._modules
+
     def lookup_module(self, name: str) -> Optional[Scope]:
         res = self._modules.get(name)
         if res is None and self.builtin_registry:

@@ -226,5 +226,6 @@ the library exists.
 8. `common/files` folds into `util/path`, and the build engine moves to `path.T` (done). `modules/paths` took
    over `common/files`' `readText`, `fileTime`, and `modifiedNs`, and builds the rest on `util/path`; `config/abi`,
    below it, uses `util/path` directly. The engine's build directory, include paths, and extra objects are `path.T`.
-   `engine.int.quest` imports `util/path` without an alias, because both compilers mishandle a type that an
-   interface exports through an aliased import of a hierarchical library.
+   `engine.int.quest` imports `util/path` without an alias: both compilers mishandled a type that an interface
+   exports through an aliased import of a hierarchical library. They are fixed, but the release that builds
+   `./questc`'s stage 1 predates the fix.
