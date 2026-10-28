@@ -121,3 +121,32 @@ in `questlang/ir/describe.mod.quest`: the thunk that converts `h` needs `B`'s de
 to the thunk; closure conversion should capture it.
 
 **Done when.** The example compiles and runs, with a test in `tests/source/`, in both compilers.
+
+---
+
+## Capture rules for `var` variables as the paper has them
+
+**Problem.** The type checker's rule for which mutable variables a function may use is the reverse of the paper's.
+*Typeful Programming* §4.8 says only that "functions cannot refer directly to global variables of `Var` type": they
+must be passed as `in` and `out` parameters, or held in data structures (the own-variable idiom). It says nothing
+against capturing local `var` variables. This implementation forbids capturing a function's local `let var` variables
+(and `var` and `out` parameters) in a closure, and lets any function use a module-level or top-level `var` variable
+directly ([type-system.md](type-system.md) §6.2.3, [codegen-c.md](codegen-c.md) §10.8). Its reason is an
+implementation one: locals stay unboxed in their frame, so no pointer to them can outlive it. Converted code pays for
+it: an SML `ref` captured by a closure has to become a tuple with a `var` field (benchmarks/mlton).
+
+**Reproduce.** `tests/errors/typecheck/closure_capture_local_var.quest` is rejected ("Cannot capture 'var' variable
+'x' in closure"), and a top-level `let var n = 0` used by a top-level `let bump(): Ok = n := n + 1` is accepted.
+
+**Where to start.** `_check_capturable` in `bootstrap/python/quest/typechecker/checker.py` and its port in
+`questlang/typechecker/checker.mod.quest`. Allowing a captured local `var` means holding it boxed, in a cell the closure
+and the frame share, as a local whose address is taken already is (`location_representation`, codegen-c.md §10.8):
+closure conversion (`ir/closure`, whose `capturesMutable` error goes away) and both interpreters must treat it so. `var`
+and `out` parameters are references to the caller's locations, which the paper does not discuss; keep forbidding their
+capture unless there is a reason not to. Forbidding direct use of a global `var` breaks any code that does it: audit
+`lib/`, `questlang/`, and the tests first, and rewrite such uses with own variables. Update type-system.md §6.2.3, the
+error goldens (`closure_capture_local_var` becomes a run test), and the conversion guide's rule 23. Change both
+compilers in the same commit, while they are kept in step.
+
+**Done when.** A closure can capture and update a local `var` variable, in every phase and in compiled code; a
+function that refers directly to a global `var` variable is a type error; and §6.2.3 states the paper's rule.
