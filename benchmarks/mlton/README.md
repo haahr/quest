@@ -40,7 +40,8 @@ A conversion's standard output, exit status, and written files must match the or
 logic, mandelbrot, and tsp, whose `testit` prints their results, `run.py check` compares those runs too. For programs
 that print nothing (count-graphs, fft, knuth-bendix, mpuz, nucleic, ratio-regions, simple, barnes-hut among them),
 each conversion was checked during conversion against a copy of the original changed to print its intermediate results,
-the same change made to the conversion.
+the same change made to the conversion. hamlet's input discards the value of its longest computation; its conversion
+was also checked against the original on an input that prints such values.
 
 model-elimination prints its progress once per third of a second of CPU time spent on its search, and the times it
 took, so no two runs of the original print quite the same thing. Its conversion, which cannot read the clock, sees no
@@ -57,7 +58,8 @@ exactly what its conversion does. No recorded output depends on those bits.
   in which folds visit elements and in which side effects happen, and the association of real arithmetic (Quest's
   infix operators are right associative, so left-associative SML arithmetic is braced).
 - Code the benchmark never runs is left out: other entry points, debugging output, and unused library functions. Each
-  conversion's header says what it leaves out. Top-level effects are kept.
+  conversion's header says what it leaves out. Top-level effects are kept. For hamlet, an SML interpreter, what runs was
+  found with MLton's execution-count profiling (`-profile count`).
 - Quest's `Int` has 64 bits and MLton's `int` 32; programs whose results depend on overflow do the 32-bit arithmetic
   explicitly, and `Word32` values are masked to 32 bits.
 - An SML `ref` that a closure captures becomes a tuple with a `var` field, since closures cannot capture `var` locals.
@@ -71,7 +73,6 @@ exactly what its conversion does. No recorded output depends on those bits.
 |---|---|
 | fxp | Not a benchmark: an XML parser with no `Main.doit` and no input, which MLton's suite omits too |
 | merge | Recurses 200,000 calls deep, needing about 10 MB of stack, more than macOS lets a process have |
-| hamlet | Not converted yet; `run.py` skips it unless it is named |
 
 ## Notes on timings
 

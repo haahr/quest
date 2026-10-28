@@ -6,11 +6,11 @@ SML programs, into Quest.
 ml-lex writes its transition rows as strings, either in a list,
 val s = [(row, "..."), ...], or (older versions) each in its own value,
 val sROW = "...", and its states as a list of {fin = [(N action), ...],
-trans = row} (or trans = sROW). The rows become
-arrays of the 129 next states (PREFIXRows), and the states an array of
-PREFIXState(fin trans) calls, fin an array of action numbers and trans an index
-into PREFIXRows. The PROGRAM's nth table (counting from 0) is chosen with an
-optional third argument.
+trans = row} (or trans = sROW). The rows become arrays of the next states, 129
+or 256 of them (PREFIXRows), and the states an array of PREFIXState(fin trans)
+calls, fin an array of action numbers and trans an index into PREFIXRows. The
+PROGRAM's nth table (counting from 0) is chosen with an optional third
+argument.
 """
 
 import re
@@ -76,7 +76,7 @@ def main():
     index = {n: k for k, n in enumerate(order)}
     out = [f"let {prefix}Rows: Array(Array(Int)) = array of"]
     for n in order:
-        assert len(rows[n]) == 129, (n, len(rows[n]))
+        assert len(rows[n]) == len(rows[order[0]]) in (129, 256), (n, len(rows[n]))
         out += wrap("    array of", [str(b) for b in rows[n]] + ["end"], "        ")
     out.append("end")
     out.append(f"let {prefix}Tab: Array({prefix[0].upper()}{prefix[1:]}State) = array of")

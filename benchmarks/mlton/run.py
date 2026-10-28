@@ -71,10 +71,6 @@ OMITTED = {
 }
 
 
-# Programs of the suite not converted yet, which run.py skips unless named
-PENDING = {"hamlet"}
-
-
 def timeless_metis(stdout: str) -> str:
     """model-elimination's output without what depends on the time it takes:
     its progress lines, one per CPU-time slice of its search, and the times it
@@ -89,8 +85,7 @@ TIMELESS = {"model-elimination": timeless_metis}
 
 
 def benchmark_names(requested: list[str]) -> list[str]:
-    names = requested or sorted(
-        p.stem for p in SML_DIR.glob("*.sml") if p.stem not in OMITTED and p.stem not in PENDING)
+    names = requested or sorted(p.stem for p in SML_DIR.glob("*.sml") if p.stem not in OMITTED)
     unknown = [n for n in names if not (SML_DIR / f"{n}.sml").is_file()]
     if unknown:
         sys.exit(f"unknown benchmarks: {', '.join(unknown)}")
