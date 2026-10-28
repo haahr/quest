@@ -4,7 +4,9 @@ release/current with a snapshot of that commit's lib/ and runtime/ (home/) and
 a description of itself (release.json); the release before it is kept in
 release/previous.
 
-    tools/release              cut a release from HEAD, after the self-hosting check
+    tools/release              cut a release from HEAD, after the self-hosting check, seeded from the current release
+    tools/release --seed bootstrap
+                               the same, seeded from the bootstrap (the first release, or past a gap)
     tools/release --verify     check the current release: its binary's digest, and a program it builds and runs
     tools/release --rollback   swap the current and previous releases
     tools/release --show       print the current and previous releases' descriptions
@@ -112,13 +114,23 @@ def verify(release: Path) -> str:
     return smoke_test(release)
 
 
-def cut(python: str, check_dir: Path) -> None:
+def cut(python: str, check_dir: Path, seed: str) -> None:
     commit = check_tree()
     abi, producer = abi_constants()
-    print(f"Checking {commit[:8]} (run_tests.py --self-hosting --build-dir {check_dir})...", flush=True)
+    # The new release is built from the current one, which must be sound
+    if seed == "release":
+        if not CURRENT.is_dir():
+            fail("there is no current release to seed from; cut the first with --seed bootstrap")
+        problem = verify(CURRENT)
+        if problem:
+            fail(f"the current release does not work ({problem}); roll back, or cut with --seed bootstrap")
+        seeded_by = "release " + json.loads((CURRENT / "release.json").read_text(encoding="utf-8"))["commit"]
+    else:
+        seeded_by = "bootstrap"
+    command = ["run_tests.py", "--self-hosting", "--seed", seed, "--build-dir", str(check_dir)]
+    print(f"Checking {commit[:8]} ({' '.join(command)})...", flush=True)
     shutil.rmtree(check_dir, ignore_errors=True)
-    check = subprocess.run([python, str(ROOT_DIR / "run_tests.py"), "--self-hosting", "--build-dir", str(check_dir)],
-                           cwd=ROOT_DIR)
+    check = subprocess.run([python, str(ROOT_DIR / command[0]), *command[1:]], cwd=ROOT_DIR)
     if check.returncode != 0:
         fail("the self-hosting check or the self-hosted suite failed; no release was cut")
     stage2 = check_dir / "self-hosting" / "stage2" / "questlang-driver"
@@ -133,7 +145,11 @@ def cut(python: str, check_dir: Path) -> None:
         "producer": producer,
         "sha256": sha256(NEW / "questc"),
         "date": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-        "checked": "run_tests.py --self-hosting (the fixed point, and the self-hosted suite with stage 2)",
+        # Stage 1 was built by the seed: the release before this one, or the
+        # bootstrap
+        "seed": seeded_by,
+        "checked": f"run_tests.py --self-hosting --seed {seed} (the fixed point, and the self-hosted suite with "
+                   "stage 2)",
     }
     (NEW / "release.json").write_text(json.dumps(description, indent=2) + "\n", encoding="utf-8")
     problem = verify(NEW)
@@ -167,7 +183,12 @@ def show() -> None:
         description = release / "release.json"
         if description.is_file():
             d = json.loads(description.read_text(encoding="utf-8"))
-            print(f"{release.name}: {d['commit'][:8]} abi {d['abi']} {d['producer']}, cut {d['date']}")
+            # Releases cut before seeding from the release recorded no seed:
+            # theirs was the bootstrap
+            seed = d.get("seed", "bootstrap")
+            seed = f"release {seed.split()[1][:8]}" if seed.startswith("release ") else seed
+            print(f"{release.name}: {d['commit'][:8]} abi {d['abi']} {d['producer']}, cut {d['date']}, "
+                  f"seeded by {seed}")
         else:
             print(f"{release.name}: none")
 
@@ -178,6 +199,8 @@ def main() -> None:
     action.add_argument("--verify", action="store_true", help="check the current release")
     action.add_argument("--rollback", action="store_true", help="swap the current and previous releases")
     action.add_argument("--show", action="store_true", help="describe the current and previous releases")
+    parser.add_argument("--seed", choices=("release", "bootstrap"), default="release",
+                        help="what builds the check's stage 1: the current release (default), or the bootstrap")
     parser.add_argument("--check-dir", type=Path, default=DEFAULT_CHECK_DIR,
                         help="where the self-hosting check builds its stages (default .build/release-check)")
     args = parser.parse_args()
@@ -191,7 +214,7 @@ def main() -> None:
     elif args.show:
         show()
     else:
-        cut(sys.executable, args.check_dir.resolve())
+        cut(sys.executable, args.check_dir.resolve(), args.seed)
 
 
 if __name__ == "__main__":

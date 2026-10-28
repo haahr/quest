@@ -34,12 +34,17 @@ release/                  (in .gitignore)
 - **The release carries its own `lib/` and `runtime/`** (`home/`, run as its `QUEST_HOME`). The binary was compiled
   against them, and the C it generates is for their ABI. So the working tree's runtime can change, ABI version
   included, without breaking the seed. Copying the snapshot is cheap: both are small.
-- **Cutting a release** (`tools/release`, which takes about half an hour):
-  1. Check that the tree is clean and HEAD is on `origin/main`.
-  2. Run the self-hosting check and the self-hosted suite with stage 2 (`run_tests.py --self-hosting`, §3), building
-     in `.build/release-check` (`--check-dir`).
+- **Cutting a release** (`tools/release`):
+  1. Check that the tree is clean and HEAD is on `origin/main`, and that the current release is sound, as `--verify`
+     checks it.
+  2. Run the self-hosting check and the self-hosted suite with stage 2 (`run_tests.py --self-hosting --seed release`,
+     §3), building in `.build/release-check` (`--check-dir`). The current release builds stage 1, so each release is
+     built from the one before it. The check still builds the driver with the bootstrap too, to compare artifacts.
+     `--seed bootstrap` seeds the check from the bootstrap instead, for the first release, or when the current release
+     cannot compile the commit (§2).
   3. If both pass, write the new release into `release/new/`: stage 2 as `questc`, `git archive` of the commit's
-     `lib/` and `runtime/` as `home/`, and `release.json`.
+     `lib/` and `runtime/` as `home/`, and `release.json`, which records the seed: `release COMMIT` or `bootstrap`.
+     The releases before 2026-10-28 were all seeded by the bootstrap and record no seed.
   4. Check it as `--verify` does: its digest, and a small program it builds against its own `home/` and runs.
   5. Rename `current` to `previous` and `new` to `current`. The renames are atomic, so an interrupted release never
      leaves a half-written `current`.

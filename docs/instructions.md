@@ -44,8 +44,9 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
 - **The self-hosted compiler:** `./questc` takes the same options, building itself first when its sources have
   changed: from the current release in `release/current` when there is one, else from the bootstrap
   ([release-compiler.md](release-compiler.md)).
-- **Releases:** `tools/release` cuts one from a clean tree at a commit on `main`, after the self-hosting check
-  (about half an hour); `--verify`, `--rollback`, and `--show` check, undo, and describe them.
+- **Releases:** `tools/release` cuts one from a clean tree at a commit on `main`, after the self-hosting check seeded
+  from the current release (`--seed bootstrap` for the first, or past a gap); `--verify`, `--rollback`, and `--show`
+  check, undo, and describe them.
 - **Scratch files** go outside the repository (a temporary or scratchpad directory), never into `tests/` or `docs/`
   unless they become tests or documents.
 - **Shared git state.** Several sessions may work in worktrees of one repository, sharing its stash. Do not use bare
