@@ -1,0 +1,47 @@
+(* Standard library: RealOp's extensions to Typeful Programming's (pi,
+ * infinity, sqrt, the trigonometric and hyperbolic functions, exponential,
+ * ceil, trunc, and format). Results of libm's functions are printed to 12
+ * significant digits, so that they do not depend on its last bits. *)
+
+import real: RealOp
+import conv: Conv
+import writer: Writer
+
+let show(label: String s: String): Ok = writer.putString(writer.output label <> " " <> s <> "\n")
+let g(r: Real): String = real.format(r 'g' 12)
+
+show("pi" g(real.pi))
+show("infinity" conv.real(real.infinity))
+show("negative infinity" conv.real(0.0 -- real.infinity))
+show("sqrt" conv.real(real.sqrt(2.25)))
+show("sin" g(real.sin(1.0)))
+show("cos" g(real.cos(1.0)))
+show("tan" g(real.tan(1.0)))
+show("asin" g(real.asin(0.5)))
+show("acos" g(real.acos(0.5)))
+show("atan" g(real.atan(1.0)))
+show("atan2" g(real.atan2(1.0 ~1.0)))
+show("exponential" g(real.exponential(1.0)))
+show("exponential overflow" conv.real(real.exponential(1000.0)))
+show("sinh" g(real.sinh(1.0)))
+show("cosh" g(real.cosh(1.0)))
+show("tanh" g(real.tanh(1.0)))
+show("sinh overflow" conv.real(real.sinh(~1000.0)))
+show("ceil" conv.int(real.ceil(2.1)) <> " " <> conv.int(real.ceil(~2.1)))
+show("trunc" conv.int(real.trunc(2.9)) <> " " <> conv.int(real.trunc(~2.9)))
+show("format f" real.format(3.14159 'f' 2))
+show("format e" real.format(~0.000123456 'e' 3))
+show("format g" real.format(1234567.0 'g' 4))
+show("format g fixed" real.format(0.5 'g' 12))
+show("format infinities" real.format(real.infinity 'g' 6) <> " " <> real.format(0.0 -- real.infinity 'f' 2))
+
+let raises(label: String f: All() Ok): Ok =
+    try begin f() show(label "returned") end when real.error then show(label "raises real.error") end
+
+raises("sqrt(~1.0)" fun(): Ok begin real.sqrt(~1.0) ok end)
+raises("asin(2.0)" fun(): Ok begin real.asin(2.0) ok end)
+raises("sin(infinity)" fun(): Ok begin real.sin(real.infinity) ok end)
+raises("ceil(infinity)" fun(): Ok begin real.ceil(real.infinity) ok end)
+raises("trunc(1.0e30)" fun(): Ok begin real.trunc(1.0e30) ok end)
+raises("format(1.0 'x' 2)" fun(): Ok begin real.format(1.0 'x' 2) ok end)
+raises("format(1.0 'f' 101)" fun(): Ok begin real.format(1.0 'f' 101) ok end)

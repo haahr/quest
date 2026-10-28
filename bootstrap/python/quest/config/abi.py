@@ -18,7 +18,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-ABI_VERSION = 44
+ABI_VERSION = 45
 
 # The compiler that wrote an artifact: informational, for diagnostics only.
 PRODUCER = "quest-bootstrap 0.1"

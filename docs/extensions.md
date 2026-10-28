@@ -254,6 +254,30 @@ use no semicolons at all; the tests use both forms, so that both stay accepted.
 
 ---
 
+## Extensions to `RealOp`
+
+*Typeful Programming*'s `RealOp` (p. 64) has arithmetic, comparisons, `floor`, `round`, `abs`, `log`, and `exp` (which
+is `^^`, a power, not e raised to a number). Numerical programs need more, and the MLton benchmarks
+(`benchmarks/mlton`) use it, so `lib/realop.int.quest` extends the interface with C's `<math.h>`:
+
+| Operation | C | Notes |
+|---|---|---|
+| `pi`, `infinity` | `QUEST_REAL_PI`, `INFINITY` | negative infinity is `0.0 -- real.infinity` |
+| `sqrt`, `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `atan2(y x)` | the libm function | |
+| `exponential(r)` | `exp` | e raised to r |
+| `sinh`, `cosh`, `tanh` | the libm function | |
+| `ceil(r)`, `trunc(r)` | `ceil`, `trunc` | to `Int`, raising `real.error` as `floor` does for an infinity or a value out of range |
+| `format(r style digits)` | `snprintf` with `%.{digits}{style}` | style `'e'`, `'f'`, or `'g'`; `-` for negatives; digits 0 to 100 |
+
+As for the operators ([type-system.md](type-system.md) §6.3.1), a result that would be NaN raises `real.error`: a
+negative square root, the sine of an infinity, an arc sine outside [-1, 1]. A result too large for a `Real` is an
+infinity. Each is a runtime function `quest_real_<name>` (`runtime/quest_runtime.c`); both interpreters implement
+them, the bootstrap's with Python's `math` (mapping its `ValueError` to `real.error` and its `OverflowError` to an
+infinity, as C behaves), and the self-hosted one through the compiled library. `tests/source/stdlib/real_math.quest`
+tests them, printing libm's results to 12 significant digits so that its goldens do not depend on a libm's last bits.
+
+---
+
 ## The `Word` Interface & Module
 
 Cardelli's *Typeful Programming* (§9.3, *Type violations*) observes:

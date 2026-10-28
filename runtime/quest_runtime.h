@@ -610,6 +610,8 @@ static inline int64_t quest_int_max(int64_t a, int64_t b) { return a > b ? a : b
 #define QUEST_REAL_POS_EPSILON (2.2204460492503131e-16)
 #define QUEST_REAL_NEG_EPSILON (-2.2204460492503131e-16)
 #define QUEST_REAL_E (2.71828182845904523536)
+#define QUEST_REAL_PI (3.14159265358979323846)
+#define QUEST_REAL_INFINITY ((double)INFINITY)
 
 double  quest_real_from_int(int64_t n);
 double  quest_real_log(double r);
@@ -620,6 +622,21 @@ static inline double quest_real_min(double a, double b) { return a < b ? a : b; 
 static inline double quest_real_max(double a, double b) { return a > b ? a : b; }
 double  quest_real_div(double a, double b);
 double  quest_real_exp(double a, double b);
+double  quest_real_sqrt(double r);
+double  quest_real_sin(double r);
+double  quest_real_cos(double r);
+double  quest_real_tan(double r);
+double  quest_real_asin(double r);
+double  quest_real_acos(double r);
+double  quest_real_atan(double r);
+double  quest_real_atan2(double y, double x);
+double  quest_real_exponential(double r);
+double  quest_real_sinh(double r);
+double  quest_real_cosh(double r);
+double  quest_real_tanh(double r);
+int64_t quest_real_ceil(double r);
+int64_t quest_real_trunc(double r);
+QString *quest_real_format(double r, QChar style, int64_t digits);
 
 /* Word module primitives */
 uint64_t quest_word_not_bits(uint64_t w);

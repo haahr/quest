@@ -3801,6 +3801,42 @@ double quest_real_exp(double a, double b) {
     return quest_real_pow(a, b);
 }
 
+/* The libm functions RealOp extends Typeful Programming's with; each raises
+ * real.error where its result would be NaN (a negative square root, the sine of
+ * an infinity, an arc sine outside [-1, 1]) */
+double quest_real_sqrt(double r) { return quest_real_result(sqrt(r)); }
+double quest_real_sin(double r) { return quest_real_result(sin(r)); }
+double quest_real_cos(double r) { return quest_real_result(cos(r)); }
+double quest_real_tan(double r) { return quest_real_result(tan(r)); }
+double quest_real_asin(double r) { return quest_real_result(asin(r)); }
+double quest_real_acos(double r) { return quest_real_result(acos(r)); }
+double quest_real_atan(double r) { return quest_real_result(atan(r)); }
+double quest_real_atan2(double y, double x) { return quest_real_result(atan2(y, x)); }
+double quest_real_exponential(double r) { return quest_real_result(exp(r)); }
+double quest_real_sinh(double r) { return quest_real_result(sinh(r)); }
+double quest_real_cosh(double r) { return quest_real_result(cosh(r)); }
+double quest_real_tanh(double r) { return quest_real_result(tanh(r)); }
+
+int64_t quest_real_ceil(double r) {
+    return quest_real_to_int(ceil(r));
+}
+
+int64_t quest_real_trunc(double r) {
+    return quest_real_to_int(trunc(r));
+}
+
+QString *quest_real_format(double r, QChar style, int64_t digits) {
+    if ((style != 'e' && style != 'f' && style != 'g') || digits < 0 || digits > 100) {
+        quest_raise_real_error();
+    }
+    char spec[8];
+    snprintf(spec, sizeof spec, "%%.%d%c", (int)digits, (char)style);
+    int n = snprintf(NULL, 0, spec, r);
+    char *buf = (char *)quest_alloc_atomic((size_t)n + 1);
+    snprintf(buf, (size_t)n + 1, spec, r);
+    return quest_string_new(buf, n);
+}
+
 /* Word module primitives */
 uint64_t quest_word_not_bits(uint64_t w) {
     return ~w;

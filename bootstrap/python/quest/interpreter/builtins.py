@@ -279,6 +279,31 @@ def _real_div(a: QReal, b: QReal) -> QReal:
 def _real_exp(a: QReal, b: QReal) -> QReal:
     return QReal(real_pow(a.value, b.value))
 
+def _real_math(f: Callable[[float], float]) -> Callable[[QReal], QReal]:
+    """A libm function of RealOp's extensions, raising real.error where C's
+    result would be NaN (Python raises ValueError) and giving an infinity where
+    C's overflows (Python raises OverflowError)."""
+    def apply(r: QReal) -> QReal:
+        try:
+            result = f(r.value)
+        except ValueError:
+            raise QuestException(REAL_ERROR_EXC)
+        except OverflowError:
+            result = math.inf if f is not math.sinh or r.value > 0 else -math.inf
+        if math.isnan(result):
+            raise QuestException(REAL_ERROR_EXC)
+        return QReal(result)
+    return apply
+
+def _real_atan2(y: QReal, x: QReal) -> QReal:
+    return QReal(math.atan2(y.value, x.value))
+
+def _real_format(r: QReal, style: QChar, digits: QInt) -> QString:
+    """r as C's printf formats it with %.{digits}{style}."""
+    if style.value not in ("e", "f", "g") or not 0 <= digits.value <= 100:
+        raise QuestException(REAL_ERROR_EXC)
+    return QString(f"%.{digits.value}{style.value}" % r.value)
+
 def _real_to_int(r: float) -> QInt:
     """An integral real as an Int; an infinity or a value outside Int's range
     raises real.error."""
@@ -942,6 +967,21 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_real_div": _real_div,
     "quest_real_exp": _real_exp,
     "quest_real_log": _real_log,
+    "quest_real_sqrt": _real_math(math.sqrt),
+    "quest_real_sin": _real_math(math.sin),
+    "quest_real_cos": _real_math(math.cos),
+    "quest_real_tan": _real_math(math.tan),
+    "quest_real_asin": _real_math(math.asin),
+    "quest_real_acos": _real_math(math.acos),
+    "quest_real_atan": _real_math(math.atan),
+    "quest_real_atan2": _real_atan2,
+    "quest_real_exponential": _real_math(math.exp),
+    "quest_real_sinh": _real_math(math.sinh),
+    "quest_real_cosh": _real_math(math.cosh),
+    "quest_real_tanh": _real_math(math.tanh),
+    "quest_real_ceil": lambda r: _real_to_int(math.ceil(r.value) if math.isfinite(r.value) else r.value),
+    "quest_real_trunc": lambda r: _real_to_int(math.trunc(r.value) if math.isfinite(r.value) else r.value),
+    "quest_real_format": _real_format,
     "quest_real_abs": lambda r: QReal(abs(r.value)),
     "quest_real_min": lambda a, b: a if a.value <= b.value else b,
     "quest_real_max": lambda a, b: a if a.value >= b.value else b,
@@ -1100,6 +1140,7 @@ EXTERNAL_VALUES: dict[str, QValue] = {
     "QUEST_REAL_EPSILON": QReal(2.220446049250313e-16),
     "QUEST_REAL_E": QReal(math.e),
     "QUEST_REAL_PI": QReal(math.pi),
+    "QUEST_REAL_INFINITY": QReal(math.inf),
 
     # StringOp
     "(&quest_exc_string_error)": STRING_ERROR_EXC,

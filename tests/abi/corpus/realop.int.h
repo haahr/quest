@@ -26,6 +26,23 @@ typedef QBool (*quest_sig_RealOp_smaller)(QReal a, QReal b);
 typedef QBool (*quest_sig_RealOp_greater)(QReal a, QReal b);
 typedef QBool (*quest_sig_RealOp_smallerEq)(QReal a, QReal b);
 typedef QBool (*quest_sig_RealOp_greaterEq)(QReal a, QReal b);
+typedef QReal quest_sig_RealOp_pi;
+typedef QReal quest_sig_RealOp_infinity;
+typedef QReal (*quest_sig_RealOp_sqrt)(QReal r);
+typedef QReal (*quest_sig_RealOp_sin)(QReal r);
+typedef QReal (*quest_sig_RealOp_cos)(QReal r);
+typedef QReal (*quest_sig_RealOp_tan)(QReal r);
+typedef QReal (*quest_sig_RealOp_asin)(QReal r);
+typedef QReal (*quest_sig_RealOp_acos)(QReal r);
+typedef QReal (*quest_sig_RealOp_atan)(QReal r);
+typedef QReal (*quest_sig_RealOp_atan2)(QReal y, QReal x);
+typedef QReal (*quest_sig_RealOp_exponential)(QReal r);
+typedef QReal (*quest_sig_RealOp_sinh)(QReal r);
+typedef QReal (*quest_sig_RealOp_cosh)(QReal r);
+typedef QReal (*quest_sig_RealOp_tanh)(QReal r);
+typedef QInt (*quest_sig_RealOp_ceil)(QReal r);
+typedef QInt (*quest_sig_RealOp_trunc)(QReal r);
+typedef QString * (*quest_sig_RealOp_format)(QReal r, QChar style, QInt digits);
 #ifdef __cplusplus
 }
 #endif
