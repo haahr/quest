@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import re
 import resource
 import shutil
 import subprocess
@@ -71,11 +72,25 @@ OMITTED = {
 
 
 # Programs of the suite not converted yet, which run.py skips unless named
-PENDING = {"hamlet", "model-elimination"}
+PENDING = {"hamlet"}
+
+
+def timeless_metis(stdout: str) -> str:
+    """model-elimination's output without what depends on the time it takes:
+    its progress lines, one per CPU-time slice of its search, and the times it
+    prints."""
+    lines = [line for line in stdout.split("\n") if not line.startswith("[m(")]
+    return re.sub(r"User: \S+  System: \S+  Real: \S+", "User: -  System: -  Real: -", "\n".join(lines))
+
+
+# Programs whose output depends on how long they take, and the part of it check
+# compares: Quest cannot read the clock
+TIMELESS = {"model-elimination": timeless_metis}
 
 
 def benchmark_names(requested: list[str]) -> list[str]:
-    names = requested or sorted(p.stem for p in SML_DIR.glob("*.sml") if p.stem not in OMITTED and p.stem not in PENDING)
+    names = requested or sorted(
+        p.stem for p in SML_DIR.glob("*.sml") if p.stem not in OMITTED and p.stem not in PENDING)
     unknown = [n for n in names if not (SML_DIR / f"{n}.sml").is_file()]
     if unknown:
         sys.exit(f"unknown benchmarks: {', '.join(unknown)}")
@@ -172,7 +187,8 @@ def record(name: str, stdout: str, status: int, written: dict[str, bytes], suffi
 def differences(name: str, stdout: str, status: int, written: dict[str, bytes], suffix: str = "") -> list[str]:
     problems = []
     expected_out = (EXPECTED_DIR / f"{name}{suffix}.out").read_text(encoding="latin-1")
-    if f"{stdout}[exit {status}]\n" != expected_out:
+    timeless = TIMELESS.get(name, lambda s: s)
+    if timeless(f"{stdout}[exit {status}]\n") != timeless(expected_out):
         problems.append(f"{'testit ' if suffix else ''}standard output or exit status differs")
     files = EXPECTED_DIR / f"{name}{suffix}.files"
     expected = files.read_text(encoding="utf-8") if files.is_file() else ""

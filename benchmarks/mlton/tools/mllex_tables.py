@@ -63,7 +63,8 @@ def main():
     if lists:
         start = lists[nth]
         end = text.index('(0, "")]', start)
-        rows = {int(n): sml_string(body) for n, body in re.findall(r"\(\s*(\d+),\s*" + string + r"\s*\)", text[start:end], re.S)}
+        rows = {int(n): sml_string(body)
+                for n, body in re.findall(r"\(\s*(\d+),\s*" + string + r"\s*\)", text[start:end], re.S)}
     else:
         start = [m.start() for m in re.finditer(r"\nval s0 =\n", text)][nth]
         end = text.index("in Vector.fromList", start)

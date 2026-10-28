@@ -42,6 +42,11 @@ that print nothing (count-graphs, fft, knuth-bendix, mpuz, nucleic, ratio-region
 each conversion was checked during conversion against a copy of the original changed to print its intermediate results,
 the same change made to the conversion.
 
+model-elimination prints its progress once per third of a second of CPU time spent on its search, and the times it
+took, so no two runs of the original print quite the same thing. Its conversion, which cannot read the clock, sees no
+time pass and prints exactly what the original prints when its timers are changed to read 0; `run.py check` compares
+its output with `expected/` without the progress lines and the times.
+
 clang merges calls to `sin` and `cos` of one argument into one call of `__sincos_stret` in the C MLton generates, which
 can change their results' last bits. Built with `-cc-opt "-fno-builtin-sin -fno-builtin-cos"`, MLton's simple prints
 exactly what its conversion does. No recorded output depends on those bits.
@@ -57,8 +62,8 @@ exactly what its conversion does. No recorded output depends on those bits.
   explicitly, and `Word32` values are masked to 32 bits.
 - An SML `ref` that a closure captures becomes a tuple with a `var` field, since closures cannot capture `var` locals.
 - SML's formatting of reals (`Real.toString`, `Real.fmt`) and its `IntInf` come from `support/`, checked against MLton.
-- Where Quest lacks something the original uses, the header says what replaces it. Quest cannot read the clock: zern
-  and tensor, which time their work, read 0.
+- Where Quest lacks something the original uses, the header says what replaces it. Quest cannot read the clock: zern,
+  tensor, and model-elimination, which time their work, read 0.
 
 ## Programs not in the suite
 
@@ -66,7 +71,7 @@ exactly what its conversion does. No recorded output depends on those bits.
 |---|---|
 | fxp | Not a benchmark: an XML parser with no `Main.doit` and no input, which MLton's suite omits too |
 | merge | Recurses 200,000 calls deep, needing about 10 MB of stack, more than macOS lets a process have |
-| hamlet, model-elimination | Not converted yet; `run.py` skips them unless they are named |
+| hamlet | Not converted yet; `run.py` skips it unless it is named |
 
 ## Notes on timings
 
