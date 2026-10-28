@@ -1,0 +1,38 @@
+(* wc-input1: counts the lines of a 1000000-character file, reading it a
+ * character at a time *)
+
+import
+    support/bench : support/Bench
+    stringOp = string : StringOp
+    reader : Reader
+    writer : Writer
+    system : System
+
+(* OS.FileSys.tmpName: the benchmark runs in a scratch directory *)
+let tmpName = "wc-input1.tmp"
+
+let doit(n: Int): Ok =
+    begin
+        let f = tmpName
+        let dev = writer.file(f)
+        let text = stringOp.new(1000000 'a')
+        for i = 0 upto 999999 do if {i % 10} is 0 then stringOp.setChar(text i '\n') end end
+        writer.putString(dev text)
+        writer.close(dev)
+        let wc(f: String): Int =
+            begin
+                let ins = reader.file(f)
+                let rec count(i: Int): Int =
+                    if not(reader.more(ins)) then i
+                    else count(if reader.getChar(ins) is '\n' then i + 1 else i end)
+                    end
+                let n = count(0)
+                if n isnot 100000 then raise bench.bug end end
+                reader.close(ins)
+                n
+            end
+        for i = 1 upto n do wc(f) end
+        system.removeFile(f)
+    end
+
+doit(bench.count())

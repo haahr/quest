@@ -1,0 +1,87 @@
+module lists : Lists
+export
+    Let Rec T(A::TYPE) = Option nil cons with hd: A tl: T(A) end end
+
+    let empty: Exception = exception empty: Ok end
+    let subscript: Exception = exception subscript: Ok end
+
+    let nil(A::TYPE): T(A) = option nil of T(A) end
+    let cons(A::TYPE)(hd: A tl: T(A)): T(A) = option cons of T(A) with hd tl end
+
+    let null(A::TYPE)(l: T(A)): Bool = case l when nil then true else false end
+
+    let hd(A::TYPE)(l: T(A)): A = case l when cons with c then c.hd else raise empty end end
+    let tl(A::TYPE)(l: T(A)): T(A) = case l when cons with c then c.tl else raise empty end end
+
+    let length(A::TYPE)(l: T(A)): Int =
+        begin
+            let rec go(l: T(A) n: Int): Int = case l when cons with c then go(c.tl n + 1) else n end
+            go(l 0)
+        end
+
+    let rec append(A::TYPE)(l1: T(A) l2: T(A)): T(A) =
+        case l1 when cons with c then cons(:A)(c.hd append(:A)(c.tl l2)) else l2 end
+
+    let rec revAppend(A::TYPE)(l1: T(A) l2: T(A)): T(A) =
+        case l1 when cons with c then revAppend(:A)(c.tl cons(:A)(c.hd l2)) else l2 end
+
+    let rev(A::TYPE)(l: T(A)): T(A) = revAppend(:A)(l nil(:A))
+
+    let rec nth(A::TYPE)(l: T(A) i: Int): A =
+        case l
+            when cons with c then if i is 0 then c.hd elsif i < 0 then raise subscript end else nth(:A)(c.tl i - 1) end
+            else raise subscript end
+        end
+
+    let rec take(A::TYPE)(l: T(A) i: Int): T(A) =
+        if i is 0 then nil(:A)
+        else case l when cons with c then cons(:A)(c.hd take(:A)(c.tl i - 1)) else raise subscript end end
+        end
+
+    let rec drop(A::TYPE)(l: T(A) i: Int): T(A) =
+        if i is 0 then l
+        else case l when cons with c then drop(:A)(c.tl i - 1) else raise subscript end end
+        end
+
+    (* f is applied from 0 up, as in SML *)
+    let tabulate(A::TYPE)(n: Int f: All(i: Int) A): T(A) =
+        begin
+            let var acc = nil(:A)
+            for i = 0 upto n - 1 do acc := cons(:A)(f(i) acc) end
+            rev(:A)(acc)
+        end
+
+    let fromArray(A::TYPE)(a: Array(A)): T(A) =
+        begin
+            let var l = nil(:A)
+            for i = extent a - 1 downto 0 do l := cons(:A)(a[i] l) end
+            l
+        end
+
+    let rec map(A::TYPE B::TYPE)(f: All(a: A) B l: T(A)): T(B) =
+        case l
+            when cons with c then begin let y = f(c.hd) cons(:B)(y map(:A :B)(f c.tl)) end
+            else nil(:B)
+        end
+
+    let rec app(A::TYPE)(f: All(a: A) Ok l: T(A)): Ok =
+        case l when cons with c then begin f(c.hd) app(:A)(f c.tl) end else ok end
+
+    let rec filter(A::TYPE)(f: All(a: A) Bool l: T(A)): T(A) =
+        case l
+            when cons with c then if f(c.hd) then cons(:A)(c.hd filter(:A)(f c.tl)) else filter(:A)(f c.tl) end
+            else nil(:A)
+        end
+
+    let rec exists(A::TYPE)(f: All(a: A) Bool l: T(A)): Bool =
+        case l when cons with c then f(c.hd) orif exists(:A)(f c.tl) else false end
+
+    let rec all(A::TYPE)(f: All(a: A) Bool l: T(A)): Bool =
+        case l when cons with c then f(c.hd) andif all(:A)(f c.tl) else true end
+
+    let rec foldl(A::TYPE B::TYPE)(f: All(a: A b: B) B b: B l: T(A)): B =
+        case l when cons with c then foldl(:A :B)(f f(c.hd b) c.tl) else b end
+
+    let rec foldr(A::TYPE B::TYPE)(f: All(a: A b: B) B b: B l: T(A)): B =
+        case l when cons with c then f(c.hd foldr(:A :B)(f b c.tl)) else b end
+end

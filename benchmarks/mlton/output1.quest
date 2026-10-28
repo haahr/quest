@@ -1,0 +1,15 @@
+(* output1: writes a billion characters, one at a time, to /dev/null *)
+
+import
+    support/bench : support/Bench
+    writer : Writer
+
+let once(): Ok =
+    begin
+        let dev = writer.file("/dev/null")
+        let rec repeat(n: Int): Ok = if n is 0 then ok else begin writer.putChar(dev 'a') repeat(n - 1) end end
+        repeat(1000000000)
+        writer.close(dev)
+    end
+
+for i = 1 upto bench.count() do once() end

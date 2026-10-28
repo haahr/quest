@@ -1,0 +1,846 @@
+(* boyer: the Boyer-Moore tautology checker, rewriting with 106 lemmas, proving
+ * a tautology of implications (from the SML/NJ benchmark suite) *)
+
+import
+    support/bench : support/Bench
+    support/lists : support/Lists
+    stringOp = string : StringOp
+    writer : Writer
+
+(* terms.sml: Manipulations over terms *)
+
+(* A head is a name and its lemmas (the original's property list) *)
+Let Rec Term = Option variable with v: Int end prop with head: Head args: lists.T(Term) end end
+and Head = Tuple name: String props: Props end
+and Props = Tuple var v: lists.T(Lemma) end
+and Lemma = Tuple left: Term right: Term end
+Let Terms = lists.T(Term)
+
+let lemmas = tuple let var v = lists.nil(:Head) end
+
+(* Replacement for property lists *)
+
+let headname(h: Head): String = h.name
+
+let get(name: String): Head =
+    begin
+        let rec getRec(l: lists.T(Head)): Head =
+            case l
+                when cons with c then if stringOp.equal(c.hd.name name) then c.hd else getRec(c.tl) end
+                when nil then
+                    begin
+                        let props: Props = tuple let var v = lists.nil(:Lemma) end
+                        let entry: Head = tuple let name = name let props = props end
+                        lemmas.v := lists.cons(:Head)(entry lemmas.v)
+                        entry
+                    end
+            end
+        getRec(lemmas.v)
+    end
+
+let match: Exception = exception match: Ok end
+
+let addLemma(t: Term): Ok =
+    case t
+        when prop with p then
+            case p.args
+                when cons with a1 then
+                    case a1.hd
+                        when prop with left then
+                            case a1.tl
+                                when cons with a2 then
+                                    if lists.null(:Term)(a2.tl) then
+                                        left.head.props.v :=
+                                            lists.cons(:Lemma)(tuple let left = a1.hd let right = a2.hd end
+                                            left.head.props.v)
+                                    else raise match end
+                                    end
+                                else raise match end
+                            end
+                        else raise match end
+                    end
+                else raise match end
+            end
+        else raise match end
+    end
+
+(* Substitutions *)
+
+let failure: Exception(String) = exception failure: String end
+
+Let Binding = Tuple v: Int t: Term end
+Let Bindings = lists.T(Binding)
+
+let getBinding(v: Int l: Bindings): Term =
+    begin
+        let rec getRec(l: Bindings): Term =
+            case l
+                when nil then raise failure with "unbound" end
+                when cons with c then if v is c.hd.v then c.hd.t else getRec(c.tl) end
+            end
+        getRec(l)
+    end
+
+let applySubst(alist: Bindings): All(t: Term) Term =
+    begin
+        let rec asRec(t: Term): Term =
+            case t
+                when variable with x then try getBinding(x.v alist) when failure then t end
+                when prop with p then option prop of Term with p.head lists.map(:Term :Term)(asRec p.args) end
+            end
+        asRec
+    end
+
+(* SML's = on heads (a name and a ref) and on terms *)
+let headEq(a: Head b: Head): Bool = stringOp.equal(a.name b.name) andif {a.props is b.props}
+let rec termEq(a: Term b: Term): Bool =
+    case a
+        when variable with x then case b when variable with y then x.v is y.v else false end
+        when prop with x then case b when prop with y then headEq(x.head y.head) andif termsEq(x.args y.args)
+            else false end
+    end
+and termsEq(a: Terms b: Terms): Bool =
+    case a
+        when nil then lists.null(:Term)(b)
+        when cons with x then case b when cons with y then termEq(x.hd y.hd) andif termsEq(x.tl y.tl) else false end
+    end
+
+let unifyFailed: Exception = exception unifyFailed: Ok end
+
+let rec unify1(term1: Term term2: Term unifySubst: Bindings): Bindings =
+    case term2
+        when variable with x then
+            try if termEq(getBinding(x.v unifySubst) term1) then unifySubst else raise unifyFailed end end
+            when failure then lists.cons(:Binding)(tuple let v = x.v let t = term1 end unifySubst)
+            end
+        when prop with p2 then
+            case term1
+                when variable then raise unifyFailed end
+                when prop with p1 then
+                    if headEq(p1.head p2.head) then unify1Lst(p1.args p2.args unifySubst) else raise unifyFailed end end
+            end
+    end
+and unify1Lst(l1: Terms l2: Terms unifySubst: Bindings): Bindings =
+    case l1
+        when nil then case l2 when nil then unifySubst else raise unifyFailed end end
+        when cons with c1 then
+            case l2 when cons with c2 then unify1Lst(c1.tl c2.tl unify1(c1.hd c2.hd unifySubst))
+                else raise unifyFailed end end
+    end
+
+let unify(term1: Term term2: Term): Bindings = unify1(term1 term2 lists.nil(:Binding))
+
+(* The original's handler, handle unify =>, binds a variable: it catches every
+ * exception, as else does *)
+let rec rewrite(t: Term): Term =
+    case t
+        when variable then t
+        when prop with p then
+            rewriteWithLemmas(option prop of Term with p.head lists.map(:Term :Term)(rewrite p.args) end p.head.props.v)
+    end
+and rewriteWithLemmas(t: Term l: lists.T(Lemma)): Term =
+    case l
+        when nil then t
+        when cons with c then
+            try rewrite(applySubst(unify(t c.hd.left))(c.hd.right)) else rewriteWithLemmas(t c.tl) end
+    end
+
+(* rules.sml *)
+
+Let Rec CTerm = Option cvar with v: Int end cprop with name: String args: Array(CTerm) end end
+
+let cv(v: Int): CTerm = option cvar of CTerm with v end
+let cp(name: String args: Array(CTerm)): CTerm = option cprop of CTerm with name args end
+
+let rec ctermToTerm(c: CTerm): Term =
+    case c
+        when cvar with x then option variable of Term with x.v end
+        when cprop with p then
+            begin
+                (* SML's map makes each argument in order *)
+                let args = lists.map(:CTerm :Term)(ctermToTerm lists.fromArray(:CTerm)(p.args))
+                option prop of Term with get(p.name) args end
+            end
+    end
+
+let add(t: CTerm): Ok = addLemma(ctermToTerm(t))
+
+let addRules(): Ok =
+    begin
+        add(cp("equal" array of
+            cp("compile" array of cv(5) end)
+            cp("reverse" array of
+                cp("codegen" array of cp("optimize" array of cv(5) end) cp("nil" array of :CTerm end) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("eqp" array of cv(23) cv(24) end)
+            cp("equal" array of cp("fix" array of cv(23) end) cp("fix" array of cv(24) end) end)
+        end))
+        add(cp("equal" array of cp("gt" array of cv(23) cv(24) end) cp("lt" array of cv(24) cv(23) end) end))
+        add(cp("equal" array of cp("le" array of cv(23) cv(24) end) cp("ge" array of cv(24) cv(23) end) end))
+        add(cp("equal" array of cp("ge" array of cv(23) cv(24) end) cp("le" array of cv(24) cv(23) end) end))
+        add(cp("equal" array of
+            cp("boolean" array of cv(23) end)
+            cp("or" array of
+                cp("equal" array of cv(23) cp("true" array of :CTerm end) end)
+                cp("equal" array of cv(23) cp("false" array of :CTerm end) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("iff" array of cv(23) cv(24) end)
+            cp("and" array of cp("implies" array of cv(23) cv(24) end) cp("implies" array of cv(24) cv(23) end) end)
+        end))
+        add(cp("equal" array of
+            cp("even1" array of cv(23) end)
+            cp("if" array of
+                cp("zerop" array of cv(23) end)
+                cp("true" array of :CTerm end)
+                cp("odd" array of cp("sub1" array of cv(23) end) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("countps_" array of cv(11) cv(15) end)
+            cp("countps_loop" array of cv(11) cv(15) cp("zero" array of :CTerm end) end)
+        end))
+        add(cp("equal" array of
+            cp("fact_" array of cv(8) end)
+            cp("fact_loop" array of cv(8) cp("one" array of :CTerm end) end)
+        end))
+        add(cp("equal" array of
+            cp("reverse_" array of cv(23) end)
+            cp("reverse_loop" array of cv(23) cp("nil" array of :CTerm end) end)
+        end))
+        add(cp("equal" array of
+            cp("divides" array of cv(23) cv(24) end)
+            cp("zerop" array of cp("remainder" array of cv(24) cv(23) end) end)
+        end))
+        add(cp("equal" array of
+            cp("assume_true" array of cv(21) cv(0) end)
+            cp("cons" array of cp("cons" array of cv(21) cp("true" array of :CTerm end) end) cv(0) end)
+        end))
+        add(cp("equal" array of
+            cp("assume_false" array of cv(21) cv(0) end)
+            cp("cons" array of cp("cons" array of cv(21) cp("false" array of :CTerm end) end) cv(0) end)
+        end))
+        add(cp("equal" array of
+            cp("tautology_checker" array of cv(23) end)
+            cp("tautologyp" array of cp("normalize" array of cv(23) end) cp("nil" array of :CTerm end) end)
+        end))
+        add(cp("equal" array of
+            cp("falsify" array of cv(23) end)
+            cp("falsify1" array of cp("normalize" array of cv(23) end) cp("nil" array of :CTerm end) end)
+        end))
+        add(cp("equal" array of
+            cp("prime" array of cv(23) end)
+            cp("and" array of
+                cp("not" array of cp("zerop" array of cv(23) end) end)
+                cp("not" array of
+                    cp("equal" array of cv(23) cp("add1" array of cp("zero" array of :CTerm end) end) end)
+                end)
+                cp("prime1" array of cv(23) cp("sub1" array of cv(23) end) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("and" array of cv(15) cv(16) end)
+            cp("if" array of
+                cv(15)
+                cp("if" array of cv(16) cp("true" array of :CTerm end) cp("false" array of :CTerm end) end)
+                cp("false" array of :CTerm end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("or" array of cv(15) cv(16) end)
+            cp("if" array of
+                cv(15)
+                cp("true" array of :CTerm end)
+                cp("if" array of cv(16) cp("true" array of :CTerm end) cp("false" array of :CTerm end) end)
+                cp("false" array of :CTerm end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("not" array of cv(15) end)
+            cp("if" array of cv(15) cp("false" array of :CTerm end) cp("true" array of :CTerm end) end)
+        end))
+        add(cp("equal" array of
+            cp("implies" array of cv(15) cv(16) end)
+            cp("if" array of
+                cv(15)
+                cp("if" array of cv(16) cp("true" array of :CTerm end) cp("false" array of :CTerm end) end)
+                cp("true" array of :CTerm end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("fix" array of cv(23) end)
+            cp("if" array of cp("numberp" array of cv(23) end) cv(23) cp("zero" array of :CTerm end) end)
+        end))
+        add(cp("equal" array of
+            cp("if" array of cp("if" array of cv(0) cv(1) cv(2) end) cv(3) cv(4) end)
+            cp("if" array of cv(0) cp("if" array of cv(1) cv(3) cv(4) end) cp("if" array of cv(2) cv(3) cv(4) end) end)
+        end))
+        add(cp("equal" array of
+            cp("zerop" array of cv(23) end)
+            cp("or" array of
+                cp("equal" array of cv(23) cp("zero" array of :CTerm end) end)
+                cp("not" array of cp("numberp" array of cv(23) end) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("plus" array of cp("plus" array of cv(23) cv(24) end) cv(25) end)
+            cp("plus" array of cv(23) cp("plus" array of cv(24) cv(25) end) end)
+        end))
+        add(cp("equal" array of
+            cp("equal" array of cp("plus" array of cv(0) cv(1) end) cp("zero" array of :CTerm end) end)
+            cp("and" array of cp("zerop" array of cv(0) end) cp("zerop" array of cv(1) end) end)
+        end))
+        add(cp("equal" array of cp("difference" array of cv(23) cv(23) end) cp("zero" array of :CTerm end) end))
+        add(cp("equal" array of
+            cp("equal" array of cp("plus" array of cv(0) cv(1) end) cp("plus" array of cv(0) cv(2) end) end)
+            cp("equal" array of cp("fix" array of cv(1) end) cp("fix" array of cv(2) end) end)
+        end))
+        add(cp("equal" array of
+            cp("equal" array of cp("zero" array of :CTerm end) cp("difference" array of cv(23) cv(24) end) end)
+            cp("not" array of cp("gt" array of cv(24) cv(23) end) end)
+        end))
+        add(cp("equal" array of
+            cp("equal" array of cv(23) cp("difference" array of cv(23) cv(24) end) end)
+            cp("and" array of
+                cp("numberp" array of cv(23) end)
+                cp("or" array of
+                    cp("equal" array of cv(23) cp("zero" array of :CTerm end) end)
+                    cp("zerop" array of cv(24) end)
+                end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("meaning" array of cp("plus_tree" array of cp("append" array of cv(23) cv(24) end) end) cv(0) end)
+            cp("plus" array of
+                cp("meaning" array of cp("plus_tree" array of cv(23) end) cv(0) end)
+                cp("meaning" array of cp("plus_tree" array of cv(24) end) cv(0) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("meaning" array of cp("plus_tree" array of cp("plus_fringe" array of cv(23) end) end) cv(0) end)
+            cp("fix" array of cp("meaning" array of cv(23) cv(0) end) end)
+        end))
+        add(cp("equal" array of
+            cp("append" array of cp("append" array of cv(23) cv(24) end) cv(25) end)
+            cp("append" array of cv(23) cp("append" array of cv(24) cv(25) end) end)
+        end))
+        add(cp("equal" array of
+            cp("reverse" array of cp("append" array of cv(0) cv(1) end) end)
+            cp("append" array of cp("reverse" array of cv(1) end) cp("reverse" array of cv(0) end) end)
+        end))
+        add(cp("equal" array of
+            cp("times" array of cv(23) cp("plus" array of cv(24) cv(25) end) end)
+            cp("plus" array of cp("times" array of cv(23) cv(24) end) cp("times" array of cv(23) cv(25) end) end)
+        end))
+        add(cp("equal" array of
+            cp("times" array of cp("times" array of cv(23) cv(24) end) cv(25) end)
+            cp("times" array of cv(23) cp("times" array of cv(24) cv(25) end) end)
+        end))
+        add(cp("equal" array of
+            cp("equal" array of cp("times" array of cv(23) cv(24) end) cp("zero" array of :CTerm end) end)
+            cp("or" array of cp("zerop" array of cv(23) end) cp("zerop" array of cv(24) end) end)
+        end))
+        add(cp("equal" array of
+            cp("exec" array of cp("append" array of cv(23) cv(24) end) cv(15) cv(4) end)
+            cp("exec" array of cv(24) cp("exec" array of cv(23) cv(15) cv(4) end) cv(4) end)
+        end))
+        add(cp("equal" array of
+            cp("mc_flatten" array of cv(23) cv(24) end)
+            cp("append" array of cp("flatten" array of cv(23) end) cv(24) end)
+        end))
+        add(cp("equal" array of
+            cp("member" array of cv(23) cp("append" array of cv(0) cv(1) end) end)
+            cp("or" array of cp("member" array of cv(23) cv(0) end) cp("member" array of cv(23) cv(1) end) end)
+        end))
+        add(cp("equal" array of
+            cp("member" array of cv(23) cp("reverse" array of cv(24) end) end)
+            cp("member" array of cv(23) cv(24) end)
+        end))
+        add(cp("equal" array of
+            cp("length" array of cp("reverse" array of cv(23) end) end)
+            cp("length" array of cv(23) end)
+        end))
+        add(cp("equal" array of
+            cp("member" array of cv(0) cp("intersect" array of cv(1) cv(2) end) end)
+            cp("and" array of cp("member" array of cv(0) cv(1) end) cp("member" array of cv(0) cv(2) end) end)
+        end))
+        add(cp("equal" array of
+            cp("nth" array of cp("zero" array of :CTerm end) cv(8) end)
+            cp("zero" array of :CTerm end)
+        end))
+        add(cp("equal" array of
+            cp("exp" array of cv(8) cp("plus" array of cv(9) cv(10) end) end)
+            cp("times" array of cp("exp" array of cv(8) cv(9) end) cp("exp" array of cv(8) cv(10) end) end)
+        end))
+        add(cp("equal" array of
+            cp("exp" array of cv(8) cp("times" array of cv(9) cv(10) end) end)
+            cp("exp" array of cp("exp" array of cv(8) cv(9) end) cv(10) end)
+        end))
+        add(cp("equal" array of
+            cp("reverse_loop" array of cv(23) cv(24) end)
+            cp("append" array of cp("reverse" array of cv(23) end) cv(24) end)
+        end))
+        add(cp("equal" array of
+            cp("reverse_loop" array of cv(23) cp("nil" array of :CTerm end) end)
+            cp("reverse" array of cv(23) end)
+        end))
+        add(cp("equal" array of
+            cp("count_list" array of cv(25) cp("sort_lp" array of cv(23) cv(24) end) end)
+            cp("plus" array of
+                cp("count_list" array of cv(25) cv(23) end)
+                cp("count_list" array of cv(25) cv(24) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("equal" array of cp("append" array of cv(0) cv(1) end) cp("append" array of cv(0) cv(2) end) end)
+            cp("equal" array of cv(1) cv(2) end)
+        end))
+        add(cp("equal" array of
+            cp("plus" array of
+                cp("remainder" array of cv(23) cv(24) end)
+                cp("times" array of cv(24) cp("quotient" array of cv(23) cv(24) end) end)
+            end)
+            cp("fix" array of cv(23) end)
+        end))
+        add(cp("equal" array of
+            cp("power_eval" array of cp("big_plus" array of cv(11) cv(8) cv(1) end) cv(1) end)
+            cp("plus" array of cp("power_eval" array of cv(11) cv(1) end) cv(8) end)
+        end))
+        add(cp("equal" array of
+            cp("power_eval" array of cp("big_plus" array of cv(23) cv(24) cv(8) cv(1) end) cv(1) end)
+            cp("plus" array of
+                cv(8)
+                cp("plus" array of
+                    cp("power_eval" array of cv(23) cv(1) end)
+                    cp("power_eval" array of cv(24) cv(1) end)
+                end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("remainder" array of cv(24) cp("one" array of :CTerm end) end)
+            cp("zero" array of :CTerm end)
+        end))
+        add(cp("equal" array of
+            cp("lt" array of cp("remainder" array of cv(23) cv(24) end) cv(24) end)
+            cp("not" array of cp("zerop" array of cv(24) end) end)
+        end))
+        add(cp("equal" array of cp("remainder" array of cv(23) cv(23) end) cp("zero" array of :CTerm end) end))
+        add(cp("equal" array of
+            cp("lt" array of cp("quotient" array of cv(8) cv(9) end) cv(8) end)
+            cp("and" array of
+                cp("not" array of cp("zerop" array of cv(8) end) end)
+                cp("or" array of
+                    cp("zerop" array of cv(9) end)
+                    cp("not" array of cp("equal" array of cv(9) cp("one" array of :CTerm end) end) end)
+                end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("lt" array of cp("remainder" array of cv(23) cv(24) end) cv(23) end)
+            cp("and" array of
+                cp("not" array of cp("zerop" array of cv(24) end) end)
+                cp("not" array of cp("zerop" array of cv(23) end) end)
+                cp("not" array of cp("lt" array of cv(23) cv(24) end) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("power_eval" array of cp("power_rep" array of cv(8) cv(1) end) cv(1) end)
+            cp("fix" array of cv(8) end)
+        end))
+        add(cp("equal" array of
+            cp("power_eval" array of
+                cp("big_plus" array of
+                    cp("power_rep" array of cv(8) cv(1) end)
+                    cp("power_rep" array of cv(9) cv(1) end)
+                    cp("zero" array of :CTerm end)
+                    cv(1)
+                end)
+                cv(1)
+            end)
+            cp("plus" array of cv(8) cv(9) end)
+        end))
+        add(cp("equal" array of cp("gcd" array of cv(23) cv(24) end) cp("gcd" array of cv(24) cv(23) end) end))
+        add(cp("equal" array of
+            cp("nth" array of cp("append" array of cv(0) cv(1) end) cv(8) end)
+            cp("append" array of
+                cp("nth" array of cv(0) cv(8) end)
+                cp("nth" array of cv(1) cp("difference" array of cv(8) cp("length" array of cv(0) end) end) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("difference" array of cp("plus" array of cv(23) cv(24) end) cv(23) end)
+            cp("fix" array of cv(24) end)
+        end))
+        add(cp("equal" array of
+            cp("difference" array of cp("plus" array of cv(24) cv(23) end) cv(23) end)
+            cp("fix" array of cv(24) end)
+        end))
+        add(cp("equal" array of
+            cp("difference" array of cp("plus" array of cv(23) cv(24) end) cp("plus" array of cv(23) cv(25) end) end)
+            cp("difference" array of cv(24) cv(25) end)
+        end))
+        add(cp("equal" array of
+            cp("times" array of cv(23) cp("difference" array of cv(2) cv(22) end) end)
+            cp("difference" array of cp("times" array of cv(2) cv(23) end) cp("times" array of cv(22) cv(23) end) end)
+        end))
+        add(cp("equal" array of
+            cp("remainder" array of cp("times" array of cv(23) cv(25) end) cv(25) end)
+            cp("zero" array of :CTerm end)
+        end))
+        add(cp("equal" array of
+            cp("difference" array of cp("plus" array of cv(1) cp("plus" array of cv(0) cv(2) end) end) cv(0) end)
+            cp("plus" array of cv(1) cv(2) end)
+        end))
+        add(cp("equal" array of
+            cp("difference" array of cp("add1" array of cp("plus" array of cv(24) cv(25) end) end) cv(25) end)
+            cp("add1" array of cv(24) end)
+        end))
+        add(cp("equal" array of
+            cp("lt" array of cp("plus" array of cv(23) cv(24) end) cp("plus" array of cv(23) cv(25) end) end)
+            cp("lt" array of cv(24) cv(25) end)
+        end))
+        add(cp("equal" array of
+            cp("lt" array of cp("times" array of cv(23) cv(25) end) cp("times" array of cv(24) cv(25) end) end)
+            cp("and" array of
+                cp("not" array of cp("zerop" array of cv(25) end) end)
+                cp("lt" array of cv(23) cv(24) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("lt" array of cv(24) cp("plus" array of cv(23) cv(24) end) end)
+            cp("not" array of cp("zerop" array of cv(23) end) end)
+        end))
+        add(cp("equal" array of
+            cp("gcd" array of cp("times" array of cv(23) cv(25) end) cp("times" array of cv(24) cv(25) end) end)
+            cp("times" array of cv(25) cp("gcd" array of cv(23) cv(24) end) end)
+        end))
+        add(cp("equal" array of
+            cp("value" array of cp("normalize" array of cv(23) end) cv(0) end)
+            cp("value" array of cv(23) cv(0) end)
+        end))
+        add(cp("equal" array of
+            cp("equal" array of
+                cp("flatten" array of cv(23) end)
+                cp("cons" array of cv(24) cp("nil" array of :CTerm end) end)
+            end)
+            cp("and" array of cp("nlistp" array of cv(23) end) cp("equal" array of cv(23) cv(24) end) end)
+        end))
+        add(cp("equal" array of
+            cp("listp" array of cp("gother" array of cv(23) end) end)
+            cp("listp" array of cv(23) end)
+        end))
+        add(cp("equal" array of
+            cp("samefringe" array of cv(23) cv(24) end)
+            cp("equal" array of cp("flatten" array of cv(23) end) cp("flatten" array of cv(24) end) end)
+        end))
+        add(cp("equal" array of
+            cp("equal" array of cp("greatest_factor" array of cv(23) cv(24) end) cp("zero" array of :CTerm end) end)
+            cp("and" array of
+                cp("or" array of
+                    cp("zerop" array of cv(24) end)
+                    cp("equal" array of cv(24) cp("one" array of :CTerm end) end)
+                end)
+                cp("equal" array of cv(23) cp("zero" array of :CTerm end) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("equal" array of cp("greatest_factor" array of cv(23) cv(24) end) cp("one" array of :CTerm end) end)
+            cp("equal" array of cv(23) cp("one" array of :CTerm end) end)
+        end))
+        add(cp("equal" array of
+            cp("numberp" array of cp("greatest_factor" array of cv(23) cv(24) end) end)
+            cp("not" array of
+                cp("and" array of
+                    cp("or" array of
+                        cp("zerop" array of cv(24) end)
+                        cp("equal" array of cv(24) cp("one" array of :CTerm end) end)
+                    end)
+                    cp("not" array of cp("numberp" array of cv(23) end) end)
+                end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("times_list" array of cp("append" array of cv(23) cv(24) end) end)
+            cp("times" array of cp("times_list" array of cv(23) end) cp("times_list" array of cv(24) end) end)
+        end))
+        add(cp("equal" array of
+            cp("prime_list" array of cp("append" array of cv(23) cv(24) end) end)
+            cp("and" array of cp("prime_list" array of cv(23) end) cp("prime_list" array of cv(24) end) end)
+        end))
+        add(cp("equal" array of
+            cp("equal" array of cv(25) cp("times" array of cv(22) cv(25) end) end)
+            cp("and" array of
+                cp("numberp" array of cv(25) end)
+                cp("or" array of
+                    cp("equal" array of cv(25) cp("zero" array of :CTerm end) end)
+                    cp("equal" array of cv(22) cp("one" array of :CTerm end) end)
+                end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("ge" array of cv(23) cv(24) end)
+            cp("not" array of cp("lt" array of cv(23) cv(24) end) end)
+        end))
+        add(cp("equal" array of
+            cp("equal" array of cv(23) cp("times" array of cv(23) cv(24) end) end)
+            cp("or" array of
+                cp("equal" array of cv(23) cp("zero" array of :CTerm end) end)
+                cp("and" array of
+                    cp("numberp" array of cv(23) end)
+                    cp("equal" array of cv(24) cp("one" array of :CTerm end) end)
+                end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("remainder" array of cp("times" array of cv(24) cv(23) end) cv(24) end)
+            cp("zero" array of :CTerm end)
+        end))
+        add(cp("equal" array of
+            cp("equal" array of cp("times" array of cv(0) cv(1) end) cp("one" array of :CTerm end) end)
+            cp("and" array of
+                cp("not" array of cp("equal" array of cv(0) cp("zero" array of :CTerm end) end) end)
+                cp("not" array of cp("equal" array of cv(1) cp("zero" array of :CTerm end) end) end)
+                cp("numberp" array of cv(0) end)
+                cp("numberp" array of cv(1) end)
+                cp("equal" array of cp("sub1" array of cv(0) end) cp("zero" array of :CTerm end) end)
+                cp("equal" array of cp("sub1" array of cv(1) end) cp("zero" array of :CTerm end) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("lt" array of
+                cp("length" array of cp("delete" array of cv(23) cv(11) end) end)
+                cp("length" array of cv(11) end)
+            end)
+            cp("member" array of cv(23) cv(11) end)
+        end))
+        add(cp("equal" array of
+            cp("sort2" array of cp("delete" array of cv(23) cv(11) end) end)
+            cp("delete" array of cv(23) cp("sort2" array of cv(11) end) end)
+        end))
+        add(cp("equal" array of cp("dsort" array of cv(23) end) cp("sort2" array of cv(23) end) end))
+        add(cp("equal" array of
+            cp("length" array of
+                cp("cons" array of
+                    cv(0)
+                    cp("cons" array of
+                        cv(1)
+                        cp("cons" array of
+                            cv(2)
+                            cp("cons" array of
+                                cv(3)
+                                cp("cons" array of cv(4) cp("cons" array of cv(5) cv(6) end) end)
+                            end)
+                        end)
+                    end)
+                end)
+            end)
+            cp("plus" array of cp("six" array of :CTerm end) cp("length" array of cv(6) end) end)
+        end))
+        add(cp("equal" array of
+            cp("difference" array of
+                cp("add1" array of cp("add1" array of cv(23) end) end)
+                cp("two" array of :CTerm end)
+            end)
+            cp("fix" array of cv(23) end)
+        end))
+        add(cp("equal" array of
+            cp("quotient" array of
+                cp("plus" array of cv(23) cp("plus" array of cv(23) cv(24) end) end)
+                cp("two" array of :CTerm end)
+            end)
+            cp("plus" array of cv(23) cp("quotient" array of cv(24) cp("two" array of :CTerm end) end) end)
+        end))
+        add(cp("equal" array of
+            cp("sigma" array of cp("zero" array of :CTerm end) cv(8) end)
+            cp("quotient" array of
+                cp("times" array of cv(8) cp("add1" array of cv(8) end) end)
+                cp("two" array of :CTerm end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("plus" array of cv(23) cp("add1" array of cv(24) end) end)
+            cp("if" array of
+                cp("numberp" array of cv(24) end)
+                cp("add1" array of cp("plus" array of cv(23) cv(24) end) end)
+                cp("add1" array of cv(23) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("equal" array of
+                cp("difference" array of cv(23) cv(24) end)
+                cp("difference" array of cv(25) cv(24) end)
+            end)
+            cp("if" array of
+                cp("lt" array of cv(23) cv(24) end)
+                cp("not" array of cp("lt" array of cv(24) cv(25) end) end)
+                cp("if" array of
+                    cp("lt" array of cv(25) cv(24) end)
+                    cp("not" array of cp("lt" array of cv(24) cv(23) end) end)
+                    cp("equal" array of cp("fix" array of cv(23) end) cp("fix" array of cv(25) end) end)
+                end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("meaning" array of cp("plus_tree" array of cp("delete" array of cv(23) cv(24) end) end) cv(0) end)
+            cp("if" array of
+                cp("member" array of cv(23) cv(24) end)
+                cp("difference" array of
+                    cp("meaning" array of cp("plus_tree" array of cv(24) end) cv(0) end)
+                    cp("meaning" array of cv(23) cv(0) end)
+                end)
+                cp("meaning" array of cp("plus_tree" array of cv(24) end) cv(0) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("times" array of cv(23) cp("add1" array of cv(24) end) end)
+            cp("if" array of
+                cp("numberp" array of cv(24) end)
+                cp("plus" array of cv(23) cp("times" array of cv(23) cv(24) end) cp("fix" array of cv(23) end) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("nth" array of cp("nil" array of :CTerm end) cv(8) end)
+            cp("if" array of
+                cp("zerop" array of cv(8) end)
+                cp("nil" array of :CTerm end)
+                cp("zero" array of :CTerm end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("last" array of cp("append" array of cv(0) cv(1) end) end)
+            cp("if" array of
+                cp("listp" array of cv(1) end)
+                cp("last" array of cv(1) end)
+                cp("if" array of
+                    cp("listp" array of cv(0) end)
+                    cp("cons" array of cp("car" array of cp("last" array of cv(0) end) end) cv(1) end)
+                    cv(1)
+                end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("equal" array of cp("lt" array of cv(23) cv(24) end) cv(25) end)
+            cp("if" array of
+                cp("lt" array of cv(23) cv(24) end)
+                cp("equal" array of cp("true" array of :CTerm end) cv(25) end)
+                cp("equal" array of cp("false" array of :CTerm end) cv(25) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("assignment" array of cv(23) cp("append" array of cv(0) cv(1) end) end)
+            cp("if" array of
+                cp("assignedp" array of cv(23) cv(0) end)
+                cp("assignment" array of cv(23) cv(0) end)
+                cp("assignment" array of cv(23) cv(1) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("car" array of cp("gother" array of cv(23) end) end)
+            cp("if" array of
+                cp("listp" array of cv(23) end)
+                cp("car" array of cp("flatten" array of cv(23) end) end)
+                cp("zero" array of :CTerm end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("flatten" array of cp("cdr" array of cp("gother" array of cv(23) end) end) end)
+            cp("if" array of
+                cp("listp" array of cv(23) end)
+                cp("cdr" array of cp("flatten" array of cv(23) end) end)
+                cp("cons" array of cp("zero" array of :CTerm end) cp("nil" array of :CTerm end) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("quotient" array of cp("times" array of cv(24) cv(23) end) cv(24) end)
+            cp("if" array of
+                cp("zerop" array of cv(24) end)
+                cp("zero" array of :CTerm end)
+                cp("fix" array of cv(23) end)
+            end)
+        end))
+        add(cp("equal" array of
+            cp("get" array of cv(9) cp("set" array of cv(8) cv(21) cv(12) end) end)
+            cp("if" array of cp("eqp" array of cv(9) cv(8) end) cv(21) cp("get" array of cv(9) cv(12) end) end)
+        end))
+    end
+addRules()
+
+(* boyer.sml: Tautology checker *)
+
+let rec mem(x: Term l: Terms): Bool = case l when cons with c then termEq(x c.hd) orif mem(x c.tl) else false end
+
+let truep(x: Term lst: Terms): Bool =
+    case x when prop with p then stringOp.equal(headname(p.head) "true") orif mem(x lst) else mem(x lst) end
+
+let falsep(x: Term lst: Terms): Bool =
+    case x when prop with p then stringOp.equal(headname(p.head) "false") orif mem(x lst) else mem(x lst) end
+
+let rec tautologyp(x: Term trueLst: Terms falseLst: Terms): Bool =
+    if truep(x trueLst) then true
+    elsif falsep(x falseLst) then false
+    else
+        case x
+            when variable then false
+            when prop with p then
+                if {lists.length(:Term)(p.args) is 3} then
+                    begin
+                        let test = lists.nth(:Term)(p.args 0)
+                        let yes = lists.nth(:Term)(p.args 1)
+                        let no = lists.nth(:Term)(p.args 2)
+                        if stringOp.equal(headname(p.head) "if") then
+                            if truep(test trueLst) then tautologyp(yes trueLst falseLst)
+                            elsif falsep(test falseLst) then tautologyp(no trueLst falseLst)
+                            else tautologyp(yes lists.cons(:Term)(test trueLst) falseLst)
+                                andif tautologyp(no trueLst lists.cons(:Term)(test falseLst))
+                            end
+                        else false
+                        end
+                    end
+                else raise match end
+                end
+        end
+    end
+
+let tautp(x: Term): Bool = tautologyp(rewrite(x) lists.nil(:Term) lists.nil(:Term))
+
+(* The benchmark *)
+
+let v(n: Int): Term = option variable of Term with n end
+let p(name: String args: Array(Term)): Term = option prop of Term with get(name) lists.fromArray(:Term)(args) end
+let bind(v: Int t: Term): Binding = tuple let v = v let t = t end
+
+let subst = lists.fromArray(:Binding)(array of
+    bind(23 p("f" array
+        of p("plus" array of p("plus" array of v(0) v(1) end)
+            p("plus" array of v(2) p("zero" array of :Term end) end) end) end))
+    bind(24 p("f" array
+        of p("times" array of p("times" array of v(0) v(1) end) p("plus" array of v(2) v(3) end) end) end))
+    bind(25 p("f" array
+        of p("reverse" array
+            of p("append" array of p("append" array of v(0) v(1) end) p("nil" array of :Term end) end) end) end))
+    bind(20 p("equal" array of p("plus" array of v(0) v(1) end) p("difference" array of v(23) v(24) end) end))
+    bind(22 p("lt" array of p("remainder" array of v(0) v(1) end)
+        p("member" array of v(0) p("length" array of v(1) end) end) end))
+end)
+
+let term =
+    p("implies" array of
+        p("and" array of
+            p("implies" array of v(23) v(24) end)
+            p("and" array of
+                p("implies" array of v(24) v(25) end)
+                p("and" array of p("implies" array of v(25) v(20) end) p("implies" array of v(20) v(22) end) end)
+            end)
+        end)
+        p("implies" array of v(23) v(22) end)
+    end)
+
+let testit(): Ok =
+    writer.putString(writer.output if tautp(applySubst(subst)(term)) then "Proved!\n" else "Cannot prove!\n" end)
+
+let doit(): Ok = begin tautp(applySubst(subst)(term)) ok end
+
+if bench.testit() then testit() else for i = 1 upto bench.count() do doit() end end

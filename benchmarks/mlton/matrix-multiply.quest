@@ -1,0 +1,43 @@
+(* matrix-multiply: multiplies a 500x500 real matrix by itself *)
+
+import
+    support/bench : support/Bench
+    real : RealOp
+
+(* SML's Array2, row major *)
+Let Matrix = Tuple rows: Int cols: Int data: Array(Real) end
+let matrix(rows: Int cols: Int init: Real): Matrix =
+    tuple let rows = rows let cols = cols let data = array of(rows * cols init) end
+let sub(a: Matrix r: Int c: Int): Real = a.data[{r * a.cols} + c]
+let update(a: Matrix r: Int c: Int x: Real): Ok = a.data[{r * a.cols} + c] := x
+
+let fold(A::TYPE)(n: Int b: A f: All(i: Int b: A) A): A =
+    begin
+        let rec go(i: Int b: A): A = if i is n then b else go(i + 1 f(i b)) end
+        go(0 b)
+    end
+
+let foreach(n: Int f: All(i: Int) Ok): Ok = fold(:Ok)(n ok fun(i: Int b: Ok): Ok f(i))
+
+let failure: Exception(String) = exception failure: String end
+
+let mult(a1: Matrix a2: Matrix): Matrix =
+    begin
+        let r1 = a1.rows let c1 = a1.cols let r2 = a2.rows let c2 = a2.cols
+        if c1 isnot r2 then raise failure with "mult" end end
+        let a = matrix(r1 c2 0.0)
+        let dot(r: Int c: Int): Real = fold(:Real)(c1 0.0 fun(i: Int sum: Real): Real sum ++
+            {sub(a1 r i) ** sub(a2 i c)})
+        foreach(r1 fun(r: Int): Ok foreach(c2 fun(c: Int): Ok update(a r c dot(r c))))
+        a
+    end
+
+let doit(): Ok =
+    begin
+        let dim = 500
+        let a = matrix(dim dim 0.0)
+        for r = 0 upto dim - 1 do for c = 0 upto dim - 1 do update(a r c real.int(r + c)) end end
+        if 41541750.0 isnot sub(mult(a a) 0 0) then raise bench.bug end end
+    end
+
+for i = 1 upto bench.count() do doit() end

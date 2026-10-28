@@ -1,0 +1,204 @@
+(* zebra: solves the zebra puzzle (who owns the zebra?), exploring 3342
+ * possibilities by propagation and search (Stephen Weeks, 1999), 1000 times
+ * (and once more) each time *)
+
+import
+    support/bench : support/Bench
+    support/lists : support/Lists
+    util/maybe : util/Maybe
+
+Let Cigarette = Option blend blueMaster dunhill pallMall prince end
+Let Color = Option blue green red white yellow end
+Let Drink = Option beer coffee milk tea water end
+Let Nationality = Option dane english german norwegian swede end
+Let Pet = Option bird cat dog horse zebra end
+
+let poss = lists.fromArray(:Int)(array of 1 2 3 4 5 end)
+let first = maybe.some(:Int 1)
+let middle = maybe.some(:Int 3)
+
+Let Known(A::TYPE) = Tuple p: Int x: A end
+Let Attribute(A::TYPE) = Tuple poss: lists.T(Int) unknown: lists.T(A) known: lists.T(Known(A)) end
+Let Ref(A::TYPE) = Tuple var v: Attribute(A) end
+Let Search(A::TYPE) = Tuple each(a: Attribute(A)): Ok done(): Ok end
+
+let doneSearching: Exception = exception doneSearching: Ok end
+let inconsistent: Exception = exception inconsistent: Ok end
+let continue: Exception(All() Ok) = exception continue: All() Ok end
+
+(* r := x while f runs. Quest has no catch-all handler that re-raises, so
+ * fluidLet restores r for each exception that can pass through it, as the
+ * original's e => (r := old; raise e) does, and not for Done *)
+let fluidLet(A::TYPE)(r: Ref(A) x: Attribute(A) f: All() Ok): Ok =
+    begin
+        let old = r.v
+        r.v := x
+        try
+            begin f() r.v := old end
+        when doneSearching then raise doneSearching end
+        when inconsistent then begin r.v := old raise inconsistent end end
+        when continue with g then begin r.v := old raise continue with g end end
+        end
+    end
+
+(* Option.map #1 (List.find (fn (_, y) => x = y) known) *)
+let find(A::TYPE)(eq: All(x: A y: A) Bool r: Ref(A) x: A): maybe.T(Int) =
+    begin
+        let rec peek(l: lists.T(Known(A))): maybe.T(Int) =
+            case l when cons with c then if eq(x c.hd.x) then maybe.some(:Int c.hd.p) else peek(c.tl) end
+            else maybe.none(:Int) end
+        peek(r.v.known)
+    end
+
+let make(f: All(x: Int y: Int) Bool): All(a: maybe.T(Int) b: maybe.T(Int)) Bool =
+    fun(a: maybe.T(Int) b: maybe.T(Int)): Bool
+        if maybe.isSome(:Int a) andif maybe.isSome(:Int b) then f(maybe.unwrap(:Int a) maybe.unwrap(:Int b))
+        else true
+        end
+
+let search(): Ok =
+    begin
+        let init(A::TYPE)(unknown: Array(A)): Ref(A) =
+            tuple let var v: Attribute(A) = tuple
+                let poss = poss let unknown = lists.fromArray(:A)(unknown) let known = lists.nil(:Known(A))
+            end end
+        let cigarettes = init(:Cigarette)(array of
+            option blend of Cigarette end option blueMaster of Cigarette end option dunhill of Cigarette end
+            option pallMall of Cigarette end option prince of Cigarette end end)
+        let colors = init(:Color)(array of
+            option blue of Color end option green of Color end option red of Color end option white of Color end
+            option yellow of Color end end)
+        let drinks = init(:Drink)(array of
+            option beer of Drink end option coffee of Drink end option milk of Drink end option tea of Drink end
+            option water of Drink end end)
+        let nationalities = init(:Nationality)(array of
+            option dane of Nationality end option english of Nationality end option german of Nationality end
+            option norwegian of Nationality end option swede of Nationality end end)
+        let pets = init(:Pet)(array of
+            option bird of Pet end option cat of Pet end option dog of Pet end option horse of Pet end
+            option zebra of Pet end end)
+
+        let smoke(x: Cigarette): maybe.T(Int) =
+            find(:Cigarette)(fun(a: Cigarette b: Cigarette): Bool ordinal a is ordinal b cigarettes x)
+        let color(x: Color): maybe.T(Int) = find(:Color)(fun(a: Color b: Color): Bool ordinal a is ordinal b colors x)
+        let drink(x: Drink): maybe.T(Int) = find(:Drink)(fun(a: Drink b: Drink): Bool ordinal a is ordinal b drinks x)
+        let nat(x: Nationality): maybe.T(Int) =
+            find(:Nationality)(fun(a: Nationality b: Nationality): Bool ordinal a is ordinal b nationalities x)
+        let pet(x: Pet): maybe.T(Int) = find(:Pet)(fun(a: Pet b: Pet): Bool ordinal a is ordinal b pets x)
+
+        let same = make(fun(x: Int y: Int): Bool x is y)
+        let adjacent = make(fun(x: Int y: Int): Bool {x is {y - 1}} orif {y is {x - 1}})
+        let left = make(fun(x: Int y: Int): Bool x is {y - 1})
+
+        let num = tuple let var n = 0 end
+        let isConsistent(): Bool =
+            begin
+                num.n := num.n + 1
+                same(nat(option english of Nationality end) color(option red of Color end))
+                andif same(nat(option swede of Nationality end) pet(option dog of Pet end))
+                andif same(nat(option dane of Nationality end) drink(option tea of Drink end))
+                andif left(color(option green of Color end) color(option white of Color end))
+                andif same(color(option green of Color end) drink(option coffee of Drink end))
+                andif same(smoke(option pallMall of Cigarette end) pet(option bird of Pet end))
+                andif same(color(option yellow of Color end) smoke(option dunhill of Cigarette end))
+                andif same(middle drink(option milk of Drink end))
+                andif same(nat(option norwegian of Nationality end) first)
+                andif adjacent(smoke(option blend of Cigarette end) pet(option cat of Pet end))
+                andif adjacent(pet(option horse of Pet end) smoke(option dunhill of Cigarette end))
+                andif same(drink(option beer of Drink end) smoke(option blueMaster of Cigarette end))
+                andif same(nat(option german of Nationality end) smoke(option prince of Cigarette end))
+                andif adjacent(nat(option norwegian of Nationality end) color(option blue of Color end))
+                andif adjacent(drink(option water of Drink end) smoke(option blend of Cigarette end))
+            end
+
+        let tryEach(A::TYPE)(l: lists.T(A) f: All(x: A rest: lists.T(A)) Ok): Ok =
+            begin
+                let rec go(l: lists.T(A) ac: lists.T(A)): Ok =
+                    case l
+                        when nil then ok
+                        when cons with c then
+                            begin f(c.hd lists.append(:A)(c.tl ac)) go(c.tl lists.cons(:A)(c.hd ac)) end
+                    end
+                go(l lists.nil(:A))
+            end
+
+        let try1(A::TYPE)(r: Ref(A) f: All() Search(A)): Ok =
+            begin
+                let a = r.v
+                case a.unknown
+                    when nil then ok
+                    else
+                        tryEach(:A)(a.unknown fun(x: A unknown: lists.T(A)): Ok
+                            begin
+                                let s = f()
+                                tryEach(:Int)(a.poss fun(p: Int poss: lists.T(Int)): Ok
+                                    begin
+                                        let attr: Attribute(A) = tuple
+                                            let poss = poss
+                                            let unknown = unknown
+                                            let known = lists.cons(:Known(A))(tuple let p = p let x = x end a.known)
+                                        end
+                                        fluidLet(:A)(r attr fun(): Ok if isConsistent() then s.each(attr) end)
+                                    end)
+                                s.done()
+                            end)
+                end
+            end
+
+        (* loop takes the current state and either
+         *   - terminates in the same state if there is no consistent extension
+         *   - raises Done with the state set at the consistent extension *)
+        let rec search1(): Ok =
+            begin
+                let test(A::TYPE)(r: Ref(A)): Ok =
+                    try1(:A)(r fun(): Search(A)
+                        begin
+                            Let Attrs = Option none one with a: Attribute(A) end many end
+                            let attrs = tuple let var v = option none of Attrs end end
+                            tuple
+                                let each(a: Attribute(A)): Ok =
+                                    case attrs.v
+                                        when none then attrs.v := option one of Attrs with a end
+                                        when one then attrs.v := option many of Attrs end
+                                        when many then ok
+                                    end
+                                let done(): Ok =
+                                    case attrs.v
+                                        when none then raise inconsistent end
+                                        when one with o then
+                                            raise continue with fun(): Ok fluidLet(:A)(r o.a search1) end
+                                        when many then ok
+                                    end
+                            end
+                        end)
+                let explore(A::TYPE)(r: Ref(A)): Ok =
+                    try1(:A)(r fun(): Search(A)
+                        tuple
+                            let each(a: Attribute(A)): Ok = search1()
+                            let done(): Ok = raise inconsistent end
+                        end)
+                try
+                    begin
+                        test(:Cigarette)(cigarettes)
+                        test(:Color)(colors)
+                        test(:Drink)(drinks)
+                        test(:Nationality)(nationalities)
+                        test(:Pet)(pets)
+                        explore(:Cigarette)(cigarettes)
+                        explore(:Color)(colors)
+                        explore(:Drink)(drinks)
+                        explore(:Nationality)(nationalities)
+                        explore(:Pet)(pets)
+                        raise doneSearching end
+                    end
+                when inconsistent then ok
+                when continue with f then f()
+                end
+            end
+        try search1() when doneSearching then ok end
+        if 3342 isnot num.n then raise bench.bug end end
+    end
+
+let doit(n: Int): Ok = for i = 0 upto n * 1000 do search() end
+
+doit(bench.count())

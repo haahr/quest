@@ -1,0 +1,44 @@
+(* vector64-concat: concatenates two copies of a 20000-element vector of
+ * (64-bit) integers and sums it, 10000 times (and once more) each time *)
+
+import support/bench : support/Bench
+
+(* SML's Vector.tabulate *)
+let tabulate(n: Int f: All(i: Int) Int): Array(Int) =
+    begin
+        let a = array of(n 0)
+        for i = 0 upto n - 1 do a[i] := f(i) end
+        a
+    end
+
+(* SML's Vector.concat [a, b] *)
+let concat(a: Array(Int) b: Array(Int)): Array(Int) =
+    begin
+        let c = array of(extent a + extent b 0)
+        for i = 0 upto extent a - 1 do c[i] := a[i] end
+        for i = 0 upto extent b - 1 do c[extent a + i] := b[i] end
+        c
+    end
+
+(* SML's Vector.foldl (op +) 0 *)
+let sum(a: Array(Int)): Int =
+    begin
+        let var s = 0
+        for i = 0 upto extent a - 1 do s := a[i] + s end
+        s
+    end
+
+let doit(n: Int): Ok =
+    begin
+        let len = 20000
+        let total = len * {len - 1}
+        let v = tabulate(len fun(i: Int): Int i)
+        let rec repeat(n: Int): Ok =
+            if n < 0 then ok
+            elsif total is sum(concat(v v)) then repeat(n - 1)
+            else raise bench.bug end
+            end
+        repeat(n * 10000)
+    end
+
+doit(bench.count())

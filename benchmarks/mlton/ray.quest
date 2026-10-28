@@ -1,0 +1,512 @@
+(* ray: a ray tracer driven by a little PostScript-like interpreter, which
+ * reads a scene from DATA/ray and writes a 512x512 image to ./TEST (from the
+ * SML/NJ benchmark suite; COPYRIGHT (c) 1992 AT&T Bell Laboratories) *)
+
+import
+    support/bench : support/Bench
+    support/lists : support/Lists
+    support/reals : support/Reals
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    real : RealOp
+    ascii : Ascii
+    reader : Reader
+    writer : Writer
+    system : System
+
+(* objects.sml: Type declarations for the various objects in the ray tracer *)
+
+Let Point = Tuple x: Real y: Real z: Real end
+Let Vector = Tuple l: Real m: Real n: Real end
+Let Ray = Tuple s: Point d: Vector end
+Let Camera = Tuple vp: Point ul: Point ur: Point ll: Point lr: Point end
+Let Color = Tuple red: Real grn: Real blu: Real end
+Let Sphere = Tuple c: Point r: Real color: Color end
+Let Hit = Option miss hit with t: Real s: Sphere end end
+Let Visible = Tuple h: Point s: Sphere end
+
+Let Rec Object = Option
+    top
+    number with n: Real end
+    name with s: String end
+    list with l: lists.T(Object) end
+    operator with f: All(stk: lists.T(Object)) lists.T(Object) end
+    mark
+    literal with s: String end
+    unmark
+    point with p: Point end
+    vector with v: Vector end
+    ray with r: Ray end
+    camera with c: Camera end
+    color with c: Color end
+    sphere with s: Sphere end
+    hitObject
+    visible
+end
+Let Stack = lists.T(Object)
+
+let nilStack = lists.nil(:Object)
+let push(obj: Object stk: Stack): Stack = lists.cons(:Object)(obj stk)
+let number(n: Real): Object = option number of Object with n end
+
+(* interp.sml *)
+
+let failure: Exception(String) = exception failure: String end
+let stop: Exception = exception stop: Ok end
+
+let notAReal: Exception = exception notAReal: Ok end
+let strToReal(s: String): Real =
+    begin
+        let r = reals.fromString(s)
+        if maybe.isSome(:Real r) then maybe.unwrap(:Real r) else raise notAReal end end
+    end
+
+Let Entry = Tuple key: String value: Object end
+let dict = tuple let var entries = lists.nil(:Entry) end
+
+let dictInsert(key: Object value: Object): Ok =
+    case key
+        when name with k then
+            begin
+                let rec find(l: lists.T(Entry)): lists.T(Entry) =
+                    case l
+                        when nil then lists.cons(:Entry)(tuple let key = k.s let value = value end lists.nil(:Entry))
+                        when cons with c then
+                            if stringOp.equal(k.s c.hd.key) then
+                                lists.cons(:Entry)(tuple let key = k.s let value = value end c.tl)
+                            else lists.cons(:Entry)(c.hd find(c.tl))
+                            end
+                    end
+                dict.entries := find(dict.entries)
+            end
+        else raise failure with "dictInsert" end
+    end
+
+(* The original's printf implodes the first character of each of its strings
+ * (Char.fromString); prObj is used only by print and by errors, which the
+ * benchmark's input never reaches *)
+let prObj(outStrm: writer.T obj: Object): Ok =
+    begin
+        let printf(args: Array(String)): Ok =
+            for i = 0 upto extent args - 1 do
+                if stringOp.length(args[i]) > 0 then writer.putChar(outStrm stringOp.getChar(args[i] 0)) end
+            end
+        let rec pr(obj: Object): Ok =
+            case obj
+                when number with x then printf(array of "  " reals.toString(x.n) "\n" end)
+                when name with x then printf(array of "  " x.s "\n" end)
+                when literal with x then printf(array of "  " x.s "\n" end)
+                when list with x then lists.app(:Object)(pr x.l)
+                when mark then printf(array of "  MARK\n" end)
+                when operator then printf(array of "  <operator>\n" end)
+                when top then printf(array of "  TOP OF STACK\n" end)
+                else printf(array of "  <object>\n" end)
+            end
+        pr(obj)
+    end
+
+let error(opName: String stk: Stack): Stack =
+    begin
+        let rec prStk(l: Stack i: Int): Ok =
+            if i is 0 then ok
+            else case l when cons with c then begin prObj(writer.err c.hd) prStk(c.tl i - 1) end else ok end
+            end
+        writer.putString(writer.err "ERROR: " <> opName <> "\n")
+        prStk(stk 10)
+        raise failure with opName end
+    end
+
+let installOperator(name: String rator: All(stk: Stack) Stack): Ok =
+    dictInsert(option name of Object with name end option operator of Object with rator end)
+
+let psDef(stk: Stack): Stack =
+    case stk
+        when cons with v then case v.tl when cons with k then begin dictInsert(k.hd v.hd) k.tl end
+            else error("ps_def" stk) end
+        else error("ps_def" stk)
+    end
+
+let binOp(f: All(a: Real b: Real) Real opName: String): All(stk: Stack) Stack =
+    fun(stk: Stack): Stack
+        case stk
+            when cons with c1 then
+                case c1.hd
+                    when number with arg1 then
+                        case c1.tl
+                            when cons with c2 then
+                                case c2.hd
+                                    when number with arg2 then push(number(f(arg2.n arg1.n)) c2.tl)
+                                    else error(opName stk)
+                                end
+                            else error(opName stk)
+                        end
+                    else error(opName stk)
+                end
+            else error(opName stk)
+        end
+
+let psAdd = binOp(fun(a: Real b: Real): Real a ++ b "add")
+let psSub = binOp(fun(a: Real b: Real): Real a -- b "sub")
+let psMul = binOp(fun(a: Real b: Real): Real a ** b "mul")
+let psDiv = binOp(fun(a: Real b: Real): Real a // b "div")
+
+let psRand(stk: Stack): Stack = push(number(0.5) stk)
+
+let psPrint(stk: Stack): Stack =
+    case stk when cons with c then begin prObj(writer.output c.hd) c.tl end else error("print" stk) end
+
+let psDup(stk: Stack): Stack = case stk when cons with c then push(c.hd stk) else error("dup" stk) end
+
+let psStop(stk: Stack): Stack = raise stop end
+
+(* TextIO.input1 and TextIO.lookahead, on a reader with a character of
+ * lookahead *)
+Let Input = Tuple r: reader.T var peeked: Int end
+let input(r: reader.T): Input = tuple let r = r let var peeked = ~2 end
+(* The next character's code, or ~1 at the end; ~2 means none is peeked *)
+let peekCode(ins: Input): Int =
+    begin
+        if ins.peeked is ~2 then
+            ins.peeked := if reader.more(ins.r) then ascii.val(reader.getChar(ins.r)) else ~1 end
+        end
+        ins.peeked
+    end
+let getCode(ins: Input): Int = begin let c = peekCode(ins) ins.peeked := ~2 c end
+
+(* Initialize dictionary and begin parsing input. The original's getc and peek
+ * give each character as Char.toString writes it, which its uses read back
+ * with Char.fromString; this keeps the characters (an empty string, the end
+ * of the input, is ~1). *)
+Let Token = Tuple obj: Object deferred: Int end
+
+let parse(inStrm: reader.T): Ok =
+    begin
+        let ins = input(inStrm)
+        let isSpace(c: Int): Bool = {c >= 0} andif strutil.isSpace(ascii.char(c))
+        let isDigit(c: Int): Bool = {c >= 0} andif strutil.isDigit(ascii.char(c))
+        (* Parse one token from inStrm *)
+        let toke(deferred: Int): Token =
+            begin
+                let rec doChar(c: Int): Token =
+                    if c is ~1 then begin system.sysexit(0) doChar(c) end
+                    elsif c is ascii.val('%') then
+                        begin
+                            let rec lp(c: Int): Token =
+                                if c is 10 then doChar(getCode(ins))
+                                elsif c is ~1 then begin system.sysexit(0) lp(c) end
+                                else lp(getCode(ins))
+                                end
+                            lp(getCode(ins))
+                        end
+                    elsif c is ascii.val('{') then tuple let obj = option mark of Object end
+                        let deferred = deferred + 1 end
+                    elsif c is ascii.val('}') then tuple let obj = option unmark of Object end
+                        let deferred = deferred - 1 end
+                    elsif isSpace(c) then doChar(getCode(ins))
+                    else
+                        begin
+                            let rec lp(buf: lists.T(Char)): lists.T(Char) =
+                                begin
+                                    let p = peekCode(ins)
+                                    if {p is ascii.val('{')} orif {p is ascii.val('}')} orif {p is ascii.val('%')}
+                                        orif isSpace(p) orif {p is ~1} then buf
+                                    else begin getCode(ins) lp(lists.cons(:Char)(ascii.char(p) buf)) end
+                                    end
+                                end
+                            let chars = lists.rev(:Char)(lp(lists.cons(:Char)(ascii.char(c) lists.nil(:Char))))
+                            let tok = stringOp.new(lists.length(:Char)(chars) ' ')
+                            let rec fill(l: lists.T(Char) i: Int): Ok =
+                                case l when cons with x
+                                    then begin stringOp.setChar(tok i x.hd) fill(x.tl i + 1) end else ok end
+                            fill(chars 0)
+                            let hd = ascii.val(stringOp.getChar(tok 0))
+                            if hd is ascii.val('/') then
+                                tuple
+                                    let obj = option literal of Object with
+                                        stringOp.getSub(tok 1 stringOp.length(tok) - 1) end
+                                    let deferred = deferred
+                                end
+                            elsif isDigit(hd) orif {hd is ascii.val('-')} then
+                                tuple let obj = number(strToReal(tok)) let deferred = deferred end
+                            else tuple let obj = option name of Object with tok end let deferred = deferred end
+                            end
+                        end
+                    end
+                doChar(getCode(ins))
+            end
+        (* Execute a token (if not deferred) *)
+        let rec exec(obj: Object stk: Stack level: Int): Stack =
+            case obj
+                when unmark then
+                    begin
+                        let rec lp(stk: Stack l: Stack): Stack =
+                            case stk
+                                when nil then raise failure with "MARK" end
+                                when cons with c then
+                                    case c.hd
+                                        when mark then push(option list of Object with l end c.tl)
+                                        else lp(c.tl push(c.hd l))
+                                    end
+                            end
+                        lp(stk nilStack)
+                    end
+                when operator with f then if level is 0 then f.f(stk) else push(obj stk) end
+                when list with x then
+                    if level is 0 then
+                        begin
+                            let rec execBody(l: Stack stk: Stack): Stack =
+                                case l when cons with c then begin exec(c.hd stk 0) execBody(c.tl stk) end else stk end
+                            execBody(x.l stk)
+                        end
+                    else push(obj stk)
+                    end
+                when name with x then
+                    if level is 0 then
+                        begin
+                            let rec find(l: lists.T(Entry)): Object =
+                                case l
+                                    when nil then raise failure with "undefined name" end
+                                    when cons with c then if stringOp.equal(c.hd.key x.s) then c.hd.value
+                                        else find(c.tl) end
+                                end
+                            exec(find(dict.entries) stk 0)
+                        end
+                    else push(obj stk)
+                    end
+                else push(obj stk)
+            end
+        let rec lp(stk: Stack level: Int): Ok =
+            begin
+                let t = toke(level)
+                lp(exec(t.obj stk t.deferred) t.deferred)
+            end
+        installOperator("add" psAdd)
+        installOperator("def" psDef)
+        installOperator("div" psDiv)
+        installOperator("dup" psDup)
+        installOperator("mul" psMul)
+        installOperator("print" psPrint)
+        installOperator("rand" psRand)
+        installOperator("stop" psStop)
+        installOperator("sub" psSub)
+        try lp(nilStack 0) when stop then ok end
+    end
+
+(* ray.sml: basic operations on points and vectors *)
+
+(* SML's ~x *)
+let neg(x: Real): Real = ~1.0 ** x
+
+let scaleVector(s: Real v: Vector): Vector = tuple let l = s ** v.l let m = s ** v.m let n = s ** v.n end
+
+let vecPlusVec(a: Vector b: Vector): Vector = tuple let l = a.l ++ b.l let m = a.m ++ b.m let n = a.n ++ b.n end
+
+let vecPlusPt(v: Vector p: Point): Point = tuple let x = p.x ++ v.l let y = p.y ++ v.m let z = p.z ++ v.n end
+
+let ptMinusPt(a: Point b: Point): Vector = tuple let l = a.x -- b.x let m = a.y -- b.y let n = a.z -- b.z end
+
+let wave(a: Point b: Point w: Real): Point =
+    tuple
+        let x = {w ** {b.x -- a.x}} ++ a.x
+        let y = {w ** {b.y -- a.y}} ++ a.y
+        let z = {w ** {b.z -- a.z}} ++ a.z
+    end
+
+let dotProd(a: Vector b: Vector): Real = {{a.l ** b.l} ++ {a.m ** b.m}} ++ {a.n ** b.n}
+
+(* Normal vector to sphere *)
+let normalSphere(v: Visible): Vector =
+    begin
+        let n = ptMinusPt(v.h v.s.c)
+        let norm = real.sqrt(dotProd(n n))
+        scaleVector(1.0 // norm n)
+    end
+
+(* Intersect a ray with a sphere *)
+let intersectSphere(ray: Ray s: Sphere): Hit =
+    begin
+        let a = dotProd(ray.d ray.d)
+        let sdiffc = ptMinusPt(ray.s s.c)
+        let b = 2.0 ** dotProd(sdiffc ray.d)
+        let c = dotProd(sdiffc sdiffc) -- {s.r ** s.r}
+        let d = {b ** b} -- {{4.0 ** a} ** c}
+        if d <<= 0.0 then option miss of Hit end
+        else
+            begin
+                let sd = real.sqrt(d)
+                let t1 = {neg(b) -- sd} // {2.0 ** a}
+                let t2 = {neg(b) ++ sd} // {2.0 ** a}
+                let t = if {t1 >> 0.0} andif {t1 << t2} then t1 else t2 end
+                option hit of Hit with t s end
+            end
+        end
+    end
+
+(* Simple shading function *)
+Let Light = Tuple light: Point phi: Real end
+let shade1(lp: Light visible: Visible): Color =
+    begin
+        let l = ptMinusPt(lp.light visible.h)
+        let n = normalSphere(visible)
+        let irradiance0 = {lp.phi ** dotProd(l n)} // dotProd(l l)
+        let irradiance = {if irradiance0 << 0.0 then 0.0 else irradiance0 end} ++ 0.05
+        let color = visible.s.color
+        tuple let red = color.red ** irradiance let grn = color.grn ** irradiance let blu = color.blu ** irradiance end
+    end
+
+let trace(ray: Ray objList: lists.T(Sphere)): Visible =
+    begin
+        let closest(h1: Hit h2: Hit): Hit =
+            case h1
+                when miss then h2
+                when hit with a then case h2 when miss then h1 when hit with b then if b.t << a.t then h2
+                    else h1 end end
+            end
+        let rec lp(l: lists.T(Sphere) closestHit: Hit): Visible =
+            case l
+                when nil then
+                    case closestHit
+                        when hit with x then tuple let h = vecPlusPt(scaleVector(x.t ray.d) ray.s) let s = x.s end
+                        else raise failure with "trace" end
+                    end
+                when cons with c then lp(c.tl closest(closestHit intersectSphere(ray c.hd)))
+            end
+        lp(objList option miss of Hit end)
+    end
+
+let camera1(cam: Camera x: Real y: Real): Ray =
+    begin
+        let l = wave(cam.ul cam.ll y)
+        let r = wave(cam.ur cam.lr y)
+        let imagePoint = wave(l r x)
+        tuple let s = cam.vp let d = ptMinusPt(imagePoint cam.vp) end
+    end
+
+let pt(x: Real y: Real z: Real): Point = tuple let x = x let y = y let z = z end
+let shade(v: Visible): Color = shade1(tuple let light = pt(10.0 ~10.0 ~10.0) let phi = 16.0 end v)
+let cameraCam: Camera =
+    tuple
+        let vp = pt(0.0 0.0 ~3.0)
+        let ul = pt(~1.0 ~1.0 0.0)
+        let ur = pt(1.0 ~1.0 0.0)
+        let ll = pt(~1.0 1.0 0.0)
+        let lr = pt(1.0 1.0 0.0)
+    end
+let camera(x: Real y: Real): Ray = camera1(cameraCam x y)
+
+let image(objList: lists.T(Sphere)): All(x: Real y: Real) Color =
+    fun(x: Real y: Real): Color shade(trace(camera(x y) objList))
+
+let picture(picName: String objList: lists.T(Sphere)): Ok =
+    begin
+        let outStrm = writer.file(picName)
+        let img = image(objList)
+        let print(x: String): Ok = writer.putString(outStrm x)
+        let putc(c: Int): Ok = writer.putChar(outStrm ascii.char(c))
+        let doPixel(i: Int j: Int): Ok =
+            begin
+                let x = real.int(i) // 512.0
+                let y = real.int(j) // 512.0
+                let c = img(x y)
+                let cvt(x: Real): Int = if x >>= 1.0 then 255 else real.floor(256.0 ** x) end
+                putc(cvt(c.red))
+                putc(cvt(c.grn))
+                putc(cvt(c.blu))
+            end
+        let rec lpJ(j: Int): Ok =
+            if j < 512 then
+                begin
+                    let rec lpI(i: Int): Ok = if i < 512 then begin doPixel(i j) lpI(i + 1) end end
+                    lpI(0)
+                    lpJ(j + 1)
+                end
+            end
+        print("TYPE=dump\n")
+        print("WINDOW=0 0 512 512\n")
+        print("NCHAN=3\n")
+        print("CHAN=rgb\n")
+        print("\n")
+        lpJ(0)
+        writer.close(outStrm)
+    end
+
+(* interface.sml: the interface between the interpreter and the ray tracer *)
+
+(* color pops three numbers and pushes a color object.
+ * usage: red-value green-value blue-value color *)
+let psColor(stk: Stack): Stack =
+    case stk
+        when cons with c1 then case c1.hd when number with blu then
+        case c1.tl when cons with c2 then case c2.hd when number with grn then
+        case c2.tl when cons with c3 then case c3.hd when number with red then
+            begin
+                let c: Color = tuple let red = red.n let grn = grn.n let blu = blu.n end
+                push(option color of Object with c end c3.tl)
+            end
+        else error("color" stk) end else error("color" stk) end
+        else error("color" stk) end else error("color" stk) end
+        else error("color" stk) end else error("color" stk) end
+
+(* pop radius, coordinates of center, and a color and push a sphere
+ * usage: radius x y z color-value sphere *)
+let psSphere(stk: Stack): Stack =
+    case stk
+        when cons with c1 then case c1.hd when color with col then
+        case c1.tl when cons with c2 then case c2.hd when number with z then
+        case c2.tl when cons with c3 then case c3.hd when number with y then
+        case c3.tl when cons with c4 then case c4.hd when number with x then
+        case c4.tl when cons with c5 then case c5.hd when number with rad then
+            begin
+                let s: Sphere = tuple let c = pt(x.n y.n z.n) let r = rad.n let color = col.c end
+                push(option sphere of Object with s end c5.tl)
+            end
+        else error("sphere" stk) end else error("sphere" stk) end
+        else error("sphere" stk) end else error("sphere" stk) end
+        else error("sphere" stk) end else error("sphere" stk) end
+        else error("sphere" stk) end else error("sphere" stk) end
+        else error("sphere" stk) end else error("sphere" stk) end
+
+(* Build an object list from solids on the stack, then invoke raytracer *)
+let psRaytrace(stk: Stack): Stack =
+    case stk
+        when cons with c then
+            case c.hd
+                when literal with picName then
+                    begin
+                        let rec mkObjList(stk: Stack l: lists.T(Sphere)): lists.T(Sphere) =
+                            case stk
+                                when nil then l
+                                when cons with d then
+                                    case d.hd
+                                        when sphere with s then mkObjList(d.tl lists.cons(:Sphere)(s.s l))
+                                        else mkObjList(d.tl l)
+                                    end
+                            end
+                        picture(picName.s mkObjList(c.tl lists.nil(:Sphere)))
+                        nilStack
+                    end
+                else error("raytrace" stk)
+            end
+        else error("raytrace" stk)
+    end
+
+(* Add ray tracing operations to interpreter dictionary *)
+let rtInit(): Ok =
+    begin
+        installOperator("color" psColor)
+        installOperator("sphere" psSphere)
+        installOperator("raytrace" psRaytrace)
+    end
+
+(* main.sml: Main structure for running raytracer as benchmark *)
+
+let doit(n: Int): Ok =
+    for i = 1 upto n do
+        let strm = reader.file("DATA/ray")
+        rtInit()
+        parse(strm)
+        reader.close(strm)
+    end
+
+doit(bench.count())

@@ -1,0 +1,67 @@
+(* peek: property lists holding values of several types, each property added
+ * and found through its own add and peek functions *)
+
+import
+    support/bench : support/Bench
+    util/maybe : util/Maybe
+
+(* The original keeps a property list as a list of exceptions, each addPeek
+ * declaring a fresh exception constructor E of 'a, so a list holds values of
+ * any types. Quest's exceptions are not values a list can hold, so an entry
+ * here is the other classic universal type: a function that stores its value
+ * in the cell of the addPeek that made it. peek clears its cell, and tries
+ * each entry until one fills it. *)
+Let Rec Entries = Option nil cons with hd: All() Ok tl: Entries end end
+Let T = Tuple var r: Entries end
+
+let new(): T = tuple let var r = option nil of Entries end end
+
+Let AddPeek(A::TYPE) = Tuple add(t: T x: A): Ok peek(t: T): maybe.T(A) end
+
+let addPeek(A::TYPE): AddPeek(A) =
+    begin
+        let cell = tuple let var v = maybe.none(:A) end
+        tuple
+            let add(t: T x: A): Ok =
+                t.r := option cons of Entries with fun(): Ok cell.v := maybe.some(:A x) t.r end
+            let peek(t: T): maybe.T(A) =
+                begin
+                    let rec find(l: Entries): maybe.T(A) =
+                        case l
+                            when nil then maybe.none(:A)
+                            when cons with c then
+                                begin
+                                    cell.v := maybe.none(:A)
+                                    c.hd()
+                                    if maybe.isSome(:A cell.v) then cell.v else find(c.tl) end
+                                end
+                        end
+                    find(t.r)
+                end
+        end
+    end
+
+(* Int32.int and Int64.int are both Int *)
+let inner(): Ok =
+    begin
+        let l1 = new()
+        let l2 = new()
+        let a = addPeek(:Int)
+        let b = addPeek(:Int)
+        let c = addPeek(:Int)
+        let d = addPeek(:Int)
+        a.add(l1 13) b.add(l1 15) c.add(l1 17) d.add(l1 19)
+        a.add(l2 19) b.add(l2 17) c.add(l2 15) d.add(l2 13)
+        let peek(l: T): Int =
+            maybe.unwrap(:Int a.peek(l1)) + maybe.unwrap(:Int b.peek(l)) + maybe.unwrap(:Int c.peek(l))
+                + maybe.unwrap(:Int d.peek(l))
+        let var ac1 = 0
+        let var ac2 = 0
+        for i = 1 upto 10000000 do
+            ac1 := ac1 + peek(l1)
+            ac2 := ac2 + peek(l2)
+        end
+        if {ac1 isnot 640000000} orif {ac2 isnot 580000000} then raise bench.bug end end
+    end
+
+for i = 1 upto bench.count() do inner() end

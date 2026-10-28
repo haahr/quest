@@ -67,3 +67,70 @@ digests, but needs a new runtime primitive and so a release before `questlang/` 
 
 **Done when.** Word operations in generated C are direct calls or C operators, the self-hosted build of
 `questlang/driver/main` spends no measurable time in the call layers, and both compilers produce the same C.
+
+---
+
+## An `Ok` component of a tuple or option payload in compiled code
+
+**Problem.** A tuple type with a component of type `Ok`, or an option tag whose payload has one, compiles to a C struct
+with a `void` field, which clang rejects ("field has incomplete type 'void'"). The interpreters run such programs.
+Converted code works around it with an empty tuple, `Let Unit = Tuple end`, in the `Ok` component's place
+(benchmarks/mlton).
+
+**Reproduce.** Compile `Let P = Tuple e: Ok s: Int end let p: P = tuple let e = ok let s = 1 end let n = p.s`.
+
+**Where to start.** `emit_aggregate_structs` in `bootstrap/python/quest/codegen/c/declarations.py`, which takes each
+component's slot type, and its port in `questlang/codegen/c/declarations.mod.quest`; the slot of an `Ok` component
+should be no field at all (or a placeholder byte), with the projections and constructors that use the component's index
+agreeing.
+
+**Done when.** Tuples and option payloads with `Ok` components compile and run, with tests in `tests/source/`, in both
+compilers.
+
+---
+
+## Option tags named like C keywords in compiled code
+
+**Problem.** An option tag is used verbatim as the name of its payload's member in the C union of the option's struct,
+so a tag named like a C keyword (`int`, `struct`, `union`, `if`, ...) produces C that does not compile. Converted code
+renames such tags (benchmarks/mlton).
+
+**Reproduce.** Compile `Let T = Option int with n: Int end struct end let t = option int of T with 3 end`.
+
+**Where to start.** `emit_aggregate_structs` in `bootstrap/python/quest/codegen/c/declarations.py` (`struct
+..._payload { ... } {o.name};`) and its port in `questlang/codegen/c/declarations.mod.quest`, and every place that
+names the member (`printer.py`'s option accessors and the questlang printer): mangle the member name, for instance with
+a prefix, everywhere at once.
+
+**Done when.** Tags named like any C keyword compile, with a test in `tests/source/`, in both compilers.
+
+---
+
+## Polymorphic functions that pass exceptions of their type parameters to local functions
+
+**Problem.** A polymorphic function that defines a local function with a parameter of type `Exception(B)`, for its
+type parameter `B`, and passes it to another polymorphic function, fails in C code generation: "a thunk converts by the
+descriptor of 'B', which mentions the type parameter B of the function it is made in, whose descriptor it is not
+passed". The interpreters run it. Converted code makes such functions monomorphic (benchmarks/mlton).
+
+**Reproduce.**
+
+```
+let sub(A::TYPE)(f: All(s: A e: Exception(A)) A s: A): A =
+    begin
+        let e: Exception(A) = exception e: A end
+        try f(s e) when e with v then v end
+    end
+let g(B::TYPE)(x: B): B =
+    begin
+        let h(s: B e: Exception(B)): B = raise e with s end
+        sub(:B)(h x)
+    end
+let y = g(:Int)(5)
+```
+
+**Where to start.** `check_available` in `bootstrap/python/quest/ir/describe.py`, which raises the error, and its port
+in `questlang/ir/describe.mod.quest`: the thunk that converts `h` needs `B`'s descriptor, which `g` has but does not pass
+to the thunk; closure conversion should capture it.
+
+**Done when.** The example compiles and runs, with a test in `tests/source/`, in both compilers.

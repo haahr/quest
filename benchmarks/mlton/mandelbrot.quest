@@ -1,0 +1,65 @@
+(* mandelbrot: iterates the Mandelbrot map on a 32768x32768 grid, at most 2048
+ * times a point (from the SML/NJ benchmark suite) *)
+
+import
+    support/bench : support/Bench
+    writer : Writer
+    conv : Conv
+    real : RealOp
+
+let xBase = ~2.0
+let yBase = 1.25
+let side = 2.5
+
+let sz = 32768
+let maxCount = 2048
+
+let delta = side // real.int(sz)
+
+let sumIterations = tuple let var n = 0 end
+
+let rec loop1(i: Int): Ok =
+    if i >= sz then ok
+    else
+        begin
+            let cIm = yBase -- {delta ** real.int(i)}
+            let rec loop2(j: Int): Ok =
+                if j >= sz then ok
+                else
+                    begin
+                        let cRe = xBase ** {delta ++ real.int(j)}
+                        let rec loop3(count: Int zRe: Real zIm: Real): Int =
+                            if count < maxCount then
+                                begin
+                                    let zReSq = zRe ** zRe
+                                    let zImSq = zIm ** zIm
+                                    if {zReSq ++ zImSq} >> 4.0 then count
+                                    else
+                                        begin
+                                            let zReIm = zRe ** zIm
+                                            loop3(count + 1 {zReSq -- zImSq} ++ cRe {zReIm ++ zReIm} ++ cIm)
+                                        end
+                                    end
+                                end
+                            else count
+                            end
+                        let count = loop3(0 cRe cIm)
+                        sumIterations.n := sumIterations.n + count
+                        loop2(j + 1)
+                    end
+                end
+            loop2(0)
+            loop1(i + 1)
+        end
+    end
+
+let doit(): Ok = begin sumIterations.n := 0 loop1(0) end
+
+let testit(): Ok =
+    begin
+        sumIterations.n := 0
+        loop1(0)
+        writer.putString(writer.output conv.int(sumIterations.n) <> " iterations\n")
+    end
+
+if bench.testit() then testit() else for i = 1 upto bench.count() do doit() end end

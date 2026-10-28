@@ -1,0 +1,133 @@
+(* zern: an E-field from a sum of 15 Zernike phase screens on a 128x128 real
+ * array (from David McClain's language study) *)
+
+import
+    support/bench : support/Bench
+    support/lists : support/Lists
+    real : RealOp
+
+(* structure FastRealArray2 (COPYRIGHT (c) 1998 D.McClain/MCFA, COPYRIGHT (c)
+ * 1997 AT&T Research), with the functions the benchmark uses *)
+
+Let RealArray2 = Tuple data: Array(Real) nrows: Int ncols: Int nelts: Int end
+
+let subscript: Exception = exception subscript: Ok end
+let size: Exception = exception size: Ok end
+
+let dotimes(n: Int f: All(k: Int) Ok): Ok =
+    begin
+        (* going forward is twice as fast as backward! *)
+        let rec iter(k: Int): Ok = if k >= n then ok else begin f(k) iter(k + 1) end end
+        iter(0)
+    end
+
+let mkArray(n: Int v: Real): Array(Real) =
+    begin
+        let arr = array of(n 0.0)
+        dotimes(n fun(ix: Int): Ok arr[ix] := v)
+        arr
+    end
+
+(* Compute the index of an array element *)
+let ltu(i: Int limit: Int): Bool = {i >= 0} andif {i < limit}
+let unsafeIndex(arr: RealArray2 i: Int j: Int): Int = {i * arr.ncols} + j
+let index(arr: RealArray2 i: Int j: Int): Int =
+    if ltu(i arr.nrows) andif ltu(j arr.ncols) then unsafeIndex(arr i j) else raise subscript end end
+
+let maxLength = 4096 * 4096 (* arbitrary - but this is 128 MB *)
+
+let chkSize(nrows: Int ncols: Int): Int =
+    if {nrows <= 0} orif {ncols <= 0} then raise size end
+    else
+        begin
+            let n = nrows * ncols
+            if maxLength < n then raise size end else n end
+        end
+    end
+
+let realArray2(nrows: Int ncols: Int v: Real): RealArray2 =
+    begin
+        let nelts = chkSize(nrows ncols)
+        tuple let data = mkArray(nelts v) let nrows = nrows let ncols = ncols let nelts = nelts end
+    end
+
+let tabulateRM(nrows: Int ncols: Int f: All(i: Int j: Int) Real): RealArray2 =
+    begin
+        let nelts = chkSize(nrows ncols)
+        let arr = array of(nelts 0.0)
+        let rec lp1(i: Int j: Int k: Int): Ok = if i < nrows then lp2(i 0 k) end
+        and lp2(i: Int j: Int k: Int): Ok =
+            if j < ncols then begin arr[k] := f(i j) lp2(i j + 1 k + 1) end else lp1(i + 1 0 k) end
+        lp2(0 0 0)
+        tuple let data = arr let nrows = nrows let ncols = ncols let nelts = nelts end
+    end
+
+let sub(a: RealArray2 i: Int j: Int): Real = a.data[index(a i j)]
+
+let binop(dst: RealArray2 src1: RealArray2 src2: RealArray2 f: All(a: Real b: Real) Real): Ok =
+    dotimes(dst.nelts fun(ix: Int): Ok dst.data[ix] := f(src1.data[ix] src2.data[ix]))
+
+let unop(dst: RealArray2 src: RealArray2 f: All(a: Real) Real): Ok =
+    dotimes(dst.nelts fun(ix: Int): Ok dst.data[ix] := f(src.data[ix]))
+
+(* structure MSpeed: test of Zernike phase screen E-field generation *)
+
+let ncoefs = 15
+let nx = 128
+let ny = nx
+let nel = nx * ny
+
+(* Setup working vectors and arrays *)
+let collect(A::TYPE)(n: Int f: All(n: Int) A): lists.T(A) =
+    begin
+        let rec g(n: Int l: lists.T(A)): lists.T(A) = if n is 0 then l else g(n - 1 lists.cons(:A)(f(n) l)) end
+        g(n lists.nil(:A))
+    end
+
+(* Generate an array from a scaled vector *)
+let mulsv(dst: RealArray2 sf: Real a: RealArray2): Ok = unop(dst a fun(vsrc: Real): Real sf ** vsrc)
+
+(* Compute the complex exponential of an array *)
+Let Parts = Tuple rpart: RealArray2 ipart: RealArray2 end
+let cisv(a: RealArray2 rpart: RealArray2 ipart: RealArray2): Parts =
+    begin
+        unop(rpart a real.cos)
+        unop(ipart a real.sin)
+        tuple let rpart = rpart let ipart = ipart end
+    end
+
+(* Accumulate scaled vectors into an array *)
+let mpadd(dst: RealArray2): All(sf: Real src: RealArray2) Ok =
+    fun(sf: Real src: RealArray2): Ok binop(dst dst src fun(vdst: Real vsrc: Real): Real vdst ++ {sf ** vsrc})
+
+(* ListPair.app *)
+let rec listPairApp(f: All(a: Real b: RealArray2) Ok l1: lists.T(Real) l2: lists.T(RealArray2)): Ok =
+    case l1
+        when cons with a then case l2 when cons with b then begin f(a.hd b.hd) listPairApp(f a.tl b.tl) end else ok end
+        else ok
+    end
+
+(* Compute an E-field from a set of Zernike screens *)
+let zern(dst: RealArray2 rpart: RealArray2 ipart: RealArray2 coefs: lists.T(Real) zerns: lists.T(RealArray2)): Parts =
+    begin
+        mulsv(dst lists.hd(:Real)(coefs) lists.hd(:RealArray2)(zerns))
+        listPairApp(mpadd(dst) lists.tl(:Real)(coefs) lists.tl(:RealArray2)(zerns))
+        cisv(dst rpart ipart)
+    end
+
+(* The original times the iterations with Time.now and reports the times
+ * with print, which it overrides to print nothing. Quest cannot read the
+ * clock, and the report is never seen, so neither is here. *)
+let ztest(niter: Int): Ok =
+    for n = 1 upto niter do
+        let sum = realArray2(ny nx 0.0)
+        let rpart = realArray2(ny nx 0.0)
+        let ipart = realArray2(ny nx 0.0)
+        let coefs = collect(:Real)(ncoefs fun(x: Int): Real real.int(1 + x))
+        let zerns = collect(:RealArray2)(ncoefs fun(x: Int): RealArray2
+            tabulateRM(ny nx fun(r: Int c: Int): Real 0.01 ** real.int({nx * r} + c)))
+        let parts = zern(sum rpart ipart coefs zerns)
+        if not(real.abs(sub(parts.rpart 0 1) -- 0.219) << 0.001) then raise bench.bug end end
+    end
+
+ztest(bench.count())

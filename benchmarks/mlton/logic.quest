@@ -1,0 +1,791 @@
+(* logic: a Prolog program (peg solitaire) compiled to SML in
+ * continuation-passing style, with unification and a trail (from the SML/NJ
+ * benchmark suite) *)
+
+import
+    support/bench : support/Bench
+    support/lists : support/Lists
+    stringOp = string : StringOp
+    writer : Writer
+
+(* term.sml *)
+
+(* INT is integer: a tag named int does not yet compile to C (docs/tasklist.md) *)
+Let Rec Term = Option
+    str with f: String ts: lists.T(Term) end
+    integer with n: Int end
+    con with s: String end
+    ref with r: Ref end
+end
+(* term option ref *)
+and Ref = Tuple var v: TermOption end
+and TermOption = Option none some with t: Term end end
+
+let badArg: Exception(String) = exception badArg: String end
+
+let str(f: String ts: lists.T(Term)): Term = option str of Term with f ts end
+let intTerm(n: Int): Term = option integer of Term with n end
+let con(s: String): Term = option con of Term with s end
+let noTerm = option none of TermOption end
+
+(* [a] and [a, b] *)
+let terms1(a: Term): lists.T(Term) = lists.cons(:Term)(a lists.nil(:Term))
+let terms2(a: Term b: Term): lists.T(Term) = lists.cons(:Term)(a lists.cons(:Term)(b lists.nil(:Term)))
+
+(* trail.sml *)
+
+Let Refs = lists.T(Ref)
+let trailState = tuple let var globalTrail = lists.nil(:Ref) let var trailCounter = 0 end
+
+let rec unwindTrail(n: Int tr: Refs): Refs =
+    if n is 0 then tr
+    else
+        case tr
+            when cons with c then begin c.hd.v := noTerm unwindTrail(n - 1 c.tl) end
+            when nil then raise badArg with "unwind_trail" end
+        end
+    end
+
+let resetTrail(): Ok = trailState.globalTrail := lists.nil(:Ref)
+
+let trail(func: All() Ok): Ok =
+    begin
+        let tc0 = trailState.trailCounter
+        func()
+        trailState.globalTrail := unwindTrail(trailState.trailCounter - tc0 trailState.globalTrail)
+        trailState.trailCounter := tc0
+    end
+
+let bind(r: Ref t: Term): Ok =
+    begin
+        r.v := option some of TermOption with t end
+        trailState.globalTrail := lists.cons(:Ref)(r trailState.globalTrail)
+        trailState.trailCounter := trailState.trailCounter + 1
+    end
+
+(* unify.sml *)
+
+let sameRef(r: Ref t: Term): Bool = case t when ref with x then r is x.r else false end
+
+let occursCheck(r: Ref t: Term): Bool =
+    begin
+        let rec oc(t: Term): Bool =
+            case t
+                when str with x then ocs(x.ts)
+                when ref with x then case x.r.v when some with s then oc(s.t) else r isnot x.r end
+                when con then true
+                when integer then true
+            end
+        and ocs(ts: lists.T(Term)): Bool = case ts when cons with c then oc(c.hd) andif ocs(c.tl) else true end
+        oc(t)
+    end
+
+let rec deref(t: Term): Term =
+    case t
+        when ref with x then case x.r.v when some with s then deref(s.t) else t end
+        else t
+    end
+
+let rec unify1(s: Term t: Term sc: All() Ok): Ok =
+    case s
+        when ref with x then unifyRef(x.r t sc)
+        else
+            case t
+                when ref with y then unifyRef(y.r s sc)
+                else
+                    case s
+                        when str with a then
+                            case t when str with b then if stringOp.equal(a.f b.f)
+                                then unifys(a.ts b.ts sc) end else ok end
+                        when con with a then
+                            case t when con with b then if stringOp.equal(a.s b.s) then sc() end else ok end
+                        when integer with a then
+                            case t when integer with b then if a.n is b.n then sc() end else ok end
+                        else ok
+                    end
+            end
+    end
+and unifys(ts: lists.T(Term) ss: lists.T(Term) sc: All() Ok): Ok =
+    case ts
+        when nil then case ss when nil then sc() else ok end
+        when cons with t then
+            case ss
+                when cons with s then unify1(deref(t.hd) deref(s.hd) fun(): Ok unifys(t.tl s.tl sc))
+                else ok
+            end
+    end
+and unifyRef(r: Ref t: Term sc: All() Ok): Ok =
+    if sameRef(r t) then sc()
+    elsif occursCheck(r t) then begin bind(r t) sc() end
+    end
+
+let unify(s: Term t: Term sc: All() Ok): Ok = unify1(deref(s) deref(t) sc)
+
+(* data.sml, transliterated by tools/logic_data.py *)
+
+let consS = "cons"
+let xS = "x"
+let nilS = "nil"
+let oS = "o"
+let sS = "s"
+let conO = con(oS)
+let conNil = con(nilS)
+let conX = con(xS)
+
+let newRef(): Ref = tuple let var v = noTerm end
+let exists(sc: All(t: Term) Ok): Ok = sc(option ref of Term with newRef() end)
+
+let rec moveHoriz(t1: Term t2: Term sc: All() Ok): Ok =
+    begin
+    trail(fun(): Ok
+    begin
+    trail(fun(): Ok
+    begin
+    trail(fun(): Ok
+    begin
+    trail(fun(): Ok
+    begin
+    trail(fun(): Ok
+    begin
+    trail(fun(): Ok
+    begin
+    trail(fun(): Ok
+    begin
+    trail(fun(): Ok
+    begin
+    trail(fun(): Ok
+    begin
+    trail(fun(): Ok
+    begin
+    trail(fun(): Ok
+    exists(fun(t: Term): Ok
+    exists(fun(tt: Term): Ok
+    unify(t1 str(consS terms2(str(consS terms2(conX str(consS terms2(conX str(consS terms2(conO t)))))) tt)) fun(): Ok
+    unify(t2 str(consS terms2(str(consS terms2(conO str(consS terms2(conO str(consS terms2(conX t)))))) tt)) fun(): Ok
+    sc())))))
+    exists(fun(p1: Term): Ok
+    exists(fun(p5: Term): Ok
+    exists(fun(tt: Term): Ok
+    unify(
+        t1
+        str(
+            consS
+            terms2(
+                str(
+                    consS
+                    terms2(
+                        p1
+                        str(
+                            consS
+                            terms2(conX str(consS terms2(conX str(consS terms2(conO str(consS terms2(p5 conNil))))))))))
+                tt))
+        fun(): Ok
+    unify(
+        t2
+        str(
+            consS
+            terms2(
+                str(
+                    consS
+                    terms2(
+                        p1
+                        str(
+                            consS
+                            terms2(conO str(consS terms2(conO str(consS terms2(conX str(consS terms2(p5 conNil))))))))))
+                tt))
+        fun(): Ok
+    sc())))))
+    end)
+    exists(fun(p1: Term): Ok
+    exists(fun(p2: Term): Ok
+    exists(fun(tt: Term): Ok
+    unify(
+        t1
+        str(
+            consS
+            terms2(
+                str(
+                    consS
+                    terms2(
+                        p1
+                        str(
+                            consS
+                            terms2(p2 str(consS terms2(conX str(consS terms2(conX str(consS terms2(conO conNil))))))))))
+                tt))
+        fun(): Ok
+    unify(
+        t2
+        str(
+            consS
+            terms2(
+                str(
+                    consS
+                    terms2(
+                        p1
+                        str(
+                            consS
+                            terms2(p2 str(consS terms2(conO str(consS terms2(conO str(consS terms2(conX conNil))))))))))
+                tt))
+        fun(): Ok
+    sc())))))
+    end)
+    exists(fun(l1: Term): Ok
+    exists(fun(p4: Term): Ok
+    exists(fun(tt: Term): Ok
+    unify(
+        t1
+        str(
+            consS
+            terms2(
+                l1
+                str(
+                    consS
+                    terms2(
+                        str(
+                            consS
+                            terms2(conX str(consS terms2(conX str(consS terms2(conO str(consS terms2(p4 conNil))))))))
+                        tt))))
+        fun(): Ok
+    unify(
+        t2
+        str(
+            consS
+            terms2(
+                l1
+                str(
+                    consS
+                    terms2(
+                        str(
+                            consS
+                            terms2(conO str(consS terms2(conO str(consS terms2(conX str(consS terms2(p4 conNil))))))))
+                        tt))))
+        fun(): Ok
+    sc())))))
+    end)
+    exists(fun(l1: Term): Ok
+    exists(fun(p1: Term): Ok
+    exists(fun(tt: Term): Ok
+    unify(
+        t1
+        str(
+            consS
+            terms2(
+                l1
+                str(
+                    consS
+                    terms2(
+                        str(
+                            consS
+                            terms2(p1 str(consS terms2(conX str(consS terms2(conX str(consS terms2(conO conNil))))))))
+                        tt))))
+        fun(): Ok
+    unify(
+        t2
+        str(
+            consS
+            terms2(
+                l1
+                str(
+                    consS
+                    terms2(
+                        str(
+                            consS
+                            terms2(p1 str(consS terms2(conO str(consS terms2(conO str(consS terms2(conX conNil))))))))
+                        tt))))
+        fun(): Ok
+    sc())))))
+    end)
+    exists(fun(l1: Term): Ok
+    exists(fun(l2: Term): Ok
+    exists(fun(tt: Term): Ok
+    unify(
+        t1
+        str(
+            consS
+            terms2(
+                l1
+                str(
+                    consS
+                    terms2(
+                        l2
+                        str(
+                            consS
+                            terms2(str(consS terms2(conX str(consS terms2(conX str(consS terms2(conO conNil)))))) tt
+                            ))))))
+        fun(): Ok
+    unify(
+        t2
+        str(
+            consS
+            terms2(
+                l1
+                str(
+                    consS
+                    terms2(
+                        l2
+                        str(
+                            consS
+                            terms2(str(consS terms2(conO str(consS terms2(conO str(consS terms2(conX conNil)))))) tt
+                            ))))))
+        fun(): Ok
+    sc())))))
+    end)
+    exists(fun(t: Term): Ok
+    exists(fun(tt: Term): Ok
+    unify(t1 str(consS terms2(str(consS terms2(conO str(consS terms2(conX str(consS terms2(conX t)))))) tt)) fun(): Ok
+    unify(t2 str(consS terms2(str(consS terms2(conX str(consS terms2(conO str(consS terms2(conO t)))))) tt)) fun(): Ok
+    sc()))))
+    end)
+    exists(fun(p1: Term): Ok
+    exists(fun(p5: Term): Ok
+    exists(fun(tt: Term): Ok
+    unify(
+        t1
+        str(
+            consS
+            terms2(
+                str(
+                    consS
+                    terms2(
+                        p1
+                        str(
+                            consS
+                            terms2(conO str(consS terms2(conX str(consS terms2(conX str(consS terms2(p5 conNil))))))))))
+                tt))
+        fun(): Ok
+    unify(
+        t2
+        str(
+            consS
+            terms2(
+                str(
+                    consS
+                    terms2(
+                        p1
+                        str(
+                            consS
+                            terms2(conX str(consS terms2(conO str(consS terms2(conO str(consS terms2(p5 conNil))))))))))
+                tt))
+        fun(): Ok
+    sc())))))
+    end)
+    exists(fun(p1: Term): Ok
+    exists(fun(p2: Term): Ok
+    exists(fun(tt: Term): Ok
+    unify(
+        t1
+        str(
+            consS
+            terms2(
+                str(
+                    consS
+                    terms2(
+                        p1
+                        str(
+                            consS
+                            terms2(p2 str(consS terms2(conO str(consS terms2(conX str(consS terms2(conX conNil))))))))))
+                tt))
+        fun(): Ok
+    unify(
+        t2
+        str(
+            consS
+            terms2(
+                str(
+                    consS
+                    terms2(
+                        p1
+                        str(
+                            consS
+                            terms2(p2 str(consS terms2(conX str(consS terms2(conO str(consS terms2(conO conNil))))))))))
+                tt))
+        fun(): Ok
+    sc())))))
+    end)
+    exists(fun(l1: Term): Ok
+    exists(fun(p4: Term): Ok
+    exists(fun(tt: Term): Ok
+    unify(
+        t1
+        str(
+            consS
+            terms2(
+                l1
+                str(
+                    consS
+                    terms2(
+                        str(
+                            consS
+                            terms2(conO str(consS terms2(conX str(consS terms2(conX str(consS terms2(p4 conNil))))))))
+                        tt))))
+        fun(): Ok
+    unify(
+        t2
+        str(
+            consS
+            terms2(
+                l1
+                str(
+                    consS
+                    terms2(
+                        str(
+                            consS
+                            terms2(conX str(consS terms2(conO str(consS terms2(conO str(consS terms2(p4 conNil))))))))
+                        tt))))
+        fun(): Ok
+    sc())))))
+    end)
+    exists(fun(l1: Term): Ok
+    exists(fun(p1: Term): Ok
+    exists(fun(tt: Term): Ok
+    unify(
+        t1
+        str(
+            consS
+            terms2(
+                l1
+                str(
+                    consS
+                    terms2(
+                        str(
+                            consS
+                            terms2(p1 str(consS terms2(conO str(consS terms2(conX str(consS terms2(conX conNil))))))))
+                        tt))))
+        fun(): Ok
+    unify(
+        t2
+        str(
+            consS
+            terms2(
+                l1
+                str(
+                    consS
+                    terms2(
+                        str(
+                            consS
+                            terms2(p1 str(consS terms2(conX str(consS terms2(conO str(consS terms2(conO conNil))))))))
+                        tt))))
+        fun(): Ok
+    sc())))))
+    end)
+    exists(fun(l1: Term): Ok
+    exists(fun(l2: Term): Ok
+    exists(fun(tt: Term): Ok
+    unify(
+        t1
+        str(
+            consS
+            terms2(
+                l1
+                str(
+                    consS
+                    terms2(
+                        l2
+                        str(
+                            consS
+                            terms2(str(consS terms2(conO str(consS terms2(conX str(consS terms2(conX conNil)))))) tt
+                            ))))))
+        fun(): Ok
+    unify(
+        t2
+        str(
+            consS
+            terms2(
+                l1
+                str(
+                    consS
+                    terms2(
+                        l2
+                        str(
+                            consS
+                            terms2(str(consS terms2(conX str(consS terms2(conO str(consS terms2(conO conNil)))))) tt
+                            ))))))
+        fun(): Ok
+    sc())))))
+    end
+
+and rotate(t1: Term t2: Term sc: All() Ok): Ok =
+    exists(fun(p11: Term): Ok
+    exists(fun(p12: Term): Ok
+    exists(fun(p13: Term): Ok
+    exists(fun(p14: Term): Ok
+    exists(fun(p15: Term): Ok
+    exists(fun(p21: Term): Ok
+    exists(fun(p22: Term): Ok
+    exists(fun(p23: Term): Ok
+    exists(fun(p24: Term): Ok
+    exists(fun(p31: Term): Ok
+    exists(fun(p32: Term): Ok
+    exists(fun(p33: Term): Ok
+    exists(fun(p41: Term): Ok
+    exists(fun(p42: Term): Ok
+    exists(fun(p51: Term): Ok
+    unify(
+        t1
+        str(
+            consS
+            terms2(
+                str(
+                    consS
+                    terms2(
+                        p11
+                        str(
+                            consS
+                            terms2(p12 str(consS terms2(p13 str(consS terms2(p14 str(consS terms2(p15 conNil))))))))))
+                str(
+                    consS
+                    terms2(
+                        str(
+                            consS
+                            terms2(p21 str(consS terms2(p22 str(consS terms2(p23 str(consS terms2(p24 conNil))))))))
+                        str(
+                            consS
+                            terms2(
+                                str(consS terms2(p31 str(consS terms2(p32 str(consS terms2(p33 conNil))))))
+                                str(
+                                    consS
+                                    terms2(
+                                        str(consS terms2(p41 str(consS terms2(p42 conNil))))
+                                        str(consS terms2(str(consS terms2(p51 conNil)) conNil))))))))))
+        fun(): Ok
+    unify(
+        t2
+        str(
+            consS
+            terms2(
+                str(
+                    consS
+                    terms2(
+                        p51
+                        str(
+                            consS
+                            terms2(p41 str(consS terms2(p31 str(consS terms2(p21 str(consS terms2(p11 conNil))))))))))
+                str(
+                    consS
+                    terms2(
+                        str(
+                            consS
+                            terms2(p42 str(consS terms2(p32 str(consS terms2(p22 str(consS terms2(p12 conNil))))))))
+                        str(
+                            consS
+                            terms2(
+                                str(consS terms2(p33 str(consS terms2(p23 str(consS terms2(p13 conNil))))))
+                                str(
+                                    consS
+                                    terms2(
+                                        str(consS terms2(p24 str(consS terms2(p14 conNil))))
+                                        str(consS terms2(str(consS terms2(p15 conNil)) conNil))))))))))
+        fun(): Ok
+    sc())))))))))))))))))
+
+and move(t1: Term t2: Term sc: All() Ok): Ok =
+    begin
+    trail(fun(): Ok
+    begin
+    trail(fun(): Ok
+    exists(fun(x: Term): Ok
+    exists(fun(y: Term): Ok
+    unify(t1 x fun(): Ok
+    unify(t2 y fun(): Ok
+    moveHoriz(x y sc))))))
+    exists(fun(x: Term): Ok
+    exists(fun(x1: Term): Ok
+    exists(fun(y: Term): Ok
+    exists(fun(y1: Term): Ok
+    unify(t1 x fun(): Ok
+    unify(t2 y fun(): Ok
+    rotate(x x1 fun(): Ok
+    moveHoriz(x1 y1 fun(): Ok
+    rotate(y y1 sc)))))))))
+    end)
+    exists(fun(x: Term): Ok
+    exists(fun(x1: Term): Ok
+    exists(fun(y: Term): Ok
+    exists(fun(y1: Term): Ok
+    unify(t1 x fun(): Ok
+    unify(t2 y fun(): Ok
+    rotate(x1 x fun(): Ok
+    moveHoriz(x1 y1 fun(): Ok
+    rotate(y1 y sc)))))))))
+    end
+
+and solitaire(t1: Term t2: Term t3: Term sc: All() Ok): Ok =
+    begin
+    trail(fun(): Ok
+    exists(fun(x: Term): Ok
+    unify(t1 x fun(): Ok
+    unify(t2 str(consS terms2(x conNil)) fun(): Ok
+    unify(t3 intTerm(0) fun(): Ok
+    sc())))))
+    exists(fun(n: Term): Ok
+    exists(fun(x: Term): Ok
+    exists(fun(y: Term): Ok
+    exists(fun(z: Term): Ok
+    unify(t1 x fun(): Ok
+    unify(t2 str(consS terms2(x z)) fun(): Ok
+    unify(t3 str(sS terms1(n)) fun(): Ok
+    move(x y fun(): Ok
+    solitaire(y z n sc)))))))))
+    end
+
+and solution1(t1: Term sc: All() Ok): Ok =
+    exists(fun(x: Term): Ok
+    unify(t1 x fun(): Ok
+    solitaire(
+        str(
+            consS
+            terms2(
+                str(
+                    consS
+                    terms2(
+                        conO
+                        str(
+                            consS
+                            terms2(conX str(consS terms2(conX str(consS terms2(conX str(consS terms2(conX conNil
+                            ))))))))))
+                str(
+                    consS
+                    terms2(
+                        str(
+                            consS
+                            terms2(conX str(consS terms2(conX str(consS terms2(conX str(consS terms2(conX conNil))))))))
+                        str(
+                            consS
+                            terms2(
+                                str(consS terms2(conX str(consS terms2(conX str(consS terms2(conX conNil))))))
+                                str(
+                                    consS
+                                    terms2(
+                                        str(consS terms2(conX str(consS terms2(conX conNil))))
+                                        str(consS terms2(str(consS terms2(conX conNil)) conNil))))))))))
+        x
+        str(
+            sS
+            terms1(
+                str(
+                    sS
+                    terms1(
+                        str(
+                            sS
+                            terms1(
+                                str(
+                                    sS
+                                    terms1(
+                                        str(
+                                            sS
+                                            terms1(
+                                                str(
+                                                    sS
+                                                    terms1(
+                                                        str(
+                                                            sS
+                                                            terms1(
+                                                                str(
+                                                                    sS
+                                                                    terms1(
+                                                                        str(
+                                                                            sS
+                                                                            terms1(
+                                                                                str(
+                                                                                    sS
+                                                                                    terms1(
+                                                                                        str(
+                                                                                            sS
+                                                                                            terms1(
+                                                                                                str(
+                                                                                                    sS
+                                                                                                    terms1(
+                                                                                                        str(
+                                                                                                            sS
+                                                                                                            terms1(
+                                                                                                                intTerm(
+                                                                                                                    0
+                                                                                             )))))))))))))))))))))))))))
+        sc)))
+
+and solution2(t1: Term sc: All() Ok): Ok =
+    exists(fun(x: Term): Ok
+    unify(t1 x fun(): Ok
+    solitaire(
+        str(
+            consS
+            terms2(
+                str(
+                    consS
+                    terms2(
+                        conX
+                        str(
+                            consS
+                            terms2(conX str(consS terms2(conX str(consS terms2(conX str(consS terms2(conX conNil
+                            ))))))))))
+                str(
+                    consS
+                    terms2(
+                        str(
+                            consS
+                            terms2(conX str(consS terms2(conX str(consS terms2(conX str(consS terms2(conX conNil))))))))
+                        str(
+                            consS
+                            terms2(
+                                str(consS terms2(conX str(consS terms2(conO str(consS terms2(conX conNil))))))
+                                str(
+                                    consS
+                                    terms2(
+                                        str(consS terms2(conX str(consS terms2(conX conNil))))
+                                        str(consS terms2(str(consS terms2(conX conNil)) conNil))))))))))
+        x
+        str(
+            sS
+            terms1(
+                str(
+                    sS
+                    terms1(
+                        str(
+                            sS
+                            terms1(
+                                str(
+                                    sS
+                                    terms1(
+                                        str(
+                                            sS
+                                            terms1(
+                                                str(
+                                                    sS
+                                                    terms1(
+                                                        str(
+                                                            sS
+                                                            terms1(
+                                                                str(
+                                                                    sS
+                                                                    terms1(
+                                                                        str(
+                                                                            sS
+                                                                            terms1(
+                                                                                str(
+                                                                                    sS
+                                                                                    terms1(
+                                                                                        str(
+                                                                                            sS
+                                                                                            terms1(
+                                                                                                str(
+                                                                                                    sS
+                                                                                                    terms1(
+                                                                                                        str(
+                                                                                                            sS
+                                                                                                            terms1(
+                                                                                                                intTerm(
+                                                                                                                    0
+                                                                                             )))))))))))))))))))))))))))
+        sc)))
+
+(* main.sml *)
+
+let done: Exception = exception done: Ok end
+
+let testit(): Ok =
+    try exists(fun(z: Term): Ok solution2(z fun(): Ok raise done end)) when done
+        then writer.putString(writer.output "yes\n") end
+
+let doit(): Ok = try exists(fun(z: Term): Ok solution2(z fun(): Ok raise done end)) when done then ok end
+
+if bench.testit() then testit() else for i = 1 upto bench.count() do doit() end end

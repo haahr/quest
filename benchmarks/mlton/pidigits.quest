@@ -1,0 +1,94 @@
+(* pidigits: the digits of pi from Gibbons's unbounded spigot algorithm, on
+ * lazy streams of arbitrary-precision integers, finding the position of the
+ * (n+1)th zero digit *)
+
+import
+    support/bench : support/Bench
+    intInf = support/intinf : support/IntInf
+    writer : Writer
+
+Let Int2 = intInf.T
+
+(* structure Stream: 'a t = unit -> 'a u, a lazy stream of digits *)
+Let Rec U = Option nilU consU with x: Int2 xs: Stream end end
+and Stream = All() U
+
+(* The original's unfold and map are used at one type each; these are them
+ * at those types *)
+Let Lft = Tuple q: Int2 r: Int2 s: Int2 t: Int2 end
+Let Rec LftU = Option nilL consL with x: Lft xs: Lfts end end
+and Lfts = All() LftU
+
+let empty: Exception = exception empty: Ok end
+
+let i(n: Int): Int2 = intInf.fromInt(n)
+let add(a: Int2 b: Int2): Int2 = intInf.add(a b)
+let mul(a: Int2 b: Int2): Int2 = intInf.mul(a b)
+
+(* Stream.map (fn k => (k, 4*k+2, 0, 2*k+1)) (Stream.unfold (fn i => SOME (i, i+1)) 1) *)
+let lfts(): Lfts =
+    begin
+        let rec ks(k: Int2): Lfts =
+            fun(): LftU
+                begin
+                    let lft: Lft = tuple
+                        let q = k let r = add(mul(i(4) k) i(2)) let s = i(0) let t = add(mul(i(2) k) i(1))
+                    end
+                    option consL of LftU with lft ks(add(k i(1))) end
+                end
+        ks(i(1))
+    end
+
+(* structure PiDigits *)
+
+let unit: Lft = tuple let q = i(1) let r = i(0) let s = i(0) let t = i(1) end
+
+let comp(a: Lft b: Lft): Lft =
+    tuple
+        let q = add(mul(a.q b.q) mul(a.r b.s))
+        let r = add(mul(a.q b.r) mul(a.r b.t))
+        let s = add(mul(a.s b.q) mul(a.t b.s))
+        let t = add(mul(a.s b.r) mul(a.t b.t))
+    end
+
+let floorExtr(z: Lft x: Int2): Int2 = intInf.div(add(mul(z.q x) z.r) add(mul(z.s x) z.t))
+let next(z: Lft): Int2 = floorExtr(z i(3))
+let safe(z: Lft n: Int2): Bool = intInf.equal(n floorExtr(z i(4)))
+let prod(z: Lft n: Int2): Lft = comp(tuple let q = i(10) let r = mul(i(~10) n) let s = i(0) let t = i(1) end z)
+let cons(z: Lft z1: Lft): Lft = comp(z z1)
+
+(* stream next safe prod cons *)
+let rec stream(z: Lft s: Lfts): Stream =
+    fun(): U
+        begin
+            let y = next(z)
+            if safe(z y) then option consU of U with y stream(prod(z y) s) end
+            else
+                case s()
+                    when nilL then option nilU of U end
+                    when consL with c then stream(cons(z c.x) c.xs)()
+                end
+            end
+        end
+
+let pi(): Stream = stream(unit lfts())
+
+(* structure MainBenchmark *)
+
+let display(n: Int2): Ok =
+    begin
+        let rec lp(ds: Stream k: Int2 n: Int2): Ok =
+            case ds()
+                when nilU then raise empty end
+                when consU with c then
+                    if intInf.equal(c.x i(0)) then
+                        if intInf.equal(n i(0)) then writer.putString(writer.output intInf.toString(k) <> "\n")
+                        else lp(c.xs add(k i(1)) intInf.sub(n i(1)))
+                        end
+                    else lp(c.xs add(k i(1)) n)
+                    end
+            end
+        lp(pi() i(0) n)
+    end
+
+display(intInf.fromInt(bench.count()))

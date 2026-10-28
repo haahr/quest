@@ -1,0 +1,330 @@
+(* smith-normal-form: the Smith normal form of a 35x35 integer matrix, by row
+ * and column operations on arbitrary-precision integers (Henry Cejtin) *)
+
+import
+    support/bench : support/Bench
+    support/lists : support/Lists
+    intInf = support/intinf : support/IntInf
+    util/maybe : util/Maybe
+    conv : Conv
+    writer : Writer
+
+(* structure Matrix: a matrix is its height, width, and entries in row-major
+ * order. Matrix.toString, which the benchmark does not use, is left out. *)
+Let Matrix(E::TYPE) = Tuple height: Int width: Int mat: Array(E) end
+
+let sizeError: Exception = exception sizeError: Ok end
+let index: Exception = exception index: Ok end
+
+let make(E::TYPE)(height: Int width: Int generator: All(row: Int col: Int) E): Matrix(E) =
+    if {height < 0} orif {width < 0} then raise sizeError end
+    else
+        begin
+            let n = height * width
+            let mat = array of(n generator(0 0))
+            for z = 0 upto n - 1 do mat[z] := generator(z / width z % width) end
+            tuple let height = height let width = width let mat = mat end
+        end
+    end
+
+let height(E::TYPE)(m: Matrix(E)): Int = m.height
+let width(E::TYPE)(m: Matrix(E)): Int = m.width
+
+let fetch(E::TYPE)(m: Matrix(E) row: Int col: Int): E =
+    if {0 <= row} andif {row < m.height} andif {0 <= col} andif {col < m.width} then m.mat[col + {m.width * row}]
+    else raise index end
+    end
+
+let fetchRow(E::TYPE)(m: Matrix(E) row: Int): All(col: Int) E =
+    if {0 <= row} andif {row < m.height} then
+        begin
+            let offset = m.width * row
+            fun(col: Int): E if {0 <= col} andif {col < m.width} then m.mat[col + offset] else raise index end end
+        end
+    else raise index end
+    end
+
+let fetchCol(E::TYPE)(m: Matrix(E) col: Int): All(row: Int) E =
+    if {0 <= col} andif {col < m.width} then
+        fun(row: Int): E if {0 <= row} andif {row < m.height} then m.mat[col + {m.width * row}] else raise index end end
+    else raise index end
+    end
+
+let storeRow(E::TYPE)(m: Matrix(E) row: Int): All(col: Int entry: E) Ok =
+    if {0 <= row} andif {row < m.height} then
+        begin
+            let offset = m.width * row
+            fun(col: Int entry: E): Ok
+                if {0 <= col} andif {col < m.width} then m.mat[col + offset] := entry else raise index end end
+        end
+    else raise index end
+    end
+
+let storeCol(E::TYPE)(m: Matrix(E) col: Int): All(row: Int entry: E) Ok =
+    if {0 <= col} andif {col < m.width} then
+        fun(row: Int entry: E): Ok
+            if {0 <= row} andif {row < m.height} then m.mat[col + {m.width * row}] := entry else raise index end end
+    else raise index end
+    end
+
+let swapLoop(E::TYPE)(from1: All(i: Int) E to1: All(i: Int e: E) Ok from2: All(i: Int) E to2: All(i: Int e: E) Ok
+    limit: Int): Ok =
+    begin
+        let rec go(i: Int): Ok =
+            if i is limit then ok
+            else
+                begin
+                    let tmp = from1(i)
+                    to1(i from2(i))
+                    to2(i tmp)
+                    go(i + 1)
+                end
+            end
+        go(0)
+    end
+
+let rowSwap(E::TYPE)(m: Matrix(E) row1: Int row2: Int): Ok =
+    if {0 <= row1} andif {row1 < m.height} andif {0 <= row2} andif {row2 < m.height} then
+        if row1 is row2 then ok
+        else swapLoop(:E)(fetchRow(:E)(m row1) storeRow(:E)(m row1) fetchRow(:E)(m row2) storeRow(:E)(m row2) m.width)
+        end
+    else raise index end
+    end
+
+let colSwap(E::TYPE)(m: Matrix(E) col1: Int col2: Int): Ok =
+    if {0 <= col1} andif {col1 < m.width} andif {0 <= col2} andif {col2 < m.width} then
+        if col1 is col2 then ok
+        else swapLoop(:E)(fetchCol(:E)(m col1) storeCol(:E)(m col1) fetchCol(:E)(m col2) storeCol(:E)(m col2) m.height)
+        end
+    else raise index end
+    end
+
+let opLoop(E::TYPE)(from1: All(i: Int) E from2: All(i: Int) E to2: All(i: Int e: E) Ok limit: Int
+    f: All(a: E b: E) E): Ok =
+    begin
+        let rec go(i: Int): Ok = if i is limit then ok else begin to2(i f(from1(i) from2(i))) go(i + 1) end end
+        go(0)
+    end
+
+let rowOp(E::TYPE)(m: Matrix(E) row1: Int row2: Int f: All(a: E b: E) E): Ok =
+    if {0 <= row1} andif {row1 < m.height} andif {0 <= row2} andif {row2 < m.height} andif {row1 isnot row2} then
+        opLoop(:E)(fetchRow(:E)(m row1) fetchRow(:E)(m row2) storeRow(:E)(m row2) m.width f)
+    else raise index end
+    end
+
+let colOp(E::TYPE)(m: Matrix(E) col1: Int col2: Int f: All(a: E b: E) E): Ok =
+    if {0 <= col1} andif {col1 < m.width} andif {0 <= col2} andif {col2 < m.width} andif {col1 isnot col2} then
+        opLoop(:E)(fetchCol(:E)(m col1) fetchCol(:E)(m col2) storeCol(:E)(m col2) m.height f)
+    else raise index end
+    end
+
+let copy(E::TYPE)(m: Matrix(E)): Matrix(E) =
+    begin
+        let mat = array of(extent m.mat m.mat[0])
+        for i = 0 upto extent m.mat - 1 do mat[i] := m.mat[i] end
+        tuple let height = m.height let width = m.width let mat = mat end
+    end
+
+let map(E1::TYPE E2::TYPE)(m: Matrix(E1) f: All(e: E1) E2): Matrix(E2) =
+    begin
+        let mat = array of(extent m.mat f(m.mat[0]))
+        for i = 0 upto extent m.mat - 1 do mat[i] := f(m.mat[i]) end
+        tuple let height = m.height let width = m.width let mat = mat end
+    end
+
+Let Int2 = intInf.T
+
+let zero = intInf.fromInt(0)
+
+let smaller(a: Int2 b: Int2): Bool =
+    not(intInf.equal(a zero)) andif {intInf.equal(b zero) orif intInf.less(intInf.abs(a) intInf.abs(b))}
+
+let print(s: String): Ok = writer.putString(writer.output s)
+
+let smithNormalForm(mat0: Matrix(Int2)): Matrix(Int2) =
+    begin
+        let height = height(:Int2)(mat0)
+        let width = width(:Int2)(mat0)
+        let mat = copy(:Int2)(mat0)
+        let range = if width < height then width else height end
+        let dd(pos: Int): Ok =
+            begin
+                let matCol = fetchCol(:Int2)(mat pos)
+                let matRow = fetchRow(:Int2)(mat pos)
+                print("dd: pos = " <> conv.int(pos) <> "\n")
+                let rec swapRowLoop(best: Int2 bestRow: Int bestCol: Int row: Int): Ok =
+                    if row >= height then begin rowSwap(:Int2)(mat pos bestRow) colSwap(:Int2)(mat pos bestCol) end
+                    else
+                        begin
+                            let matRow = fetchRow(:Int2)(mat row)
+                            let rec swapColLoop(best: Int2 bestRow: Int bestCol: Int col: Int): Ok =
+                                if col >= width then swapRowLoop(best bestRow bestCol row + 1)
+                                else
+                                    begin
+                                        let next = matRow(col)
+                                        if smaller(next best) then swapColLoop(next row col col + 1)
+                                        else swapColLoop(best bestRow bestCol col + 1)
+                                        end
+                                    end
+                                end
+                            swapColLoop(best bestRow bestCol pos)
+                        end
+                    end
+                let rec rowLoop(row: Int): Ok =
+                    if row < height then
+                        if intInf.equal(matCol(row) zero) then rowLoop(row + 1)
+                        else
+                            begin
+                                rowOp(:Int2)(mat pos row
+                                    begin
+                                        let x = intInf.neg(intInf.quot(matCol(row) matCol(pos)))
+                                        fun(lhs: Int2 rhs: Int2): Int2 intInf.add(intInf.mul(lhs x) rhs)
+                                    end)
+                                if intInf.equal(matCol(row) zero) then rowLoop(row + 1) else hitPosAgain() end
+                            end
+                        end
+                    else
+                        begin
+                            let rec colLoop(col: Int): Ok =
+                                if col < width then
+                                    if intInf.equal(matRow(col) zero) then colLoop(col + 1)
+                                    else
+                                        begin
+                                            colOp(:Int2)(mat pos col
+                                                begin
+                                                    let x = intInf.neg(intInf.quot(matRow(col) matRow(pos)))
+                                                    fun(lhs: Int2 rhs: Int2): Int2 intInf.add(intInf.mul(lhs x) rhs)
+                                                end)
+                                            if intInf.equal(matRow(col) zero) then colLoop(col + 1)
+                                                else hitPosAgain() end
+                                        end
+                                    end
+                                end
+                            colLoop(pos + 1)
+                        end
+                    end
+                and hitPosAgain(): Ok = begin swapRowLoop(zero pos pos pos) rowLoop(pos + 1) end
+                hitPosAgain()
+            end
+        let rec loop1(pos: Int): Matrix(Int2) = if pos is range then mat else begin dd(pos) loop1(pos + 1) end end
+        loop1(0)
+    end
+
+let row(a: Array(Int)): lists.T(Int) = lists.fromArray(:Int)(a)
+let table = lists.fromArray(:lists.T(Int))(array of
+    row(array of  8 ~3  1  3  6  9 ~2  4 ~9 ~9  2  3  8 ~1  3 ~5  4 ~3 ~5 ~6  8  1  4 ~5  7
+                 ~4 ~4 ~7  7  1  4 ~3  8  4 ~4 ~8  5 ~9  3 ~4  1  9 ~8 ~6 ~2  8 ~9 ~5 ~3 ~3 end)
+    row(array of  0  8 ~6 ~2 ~3  4  5 ~2  7 ~7 ~6 ~7 ~3 ~4  9  7 ~3  3  0  3  3 ~8 ~8  2  3
+                  8  3 ~2 ~4  3 ~6 ~6 ~2  6  5 ~1 ~3  1  8 ~8  2  1 ~7 ~7 ~7 ~3 ~6  6 ~4 ~9 end)
+    row(array of  0 ~5  8 ~9  2  4  2  7 ~4  9 ~3  6 ~2  3 ~3  0 ~9  5  8 ~1  2 ~8  3  4 ~6
+                  5 ~6 ~5 ~8  0 ~5  3 ~2 ~5  8  7 ~1  1 ~1  7  6  3  6  5  6  8  7  9  7 ~3 end)
+    row(array of  5  4  7  2  3 ~9  7 ~7  3 ~8  7  5  5 ~2 ~6 ~3  6  5  3 ~1 ~1  4  5 ~5  5
+                  9  9  3  8 ~3 ~1  9 ~9  6 ~7  7  4  6 ~8 ~9  0 ~3 ~2 ~7  1 ~2 ~6  7  7  7 end)
+    row(array of  2  9  9  3 ~4  0  9  2  5  3 ~5 ~3 ~1  1  8 ~6  2 ~4 ~8 ~7 ~8  4  5  8 ~1
+                 ~1  7  2  5  5 ~4 ~7 ~3 ~7  6 ~4 ~5 ~8 ~5 ~9 ~8  5 ~5 ~5  0  8  8  6  4 ~1 end)
+    row(array of  5  5  1 ~7  3 ~5  4  9  3  4  4 ~5  7 ~1  7  4 ~7  7 ~7 ~2  9 ~9  0 ~4 ~4
+                  0  2  6  3 ~1  6  6  8 ~6 ~4 ~9  3 ~2 ~5  5 ~3  2 ~1 ~6  9  3 ~3 ~8 ~9  7 end)
+    row(array of  7  1  2  7  6  5 ~6 ~3 ~4 ~8  0  9  6  1  2 ~5  4  4  4 ~6 ~7 ~9 ~6  2 ~4
+                  5 ~2  1  0  1 ~8  7 ~7 ~5  4  1 ~5  4 ~4 ~2 ~3  1  1  3  4 ~4 ~5  9  8 ~2 end)
+    row(array of  6  2 ~1 ~8  4 ~7  7 ~3 ~2 ~5  3  0  3 ~9  3  3  9 ~1  4  8 ~9  6 ~5  9  5
+                 ~1 ~1 ~9  7 ~2  3  9  8  9  2  7  7  6 ~1 ~1 ~2 ~2 ~7  3 ~6  0 ~9  4  3  7 end)
+    row(array of  0 ~6 ~3 ~7 ~1  5 ~2  8 ~5 ~3 ~8  7 ~2 ~2  0 ~8  4  8  9 ~5 ~4 ~8 ~1  7  1
+                  1  6 ~9 ~4  0  8  4  3 ~7  6  0  1  8  6 ~1 ~1 ~7  9 ~9 ~5 ~2 ~2 ~1  1  0 end)
+    row(array of ~4  9  6 ~3 ~2 ~6 ~3  4  8 ~8  1 ~5  9  7  9  7 ~9 ~6  6  1 ~3  3 ~3 ~7  1
+                  7 ~7  0 ~2  7 ~4 ~6  0  1 ~3 ~5 ~9 ~7  8  4  9 ~8 ~8 ~7 ~6  7  6 ~3 ~8  5 end)
+    row(array of  6  7 ~5 ~9  6  1  8  4 ~2  7 ~7 ~1 ~9  1 ~6 ~5  4  9  6  0 ~8 ~3  1 ~3  8
+                 ~3  2  9 ~3 ~9 ~1 ~3  4  3  2 ~9 ~5 ~3  8 ~4  8  5 ~4  7  6 ~8  7  6 ~5  5 end)
+    row(array of  1  7 ~8 ~9 ~7 ~3  8  9 ~7 ~1 ~7  4  0  0  1 ~5  9 ~8 ~1 ~2  3  5  9 ~9  5
+                  4 ~9  1 ~4 ~2  3 ~4  8 ~6 ~4 ~8 ~5 ~5  4 ~2 ~4 ~1 ~9 ~5  2 ~9  2 ~9 ~2 ~3 end)
+    row(array of ~5 ~4 ~4  9  2  7 ~2  6  7  2 ~9  4  2  7  8 ~9  2  5  3  9  6  3  0 ~7 ~6
+                 ~7  6 ~2  9 ~3 ~6  9 ~9  2  2 ~6 ~1  4 ~3  3  0  6 ~3  4  9  9 ~6  5  5 ~5 end)
+    row(array of  5 ~7  8 ~4  8  8 ~4 ~9  6  0 ~3  6  0  8  8 ~6 ~2  5  4 ~1 ~8  1 ~3 ~1  2
+                  3 ~9 ~9 ~5  1  8 ~5 ~3  0 ~4 ~9  0 ~6  3 ~1 ~7  0  8  9 ~6 ~1 ~9  1 ~6  2 end)
+    row(array of  7 ~5 ~1  5 ~2  7  0 ~7 ~1  8  8 ~3  9 ~5  7 ~8 ~8 ~4  3  2 ~1  8 ~2  1  2
+                  5  0 ~6  7  3  3  7 ~5  5 ~1  1  0 ~8  1  0  0 ~4  6  9 ~5 ~6  3 ~5  8  5 end)
+    row(array of ~4 ~2  3 ~3 ~1  2 ~2 ~1 ~9 ~5  1  0  0  2  9 ~3 ~9  2  9  3  8 ~3  4  8  8
+                  3 ~3 ~1 ~4  4 ~6 ~9  5 ~2  1  3 ~7 ~5 ~6 ~5 ~8  4 ~8 ~3  5  0  7 ~9  6  2 end)
+    row(array of  5  1  4 ~3 ~1 ~9  5 ~8 ~8  6  1  1 ~2  7  5  6 ~4  2 ~7  0 ~7 ~3 ~5  9  3
+                  4 ~6  8 ~4  3  6  0  2  3 ~6  3  9  4  1 ~4  6 ~5 ~7  0 ~1 ~8 ~3 ~9  9  7 end)
+    row(array of  2 ~6 ~1  8  4 ~3 ~1 ~6 ~2 ~8 ~2 ~1 ~1 ~5 ~9 ~8  9 ~9  5  1  9 ~1 ~6  9 ~7
+                  2  8 ~7  4 ~9  7  6 ~2  1 ~2 ~7  8  0  5  0 ~5 ~7 ~6  0  4  0  3 ~8  5  4 end)
+    row(array of ~2  9 ~9 ~6  1 ~8  8  4 ~6  8  1 ~3 ~7  8 ~5  2 ~8  1  3 ~2  6  6  6  1  0
+                  0 ~7  7 ~3 ~3  0 ~4  3 ~7 ~6  7  5  9 ~5  7 ~8  2  3 ~8 ~7  6 ~5 ~5 ~8 ~9 end)
+    row(array of ~7 ~4  4  1 ~1 ~3 ~8  3  7  9  8  3  0  4  4 ~1 ~5  4  2  2  0  6 ~6  2 ~9
+                  8 ~9  3 ~2  2  6  6  1  7  1  0 ~8  2  3 ~3  8  9  5  5 ~6  4 ~7 ~4 ~2 ~3 end)
+    row(array of ~5  8  6  1 ~6 ~6  6  1  1 ~3 ~9 ~6  2 ~7  2 ~1  6 ~6  0  2 ~7  8 ~8  4  9
+                 ~3  9 ~7 ~9 ~6 ~4 ~4 ~5  8  2 ~5 ~4 ~3  5  2  1 ~3 ~3 ~7 ~9  3  7 ~7  3 ~8 end)
+    row(array of ~4 ~7 ~2  2 ~4 ~2  6 ~3 ~1 ~4  0 ~5  9  7 ~6 ~9  7 ~9 ~6  2 ~3  1  5 ~9  4
+                 ~5  4 ~9  1 ~2 ~2  4  0  4 ~8 ~8  3 ~1 ~5 ~4 ~9 ~7  7  6  3 ~9  6  4 ~4 ~7 end)
+    row(array of ~9  6  6 ~5 ~1 ~7  4 ~9  4 ~1  6 ~4  7  2  8  7  3  1 ~7  7  7  9  8 ~9  7
+                  2  1  2 ~8  4  5  6  7  2 ~7  6  8  4 ~9  7 ~5  6  9 ~1  9  2  0  9  3  6 end)
+    row(array of  4 ~3  8  0 ~2 ~2  2 ~3  8  3  1 ~8 ~5 ~2  5  6  8  0 ~3  4 ~2  4 ~9 ~5  7
+                  6 ~4 ~7  2  4 ~3 ~8 ~9  9  8 ~9  3 ~7  4 ~7 ~5  4  9  3 ~6 ~3 ~7  4  2 ~2 end)
+    row(array of ~8 ~8  6 ~2 ~6  8 ~3  3 ~1 ~7  1  9  1  7 ~6  8 ~2 ~9 ~1  3 ~4  7  8 ~1  9
+                 ~9  6 ~3  5  0  2  5 ~1 ~6 ~6  1  8  6 ~3 ~9 ~1  9 ~2  9 ~8 ~7 ~3  6 ~3 ~3 end)
+    row(array of  5 ~2  3  0 ~9 ~8 ~6  1  8  0  1  2 ~8 ~2  0 ~9 ~8  0  5 ~3 ~4  5  6 ~2 ~5
+                  0 ~9  9 ~9 ~5  9  9 ~5 ~2  4  3  8 ~8 ~7  5 ~3 ~2  2  3  9  7 ~1  0  4 ~1 end)
+    row(array of ~4  5 ~5  7  8  9  7 ~3  1  9 ~7 ~1  8 ~5 ~1  2 ~8  1  0  9 ~8 ~1  6 ~1  9
+                 ~8  7  4 ~8  7  0 ~6  2  3  7  4 ~3 ~5  9 ~3  0  6 ~9  2  4 ~8  6 ~7  9  1 end)
+    row(array of  7  0 ~9  6  8  2  2  5 ~6 ~6  9 ~5  9  2  2 ~8  0 ~6 ~9 ~6 ~4 ~9  8 ~2  9
+                  7 ~5 ~1  7  2 ~7  7 ~1 ~3  6  6  1 ~4  0 ~1 ~6 ~5  6 ~7 ~3 ~2  8  2 ~9  8 end)
+    row(array of  8 ~7 ~9 ~6  9 ~7 ~7  6 ~8  9  5 ~4  1 ~7 ~8 ~6 ~3  8 ~8  1 ~8  6  9 ~3 ~7
+                  7  1  6  1  0  8 ~5 ~8  8 ~9  0  4  4  3 ~4  6 ~3 ~9  0  4 ~4 ~5 ~9 ~5 ~8 end)
+    row(array of ~3 ~2  8  1 ~1 ~1 ~4  3  7 ~2 ~9  9 ~8 ~9  6 ~4  7 ~1 ~5 ~3 ~9  0 ~3  0  7
+                  9  1 ~2  7 ~9 ~6  3  3 ~4 ~7 ~3 ~4 ~8 ~2 ~3 ~9 ~2 ~6  3 ~6 ~4  7 ~5 ~8 ~1 end)
+    row(array of ~9 ~9 ~2 ~9 ~9  9  6  6  7  5 ~1 ~2  1  5  2 ~3 ~4  1 ~6  0 ~3 ~9 ~1  7  0
+                 ~9  5 ~2 ~2  5  3  4 ~1  6 ~6  3 ~6  7 ~1  5 ~8 ~4 ~2 ~2 ~6 ~5 ~6  3 ~1  4 end)
+    row(array of  7  7  8  7  6  1 ~2  5 ~6  9  4  8  5  0 ~4 ~2 ~2 ~5 ~2 ~6  9 ~8 ~2 ~5 ~9
+                  3 ~6 ~3 ~4 ~5 ~2  6  1  6 ~5  0 ~3 ~2  4 ~6  1  6 ~1  3 ~9  2 ~3  1  5 ~6 end)
+    row(array of  6  4 ~7  3 ~7  9  1 ~7 ~8  0 ~6  8  4  1  9  6  8  3  0  9  0  4  9 ~7 ~7
+                  1  5  1 ~5  6  9  2  4  1 ~9  8  4  5  8  3  2 ~9 ~6 ~9  9 ~9  7 ~6 ~4  3 end)
+    row(array of ~3 ~9 ~4  2  3  9 ~9  8 ~9  9 ~4 ~9 ~5  5  0  7  3 ~5 ~8  2 ~3  0 ~9 ~3  1
+                  9  4  5 ~1  8  0 ~4 ~2  9 ~4 ~1  3  5  9 ~1  1  4 ~8 ~2 ~3  5  1  5 ~6  7 end)
+    row(array of  9 ~3  2 ~9  3  4  0  7 ~5  9  0 ~6  7 ~2  3 ~7  2 ~5 ~2  6  3 ~9 ~5 ~9  5
+                  2 ~5 ~3  8 ~5  6  2  9 ~7 ~7 ~7 ~6  9 ~3  6  0  6 ~6 ~9  4 ~3 ~9  0 ~4 ~9 end)
+    row(array of ~4 ~8  8 ~7  7  0 ~6 ~6  8 ~9 ~4  5 ~3 ~1  7 ~5 ~6 ~1  8  6 ~2  1 ~1  5 ~9
+                  1 ~1 ~7 ~6 ~6 ~6 ~4  6  3 ~5 ~5 ~6  2  3 ~6 ~8 ~3  8 ~2 ~5 ~4 ~3  1  4 ~4 end)
+    row(array of  4 ~6  2  6  2 ~8  8  5  8 ~2  0 ~6 ~1 ~6 ~2  2  6 ~9 ~7 ~6 ~4 ~4 ~7 ~2  8
+                  6  3 ~7 ~6  8  2  3  4  5  3  4 ~6  8  8 ~1  4 ~5  6  2  8 ~3 ~9 ~2  6  7 end)
+    row(array of  3 ~4  0 ~3 ~5  0 ~2 ~6 ~2  8  5 ~9 ~4 ~8 ~6  0  8  9  1 ~2  8  2 ~2  8  9
+                  3  3  5 ~9 ~3 ~2  7  2  9  0  4  8 ~9  0 ~6  9 ~9  9 ~4  8 ~8 ~8  2 ~3  2 end)
+    row(array of ~1  3 ~9 ~8 ~7  6 ~6  3  0  5 ~5  1  2 ~2 ~3  7  7  3 ~4 ~2 ~9 ~5 ~1  9  6
+                  8  2  8  7 ~3  4  6  6  0 ~2  2 ~7 ~7  6 ~3  8  2  1  0  8 ~1  3  9  8  6 end)
+    row(array of  1 ~2 ~3  6  5  5 ~6 ~4 ~5  1  1  6 ~7 ~4 ~3  4  4 ~8 ~9  7 ~2 ~3 ~7 ~2  1
+                  2  0  8 ~6 ~5 ~5  7  8  5 ~2  3  9  0  5  1  3 ~4 ~6  1  4 ~9 ~2  5  4  3 end)
+    row(array of  3  3  9 ~2  6  9  4  9  4 ~8  5 ~1  3 ~2  1 ~7 ~3  2  2  0 ~3  3  8  2  0
+                 ~5  7  1  4 ~8  8 ~9 ~1  1 ~9 ~4  5  2  2  8  6  1  6 ~2  2  7  1 ~6 ~1 ~1 end)
+    row(array of  4 ~2  4 ~1 ~5 ~1  5 ~2  3 ~4 ~5  0  2 ~4  6  4 ~3  2  2  5 ~6 ~7 ~9 ~1 ~9
+                 ~9  6  0  6  5  9 ~1  3 ~3 ~8  8 ~8  8  4  5 ~1 ~5  1  0  3 ~2  5  6  6  5 end)
+    row(array of ~4  9  6  8 ~9  5  5 ~3 ~7  7  6  8 ~8  0  4 ~1  9  5 ~7  0 ~1 ~2  3  6  0
+                  4 ~3  1  4  6  4  0  5 ~1  7 ~7 ~6 ~8 ~3 ~6  7 ~1 ~3 ~2 ~3 ~5  3  1 ~8 ~9 end)
+    row(array of ~6  4 ~5  9  9 ~7 ~1 ~8 ~4  2 ~6  0 ~6 ~6  7  6  0  1  7 ~7  0 ~4 ~6 ~8 ~9
+                  5 ~6 ~9  2 ~7 ~2 ~6  9  4 ~5  0  4 ~4 ~5  6  9  1 ~6 ~5  3 ~1  7 ~7 ~6  7 end)
+    row(array of ~8  7  7 ~6  7 ~4  8  0 ~9 ~8 ~3  7 ~3  3  8 ~7 ~2 ~7  5  5 ~5  4  6  2  4
+                  1  4 ~9 ~3  8  8 ~9 ~4 ~2  1 ~3  1  3  9 ~5 ~8 ~2  7  8  9  2  0  1 ~9  6 end)
+    row(array of ~7  1 ~9  5 ~5 ~5  7  6 ~5 ~9 ~6 ~8 ~6  9  7  9  0 ~5  7  7 ~6  4  5 ~9 ~1
+                 ~2 ~7  3 ~5 ~2 ~5  5 ~3 ~4 ~2 ~8  2 ~8  0 ~8  0 ~8  9  8 ~5 ~5  1  3  5 ~4 end)
+    row(array of ~8 ~8  0 ~5 ~8 ~6  3 ~6 ~4  6  1 ~5 ~6 ~8 ~4 ~6 ~2 ~6  6 ~4  8  8  4 ~5 ~1
+                  0  9 ~8 ~3 ~1 ~8  7 ~3  0 ~7  1 ~7 ~1 ~7  3 ~7  3 ~4 ~8  8 ~7 ~9 ~8  3  2 end)
+    row(array of  3  6  8 ~9  7  1 ~9  9  3  8  6  4 ~2  1 ~8  4 ~7 ~4 ~3  3 ~5 ~6 ~7 ~2  0
+                 ~4  5  2  5  6  3 ~8  2 ~5 ~7  6  8 ~2 ~5 ~4  9  9  2 ~2 ~2  7  4  4 ~2  3 end)
+    row(array of  6  6 ~5 ~2 ~8 ~2 ~9  0  2  4 ~6 ~9  9  0 ~8 ~3 ~1 ~2 ~1  6  8  2 ~9  5 ~2
+                  1  7 ~6  5  1 ~1  4 ~4 ~7 ~6 ~3 ~8  2  2  5  5 ~6  5  3  3  7  4  7 ~3 ~9 end)
+    row(array of ~9  6 ~4  1  3 ~8 ~8 ~8 ~1  5  1  1 ~1  6  5  1 ~1  5 ~8  8 ~7 ~5 ~1 ~1  6
+                 ~8 ~3 ~1 ~2 ~6 ~5 ~5 ~6  0  2  2  7 ~1 ~5 ~7 ~1 ~3  7  6  0  2  4 ~5  0 ~4 end)
+end)
+
+let f(x: Int y: Int): Int = lists.nth(:Int)(lists.nth(:lists.T(Int))(table x) y)
+
+let snf(): Ok =
+    begin
+        let dim = 35
+        let big = map(:Int :Int2)(make(:Int)(dim dim f) intInf.fromInt)
+        let entry = fetch(:Int2)(smithNormalForm(big) dim - 1 dim - 1)
+        if not(intInf.equal(entry
+            maybe.unwrap(:Int2 intInf.fromString("~1027954043102083189860753402541358641712697245"))))
+        then raise bench.bug end
+        end
+    end
+
+for i = 1 upto bench.count() do snf() end

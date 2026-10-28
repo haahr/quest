@@ -1,0 +1,807 @@
+(* simple: the SIMPLE hydrodynamics and heat conduction code on a 100x100
+ * grid, one time step (from the SML/NJ benchmark suite) *)
+
+import
+    support/bench : support/Bench
+    support/lists : support/Lists
+    support/reals : support/Reals
+    real : RealOp
+    conv : Conv
+    writer : Writer
+
+(* The original overrides print, so the benchmark is silent *)
+let print(s: String): Ok = ok
+
+(* structure Control *)
+let control = tuple let var trace = false end
+
+(* structure Array2: a 2D array, row major *)
+Let Array2(A::TYPE) = Tuple s1: Int s2: Int value: Array(A) end
+
+let subscript: Exception = exception subscript: Ok end
+
+let index(i1: Int i2: Int s1: Int s2: Int): Int =
+    if {i1 >= 0} andif {i1 < s1} andif {i2 >= 0} andif {i2 < s2} then {i1 * s2} + i2 else raise subscript end end
+
+(* functor Simple (val grid_max = 100 val step_count = 1) *)
+
+let gridMax = 100
+let stepCount = 1
+
+(* fold f [a1, ..., an] b is f (a1, f (a2, ... f (an, b))) *)
+let fold(f: All(a: Real b: Real) Real l: lists.T(Real) b: Real): Real =
+    case l
+        when nil then b
+        when cons with c then
+            begin
+                let rec f2(e: Real l: lists.T(Real)): Real =
+                    case l when nil then f(e b) when cons with d then f(e f2(d.hd d.tl)) end
+                f2(c.hd c.tl)
+            end
+    end
+
+let min(x: Real y: Real): Real = if x << y then x else y end
+let max(x: Real y: Real): Real = if x << y then y else x end
+let maxListE: Exception = exception maxListE: Ok end
+let minListE: Exception = exception minListE: Ok end
+let sumListE: Exception = exception sumListE: Ok end
+let maxList(l: lists.T(Real)): Real =
+    case l when nil then raise maxListE end else fold(max l lists.hd(:Real)(l)) end
+let minList(l: lists.T(Real)): Real =
+    case l when nil then raise minListE end else fold(min l lists.hd(:Real)(l)) end
+let sumList(l: lists.T(Real)): Real =
+    case l when nil then raise sumListE end else fold(fun(a: Real b: Real): Real a ++ b l 0.0) end
+
+let forRange(start: Int delta: Int endd: Int body: All(x: Int) Ok): Ok =
+    if {delta > 0} andif {endd >= start} then
+        begin
+            let rec f(x: Int): Ok = if x > endd then ok else begin body(x) f(x + delta) end end
+            f(start)
+        end
+    elsif endd <= start then
+        begin
+            let rec f(x: Int): Ok = if x < endd then ok else begin body(x) f(x + delta) end end
+            f(start)
+        end
+    end
+
+let rec from(n: Int m: Int): lists.T(Int) = if n > m then lists.nil(:Int) else lists.cons(:Int)(n from(n + 1 m)) end
+let rec flatten(A::TYPE)(l: lists.T(lists.T(A))): lists.T(A) =
+    case l when nil then lists.nil(:A) when cons with c then lists.append(:A)(c.hd flatten(:A)(c.tl)) end
+let rec pow(x: Real y: Int): Real = if y is 0 then 1.0 else x ** pow(x y - 1) end
+
+(* A 2D array with bounds ((l1, u1), (l2, u2)) *)
+Let Bounds = Tuple l1: Int u1: Int l2: Int u2: Int end
+Let Grid(A::TYPE) = Tuple a: Array2(A) bounds: Bounds end
+Let Node = Tuple k: Int l: Int end
+Let RGrid = Grid(Real)
+
+let bounds(l1: Int u1: Int l2: Int u2: Int): Bounds = tuple let l1 = l1 let u1 = u1 let l2 = l2 let u2 = u2 end
+let node(k: Int l: Int): Node = tuple let k = k let l = l end
+
+let array2(A::TYPE)(b: Bounds v: A): Grid(A) =
+    begin
+        let s1 = {b.u1 - b.l1} + 1
+        let s2 = {b.u2 - b.l2} + 1
+        tuple let a = tuple let s1 = s1 let s2 = s2 let value = array of(s1 * s2 v) end let bounds = b end
+    end
+let sub2(A::TYPE)(g: Grid(A) n: Node): A = g.a.value[index(n.k - g.bounds.l1 n.l - g.bounds.l2 g.a.s1 g.a.s2)]
+let update2(A::TYPE)(g: Grid(A) n: Node v: A): Ok =
+    g.a.value[index(n.k - g.bounds.l1 n.l - g.bounds.l2 g.a.s1 g.a.s2)] := v
+let s2(g: RGrid n: Node): Real = sub2(:Real)(g n)
+let u2r(g: RGrid n: Node v: Real): Ok = update2(:Real)(g n v)
+
+let printarray2(m: RGrid): Ok =
+    forRange(m.bounds.l1 1 m.bounds.u1 fun(i: Int): Ok
+        begin
+            print("[")
+            forRange(m.bounds.l2 1 m.bounds.u2 - 1 fun(j: Int): Ok print(reals.toString(s2(m node(i j))) <> ", "))
+            print(reals.toString(s2(m node(i m.bounds.u2))) <> "]\n")
+        end)
+
+(* A 1D array with bounds (l, u) *)
+Let Array1(A::TYPE) = Tuple value: Array(A) l: Int u: Int end
+let array1(A::TYPE)(l: Int u: Int v: A): Array1(A) = tuple let value = array of({u - l} + 1 v) let l = l let u = u end
+let sub1(A::TYPE)(a: Array1(A) i: Int): A = a.value[i - a.l]
+let update1(A::TYPE)(a: Array1(A) i: Int v: A): Ok = a.value[i - a.l] := v
+
+(* Specification of the state variable computation *)
+
+let kmin = 2 let kmax = gridMax let lmin = 2 let lmax = gridMax
+
+let north(n: Node): Node = node(n.k - 1 n.l)
+let south(n: Node): Node = node(n.k + 1 n.l)
+let east(n: Node): Node = node(n.k n.l + 1)
+let west(n: Node): Node = node(n.k n.l - 1)
+
+let northeast(n: Node): Node = north(east(n))
+let southeast(n: Node): Node = south(east(n))
+let northwest(n: Node): Node = north(west(n))
+let southwest(n: Node): Node = south(west(n))
+
+let farnorth(n: Node): Node = north(north(n))
+let farsouth(n: Node): Node = south(south(n))
+let fareast(n: Node): Node = east(east(n))
+let farwest(n: Node): Node = west(west(n))
+
+let zoneA(n: Node): Node = n
+let zoneB(n: Node): Node = node(n.k + 1 n.l)
+let zoneC(n: Node): Node = node(n.k + 1 n.l + 1)
+let zoneD(n: Node): Node = node(n.k n.l + 1)
+
+let zoneCornerNortheast = north
+let zoneCornerNorthwest = northwest
+let zoneCornerSoutheast(zone: Node): Node = zone
+let zoneCornerSouthwest = west
+
+let dimensionAllNodes = bounds(kmin - 1 kmax + 1 lmin - 1 lmax + 1)
+let forAllNodes(f: All(n: Node) Ok): Ok =
+    forRange(kmin - 1 1 kmax + 1 fun(k: Int): Ok forRange(lmin - 1 1 lmax + 1 fun(l: Int): Ok f(node(k l))))
+
+let dimensionInteriorNodes = bounds(kmin kmax lmin lmax)
+let forInteriorNodes(f: All(n: Node) Ok): Ok =
+    forRange(kmin 1 kmax fun(k: Int): Ok forRange(lmin 1 lmax fun(l: Int): Ok f(node(k l))))
+
+let dimensionAllZones = bounds(kmin kmax + 1 lmin lmax + 1)
+let forAllZones(f: All(n: Node) Ok): Ok =
+    forRange(kmin 1 kmax + 1 fun(k: Int): Ok forRange(lmin 1 lmax + 1 fun(l: Int): Ok f(node(k l))))
+
+let dimensionInteriorZones = bounds(kmin + 1 kmax lmin + 1 lmax)
+let forInteriorZones(f: All(n: Node) Ok): Ok =
+    forRange(kmin + 1 1 kmax fun(k: Int): Ok forRange(lmin + 1 1 lmax fun(l: Int): Ok f(node(k l))))
+
+let mapInteriorNodes(f: All(n: Node) Real): lists.T(Real) =
+    flatten(:Real)(lists.map(:Int :lists.T(Real))(fun(k: Int): lists.T(Real)
+        lists.map(:Int :Real)(fun(l: Int): Real f(node(k l)) from(lmin lmax)) from(kmin kmax)))
+let mapInteriorZones(f: All(n: Node) Real): lists.T(Real) =
+    flatten(:Real)(lists.map(:Int :lists.T(Real))(fun(k: Int): lists.T(Real)
+        lists.map(:Int :Real)(fun(l: Int): Real f(node(k l)) from(lmin + 1 lmax)) from(kmin + 1 kmax)))
+
+let forNorthWardInteriorZones(f: All(n: Node) Ok): Ok =
+    forRange(kmax ~1 kmin + 1 fun(k: Int): Ok forRange(lmin + 1 1 lmax fun(l: Int): Ok f(node(k l))))
+let forWestWardInteriorZones(f: All(n: Node) Ok): Ok =
+    forRange(kmin + 1 1 kmax fun(k: Int): Ok forRange(lmax ~1 lmin + 1 fun(l: Int): Ok f(node(k l))))
+
+let forNorthZones(f: All(n: Node) Ok): Ok = forRange(lmin 1 lmax + 1 fun(l: Int): Ok f(node(kmin l)))
+let forSouthZones(f: All(n: Node) Ok): Ok = forRange(lmin + 1 1 lmax fun(l: Int): Ok f(node(kmax + 1 l)))
+let forEastZones(f: All(n: Node) Ok): Ok = forRange(kmin + 1 1 kmax + 1 fun(k: Int): Ok f(node(k lmax + 1)))
+let forWestZones(f: All(n: Node) Ok): Ok = forRange(kmin + 1 1 kmax + 1 fun(k: Int): Ok f(node(k lmin)))
+
+(* reflect dir node A *)
+let reflect(dir: All(n: Node) Node n: Node a: RGrid): Real = s2(a dir(n))
+Let Reflection = All(n: Node) All(a: RGrid) Real
+let reflector(dir: All(n: Node) Node): Reflection = fun(n: Node): All(a: RGrid) Real fun(a: RGrid): Real
+    reflect(dir n a)
+let reflectNorth = reflector(north)
+let reflectSouth = reflector(south)
+let reflectEast = reflector(east)
+let reflectWest = reflector(west)
+
+let forNorthNodes(f: All(n: Node) Ok): Ok = forRange(lmin 1 lmax - 1 fun(l: Int): Ok f(node(kmin - 1 l)))
+let forSouthNodes(f: All(n: Node) Ok): Ok = forRange(lmin 1 lmax - 1 fun(l: Int): Ok f(node(kmax + 1 l)))
+let forEastNodes(f: All(n: Node) Ok): Ok = forRange(kmin 1 kmax - 1 fun(k: Int): Ok f(node(k lmax + 1)))
+let forWestNodes(f: All(n: Node) Ok): Ok = forRange(kmin 1 kmax - 1 fun(k: Int): Ok f(node(k lmin - 1)))
+
+let northEastCorner = node(kmin - 1 lmax + 1)
+let northWestCorner = node(kmin - 1 lmin - 1)
+let southEastCorner = node(kmax + 1 lmax + 1)
+let southWestCorner = node(kmax + 1 lmin - 1)
+
+let westOfNorthEast = node(kmin - 1 lmax)
+let westOfSouthEast = node(kmax + 1 lmax)
+let northOfSouthEast = node(kmax lmax + 1)
+let northOfSouthWest = node(kmax lmin - 1)
+
+(* Initialization of parameters *)
+
+let constantHeatSource = 0.0
+let deltatMaximum = 0.01
+let specificHeat = 0.1
+let pCoeffs = begin let m = array2(:Real)(bounds(0 2 0 2) 0.0) u2r(m node(1 1) 0.06698) m end
+let eCoeffs = begin let m = array2(:Real)(bounds(0 2 0 2) 0.0) u2r(m node(0 1) 0.1) m end
+let pPoly = array2(:RGrid)(bounds(1 4 1 5) pCoeffs)
+let ePoly = array2(:RGrid)(bounds(1 4 1 5) eCoeffs)
+
+let rhoTable =
+    begin
+        let v = array1(:Real)(1 3 0.0)
+        update1(:Real)(v 2 1.0)
+        update1(:Real)(v 3 100.0)
+        v
+    end
+let thetaTable =
+    begin
+        let v = array1(:Real)(1 4 0.0)
+        update1(:Real)(v 2 3.0)
+        update1(:Real)(v 3 300.0)
+        update1(:Real)(v 4 3000.0)
+        v
+    end
+
+Let Tables = Tuple poly: Grid(RGrid) degree: Int rhoTable: Array1(Real) thetaTable: Array1(Real) end
+let extractEnergyTablesFromConstants: Tables =
+    tuple let poly = ePoly let degree = 2 let rhoTable = rhoTable let thetaTable = thetaTable end
+let extractPressureTablesFromConstants: Tables =
+    tuple let poly = pPoly let degree = 2 let rhoTable = rhoTable let thetaTable = thetaTable end
+
+let nbc =
+    begin
+        let m = array2(:Int)(dimensionAllZones 1)
+        forRange(lmin + 1 1 lmax fun(j: Int): Ok update2(:Int)(m node(kmax + 1 j) 2))
+        update2(:Int)(m node(kmin lmin) 4)
+        update2(:Int)(m node(kmin lmax + 1) 4)
+        update2(:Int)(m node(kmax + 1 lmin) 4)
+        update2(:Int)(m node(kmax + 1 lmax + 1) 4)
+        m
+    end
+let pbb = begin let a = array1(:Real)(1 4 0.0) update1(:Real)(a 2 6.0) a end
+let pb = begin let a = array1(:Real)(1 4 1.0) update1(:Real)(a 2 0.0) update1(:Real)(a 3 0.0) a end
+let qb = pb
+
+let allZeroNodes = array2(:Real)(dimensionAllNodes 0.0)
+let allZeroZones = array2(:Real)(dimensionAllZones 0.0)
+
+(* SML's ~x *)
+let neg(x: Real): Real = ~1.0 ** x
+
+Let Pair = Tuple a: RGrid b: RGrid end
+Let RZ = Tuple r: Real z: Real end
+let pair(a: RGrid b: RGrid): Pair = tuple let a = a let b = b end
+
+(* Positional Coordinates (page 9-10) *)
+
+let makePositionMatrix(interiorFunction: All(n: Node) RZ): Pair =
+    begin
+        let r1 = array2(:Real)(dimensionAllNodes 0.0)
+        let z1 = array2(:Real)(dimensionAllNodes 0.0)
+        let boundaryPosition(rx: Real zx: Real ry: Real zy: Real ra: Real za: Real): RZ =
+            begin
+                let rax = ra -- rx
+                let zax = za -- zx
+                let ryx = ry -- rx
+                let zyx = zy -- zx
+                let omega = {2.0 ** {{rax ** ryx} ++ {zax ** zyx}}} // {{ryx ** ryx} ++ {zyx ** zyx}}
+                let rb = {rx -- rax} ++ {omega ** ryx}
+                let zb = {zx -- zax} ++ {omega ** zyx}
+                tuple let r = rb let z = zb end
+            end
+        let reflectNode(xDir: All(n: Node) Node yDir: All(n: Node) Node aDir: All(n: Node) Node n: Node): RZ =
+            begin
+                let rx = reflect(xDir n r1)
+                let zx = reflect(xDir n z1)
+                let ry = reflect(yDir n r1)
+                let zy = reflect(yDir n z1)
+                let ra = reflect(aDir n r1)
+                let za = reflect(aDir n z1)
+                boundaryPosition(rx zx ry zy ra za)
+            end
+        let u2(rz: RZ n: Node): Ok = begin u2r(r1 n rz.r) u2r(z1 n rz.z) end
+        forInteriorNodes(fun(n: Node): Ok u2(interiorFunction(n) n))
+        forNorthNodes(fun(n: Node): Ok u2(reflectNode(south southeast farsouth n) n))
+        forSouthNodes(fun(n: Node): Ok u2(reflectNode(north northeast farnorth n) n))
+        forEastNodes(fun(n: Node): Ok u2(reflectNode(west southwest farwest n) n))
+        forWestNodes(fun(n: Node): Ok u2(reflectNode(east southeast fareast n) n))
+        u2(reflectNode(south southwest farsouth westOfNorthEast) westOfNorthEast)
+        u2(reflectNode(north northwest farnorth westOfSouthEast) westOfSouthEast)
+        u2(reflectNode(west northwest farwest northOfSouthEast) northOfSouthEast)
+        u2(reflectNode(east northeast fareast northOfSouthWest) northOfSouthWest)
+        u2(reflectNode(southwest west farwest northEastCorner) northEastCorner)
+        u2(reflectNode(northwest west farwest southEastCorner) southEastCorner)
+        u2(reflectNode(southeast south farsouth northWestCorner) northWestCorner)
+        u2(reflectNode(northeast east fareast southWestCorner) southWestCorner)
+        pair(r1 z1)
+    end
+
+(* Physical Properties of a Zone (page 10) *)
+Let AreaVol = Tuple area: Real vol: Real end
+let zoneAreaVol(x: Pair zone: Node): AreaVol =
+    begin
+        let r = x.a
+        let z = x.b
+        let r1 = s2(r zoneCornerSouthwest(zone)) let z1 = s2(z zoneCornerSouthwest(zone))
+        let r2 = s2(r zoneCornerSoutheast(zone)) let z2 = s2(z zoneCornerSoutheast(zone))
+        let r3 = s2(r zoneCornerNortheast(zone)) let z3 = s2(z zoneCornerNortheast(zone))
+        let r4 = s2(r zoneCornerNorthwest(zone)) let z4 = s2(z zoneCornerNorthwest(zone))
+        let area1 = {{r2 -- r1} ** {z3 -- z1}} -- {{r3 -- r2} ** {z3 -- z2}}
+        let radius1 = 0.3333 ** {{r1 ++ r2} ++ r3}
+        let volume1 = area1 ** radius1
+        let area2 = {{r3 -- r1} ** {z4 -- z3}} -- {{r4 -- r3} ** {z3 -- z1}}
+        let radius2 = 0.3333 ** {{r1 ++ r3} ++ r4}
+        let volume2 = area2 ** radius2
+        tuple let area = area1 ++ area2 let vol = volume1 ++ volume2 end
+    end
+
+(* Velocity (page 8) *)
+let makeVelocity(v: Pair x: Pair p: RGrid q: RGrid alpha: RGrid rho: RGrid deltaT: Real): Pair =
+    begin
+        let u = v.a let w = v.b let r = x.a let z = x.b
+        let lineIntegral(p: RGrid z: RGrid n: Node): Real =
+            {{{s2(p zoneA(n)) ** {s2(z west(n)) -- s2(z north(n))}}
+                ++ {s2(p zoneB(n)) ** {s2(z south(n)) -- s2(z west(n))}}}
+                ++ {s2(p zoneC(n)) ** {s2(z east(n)) -- s2(z south(n))}}}
+                ++ {s2(p zoneD(n)) ** {s2(z north(n)) -- s2(z east(n))}}
+        let regionalMass(n: Node): Real =
+            0.5 ** {{{{s2(rho zoneA(n)) ** s2(alpha zoneA(n))} ++ {s2(rho zoneB(n)) ** s2(alpha zoneB(n))}}
+                ++ {s2(rho zoneC(n)) ** s2(alpha zoneC(n))}} ++ {s2(rho zoneD(n)) ** s2(alpha zoneD(n))}}
+        let velocity(n: Node): RZ =
+            begin
+                let d = regionalMass(n)
+                let n1 = neg(lineIntegral(p z n)) -- lineIntegral(q z n)
+                let n2 = lineIntegral(p r n) ++ lineIntegral(q r n)
+                let uDot = n1 // d
+                let wDot = n2 // d
+                tuple let r = s2(u n) ++ {deltaT ** uDot} let z = s2(w n) ++ {deltaT ** wDot} end
+            end
+        let uu = array2(:Real)(dimensionInteriorNodes 0.0)
+        let ww = array2(:Real)(dimensionInteriorNodes 0.0)
+        forInteriorNodes(fun(n: Node): Ok begin let uw = velocity(n) u2r(uu n uw.r) u2r(ww n uw.z) end)
+        pair(uu ww)
+    end
+
+let makePosition(x: Pair deltaT: Real v: Pair): Pair =
+    begin
+        let interiorPosition(n: Node): RZ =
+            tuple let r = s2(x.a n) ++ {deltaT ** s2(v.a n)} let z = s2(x.b n) ++ {deltaT ** s2(v.b n)} end
+        makePositionMatrix(interiorPosition)
+    end
+
+Let ARS = Tuple alpha: RGrid rho: RGrid s: RGrid end
+Let ASR = Tuple a: Real s: Real r: Real end
+
+let makeAreaDensityVolume(rho: RGrid s: RGrid x1: Pair): ARS =
+    begin
+        let alpha1 = array2(:Real)(dimensionAllZones 0.0)
+        let s1 = array2(:Real)(dimensionAllZones 0.0)
+        let rho1 = array2(:Real)(dimensionAllZones 0.0)
+        let interiorArea(zone: Node): ASR =
+            begin
+                let av = zoneAreaVol(x1 zone)
+                let density = {s2(rho zone) ** s2(s zone)} // av.vol
+                tuple let a = av.area let s = av.vol let r = density end
+            end
+        let reflectAreaVolDensity(f: All(a: RGrid) Real): ASR =
+            tuple let a = f(alpha1) let s = f(s1) let r = f(rho1) end
+        let updateAsr(zone: Node asr: ASR): Ok =
+            begin u2r(alpha1 zone asr.a) u2r(s1 zone asr.s) u2r(rho1 zone asr.r) end
+        let rAreaVolDen(reflectDir: Reflection zone: Node): Ok = updateAsr(zone reflectAreaVolDensity(reflectDir(zone)))
+        forInteriorZones(fun(zone: Node): Ok updateAsr(zone interiorArea(zone)))
+        forSouthZones(fun(zone: Node): Ok rAreaVolDen(reflectNorth zone))
+        forEastZones(fun(zone: Node): Ok rAreaVolDen(reflectWest zone))
+        forWestZones(fun(zone: Node): Ok rAreaVolDen(reflectEast zone))
+        forNorthZones(fun(zone: Node): Ok rAreaVolDen(reflectSouth zone))
+        tuple let alpha = alpha1 let rho = rho1 let s = s1 end
+    end
+
+(* Artifical Viscosity (page 11) *)
+Let QD = Tuple q: RGrid d: RGrid end
+let makeViscosity(p: RGrid v: Pair x: Pair alpha1: RGrid rho1: RGrid): QD =
+    begin
+        let u1 = v.a let w1 = v.b let r1 = x.a let z1 = x.b
+        Let VC = Tuple viscosity: Real courantDelta: Real end
+        let interiorViscosity(zone: Node): VC =
+            begin
+                let upperDel(f: RGrid): Real =
+                    0.5 ** {{s2(f zoneCornerSoutheast(zone)) -- s2(f zoneCornerNortheast(zone))}
+                        ++ {s2(f zoneCornerSouthwest(zone)) -- s2(f zoneCornerNorthwest(zone))}}
+                let lowerDel(f: RGrid): Real =
+                    0.5 ** {{s2(f zoneCornerSoutheast(zone)) -- s2(f zoneCornerSouthwest(zone))}
+                        ++ {s2(f zoneCornerNortheast(zone)) -- s2(f zoneCornerNorthwest(zone))}}
+                let xi = pow(upperDel(r1) 2) ++ pow(upperDel(z1) 2)
+                let eta = pow(lowerDel(r1) 2) ++ pow(lowerDel(z1) 2)
+                let upperDisc = {upperDel(r1) ** lowerDel(w1)} -- {upperDel(z1) ** lowerDel(u1)}
+                let lowerDisc = {upperDel(u1) ** lowerDel(z1)} -- {upperDel(w1) ** lowerDel(r1)}
+                let upperUbar = if upperDisc << 0.0 then upperDisc // xi else 0.0 end
+                let lowerUbar = if lowerDisc << 0.0 then lowerDisc // eta else 0.0 end
+                let gamma = 1.6
+                let speedOfSound = {gamma ** s2(p zone)} // s2(rho1 zone)
+                let ubar = pow(upperUbar 2) ++ pow(lowerUbar 2)
+                let viscosity = s2(rho1 zone) ** {{1.5 ** ubar} ++ {{0.5 ** speedOfSound} ** real.sqrt(ubar)}}
+                let length = real.sqrt(pow(upperDel(r1) 2) ++ pow(lowerDel(r1) 2))
+                let courantDelta = {0.5 ** s2(alpha1 zone)} // {speedOfSound ** length}
+                tuple let viscosity = viscosity let courantDelta = courantDelta end
+            end
+        let q1 = array2(:Real)(dimensionAllZones 0.0)
+        let d = array2(:Real)(dimensionAllZones 0.0)
+        let reflectViscosityCdelta(direction: All(n: Node) Node zone: Node): Real =
+            s2(q1 direction(zone)) ** sub1(:Real)(qb sub2(:Int)(nbc zone))
+        let doZones(dir: All(n: Node) Node zone: Node): Ok = u2r(q1 zone reflectViscosityCdelta(dir zone))
+        forInteriorZones(fun(zone: Node): Ok
+            begin let vc = interiorViscosity(zone) u2r(q1 zone vc.viscosity) u2r(d zone vc.courantDelta) end)
+        forSouthZones(fun(zone: Node): Ok doZones(north zone))
+        forEastZones(fun(zone: Node): Ok doZones(west zone))
+        forWestZones(fun(zone: Node): Ok doZones(east zone))
+        forNorthZones(fun(zone: Node): Ok doZones(south zone))
+        tuple let q = q1 let d = d end
+    end
+
+(* Pressure and Energy Polynomial (page 12) *)
+
+let polynomial(t: Tables rhoValue: Real thetaValue: Real): Real =
+    begin
+        let tableSearch(table: Array1(Real) value: Real): Int =
+            begin
+                let low = table.l
+                let high = table.u
+                let rec searchDown(i: Int): Int = if value >> sub1(:Real)(table i - 1) then i else searchDown(i - 1) end
+                if value >> sub1(:Real)(table high) then high + 1
+                elsif value <<= sub1(:Real)(table low) then low
+                else searchDown(high)
+                end
+            end
+        let rhoIndex = tableSearch(t.rhoTable rhoValue)
+        let thetaIndex = tableSearch(t.thetaTable thetaValue)
+        let a = sub2(:RGrid)(t.poly node(rhoIndex thetaIndex))
+        let f(i: Int j: Int): Real = {s2(a node(i j)) ** pow(rhoValue i)} ** pow(thetaValue j)
+        sumList(lists.map(:Int :Real)(fun(i: Int): Real
+            sumList(lists.map(:Int :Real)(fun(j: Int): Real f(i j) from(0 t.degree))) from(0 t.degree)))
+    end
+let zonalPressure(rhoValue: Real thetaValue: Real): Real = polynomial(extractPressureTablesFromConstants
+    rhoValue thetaValue)
+let zonalEnergy(rhoValue: Real thetaValue: Real): Real = polynomial(extractEnergyTablesFromConstants
+    rhoValue thetaValue)
+
+let dx = 0.000001
+let tiny = 0.000001
+
+let newtonRaphson(f: All(x: Real) Real x: Real): Real =
+    begin
+        let rec iter(x: Real fx: Real): Real =
+            if fx >> tiny then
+                begin
+                    let fxdx = f(x ++ dx)
+                    let denom = fxdx -- fx
+                    if denom << tiny then iter(x tiny) else iter(x -- {{fx ** dx} // denom} fxdx) end
+                end
+            else x
+            end
+        iter(x f(x))
+    end
+
+(* Temperature (page 13-14) *)
+let makeTemperature(p: RGrid epsilon: RGrid rho: RGrid theta: RGrid rhoPrime: RGrid qPrime: RGrid): RGrid =
+    begin
+        let interiorTemperature(zone: Node): Real =
+            begin
+                let qkl = s2(qPrime zone)
+                let rhoKl = s2(rho zone)
+                let rhoPrimeKl = s2(rhoPrime zone)
+                let tauKl = {1.0 // rhoPrimeKl} -- {1.0 // rhoKl}
+                let energyEquation(epsilonKl: Real): All(thetaKl: Real) Real =
+                    fun(thetaKl: Real): Real epsilonKl -- zonalEnergy(rhoKl thetaKl)
+                let epsilon0 = s2(epsilon zone)
+                let revisedEnergy(pkl: Real): Real = epsilon0 -- {{pkl ++ qkl} ** tauKl}
+                let revisedTemperature(epsilonKl: Real
+                    thetaKl: Real): Real = newtonRaphson(energyEquation(epsilonKl) thetaKl)
+                let revisedPressure(thetaKl: Real): Real = zonalPressure(rhoKl thetaKl)
+                let p0 = s2(p zone)
+                let theta0 = s2(theta zone)
+                let epsilon1 = revisedEnergy(p0)
+                let theta1 = revisedTemperature(epsilon1 theta0)
+                let p1 = revisedPressure(theta1)
+                let epsilon2 = revisedEnergy(p1)
+                let theta2 = revisedTemperature(epsilon2 theta1)
+                theta2
+            end
+        let m = array2(:Real)(dimensionAllZones constantHeatSource)
+        forInteriorZones(fun(zone: Node): Ok u2r(m zone interiorTemperature(zone)))
+        m
+    end
+
+(* Heat conduction. The original's handlers, for Sqrt (a variable pattern,
+ * which catches every exception and raises it again after printing) and for
+ * Overflow (which real arithmetic does not raise), do nothing for this
+ * benchmark's data, and are left out. *)
+
+let makeCc(alphaPrime: RGrid thetaHat: RGrid): RGrid =
+    begin
+        let interiorCc(zone: Node): Real =
+            {{0.0001 ** pow(s2(thetaHat zone) 2)} ** real.sqrt(real.abs(s2(thetaHat zone)))} // s2(alphaPrime zone)
+        let cc = array2(:Real)(dimensionAllZones 0.0)
+        forInteriorZones(fun(zone: Node): Ok u2r(cc zone interiorCc(zone)))
+        forSouthZones(fun(zone: Node): Ok u2r(cc zone reflectNorth(zone)(cc)))
+        forWestZones(fun(zone: Node): Ok u2r(cc zone reflectEast(zone)(cc)))
+        forEastZones(fun(zone: Node): Ok u2r(cc zone reflectWest(zone)(cc)))
+        forNorthZones(fun(zone: Node): Ok u2r(cc zone reflectSouth(zone)(cc)))
+        cc
+    end
+
+let makeSigma(deltat: Real rhoPrime: RGrid alphaPrime: RGrid): RGrid =
+    begin
+        let interiorSigma(zone: Node): Real = {{s2(rhoPrime zone) ** s2(alphaPrime zone)} ** specificHeat} // deltat
+        let m = array2(:Real)(dimensionInteriorZones 0.0)
+        if control.trace then print("\t\tmake_sigma:deltat = " <> reals.toString(deltat) <> "\n") end
+        forInteriorZones(fun(zone: Node): Ok u2r(m zone interiorSigma(zone)))
+        m
+    end
+
+let makeGamma(x: Pair cc: RGrid succeeding: All(n: Node) Node adjacent: All(n: Node) Node): RGrid =
+    begin
+        let rPrime = x.a let zPrime = x.b
+        let interiorGamma(zone: Node): Real =
+            begin
+                let r1 = s2(rPrime zoneCornerSoutheast(zone))
+                let z1 = s2(zPrime zoneCornerSoutheast(zone))
+                let r2 = s2(rPrime zoneCornerSoutheast(adjacent(zone)))
+                let z2 = s2(zPrime zoneCornerSoutheast(adjacent(zone)))
+                let crossSection = {0.5 ** {r1 ++ r2}} ** {pow(r1 -- r2 2) ++ pow(z1 -- z2 2)}
+                let c1 = s2(cc zone)
+                let c2 = s2(cc succeeding(zone))
+                let specificConductivity = {{2.0 ** c1} ** c2} // {c1 ++ c2}
+                crossSection ** specificConductivity
+            end
+        let m = array2(:Real)(dimensionAllZones 0.0)
+        forInteriorZones(fun(zone: Node): Ok u2r(m zone interiorGamma(zone)))
+        m
+    end
+
+let makeAb(theta: RGrid sigma: RGrid gamma: RGrid preceding: All(n: Node) Node): Pair =
+    begin
+        let a = array2(:Real)(dimensionAllZones 0.0)
+        let b = array2(:Real)(dimensionAllZones 0.0)
+        let interiorAb(zone: Node): RZ =
+            begin
+                let denom = {s2(sigma zone) ++ s2(gamma zone)}
+                    ++ {s2(gamma preceding(zone)) ** {1.0 -- s2(a preceding(zone))}}
+                let nume1 = s2(gamma zone)
+                let nume2 = {s2(gamma preceding(zone)) ** s2(b preceding(zone))} ++ {s2(sigma zone) ** s2(theta zone)}
+                tuple let r = nume1 // denom let z = nume2 // denom end
+            end
+        let f(zone: Node): Ok = u2r(b zone s2(theta zone))
+        forNorthZones(f)
+        forSouthZones(f)
+        forWestZones(f)
+        forEastZones(f)
+        forInteriorZones(fun(zone: Node): Ok begin let ab = interiorAb(zone) u2r(a zone ab.r) u2r(b zone ab.z) end)
+        pair(a b)
+    end
+
+let makeTheta(a: RGrid b: RGrid succeeding: All(n: Node) Node intZones: All(f: All(n: Node) Ok) Ok): RGrid =
+    begin
+        let theta = array2(:Real)(dimensionAllZones constantHeatSource)
+        let interiorTheta(zone: Node): Real = {s2(a zone) ** s2(theta succeeding(zone))} ++ s2(b zone)
+        intZones(fun(n: Node): Ok u2r(theta n interiorTheta(n)))
+        theta
+    end
+
+Let HeatConduction = Tuple theta: RGrid gammaK: RGrid gammaL: RGrid end
+let computeHeatConduction(thetaHat: RGrid deltat: Real x1: Pair alpha1: RGrid rho1: RGrid): HeatConduction =
+    begin
+        let sigma = makeSigma(deltat rho1 alpha1)
+        if control.trace then print("\tdone make_sigma\n") end
+        let cc = makeCc(alpha1 thetaHat)
+        if control.trace then print("\tdone make_cc\n") end
+        let gammaK = makeGamma(x1 cc north east)
+        if control.trace then print("\tdone make_gamma\n") end
+        let abK = makeAb(thetaHat sigma gammaK north)
+        if control.trace then print("\tdone make_ab\n") end
+        let thetaK = makeTheta(abK.a abK.b south forNorthWardInteriorZones)
+        if control.trace then print("\tdone make_theta\n") end
+        let gammaL = makeGamma(x1 cc west south)
+        if control.trace then print("\tdone make_gamma\n") end
+        let abL = makeAb(thetaK sigma gammaL west)
+        if control.trace then print("\tdone make_ab\n") end
+        let thetaL = makeTheta(abL.a abL.b east forWestWardInteriorZones)
+        if control.trace then print("\tdone make_theta\n") end
+        tuple let theta = thetaL let gammaK = gammaK let gammaL = gammaL end
+    end
+
+(* Final Pressure and Energy calculation *)
+let makePressure(rho1: RGrid theta1: RGrid): RGrid =
+    begin
+        let p = array2(:Real)(dimensionAllZones 0.0)
+        let boundaryP(direction: All(n: Node) Node zone: Node): Real =
+            sub1(:Real)(pbb sub2(:Int)(nbc zone)) ++ {sub1(:Real)(pb sub2(:Int)(nbc zone)) ** s2(p direction(zone))}
+        forInteriorZones(fun(zone: Node): Ok u2r(p zone zonalPressure(s2(rho1 zone) s2(theta1 zone))))
+        forSouthZones(fun(zone: Node): Ok u2r(p zone boundaryP(north zone)))
+        forEastZones(fun(zone: Node): Ok u2r(p zone boundaryP(west zone)))
+        forWestZones(fun(zone: Node): Ok u2r(p zone boundaryP(east zone)))
+        forNorthZones(fun(zone: Node): Ok u2r(p zone boundaryP(south zone)))
+        p
+    end
+
+let makeEnergy(rho1: RGrid theta1: RGrid): RGrid =
+    begin
+        let epsilon1 = array2(:Real)(dimensionAllZones 0.0)
+        forInteriorZones(fun(zone: Node): Ok u2r(epsilon1 zone zonalEnergy(s2(rho1 zone) s2(theta1 zone))))
+        forSouthZones(fun(zone: Node): Ok u2r(epsilon1 zone reflectNorth(zone)(epsilon1)))
+        forWestZones(fun(zone: Node): Ok u2r(epsilon1 zone reflectEast(zone)(epsilon1)))
+        forEastZones(fun(zone: Node): Ok u2r(epsilon1 zone reflectWest(zone)(epsilon1)))
+        forNorthZones(fun(zone: Node): Ok u2r(epsilon1 zone reflectSouth(zone)(epsilon1)))
+        epsilon1
+    end
+
+(* Energy Error Calculation (page 20) *)
+
+Let Link = Tuple n1: Node n2: Node end
+let link(n1: Node n2: Node): Link = tuple let n1 = n1 let n2 = n2 end
+
+let computeEnergyError(v1: Pair x1: Pair p1: RGrid q1: RGrid epsilon1: RGrid theta1: RGrid rho1: RGrid alpha1: RGrid
+    gammaK: RGrid gammaL: RGrid deltat: Real): Real =
+    begin
+        let u = v1.a let w = v1.b let r = x1.a let z = x1.b
+        let mass(zone: Node): Real = s2(rho1 zone) ** s2(alpha1 zone)
+        let internalEnergy = sumList(mapInteriorZones(fun(n: Node): Real s2(epsilon1 n) ** mass(n)))
+        let kinetic(n: Node): Real =
+            begin
+                let averageMass = 0.25 ** {{{mass(zoneA(n)) ++ mass(zoneB(n))} ++ mass(zoneC(n))} ++ mass(zoneD(n))}
+                let vSquare = pow(s2(u n) 2) ++ pow(s2(w n) 2)
+                {0.5 ** averageMass} ** vSquare
+            end
+        let kineticEnergy = sumList(mapInteriorNodes(kinetic))
+        let workDone(lk: Link): Real =
+            begin
+                let ra = s2(r lk.n1) let rb = s2(r lk.n2)
+                let za = s2(z lk.n1) let zb = s2(z lk.n2)
+                (* sic: u1 and u2 are p', w1 and w2 z' *)
+                let ua = s2(p1 lk.n1) let ub = s2(p1 lk.n2)
+                let wa = s2(z lk.n1) let wb = s2(z lk.n2)
+                let pa = s2(p1 lk.n1) let pb = s2(p1 lk.n2)
+                let qa = s2(q1 lk.n1) let qb = s2(q1 lk.n2)
+                let force = 0.5 ** {{{pa ++ pb} ++ qa} ++ qb}
+                let radius = 0.5 ** {ra ++ rb}
+                let area = 0.5 ** {{{ra -- rb} ** {ua -- ub}} -- {{za -- zb} ** {wa -- wb}}}
+                {{force ** radius} ** area} ** deltat
+            end
+        let lineOf(f: All(i: Int) Link l: lists.T(Int)): lists.T(Link) = lists.map(:Int :Link)(f l)
+        let northLine = lineOf(fun(l: Int): Link link(west(node(kmin l)) node(kmin l)) from(lmin + 1 lmax))
+        let southLine = lineOf(fun(l: Int): Link link(west(node(kmax l)) node(kmax l)) from(lmin + 1 lmax))
+        let eastLine = lineOf(fun(k: Int): Link link(south(node(k lmax)) node(k lmax)) from(kmin + 1 kmax))
+        let westLine = lineOf(fun(k: Int): Link link(south(node(k lmin + 1)) node(k lmin + 1)) from(kmin + 1 kmax))
+        let w1 = sumList(lists.map(:Link :Real)(workDone northLine))
+        let w2 = sumList(lists.map(:Link :Real)(workDone southLine))
+        let w3 = sumList(lists.map(:Link :Real)(workDone eastLine))
+        let w4 = sumList(lists.map(:Link :Real)(workDone westLine))
+        let boundaryWork = {{w1 ++ w2} ++ w3} ++ w4
+        let heatFlow(gamma: RGrid): All(lk: Link) Real =
+            fun(lk: Link): Real {deltat ** s2(gamma lk.n1)} ** {s2(theta1 lk.n1) -- s2(theta1 lk.n2)}
+        let northFlow = begin
+            let k = kmin + 1 lineOf(fun(l: Int): Link link(north(node(k l)) node(k l)) from(lmin + 1 lmax)) end
+        let southFlow = begin
+            let k = kmax lineOf(fun(l: Int): Link link(south(node(k l)) node(k l)) from(lmin + 2 lmax - 1)) end
+        let eastFlow = begin
+            let l = lmax lineOf(fun(k: Int): Link link(east(node(k l)) node(k l)) from(kmin + 2 kmax)) end
+        let westFlow = begin
+            let l = lmin + 1 lineOf(fun(k: Int): Link link(west(node(k l)) node(k l)) from(kmin + 2 kmax)) end
+        let h1 = sumList(lists.map(:Link :Real)(heatFlow(gammaK) northFlow))
+        let h2 = sumList(lists.map(:Link :Real)(heatFlow(gammaK) southFlow))
+        let h3 = sumList(lists.map(:Link :Real)(heatFlow(gammaL) eastFlow))
+        let h4 = sumList(lists.map(:Link :Real)(heatFlow(gammaL) westFlow))
+        let boundaryHeat = {{h1 ++ h2} ++ h3} ++ h4
+        {{internalEnergy ++ kineticEnergy} -- boundaryHeat} -- boundaryWork
+    end
+
+let computeTimeStep(d: RGrid thetaHat: RGrid theta1: RGrid): Real =
+    begin
+        let deltatCourant = minList(mapInteriorZones(fun(zone: Node): Real s2(d zone)))
+        let deltatConduct = maxList(mapInteriorZones(fun(n: Node): Real
+            real.abs(s2(thetaHat n) -- s2(theta1 n)) // s2(thetaHat n)))
+        let deltatMinimum = min(deltatCourant deltatConduct)
+        min(deltatMaximum deltatMinimum)
+    end
+
+Let State = Tuple v: Pair x: Pair alpha: RGrid s: RGrid rho: RGrid p: RGrid q: RGrid epsilon: RGrid theta: RGrid
+    deltat: Real c: Real end
+
+let computeInitialState(): State =
+    begin
+        let v = pair(allZeroNodes allZeroNodes)
+        let x =
+            begin
+                let interiorPosition(n: Node): RZ =
+                    begin
+                        let pi = 3.1415926535898
+                        let rp = real.int(lmax - lmin)
+                        let z1 = real.int({10 + n.k} - kmin)
+                        let zz = {~0.5 ++ {real.int(n.l - lmin) // rp}} ** pi
+                        tuple let r = z1 ** real.cos(zz) let z = z1 ** real.sin(zz) end
+                    end
+                makePositionMatrix(interiorPosition)
+            end
+        let alphaS =
+            begin
+                let a = array2(:Real)(dimensionAllZones 0.0)
+                let s = array2(:Real)(dimensionAllZones 0.0)
+                let u2(f: Reflection z: Node): Ok =
+                    begin
+                        let g = f(z)
+                        let av = g(a)
+                        let sv = g(s)
+                        u2r(a z av)
+                        u2r(s z sv)
+                    end
+                forInteriorZones(fun(z: Node): Ok begin let av = zoneAreaVol(x z) u2r(a z av.area) u2r(s z av.vol) end)
+                forSouthZones(fun(z: Node): Ok u2(reflectNorth z))
+                forEastZones(fun(z: Node): Ok u2(reflectWest z))
+                forWestZones(fun(z: Node): Ok u2(reflectEast z))
+                forNorthZones(fun(z: Node): Ok u2(reflectSouth z))
+                pair(a s)
+            end
+        let rho = begin let r = array2(:Real)(dimensionAllZones 0.0) forAllZones(fun(z: Node): Ok u2r(r z 1.4)) r end
+        let theta =
+            begin
+                let t = array2(:Real)(dimensionAllZones constantHeatSource)
+                forInteriorZones(fun(z: Node): Ok u2r(t z 0.0001))
+                t
+            end
+        let p = makePressure(rho theta)
+        let q = allZeroZones
+        let epsilon = makeEnergy(rho theta)
+        tuple
+            let v = v let x = x let alpha = alphaS.a let s = alphaS.b let rho = rho let p = p let q = q
+                let epsilon = epsilon
+            let theta = theta let deltat = 0.01 let c = 0.0
+        end
+    end
+
+let computeNextState(state: State): State =
+    begin
+        let v1 = makeVelocity(state.v state.x state.p state.q state.alpha state.rho state.deltat)
+        if control.trace then print("done make_velocity\n") end
+        let x1 = makePosition(state.x state.deltat v1)
+        if control.trace then print("done make_position\n") end
+        let ars = makeAreaDensityVolume(state.rho state.s x1)
+        if control.trace then print("done make_area_density_volume\n") end
+        let qd = makeViscosity(state.p v1 x1 ars.alpha ars.rho)
+        if control.trace then print("done make_viscosity\n") end
+        let thetaHat = makeTemperature(state.p state.epsilon state.rho state.theta ars.rho qd.q)
+        if control.trace then print("done make_temperature\n") end
+        let hc = computeHeatConduction(thetaHat state.deltat x1 ars.alpha ars.rho)
+        if control.trace then print("done compute_heat_conduction\n") end
+        let p1 = makePressure(ars.rho hc.theta)
+        if control.trace then print("done make_pressure\n") end
+        let epsilon1 = makeEnergy(ars.rho hc.theta)
+        if control.trace then print("done make_energy\n") end
+        let c1 = computeEnergyError(v1 x1 p1 qd.q epsilon1 hc.theta ars.rho ars.alpha hc.gammaK hc.gammaL state.deltat)
+        if control.trace then print("done compute_energy_error\n") end
+        let deltat1 = computeTimeStep(qd.d thetaHat hc.theta)
+        if control.trace then print("done compute_time_step\n\n") end
+        tuple
+            let v = v1 let x = x1 let alpha = ars.alpha let s = ars.s let rho = ars.rho let p = p1 let q = qd.q
+            let epsilon = epsilon1 let theta = hc.theta let deltat = deltat1 let c = c1
+        end
+    end
+
+let runit(): State =
+    begin
+        let rec iter(i: Int state: State): State =
+            if i is 0 then state else begin print(".") iter(i - 1 computeNextState(state)) end end
+        iter(stepCount computeInitialState())
+    end
+
+let printState(st: State): Ok =
+    begin
+        print("Velocity matrices = \n")
+        printarray2(st.v.a) print("\n\n")
+        printarray2(st.v.b)
+        print("\n\nPosition matrices = \n")
+        printarray2(st.x.a) print("\n\n")
+        printarray2(st.x.b)
+        print("\n\nalpha = \n")
+        printarray2(st.alpha)
+        print("\n\ns = \n")
+        printarray2(st.s)
+        print("\n\nrho = \n")
+        printarray2(st.rho)
+        print("\n\nPressure = \n")
+        printarray2(st.p)
+        print("\n\nq = \n")
+        printarray2(st.q)
+        print("\n\nepsilon = \n")
+        printarray2(st.epsilon)
+        print("\n\ntheta = \n")
+        printarray2(st.theta)
+        print("delatat = " <> reals.toString(st.deltat) <> "\n")
+        print("c = " <> reals.toString(st.c) <> "\n")
+    end
+
+let testit(): Ok = printState(runit())
+
+let doit(): Ok =
+    begin
+        let st = runit()
+        let delta = real.trunc(st.deltat)
+        let c = real.trunc(st.c ** 10000.0)
+        if {c is 6787} andif {delta is ~33093} then ok else writer.putString(writer.err "*** ERROR ***\n") end
+    end
+
+if bench.testit() then testit() else for i = 1 upto bench.count() do doit() end end

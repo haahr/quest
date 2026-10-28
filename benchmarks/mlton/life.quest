@@ -1,0 +1,194 @@
+(* life: 25000 generations of the Game of Life from a glider gun, on lists of
+ * live cells kept in lexical order (from the SML/NJ benchmark suite) *)
+
+import
+    support/bench : support/Bench
+    writer : Writer
+    support/lists : support/Lists
+    stringOp = string : StringOp
+
+Let Coord = Tuple x: Int y: Int end
+Let Coords = lists.T(Coord)
+Let Strings = lists.T(String)
+
+let nil = lists.nil(:Coord)
+let cons(a: Coord x: Coords): Coords = lists.cons(:Coord)(a x)
+let coord(x: Int y: Int): Coord = tuple let x = x let y = y end
+
+let rec map(f: All(a: Coord) Coord): All(l: Coords) Coords =
+    fun(l: Coords): Coords case l when cons with c then cons(f(c.hd) map(f)(c.tl)) else nil end
+
+let undefined: Exception(String) = exception undefined: String end
+let error(A::TYPE)(str: String): A = raise undefined with str end
+
+let accumulate(A::TYPE)(f: All(a: A b: Coord) A): All(a: A l: Coords) A =
+    begin
+        let rec foldf(a: A l: Coords): A = case l when cons with c then foldf(f(a c.hd) c.tl) else a end
+        foldf
+    end
+
+let filter(p: All(a: Coord) Bool): All(l: Coords) Coords =
+    begin
+        let consifp(x: Coords a: Coord): Coords = if p(a) then cons(a x) else x end
+        fun(l: Coords): Coords lists.rev(:Coord)(accumulate(:Coords)(consifp)(nil l))
+    end
+
+let exists(p: All(a: Coord) Bool): All(l: Coords) Bool =
+    begin
+        let rec existsp(l: Coords): Bool = case l when cons with c then if p(c.hd) then true else existsp(c.tl) end
+            else false end
+        existsp
+    end
+
+let equal(a: Coord): All(b: Coord) Bool = fun(b: Coord): Bool {a.x is b.x} /\ {a.y is b.y}
+
+let member(x: Coords): All(a: Coord) Bool = fun(a: Coord): Bool exists(equal(a))(x)
+
+let revonto(x: Coords): All(l: Coords) Coords =
+    fun(l: Coords): Coords accumulate(:Coords)(fun(x: Coords a: Coord): Coords cons(a x))(x l)
+
+let length(x: Coords): Int = accumulate(:Int)(fun(n: Int a: Coord): Int n + 1)(0 x)
+
+(* The original's repeat, copy, and spaces, at strings *)
+let repeat(f: All(x: Strings) Strings): All(n: Int) All(x: Strings) Strings =
+    begin
+        let rec rptf(n: Int x: Strings): Strings = if n is 0 then x else rptf(n - 1 f(x)) end
+        let check(n: Int): Int = if n < 0 then error(:Int)("repeat<0") else n end
+        fun(n: Int): All(x: Strings) Strings fun(x: Strings): Strings rptf(check(n) x)
+    end
+let copy(n: Int x: String): Strings = repeat(fun(l: Strings): Strings lists.cons(:String)(x l))(n)(lists.nil(:String))
+let spaces(n: Int): String =
+    stringOp.conc(lists.foldr(:String :Array(String))(fun(s: String a: Array(String)): Array(String)
+        begin let b = array of(extent a + 1 s) for i = 0 upto extent a - 1 do b[i + 1] := a[i] end b end
+        array of :String end copy(n " ")))
+
+let lexless(a: Coord): All(b: Coord) Bool =
+    fun(b: Coord): Bool if b.x < a.x then true elsif b.x is a.x then b.y < a.y else false end
+let lexgreater(a: Coord): All(b: Coord) Bool = fun(b: Coord): Bool lexless(b)(a)
+
+let rec lexordset(l: Coords): Coords =
+    case l
+        when cons with c then
+            lists.append(:Coord)(lexordset(filter(lexless(c.hd))(c.tl))
+                lists.append(:Coord)(cons(c.hd nil) lexordset(filter(lexgreater(c.hd))(c.tl))))
+        else nil
+    end
+
+let collect(f: All(a: Coord) Coords l: Coords): Coords =
+    begin
+        let rec accumf(sofar: Coords l: Coords): Coords =
+            case l when cons with c then accumf(revonto(sofar)(f(c.hd)) c.tl) else sofar end
+        accumf(nil l)
+    end
+
+(* The coordinates that occur exactly three times in x *)
+let occurs3(x: Coords): Coords =
+    begin
+        let diff(x: Coords y: Coords): Coords = filter(fun(a: Coord): Bool not(member(y)(a)))(x)
+        let rec f(xover: Coords x3: Coords x2: Coords x1: Coords l: Coords): Coords =
+            case l
+                when nil then diff(x3 xover)
+                when cons with c then
+                    begin
+                        let a = c.hd
+                        let x = c.tl
+                        if member(xover)(a) then f(xover x3 x2 x1 x)
+                        elsif member(x3)(a) then f(cons(a xover) x3 x2 x1 x)
+                        elsif member(x2)(a) then f(xover cons(a x3) x2 x1 x)
+                        elsif member(x1)(a) then f(xover x3 cons(a x2) x1 x)
+                        else f(xover x3 x2 cons(a x1) x)
+                        end
+                    end
+            end
+        f(nil nil nil nil x)
+    end
+
+(* The abstract type generation *)
+Let Generation = Tuple livecoords: Coords end
+let alive(g: Generation): Coords = g.livecoords
+let mkgen(coordlist: Coords): Generation = tuple let livecoords = lexordset(coordlist) end
+let mkNextgenFn(neighbours: All(c: Coord) Coords): All(gen: Generation) Generation =
+    fun(gen: Generation): Generation
+        begin
+            let living = alive(gen)
+            let isalive = member(living)
+            let liveneighbours(c: Coord): Int = length(filter(isalive)(neighbours(c)))
+            let twoorthree(n: Int): Bool = {n is 2} orif {n is 3}
+            let survivors = filter(fun(c: Coord): Bool twoorthree(liveneighbours(c)))(living)
+            let newnbrlist = collect(fun(c: Coord): Coords
+                filter(fun(d: Coord): Bool not(isalive(d)))(neighbours(c)) living)
+            let newborn = occurs3(newnbrlist)
+            mkgen(lists.append(:Coord)(survivors newborn))
+        end
+
+let neighbours(c: Coord): Coords =
+    begin
+        let i = c.x let j = c.y
+        lists.fromArray(:Coord)(array of
+            coord(i - 1 j - 1) coord(i - 1 j) coord(i - 1 j + 1)
+            coord(i j - 1) coord(i j + 1)
+            coord(i + 1 j - 1) coord(i + 1 j) coord(i + 1 j + 1)
+        end)
+    end
+
+let xstart = 0
+let ystart = 0
+let markafter(n: Int string: String): String = {string <> spaces(n)} <> "0"
+let rec plotfrom(x: Int y: Int str: String l: Coords): Strings =
+    case l
+        when cons with c then
+            if x is c.hd.x then plotfrom(x c.hd.y + 1 markafter(c.hd.y - y str) c.tl)
+            else lists.cons(:String)(str plotfrom(x + 1 ystart "" l))
+            end
+        else lists.cons(:String)(str lists.nil(:String))
+    end
+let good(c: Coord): Bool = {c.x >= xstart} andif {c.y >= ystart}
+let plot(coordlist: Coords): Strings = plotfrom(xstart ystart "" filter(good)(coordlist))
+
+(* coordlist at (x, y) *)
+let at(coordlist: Coords x: Int y: Int): Coords =
+    begin
+        let move(c: Coord): Coord = coord(c.x + x c.y + y)
+        map(move)(coordlist)
+    end
+let rotate = map(fun(c: Coord): Coord coord(c.y 0 - c.x))
+
+let coords(a: Array(Int)): Coords =
+    begin
+        let var l = nil
+        for i = {extent a / 2} - 1 downto 0 do l := cons(coord(a[2 * i] a[{2 * i} + 1]) l) end
+        l
+    end
+
+let glider = coords(array of 0 0 0 2 1 1 1 2 2 1 end)
+let bail = coords(array of 0 0 0 1 1 0 1 1 end)
+let barberpole(n: Int): Coords =
+    begin
+        let rec f(i: Int): Coords =
+            if i is n then cons(coord({n + n} - 1 n + n) cons(coord(n + n n + n) nil))
+            else cons(coord(i + i {i + i} + 1) cons(coord({i + i} + 2 {i + i} + 1) f(i + 1)))
+            end
+        cons(coord(0 0) cons(coord(1 0) f(0)))
+    end
+
+let genB = mkgen(lists.append(:Coord)(at(glider 2 2)
+    lists.append(:Coord)(at(bail 2 12) at(rotate(barberpole(4)) 5 20))))
+
+let rec nthgen(g: Generation i: Int): Generation = if i is 0 then g else nthgen(mkNextgenFn(neighbours)(g) i - 1) end
+
+let gun = mkgen(coords(array of
+    2 20 3 19 3 21 4 18 4 22 4 23 4 32 5 7 5 8 5 18
+    5 22 5 23 5 29 5 30 5 31 5 32 5 36 6 7 6 8 6 18
+    6 22 6 23 6 28 6 29 6 30 6 31 6 36 7 19 7 21 7 28
+    7 31 7 40 7 41 8 20 8 28 8 29 8 30 8 31 8 40 8 41
+    9 29 9 30 9 31 9 32
+end))
+
+let show(pr: All(s: String) Ok): All(g: Generation) Ok =
+    fun(g: Generation): Ok lists.app(:String)(fun(s: String): Ok begin pr(s) pr("\n") end plot(alive(g)))
+
+let doit(): Ok = show(fun(s: String): Ok ok)(nthgen(gun 25000))
+
+let testit(): Ok = show(fun(s: String): Ok writer.putString(writer.output s))(nthgen(gun 50))
+
+if bench.testit() then testit() else for i = 1 upto bench.count() do doit() end end

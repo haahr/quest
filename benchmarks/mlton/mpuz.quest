@@ -1,0 +1,92 @@
+(* mpuz: solves an Emacs mpuz multiplication puzzle (AGH * FB = FGIJE, with
+ * partial products CBEE and GHFD) by trying every assignment of digits to
+ * letters (Stephen Weeks, after Laurent Vaucher's OCaml solution) *)
+
+import
+    support/bench : support/Bench
+    support/lists : support/Lists
+    stringOp = string : StringOp
+    ascii : Ascii
+    conv : Conv
+
+(* The original overrides print, so the benchmark is silent *)
+let print(s: String): Ok = ok
+
+(* The original's List.fold and List.foreach *)
+let fold(A::TYPE B::TYPE)(l: lists.T(A) b: B f: All(x: A b: B) B): B =
+    begin
+        let rec go(l: lists.T(A) b: B): B = case l when cons with c then go(c.tl f(c.hd b)) else b end
+        go(l b)
+    end
+let foreach(A::TYPE)(l: lists.T(A) f: All(x: A) Ok): Ok = fold(:A :Ok)(l ok fun(x: A b: Ok): Ok f(x))
+
+(* The original's String.fold *)
+let stringFold(A::TYPE)(s: String b: A f: All(c: Char b: A) A): A =
+    begin
+        let n = stringOp.length(s)
+        let rec go(i: Int b: A): A = if i is n then b else go(i + 1 f(stringOp.getChar(s i) b)) end
+        go(0 b)
+    end
+
+Let Value = Tuple v: Int r: Tuple var used: Bool end end
+
+let solve(a: String b: String c: String d: String e: String): Ok =
+    begin
+        let printNewline(): Ok = print("\n")
+        let letters =
+            fold(:String :lists.T(Char))(lists.fromArray(:String)(array of a b c d e end) lists.nil(:Char)
+                fun(s: String letters: lists.T(Char)): lists.T(Char)
+                    stringFold(:lists.T(Char))(s letters fun(c: Char letters: lists.T(Char)): lists.T(Char)
+                        if lists.exists(:Char)(fun(c1: Char): Bool c is c1 letters) then letters
+                        else lists.cons(:Char)(c letters)
+                        end))
+        (* Char.maxChar is #"\255" *)
+        let letterValues = array of(256 0)
+        let letterValue(c: Char): Int = letterValues[ascii.val(c)]
+        let setLetterValue(c: Char v: Int): Ok = letterValues[ascii.val(c)] := v
+        let stringValue(s: String): Int = stringFold(:Int)(s 0 fun(c: Char v: Int): Int {v * 10} + letterValue(c))
+        let printResult(): Ok =
+            begin
+                foreach(:Char)(letters fun(c: Char): Ok
+                    print(stringOp.conc(array of stringOp.new(1 c) " = " conv.int(letterValue(c)) " " end)))
+                print("\n")
+            end
+        let testOk(): Ok =
+            begin
+                let b0 = letterValue(stringOp.getChar(b 1))
+                let b1 = letterValue(stringOp.getChar(b 0))
+                let av = stringValue(a)
+                let bv = stringValue(b)
+                let cv = stringValue(c)
+                let dv = stringValue(d)
+                let ev = stringValue(e)
+                if {{av * b0} is cv} andif {{av * b1} is dv} andif {{av * bv} is ev} andif {{cv + {dv * 10}} is ev}
+                then printResult()
+                end
+            end
+        let values =
+            lists.map(:Int :Value)(fun(v: Int): Value tuple let v = v let r = tuple let var used = false end end
+                lists.fromArray(:Int)(array of 0 1 2 3 4 5 6 7 8 9 end))
+        (* Try all assignments of values to letters *)
+        let rec assign(letters: lists.T(Char)): Ok =
+            case letters
+                when nil then testOk()
+                when cons with l then
+                    foreach(:Value)(values fun(x: Value): Ok
+                        if x.r.used then ok
+                        else
+                            begin
+                                x.r.used := true
+                                setLetterValue(l.hd x.v)
+                                assign(l.tl)
+                                x.r.used := false
+                            end
+                        end)
+            end
+        assign(letters)
+    end
+
+(* Solution: J = 0 I = 1 D = 8 E = 2 C = 5 B = 6 F = 4 H = 7 G = 3 A = 9 *)
+let doit(): Ok = solve("AGH" "FB" "CBEE" "GHFD" "FGIJE")
+
+for i = 1 upto bench.count() do doit() end

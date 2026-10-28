@@ -1,0 +1,89 @@
+(* wc-scanStream: counts the lines of a 1000000-character file, reading it
+ * through a functional stream (SML's TextIO.scanStream) *)
+
+import
+    support/bench : support/Bench
+    stringOp = string : StringOp
+    reader : Reader
+    writer : Writer
+    system : System
+
+(* SML's TextIO.StreamIO functional streams, as TextIO.scanStream reads them: a
+ * stream is a position in a chunk of the file, and each chunk reads the next
+ * one when it is first needed *)
+Let Rec Chunk = Tuple text: String source: reader.T var next: Next end
+and Next = Option unread eof chunk with c: Chunk end end
+Let Stream = Tuple chunk: Chunk pos: Int end
+Let Read = Option none some with c: Char s: Stream end end
+
+let chunkSize = 4096
+
+let readChunk(source: reader.T): Next =
+    if not(reader.more(source)) then option eof of Next end
+    else
+        begin
+            let c: Chunk = tuple
+                let text = reader.getString(source chunkSize)
+                let source = source
+                let var next = option unread of Next end
+            end
+            option chunk of Next with c end
+        end
+    end
+
+(* StreamIO.input1 *)
+let rec input1(s: Stream): Read =
+    if s.pos < stringOp.length(s.chunk.text) then
+        option some of Read with stringOp.getChar(s.chunk.text s.pos) tuple let chunk = s.chunk
+            let pos = s.pos + 1 end end
+    else
+        begin
+            case s.chunk.next when unread then s.chunk.next := readChunk(s.chunk.source) else ok end
+            case s.chunk.next
+                when chunk with n then input1(tuple let chunk = n.c let pos = 0 end)
+                else option none of Read end
+            end
+        end
+    end
+
+(* TextIO.scanStream f ins: f applied to input1 and the stream of ins *)
+let scanStream(f: All(rd: All(s: Stream) Read s: Stream) Ok ins: reader.T): Ok =
+    f(input1 tuple
+        let chunk = tuple let text = "" let source = ins let var next = option unread of Next end end
+        let pos = 0
+    end)
+
+(* OS.FileSys.tmpName: the benchmark runs in a scratch directory *)
+let tmpName = "wc-scanStream.tmp"
+
+let doit(n: Int): Ok =
+    begin
+        let f = tmpName
+        let dev = writer.file(f)
+        let text = stringOp.new(1000000 'a')
+        for i = 0 upto 999999 do if {i % 10} is 0 then stringOp.setChar(text i '\n') end end
+        writer.putString(dev text)
+        writer.close(dev)
+        let wc(f: String): Ok =
+            begin
+                let ins = reader.file(f)
+                scanStream(fun(rd: All(s: Stream) Read s: Stream): Ok
+                    begin
+                        let rec count(s: Stream ns: Int): Ok =
+                            case rd(s)
+                                when none then
+                                    begin
+                                        reader.close(ins)
+                                        if ns isnot 100000 then raise bench.bug end end
+                                    end
+                                when some with r then count(r.s if r.c is '\n' then ns + 1 else ns end)
+                            end
+                        count(s 0)
+                    end
+                    ins)
+            end
+        for i = 1 upto n do wc(f) end
+        system.removeFile(f)
+    end
+
+doit(bench.count())

@@ -1,0 +1,246 @@
+(* md5: the MD5 digest of a million 10000-byte blocks (Daniel Wang's
+ * transliteration of the RSA Data Security, Inc. MD5 Message-Digest
+ * Algorithm), printed each time *)
+
+import
+    support/bench : support/Bench
+    stringOp = string : StringOp
+    ascii : Ascii
+    word : Word
+    util/strutil : util/Strutil
+    writer : Writer
+
+(* SML's Word32 arithmetic, in the low 32 bits of a word; a Word8Vector is a
+ * string *)
+let mask32 = word.fromInt(4294967295)
+let hex(s: String): word.T = strutil.toWordBase(s 16)
+let add32(a: word.T b: word.T): word.T = word.andBits(word.add(a b) mask32)
+let notb32(a: word.T): word.T = word.xorBits(a mask32)
+let shl32(a: word.T n: Int): word.T = word.andBits(word.shift(a n) mask32)
+let shr32(a: word.T n: Int): word.T = word.shift(a 0 - n)
+let lt32(a: word.T b: word.T): Bool = word.lt(a b)
+let byteOf(w: word.T): Char = ascii.char(word.toInt(word.andBits(w hex("ff"))))
+
+Let Word64 = Tuple hi: word.T lo: word.T end
+Let Word128 = Tuple a: word.T b: word.T c: word.T d: word.T end
+Let State = Tuple digest: Word128 mlen: Word64 buf: String end
+
+(* W8V.extract (vec, s, SOME l) *)
+let extract(vec: String s: Int l: Int): String = stringOp.getSub(vec s l)
+
+let w64Zero: Word64 = tuple let hi = word.fromInt(0) let lo = word.fromInt(0) end
+let mul8add(m: Word64 n: Int): Word64 =
+    begin
+        let mul8lo = shl32(word.fromInt(n) 3)
+        let mul8hi = shr32(word.fromInt(n) 29)
+        let lo = add32(m.lo mul8lo)
+        let cout = if lt32(lo mul8lo) then word.fromInt(1) else word.fromInt(0) end
+        let hi = add32(mul8hi add32(m.hi cout))
+        tuple let hi = hi let lo = lo end
+    end
+
+let packLittle(wrds: Array(word.T)): String =
+    begin
+        let v = stringOp.new(4 * extent wrds ascii.char(0))
+        for i = 0 upto extent wrds - 1 do
+            let w = wrds[i]
+            stringOp.setChar(v {4 * i} byteOf(w))
+            stringOp.setChar(v {4 * i} + 1 byteOf(shr32(w 8)))
+            stringOp.setChar(v {4 * i} + 2 byteOf(shr32(w 16)))
+            stringOp.setChar(v {4 * i} + 3 byteOf(shr32(w 24)))
+        end
+        v
+    end
+
+let s11 = 7 let s12 = 12 let s13 = 17 let s14 = 22
+let s21 = 5 let s22 = 9 let s23 = 14 let s24 = 20
+let s31 = 4 let s32 = 11 let s33 = 16 let s34 = 23
+let s41 = 6 let s42 = 10 let s43 = 15 let s44 = 21
+
+let padding(i: Int): String =
+    begin
+        let v = stringOp.new(i ascii.char(0))
+        if i > 0 then stringOp.setChar(v 0 ascii.char(128)) end
+        v
+    end
+
+let f(x: word.T y: word.T z: word.T): word.T = word.orBits(word.andBits(x y) word.andBits(notb32(x) z))
+let g(x: word.T y: word.T z: word.T): word.T = word.orBits(word.andBits(x z) word.andBits(y notb32(z)))
+let h(x: word.T y: word.T z: word.T): word.T = word.xorBits(x word.xorBits(y z))
+let i(x: word.T y: word.T z: word.T): word.T = word.xorBits(y word.orBits(x notb32(z)))
+let rotateLeft(x: word.T n: Int): word.T = word.orBits(shl32(x n) shr32(x 32 - n))
+
+let xx(fn: All(x: word.T y: word.T z: word.T) word.T)
+    (a: word.T b: word.T c: word.T d: word.T x: word.T s: Int ac: word.T): word.T =
+    begin
+        let a1 = add32(a add32(add32(fn(b c d) x) ac))
+        let a2 = rotateLeft(a1 s)
+        add32(a2 b)
+    end
+
+let ff = xx(f)
+let gg = xx(g)
+let hh = xx(h)
+let ii = xx(i)
+
+let emptyBuf = ""
+let init: State =
+    tuple
+        let digest = tuple let a = hex("67452301") let b = hex("efcdab89") let c = hex("98badcfe")
+            let d = hex("10325476") end
+        let mlen = w64Zero
+        let buf = emptyBuf
+    end
+
+(* PackWord32Little.subVec (buf, n) *)
+let subVec(buf: String n: Int): word.T =
+    begin
+        let byte(k: Int): word.T = word.fromInt(ascii.val(stringOp.getChar(buf {4 * n} + k)))
+        word.orBits(byte(0)
+            word.orBits(word.shift(byte(1) 8) word.orBits(word.shift(byte(2) 16) word.shift(byte(3) 24))))
+    end
+
+let transform(dg: Word128 i: Int buf: String): Word128 =
+    begin
+        let off = i / 4
+        let x(n: Int): word.T = subVec(buf n + off)
+        let a0 = dg.a let b0 = dg.b let c0 = dg.c let d0 = dg.d
+        (* fetch to avoid range checks *)
+        let x00 = x(0) let x01 = x(1) let x02 = x(2) let x03 = x(3)
+        let x04 = x(4) let x05 = x(5) let x06 = x(6) let x07 = x(7)
+        let x08 = x(8) let x09 = x(9) let x10 = x(10) let x11 = x(11)
+        let x12 = x(12) let x13 = x(13) let x14 = x(14) let x15 = x(15)
+
+        let a1 = ff(a0 b0 c0 d0 x00 s11 hex("d76aa478")) (* 1 *)
+        let d2 = ff(d0 a1 b0 c0 x01 s12 hex("e8c7b756")) (* 2 *)
+        let c3 = ff(c0 d2 a1 b0 x02 s13 hex("242070db")) (* 3 *)
+        let b4 = ff(b0 c3 d2 a1 x03 s14 hex("c1bdceee")) (* 4 *)
+        let a5 = ff(a1 b4 c3 d2 x04 s11 hex("f57c0faf")) (* 5 *)
+        let d6 = ff(d2 a5 b4 c3 x05 s12 hex("4787c62a")) (* 6 *)
+        let c7 = ff(c3 d6 a5 b4 x06 s13 hex("a8304613")) (* 7 *)
+        let b8 = ff(b4 c7 d6 a5 x07 s14 hex("fd469501")) (* 8 *)
+        let a9 = ff(a5 b8 c7 d6 x08 s11 hex("698098d8")) (* 9 *)
+        let d10 = ff(d6 a9 b8 c7 x09 s12 hex("8b44f7af")) (* 10 *)
+        let c11 = ff(c7 d10 a9 b8 x10 s13 hex("ffff5bb1")) (* 11 *)
+        let b12 = ff(b8 c11 d10 a9 x11 s14 hex("895cd7be")) (* 12 *)
+        let a13 = ff(a9 b12 c11 d10 x12 s11 hex("6b901122")) (* 13 *)
+        let d14 = ff(d10 a13 b12 c11 x13 s12 hex("fd987193")) (* 14 *)
+        let c15 = ff(c11 d14 a13 b12 x14 s13 hex("a679438e")) (* 15 *)
+        let b16 = ff(b12 c15 d14 a13 x15 s14 hex("49b40821")) (* 16 *)
+
+        (* Round 2 *)
+        let a17 = gg(a13 b16 c15 d14 x01 s21 hex("f61e2562")) (* 17 *)
+        let d18 = gg(d14 a17 b16 c15 x06 s22 hex("c040b340")) (* 18 *)
+        let c19 = gg(c15 d18 a17 b16 x11 s23 hex("265e5a51")) (* 19 *)
+        let b20 = gg(b16 c19 d18 a17 x00 s24 hex("e9b6c7aa")) (* 20 *)
+        let a21 = gg(a17 b20 c19 d18 x05 s21 hex("d62f105d")) (* 21 *)
+        let d22 = gg(d18 a21 b20 c19 x10 s22 hex("2441453")) (* 22 *)
+        let c23 = gg(c19 d22 a21 b20 x15 s23 hex("d8a1e681")) (* 23 *)
+        let b24 = gg(b20 c23 d22 a21 x04 s24 hex("e7d3fbc8")) (* 24 *)
+        let a25 = gg(a21 b24 c23 d22 x09 s21 hex("21e1cde6")) (* 25 *)
+        let d26 = gg(d22 a25 b24 c23 x14 s22 hex("c33707d6")) (* 26 *)
+        let c27 = gg(c23 d26 a25 b24 x03 s23 hex("f4d50d87")) (* 27 *)
+        let b28 = gg(b24 c27 d26 a25 x08 s24 hex("455a14ed")) (* 28 *)
+        let a29 = gg(a25 b28 c27 d26 x13 s21 hex("a9e3e905")) (* 29 *)
+        let d30 = gg(d26 a29 b28 c27 x02 s22 hex("fcefa3f8")) (* 30 *)
+        let c31 = gg(c27 d30 a29 b28 x07 s23 hex("676f02d9")) (* 31 *)
+        let b32 = gg(b28 c31 d30 a29 x12 s24 hex("8d2a4c8a")) (* 32 *)
+
+        (* Round 3 *)
+        let a33 = hh(a29 b32 c31 d30 x05 s31 hex("fffa3942")) (* 33 *)
+        let d34 = hh(d30 a33 b32 c31 x08 s32 hex("8771f681")) (* 34 *)
+        let c35 = hh(c31 d34 a33 b32 x11 s33 hex("6d9d6122")) (* 35 *)
+        let b36 = hh(b32 c35 d34 a33 x14 s34 hex("fde5380c")) (* 36 *)
+        let a37 = hh(a33 b36 c35 d34 x01 s31 hex("a4beea44")) (* 37 *)
+        let d38 = hh(d34 a37 b36 c35 x04 s32 hex("4bdecfa9")) (* 38 *)
+        let c39 = hh(c35 d38 a37 b36 x07 s33 hex("f6bb4b60")) (* 39 *)
+        let b40 = hh(b36 c39 d38 a37 x10 s34 hex("bebfbc70")) (* 40 *)
+        let a41 = hh(a37 b40 c39 d38 x13 s31 hex("289b7ec6")) (* 41 *)
+        let d42 = hh(d38 a41 b40 c39 x00 s32 hex("eaa127fa")) (* 42 *)
+        let c43 = hh(c39 d42 a41 b40 x03 s33 hex("d4ef3085")) (* 43 *)
+        let b44 = hh(b40 c43 d42 a41 x06 s34 hex("4881d05")) (* 44 *)
+        let a45 = hh(a41 b44 c43 d42 x09 s31 hex("d9d4d039")) (* 45 *)
+        let d46 = hh(d42 a45 b44 c43 x12 s32 hex("e6db99e5")) (* 46 *)
+        let c47 = hh(c43 d46 a45 b44 x15 s33 hex("1fa27cf8")) (* 47 *)
+        let b48 = hh(b44 c47 d46 a45 x02 s34 hex("c4ac5665")) (* 48 *)
+
+        (* Round 4 *)
+        let a49 = ii(a45 b48 c47 d46 x00 s41 hex("f4292244")) (* 49 *)
+        let d50 = ii(d46 a49 b48 c47 x07 s42 hex("432aff97")) (* 50 *)
+        let c51 = ii(c47 d50 a49 b48 x14 s43 hex("ab9423a7")) (* 51 *)
+        let b52 = ii(b48 c51 d50 a49 x05 s44 hex("fc93a039")) (* 52 *)
+        let a53 = ii(a49 b52 c51 d50 x12 s41 hex("655b59c3")) (* 53 *)
+        let d54 = ii(d50 a53 b52 c51 x03 s42 hex("8f0ccc92")) (* 54 *)
+        let c55 = ii(c51 d54 a53 b52 x10 s43 hex("ffeff47d")) (* 55 *)
+        let b56 = ii(b52 c55 d54 a53 x01 s44 hex("85845dd1")) (* 56 *)
+        let a57 = ii(a53 b56 c55 d54 x08 s41 hex("6fa87e4f")) (* 57 *)
+        let d58 = ii(d54 a57 b56 c55 x15 s42 hex("fe2ce6e0")) (* 58 *)
+        let c59 = ii(c55 d58 a57 b56 x06 s43 hex("a3014314")) (* 59 *)
+        let b60 = ii(b56 c59 d58 a57 x13 s44 hex("4e0811a1")) (* 60 *)
+        let a61 = ii(a57 b60 c59 d58 x04 s41 hex("f7537e82")) (* 61 *)
+        let d62 = ii(d58 a61 b60 c59 x11 s42 hex("bd3af235")) (* 62 *)
+        let c63 = ii(c59 d62 a61 b60 x02 s43 hex("2ad7d2bb")) (* 63 *)
+        let b64 = ii(b60 c63 d62 a61 x09 s44 hex("eb86d391")) (* 64 *)
+
+        tuple let a = add32(dg.a a61) let b = add32(dg.b b64) let c = add32(dg.c c63) let d = add32(dg.d d62) end
+    end
+
+let rec update(st: State input: String): State =
+    begin
+        let inputLen = stringOp.length(input)
+        let needBytes = 64 - stringOp.length(st.buf)
+        let rec go(i: Int digest: Word128): Tuple i: Int digest: Word128 end =
+            if {i + 63} < inputLen then go(i + 64 transform(digest i input))
+            else tuple let i = i let digest = digest end
+            end
+        let buf1 = if inputLen >= needBytes then emptyBuf else st.buf end
+        let r = if inputLen >= needBytes then
+                begin
+                    let buf = stringOp.cat(st.buf extract(input 0 needBytes))
+                    let digest = transform(st.digest 0 buf)
+                    go(needBytes digest)
+                end
+            else tuple let i = 0 let digest = st.digest end
+            end
+        let buf = stringOp.cat(buf1 extract(input r.i inputLen - r.i))
+        let mlen = mul8add(st.mlen inputLen)
+        tuple let digest = r.digest let mlen = mlen let buf = buf end
+    end
+
+let final(st: State): String =
+    begin
+        let bits = packLittle(array of st.mlen.lo st.mlen.hi end)
+        let index = stringOp.length(st.buf)
+        let padLen = if index < 56 then 56 - index else 120 - index end
+        let st1 = update(st padding(padLen))
+        let dg = update(st1 bits).digest
+        packLittle(array of dg.a dg.b dg.c dg.d end)
+    end
+
+let hxd = "0123456789abcdef"
+let toHexString(v: String): String =
+    begin
+        let s = stringOp.new(2 * stringOp.length(v) '0')
+        for k = 0 upto stringOp.length(v) - 1 do
+            let b = ascii.val(stringOp.getChar(v k))
+            stringOp.setChar(s 2 * k stringOp.getChar(hxd b / 16))
+            stringOp.setChar(s {2 * k} + 1 stringOp.getChar(hxd b % 16))
+        end
+        s
+    end
+
+let blockLen = 10000
+let blockCount = 100000
+
+let timeTest(): Ok =
+    begin
+        let block = stringOp.new(blockLen ascii.char(0))
+        for k = 0 upto blockLen - 1 do stringOp.setChar(block k ascii.char(k % 256)) end
+        let rec go(n: Int s: State): State = if n < blockCount then go(n + 1 update(s block)) else s end
+        let s = go(0 init)
+        let hash = final(s)
+        writer.putString(writer.output toHexString(hash) <> "\n")
+        if not(stringOp.equal(toHexString(hash) "766a2bb5d24bddae466c572bcabca3ee")) then raise bench.bug end end
+    end
+
+for k = 1 upto bench.count() do timeTest() end

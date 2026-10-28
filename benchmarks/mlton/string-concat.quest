@@ -1,0 +1,39 @@
+(* string-concat: concatenates three copies of a 2017-character string and
+ * sums its character codes, 10000 times (and once more) each time *)
+
+import
+    support/bench : support/Bench
+    stringOp = string : StringOp
+    ascii : Ascii
+
+(* SML's CharVector.tabulate *)
+let tabulate(n: Int f: All(i: Int) Char): String =
+    begin
+        let s = stringOp.new(n ' ')
+        for i = 0 upto n - 1 do stringOp.setChar(s i f(i)) end
+        s
+    end
+
+(* SML's CharVector.foldl (fn (c, s) => s + ord c) 0 *)
+let sumCodes(s: String): Int =
+    begin
+        let var sum = 0
+        for i = 0 upto stringOp.length(s) - 1 do sum := sum + ascii.val(stringOp.getChar(s i)) end
+        sum
+    end
+
+let alpha = tabulate(26 fun(i: Int): Char ascii.char(ascii.val('A') + i))
+
+let doit(n: Int): Ok =
+    begin
+        let len = 2017
+        let s = tabulate(len fun(i: Int): Char stringOp.getChar(alpha i % 26))
+        let rec repeat(n: Int): Ok =
+            if n < 0 then ok
+            elsif 468705 is sumCodes(stringOp.conc(array of s s s end)) then repeat(n - 1)
+            else raise bench.bug end
+            end
+        repeat(n * 10000)
+    end
+
+doit(bench.count())

@@ -1,0 +1,50 @@
+(* tailmerge: merges two sorted 100000-element lists, with a tail-recursive
+ * merge that reverses its accumulated result *)
+
+import support/bench : support/Bench
+
+Let Rec List = Option nil cons with hd: Int tl: List end end
+
+let nil = option nil of List end
+let cons(hd: Int tl: List): List = option cons of List with hd tl end
+
+(* SML's List.tabulate *)
+let tabulate(n: Int f: All(i: Int) Int): List =
+    begin
+        let var l = nil
+        for i = n - 1 downto 0 do l := cons(f(i) l) end
+        l
+    end
+
+let merge(l1: List l2: List): List =
+    begin
+        let rec revapp(l: List acc: List): List =
+            case l
+                when nil then acc
+                when cons with c then revapp(c.tl cons(c.hd acc))
+            end
+        let rec merging(l1: List l2: List acc: List): List =
+            case l1
+                when nil then revapp(acc l2)
+                when cons with c1 then
+                    case l2
+                        when nil then revapp(acc l1)
+                        when cons with c2 then
+                            if c1.hd <= c2.hd then merging(c1.tl l2 cons(c1.hd acc))
+                            else merging(l1 c2.tl cons(c2.hd acc))
+                            end
+                    end
+            end
+        merging(l1 l2 nil)
+    end
+
+let doit(size: Int): Ok =
+    begin
+        let len = 100000
+        let l1 = tabulate(len fun(i: Int): Int i * 2)
+        let l2 = tabulate(len fun(i: Int): Int {i * 2} + 1)
+        let test(): Ok = if 0 isnot merge(l1 l2)!cons.hd then raise bench.bug end end
+        for i = 1 upto size do test() end
+    end
+
+doit(bench.count())

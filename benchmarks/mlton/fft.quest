@@ -1,0 +1,197 @@
+(* fft: a fast Fourier transform of 256 to 4194304 points (from the SML/NJ
+ * benchmark suite) *)
+
+import
+    support/bench : support/Bench
+    support/reals : support/Reals
+    real : RealOp
+    conv : Conv
+
+(* The original overrides print, so the benchmark is silent *)
+let print(s: String): Ok = ok
+
+let printr(r: Real): Ok = print(reals.fmtSci(r 14))
+let printi(i: Int): Ok = print(conv.int(i))
+
+(* SML's ~x, which negates zero too *)
+let neg(x: Real): Real = ~1.0 ** x
+
+let pi = 3.14159265358979323846
+
+let tpi = 2.0 ** pi
+
+let fft(px: Array(Real) py: Array(Real) np: Int): Int =
+    begin
+        let rec findNumPoints(i: Int m: Int): Tuple n: Int m: Int end =
+            if i < np then findNumPoints(i + i m + 1) else tuple let n = i let m = m end end
+        let nm = findNumPoints(2 1)
+        let n = nm.n
+        let m = nm.m
+        if n isnot np then
+            begin
+                let rec zero(i: Int): Ok = if i > n then ok else begin px[i] := 0.0 py[i] := 0.0 zero(i + 1) end end
+                zero(np + 1)
+                print("Use ") printi(n) print(" point fft\n")
+            end
+        end
+
+        let rec loopK(k: Int n2: Int): Ok =
+            if k >= m then ok
+            else
+                begin
+                    let n4 = n2 / 4
+                    let e = tpi // real.int(n2)
+                    let rec loopJ(j: Int a: Real): Ok =
+                        if j > n4 then ok
+                        else
+                            begin
+                                let a3 = 3.0 ** a
+                                let cc1 = real.cos(a)
+                                let ss1 = real.sin(a)
+                                let cc3 = real.cos(a3)
+                                let ss3 = real.sin(a3)
+                                let rec loopIs(start: Int id: Int): Ok =
+                                    if start >= n then ok
+                                    else
+                                        begin
+                                            let rec loopI0(i0: Int): Ok =
+                                                if i0 >= n then ok
+                                                else
+                                                    begin
+                                                        let i1 = i0 + n4
+                                                        let i2 = i1 + n4
+                                                        let i3 = i2 + n4
+                                                        let r1a = px[i0] -- px[i2]
+                                                        px[i0] := px[i0] ++ px[i2]
+                                                        let r2a = px[i1] -- px[i3]
+                                                        px[i1] := px[i1] ++ px[i3]
+                                                        let s1 = py[i0] -- py[i2]
+                                                        py[i0] := py[i0] ++ py[i2]
+                                                        let s2a = py[i1] -- py[i3]
+                                                        py[i1] := py[i1] ++ py[i3]
+                                                        let s3 = r1a -- s2a
+                                                        let r1 = r1a ++ s2a
+                                                        let s2 = r2a -- s1
+                                                        let r2 = r2a ++ s1
+                                                        px[i2] := {r1 ** cc1} -- {s2 ** ss1}
+                                                        py[i2] := {neg(s2) ** cc1} -- {r1 ** ss1}
+                                                        px[i3] := {s3 ** cc3} ++ {r2 ** ss3}
+                                                        py[i3] := {r2 ** cc3} -- {s3 ** ss3}
+                                                        loopI0(i0 + id)
+                                                    end
+                                                end
+                                            loopI0(start)
+                                            loopIs({{2 * id} - n2} + j 4 * id)
+                                        end
+                                    end
+                                loopIs(j 2 * n2)
+                                loopJ(j + 1 e ** real.int(j))
+                            end
+                        end
+                    loopJ(1 0.0)
+                    loopK(k + 1 n2 / 2)
+                end
+            end
+        loopK(1 n)
+
+        (* Last stage, length=2 butterfly *)
+        let rec loopIs(start: Int id: Int): Ok =
+            if start >= n then ok
+            else
+                begin
+                    let rec loopI0(i0: Int): Ok =
+                        if i0 > n then ok
+                        else
+                            begin
+                                let i1 = i0 + 1
+                                let r1 = px[i0]
+                                px[i0] := r1 ++ px[i1]
+                                px[i1] := r1 -- px[i1]
+                                let r1b = py[i0]
+                                py[i0] := r1b ++ py[i1]
+                                py[i1] := r1b -- py[i1]
+                                loopI0(i0 + id)
+                            end
+                        end
+                    loopI0(start)
+                    loopIs({2 * id} - 1 4 * id)
+                end
+            end
+        loopIs(1 4)
+
+        (* Bit reverse counter *)
+        let rec loopI(i: Int j: Int): Ok =
+            if i >= n then ok
+            else
+                begin
+                    if i < j then
+                        begin
+                            let xt = px[j]
+                            px[j] := px[i] px[i] := xt
+                            let yt = py[j]
+                            py[j] := py[i] py[i] := yt
+                        end
+                    end
+                    let rec loopK(k: Int j: Int): Int = if k < j then loopK(k / 2 j - k) else j + k end
+                    let j1 = loopK(n / 2 j)
+                    loopI(i + 1 j1)
+                end
+            end
+        loopI(1 1)
+
+        n
+    end
+
+let abs(x: Real): Real = if x >>= 0.0 then x else neg(x) end
+
+let test(np: Int): Ok =
+    begin
+        printi(np) print("... ")
+        let enp = real.int(np)
+        let npm = {np / 2} - 1
+        let pxr = array of(np + 2 0.0)
+        let pxi = array of(np + 2 0.0)
+        let t = pi // enp
+        pxr[1] := {enp -- 1.0} ** 0.5
+        pxi[1] := 0.0
+        let n2 = np / 2
+        pxr[n2 + 1] := ~0.5
+        pxi[n2 + 1] := 0.0
+        let rec loopI(i: Int): Ok =
+            if i > npm then ok
+            else
+                begin
+                    let j = np - i
+                    pxr[i + 1] := ~0.5
+                    pxr[j + 1] := ~0.5
+                    let z = t ** real.int(i)
+                    let y = ~0.5 ** {real.cos(z) // real.sin(z)}
+                    pxi[i + 1] := y
+                    pxi[j + 1] := neg(y)
+                    loopI(i + 1)
+                end
+            end
+        loopI(1)
+        fft(pxr pxi np)
+        Let Errors = Tuple zr: Real zi: Real end
+        let rec loopErr(i: Int zr: Real zi: Real kr: Int ki: Int): Errors =
+            if i >= np then tuple let zr = zr let zi = zi end
+            else
+                begin
+                    let a = abs(pxr[i + 1] -- real.int(i))
+                    let zr1 = if zr << a then a else zr end
+                    let kr1 = if zr << a then i else kr end
+                    let b = abs(pxi[i + 1])
+                    let zi1 = if zi << b then b else zi end
+                    let ki1 = if zi << b then i else ki end
+                    loopErr(i + 1 zr1 zi1 kr1 ki1)
+                end
+            end
+        let z = loopErr(0 0.0 0.0 0 0)
+        let zm = if abs(z.zr) << abs(z.zi) then z.zi else z.zr end
+        printr(zm) print("\n")
+    end
+
+let rec loopNp(i: Int np: Int): Ok = if i > 15 then ok else begin test(np) loopNp(i + 1 np * 2) end end
+
+for i = 1 upto bench.count() do loopNp(1 256) end

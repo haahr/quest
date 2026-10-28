@@ -1,0 +1,70 @@
+(* psdes-random: the pseudo-DES random number generator of Numerical Recipes
+ * in C (page 302), summing 150000000 32-bit random words *)
+
+import
+    support/bench : support/Bench
+    word : Word
+    util/strutil : util/Strutil
+
+(* SML's Word32 arithmetic, in the low 32 bits of a word *)
+let mask32 = word.fromInt(4294967295)
+let w(n: Int): word.T = word.fromInt(n)
+let hex(s: String): word.T = strutil.toWordBase(s 16)
+let add32(a: word.T b: word.T): word.T = word.andBits(word.add(a b) mask32)
+let mul32(a: word.T b: word.T): word.T = word.andBits(word.mul(a b) mask32)
+let notb32(a: word.T): word.T = word.xorBits(a mask32)
+let shl32(a: word.T n: Int): word.T = word.andBits(word.shift(a n) mask32)
+let shr32(a: word.T n: Int): word.T = word.shift(a 0 - n)
+let eq(a: word.T b: word.T): Bool = word.toInt(a) is word.toInt(b)
+
+Let Pair = Tuple l: word.T r: word.T end
+
+let once(): Ok =
+    begin
+        let natFold(start: Int stop: Int ac: Pair f: All(i: Int ac: Pair) Pair): Pair =
+            begin
+                let rec go(i: Int ac: Pair): Pair = if i is stop then ac else go(i + 1 f(i ac)) end
+                go(start ac)
+            end
+        let niter = 4
+        let make(l: Array(word.T)): All(i: Int) word.T = fun(i: Int): word.T l[i]
+        let c1 = make(array of hex("baa96887") hex("1e17d32c") hex("03bdcd3c") hex("0f33d1b2") end)
+        let c2 = make(array of hex("4b0f3b58") hex("e874f0c3") hex("6955c5a6") hex("55a7ca46") end)
+        let half = 16
+        let reverse(x: word.T): word.T = word.orBits(shr32(x half) shl32(x half))
+        let psdes(lword: word.T irword: word.T): Pair =
+            natFold(0 niter tuple let l = lword let r = irword end fun(i: Int p: Pair): Pair
+                begin
+                    let ia = word.xorBits(p.r c1(i))
+                    let itmpl = word.andBits(ia hex("ffff"))
+                    let itmph = shr32(ia half)
+                    let ib = add32(mul32(itmpl itmpl) notb32(mul32(itmph itmph)))
+                    tuple let l = p.r
+                        let r = word.xorBits(p.l add32(mul32(itmpl itmph) word.xorBits(c2(i) reverse(ib)))) end
+                end)
+        let state = tuple let var lword = w(13) let var irword = w(14) let var needTo = true end
+        let next(): word.T =
+            if state.needTo then
+                begin
+                    let p = psdes(state.lword state.irword)
+                    state.lword := p.l
+                    state.irword := p.r
+                    state.needTo := false
+                    p.l
+                end
+            else
+                begin state.needTo := true state.irword end
+            end
+        let rec go(i: Int acc: word.T): Ok =
+            if i is 0 then if not(eq(acc hex("132B1B67"))) then raise bench.bug end end
+            else go(i - 1 add32(acc next()))
+            end
+        go(150000000 w(0))
+    end
+
+let doit(n: Int): Ok = for i = 1 upto n do once() end
+
+(* The original's last line, run when the program starts, before the harness
+ * calls doit *)
+doit(2)
+doit(bench.count())

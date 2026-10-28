@@ -1,0 +1,741 @@
+(* knuth-bendix: Knuth-Bendix completion of the axioms of a group with three
+ * extra equations, ordered by the recursive path ordering (from the SML/NJ
+ * benchmark suite, a translation of a CAML program) *)
+
+import
+    support/bench : support/Bench
+    support/lists : support/Lists
+    stringOp = string : StringOp
+    conv : Conv
+    writer : Writer
+
+(* The original's length, @, rev, app, and map are those of lists *)
+
+(******* Quelques definitions du prelude CAML **************)
+
+let failure: Exception(String) = exception failure: String end
+
+let failwith(A::TYPE)(s: String): A = raise failure with s end
+
+let itList(A::TYPE B::TYPE)(f: All(a: A b: B) A a: A l: lists.T(B)): A =
+    begin
+        let rec itRec(a: A l: lists.T(B)): A = case l when cons with c then itRec(f(a c.hd) c.tl) else a end
+        itRec(a l)
+    end
+
+let itList2(A::TYPE B::TYPE C::TYPE)(f: All(a: A b: B c: C) A a: A l1: lists.T(B) l2: lists.T(C)): A =
+    begin
+        let rec itRec(a: A l1: lists.T(B) l2: lists.T(C)): A =
+            case l1
+                when nil then case l2 when nil then a else failwith(:A)("it_list2") end
+                when cons with c1 then
+                    case l2 when cons with c2 then itRec(f(a c1.hd c2.hd) c1.tl c2.tl) else failwith(:A)("it_list2") end
+            end
+        itRec(a l1 l2)
+    end
+
+let exists(A::TYPE)(p: All(a: A) Bool l: lists.T(A)): Bool =
+    begin
+        let rec existsRec(l: lists.T(A)): Bool = case l when cons with c then p(c.hd) orif existsRec(c.tl)
+            else false end
+        existsRec(l)
+    end
+
+let forAll(A::TYPE)(p: All(a: A) Bool l: lists.T(A)): Bool =
+    begin
+        let rec forAllRec(l: lists.T(A)): Bool = case l when cons with c then p(c.hd) andif forAllRec(c.tl)
+            else true end
+        forAllRec(l)
+    end
+
+let tryFind(A::TYPE B::TYPE)(f: All(a: A) B l: lists.T(A)): B =
+    begin
+        let rec tryFindRec(l: lists.T(A)): B =
+            case l
+                when nil then failwith(:B)("try_find")
+                when cons with c then try f(c.hd) when failure then tryFindRec(c.tl) end
+            end
+        tryFindRec(l)
+    end
+
+Let Partition(A::TYPE) = Tuple pos: lists.T(A) neg: lists.T(A) end
+let partition(A::TYPE)(p: All(a: A) Bool l: lists.T(A)): Partition(A) =
+    begin
+        let rec partRec(l: lists.T(A)): Partition(A) =
+            case l
+                when nil then tuple let pos = lists.nil(:A) let neg = lists.nil(:A) end
+                when cons with c then
+                    begin
+                        let r = partRec(c.tl)
+                        if p(c.hd) then tuple let pos = lists.cons(:A)(c.hd r.pos) let neg = r.neg end
+                        else tuple let pos = r.pos let neg = lists.cons(:A)(c.hd r.neg) end
+                        end
+                    end
+            end
+        partRec(l)
+    end
+
+(* 3- Les ensembles et les listes d'association. SML's polymorphic equality is
+ * eq, passed in. *)
+
+let mem(A::TYPE)(eq: All(a: A b: A) Bool a: A l: lists.T(A)): Bool =
+    begin
+        let rec memRec(l: lists.T(A)): Bool = case l when cons with c then eq(a c.hd) orif memRec(c.tl) else false end
+        memRec(l)
+    end
+
+let intEq(a: Int b: Int): Bool = a is b
+
+(* 4- Les sorties. The original's second print, which prints nothing,
+ * replaces its first. *)
+
+let print(s: String): Ok = ok
+let printString = print
+let printNum(n: Int): Ok = print(conv.int(n))
+let printNewline(): Ok = print("\n")
+let message(s: String): Ok = begin print(s) print("\n") end
+
+(* 5- Les ensembles: this union replaces the original's first *)
+
+let union(l1: lists.T(Int) l2: lists.T(Int)): lists.T(Int) =
+    begin
+        let rec unionRec(l: lists.T(Int)): lists.T(Int) =
+            case l
+                when nil then l1
+                when cons with c then if mem(:Int)(intEq c.hd l1) then unionRec(c.tl)
+                    else lists.cons(:Int)(c.hd unionRec(c.tl)) end
+            end
+        unionRec(l2)
+    end
+
+(****************** Term manipulations *****************)
+
+(* Var is variable: var is a keyword *)
+Let Rec Term = Option variable with n: Int end term with oper: String sons: lists.T(Term) end end
+Let Terms = lists.T(Term)
+Let Pair = Tuple l: Term r: Term end
+Let Binding = Tuple v: Int t: Term end
+Let Subst = lists.T(Binding)
+
+let variable(n: Int): Term = option variable of Term with n end
+let term(oper: String sons: Terms): Term = option term of Term with oper sons end
+let pair(l: Term r: Term): Pair = tuple let l = l let r = r end
+
+(* SML's = on terms *)
+let rec termEq(a: Term b: Term): Bool =
+    case a
+        when variable with x then case b when variable with y then x.n is y.n else false end
+        when term with x then
+            case b
+                when term with y then stringOp.equal(x.oper y.oper) andif termsEq(x.sons y.sons)
+                else false
+            end
+    end
+and termsEq(a: Terms b: Terms): Bool =
+    case a
+        when nil then lists.null(:Term)(b)
+        when cons with x then case b when cons with y then termEq(x.hd y.hd) andif termsEq(x.tl y.tl) else false end
+    end
+
+let pairEq(a: Pair b: Pair): Bool = termEq(a.l b.l) andif termEq(a.r b.r)
+
+let memAssoc(a: Int l: Subst): Bool =
+    begin
+        let rec memRec(l: Subst): Bool = case l when cons with c then {a is c.hd.v} orif memRec(c.tl) else false end
+        memRec(l)
+    end
+
+let assoc(a: Int l: Subst): Term =
+    begin
+        let rec assocRec(l: Subst): Term =
+            case l when cons with c then if a is c.hd.v then c.hd.t else assocRec(c.tl) end
+                else failwith(:Term)("find") end
+        assocRec(l)
+    end
+
+let rec vars(t: Term): lists.T(Int) =
+    case t
+        when variable with x then lists.cons(:Int)(x.n lists.nil(:Int))
+        when term with x then varsOfList(x.sons)
+    end
+and varsOfList(l: Terms): lists.T(Int) =
+    case l when cons with c then union(vars(c.hd) varsOfList(c.tl)) else lists.nil(:Int) end
+
+let substitute(subst: Subst): All(t: Term) Term =
+    begin
+        let rec substRec(t: Term): Term =
+            case t
+                when term with x then term(x.oper lists.map(:Term :Term)(substRec x.sons))
+                when variable with x then try assoc(x.n subst) when failure then t end
+            end
+        substRec
+    end
+
+let change(f: All(t: Term) Term l: Terms n: Int): Terms =
+    begin
+        let rec changeRec(l: Terms n: Int): Terms =
+            case l
+                when cons with c then if n is 1 then lists.cons(:Term)(f(c.hd) c.tl)
+                    else lists.cons(:Term)(c.hd changeRec(c.tl n - 1)) end
+                else failwith(:Terms)("change")
+            end
+        changeRec(l n)
+    end
+
+(* Term replacement replace M u N => M[u<-N] *)
+let replace(m: Term u: lists.T(Int) n: Term): Term =
+    begin
+        let rec reprec(t: Term u: lists.T(Int)): Term =
+            case u
+                when nil then n
+                when cons with c then
+                    case t
+                        when term with x then term(x.oper change(fun(p: Term): Term reprec(p c.tl) x.sons c.hd))
+                        else failwith(:Term)("replace")
+                    end
+            end
+        reprec(m u)
+    end
+
+(* matching = - : (term -> term -> subst) *)
+let matching(term1: Term term2: Term): Subst =
+    begin
+        let rec matchRec(subst: Subst t1: Term t2: Term): Subst =
+            case t1
+                when variable with x then
+                    if memAssoc(x.n subst) then
+                        if termEq(t2 assoc(x.n subst)) then subst else failwith(:Subst)("matching") end
+                    else lists.cons(:Binding)(tuple let v = x.n let t = t2 end subst)
+                    end
+                when term with x then
+                    case t2
+                        when term with y then
+                            if stringOp.equal(x.oper y.oper)
+                                then itList2(:Subst :Term :Term)(matchRec subst x.sons y.sons)
+                            else failwith(:Subst)("matching")
+                            end
+                        else failwith(:Subst)("matching")
+                    end
+            end
+        matchRec(lists.nil(:Binding) term1 term2)
+    end
+
+(* A naive unification algorithm *)
+
+let compsubst(subst1: Subst subst2: Subst): Subst =
+    lists.append(:Binding)(
+        lists.map(:Binding :Binding)(fun(b: Binding): Binding tuple let v = b.v
+            let t = substitute(subst1)(b.t) end subst2)
+        subst1)
+
+let occurs(n: Int): All(t: Term) Bool =
+    begin
+        let rec occurRec(t: Term): Bool =
+            case t
+                when variable with x then x.n is n
+                when term with x then exists(:Term)(occurRec x.sons)
+            end
+        occurRec
+    end
+
+let rec unify(term1: Term term2: Term): Subst =
+    case term1
+        when variable with x then
+            if termEq(term1 term2) then lists.nil(:Binding)
+            elsif occurs(x.n)(term2) then failwith(:Subst)("unify")
+            else lists.cons(:Binding)(tuple let v = x.n let t = term2 end lists.nil(:Binding))
+            end
+        when term with x then
+            case term2
+                when variable with y then
+                    if occurs(y.n)(term1) then failwith(:Subst)("unify")
+                    else lists.cons(:Binding)(tuple let v = y.n let t = term1 end lists.nil(:Binding))
+                    end
+                when term with y then
+                    if stringOp.equal(x.oper y.oper) then
+                        itList2(:Subst :Term :Term)(fun(s: Subst t1: Term t2: Term): Subst
+                            compsubst(unify(substitute(s)(t1) substitute(s)(t2)) s)
+                            lists.nil(:Binding) x.sons y.sons)
+                    else failwith(:Subst)("unify")
+                    end
+            end
+    end
+
+(* We need to print terms with variables independently from input terms
+ * obtained by parsing. We give arbitrary names v1,v2,... to their
+ * variables. *)
+
+let infixes = lists.fromArray(:String)(array of "+" "*" end)
+
+let rec prettyTerm(t: Term): Ok =
+    case t
+        when variable with x then begin printString("v") printNum(x.n) end
+        when term with x then
+            if mem(:String)(stringOp.equal x.oper infixes) then
+                case x.sons
+                    when cons with s1 then
+                        case s1.tl
+                            when cons with s2 then
+                                if lists.null(:Term)(s2.tl)
+                                    then begin prettyClose(s1.hd) printString(x.oper) prettyClose(s2.hd) end
+                                else failwith(:Ok)("pretty_term : infix arity <> 2")
+                                end
+                            else failwith(:Ok)("pretty_term : infix arity <> 2")
+                        end
+                    else failwith(:Ok)("pretty_term : infix arity <> 2")
+                end
+            else
+                begin
+                    printString(x.oper)
+                    case x.sons
+                        when nil then ok
+                        when cons with c then
+                            begin
+                                printString("(")
+                                prettyTerm(c.hd)
+                                lists.app(:Term)(fun(t: Term): Ok begin printString(",") prettyTerm(t) end c.tl)
+                                printString(")")
+                            end
+                    end
+                end
+            end
+    end
+and prettyClose(m: Term): Ok =
+    case m
+        when term with x then
+            if mem(:String)(stringOp.equal x.oper infixes)
+                then begin printString("(") prettyTerm(m) printString(")") end
+            else prettyTerm(m)
+            end
+        else prettyTerm(m)
+    end
+
+(****************** Equation manipulations *************)
+
+(* A rule: its number, its number of variables, and its equation *)
+Let Rule = Tuple k: Int n: Int eq: Pair end
+Let Rules = lists.T(Rule)
+Let Standard = Tuple n: Int eq: Pair end
+
+(* standardizes an equation so its variables are 1,2,... *)
+let mkRule(lhs: Term rhs: Term): Standard =
+    begin
+        let allVars = union(vars(lhs) vars(rhs))
+        Let State = Tuple i: Int sigma: Subst end
+        let s = itList(:State :Int)(fun(st: State v: Int): State
+            tuple let i = st.i + 1
+                let sigma = lists.cons(:Binding)(tuple let v = v let t = variable(st.i) end st.sigma) end
+            tuple let i = 1 let sigma = lists.nil(:Binding) end allVars)
+        tuple let n = s.i - 1 let eq = pair(substitute(s.sigma)(lhs) substitute(s.sigma)(rhs)) end
+    end
+
+(* checks that rules are numbered in sequence and returns their number *)
+let checkRules(l: Rules): Int =
+    itList(:Int :Rule)(fun(n: Int r: Rule): Int if r.k is {n + 1} then r.k
+        else failwith(:Int)("Rule numbers not in sequence") end 0 l)
+
+let prettyRule(r: Rule): Ok =
+    begin
+        printNum(r.k) printString(" : ")
+        prettyTerm(r.eq.l) printString(" = ") prettyTerm(r.eq.r)
+        printNewline()
+    end
+
+let prettyRules(l: Rules): Ok = lists.app(:Rule)(prettyRule l)
+
+(****************** Rewriting **************************)
+
+(* Top-level rewriting. Let eq:L=R be an equation, M be a term such that
+ * L<=M. With sigma = matching L M, we define the image of M by eq as
+ * sigma(R) *)
+let reduce(l: Term m: Term): All(t: Term) Term = substitute(matching(l m))
+
+(* A more efficient version of can (rewrite1 (L,R)) for R arbitrary *)
+let reducible(l: Term): All(m: Term) Bool =
+    begin
+        let rec redrec(m: Term): Bool =
+            try begin matching(l m) true end
+            when failure then case m when term with x then exists(:Term)(redrec x.sons) else false end
+            end
+        redrec
+    end
+
+(* mreduce : rules -> term -> term *)
+let mreduce(rules: Rules m: Term): Term =
+    begin
+        let redex(r: Rule): Term = reduce(r.eq.l m)(r.eq.r)
+        tryFind(:Rule :Term)(redex rules)
+    end
+
+(* One step of rewriting in leftmost-outermost strategy, with multiple rules;
+ * fails if no redex is found *)
+let mrewrite1(rules: Rules): All(m: Term) Term =
+    begin
+        let rec rewrec(m: Term): Term =
+            try mreduce(rules m)
+            when failure then
+                begin
+                    let rec tryrec(l: Terms): Terms =
+                        case l
+                            when nil then failwith(:Terms)("mrewrite1")
+                            when cons with c then
+                                try lists.cons(:Term)(rewrec(c.hd) c.tl)
+                                when failure then lists.cons(:Term)(c.hd tryrec(c.tl))
+                                end
+                        end
+                    case m
+                        when term with x then term(x.oper tryrec(x.sons))
+                        else failwith(:Term)("mrewrite1")
+                    end
+                end
+            end
+        rewrec
+    end
+
+(* Iterating rewrite1. Returns a normal form. May loop forever *)
+let mrewriteAll(rules: Rules): All(m: Term) Term =
+    begin
+        let rec rewLoop(m: Term): Term = try rewLoop(mrewrite1(rules)(m)) when failure then m end
+        rewLoop
+    end
+
+(************************ Recursive Path Ordering ****************************)
+
+Let Ordering = Option greater equal notGE end
+Let Order = All(p: Pair) Ordering
+
+let greaterOrd = option greater of Ordering end
+let equalOrd = option equal of Ordering end
+let notGEOrd = option notGE of Ordering end
+
+let geOrd(order: Order p: Pair): Bool = case order(p) when notGE then false else true end
+let gtOrd(order: Order p: Pair): Bool = case order(p) when greater then true else false end
+let eqOrd(order: Order p: Pair): Bool = case order(p) when equal then true else false end
+
+let remEq(equiv: All(p: Pair) Bool x: Term l: Terms): Terms =
+    begin
+        let rec remrec(l: Terms): Terms =
+            case l
+                when nil then failwith(:Terms)("rem_eq")
+                when cons with c then if equiv(pair(x c.hd)) then c.tl else lists.cons(:Term)(c.hd remrec(c.tl)) end
+            end
+        remrec(l)
+    end
+
+Let TermsPair = Tuple x: Terms y: Terms end
+
+let diffEq(equiv: All(p: Pair) Bool x: Terms y: Terms): TermsPair =
+    begin
+        let rec diffrec(x: Terms y: Terms): TermsPair =
+            case x
+                when nil then tuple let x = x let y = y end
+                when cons with c then
+                    try diffrec(c.tl remEq(equiv c.hd y))
+                    when failure then
+                        begin
+                            let r = diffrec(c.tl y)
+                            tuple let x = lists.cons(:Term)(c.hd r.x) let y = r.y end
+                        end
+                    end
+            end
+        if lists.length(:Term)(x) > lists.length(:Term)(y) then diffrec(y x) else diffrec(x y) end
+    end
+
+(* lexicographic extension of order *)
+let lexExt(order: Order p: Pair): Ordering =
+    case p.l
+        when term with x then
+            case p.r
+                when term with y then
+                    begin
+                        let m = p.l
+                        let n = p.r
+                        let rec lexrec(l1: Terms l2: Terms): Ordering =
+                            case l1
+                                when nil then case l2 when nil then equalOrd else notGEOrd end
+                                when cons with c1 then
+                                    case l2
+                                        when nil then greaterOrd
+                                        when cons with c2 then
+                                            case order(pair(c1.hd c2.hd))
+                                                when greater then
+                                                    if forAll(:Term)(fun(n1: Term): Bool gtOrd(order pair(m n1)) c2.tl)
+                                                        then greaterOrd
+                                                    else notGEOrd
+                                                    end
+                                                when equal then lexrec(c1.tl c2.tl)
+                                                when notGE then
+                                                    if exists(:Term)(fun(m1: Term): Bool geOrd(order pair(m1 n)) c1.tl)
+                                                        then greaterOrd
+                                                    else notGEOrd
+                                                    end
+                                            end
+                                    end
+                            end
+                        lexrec(x.sons y.sons)
+                    end
+                else failwith(:Ordering)("lex_ext")
+            end
+        else failwith(:Ordering)("lex_ext")
+    end
+
+(* recursive path ordering *)
+let rpo(opOrder: All(op1: String op2: String) Ordering ext: All(order: Order p: Pair) Ordering): Order =
+    begin
+        let rec rporec(p: Pair): Ordering =
+            if termEq(p.l p.r) then equalOrd
+            else
+                case p.l
+                    when variable then notGEOrd
+                    when term with x then
+                        case p.r
+                            when variable with n then if occurs(n.n)(p.l) then greaterOrd else notGEOrd end
+                            when term with y then
+                                case opOrder(x.oper y.oper)
+                                    when greater then
+                                        if forAll(:Term)(fun(n1: Term): Bool gtOrd(rporec pair(p.l n1)) y.sons)
+                                            then greaterOrd
+                                        else notGEOrd
+                                        end
+                                    when equal then ext(rporec p)
+                                    when notGE then
+                                        if exists(:Term)(fun(m1: Term): Bool geOrd(rporec pair(m1 p.r)) x.sons)
+                                            then greaterOrd
+                                        else notGEOrd
+                                        end
+                                end
+                        end
+                end
+            end
+        rporec
+    end
+
+(****************** Critical pairs *********************)
+
+(* A position and a substitution *)
+Let Site = Tuple u: lists.T(Int) sigma: Subst end
+Let Sites = lists.T(Site)
+Let Collated = Tuple pairs: Sites n: Int end
+
+(* All (u,sig) such that N/u (&var) unifies with M, with principal unifier
+ * sig *)
+let super(m: Term): All(n: Term) Sites =
+    begin
+        let rec suprec(n: Term): Sites =
+            case n
+                when term with x then
+                    begin
+                        let collate(c: Collated son: Term): Collated =
+                            tuple
+                                let pairs = lists.append(:Site)(c.pairs lists.map(:Site :Site)(fun(s: Site): Site
+                                    tuple let u = lists.cons(:Int)(c.n s.u) let sigma = s.sigma end suprec(son)))
+                                let n = c.n + 1
+                            end
+                        let insides = itList(:Collated :Term)(collate tuple let pairs = lists.nil(:Site)
+                            let n = 1 end x.sons).pairs
+                        try lists.cons(:Site)(tuple let u = lists.nil(:Int) let sigma = unify(m n) end insides)
+                        when failure then insides
+                        end
+                    end
+                else lists.nil(:Site)
+            end
+        suprec
+    end
+
+(* All (u,sigma), u&[], such that N/u unifies with M *)
+let superStrict(m: Term n: Term): Sites =
+    case n
+        when term with x then
+            begin
+                let collate(c: Collated son: Term): Collated =
+                    tuple
+                        let pairs = lists.append(:Site)(c.pairs lists.map(:Site :Site)(fun(s: Site): Site
+                            tuple let u = lists.cons(:Int)(c.n s.u) let sigma = s.sigma end super(m)(son)))
+                        let n = c.n + 1
+                    end
+                itList(:Collated :Term)(collate tuple let pairs = lists.nil(:Site) let n = 1 end x.sons).pairs
+            end
+        else lists.nil(:Site)
+    end
+
+Let Pairs = lists.T(Pair)
+
+(* Critical pairs of L1=R1 with L2=R2 *)
+let criticalPairs(e1: Pair e2: Pair): Pairs =
+    begin
+        let mkPair(s: Site): Pair = pair(substitute(s.sigma)(replace(e2.l s.u e1.r)) substitute(s.sigma)(e2.r))
+        lists.map(:Site :Pair)(mkPair super(e1.l)(e2.l))
+    end
+
+(* Strict critical pairs of L1=R1 with L2=R2 *)
+let strictCriticalPairs(e1: Pair e2: Pair): Pairs =
+    begin
+        let mkPair(s: Site): Pair = pair(substitute(s.sigma)(replace(e2.l s.u e1.r)) substitute(s.sigma)(e2.r))
+        lists.map(:Site :Pair)(mkPair superStrict(e1.l e2.l))
+    end
+
+(* All critical pairs of eq1 with eq2 *)
+let mutualCriticalPairs(eq1: Pair eq2: Pair): Pairs =
+    lists.append(:Pair)(strictCriticalPairs(eq1 eq2) criticalPairs(eq2 eq1))
+
+(* Renaming of variables *)
+let rename(n: Int p: Pair): Pair =
+    begin
+        let rec renRec(t: Term): Term =
+            case t
+                when variable with x then variable(x.n + n)
+                when term with x then term(x.oper lists.map(:Term :Term)(renRec x.sons))
+            end
+        pair(renRec(p.l) renRec(p.r))
+    end
+
+(************************ Completion ******************************)
+
+let deletionMessage(r: Rule): Ok = begin printString("Rule ") printNum(r.k) message(" deleted") end
+
+(* Generate failure message *)
+let nonOrientable(p: Pair): Ok = begin prettyTerm(p.l) printString(" = ") prettyTerm(p.r) printNewline() end
+
+(* Improved Knuth-Bendix completion procedure. A failure carrying "find",
+ * rule k or l having been deleted, is the only one next_criticals handles. *)
+let kbCompletion(greater: All(p: Pair) Bool): All(n: Int rules: Rules failures: Pairs k: Int l: Int eqs: Pairs) Rules =
+    begin
+        let rec kbrec(n: Int rules: Rules failures: Pairs k: Int l: Int eqs: Pairs): Rules =
+            begin
+                let normalForm = mrewriteAll(rules)
+                let getRule(k: Int): Standard =
+                    begin
+                        let rec find(l: Rules): Standard =
+                            case l
+                                when cons with c then if k is c.hd.k then tuple let n = c.hd.n let eq = c.hd.eq end
+                                    else find(c.tl) end
+                                else failwith(:Standard)("find")
+                            end
+                        find(rules)
+                    end
+                let rec process(failures: Pairs k: Int l: Int eqs: Pairs): Rules =
+                    case eqs
+                        when nil then
+                            if k < l then nextCriticals(failures k + 1 l)
+                            elsif l < n then nextCriticals(failures 1 l + 1)
+                            else
+                                case failures
+                                    when nil then rules (* successful completion *)
+                                    else
+                                        begin
+                                            message("Non-orientable equations :")
+                                            lists.app(:Pair)(nonOrientable failures)
+                                            failwith(:Rules)("kb_completion")
+                                        end
+                                end
+                            end
+                        when cons with e then
+                            begin
+                                let m1 = normalForm(e.hd.l)
+                                let n1 = normalForm(e.hd.r)
+                                let enterRule(left: Term right: Term): Rules =
+                                    begin
+                                        let std = mkRule(left right)
+                                        let newRule: Rule = tuple let k = n + 1 let n = std.n let eq = std.eq end
+                                        prettyRule(newRule)
+                                        let leftReducible(r: Rule): Bool = reducible(left)(r.eq.l)
+                                        let parts = partition(:Rule)(leftReducible rules)
+                                        lists.app(:Rule)(deletionMessage parts.pos)
+                                        let rightReduce(r: Rule): Rule =
+                                            begin
+                                                let std = mkRule(r.eq.l
+                                                    mrewriteAll(lists.cons(:Rule)(newRule rules))(r.eq.r))
+                                                tuple let k = r.k let n = std.n let eq = std.eq end
+                                            end
+                                        let irreds = lists.map(:Rule :Rule)(rightReduce parts.neg)
+                                        let eqs1 = lists.map(:Rule :Pair)(fun(r: Rule): Pair r.eq parts.pos)
+                                        kbrec(n + 1 lists.cons(:Rule)(newRule irreds) lists.nil(:Pair) k l
+                                            lists.append(:Pair)(e.tl lists.append(:Pair)(eqs1 failures)))
+                                    end
+                                if termEq(m1 n1) then process(failures k l e.tl)
+                                elsif greater(pair(m1 n1)) then enterRule(m1 n1)
+                                elsif greater(pair(n1 m1)) then enterRule(n1 m1)
+                                else process(lists.cons(:Pair)(pair(m1 n1) failures) k l e.tl)
+                                end
+                            end
+                    end
+                and nextCriticals(failures: Pairs k: Int l: Int): Rules =
+                    try
+                        begin
+                            let rl = getRule(l)
+                            if k is l then process(failures k l strictCriticalPairs(rl.eq rename(rl.n rl.eq)))
+                            else
+                                try
+                                    begin
+                                        let rk = getRule(k)
+                                        process(failures k l mutualCriticalPairs(rl.eq rename(rl.n rk.eq)))
+                                    end
+                                when failure with s then
+                                    (* rule k deleted *)
+                                    if stringOp.equal(s "find") then nextCriticals(failures k + 1 l)
+                                    else raise failure with s end
+                                    end
+                                end
+                            end
+                        end
+                    when failure with s then
+                        (* rule l deleted *)
+                        if stringOp.equal(s "find") then nextCriticals(failures 1 l + 1)
+                            else raise failure with s end end
+                    end
+                process(failures k l eqs)
+            end
+        kbrec
+    end
+
+let kbComplete(greater: All(p: Pair) Bool completeRules: Rules rules: Rules): Ok =
+    begin
+        let n = checkRules(completeRules)
+        let eqs = lists.map(:Rule :Pair)(fun(r: Rule): Pair r.eq rules)
+        let completedRules = kbCompletion(greater)(n completeRules lists.nil(:Pair) n n eqs)
+        message("Canonical set found :")
+        prettyRules(lists.rev(:Rule)(completedRules))
+    end
+
+let rule(k: Int n: Int l: Term r: Term): Rule = tuple let k = k let n = n let eq = pair(l r) end
+let t0(oper: String): Term = term(oper lists.nil(:Term))
+let t1(oper: String a: Term): Term = term(oper lists.cons(:Term)(a lists.nil(:Term)))
+let t2(oper: String a: Term b: Term): Term = term(oper lists.cons(:Term)(a lists.cons(:Term)(b lists.nil(:Term))))
+let v(n: Int): Term = variable(n)
+
+let geomRules = lists.fromArray(:Rule)(array of
+    rule(1 1 t2("*" t0("U") v(1)) v(1))
+    rule(2 1 t2("*" t1("I" v(1)) v(1)) t0("U"))
+    rule(3 3 t2("*" t2("*" v(1) v(2)) v(3)) t2("*" v(1) t2("*" v(2) v(3))))
+    rule(4 0 t2("*" t0("A") t0("B")) t2("*" t0("B") t0("A")))
+    rule(5 0 t2("*" t0("C") t0("C")) t0("U"))
+    rule(6 0 t2("*" t0("C") t2("*" t0("A") t1("I" t0("C")))) t1("I" t0("A")))
+    rule(7 0 t2("*" t0("C") t2("*" t0("B") t1("I" t0("C")))) t0("B"))
+end)
+
+let match: Exception = exception match: Ok end
+
+let groupRank(s: String): Int =
+    if stringOp.equal(s "U") then 0
+    elsif stringOp.equal(s "*") then 1
+    elsif stringOp.equal(s "I") then 2
+    elsif stringOp.equal(s "B") then 3
+    elsif stringOp.equal(s "C") then 4
+    elsif stringOp.equal(s "A") then 5
+    else raise match end
+    end
+
+let groupPrecedence(op1: String op2: String): Ordering =
+    begin
+        let r1 = groupRank(op1)
+        let r2 = groupRank(op2)
+        if r1 is r2 then equalOrd elsif r1 > r2 then greaterOrd else notGEOrd end
+    end
+
+let groupOrder = rpo(groupPrecedence lexExt)
+
+let greater(p: Pair): Bool = case groupOrder(p) when greater then true else false end
+
+let doit(): Ok = kbComplete(greater lists.nil(:Rule) geomRules)
+
+for i = 1 upto bench.count() do doit() end

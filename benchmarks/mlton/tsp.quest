@@ -1,0 +1,382 @@
+(* tsp: a traveling salesman tour of 2097151 random points, by Karp's
+ * partitioning heuristic, with a closest-point heuristic for small problems
+ * (from the SML/NJ benchmark suite; COPYRIGHT (c) 1994 AT&T Bell
+ * Laboratories) *)
+
+import
+    support/bench : support/Bench
+    support/reals : support/Reals
+    real : RealOp
+    conv : Conv
+    word : Word
+    writer : Writer
+
+(* tree.sml: Trees for the TSP program. A node's prev and next fields are the
+ * original's refs; two nodes have the same refs exactly when they are the
+ * same node. *)
+
+Let Rec Tree = Option null nd with node: Node end end
+and Node = Tuple left: Tree right: Tree x: Real y: Real sz: Int var prev: Tree var next: Tree end
+
+let null = option null of Tree end
+
+let mkNode(l: Tree r: Tree x: Real y: Real sz: Int): Tree =
+    begin
+        let node: Node = tuple let left = l let right = r let x = x let y = y let sz = sz let var prev = null
+            let var next = null end
+        option nd of Tree with node end
+    end
+
+(* tsp.sml *)
+
+let failure: Exception(String) = exception failure: String end
+let match: Exception = exception match: Ok end
+
+(* The node of a tree that is not NULL, as the original's patterns T.ND{...}
+ * take it apart *)
+let nd(t: Tree): Node = case t when nd with x then x.node else raise match end end
+
+let setPrev(t: Tree x: Tree): Ok = nd(t).prev := x
+let setNext(t: Tree x: Tree): Ok = nd(t).next := x
+let link(a: Tree b: Tree): Ok = begin nd(a).next := b nd(b).prev := a end
+
+let sameNd(a: Tree b: Tree): Bool =
+    case a
+        when nd with x then case b when nd with y then x.node is y.node else false end
+        when null then case b when null then true else false end
+    end
+
+(* Find Euclidean distance from a to b *)
+let distance(a: Tree b: Tree): Real =
+    case a
+        when nd with p then
+            case b
+                when nd with q then
+                    real.sqrt({{p.node.x -- q.node.x} ** {p.node.x -- q.node.x}}
+                        ++ {{p.node.y -- q.node.y} ** {p.node.y -- q.node.y}})
+                else raise failure with "distance" end
+            end
+        else raise failure with "distance" end
+    end
+
+(* Sling tree nodes into a list -- requires root to be tail of list, and only
+ * fills in next field, not prev *)
+let rec makeList(t: Tree): Tree =
+    case t
+        when null then null
+        when nd with x then
+            begin
+                let l = makeList(x.node.left)
+                let r = makeList(x.node.right)
+                let retVal =
+                    case l
+                        when null then case r when null then t else begin setNext(x.node.right t) r end end
+                        else case r when null then begin setNext(x.node.left t) l end
+                            else begin setNext(x.node.right t) setNext(x.node.left r) l end
+                        end
+                    end
+                x.node.next := null
+                retVal
+            end
+    end
+
+(* Reverse orientation of list *)
+let reverse(t: Tree): Ok =
+    case t
+        when null then ok
+        when nd with x then
+            begin
+                let rec rev(back: Tree tmp: Tree): Ok =
+                    case tmp
+                        when null then ok
+                        when nd with y then
+                            begin
+                                let tmp1 = y.node.next
+                                y.node.next := back
+                                setPrev(back tmp)
+                                rev(tmp tmp1)
+                            end
+                    end
+                setNext(x.node.prev null)
+                x.node.prev := null
+                rev(t x.node.next)
+            end
+    end
+
+(* Use closest-point heuristic from Cormen Leiserson and Rivest *)
+let conquer(t: Tree): Tree =
+    case t
+        when null then null
+        else
+            begin
+                let cycle = makeList(t)
+                let rec visit(t: Tree): Ok =
+                    case t
+                        when null then ok
+                        when nd with x then
+                            begin
+                                let doNext = x.node.next
+                                let rec findMinDist(min: Tree minDist: Real tmp: Tree): Tree =
+                                    if sameNd(cycle tmp) then min
+                                    else
+                                        begin
+                                            let test = distance(t tmp)
+                                            if test << minDist then findMinDist(tmp test nd(tmp).next)
+                                            else findMinDist(min minDist nd(tmp).next)
+                                            end
+                                        end
+                                    end
+                                let min = findMinDist(cycle distance(t cycle) nd(cycle).next)
+                                let minNext = nd(min).next
+                                let minPrev = nd(min).prev
+                                let minToNext = distance(min minNext)
+                                let minToPrev = distance(min minPrev)
+                                let tToNext = distance(t minNext)
+                                let tToPrev = distance(t minPrev)
+                                if {tToPrev -- minToPrev} << {tToNext -- minToNext} then
+                                    (* insert between min and min_prev *)
+                                    begin link(minPrev t) link(t min) end
+                                else
+                                    begin link(min t) link(t minNext) end
+                                end
+                                visit(doNext)
+                            end
+                    end
+                let t1 = nd(cycle).next
+                (* Create initial cycle *)
+                nd(cycle).next := cycle
+                nd(cycle).prev := cycle
+                visit(t1)
+                cycle
+            end
+    end
+
+(* Where a point would go in a cycle *)
+Let Location = Tuple p: Tree tToP: Real n: Tree tToN: Real end
+
+(* Merge two cycles as per Karp *)
+let merge(a: Tree b: Tree t: Tree): Tree =
+    begin
+        let locateCycle(start: Tree): Location =
+            begin
+                Let Found = Tuple min: Tree minDist: Real end
+                let rec findMin(min: Tree minDist: Real tmp: Tree): Found =
+                    if sameNd(start tmp) then tuple let min = min let minDist = minDist end
+                    else
+                        begin
+                            let test = distance(t tmp)
+                            if test << minDist then findMin(tmp test nd(tmp).next)
+                            else findMin(min minDist nd(tmp).next)
+                            end
+                        end
+                    end
+                let found = findMin(start distance(t start) nd(start).next)
+                let min = found.min
+                let next1 = nd(min).next
+                let prev1 = nd(min).prev
+                let minToNext = distance(min next1)
+                let minToPrev = distance(min prev1)
+                let tToNext = distance(t next1)
+                let tToPrev = distance(t prev1)
+                if {tToPrev -- minToPrev} << {tToNext -- minToNext} then
+                    (* would insert between min and prev *)
+                    tuple let p = prev1 let tToP = tToPrev let n = min let tToN = found.minDist end
+                else
+                    (* would insert between min and next *)
+                    tuple let p = min let tToP = found.minDist let n = next1 let tToN = tToNext end
+                end
+            end
+        (* Compute location for first cycle *)
+        let c1 = locateCycle(a)
+        let p1 = c1.p let tToP1 = c1.tToP let n1 = c1.n let tToN1 = c1.tToN
+        (* compute location for second cycle *)
+        let c2 = locateCycle(b)
+        let p2 = c2.p let tToP2 = c2.tToP let n2 = c2.n let tToN2 = c2.tToN
+        (* Now we have 4 choices to complete:
+         *   1:t,p1 t,p2 n1,n2
+         *   2:t,p1 t,n2 n1,p2
+         *   3:t,n1 t,p2 p1,n2
+         *   4:t,n1 t,n2 p1,p2 *)
+        let n1ToN2 = distance(n1 n2)
+        let n1ToP2 = distance(n1 p2)
+        let p1ToN2 = distance(p1 n2)
+        let p1ToP2 = distance(p1 p2)
+        Let Choice = Tuple choice: Int minDist: Real end
+        let choose(testChoice: Int test: Real c: Choice): Choice =
+            if test << c.minDist then tuple let choice = testChoice let minDist = test end else c end
+        let ch1: Choice = tuple let choice = 1 let minDist = {tToP1 ++ tToP2} ++ n1ToN2 end
+        let ch2 = choose(2 {tToP1 ++ tToN2} ++ n1ToP2 ch1)
+        let ch3 = choose(3 {tToN1 ++ tToP2} ++ p1ToN2 ch2)
+        let ch4 = choose(4 {tToN1 ++ tToN2} ++ p1ToP2 ch3)
+        let choice = ch4.choice
+        if choice is 1 then
+            (* 1:p1,t t,p2 n2,n1 -- reverse 2! *)
+            begin reverse(n2) link(p1 t) link(t p2) link(n2 n1) end
+        elsif choice is 2 then
+            (* 2:p1,t t,n2 p2,n1 -- OK *)
+            begin link(p1 t) link(t n2) link(p2 n1) end
+        elsif choice is 3 then
+            (* 3:p2,t t,n1 p1,n2 -- OK *)
+            begin link(p2 t) link(t n1) link(p1 n2) end
+        elsif choice is 4 then
+            (* 4:n1,t t,n2 p2,p1 -- reverse 1! *)
+            begin reverse(n1) link(n1 t) link(t n2) link(p2 p1) end
+        else raise match end
+        end
+        t
+    end
+
+(* Compute TSP for the tree t -- use conquer for problems <= sz *)
+let rec tsp(t: Tree sz: Int): Tree =
+    case t
+        when nd with x then
+            if x.node.sz <= sz then conquer(t) else merge(tsp(x.node.left sz) tsp(x.node.right sz) t) end
+        when null then null
+    end
+
+(* rand.sml: Random number generator taken from Paulson, pp. 170-171,
+ * recommended by Park and Miller (with the multiplier 48271). A rand is a
+ * Word.word. *)
+
+let a = 48271
+(* Int.maxInt, 2^31 - 1, for SML's 32-bit int *)
+let m = 2147483647
+let m1 = m - 1
+let q = m / a
+let r = m % a
+
+let extToInt(w: word.T): Int = word.toInt(w)
+let intToExt(n: Int): word.T = word.fromInt(n)
+
+let chk(seed: word.T): Int =
+    if word.toInt(seed) is 0 then 1 elsif word.toInt(seed) is 2147483647 then m1 else extToInt(seed) end
+
+let random1(seed: Int): Int =
+    begin
+        let hi = seed / q
+        let lo = seed % q
+        let test = {a * lo} - {r * hi}
+        if test > 0 then test else test + m end
+    end
+
+let mkRandom(seed: word.T): All() word.T =
+    begin
+        let s = tuple let var v = chk(seed) end
+        fun(): word.T begin s.v := random1(s.v) intToExt(s.v) end
+    end
+
+let realM = real.int(m)
+let norm(s: word.T): Real = real.int(word.toInt(s)) // realM
+
+(* build.sml: Build a two-dimensional tree for TSP *)
+
+let mE = 2.7182818284590452354
+let mE2 = 7.3890560989306502274
+let mE3 = 20.08553692318766774179
+let mE6 = 403.42879349273512264299
+let mE12 = 162754.79141900392083592475
+
+Let Axis = Option xAxis yAxis end
+Let Arg = Tuple n: Int dir: Axis minX: Real minY: Real maxX: Real maxY: Real end
+
+(* SML's ~x *)
+let neg(x: Real): Real = ~1.0 ** x
+
+(* Builds a 2D tree of n nodes in specified range with dir as primary axis *)
+let buildTree(arg: Arg): Tree =
+    begin
+        let rand = mkRandom(word.fromInt(314))
+        let drand48(): Real = norm(rand())
+        let median(min: Real max: Real n: Int): Real =
+            begin
+                let t = drand48() (* in [0.0..1.0) *)
+                let retval =
+                    if t >> 0.5 then real.log(1.0 -- {{{2.0 ** {mE12 -- 1.0}} ** {t -- 0.5}} // mE12}) // 12.0
+                    else neg(real.log(1.0 -- {{{2.0 ** {mE12 -- 1.0}} ** t} // mE12}) // 12.0)
+                    end
+                min ++ {{{retval ++ 1.0} ** {max -- min}} // 2.0}
+            end
+        let uniform(min: Real max: Real): Real = min ++ {drand48() ** {max -- min}}
+        let rec build(arg: Arg): Tree =
+            if arg.n is 0 then null
+            else
+                case arg.dir
+                    when xAxis then
+                        begin
+                            let med = median(arg.minY arg.maxY arg.n)
+                            let mkTree(min: Real max: Real): Tree =
+                                build(tuple
+                                    let n = arg.n / 2 let dir = option yAxis of Axis end
+                                    let minX = arg.minX let minY = min let maxX = arg.maxX let maxY = max
+                                end)
+                            let l = mkTree(arg.minY med)
+                            let r = mkTree(med arg.maxY)
+                            mkNode(l r uniform(arg.minX arg.maxX) med arg.n)
+                        end
+                    when yAxis then
+                        begin
+                            let med = median(arg.minX arg.maxX arg.n)
+                            let mkTree(min: Real max: Real): Tree =
+                                build(tuple
+                                    let n = arg.n / 2 let dir = option xAxis of Axis end
+                                    let minX = min let minY = arg.minY let maxX = max let maxY = arg.maxY
+                                end)
+                            let l = mkTree(arg.minX med)
+                            let r = mkTree(med arg.maxX)
+                            mkNode(l r med uniform(arg.minY arg.maxY) arg.n)
+                        end
+                end
+            end
+        build(arg)
+    end
+
+(* main.sml *)
+
+let state = tuple let var problemSz = 32767 let var divideSz = 150 end
+
+let printLength(outS: writer.T t: Tree): Ok =
+    case t
+        when null then writer.putString(writer.output "(* 0 points *)\n")
+        when nd with start then
+            begin
+                let x = start.node.x
+                let y = start.node.y
+                let cycle(t: Tree): Bool = case t when nd with u then u.node is start.node else false end
+                let distance(ax: Real ay: Real bx: Real by: Real): Real =
+                    begin
+                        let dx = ax -- bx
+                        let dy = ay -- by
+                        real.sqrt({dx ** dx} ++ {dy ** dy})
+                    end
+                Let Length = Tuple n: Int len: Real end
+                let rec length(t: Tree px: Real py: Real n: Int len: Real): Length =
+                    case t
+                        when null then tuple let n = n let len = len ++ distance(px py x y) end
+                        when nd with u then
+                            if cycle(t) then tuple let n = n let len = len ++ distance(px py x y) end
+                            else length(u.node.next u.node.x u.node.y n + 1 len ++ distance(px py u.node.x u.node.y))
+                            end
+                    end
+                if cycle(start.node.next) then writer.putString(outS "(* 1 point *)\n")
+                else
+                    begin
+                        let result = length(start.node.next x y 1 0.0)
+                        writer.putString(outS "(* " <> conv.int(result.n) <> "points, cycle length = "
+                            <> reals.toString(result.len) <> " *)\n")
+                    end
+                end
+            end
+    end
+
+let mkTree(n: Int): Tree =
+    buildTree(tuple let n = n let dir = option xAxis of Axis end let minX = 0.0 let minY = 0.0 let maxX = 1.0
+        let maxY = 1.0 end)
+
+let doit1(n: Int): Tree = tsp(mkTree(n) state.divideSz)
+
+let testit(): Ok = printLength(writer.output doit1(state.problemSz))
+
+state.problemSz := 2097151
+let doit(): Ok = begin doit1(state.problemSz) ok end
+
+if bench.testit() then testit() else for i = 1 upto bench.count() do doit() end end

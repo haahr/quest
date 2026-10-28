@@ -1,0 +1,31 @@
+(* flat-array: sums a million-element vector of pairs, where a sum that
+ * overflows (SML's 32-bit int) starts again from 0 *)
+
+import support/bench : support/Bench
+
+Let Pair = Tuple a: Int b: Int end
+
+(* SML's Overflow, raised by 32-bit addition *)
+let overflow: Exception = exception overflow: Ok end
+let add32(x: Int y: Int): Int =
+    begin
+        let z = x + y
+        if {z > 2147483647} orif {z < ~2147483648} then raise overflow end end
+        z
+    end
+
+let doit(n: Int): Ok =
+    begin
+        let v = array of(1000000 tuple let a = 0 let b = 0 end)
+        for i = 0 upto extent v - 1 do v[i] := tuple let a = i let b = i + 1 end end
+        for k = 1 upto n do
+            let var sum = 0
+            for i = 0 upto extent v - 1 do
+                let p = v[i]
+                sum := try add32(add32(p.a p.b) sum) when overflow then 0 end
+            end
+            if 1105694191 isnot sum then raise bench.bug end end
+        end
+    end
+
+doit(bench.count())

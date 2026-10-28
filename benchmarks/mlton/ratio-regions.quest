@@ -1,0 +1,419 @@
+(* ratio-regions: Ratio Regions image segmentation (Cox, Rao, and Zhong) by a
+ * reduction to max flow, solved by preflow-push with periodic relabeling and
+ * Sebastien Roy's wave heuristic; Jeff Siskind's Scheme code, translated to
+ * SML by Stephen Weeks. The count is the image's height and width. *)
+
+import
+    support/bench : support/Bench
+    support/lists : support/Lists
+    stringOp = string : StringOp
+    conv : Conv
+
+(* The original overrides print, so the benchmark is silent *)
+let print(s: String): Ok = ok
+
+let doo(max: Int f: All(i: Int) Ok): Ok =
+    begin
+        let rec loop1(i: Int): Ok = if i >= max then ok else begin f(i) loop1(i + 1) end end
+        loop1(0)
+    end
+
+let zero(x: Int): Bool = x is 0
+let writeChar(c: Char): Ok = ok (* TextIO.output1(TextIO.stdOut, c) *)
+let negative(x: Int): Bool = x < 0
+let positive(x: Int): Bool = x > 0
+
+let failure: Exception(String) = exception failure: String end
+
+let min(l: lists.T(Int)): Int =
+    case l
+        when cons with c then
+            begin
+                let rec loop1(l: lists.T(Int) min: Int): Int =
+                    case l when cons with d then loop1(d.tl if d.hd < min then d.hd else min end) else min end
+                loop1(c.tl c.hd)
+            end
+        else raise failure with "min" end
+    end
+
+let everyN(n: Int p: All(i: Int) Bool): Bool =
+    begin
+        let rec loop1(i: Int): Bool = {i >= n} orif {p(i) andif loop1(i + 1)}
+        loop1(0)
+    end
+
+Let XY = Tuple x: Int y: Int end
+Let XYs = lists.T(XY)
+
+let someVector(v: Array(XYs) p: All(ps: XYs) Bool): Bool =
+    begin
+        let rec loop1(i: Int): Bool = {i < extent v} andif {p(v[i]) orif loop1(i + 1)}
+        loop1(0)
+    end
+
+(* 'a matrix: an array of rows *)
+let makeMatrix(A::TYPE)(m: Int n: Int a: A): Array(Array(A)) =
+    begin
+        let rows = array of(m array of :A end)
+        for i = 0 upto m - 1 do rows[i] := array of(n a) end
+        rows
+    end
+
+(* Int is integer: a tag named int does not yet compile to C (docs/tasklist.md) *)
+Let PormatValue = Option integer with n: Int end string with s: String end end
+
+let pormat(controlString: String values: lists.T(PormatValue)): Ok =
+    begin
+        let rec loop1(i: Int values: lists.T(PormatValue)): Ok =
+            if not(i is stringOp.length(controlString)) then
+                begin
+                    let c = stringOp.getChar(controlString i)
+                    if c is '~' then
+                        begin
+                            let c2 = stringOp.getChar(controlString i + 1)
+                            let other(): Ok = begin writeChar(c) loop1(i + 1 values) end
+                            if c2 is 's' then
+                                case values
+                                    when cons with v then
+                                        case v.hd when integer with n
+                                            then begin print(conv.int(n.n)) loop1(i + 2 v.tl) end
+                                        else other() end
+                                    else other()
+                                end
+                            elsif c2 is 'a' then
+                                case values
+                                    when cons with v then
+                                        case v.hd when string with s then begin print(s.s) loop1(i + 2 v.tl) end
+                                        else other() end
+                                    else other()
+                                end
+                            elsif c2 is '%' then begin print("\n") loop1(i + 2 values) end
+                            else other()
+                            end
+                        end
+                    else begin writeChar(c) loop1(i + 1 values) end
+                    end
+                end
+            end
+        loop1(0 values)
+    end
+
+let int(n: Int): PormatValue = option integer of PormatValue with n end
+let str(s: String): PormatValue = option string of PormatValue with s end
+let values(a: Array(PormatValue)): lists.T(PormatValue) = lists.fromArray(:PormatValue)(a)
+
+(* The vertices are s, t, and (y,x). The original's long comment on the flow
+ * network, its capacities, and its preflows applies unchanged. *)
+
+let positiveMin(x: Int y: Int): Int = if negative(x) then y elsif x < y then x else y end
+let positiveMinus(x: Int y: Int): Int = if negative(x) then x else x - y end
+let positivePlus(x: Int y: Int): Int = if negative(x) then x else x + y end
+
+let raoRatioRegion(cRight: Array(Array(Int)) cDown: Array(Array(Int)) w: Array(Array(Int)) lgMaxV: Int): Ok =
+    begin
+        let height = extent w
+        let width = extent w[0]
+        let fRight = makeMatrix(:Int)(height width - 1 0)
+        let fDown = makeMatrix(:Int)(height - 1 width 0)
+        let fT = makeMatrix(:Int)(height width 0)
+        let h = makeMatrix(:Int)(height width 0)
+        let e = makeMatrix(:Int)(height width 0)
+        let marked = makeMatrix(:Bool)(height width false)
+        let m1 = {height * width} + 2
+        let m2 = {{2 * height} * width} + 2
+        let q = array of({{2 * height} * width} + 3 lists.nil(:XY))
+        let xy(x: Int y: Int): XY = tuple let x = x let y = y end
+        let cfRight(y: Int x: Int): Int = cRight[y][x] - fRight[y][x]
+        let cfLeft(y: Int x: Int): Int = cRight[y][x - 1] + fRight[y][x - 1]
+        let cfDown(y: Int x: Int): Int = cDown[y][x] - fDown[y][x]
+        let cfUp(y: Int x: Int): Int = cDown[y - 1][x] + fDown[y - 1][x]
+        let efRight(y: Int x: Int): Bool = positive(cfRight(y x))
+        let efLeft(y: Int x: Int): Bool = positive(cfLeft(y x))
+        let efDown(y: Int x: Int): Bool = positive(cfDown(y x))
+        let efUp(y: Int x: Int): Bool = positive(cfUp(y x))
+        let preflowPush(v: Int): Ok =
+            begin
+                let enqueue(y: Int x: Int): Ok =
+                    if not(marked[y][x]) then
+                        begin
+                            q[h[y][x]] := lists.cons(:XY)(xy(x y) q[h[y][x]])
+                            marked[y][x] := true
+                        end
+                    end
+                let cfT(y: Int x: Int): Int = {v * w[y][x]} - fT[y][x]
+                let efT(y: Int x: Int): Bool = positive(cfT(y x))
+                let canPushRight(y: Int x: Int): Bool =
+                    {x < {width - 1}} andif not(zero(e[y][x])) andif efRight(y x) andif {h[y][x] is {h[y][x + 1] + 1}}
+                let canPushLeft(y: Int x: Int): Bool =
+                    {x > 0} andif not(zero(e[y][x])) andif efLeft(y x) andif {h[y][x] is {h[y][x - 1] + 1}}
+                let canPushDown(y: Int x: Int): Bool =
+                    {y < {height - 1}} andif not(zero(e[y][x])) andif efDown(y x) andif {h[y][x] is {h[y + 1][x] + 1}}
+                let canPushUp(y: Int x: Int): Bool =
+                    {y > 0} andif not(zero(e[y][x])) andif efUp(y x) andif {h[y][x] is {h[y - 1][x] + 1}}
+                let canPushT(y: Int x: Int): Bool = not(zero(e[y][x])) andif efT(y x) andif {h[y][x] is 1}
+                let canLift(y: Int x: Int): Bool =
+                    not(zero(e[y][x]))
+                    andif {if x is {width - 1} then h[y][x] <= m1 else not(efRight(y x))
+                        orif {h[y][x] <= h[y][x + 1]} end}
+                    andif {if x is 0 then h[y][x] <= m1 else not(efLeft(y x)) orif {h[y][x] <= h[y][x - 1]} end}
+                    andif {if y is {height - 1} then h[y][x] <= m1 else not(efDown(y x))
+                        orif {h[y][x] <= h[y + 1][x]} end}
+                    andif {if y is 0 then h[y][x] <= m1 else not(efUp(y x)) orif {h[y][x] <= h[y - 1][x]} end}
+                    andif {not(efT(y x)) orif {h[y][x] is 0}}
+                let pushRight(y: Int x: Int): Ok =
+                    begin
+                        let dfUV = positiveMin(e[y][x] cfRight(y x))
+                        fRight[y][x] := fRight[y][x] + dfUV
+                        e[y][x] := positiveMinus(e[y][x] dfUV)
+                        e[y][x + 1] := positivePlus(e[y][x + 1] dfUV)
+                        enqueue(y x + 1)
+                    end
+                let pushLeft(y: Int x: Int): Ok =
+                    begin
+                        let dfUV = positiveMin(e[y][x] cfLeft(y x))
+                        fRight[y][x - 1] := fRight[y][x - 1] - dfUV
+                        e[y][x] := positiveMinus(e[y][x] dfUV)
+                        e[y][x - 1] := positivePlus(e[y][x - 1] dfUV)
+                        enqueue(y x - 1)
+                    end
+                let pushDown(y: Int x: Int): Ok =
+                    begin
+                        let dfUV = positiveMin(e[y][x] cfDown(y x))
+                        fDown[y][x] := fDown[y][x] + dfUV
+                        e[y][x] := positiveMinus(e[y][x] dfUV)
+                        e[y + 1][x] := positivePlus(e[y + 1][x] dfUV)
+                        enqueue(y + 1 x)
+                    end
+                let pushUp(y: Int x: Int): Ok =
+                    begin
+                        let dfUV = positiveMin(e[y][x] cfUp(y x))
+                        fDown[y - 1][x] := fDown[y - 1][x] - dfUV
+                        e[y][x] := positiveMinus(e[y][x] dfUV)
+                        e[y - 1][x] := positivePlus(e[y - 1][x] dfUV)
+                        enqueue(y - 1 x)
+                    end
+                let pushT(y: Int x: Int): Ok =
+                    begin
+                        let dfUV = positiveMin(e[y][x] cfT(y x))
+                        fT[y][x] := fT[y][x] + dfUV
+                        e[y][x] := positiveMinus(e[y][x] dfUV)
+                    end
+                let lift(y: Int x: Int): Ok =
+                    h[y][x] := 1 + min(lists.fromArray(:Int)(array of
+                        if x is {width - 1} then m1 elsif efRight(y x) then h[y][x + 1] else m2 end
+                        if x is 0 then m1 elsif efLeft(y x) then h[y][x - 1] else m2 end
+                        if y is {height - 1} then m1 elsif efDown(y x) then h[y + 1][x] else m2 end
+                        if y is 0 then m1 elsif efUp(y x) then h[y - 1][x] else m2 end
+                        if efT(y x) then 0 else m2 end
+                    end))
+                let relabel(): Ok =
+                    begin
+                        Let Rec Queue = Option nilQ consQ with p: XY cdr: QueueRef end end
+                        and QueueRef = Tuple var v: Queue end
+                        let nilQ = option nilQ of Queue end
+                        let newRef(v: Queue): QueueRef = tuple let var v = v end
+                        let null(q: QueueRef): Bool = case q.v when nilQ then true else false end
+                        let rq = newRef(nilQ)
+                        let tail = newRef(nilQ)
+                        let enqueue(y: Int x: Int value: Int): Ok =
+                            if value < h[y][x] then
+                                begin
+                                    h[y][x] := value
+                                    if not(marked[y][x]) then
+                                        begin
+                                            marked[y][x] := true
+                                            case tail.v
+                                                when nilQ then
+                                                    begin
+                                                        tail.v := option consQ of Queue with xy(x y) newRef(nilQ) end
+                                                        rq.v := tail.v
+                                                    end
+                                                when consQ with c then
+                                                    begin
+                                                        c.cdr.v := option consQ of Queue with xy(x y) newRef(nilQ) end
+                                                        tail.v := c.cdr.v
+                                                    end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        let dequeue(): XY =
+                            case rq.v
+                                when nilQ then raise failure with "dequeue" end
+                                when consQ with c then
+                                    begin
+                                        marked[c.p.y][c.p.x] := false
+                                        rq.v := c.cdr.v
+                                        if null(rq) then tail.v := nilQ end
+                                        c.p
+                                    end
+                            end
+                        doo(height fun(y: Int): Ok
+                            doo(width fun(x: Int): Ok begin h[y][x] := m1 marked[y][x] := false end))
+                        doo(height fun(y: Int): Ok doo(width fun(x: Int): Ok
+                            if efT(y x) andif {h[y][x] > 1} then enqueue(y x 1) end))
+                        let rec loop1(): Ok =
+                            if not(null(rq)) then
+                                begin
+                                    let p = dequeue()
+                                    let x = p.x
+                                    let y = p.y
+                                    let value = h[y][x] + 1
+                                    if {x > 0} andif efRight(y x - 1) then enqueue(y x - 1 value) end
+                                    if {x < {width - 1}} andif efLeft(y x + 1) then enqueue(y x + 1 value) end
+                                    if {y > 0} andif efDown(y - 1 x) then enqueue(y - 1 x value) end
+                                    if {y < {height - 1}} andif efUp(y + 1 x) then enqueue(y + 1 x value) end
+                                    loop1()
+                                end
+                            end
+                        loop1()
+                    end
+                doo(height fun(y: Int): Ok doo(width fun(x: Int): Ok begin e[y][x] := 0 fT[y][x] := 0 end))
+                doo(height fun(y: Int): Ok doo(width - 1 fun(x: Int): Ok fRight[y][x] := 0))
+                doo(height - 1 fun(y: Int): Ok doo(width fun(x: Int): Ok fDown[y][x] := 0))
+                doo(height fun(y: Int): Ok begin e[y][width - 1] := ~1 e[y][0] := ~1 end)
+                doo(width - 1 fun(x: Int): Ok begin e[height - 1][x] := ~1 e[0][x] := ~1 end)
+                let counts = tuple let var pushes = 0 let var lifts = 0 let var relabels = 0 end
+                let plural(n: Int s: String): String = if n is 1 then "" else s end
+                let rec loop1(i: Int p: Bool): Ok =
+                    if zero(i % 6) andif not(p) then
+                        begin
+                            relabel()
+                            counts.relabels := counts.relabels + 1
+                            if everyN(height fun(y: Int): Bool
+                                everyN(width fun(x: Int): Bool zero(e[y][x]) orif {h[y][x] is m1}))
+                            then
+                                (* Every vertex with excess capacity is not reachable from the sink
+                                 * in the inverse residual network. So terminate early because we
+                                 * have already found a min cut (the original explains at
+                                 * length). *)
+                                pormat("~s push~a, ~s lift~a, ~s relabel~a, ~s wave~a, terminated early~%"
+                                    values(array of
+                                    int(counts.pushes) str(plural(counts.pushes "es"))
+                                    int(counts.lifts) str(plural(counts.lifts "s"))
+                                    int(counts.relabels) str(plural(counts.relabels "s"))
+                                    int(i) str(plural(i "s"))
+                                end))
+                            else
+                                (* We need to rebuild the priority queue after relabeling since the
+                                 * heights might have changed and the priority queue is indexed by
+                                 * height. This also assumes that a relabel is done before any
+                                 * pushes or lifts. *)
+                                begin
+                                    doo(extent q fun(k: Int): Ok q[k] := lists.nil(:XY))
+                                    doo(height fun(y: Int): Ok doo(width fun(x: Int): Ok marked[y][x] := false))
+                                    doo(height fun(y: Int): Ok
+                                        doo(width fun(x: Int): Ok if not(zero(e[y][x])) then enqueue(y x) end))
+                                    loop1(i true)
+                                end
+                            end
+                        end
+                    elsif someVector(q fun(ps: XYs): Bool
+                        lists.exists(:XY)(fun(p: XY): Bool
+                            canPushRight(p.y p.x) orif canPushLeft(p.y p.x) orif canPushDown(p.y p.x)
+                                orif canPushUp(p.y p.x)
+                                orif canPushT(p.y p.x) orif canLift(p.y p.x)
+                            ps))
+                    then
+                        begin
+                            let rec loop2(k: Int): Ok =
+                                if not(negative(k)) then
+                                    begin
+                                        let ps = q[k]
+                                        q[k] := lists.nil(:XY)
+                                        lists.app(:XY)(fun(p: XY): Ok marked[p.y][p.x] := false ps)
+                                        lists.app(:XY)(fun(p: XY): Ok
+                                            begin
+                                                let x = p.x
+                                                let y = p.y
+                                                if canPushRight(y x)
+                                                    then begin counts.pushes := counts.pushes + 1 pushRight(y x) end end
+                                                if canPushLeft(y x)
+                                                    then begin counts.pushes := counts.pushes + 1 pushLeft(y x) end end
+                                                if canPushDown(y x)
+                                                    then begin counts.pushes := counts.pushes + 1 pushDown(y x) end end
+                                                if canPushUp(y x)
+                                                    then begin counts.pushes := counts.pushes + 1 pushUp(y x) end end
+                                                if canPushT(y x)
+                                                    then begin counts.pushes := counts.pushes + 1 pushT(y x) end end
+                                                if canLift(y x)
+                                                    then begin counts.lifts := counts.lifts + 1 lift(y x) end end
+                                                if not(zero(e[y][x])) then enqueue(y x) end
+                                            end
+                                            ps)
+                                        loop2(k - 1)
+                                    end
+                                end
+                            loop2(extent q - 1)
+                            loop1(i + 1 false)
+                        end
+                    else
+                        (* This is so MIN_CUT and MIN_CUT_INCLUDES_EVERY_EDGE_TO_T work *)
+                        begin
+                            relabel()
+                            counts.relabels := counts.relabels + 1
+                            pormat("~s push~a, ~s lift~a, ~s relabel~a, ~s wave~a~%" values(array of
+                                int(counts.pushes) str(plural(counts.pushes "es"))
+                                int(counts.lifts) str(plural(counts.lifts "s"))
+                                int(counts.relabels) str(plural(counts.relabels "s"))
+                                int(i) str(plural(i "s"))
+                            end))
+                        end
+                    end
+                loop1(0 false)
+            end
+        (* These require that a relabel was done immediately before returning
+         * from PREFLOW_PUSH *)
+        let minCutIncludesEveryEdgeToT(): Bool =
+            everyN(height fun(y: Int): Bool everyN(width fun(x: Int): Bool h[y][x] is m1))
+        let minCut(): Array(Array(Bool)) =
+            begin
+                let cut = array of(height array of :Bool end)
+                for y = 0 upto height - 1 do
+                    cut[y] := array of(width false)
+                    for x = 0 upto width - 1 do cut[y][x] := not(h[y][x] is m1) end
+                end
+                cut
+            end
+        let rec loop1(lgV: Int vMax: Int): Ok =
+            if negative(lgV) then
+                begin
+                    pormat("V-MAX=~s~%" values(array of int(vMax) end))
+                    preflowPush(vMax + 1)
+                    minCut()
+                    ok
+                end
+            else
+                begin
+                    let rec pow(i: Int c: Int): Int = if zero(i) then c else pow(i - 1 c + c) end
+                    let v = vMax + pow(lgV 1)
+                    pormat("LG-V=~s, V-MAX=~s, V=~s~%" values(array of int(lgV) int(vMax) int(v) end))
+                    preflowPush(v)
+                    loop1(lgV - 1 if minCutIncludesEveryEdgeToT() then v else vMax end)
+                end
+            end
+        loop1(lgMaxV 0)
+    end
+
+let doit(n: Int): Ok =
+    begin
+        let height = n
+        let width = n
+        let lgMaxV = 15
+        let cRight = makeMatrix(:Int)(height width - 1 ~1)
+        let cDown = makeMatrix(:Int)(height - 1 width ~1)
+        doo(height fun(y: Int): Ok doo(width - 1 fun(x: Int): Ok
+            cRight[y][x] :=
+                if {y >= {height / 4}} andif {y < {{3 * height} / 4}}
+                    andif {{x is {{width / 4} - 1}} orif {x is {{{3 * width} / 4} - 1}}}
+                then 1 else 128 end))
+        doo(height - 1 fun(y: Int): Ok doo(width fun(x: Int): Ok
+            cDown[y][x] :=
+                if {x >= {width / 4}} andif {x < {{3 * width} / 4}}
+                    andif {{y is {{height / 4} - 1}} orif {y is {{{3 * height} / 4} - 1}}}
+                then 1 else 128 end))
+        raoRatioRegion(cRight cDown makeMatrix(:Int)(height width 1) lgMaxV)
+    end
+
+doit(bench.count())

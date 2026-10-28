@@ -1,0 +1,444 @@
+(* barnes-hut: a Barnes-Hut hierarchical N-body simulation in 3 dimensions of a
+ * Plummer model of n bodies (the count) for 80 time steps (from the SML/NJ
+ * benchmark suite; COPYRIGHT (c) 1993, AT&T Bell Laboratories). The
+ * original's input, parameter, and diagnostic output code, which its
+ * benchmark does not use, is left out. *)
+
+import
+    support/bench : support/Bench
+    support/lists : support/Lists
+    real : RealOp
+    word : Word
+
+(* vector3.sml: 3 dimensional vector arithmetic *)
+
+Let Vec(A::TYPE) = Tuple x: A y: A z: A end
+Let RVec = Vec(Real)
+
+let dim = 3
+let vec(A::TYPE)(x: A y: A z: A): Vec(A) = tuple let x = x let y = y let z = z end
+let tabulate(A::TYPE)(f: All(i: Int) A): Vec(A) =
+    begin let x = f(0) let y = f(1) let z = f(2) vec(:A)(x y z) end
+let zerov: RVec = vec(:Real)(0.0 0.0 0.0)
+let equal(a: RVec b: RVec): Bool = {a.x is b.x} andif {a.y is b.y} andif {a.z is b.z}
+let addv(a: RVec b: RVec): RVec = vec(:Real)(a.x ++ b.x a.y ++ b.y a.z ++ b.z)
+let subv(a: RVec b: RVec): RVec = vec(:Real)(a.x -- b.x a.y -- b.y a.z -- b.z)
+let dotvp(a: RVec b: RVec): Real = {{a.x ** b.x} ++ {a.y ** b.y}} ++ {a.z ** b.z}
+let addvs(a: RVec s: Real): RVec = vec(:Real)(a.x ++ s a.y ++ s a.z ++ s)
+let mulvs(a: RVec s: Real): RVec = vec(:Real)(a.x ** s a.y ** s a.z ** s)
+let divvs(a: RVec s: Real): RVec = vec(:Real)(a.x // s a.y // s a.z // s)
+let mapv(A::TYPE B::TYPE)(f: All(a: A) B v: Vec(A)): Vec(B) =
+    begin let x = f(v.x) let y = f(v.y) let z = f(v.z) vec(:B)(x y z) end
+let map3v(f: All(a: Real b: Real c: Real) Real a: RVec b: RVec c: RVec): RVec =
+    begin let x = f(a.x b.x c.x) let y = f(a.y b.y c.y) let z = f(a.z b.z c.z) vec(:Real)(x y z) end
+let foldv(A::TYPE B::TYPE)(f: All(a: A b: B) B v: Vec(A) init: B): B = f(v.z f(v.y f(v.x init)))
+
+(* space.sml: The quad/oct-tree representation of space *)
+
+Let Body = Tuple mass: Real var pos: RVec var vel: RVec var acc: RVec var phi: Real end
+Let Rec Cell = Option bodyCell with b: Body end cell with a: Array(Node) end end
+and Node = Option empty node with n: NodeData end end
+and NodeData = Tuple var mass: Real var pos: RVec cell: Cell end
+Let Space = Tuple rmin: RVec rsize: Real root: Node end
+
+let emptyNode = option empty of Node end
+
+let eqBody(a: Body b: Body): Bool =
+    {a.mass is b.mass} andif {a.phi is b.phi} andif equal(a.pos b.pos) andif equal(a.vel b.vel) andif equal(a.acc b.acc)
+
+(* number of sub cells per cell (2 ^ V.dim) *)
+let nsub = word.toInt(word.shift(word.fromInt(1) dim))
+
+let match: Exception = exception match: Ok end
+let cellArray(c: Cell): Array(Node) = case c when cell with x then x.a else raise match end end
+let putCell(c: Cell i: Int nd: Node): Ok = cellArray(c)[i] := nd
+let getCell(c: Cell i: Int): Node = cellArray(c)[i]
+let mkCell(): Cell = option cell of Cell with array of(nsub emptyNode) end
+let mkNode(cell: Cell mass: Real pos: RVec): Node =
+    begin
+        let n: NodeData = tuple let var mass = mass let var pos = pos let cell = cell end
+        option node of Node with n end
+    end
+let mkBodyNode(body: Body): Node = mkNode(option bodyCell of Cell with body end body.mass body.pos)
+let mkCellNode(cell: Cell): Node = mkNode(cell 0.0 zerov)
+
+(* load.sml: Code to build the tree from a list of bodies *)
+
+let notIntCoord: Exception = exception notIntCoord: Ok end
+
+(* Word.~>>, whose arguments here are never negative *)
+let rshift(n: Int k: Int): Int = word.toInt(word.shift(word.fromInt(n) 0 - k))
+
+let imax = 536870912 (* 2^29 *)
+let imaxrs1 = rshift(imax 1)
+let rImax = real.int(imax)
+
+(* Compute integerized coordinates. Raises the NotIntCoord exception, if rp
+ * is out of bounds. *)
+let intcoord(rp: RVec rmin: RVec rsize: Real): Vec(Int) =
+    begin
+        let xsc = divvs(subv(rp rmin) rsize)
+        let cvt(x: Real): Int = if {0.0 <<= x} andif {x << 1.0} then real.floor(rImax ** x)
+            else raise notIntCoord end end
+        mapv(:Real :Int)(cvt xsc)
+    end
+
+(* Determine which subcell to select *)
+Let IK = Tuple i: Int k: Int end
+let subindex(iv: Vec(Int) l: Int): Int =
+    begin
+        let aux(v: Int ik: IK): IK =
+            if word.toInt(word.andBits(word.fromInt(v) word.fromInt(l))) isnot 0 then
+                tuple let i = ik.i + rshift(nsub ik.k + 1) let k = ik.k + 1 end
+            else tuple let i = ik.i let k = ik.k + 1 end
+            end
+        foldv(:Int :IK)(aux iv tuple let i = 0 let k = 0 end).i
+    end
+
+(* Enlarge cubical "box", salvaging existing tree structure *)
+let rec expandBox(nd: Body box: Space): Space =
+    try begin intcoord(nd.pos box.rmin box.rsize) box end
+    when notIntCoord then
+        begin
+            let rmin = box.rmin
+            let rsize = box.rsize
+            let root = box.root
+            let rmid = addvs(rmin 0.5 ** rsize)
+            let rmin1 = map3v(fun(x: Real y: Real z: Real): Real if x << y then z -- rsize else z end nd.pos rmid rmin)
+            let rsize1 = 2.0 ** rsize
+            let mksub(v: RVec r: Node): Cell =
+                begin
+                    let x = intcoord(v rmin1 rsize1)
+                    let k = subindex(x imaxrs1)
+                    let cell = mkCell()
+                    putCell(cell k r)
+                    cell
+                end
+            let box1: Space =
+                case root
+                    when empty then tuple let rmin = rmin1 let rsize = rsize1 let root = root end
+                    else tuple let rmin = rmin1 let rsize = rsize1 let root = mkCellNode(mksub(rmid root)) end
+                end
+            expandBox(nd box1)
+        end
+    end
+
+(* Insert a single node into the tree *)
+let loadTree(body: Body space: Space): Space =
+    begin
+        let rmin = space.rmin
+        let rsize = space.rsize
+        let xp = intcoord(body.pos rmin rsize)
+        let rec insert(nd: Node l: Int): Node =
+            case nd
+                when empty then mkBodyNode(body)
+                when node with n then
+                    case n.n.cell
+                        when bodyCell then
+                            begin
+                                let xq = intcoord(n.n.pos rmin rsize)
+                                let k = subindex(xq l)
+                                let a = mkCell()
+                                putCell(a k nd)
+                                insert(mkCellNode(a) l)
+                            end
+                        else
+                            begin
+                                let k = subindex(xp l)
+                                let subtree = insert(getCell(n.n.cell k) rshift(l 1))
+                                putCell(n.n.cell k subtree)
+                                nd
+                            end
+                    end
+            end
+        tuple let rmin = rmin let rsize = rsize let root = insert(space.root imaxrs1) end
+    end
+
+(* Descend tree finding center-of-mass coordinates *)
+let rec hackCofM(nd: Node): Ok =
+    case nd
+        when empty then ok
+        when node with n then
+            case n.n.cell
+                when bodyCell then ok
+                when cell with subcells then
+                    begin
+                        let rec sumMass(i: Int totMass: Real cofm: RVec): Ok =
+                            if i < nsub then
+                                case subcells.a[i]
+                                    when empty then sumMass(i + 1 totMass cofm)
+                                    when node with sub then
+                                        begin
+                                            hackCofM(subcells.a[i])
+                                            let m = sub.n.mass
+                                            sumMass(i + 1 totMass ++ m addv(cofm mulvs(sub.n.pos m)))
+                                        end
+                                end
+                            else
+                                begin
+                                    n.n.mass := totMass
+                                    n.n.pos := divvs(cofm totMass)
+                                end
+                            end
+                        sumMass(0 0.0 zerov)
+                    end
+            end
+    end
+
+(* Initialize tree structure for hack force calculation *)
+let makeTree(bodies: lists.T(Body) rmin: RVec rsize: Real): Space =
+    begin
+        let rec build(l: lists.T(Body) space: Space): Space =
+            case l
+                when nil then space
+                when cons with c then
+                    if c.hd.mass is 0.0 then build(c.tl space)
+                    else
+                        begin
+                            let box = expandBox(c.hd space)
+                            let box1 = loadTree(c.hd box)
+                            build(c.tl box1)
+                        end
+                    end
+            end
+        let space = build(bodies tuple let rmin = rmin let rsize = rsize let root = emptyNode end)
+        hackCofM(space.root)
+        space
+    end
+
+(* grav.sml: Gravity module for hierarchical N-body code *)
+
+Let PhiAcc = Tuple phi: Real acc: RVec end
+Let Memo = Option none some with dr: RVec drsq: Real end end
+Let Terms = Tuple n2bterm: Int nbcterm: Int skipSelf: Bool end
+
+let hackGrav(body: Body root: Node rsize: Real eps: Real tol: Real): Terms =
+    begin
+        let pos0 = body.pos
+        let pskip = body
+        let counts = tuple let var skipSelf = false let var nbcterm = 0 let var n2bterm = 0 end
+        let tolsq = tol ** tol
+        (* Compute a single body-body or body-cell interaction *)
+        let gravsub(p: Node phi0: Real acc0: RVec memo: Memo): PhiAcc =
+            case p
+                when empty then tuple let phi = phi0 let acc = acc0 end
+                when node with n then
+                    begin
+                        Let DrDrsq = Tuple dr: RVec drsq: Real end
+                        let d: DrDrsq = case memo
+                            when none then
+                                begin
+                                    let dr = subv(n.n.pos pos0)
+                                    tuple let dr = dr let drsq = dotvp(dr dr) ++ {eps ** eps} end
+                                end
+                            when some with m then tuple let dr = m.dr let drsq = m.drsq ++ {eps ** eps} end
+                        end
+                        let phii = n.n.mass // real.sqrt(d.drsq)
+                        case n.n.cell
+                            when cell then counts.nbcterm := counts.nbcterm + 1
+                            else counts.n2bterm := counts.n2bterm + 1
+                        end
+                        tuple let phi = phi0 -- phii let acc = addv(acc0 mulvs(d.dr phii // d.drsq)) end
+                    end
+            end
+        (* Recursive routine to do hackwalk operation. This combines the
+         * subdivp and walksub routines from the C version. *)
+        let rec walksub(p: Node dsq: Real phi0: Real acc0: RVec): PhiAcc =
+            case p
+                when empty then tuple let phi = phi0 let acc = acc0 end
+                when node with n then
+                    case n.n.cell
+                        when bodyCell with b then
+                            if eqBody(b.b pskip) then begin counts.skipSelf := true tuple let phi = phi0
+                                let acc = acc0 end end
+                            else gravsub(p phi0 acc0 option none of Memo end)
+                            end
+                        when cell with a then
+                            begin
+                                let dr = subv(n.n.pos pos0)
+                                let drsq = dotvp(dr dr)
+                                if {tolsq ** drsq} << dsq then
+                                    (* open p up *)
+                                    begin
+                                        let rec loop1(i: Int phi0: Real acc0: RVec): PhiAcc =
+                                            if i < nsub then
+                                                begin
+                                                    let r = walksub(a.a[i] dsq // 4.0 phi0 acc0)
+                                                    loop1(i + 1 r.phi r.acc)
+                                                end
+                                            else tuple let phi = phi0 let acc = acc0 end
+                                            end
+                                        loop1(0 phi0 acc0)
+                                    end
+                                else gravsub(p phi0 acc0 option some of Memo with dr drsq end)
+                                end
+                            end
+                    end
+            end
+        let r = walksub(root rsize ** rsize 0.0 zerov)
+        body.phi := r.phi
+        body.acc := r.acc
+        tuple let n2bterm = counts.n2bterm let nbcterm = counts.nbcterm let skipSelf = counts.skipSelf end
+    end
+
+(* rand.sml: Random number generator taken from Paulson, pp. 170-171,
+ * recommended by Park and Miller (real number version for systems with 46-bit
+ * mantissas) *)
+
+let a = 16807.0
+let m = 2147483647.0
+
+let random(seed: Real): Real =
+    begin
+        let t = a ** seed
+        t -- {m ** real.int(real.floor(t // m))}
+    end
+
+(* main.sml: the main driver for the Barnes-Hut N-body code *)
+
+let pi = 3.14159265358979323846
+let pow(x: Real y: Real): Real = if y is 0.0 then 1.0 else real.exponential(y ** real.log(x)) end
+
+(* Random numbers *)
+let seed = tuple let var v = 0.0 end
+let srand(s: Int): Ok = seed.v := real.int(s)
+let xrand(xl: Real xh: Real): Real =
+    begin
+        let r = random(seed.v)
+        seed.v := r
+        xl ++ {{{xh -- xl} ** r} // 2147483647.0}
+    end
+
+(* Pick a random point on a sphere of specified radius *)
+let pickshell(rad: Real): RVec =
+    begin
+        let rec pickvec(): RVec =
+            begin
+                let v = tabulate(:Real)(fun(i: Int): Real xrand(~1.0 1.0))
+                let rsq = dotvp(v v)
+                if rsq >> 1.0 then pickvec() else mulvs(v rad // real.sqrt(rsq)) end
+            end
+        pickvec()
+    end
+
+(* SML's ~x *)
+let neg(x: Real): Real = ~1.0 ** x
+
+(* Generate Plummer model initial conditions for test runs, scaled to units
+ * such that M = -4E = G = 1 (Henon, Hegge, etc). See Aarseth, SJ, Henon, M,
+ * & Wielen, R (1974) Astr & Ap, 37, 183. *)
+let testdata(n: Int): lists.T(Body) =
+    begin
+        let mfrac = 0.999 (* mass cut off at mfrac of total *)
+        let rn = real.int(n)
+        let rsc = {3.0 ** pi} // 16.0
+        let vsc = real.sqrt(1.0 // rsc)
+        let rec mkBodies(i: Int cmr: RVec cmv: RVec l: lists.T(Body)): lists.T(Body) =
+            if i is 0 then
+                begin
+                    (* offset bodies by normalized cm coordinates. Also, reverse
+                     * the list to get the same order of bodies as in the C
+                     * version. *)
+                    let cmr1 = divvs(cmr rn)
+                    let cmv1 = divvs(cmv rn)
+                    let rec norm(l: lists.T(Body) acc: lists.T(Body)): lists.T(Body) =
+                        case l
+                            when nil then acc
+                            when cons with c then
+                                begin
+                                    c.hd.pos := subv(c.hd.pos cmr1)
+                                    c.hd.vel := subv(c.hd.vel cmv1)
+                                    norm(c.tl lists.cons(:Body)(c.hd acc))
+                                end
+                        end
+                    norm(l lists.nil(:Body))
+                end
+            else
+                begin
+                    let r = 1.0 // real.sqrt(pow(xrand(0.0 mfrac) neg(2.0) // 3.0) -- 1.0)
+                    let pos = pickshell(rsc ** r)
+                    (* von Neumann technique *)
+                    let rec vN(): Real =
+                        begin
+                            let x = xrand(0.0 1.0)
+                            let y = xrand(0.0 0.1)
+                            if y >> {{x ** x} ** pow(1.0 -- {x ** x} 3.5)} then vN() else x end
+                        end
+                    let v = {real.sqrt(2.0) ** vN()} // pow(1.0 ++ {r ** r} 0.25)
+                    let vel = pickshell(vsc ** v)
+                    let body: Body = tuple
+                        let mass = 1.0 // rn
+                        let var pos = pos
+                        let var vel = vel
+                        let var acc = zerov
+                        let var phi = 0.0
+                    end
+                    mkBodies(i - 1 addv(cmr pos) addv(cmv vel) lists.cons(:Body)(body l))
+                end
+            end
+        mkBodies(n zerov zerov lists.nil(:Body))
+    end
+
+Let Output = Tuple nstep: Int tnow: Real n2bcalc: Int nbccalc: Int selfint: Int end
+Let Step = Tuple nstep: Int tnow: Real end
+
+(* Advance N-body system one time-step *)
+let stepSystem(output: All(o: Output) Ok plist: lists.T(Body) dtime: Real eps: Real nstep: Int rmin0: RVec rsize0: Real
+    tnow: Real tol: Real): Step =
+    begin
+        let dthf = 0.5 ** dtime
+        let space = makeTree(plist rmin0 rsize0)
+        let rsize = space.rsize
+        let root = space.root
+        (* recalculate accelaration *)
+        Let Calc = Tuple n2bcalc: Int nbccalc: Int selfint: Int end
+        let rec recalc(l: lists.T(Body) n2bcalc: Int nbccalc: Int selfint: Int): Calc =
+            case l
+                when nil then tuple let n2bcalc = n2bcalc let nbccalc = nbccalc let selfint = selfint end
+                when cons with c then
+                    begin
+                        let p = c.hd
+                        let acc1 = p.acc
+                        let t = hackGrav(p root rsize eps tol)
+                        if nstep > 0 then
+                            (* use change in accel to make 2nd order correction to vel *)
+                            p.vel := addv(p.vel mulvs(subv(p.acc acc1) dthf))
+                        end
+                        recalc(c.tl n2bcalc + t.n2bterm nbccalc + t.nbcterm if t.skipSelf then selfint
+                            else selfint + 1 end)
+                    end
+            end
+        (* advance bodies *)
+        let advance(p: Body): Ok =
+            begin
+                let dvel = mulvs(p.acc dthf)
+                let vel1 = addv(p.vel dvel)
+                let dpos = mulvs(vel1 dtime)
+                p.pos := addv(p.pos dpos)
+                p.vel := addv(vel1 dvel)
+            end
+        let calc = recalc(plist 0 0 0)
+        output(tuple let nstep = nstep let tnow = tnow let n2bcalc = calc.n2bcalc let nbccalc = calc.nbccalc
+            let selfint = calc.selfint end)
+        lists.app(:Body)(advance plist)
+        tuple let nstep = nstep + 1 let tnow = tnow ++ dtime end
+    end
+
+(* Given an initial configuration, run the simulation *)
+let go(output: All(o: Output) Ok bodies: lists.T(Body) tnow: Real tstop: Real dtime: Real eps: Real tol: Real
+    rmin: RVec rsize: Real): Ok =
+    begin
+        let rec loop1(s: Step): Ok =
+            if s.tnow << {tstop ++ {0.1 ** dtime}} then
+                loop1(stepSystem(output bodies dtime eps s.nstep rmin rsize s.tnow tol))
+            end
+        loop1(tuple let nstep = 0 let tnow = tnow end)
+    end
+
+let doit(n: Int): Ok =
+    begin
+        srand(123)
+        go(fun(o: Output): Ok ok testdata(n) 0.0 2.0 0.025 0.05 1.0 tabulate(:Real)(fun(i: Int): Real ~2.0) 4.0)
+    end
+
+doit(bench.count())

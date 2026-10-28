@@ -1,0 +1,46 @@
+(* checksum: an IP-style checksum of a 10000000-byte buffer read as 32-bit
+ * little-endian words (after Derby, The Performance of FoxNet 2.0, 1999) *)
+
+import
+    support/bench : support/Bench
+    stringOp = string : StringOp
+    ascii : Ascii
+    word : Word
+
+(* SML's Word32 arithmetic, in the low 32 bits of a word *)
+let mask32 = word.fromInt(4294967295)
+let add32(a: word.T b: word.T): word.T = word.andBits(word.add(a b) mask32)
+
+let checkOne(new: word.T ac: word.T): word.T =
+    add32(ac add32(word.shift(new ~16) word.andBits(new word.fromInt(65535))))
+
+(* PackWord32Little.subArr: the i'th 32-bit word of a byte array *)
+let subArr(buf: String i: Int): word.T =
+    begin
+        let b = 4 * i
+        let byte(k: Int): word.T = word.fromInt(ascii.val(stringOp.getChar(buf b + k)))
+        word.orBits(byte(0)
+            word.orBits(word.shift(byte(1) 8) word.orBits(word.shift(byte(2) 16) word.shift(byte(3) 24))))
+    end
+
+let fold(f: All(new: word.T ac: word.T) word.T b: word.T buf: String first: Int last: Int): word.T =
+    begin
+        let rec go(i: Int ac: word.T): word.T = if i > last then ac else go(i + 1 f(subArr(buf i) ac)) end
+        go(first b)
+    end
+
+let checksum(buf: String first: Int last: Int): word.T = fold(checkOne word.fromInt(0) buf first last)
+
+let doit(n: Int): Ok =
+    begin
+        let first = 0
+        let size = 10000000
+        let buf = stringOp.new(size ascii.char(0))
+        let bytesPerWord = 4
+        let last = {size / bytesPerWord} - 1
+        for i = 1 upto n do
+            if word.toInt(checksum(buf first last)) isnot 0 then raise bench.bug end end
+        end
+    end
+
+doit(bench.count())

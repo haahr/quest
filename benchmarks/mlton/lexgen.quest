@@ -1,0 +1,1445 @@
+(* lexgen: ML-Lex, the lexical analyzer generator for Standard ML (version
+ * 1.6.0; Copyright (c) 1989-1992 by Andrew W. Appel, David R. Tarditi, James
+ * S. Mattson), generating DATA/ml.lex.sml from DATA/ml.lex (from the SML/NJ
+ * benchmark suite). The original's long history of changes, and its notes on
+ * lookahead, are not repeated here. *)
+
+import
+    support/bench : support/Bench
+    support/lists : support/Lists
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+    ascii : Ascii
+    conv : Conv
+    reader : Reader
+    writer : Writer
+    system : System
+
+Let Ints = lists.T(Int)
+Let Strings = lists.T(String)
+let ints = lists.nil(:Int)
+
+(* functor RedBlack, at structure L's keys: (int list * string), ordered by the
+ * int list alone *)
+
+Let Key = Tuple k: Ints name: String end
+let rec keyGreater(a: Ints b: Ints): Bool =
+    case a
+        when cons with x then
+            case b
+                when cons with y then if x.hd > y.hd then true elsif x.hd is y.hd then keyGreater(x.tl y.tl)
+                    else false end
+                else false
+            end
+        else false
+    end
+let gt(a: Key b: Key): Bool = keyGreater(a.k b.k)
+
+Let Color = Option red black end
+Let Rec Tree = Option empty tree with key: Key color: Color l: Tree r: Tree end end
+let emptyTree = option empty of Tree end
+let redC = option red of Color end
+let blackC = option black of Color end
+let node(k: Key c: Color l: Tree r: Tree): Tree = option tree of Tree with k c l r end
+let isRed(t: Tree): Bool = case t when tree with x then case x.color when red then true else false end else false end
+
+let notfound: Exception(Key) = exception notfound: Key end
+
+let rbInsert(key: Key t: Tree): Tree =
+    begin
+        let rec f(t: Tree): Tree =
+            case t
+                when empty then node(key redC emptyTree emptyTree)
+                when tree with n then
+                    begin
+                        let k = n.key
+                        let l = n.l
+                        let r = n.r
+                        case n.color
+                            when black then
+                                if gt(key k) then
+                                    begin
+                                        let r1 = f(r)
+                                        case r1
+                                            when tree with rn then
+                                                if isRed(r1) andif isRed(rn.l) then
+                                                    begin
+                                                        let rl = rn.l!tree
+                                                        if isRed(l) then
+                                                            begin
+                                                                let ln = l!tree
+                                                                node(k redC node(ln.key blackC ln.l ln.r)
+                                                                    node(rn.key blackC rn.l rn.r))
+                                                            end
+                                                        else node(rl.key blackC node(k redC l rl.l)
+                                                            node(rn.key redC rl.r rn.r))
+                                                        end
+                                                    end
+                                                elsif isRed(r1) andif isRed(rn.r) then
+                                                    if isRed(l) then
+                                                        begin
+                                                            let ln = l!tree
+                                                            node(k redC node(ln.key blackC ln.l ln.r)
+                                                                node(rn.key blackC rn.l rn.r))
+                                                        end
+                                                    else node(rn.key blackC node(k redC l rn.l) rn.r)
+                                                    end
+                                                else node(k blackC l r1)
+                                                end
+                                            else node(k blackC l r1)
+                                        end
+                                    end
+                                elsif gt(k key) then
+                                    begin
+                                        let l1 = f(l)
+                                        case l1
+                                            when tree with ln then
+                                                if isRed(l1) andif isRed(ln.r) then
+                                                    begin
+                                                        let lr = ln.r!tree
+                                                        if isRed(r) then
+                                                            begin
+                                                                let rn = r!tree
+                                                                node(k redC node(ln.key blackC ln.l ln.r)
+                                                                    node(rn.key blackC rn.l rn.r))
+                                                            end
+                                                        else node(lr.key blackC node(ln.key redC ln.l lr.l)
+                                                            node(k redC lr.r r))
+                                                        end
+                                                    end
+                                                elsif isRed(l1) andif isRed(ln.l) then
+                                                    if isRed(r) then
+                                                        begin
+                                                            let rn = r!tree
+                                                            node(k redC node(ln.key blackC ln.l ln.r)
+                                                                node(rn.key blackC rn.l rn.r))
+                                                        end
+                                                    else node(ln.key blackC ln.l node(k redC ln.r r))
+                                                    end
+                                                else node(k blackC l1 r)
+                                                end
+                                            else node(k blackC l1 r)
+                                        end
+                                    end
+                                else node(key blackC l r)
+                                end
+                            when red then
+                                if gt(key k) then node(k redC l f(r))
+                                elsif gt(k key) then node(k redC f(l) r)
+                                else node(key redC l r)
+                                end
+                        end
+                    end
+            end
+        let t1 = f(t)
+        case t1
+            when tree with n then
+                if isRed(t1) andif {isRed(n.l) orif isRed(n.r)} then node(n.key blackC n.l n.r) else t1 end
+            else t1
+        end
+    end
+
+let rbLookup(key: Key t: Tree): Key =
+    begin
+        let rec look(t: Tree): Key =
+            case t
+                when empty then raise notfound with key end
+                when tree with n then if gt(n.key key) then look(n.l) elsif gt(key n.key) then look(n.r) else n.key end
+            end
+        look(t)
+    end
+
+(* structure LexGen *)
+
+(* The original's token and exp constructors; END is endLeaf, EOF eofTok, and
+ * STRUCT structTok (end is a keyword, and a tag named struct does not yet
+ * compile to C) *)
+Let Token = Option
+    chars with c: Array(Bool) end qmark star plus bar lp rp carat dollar slash
+    state with s: Strings end reps with lo: Int hi: Int end id with s: String end action with s: String end
+    bof eofTok assign semi arrow lexmark lexstates count reject fullcharset structTok header arg
+end
+Let Rec Exp = Option
+    eps class with c: Array(Bool) i: Int end closure with e: Exp end alt with e1: Exp e2: Exp end
+    cat with e1: Exp e2: Exp end trail with i: Int end endLeaf with i: Int end
+end
+
+let sameTag(a: Token b: Token): Bool = ordinal a is ordinal b
+let tok(t: Token): Token = t
+let rpT = option rp of Token end
+let semiT = option semi of Token end
+let arrowT = option arrow of Token end
+let assignT = option assign of Token end
+let eofT = option eofTok of Token end
+
+(* structure Dict *)
+Let Entry(K::TYPE V::TYPE) = Tuple k: K v: V end
+Let Dict(K::TYPE V::TYPE) = Tuple table: lists.T(Entry(K V)) leq: All(a: K b: K) Bool end
+let lookupE: Exception = exception lookupE: Ok end
+let create(K::TYPE V::TYPE)(leq: All(a: K b: K) Bool): Dict(K V) =
+    tuple let table = lists.nil(:Entry(K V)) let leq = leq end
+let lookup(K::TYPE V::TYPE)(d: Dict(K V) key: K): V =
+    begin
+        let rec search(l: lists.T(Entry(K V))): V =
+            case l
+                when nil then raise lookupE end
+                when cons with c then
+                    if d.leq(key c.hd.k) then if d.leq(c.hd.k key) then c.hd.v else raise lookupE end end
+                    else search(c.tl)
+                    end
+            end
+        search(d.table)
+    end
+let enter(K::TYPE V::TYPE)(d: Dict(K V) key: K item: V): Dict(K V) =
+    begin
+        let newentry: Entry(K V) = tuple let k = key let v = item end
+        let gt(a: K b: K): Bool = not(d.leq(a b))
+        let eq(a: K b: K): Bool = d.leq(a b) andif d.leq(b a)
+        let rec update(l: lists.T(Entry(K V))): lists.T(Entry(K V)) =
+            case l
+                when nil then lists.cons(:Entry(K V))(newentry lists.nil(:Entry(K V)))
+                when cons with c then
+                    if eq(key c.hd.k) then lists.cons(:Entry(K V))(newentry c.tl)
+                    elsif gt(c.hd.k key) then lists.cons(:Entry(K V))(newentry l)
+                    else lists.cons(:Entry(K V))(c.hd update(c.tl))
+                    end
+            end
+        tuple let table = update(d.table) let leq = d.leq end
+    end
+let listofdict(K::TYPE V::TYPE)(d: Dict(K V)): lists.T(Entry(K V)) =
+    lists.rev(:Entry(K V))(lists.rev(:Entry(K V))(d.table))
+
+let stringLeq(a: String b: String): Bool = stringOp.precedes(a b)
+let intLeq(a: Int b: Int): Bool = a <= b
+
+(* INPUT.ML: Input w/ one character push back capability *)
+Let Ibuf = Tuple s: reader.T var b: String var p: Int end
+let makeIbuf(s: reader.T): Ibuf = tuple let s = s let var b = "" let var p = 0 end
+let closeIbuf(i: Ibuf): Ok = reader.close(i.s)
+let eofE: Exception = exception eofE: Ok end
+
+(* The original's refs *)
+let g = tuple
+    let var charFormat = false
+    let var usesTrailingContext = false
+    let var usesPrevNewLine = false
+    let var countNewLines = false
+    let var haveReject = false
+    let var charSetSize = 129
+    let var strName = "Mlex"
+    let var headerCode = ""
+    let var headerDecl = false
+    let var argCode = maybe.none(:String)
+    let var strDecl = false
+    let var lexOut = writer.output
+    let var lineNum = 1
+    let var lexBuf = makeIbuf(reader.input)
+    let var lexState = 0
+    let var nextTok = option bof of Token end
+    let var inquote = false
+    let var symTab = create(:String :Exp)(stringLeq)
+    let var stateTab = create(:String :Int)(stringLeq)
+    let var stateNum = 0
+    let var leafNum = ~1
+end
+
+let resetFlags(): Ok =
+    begin
+        g.countNewLines := false g.haveReject := false g.usesTrailingContext := false g.charSetSize := 129
+        g.strName := "Mlex" g.headerCode := "" g.headerDecl := false g.argCode := maybe.none(:String) g.strDecl := false
+    end
+
+let say(x: String): Ok = writer.putString(g.lexOut x)
+
+let rec getch(a: Ibuf): Char =
+    if a.p is stringOp.length(a.b) then
+        begin
+            a.b := if reader.more(a.s) then reader.getString(a.s 1024) else "" end
+            a.p := 0
+            if stringOp.length(a.b) is 0 then raise eofE end else getch(a) end
+        end
+    else
+        begin
+            let ch = stringOp.getChar(a.b a.p)
+            if ch is '\n' then g.lineNum := g.lineNum + 1 end
+            a.p := a.p + 1
+            ch
+        end
+    end
+
+let ungetch(a: Ibuf): Ok =
+    begin
+        a.p := a.p - 1
+        if stringOp.getChar(a.b a.p) is '\n' then g.lineNum := g.lineNum - 1 end
+    end
+
+(* Union: merge two sorted lists of integers *)
+let union(a: Ints b: Ints): Ints =
+    begin
+        let rec merge(x: Ints y: Ints z: Ints): Ints =
+            case x
+                when nil then case y when nil then z when cons with c then merge(x c.tl lists.cons(:Int)(c.hd z)) end
+                when cons with cx then
+                    case y
+                        when nil then merge(cx.tl y lists.cons(:Int)(cx.hd z))
+                        when cons with cy then
+                            if cx.hd is cy.hd then merge(cx.tl cy.tl lists.cons(:Int)(cx.hd z))
+                            elsif cx.hd > cy.hd then merge(cx.tl y lists.cons(:Int)(cx.hd z))
+                            else merge(x cy.tl lists.cons(:Int)(cy.hd z))
+                            end
+                    end
+            end
+        merge(lists.rev(:Int)(a) lists.rev(:Int)(b) ints)
+    end
+let one(i: Int): Ints = lists.cons(:Int)(i ints)
+
+(* Nullable: compute if a important expression parse tree node is nullable *)
+let rec nullable(e: Exp): Bool =
+    case e
+        when eps then true
+        when class then false
+        when closure then true
+        when alt with x then nullable(x.e1) orif nullable(x.e2)
+        when cat with x then nullable(x.e1) andif nullable(x.e2)
+        when trail then true
+        when endLeaf then false
+    end
+(* FIRSTPOS: firstpos function for parse tree expressions *)
+and firstpos(e: Exp): Ints =
+    case e
+        when eps then ints
+        when class with x then one(x.i)
+        when closure with x then firstpos(x.e)
+        when alt with x then union(firstpos(x.e1) firstpos(x.e2))
+        when cat with x then if nullable(x.e1) then union(firstpos(x.e1) firstpos(x.e2)) else firstpos(x.e1) end
+        when trail with x then one(x.i)
+        when endLeaf with x then one(x.i)
+    end
+(* LASTPOS: Lastpos function for parse tree expressions *)
+and lastpos(e: Exp): Ints =
+    case e
+        when eps then ints
+        when class with x then one(x.i)
+        when closure with x then lastpos(x.e)
+        when alt with x then union(lastpos(x.e1) lastpos(x.e2))
+        when cat with x then if nullable(x.e2) then union(lastpos(x.e1) lastpos(x.e2)) else lastpos(x.e2) end
+        when trail with x then one(x.i)
+        when endLeaf with x then one(x.i)
+    end
+
+(* ++: Increment an integer reference *)
+let incStateNum(): Int = begin g.stateNum := g.stateNum + 1 g.stateNum end
+let incLeafNum(): Int = begin g.leafNum := g.leafNum + 1 g.leafNum end
+
+let errorE: Exception = exception errorE: Ok end
+let prErr(A::TYPE)(x: String): A =
+    begin
+        writer.putString(writer.err stringOp.conc(array of "ml-lex: error, line " conv.int(g.lineNum) ": " x "\n" end))
+        raise errorE end
+    end
+let prSynErr(A::TYPE)(x: String): A =
+    begin
+        writer.putString(writer.err
+            stringOp.conc(array of "ml-lex: syntax error, line " conv.int(g.lineNum) ": " x "\n" end))
+        raise errorE end
+    end
+
+let syntaxError: Exception = exception syntaxError: Ok end (* error in user's input file *)
+let lexError: Exception = exception lexError: Ok end (* unexpected error in lexer *)
+
+let str(c: Char): String = stringOp.new(1 c)
+let implode(l: lists.T(Char)): String =
+    begin
+        let s = stringOp.new(lists.length(:Char)(l) ' ')
+        let rec fill(l: lists.T(Char) i: Int): Ok = case l when cons with c
+            then begin stringOp.setChar(s i c.hd) fill(c.tl i + 1) end else ok end
+        fill(l 0)
+        s
+    end
+let revImplode(l: lists.T(Char)): String = implode(lists.rev(:Char)(l))
+let consC(c: Char l: lists.T(Char)): lists.T(Char) = lists.cons(:Char)(c l)
+let noChars = lists.nil(:Char)
+
+let advanceTok(): Ok =
+    begin
+        let code(c: Char): Int = ascii.val(c)
+        let isLetter(c: Char): Bool =
+            {{code(c) >= code('a')} andif {code(c) <= code('z')}}
+                orif {{code(c) >= code('A')} andif {code(c) <= code('Z')}}
+        let isDigit(c: Char): Bool = {code(c) >= code('0')} andif {code(c) <= code('9')}
+        (* check for valid (non-leading) identifier character (added by JHR) *)
+        let isIdentChr(c: Char): Bool = isLetter(c) orif isDigit(c) orif {c is '_'} orif {c is '\''}
+        let atoi(s: String): Int =
+            begin
+                let rec num(i: Int n: Int): Int =
+                    if {i < stringOp.length(s)} andif isDigit(stringOp.getChar(s i)) then
+                        num(i + 1 {10 * n} + {ascii.val(stringOp.getChar(s i)) - ascii.val('0')})
+                    else n
+                    end
+                num(0 0)
+            end
+        let nextch(): Char = getch(g.lexBuf)
+        let rec skipws(): Char =
+            begin
+                let c = nextch()
+                if {c is ' '} orif {c is '\t'} orif {c is '\n'} then skipws() else c end
+            end
+        let escaped(): Char =
+            begin
+                let x = nextch()
+                if x is 'b' then ascii.char(8)
+                elsif x is 'n' then '\n'
+                elsif x is 't' then '\t'
+                elsif x is 'h' then ascii.char(128)
+                else
+                    begin
+                        let err(A::TYPE)(t: lists.T(Char)): A = prErr(:A)("illegal ascii escape '"
+                            <> revImplode(t) <> "'")
+                        let cvt(c: Char): Int = ascii.val(c) - ascii.val('0')
+                        let rec f(n: Int c: Int t: lists.T(Char)): Char =
+                            if c is 3 then if n >= g.charSetSize then err(:Char)(t) else ascii.char(n) end
+                            else
+                                begin
+                                    let ch = nextch()
+                                    if isDigit(ch) then f({n * 10} + cvt(ch) c + 1 consC(ch t)) else err(:Char)(t) end
+                                end
+                            end
+                        if isDigit(x) then f(cvt(x) 1 consC(x noChars)) else x end
+                    end
+                end
+            end
+        let onechar(x: Char): Token =
+            begin
+                let c = array of(g.charSetSize false)
+                c[ascii.val(x)] := true
+                option chars of Token with c end
+            end
+        try
+            if g.lexState is 0 then
+                begin
+                    let makeTok(): Token =
+                        begin
+                            let c = skipws()
+                            (* Lex % operators *)
+                            if c is '%' then
+                                begin
+                                    let a = nextch()
+                                    if a is '%' then option lexmark of Token end
+                                    else
+                                        begin
+                                            let rec f(s: lists.T(Char)): String =
+                                                begin
+                                                    let a = nextch()
+                                                    if isLetter(a) then f(consC(a s))
+                                                        else begin ungetch(g.lexBuf) revImplode(s) end end
+                                                end
+                                            let command = f(consC(a noChars))
+                                            if stringOp.equal(command "reject") then option reject of Token end
+                                            elsif stringOp.equal(command "count") then option count of Token end
+                                            elsif stringOp.equal(command "full") then option fullcharset of Token end
+                                            elsif stringOp.equal(command "s") then option lexstates of Token end
+                                            elsif stringOp.equal(command "S") then option lexstates of Token end
+                                            elsif stringOp.equal(command "structure") then option structTok of Token end
+                                            elsif stringOp.equal(command "header") then option header of Token end
+                                            elsif stringOp.equal(command "arg") then option arg of Token end
+                                            else prErr(:Token)("unknown % operator ")
+                                            end
+                                        end
+                                    end
+                                end
+                            (* semicolon (for end of LEXSTATES) *)
+                            elsif c is ';' then semiT
+                            (* anything else *)
+                            elsif isLetter(c) then
+                                begin
+                                    let rec getID(matched: lists.T(Char)): String =
+                                        begin
+                                            let x = nextch()
+                                            if isIdentChr(x) then getID(consC(x matched))
+                                            else begin ungetch(g.lexBuf) revImplode(matched) end
+                                            end
+                                        end
+                                    option id of Token with getID(consC(c noChars)) end
+                                end
+                            else prSynErr(:Token)("bad character: " <> str(c))
+                            end
+                        end
+                    g.nextTok := makeTok()
+                end
+            elsif g.lexState is 1 then
+                begin
+                    let rec makeTok(): Token =
+                        if g.inquote then
+                            begin
+                                let c = nextch()
+                                (* inside quoted string *)
+                                if c is '\\' then onechar(escaped())
+                                elsif c is '"' then begin g.inquote := false makeTok() end
+                                else onechar(c)
+                                end
+                            end
+                        else
+                            begin
+                                let c = skipws()
+                                (* single character operators *)
+                                if c is '?' then option qmark of Token end
+                                elsif c is '*' then option star of Token end
+                                elsif c is '+' then option plus of Token end
+                                elsif c is '|' then option bar of Token end
+                                elsif c is '(' then option lp of Token end
+                                elsif c is ')' then rpT
+                                elsif c is '^' then option carat of Token end
+                                elsif c is '$' then option dollar of Token end
+                                elsif c is '/' then option slash of Token end
+                                elsif c is ';' then semiT
+                                elsif c is '.' then
+                                    begin
+                                        let cs = array of(g.charSetSize true)
+                                        cs[10] := false
+                                        option chars of Token with cs end
+                                    end
+                                (* assign and arrow *)
+                                elsif c is '=' then
+                                    begin
+                                        let c1 = nextch()
+                                        if c1 is '>' then arrowT else begin ungetch(g.lexBuf) assignT end end
+                                    end
+                                (* character set *)
+                                elsif c is '[' then
+                                    begin
+                                        let classch(): Char = begin let x = skipws() if x is '\\' then escaped()
+                                            else x end end
+                                        let first = classch()
+                                        let flag = first isnot '^'
+                                        let cs = array of(g.charSetSize not(flag))
+                                        let add(x: maybe.T(Char)): Ok = if maybe.isSome(:Char x)
+                                            then cs[ascii.val(maybe.unwrap(:Char x))] := flag end
+                                        let range(x: Char y: Char): Ok =
+                                            if code(x) > code(y) then prErr(:Ok)("bad char. range")
+                                            else
+                                                begin
+                                                    let i = tuple let var v = ascii.val(x) end
+                                                    let j = ascii.val(y)
+                                                    while i.v <= j do
+                                                        add(maybe.some(:Char ascii.char(i.v)))
+                                                        i.v := i.v + 1
+                                                    end
+                                                end
+                                            end
+                                        let rec getClass(last: maybe.T(Char)): Array(Bool) =
+                                            begin
+                                                let x = classch()
+                                                if x is ']' then begin add(last) cs end
+                                                elsif x is '-' then
+                                                    if maybe.isNone(:Char last) then getClass(maybe.some(:Char '-'))
+                                                    else
+                                                        begin
+                                                            let y = classch()
+                                                            if y is ']'
+                                                                then begin add(last) add(maybe.some(:Char '-')) cs end
+                                                            else begin range(maybe.unwrap(:Char last) y)
+                                                                getClass(maybe.none(:Char)) end
+                                                            end
+                                                        end
+                                                    end
+                                                else begin add(last) getClass(maybe.some(:Char x)) end
+                                                end
+                                            end
+                                        option chars of Token with
+                                            getClass(if first is '^' then maybe.none(:Char)
+                                                else maybe.some(:Char first) end) end
+                                    end
+                                (* Start States specification *)
+                                elsif c is '<' then
+                                    begin
+                                        let rec getState(prev: Strings matched: String): Strings =
+                                            begin
+                                                let x = nextch()
+                                                if x is '>' then lists.cons(:String)(matched prev)
+                                                elsif x is ',' then getState(lists.cons(:String)(matched prev) "")
+                                                elsif isIdentChr(x) then getState(prev matched <> str(x))
+                                                else prSynErr(:Strings)("bad start state list")
+                                                end
+                                            end
+                                        option state of Token with getState(lists.nil(:String) "") end
+                                    end
+                                (* {id} or repititions *)
+                                elsif c is '{' then
+                                    begin
+                                        let ch = nextch()
+                                        if isLetter(ch) then
+                                            begin
+                                                let rec getID(matched: String): String =
+                                                    begin
+                                                        let x = nextch()
+                                                        if x is '}' then matched
+                                                        elsif isIdentChr(x) then getID(matched <> str(x))
+                                                        else prErr(:String)("invalid char. class name")
+                                                        end
+                                                    end
+                                                option id of Token with getID(str(ch)) end
+                                            end
+                                        elsif isDigit(ch) then
+                                            begin
+                                                Let Reps = Tuple lo: Int hi: Int end
+                                                let rec getR(matched: String r1: Int): Reps =
+                                                    begin
+                                                        let x = nextch()
+                                                        if x is '}' then
+                                                            begin
+                                                                let n = atoi(matched)
+                                                                if r1 is ~1 then tuple let lo = n let hi = n end
+                                                                    else tuple let lo = r1 let hi = n end end
+                                                            end
+                                                        elsif x is ',' then
+                                                            if r1 is ~1 then getR("" atoi(matched))
+                                                                else prErr(:Reps)("invalid repetitions spec.") end
+                                                        elsif isDigit(x) then getR(matched <> str(x) r1)
+                                                        else prErr(:Reps)("invalid char in repetitions spec")
+                                                        end
+                                                    end
+                                                let r = getR(str(ch) ~1)
+                                                option reps of Token with r.lo r.hi end
+                                            end
+                                        else prErr(:Token)("bad repetitions spec")
+                                        end
+                                    end
+                                (* Lex % operators *)
+                                elsif c is '%' then
+                                    if nextch() is '%' then option lexmark of Token end
+                                        else begin ungetch(g.lexBuf) onechar('%') end end
+                                (* backslash escape *)
+                                elsif c is '\\' then onechar(escaped())
+                                (* start quoted string *)
+                                elsif c is '"' then begin g.inquote := true makeTok() end
+                                (* anything else *)
+                                else onechar(c)
+                                end
+                            end
+                        end
+                    g.nextTok := makeTok()
+                end
+            elsif g.lexState is 2 then
+                g.nextTok :=
+                    begin
+                        let c = skipws()
+                        if c is '(' then
+                            begin
+                                let rec getAct(lpct: Int x: lists.T(Char)): String =
+                                    begin
+                                        let y = getch(g.lexBuf)
+                                        if y is '(' then getAct(lpct + 1 consC('(' x))
+                                        elsif y is ')' then if lpct is 0 then revImplode(x)
+                                            else getAct(lpct - 1 consC(')' x)) end
+                                        else getAct(lpct consC(y x))
+                                        end
+                                    end
+                                option action of Token with getAct(0 noChars) end
+                            end
+                        elsif c is ';' then semiT
+                        else prSynErr(:Token)("invalid character " <> str(c))
+                        end
+                    end
+            else raise lexError end
+            end
+        when eofE then g.nextTok := eofT
+        end
+    end
+
+let getTok(): Token = begin let t = g.nextTok advanceTok() t end
+
+let getExp(): Exp =
+    begin
+        let optional(e: Exp): Exp = option alt of Exp with option eps of Exp end e end
+        let lookup1(name: String): Exp =
+            try lookup(:String :Exp)(g.symTab name) when lookupE
+                then prErr(:Exp)("bad regular expression name: " <> name) end
+        let newline(): Array(Bool) = begin let c = array of(g.charSetSize false) c[10] := true c end
+        let trail(e1: Exp e2: Exp): Exp =
+            option cat of Exp with option cat of Exp with e1 option trail of Exp with 0 end end e2 end
+        let endline(e: Exp): Exp = trail(e option class of Exp with newline() 0 end)
+        let closure1(e: Exp): Exp = option cat of Exp with e option closure of Exp with e end end
+        let repeat(min: Int max: Int e: Exp): Exp =
+            begin
+                let rec rep(i: Int j: Int): Exp =
+                    if i is 0 then
+                        if j is 0 then option eps of Exp end
+                        elsif j is 1 then option alt of Exp with e option eps of Exp end end
+                        else option cat of Exp with rep(0 1) rep(0 j - 1) end
+                        end
+                    else option cat of Exp with e rep(i - 1 j - 1) end
+                    end
+                rep(min max)
+            end
+        let cat(e1: Exp e2: Exp): Exp = option cat of Exp with e1 e2 end
+        let rec exp0(): Exp =
+            begin
+                let t = getTok()
+                case t
+                    when chars with c then exp1(option class of Exp with c.c 0 end)
+                    when lp then
+                        begin
+                            let e = exp0()
+                            if sameTag(g.nextTok rpT) then begin advanceTok() exp1(e) end
+                                else prSynErr(:Exp)("missing '('") end
+                        end
+                    when id with name then exp1(lookup1(name.s))
+                    else raise syntaxError end
+                end
+            end
+        and exp1(e: Exp): Exp =
+            case g.nextTok
+                when semi then e
+                when arrow then e
+                when eofTok then e
+                when lp then exp2(e exp0())
+                when rp then e
+                else
+                    begin
+                        let t = g.nextTok
+                        advanceTok()
+                        case t
+                            when qmark then exp1(optional(e))
+                            when star then exp1(option closure of Exp with e end)
+                            when plus then exp1(closure1(e))
+                            when chars with c then exp2(e option class of Exp with c.c 0 end)
+                            when bar then option alt of Exp with e exp0() end
+                            when dollar then begin g.usesTrailingContext := true endline(e) end
+                            when slash then begin g.usesTrailingContext := true trail(e exp0()) end
+                            when reps with r then exp1(repeat(r.lo r.hi e))
+                            when id with name then exp2(e lookup1(name.s))
+                            else raise syntaxError end
+                        end
+                    end
+            end
+        and exp2(e1: Exp e2: Exp): Exp =
+            case g.nextTok
+                when semi then cat(e1 e2)
+                when arrow then cat(e1 e2)
+                when eofTok then cat(e1 e2)
+                when lp then exp2(cat(e1 e2) exp0())
+                when rp then cat(e1 e2)
+                else
+                    begin
+                        let t = g.nextTok
+                        advanceTok()
+                        case t
+                            when qmark then exp1(cat(e1 optional(e2)))
+                            when star then exp1(cat(e1 option closure of Exp with e2 end))
+                            when plus then exp1(cat(e1 closure1(e2)))
+                            when chars with c then exp2(cat(e1 e2) option class of Exp with c.c 0 end)
+                            when bar then option alt of Exp with cat(e1 e2) exp0() end
+                            when dollar then begin g.usesTrailingContext := true endline(cat(e1 e2)) end
+                            when slash then begin g.usesTrailingContext := true trail(cat(e1 e2) exp0()) end
+                            when reps with r then exp1(cat(e1 repeat(r.lo r.hi e2)))
+                            when id with name then exp2(cat(e1 e2) lookup1(name.s))
+                            else raise syntaxError end
+                        end
+                    end
+            end
+        exp0()
+    end
+
+let getStates(): Ints =
+    begin
+        let rec add(l: Strings sl: Ints): Ints =
+            case l
+                when nil then sl
+                when cons with c then
+                    add(c.tl union(one(try lookup(:String :Int)(g.stateTab c.hd)
+                        when lookupE then prErr(:Int)("bad state name: " <> c.hd) end) sl))
+            end
+        let rec addall(i: Int sl: Ints): Ints = if i <= g.stateNum then addall(i + 2 union(one(i) sl)) else sl end
+        let rec incall(l: Ints): Ints = case l when cons with c then lists.cons(:Int)(c.hd + 1 incall(c.tl))
+            else ints end
+        let rec addincs(l: Ints): Ints =
+            case l when cons with c then lists.cons(:Int)(c.hd lists.cons(:Int)(c.hd + 1 addincs(c.tl))) else ints end
+        let stateList =
+            case g.nextTok
+                when state with s then begin advanceTok() g.lexState := 1 add(s.s ints) end
+                else addall(1 ints)
+            end
+        case g.nextTok
+            when carat then begin g.lexState := 1 advanceTok() g.usesPrevNewLine := true incall(stateList) end
+            else addincs(stateList)
+        end
+    end
+
+let renum(e: Exp): Exp =
+    begin
+        let rec label(e: Exp): Exp =
+            case e
+                when eps then e
+                when class with x then option class of Exp with x.c incLeafNum() end
+                when closure with x then option closure of Exp with label(x.e) end
+                when alt with x then begin let l1 = label(x.e1) option alt of Exp with l1 label(x.e2) end end
+                when cat with x then begin let l1 = label(x.e1) option cat of Exp with l1 label(x.e2) end end
+                when trail then option trail of Exp with incLeafNum() end
+                when endLeaf then option endLeaf of Exp with incLeafNum() end
+            end
+        label(e)
+    end
+
+let parseError: Exception = exception parseError: Ok end
+
+Let Rule = Tuple states: Ints e: Exp end
+Let Parsed = Tuple userCode: String rules: lists.T(Rule) accept: Dict(String String) end
+
+let parse(): Parsed =
+    try
+        begin
+            let accept = tuple let var v = create(:String :String)(stringLeq) end
+            let rec parseRtns(l: lists.T(Char)): String =
+                begin
+                    let c = getch(g.lexBuf)
+                    if c is '%' then
+                        begin
+                            let c1 = getch(g.lexBuf)
+                            if c1 is '%' then revImplode(l) else parseRtns(consC(c1 consC('%' l))) end
+                        end
+                    else parseRtns(consC(c l))
+                    end
+                end
+            let rec parseDefs(): Ok =
+                begin
+                    g.lexState := 0
+                    advanceTok()
+                    case g.nextTok
+                        when lexmark then ok
+                        when lexstates then
+                            begin
+                                let rec f(): Ok =
+                                    case g.nextTok
+                                        when id with i then
+                                            begin
+                                                g.stateTab := enter(:String :Int)(g.stateTab i.s incStateNum())
+                                                incStateNum()
+                                                advanceTok()
+                                                f()
+                                            end
+                                        else ok
+                                    end
+                                advanceTok()
+                                f()
+                                if sameTag(g.nextTok semiT) then parseDefs() else prSynErr(:Ok)("expected ';'") end
+                            end
+                        when id with x then
+                            begin
+                                g.lexState := 1
+                                advanceTok()
+                                if sameTag(getTok() assignT) then
+                                    begin
+                                        g.symTab := enter(:String :Exp)(g.symTab x.s getExp())
+                                        if sameTag(g.nextTok semiT) then parseDefs()
+                                            else prSynErr(:Ok)("expected ';'") end
+                                    end
+                                else raise syntaxError end
+                                end
+                            end
+                        when reject then begin g.haveReject := true parseDefs() end
+                        when count then begin g.countNewLines := true parseDefs() end
+                        when fullcharset then begin g.charSetSize := 256 parseDefs() end
+                        when header then
+                            begin
+                                g.lexState := 2
+                                advanceTok()
+                                case getTok()
+                                    when action with s then
+                                        if g.strDecl then prErr(:Ok)("cannot have both %s and %header declarations")
+                                        elsif g.headerDecl then prErr(:Ok)("duplicate %header declarations")
+                                        else
+                                            begin
+                                                g.headerCode := s.s
+                                                g.lexState := 0
+                                                g.headerDecl := true
+                                                parseDefs()
+                                            end
+                                        end
+                                    else raise syntaxError end
+                                end
+                            end
+                        when arg then
+                            begin
+                                g.lexState := 2
+                                advanceTok()
+                                case getTok()
+                                    when action with s then
+                                        begin
+                                            if maybe.isSome(:String g.argCode)
+                                                then prErr(:Ok)("duplicate %arg declarations")
+                                            else g.argCode := maybe.some(:String s.s)
+                                            end
+                                            g.lexState := 0
+                                            parseDefs()
+                                        end
+                                    else raise syntaxError end
+                                end
+                            end
+                        when structTok then
+                            begin
+                                advanceTok()
+                                case g.nextTok
+                                    when id with i then
+                                        if g.headerDecl then prErr(:Ok)("cannot have both %s and %header declarations")
+                                        elsif g.strDecl then prErr(:Ok)("duplicate %s declarations")
+                                        else g.strName := i.s
+                                        end
+                                    else prErr(:Ok)("expected ID")
+                                end
+                                parseDefs()
+                            end
+                        else raise syntaxError end
+                    end
+                end
+            let rec parseRules(rules: lists.T(Rule)): lists.T(Rule) =
+                begin
+                    g.lexState := 1
+                    advanceTok()
+                    case g.nextTok
+                        when lexmark then rules
+                        when eofTok then rules
+                        else
+                            begin
+                                let s = getStates()
+                                let e = renum(option cat of Exp with getExp() option endLeaf of Exp with 0 end end)
+                                if sameTag(g.nextTok arrowT) then
+                                    begin
+                                        g.lexState := 2
+                                        advanceTok()
+                                        case getTok()
+                                            when action with act then
+                                                if sameTag(g.nextTok semiT) then
+                                                    begin
+                                                        accept.v :=
+                                                            enter(:String :String)(accept.v conv.int(g.leafNum) act.s)
+                                                        parseRules(lists.cons(:Rule)(tuple let states = s
+                                                            let e = e end rules))
+                                                    end
+                                                else prSynErr(:lists.T(Rule))("expected ';'")
+                                                end
+                                            else raise syntaxError end
+                                        end
+                                    end
+                                else prSynErr(:lists.T(Rule))("expected '=>'")
+                                end
+                            end
+                    end
+                end
+            let usercode = parseRtns(noChars)
+            parseDefs()
+            let rules = parseRules(lists.nil(:Rule))
+            tuple let userCode = usercode let rules = rules let accept = accept.v end
+        end
+    when syntaxError then prSynErr(:Parsed)("")
+    end
+
+let makebegin(): Ok =
+    begin
+        let rec make(l: lists.T(Entry(String Int))): Ok =
+            case l
+                when nil then ok
+                when cons with c then
+                    begin
+                        say("val ") say(c.hd.k) say(" = ") say("STARTSTATE ") say(conv.int(c.hd.v)) say(";\n")
+                        make(c.tl)
+                    end
+            end
+        say("\n(* start state definitions *)\n\n")
+        make(listofdict(:String :Int)(g.stateTab))
+    end
+
+Let IntInts = Entry(Int Ints)
+Let Pair = Tuple tl: Int el: Int end
+
+(* Fins = (state #, list of final leaves for the state) list
+ * tcs = (state #, list of trailing context leaves which begin in this state)
+ *       list
+ * tcpairs = (trailing context leaf, end leaf) list
+ * trans = (state #,list of transitions for state) list *)
+let maketable(fins: lists.T(IntInts) tcs: lists.T(IntInts) tcpairs: lists.T(Pair) trans: lists.T(IntInts)): Ok =
+    begin
+        Let Elem = Option n with i: Int end t with i: Int end d with i: Int end end
+        let count = tuple let var v = 0 end
+        if lists.length(:IntInts)(trans) < 256 then g.charFormat := true else g.charFormat := false end
+        if g.usesTrailingContext then say("\ndatatype yyfinstate = N of int |  T of int | D of int\n")
+        else say("\ndatatype yyfinstate = N of int")
+        end
+        say("\ntype statedata = {fin : yyfinstate list, trans: ")
+        if g.charFormat then say("string}") else say("int Vector.vector}") end
+        say("\n(* transition & final state table *)\nval tab = let\n")
+        if not(g.charFormat) then
+            begin
+                say("fun decode s k =\n")
+                say("  let val k' = k + k\n")
+                say("      val hi = Char.ord(String.sub(s, k'))\n")
+                say("      val lo = Char.ord(String.sub(s, k' + 1))\n")
+                say("  in hi * 256 + lo end\n")
+            end
+        end
+        let newfins =
+            begin
+                let isEndLeaf(t: Int): Bool = lists.exists(:Pair)(fun(p: Pair): Bool p.el is t tcpairs)
+                let getEndLeaf(t: Int): Int =
+                    begin
+                        let rec f(l: lists.T(Pair)): Int =
+                            case l when cons with c then if c.hd.tl is t then c.hd.el else f(c.tl) end
+                                else raise parseError end end
+                        f(tcpairs)
+                    end
+                let getTrConLeaves(s: Int): Ints =
+                    begin
+                        let rec f(l: lists.T(IntInts)): Ints =
+                            case l when cons with c then if s is c.hd.k then c.hd.v else f(c.tl) end else ints end
+                        f(tcs)
+                    end
+                let sortLeaves(s: Ints): Ints =
+                    begin
+                        let rec insert(x: Int l: Ints): Ints =
+                            case l
+                                when cons with c then if x <= c.hd then lists.cons(:Int)(x l)
+                                    else lists.cons(:Int)(c.hd insert(x c.tl)) end
+                                else one(x)
+                            end
+                        lists.foldr(:Int :Ints)(insert ints s)
+                    end
+                let conv1(a: Int): Elem = if isEndLeaf(a) then option d of Elem with a end
+                    else option n of Elem with a end end
+                let rec merge(a: Ints b: Ints): lists.T(Elem) =
+                    case a
+                        when cons with ca then
+                            case b
+                                when cons with cb then
+                                    if ca.hd <= cb.hd then lists.cons(:Elem)(conv1(ca.hd) merge(ca.tl b))
+                                    else lists.cons(:Elem)(option t of Elem with cb.hd end merge(a cb.tl))
+                                    end
+                                else lists.cons(:Elem)(conv1(ca.hd) merge(ca.tl ints))
+                            end
+                        else
+                            case b
+                                when cons with cb
+                                    then lists.cons(:Elem)(option t of Elem with cb.hd end merge(cb.tl ints))
+                                else lists.nil(:Elem)
+                            end
+                    end
+                lists.map(:IntInts :lists.T(Elem))(fun(x: IntInts): lists.T(Elem)
+                    lists.rev(:Elem)(merge(x.v sortLeaves(lists.map(:Int :Int)(getEndLeaf getTrConLeaves(x.k)))))
+                    fins)
+            end
+        let rs =
+            begin
+                let makeItems(x: Ints): Ok =
+                    begin
+                        let emit8(x: Int pos: Int): Int =
+                            begin
+                                let digits = conv.int(x)
+                                let s = stringOp.new(3 - stringOp.length(digits) '0') <> digits
+                                if pos is 16 then begin say("\\\n\\\\") say(s) 1 end
+                                else begin say("\\") say(s) pos + 1 end
+                                end
+                            end
+                        let emit16(x: Int pos: Int): Int =
+                            begin
+                                let hi8 = x / 256
+                                let lo8 = x - {hi8 * 256} (* x rem 256 *)
+                                emit8(lo8 emit8(hi8 pos))
+                            end
+                        let rec makeString(l: Ints emitter: All(x: Int pos: Int) Int pos: Int): Ok =
+                            case l when cons with c then makeString(c.tl emitter emitter(c.hd pos)) else ok end
+                        if g.charFormat then begin say(" =\n\"") makeString(x emit8 0) say("\"\n") end
+                        else
+                            begin
+                                say(" = Vector.tabulate(") say(conv.int(lists.length(:Int)(x)))
+                                say(", decode\n\"") makeString(x emit16 0) say("\")\n")
+                            end
+                        end
+                    end
+                let rec makeEntry(l: lists.T(IntInts) rs: Strings t: Tree): Strings =
+                    case l
+                        when nil then lists.rev(:String)(rs)
+                        when cons with c then
+                            begin
+                                let name = "s" <> conv.int(c.hd.k)
+                                let key: Key = tuple let k = c.hd.v let name = name end
+                                let found = try maybe.some(:String rbLookup(key t).name) when notfound
+                                    then maybe.none(:String) end
+                                if maybe.isSome(:String found)
+                                    then makeEntry(c.tl lists.cons(:String)(maybe.unwrap(:String found) rs) t)
+                                else
+                                    begin
+                                        count.v := count.v + 1
+                                        say("val ") say(name) makeItems(c.hd.v)
+                                        makeEntry(c.tl lists.cons(:String)(name rs) rbInsert(key t))
+                                    end
+                                end
+                            end
+                    end
+                makeEntry(trans lists.nil(:String) emptyTree)
+            end
+        let rec makeTable(a: Strings b: lists.T(lists.T(Elem))): Ok =
+            case a
+                when nil then ok
+                when cons with ca then
+                    case b
+                        when cons with cb then
+                            begin
+                                let rec makeItems(l: lists.T(Elem)): Ok =
+                                    case l
+                                        when nil then ok
+                                        when cons with c then
+                                            begin
+                                                case c.hd
+                                                    when n with x then begin say("(N ") say(conv.int(x.i)) end
+                                                    when t with x then begin say("(T ") say(conv.int(x.i)) end
+                                                    when d with x then begin say("(D ") say(conv.int(x.i)) end
+                                                end
+                                                say(")")
+                                                if lists.null(:Elem)(c.tl) then ok
+                                                    else begin say(",") makeItems(c.tl) end end
+                                            end
+                                    end
+                                say("{fin = [") makeItems(cb.hd)
+                                say("], trans = ") say(ca.hd) say("}")
+                                if lists.null(:String)(ca.tl) then ok
+                                    else begin say(",\n") makeTable(ca.tl cb.tl) end end
+                            end
+                        else raise parseError end
+                    end
+            end
+        let msg(x: String): Ok = ok (* TextIO.output(TextIO.stdOut, x) *)
+        say("in Vector.fromList\n[") makeTable(rs newfins) say("]\nend\n")
+        msg("\nNumber of states = " <> conv.int(lists.length(:IntInts)(trans)))
+        msg("\nNumber of distinct rows = " <> conv.int(count.v))
+        msg("\nApprox. memory size of trans. table = "
+            <> conv.int({count.v * g.charSetSize} * if g.charFormat then 1 else 8 end))
+        msg(" bytes\n")
+    end
+
+(* makeaccept: Takes a (string,string) dictionary, prints case statement for
+ * accepting leaf actions. The key strings are the leaf #'s, the data strings
+ * are the actions. *)
+let makeaccept(ends: Dict(String String)): Ok =
+    begin
+        let startline(f: Bool): Ok = if f then say("  ") else say("| ") end
+        let rec make(l: lists.T(Entry(String String)) f: Bool): Ok =
+            case l
+                when nil then begin startline(f) say("_ => raise Internal.LexerError\n") end
+                when cons with c
+                    then begin startline(f) say(c.hd.k) say(" => (") say(c.hd.v) say(")\n") make(c.tl false) end
+            end
+        make(listofdict(:String :String)(ends) true)
+    end
+
+Let LeafData = Tuple fp: Array(Ints) leaf: Array(Exp) tcpairs: lists.T(Pair) end
+
+let leafdata(e: lists.T(Rule)): LeafData =
+    begin
+        let fp = array of(g.leafNum + 1 ints)
+        let leaf = array of(g.leafNum + 1 option eps of Exp end)
+        let state = tuple let var tcpairs = lists.nil(:Pair) let var trailmark = ~1 end
+        let rec add(l: Ints x: Ints): Ok = case l when cons with c
+            then begin fp[c.hd] := union(fp[c.hd] x) add(c.tl x) end else ok end
+        let rec moredata(e: Exp): Ok =
+            case e
+                when closure with x then begin moredata(x.e) add(lastpos(x.e) firstpos(x.e)) end
+                when alt with x then begin moredata(x.e1) moredata(x.e2) end
+                when cat with x then begin moredata(x.e1) moredata(x.e2) add(lastpos(x.e1) firstpos(x.e2)) end
+                when class with x then leaf[x.i] := e
+                when trail with x then begin leaf[x.i] := e if state.trailmark is ~1 then state.trailmark := x.i end end
+                when endLeaf with x then
+                    begin
+                        leaf[x.i] := e
+                        if state.trailmark isnot ~1 then
+                            begin
+                                state.tcpairs :=
+                                    lists.cons(:Pair)(tuple let tl = state.trailmark let el = x.i end state.tcpairs)
+                                state.trailmark := ~1
+                            end
+                        end
+                    end
+                else ok
+            end
+        let rec makedata(l: lists.T(Rule)): Ok = case l when cons with c
+            then begin moredata(c.hd.e) makedata(c.tl) end else ok end
+        state.trailmark := ~1
+        makedata(e)
+        tuple let fp = fp let leaf = leaf let tcpairs = state.tcpairs end
+    end
+
+Let Dfa = Tuple fins: lists.T(IntInts) trans: lists.T(IntInts) tctab: lists.T(IntInts) tcpairs: lists.T(Pair) end
+
+let makedfa(rules: lists.T(Rule)): Dfa =
+    begin
+        let tabs = tuple
+            let var stateTab = create(:String :Int)(stringLeq)
+            let var fintab = create(:Int :Ints)(intLeq)
+            let var transtab = create(:Int :Ints)(intLeq)
+            let var tctab = create(:Int :Ints)(intLeq)
+        end
+        let ld = leafdata(rules)
+        let fp = ld.fp
+        let leaf = ld.leaf
+        let rec visit(state: Ints statenum: Int): Ok =
+            begin
+                let transitions = gettrans(state)
+                tabs.fintab := enter(:Int :Ints)(tabs.fintab statenum getfin(state))
+                tabs.tctab := enter(:Int :Ints)(tabs.tctab statenum gettc(state))
+                tabs.transtab := enter(:Int :Ints)(tabs.transtab statenum transitions)
+            end
+        and visitstarts(states: lists.T(Ints)): Ok =
+            begin
+                let rec vs(l: lists.T(Ints) i: Int): Ok = case l when cons with c
+                    then begin visit(c.hd i) vs(c.tl i + 1) end else ok end
+                vs(states 0)
+            end
+        and hashstate(s: Ints): String =
+            begin
+                let rec hs(l: Ints z: String): String = case l when cons with c
+                    then hs(c.tl {z <> " "} <> conv.int(c.hd)) else z end
+                hs(s "")
+            end
+        and find(s: Ints): Int = lookup(:String :Int)(tabs.stateTab hashstate(s))
+        and add(s: Ints n: Int): Ok = tabs.stateTab := enter(:String :Int)(tabs.stateTab hashstate(s) n)
+        and getstate(state: Ints): Int =
+            try find(state)
+            when lookupE then begin let n = incStateNum() add(state n) visit(state n) n end
+            end
+        and getfin(state: Ints): Ints =
+            begin
+                let rec f(l: Ints fins: Ints): Ints =
+                    case l when cons with c then case leaf[c.hd] when endLeaf then f(c.tl lists.cons(:Int)(c.hd fins))
+                        else f(c.tl fins) end
+                    else fins end
+                f(state ints)
+            end
+        and gettc(state: Ints): Ints =
+            begin
+                let rec f(l: Ints fins: Ints): Ints =
+                    case l when cons with c then case leaf[c.hd] when trail then f(c.tl lists.cons(:Int)(c.hd fins))
+                        else f(c.tl fins) end
+                    else fins end
+                f(state ints)
+            end
+        and gettrans(state: Ints): Ints =
+            begin
+                let rec loop1(c: Int tlist: Ints): Ints =
+                    begin
+                        (* The original's Subscript handler is never reached:
+                         * every class has CharSetSize characters *)
+                        let rec cktrans(l: Ints r: Ints): Ints =
+                            case l
+                                when nil then r
+                                when cons with x then
+                                    case leaf[x.hd]
+                                        when class with cl then if cl.c[c] then cktrans(x.tl union(r fp[x.hd]))
+                                            else cktrans(x.tl r) end
+                                        else cktrans(x.tl r)
+                                    end
+                            end
+                        if c >= 0 then
+                            begin
+                                let v = cktrans(state ints)
+                                loop1(c - 1 if lists.null(:Int)(v) then lists.cons(:Int)(0 tlist)
+                                    else lists.cons(:Int)(getstate(v) tlist) end)
+                            end
+                        else tlist
+                        end
+                    end
+                loop1(g.charSetSize - 1 ints)
+            end
+        and startstates(): lists.T(Ints) =
+            begin
+                let startarray = array of(g.stateNum + 1 ints)
+                let listofarray(a: Array(Ints) n: Int): lists.T(Ints) =
+                    begin
+                        let rec f(i: Int l: lists.T(Ints)): lists.T(Ints) = if i >= 0
+                            then f(i - 1 lists.cons(:Ints)(a[i] l)) else l end
+                        f(n - 1 lists.nil(:Ints))
+                    end
+                let rec fix(l: Ints firsts: Ints): Ok =
+                    case l when cons with c
+                        then begin startarray[c.hd] := union(firsts startarray[c.hd]) fix(c.tl firsts) end else ok end
+                let rec makess(l: lists.T(Rule)): Ok =
+                    case l when cons with c then begin fix(c.hd.states firstpos(c.hd.e)) makess(c.tl) end else ok end
+                makess(rules)
+                listofarray(startarray g.stateNum + 1)
+            end
+        visitstarts(startstates())
+        tuple
+            let fins = listofdict(:Int :Ints)(tabs.fintab)
+            let trans = listofdict(:Int :Ints)(tabs.transtab)
+            let tctab = listofdict(:Int :Ints)(tabs.tctab)
+            let tcpairs = ld.tcpairs
+        end
+    end
+
+let skelHd = "   struct\n    structure UserDeclarations =\n      struct\n"
+
+let skelMid2 =
+    "                       | Internal.D k => action (i,(acts::l),k::rs)\n"
+    <> "                       | Internal.T k =>\n"
+    <> "                         let fun f (a::b,r) =\n"
+    <> "                              if a=k\n"
+    <> "                                then action(i,(((Internal.N a)::acts)::l),(b@r))\n"
+    <> "                                else f (b,a::r)\n"
+    <> "                               | f (nil,r) = action(i,(acts::l),rs)\n"
+    <> "                          in f (rs,nil)\n"
+    <> "                          end\n"
+
+let lexGen(infile: String): Ok =
+    begin
+        let outfile = infile <> ".sml"
+        let printLexer(ends: Dict(String String)): Ok =
+            begin
+                let sayln(x: String): Ok = begin say(x) say("\n") end
+                if maybe.isNone(:String g.argCode) then
+                    begin sayln("fun lex () : Internal.result =") sayln("let fun continue() = lex() in") end
+                else
+                    begin
+                        say("fun lex ") say("(yyarg as (") say(maybe.unwrap(:String g.argCode)) sayln(")) =")
+                        sayln("let fun continue() : Internal.result = ")
+                    end
+                end
+                say("  let fun scan (s,AcceptingLeaves : Internal.yyfinstate")
+                sayln(" list list,l,i0) =")
+                if g.usesTrailingContext then say("\tlet fun action (i,nil,rs)")
+                    else say("\tlet fun action (i,nil)") end
+                sayln(" = raise LexError")
+                if g.usesTrailingContext then sayln("\t| action (i,nil::l,rs) = action(i-1,l,rs)")
+                else sayln("\t| action (i,nil::l) = action (i-1,l)")
+                end
+                if g.usesTrailingContext then sayln("\t| action (i,(node::acts)::l,rs) =")
+                else sayln("\t| action (i,(node::acts)::l) =")
+                end
+                sayln("\t\tcase node of")
+                sayln("\t\t    Internal.N yyk => ")
+                sayln("\t\t\t(let val yytext = substring(!yyb,i0,i-i0)\n\t\t\t     val yypos = i0+ !yygone")
+                if g.countNewLines then
+                    begin
+                        sayln("\t\t\tval _ = yylineno := CharVector.foldl")
+                        sayln("\t\t\t\t(fn (#\"\\n\", n) => n+1 | (_, n) => n) (!yylineno) yytext")
+                    end
+                end
+                if g.haveReject then
+                    begin
+                        say("\t\t\tfun REJECT() = action(i,acts::l")
+                        if g.usesTrailingContext then sayln(",rs)") else sayln(")") end
+                    end
+                end
+                sayln("\t\t\topen UserDeclarations Internal.StartStates")
+                sayln(" in (yybufpos := i; case yyk of ")
+                sayln("")
+                sayln("\t\t\t(* Application actions *)\n")
+                makeaccept(ends)
+                say("\n\t\t) end ")
+                say(")\n\n")
+                if g.usesTrailingContext then say(skelMid2) end
+                sayln("\tval {fin,trans} = Vector.sub(Internal.tab, s)")
+                sayln("\tval NewAcceptingLeaves = fin::AcceptingLeaves")
+                sayln("\tin if l = !yybl then")
+                sayln("\t     if trans = #trans(Vector.sub(Internal.tab,0))")
+                sayln("\t       then action(l,NewAcceptingLeaves")
+                if g.usesTrailingContext then say(",nil") end
+                say(") else")
+                sayln("\t    let val newchars= if !yydone then \"\" else yyinput 1024")
+                sayln("\t    in if (size newchars)=0")
+                sayln("\t\t  then (yydone := true;")
+                say("\t\t        if (l=i0) then UserDeclarations.eof ")
+                sayln(if maybe.isNone(:String g.argCode) then "()" else "yyarg" end)
+                say("\t\t                  else action(l,NewAcceptingLeaves")
+                if g.usesTrailingContext then sayln(",nil))") else sayln("))") end
+                sayln("\t\t  else (if i0=l then yyb := newchars")
+                sayln("\t\t     else yyb := substring(!yyb,i0,l-i0)^newchars;")
+                sayln("\t\t     yygone := !yygone+i0;")
+                sayln("\t\t     yybl := size (!yyb);")
+                sayln("\t\t     scan (s,AcceptingLeaves,l-i0,0))")
+                sayln("\t    end")
+                sayln("\t  else let val NewChar = Char.ord(String.sub(!yyb,l))")
+                say("\t\tval NewState = ")
+                if g.charFormat andif {g.charSetSize is 129} then
+                    sayln("if NewChar<128 then Char.ord(String.sub(trans,NewChar)) "
+                          <> "else Char.ord(String.sub(trans,128))")
+                elsif g.charFormat andif {g.charSetSize is 256} then sayln("Char.ord(String.sub(trans,NewChar))")
+                elsif not(g.charFormat) andif {g.charSetSize is 129} then
+                    sayln("if NewChar<128 then Vector.sub(trans, NewChar) else Vector.sub(trans, 128)")
+                elsif not(g.charFormat) andif {g.charSetSize is 256} then sayln("Vector.sub(trans, NewChar)")
+                else raise parseError end
+                end
+                say("\t\tin if NewState=0 then action(l,NewAcceptingLeaves")
+                if g.usesTrailingContext then sayln(",nil)") else sayln(")") end
+                sayln("\t\telse scan(NewState,NewAcceptingLeaves,l+1,i0)")
+                sayln("\tend")
+                sayln("\tend")
+                if not(g.usesPrevNewLine) then sayln("(*") end
+                sayln("\tval start= if substring(!yyb,!yybufpos-1,1)=\"\\n\"")
+                sayln("then !yybegin+1 else !yybegin")
+                if not(g.usesPrevNewLine) then sayln("*)") end
+                say("\tin scan(")
+                if g.usesPrevNewLine then say("start") else say("!yybegin (* start *)") end
+                sayln(",nil,!yybufpos,!yybufpos)")
+                sayln("    end")
+                sayln(if maybe.isNone(:String g.argCode) then "end" else "in continue end" end)
+                sayln("  in lex")
+                sayln("  end")
+                sayln("end")
+            end
+        g.usesPrevNewLine := false
+        resetFlags()
+        g.lexBuf := makeIbuf(reader.file(infile))
+        g.nextTok := option bof of Token end
+        g.inquote := false
+        g.lexOut := writer.file(outfile)
+        g.stateNum := 2
+        g.lineNum := 1
+        g.stateTab := enter(:String :Int)(create(:String :Int)(stringLeq) "INITIAL" 1)
+        g.leafNum := ~1
+        (* The original closes the files for any exception, and raises it
+         * again; an error is the only one parse raises *)
+        let closeAndRaise(A::TYPE): A = begin closeIbuf(g.lexBuf) writer.close(g.lexOut) raise errorE end end
+        let parsed = try parse() when errorE then closeAndRaise(:Parsed) end
+        let dfa = makedfa(parsed.rules)
+        if g.usesTrailingContext then
+            begin
+                closeIbuf(g.lexBuf)
+                writer.close(g.lexOut)
+                prErr(:Ok)("lookahead is unimplemented")
+            end
+        end
+        if g.headerDecl then say(g.headerCode) else say("structure " <> g.strName) end
+        say("=\n")
+        say(skelHd)
+        say(parsed.userCode)
+        say("end (* end of user routines *)\n")
+        say("exception LexError (* raised if illegal leaf ")
+        say("action tried *)\n")
+        say("structure Internal =\n\tstruct\n")
+        maketable(dfa.fins dfa.tctab dfa.tcpairs dfa.trans)
+        say("structure StartStates =\n\tstruct\n")
+        say("\tdatatype yystartstate = STARTSTATE of int\n")
+        makebegin()
+        say("\nend\n")
+        say("type result = UserDeclarations.lexresult\n")
+        say("\texception LexerError (* raised if illegal leaf ")
+        say("action tried *)\n")
+        say("end\n\n")
+        say("fun makeLexer yyinput = \n")
+        say("let \n")
+        if g.countNewLines then say("\tval yylineno = ref 0\n\n") end
+        say("\tval yyb = ref \"\\n\" \t\t(* buffer *)\n"
+            <> "\tval yybl = ref 1\t\t(*buffer length *)\n"
+            <> "\tval yybufpos = ref 1\t\t(* location of next character to use *)\n"
+            <> "\tval yygone = ref 1\t\t(* position in file of beginning of buffer *)\n"
+            <> "\tval yydone = ref false\t\t(* eof found yet? *)\n"
+            <> "\tval yybegin = ref 1\t\t(*Current 'start state' for lexer *)\n"
+            <> "\n\tval YYBEGIN = fn (Internal.StartStates.STARTSTATE x) =>\n"
+            <> "\t\t yybegin := x\n\n")
+        printLexer(parsed.accept)
+        closeIbuf(g.lexBuf)
+        writer.close(g.lexOut)
+    end
+
+(* structure Main *)
+
+let s = system.currentDirectory()
+let doit(): Ok = lexGen(s <> "/DATA/ml.lex")
+
+for i = 1 upto bench.count() do doit() end

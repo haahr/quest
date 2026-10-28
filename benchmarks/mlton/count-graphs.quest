@@ -1,0 +1,412 @@
+(* count-graphs: counts the minimal triangle-free graphs on up to 11 vertices
+ * satisfying 3V - 4 - 2E = 0, folding over graphs with exceptions to cut
+ * off subtrees (Henry Cejtin) *)
+
+import
+    support/bench : support/Bench
+    support/lists : support/Lists
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    conv : Conv
+
+(* The original overrides print, so the benchmark is silent *)
+let print(s: String): Ok = ok
+
+(* SML's unit, as a value folds carry: the empty tuple *)
+Let Unit = Tuple end
+let unit: Unit = tuple end
+
+Let Ints = lists.T(Int)
+Let Classes = lists.T(Ints)
+Let Connected = All(from: Int to: Int) Bool
+
+let domain: Exception = exception domain: Ok end
+let match: Exception = exception match: Ok end
+
+(* My favorite high-order procedure *)
+let fold(A::TYPE B::TYPE)(lst: lists.T(A) folder: All(x: A state: B) B state: B): B =
+    begin
+        let rec go(lst: lists.T(A) state: B): B = case lst when cons with c then go(c.tl folder(c.hd state))
+            else state end
+        go(lst state)
+    end
+
+let naturalFold(B::TYPE)(limit: Int folder: All(i: Int state: B) B state: B): B =
+    if limit < 0 then raise domain end
+    else
+        begin
+            let rec go(i: Int state: B): B = if i is limit then state else go(i + 1 folder(i state)) end
+            go(0 state)
+        end
+    end
+
+let naturalAny(limit: Int pred: All(i: Int) Bool): Bool =
+    if limit < 0 then raise domain end
+    else
+        begin
+            let rec go(i: Int): Bool = {i isnot limit} andif {pred(i) orif go(i + 1)}
+            go(0)
+        end
+    end
+
+let naturalAll(limit: Int pred: All(i: Int) Bool): Bool =
+    if limit < 0 then raise domain end
+    else
+        begin
+            let rec go(i: Int): Bool = {i is limit} orif {pred(i) andif go(i + 1)}
+            go(0)
+        end
+    end
+
+let consInts(x: Int l: Ints): Ints = lists.cons(:Int)(x l)
+let consClasses(x: Ints l: Classes): Classes = lists.cons(:Ints)(x l)
+
+(* What pFolder returns: the new partial permutation's state and fold state *)
+Let PStep(A::TYPE) = Tuple p: Int s: A end
+
+(* Fold over all arrangements of bag elements. Universe is a list of lists of
+ * items, with equivalent items in the same list. pFolder is used to build up
+ * the permutation. It is called via pFolder (next, pState, state, accross),
+ * where next is the next item in the permutation, pState is the partially
+ * constructed permutation and state is the current fold state over
+ * permutations that have already been considered. If pFolder knows what will
+ * result from folding over all permutations descending from the resulting
+ * partial permutation (starting at state), it should raise the accross
+ * exception carrying the new state value. If pFolder wants to continue
+ * building up the permutation, it should return (newPState, newState). When a
+ * permutation has been completely constructed, folder is called via
+ * folder (pState, state), where pState is the final pState and state is the
+ * current state. It should return the new state. *)
+let foldOverBagPerms(A::TYPE)(universe: Classes
+    pFolder: All(next: Int pState: Int state: A accross: Exception(A)) PStep(A)
+    pState: Int folder: All(pState: Int state: A) A state: A): A =
+    begin
+        let accross: Exception(A) = exception accross: A end
+        let rec outer(universe: Classes pState: Int state: A): A =
+            case universe
+                when nil then folder(pState state)
+                when cons with u then
+                    case u.hd
+                        when cons with fb then
+                            begin
+                                let rec inner(fbag: Ints first: Int fclone: Ints rest: Classes revOut: Classes
+                                    state: A): A =
+                                    begin
+                                        let state1 =
+                                            try
+                                                begin
+                                                    let step = pFolder(first pState state accross)
+                                                    outer(fold(:Ints :Classes)(revOut consClasses
+                                                            case fclone when nil then rest
+                                                                else consClasses(fclone rest) end)
+                                                        step.p step.s)
+                                                end
+                                            when accross with s then s
+                                            end
+                                        case rest
+                                            when nil then state1
+                                            when cons with r then
+                                                case r.hd
+                                                    when cons with sb
+                                                        then inner(r.hd sb.hd sb.tl r.tl
+                                                            consClasses(fbag revOut) state1)
+                                                    else raise match end
+                                                end
+                                        end
+                                    end
+                                inner(u.hd fb.hd fb.tl u.tl lists.nil(:Ints) state)
+                            end
+                        else raise match end
+                    end
+            end
+        outer(universe pState state)
+    end
+
+(* What eFolder returns: the new element state and fold state *)
+Let EStep(E::TYPE A::TYPE) = Tuple e: E s: A end
+
+(* Fold over the tree of subsets of the elements of universe. The tree
+ * structure comes from the root picking if the first element is in the
+ * subset, etc. eFolder is called to build up the subset given a decision on
+ * whether or not a given element is in it or not. It is called via
+ * eFolder (elem, isinc, eState, state, fini). If this determines the result of
+ * folding over all the subsets consistent with the choice so far, then
+ * eFolder should raise the exception fini newState. If we need to proceed
+ * deeper in the tree, then eFolder should return the tuple
+ * (newEState, newState). folder is called to build up the final state,
+ * folding over subsets (represented as the terminal eStates). It is called via
+ * folder (eState, state). It returns the new state. Note, the order in which
+ * elements are folded (via eFolder) is the same as the order in universe. *)
+let foldOverSubsets(E::TYPE A::TYPE)(universe: Ints
+    eFolder: All(elem: Int isinc: Bool eState: E state: A fini: Exception(A)) EStep(E A)
+    eState: E folder: All(eState: E state: A) A state: A): A =
+    begin
+        let fini: Exception(A) = exception fini: A end
+        let rec f(first: Int rest: Ints eState: E): All(isinc: Bool state: A) A =
+            fun(isinc: Bool state: A): A
+                try
+                    begin
+                        let step = eFolder(first isinc eState state fini)
+                        outer(rest step.e step.s)
+                    end
+                when fini with s then s
+                end
+        and outer(universe: Ints eState: E state: A): A =
+            case universe
+                when nil then folder(eState state)
+                when cons with c then
+                    begin
+                        let g = f(c.hd c.tl eState)
+                        g(false g(true state))
+                    end
+            end
+        outer(universe eState state)
+    end
+
+(* The state refine folds classes into *)
+Let Merged = Tuple merged: Bool classes: Classes end
+Let Split = Tuple yes: Ints no: Ints end
+
+(* Given a partitioning of [0, size) into equivalence classes (as a list of
+ * the classes, where each class is a list of integers), and where two
+ * vertices are equivalent iff transposing the two is an automorphism of the
+ * full subgraph on the vertices [0, size), return the equivalence classes for
+ * the graph. The graph is provided as a connection function. In the result,
+ * two equivalent vertices in [0, size) remain equivalent iff they are either
+ * both connected or neither is connected to size. The vertex size is
+ * equivalent to a vertex x in [0, size) iff
+ * connected (size, y) = connected (x, if y = x then size else y) for all y in
+ * [0, size). *)
+let refine(size: Int classes: Classes connected: Connected): Classes =
+    begin
+        (* Check if vertex size is equivalent to vertex x *)
+        let sizeMatch(x: Int): Bool =
+            naturalAll(size fun(y: Int): Bool connected(size y) is connected(x if y is x then size else y end))
+        (* Add class into classes, testing if size should be merged *)
+        let merge(class: Ints state: Merged): Merged =
+            if state.merged then tuple let merged = true
+                let classes = consClasses(lists.rev(:Int)(class) state.classes) end
+            else
+                begin
+                    let first = lists.hd(:Int)(class)
+                    if sizeMatch(first) then
+                        tuple
+                            let merged = true
+                            let classes = consClasses(fold(:Int :Ints)(class consInts
+                                lists.cons(:Int)(size lists.nil(:Int)))
+                                state.classes)
+                        end
+                    else tuple let merged = false let classes = consClasses(lists.rev(:Int)(class) state.classes) end
+                    end
+                end
+            end
+        let split(elem: Int s: Split): Split =
+            if connected(elem size) then tuple let yes = consInts(elem s.yes) let no = s.no end
+            else tuple let yes = s.yes let no = consInts(elem s.no) end
+            end
+        let subdivide(class: Ints state: Merged): Merged =
+            case class
+                when cons with c then
+                    case c.tl
+                        when nil then merge(class state)
+                        else
+                            begin
+                                let s = fold(:Int :Split)(class split tuple let yes = lists.nil(:Int)
+                                    let no = lists.nil(:Int) end)
+                                if lists.null(:Int)(s.yes) then merge(s.no state)
+                                elsif lists.null(:Int)(s.no) then merge(s.yes state)
+                                else merge(s.no merge(s.yes state))
+                                end
+                            end
+                    end
+                else
+                    begin
+                        let s = fold(:Int :Split)(class split tuple let yes = lists.nil(:Int)
+                            let no = lists.nil(:Int) end)
+                        if lists.null(:Int)(s.yes) then merge(s.no state)
+                        elsif lists.null(:Int)(s.no) then merge(s.yes state)
+                        else merge(s.no merge(s.yes state))
+                        end
+                    end
+            end
+        let result = fold(:Ints :Merged)(classes subdivide tuple let merged = false let classes = lists.nil(:Ints) end)
+        if result.merged then lists.rev(:Ints)(result.classes)
+        else fold(:Ints :Classes)(result.classes consClasses
+            consClasses(lists.cons(:Int)(size lists.nil(:Int)) lists.nil(:Ints)))
+        end
+    end
+
+(* Given a count of the number of vertices, a partitioning of the vertices
+ * into equivalence classes (where two vertices are equivalent iff transposing
+ * them is a graph automorphism), and a function which, given two distinct
+ * vertices, returns a bool indicating if there is an edge connecting them,
+ * check if the graph is minimal. If it is, return
+ * SOME how-many-clones-we-walked-through. If not, return NONE. A graph is
+ * minimal iff its connection matrix is (weakly) smaller then all its permuted
+ * friends, where true is less than false, and the entries are compared
+ * lexicographically. Note, the vertices are the integers in [0, nverts). *)
+let minimal(nverts: Int classes: Classes connected: Connected): maybe.T(Int) =
+    begin
+        let perm = array of(nverts ~1)
+        let fini: Exception = exception fini: Ok end
+        let pFolder(new: Int old: Int state: Int accross: Exception(Int)): PStep(Int) =
+            begin
+                let rec go(v: Int): PStep(Int) =
+                    if v is old then begin perm[old] := new tuple let p = old + 1 let s = state end end
+                    else
+                        begin
+                            let a = connected(old v)
+                            let b = connected(new perm[v])
+                            if a andif not(b) then raise accross with state end
+                            elsif not(a) andif b then raise fini end
+                            else go(v + 1)
+                            end
+                        end
+                    end
+                go(0)
+            end
+        let folder(pState: Int state: Int): Int = state + 1
+        try maybe.some(:Int foldOverBagPerms(:Int)(classes pFolder 0 folder 0)) when fini then maybe.none(:Int) end
+    end
+
+(* Fold over the tree of graphs. eFolder is used to fold over the choice of
+ * edges via eFolder (from, to, isinc, eState, state, accross) with from > to.
+ * If eFolder knows the result of folding over all graphs which agree with the
+ * currently made decisions, then it should raise the accross exception
+ * carrying the resulting state as a value. To continue normally, it should
+ * return the tuple (newEState, newState). When all decisions are made with
+ * regards to edges from `from', folder is called via
+ * folder (size, eState, state, accross) where size is the number of vertices
+ * in the graph (the last from+1) and eState is the final eState for edges
+ * from `from'. If folder knows the result of folding over all extensions of
+ * this graph, it should raise accross carrying the resulting state as a value.
+ * If extensions of this graph should be folded over, it should return the new
+ * state.
+ *
+ * The original is polymorphic in the element state 'a and the fold state 'b.
+ * This one is at the types h uses, unit and int: a polymorphic function passing
+ * a function with a parameter of type Exception(B) to another polymorphic
+ * function does not yet compile to C (docs/tasklist.md). *)
+Let E = Unit
+Let B = Int
+let foldOverGraphs(
+    eFolder: All(from: Int to: Int isinc: Bool eState: E state: B accross: Exception(B)) EStep(E B)
+    eState: E folder: All(size: Int eState: E state: B accross: Exception(B)) B state: B): B =
+    begin
+        let noextend: Exception(B) = exception noextend: B end
+        let makeVertss(limit: Int): Array(Ints) =
+            begin
+                let v = array of(limit lists.nil(:Int))
+                for nverts = 0 upto limit - 1 do v[nverts] := lists.tabulate(:Int)(nverts fun(i: Int): Int i) end
+                v
+            end
+        let vertss = tuple let var v = makeVertss(0) end
+        let findVerts(size: Int): Ints =
+            begin
+                if size >= extent vertss.v then vertss.v := makeVertss(size + 1) end
+                vertss.v[size]
+            end
+        let rec f(size: Int eState: E state: B): B =
+            try
+                begin
+                    let state1 = folder(size eState state noextend)
+                    g(size + 1 state1)
+                end
+            when noextend with s then s
+            end
+        and g(size: Int state: B): B =
+            begin
+                let indices = findVerts(size - 1)
+                let seFolder(to: Int isinc: Bool eState: E state: B accross: Exception(B)): EStep(E B) =
+                    eFolder(size - 1 to isinc eState state accross)
+                let sf(eState: E state: B): B = f(size eState state)
+                foldOverSubsets(:E :B)(indices seFolder eState sf state)
+            end
+        f(0 eState state)
+    end
+
+(* okSoFar's element state *)
+Let Picked = Tuple ac: Int picked: Ints end
+
+(* Given the size of a graph, a list of the vertices (the integers in
+ * [0, size)), and the connected function, check if for all full subgraphs,
+ * 3*V - 4 - 2*E >= 0 or V <= 1, where V is the number of vertices and E is
+ * the number of edges. *)
+let short(lst: Ints): Bool = case lst when nil then true when cons with c then lists.null(:Int)(c.tl) end
+
+let okSoFar(size: Int verts: Ints connected: Connected): Bool =
+    begin
+        let fini: Exception(Unit) = exception fini: Unit end
+        let eFolder(elem: Int isinc: Bool eState: Picked state: Unit accross: Exception(Unit)): EStep(Picked Unit) =
+            tuple
+                let e =
+                    if isinc then
+                        tuple
+                            let ac = fold(:Int :Int)(eState.picked fun(p: Int ac: Int): Int
+                                if connected(elem p) then ac - 2 else ac end eState.ac + 3)
+                            let picked = consInts(elem eState.picked)
+                        end
+                    else eState
+                    end
+                let s = unit
+            end
+        let folder(eState: Picked state: Unit): Unit =
+            if {eState.ac >= 0} orif short(eState.picked) then state else raise fini with unit end end
+        try
+            begin
+                foldOverSubsets(:Picked :Unit)(verts eFolder tuple let ac = ~4
+                    let picked = lists.nil(:Int) end folder unit)
+                true
+            end
+        when fini then false
+        end
+    end
+
+let h(maxSize: Int folder: All(size: Int connected: Connected state: Int) Int state: Int): Int =
+    begin
+        let ctab = array of(maxSize array of :Bool end)
+        for v = 0 upto maxSize - 1 do ctab[v] := array of(v false) end
+        let classesv = array of(maxSize + 1 lists.nil(:Ints))
+        let connected(from: Int to: Int): Bool = if from > to then ctab[from][to] else ctab[to][from] end
+        let update(from: Int to: Int value: Bool): Ok = if from > to then ctab[from][to] := value
+            else ctab[to][from] := value end
+        let triangle(vnum: Int e: Int): Bool = naturalAny(e fun(f: Int): Bool connected(vnum f) andif connected(e f))
+        let eFolder(from: Int to: Int isinc: Bool eState: Unit state: Int accross: Exception(Int)): EStep(Unit Int) =
+            if isinc andif triangle(from to) then raise accross with state end
+            else begin update(from to isinc) tuple let e = unit let s = state end end
+            end
+        let gFolder(size: Int eState: Unit state: Int accross: Exception(Int)): Int =
+            begin
+                if size isnot 0 then classesv[size] := refine(size - 1 classesv[size - 1] connected) end
+                if maybe.isNone(:Int minimal(size classesv[size] connected)) then raise accross with state end
+                elsif okSoFar(size lists.tabulate(:Int)(size fun(v: Int): Int v) connected) then
+                    begin
+                        let state1 = folder(size connected state)
+                        if size is maxSize then raise accross with state1 end else state1 end
+                    end
+                else raise accross with state end
+                end
+            end
+        foldOverGraphs(eFolder unit gFolder state)
+    end
+
+let final(size: Int connected: Connected): Int =
+    naturalFold(:Int)(size fun(from: Int ac: Int): Int
+        naturalFold(:Int)(from fun(to: Int ac: Int): Int if connected(from to) then ac - 2 else ac end ac)
+        {3 * size} - 4)
+
+let f(maxSize: Int): Int =
+    h(maxSize fun(size: Int connected: Connected state: Int): Int if final(size connected) is 0 then state + 1
+        else state end 0)
+
+let doOne(arg: String): Ok =
+    begin
+        print(arg <> " -> ")
+        let n = strutil.tryToInt(arg)
+        if maybe.isSome(:Int n) then print(conv.int(f(maybe.unwrap(:Int n))) <> "\n") else print("NOT A NUMBER\n") end
+    end
+
+let doit(): Ok =
+    lists.app(:String)(doOne lists.fromArray(:String)(array of "0" "1" "2" "3" "4" "5" "6" "7" "8" "9" "10" "11" end))
+
+for i = 1 upto bench.count() do doit() end

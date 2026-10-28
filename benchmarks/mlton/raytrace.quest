@@ -1,0 +1,2028 @@
+(* raytrace: the ray tracer of the PLClub's winning entry to the 2000 ICFP
+ * programming contest, which reads a scene in the contest's language, GML,
+ * from DATA/chess.gml and renders it to ./chess.ppm (translated from OCaml to
+ * SML by Stephen Weeks). The lexer that ml-lex generated is kept, its tables
+ * transliterated by tools/mllex_tables.py; types and functions the program
+ * does not use are left out. *)
+
+import
+    support/bench : support/Bench
+    support/lists : support/Lists
+    support/reals : support/Reals
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+    real : RealOp
+    ascii : Ascii
+    conv : Conv
+    reader : Reader
+    writer : Writer
+
+(* structure Caml *)
+
+let notFound: Exception = exception notFound: Ok end
+let failure: Exception(String) = exception failure: String end
+let failwith(A::TYPE)(s: String): A = raise failure with s end
+(* SML's Fail *)
+let sFail: Exception(String) = exception sFail: String end
+let assertFalse(A::TYPE): A = raise sFail with "assert false" end
+
+(* SML's ~x, which negates zero too *)
+let neg(x: Real): Real = ~1.0 ** x
+
+(* SML's div and mod, which round toward negative infinity *)
+let floorDiv(a: Int b: Int): Int = if {{a % b} isnot 0} andif {{a < 0} isnot {b < 0}} then {a / b} - 1 else a / b end
+let floorMod(a: Int b: Int): Int = if {{a % b} isnot 0} andif {{a < 0} isnot {b < 0}} then {a % b} + b else a % b end
+
+(* Real.realMod, the fractional part of r, with r's sign *)
+let realMod(r: Real): Real =
+    begin
+        let whole = real.abs(r) >>= 4503599627370496.0 (* 2^52: no fraction *)
+        let f = if whole then 0.0 else r -- real.int(real.trunc(r)) end
+        if {f is 0.0} andif {r << 0.0} then neg(0.0) else f end
+    end
+
+(* Real.max, for numbers *)
+let realMax(x: Real y: Real): Real = if x >> y then x else y end
+
+(* structure Math *)
+
+let epsilon = 0.00001
+let dtr = real.acos(~1.0) // 180.0
+let rtd = 180.0 // real.acos(~1.0)
+let dcos(t: Real): Real = real.cos(t ** dtr)
+let dsin(t: Real): Real = real.sin(t ** dtr)
+let dtan(t: Real): Real = real.tan(t ** dtr)
+let dacos(x: Real): Real = rtd ** real.acos(x)
+let infinity = real.infinity
+let maxFloat(x: Real y: Real): Real = if x >>= y then x else y end
+
+(* structure Matrix *)
+
+(* A 4-dimension matrix, row major *)
+Let Mat = Array(Real)
+(* A 4-dimension vector *)
+Let V4 = Tuple x: Real y: Real z: Real t: Real end
+
+let v4(x: Real y: Real z: Real t: Real): V4 = tuple let x = x let y = y let z = z let t = t end
+
+let identity: Mat = array of
+    1.0 0.0 0.0 0.0
+    0.0 1.0 0.0 0.0
+    0.0 0.0 1.0 0.0
+    0.0 0.0 0.0 1.0
+end
+
+let translate(x: Real y: Real z: Real): Mat = array of
+    1.0 0.0 0.0 neg(x)
+    0.0 1.0 0.0 neg(y)
+    0.0 0.0 1.0 neg(z)
+    0.0 0.0 0.0 1.0
+end
+
+let unscale(x: Real y: Real z: Real): Mat = array of
+    x 0.0 0.0 0.0
+    0.0 y 0.0 0.0
+    0.0 0.0 z 0.0
+    0.0 0.0 0.0 1.0
+end
+
+let scale(x: Real y: Real z: Real): Mat = unscale(1.0 // x 1.0 // y 1.0 // z)
+let unuscale(s: Real): Mat = unscale(s s s)
+let uscale(s: Real): Mat = scale(s s s)
+
+let rotatex(t: Real): Mat =
+    begin
+        let co = dcos(t)
+        let si = dsin(t)
+        array of
+            1.0 0.0 0.0 0.0
+            0.0 co si 0.0
+            0.0 neg(si) co 0.0
+            0.0 0.0 0.0 1.0
+        end
+    end
+
+let rotatey(t: Real): Mat =
+    begin
+        let co = dcos(t)
+        let si = dsin(t)
+        array of
+            co 0.0 neg(si) 0.0
+            0.0 1.0 0.0 0.0
+            si 0.0 co 0.0
+            0.0 0.0 0.0 1.0
+        end
+    end
+
+let rotatez(t: Real): Mat =
+    begin
+        let co = dcos(t)
+        let si = dsin(t)
+        array of
+            co si 0.0 0.0
+            neg(si) co 0.0 0.0
+            0.0 0.0 1.0 0.0
+            0.0 0.0 0.0 1.0
+        end
+    end
+
+let get(m: Mat i: Int j: Int): Real = m[{i * 4} + j]
+let set(m: Mat i: Int j: Int v: Real): Ok = m[{i * 4} + j] := v
+
+let mul(m: Mat m2: Mat): Mat =
+    begin
+        let m3: Mat = array of(16 0.0)
+        for i = 0 upto 3 do
+            for j = 0 upto 3 do
+                let rec lp(k: Int s: Real): Real = if k is 4 then s else lp(k + 1 s ++ {get(m i k) ** get(m2 k j)}) end
+                set(m3 i j lp(0 0.0))
+            end
+        end
+        m3
+    end
+
+let transpose(m: Mat): Mat =
+    begin
+        let m2: Mat = array of(16 0.0)
+        for i = 0 upto 3 do for j = 0 upto 3 do set(m2 i j get(m j i)) end end
+        m2
+    end
+
+let vmul(m: Mat v: V4): V4 =
+    v4({{{v.x ** get(m 0 0)} ++ {v.y ** get(m 0 1)}} ++ {v.z ** get(m 0 2)}} ++ {v.t ** get(m 0 3)}
+       {{{v.x ** get(m 1 0)} ++ {v.y ** get(m 1 1)}} ++ {v.z ** get(m 1 2)}} ++ {v.t ** get(m 1 3)}
+       {{{v.x ** get(m 2 0)} ++ {v.y ** get(m 2 1)}} ++ {v.z ** get(m 2 2)}} ++ {v.t ** get(m 2 3)}
+       {{{v.x ** get(m 3 0)} ++ {v.y ** get(m 3 1)}} ++ {v.z ** get(m 3 2)}} ++ {v.t ** get(m 3 3)})
+
+let addScaled(x: V4 t: Real v: V4): V4 = v4(x.x ++ {t ** v.x} x.y ++ {t ** v.y} x.z ++ {t ** v.z} x.t ++ {t ** v.t})
+let sub(x: V4 y: V4): V4 = v4(x.x -- y.x x.y -- y.y x.z -- y.z x.t -- y.t)
+let prod(x: V4 y: V4): Real = {{{x.x ** y.x} ++ {x.y ** y.y}} ++ {x.z ** y.z}} ++ {x.t ** y.t}
+let square(v: V4): Real = {{{v.x ** v.x} ++ {v.y ** v.y}} ++ {v.z ** v.z}} ++ {v.t ** v.t}
+
+let normalize(x: V4): V4 =
+    begin
+        let nx = real.sqrt(prod(x x))
+        v4(x.x // nx x.y // nx x.z // nx x.t // nx)
+    end
+
+let negV(x: V4): V4 = v4(neg(x.x) neg(x.y) neg(x.z) neg(x.t))
+
+(* functor Lex: the lexer ml-lex generated *)
+
+Let Token = Option
+    tBinder with s: String end
+    tBool with b: Bool end
+    tEof
+    tIdentifier with s: String end
+    tInt with i: Int end
+    tLbrace
+    tLbracket
+    tRbrace
+    tRbracket
+    tReal with r: Real end
+    tString with s: String end
+end
+
+let tokEof = option tEof of Token end
+
+(* structure UserDeclarations: chars is shared by every lexer *)
+let chars = tuple let var l = lists.nil(:Char) end
+let fail(A::TYPE)(s: String): A = raise sFail with s end
+
+(* Int.fromString, for the lexer's integers: digits after an optional - *)
+let intFromString(s: String): Int =
+    begin
+        let negative = stringOp.getChar(s 0) is '-'
+        let var n = 0
+        for i = if negative then 1 else 0 end upto stringOp.length(s) - 1 do
+            n := {n * 10} + {ascii.val(stringOp.getChar(s i)) - ascii.val('0')}
+        end
+        if negative then 0 - n else n end
+    end
+
+let implode(l: lists.T(Char)): String =
+    begin
+        let s = stringOp.new(lists.length(:Char)(l) ' ')
+        let rec fill(l: lists.T(Char) i: Int): Ok =
+            case l when cons with c then begin stringOp.setChar(s i c.hd) fill(c.tl i + 1) end else ok end
+        fill(l 0)
+        s
+    end
+
+(* raised if illegal leaf action tried *)
+let lexError: Exception = exception lexError: Ok end
+let lexerError: Exception = exception lexerError: Ok end
+
+(* structure Internal: each state's accepting actions, and its row of next
+ * states, an index into lexRows; the original's rows are strings, compared by
+ * contents where these indexes are compared, and ml-lex writes no row twice *)
+Let LexState = Tuple fin: lists.T(Int) trans: Int end
+let lexState(fin: Array(Int) trans: Int): LexState = tuple let fin = lists.fromArray(:Int)(fin) let trans = trans end
+
+let lexRows: Array(Array(Int)) = array of
+    array of 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 end
+    array of 0 0 0 0 0 0 0 0 0 26 26 26 0 26 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 26 0 25 0 0 24 0 0 0 0 0 0 0 23 0 21 12
+        12 12 12 12 12 12 12 12 12 0 0 0 0 0 0 0 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 11 0 10 0 0 0 9 9 9
+        9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 8 0 7 0 0 0 end
+    array of 0 0 0 0 0 0 0 0 0 27 29 29 0 28 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 27 27 27 27 27 27 27 27 27 27 27 27 27
+        27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27
+        27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27 27
+        27 27 27 27 27 27 27 27 0 0 end
+    array of 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 30 30 31 30 30 30 30 30 30 30 30 30 30 30
+        30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30
+        30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30
+        30 30 30 30 30 30 30 0 0 end
+    array of 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 9 0 0 9 9 9 9 9 9
+        9 9 9 9 0 0 0 0 0 0 0 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 9 0 0 0 0 9 0 9 9 9 9 9 9 9 9 9 9 9 9 9
+        9 9 9 9 9 9 9 9 9 9 9 9 9 0 0 0 0 0 0 end
+    array of 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 16 0 12 12 12
+        12 12 12 12 12 12 12 0 0 0 0 0 0 0 0 0 0 0 13 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 13 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 end
+    array of 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 15 0 0 14 14 14
+        14 14 14 14 14 14 14 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 end
+    array of 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 14 14 14 14
+        14 14 14 14 14 14 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 end
+    array of 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17 17 17 17
+        17 17 17 17 17 17 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 end
+    array of 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17 17 17 17
+        17 17 17 17 17 17 0 0 0 0 0 0 0 0 0 0 0 18 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 18 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 end
+    array of 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 20 0 0 19 19 19
+        19 19 19 19 19 19 19 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 end
+    array of 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 19 19 19 19
+        19 19 19 19 19 19 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 end
+    array of 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 0 0 0 0 0 0
+        22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 0 0 0 0 0 0 end
+    array of 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 0 0 22 22 22
+        22 22 22 22 22 22 22 0 0 0 0 0 0 0 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22
+        0 0 0 0 22 0 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 22 0 0 0 0 0 0 end
+    array of 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 12 12 12 12
+        12 12 12 12 12 12 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 end
+    array of 0 0 0 0 0 0 0 0 0 0 29 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+        0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 end
+end
+let lexTab: Array(LexState) = array of
+    lexState(array of end 0) lexState(array of end 1) lexState(array of end 1) lexState(array of end 2)
+    lexState(array of end 2) lexState(array of end 3) lexState(array of end 3) lexState(array of 13 end 0)
+    lexState(array of 11 end 0) lexState(array of 49 end 4) lexState(array of 9 end 0) lexState(array of 7 end 0)
+    lexState(array of 39 end 5) lexState(array of end 6) lexState(array of 35 end 7) lexState(array of end 7)
+    lexState(array of end 8) lexState(array of 35 end 9) lexState(array of end 10) lexState(array of 35 end 11)
+    lexState(array of end 11) lexState(array of end 12) lexState(array of 20 end 13) lexState(array of end 14)
+    lexState(array of 43 end 0) lexState(array of 41 end 0) lexState(array of 5 end 0) lexState(array of 58 end 0)
+    lexState(array of 55 end 15) lexState(array of 55 end 0) lexState(array of 62 end 0) lexState(array of 60 62 end 0)
+end
+
+(* structure StartStates *)
+let startC = 3
+let startInitial = 1
+let startS = 5
+
+Let LexBuf = Tuple
+    (* buffer *)
+    var yyb: String
+    (* buffer length *)
+    var yybl: Int
+    (* location of next character to use *)
+    var yybufpos: Int
+    (* position in file of beginning of buffer *)
+    var yygone: Int
+    (* eof found yet? *)
+    var yydone: Bool
+    (* current 'start state' for lexer *)
+    var yybegin: Int
+end
+
+let makeLexer(yyinput: All(n: Int) String): All() Token =
+    begin
+        let b: LexBuf = tuple
+            let var yyb = "\n" let var yybl = 1 let var yybufpos = 1 let var yygone = 1 let var yydone = false
+            let var yybegin = 1
+        end
+        let rec lex(): Token = scan(b.yybegin lists.nil(:lists.T(Int)) b.yybufpos b.yybufpos)
+        and scan(s: Int acceptingLeaves: lists.T(lists.T(Int)) l: Int i0: Int): Token =
+            begin
+                let state = lexTab[s]
+                let newAcceptingLeaves = lists.cons(:lists.T(Int))(state.fin acceptingLeaves)
+                if l is b.yybl then
+                    if state.trans is lexTab[0].trans then action(i0 l newAcceptingLeaves)
+                    else
+                        begin
+                            let newchars = if b.yydone then "" else yyinput(1024) end
+                            if stringOp.length(newchars) is 0 then
+                                begin
+                                    b.yydone := true
+                                    if l is i0 then tokEof else action(i0 l newAcceptingLeaves) end
+                                end
+                            else
+                                begin
+                                    b.yyb :=
+                                        if i0 is l then newchars else stringOp.getSub(b.yyb i0 l - i0) <> newchars end
+                                    b.yygone := b.yygone + i0
+                                    b.yybl := stringOp.length(b.yyb)
+                                    scan(s acceptingLeaves l - i0 0)
+                                end
+                            end
+                        end
+                    end
+                else
+                    begin
+                        let c = ascii.val(stringOp.getChar(b.yyb l))
+                        let newChar = if c < 128 then c else 128 end
+                        let newState = lexRows[state.trans][newChar]
+                        if newState is 0 then action(i0 l newAcceptingLeaves)
+                        else scan(newState newAcceptingLeaves l + 1 i0)
+                        end
+                    end
+                end
+            end
+        and action(i0: Int i: Int leaves: lists.T(lists.T(Int))): Token =
+            case leaves
+                when cons with c then
+                    case c.hd
+                        when cons with node then
+                            begin
+                                b.yybufpos := i
+                                userAction(node.hd stringOp.getSub(b.yyb i0 i - i0))
+                            end
+                        else action(i0 i - 1 c.tl)
+                    end
+                else raise lexError end
+            end
+        (* The application actions; the original computes yytext only for those
+         * that use it *)
+        and userAction(yyk: Int yytext: String): Token =
+            if yyk is 11 then option tLbrace of Token end
+            elsif yyk is 13 then option tRbrace of Token end
+            elsif yyk is 20 then option tBinder of Token with stringOp.getSub(yytext 1 stringOp.length(yytext) - 1) end
+            elsif yyk is 35 then
+                begin
+                    let r = reals.fromString(yytext)
+                    if maybe.isSome(:Real)(r) then option tReal of Token with maybe.unwrap(:Real)(r) end
+                    else fail(:Token)("bad real constant " <> yytext)
+                    end
+                end
+            elsif yyk is 39 then option tInt of Token with intFromString(yytext) end
+            elsif yyk is 41 then begin chars.l := lists.nil(:Char) b.yybegin := startS lex() end
+            elsif yyk is 43 then begin b.yybegin := startC lex() end
+            elsif yyk is 49 then option tIdentifier of Token with yytext end
+            elsif yyk is 5 then lex()
+            elsif yyk is 55 then begin b.yybegin := startInitial lex() end
+            elsif yyk is 58 then lex()
+            elsif yyk is 60 then
+                begin
+                    let s = implode(lists.rev(:Char)(chars.l))
+                    chars.l := lists.nil(:Char)
+                    b.yybegin := startInitial
+                    option tString of Token with s end
+                end
+            elsif yyk is 62 then begin chars.l := lists.cons(:Char)(stringOp.getChar(yytext 0) chars.l) lex() end
+            elsif yyk is 7 then option tLbracket of Token end
+            elsif yyk is 9 then option tRbracket of Token end
+            else raise lexerError end
+            end
+        lex
+    end
+
+(* structure Program *)
+
+Let K = Option
+    kAcos kAddi kAddf kApply kAsin kClampf kCone kCos kCube
+    kCylinder kDifference kDivi kDivf kEqi kEqf kFloor kFrac
+    kGet kGetx kGety kGetz kIf kIntersect kLength kLessi kLessf
+    kLight kModi kMuli kMulf kNegi kNegf kPlane kPoint
+    kPointlight kReal kRender kRotatex kRotatey kRotatez kScale
+    kSin kSphere kSpotlight kSqrt kSubi kSubf kTranslate kUnion
+    kUscale
+end
+
+(* Program tokens *)
+Let Rec T = Option
+    pFun with l: lists.T(T) end
+    pArr with l: lists.T(T) end
+    pIdent with s: String end
+    pBinder with s: String end
+    pInt with i: Int end
+    pFloat with f: Real end
+    pBool with b: Bool end
+    pString with s: String end
+    pPrim with k: K end
+end
+
+(* Internal representation of program tokens, and values *)
+Let Rec T2 = Option
+    fun2 with l: lists.T(T2) end
+    arr2 with l: lists.T(T2) end
+    (* index to environment stack *)
+    ident2 with i: Int end
+    binder2
+    prim2 with k: K end
+    (* inlined value *)
+    val2 with v: V end
+end
+and V = Option
+    vInt with i: Int end
+    vFloat with f: Real end
+    vBool with b: Bool end
+    vStr with s: String end
+    vClos with env: lists.T(V) p: lists.T(T2) end
+    vArr with a: Array(V) end
+    vPoint with x: V y: V z: V end
+    vObj with o: Obj end
+    vLight with dir: V color: V end
+    vPtLight with pos: V color: V end
+    vStLight with pos: V at: V color: V cutoff: V expon: V end
+end
+and Obj = Option
+    oObj with kind: Kind f: ClosureRef end
+    (* world to object, object to world, scale factor, and whether it is an
+     * isometry *)
+    oTransform with o: Obj m: Mat m1: Mat scale: Real isom: Bool end
+    oUnion with o1: Obj o2: Obj end
+    oInter with o1: Obj o2: Obj end
+    oDiff with o1: Obj o2: Obj end
+end
+and Kind = Option oSphere oCube oCylind oCone oPlane end
+and Closure = Option
+    (* unoptimized function *)
+    unopt with v: V end
+    opt with v: V end
+    cst with r: SurfRes end
+end
+and ClosureRef = Tuple var c: Closure end
+(* A surface's n, ks, kd, and color *)
+and SurfRes = Tuple n: Real ks: Real kd: Real cr: Real cg: Real cb: Real end
+
+Let VList = lists.T(V)
+
+let intV(i: Int): V = option vInt of V with i end
+let floatV(f: Real): V = option vFloat of V with f end
+let boolV(b: Bool): V = option vBool of V with b end
+let closV(env: VList p: lists.T(T2)): V = option vClos of V with env p end
+let objV(o: Obj): V = option vObj of V with o end
+let pointV(x: V y: V z: V): V = option vPoint of V with x y z end
+
+(* A hack for hash tables with string domain where performance doesn't
+ * matter: Hashtbl.add conses onto an association list *)
+Let Entry = Tuple k: String d: T end
+let prim(k: String p: K): Entry = tuple let k = k let d = option pPrim of T with p end end
+
+let createHashtables(init: lists.T(Entry)): Tuple var t: lists.T(Entry) end =
+    begin
+        let tbl = tuple let var t = lists.nil(:Entry) end
+        lists.app(:Entry)(fun(e: Entry): Ok tbl.t := lists.cons(:Entry)(e tbl.t) init)
+        tbl
+    end
+
+let keywords = createHashtables(lists.fromArray(:Entry)(array of
+    (* Booleans are either the literal true or the literal false. *)
+    tuple let k = "true" let d = option pBool of T with true end end
+    tuple let k = "false" let d = option pBool of T with false end end
+    (* Operators (see appendix) *)
+    prim("acos" option kAcos of K end) prim("addi" option kAddi of K end) prim("addf" option kAddf of K end)
+    prim("apply" option kApply of K end) prim("asin" option kAsin of K end) prim("clampf" option kClampf of K end)
+    prim("cone" option kCone of K end) prim("cos" option kCos of K end) prim("cube" option kCube of K end)
+    prim("cylinder" option kCylinder of K end) prim("difference" option kDifference of K end)
+    prim("divi" option kDivi of K end) prim("divf" option kDivf of K end) prim("eqi" option kEqi of K end)
+    prim("eqf" option kEqf of K end) prim("floor" option kFloor of K end) prim("frac" option kFrac of K end)
+    prim("get" option kGet of K end) prim("getx" option kGetx of K end) prim("gety" option kGety of K end)
+    prim("getz" option kGetz of K end) prim("if" option kIf of K end) prim("intersect" option kIntersect of K end)
+    prim("length" option kLength of K end) prim("lessi" option kLessi of K end) prim("lessf" option kLessf of K end)
+    prim("light" option kLight of K end) prim("modi" option kModi of K end) prim("muli" option kMuli of K end)
+    prim("mulf" option kMulf of K end) prim("negi" option kNegi of K end) prim("negf" option kNegf of K end)
+    prim("plane" option kPlane of K end) prim("point" option kPoint of K end)
+    prim("pointlight" option kPointlight of K end) prim("real" option kReal of K end)
+    prim("render" option kRender of K end) prim("rotatex" option kRotatex of K end)
+    prim("rotatey" option kRotatey of K end) prim("rotatez" option kRotatez of K end)
+    prim("scale" option kScale of K end) prim("sin" option kSin of K end) prim("sphere" option kSphere of K end)
+    prim("spotlight" option kSpotlight of K end) prim("sqrt" option kSqrt of K end)
+    prim("subi" option kSubi of K end) prim("subf" option kSubf of K end)
+    prim("translate" option kTranslate of K end) prim("union" option kUnion of K end)
+    prim("uscale" option kUscale of K end)
+end))
+
+let find(k: String): T =
+    begin
+        let rec findRec(l: lists.T(Entry)): T =
+            case l
+                when cons with c then if stringOp.equal(k c.hd.k) then c.hd.d else findRec(c.tl) end
+                else raise notFound end
+            end
+        findRec(keywords.t)
+    end
+
+(* Translation of an identifier *)
+let translateIdent(i: String): T = try find(i) when notFound then option pIdent of T with i end end
+
+let stuckComputation: Exception = exception stuckComputation: Ok end
+
+Let MaybeT = Option none some with t: T end end
+Let MaybeToken = Option none some with t: Token end end
+
+let read(ins: reader.T): lists.T(T) =
+    begin
+        let lex = makeLexer(fun(n: Int): String if reader.more(ins) then reader.getString(ins n) else "" end)
+        let next = tuple let var t = option none of MaybeToken end end
+        let token(): Token =
+            case next.t when some with s then begin next.t := option none of MaybeToken end s.t end else lex() end
+        let save(t: Token): Ok = next.t := option some of MaybeToken with t end
+        let bad(A::TYPE): A = failwith(:A)("invalid input")
+        let rec many(done: All(t: Token) Bool): lists.T(T) =
+            begin
+                let rec manyLoop(ac: lists.T(T)): lists.T(T) =
+                    case one()
+                        when some with s then manyLoop(lists.cons(:T)(s.t ac))
+                        else if done(token()) then lists.rev(:T)(ac) else bad(:lists.T(T)) end
+                    end
+                manyLoop(lists.nil(:T))
+            end
+        and one(): MaybeT =
+            begin
+                let tok(t: T): MaybeT = option some of MaybeT with t end
+                let t = token()
+                case t
+                    when tBinder with x then tok(option pBinder of T with x.s end)
+                    when tBool with x then tok(option pBool of T with x.b end)
+                    when tIdentifier with x then tok(translateIdent(x.s))
+                    when tInt with x then tok(option pInt of T with x.i end)
+                    when tLbrace then
+                        tok(option pFun of T with
+                            many(fun(t: Token): Bool case t when tRbrace then true else false end)
+                        end)
+                    when tLbracket then
+                        tok(option pArr of T with
+                            many(fun(t: Token): Bool case t when tRbracket then true else false end)
+                        end)
+                    when tReal with x then tok(option pFloat of T with x.r end)
+                    when tString with x then tok(option pString of T with x.s end)
+                    else begin save(t) option none of MaybeT end end
+                end
+            end
+        many(fun(t: Token): Bool case t when tEof then true else false end)
+    end
+
+(* structure Ppm: Word8Array's bytes as Ints *)
+
+(* Word8.fromInt *)
+let word8(v: Int): Int = floorMod(v 256)
+
+Let Pixmap = Tuple img: Array(Int) width: Int end
+
+let setp(p: Pixmap i: Int j: Int r: Int g: Int b: Int): Ok =
+    begin
+        let q = {{{j * p.width} + i} * 3}
+        p.img[q] := word8(r)
+        p.img[q + 1] := word8(g)
+        p.img[q + 2] := word8(b)
+    end
+
+let initPixmap(width: Int height: Int): Pixmap =
+    tuple let img = array of({height * width} * 3 0) let width = width end
+
+let dump(file: String p: Pixmap): Ok =
+    begin
+        let sz = extent p.img
+        let height = {sz / 3} / p.width
+        let f = writer.file(file)
+        writer.putString(f "P6\n# PL Club - translated to SML\n")
+        writer.putString(f stringOp.conc(array of conv.int(p.width) " " conv.int(height) "\n255\n" end))
+        for i = 0 upto sz - 1 do writer.putChar(f ascii.char(p.img[i])) end
+        writer.close(f)
+    end
+
+(* structure Render *)
+
+Let Color = Tuple r: Real g: Real b: Real end
+let color(r: Real g: Real b: Real): Color = tuple let r = r let g = g let b = b end
+
+(* Scene description *)
+
+(* section 3.2 *)
+Let SKind = Option
+    (* center, and square of the radius *)
+    sSphere with c: V4 r2: Real end
+    sEllips
+    (* normals x = 0, y = 0, and z = 0 *)
+    sCube with nx: V4 ny: V4 nz: V4 end
+    (* normal *)
+    sCylind with n: V4 end
+    (* normal *)
+    sCone with n: V4 end
+    (* equation, and normal *)
+    sPlane with eq: V4 n: V4 end
+end
+
+(* section 3.7 *)
+Let Rec Scene = Option
+    (* the surface function *)
+    sObj with kind: SKind f: ClosureRef m: Mat end
+    (* center, and square of the radius *)
+    sBound with sc: Scene x: V4 r: Real end
+    sUnion with sc1: Scene sc2: Scene end
+    sInter with sc1: Scene sc2: Scene end
+    sDiff with sc1: Scene sc2: Scene end
+end
+
+(* section 3.5 *)
+Let Light = Option
+    (* negated & normalized *)
+    light with dir: V4 color: Color end
+    ptLight with src: V4 color: Color end
+    (* negated & normalized maindir, and the cos of the cutoff *)
+    stLight with src: V4 maindir: V4 color: Color cutoff: Real expon: Real end
+end
+
+Let Desc = Tuple amb: Color lights: Array(Light) scene: Scene end
+
+let sObj(kind: SKind f: ClosureRef m: Mat): Scene = option sObj of Scene with kind f m end
+let sBound(sc: Scene x: V4 r: Real): Scene = option sBound of Scene with sc x r end
+let sUnion(sc1: Scene sc2: Scene): Scene = option sUnion of Scene with sc1 sc2 end
+
+(**** Scene calculation ****)
+
+(* Plane equation and normal in world coordinates *)
+Let PlaneEq = Tuple n: V4 n2: V4 end
+let planeEq(m: Mat v: V4): PlaneEq =
+    begin
+        let n = vmul(transpose(m) v)
+        tuple let n = n let n2 = normalize(v4(n.x n.y n.z 0.0)) end
+    end
+
+let origin = v4(0.0 0.0 0.0 1.0)
+let cubeCenter = v4(0.5 0.5 0.5 1.0)
+let cylinderCenter = v4(0.0 0.5 0.0 1.0)
+let coneCenter = v4(0.0 1.0 0.0 1.0)
+
+(* apply transformations *)
+let rec internObj(m: Mat m1: Mat scale: Real isom: Bool ob: Obj): Scene =
+    case ob
+        when oObj with x then
+            begin
+                let f = x.f
+                case x.kind
+                    when oSphere then
+                        if isom then
+                            begin
+                                let center = vmul(m1 origin)
+                                let radius = scale ** scale
+                                sBound(sObj(option sSphere of SKind with center radius end f m) center radius)
+                            end
+                        else
+                            begin
+                                let center = vmul(m1 origin)
+                                let radius = scale ** scale
+                                sBound(sObj(option sEllips of SKind end f m) center radius)
+                            end
+                        end
+                    when oCube then
+                        begin
+                            let nx = planeEq(m v4(1.0 0.0 0.0 0.0))
+                            let ny = planeEq(m v4(0.0 1.0 0.0 0.0))
+                            let nz = planeEq(m v4(0.0 0.0 1.0 0.0))
+                            let c = sObj(option sCube of SKind with nx.n2 ny.n2 nz.n2 end f m)
+                            sBound(c vmul(m1 cubeCenter) {scale ** scale} ** 0.75)
+                        end
+                    when oCylind then
+                        begin
+                            let n = planeEq(m v4(0.0 1.0 0.0 0.0))
+                            let c = sObj(option sCylind of SKind with n.n2 end f m)
+                            sBound(c vmul(m1 cylinderCenter) {scale ** scale} ** 1.25)
+                        end
+                    when oCone then
+                        begin
+                            let n = planeEq(m v4(0.0 1.0 0.0 0.0))
+                            let c = sObj(option sCone of SKind with n.n2 end f m)
+                            sBound(c vmul(m1 coneCenter) scale ** scale)
+                        end
+                    when oPlane then
+                        begin
+                            let n = planeEq(m v4(0.0 1.0 0.0 0.0))
+                            sObj(option sPlane of SKind with n.n n.n2 end f m)
+                        end
+                end
+            end
+        when oTransform with x then internObj(mul(x.m m) mul(m1 x.m1) scale ** x.scale isom andif x.isom x.o)
+        when oUnion with x then
+            begin
+                let sc1 = internObj(m m1 scale isom x.o1)
+                sUnion(sc1 internObj(m m1 scale isom x.o2))
+            end
+        when oInter with x then
+            begin
+                let sc1 = internObj(m m1 scale isom x.o1)
+                option sInter of Scene with sc1 internObj(m m1 scale isom x.o2) end
+            end
+        when oDiff with x then
+            case x.o1
+                when oDiff with y then
+                    (* Better to have unions that diffs for introducing bounds *)
+                    internObj(m m1 scale isom option oDiff of Obj with y.o1 option oUnion of Obj with y.o2 x.o2 end end)
+                else
+                    begin
+                        let sc1 = internObj(m m1 scale isom x.o1)
+                        option sDiff of Scene with sc1 internObj(m m1 scale isom x.o2) end
+                    end
+            end
+    end
+
+(* A VPoint of three VFloats, as reals; raises f otherwise *)
+let pointOf(v: V f: All() Color): Color =
+    begin
+        let fl(v: V): maybe.T(Real) = case v when vFloat with x then maybe.some(:Real)(x.f) else maybe.none(:Real) end
+        case v
+            when vPoint with p then
+                begin
+                    let x = fl(p.x)
+                    let y = fl(p.y)
+                    let z = fl(p.z)
+                    if maybe.isSome(:Real)(x) andif maybe.isSome(:Real)(y) andif maybe.isSome(:Real)(z) then
+                        color(maybe.unwrap(:Real)(x) maybe.unwrap(:Real)(y) maybe.unwrap(:Real)(z))
+                    else f()
+                    end
+                end
+            else f()
+        end
+    end
+
+let internLights(a: Array(V)): Array(Light) =
+    begin
+        let bad(): Color = assertFalse(:Color)
+        let floatOf(v: V): Real = case v when vFloat with x then x.f else assertFalse(:Real) end
+        let internLight(v: V): Light =
+            case v
+                when vLight with l then
+                    begin
+                        let d = pointOf(l.dir bad)
+                        let c = pointOf(l.color bad)
+                        option light of Light with normalize(negV(v4(d.r d.g d.b 0.0))) c end
+                    end
+                when vPtLight with l then
+                    begin
+                        let p = pointOf(l.pos bad)
+                        let c = pointOf(l.color bad)
+                        option ptLight of Light with v4(p.r p.g p.b 1.0) c end
+                    end
+                when vStLight with l then
+                    begin
+                        let p = pointOf(l.pos bad)
+                        let at = pointOf(l.at bad)
+                        let c = pointOf(l.color bad)
+                        let cutoff = floatOf(l.cutoff)
+                        let expon = floatOf(l.expon)
+                        option stLight of Light with
+                            v4(p.r p.g p.b 1.0)
+                            normalize(v4(p.r -- at.r p.g -- at.g p.b -- at.b 0.0))
+                            c dcos(cutoff) expon
+                        end
+                    end
+                else assertFalse(:Light)
+            end
+        let lights = array of(extent a option light of Light with origin color(0.0 0.0 0.0) end)
+        for i = 0 upto {extent a} - 1 do lights[i] := internLight(a[i]) end
+        lights
+    end
+
+(**** Scene optimization ****)
+
+let rec flattenRec(sc: Scene rem: lists.T(Scene)): lists.T(Scene) =
+    case sc
+        when sUnion with x then flattenRec(x.sc1 flattenRec(x.sc2 rem))
+        else lists.cons(:Scene)(sc rem)
+    end
+
+let flattenUnion(sc: Scene): lists.T(Scene) = flattenRec(sc lists.nil(:Scene))
+
+let objectCost(k: SKind): Int =
+    case k
+        when sSphere then 1
+        when sEllips then 2
+        when sCube then 4
+        when sCylind then 2
+        when sCone then 2
+        (* Planes do not have a bounding box anyway *)
+        when sPlane then 0
+    end
+
+Let Dsc = Tuple x: V4 r: Real cost: Int sc: Scene end
+Let CostScene = Tuple cost: Int sc: Scene end
+
+let dsc(x: V4 r: Real cost: Int sc: Scene): Dsc = tuple let x = x let r = r let cost = cost let sc = sc end
+let costScene(cost: Int sc: Scene): CostScene = tuple let cost = cost let sc = sc end
+
+let addBound(r0: Real d: Dsc): CostScene =
+    if r0 << 0.0 then
+        if {d.r << 0.0} orif {d.cost <= 1} then costScene(d.cost d.sc)
+        else costScene(1 sBound(d.sc d.x d.r))
+        end
+    else
+        begin
+            (* Cost of bounds *)
+            let c0 = r0 ++ {d.r ** real.int(d.cost)}
+            (* Cost ofout bounds *)
+            let c1 = r0 ** real.int(d.cost)
+            if c0 << c1 then costScene(1 sBound(d.sc d.x d.r)) else costScene(d.cost d.sc) end
+        end
+    end
+
+let unionBound(dsc1: Dsc dsc2: Dsc): Dsc =
+    if dsc1.r << 0.0 then
+        begin
+            let s2 = addBound(dsc1.r dsc2)
+            dsc(dsc1.x dsc1.r dsc1.cost sUnion(dsc1.sc s2.sc))
+        end
+    elsif dsc2.r << 0.0 then
+        begin
+            let s1 = addBound(dsc2.r dsc1)
+            dsc(dsc2.x dsc2.r dsc2.cost sUnion(s1.sc dsc2.sc))
+        end
+    else
+        begin
+            let d = real.sqrt(square(sub(dsc2.x dsc1.x)))
+            let r1s = real.sqrt(dsc1.r)
+            let r2s = real.sqrt(dsc2.r)
+            if {d ++ r2s} <<= r1s then
+                begin
+                    let s2 = addBound(dsc1.r dsc2)
+                    dsc(dsc1.x dsc1.r dsc1.cost + s2.cost sUnion(dsc1.sc s2.sc))
+                end
+            elsif {d ++ r1s} <<= r2s then
+                begin
+                    let s1 = addBound(dsc2.r dsc1)
+                    dsc(dsc2.x dsc2.r s1.cost + dsc2.cost sUnion(s1.sc dsc2.sc))
+                end
+            else
+                begin
+                    let rs = {{r1s ++ r2s} ++ d} ** 0.5
+                    let r = rs ** rs
+                    let x = addScaled(dsc1.x {rs -- r1s} // d sub(dsc2.x dsc1.x))
+                    let s1 = addBound(r dsc1)
+                    let s2 = addBound(r dsc2)
+                    dsc(x r s1.cost + s2.cost sUnion(s1.sc s2.sc))
+                end
+            end
+        end
+    end
+
+let unionRadius(dsc1: Dsc dsc2: Dsc): Real =
+    begin
+        let d = real.sqrt(square(sub(dsc2.x dsc1.x)))
+        let r1s = real.sqrt(dsc1.r)
+        let r2s = real.sqrt(dsc2.r)
+        if {d ++ r2s} <<= r1s then dsc1.r
+        elsif {d ++ r1s} <<= r2s then dsc2.r
+        else
+            begin
+                let rs = {{r1s ++ r2s} ++ d} ** 0.5
+                rs ** rs
+            end
+        end
+    end
+
+let rec merge2(l: lists.T(Dsc)): lists.T(Dsc) =
+    case l
+        when cons with c1 then
+            case c1.tl
+                when cons with c2 then
+                    begin
+                        let first = unionBound(c1.hd c2.hd)
+                        lists.cons(:Dsc)(first merge2(c2.tl))
+                    end
+                else l
+            end
+        else l
+    end
+
+let rec mergeUnion(l: lists.T(Dsc)): Dsc =
+    case l
+        when cons with c then if lists.null(:Dsc)(c.tl) then c.hd else mergeUnion(merge2(l)) end
+        else assertFalse(:Dsc)
+    end
+
+let optUnion(l: lists.T(Dsc)): lists.T(Dsc) =
+    begin
+        let n = lists.length(:Dsc)(l)
+        if n <= 1 then l
+        elsif n is 2 then lists.cons(:Dsc)(unionBound(lists.hd(:Dsc)(l) lists.nth(:Dsc)(l 1)) lists.nil(:Dsc))
+        else
+            begin
+                let c = array of(n lists.hd(:Dsc)(l))
+                let rec fill(l: lists.T(Dsc) i: Int): Ok =
+                    case l when cons with x then begin c[i] := x.hd fill(x.tl i + 1) end else ok end
+                fill(l 0)
+                (* SML's Array2, row major *)
+                let m = array of(n * n infinity)
+                for i = 0 upto n - 1 do
+                    for j = 0 upto n - 1 do
+                        if i isnot j then m[{i * n} + j] := unionRadius(c[i] c[j]) end
+                    end
+                end
+                let remain = array of(n 0)
+                for i = 0 upto n - 1 do remain[i] := i end
+                for k = n - 1 downto 1 do
+                    let var gain = infinity
+                    let var i0 = 0
+                    let var j0 = 0
+                    for i = 0 upto k do
+                        for j = 0 upto k do
+                            let ii = remain[i]
+                            let jj = remain[j]
+                            if m[{ii * n} + jj] << gain then
+                                begin
+                                    gain := m[{ii * n} + jj]
+                                    i0 := i
+                                    j0 := j
+                                end
+                            end
+                        end
+                    end
+                    let i = remain[i0]
+                    let j = remain[j0]
+                    remain[j0] := remain[k]
+                    c[i] := unionBound(c[i] c[j])
+                    for j0 = 0 upto k - 1 do
+                        let j = remain[j0]
+                        if i isnot j then
+                            begin
+                                m[{i * n} + j] := unionRadius(c[i] c[j])
+                                m[{j * n} + i] := unionRadius(c[i] c[j])
+                            end
+                        end
+                    end
+                end
+                lists.cons(:Dsc)(c[remain[0]] lists.nil(:Dsc))
+            end
+        end
+    end
+
+let rec optimizeRec(sc: Scene): Dsc =
+    case sc
+        when sObj with x then dsc(origin ~1.0 objectCost(x.kind) sc)
+        when sUnion then
+            begin
+                let l = lists.map(:Scene :Dsc)(optimizeRec flattenUnion(sc))
+                let unbounded = lists.filter(:Dsc)(fun(d: Dsc): Bool d.r << 0.0 l)
+                let bounded = lists.filter(:Dsc)(fun(d: Dsc): Bool d.r >>= 0.0 l)
+                mergeUnion(lists.append(:Dsc)(optUnion(bounded) unbounded))
+            end
+        when sInter with x then
+            begin
+                let d1 = optimizeRec(x.sc1)
+                let d2 = optimizeRec(x.sc2)
+                (* XXX We could have a tighter bound... *)
+                if d2.r << 0.0 then dsc(d2.x d2.r d2.cost option sInter of Scene with d1.sc d2.sc end)
+                elsif d1.r << 0.0 then dsc(d1.x d1.r d1.cost option sInter of Scene with d2.sc d1.sc end)
+                elsif d1.r << d2.r then dsc(d1.x d1.r d1.cost option sInter of Scene with d1.sc d2.sc end)
+                else dsc(d2.x d2.r d1.cost option sInter of Scene with d2.sc d1.sc end)
+                end
+            end
+        when sDiff with x then
+            begin
+                let d1 = optimizeRec(x.sc1)
+                let d2 = optimizeRec(x.sc2)
+                let s2 = addBound(d1.r d2)
+                dsc(d1.x d1.r d1.cost option sDiff of Scene with d1.sc s2.sc end)
+            end
+        when sBound with x then
+            begin
+                let d1 = optimizeRec(x.sc)
+                dsc(x.x x.r d1.cost d1.sc)
+            end
+    end
+
+let optimize(sc: Scene): Scene = addBound(~1.0 optimizeRec(sc)).sc
+
+(**** Rendering ****)
+
+(* operations for intervals *)
+Let Interval = Tuple t1: Real o1: Scene t2: Real o2: Scene end
+Let Intervals = lists.T(Interval)
+
+let interval(t1: Real o1: Scene t2: Real o2: Scene): Interval =
+    tuple let t1 = t1 let o1 = o1 let t2 = t2 let o2 = o2 end
+let cons(i: Interval l: Intervals): Intervals = lists.cons(:Interval)(i l)
+let none = lists.nil(:Interval)
+let one(i: Interval): Intervals = cons(i none)
+
+let rec union(l1: Intervals l2: Intervals): Intervals = (* ES: checked *)
+    case l1
+        when cons with c1 then
+            case l2
+                when cons with c2 then
+                    begin
+                        let i1 = c1.hd
+                        let r1 = c1.tl
+                        let i2 = c2.hd
+                        let r2 = c2.tl
+                        if i1.t2 << i2.t1 then cons(i1 union(r1 l2))
+                        elsif i2.t2 << i1.t1 then cons(i2 union(l1 r2))
+                        elsif i1.t1 << i2.t1 then
+                            if i1.t2 << i2.t2 then union(r1 cons(interval(i1.t1 i1.o1 i2.t2 i2.o2) r2))
+                            else union(cons(interval(i1.t1 i1.o1 i1.t2 i1.o2) r1) r2)
+                            end
+                        elsif i1.t2 << i2.t2 then union(r1 cons(interval(i2.t1 i2.o1 i2.t2 i2.o2) r2))
+                        else union(cons(interval(i2.t1 i2.o1 i1.t2 i1.o2) r1) r2)
+                        end
+                    end
+                else l1
+            end
+        else l2
+    end
+
+let rec inter(l1: Intervals l2: Intervals): Intervals = (* ES: checked *)
+    case l1
+        when cons with c1 then
+            case l2
+                when cons with c2 then
+                    begin
+                        let i1 = c1.hd
+                        let r1 = c1.tl
+                        let i2 = c2.hd
+                        let r2 = c2.tl
+                        if i1.t2 <<= i2.t1 then inter(r1 l2)
+                        elsif i2.t2 <<= i1.t1 then inter(l1 r2)
+                        elsif i1.t1 << i2.t1 then
+                            if i1.t2 << i2.t2 then
+                                begin let i = interval(i2.t1 i2.o1 i1.t2 i1.o2) cons(i inter(r1 l2)) end
+                            else cons(i2 inter(l1 r2))
+                            end
+                        elsif i1.t2 << i2.t2 then cons(i1 inter(r1 l2))
+                        else begin let i = interval(i1.t1 i1.o1 i2.t2 i2.o2) cons(i inter(l1 r2)) end
+                        end
+                    end
+                else none
+            end
+        else none
+    end
+
+let rec diff(l1: Intervals l2: Intervals): Intervals = (* ES: checked *)
+    case l1
+        when cons with c1 then
+            case l2
+                when cons with c2 then
+                    begin
+                        let i1 = c1.hd
+                        let r1 = c1.tl
+                        let i2 = c2.hd
+                        let r2 = c2.tl
+                        if i1.t2 <<= i2.t1 then cons(i1 diff(r1 l2))
+                        elsif i2.t2 <<= i1.t1 then diff(l1 r2)
+                        elsif i1.t1 << i2.t1 then
+                            if i1.t2 << i2.t2 then
+                                begin let i = interval(i1.t1 i1.o1 i2.t1 i2.o1) cons(i diff(r1 l2)) end
+                            else
+                                begin
+                                    let i = interval(i1.t1 i1.o1 i2.t1 i2.o1)
+                                    cons(i diff(cons(interval(i2.t2 i2.o2 i1.t2 i1.o2) r1) r2))
+                                end
+                            end
+                        elsif i1.t2 << i2.t2 then diff(r1 l2)
+                        else diff(cons(interval(i2.t2 i2.o2 i1.t2 i1.o2) r1) r2)
+                        end
+                    end
+                else l1
+            end
+        else none
+    end
+
+(* intersection of ray and object *)
+let plane(orig: V4 dir: V4 scene: Scene eq: V4): Intervals =
+    (* XXX Need to be checked *)
+    begin
+        let porig = prod(eq orig)
+        let pdir = prod(eq dir)
+        let t = neg(porig) // pdir
+        if porig << 0.0 then
+            if t >> 0.0 then one(interval(0.0 scene t scene)) else one(interval(0.0 scene infinity scene)) end
+        elsif t >> 0.0 then one(interval(t scene infinity scene))
+        else none
+        end
+    end
+
+let band(obj: Scene x: V4 v: V4 i: All(v: V4) Real): Intervals = (* ES: checked *)
+    begin
+        let t1 = neg(i(x)) // i(v)
+        let t2 = {1.0 -- i(x)} // i(v)
+        let t2s = if t1 >>= t2 then t1 else t2 end
+        if t2s << 0.0 then none
+        else
+            begin
+                let t1s = if t1 <<= t2 then t1 else t2 end
+                if t1s << 0.0 then one(interval(0.0 obj t2s obj)) else one(interval(t1s obj t2s obj)) end
+            end
+        end
+    end
+
+let first(v: V4): Real = v.x
+let second(v: V4): Real = v.y
+let third(v: V4): Real = v.z
+
+let cube(orig: V4 dir: V4 scene: Scene m: Mat): Intervals = (* ES: checked *)
+    begin
+        let x = vmul(m orig)
+        let v = vmul(m dir)
+        let l0 = band(scene x v first)
+        if lists.null(:Interval)(l0) then none
+        else
+            begin
+                let l1 = inter(l0 band(scene x v second))
+                if lists.null(:Interval)(l1) then none else inter(l1 band(scene x v third)) end
+            end
+        end
+    end
+
+let sphere(orig: V4 dir: V4 scene: Scene x: V4 r2: Real): Intervals =
+    begin
+        let v = sub(x orig)
+        (* Square of the distance between the origin and the center of the
+         * sphere *)
+        let v2 = square(v)
+        let dir2 = square(dir)
+        let p = prod(v dir)
+        (* Square of the distance between the ray and the center *)
+        let d2 = v2 -- {{p ** p} // dir2}
+        let delta = r2 -- d2
+        if delta <<= 0.0 then none
+        else
+            begin
+                let sq = real.sqrt(delta // dir2)
+                let t1 = {p // dir2} -- sq
+                let t2 = {p // dir2} ++ sq
+                if t2 << 0.0 then none else one(interval(maxFloat(0.0 t1) scene t2 scene)) end
+            end
+        end
+    end
+
+let ellipsoid(orig: V4 dir: V4 scene: Scene m: Mat): Intervals = (* ES: checked *)
+    begin
+        let x = vmul(m orig)
+        let v = vmul(m dir)
+        let x2 = square(x)
+        let v2 = square(v)
+        let xv = prod(x v)
+        let delta = {xv ** xv} -- {v2 ** {x2 -- 2.0}}
+        if delta <<= 0.0 then none
+        else
+            begin
+                let sq = real.sqrt(delta)
+                let t1 = {neg(xv) -- sq} // v2
+                let t2 = {neg(xv) ++ sq} // v2
+                if t2 << 0.0 then none else one(interval(maxFloat(0.0 t1) scene t2 scene)) end
+            end
+        end
+    end
+
+let cylinder(orig: V4 dir: V4 scene: Scene m: Mat): Intervals =
+    begin
+        let x = vmul(m orig)
+        let v = vmul(m dir)
+        let x2 = {{x.x ** x.x} ++ {x.z ** x.z}} -- 1.0
+        let v2 = {v.x ** v.x} ++ {v.z ** v.z}
+        let xv = {x.x ** v.x} ++ {x.z ** v.z}
+        let delta = {xv ** xv} -- {v2 ** x2}
+        if delta <<= 0.0 then none
+        else
+            begin
+                let sq = real.sqrt(delta)
+                let t1 = {neg(xv) -- sq} // v2
+                let t2 = {neg(xv) ++ sq} // v2
+                if t2 << 0.0 then none
+                else inter(one(interval(maxFloat(0.0 t1) scene t2 scene)) band(scene x v second))
+                end
+            end
+        end
+    end
+
+let cone(orig: V4 dir: V4 scene: Scene m: Mat): Intervals =
+    begin
+        let x = vmul(m orig)
+        let v = vmul(m dir)
+        let x2 = {{x.x ** x.x} ++ {x.z ** x.z}} -- {x.y ** x.y}
+        let v2 = {{v.x ** v.x} ++ {v.z ** v.z}} -- {v.y ** v.y}
+        let xv = {{x.x ** v.x} ++ {x.z ** v.z}} -- {x.y ** v.y}
+        let delta = {xv ** xv} -- {v2 ** x2}
+        if delta <<= 0.0 then none
+        else
+            begin
+                let sq = real.sqrt(delta)
+                let t1 = {neg(xv) -- sq} // v2
+                let t2 = {neg(xv) ++ sq} // v2
+                if t1 <<= t2 then
+                    if t2 << 0.0 then none
+                    else inter(one(interval(maxFloat(0.0 t1) scene t2 scene)) band(scene x v second))
+                    end
+                else
+                    begin
+                        let l =
+                            if t1 <<= 0.0 then one(interval(0.0 scene infinity scene))
+                            elsif t2 <<= 0.0 then one(interval(t1 scene infinity scene))
+                            else cons(interval(0.0 scene t2 scene) one(interval(t1 scene infinity scene)))
+                            end
+                        inter(l band(scene x v second))
+                    end
+                end
+            end
+        end
+    end
+
+(* XXX Maybe we should check whether the sphere is completely behind us ? *)
+let intersect(orig: V4 dir: V4 x: V4 r2: Real): Bool =
+    begin
+        let v = sub(x orig)
+        (* Square of the distance between the origin and the center of the
+         * sphere *)
+        let v2 = {{{v.x ** v.x} ++ {v.y ** v.y}} ++ {v.z ** v.z}} ++ {v.t ** v.t}
+        let dir2 = {{{dir.x ** dir.x} ++ {dir.y ** dir.y}} ++ {dir.z ** dir.z}} ++ {dir.t ** dir.t}
+        let p = {{{v.x ** dir.x} ++ {v.y ** dir.y}} ++ {v.z ** dir.z}} ++ {v.t ** dir.t}
+        (* Square of the distance between the ray and the center *)
+        let d2 = v2 -- {{p ** p} // dir2}
+        r2 >> d2
+    end
+
+let objectIntervals(orig: V4 dir: V4 scene: Scene kind: SKind m: Mat): Intervals =
+    case kind
+        when sSphere with x then sphere(orig dir scene x.c x.r2)
+        when sEllips then ellipsoid(orig dir scene m)
+        when sCube then cube(orig dir scene m)
+        when sCylind then cylinder(orig dir scene m)
+        when sCone then cone(orig dir scene m)
+        when sPlane with x then plane(orig dir scene x.eq)
+    end
+
+let rec findAll(orig: V4 dir: V4 scene: Scene): Intervals =
+    case scene
+        when sObj with x then objectIntervals(orig dir scene x.kind x.m)
+        when sBound with x then if intersect(orig dir x.x x.r) then findAll(orig dir x.sc) else none end
+        when sUnion with x then
+            begin
+                let l1 = findAll(orig dir x.sc1)
+                union(l1 findAll(orig dir x.sc2))
+            end
+        when sInter with x then
+            begin
+                let l1 = findAll(orig dir x.sc1)
+                if lists.null(:Interval)(l1) then none else inter(l1 findAll(orig dir x.sc2)) end
+            end
+        when sDiff with x then
+            begin
+                let l1 = findAll(orig dir x.sc1)
+                if lists.null(:Interval)(l1) then none else diff(l1 findAll(orig dir x.sc2)) end
+            end
+    end
+
+let rec filterInterList(l: Intervals): Intervals =
+    case l when cons with c then if c.hd.t1 << epsilon then filterInterList(c.tl) else l end else l end
+
+let hitFromInter(bounded: Bool l0: Intervals): Bool =
+    begin
+        let l = filterInterList(l0)
+        case l when cons with c then not(bounded) orif {c.hd.t1 <<= 1.0} else false end
+    end
+
+let rec hit(orig: V4 dir: V4 scene: Scene bounded: Bool): Bool =
+    case scene
+        when sObj with x then
+            begin
+                let l = objectIntervals(orig dir scene x.kind x.m)
+                case l
+                    when cons with c then
+                        if lists.null(:Interval)(c.tl) then
+                            if bounded andif {c.hd.t1 >> 1.0} then false
+                            elsif c.hd.t1 << epsilon then false
+                            else true
+                            end
+                        else true
+                        end
+                    else false
+                end
+            end
+        when sBound with x then intersect(orig dir x.x x.r) andif hit(orig dir x.sc bounded)
+        when sUnion with x then hit(orig dir x.sc1 bounded) orif hit(orig dir x.sc2 bounded)
+        when sInter with x then
+            begin
+                let l1 = findAll(orig dir x.sc1)
+                if lists.null(:Interval)(l1) then false else hitFromInter(bounded inter(l1 findAll(orig dir x.sc2))) end
+            end
+        when sDiff with x then
+            begin
+                let l1 = findAll(orig dir x.sc1)
+                if lists.null(:Interval)(l1) then false else hitFromInter(bounded diff(l1 findAll(orig dir x.sc2))) end
+            end
+    end
+
+let visible(desc: Desc orig: V4 dir: V4 bounded: Bool): Bool = not(hit(orig dir desc.scene bounded))
+
+let black = color(0.0 0.0 0.0)
+
+(* Eval's apply and inline_closure, which Eval sets *)
+let hooks = tuple
+    let var apply = fun(f: V st: VList): VList assertFalse(:VList)
+    let var inlineClosure = fun(f: V): V assertFalse(:V)
+end
+
+(* Value between 0 and 1 from the sinus and cosinus *)
+(* Actually, only the sign of the sinus is used *)
+let angle(si: Real co: Real): Real =
+    begin
+        let u = dacos(co) // 360.0
+        if si >> 0.0 then u else 1.0 -- u end
+    end
+
+let coord(v: Real u: Real face: Int): VList =
+    begin
+        let vv = floatV(v)
+        let uv = floatV(u)
+        lists.fromArray(:V)(array of vv uv intV(face) end)
+    end
+
+(* XXX Check that 0 <= u,v <= 1 *)
+let textureCoord(kind: SKind x: V4): VList = (* section 3.6 *) (* ES: checked *)
+    begin
+        let ellipsOrSphere(): VList =
+            begin
+                let y = x.y
+                let v = {y ++ 1.0} ** 0.5
+                if v << epsilon then coord(v 0.0 0)
+                else
+                    begin
+                        let u = angle(x.x x.z // real.sqrt(1.0 -- {y ** y}))
+                        coord(v u 0)
+                    end
+                end
+            end
+        (* [v; u; face] *)
+        case kind
+            when sEllips then ellipsOrSphere()
+            when sSphere then ellipsOrSphere()
+            when sCube then
+                if real.abs(x.z) << epsilon then coord(x.y x.x 0)
+                elsif real.abs(x.z -- 1.0) << epsilon then coord(x.y x.x 1)
+                elsif real.abs(x.x) << epsilon then coord(x.y x.z 2)
+                elsif real.abs(x.x -- 1.0) << epsilon then coord(x.y x.z 3)
+                elsif real.abs(x.y -- 1.0) << epsilon then coord(x.z x.x 4)
+                else (* if abs_float (#2 x) < epsilon then *) coord(x.z x.x 5)
+                end
+            when sCylind then
+                if real.abs(x.y) << epsilon then coord({x.z ++ 1.0} ** 0.5 {x.x ++ 1.0} ** 0.5 2)
+                elsif real.abs(x.y -- 1.0) << epsilon then coord({x.z ++ 1.0} ** 0.5 {x.x ++ 1.0} ** 0.5 1)
+                else
+                    begin
+                        let u = angle(x.x x.z)
+                        coord(x.y u 0)
+                    end
+                end
+            when sCone then
+                begin
+                    let v = x.y
+                    if real.abs(v) << epsilon then coord(v 0.0 0)
+                    elsif real.abs(x.y -- 1.0) << epsilon then coord({x.z ++ 1.0} ** 0.5 {x.x ++ 1.0} ** 0.5 1)
+                    else
+                        begin
+                            let u = angle(x.x x.z // v)
+                            coord(v u 0)
+                        end
+                    end
+                end
+            when sPlane then coord(x.z x.x 0)
+        end
+    end
+
+let normal(kind: SKind m: Mat xs: V4 x: V4): V4 =
+    case kind
+        when sSphere with s then normalize(sub(x s.c))
+        when sEllips then
+            begin
+                let n = vmul(transpose(m) xs)
+                normalize(v4(n.x n.y n.z 0.0))
+            end
+        when sCylind with s then
+            if {real.abs(xs.y) << epsilon} orif {{real.abs(xs.y) -- 1.0} << epsilon} then s.n
+            else
+                (* XXX Could be optimized... *)
+                begin
+                    let n = vmul(transpose(m) v4(xs.x 0.0 xs.z 0.0))
+                    normalize(v4(n.x n.y n.z 0.0))
+                end
+            end
+        when sCone with s then
+            if {real.abs(xs.y) -- 1.0} << epsilon then s.n
+            else
+                begin
+                    let n = vmul(transpose(m) v4(xs.x neg(xs.y) xs.z 0.0))
+                    normalize(v4(n.x n.y n.z 0.0))
+                end
+            end
+        when sCube with s then
+            if {real.abs(xs.z) << epsilon} orif {{real.abs(xs.z) -- 1.0} << epsilon} then s.nz
+            elsif {real.abs(xs.x) << epsilon} orif {{real.abs(xs.x) -- 1.0} << epsilon} then s.nx
+            else s.ny
+            end
+        when sPlane with s then s.n
+    end
+
+let applySurfaceFun(f: V v: VList): SurfRes =
+    begin
+        let msg = "A surface function returns some incorrect values"
+        let bad(): Color = failwith(:Color)(msg)
+        let floatOf(v: V): Real = case v when vFloat with x then x.f else failwith(:Real)(msg) end
+        let l = hooks.apply(f v)
+        if lists.length(:V)(l) is 4 then
+            begin
+                (* the original matches the whole list before it takes any
+                 * element *)
+                let c = pointOf(lists.nth(:V)(l 3) bad)
+                let n = floatOf(lists.nth(:V)(l 0))
+                let ks = floatOf(lists.nth(:V)(l 1))
+                let kd = floatOf(lists.nth(:V)(l 2))
+                tuple let n = n let ks = ks let kd = kd let cr = c.r let cg = c.g let cb = c.b end
+            end
+        else failwith(:SurfRes)(msg)
+        end
+    end
+
+let rec trace(desc: Desc depth: Int orig: V4 dir: V4): Color =
+    begin
+        let dirn = normalize(dir)
+        case filterInterList(findAll(orig dirn desc.scene))
+            when cons with c then trace2(desc depth orig dirn c.hd.t1 c.hd.o1)
+            else black
+        end
+    end
+and trace2(desc: Desc depth: Int orig: V4 dir: V4 t: Real obj: Scene): Color =
+    begin
+        let x = addScaled(orig t dir)
+        case obj
+            when sObj with o then
+                begin
+                    let kind = o.kind
+                    let f = o.f
+                    let m = o.m
+                    let xs = vmul(m x)
+                    let s: SurfRes =
+                        case f.c
+                            when unopt with g then
+                                (* First we check whether the function would fail *)
+                                begin
+                                    let res = applySurfaceFun(g.v textureCoord(kind xs))
+                                    let stuck(): Ok = f.c := option opt of Closure with hooks.inlineClosure(g.v) end
+                                    (* Then, we check whether it is a constant function *)
+                                    try
+                                        begin
+                                            let args = lists.fromArray(:V)(array of intV(0) intV(0) floatV(0.0) end)
+                                            let ignored = applySurfaceFun(g.v args)
+                                            f.c := option cst of Closure with res end
+                                        end
+                                    when stuckComputation then stuck()
+                                    end
+                                    res
+                                end
+                            when opt with g then applySurfaceFun(g.v textureCoord(kind xs))
+                            when cst with c then c.r
+                        end
+                    let n = s.n
+                    let ks = s.ks
+                    let kd = s.kd
+                    let nm0 = normal(kind m xs x)
+                    let p0 = prod(dir nm0)
+                    let nm = if p0 >> 0.0 then negV(nm0) else nm0 end
+                    let p = neg(real.abs(p0))
+                    (* Ambient composant *)
+                    let amb = desc.amb
+                    let var r = kd ** amb.r
+                    let var g = kd ** amb.g
+                    let var b = kd ** amb.b
+                    (* Lights *)
+                    let lights = desc.lights
+                    for i = 0 upto {extent lights} - 1 do
+                        case lights[i]
+                            when light with l then
+                                begin
+                                    let ps = prod(l.dir nm)
+                                    if {ps >> 0.0} andif visible(desc x l.dir false) then
+                                        begin
+                                            let intensity =
+                                                if ks >> epsilon then
+                                                    {kd ** ps} ++ {ks ** real.exp(prod(normalize(sub(l.dir dir)) nm) n)}
+                                                else kd ** ps
+                                                end
+                                            r := r ++ {intensity ** l.color.r}
+                                            g := g ++ {intensity ** l.color.g}
+                                            b := b ++ {intensity ** l.color.b}
+                                        end
+                                    end
+                                end
+                            when ptLight with l then
+                                begin
+                                    let ldir = sub(l.src x)
+                                    let ldirs = normalize(ldir)
+                                    let ps = prod(ldirs nm)
+                                    if {ps >> 0.0} andif visible(desc x ldir true) then
+                                        begin
+                                            let int0 =
+                                                if ks >> epsilon then
+                                                    {kd ** ps} ++ {ks ** real.exp(prod(normalize(sub(ldirs dir)) nm) n)}
+                                                else kd ** ps
+                                                end
+                                            let intensity = {100.0 ** int0} // {99.0 ++ square(ldir)}
+                                            r := r ++ {intensity ** l.color.r}
+                                            g := g ++ {intensity ** l.color.g}
+                                            b := b ++ {intensity ** l.color.b}
+                                        end
+                                    end
+                                end
+                            when stLight with l then
+                                begin
+                                    let ldir = sub(l.src x)
+                                    let ldirs = normalize(ldir)
+                                    let ps = prod(ldirs nm)
+                                    let pss = prod(ldirs l.maindir)
+                                    if {ps >> 0.0} andif {pss >> l.cutoff} andif visible(desc x ldir true) then
+                                        begin
+                                            let int0 =
+                                                if ks >> epsilon then
+                                                    {kd ** ps} ++ {ks ** real.exp(prod(normalize(sub(ldirs dir)) nm) n)}
+                                                else kd ** ps
+                                                end
+                                            let intensity =
+                                                {{100.0 ** int0} // {99.0 ++ square(ldir)}} ** real.exp(pss l.expon)
+                                            r := r ++ {intensity ** l.color.r}
+                                            g := g ++ {intensity ** l.color.g}
+                                            b := b ++ {intensity ** l.color.b}
+                                        end
+                                    end
+                                end
+                        end
+                    end
+                    (* Reflexion *)
+                    if {ks >> epsilon} andif {depth > 0} then
+                        begin
+                            let dirs = addScaled(dir ~2.0 ** p nm)
+                            let c = trace(desc depth - 1 x dirs)
+                            r := r ++ {ks ** c.r}
+                            g := g ++ {ks ** c.g}
+                            b := b ++ {ks ** c.b}
+                        end
+                    end
+                    color(r ** s.cr g ** s.cg b ** s.cb)
+                end
+            else assertFalse(:Color)
+        end
+    end
+
+let convColor(c: Real): Int =
+    begin
+        let i = real.trunc(c ** 256.0)
+        if i < 0 then 0 elsif i >= 256 then 255 else i end
+    end
+
+let renderF(amb: Color lights: Array(V) obj: Obj depth: Int fov: Real wid: Int ht: Int file: String): Ok =
+    begin
+        let scene = optimize(internObj(identity identity 1.0 true obj))
+        let img = initPixmap(wid ht)
+        let orig = v4(0.0 0.0 ~1.0 1.0)
+        let width = 2.0 ** dtan(0.5 ** fov)
+        let delta = width // real.int(wid)
+        let x0 = neg(width) // 2.0
+        let y0 = {delta ** real.int(ht)} // 2.0
+        let desc: Desc = tuple let amb = amb let lights = internLights(lights) let scene = scene end
+        for j = 0 upto ht - 1 do
+            for i = 0 upto wid - 1 do
+                let dir = v4(x0 ++ {{real.int(i) ++ 0.5} ** delta} y0 -- {{real.int(j) ++ 0.5} ** delta} 1.0 0.0)
+                let c = trace(desc depth orig dir)
+                setp(img i j convColor(c.r) convColor(c.g) convColor(c.b))
+            end
+        end
+        dump(file img)
+    end
+
+(* structure Eval *)
+
+let deg(x: Real): Real = rtd ** x
+let rad(x: Real): Real = dtr ** x
+let zero = floatV(0.0)
+let one = floatV(1.0)
+
+let rec lookup(env: lists.T(String) s: String): Int =
+    case env
+        when cons with c then if stringOp.equal(s c.hd) then 0 else 1 + lookup(c.tl s) end
+        else failwith(:Int)("Unbound variable \"" <> s <> "\"")
+    end
+
+let cons2(t: T2 l: lists.T(T2)): lists.T(T2) = lists.cons(:T2)(t l)
+let val2(v: V): T2 = option val2 of T2 with v end
+
+(* Whether p starts with Float x :: Float y :: Float z :: Prim Point *)
+let startsPoint(p: lists.T(T)): Bool =
+    begin
+        let isFloat(t: T): Bool = case t when pFloat then true else false end
+        let isPoint(t: T): Bool =
+            case t when pPrim with x then case x.k when kPoint then true else false end else false end
+        case p
+            when cons with a then
+                isFloat(a.hd) andif
+                case a.tl
+                    when cons with b then
+                        isFloat(b.hd) andif
+                        case b.tl
+                            when cons with c then
+                                isFloat(c.hd) andif case c.tl when cons with d then isPoint(d.hd) else false end
+                            else false
+                        end
+                    else false
+                end
+            else false
+        end
+    end
+
+(* XXX embed values *)
+let rec convProgram(absenv: lists.T(String) p: lists.T(T)): lists.T(T2) =
+    case p
+        when cons with c then
+            if startsPoint(p) then
+                begin
+                    let fl(t: T): V = case t when pFloat with x then floatV(x.f) else assertFalse(:V) end
+                    let x = fl(c.hd)
+                    let y = fl(lists.nth(:T)(p 1))
+                    let z = fl(lists.nth(:T)(p 2))
+                    cons2(val2(pointV(x y z)) convProgram(absenv lists.drop(:T)(p 4)))
+                end
+            else
+                begin
+                    let r = c.tl
+                    case c.hd
+                        when pFun with x then
+                            begin
+                                let h = option fun2 of T2 with convProgram(absenv x.l) end
+                                cons2(h convProgram(absenv r))
+                            end
+                        when pArr with x then
+                            begin
+                                let h = option arr2 of T2 with convProgram(absenv x.l) end
+                                cons2(h convProgram(absenv r))
+                            end
+                        when pIdent with x then
+                            begin
+                                let h = option ident2 of T2 with lookup(absenv x.s) end
+                                cons2(h convProgram(absenv r))
+                            end
+                        when pBinder with x then
+                            cons2(option binder2 of T2 end convProgram(lists.cons(:String)(x.s absenv) r))
+                        when pInt with x then cons2(val2(intV(x.i)) convProgram(absenv r))
+                        when pFloat with x then cons2(val2(floatV(x.f)) convProgram(absenv r))
+                        when pBool with x then cons2(val2(boolV(x.b)) convProgram(absenv r))
+                        when pString with x then cons2(val2(option vStr of V with x.s end) convProgram(absenv r))
+                        when pPrim with x then cons2(option prim2 of T2 with x.k end convProgram(absenv r))
+                    end
+                end
+            end
+        else lists.nil(:T2)
+    end
+
+let rec inline(offset: Int env: VList p: lists.T(T2)): lists.T(T2) =
+    case p
+        when cons with c then
+            begin
+                let t = c.hd
+                let r = c.tl
+                let normal(): lists.T(T2) = cons2(t inline(offset env r))
+                case t
+                    when fun2 with x then
+                        begin
+                            let h = option fun2 of T2 with inline(offset env x.l) end
+                            cons2(h inline(offset env r))
+                        end
+                    when arr2 with x then
+                        begin
+                            let h = option arr2 of T2 with inline(offset env x.l) end
+                            cons2(h inline(offset env r))
+                        end
+                    when ident2 with x then
+                        if x.i >= offset then cons2(val2(lists.nth(:V)(env x.i - offset)) inline(offset env r))
+                        else normal()
+                        end
+                    when binder2 then cons2(t inline(1 + offset env r))
+                    when prim2 then normal()
+                    when val2 then normal()
+                end
+            end
+        else lists.nil(:T2)
+    end
+
+let inlineClosure(f: V): V =
+    case f
+        when vClos with c then closV(lists.nil(:V) inline(0 c.env c.p))
+        else failwith(:V)("a surface function was actually not a function")
+    end
+
+hooks.inlineClosure := inlineClosure
+
+(* The stack's top and the rest, the values the rules match, which raise
+ * stuckComputation when no rule does *)
+let stuck(A::TYPE): A = raise stuckComputation end
+let top(st: VList): V = case st when cons with c then c.hd else stuck(:V) end
+let pop(st: VList): VList = case st when cons with c then c.tl else stuck(:VList) end
+let push(v: V st: VList): VList = lists.cons(:V)(v st)
+let intOf(v: V): Int = case v when vInt with x then x.i else stuck(:Int) end
+let floatOf(v: V): Real = case v when vFloat with x then x.f else stuck(:Real) end
+let objOf(v: V): Obj = case v when vObj with x then x.o else stuck(:Obj) end
+let checkClos(v: V): V = case v when vClos then v else stuck(:V) end
+let checkFloat(v: V): V = case v when vFloat then v else stuck(:V) end
+let checkPoint(v: V): V = case v when vPoint then v else stuck(:V) end
+
+(* VInt n2 :: VInt n1 :: st', and VFloat f2 :: VFloat f1 :: st' *)
+let intOp(st: VList f: All(n1: Int n2: Int) V): VList =
+    begin
+        let n2 = intOf(top(st))
+        let n1 = intOf(top(pop(st)))
+        push(f(n1 n2) pop(pop(st)))
+    end
+let floatOp(st: VList f: All(f1: Real f2: Real) V): VList =
+    begin
+        let f2 = floatOf(top(st))
+        let f1 = floatOf(top(pop(st)))
+        push(f(f1 f2) pop(pop(st)))
+    end
+let floatFun(st: VList f: All(f: Real) V): VList = push(f(floatOf(top(st))) pop(st))
+
+let transform(st: VList m: Mat m1: Mat scale: Real isom: Bool): VList =
+    push(objV(option oTransform of Obj with objOf(top(st)) m m1 scale isom end) pop(st))
+
+let geometric(st: VList kind: Kind): VList =
+    begin
+        let f = checkClos(top(st))
+        let ref: ClosureRef = tuple let var c = option unopt of Closure with f end end
+        push(objV(option oObj of Obj with kind ref end) pop(st))
+    end
+
+Let ObjPair = Tuple o1: Obj o2: Obj st: VList end
+let objPair(st: VList): ObjPair =
+    begin
+        let o2 = objOf(top(st))
+        let o1 = objOf(top(pop(st)))
+        tuple let o1 = o1 let o2 = o2 let st = pop(pop(st)) end
+    end
+
+let rec eval(env: VList st: VList p: lists.T(T2)): VList =
+    case p
+        when cons with c then
+            begin
+                let r = c.tl
+                case c.hd
+                    (* inlined value *)
+                    when val2 with x then eval(env push(x.v st) r)
+                    (* Rule 1 *)
+                    (* Rule 2 *)
+                    when binder2 then
+                        begin
+                            let v = top(st)
+                            eval(push(v env) pop(st) r)
+                        end
+                    (* Rule 3 *)
+                    when ident2 with x then
+                        begin
+                            let v = lists.nth(:V)(env x.i)
+                            eval(env push(v st) r)
+                        end
+                    (* Rule 4 *)
+                    when fun2 with x then eval(env push(closV(env x.l) st) r)
+                    (* Rule 6 *)
+                    when arr2 with x then
+                        begin
+                            let l = lists.rev(:V)(eval(env lists.nil(:V) x.l))
+                            let a = array of(lists.length(:V)(l) zero)
+                            let rec fill(l: VList i: Int): Ok =
+                                case l when cons with c then begin a[i] := c.hd fill(c.tl i + 1) end else ok end
+                            fill(l 0)
+                            eval(env push(option vArr of V with a end st) r)
+                        end
+                    when prim2 with x then eval(env evalPrim(env st x.k) r)
+                end
+            end
+        (* Termination *)
+        else st
+    end
+(* The stack after primitive k *)
+and evalPrim(env: VList st: VList k: K): VList =
+    case k
+        (* Rule 5 *)
+        when kApply then
+            case top(st)
+                when vClos with f then eval(f.env pop(st) f.p)
+                else stuck(:VList)
+            end
+        (* Rules 7 and 8 *)
+        when kIf then
+            begin
+                let iffalse = top(st)
+                let iftrue = top(pop(st))
+                let rest = pop(pop(st))
+                case iffalse
+                    when vClos with ff then
+                        case iftrue
+                            when vClos with ft then
+                                case top(rest)
+                                    when vBool with x then
+                                        if x.b then eval(ft.env pop(rest) ft.p) else eval(ff.env pop(rest) ff.p) end
+                                    else stuck(:VList)
+                                end
+                            else stuck(:VList)
+                        end
+                    else stuck(:VList)
+                end
+            end
+        (* Operations on numbers *)
+        when kAddi then intOp(st fun(n1: Int n2: Int): V intV(n1 + n2))
+        when kAddf then floatOp(st fun(f1: Real f2: Real): V floatV(f1 ++ f2))
+        when kAcos then floatFun(st fun(f: Real): V floatV(deg(real.acos(f))))
+        when kAsin then floatFun(st fun(f: Real): V floatV(deg(real.asin(f))))
+        when kClampf then
+            begin
+                let vf = top(st)
+                let f = floatOf(vf)
+                let fs = if f << 0.0 then zero elsif f >> 1.0 then one else vf end
+                push(fs pop(st))
+            end
+        when kCos then floatFun(st fun(f: Real): V floatV(real.cos(rad(f))))
+        when kDivi then intOp(st fun(n1: Int n2: Int): V intV(floorDiv(n1 n2)))
+        when kDivf then floatOp(st fun(f1: Real f2: Real): V floatV(f1 // f2))
+        when kEqi then intOp(st fun(n1: Int n2: Int): V boolV(n1 is n2))
+        when kEqf then floatOp(st fun(f1: Real f2: Real): V boolV(f1 is f2))
+        when kFloor then floatFun(st fun(f: Real): V intV(real.floor(f)))
+        when kFrac then floatFun(st fun(f: Real): V floatV(realMod(f)))
+        when kLessi then intOp(st fun(n1: Int n2: Int): V boolV(n1 < n2))
+        when kLessf then floatOp(st fun(f1: Real f2: Real): V boolV(f1 << f2))
+        when kModi then intOp(st fun(n1: Int n2: Int): V intV(floorMod(n1 n2)))
+        when kMuli then intOp(st fun(n1: Int n2: Int): V intV(n1 * n2))
+        when kMulf then floatOp(st fun(f1: Real f2: Real): V floatV(f1 ** f2))
+        when kNegi then push(intV(0 - intOf(top(st))) pop(st))
+        when kNegf then floatFun(st fun(f: Real): V floatV(neg(f)))
+        when kReal then push(floatV(real.int(intOf(top(st)))) pop(st))
+        when kSin then floatFun(st fun(f: Real): V floatV(real.sin(rad(f))))
+        when kSqrt then floatFun(st fun(f: Real): V floatV(real.sqrt(f)))
+        when kSubi then intOp(st fun(n1: Int n2: Int): V intV(n1 - n2))
+        when kSubf then floatOp(st fun(f1: Real f2: Real): V floatV(f1 -- f2))
+        (* Operations on points *)
+        when kGetx then case top(st) when vPoint with x then push(x.x pop(st)) else stuck(:VList) end
+        when kGety then case top(st) when vPoint with x then push(x.y pop(st)) else stuck(:VList) end
+        when kGetz then case top(st) when vPoint with x then push(x.z pop(st)) else stuck(:VList) end
+        when kPoint then
+            begin
+                let z = checkFloat(top(st))
+                let y = checkFloat(top(pop(st)))
+                let x = checkFloat(top(pop(pop(st))))
+                push(pointV(x y z) pop(pop(pop(st))))
+            end
+        when kGet then
+            begin
+                let i = intOf(top(st))
+                case top(pop(st))
+                    when vArr with a then
+                        (* if compiled of "-unsafe" *)
+                        if {i < 0} orif {i >= extent a.a} then failwith(:VList)("illegal access beyond array boundary")
+                        else push(a.a[i] pop(pop(st)))
+                        end
+                    else stuck(:VList)
+                end
+            end
+        when kLength then
+            case top(st) when vArr with a then push(intV(extent a.a) pop(st)) else stuck(:VList) end
+        (* Geometric primitives *)
+        when kSphere then geometric(st option oSphere of Kind end)
+        when kCube then geometric(st option oCube of Kind end)
+        when kCylinder then geometric(st option oCylind of Kind end)
+        when kCone then geometric(st option oCone of Kind end)
+        when kPlane then geometric(st option oPlane of Kind end)
+        (* Transformations *)
+        when kTranslate then
+            begin
+                let z = floatOf(top(st))
+                let y = floatOf(top(pop(st)))
+                let x = floatOf(top(pop(pop(st))))
+                let rest = pop(pop(pop(st)))
+                transform(rest translate(x y z) translate(neg(x) neg(y) neg(z)) 1.0 true)
+            end
+        when kScale then
+            begin
+                let z = floatOf(top(st))
+                let y = floatOf(top(pop(st)))
+                let x = floatOf(top(pop(pop(st))))
+                let rest = pop(pop(pop(st)))
+                let s = realMax(real.abs(x) realMax(real.abs(y) real.abs(z)))
+                transform(rest scale(x y z) unscale(x y z) s false)
+            end
+        when kUscale then
+            begin
+                let s = floatOf(top(st))
+                transform(pop(st) uscale(s) unuscale(s) real.abs(s) true)
+            end
+        when kRotatex then
+            begin
+                let t = floatOf(top(st))
+                transform(pop(st) rotatex(t) rotatex(neg(t)) 1.0 true)
+            end
+        when kRotatey then
+            begin
+                let t = floatOf(top(st))
+                transform(pop(st) rotatey(t) rotatey(neg(t)) 1.0 true)
+            end
+        when kRotatez then
+            begin
+                let t = floatOf(top(st))
+                transform(pop(st) rotatez(t) rotatez(neg(t)) 1.0 true)
+            end
+        (* Lights *)
+        when kLight then
+            begin
+                let color = checkPoint(top(st))
+                let dir = checkPoint(top(pop(st)))
+                push(option vLight of V with dir color end pop(pop(st)))
+            end
+        when kPointlight then
+            begin
+                let color = checkPoint(top(st))
+                let pos = checkPoint(top(pop(st)))
+                push(option vPtLight of V with pos color end pop(pop(st)))
+            end
+        when kSpotlight then
+            begin
+                let expon = checkFloat(top(st))
+                let cutoff = checkFloat(top(pop(st)))
+                let st3 = pop(pop(st))
+                let color = checkPoint(top(st3))
+                let at = checkPoint(top(pop(st3)))
+                let pos = checkPoint(top(pop(pop(st3))))
+                push(option vStLight of V with pos at color cutoff expon end pop(pop(pop(st3))))
+            end
+        (* Constructive geometry *)
+        when kUnion then
+            begin let o = objPair(st) push(objV(option oUnion of Obj with o.o1 o.o2 end) o.st) end
+        when kIntersect then
+            begin let o = objPair(st) push(objV(option oInter of Obj with o.o1 o.o2 end) o.st) end
+        when kDifference then
+            begin let o = objPair(st) push(objV(option oDiff of Obj with o.o1 o.o2 end) o.st) end
+        (* Rendering *)
+        when kRender then
+            begin
+                let file = case top(st) when vStr with x then x.s else stuck(:String) end
+                let st1 = pop(st)
+                let ht = intOf(top(st1))
+                let wid = intOf(top(pop(st1)))
+                let st3 = pop(pop(st1))
+                let fov = floatOf(top(st3))
+                let depth = intOf(top(pop(st3)))
+                let st5 = pop(pop(st3))
+                let obj = objOf(top(st5))
+                let lights = case top(pop(st5)) when vArr with x then x.a else stuck(:Array(V)) end
+                let st7 = pop(pop(st5))
+                let amb = pointOf(top(st7) fun(): Color stuck(:Color))
+                (* amb the intensity of ambient light (a point). lights is an
+                 * array of lights used to illuminate the scene. obj is the
+                 * scene to render. depth is an integer limit on the recursive
+                 * depth of the ray tracing. fov is the horizontal field of view
+                 * in degrees (a real number). wid is the width of the rendered
+                 * image in pixels (an integer). ht is the height of the
+                 * rendered image in pixels (an integer). file is a string
+                 * specifying output file for the rendered image. *)
+                renderF(amb lights obj depth fov wid ht file)
+                pop(st7)
+            end
+    end
+
+let apply(f: V st: VList): VList =
+    case f
+        when vClos with c then eval(c.env st c.p)
+        else raise sFail with "assert false" end
+    end
+
+hooks.apply := apply
+
+let evalF(p: lists.T(T)): Ok =
+    try
+        begin
+            let st = eval(lists.nil(:V) lists.nil(:V) convProgram(lists.nil(:String) p))
+            if not(lists.null(:V)(st)) then failwith(:Ok)("error") end
+        end
+    when stuckComputation then failwith(:Ok)("stuck")
+    end
+
+(* structure Main: the original leaves DATA/chess.gml open *)
+let doit(): Ok =
+    try
+        begin
+            let ins = reader.file("DATA/chess.gml")
+            let p = read(ins)
+            reader.close(ins)
+            evalF(p)
+        end
+    else ok
+    end
+
+for i = 1 upto bench.count() do doit() end

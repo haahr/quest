@@ -1,0 +1,1900 @@
+(* vliw: a compiler pass that compacts the abstract machine code in
+ * DATA/ndotprod.s for a VLIW machine by percolation scheduling, writing the
+ * uncompacted program to DATA/tmp.s and the compacted one to DATA/cmp.s (from
+ * the SML/NJ benchmark suite; Copyright 1989 by AT&T Bell Laboratories,
+ * updated by John Danskin at Princeton). The original's simulator, which its
+ * benchmark does not run, is left out, with its debugging output: the
+ * original prints nothing, since it overrides print. *)
+
+import
+    support/bench : support/Bench
+    support/lists : support/Lists
+    support/reals : support/Reals
+    stringOp = string : StringOp
+    real : RealOp
+    ascii : Ascii
+    conv : Conv
+    reader : Reader
+    writer : Writer
+
+let makestring(i: Int): String = conv.int(i)
+
+(* SML's div *)
+let floorDiv(a: Int b: Int): Int = if {{a % b} isnot 0} andif {{a < 0} isnot {b < 0}} then {a / b} - 1 else a / b end
+
+(* raise e, as any type *)
+let throw(A::TYPE)(e: Exception): A = raise e end
+
+let strEq(a: String b: String): Bool = stringOp.equal(a b)
+let intEq(a: Int b: Int): Bool = a is b
+
+(* The original's explode, which maps each character to a string, writing
+ * those that are not printable with SML's escapes, and its implode, which
+ * undoes that, act as lists of characters do *)
+Let Chars = lists.T(Char)
+
+let implode(l: Chars): String =
+    begin
+        let s = stringOp.new(lists.length(:Char)(l) ' ')
+        let rec fill(l: Chars i: Int): Ok =
+            case l when cons with c then begin stringOp.setChar(s i c.hd) fill(c.tl i + 1) end else ok end
+        fill(l 0)
+        s
+    end
+
+let explode(s: String): Chars =
+    begin
+        let var l = lists.nil(:Char)
+        for i = stringOp.length(s) - 1 downto 0 do l := lists.cons(:Char)(stringOp.getChar(s i) l) end
+        l
+    end
+
+let ord(c: Char): Int = ascii.val(c)
+(* d >= "0" andalso d <= "9", for the strings explode makes *)
+let isDigit(c: Char): Bool = {ord(c) >= ord('0')} andif {ord(c) <= ord('9')}
+
+(* input_line, exploded: the next line with its newline, or none at the end *)
+let inputLine(r: reader.T): Chars =
+    begin
+        let rec chars(): Chars =
+            if not(reader.more(r)) then lists.nil(:Char)
+            else
+                begin
+                    let c = reader.getChar(r)
+                    if c is '\n' then lists.cons(:Char)(c lists.nil(:Char)) else lists.cons(:Char)(c chars()) end
+                end
+            end
+        chars()
+    end
+
+(* structure Stringmap: a hash table of association lists *)
+
+Let Pair(A::TYPE) = Tuple s: String x: A end
+Let Stringmap(A::TYPE) = Array(lists.T(Pair(A)))
+
+let stringmapE: Exception = exception stringmapE: Ok end
+let hashFactor = 32
+let tableSize = 2357
+
+(* a string hashing function returns a number between 0 and tableSize-1 *)
+let hash(str: String): Int =
+    begin
+        let nchars = stringOp.length(str)
+        let rec hashLoop(i: Int n: Int r: Int): Int =
+            if i < n then hashLoop(i + 1 n {{hashFactor * r} + ord(stringOp.getChar(str i))} % tableSize) else r end
+        hashLoop(0 nchars 0)
+    end
+
+(* create a new stringmap *)
+let smNew(A::TYPE)(): Stringmap(A) = array of(tableSize lists.nil(:Pair(A)))
+
+(* add a mapping pair s +-> x to the stringmap a *)
+let smAdd(A::TYPE)(a: Stringmap(A) s: String x: A): Ok =
+    begin
+        let index = hash(s)
+        a[index] := lists.cons(:Pair(A))(tuple let s = s let x = x end a[index])
+    end
+
+(* apply the stringmap a to the index string s *)
+let smMap(A::TYPE)(a: Stringmap(A) s: String): A =
+    begin
+        let rec find(l: lists.T(Pair(A))): A =
+            case l when cons with c then if strEq(s c.hd.s) then c.hd.x else find(c.tl) end else throw(:A)(stringmapE)
+            end
+        find(a[hash(s)])
+    end
+
+(* return true if the string is in the map, false otherwise *)
+let smIsin(A::TYPE)(a: Stringmap(A) s: String): Bool =
+    try begin let found = smMap(:A)(a s) true end when stringmapE then false end
+
+(* remove all pairs mapping string s from stringmap a *)
+let smRm(A::TYPE)(a: Stringmap(A) s: String): Ok =
+    begin
+        let rec f(l: lists.T(Pair(A))): lists.T(Pair(A)) =
+            case l
+                when cons with c then if strEq(s c.hd.s) then f(c.tl) else lists.cons(:Pair(A))(c.hd f(c.tl)) end
+                else lists.nil(:Pair(A))
+            end
+        let index = hash(s)
+        a[index] := f(a[index])
+    end
+
+(* extract the stringmap items as a list *)
+let smExtract(A::TYPE)(a: Stringmap(A)): lists.T(A) =
+    begin
+        let rec atol(n: Int): lists.T(lists.T(Pair(A))) =
+            if n < extent a then begin let h = a[n] lists.cons(:lists.T(Pair(A)))(h atol(n + 1)) end
+            else lists.nil(:lists.T(Pair(A)))
+            end
+        let al = atol(0)
+        let flatten(a: lists.T(Pair(A)) b: lists.T(Pair(A))): lists.T(Pair(A)) = lists.append(:Pair(A))(a b)
+        let fal = lists.foldr(:lists.T(Pair(A)) :lists.T(Pair(A)))(flatten lists.nil(:Pair(A)) al)
+        lists.map(:Pair(A) :A)(fun(p: Pair(A)): A p.x fal)
+    end
+
+(* functor Sort: a merge sort *)
+let sort(A::TYPE)(gt: All(a: A b: A) Bool l: lists.T(A)): lists.T(A) =
+    begin
+        let rec m2(a: lists.T(A) b: lists.T(A)): lists.T(A) =
+            case a
+                when cons with ca then
+                    case b
+                        when cons with cb then
+                            if gt(ca.hd cb.hd) then lists.cons(:A)(cb.hd m2(a cb.tl))
+                            else lists.cons(:A)(ca.hd m2(ca.tl b))
+                            end
+                        else a
+                    end
+                else b
+            end
+        let rec ml(l: lists.T(lists.T(A))): lists.T(A) =
+            case l
+                when cons with c1 then
+                    case c1.tl
+                        when cons with c2 then
+                            if lists.null(:lists.T(A))(c2.tl) then m2(c1.hd c2.hd)
+                            else
+                                begin
+                                    let first = m2(c1.hd c2.hd)
+                                    let rest = ml(c2.tl)
+                                    let pair = lists.cons(:lists.T(A))(rest lists.nil(:lists.T(A)))
+                                    ml(lists.cons(:lists.T(A))(first pair))
+                                end
+                            end
+                        else c1.hd
+                    end
+                else lists.nil(:A)
+            end
+        ml(lists.map(:A :lists.T(A))(fun(x: A): lists.T(A) lists.cons(:A)(x lists.nil(:A)) l))
+    end
+
+(* structure Set: sets as lists, with their equality *)
+
+Let Set(A::TYPE) = Tuple eqf: All(a: A b: A) Bool l: lists.T(A) end
+
+let setE: Exception = exception setE: Ok end
+let listUnionE: Exception = exception listUnionE: Ok end
+
+let setOf(A::TYPE)(eqf: All(a: A b: A) Bool l: lists.T(A)): Set(A) = tuple let eqf = eqf let l = l end
+let makeEQ(A::TYPE)(eqf: All(a: A b: A) Bool): Set(A) = setOf(:A)(eqf lists.nil(:A))
+(* Set.make, whose equality is SML's = *)
+let makeStr = makeEQ(:String)(strEq)
+let makeInt = makeEQ(:Int)(intEq)
+let set(A::TYPE)(s: Set(A)): lists.T(A) = s.l
+
+let member(A::TYPE)(s: Set(A) e: A): Bool =
+    begin
+        let rec m(l: lists.T(A)): Bool = case l when cons with c then s.eqf(e c.hd) orif m(c.tl) else false end
+        m(s.l)
+    end
+
+let add(A::TYPE)(st: Set(A) e: A): Set(A) =
+    if member(:A)(st e) then st else setOf(:A)(st.eqf lists.cons(:A)(e st.l)) end
+
+let listToSetEQ(A::TYPE)(eqf: All(a: A b: A) Bool l: lists.T(A)): Set(A) =
+    begin
+        let rec f(l: lists.T(A) s: Set(A)): Set(A) = case l when cons with c then f(c.tl add(:A)(s c.hd)) else s end
+        f(l makeEQ(:A)(eqf))
+    end
+
+let listToSetStr(l: lists.T(String)): Set(String) = listToSetEQ(:String)(strEq l)
+let listToSetInt(l: lists.T(Int)): Set(Int) = listToSetEQ(:Int)(intEq l)
+
+let rec union(A::TYPE)(a: Set(A) b: Set(A)): Set(A) =
+    if lists.null(:A)(b.l) then a
+    else case a.l when cons with c then union(:A)(setOf(:A)(a.eqf c.tl) add(:A)(b c.hd)) else b end
+    end
+
+let listUnion(A::TYPE)(l: lists.T(Set(A))): Set(A) =
+    case l
+        when cons with c then lists.foldr(:Set(A) :Set(A))(union(:A) c.hd c.tl)
+        else throw(:Set(A))(listUnionE)
+    end
+
+let listUnionEQ(A::TYPE)(eqf: All(a: A b: A) Bool l: lists.T(Set(A))): Set(A) =
+    lists.foldr(:Set(A) :Set(A))(union(:A) makeEQ(:A)(eqf) l)
+
+let rec rm(A::TYPE)(s: Set(A) x: A): Set(A) =
+    case s.l
+        when cons with c then
+            if s.eqf(c.hd x) then setOf(:A)(s.eqf c.tl)
+            else setOf(:A)(s.eqf lists.cons(:A)(c.hd set(:A)(rm(:A)(setOf(:A)(s.eqf c.tl) x))))
+            end
+        else throw(:Set(A))(setE)
+    end
+
+let rec intersect1(A::TYPE)(a: Set(A) b: Set(A) c: lists.T(A)): Set(A) =
+    if lists.null(:A)(b.l) then setOf(:A)(b.eqf c)
+    else
+        case a.l
+            when cons with x then
+                if member(:A)(b x.hd) then intersect1(:A)(setOf(:A)(a.eqf x.tl) b lists.cons(:A)(x.hd c))
+                else intersect1(:A)(setOf(:A)(a.eqf x.tl) b c)
+                end
+            else setOf(:A)(a.eqf c)
+        end
+    end
+
+let intersect(A::TYPE)(a: Set(A) b: Set(A)): Set(A) = intersect1(:A)(a b lists.nil(:A))
+
+let rec diff(A::TYPE)(a: Set(A) b: Set(A)): Set(A) =
+    case a.l
+        when cons with x then
+            if member(:A)(b x.hd) then diff(:A)(setOf(:A)(a.eqf x.tl) b)
+            else setOf(:A)(a.eqf lists.cons(:A)(x.hd set(:A)(diff(:A)(setOf(:A)(a.eqf x.tl) b))))
+            end
+        else setOf(:A)(a.eqf lists.nil(:A))
+    end
+
+let empty(A::TYPE)(s: Set(A)): Bool = lists.null(:A)(s.l)
+
+(* structure AbsMach *)
+
+Let Reg = Tuple i: Int s: String end
+Let Label = Reg
+Let Regs = lists.T(Reg)
+
+let reg(i: Int s: String): Reg = tuple let i = i let s = s end
+let regEq(a: Reg b: Reg): Bool = {a.i is b.i} andif strEq(a.s b.s)
+let rec regsEq(a: Regs b: Regs): Bool =
+    case a
+        when cons with ca then case b when cons with cb then regEq(ca.hd cb.hd) andif regsEq(ca.tl cb.tl) else false end
+        else lists.null(:Reg)(b)
+    end
+
+Let Arithop = Option
+    aImul aIadd aIsub aIdiv aOrb aAndb aXorb aRshift aLshift aFadd aFdiv aFmul aFsub aReal aFloor aLogb
+end
+
+Let Comparison = Option
+    cIlt cIeq cIgt cIle cIge cIne cFlt cFeq cFgt cFle cFge cFne cInrange cOutofrange
+end
+
+Let Opcode = Option
+    (* dst := M[ptr+offset]; if immutable then unaffected by any STORE other
+     * than through the allocptr *)
+    oFetch with immutable: Bool offset: Int ptr: Reg dst: Reg end
+    (* M[ptr+offset] := src *)
+    oStore with offset: Int src: Reg ptr: Reg end
+    oGetlab with lab: Label dst: Reg end
+    oGetreal with value: String dst: Reg end
+    oArith with oper: Arithop src1: Reg src2: Reg dst: Reg end
+    oArithi with oper: Arithop src1: Reg src2: Int dst: Reg end
+    oMove with src: Reg dst: Reg end
+    oBranch with test: Comparison src1: Reg src2: Reg dst: Label live: Regs end
+    oJump with dst: Reg live: Regs end
+    oLabel with lab: Label live: Regs end
+    oWord with value: Int end
+    oLabword with lab: Label end
+    oNop
+    oBogus with reads: Regs writes: Regs end
+end
+
+let nop = option oNop of Opcode end
+
+let arithopIndex(o: Arithop): Int =
+    case o
+        when aImul then 0 when aIadd then 1 when aIsub then 2 when aIdiv then 3 when aOrb then 4 when aAndb then 5
+        when aXorb then 6 when aRshift then 7 when aLshift then 8 when aFadd then 9 when aFdiv then 10
+        when aFmul then 11 when aFsub then 12 when aReal then 13 when aFloor then 14 when aLogb then 15
+    end
+
+let comparisonIndex(c: Comparison): Int =
+    case c
+        when cIlt then 0 when cIeq then 1 when cIgt then 2 when cIle then 3 when cIge then 4 when cIne then 5
+        when cFlt then 6 when cFeq then 7 when cFgt then 8 when cFle then 9 when cFge then 10 when cFne then 11
+        when cInrange then 12 when cOutofrange then 13
+    end
+
+(* opcodeEq: SML's = *)
+let opcodeEq(a: Opcode b: Opcode): Bool =
+    case a
+        when oFetch with x then
+            case b
+                when oFetch with y then
+                    {x.immutable is y.immutable} andif {x.offset is y.offset} andif regEq(x.ptr y.ptr)
+                    andif regEq(x.dst y.dst)
+                else false
+            end
+        when oStore with x then
+            case b
+                when oStore with y then {x.offset is y.offset} andif regEq(x.src y.src) andif regEq(x.ptr y.ptr)
+                else false
+            end
+        when oGetlab with x then
+            case b when oGetlab with y then regEq(x.lab y.lab) andif regEq(x.dst y.dst) else false end
+        when oGetreal with x then
+            case b when oGetreal with y then strEq(x.value y.value) andif regEq(x.dst y.dst) else false end
+        when oArith with x then
+            case b
+                when oArith with y then
+                    {arithopIndex(x.oper) is arithopIndex(y.oper)} andif regEq(x.src1 y.src1)
+                    andif regEq(x.src2 y.src2) andif regEq(x.dst y.dst)
+                else false
+            end
+        when oArithi with x then
+            case b
+                when oArithi with y then
+                    {arithopIndex(x.oper) is arithopIndex(y.oper)} andif regEq(x.src1 y.src1) andif {x.src2 is y.src2}
+                    andif regEq(x.dst y.dst)
+                else false
+            end
+        when oMove with x then
+            case b when oMove with y then regEq(x.src y.src) andif regEq(x.dst y.dst) else false end
+        when oBranch with x then
+            case b
+                when oBranch with y then
+                    {comparisonIndex(x.test) is comparisonIndex(y.test)} andif regEq(x.src1 y.src1)
+                    andif regEq(x.src2 y.src2) andif regEq(x.dst y.dst) andif regsEq(x.live y.live)
+                else false
+            end
+        when oJump with x then
+            case b when oJump with y then regEq(x.dst y.dst) andif regsEq(x.live y.live) else false end
+        when oLabel with x then
+            case b when oLabel with y then regEq(x.lab y.lab) andif regsEq(x.live y.live) else false end
+        when oWord with x then case b when oWord with y then x.value is y.value else false end
+        when oLabword with x then case b when oLabword with y then regEq(x.lab y.lab) else false end
+        when oNop then case b when oNop then true else false end
+        when oBogus with x then
+            case b when oBogus with y then regsEq(x.reads y.reads) andif regsEq(x.writes y.writes) else false end
+    end
+
+(* structure AbsMachImp, which is HM *)
+
+Let Codetype = Option
+    ctAssignment with i: Opcode end
+    ctLabelref with n: Int i: Opcode end
+    ctComparison with n: Int i: Opcode end
+    ctFlow with n: Int i: Opcode end
+    ctTarget with n: Int i: Opcode end
+    ctExit with i: Opcode end
+    ctJunk with i: Opcode end
+    ctNergle
+end
+
+(* register strings will gum up set operations etc *)
+let srl(rl: Regs): Set(Int) = listToSetInt(lists.map(:Reg :Int)(fun(r: Reg): Int r.i rl))
+let sr(r: Reg): Set(Int) = srl(lists.cons(:Reg)(r lists.nil(:Reg)))
+let ints(a: Array(Int)): lists.T(Int) = lists.fromArray(:Int)(a)
+
+let immutableMem = ~1
+let mutableMem = ~2
+let flowControl = ~3
+
+(* comparisons are limited to one because of difficulty writing larger trees *)
+let resourcesOk(ops: lists.T(Opcode) c: lists.T(Opcode)): Bool =
+    {lists.length(:Opcode)(ops) <= 4} andif {lists.length(:Opcode)(c) <= 1}
+
+let allocptr(r: Reg): Bool = r.i is 1
+
+let writeO(i: Opcode): Set(Int) =
+    case i
+        when oFetch with x then sr(x.dst)
+        when oStore with x then
+            if allocptr(x.ptr) then listToSetInt(ints(array of immutableMem mutableMem end))
+            else listToSetInt(ints(array of mutableMem end))
+            end
+        when oGetlab with x then sr(x.dst)
+        when oGetreal with x then sr(x.dst)
+        when oArith with x then sr(x.dst)
+        when oArithi with x then sr(x.dst)
+        when oMove with x then sr(x.dst)
+        when oJump then listToSetInt(ints(array of flowControl end))
+        when oBogus with x then srl(x.writes)
+        else makeInt
+    end
+
+let writeC(c: Opcode): Set(Int) = listToSetInt(ints(array of flowControl end))
+
+let stdRegList = lists.fromArray(:Reg)(array of reg(1 "") reg(2 "") reg(3 "") reg(4 "") reg(5 "") end)
+
+let regs(a: Array(Reg)): Regs = lists.fromArray(:Reg)(a)
+
+let read(i: Opcode): Set(Int) =
+    case i
+        when oFetch with x then
+            begin
+                let mem = if x.immutable then immutableMem else mutableMem end
+                add(:Int)(sr(x.ptr) mem)
+            end
+        when oStore with x then srl(regs(array of x.src x.ptr end))
+        when oArith with x then srl(regs(array of x.src1 x.src2 end))
+        when oArithi with x then sr(x.src1)
+        when oMove with x then sr(x.src)
+        when oBranch with x then srl(regs(array of x.src1 x.src2 end))
+        when oJump with x then srl(lists.cons(:Reg)(x.dst stdRegList))
+        when oBogus with x then srl(x.reads)
+        else makeInt
+    end
+
+let maxreg(li: lists.T(Opcode)): Int =
+    begin
+        let r = set(:Int)(listUnion(:Int)(lists.append(:Set(Int))(lists.map(:Opcode :Set(Int))(writeO li)
+                                                                  lists.map(:Opcode :Set(Int))(read li))))
+        lists.foldr(:Int :Int)(fun(a: Int b: Int): Int if a > b then a else b end 0 r)
+    end
+
+let classify(i: Opcode): Codetype =
+    case i
+        when oFetch then option ctAssignment of Codetype with i end
+        when oStore then option ctAssignment of Codetype with i end
+        when oGetlab with x then option ctLabelref of Codetype with x.lab.i i end
+        when oGetreal then option ctAssignment of Codetype with i end
+        when oArith then option ctAssignment of Codetype with i end
+        when oArithi then option ctAssignment of Codetype with i end
+        when oMove with x then
+            if x.src.i is x.dst.i then option ctNergle of Codetype end
+            else option ctAssignment of Codetype with i end
+            end
+        when oBranch with x then
+            if {comparisonIndex(x.test) is comparisonIndex(option cIeq of Comparison end)} andif {x.src1.i is x.src2.i}
+            then
+                option ctFlow of Codetype with x.dst.i i end
+            else option ctComparison of Codetype with x.dst.i i end
+            end
+        when oJump then option ctExit of Codetype with i end
+        when oLabel with x then option ctTarget of Codetype with x.lab.i i end
+        when oWord then option ctJunk of Codetype with i end
+        when oLabword then option ctJunk of Codetype with i end
+        when oNop then option ctJunk of Codetype with i end
+        when oBogus then option ctAssignment of Codetype with i end
+    end
+
+(* structure ReadAbs *)
+
+let readError: Exception = exception readError: Ok end
+
+(* What a parser read, and the rest of the line *)
+Let Got(A::TYPE) = Tuple v: A l: Chars end
+let got(A::TYPE)(v: A l: Chars): Got(A) = tuple let v = v let l = l end
+
+(* Whether l starts with s's characters, and l after them *)
+let rec startsWith(l: Chars s: String i: Int): Bool =
+    if i is stringOp.length(s) then true
+    else case l when cons with c then {c.hd is stringOp.getChar(s i)} andif startsWith(c.tl s i + 1) else false end
+    end
+let starts(l: Chars s: String): Bool = startsWith(l s 0)
+let after(l: Chars s: String): Chars = lists.drop(:Char)(l stringOp.length(s))
+
+let readline(f: reader.T): lists.T(Opcode) =
+    begin
+        let error(A::TYPE)(s: String): A = raise readError end
+        let rec b(l: Chars): Chars = case l when cons with c then if c.hd is ' ' then b(c.tl) else l end else l end
+        let aops = array of
+            "imul" "iadd" "isub" "idiv" "orb " "andb" "xorb" "rshift" "lshift" "fadd" "fdiv" "fmul" "fsub" "real"
+            "floor" "logb"
+        end
+        let aopValues = array of
+            option aImul of Arithop end option aIadd of Arithop end option aIsub of Arithop end
+            option aIdiv of Arithop end option aOrb of Arithop end option aAndb of Arithop end
+            option aXorb of Arithop end option aRshift of Arithop end option aLshift of Arithop end
+            option aFadd of Arithop end option aFdiv of Arithop end option aFmul of Arithop end
+            option aFsub of Arithop end option aReal of Arithop end option aFloor of Arithop end
+            option aLogb of Arithop end
+        end
+        let aop(l: Chars): Got(Arithop) =
+            begin
+                let rec find(k: Int): Got(Arithop) =
+                    if k is extent aops then error(:Got(Arithop))("illegal arithmetic operator")
+                    elsif starts(l aops[k]) then got(:Arithop)(aopValues[k] after(l aops[k]))
+                    else find(k + 1)
+                    end
+                find(0)
+            end
+        let coms = array of
+            "ilt" "ieq" "igt" "ile" "ige" "ine" "flt" "feq" "fgt" "fle" "fge" "fne" "inrange" "outofrange"
+        end
+        let comValues = array of
+            option cIlt of Comparison end option cIeq of Comparison end option cIgt of Comparison end
+            option cIle of Comparison end option cIge of Comparison end option cIne of Comparison end
+            option cFlt of Comparison end option cFeq of Comparison end option cFgt of Comparison end
+            option cFle of Comparison end option cFge of Comparison end option cFne of Comparison end
+            option cInrange of Comparison end option cOutofrange of Comparison end
+        end
+        let com(l: Chars): Got(Comparison) =
+            begin
+                let rec find(k: Int): Got(Comparison) =
+                    if k is extent coms then error(:Got(Comparison))("illegal comparison operator")
+                    elsif starts(l coms[k]) then got(:Comparison)(comValues[k] after(l coms[k]))
+                    else find(k + 1)
+                    end
+                find(0)
+            end
+        let immut(l: Chars): Got(Bool) =
+            if starts(l "i") then got(:Bool)(true after(l "i"))
+            elsif starts(l "m") then got(:Bool)(false after(l "m"))
+            else error(:Got(Bool))("i or m required")
+            end
+        let int(l: Chars): Got(Int) =
+            begin
+                let z = ord('0')
+                let rec f(n: Int l0: Chars): Got(Int) =
+                    case l0
+                        when cons with c then
+                            if isDigit(c.hd) then f({n * 10} + ord(c.hd) - z c.tl) else got(:Int)(n l0) end
+                        else error(:Got(Int))("in readabs.int")
+                    end
+                f(0 l)
+            end
+        let string(l: Chars): Got(String) =
+            begin
+                let rec f(l: Chars): Got(Chars) =
+                    case l
+                        when cons with c then
+                            if c.hd is '/' then got(:Chars)(lists.nil(:Char) c.tl)
+                            else
+                                begin
+                                    let s = f(c.tl)
+                                    got(:Chars)(lists.cons(:Char)(c.hd s.v) s.l)
+                                end
+                            end
+                        else error(:Got(Chars))("name not terminated by \"/\"")
+                    end
+                let s = f(l)
+                got(:String)(implode(s.v) s.l)
+            end
+        let realc(s: String): Real =
+            begin
+                let chars = explode(s)
+                let minus = starts(chars "~")
+                let sign = if minus then ~1.0 else 1.0 end
+                let digits = if minus then after(chars "~") else chars end
+                let digit(c: Char): Int = ord(c) - ord('0')
+                let rec j(exp: Int dl: lists.T(Int) mant: Real): Real =
+                    case dl
+                        when cons with c then j(exp c.tl {mant ** 0.1} ++ real.int(c.hd))
+                        else
+                            if exp is 0 then mant ** sign
+                            elsif exp > 0 then j(exp - 1 dl mant ** 10.0)
+                            else j(exp + 1 dl mant ** 0.1)
+                            end
+                    end
+                let rec h(esign: Int wholedigits: Int diglist: lists.T(Int) exp: Int l: Chars): Real =
+                    case l
+                        when cons with c then h(esign wholedigits diglist {exp * 10} + digit(c.hd) c.tl)
+                        else j({esign * exp} + wholedigits - 1 diglist 0.0)
+                    end
+                let rec g(i: Int r: lists.T(Int) l: Chars): Real =
+                    if starts(l "E~") then h(~1 i r 0 after(l "E~"))
+                    elsif starts(l "E") then h(1 i r 0 after(l "E"))
+                    else
+                        case l
+                            when cons with c then
+                                if isDigit(c.hd) then g(i lists.cons(:Int)(digit(c.hd) r) c.tl)
+                                else h(1 i r 0 lists.nil(:Char))
+                                end
+                            else h(1 i r 0 lists.nil(:Char))
+                        end
+                    end
+                let rec f(i: Int r: lists.T(Int) l: Chars): Real =
+                    if starts(l ".") then g(i r after(l "."))
+                    elsif starts(l "E") then g(i r l)
+                    else
+                        case l
+                            when cons with c then f(i + 1 lists.cons(:Int)(digit(c.hd) r) c.tl)
+                            else error(:Real)("bad in readdabs")
+                        end
+                    end
+                f(0 lists.nil(:Int) digits)
+            end
+        let rec require(a: String i: Int l: Chars): Chars =
+            if i is stringOp.length(a) then l
+            else
+                case l
+                    when cons with c then
+                        if c.hd is stringOp.getChar(a i) then require(a i + 1 c.tl) else error(:Chars)(a) end
+                    else error(:Chars)(a)
+                end
+            end
+        let req(a: String l: Chars): Chars = require(a 0 l)
+        let regp(l: Chars): Got(Reg) =
+            begin
+                let s = string(l)
+                let n = int(req("R" s.l))
+                got(:Reg)(reg(n.v s.v) n.l)
+            end
+        let lab(l: Chars): Got(Label) =
+            begin
+                let s = string(l)
+                let n = int(req("L" s.l))
+                got(:Label)(reg(n.v s.v) n.l)
+            end
+        let live(l: Chars): Regs =
+            begin
+                let rec f(l: Chars): Regs =
+                    if starts(l ")") then lists.nil(:Reg)
+                    else
+                        begin
+                            let r = regp(l)
+                            lists.cons(:Reg)(r.v f(b(r.l)))
+                        end
+                    end
+                f(b(req("(" l)))
+            end
+        let opcode(l: Chars): Opcode =
+            if starts(l "FETCH") then
+                begin
+                    let l1 = after(l "FETCH")
+                    let imm = immut(b(l1))
+                    let dst = regp(b(imm.l))
+                    let ptr = regp(b(req("M[" b(req(":=" b(dst.l))))))
+                    let offset = int(b(req("+" b(ptr.l))))
+                    let rest = req("]" b(offset.l))
+                    option oFetch of Opcode with imm.v offset.v ptr.v dst.v end
+                end
+            elsif starts(l "STORE") then
+                begin
+                    let ptr = regp(b(req("M[" b(after(l "STORE")))))
+                    let offset = int(b(req("+" b(ptr.l))))
+                    let src = regp(b(req(":=" b(req("]" b(offset.l))))))
+                    option oStore of Opcode with offset.v src.v ptr.v end
+                end
+            elsif starts(l "GETLAB") then
+                begin
+                    let dst = regp(b(after(l "GETLAB")))
+                    let lb = lab(b(req(":=" b(dst.l))))
+                    option oGetlab of Opcode with lb.v dst.v end
+                end
+            elsif starts(l "GETREAL") then
+                begin
+                    let dst = regp(b(after(l "GETREAL")))
+                    let r = realc(implode(b(req(":=" b(dst.l)))))
+                    option oGetreal of Opcode with reals.toString(r) dst.v end
+                end
+            elsif starts(l "ARITHI") then
+                begin
+                    let dst = regp(b(after(l "ARITHI")))
+                    let s1 = regp(b(req(":=" b(dst.l))))
+                    let oper = aop(b(s1.l))
+                    let s2 = int(b(oper.l))
+                    option oArithi of Opcode with oper.v s1.v s2.v dst.v end
+                end
+            elsif starts(l "ARITH") then
+                begin
+                    let dst = regp(b(after(l "ARITH")))
+                    let s1 = regp(b(req(":=" b(dst.l))))
+                    let oper = aop(b(s1.l))
+                    let s2 = regp(b(oper.l))
+                    option oArith of Opcode with oper.v s1.v s2.v dst.v end
+                end
+            elsif starts(l "MOVE") then
+                begin
+                    let dst = regp(b(after(l "MOVE")))
+                    let s1 = regp(b(req(":=" b(dst.l))))
+                    option oMove of Opcode with s1.v dst.v end
+                end
+            elsif starts(l "BRANCH") then
+                begin
+                    let s1 = regp(b(req("IF" b(after(l "BRANCH")))))
+                    let test = com(b(s1.l))
+                    let s2 = regp(b(test.l))
+                    let dst = lab(b(req("GOTO" b(s2.l))))
+                    let liv = live(b(dst.l))
+                    option oBranch of Opcode with test.v s1.v s2.v dst.v liv end
+                end
+            elsif starts(l "JUMP") then
+                begin
+                    let dst = regp(b(after(l "JUMP")))
+                    let lv = live(b(dst.l))
+                    option oJump of Opcode with dst.v lv end
+                end
+            elsif starts(l "LABEL") then
+                begin
+                    let lb = lab(b(after(l "LABEL")))
+                    let lv = live(b(req(":" lb.l)))
+                    option oLabel of Opcode with lb.v lv end
+                end
+            elsif starts(l "WORD") then
+                begin
+                    let i = int(b(after(l "WORD")))
+                    option oWord of Opcode with i.v end
+                end
+            elsif starts(l "LABWORD") then
+                begin
+                    let i = lab(b(after(l "LABWORD")))
+                    option oLabword of Opcode with i.v end
+                end
+            elsif starts(l "NOP") then nop
+            else error(:Opcode)("illegal opcode name")
+            end
+        let rec lines(): lists.T(Opcode) =
+            begin
+                let l = inputLine(f)
+                if lists.null(:Char)(l) then lists.nil(:Opcode)
+                else
+                    begin
+                        let o = opcode(b(l))
+                        lists.cons(:Opcode)(o lines())
+                    end
+                end
+            end
+        lines()
+    end
+
+let readAbs(f: reader.T): lists.T(Opcode) = readline(f)
+
+(* structure PrintAbs *)
+
+(* Int.toString *)
+let smlInt(i: Int): String = if i < 0 then "~" <> conv.int(0 - i) else conv.int(i) end
+
+let aopName(o: Arithop): String =
+    array of
+        "imul" "iadd" "isub" "idiv" "orb" "andb" "xorb" "rshift" "lshift" "fadd" "fdiv" "fmul" "fsub" "real" "floor"
+        "logb"
+    end[arithopIndex(o)]
+
+let comName(c: Comparison): String =
+    array of
+        "ilt" "ieq" "igt" "ile" "ige" "ine" "flt" "feq" "fgt" "fle" "fge" "fne" "inrange" "outofrange"
+    end[comparisonIndex(c)]
+
+let xstr(i: Opcode): String =
+    begin
+        let r(x: Reg): String = x.s <> "/R" <> smlInt(x.i)
+        let lb(x: Label): String = x.s <> "/L" <> smlInt(x.i)
+        let rl(l: Regs): String =
+            lists.foldl(:Reg :String)(fun(x: Reg s: String): String s <> r(x) <> " " "" l)
+        let cat(a: Array(String)): String = stringOp.conc(a)
+        case i
+            when oFetch with x then
+                cat(array of
+                    "FETCH" if x.immutable then "i  " else "m  " end r(x.dst) " := M[ " r(x.ptr) " + "
+                    smlInt(x.offset) " ]\n"
+                end)
+            when oStore with x then
+                cat(array of "STORE   " "M[ " r(x.ptr) " + " smlInt(x.offset) " ] := " r(x.src) "\n" end)
+            when oGetlab with x then cat(array of "GETLAB  " r(x.dst) " := " lb(x.lab) "\n" end)
+            when oGetreal with x then cat(array of "GETREAL " r(x.dst) " := " x.value "\n" end)
+            when oArith with x then
+                cat(array of "ARITH   " r(x.dst) " := " r(x.src1) " " aopName(x.oper) " " r(x.src2) "\n" end)
+            when oArithi with x then
+                cat(array of "ARITHI  " r(x.dst) " := " r(x.src1) " " aopName(x.oper) " " smlInt(x.src2) "\n" end)
+            when oMove with x then cat(array of "MOVE    " r(x.dst) " := " r(x.src) "\n" end)
+            when oBranch with x then
+                cat(array of
+                    "BRANCH  " "IF " r(x.src1) " " comName(x.test) " " r(x.src2) " GOTO " lb(x.dst) "   ( "
+                    rl(x.live) ")\n"
+                end)
+            when oJump with x then cat(array of "JUMP    " r(x.dst) "   ( " rl(x.live) ")\n" end)
+            when oLabel with x then cat(array of "LABEL   " lb(x.lab) ":      ( " rl(x.live) ")\n" end)
+            when oWord with x then cat(array of "WORD    " smlInt(x.value) "\n" end)
+            when oLabword with x then cat(array of "LABWORD " lb(x.lab) "\n" end)
+            when oNop then "NOP\n"
+            when oBogus with x then cat(array of "BOGUS" "   ( " rl(x.writes) ") := (" rl(x.reads) ")\n" end)
+        end
+    end
+
+let show(ot: writer.T prog: lists.T(Opcode)): Ok =
+    lists.app(:Opcode)(fun(h: Opcode): Ok writer.putString(ot xstr(h)) prog)
+
+(* structure BreakInst *)
+
+let newReg = tuple let var v = 0 let var pairs = lists.nil(:Tuple a: Reg b: Reg end) end
+
+let newRegInit(li: lists.T(Opcode)): Ok =
+    begin
+        newReg.v := maxreg(li)
+        newReg.pairs := lists.nil(:Tuple a: Reg b: Reg end)
+    end
+
+let newRegFor(r: Reg): Reg =
+    begin
+        let rec f(l: lists.T(Tuple a: Reg b: Reg end)): Reg =
+            case l
+                when cons with c then if regEq(r c.hd.a) then c.hd.b else f(c.tl) end
+                else
+                    begin
+                        newReg.v := newReg.v + 1
+                        let nr = reg(newReg.v r.s)
+                        let pair = tuple let a = r let b = nr end
+                        newReg.pairs := lists.cons(:Tuple a: Reg b: Reg end)(pair newReg.pairs)
+                        nr
+                    end
+            end
+        f(newReg.pairs)
+    end
+
+let ops(a: Array(Opcode)): lists.T(Opcode) = lists.fromArray(:Opcode)(a)
+let one(i: Opcode): lists.T(Opcode) = lists.cons(:Opcode)(i lists.nil(:Opcode))
+
+let breaki(l: lists.T(Opcode)): lists.T(Opcode) =
+    begin
+        let f(i: Opcode): lists.T(Opcode) =
+            case i
+                when oArith with x then
+                    if {x.dst.i is x.src1.i} orif {x.dst.i is x.src2.i} then
+                        begin
+                            let nr = newRegFor(x.dst)
+                            ops(array of
+                                option oArith of Opcode with x.oper x.src2 x.src2 nr end
+                                option oMove of Opcode with nr x.dst end
+                            end)
+                        end
+                    else one(i)
+                    end
+                when oArithi with x then
+                    if x.dst.i is x.src1.i then
+                        begin
+                            let nr = newRegFor(x.dst)
+                            ops(array of
+                                option oArithi of Opcode with x.oper x.src1 x.src2 nr end
+                                option oMove of Opcode with nr x.dst end
+                            end)
+                        end
+                    else one(i)
+                    end
+                when oFetch with x then
+                    if x.ptr.i is x.dst.i then
+                        begin
+                            let nr = newRegFor(x.dst)
+                            ops(array of
+                                option oFetch of Opcode with x.immutable x.offset x.ptr nr end
+                                option oMove of Opcode with nr x.dst end
+                            end)
+                        end
+                    else one(i)
+                    end
+                when oMove with x then if x.src.i is x.dst.i then lists.nil(:Opcode) else one(i) end
+                else one(i)
+            end
+        let h(a: Opcode b: lists.T(Opcode)): lists.T(Opcode) = lists.append(:Opcode)(f(a) b)
+        newRegInit(l)
+        lists.foldr(:Opcode :lists.T(Opcode))(h lists.nil(:Opcode) l)
+    end
+
+(* structure OutFilter *)
+
+let remnops(ol: lists.T(Opcode)): lists.T(Opcode) =
+    begin
+        let isNop(i: Opcode): Bool = case i when oNop then true else false end
+        let f(a: Opcode b: lists.T(Opcode)): lists.T(Opcode) =
+            if isNop(a) andif case b when cons with c then isNop(c.hd) else false end then b
+            else lists.cons(:Opcode)(a b)
+            end
+        lists.foldr(:Opcode :lists.T(Opcode))(f lists.nil(:Opcode) ol)
+    end
+
+(* structure Delay *)
+
+let delayState = tuple let var maxreg = 0 let var idempotency = 0 let var maxBogReg = 0 let var currIdemReg = 0 end
+let maxdelay = 12
+
+let isBogusI(i: Opcode): Bool = case i when oBogus then true else false end
+let bogusReg(r: Reg which: Int): Reg = reg({delayState.maxreg + {maxdelay * r.i}} + which r.s)
+let isBogusReg(r: Reg): Bool = r.i > delayState.maxreg
+let unbogusReg(r: Reg): Reg = if isBogusReg(r) then reg(floorDiv(r.i maxdelay) r.s) else r end
+
+let idemReg(): Reg =
+    begin
+        delayState.currIdemReg := delayState.currIdemReg + 1
+        reg(delayState.currIdemReg "idem")
+    end
+
+let delayInit(il: lists.T(Opcode)): Ok =
+    begin
+        delayState.maxreg := maxreg(il)
+        delayState.maxBogReg := {delayState.maxreg + 1} * maxdelay
+        delayState.currIdemReg := delayState.maxBogReg + 1
+    end
+
+let delayE: Exception = exception delayE: Ok end
+
+let delay(i: Opcode): Int =
+    begin
+        let opdelay(oper: Arithop): Int =
+            case oper
+                when aImul then 5 when aIadd then 2 when aIsub then 2 when aIdiv then 12 when aOrb then 2
+                when aAndb then 2 when aXorb then 2 when aRshift then 2 when aLshift then 2 when aFadd then 2
+                when aFdiv then 12 when aFmul then 4 when aFsub then 2 when aReal then 2 when aFloor then 2
+                when aLogb then 2
+            end
+        case i
+            when oFetch then 2
+            when oStore then 2
+            when oGetlab then 2
+            when oGetreal then 2
+            when oArith with x then opdelay(x.oper)
+            when oArithi with x then opdelay(x.oper)
+            when oMove then 1
+            when oBranch then 5
+            when oJump then 1
+            when oLabel then 0
+            when oNop then 1
+            else throw(:Int)(delayE)
+        end
+    end
+
+let bogus(reads: Regs writes: Regs): Opcode = option oBogus of Opcode with reads writes end
+let regList(r: Reg): Regs = lists.cons(:Reg)(r lists.nil(:Reg))
+
+let rec bIdemx(n: Int r: Regs w: Regs): lists.T(Opcode) =
+    if n is 0 then lists.nil(:Opcode)
+    elsif n is 1 then one(bogus(lists.append(:Reg)(r w) regList(idemReg())))
+    else
+        begin
+            let ir = idemReg()
+            lists.cons(:Opcode)(bogus(lists.append(:Reg)(r w) regList(ir)) bIdemx(n - 1 r regList(ir)))
+        end
+    end
+
+let bIdem(n: Int r: Regs w: Regs): lists.T(Opcode) =
+    begin
+        let fil(x: Reg b: Regs): Regs = if x.i is 0 then b else lists.cons(:Reg)(x b) end
+        let nr = lists.foldr(:Reg :Regs)(fil lists.nil(:Reg) r)
+        if lists.null(:Reg)(nr) then lists.nil(:Opcode) else bIdemx(n nr w) end
+    end
+
+let rec bAssx(n: Int r: Reg): lists.T(Opcode) =
+    if n is 0 then lists.nil(:Opcode)
+    elsif n is 1 then one(bogus(regList(bogusReg(r 1)) regList(r)))
+    else lists.cons(:Opcode)(bogus(regList(bogusReg(r n)) regList(bogusReg(r n - 1))) bAssx(n - 1 r))
+    end
+
+let bAss(n: Int r: Reg): lists.T(Opcode) =
+    lists.cons(:Opcode)(bogus(regList(r) regList(bogusReg(r n - 1))) bAssx(n - 1 r))
+
+let rec bBrxx(n: Int rl: Regs): lists.T(Opcode) =
+    if n is 0 then lists.nil(:Opcode)
+    elsif n is 1 then one(bogus(rl lists.map(:Reg :Reg)(fun(r: Reg): Reg bogusReg(r 1) rl)))
+    else
+        lists.cons(:Opcode)(
+            bogus(lists.map(:Reg :Reg)(fun(r: Reg): Reg bogusReg(r n - 1) rl)
+                  lists.map(:Reg :Reg)(fun(r: Reg): Reg bogusReg(r n) rl))
+            bBrxx(n - 1 rl))
+    end
+
+let bBrx(n: Int rl: Regs): lists.T(Opcode) =
+    lists.cons(:Opcode)(bogus(lists.map(:Reg :Reg)(fun(r: Reg): Reg bogusReg(r n - 1) rl) rl) bBrxx(n - 1 rl))
+
+let bBr(b: Opcode n: Int rl: Regs): lists.T(Opcode) = lists.rev(:Opcode)(lists.cons(:Opcode)(b bBrx(n rl)))
+
+let isFlow(i: Opcode): Bool = case classify(i) when ctFlow then true else false end
+
+let addDelay(il: lists.T(Opcode)): lists.T(Opcode) =
+    begin
+        let idem(r: Regs w: Regs): lists.T(Opcode) = bIdem(delayState.idempotency r w)
+        let cons(i: Opcode l: lists.T(Opcode)): lists.T(Opcode) = lists.cons(:Opcode)(i l)
+        let app(a: lists.T(Opcode) b: lists.T(Opcode)): lists.T(Opcode) = lists.append(:Opcode)(a b)
+        let g(i: Opcode): lists.T(Opcode) =
+            begin
+                let d = delay(i)
+                case i
+                    when oFetch with x then cons(i app(idem(regList(x.ptr) regList(x.dst)) bAss(d x.dst)))
+                    when oStore then one(i)
+                    when oGetlab with x then cons(i bAss(d x.dst))
+                    when oGetreal with x then cons(i bAss(d x.dst))
+                    when oArith with x then
+                        cons(i app(idem(regs(array of x.src1 x.src2 end) regList(x.dst)) bAss(d x.dst)))
+                    when oArithi with x then cons(i app(idem(regList(x.src1) regList(x.dst)) bAss(d x.dst)))
+                    when oMove with x then cons(i idem(regList(x.src) regList(x.dst)))
+                    when oBranch with x then
+                        if isFlow(i) then one(i)
+                        else
+                            bBr(option oBranch of Opcode with x.test x.src1 x.src2 x.dst x.live end
+                                d regs(array of x.src1 x.src2 end))
+                        end
+                    else one(i)
+                end
+            end
+        let rec apnd(a: lists.T(Opcode) b: lists.T(Opcode)): lists.T(Opcode) =
+            case a when cons with c then lists.cons(:Opcode)(c.hd apnd(c.tl b)) else b end
+        let fld(a: Opcode b: lists.T(Opcode)): lists.T(Opcode) = apnd(g(a) b)
+        lists.foldr(:Opcode :lists.T(Opcode))(fld lists.nil(:Opcode) il)
+    end
+
+let rec rmBogus(il: lists.T(Opcode)): lists.T(Opcode) =
+    case il
+        when cons with c then
+            begin
+                let i = c.hd
+                let t = c.tl
+                let cons(i: Opcode): lists.T(Opcode) = lists.cons(:Opcode)(i rmBogus(t))
+                case i
+                    when oFetch with x then
+                        cons(option oFetch of Opcode with x.immutable x.offset x.ptr unbogusReg(x.dst) end)
+                    when oStore then cons(i)
+                    when oGetlab with x then cons(option oGetlab of Opcode with x.lab unbogusReg(x.dst) end)
+                    when oGetreal with x then cons(option oGetreal of Opcode with x.value unbogusReg(x.dst) end)
+                    when oArith with x then
+                        cons(option oArith of Opcode with x.oper x.src1 x.src2 unbogusReg(x.dst) end)
+                    when oArithi with x then
+                        cons(option oArithi of Opcode with x.oper x.src1 x.src2 unbogusReg(x.dst) end)
+                    when oMove then cons(i)
+                    when oBranch with x then
+                        cons(option oBranch of Opcode with
+                            x.test unbogusReg(x.src1) unbogusReg(x.src2) x.dst x.live
+                        end)
+                    when oBogus then rmBogus(t)
+                    else cons(i)
+                end
+            end
+        else lists.nil(:Opcode)
+    end
+
+(* structure Ntypes: tests and assignments are opcodes, names strings *)
+
+let names = tuple let var ct = 0 end
+let initNames(): Ok = names.ct := 0
+let nn(): Int = begin names.ct := names.ct + 1 names.ct - 1 end
+
+let namePrefix(n: String): String =
+    begin
+        let rec pref(l: Chars): Chars =
+            case l
+                when cons with c then if c.hd is '_' then lists.nil(:Char) else lists.cons(:Char)(c.hd pref(c.tl)) end
+                else l
+            end
+        implode(pref(explode(n)))
+    end
+let namePrefixEq(a: String b: String): Bool = strEq(namePrefix(a) namePrefix(b))
+let newName(n: String): String = namePrefix(n) <> "_" <> makestring(nn())
+let primeName(n: String): String = newName(n) <> "'"
+
+Let TestOrName = Option tTest with t: Opcode end tName with n: String end neither end
+
+let toneq(a: TestOrName b: TestOrName): Bool =
+    case a
+        when tTest with x then case b when tTest with y then opcodeEq(x.t y.t) else false end
+        when tName with x then case b when tName with y then strEq(x.n y.n) else false end
+        else false
+    end
+
+(* SML's = on test_or_name *)
+let tonEq(a: TestOrName b: TestOrName): Bool =
+    case a when neither then case b when neither then true else false end else toneq(a b) end
+
+Let TestOrAssign = Option tst with t: Opcode end ass with a: Opcode end end
+
+(* structure Dag *)
+
+Let Sel = All(t: Opcode b: Bool) TestOrName
+Let Dag = Tuple tests: Set(Opcode) sel: Sel root: TestOrName succ: Set(String) end
+
+let dagE: Exception = exception dagE: Ok end
+let dagNotFound: Exception = exception dagNotFound: Ok end
+
+let notFound(t: Opcode b: Bool): TestOrName = throw(:TestOrName)(dagNotFound)
+let newdag(tests: Set(Opcode) sel: Sel root: TestOrName succ: Set(String)): Dag =
+    tuple let tests = tests let sel = sel let root = root let succ = succ end
+let dagMake = newdag(makeEQ(:Opcode)(opcodeEq) notFound option neither of TestOrName end makeStr)
+let tName(n: String): TestOrName = option tName of TestOrName with n end
+let tTest(t: Opcode): TestOrName = option tTest of TestOrName with t end
+
+let attach(t: Opcode dt: Dag df: Dag): Dag =
+    newdag(add(:Opcode)(union(:Opcode)(dt.tests df.tests) t)
+           fun(x: Opcode y: Bool): TestOrName
+               if opcodeEq(x t) then if y then dt.root else df.root end
+               else try dt.sel(x y) when dagNotFound then df.sel(x y) end
+               end
+           tTest(t)
+           union(:String)(dt.succ df.succ))
+
+let rec reach(d: Dag tn: TestOrName): Dag =
+    case tn
+        when tTest with x then
+            if not(member(:Opcode)(d.tests x.t)) then throw(:Dag)(dagNotFound)
+            else
+                begin
+                    let dt = reach(d d.sel(x.t true))
+                    attach(x.t dt reach(d d.sel(x.t false)))
+                end
+            end
+        when tName with x then
+            newdag(makeEQ(:Opcode)(opcodeEq) notFound tn listToSetStr(lists.cons(:String)(x.n lists.nil(:String))))
+        else throw(:Dag)(dagNotFound)
+    end
+
+(* Only the list's first pair is replaced *)
+let replaceEdge(d: Dag l: lists.T(String)): Dag =
+    case l
+        when cons with c1 then
+            case c1.tl
+                when cons with c2 then
+                    begin
+                        let old = c1.hd
+                        let new = c2.hd
+                        let nh =
+                            if member(:String)(d.succ old) then add(:String)(rm(:String)(d.succ old) new)
+                            else d.succ
+                            end
+                        let nr = if toneq(d.root tName(old)) then tName(new) else d.root end
+                        let nsel(x: Opcode y: Bool): TestOrName =
+                            begin
+                                let v = d.sel(x y)
+                                if toneq(v tName(old)) then tName(new) else v end
+                            end
+                        newdag(d.tests nsel nr nh)
+                    end
+                else throw(:Dag)(dagE)
+            end
+        else d
+    end
+
+(* structure Node *)
+
+Let Node = Tuple name: String a: Set(Opcode) d: Dag pred: Set(String) end
+Let Program = Tuple ns: Stringmap(Node) n0: Node f: Node end
+
+let node(n: String a: Set(Opcode) d: Dag prd: Set(String)): Node =
+    tuple let name = n let a = a let d = d let pred = prd end
+let program(ns: Stringmap(Node) n0: Node f: Node): Program = tuple let ns = ns let n0 = n0 let f = f end
+
+let eqn(n1: Node n2: Node): Bool = strEq(n1.name n2.name)
+
+let start = "START"
+let finish = "FINISH"
+
+let n00 = node(start makeEQ(:Opcode)(opcodeEq) dagMake makeStr)
+let fin = node(finish makeEQ(:Opcode)(opcodeEq) dagMake makeStr)
+
+let makeProg(): Program = program(smNew(:Node)() n00 fin)
+
+let addPredNode(n: Node p: String): Node = node(n.name n.a n.d add(:String)(n.pred p))
+let unionPredNode(n: Node ps: Set(String)): Node = node(n.name n.a n.d union(:String)(n.pred ps))
+let setPredNode(n: Node p: Set(String)): Node = node(n.name n.a n.d p)
+let rmPredNode(n: Node p: String): Node = node(n.name n.a n.d rm(:String)(n.pred p))
+
+let updateNode(p: Program newNode: Node): Program =
+    begin
+        smRm(:Node)(p.ns newNode.name)
+        smAdd(:Node)(p.ns newNode.name newNode)
+        if strEq(newNode.name p.n0.name) then program(p.ns newNode p.f)
+        elsif strEq(newNode.name p.f.name) then program(p.ns p.n0 newNode)
+        else p
+        end
+    end
+
+let addNode(p: Program newNode: Node): Program =
+    if smIsin(:Node)(p.ns newNode.name) then updateNode(p newNode)
+    else begin smAdd(:Node)(p.ns newNode.name newNode) p end
+    end
+
+let rmNode(p: Program n: Node): Program = begin smRm(:Node)(p.ns n.name) p end
+
+let succ(p: Program n: Node): Set(String) = n.d.succ
+let pred(p: Program n: Node): Set(String) = n.pred
+
+let nameToNodeE: Exception = exception nameToNodeE: Ok end
+let nameToNode(p: Program nm: String): Node =
+    try smMap(:Node)(p.ns nm)
+    when stringmapE then
+        begin
+            (* ntn_debug is set, so the original makes its message for print *)
+            let message = "ntn:" <> "nameToNode " <> nm <> "not found" <> "\n"
+            throw(:Node)(nameToNodeE)
+        end
+    end
+
+let nameSetToNodeSetE: Exception = exception nameSetToNodeSetE: Ok end
+let nameSetToNodeSet(p: Program ns: Set(String)): Set(Node) =
+    try listToSetEQ(:Node)(eqn lists.map(:String :Node)(fun(x: String): Node nameToNode(p x) set(:String)(ns)))
+    when nameToNodeE then throw(:Set(Node))(nameSetToNodeSetE)
+    end
+
+let succNodes(p: Program n: Node): Set(Node) = nameSetToNodeSet(p succ(p n))
+
+let unreachable(p: Program n: Node): Bool = not(eqn(p.n0 n)) andif empty(:String)(pred(p n))
+
+let readTA(x: TestOrAssign): Set(Int) = case x when tst with t then read(t.t) when ass with a then read(a.a) end
+let writeTA(x: TestOrAssign): Set(Int) = case x when tst with t then writeC(t.t) when ass with a then writeO(a.a) end
+let ass(a: Opcode): TestOrAssign = option ass of TestOrAssign with a end
+let tst(t: Opcode): TestOrAssign = option tst of TestOrAssign with t end
+
+let nodeSets(n: Node f: All(x: TestOrAssign) Set(Int)): Set(Int) =
+    begin
+        let a = listUnion(:Int)(lists.cons(:Set(Int))(makeInt
+            lists.map(:Opcode :Set(Int))(fun(o: Opcode): Set(Int) f(ass(o)) set(:Opcode)(n.a))))
+        union(:Int)(a listUnion(:Int)(lists.cons(:Set(Int))(makeInt
+            lists.map(:Opcode :Set(Int))(fun(o: Opcode): Set(Int) f(tst(o)) set(:Opcode)(n.d.tests)))))
+    end
+let readNode(n: Node): Set(Int) = nodeSets(n readTA)
+let writeNode(n: Node): Set(Int) = nodeSets(n writeTA)
+
+let noWriteConflict(ta: TestOrAssign n: Node): Bool =
+    empty(:Int)(intersect(:Int)(writeNode(n) union(:Int)(readTA(ta) writeTA(ta))))
+
+let noReadConflict(ta: TestOrAssign n: Node): Bool = empty(:Int)(intersect(:Int)(writeTA(ta) readNode(n)))
+
+let emptyNode(n: Node): Bool = empty(:Opcode)(n.a) andif empty(:Opcode)(n.d.tests)
+
+let replaceEdgeNode(n: Node nl: lists.T(String)): Node = node(n.name n.a replaceEdge(n.d nl) n.pred)
+
+let rec exceptBogus(l: lists.T(Opcode)): lists.T(Opcode) =
+    case l
+        when cons with c then
+            if isBogusI(c.hd) then exceptBogus(c.tl) else lists.cons(:Opcode)(c.hd exceptBogus(c.tl)) end
+        else l
+    end
+
+let numOpsNode(n: Node): Int = lists.length(:Opcode)(exceptBogus(set(:Opcode)(n.a)))
+let numTestsNode(n: Node): Int = lists.length(:Opcode)(set(:Opcode)(n.d.tests))
+let numThingsNode(n: Node): Int = numOpsNode(n) + numTestsNode(n)
+
+let deadE: Exception = exception deadE: Ok end
+let rec dead(p: Program r: Int n: Node done: Set(String)): Bool =
+    begin
+        let newDone = add(:String)(done n.name)
+        let nfil(a: String b: lists.T(String)): lists.T(String) =
+            if member(:String)(newDone a) then b else lists.cons(:String)(a b) end
+        let rec drl(l: lists.T(Node)): Bool =
+            case l when cons with c then dead(p r c.hd newDone) andif drl(c.tl) else true end
+        let ntn(n: String): Node = try nameToNode(p n) when nameToNodeE then throw(:Node)(deadE) end
+        let next = lists.foldr(:String :lists.T(String))(nfil lists.nil(:String) set(:String)(succ(p n)))
+        not(member(:Int)(readNode(n) r))
+        andif {member(:Int)(writeNode(n) r) orif drl(lists.map(:String :Node)(ntn next))}
+    end
+
+let deadset(p: Program rs: Set(Int) n: Node): Bool =
+    begin
+        let rec f(l: lists.T(Int)): Bool =
+            case l when cons with c then dead(p c.hd n makeStr) andif f(c.tl) else true end
+        f(set(:Int)(rs))
+    end
+
+let deleteE: Exception = exception deleteE: Ok end
+let deleteHd: Exception = exception deleteHd: Ok end
+let deleteWierdSucc: Exception = exception deleteWierdSucc: Ok end
+
+(* The original's handler for Hd, an unbound name, catches everything *)
+let delete(p: Program n: Node): Program =
+    try
+        begin
+            let em = emptyNode(n)
+            let un = unreachable(p n)
+            let ntn(n: String): Node = try nameToNode(p n) when nameToNodeE then throw(:Node)(deleteE) end
+            let pd = listToSetEQ(:Node)(eqn lists.map(:String :Node)(ntn set(:String)(pred(p n))))
+            if {em orif un} andif not(eqn(n p.f)) then
+                if not(un) then
+                    begin
+                        let s0 = set(:String)(succ(p n))
+                        let nprime =
+                            if lists.length(:String)(s0) is 1 then lists.hd(:String)(s0)
+                            else throw(:String)(deleteWierdSucc)
+                            end
+                        let newNprime = rmPredNode(unionPredNode(ntn(nprime) n.pred) n.name)
+                        let ren(x: Node): Node =
+                            replaceEdgeNode(x lists.fromArray(:String)(array of n.name newNprime.name end))
+                        let pprime = lists.map(:Node :Node)(ren set(:Node)(pd))
+                        let updt(n: Node p: Program): Program = updateNode(p n)
+                        let bigNprime = lists.foldr(:Node :Program)(updt p lists.cons(:Node)(newNprime pprime))
+                        rmNode(bigNprime n)
+                    end
+                else
+                    begin
+                        let s = set(:Node)(nameSetToNodeSet(p succ(p n)))
+                        let updt(s: Node p: Program): Program = updateNode(p rmPredNode(s n.name))
+                        rmNode(lists.foldr(:Node :Program)(updt p s) n)
+                    end
+                end
+            else p
+            end
+        end
+    else throw(:Program)(deleteHd)
+    end
+
+let canMoveOp1(p: Program x: Opcode moveSet: Set(Node) m: Node): Bool =
+    begin
+        let rok = resourcesOk(set(:Opcode)(add(:Opcode)(m.a x)) set(:Opcode)(m.d.tests))
+        let pd = diff(:Node)(nameSetToNodeSet(p succ(p m)) moveSet)
+        let l = writeTA(ass(x))
+        let rec dlpf(l2: lists.T(Node)): Bool =
+            case l2 when cons with c then deadset(p l c.hd) andif dlpf(c.tl) else true end
+        let rec cond(l2: lists.T(Node)): Bool =
+            case l2
+                when cons with c then
+                    (* no_read_conflict(ASS x, nj) andalso *)
+                    (* change ex model so it can run on a sequential machine *)
+                    not(eqn(c.hd p.f)) andif noReadConflict(ass(x) m) andif noWriteConflict(ass(x) m) andif cond(c.tl)
+                else true
+            end
+        rok andif cond(set(:Node)(moveSet)) andif dlpf(set(:Node)(pd))
+    end
+
+let canMoveOp(p: Program x: Opcode moveSet: Set(Node) m: Node): Bool =
+    begin
+        let ms = set(:Node)(moveSet)
+        let ps = set(:String)(listUnion(:String)(lists.map(:Node :Set(String))(fun(n: Node): Set(String) pred(p n) ms)))
+        let all(x: Opcode b: Bool): Bool = b andif canMoveOp1(p x moveSet m)
+        if lists.length(:String)(ps) > 1 then
+            if lists.length(:Node)(ms) > 1 then false
+            else lists.foldr(:Opcode :Bool)(all true set(:Opcode)(lists.hd(:Node)(ms).a))
+            end
+        else canMoveOp1(p x moveSet m)
+        end
+    end
+
+Let NamePair = Tuple a: String b: String end
+
+let moveOp(p: Program x: Opcode moveSet: Set(Node) m: Node): Program =
+    if not(canMoveOp(p x moveSet m)) then p
+    else
+        begin
+            let primedPairs = tuple let var l = lists.nil(:NamePair) end
+            let pnf(nm: String): String =
+                begin
+                    let rec f(l: lists.T(NamePair)): String =
+                        case l
+                            when cons with c then if strEq(nm c.hd.a) then c.hd.b else f(c.tl) end
+                            else
+                                begin
+                                    let nn = primeName(nm)
+                                    let pair = tuple let a = nm let b = nn end
+                                    primedPairs.l := lists.cons(:NamePair)(pair primedPairs.l)
+                                    nn
+                                end
+                        end
+                    f(primedPairs.l)
+                end
+            let rec njp(l: lists.T(Node)): lists.T(Node) =
+                case l
+                    when cons with c then
+                        begin
+                            let mset = listToSetStr(lists.cons(:String)(m.name lists.nil(:String)))
+                            let n = node(pnf(c.hd.name) rm(:Opcode)(c.hd.a x) c.hd.d mset)
+                            lists.cons(:Node)(n njp(c.tl))
+                        end
+                    else l
+                end
+            let ojp(l: lists.T(Node)): lists.T(Node) = lists.map(:Node :Node)(fun(x: Node): Node rmPredNode(x m.name) l)
+            let rec replist(l: lists.T(String)): lists.T(String) =
+                case l
+                    when cons with c then
+                        begin
+                            let primed = pnf(c.hd)
+                            lists.cons(:String)(c.hd lists.cons(:String)(primed replist(c.tl)))
+                        end
+                    else l
+                end
+            let rlist = replist(lists.map(:Node :String)(fun(n: Node): String n.name set(:Node)(moveSet)))
+            let mprime =
+                begin
+                    let aprime = add(:Opcode)(m.a x)
+                    let dprime = replaceEdge(m.d rlist)
+                    node(m.name aprime dprime m.pred)
+                end
+            let nj = njp(set(:Node)(moveSet))
+            let uptd(n: Node p: Program): Program = updateNode(p n)
+            let np = lists.foldr(:Node :Program)(uptd p lists.cons(:Node)(mprime ojp(set(:Node)(moveSet))))
+            let addnpi(n: Node p: Program): Program =
+                begin
+                    let s = set(:Node)(succNodes(p n))
+                    let updt(x: Node p: Program): Program = updateNode(p addPredNode(x n.name))
+                    lists.foldr(:Node :Program)(updt p s)
+                end
+            let addn(n: Node p: Program): Program = addnpi(n addNode(p n))
+            lists.foldr(:Node :Program)(addn np nj)
+        end
+    end
+
+let entries(p: Program): lists.T(Node) =
+    begin
+        let nl = smExtract(:Node)(p.ns)
+        let f(a: Node b: lists.T(Node)): lists.T(Node) = if unreachable(p a) then lists.cons(:Node)(a b) else b end
+        lists.cons(:Node)(p.n0 lists.foldr(:Node :lists.T(Node))(f lists.nil(:Node) nl))
+    end
+
+let addPredInfo(p: Program): Program =
+    begin
+        let nl = lists.map(:Node :Node)(fun(n: Node): Node setPredNode(n makeStr) smExtract(:Node)(p.ns))
+        let updt(n: Node p: Program): Program = updateNode(p n)
+        let np = lists.foldr(:Node :Program)(updt p nl)
+        let addpi(n: Node p: Program): Program =
+            begin
+                let s = set(:Node)(succNodes(p n))
+                let api(s: Node p: Program): Program = updateNode(p addPredNode(s n.name))
+                lists.foldr(:Node :Program)(api p s)
+            end
+        lists.foldr(:Node :Program)(addpi np nl)
+    end
+
+let closure(bigP: Program entry: Node): Program =
+    begin
+        let rec dfs(p: Program parent: Node todo: lists.T(Node)): Program =
+            case todo
+                when cons with c then
+                    if not(smIsin(:Node)(p.ns c.hd.name)) then
+                        begin
+                            let np = dfs(addNode(p c.hd) c.hd set(:Node)(succNodes(bigP c.hd)))
+                            dfs(np parent c.tl)
+                        end
+                    else dfs(p parent c.tl)
+                    end
+                else p
+            end
+        let prog = program(smNew(:Node)() entry bigP.f)
+        dfs(addNode(prog entry) entry set(:Node)(succNodes(bigP entry)))
+    end
+
+let programs(p: Program): lists.T(Program) =
+    begin
+        let l = entries(addPredInfo(p))
+        (* make sure preds are in closure*)
+        let cf(e: Node): Program = addPredInfo(closure(p e))
+        lists.map(:Node :Program)(cf l)
+    end
+
+(* The number a name starts with *)
+let nameInt(s: String): Int =
+    begin
+        let z = ord('0')
+        let rec f(n: Int l: Chars): Int =
+            case l when cons with c then if isDigit(c.hd) then f({n * 10} + ord(c.hd) - z c.tl) else n end else n end
+        f(0 explode(s))
+    end
+
+let sortNodes(l: lists.T(Node)): lists.T(Node) =
+    sort(:Node)(fun(a: Node b: Node): Bool nameInt(a.name) > nameInt(b.name) l)
+
+(* structure Compress *)
+
+let doMoveTests = false
+let doMoveOps = true
+
+let compressE: Exception = exception compressE: Ok end
+let error(A::TYPE)(s: String): A = raise compressE end
+
+let dbgP = tuple let var p = makeProg() end
+
+let filterSuccE: Exception = exception filterSuccE: Ok end
+let filterSucc(p: Program nm: String fenceSet: Set(String)): lists.T(String) =
+    begin
+        let s =
+            try set(:String)(succ(p nameToNode(p nm))) when nameToNodeE then throw(:lists.T(String))(filterSuccE) end
+        let f(nm: String l: lists.T(String)): lists.T(String) =
+            if member(:String)(fenceSet nm) then l else lists.cons(:String)(nm l) end
+        lists.foldr(:String :lists.T(String))(f lists.nil(:String) s)
+    end
+
+let moveThingsNodeE: Exception = exception moveThingsNodeE: Ok end
+let moveThingsNode(bigP: Program nm: String fenceSet: Set(String)): Program =
+    begin
+        let ntn(p: Program nm: String): Node =
+            try nameToNode(p nm) when nameToNodeE then begin dbgP.p := bigP throw(:Node)(moveThingsNodeE) end end
+        let sNmList(p: Program): lists.T(String) = filterSucc(p nm fenceSet)
+        let nd(nm: String): Node = try ntn(bigP nm) when moveThingsNodeE then error(:Node)("nd  nm") end
+        let au = listUnionEQ(:Opcode)(opcodeEq
+            lists.map(:String :Set(Opcode))(fun(nm: String): Set(Opcode) nd(nm).a sNmList(bigP)))
+        let tu = listUnionEQ(:Opcode)(opcodeEq
+            lists.map(:String :Set(Opcode))(fun(nm: String): Set(Opcode) nd(nm).d.tests sNmList(bigP)))
+        let ms(p: Program a: Opcode): lists.T(String) =
+            begin
+                let f(nm: String l: lists.T(String)): lists.T(String) =
+                    try if member(:Opcode)(ntn(p nm).a a) then lists.cons(:String)(nm l) else l end
+                    when moveThingsNodeE then begin dbgP.p := p error(:lists.T(String))("ms") end
+                    end
+                lists.foldr(:String :lists.T(String))(f lists.nil(:String) sNmList(p))
+            end
+        let moveA1(a: Opcode p: Program): Program =
+            begin
+                let msl = ms(p a)
+                let msSet = nameSetToNodeSet(p listToSetStr(msl))
+                let dms(a: String p: Program): Program = delete(p ntn(p a))
+                let mop(): Program =
+                    try moveOp(p a msSet ntn(p nm)) when moveThingsNodeE then error(:Program)("move_a move_op") end
+                let mpa = mop()
+                lists.foldr(:String :Program)(dms mpa msl)
+            end
+        let moveA(a: Opcode p: Program): Program = if doMoveOps then moveA1(a p) else p end
+        (* move_t, with do_move_tests false *)
+        let moveT(t: Opcode p: Program): Program = p
+        lists.foldr(:Opcode :Program)(moveT lists.foldr(:Opcode :Program)(moveA bigP set(:Opcode)(au)) set(:Opcode)(tu))
+    end
+
+let moveThingsWindowE: Exception = exception moveThingsWindowE: Ok end
+let rec moveThingsWindow(p: Program w: Int nm: String fenceSet: Set(String)): Program =
+    begin
+        let ntn(p: Program nm: String): Node =
+            try nameToNode(p nm) when nameToNodeE then throw(:Node)(moveThingsWindowE) end
+        let n = ntn(p nm)
+        let things = numThingsNode(n)
+        let sNmList = filterSucc(p nm fenceSet)
+        let nxt(nm: String p: Program): Program = moveThingsWindow(p w - things nm fenceSet)
+        let childP = if w > things then lists.foldr(:String :Program)(nxt p sNmList) else p end
+        moveThingsNode(childP nm fenceSet)
+    end
+
+let cpressE: Exception = exception cpressE: Ok end
+let cpress1: Exception = exception cpress1: Ok end
+let cpress2: Exception = exception cpress2: Ok end
+let cpress3: Exception = exception cpress3: Ok end
+let cpress4: Exception = exception cpress4: Ok end
+let cpress5: Exception = exception cpress5: Ok end
+
+let rec cpress(window: Int p: Program fenceSet: Set(String) everinFenceSet: Set(String)): Program =
+    begin
+        let nxt(nm: String p: Program): Program =
+            try moveThingsWindow(p window nm fenceSet) when moveThingsWindowE then throw(:Program)(cpress1) end
+        let filled =
+            try lists.foldr(:String :Program)(nxt p set(:String)(fenceSet))
+            when cpress1 then throw(:Program)(cpress2)
+            end
+        let succf(nm: String): Set(String) =
+            try succ(filled nameToNode(filled nm)) when nameToNodeE then throw(:Set(String))(cpressE) end
+        let succs = lists.map(:String :Set(String))(succf set(:String)(fenceSet))
+        let nfenceSet = listUnion(:String)(lists.cons(:Set(String))(makeStr succs))
+        let filt(a: String l: lists.T(String)): lists.T(String) =
+            if member(:String)(everinFenceSet a) then l else lists.cons(:String)(a l) end
+        let fFenceSet =
+            listToSetStr(lists.foldr(:String :lists.T(String))(filt lists.nil(:String) set(:String)(nfenceSet)))
+        let addTo(a: String s: Set(String)): Set(String) = add(:String)(s a)
+        let nEverinFc = lists.foldr(:String :Set(String))(addTo everinFenceSet set(:String)(fFenceSet))
+        if not(empty(:String)(fFenceSet)) then
+            try
+                try
+                    try cpress(window filled fFenceSet nEverinFc) when cpressE then throw(:Program)(cpress3) end
+                when cpress1 then throw(:Program)(cpress4)
+                end
+            when cpress2 then throw(:Program)(cpress5)
+            end
+        else filled
+        end
+    end
+
+let cleanUp(p: Program): Program =
+    begin
+        let clos = closure(p p.n0)
+        let l = lists.map(:Node :String)(fun(n: Node): String n.name smExtract(:Node)(clos.ns))
+        let f(n: String p: Program): Program = delete(p nameToNode(p n))
+        lists.foldr(:String :Program)(f clos l)
+    end
+
+let compress(window: Int p: Program): Program =
+    begin
+        let fenceSet = add(:String)(makeStr p.n0.name)
+        let everinFenceSet = add(:String)(makeEQ(:String)(namePrefixEq) p.n0.name)
+        let uc = cpress(window p fenceSet everinFenceSet)
+        cleanUp(uc)
+    end
+
+(* structure ReadI *)
+
+let btargetE: Exception = exception btargetE: Ok end
+
+(* btarget(l, 0): the position in l of the first TARGET with the label *)
+let btarget(l: lists.T(Codetype)): All(x: Int) Int =
+    fun(x: Int): Int
+        begin
+            let rec f(l: lists.T(Codetype) n: Int): Int =
+                case l
+                    when cons with c then
+                        case c.hd
+                            when ctTarget with t then if t.n is x then n else f(c.tl n + 1) end
+                            else f(c.tl n + 1)
+                        end
+                    else throw(:Int)(btargetE)
+                end
+            f(l 0)
+        end
+
+let bnodesE: Exception = exception bnodesE: Ok end
+
+let buildNodes(l: lists.T(Codetype)): Program =
+    begin
+        let t = btarget(l)
+        let rec f(l: lists.T(Codetype) n: Int): lists.T(Node) =
+            case l
+                when cons with c then
+                    begin
+                        let nm = makestring(n)
+                        let nxtnm = makestring(n + 1)
+                        let asn(i: lists.T(Opcode)): Set(Opcode) = listToSetEQ(:Opcode)(opcodeEq i)
+                        let edag = reach(dagMake tName(nxtnm))
+                        let tgtnm(tgt: Int): String = makestring(t(tgt))
+                        let edagt(tgt: Int): Dag = reach(dagMake tName(tgtnm(tgt)))
+                        let finDag = reach(dagMake tName(fin.name))
+                        let cdag(tgt: Int tst: Opcode): Dag = attach(tst edagt(tgt) edag)
+                        let g =
+                            case c.hd
+                                when ctAssignment with x then node(nm asn(one(x.i)) edag makeStr)
+                                when ctNergle then node(nm asn(lists.nil(:Opcode)) edag makeStr)
+                                when ctLabelref with x then
+                                    case x.i
+                                        when oGetlab with y then
+                                            begin
+                                                let i = option oGetlab of Opcode with reg(t(x.n) tgtnm(x.n)) y.dst end
+                                                node(nm asn(one(i)) edag makeStr)
+                                            end
+                                        else throw(:Node)(bnodesE)
+                                    end
+                                when ctComparison with x then node(nm asn(lists.nil(:Opcode)) cdag(x.n x.i) makeStr)
+                                when ctFlow with x then node(nm asn(lists.nil(:Opcode)) edagt(x.n) makeStr)
+                                when ctExit with x then node(nm asn(one(x.i)) finDag makeStr)
+                                when ctTarget then node(nm asn(lists.nil(:Opcode)) edag makeStr)
+                                else throw(:Node)(bnodesE)
+                            end
+                        lists.cons(:Node)(g lists.cons(:Node)(fin f(c.tl n + 1)))
+                    end
+                else lists.nil(:Node)
+            end
+        let addn(n: Node p: Program): Program = addNode(p n)
+        lists.foldr(:Node :Program)(addn makeProg() lists.cons(:Node)(fin f(l 0)))
+    end
+
+let readiE: Exception = exception readiE: Ok end
+let readiNtn: Exception = exception readiNtn: Ok end
+
+Let Readi = Tuple junk: lists.T(Opcode) progs: lists.T(Program) end
+Let JunkOther = Tuple junk: lists.T(Codetype) other: lists.T(Codetype) end
+
+let readI(ol: lists.T(Opcode)): Readi =
+    begin
+        let junkfil(x: Codetype jo: JunkOther): JunkOther =
+            case x
+                when ctJunk then tuple let junk = lists.cons(:Codetype)(x jo.junk) let other = jo.other end
+                else tuple let junk = jo.junk let other = lists.cons(:Codetype)(x jo.other) end
+            end
+        let cl = lists.map(:Opcode :Codetype)(classify ol)
+        let none: JunkOther = tuple let junk = lists.nil(:Codetype) let other = lists.nil(:Codetype) end
+        let jo = lists.foldr(:Codetype :JunkOther)(junkfil none cl)
+        let ntn(p: Program nm: String): Node = try nameToNode(p nm) when nameToNodeE then throw(:Node)(readiNtn) end
+        let bn = buildNodes(jo.other)
+        let nnp = program(bn.ns ntn(bn "0") bn.f)
+        let unjunk(x: Codetype): Opcode = case x when ctJunk with j then j.i else throw(:Opcode)(readiE) end
+        let progs = programs(nnp)
+        tuple let junk = lists.map(:Codetype :Opcode)(unjunk jo.junk) let progs = progs end
+    end
+
+let buildLiveTab(p: Program): All(nm: String) Set(Int) =
+    begin
+        let fil(a: Int b: Set(Int)): Set(Int) = if {a < 0} orif isBogusReg(reg(a "")) then b else add(:Int)(b a) end
+        let filLset(s: Set(Int)): Set(Int) = lists.foldr(:Int :Set(Int))(fil makeInt set(:Int)(s))
+        let lt: Stringmap(Set(Int)) = smNew(:Set(Int))()
+        let finset = listToSetInt(ints(array of 0 1 2 3 4 5 end))
+        let flive(f: All(n: Node) Set(Int) n: Node): Set(Int) =
+            if smIsin(:Set(Int))(lt n.name) then smMap(:Set(Int))(lt n.name) else f(n) end
+        let rec dfs(cur: Node): Set(Int) =
+            begin
+                let fl(n: Node): Set(Int) = flive(dfs n)
+                let nm = cur.name
+                let gen = filLset(readNode(cur))
+                let kill = writeNode(cur)
+                smAdd(:Set(Int))(lt nm gen)
+                let children = succNodes(p cur)
+                let chLive =
+                    if empty(:Node)(children) then finset
+                    else listUnion(:Int)(lists.map(:Node :Set(Int))(fl set(:Node)(children)))
+                    end
+                let live = union(:Int)(diff(:Int)(chLive kill) gen)
+                smRm(:Set(Int))(lt nm)
+                smAdd(:Set(Int))(lt nm live)
+                live
+            end
+        let ignored = dfs(p.n0)
+        fun(nm: String): Set(Int) smMap(:Set(Int))(lt nm)
+    end
+
+(* live is the union of live in successors *)
+let branchLive(p: Program tab: All(nm: String) Set(Int) nm: String): Set(Int) =
+    begin
+        let s = set(:String)(succ(p nameToNode(p nm)))
+        listUnion(:Int)(lists.map(:String :Set(Int))(tab s))
+    end
+
+let writepE: Exception = exception writepE: Ok end
+let writep1: Exception = exception writep1: Ok end
+let writepNtn: Exception = exception writepNtn: Ok end
+let matchE: Exception = exception matchE: Ok end
+let dfsSurprise: Exception = exception dfsSurprise: Ok end
+
+Let Code = lists.T(Opcode)
+Let DoneCode = Tuple done: Set(String) code: Code end
+Let NamesCode = Tuple nl: lists.T(String) cd: Code end
+
+let doneCode(done: Set(String) code: Code): DoneCode = tuple let done = done let code = code end
+
+(* blblmap and bentrymap: each name or program gets a label, the last
+ * first; the first match wins *)
+Let LabelMap = All(x: String) Int
+
+let writeP(entryMap: LabelMap lblFun: All() Int p: Program): Code =
+    begin
+        let rec blblmap(l: lists.T(String)): LabelMap =
+            case l
+                when cons with c then
+                    begin
+                        let mp = blblmap(c.tl)
+                        let mylab = lblFun()
+                        let nm = c.hd
+                        fun(x: String): Int if strEq(x nm) then mylab else mp(x) end
+                    end
+                else fun(x: String): Int throw(:Int)(writepE)
+            end
+        let lblmap = blblmap(lists.map(:Node :String)(fun(n: Node): String n.name smExtract(:Node)(p.ns)))
+        let liveTab = buildLiveTab(p)
+        let toRegs(s: Set(Int)): Regs = lists.map(:Int :Reg)(fun(r: Int): Reg reg(r "") set(:Int)(s))
+        let labelList(nm: String): Regs = toRegs(liveTab(nm))
+        let brList(nm: String): Regs = toRegs(branchLive(p liveTab nm))
+        let getlab(i: Opcode): Opcode =
+            case i
+                when oGetlab with x then
+                    option oGetlab of Opcode with reg(entryMap(x.lab.s) "node" <> x.lab.s) x.dst end
+                else throw(:Opcode)(writep1)
+            end
+        let dogetlabs(i: Opcode l: Code): Code =
+            case i when oGetlab then lists.cons(:Opcode)(getlab(i) l) else lists.cons(:Opcode)(i l) end
+        let zero = reg(0 "zero")
+        let ubranch(frm: String nm: String): Opcode =
+            option oBranch of Opcode with
+                option cIeq of Comparison end zero zero reg(lblmap(nm) "node" <> nm) brList(frm)
+            end
+        let cbranch(b: Opcode frm: String nm: String): Opcode =
+            case b
+                when oBranch with x then
+                    option oBranch of Opcode with x.test x.src1 x.src2 reg(lblmap(nm) "node" <> nm) brList(frm) end
+                else throw(:Opcode)(matchE)
+            end
+        let label(nm: String): Opcode = option oLabel of Opcode with reg(lblmap(nm) "node" <> nm) labelList(nm) end
+        let entryLabel(nm: String): Opcode = option oLabel of Opcode with reg(entryMap(nm) "entry") labelList(nm) end
+        let nops(): Code = one(nop)
+        let rec f(done: Set(String) lastnm: String nm: String): DoneCode =
+            if strEq(nm p.f.name) then doneCode(done nops())
+            elsif member(:String)(done nm) then doneCode(done ops(array of nop ubranch(lastnm nm) end))
+            else
+                begin
+                    let n = try nameToNode(p nm) when nameToNodeE then throw(:Node)(writepNtn) end
+                    let needlabel =
+                        begin
+                            let pd = set(:String)(pred(p n))
+                            case pd
+                                when cons with c then
+                                    if lists.null(:String)(c.tl) then
+                                        begin
+                                            let pn = nameToNode(p c.hd)
+                                            let d = pn.d
+                                            let sel = d.sel
+                                            let rt = d.root
+                                            case rt
+                                                when tTest with x then tonEq(sel(x.t true) tName(nm))
+                                                else false
+                                            end
+                                        end
+                                    else true
+                                    end
+                                else false
+                            end
+                        end
+                    let nodelabel = if needlabel then one(label(nm)) else lists.nil(:Opcode) end
+                    let a = lists.foldr(:Opcode :Code)(dogetlabs lists.nil(:Opcode) set(:Opcode)(n.a))
+                    let d = n.d
+                    let sel = d.sel
+                    let rt = d.root
+                    let unnm(x: TestOrName): String = case x when tName with y then y.n else throw(:String)(matchE) end
+                    (* only works for <= 1 test *)
+                    let nc: NamesCode =
+                        case rt
+                            when tName with x then
+                                tuple
+                                    let nl = lists.cons(:String)(x.n lists.nil(:String))
+                                    let cd = lists.nil(:Opcode)
+                                end
+                            when tTest with x then
+                                begin
+                                    let tn = unnm(sel(x.t true))
+                                    let fn = unnm(sel(x.t false))
+                                    tuple
+                                        let nl = lists.fromArray(:String)(array of fn tn end)
+                                        let cd = one(cbranch(x.t nm tn))
+                                    end
+                                end
+                            else tuple let nl = lists.nil(:String) let cd = lists.nil(:Opcode) end
+                        end
+                    let rec dfs(done: Set(String) l: lists.T(String)): DoneCode =
+                        case l
+                            when cons with c1 then
+                                case c1.tl
+                                    when cons with c2 then
+                                        if lists.null(:String)(c2.tl) then
+                                            begin
+                                                let h = c1.hd
+                                                let nxt = c2.hd
+                                                let r1 = f(done nm h)
+                                                let r2 =
+                                                    if member(:String)(r1.done nxt) then
+                                                        doneCode(r1.done lists.nil(:Opcode))
+                                                    else dfs(r1.done lists.cons(:String)(nxt lists.nil(:String)))
+                                                    end
+                                                let lbl =
+                                                    if strEq(nxt p.f.name) orif member(:String)(r2.done nxt) then nops()
+                                                    else ops(array of nop label(nxt) end)
+                                                    end
+                                                let rest = lists.append(:Opcode)(lbl r2.code)
+                                                doneCode(r2.done lists.append(:Opcode)(r1.code rest))
+                                            end
+                                        else throw(:DoneCode)(dfsSurprise)
+                                        end
+                                    else f(done nm c1.hd)
+                                end
+                            else doneCode(done lists.nil(:Opcode))
+                        end
+                    let r = dfs(add(:String)(done nm) nc.nl)
+                    doneCode(r.done lists.cons(:Opcode)(nop lists.append(:Opcode)(nodelabel
+                        lists.append(:Opcode)(a lists.append(:Opcode)(nc.cd r.code)))))
+                end
+            end
+        let r = f(makeStr "badname" p.n0.name)
+        lists.cons(:Opcode)(entryLabel(p.n0.name) lists.cons(:Opcode)(label(p.n0.name) r.code))
+    end
+
+let writeiE: Exception = exception writeiE: Ok end
+
+let writeI(j: Code p: lists.T(Program)): Code =
+    begin
+        let labelid = tuple let var n = 0 end
+        let newlabel(): Int = begin labelid.n := labelid.n + 1 labelid.n - 1 end
+        let rec bentrymap(l: lists.T(Program)): LabelMap =
+            case l
+                when cons with c then
+                    begin
+                        let mp = bentrymap(c.tl)
+                        let mylab = newlabel()
+                        let nm = c.hd.n0.name
+                        fun(x: String): Int if strEq(x nm) then mylab else mp(x) end
+                    end
+                else fun(x: String): Int throw(:Int)(writeiE)
+            end
+        let entryMap = bentrymap(p)
+        let sp = sort(:Program)(fun(a: Program b: Program): Bool nameInt(a.n0.name) > nameInt(b.n0.name) p)
+        let wp(p: Program): Code = writeP(entryMap newlabel p)
+        let f(a: Program b: Code): Code = lists.append(:Opcode)(wp(a) b)
+        let i = lists.foldr(:Program :Code)(f lists.nil(:Opcode) sp)
+        lists.append(:Opcode)(i j)
+    end
+
+(* The main program *)
+
+let writeprog(file: String j: Code p: lists.T(Program)): Ok =
+    begin
+        let ot = writer.file(file)
+        let prog = writeI(j p)
+        let filp = rmBogus(remnops(prog))
+        show(ot filp)
+        writer.close(ot)
+    end
+
+let dodelay(i: Code): Code = begin delayInit(i) addDelay(i) end
+
+let doitx(ifile: String ofile: String cOfile: String ws: Int): Ok =
+    begin
+        initNames()
+        let ins = reader.file(ifile)
+        let i = dodelay(breaki(readAbs(ins)))
+        reader.close(ins)
+        let r = readI(i)
+        writeprog(ofile r.junk r.progs)
+        let cwin(p: Program): Program = compress(ws p)
+        let cp = lists.map(:Program :Program)(cwin r.progs)
+        writeprog(cOfile r.junk cp)
+        let codeMotions = newName("0")
+    end
+
+(* main(["foobar", "-ws9", ...]): window size 9, idempotency 0; the original
+ * names the files with the current directory *)
+let doit(): Ok =
+    begin
+        delayState.idempotency := 0
+        doitx("DATA/ndotprod.s" "DATA/tmp.s" "DATA/cmp.s" 9)
+    end
+
+for n = 1 upto bench.count() do doit() end
