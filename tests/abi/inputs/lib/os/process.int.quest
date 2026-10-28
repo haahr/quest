@@ -1,0 +1,50 @@
+interface Process
+export
+    (* =========================================================================
+     * Child Processes (Process)
+     *
+     * Programs started without waiting for them, so that a program can run
+     * several at once; system.run starts one and waits. A child's standard
+     * output and error are collected for wait, and its standard input is the
+     * parent's:
+     *
+     *     let ps = array of process.spawn(args1) process.spawn(args2) end;
+     *     let first = process.waitAny(ps);
+     *     let r = process.wait(ps[first]);
+     * ====================================================================== *)
+
+    (* A child process *)
+    T::TYPE
+
+    (* What a child did: its exit code (a signal's negated number if one
+     * killed it), and its standard output and error *)
+    Def Result = Tuple code: Int stdout: String stderr: String end
+
+    (* Start a program (args[0], found on PATH) with arguments, without a
+     * shell and without waiting for it; raises system.error if it cannot
+     * start *)
+    spawn(args: Array(String)): T
+
+    (* spawn, with the child's current directory dir; raises system.error if
+     * dir is not one *)
+    spawnIn(args: Array(String) dir: String): T
+
+    (* The child's process id *)
+    pid(p: T): Int
+
+    (* Whether the child has finished, without waiting for it *)
+    isDone(p: T): Bool
+
+    (* Wait for the child to finish: what system.run gives, and the same result
+     * each time it is called *)
+    wait(p: T): Result
+
+    (* Wait for the first of ps to finish, and return its index (the first
+     * index of one already finished, if any is); raises system.error if ps is
+     * empty *)
+    waitAny(ps: Array(T)): Int
+
+    (* Send signal sig (15 for SIGTERM, 9 for SIGKILL) to the child, unless it
+     * has finished *)
+    kill(p: T sig: Int): Ok
+end

@@ -149,7 +149,7 @@ end
     process belongs to.
   - `wait` reads the files back once, and keeps the Result, so that a second call returns the same one.
   - A pid that is not in the table is ignored.
-  - ABI 45.
+  - ABI 46 (45 went to RealOp's math functions).
 - **Bootstrap interpreter.** A `QProcess` class over `subprocess.Popen`, with `tempfile.TemporaryFile`s for the
   output. `waitAny` calls `os.waitpid(-1, 0)`, maps the pid through a table, and sets that `Popen`'s `returncode`.
 - **Self-hosted interpreter.** A `vProcess with p: process.T end` variant in `values/model` with identity hashing,
@@ -216,8 +216,8 @@ the library exists.
 0. Release the faster self-hosted compiler, so that seeded builds are fast too (done: 7d73853b).
 1. `os/filestats`: the library, at ABI 43 (done: 4982017a, with `lfind` as well).
 2. Release (done: 4982017a).
-3. The questlang callers move to `fileStats`, and `system.modifiedTime` is removed, at ABI 44 (done).
-4. `os/process`: the library, at ABI 45.
+3. The questlang callers move to `fileStats`, and `system.modifiedTime` is removed, at ABI 44 (done: f4b55d4c).
+4. `os/process`: the library, at ABI 46 (done).
 5. Release.
 6. `util/path`: the type and the filesystem functions.
 7. Release.

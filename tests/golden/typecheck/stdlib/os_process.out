@@ -1,0 +1,528 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('process') : 'Process')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('system') : 'System')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('stringOp') : 'StringOp')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'show' :type Fun(what: String r: process.Result): Ok
+      :value (TypedFun :params (('what' : String) ('r' : process.Result)) :type Fun(what: String r: process.Result): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedVar 'what' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ': code ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedSelect 'code' :type Int
+                        :target (TypedVar 'r' :type process.Result))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', stdout [' :type String)
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedSelect 'stdout' :type String
+                        :target (TypedVar 'r' :type process.Result))
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString '], stderr [' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedSelect 'stderr' :type String
+                            :target (TypedVar 'r' :type process.Result))
+                          :right (TypedString ']' :type String))))))))
+          ))))
+    (TypedLetValue 'sh' :type Fun(command: String): process.T
+      :value (TypedFun :params (('command' : String)) :type Fun(command: String): process.T
+        :body (TypedApp :type process.T
+          :func (TypedSelect 'spawn' :type Fun(args: Array(String)): process.T
+            :target (TypedVar 'process' :type Module 'process'))
+          :args (
+            (TypedArray :type Array(String)
+              :elements (
+                (TypedString 'sh' :type String)
+                (TypedString '-c' :type String)
+                (TypedVar 'command' :type String)
+              ))
+          ))))
+    (TypedLetValue 'p' :type process.T
+      :value (TypedApp :type process.T
+        :func (TypedVar 'sh' :type Fun(command: String): process.T)
+        :args (
+          (TypedString 'echo out; echo err >&2; exit 3' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'pid positive: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedInfix '>' :type Bool
+                  :left (TypedApp :type Int
+                    :func (TypedSelect 'pid' :type Fun(p: process.T): Int
+                      :target (TypedVar 'process' :type Module 'process'))
+                    :args (
+                      (TypedVar 'p' :type process.T)
+                    ))
+                  :right (TypedInt 0 :type Int))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String r: process.Result): Ok)
+        :args (
+          (TypedString 'first wait' :type String)
+          (TypedApp :type Result
+            :func (TypedSelect 'wait' :type Fun(p: process.T): Result
+              :target (TypedVar 'process' :type Module 'process'))
+            :args (
+              (TypedVar 'p' :type process.T)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String r: process.Result): Ok)
+        :args (
+          (TypedString 'second wait' :type String)
+          (TypedApp :type Result
+            :func (TypedSelect 'wait' :type Fun(p: process.T): Result
+              :target (TypedVar 'process' :type Module 'process'))
+            :args (
+              (TypedVar 'p' :type process.T)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'done after wait: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedSelect 'isDone' :type Fun(p: process.T): Bool
+                    :target (TypedVar 'process' :type Module 'process'))
+                  :args (
+                    (TypedVar 'p' :type process.T)
+                  ))
+              )))
+        )))
+    (TypedLetValue 'big' :type Result
+      :value (TypedApp :type Result
+        :func (TypedSelect 'wait' :type Fun(p: process.T): Result
+          :target (TypedVar 'process' :type Module 'process'))
+        :args (
+          (TypedApp :type process.T
+            :func (TypedVar 'sh' :type Fun(command: String): process.T)
+            :args (
+              (TypedString 'i=0; while [ $i -lt 20000 ]; do echo line; i=$((i+1)); done' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'big: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedSelect 'code' :type Int
+                    :target (TypedVar 'big' :type Result))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Int
+                      :func (TypedSelect 'length' :type Fun(string: String): Int
+                        :target (TypedVar 'stringOp' :type Module 'stringOp'))
+                      :args (
+                        (TypedSelect 'stdout' :type String
+                          :target (TypedVar 'big' :type Result))
+                      ))
+                  )))))
+        )))
+    (TypedLetValue 'ps' :type Array(process.T)
+      :value (TypedArray :type Array(process.T)
+        :elements (
+          (TypedApp :type process.T
+            :func (TypedVar 'sh' :type Fun(command: String): process.T)
+            :args (
+              (TypedString 'sleep 1; echo slow' :type String)
+            ))
+          (TypedApp :type process.T
+            :func (TypedVar 'sh' :type Fun(command: String): process.T)
+            :args (
+              (TypedString 'echo quick; exit 4' :type String)
+            ))
+        )))
+    (TypedLetValue 'first' :type Int
+      :value (TypedApp :type Int
+        :func (TypedSelect 'waitAny' :type Fun(ps: Array(process.T)): Int
+          :target (TypedVar 'process' :type Module 'process'))
+        :args (
+          (TypedVar 'ps' :type Array(process.T))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'first to finish: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedVar 'first' :type Int)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String r: process.Result): Ok)
+        :args (
+          (TypedString 'quick' :type String)
+          (TypedApp :type Result
+            :func (TypedSelect 'wait' :type Fun(p: process.T): Result
+              :target (TypedVar 'process' :type Module 'process'))
+            :args (
+              (TypedIndex :type process.T
+                :target (TypedVar 'ps' :type Array(process.T))
+                :index (TypedVar 'first' :type Int))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'waitAny again: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedSelect 'waitAny' :type Fun(ps: Array(process.T)): Int
+                    :target (TypedVar 'process' :type Module 'process'))
+                  :args (
+                    (TypedVar 'ps' :type Array(process.T))
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String r: process.Result): Ok)
+        :args (
+          (TypedString 'slow' :type String)
+          (TypedApp :type Result
+            :func (TypedSelect 'wait' :type Fun(p: process.T): Result
+              :target (TypedVar 'process' :type Module 'process'))
+            :args (
+              (TypedIndex :type process.T
+                :target (TypedVar 'ps' :type Array(process.T))
+                :index (TypedInt 0 :type Int))
+            ))
+        )))
+    (TypedLetValue 'many' :type Array(process.T)
+      :value (TypedArray :type Array(process.T)
+        :elements (
+          (TypedApp :type process.T
+            :func (TypedVar 'sh' :type Fun(command: String): process.T)
+            :args (
+              (TypedString 'exit 1' :type String)
+            ))
+          (TypedApp :type process.T
+            :func (TypedVar 'sh' :type Fun(command: String): process.T)
+            :args (
+              (TypedString 'exit 2' :type String)
+            ))
+          (TypedApp :type process.T
+            :func (TypedVar 'sh' :type Fun(command: String): process.T)
+            :args (
+              (TypedString 'exit 3' :type String)
+            ))
+          (TypedApp :type process.T
+            :func (TypedVar 'sh' :type Fun(command: String): process.T)
+            :args (
+              (TypedString 'exit 4' :type String)
+            ))
+        )))
+    (TypedLetValue 'total' :type Int
+      :value (TypedInt 0 :type Int))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInt 3 :type Int)
+        :body (TypedAssign
+          :target (TypedVar 'total' :type Var(Int))
+          :value (TypedInfix '+' :type Int
+            :left (TypedDerefCell :type Int
+              :target (TypedVar 'total' :type Var(Int)))
+            :right (TypedSelect 'code' :type Int
+              :target (TypedApp :type Result
+                :func (TypedSelect 'wait' :type Fun(p: process.T): Result
+                  :target (TypedVar 'process' :type Module 'process'))
+                :args (
+                  (TypedIndex :type process.T
+                    :target (TypedVar 'many' :type Array(process.T))
+                    :index (TypedVar 'i' :type Int))
+                )))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'total: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedDerefCell :type Int
+                  :target (TypedVar 'total' :type Var(Int)))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'makeDirectory' :type Fun(path: String): Ok
+          :target (TypedVar 'system' :type Module 'system'))
+        :args (
+          (TypedString 'sub' :type String)
+        )))
+    (TypedLetValue 'w' :type writer.T
+      :value (TypedApp :type writer.T
+        :func (TypedSelect 'file' :type Fun(name: String): writer.T
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedString 'sub/inside.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedVar 'w' :type writer.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String r: process.Result): Ok)
+        :args (
+          (TypedString 'spawnIn' :type String)
+          (TypedApp :type Result
+            :func (TypedSelect 'wait' :type Fun(p: process.T): Result
+              :target (TypedVar 'process' :type Module 'process'))
+            :args (
+              (TypedApp :type process.T
+                :func (TypedSelect 'spawnIn' :type Fun(args: Array(String) dir: String): process.T
+                  :target (TypedVar 'process' :type Module 'process'))
+                :args (
+                  (TypedArray :type Array(String)
+                    :elements (
+                      (TypedString 'ls' :type String)
+                    ))
+                  (TypedString 'sub' :type String)
+                ))
+            ))
+        )))
+    (TypedLetValue 'sleeper' :type process.T
+      :value (TypedApp :type process.T
+        :func (TypedVar 'sh' :type Fun(command: String): process.T)
+        :args (
+          (TypedString 'sleep 10' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'kill' :type Fun(p: process.T sig: Int): Ok
+          :target (TypedVar 'process' :type Module 'process'))
+        :args (
+          (TypedVar 'sleeper' :type process.T)
+          (TypedInt 15 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'killed: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'code' :type Int
+                  :target (TypedApp :type Result
+                    :func (TypedSelect 'wait' :type Fun(p: process.T): Result
+                      :target (TypedVar 'process' :type Module 'process'))
+                    :args (
+                      (TypedVar 'sleeper' :type process.T)
+                    )))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'kill' :type Fun(p: process.T sig: Int): Ok
+          :target (TypedVar 'process' :type Module 'process'))
+        :args (
+          (TypedVar 'sleeper' :type process.T)
+          (TypedInt 15 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedString 'kill after wait: ok' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedSelect 'pid' :type Fun(p: process.T): Int
+                    :target (TypedVar 'process' :type Module 'process'))
+                  :args (
+                    (TypedApp :type process.T
+                      :func (TypedSelect 'spawn' :type Fun(args: Array(String)): process.T
+                        :target (TypedVar 'process' :type Module 'process'))
+                      :args (
+                        (TypedArray :type Array(String)
+                          :elements (
+                            (TypedString 'no-such-program-quest' :type String)
+                          ))
+                      ))
+                  ))
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'error' :type Exception
+                  :target (TypedVar 'system' :type Module 'system'))
+                :body (TypedString 'cannot start' :type String))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedSelect 'pid' :type Fun(p: process.T): Int
+                    :target (TypedVar 'process' :type Module 'process'))
+                  :args (
+                    (TypedApp :type process.T
+                      :func (TypedSelect 'spawn' :type Fun(args: Array(String)): process.T
+                        :target (TypedVar 'process' :type Module 'process'))
+                      :args (
+                        (TypedArray :type Array(String)
+                          :elements ())
+                      ))
+                  ))
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'error' :type Exception
+                  :target (TypedVar 'system' :type Module 'system'))
+                :body (TypedString 'no program' :type String))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedSelect 'pid' :type Fun(p: process.T): Int
+                    :target (TypedVar 'process' :type Module 'process'))
+                  :args (
+                    (TypedApp :type process.T
+                      :func (TypedSelect 'spawnIn' :type Fun(args: Array(String) dir: String): process.T
+                        :target (TypedVar 'process' :type Module 'process'))
+                      :args (
+                        (TypedArray :type Array(String)
+                          :elements (
+                            (TypedString 'ls' :type String)
+                          ))
+                        (TypedString 'no-such-dir' :type String)
+                      ))
+                  ))
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'error' :type Exception
+                  :target (TypedVar 'system' :type Module 'system'))
+                :body (TypedString 'no directory' :type String))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedSelect 'waitAny' :type Fun(ps: Array(process.T)): Int
+                    :target (TypedVar 'process' :type Module 'process'))
+                  :args (
+                    (TypedArray :type Array(process.T)
+                      :elements ())
+                  ))
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'error' :type Exception
+                  :target (TypedVar 'system' :type Module 'system'))
+                :body (TypedString 'nothing to wait for' :type String))
+            ))
+        )))
+  ))

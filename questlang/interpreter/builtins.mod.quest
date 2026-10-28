@@ -23,6 +23,7 @@ import
     system : System
     io/readline : io/Readline
     os/fileStats : os/FileStats
+    os/process : os/Process
 export
     Let Value = model.Value
     Let Args = Array(Value)
@@ -44,6 +45,7 @@ export
     let rd(v: Value): reader.T = case v when vReader with x then x.rd else wrong(:reader.T "QReader" v) end
     let sb(v: Value): stringBuilder.T =
         case v when vStringBuilder with x then x.sb else wrong(:stringBuilder.T "QStringBuilder" v) end
+    let proc(v: Value): process.T = case v when vProcess with x then x.p else wrong(:process.T "QProcess" v) end
     let arr(v: Value): Array(Value) = case v when vArray with x then x.a else wrong(:Array(Value) "QArray" v) end
 
     let unit = model.okValue
@@ -56,6 +58,7 @@ export
     let vWriter(w: writer.T): Value = option vWriter of Value with let w = w end
     let vReader(r: reader.T): Value = option vReader of Value with let rd = r end
     let vException(e: model.ExceptionValue): Value = option vException of Value with let e = e end
+    let vProcess(p: process.T): Value = option vProcess of Value with let p = p end
 
     let strings(xs: Array(String)): Value =
         begin
@@ -64,16 +67,22 @@ export
             option vArray of Value with let a = a end
         end
 
-    (* What system.run gives, as the interpreted tuple *)
-    let ran(xs: Array(Value)): Value =
+    (* What system.run and process.wait give, as the interpreted tuple *)
+    let waited(r: process.Result): Value =
         begin
-            let args = array of(extent xs "")
-            for i = 0 upto {extent xs - 1} do args[i] := str(xs[i]) end
-            let r = system.run(args)
             let label(name: String): maybe.T(String) = maybe.some(:String name)
             model.tupleValue(array of vInt(r.code) vString(r.stdout) vString(r.stderr) end
                 maybe.some(:Array(maybe.T(String)) array of label("code") label("stdout") label("stderr") end))
         end
+
+    let texts(xs: Array(Value)): Array(String) =
+        begin
+            let args = array of(extent xs "")
+            for i = 0 upto {extent xs - 1} do args[i] := str(xs[i]) end
+            args
+        end
+
+    let ran(xs: Array(Value)): Value = waited(system.run(texts(xs)))
 
     (* What quest_filestats_stat gives, as the interpreted tuple: the kind as a
      * number, -1 when the path names nothing *)
@@ -94,6 +103,15 @@ export
                     vReal(s.modifiedTime) vReal(s.changeTime) vInt(s.accessNs) vInt(s.modifiedNs) vInt(s.changeNs)
                     end labels)
             end
+        end
+
+    let processes(xs: Array(Value)): Array(process.T) =
+        if extent xs is 0 then
+            array of :process.T end
+        else
+            let ps = array of(extent xs proc(xs[0]))
+            for i = 1 upto {extent xs - 1} do ps[i] := proc(xs[i]) end
+            ps
         end
 
     (* fn, with the library's native errors raised as the interpreted ones *)
@@ -152,6 +170,7 @@ export
             when vWriter with x then hash.identityHash(:writer.T x.w)
             when vReader with x then hash.identityHash(:reader.T x.rd)
             when vStringBuilder with x then hash.identityHash(:stringBuilder.T x.sb)
+            when vProcess with x then hash.identityHash(:process.T x.p)
             when vTypeValue with x then hash.identityHash(:model.TypeValue x.t)
         end
 
@@ -409,6 +428,14 @@ export
             fn("quest_system_is_terminal" fun(a: Args): Value vBool(system.isTerminal(int(a[0]))))
             (* os/fileStats *)
             fn("quest_filestats_stat" fun(a: Args): Value statted(str(a[0]) bool(a[1])))
+            (* os/process *)
+            fn("quest_process_spawn" fun(a: Args): Value vProcess(process.spawn(texts(arr(a[0])))))
+            fn("quest_process_spawn_in" fun(a: Args): Value vProcess(process.spawnIn(texts(arr(a[0])) str(a[1]))))
+            fn("quest_process_pid" fun(a: Args): Value vInt(process.pid(proc(a[0]))))
+            fn("quest_process_is_done" fun(a: Args): Value vBool(process.isDone(proc(a[0]))))
+            fn("quest_process_wait" fun(a: Args): Value waited(process.wait(proc(a[0]))))
+            fn("quest_process_wait_any" fun(a: Args): Value vInt(process.waitAny(processes(arr(a[0])))))
+            fn("quest_process_kill" fun(a: Args): Value begin process.kill(proc(a[0]) int(a[1])) unit end)
 
             (* io/readline *)
             exc("quest_exc_readline_error" primitives.readlineError)

@@ -15,6 +15,7 @@ import stat
 import struct
 import subprocess
 import sys
+import tempfile
 from typing import Any, Callable, Optional
 
 try:
@@ -57,6 +58,7 @@ from quest.values.model import (
     QExceptionVal,
     QInt,
     QOk,
+    QProcess,
     QReader,
     QReal,
     QString,
@@ -616,6 +618,86 @@ def _filestats_stat(path_val: QString, follow: QBool) -> QTuple:
         labels=_FILESTATS_LABELS,
     )
 
+# os/process (runtime quest_process_*): children through subprocess.Popen, with
+# their output in temp files, as the C runtime keeps it. waitAny reaps with
+# os.waitpid(-1), so the children not yet reaped are kept by pid, and the
+# status reaped is given to its Popen.
+_live_processes: dict[int, QProcess] = {}
+
+def _process_spawn_with(args_val: QArray, cwd: Optional[bytes]) -> QProcess:
+    args = [_os_path(a) for a in args_val.elements]
+    if not args:
+        raise QuestException(SYSTEM_ERROR_EXC)
+    out, err = tempfile.TemporaryFile(), tempfile.TemporaryFile()
+    try:
+        popen = subprocess.Popen(args, stdout=out, stderr=err, cwd=cwd)
+    except (OSError, ValueError):
+        out.close()
+        err.close()
+        raise QuestException(SYSTEM_ERROR_EXC)
+    proc = QProcess(popen, out, err)
+    _live_processes[popen.pid] = proc
+    return proc
+
+def _process_spawn(args_val: QArray) -> QProcess:
+    return _process_spawn_with(args_val, None)
+
+def _process_spawn_in(args_val: QArray, dir_val: QString) -> QProcess:
+    return _process_spawn_with(args_val, _os_path(dir_val))
+
+def _process_pid(proc: QProcess) -> QInt:
+    return QInt(proc.popen.pid)
+
+def _process_done(proc: QProcess) -> bool:
+    if proc.popen.returncode is None and proc.popen.poll() is None:
+        return False
+    _live_processes.pop(proc.popen.pid, None)
+    return True
+
+def _process_is_done(proc: QProcess) -> QBool:
+    return TRUE_VALUE if _process_done(proc) else FALSE_VALUE
+
+def _process_wait(proc: QProcess) -> QTuple:
+    if proc.result is None:
+        proc.popen.wait()
+        _live_processes.pop(proc.popen.pid, None)
+        texts = []
+        for f in (proc.out, proc.err):
+            f.seek(0)
+            texts.append(QString(f.read().decode(BYTE_ENCODING)))
+            f.close()
+        proc.result = QTuple(elements=(QInt(proc.popen.returncode), texts[0], texts[1]),
+                             labels=("code", "stdout", "stderr"))
+    return proc.result
+
+def _process_wait_any(procs_val: QArray) -> QInt:
+    procs = procs_val.elements
+    if not procs:
+        raise QuestException(SYSTEM_ERROR_EXC)
+    while True:
+        for i, proc in enumerate(procs):
+            if proc.popen.returncode is not None:
+                return QInt(i)
+        try:
+            pid, status = os.waitpid(-1, 0)
+        except ChildProcessError:
+            raise QuestException(SYSTEM_ERROR_EXC)
+        reaped = _live_processes.pop(pid, None)
+        if reaped is not None:
+            reaped.popen.returncode = os.waitstatus_to_exitcode(status)
+
+def _process_kill(proc: QProcess, sig: QInt) -> QOk:
+    if not 0 <= sig.value <= 0x7FFF_FFFF:
+        raise QuestException(SYSTEM_ERROR_EXC)
+    if proc.popen.returncode is None:
+        try:
+            os.kill(proc.popen.pid, sig.value)
+        except ProcessLookupError:
+            pass
+        except (OSError, ValueError, OverflowError):
+            raise QuestException(SYSTEM_ERROR_EXC)
+    return OK_VALUE
+
 def _system_is_terminal(fd: QInt) -> QBool:
     try:
         return TRUE_VALUE if os.isatty(fd.value) else FALSE_VALUE
@@ -1090,6 +1172,13 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_system_run": _system_run,
     "quest_system_is_terminal": _system_is_terminal,
     "quest_filestats_stat": _filestats_stat,
+    "quest_process_spawn": _process_spawn,
+    "quest_process_spawn_in": _process_spawn_in,
+    "quest_process_pid": _process_pid,
+    "quest_process_is_done": _process_is_done,
+    "quest_process_wait": _process_wait,
+    "quest_process_wait_any": _process_wait_any,
+    "quest_process_kill": _process_kill,
     "quest_system_exit": _system_exit,
 
     # io/readline

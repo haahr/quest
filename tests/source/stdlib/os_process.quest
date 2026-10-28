@@ -1,0 +1,59 @@
+(* os/process starts programs without waiting for them: their results, which
+   wait gives the same each time; waitAny with a slow child and a quick one;
+   spawnIn's directory; kill; and the errors for a program that cannot start.
+   The test runs in a fresh, empty directory of its own (docs/testing.md
+   section 2.2). *)
+import os/process : os/Process;
+import system: System;
+import writer: Writer;
+import conv: Conv;
+import stringOp = string: StringOp;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let show(what: String r: process.Result): Ok =
+    print(what <> ": code " <> conv.int(r.code) <> ", stdout [" <> r.stdout <> "], stderr [" <> r.stderr <> "]");
+let sh(command: String): process.T = process.spawn(array of "sh" "-c" command end);
+
+(* Output on both streams and an exit code; wait twice *)
+let p = sh("echo out; echo err >&2; exit 3");
+print("pid positive: " <> conv.bool(process.pid(p) > 0));
+show("first wait" process.wait(p));
+show("second wait" process.wait(p));
+print("done after wait: " <> conv.bool(process.isDone(p)));
+
+(* Output larger than a pipe holds, with nothing reading it while it runs *)
+let big = process.wait(sh("i=0; while [ $i -lt 20000 ]; do echo line; i=$((i+1)); done"));
+print("big: " <> conv.int(big.code) <> " " <> conv.int(stringOp.length(big.stdout)));
+
+(* The first of several to finish, and then the others *)
+let ps = array of sh("sleep 1; echo slow") sh("echo quick; exit 4") end;
+let first = process.waitAny(ps);
+print("first to finish: " <> conv.int(first));
+show("quick" process.wait(ps[first]));
+print("waitAny again: " <> conv.int(process.waitAny(ps)));
+show("slow" process.wait(ps[0]));
+
+(* Several running at once *)
+let many = array of sh("exit 1") sh("exit 2") sh("exit 3") sh("exit 4") end;
+let var total = 0;
+for i = 0 upto 3 do total := total + process.wait(many[i]).code end;
+print("total: " <> conv.int(total));
+
+(* The child's current directory *)
+system.makeDirectory("sub");
+let w = writer.file("sub/inside.txt");
+writer.close(w);
+show("spawnIn" process.wait(process.spawnIn(array of "ls" end "sub")));
+
+(* A signal, and a signal to a child that has finished *)
+let sleeper = sh("sleep 10");
+process.kill(sleeper 15);
+print("killed: " <> conv.int(process.wait(sleeper).code));
+process.kill(sleeper 15);
+print("kill after wait: ok");
+
+(* Programs that cannot start, and nothing to wait for *)
+print(try conv.int(process.pid(process.spawn(array of "no-such-program-quest" end)))
+    when system.error then "cannot start" end);
+print(try conv.int(process.pid(process.spawn(array of end))) when system.error then "no program" end);
+print(try conv.int(process.pid(process.spawnIn(array of "ls" end "no-such-dir"))) when system.error then "no directory" end);
+print(try conv.int(process.waitAny(array of :process.T end)) when system.error then "nothing to wait for" end)

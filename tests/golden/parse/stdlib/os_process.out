@@ -1,0 +1,836 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('process') 'Process' ('os/process') 'os/Process')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('system') 'System')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('stringOp') 'StringOp' ('string'))
+      )
+    )
+    (LetValueBinding
+      :name 'print'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'show'
+      :value (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprId 'what')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprString ': code ' '": code "')
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'int'
+                  )
+                  :args (
+                    (ExprSelect
+                      :target (ExprId 'r')
+                      :field 'code'
+                    )
+                  )
+                )
+                :op '<>'
+                :right (ExprInfix
+                  :left (ExprString ', stdout [' '", stdout ["')
+                  :op '<>'
+                  :right (ExprInfix
+                    :left (ExprSelect
+                      :target (ExprId 'r')
+                      :field 'stdout'
+                    )
+                    :op '<>'
+                    :right (ExprInfix
+                      :left (ExprString '], stderr [' '"], stderr ["')
+                      :op '<>'
+                      :right (ExprInfix
+                        :left (ExprSelect
+                          :target (ExprId 'r')
+                          :field 'stderr'
+                        )
+                        :op '<>'
+                        :right (ExprString ']' '"]"')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'what'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'r'
+          :type_annot (TypePath ('process' 'Result'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'sh'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'process')
+          :field 'spawn'
+        )
+        :args (
+          (ExprArray
+            :elements (
+              (ExprString 'sh' '"sh"')
+              (ExprString '-c' '"-c"')
+              (ExprId 'command')
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'command'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('process' 'T'))
+    )
+    (LetValueBinding
+      :name 'p'
+      :value (ExprApp
+        :func (ExprId 'sh')
+        :args (
+          (ExprString 'echo out; echo err >&2; exit 3' '"echo out; echo err >&2; exit 3"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'pid positive: ' '"pid positive: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'bool'
+              )
+              :args (
+                (ExprInfix
+                  :left (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'process')
+                      :field 'pid'
+                    )
+                    :args (
+                      (ExprId 'p')
+                    )
+                  )
+                  :op '>'
+                  :right (ExprInt 0 '0')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprString 'first wait' '"first wait"')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'process')
+              :field 'wait'
+            )
+            :args (
+              (ExprId 'p')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprString 'second wait' '"second wait"')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'process')
+              :field 'wait'
+            )
+            :args (
+              (ExprId 'p')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'done after wait: ' '"done after wait: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'bool'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'process')
+                    :field 'isDone'
+                  )
+                  :args (
+                    (ExprId 'p')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'big'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'process')
+          :field 'wait'
+        )
+        :args (
+          (ExprApp
+            :func (ExprId 'sh')
+            :args (
+              (ExprString 'i=0; while [ $i -lt 20000 ]; do echo line; i=$((i+1)); done' '"i=0; while [ $i -lt 20000 ]; do echo line; i=$((i+1)); done"')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'big: ' '"big: "')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'int'
+                )
+                :args (
+                  (ExprSelect
+                    :target (ExprId 'big')
+                    :field 'code'
+                  )
+                )
+              )
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprString ' ' '" "')
+                :op '<>'
+                :right (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'int'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'stringOp')
+                        :field 'length'
+                      )
+                      :args (
+                        (ExprSelect
+                          :target (ExprId 'big')
+                          :field 'stdout'
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'ps'
+      :value (ExprArray
+        :elements (
+          (ExprApp
+            :func (ExprId 'sh')
+            :args (
+              (ExprString 'sleep 1; echo slow' '"sleep 1; echo slow"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 'sh')
+            :args (
+              (ExprString 'echo quick; exit 4' '"echo quick; exit 4"')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'first'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'process')
+          :field 'waitAny'
+        )
+        :args (
+          (ExprId 'ps')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'first to finish: ' '"first to finish: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprId 'first')
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprString 'quick' '"quick"')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'process')
+              :field 'wait'
+            )
+            :args (
+              (ExprIndex
+                :target (ExprId 'ps')
+                :index (ExprId 'first')
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'waitAny again: ' '"waitAny again: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'process')
+                    :field 'waitAny'
+                  )
+                  :args (
+                    (ExprId 'ps')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprString 'slow' '"slow"')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'process')
+              :field 'wait'
+            )
+            :args (
+              (ExprIndex
+                :target (ExprId 'ps')
+                :index (ExprInt 0 '0')
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'many'
+      :value (ExprArray
+        :elements (
+          (ExprApp
+            :func (ExprId 'sh')
+            :args (
+              (ExprString 'exit 1' '"exit 1"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 'sh')
+            :args (
+              (ExprString 'exit 2' '"exit 2"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 'sh')
+            :args (
+              (ExprString 'exit 3' '"exit 3"')
+            )
+          )
+          (ExprApp
+            :func (ExprId 'sh')
+            :args (
+              (ExprString 'exit 4' '"exit 4"')
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'total'
+      :value (ExprInt 0 '0')
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprFor
+        :var_name 'i'
+        :start (ExprInt 0 '0')
+        :stop (ExprInt 3 '3')
+        :body (ExprInfix
+          :left (ExprId 'total')
+          :op ':='
+          :right (ExprInfix
+            :left (ExprId 'total')
+            :op '+'
+            :right (ExprSelect
+              :target (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'process')
+                  :field 'wait'
+                )
+                :args (
+                  (ExprIndex
+                    :target (ExprId 'many')
+                    :index (ExprId 'i')
+                  )
+                )
+              )
+              :field 'code'
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'total: ' '"total: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprId 'total')
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'system')
+          :field 'makeDirectory'
+        )
+        :args (
+          (ExprString 'sub' '"sub"')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'w'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'file'
+        )
+        :args (
+          (ExprString 'sub/inside.txt' '"sub/inside.txt"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'close'
+        )
+        :args (
+          (ExprId 'w')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'show')
+        :args (
+          (ExprString 'spawnIn' '"spawnIn"')
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'process')
+              :field 'wait'
+            )
+            :args (
+              (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'process')
+                  :field 'spawnIn'
+                )
+                :args (
+                  (ExprArray
+                    :elements (
+                      (ExprString 'ls' '"ls"')
+                    )
+                  )
+                  (ExprString 'sub' '"sub"')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'sleeper'
+      :value (ExprApp
+        :func (ExprId 'sh')
+        :args (
+          (ExprString 'sleep 10' '"sleep 10"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'process')
+          :field 'kill'
+        )
+        :args (
+          (ExprId 'sleeper')
+          (ExprInt 15 '15')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'killed: ' '"killed: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprApp
+                    :func (ExprSelect
+                      :target (ExprId 'process')
+                      :field 'wait'
+                    )
+                    :args (
+                      (ExprId 'sleeper')
+                    )
+                  )
+                  :field 'code'
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'process')
+          :field 'kill'
+        )
+        :args (
+          (ExprId 'sleeper')
+          (ExprInt 15 '15')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprString 'kill after wait: ok' '"kill after wait: ok"')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprTry
+            :body (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'process')
+                    :field 'pid'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'process')
+                        :field 'spawn'
+                      )
+                      :args (
+                        (ExprArray
+                          :elements (
+                            (ExprString 'no-such-program-quest' '"no-such-program-quest"')
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            :branches (
+              (TryBranch
+                :exc_pattern (ExprSelect
+                  :target (ExprId 'system')
+                  :field 'error'
+                )
+                :body (ExprString 'cannot start' '"cannot start"')
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprTry
+            :body (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'process')
+                    :field 'pid'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'process')
+                        :field 'spawn'
+                      )
+                      :args (
+                        (ExprArray ())
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            :branches (
+              (TryBranch
+                :exc_pattern (ExprSelect
+                  :target (ExprId 'system')
+                  :field 'error'
+                )
+                :body (ExprString 'no program' '"no program"')
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprTry
+            :body (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'process')
+                    :field 'pid'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'process')
+                        :field 'spawnIn'
+                      )
+                      :args (
+                        (ExprArray
+                          :elements (
+                            (ExprString 'ls' '"ls"')
+                          )
+                        )
+                        (ExprString 'no-such-dir' '"no-such-dir"')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            :branches (
+              (TryBranch
+                :exc_pattern (ExprSelect
+                  :target (ExprId 'system')
+                  :field 'error'
+                )
+                :body (ExprString 'no directory' '"no directory"')
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprTry
+            :body (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'process')
+                    :field 'waitAny'
+                  )
+                  :args (
+                    (ExprArray
+                      :element_type (TypePath ('process' 'T'))
+                    )
+                  )
+                )
+              )
+            )
+            :branches (
+              (TryBranch
+                :exc_pattern (ExprSelect
+                  :target (ExprId 'system')
+                  :field 'error'
+                )
+                :body (ExprString 'nothing to wait for' '"nothing to wait for"')
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

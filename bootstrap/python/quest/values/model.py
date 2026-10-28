@@ -701,6 +701,24 @@ class QStringBuilder(QValue):
         return "<string builder>"
 
 
+class QProcess(QValue):
+    """A child process (lib/os/process): its Popen, the temp files its standard
+    output and error go to, and its result once it has been waited for."""
+
+    def __init__(self, popen: Any, out: Any, err: Any) -> None:
+        self.popen = popen
+        self.out = out
+        self.err = err
+        self.result: Optional[QValue] = None
+
+    @property
+    def type_name(self) -> str:
+        return "Process.T"
+
+    def to_str(self, visited: Optional[set[int]] = None) -> str:
+        return "<process>"
+
+
 class QReader(QValue):
     """Input stream handle wrapping a Python text stream or open file."""
 

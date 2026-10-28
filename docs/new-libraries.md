@@ -690,3 +690,40 @@ A path names nothing when `stat(2)` fails with `ENOENT` or `ENOTDIR`, so `find("
 failure, such as a directory that cannot be searched, raises `system.error` from `find` too. The Real times are
 computed as Python computes them (seconds plus nanoseconds times 1e-9), so a compiled program and an interpreted one
 agree exactly. Compare the integer times when an exact order matters, as staleness checks do.
+
+### 4.2. `os/process : os/Process`
+
+Programs started without waiting for them, so that a program can run several at once (`system.run` starts one and
+waits). Its externals, `quest_process_*`, are in `runtime/quest_runtime.c`. The bootstrap's interpreters implement
+them with `subprocess.Popen`, and the self-hosted interpreter with the compiled library's own
+(`questlang/interpreter/builtins`).
+
+#### Interface Summary
+
+```quest
+interface Process
+export
+    T::TYPE
+    Def Result = Tuple code: Int stdout: String stderr: String end
+
+    (* Start args[0], found on PATH, without a shell and without waiting; raises system.error if it cannot start *)
+    spawn(args: Array(String)): T
+    (* spawn, in directory dir *)
+    spawnIn(args: Array(String) dir: String): T
+    pid(p: T): Int
+    (* Whether the child has finished, without waiting *)
+    isDone(p: T): Bool
+    (* What system.run gives, and the same result each time *)
+    wait(p: T): Result
+    (* The index of the first of ps to finish; raises system.error if ps is empty *)
+    waitAny(ps: Array(T)): Int
+    (* Send signal sig to the child, unless it has finished *)
+    kill(p: T sig: Int): Ok
+end
+```
+
+A child's standard output and error go to unlinked temp files, not pipes, so a child never blocks on a full pipe while
+its parent is busy elsewhere, and `wait` reads them back once the child has finished. Its standard input and
+environment are the parent's. `waitAny` reaps whichever child finishes first (`waitpid(-1)`), so the runtime keeps a
+list of the children not yet reaped and records each status on its handle; a child that is not `os/process`'s is
+reaped and ignored. A child killed by a signal has that signal's number, negated, as its code, as with `system.run`.

@@ -3002,6 +3002,8 @@ QAuto *quest_dynamic_copy(const QAuto *d) {
 #include <poll.h>
 #include <spawn.h>
 #include <sys/wait.h>
+#include <fcntl.h>
+#include <signal.h>
 
 /* System module primitives */
 QArray *quest_system_args = NULL;
@@ -3332,6 +3334,200 @@ void *quest_filestats_stat(const QString *path, bool follow) {
         result[6 + i].i = (QInt)times[i].tv_sec * 1000000000 + (QInt)times[i].tv_nsec;
     }
     return result;
+}
+
+/* os/process (see quest_runtime.h). A child's standard output and error go to
+ * unlinked temp files rather than pipes, so that nothing has to drain them while
+ * it runs. The live list holds every child not yet reaped, so that waitAny can
+ * reap with waitpid(-1) and record the status on whichever handle it belongs
+ * to; being static, it also keeps those handles alive for the collector. */
+struct QProcess {
+    pid_t pid;
+    bool done;
+    int status;
+    int out_fd, err_fd;
+    void *result;
+    struct QProcess *next_live;
+};
+
+static QProcess *quest_process_live = NULL;
+
+static int quest_process_temp_file(void) {
+    const char *dir = getenv("TMPDIR");
+    if (dir == NULL || dir[0] == '\0') dir = "/tmp";
+    size_t n = strlen(dir) + sizeof("/quest-process-XXXXXX");
+    char *name = (char *)malloc(n);
+    if (name == NULL) return -1;
+    snprintf(name, n, "%s/quest-process-XXXXXX", dir);
+    int fd = mkstemp(name);
+    if (fd >= 0) unlink(name);
+    free(name);
+    if (fd >= 0) fcntl(fd, F_SETFD, FD_CLOEXEC);
+    return fd;
+}
+
+static void quest_process_reaped(QProcess *p, int status) {
+    p->done = true;
+    p->status = status;
+    for (QProcess **link = &quest_process_live; *link != NULL; link = &(*link)->next_live) {
+        if (*link == p) {
+            *link = p->next_live;
+            break;
+        }
+    }
+    p->next_live = NULL;
+}
+
+static QProcess *quest_process_spawn_with(const QArray *args, const QString *dir) {
+    if (args == NULL || args->length == 0) quest_raise_system_error();
+    if (dir != NULL && dir->data == NULL) quest_raise_system_error();
+    size_t argc = (size_t)args->length;
+    char **argv = (char **)malloc((argc + 1) * sizeof(char *));
+    if (argv == NULL) quest_raise_system_error();
+    for (size_t i = 0; i < argc; i++) {
+        const QString *arg = (const QString *)args->data[i].p;
+        if (arg == NULL || arg->data == NULL) {
+            free(argv);
+            quest_raise_system_error();
+        }
+        argv[i] = arg->data;
+    }
+    argv[argc] = NULL;
+
+    int out_fd = quest_process_temp_file();
+    int err_fd = out_fd >= 0 ? quest_process_temp_file() : -1;
+    if (err_fd < 0) {
+        if (out_fd >= 0) close(out_fd);
+        free(argv);
+        quest_raise_system_error();
+    }
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, out_fd, STDOUT_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, err_fd, STDERR_FILENO);
+    if (dir != NULL) posix_spawn_file_actions_addchdir_np(&actions, dir->data);
+    pid_t pid;
+    int spawned = posix_spawnp(&pid, argv[0], &actions, NULL, argv, environ);
+    posix_spawn_file_actions_destroy(&actions);
+    free(argv);
+    if (spawned != 0) {
+        close(out_fd);
+        close(err_fd);
+        quest_raise_system_error();
+    }
+
+    QProcess *p = (QProcess *)quest_alloc(sizeof(QProcess));
+    p->pid = pid;
+    p->done = false;
+    p->status = 0;
+    p->out_fd = out_fd;
+    p->err_fd = err_fd;
+    p->result = NULL;
+    p->next_live = quest_process_live;
+    quest_process_live = p;
+    return p;
+}
+
+QProcess *quest_process_spawn(const QArray *args) {
+    return quest_process_spawn_with(args, NULL);
+}
+
+QProcess *quest_process_spawn_in(const QArray *args, const QString *dir) {
+    if (dir == NULL) quest_raise_system_error();
+    return quest_process_spawn_with(args, dir);
+}
+
+int64_t quest_process_pid(const QProcess *p) {
+    return (int64_t)p->pid;
+}
+
+bool quest_process_is_done(QProcess *p) {
+    if (!p->done) {
+        int status;
+        pid_t r;
+        do {
+            r = waitpid(p->pid, &status, WNOHANG);
+        } while (r < 0 && errno == EINTR);
+        if (r < 0) quest_raise_system_error();
+        if (r == p->pid) quest_process_reaped(p, status);
+    }
+    return p->done;
+}
+
+/* The whole of a temp file a child wrote */
+static bool quest_process_read_back(int fd, QRunBuffer *b) {
+    if (lseek(fd, 0, SEEK_SET) < 0) return false;
+    char chunk[65536];
+    for (;;) {
+        ssize_t n = read(fd, chunk, sizeof(chunk));
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0) return false;
+        if (n == 0) return true;
+        if (!quest_run_append(b, chunk, (size_t)n)) return false;
+    }
+}
+
+void *quest_process_wait(QProcess *p) {
+    if (p->result != NULL) return p->result;
+    while (!p->done) {
+        int status;
+        pid_t r = waitpid(p->pid, &status, 0);
+        if (r == p->pid) {
+            quest_process_reaped(p, status);
+        } else if (r < 0 && errno != EINTR) {
+            quest_raise_system_error();
+        }
+    }
+    QRunBuffer out = { NULL, 0, 0 }, err = { NULL, 0, 0 };
+    bool read_back = quest_process_read_back(p->out_fd, &out) && quest_process_read_back(p->err_fd, &err);
+    if (!read_back) {
+        free(out.data);
+        free(err.data);
+        quest_raise_system_error();
+    }
+    close(p->out_fd);
+    close(p->err_fd);
+    p->out_fd = p->err_fd = -1;
+
+    /* Laid out as Tuple code: Int stdout: String stderr: String end, as
+     * system.run's result is */
+    int status = p->status;
+    QVal *result = (QVal *)quest_alloc(3 * sizeof(QVal));
+    result[0].i = WIFEXITED(status) ? WEXITSTATUS(status) : WIFSIGNALED(status) ? -WTERMSIG(status) : -1;
+    result[1].p = quest_string_new(out.data != NULL ? out.data : "", (int64_t)out.len);
+    result[2].p = quest_string_new(err.data != NULL ? err.data : "", (int64_t)err.len);
+    free(out.data);
+    free(err.data);
+    p->result = result;
+    return result;
+}
+
+int64_t quest_process_wait_any(const QArray *ps) {
+    if (ps == NULL || ps->length == 0) quest_raise_system_error();
+    for (;;) {
+        for (int64_t i = 0; i < ps->length; i++) {
+            if (((QProcess *)ps->data[i].p)->done) return i;
+        }
+        int status;
+        pid_t r = waitpid(-1, &status, 0);
+        if (r < 0) {
+            if (errno == EINTR) continue;
+            quest_raise_system_error();
+        }
+        for (QProcess *p = quest_process_live; p != NULL; p = p->next_live) {
+            if (p->pid == r) {
+                quest_process_reaped(p, status);
+                break;
+            }
+        }
+    }
+}
+
+void quest_process_kill(QProcess *p, int64_t sig) {
+    if (sig < 0 || sig > INT_MAX) quest_raise_system_error();
+    /* A child that has exited but not been reaped is still there to signal */
+    if (p->done) return;
+    if (kill(p->pid, (int)sig) != 0 && errno != ESRCH) quest_raise_system_error();
 }
 
 bool quest_system_is_terminal(int64_t fd) {

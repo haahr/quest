@@ -514,6 +514,19 @@ bool     quest_system_is_terminal(int64_t fd);
  * path names nothing (ENOENT or ENOTDIR); other failures raise system.error */
 void    *quest_filestats_stat(const QString *path, bool follow);
 
+/* os/process module primitives: children started without waiting for them, with
+ * their standard output and error collected in temp files; quest_process_wait
+ * gives a Tuple code: Int stdout: String stderr: String end, as
+ * quest_system_run does */
+typedef struct QProcess QProcess;
+QProcess *quest_process_spawn(const QArray *args);
+QProcess *quest_process_spawn_in(const QArray *args, const QString *dir);
+int64_t   quest_process_pid(const QProcess *p);
+bool      quest_process_is_done(QProcess *p);
+void     *quest_process_wait(QProcess *p);
+int64_t   quest_process_wait_any(const QArray *ps);
+void      quest_process_kill(QProcess *p, int64_t sig);
+
 /* io/readline module primitives (quest_readline.c) */
 extern const QException quest_exc_readline_error;
 extern const QException quest_exc_readline_end_of_input;
