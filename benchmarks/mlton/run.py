@@ -71,7 +71,7 @@ OMITTED = {
 
 
 # Programs of the suite not converted yet, which run.py skips unless named
-PENDING = {"hamlet", "mlyacc", "model-elimination"}
+PENDING = {"hamlet", "model-elimination"}
 
 
 def benchmark_names(requested: list[str]) -> list[str]:

@@ -3,8 +3,10 @@ SML programs, into Quest.
 
     python tools/mllex_tables.py raytrace PREFIX > tables.txt
 
-ml-lex writes its transition rows as strings, val s = [(row, "..."), ...], and
-its states as a list of {fin = [(N action), ...], trans = row}. The rows become
+ml-lex writes its transition rows as strings, either in a list,
+val s = [(row, "..."), ...], or (older versions) each in its own value,
+val sROW = "...", and its states as a list of {fin = [(N action), ...],
+trans = row} (or trans = sROW). The rows become
 arrays of the 129 next states (PREFIXRows), and the states an array of
 PREFIXState(fin trans) calls, fin an array of action numbers and trans an index
 into PREFIXRows. The PROGRAM's nth table (counting from 0) is chosen with an
@@ -56,13 +58,19 @@ def main():
     program, prefix = sys.argv[1], sys.argv[2]
     nth = int(sys.argv[3]) if len(sys.argv) > 3 else 0
     text = (HERE / "sml" / f"{program}.sml").read_text(encoding="latin-1")
-    start = [m.start() for m in re.finditer(r"val s = \[", text)][nth]
-    end = text.index('(0, "")]', start)
-    rows = {int(n): sml_string(body)
-            for n, body in re.findall(r'\(\s*(\d+),\s*"((?:[^"\\]|\\.|\\\s+\\)*)"\s*\)', text[start:end], re.S)}
-    tab_start = text.index("in Vector.fromList(map g", end)
-    tab_end = text.index("])", tab_start)
-    states = re.findall(r"\{fin = \[([^\]]*)\], trans = (\d+)\}", text[tab_start:tab_end])
+    string = r'"((?:[^"\\]|\\.|\\\s+\\)*)"'
+    lists = [m.start() for m in re.finditer(r"val s = \[", text)]
+    if lists:
+        start = lists[nth]
+        end = text.index('(0, "")]', start)
+        rows = {int(n): sml_string(body) for n, body in re.findall(r"\(\s*(\d+),\s*" + string + r"\s*\)", text[start:end], re.S)}
+    else:
+        start = [m.start() for m in re.finditer(r"\nval s0 =\n", text)][nth]
+        end = text.index("in Vector.fromList", start)
+        rows = {int(n): sml_string(body) for n, body in re.findall(r"val s(\d+) =\s*" + string, text[start:end], re.S)}
+    tab_start = text.index("in Vector.fromList", end)
+    tab_end = text.index("}]", tab_start)
+    states = re.findall(r"\{fin = \[([^\]]*)\], trans = s?(\d+)\}", text[tab_start:tab_end + 1])
     order = sorted(rows)
     index = {n: k for k, n in enumerate(order)}
     out = [f"let {prefix}Rows: Array(Array(Int)) = array of"]

@@ -66,7 +66,7 @@ exactly what its conversion does. No recorded output depends on those bits.
 |---|---|
 | fxp | Not a benchmark: an XML parser with no `Main.doit` and no input, which MLton's suite omits too |
 | merge | Recurses 200,000 calls deep, needing about 10 MB of stack, more than macOS lets a process have |
-| hamlet, mlyacc, model-elimination | Not converted yet; `run.py` skips them unless they are named |
+| hamlet, model-elimination | Not converted yet; `run.py` skips them unless they are named |
 
 ## Notes on timings
 
