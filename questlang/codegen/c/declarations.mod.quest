@@ -371,15 +371,17 @@ export
      *     struct QOption_circle_QTuple_Int_end_point_square_QTuple_Int_end {
      *         int64_t tag;
      *         union {
-     *             struct ..._circle_payload { QInt _0; } circle;
-     *             struct ..._square_payload { QInt _0; } square;
+     *             struct ..._circle_payload { QInt _0; } qo_circle;
+     *             struct ..._square_payload { QInt _0; } qo_square;
      *         } u;
      *     };
      *
      * A case's components are laid out as the struct of their tuple type
      * (QTuple_Int here), so that a case's binder can point at them inside the
-     * option (switch, in codegen/c/printer). A tuple's components are _0, _1,
-     * and so on; a record's struct starts with a header holding its layout's
+     * option (switch, in codegen/c/printer). A case's member of the union is
+     * its tag prefixed with qo_, so that a tag named like a C keyword (int,
+     * struct) names no keyword. A tuple's components are _0, _1, and so on; a
+     * record's struct starts with a header holding its layout's
      * descriptor, and has a field qf_<name> for each field, in the order of
      * their names, so that equal record types, however their fields are
      * listed, have one struct. A record type's struct is named QT_record_ and
@@ -457,10 +459,10 @@ export
                                                             <> maybe.unwrap(:String sorted[k].name) <> ";")
                                                     end
                                                 end
-                                                add(lines "        } " <> c.name <> ";")
+                                                add(lines "        } qo_" <> c.name <> ";")
                                             else
                                                 add(lines "        struct { "
-                                                    <> layout.slotRepresentation(payloadType) <> " val; } "
+                                                    <> layout.slotRepresentation(payloadType) <> " val; } qo_"
                                                     <> c.name <> ";")
                                             end
                                         end

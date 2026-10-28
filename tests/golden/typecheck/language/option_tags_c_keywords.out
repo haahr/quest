@@ -1,0 +1,173 @@
+(TypedProgram
+  :phrases (
+    (TypedLetType 'T' :kind TYPE)
+    (TypedLetValue 'describe' :type Fun(t: T): String
+      :value (TypedFun :params (('t' : T)) :type Fun(t: T): String
+        :body (TypedCase :type String
+          :target (TypedVar 't' :type T)
+          :branches (
+            (TypedCaseBranch tags=(int) :binder 'x'
+              :body (TypedString 'int' :type String))
+            (TypedCaseBranch tags=(struct) :binder 'x'
+              :body (TypedIf :type String
+                :cond (TypedSelect 'b' :type Bool
+                  :target (TypedVar 'x' :type Tuple a: Int b: Bool end))
+                :then (TypedString 'struct' :type String)
+                :else (TypedString '?' :type String)))
+            (TypedCaseBranch tags=(union) :binder 'x'
+              :body (TypedSelect 's' :type String
+                :target (TypedVar 'x' :type Tuple s: String end)))
+            (TypedCaseBranch tags=(float) :binder 'x'
+              :body (TypedString 'float' :type String))
+            (TypedCaseBranch tags=(void)
+              :body (TypedString 'void' :type String))
+          ))))
+    (TypedLetValue 'i' :type T
+      :value (TypedOption 'int' :type T
+        :payload (TypedTuple :type Tuple n: Int end
+          :elements (
+            (TypedInt 3 :type Int)
+          ))))
+    (TypedLetValue 'names' :type Tuple String String String String String end
+      :value (TypedTuple :type Tuple String String String String String end
+        :elements (
+          (TypedApp :type String
+            :func (TypedVar 'describe' :type Fun(t: T): String)
+            :args (
+              (TypedVar 'i' :type T)
+            ))
+          (TypedApp :type String
+            :func (TypedVar 'describe' :type Fun(t: T): String)
+            :args (
+              (TypedOption 'struct' :type T
+                :payload (TypedTuple :type Tuple a: Int b: Bool end
+                  :elements (
+                    (TypedInt 1 :type Int)
+                    (TypedBool true)
+                  )))
+            ))
+          (TypedApp :type String
+            :func (TypedVar 'describe' :type Fun(t: T): String)
+            :args (
+              (TypedOption 'union' :type T
+                :payload (TypedTuple :type Tuple s: String end
+                  :elements (
+                    (TypedString 'union' :type String)
+                  )))
+            ))
+          (TypedApp :type String
+            :func (TypedVar 'describe' :type Fun(t: T): String)
+            :args (
+              (TypedOption 'float' :type T
+                :payload (TypedTuple :type Tuple r: Real end
+                  :elements (
+                    (TypedReal 2.5 :type Real)
+                  )))
+            ))
+          (TypedApp :type String
+            :func (TypedVar 'describe' :type Fun(t: T): String)
+            :args (
+              (TypedOption 'void' :type T)
+            ))
+        )))
+    (TypedLetValue 'n' :type Int
+      :value (TypedCase :type Int
+        :target (TypedVar 'i' :type T)
+        :branches (
+          (TypedCaseBranch tags=(int) :binder 'x'
+            :body (TypedSelect 'n' :type Int
+              :target (TypedVar 'x' :type Tuple n: Int end)))
+        )
+        :else (TypedInt 0 :type Int)))
+    (TypedLetType 'K' :kind TYPE)
+    (TypedLetValue 'valueOf' :type Fun(k: K): Int
+      :value (TypedFun :params (('k' : K)) :type Fun(k: K): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'k' :type K)
+          :branches (
+            (TypedCaseBranch tags=(volatile, NULL, default, errno) :binder 'x'
+              :body (TypedSelect 'n' :type Int
+                :target (TypedVar 'x' :type Tuple n: Int end)))
+          )
+          :else (TypedInt 0 :type Int))))
+    (TypedLetValue 'kv' :type Tuple Int Int Int Int Int end
+      :value (TypedTuple :type Tuple Int Int Int Int Int end
+        :elements (
+          (TypedApp :type Int
+            :func (TypedVar 'valueOf' :type Fun(k: K): Int)
+            :args (
+              (TypedOption 'volatile' :type K
+                :payload (TypedTuple :type Tuple n: Int end
+                  :elements (
+                    (TypedInt 1 :type Int)
+                  )))
+            ))
+          (TypedApp :type Int
+            :func (TypedVar 'valueOf' :type Fun(k: K): Int)
+            :args (
+              (TypedOption 'NULL' :type K
+                :payload (TypedTuple :type Tuple n: Int end
+                  :elements (
+                    (TypedInt 2 :type Int)
+                  )))
+            ))
+          (TypedApp :type Int
+            :func (TypedVar 'valueOf' :type Fun(k: K): Int)
+            :args (
+              (TypedOption 'default' :type K
+                :payload (TypedTuple :type Tuple n: Int end
+                  :elements (
+                    (TypedInt 3 :type Int)
+                  )))
+            ))
+          (TypedApp :type Int
+            :func (TypedVar 'valueOf' :type Fun(k: K): Int)
+            :args (
+              (TypedOption 'errno' :type K
+                :payload (TypedTuple :type Tuple n: Int end
+                  :elements (
+                    (TypedInt 4 :type Int)
+                  )))
+            ))
+          (TypedApp :type Int
+            :func (TypedVar 'valueOf' :type Fun(k: K): Int)
+            :args (
+              (TypedOption 'char' :type K
+                :payload (TypedTuple :type Tuple n: Int end
+                  :elements (
+                    (TypedInt 5 :type Int)
+                  )))
+            ))
+        )))
+    (TypedLetType 'U' :kind TYPE)
+    (TypedLetValue 'first' :type Fun(u: U): Int
+      :value (TypedFun :params (('u' : U)) :type Fun(u: U): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'u' :type U)
+          :branches (
+            (TypedCaseBranch tags=(int, return) :binder 'x'
+              :body (TypedSelect 'n' :type Int
+                :target (TypedVar 'x' :type Tuple n: Int end)))
+          ))))
+    (TypedLetValue 'f' :type Int
+      :value (TypedInfix '+' :type Int
+        :left (TypedApp :type Int
+          :func (TypedVar 'first' :type Fun(u: U): Int)
+          :args (
+            (TypedOption 'return' :type U
+              :payload (TypedTuple :type Tuple n: Int end
+                :elements (
+                  (TypedInt 9 :type Int)
+                )))
+          ))
+        :right (TypedApp :type Int
+          :func (TypedVar 'first' :type Fun(u: U): Int)
+          :args (
+            (TypedOption 'int' :type U
+              :payload (TypedTuple :type Tuple n: Int m: Int end
+                :elements (
+                  (TypedInt 1 :type Int)
+                  (TypedInt 2 :type Int)
+                )))
+          ))))
+  ))

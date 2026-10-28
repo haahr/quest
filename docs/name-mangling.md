@@ -213,7 +213,9 @@ with `qf_` (with a suffix when two share a name):
   - E.g. `struct QOption_none_some_Int`
 - **Option Members:**
   - `int64_t tag;`
-  - `union { ... } u;` with nested branch structs containing payload `val` or `qf_<field>`.
+  - `union { ... } u;` with a member `qo_<tag>` for each case with a payload (`u.qo_some`), so that a tag named like a
+    C keyword (`int`, `struct`) names no keyword: a struct of the case's components `_0`, `_1`, ... (or `qf_<field>`),
+    or of `val` for a payload that is not a tuple.
 
 ### 6.5. Subtyping Evidence Dictionaries
 Quest supports Cardelli record width and depth subtyping via static offset dictionaries passed in fat pointers:

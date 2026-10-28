@@ -1,0 +1,132 @@
+main {
+  funs {
+    fun describe(t: T): String {
+      join k1(r: String) {
+        return r
+      } in {
+        switch tag(t) {
+          case int (x: Tuple n: Int end): {
+            jump k1("int")
+          }
+          case struct (x.1: Tuple a: Int b: Bool end): {
+            join k2(r.1: String) {
+              jump k1(r.1)
+            } in {
+              let %1: Bool = tuple_field(x.1, 1)
+              if %1 {
+                jump k2("struct")
+              } else {
+                jump k2("?")
+              }
+            }
+          }
+          case union (x.2: Tuple s: String end): {
+            let %2: String = tuple_field(x.2, 0)
+            jump k1(%2)
+          }
+          case float (x.3: Tuple r: Real end): {
+            jump k1("float")
+          }
+          case void: {
+            jump k1("void")
+          }
+        }
+      }
+    }
+  }
+  let n: Int = 3
+  let %3: Tuple n: Int end = tuple(n)
+  let i: T = option(int, %3)
+  let %4: String = call describe(i)
+  let a: Int = 1
+  let b: Bool = true
+  let %5: Tuple a: Int b: Bool end = tuple(a, b)
+  let %6: T = option(struct, %5)
+  let %7: String = call describe(%6)
+  let s: String = "union"
+  let %8: Tuple s: String end = tuple(s)
+  let %9: T = option(union, %8)
+  let %10: String = call describe(%9)
+  let r.2: Real = 2.5
+  let %11: Tuple r: Real end = tuple(r.2)
+  let %12: T = option(float, %11)
+  let %13: String = call describe(%12)
+  let %14: T = option(void)
+  let %15: String = call describe(%14)
+  let names: Tuple String String String String String end = tuple(%4, %7, %10, %13, %15)
+  join k3(n.1: Int) {
+    funs {
+      fun valueOf(k: K): Int {
+        join k4(r.3: Int) {
+          return r.3
+        } in {
+          switch tag(k) {
+            case volatile, NULL, default, errno (x.4: Tuple n: Int end): {
+              let %16: Int = tuple_field(x.4, 0)
+              jump k4(%16)
+            }
+            else: {
+              jump k4(0)
+            }
+          }
+        }
+      }
+    }
+    let n.2: Int = 1
+    let %17: Tuple n: Int end = tuple(n.2)
+    let %18: K = option(volatile, %17)
+    let %19: Int = call valueOf(%18)
+    let n.3: Int = 2
+    let %20: Tuple n: Int end = tuple(n.3)
+    let %21: K = option(NULL, %20)
+    let %22: Int = call valueOf(%21)
+    let n.4: Int = 3
+    let %23: Tuple n: Int end = tuple(n.4)
+    let %24: K = option(default, %23)
+    let %25: Int = call valueOf(%24)
+    let n.5: Int = 4
+    let %26: Tuple n: Int end = tuple(n.5)
+    let %27: K = option(errno, %26)
+    let %28: Int = call valueOf(%27)
+    let n.6: Int = 5
+    let %29: Tuple n: Int end = tuple(n.6)
+    let %30: K = option(char, %29)
+    let %31: Int = call valueOf(%30)
+    let kv: Tuple Int Int Int Int Int end = tuple(%19, %22, %25, %28, %31)
+    funs {
+      fun first(u: U): Int {
+        join k5(r.4: Int) {
+          return r.4
+        } in {
+          switch tag(u) {
+            case int, return (x.5: Tuple n: Int end): {
+              let %32: Int = tuple_field(x.5, 0)
+              jump k5(%32)
+            }
+          }
+        }
+      }
+    }
+    let n.7: Int = 9
+    let %33: Tuple n: Int end = tuple(n.7)
+    let %34: U = option(return, %33)
+    let %35: Int = call first(%34)
+    let n.8: Int = 1
+    let m: Int = 2
+    let %36: Tuple n: Int m: Int end = tuple(n.8, m)
+    let %37: U = option(int, %36)
+    let %38: Int = call first(%37)
+    let f: Int = prim +(%35, %38)
+  } in {
+    switch tag(i) {
+      case int (x.6: Tuple n: Int end): {
+        let %39: Int = tuple_field(x.6, 0)
+        jump k3(%39)
+      }
+      else: {
+        jump k3(0)
+      }
+    }
+  }
+}
+

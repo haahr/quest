@@ -77,16 +77,16 @@ struct QOption_charVal_QTuple_C_858f5528ce3cda86 {
     union {
         struct QOption_charVal_QTuple_C_858f5528ce3cda86_charVal_payload {
             QCharSlot _0;
-        } charVal;
+        } qo_charVal;
         struct QOption_charVal_QTuple_C_858f5528ce3cda86_intVal_payload {
             QInt _0;
-        } intVal;
+        } qo_intVal;
         struct QOption_charVal_QTuple_C_858f5528ce3cda86_realVal_payload {
             QReal _0;
-        } realVal;
+        } qo_realVal;
         struct QOption_charVal_QTuple_C_858f5528ce3cda86_stringVal_payload {
             QString * _0;
-        } stringVal;
+        } qo_stringVal;
     } u;
 };
 #endif

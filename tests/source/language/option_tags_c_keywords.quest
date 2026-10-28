@@ -1,0 +1,50 @@
+(* Language: option tags named like C keywords. A case's payload is the
+   member of the C union in its option's struct named by its tag prefixed
+   with qo_ (docs/name-mangling.md section 6.4), so tags such as int, struct,
+   and union compile as any other tags do. *)
+(* @echo *)
+
+(* 1. Tags named like C keywords, with payloads and without (C keywords that are Quest keywords too, such as if, cannot be tags) *)
+Let T = Option
+    int with n: Int end
+    struct with a: Int b: Bool end
+    union with s: String end
+    float with r: Real end
+    void
+end;
+let describe(t: T): String =
+    case t
+        when int with x then "int"
+        when struct with x then if x.b then "struct" else "?" end
+        when union with x then x.s
+        when float with x then "float"
+        when void then "void"
+    end;
+let i: T = option int of T with 3 end;
+let names = tuple
+    describe(i) describe(option struct of T with 1 true end) describe(option union of T with "union" end)
+    describe(option float of T with 2.5 end) describe(option void of T end)
+end;
+let n = case i when int with x then x.n else 0 end;
+
+(* 2. The other C keywords that are not Quest keywords, and names that C
+   headers define as macros, as tags with payloads *)
+Let K = Option
+    break with n: Int end char with n: Int end const with n: Int end continue with n: Int end
+    default with n: Int end double with n: Int end enum with n: Int end extern with n: Int end goto with n: Int end
+    inline with n: Int end long with n: Int end register with n: Int end restrict with n: Int end
+    return with n: Int end short with n: Int end signed with n: Int end sizeof with n: Int end
+    static with n: Int end switch with n: Int end typedef with n: Int end unsigned with n: Int end
+    volatile with n: Int end bool with n: Int end NULL with n: Int end errno with n: Int end stdin with n: Int end
+end;
+let valueOf(k: K): Int =
+    case k when volatile, NULL, default, errno with x then x.n else 0 end;
+let kv = tuple
+    valueOf(option volatile of K with 1 end) valueOf(option NULL of K with 2 end)
+    valueOf(option default of K with 3 end) valueOf(option errno of K with 4 end) valueOf(option char of K with 5 end)
+end;
+
+(* 3. Payloads at a supertype, read through a case binder *)
+Let U = Option int with n: Int m: Int end return with n: Int end end;
+let first(u: U): Int = case u when int, return with x: Tuple n: Int end then x.n end;
+let f = first(option return of U with 9 end) + first(option int of U with 1 2 end);

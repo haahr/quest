@@ -470,12 +470,12 @@ typedef struct QT_T {
         /* branch 'a' has 0 components */
         struct {
             QBool qv_x;
-        } b;
+        } qo_b;
         struct {
             QString *qv_x;
             QString *qv_y;
-        } c;
-    } u;
+        } qo_c;
+    } u; /* a case's member is its tag prefixed with qo_, so that no tag names a C keyword */
 } QT_T;
 ```
 
@@ -497,8 +497,8 @@ typedef struct QT_T {
   ```c
   switch (opt->tag) {
       case QTAG_T_a: /* 0 fields */ break;
-      case QTAG_T_b: use(opt->u.b.qv_x); break;
-      case QTAG_T_c: use(opt->u.c.qv_x, opt->u.c.qv_y); break;
+      case QTAG_T_b: use(opt->u.qo_b.qv_x); break;
+      case QTAG_T_c: use(opt->u.qo_c.qv_x, opt->u.qo_c.qv_y); break;
   }
   ```
 - **Case Binders Share the Payload:** a tuple has no header, so a case's payload struct, which follows the tag, is a

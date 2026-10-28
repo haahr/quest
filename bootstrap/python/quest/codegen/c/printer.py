@@ -293,12 +293,12 @@ class CPrinter:
         """The slot form of component i (None: the payload, when it is not a
         tuple) of the payload of case tag of the option v of shape os, read as
         access says."""
-        raw = f"{v}->u.{tag}.val" if i is None else f"{v}->u.{tag}._{c_int(i)}"
+        raw = f"{v}->u.qo_{tag}.val" if i is None else f"{v}->u.qo_{tag}._{c_int(i)}"
         if access == ir.DIRECT:
             return raw
         if access == ir.ORIGINAL:
             unproxied = f"(({shape_representation(os)})quest_unproxy({v}))"
-            return f"{unproxied}->u.{tag}.val" if i is None else f"{unproxied}->u.{tag}._{c_int(i)}"
+            return f"{unproxied}->u.qo_{tag}.val" if i is None else f"{unproxied}->u.qo_{tag}._{c_int(i)}"
         case = os.case(tag)
         comp = case.shape if i is None else case.shape.components[i].shape
         tmp = self.temp(self.slot_c_type(comp))
@@ -1005,9 +1005,9 @@ class CPrinter:
             if pt is not None and pt.kind == "tuple":
                 ps = shape(self.atom_type(payload))
                 for i, _ in enumerate(pt.components):
-                    self.emit(f"{tmp}->u.{tag}._{c_int(i)} = {self.tuple_component(p, ps, i, o.access[i])};")
+                    self.emit(f"{tmp}->u.qo_{tag}._{c_int(i)} = {self.tuple_component(p, ps, i, o.access[i])};")
             else:
-                self.emit(f"{tmp}->u.{tag}.val = {p};")
+                self.emit(f"{tmp}->u.qo_{tag}.val = {p};")
         return tmp
 
     def option_field(self, src: str, stored_payload: Optional[Shape], index: int, wanted: Shape) -> str:

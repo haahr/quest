@@ -465,11 +465,11 @@ export
     let optionComponent(p: P v: String os: Shape tag: String i: maybe.T(Int) access: String): String =
         begin
             let part = if maybe.isNone(:Int i) then ".val" else "._" <> cInt(maybe.unwrap(:Int i)) end
-            let raw = v <> "->u." <> tag <> part
+            let raw = v <> "->u.qo_" <> tag <> part
             if eq(access nodes.direct) then
                 raw
             elsif eq(access nodes.original) then
-                "((" <> layout.shapeRepresentation(os) <> ")quest_unproxy(" <> v <> "))->u." <> tag <> part
+                "((" <> layout.shapeRepresentation(os) <> ")quest_unproxy(" <> v <> "))->u.qo_" <> tag <> part
             else
                 let cs = maybe.unwrap(:Shape caseShape(os tag))
                 let comp = if maybe.isNone(:Int i) then cs else componentShape(cs maybe.unwrap(:Int i)) end
@@ -1108,11 +1108,11 @@ export
                 if maybe.isSome(:Shape pt) andif eq(maybe.unwrap(:Shape pt).kind "tuple") then
                     let ps = shapeOf(atomType(payloadAtom))
                     for i = 0 upto {extent maybe.unwrap(:Shape pt).components - 1} do
-                        emit(p tmp <> "->u." <> tagName <> "._" <> cInt(i) <> " = "
+                        emit(p tmp <> "->u.qo_" <> tagName <> "._" <> cInt(i) <> " = "
                             <> tupleComponent(p pv ps i o.access[i]) <> ";")
                     end
                 else
-                    emit(p tmp <> "->u." <> tagName <> ".val = " <> pv <> ";")
+                    emit(p tmp <> "->u.qo_" <> tagName <> ".val = " <> pv <> ";")
                 end
             end
             tmp

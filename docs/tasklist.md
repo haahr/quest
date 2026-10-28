@@ -57,23 +57,6 @@ digests, but needs a new runtime primitive and so a release before `questlang/` 
 
 ---
 
-## Option tags named like C keywords in compiled code
-
-**Problem.** An option tag is used verbatim as the name of its payload's member in the C union of the option's struct,
-so a tag named like a C keyword (`int`, `struct`, `union`, `if`, ...) produces C that does not compile. Converted code
-renames such tags (benchmarks/mlton).
-
-**Reproduce.** Compile `Let T = Option int with n: Int end struct end let t = option int of T with 3 end`.
-
-**Where to start.** `emit_aggregate_structs` in `bootstrap/python/quest/codegen/c/declarations.py` (`struct
-..._payload { ... } {o.name};`) and its port in `questlang/codegen/c/declarations.mod.quest`, and every place that
-names the member (`printer.py`'s option accessors and the questlang printer): mangle the member name, for instance with
-a prefix, everywhere at once.
-
-**Done when.** Tags named like any C keyword compile, with a test in `tests/source/`, in both compilers.
-
----
-
 ## Capture rules for `var` variables as the paper has them
 
 **Problem.** The type checker's rule for which mutable variables a function may use is the reverse of the paper's.

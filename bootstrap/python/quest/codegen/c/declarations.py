@@ -322,14 +322,16 @@ class CDeclarationEmitter:
             struct QOption_circle_QTuple_Int_end_point_square_QTuple_Int_end {
                 int64_t tag;
                 union {
-                    struct ..._circle_payload { QInt _0; } circle;
-                    struct ..._square_payload { QInt _0; } square;
+                    struct ..._circle_payload { QInt _0; } qo_circle;
+                    struct ..._square_payload { QInt _0; } qo_square;
                 } u;
             };
 
         A case's components are laid out as the struct of their tuple type
         (QTuple_Int here), so that a case's binder can point at them inside the
-        option (CPrinter.switch). A tuple's components are _0, _1, and so on;
+        option (CPrinter.switch). A case's member of the union is its tag
+        prefixed with qo_, so that a tag named like a C keyword (int, struct)
+        names no keyword. A tuple's components are _0, _1, and so on;
         a record's struct starts with a header holding its layout's descriptor,
         and has a field qf_<name> for each field, in the order of their names,
         so that equal record types, however their fields are listed, have one
@@ -380,9 +382,10 @@ class CDeclarationEmitter:
                                 else:
                                     for c in payload.sorted_components():
                                         lines.append(f"            {slot_representation(c.shape.type)} qf_{c.name};")
-                                lines.append(f"        }} {o.name};")
+                                lines.append(f"        }} qo_{o.name};")
                             else:
-                                lines.append(f"        struct {{ {slot_representation(o.payload_type)} val; }} {o.name};")
+                                slot_c = slot_representation(o.payload_type)
+                                lines.append(f"        struct {{ {slot_c} val; }} qo_{o.name};")
                         lines.append("    } u;")
             lines.append("};")
             lines.append("#endif")
