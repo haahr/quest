@@ -14,10 +14,6 @@
       ))
     (TypedImport
       :items (
-        (TypedImportItem ('real') : 'RealOp')
-      ))
-    (TypedImport
-      :items (
         (TypedImportItem ('stringOp') : 'StringOp')
       ))
     (TypedLetValue 'print' :type Fun(s: String): Ok
@@ -196,108 +192,6 @@
                 :exc_pattern (TypedSelect 'error' :type Exception
                   :target (TypedVar 'system' :type Module 'system'))
                 :body (TypedString 'no program' :type String))
-            ))
-        )))
-    (TypedLetValue 'f' :type writer.T
-      :value (TypedApp :type writer.T
-        :func (TypedSelect 'file' :type Fun(name: String): writer.T
-          :target (TypedVar 'writer' :type Module 'writer'))
-        :args (
-          (TypedString 'written.txt' :type String)
-        )))
-    (TypedExprStmt
-      :expr (TypedApp :type Ok
-        :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
-          :target (TypedVar 'writer' :type Module 'writer'))
-        :args (
-          (TypedVar 'f' :type writer.T)
-          (TypedString 'x' :type String)
-        )))
-    (TypedExprStmt
-      :expr (TypedApp :type Ok
-        :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
-          :target (TypedVar 'writer' :type Module 'writer'))
-        :args (
-          (TypedVar 'f' :type writer.T)
-        )))
-    (TypedLetValue 't' :type Real
-      :value (TypedApp :type Real
-        :func (TypedSelect 'modifiedTime' :type Fun(path: String): Real
-          :target (TypedVar 'system' :type Module 'system'))
-        :args (
-          (TypedString 'written.txt' :type String)
-        )))
-    (TypedLetValue 'again' :type Real
-      :value (TypedApp :type Real
-        :func (TypedSelect 'modifiedTime' :type Fun(path: String): Real
-          :target (TypedVar 'system' :type Module 'system'))
-        :args (
-          (TypedString 'written.txt' :type String)
-        )))
-    (TypedExprStmt
-      :expr (TypedApp :type Ok
-        :func (TypedVar 'print' :type Fun(s: String): Ok)
-        :args (
-          (TypedInfix '<>' :type String
-            :left (TypedString 'time: ' :type String)
-            :right (TypedInfix '<>' :type String
-              :left (TypedApp :type String
-                :func (TypedSelect 'bool' :type Fun(b: Bool): String
-                  :target (TypedVar 'conv' :type Module 'conv'))
-                :args (
-                  (TypedApp :type Bool
-                    :func (TypedSelect 'greater' :type Fun(a: Real b: Real): Bool
-                      :target (TypedVar 'real' :type Module 'real'))
-                    :args (
-                      (TypedVar 't' :type Real)
-                      (TypedReal 1000000000.0 :type Real)
-                    ))
-                ))
-              :right (TypedInfix '<>' :type String
-                :left (TypedString ' ' :type String)
-                :right (TypedApp :type String
-                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
-                    :target (TypedVar 'conv' :type Module 'conv'))
-                  :args (
-                    (TypedIf :type Bool
-                      :cond (TypedApp :type Bool
-                        :func (TypedSelect 'smallerEq' :type Fun(a: Real b: Real): Bool
-                          :target (TypedVar 'real' :type Module 'real'))
-                        :args (
-                          (TypedVar 't' :type Real)
-                          (TypedVar 'again' :type Real)
-                        ))
-                      :then (TypedApp :type Bool
-                        :func (TypedSelect 'greaterEq' :type Fun(a: Real b: Real): Bool
-                          :target (TypedVar 'real' :type Module 'real'))
-                        :args (
-                          (TypedVar 't' :type Real)
-                          (TypedVar 'again' :type Real)
-                        ))
-                      :else (TypedBool false))
-                  )))))
-        )))
-    (TypedExprStmt
-      :expr (TypedApp :type Ok
-        :func (TypedVar 'print' :type Fun(s: String): Ok)
-        :args (
-          (TypedTry :type String
-            :body (TypedApp :type String
-              :func (TypedSelect 'real' :type Fun(r: Real): String
-                :target (TypedVar 'conv' :type Module 'conv'))
-              :args (
-                (TypedApp :type Real
-                  :func (TypedSelect 'modifiedTime' :type Fun(path: String): Real
-                    :target (TypedVar 'system' :type Module 'system'))
-                  :args (
-                    (TypedString 'missing.txt' :type String)
-                  ))
-              ))
-            :branches (
-              (TypedTryBranch
-                :exc_pattern (TypedSelect 'error' :type Exception
-                  :target (TypedVar 'system' :type Module 'system'))
-                :body (TypedString 'missing' :type String))
             ))
         )))
   ))

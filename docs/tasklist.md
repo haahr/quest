@@ -68,27 +68,6 @@ missing program behave the same everywhere, and docs/new-libraries.md documents 
 
 ---
 
-## An `os/filestats` library
-
-**Problem.** `system.modifiedTime` is the only file metadata available. The build engine, the manifests, and the
-interpreter's builtins call it after a separate `system.fileExists` or `system.isFile` call, which costs a second
-`stat` and leaves a race between the two calls. Nothing can read a file's size, its type beyond file or directory, or
-its permissions.
-
-**Where to start.** Add `lib/os/filestats.{int,mod}.quest`, modeled on Python's `os.stat_result` (what
-`pathlib.Path(...).stat()` returns). It holds one tuple of the fields both platforms have: size, mode, kind (file,
-directory, symlink, or other), and the access, modification, and change times. Give the times both as Python's float
-seconds and as integer nanoseconds (`st_mtime_ns`), because the build's staleness checks should compare exact
-integers. Have `stat(path)` raise `system.error` and `find(path): maybe.T(Stats)` return none for a missing file, plus
-`lstat` for symlinks. Compute the times as `quest_system_modified_time` does now, so that C and the interpreter agree
-exactly. Then move the callers of `system.modifiedTime`, `fileExists`, and `isFile` in `questlang/` over to it, and
-decide whether `modifiedTime` stays in `system`.
-
-**Done when.** The questlang callers make a single `stat` call per file, and goldens show the same stats in C and the
-interpreter.
-
----
-
 ## An `os/pathlib` library
 
 **Problem.** `util/path` handles paths only as strings and only lexically. Filesystem operations are free functions in
@@ -97,7 +76,7 @@ nothing to map onto.
 
 **Where to start.** Decide whether a path is a value of its own type (Python's `Path`, built with `/` written as
 `join`) or stays a string with methods grouped around it. Build it on `util/path` for the lexical part (parts, parent,
-name, stem, suffix, `withSuffix`, `relativeTo`, `resolve`) and on `os/filestats` and `system` for the rest (`exists`,
+name, stem, suffix, `withSuffix`, `relativeTo`, `resolve`) and on `os/fileStats` and `system` for the rest (`exists`,
 `isFile`, `isDir`, `stat`, `iterDir`, `mkdir` with parents, `unlink`, `rename`, `readText`, `writeText`). Keep
 `util/path` as it is, or fold it in, but not both.
 

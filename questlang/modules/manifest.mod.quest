@@ -9,7 +9,6 @@ import
     util/maybe : util/Maybe
     util/strutil : util/Strutil
     stringOp = string : StringOp
-    real : RealOp
     writer : Writer
     system : System
 export
@@ -166,22 +165,30 @@ export
             end
         end
 
-    let newer(a: String b: String): Bool = real.greater(system.modifiedTime(a) system.modifiedTime(b))
+    let newer(a: String b: String): Bool = files.modifiedNs(a) > files.modifiedNs(b)
+
+    (* Whether a is a regular file newer than b *)
+    let newerFile(a: String b: String): Bool =
+        begin
+            let t = files.fileTime(a)
+            maybe.isSome(:Int t) andif {maybe.unwrap(:Int t) > files.modifiedNs(b)}
+        end
 
     let isManifestStale(m: ModuleManifest qm: String): Bool =
         if not(maybe.isSome(:Int m.abi) andif {maybe.unwrap(:Int m.abi) is abi.abiVersion}) then
             true
         elsif not(system.isFile(m.object)) then
             true
-        elsif {stringOp.length(m.source) > 0} andif system.isFile(m.source) then
-            if newer(m.source qm) orif newer(m.source m.object) then
+        elsif {stringOp.length(m.source) > 0} andif maybe.isSome(:Int files.fileTime(m.source)) then
+            let sourceTime = maybe.unwrap(:Int files.fileTime(m.source))
+            if {sourceTime > files.modifiedNs(qm)} orif {sourceTime > files.modifiedNs(m.object)} then
                 true
             else
                 (* Transitive interface staleness *)
                 let var stale = false
                 for i = 0 upto {extent m.importedInterfaces - 1} do
                     let src = m.importedInterfaces[i].source
-                    if {stringOp.length(src) > 0} andif system.isFile(src) andif newer(src qm) then stale := true end
+                    if {stringOp.length(src) > 0} andif newerFile(src qm) then stale := true end
                 end
                 stale
             end
@@ -193,7 +200,7 @@ export
             let var stale = false
             for i = 0 upto {extent m.importedInterfaces - 1} do
                 let src = m.importedInterfaces[i].source
-                if {stringOp.length(src) > 0} andif system.isFile(src) andif newer(src qm) then stale := true end
+                if {stringOp.length(src) > 0} andif newerFile(src qm) then stale := true end
             end
             stale
         end

@@ -8,6 +8,7 @@ import
     questlang/modules/paths : questlang/modules/Paths
     questlang/common/location : questlang/common/Location
     questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/files : questlang/common/Files
     questlang/syntax/ast : questlang/syntax/Ast
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
@@ -138,11 +139,13 @@ export
      * modification time *)
     let importPathsMemo = hashMap.new(:String :Array(String) stringOp.equal hash.string)
 
-    let interfaceImportPaths(source: String): Array(String) =
-        if not(system.isFile(source)) then
+    (* The import paths of the interface in source, which was modified at time
+     * if it is a regular file *)
+    let importPathsAt(source: String time: maybe.T(Int)): Array(String) =
+        if maybe.isNone(:Int time) then
             vector.toArray(:String vector.new(:String))
         else
-            let key = paths.absolute(source) <> "\n" <> conv.real(system.modifiedTime(source))
+            let key = paths.absolute(source) <> "\n" <> conv.int(maybe.unwrap(:Int time))
             let found = hashMap.get(:String :Array(String) importPathsMemo key)
             if maybe.isSome(:Array(String) found) then
                 maybe.unwrap(:Array(String) found)
@@ -174,6 +177,8 @@ export
                 imports
             end
         end
+
+    let interfaceImportPaths(source: String): Array(String) = importPathsAt(source files.fileTime(source))
 
     let interfaceDependencies(res: Resolver source: String searchPaths: Array(String)):
         Array(paths.InterfaceDependency) =

@@ -4,6 +4,7 @@ module files : Files
 import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
+    os/fileStats : os/FileStats
     util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
     reader : Reader
@@ -82,4 +83,15 @@ export
             end
         end
 
+    let fileTime(file: String): maybe.T(Int) =
+        begin
+            let s = fileStats.find(file)
+            if maybe.isSome(:fileStats.T s) andif {maybe.unwrap(:fileStats.T s).kind?file} then
+                maybe.some(:Int maybe.unwrap(:fileStats.T s).modifiedNs)
+            else
+                maybe.none(:Int)
+            end
+        end
+
+    let modifiedNs(p: String): Int = fileStats.stat(p).modifiedNs
 end

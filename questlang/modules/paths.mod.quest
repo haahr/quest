@@ -17,7 +17,6 @@ import
     util/strutil : util/Strutil
     util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
-    real : RealOp
     reader : Reader
     ascii : Ascii
     system : System
@@ -276,7 +275,7 @@ export
             end
         end
 
-    let dependencyChange(deps: Array(InterfaceDependency) includePaths: Array(String) artifactTime: Real
+    let dependencyChange(deps: Array(InterfaceDependency) includePaths: Array(String) artifactTime: Int
         resolveSource: All(path: String fromDir: maybe.T(String) includePaths: Array(String)) maybe.T(String))
         : maybe.T(String) =
         begin
@@ -292,7 +291,7 @@ export
                         change := maybe.some(:String "interface '" <> dep.path <> "' now resolves to "
                             <> shown(maybe.unwrapOr(:String src "")) <> ", not " <> shown(dep.source))
                     elsif maybe.isSome(:String src)
-                        andif real.greater(system.modifiedTime(maybe.unwrap(:String src)) artifactTime) then
+                        andif {files.modifiedNs(maybe.unwrap(:String src)) > artifactTime} then
                         change := maybe.some(:String "imported interface " <> maybe.unwrap(:String src) <> " is newer")
                     end
                 end
@@ -307,7 +306,7 @@ export
             let deps = recordedDependencies(qi)
             maybe.isSome(:Array(InterfaceDependency) deps)
                 andif maybe.isNone(:String dependencyChange(maybe.unwrap(:Array(InterfaceDependency) deps) includePaths
-                    system.modifiedTime(qi) resolveInterfaceSourceFile))
+                    files.modifiedNs(qi) resolveInterfaceSourceFile))
         end
 
     let resolveInterfaceFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String) =
@@ -324,7 +323,7 @@ export
                         else
                             let src = maybe.unwrap(:String source)
                             if abi.hasCurrentAbi(candidate)
-                                andif real.greaterEq(system.modifiedTime(candidate) system.modifiedTime(src))
+                                andif {files.modifiedNs(candidate) >= files.modifiedNs(src)}
                                 andif abi.builtFrom(candidate src)
                                     andif dependenciesUnchanged(candidate includePaths) then
                                 found := maybe.some(:String absolute(candidate))

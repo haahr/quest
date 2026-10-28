@@ -344,7 +344,10 @@ The compiler applies three strict rules in order:
 
 1. **Rule 1 (Source and Artifacts Present):**
    If `I.int.quest` and `I.qi` both exist:
-   - Compare filesystem modification timestamps (`mtime`).
+   - Compare filesystem modification timestamps (`mtime`). The bootstrap compares Python's float `st_mtime`. The
+     self-hosted compiler compares exact nanoseconds (`os/fileStats`'s `modifiedNs`), taking each file's from a
+     single `stat`. The two order files modified at least a microsecond apart the same way. The times recorded in a
+     `.qm` are the float seconds in both compilers.
    - If `I.int.quest` is newer than `I.qi`, the artifacts are **out of date**.
    - If `I.qi` is newer than or equal to `I.int.quest`, the artifacts are **up to date**.
    - In either case, if `I.qi` records a different source (`source`) than this `I.int.quest`, the artifacts belong to

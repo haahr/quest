@@ -505,7 +505,6 @@ QArray  *quest_system_list_directory(const QString *path);
  * waiting for it: its exit code and output, as a Tuple code: Int stdout:
  * String stderr: String end */
 void    *quest_system_run(const QArray *args);
-QReal    quest_system_modified_time(const QString *path);
 bool     quest_system_is_terminal(int64_t fd);
 
 /* os/fileStats module primitive: stat(2), or lstat(2) when follow is false, as

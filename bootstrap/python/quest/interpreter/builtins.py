@@ -569,12 +569,6 @@ def _system_run(args_val: QArray) -> QTuple:
         labels=("code", "stdout", "stderr"),
     )
 
-def _system_modified_time(path_val: QString) -> QReal:
-    try:
-        return QReal(os.stat(_os_path(path_val)).st_mtime)
-    except OSError:
-        raise QuestException(SYSTEM_ERROR_EXC)
-
 _FILESTATS_LABELS = ("kind", "size", "mode", "accessTime", "modifiedTime", "changeTime",
                      "accessNs", "modifiedNs", "changeNs")
 
@@ -1054,7 +1048,6 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_system_remove_directory": _system_remove_directory,
     "quest_system_rename_file": _system_rename_file,
     "quest_system_run": _system_run,
-    "quest_system_modified_time": _system_modified_time,
     "quest_system_is_terminal": _system_is_terminal,
     "quest_filestats_stat": _filestats_stat,
     "quest_system_exit": _system_exit,

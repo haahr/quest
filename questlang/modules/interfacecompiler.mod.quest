@@ -22,13 +22,14 @@ import
     values = questlang/values/model : questlang/values/Model
     questlang/values/dynamicjson : questlang/values/DynamicJson
     questlang/config/abi : questlang/config/Abi
+    questlang/common/files : questlang/common/Files
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
+    os/fileStats : os/FileStats
     util/strutil : util/Strutil
     stringOp = string : StringOp
-    real : RealOp
     writer : Writer
     system : System
 export
@@ -688,12 +689,12 @@ export
                     true
                 else
                     let source = maybe.unwrap(:String src)
-                    let qiTime = system.modifiedTime(qi)
+                    let qiTime = files.modifiedNs(qi)
                     let deps = paths.recordedDependencies(qi)
                     let resolveSource = fun(path: String fromDir: maybe.T(String) searchPaths: Array(String)):
                         maybe.T(String)
                         graph.interfaceSource(res path fromDir searchPaths)
-                    real.smallerEq(system.modifiedTime(source) qiTime) andif abi.builtFrom(qi source)
+                    {files.modifiedNs(source) <= qiTime} andif abi.builtFrom(qi source)
                         andif maybe.isSome(:Array(paths.InterfaceDependency) deps)
                         andif
                             maybe.isNone(:String
@@ -751,8 +752,11 @@ export
                             let name =
                                 graph.interfaceName(graph.resolveInterface(res dep.path maybe.some(:String dep.dir)
                                 roots))
-                            let mtime = if {stringOp.length(dep.source) > 0} andif system.isFile(dep.source) then
-                                system.modifiedTime(dep.source)
+                            let stats = if stringOp.length(dep.source) > 0 then fileStats.find(dep.source)
+                                else maybe.none(:fileStats.T) end
+                            let mtime = if maybe.isSome(:fileStats.T stats)
+                                andif {maybe.unwrap(:fileStats.T stats).kind?file} then
+                                maybe.unwrap(:fileStats.T stats).modifiedTime
                             else
                                 0.0
                             end

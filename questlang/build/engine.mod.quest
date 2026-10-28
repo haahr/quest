@@ -24,6 +24,7 @@ import
     questlang/codegen/c/compilerRunner : questlang/codegen/c/CompilerRunner
     collections/vector : collections/Vector
     util/maybe : util/Maybe
+    os/fileStats : os/FileStats
     util/strutil : util/Strutil
     stringOp = string : StringOp
     conv : Conv
@@ -236,11 +237,13 @@ export
     let interfaceRef(resolved: graph.Resolved path: String): manifest.ImportedInterfaceRef =
         begin
             let src = resolved.source
-            let hasSource = maybe.isSome(:String src) andif system.isFile(maybe.unwrap(:String src))
+            let stats = if maybe.isSome(:String src) then fileStats.find(maybe.unwrap(:String src))
+                else maybe.none(:fileStats.T) end
+            let hasSource = maybe.isSome(:fileStats.T stats) andif {maybe.unwrap(:fileStats.T stats).kind?file}
             tuple
                 let name = graph.interfaceName(resolved)
                 let source = if maybe.isSome(:String src) then paths.absolute(maybe.unwrap(:String src)) else "" end
-                let mtime = if hasSource then system.modifiedTime(maybe.unwrap(:String src)) else 0.0 end
+                let mtime = if hasSource then maybe.unwrap(:fileStats.T stats).modifiedTime else 0.0 end
                 let path = path let dir = ""
             end
         end

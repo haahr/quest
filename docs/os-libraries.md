@@ -213,10 +213,10 @@ the library exists.
 
 ## 6. Steps
 
-0. Release the faster self-hosted compiler, so that seeded builds are fast too.
-1. `os/filestats`: the library, at ABI 43.
-2. Release.
-3. The questlang callers move to `fileStats`, and `system.modifiedTime` is removed, at ABI 44.
+0. Release the faster self-hosted compiler, so that seeded builds are fast too (done: 7d73853b).
+1. `os/filestats`: the library, at ABI 43 (done: 4982017a, with `lfind` as well).
+2. Release (done: 4982017a).
+3. The questlang callers move to `fileStats`, and `system.modifiedTime` is removed, at ABI 44 (done).
 4. `os/process`: the library, at ABI 45.
 5. Release.
 6. `util/path`: the type and the filesystem functions.

@@ -26,7 +26,8 @@ topological sort queues) are straightforwardly implemented on top of `collection
 
 Quest's `System` interface provides operating system and filesystem primitives:
 `args`, `sysexit`, `getEnv`, `fileExists`, `isFile`, `isDirectory`, `makeDirectory`, `removeFile`,
-`removeDirectory`, `renameFile`, `currentDirectory`, `changeDirectory`, `listDirectory`, `run`, and `modifiedTime`.
+`removeDirectory`, `renameFile`, `currentDirectory`, `changeDirectory`, `listDirectory`, and `run`. Files'
+metadata, times included, comes from `os/fileStats` ([new-libraries.md](new-libraries.md) §4.1).
 
 ### 2.1. Process Execution (`subprocess.run`)
 - **Python Usage**: `compiler_runner.py` invokes the host C compiler (`clang` or `gcc`) to compile and link generated

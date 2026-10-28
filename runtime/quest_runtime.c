@@ -3306,19 +3306,6 @@ void *quest_system_run(const QArray *args) {
     return result;
 }
 
-QReal quest_system_modified_time(const QString *path) {
-    struct stat st;
-    if (path == NULL || path->data == NULL || stat(path->data, &st) != 0) {
-        quest_raise_system_error();
-    }
-    /* Computed as Python computes st_mtime, so that the two agree exactly */
-#ifdef __APPLE__
-    return (double)st.st_mtimespec.tv_sec + (double)st.st_mtimespec.tv_nsec * 1e-9;
-#else
-    return (double)st.st_mtim.tv_sec + (double)st.st_mtim.tv_nsec * 1e-9;
-#endif
-}
-
 /* os/fileStats (see quest_runtime.h) */
 void *quest_filestats_stat(const QString *path, bool follow) {
     if (path == NULL || path->data == NULL) quest_raise_system_error();

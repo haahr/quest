@@ -86,10 +86,6 @@ export
        for it: its exit code (a signal's negated number if one killed it) and its standard output and error. Raises
        system.error if the program cannot be run. *)
 
-    modifiedTime(path: String): Real
-    (* Returns the time the file at `path` was last modified, in seconds since the epoch, as Python's st_mtime gives
-       it. Raises system.error on failure. *)
-
     isTerminal(fd: Int): Bool
     (* Returns whether the file descriptor `fd` (0 for standard input, 1 for standard output, 2 for standard error) is
        open and refers to a terminal, as isatty does; false for any other number that is not one. *)

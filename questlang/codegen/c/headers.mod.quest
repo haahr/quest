@@ -2,6 +2,7 @@
 
 module headers : Headers
 import
+    questlang/common/files : questlang/common/Files
     questlang/syntax/ast : questlang/syntax/Ast
     questlang/types/model : questlang/types/Model
     questlang/types/symbols : questlang/types/Symbols
@@ -22,7 +23,6 @@ import
     util/stringBuilder : util/StringBuilder
     util/strutil : util/Strutil
     stringOp = string : StringOp
-    real : RealOp
     ascii : Ascii
     writer : Writer
     system : System
@@ -268,8 +268,12 @@ export
         end
 
     let headerIsCurrent(qi: String header: String): Bool =
-        system.isFile(header) andif system.isFile(qi)
-            andif real.greaterEq(system.modifiedTime(header) system.modifiedTime(qi))
+        begin
+            let headerTime = files.fileTime(header)
+            let qiTime = files.fileTime(qi)
+            maybe.isSome(:Int headerTime) andif maybe.isSome(:Int qiTime)
+                andif {maybe.unwrap(:Int headerTime) >= maybe.unwrap(:Int qiTime)}
+        end
 
     let writeText(file: String text: String): Ok =
         begin

@@ -1,10 +1,8 @@
 (* system.run runs a program without a shell and gives its exit code and
-   output; system.modifiedTime gives a file's modification time. The test runs
-   in a fresh, empty directory of its own (docs/testing.md section 2.2). *)
+   output. (os/fileStats, in the os_filestats test, gives files' times.) *)
 import system: System;
 import writer: Writer;
 import conv: Conv;
-import real: RealOp;
 import stringOp = string: StringOp;
 let print(s: String): Ok = writer.putString(writer.output s <> "\n");
 let show(r: Tuple code: Int stdout: String stderr: String end): Ok =
@@ -23,14 +21,4 @@ print("killed: " <> conv.int(system.run(array of "sh" "-c" "kill -9 $$" end).cod
 
 (* A program that cannot run, and no program at all *)
 print(try system.run(array of "no-such-program-quest" end).stdout when system.error then "cannot run" end);
-print(try system.run(array of end).stdout when system.error then "no program" end);
-
-(* Modification times: a file's, and a missing file's *)
-let f = writer.file("written.txt");
-writer.putString(f "x");
-writer.close(f);
-let t = system.modifiedTime("written.txt");
-let again = system.modifiedTime("written.txt");
-print("time: " <> conv.bool(real.greater(t 1000000000.0)) <> " "
-    <> conv.bool(real.smallerEq(t again) andif real.greaterEq(t again)));
-print(try conv.real(system.modifiedTime("missing.txt")) when system.error then "missing" end)
+print(try system.run(array of end).stdout when system.error then "no program" end)
