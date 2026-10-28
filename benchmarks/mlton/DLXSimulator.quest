@@ -21,7 +21,7 @@ let print(s: String): Ok = writer.putString(writer.output s)
 Let W = word.T
 let mask32 = word.fromInt(4294967295)
 let w(n: Int): W = word.andBits(word.fromInt(n) mask32)
-let hex(s: String): W = strutil.toWordBase(s 16)
+(* SML's hexadecimal word literals (0wx...) are written in decimal: Quest has none *)
 let weq(a: W b: W): Bool = word.toInt(a) is word.toInt(b)
 let add32(a: W b: W): W = word.andBits(word.add(a b) mask32)
 let sub32(a: W b: W): W = word.andBits(word.sub(a b) mask32)
@@ -81,8 +81,8 @@ let map(A::TYPE B::TYPE)(f: All(a: A) B ia: ImmArray(A)): ImmArray(B) =
 (* structure RegisterFile *)
 Let RegisterFile = ImmArray(W)
 let initRegisterFile(): RegisterFile =
-    update(:W)(update(:W)(update(:W)(update(:W)(immarray(:W)(32 w(0)) 0 w(0)) 28 w(0)) 29 hex("00040000")) 30
-        hex("00040000"))
+    update(:W)(update(:W)(update(:W)(update(:W)(immarray(:W)(32 w(0)) 0 w(0)) 28 w(0)) 29 w(262144)) 30
+        w(262144))
 let loadRegister(rf: RegisterFile reg: Int): W = sub(:W)(rf reg)
 let storeRegister(rf: RegisterFile reg: Int data: W): RegisterFile = update(:W)(rf reg data)
 
@@ -132,7 +132,7 @@ Let MemWord = Tuple mem: Memory w: W end
 let alignWAddress(address: W): W = shl(shr(address 2) 2)
 let alignHWAddress(address: W): W = shl(shr(address 1) 1)
 
-let memInit(): Memory = tuple let mem = immarray(:W)(toInt(hex("10000")) w(0)) let counts = tuple let reads = 0
+let memInit(): Memory = tuple let mem = immarray(:W)(toInt(w(65536)) w(0)) let counts = tuple let reads = 0
     let writes = 0 end end
 
 let memLoad(m: Memory address: W): MemWord =
@@ -242,7 +242,7 @@ let getTag(address: W): W = shr(address indexBits + blockOffsetBits)
  * address *)
 let getIndex(address: W): W =
     begin
-        let mask = notb(shl(shr(hex("FFFFFFFF") indexBits + blockOffsetBits) indexBits + blockOffsetBits))
+        let mask = notb(shl(shr(w(4294967295) indexBits + blockOffsetBits) indexBits + blockOffsetBits))
         shr(andb(address mask) blockOffsetBits)
     end
 
@@ -250,7 +250,7 @@ let getIndex(address: W): W =
  * field of address *)
 let getBlockOffset(address: W): W =
     begin
-        let mask = notb(shl(shr(hex("FFFFFFFF") blockOffsetBits) blockOffsetBits))
+        let mask = notb(shl(shr(w(4294967295) blockOffsetBits) blockOffsetBits))
         andb(address mask)
     end
 
@@ -456,12 +456,12 @@ let cStoreByte(m: CMemory address: W data: W): CMemory =
     begin
         let alignedAddress = address
         let sWord = cLoad(m alignedAddress).w
-        let put(keep: String shift: Int): CMemory = cStore(m alignedAddress
-            orb(andb(hex(keep) sWord) shl(andb(hex("000000FF") data) shift)))
-        if weq(alignedAddress w(0)) then put("FFFFFF00" 0)
-        elsif weq(alignedAddress w(8)) then put("FFFF00FF" 8)
-        elsif weq(alignedAddress w(16)) then put("FF00FFFF" 16)
-        elsif weq(alignedAddress w(24)) then put("00FFFFFF" 24)
+        let put(keep: W shift: Int): CMemory = cStore(m alignedAddress
+            orb(andb(keep sWord) shl(andb(w(255) data) shift)))
+        if weq(alignedAddress w(0)) then put(w(4294967040) 0)
+        elsif weq(alignedAddress w(8)) then put(w(4294902015) 8)
+        elsif weq(alignedAddress w(16)) then put(w(4278255615) 16)
+        elsif weq(alignedAddress w(24)) then put(w(16777215) 24)
         else begin print("Error SB: Memory unchanged\n") m end
         end
     end
@@ -513,13 +513,13 @@ let op(o: Opcode): Opcode = o
 let nonOp = option nonOp of Opcode end
 let isNonOp(o: Opcode): Bool = case o when nonOp then true else false end
 
-let field(instr: W shift: Int): Int = toInt(andb(shr(instr shift) hex("1F")))
+let field(instr: W shift: Int): Int = toInt(andb(shr(instr shift) w(31)))
 
 (* The function DecodeIType decodes a Word32.word into an I-type
  * instruction *)
 let decodeIType(instr: W): Instruction =
     begin
-        let opc = toInt(andb(shr(instr 26) hex("3F")))
+        let opc = toInt(andb(shr(instr 26) w(63)))
         let opcode =
             if opc is 4 then option beqz of Opcode end elsif opc is 5 then option bnez of Opcode end
             elsif opc is 8 then option addi of Opcode end elsif opc is 9 then option addui of Opcode end
@@ -553,7 +553,7 @@ let decodeRType(instr: W): Instruction =
         let rs2 = field(instr 16)
         let rd = field(instr 11)
         let shamt = field(instr 6)
-        let funct = toInt(andb(instr hex("3F")))
+        let funct = toInt(andb(instr w(63)))
         let functcode =
             if funct is 0 then option nop of RRFunctCode end elsif funct is 4 then option sllF of RRFunctCode end
             elsif funct is 6 then option srlF of RRFunctCode end elsif funct is 7 then option sraF of RRFunctCode end
@@ -576,7 +576,7 @@ let decodeRType(instr: W): Instruction =
  * instruction *)
 let decodeJType(instr: W): Instruction =
     begin
-        let opc = toInt(andb(shr(instr 26) hex("3F")))
+        let opc = toInt(andb(shr(instr 26) w(63)))
         let opcode =
             if opc is 2 then option j of Opcode end elsif opc is 3 then option jal of Opcode end
             elsif opc is 17 then option trap of Opcode end elsif opc is 18 then option jr of Opcode end
@@ -593,7 +593,7 @@ let decodeJType(instr: W): Instruction =
  * and DecodeRType to complete the decoding process. *)
 let decodeInstr(instr: W): Instruction =
     begin
-        let opcode = toInt(andb(shr(instr 26) hex("3F")))
+        let opcode = toInt(andb(shr(instr 26) w(63)))
         if opcode is 0 then decodeRType(instr)
         elsif {opcode is 2} orif {opcode is 3} orif {opcode is 17} orif {opcode is 18} orif {opcode is 19}
             then decodeJType(instr)
@@ -643,11 +643,11 @@ let performIType(opcode: Opcode rs1: Int rd: Int immediate: W m: Machine): Machi
             when sgei then alu(option sge of ALUOp end)
             when lb then load(cLoadByte(m.mem address true))
             when lbu then load(cLoadByte(m.mem address false))
-            when sb then machine(m.pc m.rf cStoreByte(m.mem address andb(hex("000000FF") loadRegister(m.rf rd))) m.trap)
+            when sb then machine(m.pc m.rf cStoreByte(m.mem address andb(w(255) loadRegister(m.rf rd))) m.trap)
             when lh then load(cLoadHWord(m.mem address true))
             when lhu then load(cLoadHWord(m.mem address false))
             (* sic: SH stores a byte *)
-            when sh then machine(m.pc m.rf cStoreByte(m.mem address andb(hex("0000FFFF") loadRegister(m.rf rd))) m.trap)
+            when sh then machine(m.pc m.rf cStoreByte(m.mem address andb(w(65535) loadRegister(m.rf rd))) m.trap)
             when lw then load(cLoadWord(m.mem address))
             when sw then machine(m.pc m.rf cStoreWord(m.mem address loadRegister(m.rf rd)) m.trap)
             else begin print("Error : Non I-Type opcode, performing NOP\n") m end
@@ -769,10 +769,10 @@ let rec loadProgAux(instrs: lists.T(String) mem: CMemory address: W): CMemory =
 
 (* The function LoadProg takes a list of instructions and memory, and loads
  * the file into memory, beginning at 0x10000 *)
-let loadProg(instrs: lists.T(String) mem: CMemory): CMemory = loadProgAux(instrs mem hex("00010000"))
+let loadProg(instrs: lists.T(String) mem: CMemory): CMemory = loadProgAux(instrs mem w(65536))
 
 let runProg(instructions: lists.T(String) trap: Trap): Result =
-    cycleLoop(machine(hex("00010000") initRegisterFile() loadProg(instructions cInit()) trap))
+    cycleLoop(machine(w(65536) initRegisterFile() loadProg(instructions cInit()) trap))
 
 (* Example programs *)
 
