@@ -267,9 +267,12 @@ def build_questlang_tests(
 ) -> None:
     """Compiles and links the questlang tests in build_dir, one at a time, with
     the bootstrap's driver or driver_command, so that the modules they import
-    are compiled once. The tests then run in parallel in build_dir, reading the
-    fresh artifacts and writing only their own programs'. A test that fails to
-    build here fails when it runs, and reports why."""
+    are compiled once. Their run_c_compiled phase then runs them in parallel in
+    build_dir, once this has finished, reading the fresh artifacts and writing
+    only their own programs'. Their other phases, which run while this builds,
+    use their workers' own build directories, since they compile into the build
+    directory they are given. A test that fails to build here fails when it
+    runs, and reports why."""
     build_dir.mkdir(parents=True, exist_ok=True)
     for source_file in source_files:
         command = [
@@ -1088,7 +1091,14 @@ def run_all_tests(
                         def make_golden_runner(
                             sf: Path, p: str
                         ) -> Callable[[Path], tuple[bool, str, str]]:
-                            shared = questlang_build_dir if questlang_build is not None and sf in questlang_files else None
+                            # Only run_c_compiled waits for the shared
+                            # build; a phase before it would compile into
+                            # the directory while the build writes it
+                            shared = (
+                                questlang_build_dir
+                                if questlang_build is not None and p == "run_c_compiled" and sf in questlang_files
+                                else None
+                            )
                             return lambda w_dir: run_single_golden_test(
                                 sf,
                                 p,
