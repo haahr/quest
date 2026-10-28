@@ -12,17 +12,25 @@ files some of them write are kept apart from the tree.
                                  output with expected/
     run.py time [NAME...]        time the conversions (and with --mlton the
                                  originals) at the suite's counts, scaled by
-                                 --scale
+                                 --scale, or at --count
+    run.py report FILE...        summarize the times recorded with --results:
+                                 each system's time and its ratio to MLton's
+                                 at the same count, and their geometric means
 
 A benchmark's output is its standard output, its exit status, and the files it
 writes. Builds go to .build/ here: the conversions are built by
-./quest (or --compiler, such as ./questc), the originals by mlton.
+./quest (or --compiler, such as ./questc), the originals by mlton. With
+--interpret, the conversions are not built but run by the compiler's
+tree-walking interpreter (--stop-after interpret). docs/benchmarks.md describes
+the baseline these make.
 """
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import json
+import math
 import re
 import resource
 import shutil
@@ -142,16 +150,29 @@ def deep_stack() -> None:
         pass  # some systems (recent macOS among them) refuse; the benchmark runs with soft
 
 
-def run_in_scratch(binary: Path, count: int | str, timeout: float) -> tuple[str, int, dict[str, bytes], float]:
-    """Standard output, exit status, the files written or changed, and the
-    seconds taken, of running binary with count in a scratch directory holding
-    a copy of DATA/."""
+def interpreted(name: str, compiler: list[str]) -> list[str]:
+    """The command that runs the conversion in the compiler's interpreter."""
+    source = HERE / f"{name}.quest"
+    if not source.is_file():
+        raise FileNotFoundError(f"{source.relative_to(ROOT)} does not exist")
+    # The interpreter builds the modules the program imports, in a build
+    # directory of its own rather than the scratch directory's .build/
+    build = BUILD_DIR / "interpret" / Path(compiler[0]).name
+    return [*compiler, "--build-dir", str(build), "--stop-after", "interpret", str(source)]
+
+
+def run_in_scratch(program: Path | list[str], count: int | str,
+                   timeout: float) -> tuple[str, int, dict[str, bytes], float, str]:
+    """Standard output, exit status, the files written or changed, the seconds
+    taken, and standard error, of running program (a binary, or a command) with
+    count in a scratch directory holding a copy of DATA/."""
     with tempfile.TemporaryDirectory() as d:
         work = Path(d)
         shutil.copytree(DATA_DIR, work / "DATA")
         before = {p.relative_to(work).as_posix(): p.read_bytes() for p in work.rglob("*") if p.is_file()}
         start = time.perf_counter()
-        proc = subprocess.run([str(binary), str(count)], cwd=work, stdin=subprocess.DEVNULL, capture_output=True,
+        command = [str(program)] if isinstance(program, Path) else program
+        proc = subprocess.run([*command, str(count)], cwd=work, stdin=subprocess.DEVNULL, capture_output=True,
                               preexec_fn=deep_stack,
                               timeout=timeout)
         elapsed = time.perf_counter() - start
@@ -160,7 +181,7 @@ def run_in_scratch(binary: Path, count: int | str, timeout: float) -> tuple[str,
             rel = p.relative_to(work).as_posix()
             if p.is_file() and before.get(rel) != p.read_bytes():
                 written[rel] = p.read_bytes()
-        return proc.stdout.decode("latin-1"), proc.returncode, written, elapsed
+        return proc.stdout.decode("latin-1"), proc.returncode, written, elapsed, proc.stderr.decode("latin-1")
 
 
 def file_digests(written: dict[str, bytes]) -> str:
@@ -192,17 +213,126 @@ def differences(name: str, stdout: str, status: int, written: dict[str, bytes], 
     return problems
 
 
+def time_runs(name: str, system: str, program: Path | list[str], count: int, args: argparse.Namespace) -> list[float]:
+    """The seconds each of --runs runs of program took, appended to --results
+    if given. A run that times out ends the runs, and is recorded as taking
+    longer than --timeout. A run at count 1 must print what expected/ holds;
+    one that does not is recorded with the first line of its standard error."""
+    seconds: list[float] = []
+    timed_out = False
+    wrong = None
+    for _ in range(args.runs):
+        try:
+            stdout, status, written, elapsed, stderr = run_in_scratch(program, count, args.timeout)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            break
+        seconds.append(elapsed)
+        if count == 1 and differences(name, stdout, status, written):
+            errors = [line for line in stderr.splitlines() if "error" in line.lower()]
+            wrong = re.sub(r"^\S+:\d+:\d+: ", "", (errors or stderr.splitlines() or ["(no error)"])[0])
+            break
+    if args.results:
+        entry = {"name": name, "system": system, "count": count, "seconds": seconds}
+        if timed_out:
+            entry["timeout"] = args.timeout
+        if wrong is not None:
+            entry["wrong"] = wrong
+        Path(args.results).parent.mkdir(parents=True, exist_ok=True)
+        with open(args.results, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    if timed_out:
+        raise subprocess.TimeoutExpired(system, args.timeout)
+    if wrong is not None:
+        raise BuildError(f"{system} printed the wrong output: {wrong}")
+    return seconds
+
+
+def median(xs: list[float]) -> float:
+    xs = sorted(xs)
+    return (xs[len(xs) // 2] + xs[(len(xs) - 1) // 2]) / 2
+
+
+def geomean(xs: list[float]) -> float:
+    return math.exp(sum(map(math.log, xs)) / len(xs))
+
+
+def ratio_text(r: float) -> str:
+    return f"{r:.3f}" if r < 0.1 else f"{r:.2f}" if r < 10 else f"{r:.1f}" if r < 1000 else f"{r:.0f}"
+
+
+def report(paths: list[str], exclude: list[str]) -> int:
+    """Prints, for each Quest system, a Markdown table of its median time on
+    each benchmark and MLton's at the same count, the ratio of the two, and the
+    geometric mean of the ratios, over every benchmark and over those not in
+    exclude. A later entry for a benchmark, system, and count replaces an
+    earlier one. A run that timed out shows as >TIMEOUT, its ratio a lower
+    bound, and makes the means lower bounds. A run that printed the wrong
+    output shows as failed, and counts in no mean."""
+    entries: dict[tuple[str, str, int], dict] = {}
+    for path in paths:
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                e = json.loads(line)
+                entries[e["name"], e["system"], e["count"]] = e
+    for system in sorted({s for _, s, _ in entries if s != "mlton"}):
+        print(f"| Benchmark | n | MLton | {system} | Ratio |\n|---|--:|--:|--:|--:|")
+        ratios: dict[str, float] = {}
+        bounded = failed = 0
+        for (name, s, count), e in sorted(entries.items(), key=lambda kv: kv[0][0].lower()):
+            base = entries.get((name, "mlton", count))
+            if s != system or base is None or not base["seconds"]:
+                continue
+            m = median(base["seconds"])
+            if e.get("wrong") is not None:
+                failed += 1
+                print(f"| {name} | {count} | {m:.2f} | failed: {e['wrong']} | |")
+                continue
+            mark = ""
+            if e.get("timeout") is not None:
+                t, mark = e["timeout"], ">"
+                bounded += 1
+            else:
+                t = median(e["seconds"])
+            ratios[name] = t / m
+            print(f"| {name} | {count} | {m:.2f} | {mark}{t:.2f} | {mark}{ratio_text(t / m)} |")
+        mark = ">" if bounded else ""
+        if ratios:
+            print(f"| **geometric mean** ({len(ratios)}) | | | | **{mark}{geomean(list(ratios.values())):.2f}** |")
+            kept = [r for n, r in ratios.items() if n not in exclude]
+            if exclude and kept:
+                print(f"| geometric mean without {', '.join(exclude)} ({len(kept)}) | | | | {mark}{geomean(kept):.2f} |")
+        if failed:
+            print(f"\n{failed} failed")
+        print()
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=("reference", "check", "time"))
+    parser.add_argument("command", choices=("reference", "check", "time", "report"))
     parser.add_argument("names", nargs="*")
     parser.add_argument("--compiler", default=str(ROOT / "quest"), help="the Quest compiler (default ./quest)")
     parser.add_argument("--scale", type=float, default=1.0, help="multiply the suite's counts by this (time)")
+    parser.add_argument("--count", type=int, help="run every program at this count (time)")
     parser.add_argument("--mlton", action="store_true", help="also time the originals (time)")
+    parser.add_argument("--mlton-only", action="store_true", help="time only the originals (time)")
+    parser.add_argument("--interpret", action="store_true",
+                        help="run the conversions in the compiler's interpreter (check, time)")
+    parser.add_argument("--runs", type=int, default=1, help="time each program this many times (time)")
+    parser.add_argument("--results", help="append the times to this file, as JSON lines (time)")
     parser.add_argument("--timeout", type=float, default=3600.0, help="seconds a run may take")
-    args = parser.parse_args()
+    parser.add_argument("--exclude", default="", help="benchmarks to leave out of a second mean, NAME,... (report)")
+    args = parser.parse_intermixed_args()
+    if args.command == "report":
+        return report(args.names, [n for n in args.exclude.split(",") if n])
     names = benchmark_names(args.names)
-    compiler = [args.compiler]
+    # Programs run in a scratch directory, so a compiler named by a path is named by its absolute one
+    compiler = [str(Path(args.compiler).resolve()) if "/" in args.compiler else args.compiler]
+    system = Path(args.compiler).name + (" interpret" if args.interpret else "")
+
+    def conversion(name: str) -> Path | list[str]:
+        return interpreted(name, compiler) if args.interpret else build_conversion(name, compiler)
 
     failed = []
     for name in names:
@@ -214,7 +344,7 @@ def main() -> int:
                     record(name, *run_in_scratch(binary, "testit", args.timeout)[:3], suffix="-testit")
                 print(f"{name}: recorded")
             elif args.command == "check":
-                binary = build_conversion(name, compiler)
+                binary = conversion(name)
                 problems = differences(name, *run_in_scratch(binary, 1, args.timeout)[:3])
                 if name in TESTIT:
                     problems += differences(name, *run_in_scratch(binary, "testit", args.timeout)[:3], suffix="-testit")
@@ -222,12 +352,16 @@ def main() -> int:
                 if problems:
                     failed.append(name)
             else:
-                count = max(1, round(COUNTS[name] * args.scale))
-                *_, quest_seconds = run_in_scratch(build_conversion(name, compiler), count, args.timeout)
-                line = f"{name:20} n={count:<7} quest {quest_seconds:9.2f}s"
-                if args.mlton:
-                    *_, mlton_seconds = run_in_scratch(build_original(name), count, args.timeout)
-                    line += f"  mlton {mlton_seconds:9.2f}s  ratio {quest_seconds / mlton_seconds:7.1f}"
+                count = args.count or max(1, round(COUNTS[name] * args.scale))
+                line = f"{name:20} n={count:<7}"
+                if args.mlton or args.mlton_only:
+                    mlton_seconds = median(time_runs(name, "mlton", build_original(name), count, args))
+                    line += f" mlton {mlton_seconds:9.2f}s"
+                if not args.mlton_only:
+                    quest_seconds = median(time_runs(name, system, conversion(name), count, args))
+                    line += f" {system} {quest_seconds:9.2f}s"
+                    if args.mlton:
+                        line += f"  ratio {quest_seconds / mlton_seconds:7.1f}"
                 print(line, flush=True)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError, BuildError) as err:
             print(f"{name}: {err}")

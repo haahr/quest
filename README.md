@@ -232,6 +232,8 @@ system, intermediate representation, and native runtime design. If you are new t
 ### 4. Testing, Diagnostics, & Contributor Guide
 - [docs/testing.md](docs/testing.md): Test harness architecture: golden files, inline comment error tests, IR phase
   evaluators, conversion matrices, and performance benchmarks.
+- [docs/benchmarks.md](docs/benchmarks.md): The MLton benchmark suite converted to Quest, the topline performance
+  metric (the self-hosted compiler's time over MLton's), its baseline, and where the time goes.
 - [docs/diagnostics.md](docs/diagnostics.md): Structured diagnostic error reporting, severity levels, and multi-file
   import traces.
 - [docs/instructions.md](docs/instructions.md): Guide for contributors and models working on Quest: workflow, commands,

@@ -12,6 +12,7 @@ conversions' output against MLton's and times both.
 | `expected/` | The originals' output, as MLton-compiled programs produce it: standard output and exit status (`NAME.out`), and the path, size, and SHA-256 of each file written (`NAME.files`) |
 | `tools/` | Scripts that transliterated the originals' large data sections and generated tables into Quest |
 | `run.py` | The runner |
+| `baselines/` | Times recorded by `run.py time --results`, for `run.py report` ([docs/benchmarks.md](../../docs/benchmarks.md)) |
 
 The originals keep their authors' copyrights, noted in each file; MLton's license is in `sml/MLton-LICENSE`.
 
@@ -26,10 +27,15 @@ The originals keep their authors' copyrights, noted in each file; MLton's licens
 ```
 
 `run.py check [NAME...]` builds the conversions with `./quest` (or `--compiler`) and compares a run of each, at count 1,
-with `expected/`. `run.py time [NAME...]` times them at MLton's counts times `--scale`, and with `--mlton` the
-originals too. `run.py reference [NAME...]` rebuilds the originals with `mlton` and records their output in
-`expected/` again. Each program runs in a scratch directory holding a copy of `DATA/`, so the files some of them write
-stay out of the tree. Builds go to `.build/`.
+with `expected/`. `run.py time [NAME...]` times them at MLton's counts times `--scale` (or at `--count`), and with
+`--mlton` the originals too; `--runs` repeats each run, and `--results` records the times for `run.py report`, which
+tabulates them with their ratios to MLton's and their geometric means. With `--interpret`, the compiler's interpreter
+runs the conversions instead. `run.py reference [NAME...]` rebuilds the originals with `mlton` and records their
+output in `expected/` again. Each program runs in a scratch directory holding a copy of `DATA/`, so the files some of
+them write stay out of the tree. Builds go to `.build/`.
+
+[docs/benchmarks.md](../../docs/benchmarks.md) describes the runner's options, the topline metric (the geometric mean
+of the self-hosted compiler's time over MLton's), the baseline in `baselines/`, and where the time goes.
 
 A program does its work n times, n being its first argument. MLton's counts make each original run for 30 to 45 seconds
 on its authors' machine; the conversions take longer.
@@ -78,5 +84,7 @@ exactly what its conversion does. No recorded output depends on those bits.
 
 - tensor's operations produce results nothing uses, and MLton removes the work, so its original runs in milliseconds.
   The conversion does all the work, so tensor's ratio says nothing about either compiler.
+- fib, tak, and tailfib compute the same pure function of the same constants each iteration, and clang computes it
+  once, outside the loop, so their conversions take the same time at any count.
 - `run.py` raises the stack limit as far as the system allows before each run, since the originals assume MLton's
   stack, which grows on the heap; macOS keeps the limit at 8 MB.
