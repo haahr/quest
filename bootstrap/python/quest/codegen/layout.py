@@ -721,7 +721,8 @@ def _generic_layout_agrees(s: Shape, subst: dict[int, QType], place: str, seen: 
         return all(slot(c.shape) for c in s.components)
     if kind in ("variant", "option"):
         return all(c.shape is None or slot(c.shape) for c in s.cases)
-    if kind == "array":
+    if kind in ("array", "exception"):
+        # An exception's payload is raised in a QVal word, read as a slot
         return slot(s.element)
     if kind in ("cell", "out"):
         return _generic_layout_agrees(s.element, subst, _CELL, seen)
@@ -731,8 +732,8 @@ def _generic_layout_agrees(s: Shape, subst: dict[int, QType], place: str, seen: 
         ) and _generic_layout_agrees(s.result, subst, _REGISTER, seen)
     if kind == "all":
         return _generic_layout_agrees(s.body, subst, place, seen)
-    # Anything else that mentions a type parameter (auto types, exception types,
-    # path types) may differ
+    # Anything else that mentions a type parameter (auto types, path types) may
+    # differ
     return False
 
 

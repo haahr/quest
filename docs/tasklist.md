@@ -74,37 +74,6 @@ a prefix, everywhere at once.
 
 ---
 
-## Polymorphic functions that pass exceptions of their type parameters to local functions
-
-**Problem.** A polymorphic function that defines a local function with a parameter of type `Exception(B)`, for its
-type parameter `B`, and passes it to another polymorphic function, fails in C code generation: "a thunk converts by the
-descriptor of 'B', which mentions the type parameter B of the function it is made in, whose descriptor it is not
-passed". The interpreters run it. Converted code makes such functions monomorphic (benchmarks/mlton).
-
-**Reproduce.**
-
-```
-let sub(A::TYPE)(f: All(s: A e: Exception(A)) A s: A): A =
-    begin
-        let e: Exception(A) = exception e: A end
-        try f(s e) when e with v then v end
-    end
-let g(B::TYPE)(x: B): B =
-    begin
-        let h(s: B e: Exception(B)): B = raise e with s end
-        sub(:B)(h x)
-    end
-let y = g(:Int)(5)
-```
-
-**Where to start.** `check_available` in `bootstrap/python/quest/ir/describe.py`, which raises the error, and its port
-in `questlang/ir/describe.mod.quest`: the thunk that converts `h` needs `B`'s descriptor, which `g` has but does not pass
-to the thunk; closure conversion should capture it.
-
-**Done when.** The example compiles and runs, with a test in `tests/source/`, in both compilers.
-
----
-
 ## Capture rules for `var` variables as the paper has them
 
 **Problem.** The type checker's rule for which mutable variables a function may use is the reverse of the paper's.

@@ -1,0 +1,77 @@
+main {
+  funs {
+    fun sub [A::TYPE](f: Fun(s: A e: Exception(A)): A, s: A): A {
+      let e: Exception(A) = exception e: A
+      let e.1: Exception(A) = e
+      join k1(r: A) {
+        return r
+      } in {
+        try catching (e.1) {
+          let %1: A = call f(s, e.1)
+          jump k1(%1)
+        } handle (e.2: Exception) {
+          let %2: Bool = prim is(e.2, e.1)
+          if %2 {
+            let v: A = exception_payload(e.2)
+            jump k1(v)
+          } else {
+            reraise e.2
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun g [B::TYPE](x: B): B {
+      funs {
+        fun h(s.1: B, e.3: Exception(B)): B {
+          raise e.3 with s.1
+        }
+      }
+      let %3: B = call sub [B](h, x)
+      return %3
+    }
+  }
+  let y: Int = call g [Int](5)
+  let z: String = call g [String]("five")
+  funs {
+    fun pair [A::TYPE](f.1: Fun(e: Exception(Tuple a: A n: Int end)): A, x.1: A): Int {
+      let e.4: Exception(Tuple a: A n: Int end) = exception e: Tuple a: A n: Int end
+      let e.5: Exception(Tuple a: A n: Int end) = e.4
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        try catching (e.5) {
+          let ignored: A = call f.1(e.5)
+          jump k2(0)
+        } handle (e.6: Exception) {
+          let %4: Bool = prim is(e.6, e.5)
+          if %4 {
+            let v.1: Tuple a: A n: Int end = exception_payload(e.6)
+            let %5: Int = tuple_field(v.1, 1)
+            jump k2(%5)
+          } else {
+            reraise e.6
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun k [B::TYPE](x.2: B): Int {
+      funs {
+        fun h.1(e.7: Exception(Tuple a: B n: Int end)): B {
+          let a: B = x.2
+          let n: Int = 7
+          let %6: Tuple a: B n: Int end = tuple(a, n)
+          raise e.7 with %6
+        }
+      }
+      let %7: Int = call pair [B](h.1, x.2)
+      return %7
+    }
+  }
+  let %8: Record p: Int end = record(p = 1)
+  let r.2: Int = call k [Record p: Int end](%8)
+}
+

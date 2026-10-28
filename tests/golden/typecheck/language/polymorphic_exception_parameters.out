@@ -1,0 +1,109 @@
+(TypedProgram
+  :phrases (
+    (TypedLetValue 'sub' :type All(A :: TYPE) Fun(f: Fun(s: A e: Exception(A)): A s: A): A
+      :value (TypedFun :params (('f' : Fun(s: A e: Exception(A)): A) ('s' : A)) :type All(A :: TYPE) Fun(f: Fun(s: A e: Exception(A)): A s: A): A
+        :body (TypedBlock :type A
+          :bindings (
+            (TypedLetValue 'e' :type Exception(A)
+              :value (TypedException 'e' :type Exception(A)))
+          )
+          :result (TypedTry :type A
+            :body (TypedApp :type A
+              :func (TypedVar 'f' :type Fun(s: A e: Exception(A)): A)
+              :args (
+                (TypedVar 's' :type A)
+                (TypedVar 'e' :type Exception(A))
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedVar 'e' :type Exception(A))
+                :body (TypedVar 'v' :type A))
+            )))))
+    (TypedLetValue 'g' :type All(B :: TYPE) Fun(x: B): B
+      :value (TypedFun :params (('x' : B)) :type All(B :: TYPE) Fun(x: B): B
+        :body (TypedBlock :type B
+          :bindings (
+            (TypedLetValue 'h' :type Fun(s: B e: Exception(B)): B
+              :value (TypedFun :params (('s' : B) ('e' : Exception(B))) :type Fun(s: B e: Exception(B)): B
+                :body (TypedRaise :type B
+                  :exc (TypedVar 'e' :type Exception(B))
+                  :payload (TypedVar 's' :type B))))
+          )
+          :result (TypedApp :type B
+            :func (TypedTypeApp [B] :type Fun(f: Fun(s: B e: Exception(B)): B s: B): B
+              :func (TypedVar 'sub' :type All(A :: TYPE) Fun(f: Fun(s: A e: Exception(A)): A s: A): A))
+            :args (
+              (TypedVar 'h' :type Fun(s: B e: Exception(B)): B)
+              (TypedVar 'x' :type B)
+            )))))
+    (TypedLetValue 'y' :type Int
+      :value (TypedApp :type Int
+        :func (TypedTypeApp [Int] :type Fun(x: Int): Int
+          :func (TypedVar 'g' :type All(B :: TYPE) Fun(x: B): B))
+        :args (
+          (TypedInt 5 :type Int)
+        )))
+    (TypedLetValue 'z' :type String
+      :value (TypedApp :type String
+        :func (TypedTypeApp [String] :type Fun(x: String): String
+          :func (TypedVar 'g' :type All(B :: TYPE) Fun(x: B): B))
+        :args (
+          (TypedString 'five' :type String)
+        )))
+    (TypedLetValue 'pair' :type All(A :: TYPE) Fun(f: Fun(e: Exception(Tuple a: A n: Int end)): A x: A): Int
+      :value (TypedFun :params (('f' : Fun(e: Exception(Tuple a: A n: Int end)): A) ('x' : A)) :type All(A :: TYPE) Fun(f: Fun(e: Exception(Tuple a: A n: Int end)): A x: A): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'e' :type Exception(Tuple a: A n: Int end)
+              :value (TypedException 'e' :type Exception(Tuple a: A n: Int end)))
+          )
+          :result (TypedTry :type Int
+            :body (TypedBlock :type Int
+              :bindings (
+                (TypedLetValue 'ignored' :type A
+                  :value (TypedApp :type A
+                    :func (TypedVar 'f' :type Fun(e: Exception(Tuple a: A n: Int end)): A)
+                    :args (
+                      (TypedVar 'e' :type Exception(Tuple a: A n: Int end))
+                    )))
+              )
+              :result (TypedInt 0 :type Int))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedVar 'e' :type Exception(Tuple a: A n: Int end))
+                :body (TypedSelect 'n' :type Int
+                  :target (TypedVar 'v' :type Tuple a: A n: Int end)))
+            )))))
+    (TypedLetValue 'k' :type All(B :: TYPE) Fun(x: B): Int
+      :value (TypedFun :params (('x' : B)) :type All(B :: TYPE) Fun(x: B): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'h' :type Fun(e: Exception(Tuple a: B n: Int end)): B
+              :value (TypedFun :params (('e' : Exception(Tuple a: B n: Int end))) :type Fun(e: Exception(Tuple a: B n: Int end)): B
+                :body (TypedRaise :type B
+                  :exc (TypedVar 'e' :type Exception(Tuple a: B n: Int end))
+                  :payload (TypedTuple :type Tuple a: B n: Int end
+                    :elements (
+                      (TypedVar 'x' :type B)
+                      (TypedInt 7 :type Int)
+                    )))))
+          )
+          :result (TypedApp :type Int
+            :func (TypedTypeApp [B] :type Fun(f: Fun(e: Exception(Tuple a: B n: Int end)): B x: B): Int
+              :func (TypedVar 'pair' :type All(A :: TYPE) Fun(f: Fun(e: Exception(Tuple a: A n: Int end)): A x: A): Int))
+            :args (
+              (TypedVar 'h' :type Fun(e: Exception(Tuple a: B n: Int end)): B)
+              (TypedVar 'x' :type B)
+            )))))
+    (TypedLetValue 'r' :type Int
+      :value (TypedApp :type Int
+        :func (TypedTypeApp [Record p: Int end] :type Fun(x: Record p: Int end): Int
+          :func (TypedVar 'k' :type All(B :: TYPE) Fun(x: B): Int))
+        :args (
+          (TypedRecord :type Record p: Int end
+            :fields (
+              (TypedRecordField 'p'
+                :value (TypedInt 1 :type Int))
+            ))
+        )))
+  ))

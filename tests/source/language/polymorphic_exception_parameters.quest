@@ -1,0 +1,34 @@
+(* Language: a polymorphic function passing a local function with a parameter
+   of type Exception(B), for its type parameter B, to another polymorphic
+   function. An exception's payload is raised in a QVal word, read as a slot,
+   so Exception(A) in generic code is laid out as Exception(B) wherever the
+   payload's slot agrees, and the local function needs no thunk converting by
+   B's descriptor. *)
+(* @echo *)
+
+(* 1. The local function raises the exception it is passed *)
+let sub(A::TYPE)(f: All(s: A e: Exception(A)) A s: A): A =
+    begin
+        let e: Exception(A) = exception e: A end
+        try f(s e) when e with v then v end
+    end;
+let g(B::TYPE)(x: B): B =
+    begin
+        let h(s: B e: Exception(B)): B = raise e with s end
+        sub(:B)(h x)
+    end;
+let y = g(:Int)(5);
+let z = g(:String)("five");
+
+(* 2. A payload mentioning the type parameter inside a tuple, at a record *)
+let pair(A::TYPE)(f: All(e: Exception(Tuple a: A n: Int end)) A x: A): Int =
+    begin
+        let e: Exception(Tuple a: A n: Int end) = exception e: Tuple a: A n: Int end end
+        try let ignored = f(e) 0 when e with v then v.n end
+    end;
+let k(B::TYPE)(x: B): Int =
+    begin
+        let h(e: Exception(Tuple a: B n: Int end)): B = raise e with tuple x 7 end end
+        pair(:B)(h x)
+    end;
+let r = k(:Record p: Int end)(record p = 1 end);
