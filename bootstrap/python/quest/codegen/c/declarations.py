@@ -475,28 +475,41 @@ class CDeclarationEmitter:
         tuple_coercions: Sequence[tuple[QTupleType, QTupleType]],
         variant_coercions: Sequence[tuple[QVariantType, QVariantType]],
     ) -> list[str]:
-        """The checks behind tuple casts, and the tables behind variant tag
-        renumbering, for the (supertype, subtype) pairs the unit's code
-        converts between.
+        """The checks and tables that let a tuple or a variant be used at a
+        supertype without being copied, for the (supertype, subtype) pairs the
+        unit's code converts between.
 
-        A tuple is used at a supertype, which may have fewer components, by
-        casting its pointer (a cast plan, CPrinter.convert): Tuple :Int :Int
-        end seen as Tuple :Int end. That is right only if each component the
-        supertype has is at the same offset in both structs, which a static
-        assertion makes the C compiler check:
+        Where a value is used at a supertype of its type, as when it is passed
+        to a parameter of the supertype, its C representation may have to
+        change. The represent pass decides how, and records the decision in
+        the IR as a plan (ir.Plan), whose kind names the conversion;
+        CPrinter.convert prints it. This section supports two kinds of plan.
+
+        Tuples (cast). A tuple is a pointer to a struct of its components, and
+        a supertype of a tuple type has a prefix of its components: Tuple :Int
+        :Int end can be used as Tuple :Int end. Rather than copy the tuple, a
+        cast plan reuses the pointer as a pointer to the supertype's struct,
+        ((QTuple_Int *)t). That reads the right memory only if each of the
+        supertype's components is at the same offset in both structs. The
+        printer records each pair of tuple types it casts between
+        (tuple_casts), and this section makes the C compiler check them:
 
             static_assert(offsetof(QTuple_Int_Int, _0)
                           == offsetof(QTuple_Int, _0), ...);
 
-        A variant's tag is the index of its case in its type, cases numbered in
-        the order of their names, so a variant seen at a supertype with more
-        cases needs a new tag (a variant_tags plan). The table is indexed by the
-        subtype's tag and holds the supertype's: from Variant a: Int c: Int end
-        (a is 0, c 1) to Variant a: Int b: Bool c: Int end (a 0, b 1, c 2),
+        Variants (variant_tags). A variant's tag is the index of its case in
+        its type, the cases numbered in the order of their names, so a
+        supertype with more cases may number them differently, and the tag
+        must be translated. The table for a pair is indexed by the subtype's
+        tag and holds the supertype's. From Variant a: Int c: Int end (a is 0,
+        c 1) to Variant a: Int b: Bool c: Int end (a 0, b 1, c 2), it is
 
             static const int64_t
                 tagmap_QVariant_a_Int_b_Bool_c_Int_QVariant_a_Int_c_Int[2] =
-                { 0, 2 };"""
+                { 0, 2 };
+
+        and the variant v is converted as .tag = tagmap_...[v.tag], its
+        payload unchanged."""
         lines: list[str] = []
         if tuple_coercions:
             lines.append("/* Compile-time static assertions for tuple subtyping */")
