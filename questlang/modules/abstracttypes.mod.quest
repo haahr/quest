@@ -24,6 +24,7 @@ export
     let intEqual(a: Int b: Int): Bool = a is b
     let symbolIds = hashMap.new(:String :Int stringOp.equal hash.string)
     let abstractSymbolIds = hashMap.new(:Int :Bool intEqual hash.int)
+    let globalNames = hashMap.new(:Int :String intEqual hash.int)
     let bySymbol = hashMap.new(:Int :ModuleAbstractType intEqual hash.int)
     let byName = hashMap.new(:String :ModuleAbstractType stringOp.equal hash.string)
 
@@ -36,11 +37,14 @@ export
                 let symbolId = symbols.allocateSymbolId()
                 hashMap.insert(:String :Int symbolIds globalName symbolId)
                 hashMap.insert(:Int :Bool abstractSymbolIds symbolId true)
+                hashMap.insert(:Int :String globalNames symbolId globalName)
                 symbolId
             end
         end
 
     let isAbstractTypeSymbol(symbolId: Int): Bool = hashMap.contains(:Int :Bool abstractSymbolIds symbolId)
+
+    let abstractTypeGlobalName(symbolId: Int): maybe.T(String) = hashMap.get(:Int :String globalNames symbolId)
 
     let recordType(globalName: String typeVar: model.Type linked: Bool): ModuleAbstractType =
         begin

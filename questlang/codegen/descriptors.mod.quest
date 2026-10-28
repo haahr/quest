@@ -22,11 +22,20 @@ export
         case t.form
             when typeVariable with x then
                 let entry = abstractTypes.abstractTypeBySymbol(x.symbolId)
-                if maybe.isSome(:abstractTypes.ModuleAbstractType entry)
-                    andif maybe.unwrap(:abstractTypes.ModuleAbstractType entry).linked then
-                    maybe.some(:String maybe.unwrap(:abstractTypes.ModuleAbstractType entry).globalName)
+                if maybe.isSome(:abstractTypes.ModuleAbstractType entry) then
+                    if maybe.unwrap(:abstractTypes.ModuleAbstractType entry).linked then
+                        maybe.some(:String maybe.unwrap(:abstractTypes.ModuleAbstractType entry).globalName)
+                    else
+                        maybe.none(:String)
+                    end
                 else
-                    maybe.none(:String)
+                    (* A type the process has not recorded yet has its global
+                     * name all the same: its module is recorded when it is
+                     * elaborated from source, which a unit compiled before it,
+                     * or in another process, does not see. So that a unit's C
+                     * does not depend on what was compiled before it, the name
+                     * does not either. *)
+                    abstractTypes.abstractTypeGlobalName(x.symbolId)
                 end
             else maybe.none(:String)
         end

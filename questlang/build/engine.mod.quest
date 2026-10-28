@@ -19,6 +19,7 @@ import
     questlang/modules/interfaceCompiler : questlang/modules/InterfaceCompiler
     questlang/modules/moduleCompiler : questlang/modules/ModuleCompiler
     questlang/build/logger : questlang/build/Logger
+    questlang/build/workers : questlang/build/Workers
     passes = questlang/codegen/backend : questlang/codegen/Backend
     cBackend = questlang/codegen/c/backend : questlang/codegen/c/Backend
     questlang/codegen/c/compilerRunner : questlang/codegen/c/CompilerRunner
@@ -83,6 +84,8 @@ export
         nogc: Bool
         compiler: maybe.T(String)
         extraCFlags: Array(String)
+        jobs: Int
+        driver: String
     end
     Let ImportRef = Tuple interfacePath: String names: Array(String) modulePaths: Array(String) end
 
@@ -133,7 +136,23 @@ export
                 let nogc = nogc
                 let compiler = maybe.none(:String)
                 let extraCFlags = array of :String end
+                let jobs = 1
+                let driver = ""
             end
+        end
+
+    let parallel(eng: T jobs: Int driver: String): T =
+        tuple
+            let buildDir = eng.buildDir
+            let resolver = eng.resolver
+            let includePaths = eng.includePaths
+            let extraObjects = eng.extraObjects
+            let logger = eng.logger
+            let nogc = eng.nogc
+            let compiler = eng.compiler
+            let extraCFlags = eng.extraCFlags
+            let jobs = jobs
+            let driver = driver
         end
 
     let log(eng: T tag: String message: String): Ok = logger.log(eng.logger tag message)
@@ -457,6 +476,54 @@ export
             cycle
         end
 
+    (* A module a wave of the queue popped (unflushedBuildModules), with the
+     * log entries popping it made *)
+    Let Note = Tuple tag: String message: String end
+    Let Popped = Tuple
+        item: String
+        src: maybe.T(String)
+        targetDir: String
+        a: graph.ModuleArtifacts
+        stale: Bool
+        notes: vector.T(Note)
+        failure: maybe.T(All() Ok)
+    end
+
+    (* The stale modules of a wave compiled in child processes of the driver,
+     * when eng.jobs allows more than one at once and there is more than one:
+     * their outcomes, by index in the wave; none for the rest, which are
+     * compiled in this process as their turns come *)
+    let compileWave(eng: T wave: Array(Popped) search: Array(String) programDir: maybe.T(String))
+        : Array(maybe.T(workers.Outcome)) =
+        begin
+            let outcomes = array of(extent wave maybe.none(:workers.Outcome))
+            let indexes = vector.new(:Int)
+            for i = 0 upto {extent wave - 1} do
+                if wave[i].stale andif maybe.isNone(:All() Ok wave[i].failure) then vector.append(:Int indexes i) end
+            end
+            let n = vector.length(:Int indexes)
+            if {eng.jobs > 1} andif {n > 1} then
+                let jobOf = fun(p: Popped): workers.Job
+                    tuple
+                        let source = maybe.unwrap(:String p.src)
+                        let targetDir = p.targetDir
+                        let searchPaths = search
+                        let compiler = eng.compiler
+                        let nogc = eng.nogc
+                        let extraCFlags = eng.extraCFlags
+                        let buildDir = maybe.some(:String str(eng.buildDir))
+                        let programDir = programDir
+                    end
+                let jobs = array of(n jobOf(wave[vector.get(:Int indexes 0)]))
+                for k = 1 upto {n - 1} do jobs[k] := jobOf(wave[vector.get(:Int indexes k)]) end
+                let results = workers.compileAll(jobs eng.jobs eng.driver)
+                for k = 0 upto {n - 1} do
+                    outcomes[vector.get(:Int indexes k)] := maybe.some(:workers.Outcome results[k])
+                end
+            end
+            outcomes
+        end
+
     let unflushedBuildModules(eng: T roots: Array(manifest.ImportedModuleRef) importer: String
         programDir: maybe.T(String)): Array(String) =
         begin
@@ -571,108 +638,288 @@ export
 
             enqueueImports(importer roots)
 
-            while head < vector.length(:String queue) do
-                let item = vector.get(:String queue head)
-                head := head + 1
-                log(eng "POP QUEUE" quoted(item) <> " (kind=module)")
+            (* Pops item, as a serial build does: where its artifacts are,
+             * and whether they are stale. What it logs is kept with it, and
+             * an error it raises is kept to be raised again (failure), for
+             * when its turn comes (below). *)
+            let pop = fun(item: String notes: vector.T(Note)): Popped
+                begin
+                    let note = fun(tag: String message: String): Ok
+                        vector.append(:Note notes tuple let tag = tag let message = message end)
+                    note("POP QUEUE" quoted(item) <> " (kind=module)")
 
-                (* The importer records the source it found; a manifest without
-                 * one names its modules only by their canonical names *)
-                let recorded = recordedSource(item)
-                let src = if maybe.isSome(:String recorded) andif system.isFile(maybe.unwrap(:String recorded)) then
-                    recorded
-                else
-                    paths.findCanonicalModuleSource(item search programDir)
-                end
-                let canon = if maybe.isSome(:String src) then
-                    graph.canonicalName(graph.resolveFile(eng.resolver maybe.unwrap(:String src)
-                        graph.rootsOf(search programDir)))
-                else
-                    paths.lower(item)
-                end
-                let targetDir = graph.unitArtifactDir(str(eng.buildDir) canon)
-                system.makeDirectory(targetDir)
-                let artifactStem = graph.artifactStem(canon)
-                let var a = graph.moduleArtifacts(str(eng.buildDir) canon)
-                let var reason = maybe.none(:String)
-                if maybe.isNone(:String src) then
-                    (* A binary distribution: a prebuilt object (and .qm)
-                     * without source is up to date *)
-                    let var foundObject = maybe.none(:String)
-                    for i = 0 upto {extent eng.extraObjects - 1} do
-                        let s = paths.lower(stem(str(eng.extraObjects[i])))
-                        if maybe.isNone(:String foundObject)
-                            andif {eq(s artifactStem) orif eq(s paths.lower(item))} then
-                            foundObject := maybe.some(:String str(eng.extraObjects[i]))
+                    (* The importer records the source it found; a manifest
+                     * without one names its modules only by their canonical
+                     * names *)
+                    let recorded = recordedSource(item)
+                    let src = if maybe.isSome(:String recorded) andif system.isFile(maybe.unwrap(:String recorded)) then
+                        recorded
+                    else
+                        paths.findCanonicalModuleSource(item search programDir)
+                    end
+                    let canon = if maybe.isSome(:String src) then
+                        graph.canonicalName(graph.resolveFile(eng.resolver maybe.unwrap(:String src)
+                            graph.rootsOf(search programDir)))
+                    else
+                        paths.lower(item)
+                    end
+                    let targetDir = graph.unitArtifactDir(str(eng.buildDir) canon)
+                    system.makeDirectory(targetDir)
+                    let artifactStem = graph.artifactStem(canon)
+                    let var a = graph.moduleArtifacts(str(eng.buildDir) canon)
+                    let var reason = maybe.none(:String)
+                    if maybe.isNone(:String src) then
+                        (* A binary distribution: a prebuilt object (and .qm)
+                         * without source is up to date *)
+                        let var foundObject = maybe.none(:String)
+                        for i = 0 upto {extent eng.extraObjects - 1} do
+                            let s = paths.lower(stem(str(eng.extraObjects[i])))
+                            if maybe.isNone(:String foundObject)
+                                andif {eq(s artifactStem) orif eq(s paths.lower(item))} then
+                                foundObject := maybe.some(:String str(eng.extraObjects[i]))
+                            end
+                        end
+                        if maybe.isNone(:String foundObject) then
+                            foundObject := paths.resolveObjectFile(item programDir search)
+                        end
+                        if maybe.isSome(:String foundObject) andif system.isFile(maybe.unwrap(:String foundObject)) then
+                            let o = maybe.unwrap(:String foundObject)
+                            let dir = stringOp.getSub(o 0 {stringOp.length(o) - stringOp.length(paths.baseName(o))})
+                            let qmCandidate = dir <> stem(o) <> ".qm"
+                            a := tuple let qm = if system.isFile(qmCandidate) then qmCandidate else a.qm end
+                                let c = a.c let o = o end
+                            if system.isFile(qmCandidate) andif not(abi.hasCurrentAbi(qmCandidate)) then
+                                fail(:Ok abi.incompatibleArtifactMessage(qmCandidate))
+                            end
+                        elsif not(system.isFile(a.qm) andif system.isFile(a.o)) then
+                            fail(:Ok "Undefined module " <> quoted(item)
+                                <> ": cannot find source file or precompiled object in "
+                                <> pyList(search))
+                        end
+                    else
+                        reason := unitStaleness(eng maybe.unwrap(:String src) a programDir)
+                        if maybe.isSome(:String reason) then
+                            (* Fresh artifacts next to the source (from a
+                             * standalone compilation) are used like those in
+                             * the build directory (docs/build-process.md
+                             * section 5.2) *)
+                            let beside = graph.artifactsIn(paths.parent(maybe.unwrap(:String src)) artifactStem)
+                            if not(eq(beside.qm a.qm))
+                                andif maybe.isNone(:String
+                                    unitStaleness(eng maybe.unwrap(:String src) beside programDir))
+                                andif eq(maybe.unwrapOr(:String manifestName(beside.qm) "") canon)
+                                andif maybe.isSome(:String manifestName(beside.qm)) then
+                                a := beside
+                                reason := maybe.none(:String)
+                            end
                         end
                     end
-                    if maybe.isNone(:String foundObject) then
-                        foundObject := paths.resolveObjectFile(item programDir search)
-                    end
-                    if maybe.isSome(:String foundObject) andif system.isFile(maybe.unwrap(:String foundObject)) then
-                        let o = maybe.unwrap(:String foundObject)
-                        let qmCandidate = stringOp.getSub(o 0 {stringOp.length(o) - stringOp.length(paths.baseName(o))})
-                            <> stem(o) <> ".qm"
-                        a := tuple let qm = if system.isFile(qmCandidate) then qmCandidate else a.qm end
-                            let c = a.c let o = o end
-                        if system.isFile(qmCandidate) andif not(abi.hasCurrentAbi(qmCandidate)) then
-                            fail(:Ok abi.incompatibleArtifactMessage(qmCandidate))
-                        end
-                    elsif not(system.isFile(a.qm) andif system.isFile(a.o)) then
-                        fail(:Ok "Undefined module " <> quoted(item)
-                            <> ": cannot find source file or precompiled object in "
-                            <> pyList(search))
-                    end
-                else
-                    reason := unitStaleness(eng maybe.unwrap(:String src) a programDir)
+
                     if maybe.isSome(:String reason) then
-                        (* Fresh artifacts next to the source (from a standalone
-                         * compilation) are used like those in the build
-                         * directory (docs/build-process.md section 5.2) *)
-                        let beside = graph.artifactsIn(paths.parent(maybe.unwrap(:String src)) artifactStem)
-                        if not(eq(beside.qm a.qm))
-                            andif maybe.isNone(:String unitStaleness(eng maybe.unwrap(:String src) beside programDir))
-                            andif eq(maybe.unwrapOr(:String manifestName(beside.qm) "") canon)
-                            andif maybe.isSome(:String manifestName(beside.qm)) then
-                            a := beside
-                            reason := maybe.none(:String)
+                        note("EVAL STALENESS" quoted(item) <> " -> STALE (" <> maybe.unwrap(:String reason) <> ")")
+                        note("COMPILE MODULE" quoted(item))
+                    else
+                        note("EVAL STALENESS" quoted(item) <> " -> UP TO DATE")
+                    end
+                    tuple
+                        let item = item let src = src let targetDir = targetDir let a = a
+                        let stale = maybe.isSome(:String reason) let notes = notes
+                        let failure = maybe.none(:All() Ok)
+                    end
+                end
+            let popped = fun(item: String): Popped
+                begin
+                    let notes = vector.new(:Note)
+                    let failed = fun(failure: All() Ok): Popped
+                        tuple
+                            let item = item let src = maybe.none(:String) let targetDir = ""
+                            let a = tuple let qm = "" let c = "" let o = "" end
+                            let stale = false let notes = notes let failure = maybe.some(:All() Ok failure)
+                        end
+                    try
+                        pop(item notes)
+                    when buildError with m then
+                        failed(fun(): Ok fail(:Ok m))
+                    when diagnostics.compilerError with err then
+                        failed(fun(): Ok diagnostics.raiseError(:Ok err))
+                    end
+                end
+
+            (* The queue is taken a wave at a time (docs/build-process.md
+             * section 7.4). A wave pops the modules queued and not yet
+             * popped, and, with eng.jobs above 1, those it predicts they will
+             * queue: the modules each one's source (or, if it is up to date,
+             * its manifest) imports, which their manifests will list. It
+             * compiles the stale ones, in up to eng.jobs child processes at
+             * once. Then the queue is followed as a serial build follows it,
+             * each module in turn writing the log entries popping it made,
+             * reading its manifest, and queueing what it imports, until it
+             * reaches a module the wave did not pop. The queue grows in a
+             * serial build's order, and the log has its entries in its
+             * order. *)
+            let prepared = vector.new(:Popped)
+            let outcomes = vector.new(:maybe.T(workers.Outcome))
+            let preparedIndex = fun(item: String): Int
+                begin
+                    let var found = ~1
+                    for i = 0 upto {vector.length(:Popped prepared) - 1} do
+                        if {found < 0} andif eq(vector.get(:Popped prepared i).item item) then found := i end
+                    end
+                    found
+                end
+            let preparedOf = fun(item: String): maybe.T(Popped)
+                begin
+                    let i = preparedIndex(item)
+                    if i < 0 then maybe.none(:Popped) else maybe.some(:Popped vector.get(:Popped prepared i)) end
+                end
+            let outcomeOf = fun(item: String): maybe.T(workers.Outcome)
+                vector.get(:maybe.T(workers.Outcome) outcomes preparedIndex(item))
+            let roots = graph.rootsOf(search programDir)
+            (* The modules a popped module's manifest will list, as far as they
+             * can be known before it is compiled: its own top-level imports
+             * resolved as its compilation resolves them (unitModuleRefs). The
+             * imports its C adds are found when its turn comes. *)
+            let predictedImports = fun(p: Popped): Array(manifest.ImportedModuleRef)
+                if maybe.isSome(:All() Ok p.failure) orif maybe.isNone(:String p.src) then
+                    array of :manifest.ImportedModuleRef end
+                elsif not(p.stale) then
+                    let m = if system.isFile(p.a.qm) then manifest.readQm(p.a.qm)
+                        else maybe.none(:manifest.ModuleManifest) end
+                    if maybe.isSome(:manifest.ModuleManifest m) then
+                        maybe.unwrap(:manifest.ModuleManifest m).importedModules
+                    else
+                        array of :manifest.ImportedModuleRef end
+                    end
+                else
+                    let src = maybe.unwrap(:String p.src)
+                    let found = vector.new(:manifest.ImportedModuleRef)
+                    try
+                        let text = paths.readText(src)
+                        if maybe.isSome(:String text) then
+                            case units.unitDeclaration(units.parseUnit(location.newSourceMap(src
+                                maybe.unwrap(:String text))) src)
+                                when moduleDecl with d then
+                                    for i = 0 upto {vector.length(:ast.ImportItem d.decl.imports) - 1} do
+                                        let it = vector.get(:ast.ImportItem d.decl.imports i)
+                                        let modulePaths = effectiveModulePaths(it)
+                                        for j = 0 upto {vector.length(:String it.names) - 1} do
+                                            let path = if {j < vector.length(:String modulePaths)}
+                                                andif {stringOp.length(vector.get(:String modulePaths j)) > 0} then
+                                                vector.get(:String modulePaths j)
+                                            else
+                                                vector.get(:String it.names j)
+                                            end
+                                            let m = graph.resolveModule(eng.resolver path
+                                                maybe.some(:String paths.parent(src)) roots)
+                                            vector.append(:manifest.ImportedModuleRef found tuple
+                                                let name = graph.canonicalName(m) let interfaceName = ""
+                                                let source = maybe.unwrapOr(:String m.source "") let path = path
+                                            end)
+                                        end
+                                    end
+                                else ok
+                            end
+                        end
+                    when diagnostics.compilerError then
+                        (* Its compilation reports why *)
+                        ok
+                    when buildError then
+                        ok
+                    end
+                    vector.toArray(:manifest.ImportedModuleRef found)
+                end
+
+            while head < vector.length(:String queue) do
+                (* Pop the modules queued and not yet popped, and those they are
+                 * predicted to queue *)
+                let wave = vector.new(:Popped)
+                let add = fun(p: Popped): Ok
+                    begin
+                        vector.append(:Popped wave p)
+                        vector.append(:Popped prepared p)
+                        vector.append(:maybe.T(workers.Outcome) outcomes maybe.none(:workers.Outcome))
+                    end
+                for i = head upto {vector.length(:String queue) - 1} do
+                    let item = vector.get(:String queue i)
+                    if preparedIndex(item) < 0 then add(popped(item)) end
+                end
+                if eng.jobs > 1 then
+                    let var next = 0
+                    while next < vector.length(:Popped wave) do
+                        let imports = predictedImports(vector.get(:Popped wave next))
+                        next := next + 1
+                        for i = 0 upto {extent imports - 1} do
+                            let dep = imports[i]
+                            if not(contains(discovered dep.name)) andif not(contains(discovered paths.lower(dep.name)))
+                                andif {preparedIndex(dep.name) < 0} then
+                                (* Where its importer's manifest will say it is *)
+                                if stringOp.length(dep.source) > 0 then
+                                    vector.append(:String sourceNames dep.name)
+                                    vector.append(:String sourceFiles dep.source)
+                                end
+                                add(popped(dep.name))
+                            end
                         end
                     end
                 end
-
-                let m = if maybe.isSome(:String reason) then
-                    log(eng "EVAL STALENESS" quoted(item) <> " -> STALE (" <> maybe.unwrap(:String reason) <> ")")
-                    log(eng "COMPILE MODULE" quoted(item))
-                    typecheck.install()
-                    moduleCompiler.compileModuleFile(maybe.unwrap(:String src) maybe.some(:String targetDir) search
-                        eng.compiler
-                        eng.nogc eng.extraCFlags maybe.some(:String str(eng.buildDir)) programDir
-                        maybe.some(:graph.Resolver eng.resolver))
-                    manifest.readQm(a.qm)
-                else
-                    log(eng "EVAL STALENESS" quoted(item) <> " -> UP TO DATE")
-                    if system.isFile(a.qm) then manifest.readQm(a.qm) else maybe.none(:manifest.ModuleManifest) end
+                let compiled = compileWave(eng vector.toArray(:Popped wave) search programDir)
+                let base = vector.length(:Popped prepared) - vector.length(:Popped wave)
+                for i = 0 upto {extent compiled - 1} do
+                    vector.set(:maybe.T(workers.Outcome) outcomes {base + i} compiled[i])
                 end
 
-                if maybe.isSome(:manifest.ModuleManifest m) then
-                    let mf = maybe.unwrap(:manifest.ModuleManifest m)
-                    setManifest(paths.lower(item) mf)
-                    verifyModuleInterface(paths.lower(item) mf.interfaceName)
-                    if {stringOp.length(mf.name) > 0} andif not(eq(paths.lower(mf.name) paths.lower(item))) then
-                        setManifest(paths.lower(mf.name) mf)
-                        verifyModuleInterface(paths.lower(mf.name) mf.interfaceName)
+                (* Follow the queue through the modules popped *)
+                while {head < vector.length(:String queue)}
+                    andif {preparedIndex(vector.get(:String queue head)) >= 0} do
+                    let item = vector.get(:String queue head)
+                    head := head + 1
+                    let p = maybe.unwrap(:Popped preparedOf(item))
+                    for i = 0 upto {vector.length(:Note p.notes) - 1} do
+                        let n = vector.get(:Note p.notes i)
+                        log(eng n.tag n.message)
                     end
+                    if maybe.isSome(:All() Ok p.failure) then
+                        let raiseAgain = maybe.unwrap(:All() Ok p.failure)
+                        raiseAgain()
+                    end
+                    let m = if p.stale then
+                        if maybe.isSome(:workers.Outcome outcomeOf(item)) then
+                            let o = maybe.unwrap(:workers.Outcome outcomeOf(item))
+                            writer.putString(writer.err o.stderr)
+                            workers.raiseFailure(o)
+                        else
+                            typecheck.install()
+                            moduleCompiler.compileModuleFile(maybe.unwrap(:String p.src) maybe.some(:String p.targetDir)
+                                search eng.compiler eng.nogc eng.extraCFlags maybe.some(:String str(eng.buildDir))
+                                programDir maybe.some(:graph.Resolver eng.resolver))
+                            ok
+                        end
+                        manifest.readQm(p.a.qm)
+                    else
+                        if system.isFile(p.a.qm) then manifest.readQm(p.a.qm)
+                        else maybe.none(:manifest.ModuleManifest) end
+                    end
+
+                    if maybe.isSome(:manifest.ModuleManifest m) then
+                        let mf = maybe.unwrap(:manifest.ModuleManifest m)
+                        setManifest(paths.lower(p.item) mf)
+                        verifyModuleInterface(paths.lower(p.item) mf.interfaceName)
+                        if {stringOp.length(mf.name) > 0} andif not(eq(paths.lower(mf.name) paths.lower(p.item))) then
+                            setManifest(paths.lower(mf.name) mf)
+                            verifyModuleInterface(paths.lower(mf.name) mf.interfaceName)
+                        end
+                    end
+                    let imported = if maybe.isSome(:manifest.ModuleManifest m) then
+                        maybe.unwrap(:manifest.ModuleManifest m).importedModules
+                    else
+                        array of :manifest.ImportedModuleRef end
+                    end
+                    if not(contains(linked p.a.o)) then vector.append(:String linked p.a.o) end
+                    let deps = array of(extent imported "")
+                    for i = 0 upto {extent imported - 1} do deps[i] := imported[i].name end
+                    vector.append(:Edges moduleGraph tuple let node = p.item let neighbors = deps end)
+                    enqueueImports(p.item imported)
                 end
-                let imported = if maybe.isSome(:manifest.ModuleManifest m) then
-                    maybe.unwrap(:manifest.ModuleManifest m).importedModules
-                else
-                    array of :manifest.ImportedModuleRef end
-                end
-                if not(contains(linked a.o)) then vector.append(:String linked a.o) end
-                let deps = array of(extent imported "")
-                for i = 0 upto {extent imported - 1} do deps[i] := imported[i].name end
-                vector.append(:Edges moduleGraph tuple let node = item let neighbors = deps end)
-                enqueueImports(item imported)
             end
 
             log(eng "QUEUE EMPTY" "transitive closure verified (" <> conv.int(vector.length(:String linked))

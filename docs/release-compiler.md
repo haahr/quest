@@ -10,7 +10,8 @@ The plan expected builds to get faster too, and they have. The self-hosted compi
 from nothing in about a minute, against the bootstrap's 10, so a seeded build's two stages take about two minutes
 (with a release cut after the speedups of 2026-10-27; an older release takes 8 minutes for stage 1). The release also
 pays off in incremental builds (`./questc` rebuilds only stale units) and in freedom from the bootstrap. Parallel
-builds ([tasklist.md](tasklist.md)) would make full builds faster still.
+builds ([build-process.md](build-process.md) §7.4) make stage 2's build faster still: about 34 seconds rather than 56;
+stage 1 builds serially until a release has `-j`.
 
 The decisions (2026-10-26): a release seeds in two stages, against its own `lib/` and `runtime/` (§2); releases are
 cut by hand; one previous release is kept; and the plan is carried out after Milestone 5.

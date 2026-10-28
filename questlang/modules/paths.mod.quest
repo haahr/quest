@@ -20,6 +20,7 @@ import
     stringOp = string : StringOp
     reader : Reader
     ascii : Ascii
+    writer : Writer
     system : System
 export
     (* ======================================================================
@@ -141,6 +142,21 @@ export
         end
 
     let modifiedNs(p: String): Int = fileStats.stat(p).modifiedNs
+
+    (* What this process's temporary files are named with: none but the
+     * driver's workers set one (build/workers) *)
+    let worker = tuple let var tag = "" end
+    let setWorkerTag(tag: String): Ok = worker.tag := tag
+
+    let writeAtomically(file: String text: String): Ok =
+        begin
+            system.makeDirectory(parent(file))
+            let temporary = file <> ".tmp" <> worker.tag
+            let w = writer.file(temporary)
+            writer.putString(w text)
+            writer.close(w)
+            system.renameFile(temporary file)
+        end
 
     let projectDir(): String =
         begin

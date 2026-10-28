@@ -23,7 +23,6 @@ import
     util/strutil : util/Strutil
     stringOp = string : StringOp
     ascii : Ascii
-    writer : Writer
     system : System
 export
     Let Type = model.Type
@@ -274,13 +273,7 @@ export
                 andif {maybe.unwrap(:Int headerTime) >= maybe.unwrap(:Int qiTime)}
         end
 
-    let writeText(file: String text: String): Ok =
-        begin
-            system.makeDirectory(paths.parent(file))
-            let w = writer.file(file)
-            writer.putString(w text)
-            writer.close(w)
-        end
+    let writeText(file: String text: String): Ok = paths.writeAtomically(file text)
 
     Let Artifacts = Tuple header: String qi: String end
 

@@ -1,0 +1,47 @@
+(* Quest Self-Hosted Compiler: The Build Workers Interface
+ *
+ * Compiling modules in child processes, for a parallel build (-j N,
+ * docs/build-process.md section 7.4). The engine compiles a wave of stale
+ * modules at once, in child processes of the driver run in unit mode
+ * (--unit-module), each compiling a batch of them in order, as the engine
+ * would itself. A child that fails writes its error to its standard output,
+ * and the engine raises it again, so that it is reported as a serial build
+ * reports it. *)
+
+interface Workers
+import
+    util/maybe : util/Maybe
+export
+    (* A module to compile, with what the engine passes
+     * moduleCompiler.compileModuleFile *)
+    Def Job = Tuple
+        source: String
+        targetDir: String
+        searchPaths: Array(String)
+        compiler: maybe.T(String)
+        nogc: Bool
+        extraCFlags: Array(String)
+        buildDir: maybe.T(String)
+        programDir: maybe.T(String)
+    end
+
+    (* How a job went: what the child wrote to standard error, and if it
+     * failed, the error it wrote (failure) *)
+    Def Outcome = Tuple source: String stderr: String failure: maybe.T(String) end
+
+    (* Compiles jobs in at most n child processes of driver, each compiling a
+     * batch of them; their outcomes, in jobs' order *)
+    compileAll(jobs: Array(Job) n: Int driver: String): Array(Outcome)
+
+    (* Raises the error a failed outcome records, as the child raised it:
+     * diagnostics.compilerError, or compilerRunner.failure *)
+    raiseFailure(o: Outcome): Ok
+
+    (* Whether a driver's arguments run it in unit mode *)
+    isUnitMode(args: Array(String)): Bool
+
+    (* The child's side: compiles the modules args (the driver's arguments)
+     * describe, in order. If one fails, it writes its index and the error to
+     * standard output, and exits with 1. *)
+    unitMain(args: Array(String)): Ok
+end

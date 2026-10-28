@@ -42,6 +42,7 @@ class ModuleAbstractType:
 
 
 _SYMBOL_IDS: dict[str, int] = {}
+_GLOBAL_NAMES: dict[int, str] = {}
 _ABSTRACT_SYMBOL_IDS: set[int] = set()
 _BY_SYMBOL: dict[int, ModuleAbstractType] = {}
 _BY_NAME: dict[str, ModuleAbstractType] = {}
@@ -54,7 +55,14 @@ def abstract_type_symbol_id(global_name: str) -> int:
     if symbol_id is None:
         symbol_id = _SYMBOL_IDS[global_name] = allocate_symbol_id()
         _ABSTRACT_SYMBOL_IDS.add(symbol_id)
+        _GLOBAL_NAMES[symbol_id] = global_name
     return symbol_id
+
+
+def abstract_type_global_name(symbol_id: int) -> Optional[str]:
+    """The global name a module abstract type's opaque type has its symbol id
+    for (abstract_type_symbol_id), or None for any other symbol."""
+    return _GLOBAL_NAMES.get(symbol_id)
 
 
 def is_abstract_type_symbol(symbol_id: int) -> bool:

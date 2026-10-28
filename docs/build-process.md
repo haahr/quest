@@ -792,6 +792,40 @@ build engine, so there is exactly one implementation of staleness checks, artifa
 | Modules a unit links against (§6.2) | `build.engine.unit_module_refs` |
 | Artifact paths under the build directory (§3.2) | `graph.unit_artifact_dir`, `ModuleArtifacts`, `interface_qi_file`, `interface_header_file` |
 
+### 7.4. Parallel Builds (`-j N`, the Self-Hosted Compiler)
+The self-hosted driver's `-j N` compiles up to N modules at once (`questlang/build/engine`, `questlang/build/workers`).
+`./questc` builds its stage 2 with as many as there are CPUs (`QUESTC_JOBS`); the runner builds the self-hosting
+check's stages and the questlang tests that way. The bootstrap builds serially. A parallel build writes the same
+artifacts as a serial one, and the same `build.log` entries in the same order; only the times differ.
+
+- **Modules depend on interfaces, not on each other,** so any stale modules can compile at once once the interfaces
+  they import are built. The engine learns which modules to build only from the manifests their compilations write
+  (§7.1), so it takes the queue a **wave** at a time. A wave pops the modules queued and not yet popped, and those they
+  are predicted to queue: each popped module's top-level imports (from its source if it is stale, from its manifest
+  if not), resolved as its compilation resolves them, and so on. Its manifest will list them, so the prediction is
+  never wrong, only short of the imports its C adds or a nested import brings, which the next wave pops.
+- **Popping is a serial build's.** A wave works out each module's artifacts and staleness as a serial build would when
+  the module's turn comes, which does not depend on the modules compiled before it, and keeps the log entries that
+  makes, and any error it raises.
+- **The stale modules compile in child processes.** They are dealt round robin into at most N batches. Each batch is
+  compiled in order by one child, the driver run in unit mode (`--unit-module`, one per module, with the engine's
+  search paths and options), so that it loads the interfaces its modules share once, as a serial build does.
+- **Then the queue is followed as a serial build follows it.** Each module in turn writes its log entries, raises its
+  error if popping or compiling it failed, reads its manifest, verifies interfaces, and queues its imports. A child
+  stops at its first failure and writes the error to its standard output; the engine raises it again in its turn, so
+  the error reported is a serial build's (the first in queue order), reported as a serial build reports it.
+- **Workers write interfaces' artifacts atomically.** Two children may rebuild the same stale interface at once: each
+  writes a `.qi` and a header to a temporary file of its own and renames it into place (`paths.writeAtomically`), so
+  neither reads half of a file the other writes. Only one process writes each module's artifacts.
+- **A unit's C does not depend on what was compiled before it.** A module abstract type's descriptor is named by its
+  global name (`os/process.T`) whether or not the process has elaborated its module, which a child may not have done
+  (`descriptors.moduleAbstractTypeName`).
+
+`tests/self-hosted/parallel_build.py` builds the programs under `tests/self-hosted/parallel-build` and
+`tests/self-hosted/build-errors` with `-j 1` and `-j 4`, and requires the same artifacts, log, and output, or the
+same error. Building the self-hosted driver with `-j 8` takes about 34 seconds, against 56 serially: the main
+program's compilation (about 10 seconds) is serial, and each child loads its batch's interfaces itself.
+
 ---
 
 ## 8. Self-Guarding Idempotent Module Initialization & Linking

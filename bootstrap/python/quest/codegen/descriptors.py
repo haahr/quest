@@ -25,7 +25,7 @@ from quest.types import (
     ReservedSymbolUse,
     type_fields,
 )
-from quest.modules.abstract_types import abstract_type_by_symbol
+from quest.modules.abstract_types import abstract_type_by_symbol, abstract_type_global_name
 
 
 def module_abstract_type_name(t: QType) -> Optional[str]:
@@ -34,7 +34,14 @@ def module_abstract_type_name(t: QType) -> Optional[str]:
     if not isinstance(t, QTypeVar):
         return None
     entry = abstract_type_by_symbol(t.symbol_id)
-    return entry.global_name if entry is not None and entry.linked else None
+    if entry is not None:
+        return entry.global_name if entry.linked else None
+    # A type the process has not recorded yet has its global name all the same:
+    # its module is recorded when it is elaborated from source, which a unit
+    # compiled before it, or in another process, does not see. So that a unit's
+    # C does not depend on what was compiled before it, the name does not
+    # either.
+    return abstract_type_global_name(t.symbol_id)
 
 
 def fun_descriptor_tag(t: QType) -> str:

@@ -41,10 +41,19 @@ export
         nogc: Bool
         compiler: maybe.T(String)
         extraCFlags: Array(String)
+        (* How many modules to compile at once, each in a child process of
+         * driver (the driver's own executable) when more than one
+         * (docs/build-process.md section 7.4) *)
+        jobs: Int
+        driver: String
     end
     (* An engine building in buildDir (.build if none), which it makes *)
     new(buildDir: maybe.T(String) includePaths: Array(String) verbose: Bool nogc: Bool extraObjects: Array(String)
         resolver: maybe.T(graph.Resolver)): T
+
+    (* eng, compiling up to jobs modules at once, in child processes of
+     * driver *)
+    parallel(eng: T jobs: Int driver: String): T
 
     (* A program's import item: its interface path and module paths, as written
      * or else its names and interface name, and its names *)

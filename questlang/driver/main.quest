@@ -60,6 +60,7 @@ import
     cPrinter = questlang/codegen/c/printer : questlang/codegen/c/Printer
     questlang/driver/repl : questlang/driver/Repl
     questlang/build/engine : questlang/build/Engine
+    questlang/build/workers : questlang/build/Workers
     passes = questlang/codegen/backend : questlang/codegen/Backend
     cBackend = questlang/codegen/c/backend : questlang/codegen/c/Backend
     collections/vector : collections/Vector
@@ -111,7 +112,8 @@ let usage(message: String): Ok =
         writer.putString(writer.err
             "usage: main [--stop-after tokenize|parse|desugar|typecheck|ir_STAGE|run_ir_STAGE|interpret|codegen_c"
             <> "|run_c_compiled] [--dump-after codegen_c] [--show-offsets] [--echo] [--print-result] "
-            <> "[--expected-exit N] [-c] [-I DIR] [-o FILE] [-v] [--build-dir DIR] [--whole-program] [-i] [OBJECT...] "
+            <> "[--expected-exit N] [-c] [-I DIR] [-o FILE] [-v] [-j N] [--build-dir DIR] [--whole-program] [-i] "
+            <> "[OBJECT...] "
             <> "[FILE|- [ARG...] | -e PROGRAM [-- ARG...] | -- ARG...]\n")
         system.sysexit(2)
     end;
@@ -125,6 +127,7 @@ let options =
         let var buildDir = maybe.none(:String)
         let var output = maybe.none(:String)
         let var verbose = false
+        let var jobs = 1
         let var wholeProgram = false
         let var expectedExit = 0
         let dumpAfter = vector.new(:String)
@@ -161,6 +164,14 @@ let options =
             elsif stringOp.equal(arg "-v") then
                 verbose := true
                 i := i + 1
+            elsif {stringOp.equal(arg "-j")} andif {{i + 1} < extent system.args} then
+                (* How many modules a build compiles at once *)
+                let n = strutil.tryToInt(system.args[i + 1])
+                if maybe.isNone(:Int n) orif {maybe.unwrap(:Int n) < 1} then
+                    usage("-j takes a number of modules at least 1, not '" <> system.args[i + 1] <> "'")
+                end
+                jobs := maybe.unwrap(:Int n)
+                i := i + 2
             elsif stringOp.equal(arg "--whole-program") then
                 wholeProgram := true
                 i := i + 1
@@ -241,6 +252,7 @@ let options =
             let buildDir = buildDir
             let output = output
             let verbose = verbose
+            let jobs = jobs
             let wholeProgram = wholeProgram
             let expectedExit = expectedExit
             let dumpAfter = vector.toArray(:String dumpAfter)
@@ -509,8 +521,8 @@ let failWith(message: String): Ok =
 
 (* The engine that builds the modules a program's C imports *)
 let newEngine(e: env.T): engine.T =
-    engine.new(maybe.some(:String buildDir) options.includePaths options.verbose false options.extraObjects
-        maybe.some(:graph.Resolver e.units.resolver));
+    engine.parallel(engine.new(maybe.some(:String buildDir) options.includePaths options.verbose false
+        options.extraObjects maybe.some(:graph.Resolver e.units.resolver)) options.jobs system.args[0]);
 
 (* A type-checked program's imports, as the engine resolves them *)
 let importRefs(program: typedAst.Program): Array(engine.ImportRef) =
@@ -808,8 +820,8 @@ let buildProgram(): Ok =
         let sm = location.newSourceMap(options.file maybe.unwrapOr(:String paths.readText(options.file) ""))
         stdlib.install()
         try
-            let eng = engine.new(options.buildDir options.includePaths options.verbose false options.extraObjects
-                maybe.none(:graph.Resolver))
+            let eng = engine.parallel(engine.new(options.buildDir options.includePaths options.verbose false
+                options.extraObjects maybe.none(:graph.Resolver)) options.jobs system.args[0])
             engine.buildMain(eng options.file options.output)
         when diagnostics.compilerError with err then
             diagbag.add(bag diagnostics.errorDiagnostic(err options.file))
@@ -821,13 +833,18 @@ let buildProgram(): Ok =
         finish(bag sm)
     end;
 
-case units.unitKind(options.file)
-    when programUnit then
-        if maybe.isSome(:String options.output) andif not(options.wholeProgram) andif not(options.stopGiven)
-            andif {extent options.dumpAfter is 0} andif not(options.echo) andif options.fromFile then
-            buildProgram()
-        else
-            run()
-        end
-    else if options.stopGiven orif maybe.isSome(:String options.code) then run() else compileUnitFile() end
+(* A worker of a parallel build compiles one module (build/workers) *)
+if workers.isUnitMode(system.args) then
+    workers.unitMain(system.args)
+else
+    case units.unitKind(options.file)
+        when programUnit then
+            if maybe.isSome(:String options.output) andif not(options.wholeProgram) andif not(options.stopGiven)
+                andif {extent options.dumpAfter is 0} andif not(options.echo) andif options.fromFile then
+                buildProgram()
+            else
+                run()
+            end
+        else if options.stopGiven orif maybe.isSome(:String options.code) then run() else compileUnitFile() end
+    end
 end;

@@ -1,0 +1,356 @@
+(* Quest Self-Hosted Compiler: The Build Workers Implementation *)
+
+module workers : Workers
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/values/json : questlang/values/Json
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/stdlib : questlang/modules/Stdlib
+    questlang/modules/moduleCompiler : questlang/modules/ModuleCompiler
+    questlang/typechecker/typecheck : questlang/typechecker/Typecheck
+    questlang/codegen/c/compilerRunner : questlang/codegen/c/CompilerRunner
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    os/process : os/Process
+    stringOp = string : StringOp
+    conv : Conv
+    writer : Writer
+    system : System
+export
+    Let Job = Tuple
+        source: String
+        targetDir: String
+        searchPaths: Array(String)
+        compiler: maybe.T(String)
+        nogc: Bool
+        extraCFlags: Array(String)
+        buildDir: maybe.T(String)
+        programDir: maybe.T(String)
+    end
+
+    Let Outcome = Tuple source: String stderr: String failure: maybe.T(String) end
+
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+
+    (* ======================================================================
+     * 1. Errors as JSON
+     * ====================================================================== *)
+
+    let maybeText(s: maybe.T(String)): json.Value =
+        if maybe.isSome(:String s) then json.string(maybe.unwrap(:String s)) else json.null end
+
+    let encodeError(e: diagnostics.CompilerError): String =
+        begin
+            let o = json.newObject()
+            json.put(o "kind" json.string("compiler"))
+            json.put(o "message" json.string(e.message))
+            json.put(o "offset" json.int(e.offset))
+            json.put(o "length" json.int(e.length))
+            json.put(o "isFatal" json.bool(e.isFatal))
+            json.put(o "help" maybeText(e.help))
+            let notes = vector.new(:json.Value)
+            for i = 0 upto {vector.length(:String e.notes) - 1} do
+                vector.append(:json.Value notes json.string(vector.get(:String e.notes i)))
+            end
+            json.put(o "notes" json.arrayValue(notes))
+            json.put(o "file" maybeText(e.file))
+            json.put(o "silent" json.bool(e.silent))
+            let labels = vector.new(:json.Value)
+            for i = 0 upto {vector.length(:diagnostics.Label e.labels) - 1} do
+                let l = vector.get(:diagnostics.Label e.labels i)
+                let lo = json.newObject()
+                json.put(lo "file" json.string(l.sp.file))
+                json.put(lo "start" json.int(l.sp.startOffset))
+                json.put(lo "end" json.int(l.sp.endOffset))
+                json.put(lo "message" json.string(l.message))
+                json.put(lo "isPrimary" json.bool(l.isPrimary))
+                vector.append(:json.Value labels json.object(lo))
+            end
+            json.put(o "labels" json.arrayValue(labels))
+            json.dump(json.object(o))
+        end
+
+    let encodeMessage(kind: String message: String): String =
+        begin
+            let o = json.newObject()
+            json.put(o "kind" json.string(kind))
+            json.put(o "message" json.string(message))
+            json.dump(json.object(o))
+        end
+
+    let member(o: json.Object name: String): json.Value = maybe.unwrapOr(:json.Value json.get(o name) json.null)
+    let text(v: json.Value): String = case v when jString with x then x.s else "" end
+    let maybeString(v: json.Value): maybe.T(String) =
+        case v when jString with x then maybe.some(:String x.s) else maybe.none(:String) end
+    let number(v: json.Value): Int = case v when jNumber with x then strutil.toInt(x.text) else 0 end
+    let flag(v: json.Value): Bool = case v when jBool with x then x.b else false end
+    let items(v: json.Value): vector.T(json.Value) =
+        case v when jArray with x then x.items else vector.new(:json.Value) end
+
+    (* The file's text, as the driver finds the lines of errors in it *)
+    let register(file: String): Ok =
+        if {stringOp.length(file) > 0} andif system.isFile(file) then
+            let text = paths.readText(file)
+            if maybe.isSome(:String text) then
+                diagnostics.registerSource(location.newSourceMap(file maybe.unwrap(:String text)))
+            end
+        end
+
+    let decodeError(o: json.Object): diagnostics.CompilerError =
+        begin
+            let notes = vector.new(:String)
+            let noteItems = items(member(o "notes"))
+            for i = 0 upto {vector.length(:json.Value noteItems) - 1} do
+                vector.append(:String notes text(vector.get(:json.Value noteItems i)))
+            end
+            let labels = vector.new(:diagnostics.Label)
+            let labelItems = items(member(o "labels"))
+            for i = 0 upto {vector.length(:json.Value labelItems) - 1} do
+                case vector.get(:json.Value labelItems i)
+                    when jObject with x then
+                        let file = text(member(x.o "file"))
+                        register(file)
+                        vector.append(:diagnostics.Label labels tuple
+                            let sp = location.span(file number(member(x.o "start")) number(member(x.o "end")))
+                            let message = text(member(x.o "message"))
+                            let isPrimary = flag(member(x.o "isPrimary"))
+                        end)
+                    else ok
+                end
+            end
+            let file = maybeString(member(o "file"))
+            if maybe.isSome(:String file) then register(maybe.unwrap(:String file)) end
+            tuple
+                let message = text(member(o "message"))
+                let offset = number(member(o "offset"))
+                let length = number(member(o "length"))
+                let isFatal = flag(member(o "isFatal"))
+                let help = maybeString(member(o "help"))
+                let notes = notes
+                let file = file
+                let silent = flag(member(o "silent"))
+                let labels = labels
+            end
+        end
+
+    let raiseFailure(o: Outcome): Ok =
+        if maybe.isSome(:String o.failure) then
+            let failure = maybe.unwrap(:String o.failure)
+            let decoded = try maybe.some(:json.Value json.parse(failure))
+                when json.error then maybe.none(:json.Value) end
+            let obj = if maybe.isSome(:json.Value decoded) then
+                case maybe.unwrap(:json.Value decoded) when jObject with x then maybe.some(:json.Object x.o)
+                    else maybe.none(:json.Object) end
+            else
+                maybe.none(:json.Object)
+            end
+            if maybe.isNone(:json.Object obj) then
+                raise compilerRunner.failure with failure end
+            else
+                let fields = maybe.unwrap(:json.Object obj)
+                if eq(text(member(fields "kind")) "compiler") then
+                    diagnostics.raiseError(:Ok decodeError(fields))
+                else
+                    raise compilerRunner.failure with text(member(fields "message")) end
+                end
+            end
+        end
+
+    (* ======================================================================
+     * 2. The parent: children compiling jobs
+     * ====================================================================== *)
+
+    (* The arguments that run driver in unit mode on a batch of jobs, which
+     * share all but their sources and target directories *)
+    let command(driver: String batch: Array(Job) worker: Int): Array(String) =
+        begin
+            let args = vector.new(:String)
+            let add = fun(s: String): Ok vector.append(:String args s)
+            let job = batch[0]
+            add(driver)
+            for b = 0 upto {extent batch - 1} do
+                add("--unit-module")
+                add(batch[b].source)
+                add("--target-dir")
+                add(batch[b].targetDir)
+            end
+            add("--worker")
+            add(conv.int(worker))
+            for i = 0 upto {extent job.searchPaths - 1} do
+                add("-I")
+                add(job.searchPaths[i])
+            end
+            if maybe.isSome(:String job.buildDir) then
+                add("--build-dir")
+                add(maybe.unwrap(:String job.buildDir))
+            end
+            if maybe.isSome(:String job.programDir) then
+                add("--program-dir")
+                add(maybe.unwrap(:String job.programDir))
+            end
+            if maybe.isSome(:String job.compiler) then
+                add("--cc")
+                add(maybe.unwrap(:String job.compiler))
+            end
+            if job.nogc then add("--nogc") end
+            for i = 0 upto {extent job.extraCFlags - 1} do
+                add("--cflag")
+                add(job.extraCFlags[i])
+            end
+            vector.toArray(:String args)
+        end
+
+    (* Each job of a batch's outcome, from how its child ended. A child that
+     * fails writes the index of the job that failed in its batch on a line of
+     * its own, then the error; it compiles no job after it. One that writes
+     * nothing crashed, which fails every job of its batch. *)
+    let batchOutcomes(batch: Array(Job) r: process.Result): Array(Outcome) =
+        begin
+            let outcome = fun(b: Int failure: maybe.T(String)): Outcome
+                tuple
+                    let source = batch[b].source
+                    (* Its standard error goes with the batch's first job *)
+                    let stderr = if b is 0 then r.stderr else "" end
+                    let failure = failure
+                end
+            let outcomes = array of(extent batch outcome(0 maybe.none(:String)))
+            for b = 1 upto {extent batch - 1} do outcomes[b] := outcome(b maybe.none(:String)) end
+            if r.code isnot 0 then
+                let newline = strutil.find(r.stdout "\n")
+                let failed = if newline > 0 then strutil.tryToInt(stringOp.getSub(r.stdout 0 newline))
+                    else maybe.none(:Int) end
+                if maybe.isSome(:Int failed) then
+                    let f = maybe.unwrap(:Int failed)
+                    let error = stringOp.getSub(r.stdout {newline + 1} {{stringOp.length(r.stdout) - newline} - 1})
+                    outcomes[f] := outcome(f maybe.some(:String error))
+                    for b = {f + 1} upto {extent batch - 1} do
+                        outcomes[b] := outcome(b maybe.some(:String encodeMessage("skipped" "the compilation of "
+                            <> batch[b].source <> " was skipped after " <> batch[f].source <> " failed")))
+                    end
+                else
+                    let crash = encodeMessage("crash" "the compilation of " <> batch[0].source <> " and "
+                        <> conv.int(extent batch - 1) <> " more stopped with " <> conv.int(r.code) <> ": " <> r.stderr)
+                    for b = 0 upto {extent batch - 1} do outcomes[b] := outcome(b maybe.some(:String crash)) end
+                end
+            end
+            outcomes
+        end
+
+    (* The jobs are dealt into at most n batches, round robin, and each batch is
+     * compiled by one child, in order, so that it loads the interfaces its
+     * modules share once, as a serial build does *)
+    let compileAll(jobs: Array(Job) n: Int driver: String): Array(Outcome) =
+        begin
+            let none = tuple let source = "" let stderr = "" let failure = maybe.none(:String) end
+            let outcomes = array of(extent jobs none)
+            let count = if n < extent jobs then n else extent jobs end
+            let batchOf = fun(indexes: Array(Int)): Array(Job)
+                begin
+                    let batch = array of(extent indexes jobs[indexes[0]])
+                    for b = 1 upto {extent indexes - 1} do batch[b] := jobs[indexes[b]] end
+                    batch
+                end
+            let children = vector.new(:process.T)
+            let batches = vector.new(:Array(Int))
+            for c = 0 upto {count - 1} do
+                let members = vector.new(:Int)
+                let var j = c
+                while j < extent jobs do
+                    vector.append(:Int members j)
+                    j := j + count
+                end
+                let indexes = vector.toArray(:Int members)
+                vector.append(:process.T children process.spawn(command(driver batchOf(indexes) {c + 1})))
+                vector.append(:Array(Int) batches indexes)
+            end
+            for c = 0 upto {count - 1} do
+                let indexes = vector.get(:Array(Int) batches c)
+                let results = batchOutcomes(batchOf(indexes) process.wait(vector.get(:process.T children c)))
+                for b = 0 upto {extent indexes - 1} do outcomes[indexes[b]] := results[b] end
+            end
+            outcomes
+        end
+
+    (* ======================================================================
+     * 3. The child: a batch of modules in unit mode
+     * ====================================================================== *)
+
+    let isUnitMode(args: Array(String)): Bool = {extent args > 1} andif eq(args[1] "--unit-module")
+
+    let unitMain(args: Array(String)): Ok =
+        begin
+            let sources = vector.new(:String)
+            let targetDirs = vector.new(:String)
+            let var worker = ""
+            let searchPaths = vector.new(:String)
+            let var buildDir = maybe.none(:String)
+            let var programDir = maybe.none(:String)
+            let var compiler = maybe.none(:String)
+            let var nogc = false
+            let cflags = vector.new(:String)
+            let var i = 1
+            (* Each option but --nogc takes a value *)
+            while i < extent args do
+                let arg = args[i]
+                let value = if {i + 1} < extent args then args[i + 1] else "" end
+                if eq(arg "--nogc") then
+                    nogc := true
+                elsif eq(arg "--unit-module") then
+                    vector.append(:String sources value)
+                elsif eq(arg "--target-dir") then
+                    vector.append(:String targetDirs value)
+                elsif eq(arg "--worker") then
+                    worker := value
+                elsif eq(arg "-I") then
+                    vector.append(:String searchPaths value)
+                elsif eq(arg "--build-dir") then
+                    buildDir := maybe.some(:String value)
+                elsif eq(arg "--program-dir") then
+                    programDir := maybe.some(:String value)
+                elsif eq(arg "--cc") then
+                    compiler := maybe.some(:String value)
+                elsif eq(arg "--cflag") then
+                    vector.append(:String cflags value)
+                end
+                let step = if eq(arg "--nogc") then 1 else 2 end
+                i := i + step
+            end
+            (* Its temporary files apart from other workers'
+             * (paths.writeAtomically) *)
+            paths.setWorkerTag("." <> worker)
+            stdlib.install()
+            (* One resolver for the batch, as a serial build has one for all *)
+            let resolver = graph.newResolver()
+            let var failed = maybe.none(:String)
+            for b = 0 upto {vector.length(:String sources) - 1} do
+                if maybe.isNone(:String failed) then
+                    let failure = try
+                        begin
+                            typecheck.install()
+                            moduleCompiler.compileModuleFile(vector.get(:String sources b)
+                                maybe.some(:String vector.get(:String targetDirs b)) vector.toArray(:String searchPaths)
+                                compiler nogc vector.toArray(:String cflags) buildDir programDir
+                                maybe.some(:graph.Resolver resolver))
+                            maybe.none(:String)
+                        end
+                    when diagnostics.compilerError with err then
+                        maybe.some(:String encodeError(err))
+                    when compilerRunner.failure with m then
+                        maybe.some(:String encodeMessage("runner" m))
+                    end
+                    if maybe.isSome(:String failure) then
+                        failed := maybe.some(:String conv.int(b) <> "\n" <> maybe.unwrap(:String failure))
+                    end
+                end
+            end
+            if maybe.isSome(:String failed) then
+                writer.putString(writer.output maybe.unwrap(:String failed))
+                writer.flush(writer.output)
+                writer.flush(writer.err)
+                system.sysexit(1)
+            end
+        end
+end

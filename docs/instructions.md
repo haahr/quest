@@ -43,7 +43,8 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   top-level phrases; `--build-dir DIR` keeps a program's compiled interfaces and modules out of the source tree.
 - **The self-hosted compiler:** `./questc` takes the same options, building itself first when its sources have
   changed: from the current release in `release/current` when there is one, else from the bootstrap
-  ([release-compiler.md](release-compiler.md)).
+  ([release-compiler.md](release-compiler.md)). Its `-j N` compiles up to N modules at once
+  ([build-process.md](build-process.md) §7.4).
 - **Releases:** `tools/release` cuts one from a clean tree at a commit on `main`, after the self-hosting check seeded
   from the current release (`--seed bootstrap` for the first, or past a gap); `--verify`, `--rollback`, and `--show`
   check, undo, and describe them.

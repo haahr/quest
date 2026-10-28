@@ -202,7 +202,10 @@ off the list. The tests of several errors, which only the self-hosted driver rep
 and each expectation must be reported. The error tests check one file at a time; `self-hosted/build_errors`
 (`tests/self-hosted/build_errors.py`) checks the errors of builds. Each directory under
 `tests/self-hosted/build-errors` is a program whose `-o` build fails in a unit it imports, and the driver must report
-what the bootstrap does: the error in the unit's file, with its line.
+what the bootstrap does: the error in the unit's file, with its line. `self-hosted/parallel_build`
+(`tests/self-hosted/parallel_build.py`) builds those programs and the ones under `tests/self-hosted/parallel-build`
+with `-j 1` and `-j 4`: a parallel build must leave a serial one's artifacts, log, and program output, or report its
+error ([build-process.md](build-process.md) §7.4).
 
 The runners set `QUEST_HOME` to the project directory, where the self-hosted driver, which runs in a scratch
 directory, finds `lib/`. `--self-hosted-driver PATH` runs a driver already compiled (as by `./quest -o build/questlang/main

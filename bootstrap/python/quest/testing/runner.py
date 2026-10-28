@@ -74,11 +74,13 @@ SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 EVAL_CASES = ROOT_DIR / "tests" / "eval" / "cases.quest"
 # The checks of the self-hosted driver's unit files (-c): interfaces against its
 # ABI corpus (tests/abi/corpus-self-hosted), and that lib/'s modules compile;
-# and of the errors its builds report, against the bootstrap's
+# and of the errors its builds report, against the bootstrap's; and that its
+# parallel builds (-j) are its serial ones
 UNIT_CHECKS = (
     ("self-hosted/abi_corpus", ROOT_DIR / "tests" / "abi" / "corpus.py", ("--compiler",)),
     ("self-hosted/unit_artifacts", ROOT_DIR / "tests" / "self-hosted" / "unit_artifacts.py", ()),
     ("self-hosted/build_errors", ROOT_DIR / "tests" / "self-hosted" / "build_errors.py", ()),
+    ("self-hosted/parallel_build", ROOT_DIR / "tests" / "self-hosted" / "parallel_build.py", ()),
 )
 EVAL_GOLDEN = TESTS_GOLDEN_DIR / "self-hosted" / "eval.out"
 SELF_HOSTED_ERRORS_DIR = ROOT_DIR / "tests" / "self-hosted" / "errors"
@@ -293,7 +295,9 @@ def build_questlang_tests(
     build_dir.mkdir(parents=True, exist_ok=True)
     for source_file in source_files:
         command = [
-            *(driver_command or [python_executable, str(DRIVER_SCRIPT)]),
+            # The self-hosted driver compiles the modules in parallel
+            *(driver_command + ["-j", str(os.cpu_count() or 1)] if driver_command
+              else [python_executable, str(DRIVER_SCRIPT)]),
             "--build-dir",
             str(build_dir),
             "-o",
@@ -580,8 +584,10 @@ def build_driver_with(driver: Path, build_dir: Path, binary: Path, home: Path = 
     build took, in seconds."""
     environment = os.environ.copy()
     environment["QUEST_HOME"] = str(home)
-    # Against a release's home, the tree's questlang/ is found through -I
-    include = ["-I", str(ROOT_DIR)] if home != ROOT_DIR else []
+    # Against a release's home, the tree's questlang/ is found through -I. A
+    # driver built from the tree compiles modules in parallel (-j); a release
+    # may be older than -j.
+    include = ["-I", str(ROOT_DIR)] if home != ROOT_DIR else ["-j", str(os.cpu_count() or 1)]
     start = time.perf_counter()
     process = subprocess.run(
         [str(driver), *include, "--build-dir", str(build_dir), "-o", str(binary), str(SELF_HOSTED_DRIVER)],
