@@ -1401,7 +1401,7 @@ class CPrinter:
                 self.emit(f"{h}.prev = quest_current_exception_handler;")
                 self.emit_catches(h, catching, catches)
                 self.emit(f"quest_current_exception_handler = &{h};")
-                self.emit(f"if (setjmp({h}.env_jmp) == 0) {{")
+                self.emit(f"if (Q_SETJMP({h}.env_jmp) == 0) {{")
                 self.fs.handlers.append(h)
                 self.block(body)
                 self.fs.handlers.pop()

@@ -1105,6 +1105,10 @@ extern Q_THREAD_LOCAL QExceptionHandler *quest_current_exception_handler;
 extern Q_THREAD_LOCAL QExceptionState    quest_current_exception;
 ```
 
+A try sets its handler with `Q_SETJMP` and a raise jumps to it with `Q_LONGJMP`: `_setjmp` and `_longjmp` on macOS and
+the BSDs, where `setjmp` and `longjmp` save and restore the signal mask with a system call each, and `setjmp` and
+`longjmp` elsewhere (glibc's save no mask). Nothing raises from a signal handler, so the mask need not be restored.
+
 ### 7.1. Generative Exception Values
 Cardelli's Quest specification (§4.9) states:
 > *"The `exception` construct generates a new unique exception value whenever it is evaluated..."*
@@ -1132,7 +1136,7 @@ void quest_reraise(QExceptionState state) {
             break;
     }
     quest_current_exception = state;
-    longjmp(quest_current_exception_handler->env_jmp, 1);
+    Q_LONGJMP(quest_current_exception_handler->env_jmp, 1);
 }
 
 void quest_raise_at(const QException *exc, QVal payload, const char *loc) {
@@ -1149,7 +1153,7 @@ q_handler.catches = q_catches;
 q_handler.n_catches = 2;                               /* or Q_CATCH_ALL with an else, or Q_CATCH_UNKNOWN */
 quest_current_exception_handler = &q_handler;
 
-if (setjmp(q_handler.env_jmp) == 0) {
+if (Q_SETJMP(q_handler.env_jmp) == 0) {
     /* Protected body evaluated into destination */
     ...
     quest_current_exception_handler = q_handler.prev; /* Pop handler on normal completion */

@@ -220,7 +220,7 @@ class TestRuntimeDescriptors(unittest.TestCase):
             handler.n_catches = Q_CATCH_ALL;
             quest_current_exception_handler = &handler;
 
-            if (setjmp(handler.env_jmp) == 0) {
+            if (Q_SETJMP(handler.env_jmp) == 0) {
                 /* Converting it to Record y: Int end must fail */
                 quest_convert((QVal){ .p = quest_record_box(rec) }, x_desc, y_desc);
                 printf("UNREACHABLE\\n");

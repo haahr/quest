@@ -472,7 +472,7 @@ void quest_reraise(QExceptionState state) {
             break;
     }
     quest_current_exception = state;
-    longjmp(quest_current_exception_handler->env_jmp, 1);
+    Q_LONGJMP(quest_current_exception_handler->env_jmp, 1);
 }
 
 void quest_raise_at(const QException *exc, QVal payload, const char *loc) {

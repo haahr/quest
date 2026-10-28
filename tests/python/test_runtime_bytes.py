@@ -44,7 +44,7 @@ static bool raises(const QException *exc, void (*f)(void)) {
     handler.catches = NULL;
     handler.n_catches = Q_CATCH_ALL;
     quest_current_exception_handler = &handler;
-    if (setjmp(handler.env_jmp) == 0) {
+    if (Q_SETJMP(handler.env_jmp) == 0) {
         f();
         quest_current_exception_handler = handler.prev;
         return false;

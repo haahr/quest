@@ -343,6 +343,17 @@ typedef struct QExceptionState {
 #define Q_CATCH_ALL     (-1)
 #define Q_CATCH_UNKNOWN (-2)
 
+/* A try sets its handler with Q_SETJMP and a raise jumps to it with Q_LONGJMP. On macOS and the BSDs setjmp and
+   longjmp save and restore the signal mask, a system call each, which made exceptions slow; _setjmp and _longjmp skip
+   it, and nothing raises from a signal handler or changes the mask in a try. glibc's setjmp saves no mask already. */
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__)
+#  define Q_SETJMP(env)       _setjmp(env)
+#  define Q_LONGJMP(env, val) _longjmp(env, val)
+#else
+#  define Q_SETJMP(env)       setjmp(env)
+#  define Q_LONGJMP(env, val) longjmp(env, val)
+#endif
+
 /* Linked node in thread-local exception handler stack */
 typedef struct QExceptionHandler {
     jmp_buf                    env_jmp;
