@@ -57,25 +57,6 @@ digests, but needs a new runtime primitive and so a release before `questlang/` 
 
 ---
 
-## An `Ok` component of a tuple or option payload in compiled code
-
-**Problem.** A tuple type with a component of type `Ok`, or an option tag whose payload has one, compiles to a C struct
-with a `void` field, which clang rejects ("field has incomplete type 'void'"). The interpreters run such programs.
-Converted code works around it with an empty tuple, `Let Unit = Tuple end`, in the `Ok` component's place
-(benchmarks/mlton).
-
-**Reproduce.** Compile `Let P = Tuple e: Ok s: Int end let p: P = tuple let e = ok let s = 1 end let n = p.s`.
-
-**Where to start.** `emit_aggregate_structs` in `bootstrap/python/quest/codegen/c/declarations.py`, which takes each
-component's slot type, and its port in `questlang/codegen/c/declarations.mod.quest`; the slot of an `Ok` component
-should be no field at all (or a placeholder byte), with the projections and constructors that use the component's index
-agreeing.
-
-**Done when.** Tuples and option payloads with `Ok` components compile and run, with tests in `tests/source/`, in both
-compilers.
-
----
-
 ## Option tags named like C keywords in compiled code
 
 **Problem.** An option tag is used verbatim as the name of its payload's member in the C union of the option's struct,

@@ -239,8 +239,8 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
   auto value's component, a module record's field) is one 8-byte word holding the value's *slot representation*
   (`slot_representation` in `codegen/layout.py`): a record or variant is a pointer to an immutable 16-byte box
   (`QRecordVal *`, `QVariantVal *`, made by `quest_record_box` and `quest_variant_box`), a `Bool` or `Char` is a word
-  of its own (`QBoolSlot`, `QCharSlot`: 0 or 1, or the character, as a `QVal`'s `.i` holds it), and any other value
-  is its representation. A slot thus holds exactly the value's `QVal` form, so the slots generic code lays out for a
+  of its own (`QBoolSlot`, `QCharSlot`: 0 or 1, or the character, as a `QVal`'s `.i` holds it), an `Ok` is the word
+  `Q_OK_VAL` (a `QVal`, since `Ok` has no C type of its own), and any other value is its representation. A slot thus holds exactly the value's `QVal` form, so the slots generic code lays out for a
   type parameter (`QVal`) agree in memory with native ones for every type argument, and the runtime reads and writes
   any slot as a word (`quest_slot_read`, `quest_slot_write`). Locals, parameters, and results stay unboxed (16-byte
   `QRecordVal` and `QVariantVal`), so field access is unchanged. A box is never changed once made (storing into a

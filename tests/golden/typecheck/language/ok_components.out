@@ -1,0 +1,153 @@
+(TypedProgram
+  :phrases (
+    (TypedLetType 'P' :kind TYPE)
+    (TypedLetValue 'p' :type P
+      :value (TypedTuple :type Tuple e: Ok s: Int end
+        :elements (
+          (TypedOk)
+          (TypedInt 1 :type Int)
+        )))
+    (TypedLetValue 'n' :type Int
+      :value (TypedSelect 's' :type Int
+        :target (TypedVar 'p' :type P)))
+    (TypedLetValue 'e' :type Ok
+      :value (TypedSelect 'e' :type Ok
+        :target (TypedVar 'p' :type P)))
+    (TypedLetValue 'mk' :type Fun(s: Int): P
+      :value (TypedFun :params (('s' : Int)) :type Fun(s: Int): P
+        :body (TypedTuple :type Tuple e: Ok s: Int end
+          :elements (
+            (TypedOk)
+            (TypedVar 's' :type Int)
+          ))))
+    (TypedLetValue 'total' :type Int
+      :value (TypedInfix '+' :type Int
+        :left (TypedSelect 's' :type Int
+          :target (TypedApp :type P
+            :func (TypedVar 'mk' :type Fun(s: Int): P)
+            :args (
+              (TypedInt 5 :type Int)
+            )))
+        :right (TypedVar 'n' :type Int)))
+    (TypedLetType 'R' :kind TYPE)
+    (TypedLetValue 'r' :type R
+      :value (TypedRecord :type Record a: Ok b: Int end
+        :fields (
+          (TypedRecordField 'a'
+            :value (TypedOk))
+          (TypedRecordField 'b'
+            :value (TypedInt 7 :type Int))
+        )))
+    (TypedLetValue 'rb' :type Int
+      :value (TypedSelect 'b' :type Int
+        :target (TypedVar 'r' :type R)))
+    (TypedLetValue 'ra' :type Ok
+      :value (TypedSelect 'a' :type Ok
+        :target (TypedVar 'r' :type R)))
+    (TypedLetValue 'cr' :type Record var a: Ok end
+      :value (TypedRecord :type Record var a: Ok end
+        :fields (
+          (TypedRecordField 'a' :var
+            :value (TypedOk))
+        )))
+    (TypedLetValue 'set' :type Fun(): Ok
+      :value (TypedFun :params () :type Fun(): Ok
+        :body (TypedAssign
+          :target (TypedSelect 'a' :type Ok
+            :target (TypedVar 'cr' :type Record var a: Ok end))
+          :value (TypedOk))))
+    (TypedLetValue 'sr' :type Ok
+      :value (TypedApp :type Ok
+        :func (TypedVar 'set' :type Fun(): Ok)
+        :args ()))
+    (TypedLetType 'O' :kind TYPE)
+    (TypedLetValue 'count' :type Fun(o: O): Int
+      :value (TypedFun :params (('o' : O)) :type Fun(o: O): Int
+        :body (TypedCase :type Int
+          :target (TypedVar 'o' :type O)
+          :branches (
+            (TypedCaseBranch tags=(some) :binder 'x'
+              :body (TypedSelect 'count' :type Int
+                :target (TypedVar 'x' :type Tuple done: Ok count: Int end)))
+            (TypedCaseBranch tags=(none)
+              :body (TypedInt 0 :type Int))
+          ))))
+    (TypedLetValue 'c' :type Int
+      :value (TypedApp :type Int
+        :func (TypedVar 'count' :type Fun(o: O): Int)
+        :args (
+          (TypedOption 'some' :type O
+            :payload (TypedTuple :type Tuple done: Ok count: Int end
+              :elements (
+                (TypedOk)
+                (TypedInt 3 :type Int)
+              )))
+        )))
+    (TypedLetValue 'd' :type Int
+      :value (TypedApp :type Int
+        :func (TypedVar 'count' :type Fun(o: O): Int)
+        :args (
+          (TypedOption 'none' :type O)
+        )))
+    (TypedLetValue 'first' :type All(A :: TYPE B :: TYPE) Fun(t: Tuple a: A b: B end): A
+      :value (TypedFun :params (('t' : Tuple a: A b: B end)) :type All(A :: TYPE B :: TYPE) Fun(t: Tuple a: A b: B end): A
+        :body (TypedSelect 'a' :type A
+          :target (TypedVar 't' :type Tuple a: A b: B end))))
+    (TypedLetValue 'f' :type Ok
+      :value (TypedApp :type Ok
+        :func (TypedTypeApp [Ok Int] :type Fun(t: Tuple a: Ok b: Int end): Ok
+          :func (TypedVar 'first' :type All(A :: TYPE B :: TYPE) Fun(t: Tuple a: A b: B end): A))
+        :args (
+          (TypedTuple :type Tuple a: Ok b: Int end
+            :elements (
+              (TypedOk)
+              (TypedInt 4 :type Int)
+            ))
+        )))
+    (TypedLetValue 'second' :type All(A :: TYPE B :: TYPE) Fun(t: Tuple a: A b: B end): B
+      :value (TypedFun :params (('t' : Tuple a: A b: B end)) :type All(A :: TYPE B :: TYPE) Fun(t: Tuple a: A b: B end): B
+        :body (TypedSelect 'b' :type B
+          :target (TypedVar 't' :type Tuple a: A b: B end))))
+    (TypedLetValue 'g' :type Int
+      :value (TypedApp :type Int
+        :func (TypedTypeApp [Ok Int] :type Fun(t: Tuple a: Ok b: Int end): Int
+          :func (TypedVar 'second' :type All(A :: TYPE B :: TYPE) Fun(t: Tuple a: A b: B end): B))
+        :args (
+          (TypedTuple :type Tuple a: Ok b: Int end
+            :elements (
+              (TypedOk)
+              (TypedInt 4 :type Int)
+            ))
+        )))
+    (TypedLetValue 'arr' :type Array(Ok)
+      :value (TypedArray :type Array(Ok)
+        :elements (
+          (TypedOk)
+          (TypedOk)
+        )))
+    (TypedLetValue 'k' :type Int
+      :value (TypedApp :type Int
+        :func (TypedTypeApp [Ok] :type Fun(a: Array(Ok)): Int
+          :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+        :args (
+          (TypedVar 'arr' :type Array(Ok))
+        )))
+    (TypedLetValue 'nested' :type Tuple t: Tuple Ok Int end o: Ok end
+      :value (TypedTuple :type Tuple t: Tuple Ok Int end o: Ok end
+        :elements (
+          (TypedTuple :type Tuple Ok Int end
+            :elements (
+              (TypedOk)
+              (TypedInt 1 :type Int)
+            ))
+          (TypedOk)
+        )))
+    (TypedLetValue 'nn' :type Tuple Ok Int end
+      :value (TypedSelect 't' :type Tuple Ok Int end
+        :target (TypedVar 'nested' :type Tuple t: Tuple Ok Int end o: Ok end)))
+    (TypedLetValue 'wide' :type Tuple e: Ok end
+      :value (TypedVar 'p' :type P))
+    (TypedLetValue 'ws' :type Ok
+      :value (TypedSelect 'e' :type Ok
+        :target (TypedVar 'wide' :type Tuple e: Ok end)))
+  ))

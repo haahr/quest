@@ -177,7 +177,9 @@ def slot_representation(t: QType) -> str:
     option payload, record field, array element, or auto payload) or a QVal
     word: a record or variant is a pointer to an immutable 16-byte box
     (QRecordVal *, QVariantVal *), a Bool or Char a word of its own (QBoolSlot,
-    QCharSlot), and any other value as it is (docs/c-representation.md §5).
+    QCharSlot), an Ok the word Q_OK_VAL (a QVal, since an Ok value has no C
+    type of its own: a function returning Ok returns void), and any other
+    value as it is (docs/c-representation.md §5).
     Every slot is one word, so a slot of a type parameter (a QVal) agrees in
     memory with a slot of its type argument."""
     return layout_of(shape(t)).slot
@@ -299,6 +301,7 @@ def shape_representation(s: Shape) -> str:
 
 _SLOT_REPRESENTATIONS = {
     "QRecordVal": "QRecordVal *", "QVariantVal": "QVariantVal *", "QBool": "QBoolSlot", "QChar": "QCharSlot",
+    "void": "QVal",
 }
 
 _SCALAR_TAGS = {"int": "Int", "real": "Real", "bool": "Bool", "char": "Char", "string": "String", "ok": "Ok"}
