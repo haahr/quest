@@ -1,0 +1,48 @@
+(* util/path's file system functions, over path.T, in a directory the test
+   makes (it runs in a fresh, empty directory of its own, docs/testing.md
+   section 2.2). *)
+import
+    util/path : util/Path
+    util/maybe : util/Maybe
+    os/fileStats : os/FileStats
+    system: System
+    writer: Writer
+    conv: Conv
+;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let at(s: String): path.T = path.fromString(s);
+let tryOk(what: String f: All() Ok): Ok =
+    print(what <> ": " <> try begin f() "ok" end when system.error then "system.error" end);
+
+let root = at("work");
+path.mkdir(root false);
+print("isDir: " <> conv.bool(path.isDir(root)) <> ", isFile: " <> conv.bool(path.isFile(root)));
+tryOk("mkdir again" fun(): Ok path.mkdir(root false));
+tryOk("mkdir without parents" fun(): Ok path.mkdir(at("work/x/y") false));
+tryOk("mkdir with parents" fun(): Ok path.mkdir(at("work/x/y") true));
+
+let notes = path.child(root "notes.txt");
+path.writeText(notes "first line\nsecond line\n");
+print("exists: " <> conv.bool(path.exists(notes)) <> ", isFile: " <> conv.bool(path.isFile(notes)));
+print("readText: [" <> path.readText(notes) <> "]");
+print("size: " <> conv.int(path.stat(notes).size));
+path.writeText(notes "replaced");
+print("readText again: [" <> path.readText(notes) <> "]");
+path.writeText(path.child(root "b.txt") "");
+
+let show(entries: Array(path.T)): Ok =
+    begin
+        let var line = ""
+        for i = 0 upto {extent entries - 1} do line := line <> " " <> path.toString(entries[i]) end
+        print("iterDir:" <> line)
+    end;
+show(path.iterDir(root));
+
+path.rename(notes path.child(root "a.txt"));
+show(path.iterDir(root));
+path.unlink(path.child(root "b.txt"));
+show(path.iterDir(root));
+tryOk("unlink missing" fun(): Ok path.unlink(path.child(root "b.txt")));
+print("find missing: " <> conv.bool(maybe.isNone(:fileStats.T path.find(path.child(root "b.txt")))));
+print("exists missing: " <> conv.bool(path.exists(at("work/missing"))))

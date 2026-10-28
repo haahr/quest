@@ -1,6 +1,9 @@
 interface Path
 import
     collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    os/fileStats : os/FileStats
+    word : Word
 export
     (* Exception raised on invalid path operations *)
     error: Exception
@@ -128,4 +131,114 @@ export
      * Uses system.currentDirectory() when relative.
      *)
     resolve(path: String): String
+
+    (* ======================================================================
+     * Paths as Values (T)
+     *
+     * A T is a path normalized as Python's PurePath normalizes one: repeated
+     * separators collapse, and "." components and a trailing separator are
+     * dropped, but ".." components stay, since cancelling them needs the
+     * file system (normalizePath cancels them lexically). So two paths that
+     * name the same way are equal strings, and equal and hash make T a
+     * hashMap key. The String functions above are unchanged; the functions
+     * over T have names of their own.
+     * ====================================================================== *)
+
+    T::TYPE
+
+    (* The path that s spells, normalized.
+     * Examples:
+     *   toString(fromString("a//b/./c/")) => "a/b/c"
+     *   toString(fromString("./a/../b"))  => "a/../b"
+     *   toString(fromString(""))          => "."
+     *)
+    fromString(s: String): T
+
+    (* The path as a string *)
+    toString(p: T): String
+
+    equal(a: T b: T): Bool
+    hash(p: T): word.T
+
+    (* The final component, or "" for "/" and "." *)
+    name(p: T): String
+
+    (* The path without its final component.
+     * Examples:
+     *   parent(fromString("/a/b")) => "/a"
+     *   parent(fromString("a"))    => "."
+     *   parent(fromString("/"))    => "/"
+     *)
+    parent(p: T): T
+
+    (* The final component's extension, including its dot, as extension *)
+    suffix(p: T): String
+
+    (* The final component without its extension, as stem *)
+    pathStem(p: T): String
+
+    (* The path with its final component's extension replaced, as
+     * withExtension does; raises error if the path has no final component *)
+    withSuffix(p: T newSuffix: String): T
+
+    (* The components, with "/" first for an absolute path, as parts *)
+    pathParts(p: T): vector.T(String)
+
+    (* p with s appended (s itself if it is absolute) *)
+    child(p: T s: String): T
+
+    (* q relative to p (q itself if it is absolute) *)
+    joinPaths(p: T q: T): T
+
+    pathIsAbsolute(p: T): Bool
+
+    (* The path with ".." components cancelled lexically, as normalize *)
+    normalizePath(p: T): T
+
+    (* The path relative to base, as relativeTo; raises error if one is
+     * absolute and the other relative *)
+    pathRelativeTo(p: T base: T): T
+
+    (* The path made absolute against the current directory, as resolve *)
+    resolvePath(p: T): T
+
+    (* ======================================================================
+     * The File System, over T
+     * ====================================================================== *)
+
+    (* Whether the path names anything (following symlinks) *)
+    exists(p: T): Bool
+
+    (* Whether the path names a regular file (following symlinks) *)
+    isFile(p: T): Bool
+
+    (* Whether the path names a directory (following symlinks) *)
+    isDir(p: T): Bool
+
+    (* What fileStats.stat and fileStats.find say about the path *)
+    stat(p: T): fileStats.T
+    find(p: T): maybe.T(fileStats.T)
+
+    (* The entries of a directory, as children of p, sorted by name; raises
+     * system.error if p is not a directory *)
+    iterDir(p: T): Array(T)
+
+    (* Create the directory p, and with parents its missing parents too;
+     * raises system.error if p exists, or if without parents its parent is
+     * not a directory *)
+    mkdir(p: T parents: Bool): Ok
+
+    (* Remove the file p; raises system.error if there is none *)
+    unlink(p: T): Ok
+
+    (* Rename p to q *)
+    rename(p: T q: T): Ok
+
+    (* The text of the file p; raises what reader.file and reader.getString
+     * raise if it cannot be read *)
+    readText(p: T): String
+
+    (* Write text to the file p, replacing what it held; raises what
+     * writer.file and writer.putString raise if it cannot be written *)
+    writeText(p: T text: String): Ok
 end

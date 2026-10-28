@@ -31,20 +31,16 @@ byte-identical to a serial build's, apart from build.log's order, and the driver
 
 ---
 
-## An `os/pathlib` library
+## Paths as values in the build engine
 
-**Problem.** `util/path` handles paths only as strings and only lexically. Filesystem operations are free functions in
-`system` that take strings. Code ported from Python's `pathlib`, such as the bootstrap's build engine and runner, has
-nothing to map onto.
+**Problem.** `util/path` has paths as values (`path.T`) and the file system operations over them
+([new-libraries.md](new-libraries.md) §1.4), but the self-hosted compiler still handles paths as strings, with its own
+helpers in `questlang/common/files` that duplicate `util/path`'s.
 
-**Where to start.** Decide whether a path is a value of its own type (Python's `Path`, built with `/` written as
-`join`) or stays a string with methods grouped around it. Build it on `util/path` for the lexical part (parts, parent,
-name, stem, suffix, `withSuffix`, `relativeTo`, `resolve`) and on `os/fileStats` and `system` for the rest (`exists`,
-`isFile`, `isDir`, `stat`, `iterDir`, `mkdir` with parents, `unlink`, `rename`, `readText`, `writeText`). Keep
-`util/path` as it is, or fold it in, but not both.
+**Where to start.** Step 8 of [os-libraries.md](os-libraries.md): fold `common/files` into `util/path`, and move
+`questlang/build/engine` to `path.T`.
 
-**Done when.** The library is documented in docs/new-libraries.md, has goldens in every run phase, and at least the
-build engine uses it in place of string paths.
+**Done when.** `common/files` is gone and the build engine's paths are `path.T`.
 
 ---
 

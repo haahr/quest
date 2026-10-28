@@ -179,7 +179,7 @@ the library exists.
   Two equal paths are then equal strings, and `path.equal` and `path.hash` make `T` usable as a `hashMap` key.
 - **The String functions stay as they are,** and the functions over `T` are added beside them with names of their
   own, Python's where they do not collide:
-  - `of(s)` and `toString(p)` convert;
+  - `fromString(s)` and `toString(p)` convert (`of` is a keyword);
   - the decomposition functions are `parent`, `name`, `pathStem`, `suffix`, `withSuffix`, and `pathParts`;
   - joining is `child(p s)` and `joinPaths(p q)`;
   - `pathIsAbsolute`, `normalizePath`, `pathRelativeTo`, and `resolvePath`.
@@ -218,7 +218,7 @@ the library exists.
 2. Release (done: 4982017a).
 3. The questlang callers move to `fileStats`, and `system.modifiedTime` is removed, at ABI 44 (done: f4b55d4c).
 4. `os/process`: the library, at ABI 46 (done).
-5. Release.
-6. `util/path`: the type and the filesystem functions.
+5. Release (done: 04dca129).
+6. `util/path`: the type and the filesystem functions (done).
 7. Release.
 8. `common/files` folds into `util/path`, and the build engine moves to `path.T`.

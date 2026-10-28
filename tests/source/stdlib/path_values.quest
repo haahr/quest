@@ -1,0 +1,63 @@
+(* util/path's paths as values (path.T): normalization, the lexical functions
+   over them, and equality and hashing as a hashMap's keys. *)
+import
+    util/path : util/Path
+    util/maybe : util/Maybe
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    writer: Writer
+    conv: Conv
+;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let show(what: String p: path.T): Ok = print(what <> " => " <> path.toString(p));
+let at(s: String): path.T = path.fromString(s);
+
+(* 1. Normalization: separators collapse, . components and a trailing
+   separator drop, and .. stays *)
+show("fromString(\"a//b/./c/\")" at("a//b/./c/"));
+show("fromString(\"./a/../b\")" at("./a/../b"));
+show("fromString(\"\")" at(""));
+show("fromString(\".\")" at("."));
+show("fromString(\"/\")" at("/"));
+show("fromString(\"//x//\")" at("//x//"));
+show("fromString(\"..\")" at(".."));
+
+(* 2. Components *)
+let p = at("/usr/lib/libquest.tar.gz");
+print("name: " <> path.name(p));
+print("suffix: " <> path.suffix(p));
+print("pathStem: " <> path.pathStem(p));
+show("parent" path.parent(p));
+show("parent of a" path.parent(at("a")));
+show("parent of /" path.parent(at("/")));
+show("parent of /a" path.parent(at("/a")));
+show("parent of ." path.parent(at(".")));
+print("name of /: [" <> path.name(at("/")) <> "]");
+print("suffix of .bashrc: [" <> path.suffix(at("dir/.bashrc")) <> "]");
+let parts = path.pathParts(p);
+let var joined = "";
+for i = 0 upto {vector.length(:String parts) - 1} do joined := joined <> "[" <> vector.get(:String parts i) <> "]" end;
+print("pathParts: " <> joined);
+print("pathParts of .: " <> conv.int(vector.length(:String path.pathParts(at(".")))));
+
+(* 3. Changing and joining *)
+show("withSuffix .xz" path.withSuffix(p ".xz"));
+show("withSuffix \"\"" path.withSuffix(at("a/b.txt") ""));
+print(try path.toString(path.withSuffix(at("/") ".txt")) when path.error then "withSuffix of /: path.error" end);
+show("child" path.child(at("a") "b/c"));
+show("child absolute" path.child(at("a") "/b"));
+show("joinPaths" path.joinPaths(at("a/b") at("../c")));
+print("pathIsAbsolute: " <> conv.bool(path.pathIsAbsolute(p)) <> " " <> conv.bool(path.pathIsAbsolute(at("a"))));
+show("normalizePath" path.normalizePath(at("a/b/../c")));
+show("pathRelativeTo" path.pathRelativeTo(at("/a/b/c") at("/a")));
+show("pathRelativeTo sibling" path.pathRelativeTo(at("/a/b") at("/a/c")));
+print("resolvePath is absolute: " <> conv.bool(path.pathIsAbsolute(path.resolvePath(at("x/y")))));
+
+(* 4. Equality and hashing *)
+print("equal: " <> conv.bool(path.equal(at("a/b/") at("a//b"))) <> " " <> conv.bool(path.equal(at("a/b") at("a/c"))));
+let m = hashMap.new(:path.T :Int path.equal path.hash);
+hashMap.insert(:path.T :Int m at("src/x.quest") 1);
+hashMap.insert(:path.T :Int m at("./src//x.quest") 2);
+print("entries: " <> conv.int(hashMap.size(:path.T :Int m)));
+print("found: " <> conv.int(maybe.unwrap(:Int hashMap.get(:path.T :Int m at("src/x.quest")))))

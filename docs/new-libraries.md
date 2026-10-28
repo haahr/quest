@@ -169,7 +169,8 @@ end
 
 ### 1.4. `util/path : util/Path`
 
-Cross-platform POSIX filesystem path manipulation, decomposition, normalization, and relative path resolution.
+POSIX paths: their decomposition, normalization, and relative resolution, both over Strings and over paths as values
+of their own type, `path.T`, with the file system operations a program needs over `path.T` (Python's `pathlib.Path`).
 
 #### Interface Summary
 
@@ -177,6 +178,9 @@ Cross-platform POSIX filesystem path manipulation, decomposition, normalization,
 interface Path
 import
     collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    os/fileStats : os/FileStats
+    word : Word
 export
     error: Exception
 
@@ -206,8 +210,49 @@ export
     normalize(path: String): String
     relativeTo(path: String base: String): String
     resolve(path: String): String
+
+    (* Paths as values, normalized as PurePath normalizes them *)
+    T::TYPE
+    fromString(s: String): T
+    toString(p: T): String
+    equal(a: T b: T): Bool
+    hash(p: T): word.T
+    name(p: T): String
+    parent(p: T): T
+    suffix(p: T): String
+    pathStem(p: T): String
+    withSuffix(p: T newSuffix: String): T
+    pathParts(p: T): vector.T(String)
+    child(p: T s: String): T
+    joinPaths(p: T q: T): T
+    pathIsAbsolute(p: T): Bool
+    normalizePath(p: T): T
+    pathRelativeTo(p: T base: T): T
+    resolvePath(p: T): T
+
+    (* The file system, over T *)
+    exists(p: T): Bool
+    isFile(p: T): Bool
+    isDir(p: T): Bool
+    stat(p: T): fileStats.T
+    find(p: T): maybe.T(fileStats.T)
+    iterDir(p: T): Array(T)
+    mkdir(p: T parents: Bool): Ok
+    unlink(p: T): Ok
+    rename(p: T q: T): Ok
+    readText(p: T): String
+    writeText(p: T text: String): Ok
 end
 ```
+
+A `path.T` is the string it was made from, normalized: repeated separators collapse, and `.` components and a trailing
+separator drop, so `fromString("./a//b/")` is `a/b`. `..` components stay, as in Python, because cancelling them can
+change what a path names when a component is a symlink; `normalizePath` cancels them lexically. Normalized paths that
+name a file the same way are equal strings, so `equal` and `hash` make `path.T` a `hashMap` key. The functions over
+`path.T` take the names Python's `Path` gives them where the String functions do not already use the name
+(`pathStem`, `pathParts`, `pathIsAbsolute`, and so on where they do); `of`, a keyword, is `fromString`. `iterDir`
+gives a directory's entries sorted by name, and `mkdir` raises `system.error` if the directory exists, as Python's
+does without `exist_ok`.
 
 ---
 

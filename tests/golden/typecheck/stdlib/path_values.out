@@ -1,0 +1,731 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('path') : 'Path')
+        (TypedImportItem ('maybe') : 'Maybe')
+        (TypedImportItem ('hashMap') : 'HashMap')
+        (TypedImportItem ('vector') : 'Vector')
+        (TypedImportItem ('writer') : 'Writer')
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'show' :type Fun(what: String p: path.T): Ok
+      :value (TypedFun :params (('what' : String) ('p' : path.T)) :type Fun(what: String p: path.T): Ok
+        :body (TypedApp :type Ok
+          :func (TypedVar 'print' :type Fun(s: String): Ok)
+          :args (
+            (TypedInfix '<>' :type String
+              :left (TypedVar 'what' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' => ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'toString' :type Fun(p: path.T): String
+                    :target (TypedVar 'path' :type Module 'path'))
+                  :args (
+                    (TypedVar 'p' :type path.T)
+                  ))))
+          ))))
+    (TypedLetValue 'at' :type Fun(s: String): path.T
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): path.T
+        :body (TypedApp :type path.T
+          :func (TypedSelect 'fromString' :type Fun(s: String): path.T
+            :target (TypedVar 'path' :type Module 'path'))
+          :args (
+            (TypedVar 's' :type String)
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'fromString("a//b/./c/")' :type String)
+          (TypedApp :type path.T
+            :func (TypedVar 'at' :type Fun(s: String): path.T)
+            :args (
+              (TypedString 'a//b/./c/' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'fromString("./a/../b")' :type String)
+          (TypedApp :type path.T
+            :func (TypedVar 'at' :type Fun(s: String): path.T)
+            :args (
+              (TypedString './a/../b' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'fromString("")' :type String)
+          (TypedApp :type path.T
+            :func (TypedVar 'at' :type Fun(s: String): path.T)
+            :args (
+              (TypedString '' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'fromString(".")' :type String)
+          (TypedApp :type path.T
+            :func (TypedVar 'at' :type Fun(s: String): path.T)
+            :args (
+              (TypedString '.' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'fromString("/")' :type String)
+          (TypedApp :type path.T
+            :func (TypedVar 'at' :type Fun(s: String): path.T)
+            :args (
+              (TypedString '/' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'fromString("//x//")' :type String)
+          (TypedApp :type path.T
+            :func (TypedVar 'at' :type Fun(s: String): path.T)
+            :args (
+              (TypedString '//x//' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'fromString("..")' :type String)
+          (TypedApp :type path.T
+            :func (TypedVar 'at' :type Fun(s: String): path.T)
+            :args (
+              (TypedString '..' :type String)
+            ))
+        )))
+    (TypedLetValue 'p' :type path.T
+      :value (TypedApp :type path.T
+        :func (TypedVar 'at' :type Fun(s: String): path.T)
+        :args (
+          (TypedString '/usr/lib/libquest.tar.gz' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'name: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'name' :type Fun(p: path.T): String
+                :target (TypedVar 'path' :type Module 'path'))
+              :args (
+                (TypedVar 'p' :type path.T)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'suffix: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'suffix' :type Fun(p: path.T): String
+                :target (TypedVar 'path' :type Module 'path'))
+              :args (
+                (TypedVar 'p' :type path.T)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'pathStem: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'pathStem' :type Fun(p: path.T): String
+                :target (TypedVar 'path' :type Module 'path'))
+              :args (
+                (TypedVar 'p' :type path.T)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'parent' :type String)
+          (TypedApp :type path.T
+            :func (TypedSelect 'parent' :type Fun(p: path.T): path.T
+              :target (TypedVar 'path' :type Module 'path'))
+            :args (
+              (TypedVar 'p' :type path.T)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'parent of a' :type String)
+          (TypedApp :type path.T
+            :func (TypedSelect 'parent' :type Fun(p: path.T): path.T
+              :target (TypedVar 'path' :type Module 'path'))
+            :args (
+              (TypedApp :type path.T
+                :func (TypedVar 'at' :type Fun(s: String): path.T)
+                :args (
+                  (TypedString 'a' :type String)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'parent of /' :type String)
+          (TypedApp :type path.T
+            :func (TypedSelect 'parent' :type Fun(p: path.T): path.T
+              :target (TypedVar 'path' :type Module 'path'))
+            :args (
+              (TypedApp :type path.T
+                :func (TypedVar 'at' :type Fun(s: String): path.T)
+                :args (
+                  (TypedString '/' :type String)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'parent of /a' :type String)
+          (TypedApp :type path.T
+            :func (TypedSelect 'parent' :type Fun(p: path.T): path.T
+              :target (TypedVar 'path' :type Module 'path'))
+            :args (
+              (TypedApp :type path.T
+                :func (TypedVar 'at' :type Fun(s: String): path.T)
+                :args (
+                  (TypedString '/a' :type String)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'parent of .' :type String)
+          (TypedApp :type path.T
+            :func (TypedSelect 'parent' :type Fun(p: path.T): path.T
+              :target (TypedVar 'path' :type Module 'path'))
+            :args (
+              (TypedApp :type path.T
+                :func (TypedVar 'at' :type Fun(s: String): path.T)
+                :args (
+                  (TypedString '.' :type String)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'name of /: [' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'name' :type Fun(p: path.T): String
+                  :target (TypedVar 'path' :type Module 'path'))
+                :args (
+                  (TypedApp :type path.T
+                    :func (TypedVar 'at' :type Fun(s: String): path.T)
+                    :args (
+                      (TypedString '/' :type String)
+                    ))
+                ))
+              :right (TypedString ']' :type String)))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'suffix of .bashrc: [' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'suffix' :type Fun(p: path.T): String
+                  :target (TypedVar 'path' :type Module 'path'))
+                :args (
+                  (TypedApp :type path.T
+                    :func (TypedVar 'at' :type Fun(s: String): path.T)
+                    :args (
+                      (TypedString 'dir/.bashrc' :type String)
+                    ))
+                ))
+              :right (TypedString ']' :type String)))
+        )))
+    (TypedLetValue 'parts' :type vector.T(String)
+      :value (TypedApp :type vector.T(String)
+        :func (TypedSelect 'pathParts' :type Fun(p: path.T): vector.T(String)
+          :target (TypedVar 'path' :type Module 'path'))
+        :args (
+          (TypedVar 'p' :type path.T)
+        )))
+    (TypedLetValue 'joined' :type String
+      :value (TypedString '' :type String))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [String] :type Fun(v: vector.T(String)): Int
+              :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                :target (TypedVar 'vector' :type Module 'vector')))
+            :args (
+              (TypedVar 'parts' :type vector.T(String))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedAssign
+          :target (TypedVar 'joined' :type Var(String))
+          :value (TypedInfix '<>' :type String
+            :left (TypedDerefCell :type String
+              :target (TypedVar 'joined' :type Var(String)))
+            :right (TypedInfix '<>' :type String
+              :left (TypedString '[' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedApp :type String
+                  :func (TypedTypeApp [String] :type Fun(v: vector.T(String) index: Int): String
+                    :func (TypedSelect 'get' :type All(A :: TYPE) Fun(v: vector.T(A) index: Int): A
+                      :target (TypedVar 'vector' :type Module 'vector')))
+                  :args (
+                    (TypedVar 'parts' :type vector.T(String))
+                    (TypedVar 'i' :type Int)
+                  ))
+                :right (TypedString ']' :type String)))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'pathParts: ' :type String)
+            :right (TypedDerefCell :type String
+              :target (TypedVar 'joined' :type Var(String))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'pathParts of .: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedTypeApp [String] :type Fun(v: vector.T(String)): Int
+                    :func (TypedSelect 'length' :type All(A :: TYPE) Fun(v: vector.T(A)): Int
+                      :target (TypedVar 'vector' :type Module 'vector')))
+                  :args (
+                    (TypedApp :type vector.T(String)
+                      :func (TypedSelect 'pathParts' :type Fun(p: path.T): vector.T(String)
+                        :target (TypedVar 'path' :type Module 'path'))
+                      :args (
+                        (TypedApp :type path.T
+                          :func (TypedVar 'at' :type Fun(s: String): path.T)
+                          :args (
+                            (TypedString '.' :type String)
+                          ))
+                      ))
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'withSuffix .xz' :type String)
+          (TypedApp :type path.T
+            :func (TypedSelect 'withSuffix' :type Fun(p: path.T newSuffix: String): path.T
+              :target (TypedVar 'path' :type Module 'path'))
+            :args (
+              (TypedVar 'p' :type path.T)
+              (TypedString '.xz' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'withSuffix ""' :type String)
+          (TypedApp :type path.T
+            :func (TypedSelect 'withSuffix' :type Fun(p: path.T newSuffix: String): path.T
+              :target (TypedVar 'path' :type Module 'path'))
+            :args (
+              (TypedApp :type path.T
+                :func (TypedVar 'at' :type Fun(s: String): path.T)
+                :args (
+                  (TypedString 'a/b.txt' :type String)
+                ))
+              (TypedString '' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'toString' :type Fun(p: path.T): String
+                :target (TypedVar 'path' :type Module 'path'))
+              :args (
+                (TypedApp :type path.T
+                  :func (TypedSelect 'withSuffix' :type Fun(p: path.T newSuffix: String): path.T
+                    :target (TypedVar 'path' :type Module 'path'))
+                  :args (
+                    (TypedApp :type path.T
+                      :func (TypedVar 'at' :type Fun(s: String): path.T)
+                      :args (
+                        (TypedString '/' :type String)
+                      ))
+                    (TypedString '.txt' :type String)
+                  ))
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedSelect 'error' :type Exception
+                  :target (TypedVar 'path' :type Module 'path'))
+                :body (TypedString 'withSuffix of /: path.error' :type String))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'child' :type String)
+          (TypedApp :type path.T
+            :func (TypedSelect 'child' :type Fun(p: path.T s: String): path.T
+              :target (TypedVar 'path' :type Module 'path'))
+            :args (
+              (TypedApp :type path.T
+                :func (TypedVar 'at' :type Fun(s: String): path.T)
+                :args (
+                  (TypedString 'a' :type String)
+                ))
+              (TypedString 'b/c' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'child absolute' :type String)
+          (TypedApp :type path.T
+            :func (TypedSelect 'child' :type Fun(p: path.T s: String): path.T
+              :target (TypedVar 'path' :type Module 'path'))
+            :args (
+              (TypedApp :type path.T
+                :func (TypedVar 'at' :type Fun(s: String): path.T)
+                :args (
+                  (TypedString 'a' :type String)
+                ))
+              (TypedString '/b' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'joinPaths' :type String)
+          (TypedApp :type path.T
+            :func (TypedSelect 'joinPaths' :type Fun(p: path.T q: path.T): path.T
+              :target (TypedVar 'path' :type Module 'path'))
+            :args (
+              (TypedApp :type path.T
+                :func (TypedVar 'at' :type Fun(s: String): path.T)
+                :args (
+                  (TypedString 'a/b' :type String)
+                ))
+              (TypedApp :type path.T
+                :func (TypedVar 'at' :type Fun(s: String): path.T)
+                :args (
+                  (TypedString '../c' :type String)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'pathIsAbsolute: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedSelect 'pathIsAbsolute' :type Fun(p: path.T): Bool
+                      :target (TypedVar 'path' :type Module 'path'))
+                    :args (
+                      (TypedVar 'p' :type path.T)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Bool
+                      :func (TypedSelect 'pathIsAbsolute' :type Fun(p: path.T): Bool
+                        :target (TypedVar 'path' :type Module 'path'))
+                      :args (
+                        (TypedApp :type path.T
+                          :func (TypedVar 'at' :type Fun(s: String): path.T)
+                          :args (
+                            (TypedString 'a' :type String)
+                          ))
+                      ))
+                  )))))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'normalizePath' :type String)
+          (TypedApp :type path.T
+            :func (TypedSelect 'normalizePath' :type Fun(p: path.T): path.T
+              :target (TypedVar 'path' :type Module 'path'))
+            :args (
+              (TypedApp :type path.T
+                :func (TypedVar 'at' :type Fun(s: String): path.T)
+                :args (
+                  (TypedString 'a/b/../c' :type String)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'pathRelativeTo' :type String)
+          (TypedApp :type path.T
+            :func (TypedSelect 'pathRelativeTo' :type Fun(p: path.T base: path.T): path.T
+              :target (TypedVar 'path' :type Module 'path'))
+            :args (
+              (TypedApp :type path.T
+                :func (TypedVar 'at' :type Fun(s: String): path.T)
+                :args (
+                  (TypedString '/a/b/c' :type String)
+                ))
+              (TypedApp :type path.T
+                :func (TypedVar 'at' :type Fun(s: String): path.T)
+                :args (
+                  (TypedString '/a' :type String)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String p: path.T): Ok)
+        :args (
+          (TypedString 'pathRelativeTo sibling' :type String)
+          (TypedApp :type path.T
+            :func (TypedSelect 'pathRelativeTo' :type Fun(p: path.T base: path.T): path.T
+              :target (TypedVar 'path' :type Module 'path'))
+            :args (
+              (TypedApp :type path.T
+                :func (TypedVar 'at' :type Fun(s: String): path.T)
+                :args (
+                  (TypedString '/a/b' :type String)
+                ))
+              (TypedApp :type path.T
+                :func (TypedVar 'at' :type Fun(s: String): path.T)
+                :args (
+                  (TypedString '/a/c' :type String)
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'resolvePath is absolute: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Bool
+                  :func (TypedSelect 'pathIsAbsolute' :type Fun(p: path.T): Bool
+                    :target (TypedVar 'path' :type Module 'path'))
+                  :args (
+                    (TypedApp :type path.T
+                      :func (TypedSelect 'resolvePath' :type Fun(p: path.T): path.T
+                        :target (TypedVar 'path' :type Module 'path'))
+                      :args (
+                        (TypedApp :type path.T
+                          :func (TypedVar 'at' :type Fun(s: String): path.T)
+                          :args (
+                            (TypedString 'x/y' :type String)
+                          ))
+                      ))
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'equal: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedSelect 'equal' :type Fun(a: path.T b: path.T): Bool
+                      :target (TypedVar 'path' :type Module 'path'))
+                    :args (
+                      (TypedApp :type path.T
+                        :func (TypedVar 'at' :type Fun(s: String): path.T)
+                        :args (
+                          (TypedString 'a/b/' :type String)
+                        ))
+                      (TypedApp :type path.T
+                        :func (TypedVar 'at' :type Fun(s: String): path.T)
+                        :args (
+                          (TypedString 'a//b' :type String)
+                        ))
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Bool
+                      :func (TypedSelect 'equal' :type Fun(a: path.T b: path.T): Bool
+                        :target (TypedVar 'path' :type Module 'path'))
+                      :args (
+                        (TypedApp :type path.T
+                          :func (TypedVar 'at' :type Fun(s: String): path.T)
+                          :args (
+                            (TypedString 'a/b' :type String)
+                          ))
+                        (TypedApp :type path.T
+                          :func (TypedVar 'at' :type Fun(s: String): path.T)
+                          :args (
+                            (TypedString 'a/c' :type String)
+                          ))
+                      ))
+                  )))))
+        )))
+    (TypedLetValue 'm' :type hashMap.T(path.T Int)
+      :value (TypedApp :type hashMap.T(path.T Int)
+        :func (TypedTypeApp [path.T Int] :type Fun(equal: Fun(k1: path.T k2: path.T): Bool hash: Fun(k: path.T): word.T): hashMap.T(path.T Int)
+          :func (TypedSelect 'new' :type All(K :: TYPE V :: TYPE) Fun(equal: Fun(k1: K k2: K): Bool hash: Fun(k: K): word.T): hashMap.T(K V)
+            :target (TypedVar 'hashMap' :type Module 'hashMap')))
+        :args (
+          (TypedSelect 'equal' :type Fun(a: path.T b: path.T): Bool
+            :target (TypedVar 'path' :type Module 'path'))
+          (TypedSelect 'hash' :type Fun(p: path.T): word.T
+            :target (TypedVar 'path' :type Module 'path'))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Bool
+        :func (TypedTypeApp [path.T Int] :type Fun(m: hashMap.T(path.T Int) key: path.T value: Int): Bool
+          :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K value: V): Bool
+            :target (TypedVar 'hashMap' :type Module 'hashMap')))
+        :args (
+          (TypedVar 'm' :type hashMap.T(path.T Int))
+          (TypedApp :type path.T
+            :func (TypedVar 'at' :type Fun(s: String): path.T)
+            :args (
+              (TypedString 'src/x.quest' :type String)
+            ))
+          (TypedInt 1 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Bool
+        :func (TypedTypeApp [path.T Int] :type Fun(m: hashMap.T(path.T Int) key: path.T value: Int): Bool
+          :func (TypedSelect 'insert' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K value: V): Bool
+            :target (TypedVar 'hashMap' :type Module 'hashMap')))
+        :args (
+          (TypedVar 'm' :type hashMap.T(path.T Int))
+          (TypedApp :type path.T
+            :func (TypedVar 'at' :type Fun(s: String): path.T)
+            :args (
+              (TypedString './src//x.quest' :type String)
+            ))
+          (TypedInt 2 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'entries: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedTypeApp [path.T Int] :type Fun(m: hashMap.T(path.T Int)): Int
+                    :func (TypedSelect 'size' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V)): Int
+                      :target (TypedVar 'hashMap' :type Module 'hashMap')))
+                  :args (
+                    (TypedVar 'm' :type hashMap.T(path.T Int))
+                  ))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'found: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedTypeApp [Int] :type Fun(o: maybe.T(Int)): Int
+                    :func (TypedSelect 'unwrap' :type All(A :: TYPE) Fun(o: maybe.T(A)): A
+                      :target (TypedVar 'maybe' :type Module 'maybe')))
+                  :args (
+                    (TypedApp :type maybe.T(Int)
+                      :func (TypedTypeApp [path.T Int] :type Fun(m: hashMap.T(path.T Int) key: path.T): maybe.T(Int)
+                        :func (TypedSelect 'get' :type All(K :: TYPE V :: TYPE) Fun(m: hashMap.T(K V) key: K): maybe.T(V)
+                          :target (TypedVar 'hashMap' :type Module 'hashMap')))
+                      :args (
+                        (TypedVar 'm' :type hashMap.T(path.T Int))
+                        (TypedApp :type path.T
+                          :func (TypedVar 'at' :type Fun(s: String): path.T)
+                          :args (
+                            (TypedString 'src/x.quest' :type String)
+                          ))
+                      ))
+                  ))
+              )))
+        )))
+  ))
