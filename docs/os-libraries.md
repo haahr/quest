@@ -1,5 +1,7 @@
 # Operating-System Libraries
 
+**Status: complete (2026-10-28).**
+
 This plan carries out three tasks from [tasklist.md](tasklist.md):
 
 - an `os/filestats` library;
@@ -220,5 +222,9 @@ the library exists.
 4. `os/process`: the library, at ABI 46 (done).
 5. Release (done: 04dca129).
 6. `util/path`: the type and the filesystem functions (done).
-7. Release.
-8. `common/files` folds into `util/path`, and the build engine moves to `path.T`.
+7. Release (done: 6e6780d7).
+8. `common/files` folds into `util/path`, and the build engine moves to `path.T` (done). `modules/paths` took
+   over `common/files`' `readText`, `fileTime`, and `modifiedNs`, and builds the rest on `util/path`; `config/abi`,
+   below it, uses `util/path` directly. The engine's build directory, include paths, and extra objects are `path.T`.
+   `engine.int.quest` imports `util/path` without an alias, because both compilers mishandle a type that an
+   interface exports through an aliased import of a hierarchical library.

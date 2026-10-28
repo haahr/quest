@@ -41,7 +41,6 @@ questlang/
 │   ├── location             # Source coordinates (Pos, Span) and source maps (bootstrap syntax/sources)
 │   ├── diagnostics          # Diagnostic messages, error severity
 │   ├── diagbag              # Diagnostic accumulator and reporter
-│   ├── files                # Path strings and files' text (the bootstrap's pathlib)
 │   └── keys                 # Integer keys for the type tables (the bootstrap keys them by tuples)
 │
 ├── syntax/                  # Concrete syntax and parsing (Milestone 1; desugar, Milestone 2)
@@ -77,7 +76,7 @@ questlang/
 │   └── scoping              # Well-scopedness check of typed programs
 │
 ├── modules/                 # Units, imports, interfaces, modules (Milestone 2 from source; artifacts, Milestone 5)
-│   ├── paths                # File discovery, search paths, canonical names
+│   ├── paths                # File discovery, search paths, canonical names; files' text and times (over util/path)
 │   ├── units                # Unit files
 │   ├── graph                # The unit graph: resolution, loaded units
 │   ├── abstracttypes        # Modules' abstract types by global name

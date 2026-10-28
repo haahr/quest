@@ -31,19 +31,6 @@ byte-identical to a serial build's, apart from build.log's order, and the driver
 
 ---
 
-## Paths as values in the build engine
-
-**Problem.** `util/path` has paths as values (`path.T`) and the file system operations over them
-([new-libraries.md](new-libraries.md) §1.4), but the self-hosted compiler still handles paths as strings, with its own
-helpers in `questlang/common/files` that duplicate `util/path`'s.
-
-**Where to start.** Step 8 of [os-libraries.md](os-libraries.md): fold `common/files` into `util/path`, and move
-`questlang/build/engine` to `path.T`.
-
-**Done when.** `common/files` is gone and the build engine's paths are `path.T`.
-
----
-
 ## Faster word operations in compiled code
 
 **Problem.** Each `word` operation in compiled code (`word.xorBits`, `word.shift`, `word.rotate`, and the rest of

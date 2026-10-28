@@ -3,7 +3,6 @@
 module paths : Paths
 import
     questlang/common/location : questlang/common/Location
-    questlang/common/files : questlang/common/Files
     questlang/config/abi : questlang/config/Abi
     questlang/values/json : questlang/values/Json
     questlang/common/diagnostics : questlang/common/Diagnostics
@@ -14,6 +13,8 @@ import
     collections/hashMap : collections/HashMap
     util/hash : util/Hash
     util/maybe : util/Maybe
+    pathLib = util/path : util/Path
+    os/fileStats : os/FileStats
     util/strutil : util/Strutil
     util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
@@ -36,11 +37,26 @@ export
             b.toString()
         end
 
-    let isAbsolute(p: String): Bool = files.isAbsolute(p)
-    let join(a: String b: String): String = files.join(a b)
-    let components(p: String): vector.T(String) = files.components(p)
-    let normalize(p: String): String = files.normalize(p)
-    let absolute(p: String): String = files.absolute(p)
+    let isAbsolute(p: String): Bool = pathLib.isAbsolute(p)
+    let join(a: String b: String): String = pathLib.join(a b)
+    let normalize(p: String): String = pathLib.normalize(p)
+    let absolute(p: String): String = pathLib.resolve(p)
+
+    (* The components between separators, without empty ones (so without an
+     * absolute path's root) *)
+    let components(p: String): vector.T(String) =
+        begin
+            let result = vector.new(:String)
+            let n = stringOp.length(p)
+            let var start = 0
+            for i = 0 upto n do
+                if {i is n} orif {stringOp.getChar(p i) is '/'} then
+                    if i > start then vector.append(:String result stringOp.getSub(p start {i - start})) end
+                    start := i + 1
+                end
+            end
+            result
+        end
 
     let parent(p: String): String =
         begin
@@ -103,7 +119,28 @@ export
             maybe.unwrapOr(:String rel p)
         end
 
-    let readText(file: String): maybe.T(String) = files.readText(file)
+    let readText(file: String): maybe.T(String) =
+        if not(system.isFile(file)) then
+            maybe.none(:String)
+        else
+            try
+                maybe.some(:String pathLib.readText(pathLib.fromString(file)))
+            when system.error then
+                maybe.none(:String)
+            end
+        end
+
+    let fileTime(file: String): maybe.T(Int) =
+        begin
+            let s = fileStats.find(file)
+            if maybe.isSome(:fileStats.T s) andif {maybe.unwrap(:fileStats.T s).kind?file} then
+                maybe.some(:Int maybe.unwrap(:fileStats.T s).modifiedNs)
+            else
+                maybe.none(:Int)
+            end
+        end
+
+    let modifiedNs(p: String): Int = fileStats.stat(p).modifiedNs
 
     let projectDir(): String =
         begin
@@ -291,7 +328,7 @@ export
                         change := maybe.some(:String "interface '" <> dep.path <> "' now resolves to "
                             <> shown(maybe.unwrapOr(:String src "")) <> ", not " <> shown(dep.source))
                     elsif maybe.isSome(:String src)
-                        andif {files.modifiedNs(maybe.unwrap(:String src)) > artifactTime} then
+                        andif {modifiedNs(maybe.unwrap(:String src)) > artifactTime} then
                         change := maybe.some(:String "imported interface " <> maybe.unwrap(:String src) <> " is newer")
                     end
                 end
@@ -306,7 +343,7 @@ export
             let deps = recordedDependencies(qi)
             maybe.isSome(:Array(InterfaceDependency) deps)
                 andif maybe.isNone(:String dependencyChange(maybe.unwrap(:Array(InterfaceDependency) deps) includePaths
-                    files.modifiedNs(qi) resolveInterfaceSourceFile))
+                    modifiedNs(qi) resolveInterfaceSourceFile))
         end
 
     let resolveInterfaceFile(name: String currentDir: maybe.T(String) includePaths: Array(String)): maybe.T(String) =
@@ -323,7 +360,7 @@ export
                         else
                             let src = maybe.unwrap(:String source)
                             if abi.hasCurrentAbi(candidate)
-                                andif {files.modifiedNs(candidate) >= files.modifiedNs(src)}
+                                andif {modifiedNs(candidate) >= modifiedNs(src)}
                                 andif abi.builtFrom(candidate src)
                                     andif dependenciesUnchanged(candidate includePaths) then
                                 found := maybe.some(:String absolute(candidate))

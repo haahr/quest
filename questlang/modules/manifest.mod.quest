@@ -2,7 +2,7 @@
 
 module manifest : Manifest
 import
-    questlang/common/files : questlang/common/Files
+    questlang/modules/paths : questlang/modules/Paths
     questlang/config/abi : questlang/config/Abi
     questlang/values/json : questlang/values/Json
     collections/vector : collections/Vector
@@ -72,7 +72,7 @@ export
                 vector.append(:json.Value interfaces json.object(o))
             end
             json.put(top "imported_interfaces" json.arrayValue(interfaces))
-            let dir = files.normalize(file <> "/..")
+            let dir = paths.normalize(file <> "/..")
             system.makeDirectory(dir)
             let w = writer.file(file)
             writer.putString(w json.dumpIndented(json.object(top) 2) <> "\n")
@@ -95,7 +95,7 @@ export
 
     let readQm(file: String): maybe.T(ModuleManifest) =
         begin
-            let text = if system.isFile(file) then files.readText(file) else maybe.none(:String) end
+            let text = if system.isFile(file) then paths.readText(file) else maybe.none(:String) end
             if maybe.isNone(:String text) then
                 maybe.none(:ModuleManifest)
             else
@@ -165,13 +165,13 @@ export
             end
         end
 
-    let newer(a: String b: String): Bool = files.modifiedNs(a) > files.modifiedNs(b)
+    let newer(a: String b: String): Bool = paths.modifiedNs(a) > paths.modifiedNs(b)
 
     (* Whether a is a regular file newer than b *)
     let newerFile(a: String b: String): Bool =
         begin
-            let t = files.fileTime(a)
-            maybe.isSome(:Int t) andif {maybe.unwrap(:Int t) > files.modifiedNs(b)}
+            let t = paths.fileTime(a)
+            maybe.isSome(:Int t) andif {maybe.unwrap(:Int t) > paths.modifiedNs(b)}
         end
 
     let isManifestStale(m: ModuleManifest qm: String): Bool =
@@ -179,9 +179,9 @@ export
             true
         elsif not(system.isFile(m.object)) then
             true
-        elsif {stringOp.length(m.source) > 0} andif maybe.isSome(:Int files.fileTime(m.source)) then
-            let sourceTime = maybe.unwrap(:Int files.fileTime(m.source))
-            if {sourceTime > files.modifiedNs(qm)} orif {sourceTime > files.modifiedNs(m.object)} then
+        elsif {stringOp.length(m.source) > 0} andif maybe.isSome(:Int paths.fileTime(m.source)) then
+            let sourceTime = maybe.unwrap(:Int paths.fileTime(m.source))
+            if {sourceTime > paths.modifiedNs(qm)} orif {sourceTime > paths.modifiedNs(m.object)} then
                 true
             else
                 (* Transitive interface staleness *)
@@ -208,7 +208,7 @@ export
     let unitStaleness(source: String qm: String c: String o: String
         importsChanged: maybe.T(All(m: ModuleManifest) maybe.T(String))): maybe.T(String) =
         if not(system.isFile(qm)) orif not(system.isFile(c)) orif not(system.isFile(o)) then
-            maybe.some(:String "missing artifacts in " <> files.normalize(qm <> "/.."))
+            maybe.some(:String "missing artifacts in " <> paths.normalize(qm <> "/.."))
         elsif newer(source qm) orif newer(source c) orif newer(c o) then
             maybe.some(:String "source file newer than artifacts")
         else
@@ -218,7 +218,7 @@ export
             else
                 let man = maybe.unwrap(:ModuleManifest m)
                 if {stringOp.length(man.source) is 0}
-                    orif not(stringOp.equal(files.absolute(man.source) files.absolute(source))) then
+                    orif not(stringOp.equal(paths.absolute(man.source) paths.absolute(source))) then
                     let recorded = if stringOp.length(man.source) > 0 then man.source else "none recorded" end
                     maybe.some(:String "artifacts built from a different source (" <> recorded <> ")")
                 elsif isManifestStale(man qm) then

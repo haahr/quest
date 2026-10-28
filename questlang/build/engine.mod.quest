@@ -24,6 +24,7 @@ import
     questlang/codegen/c/compilerRunner : questlang/codegen/c/CompilerRunner
     collections/vector : collections/Vector
     util/maybe : util/Maybe
+    pathLib = util/path : util/Path
     os/fileStats : os/FileStats
     util/strutil : util/Strutil
     stringOp = string : StringOp
@@ -34,10 +35,10 @@ export
     let buildError: Exception(String) = exception buildError: String end
 
     Let T = Tuple
-        buildDir: String
+        buildDir: pathLib.T
         resolver: graph.Resolver
-        includePaths: Array(String)
-        extraObjects: Array(String)
+        includePaths: Array(pathLib.T)
+        extraObjects: Array(pathLib.T)
         logger: logger.T
         nogc: Bool
         compiler: maybe.T(String)
@@ -48,6 +49,15 @@ export
     let eq(a: String b: String): Bool = stringOp.equal(a b)
     let fail(A::TYPE message: String): A = raise buildError with message end
     let quoted(s: String): String = "'" <> s <> "'"
+    let str(p: pathLib.T): String = pathLib.toString(p)
+    let strs(ps: Array(pathLib.T)): Array(String) =
+        begin
+            let xs = array of(extent ps "")
+            for i = 0 upto {extent ps - 1} do xs[i] := str(ps[i]) end
+            xs
+        end
+    (* An absolute path.T for p *)
+    let absolutePath(p: String): pathLib.T = pathLib.resolvePath(pathLib.fromString(p))
     (* Paths as Python prints a list of them *)
     let pyList(xs: Array(String)): String =
         begin
@@ -67,13 +77,13 @@ export
     let new(buildDir: maybe.T(String) includePaths: Array(String) verbose: Bool nogc: Bool extraObjects: Array(String)
         resolver: maybe.T(graph.Resolver)): T =
         begin
-            let dir = paths.absolute(maybe.unwrapOr(:String buildDir ".build"))
-            let includes = array of(extent includePaths "")
-            for i = 0 upto {extent includePaths - 1} do includes[i] := paths.absolute(includePaths[i]) end
-            let objects = array of(extent extraObjects "")
-            for i = 0 upto {extent extraObjects - 1} do objects[i] := paths.absolute(extraObjects[i]) end
-            let l = logger.new(maybe.some(:String paths.join(dir "build.log")) verbose)
-            system.makeDirectory(dir)
+            let dir = absolutePath(maybe.unwrapOr(:String buildDir ".build"))
+            let includes = array of(extent includePaths dir)
+            for i = 0 upto {extent includePaths - 1} do includes[i] := absolutePath(includePaths[i]) end
+            let objects = array of(extent extraObjects dir)
+            for i = 0 upto {extent extraObjects - 1} do objects[i] := absolutePath(extraObjects[i]) end
+            let l = logger.new(maybe.some(:String str(pathLib.child(dir "build.log"))) verbose)
+            system.makeDirectory(str(dir))
             tuple
                 let buildDir = dir
                 let resolver = maybe.unwrapOr(:graph.Resolver resolver graph.newResolver())
@@ -97,9 +107,9 @@ export
         begin
             let dirs = vector.new(:String)
             let add = fun(d: String): Ok if not(contains(dirs d)) then vector.append(:String dirs d) end
-            add(eng.buildDir)
-            for i = 0 upto {extent eng.extraObjects - 1} do add(paths.parent(eng.extraObjects[i])) end
-            for i = 0 upto {extent eng.includePaths - 1} do add(eng.includePaths[i]) end
+            add(str(eng.buildDir))
+            for i = 0 upto {extent eng.extraObjects - 1} do add(str(pathLib.parent(eng.extraObjects[i]))) end
+            for i = 0 upto {extent eng.includePaths - 1} do add(str(eng.includePaths[i])) end
             if system.isDirectory(paths.libDir()) then add(paths.absolute(paths.libDir())) end
             if system.isDirectory(paths.projectDir()) then add(paths.absolute(paths.projectDir())) end
             vector.toArray(:String dirs)
@@ -119,14 +129,14 @@ export
      * (docs/build-process.md section 3.2) *)
     let mainArtifactBase(eng: T mainFile: String): String =
         begin
-            let main = paths.absolute(mainFile)
-            let rel = paths.relativeTo(paths.parent(main) paths.absolute(system.currentDirectory()))
+            let main = absolutePath(mainFile)
+            let rel = paths.relativeTo(str(pathLib.parent(main)) paths.absolute(system.currentDirectory()))
             let dir = if maybe.isSome(:String rel) andif {stringOp.length(maybe.unwrap(:String rel)) > 0} then
-                paths.join(eng.buildDir maybe.unwrap(:String rel))
+                pathLib.child(eng.buildDir maybe.unwrap(:String rel))
             else
                 eng.buildDir
             end
-            paths.normalize(paths.join(dir stem(main)))
+            str(pathLib.child(dir stem(str(main))))
         end
 
     (* A main routine's .main.qm, .main.c, and .main.o: the .main suffix keeps
@@ -283,7 +293,7 @@ export
                     e.sourceFile := location.file(sm)
                     (* Compiled to C, with the build directory's artifacts *)
                     e.compilingC := true
-                    e.buildDir := maybe.some(:String eng.buildDir)
+                    e.buildDir := maybe.some(:String str(eng.buildDir))
 
                     let interfaces = vector.new(:manifest.ImportedInterfaceRef)
                     let imports = vector.new(:ImportRef)
@@ -416,10 +426,10 @@ export
             let discovered = vector.new(:String)
             let sourceNames = vector.new(:String)
             let sourceFiles = vector.new(:String)
-            let linked = vector.fromArray(:String eng.extraObjects)
+            let linked = vector.fromArray(:String strs(eng.extraObjects))
             for i = 0 upto {extent eng.extraObjects - 1} do
-                vector.append(:String discovered stem(eng.extraObjects[i]))
-                vector.append(:String discovered paths.lower(stem(eng.extraObjects[i])))
+                vector.append(:String discovered stem(str(eng.extraObjects[i])))
+                vector.append(:String discovered paths.lower(stem(str(eng.extraObjects[i]))))
             end
             let moduleGraph = vector.new(:Edges)
             let expected = vector.new(:NamedExpected)
@@ -540,20 +550,20 @@ export
                 else
                     paths.lower(item)
                 end
-                let targetDir = graph.unitArtifactDir(eng.buildDir canon)
+                let targetDir = graph.unitArtifactDir(str(eng.buildDir) canon)
                 system.makeDirectory(targetDir)
                 let artifactStem = graph.artifactStem(canon)
-                let var a = graph.moduleArtifacts(eng.buildDir canon)
+                let var a = graph.moduleArtifacts(str(eng.buildDir) canon)
                 let var reason = maybe.none(:String)
                 if maybe.isNone(:String src) then
                     (* A binary distribution: a prebuilt object (and .qm)
                      * without source is up to date *)
                     let var foundObject = maybe.none(:String)
                     for i = 0 upto {extent eng.extraObjects - 1} do
-                        let s = paths.lower(stem(eng.extraObjects[i]))
+                        let s = paths.lower(stem(str(eng.extraObjects[i])))
                         if maybe.isNone(:String foundObject)
                             andif {eq(s artifactStem) orif eq(s paths.lower(item))} then
-                            foundObject := maybe.some(:String eng.extraObjects[i])
+                            foundObject := maybe.some(:String str(eng.extraObjects[i]))
                         end
                     end
                     if maybe.isNone(:String foundObject) then
@@ -596,7 +606,7 @@ export
                     typecheck.install()
                     moduleCompiler.compileModuleFile(maybe.unwrap(:String src) maybe.some(:String targetDir) search
                         eng.compiler
-                        eng.nogc eng.extraCFlags maybe.some(:String eng.buildDir) programDir
+                        eng.nogc eng.extraCFlags maybe.some(:String str(eng.buildDir)) programDir
                         maybe.some(:graph.Resolver eng.resolver))
                     manifest.readQm(a.qm)
                 else
@@ -658,7 +668,7 @@ export
             if not(system.isFile(main)) then fail(:Ok "Main routine file not found: " <> main) end
             let target = if maybe.isSome(:String output) then paths.absolute(maybe.unwrap(:String output))
                 else mainArtifactBase(eng main) end
-            log(eng "BUILD START" "target=" <> main <> " mode=separate build_dir=" <> eng.buildDir)
+            log(eng "BUILD START" "target=" <> main <> " mode=separate build_dir=" <> str(eng.buildDir))
             let item = stem(main)
             log(eng "QUEUE INIT" "enqueued main routine " <> quoted(item))
             log(eng "POP QUEUE" quoted(item) <> " (kind=main)")
