@@ -22,6 +22,7 @@ import
     writer : Writer
     system : System
     io/readline : io/Readline
+    os/fileStats : os/FileStats
 export
     Let Value = model.Value
     Let Args = Array(Value)
@@ -72,6 +73,27 @@ export
             let label(name: String): maybe.T(String) = maybe.some(:String name)
             model.tupleValue(array of vInt(r.code) vString(r.stdout) vString(r.stderr) end
                 maybe.some(:Array(maybe.T(String)) array of label("code") label("stdout") label("stderr") end))
+        end
+
+    (* What quest_filestats_stat gives, as the interpreted tuple: the kind as a
+     * number, -1 when the path names nothing *)
+    let statted(path: String follow: Bool): Value =
+        begin
+            let found = if follow then fileStats.find(path) else fileStats.lfind(path) end
+            let label(name: String): maybe.T(String) = maybe.some(:String name)
+            let labels = maybe.some(:Array(maybe.T(String)) array of label("kind") label("size") label("mode")
+                label("accessTime") label("modifiedTime") label("changeTime") label("accessNs") label("modifiedNs")
+                label("changeNs") end)
+            if maybe.isNone(:fileStats.T found) then
+                model.tupleValue(array of vInt(~1) vInt(0) vInt(0) vReal(0.0) vReal(0.0) vReal(0.0) vInt(0) vInt(0)
+                    vInt(0) end labels)
+            else
+                let s = maybe.unwrap(:fileStats.T found)
+                let kind = if s.kind?file then 0 elsif s.kind?directory then 1 elsif s.kind?symlink then 2 else 3 end
+                model.tupleValue(array of vInt(kind) vInt(s.size) vInt(s.mode) vReal(s.accessTime)
+                    vReal(s.modifiedTime) vReal(s.changeTime) vInt(s.accessNs) vInt(s.modifiedNs) vInt(s.changeNs)
+                    end labels)
+            end
         end
 
     (* fn, with the library's native errors raised as the interpreted ones *)
@@ -369,6 +391,8 @@ export
             fn("quest_system_run" fun(a: Args): Value ran(arr(a[0])))
             fn("quest_system_modified_time" fun(a: Args): Value vReal(system.modifiedTime(str(a[0]))))
             fn("quest_system_is_terminal" fun(a: Args): Value vBool(system.isTerminal(int(a[0]))))
+            (* os/fileStats *)
+            fn("quest_filestats_stat" fun(a: Args): Value statted(str(a[0]) bool(a[1])))
 
             (* io/readline *)
             exc("quest_exc_readline_error" primitives.readlineError)

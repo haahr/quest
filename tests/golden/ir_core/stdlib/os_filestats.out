@@ -1,0 +1,217 @@
+import fileStats = "os/fileStats" : os/FileStats
+import maybe = "util/maybe" : util/Maybe
+import system = "system" : System
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs {
+    fun sh(command: String): Ok {
+      let %4: Array(String) = array("sh", "-c", command)
+      let r: Tuple code: Int stdout: String stderr: String end = call system.run(%4)
+      let %5: Int = tuple_field(r, 0)
+      let %6: Bool = prim isnot(%5, 0)
+      if %6 {
+        let %7: String = tuple_field(r, 2)
+        let %8: String = prim <>(": ", %7)
+        let %9: String = prim <>(command, %8)
+        let %10: String = prim <>("failed: ", %9)
+        do call print(%10)
+      }
+      return ok
+    }
+  }
+  funs {
+    fun kindName(k: fileStats.Kind): String {
+      join k1(r.1: String) {
+        return r.1
+      } in {
+        let %11: Bool = is_tag(k, file)
+        if %11 {
+          jump k1("file")
+        } else {
+          join k2(r.2: String) {
+            jump k1(r.2)
+          } in {
+            let %12: Bool = is_tag(k, directory)
+            if %12 {
+              jump k2("directory")
+            } else {
+              join k3(r.3: String) {
+                jump k2(r.3)
+              } in {
+                let %13: Bool = is_tag(k, symlink)
+                if %13 {
+                  jump k3("symlink")
+                } else {
+                  jump k3("other")
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  funs rec {
+    fun octal(n: Int): String {
+      join k4(r.4: String) {
+        return r.4
+      } in {
+        let %14: Bool = prim <(n, 8)
+        if %14 {
+          let %15: String = call conv.int(n)
+          jump k4(%15)
+        } else {
+          let %16: Int = prim /(n, 8)
+          let %17: String = call octal(%16)
+          let %18: Int = prim %(n, 8)
+          let %19: String = call conv.int(%18)
+          let %20: String = prim <>(%17, %19)
+          jump k4(%20)
+        }
+      }
+    }
+  }
+  funs {
+    fun show(what: String, s.1: fileStats.T): Ok {
+      join k5(size: String) {
+        let %21: Kind = tuple_field(s.1, 2)
+        let %22: String = call kindName(%21)
+        let %23: Int = tuple_field(s.1, 1)
+        let %24: String = call octal(%23)
+        let %25: Real = tuple_field(s.1, 4)
+        let %26: String = call conv.real(%25)
+        let %27: Int = tuple_field(s.1, 7)
+        let %28: String = call conv.int(%27)
+        let %29: Int = tuple_field(s.1, 6)
+        let %30: String = call conv.int(%29)
+        let %31: String = prim <>(" atime_ns ", %30)
+        let %32: String = prim <>(%28, %31)
+        let %33: String = prim <>(" mtime_ns ", %32)
+        let %34: String = prim <>(%26, %33)
+        let %35: String = prim <>(" mtime ", %34)
+        let %36: String = prim <>(%24, %35)
+        let %37: String = prim <>(" mode ", %36)
+        let %38: String = prim <>(size, %37)
+        let %39: String = prim <>(%22, %38)
+        let %40: String = prim <>(": ", %39)
+        let %41: String = prim <>(what, %40)
+        let %42: Ok = call print(%41)
+        return %42
+      } in {
+        let %43: Kind = tuple_field(s.1, 2)
+        let %44: Bool = is_tag(%43, directory)
+        if %44 {
+          jump k5("")
+        } else {
+          let %45: Int = tuple_field(s.1, 0)
+          let %46: String = call conv.int(%45)
+          let %47: String = prim <>(" size ", %46)
+          jump k5(%47)
+        }
+      }
+    }
+  }
+  let w: writer.T = call writer.file("data.txt")
+  do call writer.putString(w, "twelve bytes")
+  do call writer.close(w)
+  do call system.makeDirectory("dir")
+  do call sh("chmod 640 data.txt && chmod 750 dir")
+  do call sh("touch -d 2020-01-02T03:04:05.25Z data.txt && touch -d 2021-06-07T08:09:10Z dir")
+  do call sh("ln -s data.txt link && ln -s missing.txt dangling")
+  let %48: T = call fileStats.stat("data.txt")
+  do call show("data.txt", %48)
+  let %49: T = call fileStats.stat("dir")
+  do call show("dir", %49)
+  let %50: T = call fileStats.stat("link")
+  do call show("link", %50)
+  let %51: T = call fileStats.lstat("link")
+  let %52: Kind = tuple_field(%51, 2)
+  let %53: String = call kindName(%52)
+  let %54: String = prim <>("lstat link: ", %53)
+  do call print(%54)
+  let %55: T = call fileStats.lstat("dangling")
+  let %56: Kind = tuple_field(%55, 2)
+  let %57: String = call kindName(%56)
+  let %58: String = prim <>("lstat dangling: ", %57)
+  do call print(%58)
+  let s.2: T = call fileStats.stat("data.txt")
+  let %59: Int = tuple_field(s.2, 8)
+  let %60: Bool = prim >(%59, 0)
+  let %61: String = call conv.bool(%60)
+  let %62: String = prim <>("ctime_ns positive: ", %61)
+  do call print(%62)
+  funs {
+    fun found(path: String): String {
+      join k6(r.5: String) {
+        return r.5
+      } in {
+        let %63: maybe.T(T) = call fileStats.find(path)
+        let %64: Bool = call maybe.isSome [fileStats.T](%63)
+        if %64 {
+          jump k6("found")
+        } else {
+          jump k6("none")
+        }
+      }
+    }
+  }
+  funs {
+    fun lfound(path.1: String): String {
+      join k7(r.6: String) {
+        return r.6
+      } in {
+        let %65: maybe.T(T) = call fileStats.lfind(path.1)
+        let %66: Bool = call maybe.isSome [fileStats.T](%65)
+        if %66 {
+          jump k7("found")
+        } else {
+          jump k7("none")
+        }
+      }
+    }
+  }
+  let %67: String = call found("data.txt")
+  let %68: String = prim <>("find data.txt: ", %67)
+  do call print(%68)
+  let %69: String = call found("missing.txt")
+  let %70: String = prim <>("find missing.txt: ", %69)
+  do call print(%70)
+  let %71: String = call found("data.txt/x")
+  let %72: String = prim <>("find data.txt/x: ", %71)
+  do call print(%72)
+  let %73: String = call found("dangling")
+  let %74: String = prim <>("find dangling: ", %73)
+  do call print(%74)
+  let %75: String = call lfound("dangling")
+  let %76: String = prim <>("lfind dangling: ", %75)
+  do call print(%76)
+  join k8(r.7: String) {
+    let %77: String = prim <>("stat missing.txt: ", r.7)
+    do call print(%77)
+  } in {
+    let %78: Exception = member system.error
+    try catching (%78) {
+      let %79: T = call fileStats.stat("missing.txt")
+      let %80: Kind = tuple_field(%79, 2)
+      let %81: String = call kindName(%80)
+      jump k8(%81)
+    } handle (e: Exception) {
+      let %82: Bool = prim is(e, %78)
+      if %82 {
+        jump k8("system.error")
+      } else {
+        reraise e
+      }
+    }
+  }
+}
+

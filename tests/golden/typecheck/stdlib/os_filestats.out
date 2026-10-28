@@ -1,0 +1,454 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('fileStats') : 'FileStats')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('maybe') : 'Maybe')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('system') : 'System')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'sh' :type Fun(command: String): Ok
+      :value (TypedFun :params (('command' : String)) :type Fun(command: String): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'r' :type Tuple code: Int stdout: String stderr: String end
+              :value (TypedApp :type Tuple code: Int stdout: String stderr: String end
+                :func (TypedSelect 'run' :type Fun(args: Array(String)): Tuple code: Int stdout: String stderr: String end
+                  :target (TypedVar 'system' :type Module 'system'))
+                :args (
+                  (TypedArray :type Array(String)
+                    :elements (
+                      (TypedString 'sh' :type String)
+                      (TypedString '-c' :type String)
+                      (TypedVar 'command' :type String)
+                    ))
+                )))
+          )
+          :result (TypedIf :type Ok
+            :cond (TypedInfix 'isnot' :type Bool
+              :left (TypedSelect 'code' :type Int
+                :target (TypedVar 'r' :type Tuple code: Int stdout: String stderr: String end))
+              :right (TypedInt 0 :type Int))
+            :then (TypedBlock :type Ok
+              :bindings (
+                (TypedExprStmt
+                  :expr (TypedApp :type Ok
+                    :func (TypedVar 'print' :type Fun(s: String): Ok)
+                    :args (
+                      (TypedInfix '<>' :type String
+                        :left (TypedString 'failed: ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedVar 'command' :type String)
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ': ' :type String)
+                            :right (TypedSelect 'stderr' :type String
+                              :target (TypedVar 'r' :type Tuple code: Int stdout: String stderr: String end)))))
+                    )))
+              )
+              :result (TypedOk))
+            :else (TypedOk)))))
+    (TypedLetValue 'kindName' :type Fun(k: fileStats.Kind): String
+      :value (TypedFun :params (('k' : fileStats.Kind)) :type Fun(k: fileStats.Kind): String
+        :body (TypedIf :type String
+          :cond (TypedVariantCheck 'file' :type Bool
+            :target (TypedVar 'k' :type fileStats.Kind))
+          :then (TypedString 'file' :type String)
+          :else (TypedIf :type String
+            :cond (TypedVariantCheck 'directory' :type Bool
+              :target (TypedVar 'k' :type fileStats.Kind))
+            :then (TypedString 'directory' :type String)
+            :else (TypedIf :type String
+              :cond (TypedVariantCheck 'symlink' :type Bool
+                :target (TypedVar 'k' :type fileStats.Kind))
+              :then (TypedString 'symlink' :type String)
+              :else (TypedString 'other' :type String))))))
+    (TypedLetValue 'octal' :rec :type Fun(n: Int): String
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): String
+        :body (TypedIf :type String
+          :cond (TypedInfix '<' :type Bool
+            :left (TypedVar 'n' :type Int)
+            :right (TypedInt 8 :type Int))
+          :then (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedVar 'n' :type Int)
+            ))
+          :else (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedVar 'octal' :type Fun(n: Int): String)
+              :args (
+                (TypedInfix '/' :type Int
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 8 :type Int))
+              ))
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedInfix '%' :type Int
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 8 :type Int))
+              ))))))
+    (TypedLetValue 'show' :type Fun(what: String s: fileStats.T): Ok
+      :value (TypedFun :params (('what' : String) ('s' : fileStats.T)) :type Fun(what: String s: fileStats.T): Ok
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 'size' :type String
+              :value (TypedIf :type String
+                :cond (TypedVariantCheck 'directory' :type Bool
+                  :target (TypedSelect 'kind' :type Kind
+                    :target (TypedVar 's' :type fileStats.T)))
+                :then (TypedString '' :type String)
+                :else (TypedInfix '<>' :type String
+                  :left (TypedString ' size ' :type String)
+                  :right (TypedApp :type String
+                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                      :target (TypedVar 'conv' :type Module 'conv'))
+                    :args (
+                      (TypedSelect 'size' :type Int
+                        :target (TypedVar 's' :type fileStats.T))
+                    )))))
+          )
+          :result (TypedApp :type Ok
+            :func (TypedVar 'print' :type Fun(s: String): Ok)
+            :args (
+              (TypedInfix '<>' :type String
+                :left (TypedVar 'what' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedString ': ' :type String)
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedApp :type String
+                      :func (TypedVar 'kindName' :type Fun(k: fileStats.Kind): String)
+                      :args (
+                        (TypedSelect 'kind' :type Kind
+                          :target (TypedVar 's' :type fileStats.T))
+                      ))
+                    :right (TypedInfix '<>' :type String
+                      :left (TypedVar 'size' :type String)
+                      :right (TypedInfix '<>' :type String
+                        :left (TypedString ' mode ' :type String)
+                        :right (TypedInfix '<>' :type String
+                          :left (TypedApp :type String
+                            :func (TypedVar 'octal' :type Fun(n: Int): String)
+                            :args (
+                              (TypedSelect 'mode' :type Int
+                                :target (TypedVar 's' :type fileStats.T))
+                            ))
+                          :right (TypedInfix '<>' :type String
+                            :left (TypedString ' mtime ' :type String)
+                            :right (TypedInfix '<>' :type String
+                              :left (TypedApp :type String
+                                :func (TypedSelect 'real' :type Fun(r: Real): String
+                                  :target (TypedVar 'conv' :type Module 'conv'))
+                                :args (
+                                  (TypedSelect 'modifiedTime' :type Real
+                                    :target (TypedVar 's' :type fileStats.T))
+                                ))
+                              :right (TypedInfix '<>' :type String
+                                :left (TypedString ' mtime_ns ' :type String)
+                                :right (TypedInfix '<>' :type String
+                                  :left (TypedApp :type String
+                                    :func (TypedSelect 'int' :type Fun(n: Int): String
+                                      :target (TypedVar 'conv' :type Module 'conv'))
+                                    :args (
+                                      (TypedSelect 'modifiedNs' :type Int
+                                        :target (TypedVar 's' :type fileStats.T))
+                                    ))
+                                  :right (TypedInfix '<>' :type String
+                                    :left (TypedString ' atime_ns ' :type String)
+                                    :right (TypedApp :type String
+                                      :func (TypedSelect 'int' :type Fun(n: Int): String
+                                        :target (TypedVar 'conv' :type Module 'conv'))
+                                      :args (
+                                        (TypedSelect 'accessNs' :type Int
+                                          :target (TypedVar 's' :type fileStats.T))
+                                      )))))))))))))
+            )))))
+    (TypedLetValue 'w' :type writer.T
+      :value (TypedApp :type writer.T
+        :func (TypedSelect 'file' :type Fun(name: String): writer.T
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedString 'data.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedVar 'w' :type writer.T)
+          (TypedString 'twelve bytes' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'close' :type Fun(writer: writer.T): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedVar 'w' :type writer.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'makeDirectory' :type Fun(path: String): Ok
+          :target (TypedVar 'system' :type Module 'system'))
+        :args (
+          (TypedString 'dir' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'sh' :type Fun(command: String): Ok)
+        :args (
+          (TypedString 'chmod 640 data.txt && chmod 750 dir' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'sh' :type Fun(command: String): Ok)
+        :args (
+          (TypedString 'touch -d 2020-01-02T03:04:05.25Z data.txt && touch -d 2021-06-07T08:09:10Z dir' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'sh' :type Fun(command: String): Ok)
+        :args (
+          (TypedString 'ln -s data.txt link && ln -s missing.txt dangling' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String s: fileStats.T): Ok)
+        :args (
+          (TypedString 'data.txt' :type String)
+          (TypedApp :type T
+            :func (TypedSelect 'stat' :type Fun(path: String): T
+              :target (TypedVar 'fileStats' :type Module 'fileStats'))
+            :args (
+              (TypedString 'data.txt' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String s: fileStats.T): Ok)
+        :args (
+          (TypedString 'dir' :type String)
+          (TypedApp :type T
+            :func (TypedSelect 'stat' :type Fun(path: String): T
+              :target (TypedVar 'fileStats' :type Module 'fileStats'))
+            :args (
+              (TypedString 'dir' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'show' :type Fun(what: String s: fileStats.T): Ok)
+        :args (
+          (TypedString 'link' :type String)
+          (TypedApp :type T
+            :func (TypedSelect 'stat' :type Fun(path: String): T
+              :target (TypedVar 'fileStats' :type Module 'fileStats'))
+            :args (
+              (TypedString 'link' :type String)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'lstat link: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'kindName' :type Fun(k: fileStats.Kind): String)
+              :args (
+                (TypedSelect 'kind' :type Kind
+                  :target (TypedApp :type T
+                    :func (TypedSelect 'lstat' :type Fun(path: String): T
+                      :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                    :args (
+                      (TypedString 'link' :type String)
+                    )))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'lstat dangling: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'kindName' :type Fun(k: fileStats.Kind): String)
+              :args (
+                (TypedSelect 'kind' :type Kind
+                  :target (TypedApp :type T
+                    :func (TypedSelect 'lstat' :type Fun(path: String): T
+                      :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                    :args (
+                      (TypedString 'dangling' :type String)
+                    )))
+              )))
+        )))
+    (TypedLetValue 's' :type T
+      :value (TypedApp :type T
+        :func (TypedSelect 'stat' :type Fun(path: String): T
+          :target (TypedVar 'fileStats' :type Module 'fileStats'))
+        :args (
+          (TypedString 'data.txt' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'ctime_ns positive: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedInfix '>' :type Bool
+                  :left (TypedSelect 'changeNs' :type Int
+                    :target (TypedVar 's' :type T))
+                  :right (TypedInt 0 :type Int))
+              )))
+        )))
+    (TypedLetValue 'found' :type Fun(path: String): String
+      :value (TypedFun :params (('path' : String)) :type Fun(path: String): String
+        :body (TypedIf :type String
+          :cond (TypedApp :type Bool
+            :func (TypedTypeApp [fileStats.T] :type Fun(o: maybe.T(fileStats.T)): Bool
+              :func (TypedSelect 'isSome' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                :target (TypedVar 'maybe' :type Module 'maybe')))
+            :args (
+              (TypedApp :type maybe.T(T)
+                :func (TypedSelect 'find' :type Fun(path: String): maybe.T(T)
+                  :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                :args (
+                  (TypedVar 'path' :type String)
+                ))
+            ))
+          :then (TypedString 'found' :type String)
+          :else (TypedString 'none' :type String))))
+    (TypedLetValue 'lfound' :type Fun(path: String): String
+      :value (TypedFun :params (('path' : String)) :type Fun(path: String): String
+        :body (TypedIf :type String
+          :cond (TypedApp :type Bool
+            :func (TypedTypeApp [fileStats.T] :type Fun(o: maybe.T(fileStats.T)): Bool
+              :func (TypedSelect 'isSome' :type All(A :: TYPE) Fun(o: maybe.T(A)): Bool
+                :target (TypedVar 'maybe' :type Module 'maybe')))
+            :args (
+              (TypedApp :type maybe.T(T)
+                :func (TypedSelect 'lfind' :type Fun(path: String): maybe.T(T)
+                  :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                :args (
+                  (TypedVar 'path' :type String)
+                ))
+            ))
+          :then (TypedString 'found' :type String)
+          :else (TypedString 'none' :type String))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'find data.txt: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'found' :type Fun(path: String): String)
+              :args (
+                (TypedString 'data.txt' :type String)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'find missing.txt: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'found' :type Fun(path: String): String)
+              :args (
+                (TypedString 'missing.txt' :type String)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'find data.txt/x: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'found' :type Fun(path: String): String)
+              :args (
+                (TypedString 'data.txt/x' :type String)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'find dangling: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'found' :type Fun(path: String): String)
+              :args (
+                (TypedString 'dangling' :type String)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'lfind dangling: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedVar 'lfound' :type Fun(path: String): String)
+              :args (
+                (TypedString 'dangling' :type String)
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'stat missing.txt: ' :type String)
+            :right (TypedTry :type String
+              :body (TypedApp :type String
+                :func (TypedVar 'kindName' :type Fun(k: fileStats.Kind): String)
+                :args (
+                  (TypedSelect 'kind' :type Kind
+                    :target (TypedApp :type T
+                      :func (TypedSelect 'stat' :type Fun(path: String): T
+                        :target (TypedVar 'fileStats' :type Module 'fileStats'))
+                      :args (
+                        (TypedString 'missing.txt' :type String)
+                      )))
+                ))
+              :branches (
+                (TypedTryBranch
+                  :exc_pattern (TypedSelect 'error' :type Exception
+                    :target (TypedVar 'system' :type Module 'system'))
+                  :body (TypedString 'system.error' :type String))
+              )))
+        )))
+  ))

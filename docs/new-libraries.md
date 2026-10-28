@@ -639,3 +639,54 @@ end
 
 `readLine` does not add the lines it reads to the history: its caller decides which lines to keep. `readHistory`
 does nothing if the file does not exist, and `writeHistory` writes the history's last `maxLines` lines.
+
+---
+
+## 4. The Operating System (`lib/os/`)
+
+### 4.1. `os/fileStats : os/FileStats`
+
+What `stat(2)` says about a path, modeled on Python's `os.stat_result` (what `pathlib.Path(...).stat()` returns). One
+call gives a path's kind, size, permissions, and times, so a caller that needs to know whether a file exists and when
+it changed makes a single system call, with no race between the two questions. Its one external,
+`quest_filestats_stat`, is in `runtime/quest_runtime.c`. The bootstrap's interpreters implement it with `os.stat`
+and `os.lstat`, and the self-hosted interpreter with the compiled library's own (`questlang/interpreter/builtins`).
+
+#### Interface Summary
+
+```quest
+interface FileStats
+import
+    util/maybe : util/Maybe
+export
+    Def Kind = Option file directory symlink other end
+
+    Def T = Tuple
+        size: Int
+        (* The permission bits (st_mode & 0o7777); the file type is in kind *)
+        mode: Int
+        kind: Kind
+        (* Seconds since the epoch, as Python's st_atime, st_mtime, st_ctime *)
+        accessTime: Real
+        modifiedTime: Real
+        changeTime: Real
+        (* Nanoseconds since the epoch, as st_atime_ns, st_mtime_ns, st_ctime_ns *)
+        accessNs: Int
+        modifiedNs: Int
+        changeNs: Int
+    end
+
+    (* Following symlinks; raises system.error if the path names nothing *)
+    stat(path: String): T
+    (* Not following a final symlink *)
+    lstat(path: String): T
+    (* stat and lstat, but none if the path names nothing *)
+    find(path: String): maybe.T(T)
+    lfind(path: String): maybe.T(T)
+end
+```
+
+A path names nothing when `stat(2)` fails with `ENOENT` or `ENOTDIR`, so `find("file.txt/x")` is none. Any other
+failure, such as a directory that cannot be searched, raises `system.error` from `find` too. The Real times are
+computed as Python computes them (seconds plus nanoseconds times 1e-9), so a compiled program and an interpreted one
+agree exactly. Compare the integer times when an exact order matters, as staleness checks do.

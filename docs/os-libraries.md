@@ -81,6 +81,8 @@ export
     lstat(path: String): T
     (* stat, or none if the path names nothing *)
     find(path: String): maybe.T(T)
+    (* lstat, or none if the path names nothing *)
+    lfind(path: String): maybe.T(T)
 end
 ```
 

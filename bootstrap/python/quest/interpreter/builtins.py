@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import math
 import os
+import stat
 import struct
 import subprocess
 import sys
@@ -574,6 +575,28 @@ def _system_modified_time(path_val: QString) -> QReal:
     except OSError:
         raise QuestException(SYSTEM_ERROR_EXC)
 
+_FILESTATS_LABELS = ("kind", "size", "mode", "accessTime", "modifiedTime", "changeTime",
+                     "accessNs", "modifiedNs", "changeNs")
+
+def _filestats_stat(path_val: QString, follow: QBool) -> QTuple:
+    """stat or lstat, as quest_filestats_stat gives it: the kind as a number,
+    -1 when the path names nothing."""
+    try:
+        st = os.stat(_os_path(path_val)) if follow.value else os.lstat(_os_path(path_val))
+    except (FileNotFoundError, NotADirectoryError):
+        return QTuple(elements=(QInt(-1), QInt(0), QInt(0), QReal(0.0), QReal(0.0), QReal(0.0),
+                                QInt(0), QInt(0), QInt(0)), labels=_FILESTATS_LABELS)
+    except (OSError, ValueError):
+        raise QuestException(SYSTEM_ERROR_EXC)
+    mode = st.st_mode
+    kind = 0 if stat.S_ISREG(mode) else 1 if stat.S_ISDIR(mode) else 2 if stat.S_ISLNK(mode) else 3
+    return QTuple(
+        elements=(QInt(kind), QInt(st.st_size), QInt(stat.S_IMODE(mode)),
+                  QReal(st.st_atime), QReal(st.st_mtime), QReal(st.st_ctime),
+                  QInt(st.st_atime_ns), QInt(st.st_mtime_ns), QInt(st.st_ctime_ns)),
+        labels=_FILESTATS_LABELS,
+    )
+
 def _system_is_terminal(fd: QInt) -> QBool:
     try:
         return TRUE_VALUE if os.isatty(fd.value) else FALSE_VALUE
@@ -1033,6 +1056,7 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_system_run": _system_run,
     "quest_system_modified_time": _system_modified_time,
     "quest_system_is_terminal": _system_is_terminal,
+    "quest_filestats_stat": _filestats_stat,
     "quest_system_exit": _system_exit,
 
     # io/readline

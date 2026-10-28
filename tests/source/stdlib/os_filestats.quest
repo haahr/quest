@@ -1,0 +1,57 @@
+(* os/fileStats: the stats of a file, a directory, and a symlink that the test
+   makes (it runs in a fresh, empty directory of its own, docs/testing.md
+   section 2.2), with times set by touch so that they are known exactly; find
+   and lfind on missing paths; and the error stat raises for one. *)
+import os/fileStats : os/FileStats;
+import util/maybe : util/Maybe;
+import system: System;
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let sh(command: String): Ok =
+    begin
+        let r = system.run(array of "sh" "-c" command end)
+        if r.code isnot 0 then print("failed: " <> command <> ": " <> r.stderr) end
+    end;
+
+let kindName(k: fileStats.Kind): String =
+    if k?file then "file" elsif k?directory then "directory" elsif k?symlink then "symlink" else "other" end;
+
+let rec octal(n: Int): String =
+    if n < 8 then conv.int(n) else octal({n / 8}) <> conv.int({n % 8}) end;
+
+let show(what: String s: fileStats.T): Ok =
+    begin
+        (* A directory's size depends on the file system, so it is not shown *)
+        let size = if s.kind?directory then "" else " size " <> conv.int(s.size) end
+        print(what <> ": " <> kindName(s.kind) <> size <> " mode " <> octal(s.mode)
+            <> " mtime " <> conv.real(s.modifiedTime) <> " mtime_ns " <> conv.int(s.modifiedNs)
+            <> " atime_ns " <> conv.int(s.accessNs))
+    end;
+
+let w = writer.file("data.txt");
+writer.putString(w "twelve bytes");
+writer.close(w);
+system.makeDirectory("dir");
+sh("chmod 640 data.txt && chmod 750 dir");
+sh("touch -d 2020-01-02T03:04:05.25Z data.txt && touch -d 2021-06-07T08:09:10Z dir");
+sh("ln -s data.txt link && ln -s missing.txt dangling");
+
+show("data.txt" fileStats.stat("data.txt"));
+show("dir" fileStats.stat("dir"));
+show("link" fileStats.stat("link"));
+print("lstat link: " <> kindName(fileStats.lstat("link").kind));
+print("lstat dangling: " <> kindName(fileStats.lstat("dangling").kind));
+
+let s = fileStats.stat("data.txt");
+print("ctime_ns positive: " <> conv.bool(s.changeNs > 0));
+
+let found(path: String): String = if maybe.isSome(:fileStats.T fileStats.find(path)) then "found" else "none" end;
+let lfound(path: String): String = if maybe.isSome(:fileStats.T fileStats.lfind(path)) then "found" else "none" end;
+print("find data.txt: " <> found("data.txt"));
+print("find missing.txt: " <> found("missing.txt"));
+print("find data.txt/x: " <> found("data.txt/x"));
+print("find dangling: " <> found("dangling"));
+print("lfind dangling: " <> lfound("dangling"));
+print("stat missing.txt: " <> try kindName(fileStats.stat("missing.txt").kind) when system.error then "system.error" end)

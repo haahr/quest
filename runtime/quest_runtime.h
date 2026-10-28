@@ -508,6 +508,13 @@ void    *quest_system_run(const QArray *args);
 QReal    quest_system_modified_time(const QString *path);
 bool     quest_system_is_terminal(int64_t fd);
 
+/* os/fileStats module primitive: stat(2), or lstat(2) when follow is false, as
+ * a Tuple kind: Int size: Int mode: Int accessTime: Real modifiedTime: Real
+ * changeTime: Real accessNs: Int modifiedNs: Int changeNs: Int end. The kind is
+ * 0 for a file, 1 a directory, 2 a symlink, 3 anything else, and -1 when the
+ * path names nothing (ENOENT or ENOTDIR); other failures raise system.error */
+void    *quest_filestats_stat(const QString *path, bool follow);
+
 /* io/readline module primitives (quest_readline.c) */
 extern const QException quest_exc_readline_error;
 extern const QException quest_exc_readline_end_of_input;

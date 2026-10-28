@@ -1,0 +1,81 @@
+module fileStats : FileStats
+import
+    util/maybe : util/Maybe
+    system : System
+export
+    Let Kind = Option
+        file
+        directory
+        symlink
+        other
+    end
+
+    Let T = Tuple
+        size: Int
+        mode: Int
+        kind: Kind
+        accessTime: Real
+        modifiedTime: Real
+        changeTime: Real
+        accessNs: Int
+        modifiedNs: Int
+        changeNs: Int
+    end
+
+    (* What the native gives: the kind as a number (0 file, 1 directory,
+     * 2 symlink, 3 other, -1 missing), then the other fields *)
+    Let Raw = Tuple
+        kind: Int
+        size: Int
+        mode: Int
+        accessTime: Real
+        modifiedTime: Real
+        changeTime: Real
+        accessNs: Int
+        modifiedNs: Int
+        changeNs: Int
+    end
+
+    (* stat(2), or lstat(2) when follow is false; raises system.error except
+     * when the path names nothing *)
+    let rawStat(path: String follow: Bool): Raw = external "quest_filestats_stat"
+
+    let kindOf(n: Int): Kind =
+        if n is 0 then option file of Kind end
+        elsif n is 1 then option directory of Kind end
+        elsif n is 2 then option symlink of Kind end
+        else option other of Kind end
+        end
+
+    let found(path: String follow: Bool): maybe.T(T) =
+        begin
+            let r = rawStat(path follow)
+            if r.kind < 0 then
+                maybe.none(:T)
+            else
+                maybe.some(:T tuple
+                    let size = r.size
+                    let mode = r.mode
+                    let kind = kindOf(r.kind)
+                    let accessTime = r.accessTime
+                    let modifiedTime = r.modifiedTime
+                    let changeTime = r.changeTime
+                    let accessNs = r.accessNs
+                    let modifiedNs = r.modifiedNs
+                    let changeNs = r.changeNs
+                end)
+            end
+        end
+
+    let required(path: String follow: Bool): T =
+        begin
+            let s = found(path follow)
+            if maybe.isNone(:T s) then raise system.error end end
+            maybe.unwrap(:T s)
+        end
+
+    let stat(path: String): T = required(path true)
+    let lstat(path: String): T = required(path false)
+    let find(path: String): maybe.T(T) = found(path true)
+    let lfind(path: String): maybe.T(T) = found(path false)
+end

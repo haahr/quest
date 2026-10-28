@@ -3319,6 +3319,34 @@ QReal quest_system_modified_time(const QString *path) {
 #endif
 }
 
+/* os/fileStats (see quest_runtime.h) */
+void *quest_filestats_stat(const QString *path, bool follow) {
+    if (path == NULL || path->data == NULL) quest_raise_system_error();
+    struct stat st;
+    QVal *result = (QVal *)quest_alloc(9 * sizeof(QVal));
+    if ((follow ? stat(path->data, &st) : lstat(path->data, &st)) != 0) {
+        if (errno != ENOENT && errno != ENOTDIR) quest_raise_system_error();
+        result[0].i = -1;
+        for (int i = 1; i < 9; i++) result[i].i = 0;
+        return result;
+    }
+#ifdef __APPLE__
+    struct timespec times[3] = { st.st_atimespec, st.st_mtimespec, st.st_ctimespec };
+#else
+    struct timespec times[3] = { st.st_atim, st.st_mtim, st.st_ctim };
+#endif
+    result[0].i = S_ISREG(st.st_mode) ? 0 : S_ISDIR(st.st_mode) ? 1 : S_ISLNK(st.st_mode) ? 2 : 3;
+    result[1].i = (QInt)st.st_size;
+    result[2].i = (QInt)(st.st_mode & 07777);
+    for (int i = 0; i < 3; i++) {
+        /* Computed as Python computes st_mtime and st_mtime_ns, so that the
+         * two agree exactly */
+        result[3 + i].r = (double)times[i].tv_sec + (double)times[i].tv_nsec * 1e-9;
+        result[6 + i].i = (QInt)times[i].tv_sec * 1000000000 + (QInt)times[i].tv_nsec;
+    }
+    return result;
+}
+
 bool quest_system_is_terminal(int64_t fd) {
     return fd >= 0 && fd <= INT_MAX && isatty((int)fd);
 }

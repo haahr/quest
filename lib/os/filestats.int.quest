@@ -1,0 +1,58 @@
+interface FileStats
+import
+    util/maybe : util/Maybe
+export
+    (* =========================================================================
+     * File Metadata (FileStats)
+     *
+     * What stat(2) says about a path, modeled on Python's os.stat_result (what
+     * pathlib.Path(...).stat() returns), with the fields both macOS and Linux
+     * have. One call gives everything, so there is no race between testing
+     * that a file exists and reading its time:
+     *
+     *     let s = fileStats.find(path);
+     *     if maybe.isSome(:fileStats.T s) andif {maybe.unwrap(:fileStats.T s).kind?file} then ...
+     * ====================================================================== *)
+
+    (* What kind of thing a path names *)
+    Def Kind = Option
+        file
+        directory
+        symlink
+        other
+    end
+
+    Def T = Tuple
+        (* The size in bytes *)
+        size: Int
+        (* The permission bits (st_mode & 0o7777); the file type is in kind *)
+        mode: Int
+        kind: Kind
+        (* The times of last access, modification, and status change, in
+         * seconds since the epoch, computed as Python computes st_atime,
+         * st_mtime, and st_ctime *)
+        accessTime: Real
+        modifiedTime: Real
+        changeTime: Real
+        (* The same times in nanoseconds since the epoch, as st_atime_ns,
+         * st_mtime_ns, and st_ctime_ns: exact, so they compare reliably *)
+        accessNs: Int
+        modifiedNs: Int
+        changeNs: Int
+    end
+
+    (* The stats of what path names, following symlinks; raises system.error
+     * if it names nothing or cannot be examined *)
+    stat(path: String): T
+
+    (* The stats of what path names, not following a final symlink *)
+    lstat(path: String): T
+
+    (* The stats of what path names, following symlinks, or none if it names
+     * nothing (or a component of it is not a directory); raises system.error
+     * on other failures, such as a directory that cannot be searched *)
+    find(path: String): maybe.T(T)
+
+    (* find, not following a final symlink *)
+    lfind(path: String): maybe.T(T)
+end
