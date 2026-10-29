@@ -117,7 +117,7 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   `io/readline`, `os/fileStats`, `os/process`; see [new-libraries.md](new-libraries.md)). Done.
 - Compile the self-hosted Quest compiler using the Python bootstrap C compiler and validate the bootstrap fixed-point:
   `Quest(Quest) == Quest`. Done: the self-hosted compiler's build of itself writes the artifacts its seed's build
-  wrote, and rebuilds itself as the same binary (`run_tests.py --self-hosting`). `./questc` runs it, built by a
+  wrote, and rebuilds itself as the same binary (`run_tests.py --self-hosting`). `./quest` runs it, built by a
   released self-hosted compiler ([release-compiler.md](release-compiler.md)), compiling modules in parallel.
 - It is the primary compiler: the two compilers share what programs do, not how they compile them
   ([testing.md](testing.md) §2.8). The bootstrap is kept so that the compiler can be rebuilt from nothing, and the

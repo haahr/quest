@@ -213,8 +213,8 @@ drivers: each must exit with the bootstrap's status and errors, leave its files,
 the C.
 
 The runners set `QUEST_HOME` to the project directory, where the self-hosted driver, which runs in a scratch
-directory, finds `lib/`. `--self-hosted-driver PATH` runs a driver already compiled (as by `./quest -o build/questlang/main
-questlang/driver/main.quest`, or `./questc`'s stage 2 in `.build/questc/stage2/questc`) rather than compiling one,
+directory, finds `lib/`. `--self-hosted-driver PATH` runs a driver already compiled (as by `./questboot -o build/questlang/main
+questlang/driver/main.quest`, or `./quest`'s stage 2 in `.build/quest-stages/stage2/quest`) rather than compiling one,
 which takes minutes.
 
 `run_c_compiled` compiles and runs every run program and run-time error test with the self-hosted driver, and runs the

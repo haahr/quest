@@ -73,22 +73,27 @@ class Side:
 
     def prepare(self) -> None:
         """Builds the self-hosted compiler of the tree, once, before the
-        programs compile in parallel (./questc rebuilds it when it is stale)."""
+        programs compile in parallel (./quest rebuilds it when it is stale)."""
         if self.bootstrap:
             self.command = [self.python, str(self.tree / "bootstrap" / "python" / "quest_driver.py")]
             return
         print(f"c-diff: building the {self.name} tree's self-hosted compiler...", file=sys.stderr)
+        # A revision before ./quest ran the self-hosted compiler has it as
+        # ./questc, with its stages in .build/questc
+        launcher, stage2 = "quest", Path(".build") / "quest-stages" / "stage2" / "quest"
+        if (self.tree / "questc").is_file():
+            launcher, stage2 = "questc", Path(".build") / "questc" / "stage2" / "questc"
         with tempfile.TemporaryDirectory(prefix="c-diff-") as scratch:
             program = Path(scratch) / "trivial.quest"
             program.write_text(TRIVIAL_PROGRAM)
             process = subprocess.run(
-                [str(self.tree / "questc"), "--build-dir", str(Path(scratch) / "build"), "--stop-after", "typecheck",
+                [str(self.tree / launcher), "--build-dir", str(Path(scratch) / "build"), "--stop-after", "typecheck",
                  str(program)],
                 capture_output=True, text=True, env=self.environment, cwd=scratch,
             )
         if process.returncode != 0:
             sys.exit(f"c-diff: building the {self.name} tree's compiler failed:\n{process.stdout}{process.stderr}")
-        self.command = [str(self.tree / ".build" / "questc" / "stage2" / "questc")]
+        self.command = [str(self.tree / stage2)]
 
     def c_of(self, program: Path, echo: bool, build_dir: Path) -> tuple[bool, str]:
         """The C the compiler prints for program, as run_c_compiled compiles it,

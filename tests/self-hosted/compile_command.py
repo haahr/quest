@@ -22,7 +22,7 @@ import tempfile
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-BOOTSTRAP = ROOT_DIR / "quest"
+BOOTSTRAP = ROOT_DIR / "questboot"
 
 PROGRAMS = {
     "p.quest": "let x = 3\nx + 4\n",

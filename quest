@@ -1,16 +1,92 @@
 #!/bin/sh
-# Launcher script for the Quest compiler driver.
-if [ -n "$PYTHON" ]; then
-    PY="$PYTHON"
-elif [ -x "/opt/homebrew/opt/python@3.11/libexec/bin/python" ]; then
-    PY="/opt/homebrew/opt/python@3.11/libexec/bin/python"
-elif [ -x "/opt/homebrew/bin/python3" ]; then
-    PY="/opt/homebrew/bin/python3"
-elif command -v python3.11 >/dev/null 2>&1; then
-    PY="python3.11"
-else
-    PY="python3"
+# Launcher for Quest, which is the self-hosted compiler (./questboot runs the
+# bootstrap; docs/release-compiler.md section 2): runs stage 2, the compiler
+# that questlang/driver/main.quest builds when compiled by the seed's build of
+# it (stage 1). The seed is the current release (current among the releases the
+# repository's worktrees share, docs/release-compiler.md section 1, which
+# compiles stage 1 against its own lib/ and runtime/), or the bootstrap when
+# there is no release or QUEST_SEED=bootstrap. The stages are rebuilt first when
+# any file they are built from (under questlang/, lib/, or runtime/, and
+# bootstrap/ for the bootstrap seed) is newer than stage 2, each build compiling
+# only the units that are stale, and from nothing when the seed has changed. Set
+# QUEST_VERBOSE=1 to see the builds' steps. The release builds stage 1, and
+# stage 1 builds stage 2, compiling QUEST_JOBS modules at once (-j; by default,
+# as many as there are CPUs); the bootstrap builds stage 1 one at a time.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BUILD="$SCRIPT_DIR/.build/quest-stages"
+STAGE1="$BUILD/stage1/quest"
+STAGE2="$BUILD/stage2/quest"
+DRIVER="questlang/driver/main.quest"
+JOBS="${QUEST_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)}"
+# The releases are in the repository's common git directory, unless
+# QUEST_RELEASE_DIR names others; current is resolved once, so that a cut or
+# rollback meanwhile cannot mix two releases
+COMMON="$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+RELEASES="${QUEST_RELEASE_DIR:-${COMMON:+$COMMON/quest-release}}"
+RELEASES="${RELEASES:-$SCRIPT_DIR/release}"
+RELEASE="$(cd -P "$RELEASES/current" 2>/dev/null && pwd)"
+
+SEED="${QUEST_SEED:-}"
+if [ -z "$SEED" ]; then
+    if [ -n "$RELEASE" ] && [ -x "$RELEASE/quest" ]; then
+        SEED=release
+    else
+        echo "quest: no current release in $RELEASES (make one with tools/release); seeding from the bootstrap" >&2
+        SEED=bootstrap
+    fi
+fi
+case "$SEED" in
+    release)
+        [ -n "$RELEASE" ] && [ -x "$RELEASE/quest" ] || {
+            echo "quest: QUEST_SEED=release, but there is no current release in $RELEASES" >&2; exit 1; }
+        RECORDED="$(sed -n 's/.*"sha256": *"\([0-9a-f]*\)".*/\1/p' "$RELEASE/release.json")"
+        ACTUAL="$(shasum -a 256 "$RELEASE/quest" | cut -d ' ' -f 1)"
+        if [ -z "$RECORDED" ] || [ "$RECORDED" != "$ACTUAL" ]; then
+            echo "quest: $RELEASE/quest is not the binary its release.json describes" >&2
+            exit 1
+        fi
+        # Releases of one compiler can differ in their home/ alone
+        SEED_ID="release $(basename "$RELEASE") $ACTUAL"
+        SOURCES="questlang lib runtime"
+        ;;
+    bootstrap)
+        SEED_ID="bootstrap"
+        SOURCES="questlang lib runtime bootstrap"
+        ;;
+    *)
+        echo "quest: QUEST_SEED must be release or bootstrap, not $SEED" >&2
+        exit 1
+        ;;
+esac
+
+# Stages built by another seed are discarded: a release's home/ has its
+# commit's times, so its artifacts cannot be judged stale against another's
+if [ "$(cat "$BUILD/seed" 2>/dev/null)" != "$SEED_ID" ]; then
+    rm -rf "$BUILD"
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-exec "$PY" "$SCRIPT_DIR/bootstrap/python/quest_driver.py" "$@"
+stale() {
+    [ ! -x "$STAGE2" ] && return 0
+    # shellcheck disable=SC2086
+    [ -n "$(cd "$SCRIPT_DIR" && find $SOURCES -type f -newer "$STAGE2" 2>/dev/null | head -n 1)" ]
+}
+
+if stale; then
+    VERBOSE=""
+    [ -n "$QUEST_VERBOSE" ] && VERBOSE="-v"
+    mkdir -p "$BUILD/stage1" "$BUILD/stage2" || exit 1
+    printf '%s\n' "$SEED_ID" > "$BUILD/seed"
+    if [ "$SEED" = release ]; then
+        echo "quest: building stage 1 (the release compiling $DRIVER)..." >&2
+        (cd "$SCRIPT_DIR" && QUEST_HOME="$RELEASE/home" "$RELEASE/quest" $VERBOSE -j "$JOBS" -I "$SCRIPT_DIR" \
+            --build-dir "$BUILD/stage1/build" -o "$STAGE1" "$DRIVER") || exit 1
+    else
+        echo "quest: building stage 1 (the bootstrap compiling $DRIVER)..." >&2
+        (cd "$SCRIPT_DIR" && ./questboot $VERBOSE --build-dir "$BUILD/stage1/build" -o "$STAGE1" "$DRIVER") || exit 1
+    fi
+    echo "quest: building stage 2 (stage 1 compiling $DRIVER)..." >&2
+    (cd "$SCRIPT_DIR" && QUEST_HOME="$SCRIPT_DIR" "$STAGE1" $VERBOSE -j "$JOBS" --build-dir "$BUILD/stage2/build" \
+        -o "$STAGE2" "$DRIVER") || exit 1
+fi
+
+QUEST_HOME="${QUEST_HOME:-$SCRIPT_DIR}" exec "$STAGE2" "$@"

@@ -6,7 +6,7 @@ can still build the tree's compiler from nothing (§4).
 
 Building from a release is fast. The self-hosted compiler builds `questlang/driver/main` from nothing in under a
 minute, compiling modules in parallel ([build-process.md](build-process.md) §7.4), against the bootstrap's ten, so a
-seeded build's two stages take about two minutes. Incremental builds (`./questc` rebuilds only stale units) take
+seeded build's two stages take about two minutes. Incremental builds (`./quest` rebuilds only stale units) take
 seconds.
 
 ---
@@ -16,9 +16,9 @@ seconds.
 ```
 .git/quest-release/       in the repository's common git directory, which every worktree shares
 ├── COMMIT/               a release, named by the commit it was cut from
-│   ├── questc            the compiler binary (stage 2 of the commit)
-│   ├── home/             a snapshot of the commit's lib/ and runtime/, which questc compiles against
-│   └── release.json      what it is: commit, ABI version, producer, sha256 of questc, date, seed, how it was checked
+│   ├── quest             the compiler binary (stage 2 of the commit)
+│   ├── home/             a snapshot of the commit's lib/ and runtime/, which quest compiles against
+│   └── release.json      what it is: commit, ABI, producer, sha256 of quest, date, seed, how it was checked
 ├── current -> COMMIT     the release in use
 ├── previous -> COMMIT    the release before it, kept so that a bad release can be rolled back
 └── lock                  held while current or previous changes
@@ -28,9 +28,9 @@ seconds.
   each worktree finds it in the common git directory (`git rev-parse --git-common-dir`), and a release cut in one
   is the seed in all. `QUEST_RELEASE_DIR` names another directory; outside a git checkout, the releases are in the
   checkout's `release/`. `bootstrap/python/quest/testing/releases.py` finds them for the runner and `tools/release`,
-  and `./questc` the same way.
+  and `./quest` the same way.
 - **A user of a release resolves `current` once,** to the release's own directory, and uses that directory's
-  `questc` and `home/` throughout, so that a cut or rollback in another worktree while it runs cannot give it one
+  `quest` and `home/` throughout, so that a cut or rollback in another worktree while it runs cannot give it one
   release's compiler and another's `home/`.
 - **A release is a commit's stage 2.** It is cut only from a clean tree at a commit on main. `release.json` records
   the commit, so the release can be rebuilt from its sources: from the release before it, or from the bootstrap while
@@ -47,7 +47,7 @@ seconds.
      `--seed bootstrap` seeds the check from the bootstrap instead, for the first release, or when the current release
      cannot compile the commit (§2).
   3. If both pass, write the new release into a directory of its own beside the releases (`new-COMMIT-PID`): stage 2
-     as `questc`, `git archive` of the commit's `lib/` and `runtime/` as `home/`, and `release.json`, which records
+     as `quest`, `git archive` of the commit's `lib/` and `runtime/` as `home/`, and `release.json`, which records
      the seed: `release COMMIT` or `bootstrap`.
   4. Check it as `--verify` does: its digest, and a small program it builds against its own `home/` and runs.
   5. With the lock held, rename it to `COMMIT`, point `previous` at the old current release and `current` at the new
@@ -70,29 +70,29 @@ The seed (the release) builds the compiler in two stages, as rustc's stage 0 doe
 
 Stage 2 is the new compiler. Each stage has its own build directory, and the engine makes each build incremental.
 
-- **`./questc`** checks that the release exists and that its `questc` has the sha256 its `release.json` records.
+- **`./quest`** checks that the release exists and that its `quest` has the sha256 its `release.json` records.
   Then it brings stages 1 and 2 up to date (when anything under `questlang/`, `lib/`, or `runtime/` is newer than
   stage 2) and runs stage 2. With no release, it says how to make one and falls back to the bootstrap seed
-  (`QUESTC_SEED=bootstrap` forces that, and also watches `bootstrap/`). It records the seed that built its stages
-  (`.build/questc/seed`: the release's commit and the digest of its `questc`) and starts over when the seed changes,
-  as when a release is cut in another worktree. A release's `home/` carries its commit's times, so artifacts built
-  against one release could look fresh against the next one's older sources.
+  (`QUEST_SEED=bootstrap` forces that, and also watches `bootstrap/`). It records the seed that built its stages
+  (`.build/quest-stages/seed`: the release's commit and the digest of its `quest`) and starts over when the seed
+  changes, as when a release is cut in another worktree. A release's `home/` carries its commit's times, so artifacts
+  built against one release could look fresh against the next one's older sources.
 - **The release finds the tree's `questlang/` through `-I`,** because its `QUEST_HOME` is its own `home/`, which
   holds only `lib/` and `runtime/`.
-- **Both stages build in parallel,** with `-j` set to the number of CPUs (`QUESTC_JOBS` for `./questc`).
+- **Both stages build in parallel,** with `-j` set to the number of CPUs (`QUEST_JOBS` for `./quest`).
 - **The runner's `--self-hosted`** builds the driver it tests from the bootstrap by default, and from the release
   with `--seed release`. The runner builds from nothing every time, and building with the bootstrap keeps it able to
   build the tree's compiler between releases. `tools/check` seeds the self-hosting check from the release.
 - **The one rule this imposes:** `questlang/` must be compilable by the current release against the release's own
   `lib/`. Using a new language feature, a new `lib/` function, or a new runtime primitive in `questlang/` takes two
   commits: one that adds the feature, then a release, then one that uses it. While the bootstrap is maintained, it
-  can be used instead to build past such a gap (`QUESTC_SEED=bootstrap`), as long as the feature is in the bootstrap
+  can be used instead to build past such a gap (`QUEST_SEED=bootstrap`), as long as the feature is in the bootstrap
   too.
 - **A new library** in `lib/` that `questlang/` will use lands that way: a commit adding the interface and module,
   their natives in `runtime/` (with an ABI bump if there are any), both interpreters' builtins, goldens, a section in
   [new-libraries.md](new-libraries.md), and a snapshot of the interface in the ABI corpus's inputs; then a release;
   then a commit moving `questlang/`'s callers over. The self-hosted interpreter's builtins are the one use inside
-  `questlang/` that cannot wait for the release, so until it is cut, `./questc` needs `QUESTC_SEED=bootstrap`.
+  `questlang/` that cannot wait for the release, so until it is cut, `./quest` needs `QUEST_SEED=bootstrap`.
 
 ## 3. Checking
 

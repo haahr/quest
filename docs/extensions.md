@@ -2,7 +2,7 @@
 
 This document specifies practical extensions to Cardelli's Quest language necessary for building command-line
 utilities, file processors, operating system integrations, and in particular the **Step 5 Self-Hosted Compiler**
-(`questc` written in Quest).
+(`./quest`, written in Quest).
 
 ---
 
@@ -168,7 +168,7 @@ end
 Cardelli's *Typeful Programming* (§7.1) specified modules and interfaces within a flat global namespace.
 While the speculative "systems of interfaces" section (§7.3) envisioned grouping interfaces to manage large
 codebases, it provided neither concrete formal syntax nor filesystem mapping conventions. In large applications—such
-as the self-hosted Quest compiler (`questc`)—a flat namespace invites name collisions and complicates repository
+as the self-hosted Quest compiler (`questlang/`)—a flat namespace invites name collisions and complicates repository
 organization.
 
 To solve this, this implementation of Quest introduces **hierarchical module and interface namespaces**

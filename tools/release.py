@@ -117,7 +117,7 @@ def smoke_test(release: Path) -> str:
         source.write_text(SMOKE_PROGRAM, encoding="utf-8")
         binary = Path(scratch) / "smoke"
         build = subprocess.run(
-            [str(release / "questc"), "--build-dir", str(Path(scratch) / "build"), "-o", str(binary), str(source)],
+            [str(release / "quest"), "--build-dir", str(Path(scratch) / "build"), "-o", str(binary), str(source)],
             capture_output=True, text=True, env=environment, cwd=scratch,
         )
         if build.returncode != 0:
@@ -134,9 +134,9 @@ def verify(release: Path) -> str:
     if not description.is_file():
         return f"{release} has no release.json"
     recorded = json.loads(description.read_text(encoding="utf-8"))
-    binary = release / "questc"
+    binary = release / "quest"
     if not binary.is_file():
-        return f"{release} has no questc"
+        return f"{release} has no quest"
     if sha256(binary) != recorded["sha256"]:
         return f"{binary}'s digest is not the one release.json records"
     for part in ("lib", "runtime"):
@@ -175,13 +175,13 @@ def cut(python: str, check_dir: Path, seed: str) -> None:
     shutil.rmtree(new, ignore_errors=True)
     new.mkdir(parents=True)
 
-    shutil.copy2(stage2, new / "questc")
+    shutil.copy2(stage2, new / "quest")
     snapshot_home(commit, new / "home")
     description = {
         "commit": commit,
         "abi": abi,
         "producer": producer,
-        "sha256": sha256(new / "questc"),
+        "sha256": sha256(new / "quest"),
         "date": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         # Stage 1 was built by the seed: the release before this one, or the
         # bootstrap

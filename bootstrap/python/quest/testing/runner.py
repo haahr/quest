@@ -559,10 +559,10 @@ def current_release() -> Path:
     if release is None:
         sys.exit(f"There is no current release in {releases.releases_dir(ROOT_DIR)}; make one with tools/release, "
                  "or use --seed bootstrap")
-    binary = release / "questc"
+    binary = release / "quest"
     description = release / "release.json"
     if not binary.is_file() or not description.is_file():
-        sys.exit(f"The current release, {release}, has no questc or release.json")
+        sys.exit(f"The current release, {release}, has no quest or release.json")
     recorded = json.loads(description.read_text(encoding="utf-8"))["sha256"]
     if hashlib.sha256(binary.read_bytes()).hexdigest() != recorded:
         sys.exit(f"{binary} is not the binary its release.json describes")
@@ -579,7 +579,7 @@ def build_seeded_driver(build_dir: Path) -> Path:
     stage1 = seeded / "stage1" / "questlang-driver"
     stage2 = seeded / "stage2" / "questlang-driver"
     print("  stage 1 (by the release)...")
-    print(f"    {build_driver_with(release / 'questc', seeded / 'stage1' / 'build', stage1, release / 'home'):.1f}s")
+    print(f"    {build_driver_with(release / 'quest', seeded / 'stage1' / 'build', stage1, release / 'home'):.1f}s")
     print("  stage 2 (by stage 1)...")
     print(f"    {build_driver_with(stage1, seeded / 'stage2' / 'build', stage2):.1f}s")
     return stage2
@@ -650,7 +650,7 @@ def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "boo
         stage1 = stages / "stage1" / "questlang-driver"
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             bootstrap = executor.submit(build_self_hosted_driver, python_executable, build_dir)
-            seconds = build_driver_with(release / "questc", stages / "stage1" / "build", stage1, release / "home")
+            seconds = build_driver_with(release / "quest", stages / "stage1" / "build", stage1, release / "home")
             bootstrap_stage1 = bootstrap.result()
         print(f"  {seconds:.1f}s")
     else:

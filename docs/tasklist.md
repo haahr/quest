@@ -13,7 +13,7 @@ in the same build directory, and the reverse. The objects disagree about allocat
 undefined) or the program mixes allocators. Both compilers do it.
 
 **Reproduce.** In an empty directory holding `p.quest` (`1 + 1`), `./quest compile p.quest`, then `./quest compile
---nogc p.quest -o n`: the link fails. `./questc` fails the same way.
+--nogc p.quest -o n`: the link fails. `./questboot` fails the same way.
 
 **Where to start.** `_unit_staleness` in `bootstrap/python/quest/build/engine.py` and `unitStaleness` in
 `questlang/build/engine.mod.quest`. Record the collector setting in each unit's `.qm` and treat a unit as stale when

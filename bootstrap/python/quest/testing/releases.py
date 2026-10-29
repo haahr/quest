@@ -3,7 +3,7 @@ section 1): in the repository's common git directory, which every worktree of
 the repository shares, so that one release seeds them all.
 
     <git common dir>/quest-release/
-        COMMIT/               a release: questc, home/, and release.json
+        COMMIT/               a release: quest, home/, and release.json
         current -> COMMIT     the release that seeds builds
         previous -> COMMIT    the one before it, which --rollback restores
         lock                  held while current or previous changes

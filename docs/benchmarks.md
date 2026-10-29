@@ -26,8 +26,9 @@ conversions are checked, and the two programs (fxp and merge) left out. In short
 
 ### 1.1. Running
 
-`run.py` builds the conversions with a Quest compiler (`./quest` unless `--compiler` names another, such as
-`./questc`) and the originals with `mlton`, and runs each program in a scratch directory holding a copy of `DATA/`.
+`run.py` builds the conversions with a Quest compiler (`./quest`, the self-hosted one, unless `--compiler` names
+another, such as `./questboot`) and the originals with `mlton`, and runs each program in a scratch directory holding a
+copy of `DATA/`.
 
 | Command | What it does |
 |---|---|
@@ -80,13 +81,15 @@ removed work the other did (§2.3), so the mean without them is reported beside 
 | Collector | Boehm-Demers-Weiser 8.2.12 (Homebrew `bdw-gc`) |
 | Quest | `7551249b` (ABI 49, with `_setjmp` exceptions); the conversions as of `47b5a20c` |
 
-The self-hosted compiler is `./questc` (stage 2, seeded from the bootstrap). Each system ran each benchmark three
-times, and each time is the median of the three.
+The self-hosted compiler is `./quest` (stage 2, seeded from the bootstrap), and the bootstrap `./questboot`. When these
+times were taken, they were `./questc` and `./quest`, and the baselines and the tables below name the systems so
+(`questc`, `questc interpret`, and `quest interpret`, the bootstrap's). Each system ran each benchmark three times, and
+each time is the median of the three.
 
-- **Compiled:** MLton and `./questc` at a quarter of MLton's counts (`--scale 0.25`), so that most of MLton's runs take
+- **Compiled:** MLton and `./quest` at a quarter of MLton's counts (`--scale 0.25`), so that most of MLton's runs take
   2 to 14 seconds, one benchmark at a time (MLton's three runs, then Quest's) on an otherwise idle machine.
-- **Interpreted:** `./quest --stop-after interpret` (the bootstrap's interpreter, in Python) and
-  `./questc --stop-after interpret` (the self-hosted one, compiled) at count 1, the least a program can do, with a
+- **Interpreted:** `./questboot --stop-after interpret` (the bootstrap's interpreter, in Python) and
+  `./quest --stop-after interpret` (the self-hosted one, compiled) at count 1, the least a program can do, with a
   10-minute timeout, against MLton at count 1. Their times include parsing and type checking the program, and MLton's
   at count 1 are dominated by process startup for the benchmarks whose single iteration is short, so these ratios are
   rough; at ratios in the hundreds or thousands, the difference does not matter. The two interpreters ran side by
@@ -97,10 +100,10 @@ measurement can be reported beside them. To take them again (into a directory of
 
 ```bash
 cd benchmarks/mlton
-./run.py time --mlton --compiler ../../questc --scale 0.25 --runs 3 --timeout 1800 --results new/compiled.jsonl
+./run.py time --mlton --compiler ../../quest --scale 0.25 --runs 3 --timeout 1800 --results new/compiled.jsonl
 ./run.py time --mlton-only --count 1 --runs 3 --results new/mlton-count1.jsonl
-./run.py time --interpret --compiler ../../questc --count 1 --runs 3 --timeout 600 --results new/questc-interpret.jsonl
 ./run.py time --interpret --compiler ../../quest --count 1 --runs 3 --timeout 600 --results new/quest-interpret.jsonl
+./run.py time --interpret --compiler ../../questboot --count 1 --runs 3 --timeout 600 --results new/questboot-interpret.jsonl
 ./run.py report new/*.jsonl --exclude fib,tailfib,tak,tensor
 ```
 
@@ -110,9 +113,9 @@ The topline alone takes about two and a half hours (the first command); the inte
 
 | System | Geometric mean of time / MLton's | Benchmarks that ran |
 |---|---|---|
-| Self-hosted compiler (`./questc`) | **5.05**; 6.49 without fib, tailfib, tak, and tensor | all 46 |
-| Self-hosted interpreter (`./questc --stop-after interpret`) | 557 on the 8 that both interpreters finish; >1246 on the 17 that finish or time out | 9 finish, 8 time out, 29 fail |
-| Bootstrap interpreter (`./quest --stop-after interpret`) | 2453 on the 8 that both interpreters finish; >2052 on the 20 that finish or time out | 8 finish, 12 time out, 26 fail |
+| Self-hosted compiler (`./quest`) | **5.05**; 6.49 without fib, tailfib, tak, and tensor | all 46 |
+| Self-hosted interpreter (`./quest --stop-after interpret`) | 557 on the 8 that both interpreters finish; >1246 on the 17 that finish or time out | 9 finish, 8 time out, 29 fail |
+| Bootstrap interpreter (`./questboot --stop-after interpret`) | 2453 on the 8 that both interpreters finish; >2052 on the 20 that finish or time out | 8 finish, 12 time out, 26 fail |
 
 The self-hosted compiler's programs take about five times MLton's time. The interpreters cannot run most of the suite
 (§2.4); where both run, the self-hosted interpreter is 4.4 times as fast as the bootstrap's (2.8 to 5.2).

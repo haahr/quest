@@ -82,7 +82,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
         let id(A::TYPE x: A): A = x
         id(n + 1)
 
-    the call elaborates to (as `./quest --stop-after typecheck` prints it)
+    the call elaborates to (as `./questboot --stop-after typecheck` prints it)
 
         (TypedApp :type Int
           :func (TypedTypeApp [Int] :type Fun(x: Int): Int

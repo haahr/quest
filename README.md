@@ -94,10 +94,11 @@ As with `python script.py`, the driver's options come before the program file: e
 included, is the program's. (`quest compile`, which does not run the program, takes options anywhere, as does the
 driver for an interface or module file.)
 
-`./quest` runs the Python bootstrap. `./questc` runs the self-hosted compiler (`questlang/`), which takes the same
-commands and options, apart from the deprecated `--emit-deps` and the `--option=value` spelling, and adds `-j N` (build N modules at once). It builds
-itself first when its sources have changed: from the current release, when `tools/release` has cut one, else from the
-bootstrap ([docs/release-compiler.md](docs/release-compiler.md)).
+`./quest` runs the self-hosted compiler (`questlang/`). It builds itself first when its sources have changed: from the
+current release, when `tools/release` has cut one, else from the bootstrap
+([docs/release-compiler.md](docs/release-compiler.md)). `./questboot` runs the Python bootstrap, which takes the same
+commands and options, apart from the self-hosted compiler's `-j N` (build N modules at once); only the bootstrap has
+the deprecated `--emit-deps` and the `--option=value` spelling.
 
 ### Running Tests
 The project includes comprehensive unit tests, golden-file integration tests, and inline diagnostic error tests:
@@ -249,5 +250,5 @@ system, intermediate representation, and native runtime design. If you are new t
 - [docs/compiler-organization.md](docs/compiler-organization.md): Module architecture of the self-hosted Quest
   compiler (`questlang/`), and how it differs from the bootstrap.
 - [docs/release-compiler.md](docs/release-compiler.md): Releases of the self-hosted compiler (`tools/release`), which
-  seed `./questc` in two stages.
+  seed `./quest` in two stages.
 - [docs/tasklist.md](docs/tasklist.md): Open bugs and planned tasks.

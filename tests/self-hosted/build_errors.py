@@ -40,7 +40,7 @@ def compare(driver: str, cases: list[Path]) -> list[str]:
     """The cases the driver reports differently from the bootstrap, with how."""
     problems: list[str] = []
     for case in cases:
-        expected = build([str(ROOT_DIR / "quest")], case)
+        expected = build([str(ROOT_DIR / "questboot")], case)
         actual = build([driver], case)
         if expected[0] == 0:
             problems.append(f"{case.name}: the bootstrap builds it")

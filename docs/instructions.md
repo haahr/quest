@@ -46,13 +46,15 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   the self-hosted compiler alone: how it compiles (its IR, its C) or a refactoring of `questlang/`. Anything either
   compiler shares (the language, `lib/`, `runtime/`, what programs do or what errors say, the tests) needs the full
   `tools/check` ([testing.md](testing.md) §4.1).
-- **The driver:** `python3.11 bootstrap/python/quest_driver.py --stop-after PHASE file.quest`, with `PHASE` one of
-  `tokenize`, `parse`, `typecheck`, `interpret`, `codegen_c` (prints the C), `run_c_compiled`; `--echo` echoes
-  top-level phrases; `--build-dir DIR` keeps a program's compiled interfaces and modules out of the source tree.
-- **The self-hosted compiler:** `./questc` takes the same options, building itself first when its sources have
-  changed: from the current release when there is one (which all worktrees share), else from the bootstrap
+- **The compiler:** `./quest PROGRAM` runs the self-hosted compiler, which is the default; `./quest --stop-after PHASE
+  file.quest` prints a phase, with `PHASE` one of `tokenize`, `parse`, `desugar`, `typecheck`, `ir_STAGE`,
+  `interpret`, `codegen_c` (prints the C), `run_c_compiled`; `--echo` echoes top-level phrases; `--build-dir DIR`
+  keeps a program's compiled interfaces and modules out of the source tree. It builds itself first when its sources
+  have changed: from the current release when there is one (which all worktrees share), else from the bootstrap
   ([release-compiler.md](release-compiler.md)). Its `-j N` compiles up to N modules at once
   ([build-process.md](build-process.md) §7.4).
+- **The bootstrap:** `./questboot` (`bootstrap/python/quest_driver.py`) takes the same commands and options; it writes
+  the goldens the two compilers share ([testing.md](testing.md) §2.8).
 - **The generated C:** `tools/c-diff` diffs the C of the golden programs as a revision's compiler (`--base`, HEAD by
   default) prints it against the working tree's; the suites check what the C does, not its text
   ([testing.md](testing.md) §2.9).
@@ -177,7 +179,7 @@ See [testing.md](testing.md) for the framework. In practice:
 
 - **`questlang/` may use only what the current release compiles,** against the release's own `lib/` and `runtime/`.
   Using a new language feature, `lib/` function, or runtime primitive in `questlang/` takes a commit that adds it, a
-  release cut from that commit, and then a commit that uses it. `QUESTC_SEED=bootstrap` builds past such a gap when
+  release cut from that commit, and then a commit that uses it. `QUEST_SEED=bootstrap` builds past such a gap when
   the bootstrap has the feature too.
 - **Cut a release** by hand, never automatically: when `questlang/` needs something the current release cannot
   compile, after a larger piece of work, and otherwise when convenient. Only the owner asks for one, as for a push.
@@ -185,7 +187,7 @@ See [testing.md](testing.md) for the framework. In practice:
   kept.
 - **Releases are shared:** every worktree of the repository uses the same releases, in the common git directory
   ([release-compiler.md](release-compiler.md) §1), so a release cut or rolled back in one worktree is the seed in all
-  of them, whose `./questc` then rebuilds its stages.
+  of them, whose `./quest` then rebuilds its stages.
 
 ## 7. Documentation
 

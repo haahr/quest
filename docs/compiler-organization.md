@@ -112,7 +112,7 @@ questlang/
 ```
 
 The self-hosted compiler compiles itself to a fixed point, and it is the primary compiler: the two compilers agree
-on what programs do, not on how they compile them ([testing.md](testing.md) §2.8). `./questc` runs it, built from the
+on what programs do, not on how they compile them ([testing.md](testing.md) §2.8). `./quest` runs it, built from the
 tree by a released self-hosted compiler ([release-compiler.md](release-compiler.md)) or by the bootstrap. So
 `questlang/` may use only what the current release compiles. The bootstrap's `config/options` was not ported, because
 the driver and the build engine take their options directly. (`codegen/sha256` is the SHA-256 that the bootstrap takes

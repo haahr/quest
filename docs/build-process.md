@@ -9,8 +9,8 @@ transitive closure resolution, self-guarding idempotent module initialization, a
 
 ## 1. Overview and Operational Modes
 
-The Quest compiler (`questc` / Python bootstrap driver) supports two distinct compilation strategies when building
-executable binaries:
+The Quest compiler (`./quest`, the self-hosted compiler, and `./questboot`, the Python bootstrap) supports two
+distinct compilation strategies when building executable binaries:
 
 ### 1.1. Separate Compilation (Default Mode)
 In separate compilation mode:
@@ -91,8 +91,8 @@ A fundamental architectural distinction exists between **compiling an individual
      - `.o`: Relocatable object file compiled from `.c`.
 
 4. **Full Build Process (Targeting a Quest Main Routine):**
-   - Initiated when the compiler driver is invoked on a Quest main routine (e.g. `questc main.quest` or
-     `questc -o myapp app.quest`).
+   - Initiated when the compiler driver is invoked on a Quest main routine (e.g. `quest main.quest` or
+     `quest -o myapp app.quest`).
    - Executes a queue-driven build loop that determines the transitive closure of needed modules, checks staleness,
      rebuilds out-of-date interfaces and modules, and links all object files into the final executable.
 
@@ -148,7 +148,7 @@ interfaces, `ensure_resolved_interface_header`) but the graph never reaches the 
 ### 3.1. Full Application Builds vs. Standalone Compilation
 The compiler driver differentiates between orchestrating a full build of an application and compiling an isolated unit:
 
-- **Full Application Builds (`questc main.quest`):**
+- **Full Application Builds (`quest main.quest`):**
   All intermediate artifacts (`.qi`, `*.int.h`, `.qm`, `.mod.c`, `.main.c`, `.o`, and `build.log`) reside strictly within a dedicated
   build directory (default `.build/` in the project root, or `--build-dir <dir>`). Source trees (`lib/`, `tests/`) are
   never modified by the build process.
@@ -158,7 +158,7 @@ The compiler driver differentiates between orchestrating a full build of an appl
   Nested interface and module compilations inherit the same build directory. Only the main routine itself
   is handled differently: its C code is kept in memory (or written where `-o` / `--emit-c` say) rather than as
   `.build/<dir>/<main>.main.{qm,c,o}`.
-- **Standalone Unit Compilation (`questc -c unit.int.quest` or `questc -c unit.mod.quest`):**
+- **Standalone Unit Compilation (`quest -c unit.int.quest` or `quest -c unit.mod.quest`):**
   - If `--build-dir <dir>` is specified, outputs are routed into `<dir>`.
   - If `-o <path>` is specified, outputs are placed in the directory containing `<path>`.
   - If neither is specified, outputs default to the source file directory (`file_path.parent`). This preserves
@@ -467,14 +467,14 @@ compilers keep corpora of their own: `tests/abi/corpus` is the bootstrap's, and 
 self-hosted compiler's, which its suite regenerates with the self-hosted driver and compares
 (`self-hosted/abi_corpus`).
 
-The self-hosted compiler (`questlang/`, run by `./questc`) writes its artifacts in the same places, under the same
+The self-hosted compiler (`questlang/`, run by `./quest`) writes its artifacts in the same places, under the same
 rules, and with the same engine (`questlang/build/engine`, a port of this document's `BuildEngine`). Until the two
 compilers diverged, it wrote the same artifacts as the bootstrap, up to the producer. Now they may differ, as
 optimizations go into the self-hosted compiler alone, so neither compiler uses the other's artifacts
 (§5.2.1). `run_tests.py --self-hosting` checks the self-hosted compiler's fixed point, and that the bootstrap still
 builds the compiler the release does (docs/testing.md §2.3).
 
-`./questc` builds the self-hosted compiler in two stages under `.build/questc`, each an ordinary incremental build
+`./quest` builds the self-hosted compiler in two stages under `.build/quest-stages`, each an ordinary incremental build
 with its own build directory (docs/release-compiler.md §2):
 1. The seed builds stage 1. The seed is the current release, which every worktree shares (in the common git
    directory's `quest-release/`, docs/release-compiler.md §1), compiling against its own `lib/` and `runtime/` (its
@@ -748,7 +748,7 @@ recording `Base` in `M.qm` does. Rule 4 of §7.1 likewise resolves these indirec
 of the interface that imports them.
 
 ### 7.3. One Build Path for Full Builds and Pipeline C Phases
-The driver produces native code from a main routine in two ways: the **full build** (`questc main.quest -o app`,
+The driver produces native code from a main routine in two ways: the **full build** (`quest main.quest -o app`,
 `BuildEngine.build_main`) and the **pipeline C phases** (`--stop-after codegen_c` / `run_c_compiled`, which the test
 runner uses, and `quest compile` with `--stop-after` / `--emit-c`). Both delegate everything about dependencies to the
 build engine, so there is exactly one implementation of staleness checks, artifact placement, and object collection:
@@ -797,7 +797,7 @@ build engine, so there is exactly one implementation of staleness checks, artifa
 
 ### 7.4. Parallel Builds (`-j N`, the Self-Hosted Compiler)
 The self-hosted driver's `-j N` compiles up to N modules at once (`questlang/build/engine`, `questlang/build/workers`).
-`./questc` builds both its stages with as many as there are CPUs (`QUESTC_JOBS`); the runner builds the self-hosting
+`./quest` builds both its stages with as many as there are CPUs (`QUEST_JOBS`); the runner builds the self-hosting
 check's stages and the questlang tests that way. The bootstrap builds serially. A parallel build writes the same
 artifacts as a serial one, and the same `build.log` entries in the same order; only the times differ.
 
@@ -934,13 +934,13 @@ stale. The build hashes the contents of files in these places, each with SHA-256
    name, its `--version` output, the compile flags, and the name and contents of every `.c` and `.h` file in
    `runtime/` ([codegen-c.md](codegen-c.md) §11.3). Changing any of them compiles the runtime again.
 2. **The release's compiler** ([release-compiler.md](release-compiler.md)):
-   - `./questc` hashes the current release's `questc` (with `shasum -a 256`) each time it runs with the release as
+   - `./quest` hashes the current release's `quest` (with `shasum -a 256`) each time it runs with the release as
      its seed, and refuses a binary whose digest is not the one `release.json` records. The release's commit and the
-     digest are the seed's identity, recorded in `.build/questc/seed`: when either changes, the stages are built
+     digest are the seed's identity, recorded in `.build/quest-stages/seed`: when either changes, the stages are built
      again from nothing.
    - `run_tests.py --seed release` (`current_release` in `bootstrap/python/quest/testing/runner.py`) makes the same
      check before building from the release.
-   - `tools/release` records the digest of the new `questc` in `release.json` when it cuts a release, and checks it
+   - `tools/release` records the digest of the new `quest` in `release.json` when it cuts a release, and checks it
      again in `--verify` and before installing a new release.
 
 The tests hash a file too, though no build does: the ABI corpus records a digest of `runtime/quest_runtime.h`

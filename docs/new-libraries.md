@@ -4,7 +4,7 @@ This document specifies the extended standard libraries for Quest that reside in
 (subdirectories of `lib/`) rather than the flat Cardelli standard library (`lib/*.{int,mod}.quest`).
 
 These libraries provide optional values, string building, text manipulation, and core data structures
-essential for writing complex applications and the self-hosted Quest compiler (`questc`).
+essential for writing complex applications and the self-hosted Quest compiler (`questlang/`).
 
 ---
 

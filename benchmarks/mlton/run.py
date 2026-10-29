@@ -18,11 +18,11 @@ files some of them write are kept apart from the tree.
                                  at the same count, and their geometric means
 
 A benchmark's output is its standard output, its exit status, and the files it
-writes. Builds go to .build/ here: the conversions are built by
-./quest (or --compiler, such as ./questc), the originals by mlton. With
---interpret, the conversions are not built but run by the compiler's
-tree-walking interpreter (--stop-after interpret). docs/benchmarks.md describes
-the baseline these make.
+writes. Builds go to .build/ here: the conversions are built by ./quest, the
+self-hosted compiler (or --compiler, such as ./questboot), the originals by
+mlton. With --interpret, the conversions are not built but run by the
+compiler's tree-walking interpreter (--stop-after interpret).
+docs/benchmarks.md describes the baseline these make.
 """
 
 from __future__ import annotations
@@ -312,7 +312,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("reference", "check", "time", "report"))
     parser.add_argument("names", nargs="*")
-    parser.add_argument("--compiler", default=str(ROOT / "quest"), help="the Quest compiler (default ./quest)")
+    parser.add_argument("--compiler", default=str(ROOT / "quest"),
+                        help="the Quest compiler (default ./quest, the self-hosted one)")
     parser.add_argument("--scale", type=float, default=1.0, help="multiply the suite's counts by this (time)")
     parser.add_argument("--count", type=int, help="run every program at this count (time)")
     parser.add_argument("--mlton", action="store_true", help="also time the originals (time)")
