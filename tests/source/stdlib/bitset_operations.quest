@@ -1,0 +1,98 @@
+(* Standard library: collections/bitset, sets of small integers as words: membership at word boundaries, the
+ * whole-set operations and whether they change a set, iteration, errors, and a dataflow fixpoint *)
+
+import collections/bitset : collections/Bitset;
+import writer: Writer;
+import conv: Conv;
+
+let s(text: String): Ok = writer.putString(writer.output text <> "\n");
+let b(x: Bool): String = if x then "t" else "f" end;
+let show(set: bitset.T): String =
+    begin
+        let xs = bitset.elements(set)
+        let var text = "{"
+        for i = 0 upto {extent xs - 1} do text := text <> if i > 0 then " " else "" end <> conv.int(xs[i]) end
+        text <> "} #" <> conv.int(bitset.count(set)) <> " of " <> conv.int(bitset.size(set))
+    end;
+
+(* 1. Membership, at and across word boundaries *)
+let a = bitset.new(130);
+s(show(a) <> " empty " <> b(bitset.isEmpty(a)));
+s(b(bitset.insert(a 0)) <> b(bitset.insert(a 63)) <> b(bitset.insert(a 64)) <> b(bitset.insert(a 127))
+    <> b(bitset.insert(a 128)) <> b(bitset.insert(a 129)) <> b(bitset.insert(a 64)));
+s(show(a) <> " empty " <> b(bitset.isEmpty(a)));
+s(b(bitset.contains(a 63)) <> b(bitset.contains(a 62)) <> b(bitset.contains(a 129)) <> b(bitset.contains(a 65)));
+s(b(bitset.remove(a 63)) <> b(bitset.remove(a 63)) <> " " <> show(a));
+
+(* 2. next, from every kind of place *)
+s(conv.int(bitset.next(a 0)) <> " " <> conv.int(bitset.next(a 1)) <> " " <> conv.int(bitset.next(a 65)) <> " "
+    <> conv.int(bitset.next(a 128)) <> " " <> conv.int(bitset.next(a 130)) <> " " <> conv.int(bitset.next(a ~5)));
+let e = bitset.new(200);
+s(conv.int(bitset.next(e 0)) <> " " <> show(e));
+
+(* 3. Union, intersection, and difference, and whether they change the set *)
+let x = bitset.new(100);
+let y = bitset.new(100);
+for i = 0 upto 99 do if {i % 3} is 0 then bitset.insert(x i) end end;
+for i = 0 upto 99 do if {i % 5} is 0 then bitset.insert(y i) end end;
+let u = bitset.copy(x);
+s(b(bitset.unionWith(u y)) <> " " <> conv.int(bitset.count(u)) <> " again " <> b(bitset.unionWith(u y)));
+let n = bitset.copy(x);
+s(b(bitset.intersectWith(n y)) <> " " <> show(n) <> " again " <> b(bitset.intersectWith(n y)));
+let d = bitset.copy(x);
+s(b(bitset.subtract(d y)) <> " " <> conv.int(bitset.count(d)) <> " again " <> b(bitset.subtract(d y)));
+s(b(bitset.isSubset(n x)) <> b(bitset.isSubset(n y)) <> b(bitset.isSubset(x n)) <> b(bitset.isSubset(d y)));
+s(b(bitset.equal(x x)) <> b(bitset.equal(x y)) <> b(bitset.equal(n bitset.copy(n))));
+(* A copy is a set of its own *)
+let c = bitset.copy(x);
+bitset.insert(c 1);
+s(b(bitset.contains(c 1)) <> b(bitset.contains(x 1)));
+bitset.assign(c y);
+s(b(bitset.equal(c y)) <> " " <> conv.int(bitset.count(c)));
+bitset.clear(c);
+s(show(c) <> " " <> b(bitset.isEmpty(c)));
+
+(* 4. Small and empty sets *)
+let z = bitset.new(0);
+s(show(z) <> " " <> b(bitset.isEmpty(z)) <> " " <> conv.int(bitset.next(z 0)));
+let one = bitset.new(1);
+bitset.insert(one 0);
+s(show(one));
+let w64 = bitset.new(64);
+for i = 0 upto 63 do bitset.insert(w64 i) end;
+s(conv.int(bitset.count(w64)) <> " " <> conv.int(bitset.next(w64 63)));
+
+(* 5. Errors: out of range, a negative size, sets of different sizes *)
+let tryIt(what: String f: All() Ok): Ok =
+    s(what <> " " <> try begin f() "ok" end when bitset.error then "error" end);
+tryIt("insert 130" fun(): Ok begin bitset.insert(a 130) ok end);
+tryIt("contains -1" fun(): Ok begin bitset.contains(a ~1) ok end);
+tryIt("remove 200" fun(): Ok begin bitset.remove(a 200) ok end);
+tryIt("new -1" fun(): Ok begin bitset.new(~1) ok end);
+tryIt("union of 100 and 130" fun(): Ok begin bitset.unionWith(x a) ok end);
+tryIt("equal of 100 and 130" fun(): Ok begin bitset.equal(x a) ok end);
+tryIt("insert 129" fun(): Ok begin bitset.insert(a 129) ok end);
+
+(* 6. A fixpoint, as liveness computes one: live-in of each of a cycle of
+ * blocks is its uses and its successor's live-in, iterated until no union
+ * changes a set *)
+let blocks = 5;
+let uses = array of(blocks bitset.new(70));
+let ins = array of(blocks bitset.new(70));
+for i = 0 upto {blocks - 1} do
+    uses[i] := bitset.new(70)
+    ins[i] := bitset.new(70)
+    bitset.insert(uses[i] i * 13)
+end;
+let var rounds = 0;
+let var changed = true;
+while changed do
+    changed := false
+    rounds := rounds + 1
+    for i = 0 upto {blocks - 1} do
+        let next = ins[{i + 1} % blocks]
+        if bitset.unionWith(ins[i] uses[i]) then changed := true end
+        if bitset.unionWith(ins[i] next) then changed := true end
+    end
+end;
+s("rounds " <> conv.int(rounds) <> " " <> show(ins[0]) <> " " <> show(ins[4]));

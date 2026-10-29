@@ -1,0 +1,150 @@
+(* Fixed-size sets of small integers, as arrays of 64-bit words: integer i is
+ * bit i % 64 of word i / 64. Bits beyond a set's size are always 0, so whole
+ * words compare, count, and combine without masking. *)
+
+module bitset : Bitset
+import
+    word: Word
+export
+    Let T = Tuple size: Int words: Array(word.T) end
+
+    let error: Exception = exception error: Ok end
+
+    let zero: word.T = word.fromInt(0)
+    let isZero(w: word.T): Bool = word.toInt(w) is 0
+    let same(a: word.T b: word.T): Bool = word.toInt(a) is word.toInt(b)
+
+    let new(size: Int): T =
+        begin
+            if size < 0 then raise error end end
+            tuple let size = size let words = array of({{size + 63} / 64} zero) end
+        end
+
+    let size(s: T): Int = s.size
+
+    let checked(s: T i: Int): Ok = if {i < 0} orif {i >= s.size} then raise error end end
+
+    let contains(s: T i: Int): Bool =
+        begin
+            checked(s i)
+            word.getBit(s.words[i / 64] i % 64)
+        end
+
+    let insert(s: T i: Int): Bool =
+        begin
+            checked(s i)
+            let w = s.words[i / 64]
+            let had = word.getBit(w i % 64)
+            s.words[i / 64] := word.setBit(w i % 64)
+            not(had)
+        end
+
+    let remove(s: T i: Int): Bool =
+        begin
+            checked(s i)
+            let w = s.words[i / 64]
+            let had = word.getBit(w i % 64)
+            s.words[i / 64] := word.clearBit(w i % 64)
+            had
+        end
+
+    let clear(s: T): Ok = for j = 0 upto {extent s.words - 1} do s.words[j] := zero end
+
+    let count(s: T): Int =
+        begin
+            let var n = 0
+            for j = 0 upto {extent s.words - 1} do n := n + word.popCount(s.words[j]) end
+            n
+        end
+
+    let isEmpty(s: T): Bool =
+        begin
+            let var empty = true
+            for j = 0 upto {extent s.words - 1} do if not(isZero(s.words[j])) then empty := false end end
+            empty
+        end
+
+    let copy(s: T): T =
+        begin
+            let t = new(s.size)
+            for j = 0 upto {extent s.words - 1} do t.words[j] := s.words[j] end
+            t
+        end
+
+    let sameSize(s: T t: T): Ok = if s.size isnot t.size then raise error end end
+
+    let assign(s: T t: T): Ok =
+        begin
+            sameSize(s t)
+            for j = 0 upto {extent s.words - 1} do s.words[j] := t.words[j] end
+        end
+
+    (* Replaces each word of s by combine of it and t's; whether any changed *)
+    let combine(s: T t: T f: All(a: word.T b: word.T) word.T): Bool =
+        begin
+            sameSize(s t)
+            let var changed = false
+            for j = 0 upto {extent s.words - 1} do
+                let old = s.words[j]
+                let w = f(old t.words[j])
+                if not(same(w old)) then
+                    changed := true
+                    s.words[j] := w
+                end
+            end
+            changed
+        end
+
+    let unionWith(s: T t: T): Bool = combine(s t word.orBits)
+    let intersectWith(s: T t: T): Bool = combine(s t word.andBits)
+    let subtract(s: T t: T): Bool = combine(s t fun(a: word.T b: word.T): word.T word.andBits(a word.notBits(b)))
+
+    let equal(s: T t: T): Bool =
+        begin
+            sameSize(s t)
+            let var eq = true
+            for j = 0 upto {extent s.words - 1} do if not(same(s.words[j] t.words[j])) then eq := false end end
+            eq
+        end
+
+    let isSubset(s: T t: T): Bool =
+        begin
+            sameSize(s t)
+            let var sub = true
+            for j = 0 upto {extent s.words - 1} do
+                if not(isZero(word.andBits(s.words[j] word.notBits(t.words[j])))) then sub := false end
+            end
+            sub
+        end
+
+    let next(s: T from: Int): Int =
+        begin
+            let start = if from < 0 then 0 else from end
+            if start >= s.size then
+                ~1
+            else
+                let var j = start / 64
+                (* The word's bits below start, cleared *)
+                let below = word.sub(word.shift(word.fromInt(1) start % 64) word.fromInt(1))
+                let var w = word.andBits(s.words[j] word.notBits(below))
+                while isZero(w) andif {{j + 1} < extent s.words} do
+                    j := j + 1
+                    w := s.words[j]
+                end
+                if isZero(w) then ~1 else {64 * j} + word.countTrailingZeros(w) end
+            end
+        end
+
+    let elements(s: T): Array(Int) =
+        begin
+            let result = array of(count(s) 0)
+            let var k = 0
+            let var i = next(s 0)
+            while i >= 0 do
+                result[k] := i
+                k := k + 1
+                i := next(s i + 1)
+            end
+            result
+        end
+end

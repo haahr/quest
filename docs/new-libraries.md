@@ -643,6 +643,47 @@ export
 end
 ```
 
+### 2.4. `collections/bitset : collections/Bitset`
+
+Fixed-size sets of the integers `0` to `size - 1`, a bit for each, 64 to a `word.T`, written in Quest on `word`'s
+operations, with no natives. It is for the dense integer numberings of the native backend's SSA ([arm64.md](arm64.md)
+§3.15), where liveness and other dataflow analyses iterate unions to a fixpoint: `unionWith`, `intersectWith`, and
+`subtract` change a set in place and say whether they changed it. Bits beyond a set's size are always 0, so whole
+words compare, count, and combine without masking. An integer outside a set's range, a negative size, and an
+operation on sets of different sizes raise `bitset.error`.
+
+#### Interface Summary
+
+```quest
+interface Bitset
+import
+    word: Word
+export
+    T::TYPE
+    error: Exception
+    new(size: Int): T
+    size(s: T): Int
+    contains(s: T i: Int): Bool
+    insert(s: T i: Int): Bool           (* whether i was not there *)
+    remove(s: T i: Int): Bool           (* whether i was there *)
+    clear(s: T): Ok
+    count(s: T): Int
+    isEmpty(s: T): Bool
+    copy(s: T): T
+    assign(s: T t: T): Ok
+    unionWith(s: T t: T): Bool          (* whether s changed *)
+    intersectWith(s: T t: T): Bool
+    subtract(s: T t: T): Bool
+    equal(s: T t: T): Bool
+    isSubset(s: T t: T): Bool
+    next(s: T from: Int): Int           (* the least integer of s at least from, or ~1 *)
+    elements(s: T): Array(Int)
+end
+```
+
+`tests/source/stdlib/bitset_operations.quest` tests it at word boundaries, through every operation and whether it
+changes a set, with errors, and in a dataflow fixpoint.
+
 ---
 
 ## 3. Input and Output (`lib/io/`)
