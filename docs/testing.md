@@ -7,7 +7,8 @@ end-to-end tests for valid programs, and diagnostic inline-comment tests for inv
 
 ## 1. Overview of Test Suites
 
-The compiler test suite is organized into three complementary testing tiers:
+The compiler test suite is organized into three complementary testing tiers. Before a push, `tools/check` runs the
+suites a change needs, at once (section 4.1).
 
 1. **Python Unit Tests (`tests/python/`):**
    - Fine-grained unit tests written in Python using `unittest`.
@@ -572,15 +573,59 @@ bidirectional matching:
 | **Update Goldens** | Refresh golden output files | `python3 run_tests.py --update-golden` |
 | **REPL** | REPL transcripts (section 2.7) | `python3 run_tests.py --phase repl` |
 | **Self-Hosted** | The self-hosted compiler against the bootstrap's goldens | `python3 run_tests.py --self-hosted` |
-| **Questlang** | The self-hosted compiler's modules, compiled | `python3 run_tests.py -k questlang/` |
+| **Questlang** | The self-hosted compiler's modules, compiled (each suite runs them too) | `python3 run_tests.py -k questlang/` |
 | **Self-Hosting** | The self-hosted compiler's fixed point, then the self-hosted suite with stage 2 | `python3 run_tests.py --self-hosting` |
 | **Release** | The self-hosting check, then a new release in `release/current` | `tools/release` |
+| **Before a push** | The suites a change needs, at once (section 4.1) | `tools/check` or `tools/check --self-hosted-only` |
+
+### 4.1. Before a Push (`tools/check`)
+
+Which tests a change needs depends on which compilers it changes (section 2.8, and
+[instructions.md](instructions.md) §9):
+
+| Change | Command | Runs | Takes (10 cores) |
+| :--- | :--- | :--- | ---: |
+| **Both compilers,** or what they share: the language, `lib/`, `runtime/`, a fix to what programs do or what errors they report, the tests | `tools/check` | At once: the self-hosting check seeded from the release (60% of the workers), the bootstrap's suite (40%), and the unit tests but the terminal ones; then the terminal tests alone | about 11 min |
+| **The self-hosted compiler alone:** `questlang/` changes to how it compiles (its IR, its C), and refactorings | `tools/check --self-hosted-only` | The self-hosting check seeded from the release, with 8 workers | about 11 min |
+
+- **Both take about as long,** since the self-hosted suite sets when either ends (section 5.1); `--self-hosted-only`
+  leaves the bootstrap's suite and the unit tests out, which a change to the self-hosted compiler alone cannot
+  affect, and frees the cores they would use.
+- **The self-hosting check** (`run_tests.py --self-hosting --seed release`) builds stage 1 with the release, and the
+  bootstrap's build alongside it, then stages 2 and 3. It checks the fixed point, that the bootstrap still builds what
+  the release does, and that stages 2 and 3 are the same binary, and then runs the whole self-hosted suite with
+  stage 2. It replaces `--self-hosted`, for 2-3 minutes more. Past a gap (a feature the release does not have yet,
+  [instructions.md](instructions.md) §6.1), `tools/check --seed bootstrap` builds stage 1 with the bootstrap.
+- **The questlang tests** (`tests/source/questlang/`) need no run of their own: each suite runs them compiled, with its
+  own compiler.
+- **The suites do not interfere:** each builds into a temporary directory of its own, the runtime's cached objects
+  are written atomically, and only `--update-golden` writes goldens. They compete only for cores, which is why the
+  self-hosted suite, the longest, gets most of them, and why the terminal tests (`tests/python/test_readline_terminal.py`),
+  which time out under load waiting for a pseudo-terminal's output, run alone afterwards. `QUEST_SKIP_PTY_TESTS=1`
+  skips them.
+- **Output:** each suite's output is kept in `.build/check/SUITE.txt`; `tools/check` prints each suite's summary and
+  when it finished, and exits 0 only when every suite passes.
+- **A comment- or documentation-only change** needs no suites.
 
 ---
 
 ## 5. Test Suite Performance
 
 ### 5.1. Where the Time Goes
+Measured 2026-10-28 on a quiet 10-core machine, after the C digests went (section 2.9):
+
+| Suite | Alone, 8 workers | At once with the others |
+| :--- | ---: | ---: |
+| Self-hosted (`--self-hosted`) | about 500 s | 519 s (6 workers) |
+| Bootstrap (`run_tests.py`) | about 345 s | 494 s (3 workers) |
+| Unit tests | about 65 s | 69 s |
+| Terminal tests, alone afterwards | 3 s | 3 s |
+
+One after another they take about 15 minutes; at once, 522 s. The self-hosted suite takes about as long with 6 workers
+as with 8, so it is bound by what it does serially, not by cores: building the driver before any test, the barriers
+between phases, and its long unit checks (`self-hosted/build_errors` and the others), each of which builds its cases
+one after another. Those are where a shorter run would come from.
+
 Measured 2026-10-06 on the full golden and error suites (about 160 s in total, each phase timed separately with a
 fresh build directory):
 

@@ -23,6 +23,12 @@ sys.path.insert(0, str(ROOT_DIR / "bootstrap" / "python"))
 
 from quest.codegen.c.compiler_runner import _sdk_has  # noqa: E402
 
+# Under load, these tests time out waiting for the terminal's output, so
+# tools/check skips them while the suites run (QUEST_SKIP_PTY_TESTS) and then
+# runs them alone (docs/testing.md section 4.1)
+skip_under_load = unittest.skipIf(os.environ.get("QUEST_SKIP_PTY_TESTS"),
+                                  "QUEST_SKIP_PTY_TESTS: run alone, after the suites")
+
 # Echoes each line it reads, and reports the exceptions readLine raises; at the
 # end of the input, writes the history's last three lines to $HIST, from which
 # it read the history first
@@ -111,6 +117,7 @@ class Terminal:
                     pass
 
 
+@skip_under_load
 class TestReadlineTerminal(unittest.TestCase):
 
     @classmethod
@@ -196,6 +203,7 @@ class TestReadlineTerminal(unittest.TestCase):
                 self.assertEqual(term.wait(), 0)
 
 
+@skip_under_load
 class TestReplTerminal(unittest.TestCase):
     """The REPL at a terminal: it starts without -i, edits lines, keeps a
     history in ~/.quest_history, and Ctrl-C abandons the phrase being typed

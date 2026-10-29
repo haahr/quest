@@ -102,6 +102,10 @@ options apart from `compile`. It builds itself first when its sources have chang
 The project includes comprehensive unit tests, golden-file integration tests, and inline diagnostic error tests:
 
 ```bash
+# Before a push: every suite a change needs, at once (docs/testing.md section 4.1)
+tools/check
+tools/check --self-hosted-only   # a change to the self-hosted compiler alone
+
 # Run all golden integration tests and diagnostic error tests
 python3 run_tests.py
 
