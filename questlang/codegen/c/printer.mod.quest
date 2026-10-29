@@ -2346,7 +2346,10 @@ export
             for i = 0 upto {extent closure.typeArgs - 1} do add(lines "    const QTypeDescriptor *d" <> cInt(i)
                 <> ";") end
             for i = 0 upto {extent closure.captures - 1} do
-                add(lines "    " <> cType(atomType(closure.captures[i])) <> " c" <> cInt(i) <> ";")
+                (* An Ok has no C type of its own (void): its field holds
+                 * Q_OK_VAL, as a slot does *)
+                let t = atomType(closure.captures[i])
+                add(lines "    " <> if isOk(t) then "QVal" else cType(t) end <> " c" <> cInt(i) <> ";")
             end
             if {extent closure.typeArgs is 0}
                 andif {extent closure.captures is 0} then add(lines "    char _unused;") end

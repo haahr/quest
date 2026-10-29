@@ -1755,7 +1755,9 @@ class CPrinter:
             lines.append(f"    const QTypeDescriptor *d{c_int(i)};")
         for i, a in enumerate(closure.captures):
             t = a.type if isinstance(a, ir.Var) else a.shape.type
-            lines.append(f"    {self.c_type(t)} c{c_int(i)};")
+            # An Ok has no C type of its own (void): its field holds Q_OK_VAL,
+            # as a slot does
+            lines.append(f"    {'QVal' if self.is_ok(t) else self.c_type(t)} c{c_int(i)};")
         if not closure.type_args and not closure.captures:
             lines.append("    char _unused;")
         lines.append("};")
