@@ -291,6 +291,57 @@ only prints what the SSA says, so a test that passes through it checks the SSA's
 It stays after the arm64 backend is complete: a test that fails with arm64 and passes with `ssac` is a bug after
 the SSA, and one that fails with both is a bug in it or before it.
 
+### 3.15. Writing it in Quest
+
+The SSA, the register allocator, and the arm64 backend are graph-heavy and mutation-heavy, and their inner loops run
+over many small objects, unlike the parts of `questlang/` written so far. Since the bootstrap does not get them, they
+need not follow its Python line by line, and are written for Quest directly.
+
+**Entities are integers, and an efficient choice rather than a natural one.** As in Cranelift, a function's values,
+blocks, instructions, and virtual registers are dense `Int`s, each kind numbered in a table of the function, and a
+pass's side tables (liveness, intervals, assignments, spill slots) are `Array(Int)` or `Array(Bool)` indexed by them.
+Side tables are then arrays, with no hashing (`util/hash.identityHash` remains the choice for keys that are not dense
+indices); "none" is `-1`, without a `maybe.T`; and graphs have no cycles to tie. This is closer to C or Fortran than
+to Quest: the type checker cannot tell a block's number from an instruction's, so indexing the blocks with an
+instruction's number is an error it does not catch. Quest's typed alternatives cost too much today:
+
+- a one-case variant (`Variant block: Int end`) is a distinct type that allocates nothing as a value, but an
+  aggregate's slot holds a variant boxed (§7.1), so every id stored in an array or a node would allocate;
+- an abstract type exported by the SSA's nodes module hides its `Int` from the other modules, which would reach it,
+  and their side tables, through calls across modules, which are not inlined (benchmarks.md §3.3).
+
+So the backend relies instead on names (`block`, `inst`, `value`, `vreg` in every identifier that holds one), on
+helper functions that take and return one kind, and on the verifier, which checks each table's references after every
+pass. Cross-module inlining would make abstract ids free, and the backend could adopt them then.
+
+**Other conventions:**
+
+- **One instruction shape:** an opcode, an `Array(Int)` of arguments, one of results, and an immediate or extra
+  field. Quest has no reflection, so the IR's traversals are tables written by hand (`ir/walk`); with one shape, the
+  structural passes (verifier, uses and definitions, renaming, liveness, allocation, leaving SSA) loop over arrays,
+  and only the passes that care what an instruction means (instruction selection, printers, optimizations) case on
+  its opcode.
+- **Opcodes are options, not strings,** cased on without `else`, so that a new opcode is a type error everywhere it is
+  not handled. The C backend's string kinds (`shape.kind`, `plan.kind`, access modes) are not copied. A payload-free
+  option case allocates each time it is made (benchmarks.md §3.6), so each opcode is made once, as a constant of its
+  module, and `ordinal` indexes tables by opcode.
+- **Tuples for nodes and tables,** whose fields are at fixed offsets; records only where their subtyping is needed,
+  since a record's field is read through its offset table. **Options** for sum types with several fields, their
+  payloads' `var` fields rewritten in place, as the IR's are; **variants** for small hot sum values held in
+  variables rather than in aggregates (an operand's location: `reg`, `stack`, `imm`), which allocate nothing.
+- **Inner loops index arrays directly.** A call of `vector.get`, `maybe.isSome`, or `hashMap` crosses modules through
+  closures and descriptors; a local function that captures variables allocates each time its definition is
+  evaluated (benchmarks.md §3.2); a `try` costs a `_setjmp`. Helpers in the same module, not polymorphic, are cheap.
+- **`case` on a `maybe.T`** rather than `isSome` and `unwrap`, which take their type arguments at every call.
+- **Patterns as functions.** `case` matches one level, with no nested patterns or guards, so instruction selection's
+  patterns (§3.5) are functions over the table of definitions (`defOf(value)`, `shiftedByConstant(value)`).
+- **Text through a string builder** (`util/stringbuilder`) or straight to a writer, not chains of `<>`, each of which
+  allocates a new string.
+- **Iteration, not recursion, over graphs:** compiled Quest uses about 2 KB of stack per call, so reverse postorder,
+  dominators (Cooper, Harvey, and Kennedy's iterative algorithm), and liveness use explicit worklists.
+- **A bitset library** (`collections/bitset`) for liveness, which `lib/` lacks. A new library reaches `questlang/`
+  only after a release (release-compiler.md §2), so it lands in step 3.
+
 ## 4. Testing
 
 - **The shared goldens** of what programs do run with `--backend ssac` and `--backend arm64` too (runner modes, as
@@ -318,8 +369,8 @@ the SSA, and one that fails with both is a bug in it or before it.
    the runtime helpers' external definitions; and make `Int` arithmetic wrap everywhere (§8). *Done when* the C
    backend consumes the shared pass and description, `Int` wraps in every implementation, the suites and the
    self-hosting check pass, and the goldens they change are updated.
-3. **Shared layout with assertions** (§3.3). *Done when* every C unit and the runtime assert the offsets the shared
-   module computes, and the suites pass.
+3. **Shared layout with assertions** (§3.3), and `collections/bitset` (§3.15). *Done when* every C unit and the
+   runtime assert the offsets the shared module computes, the suites pass, and a release has the bitset library.
 4. **The SSA:** nodes, printer, verifier, construction (§3.2), with `--stop-after ssa`. *Done when* every run test's
    units build SSA that verifies, with goldens for a selection.
 5. **The SSA-to-C printer** (§3.14) and `--backend ssac`, with its runner mode and pending list. *Done when* the
@@ -360,6 +411,10 @@ The list grows as ideas come up; when the plan is complete, what remains moves t
 - **Allocating spill slots and stack slots better:** sharing slots between values whose lifetimes do not overlap, and
   `ldp`/`stp` for adjacent spills.
 - **Better register allocation** than linear scan, if measurements show spilling costs.
+- **Payload-free option cases as shared constants** (benchmarks.md §3.6), so that a case such as `maybe.none` or an
+  opcode allocates nothing. `is` compares options by address, so this changes what `is` says of two such values, a
+  decision for the language.
+- **Cross-module inlining** (benchmarks.md §3.3), which would also let the backend's ids be abstract types (§3.15).
 
 ## 7. Inventory of the C Backend's Decisions
 
