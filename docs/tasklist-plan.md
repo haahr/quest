@@ -84,7 +84,8 @@ as they are. The audit (step 3) found these direct uses of global `var` variable
 | --- | --- |
 | `tests/source/language`: `closures_captures`, `functions_recursion`, `lvalues_references`, `top_level_rebinding` | 1 |
 | `tests/source/language/inline_modules`, `tests/source/modules/base.mod`, `usepick.mod` | a module's own |
-| `tests/repl/modules` (the module it writes) | one |
+| `tests/repl/modules` and `tests/python/test_repl.py` (the modules they write) | 1 each |
+| `tests/source/questlang/repl_sessions` | `f` |
 | `benchmarks/mlton/hamlet` | `tabS`, `tabIndex` |
 | `benchmarks/mlton/mlyacc` | `lineno`, `text`, `tabS`, `tabIndex`, `pcount`, `commentLevel`, `actionstart` |
 | `benchmarks/mlton/model-elimination` | `tracing`, `traces` |
