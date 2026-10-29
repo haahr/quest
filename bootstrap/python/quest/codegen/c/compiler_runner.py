@@ -152,7 +152,7 @@ def runtime_objects(
     compiler: str, nogc: bool = False, extra_flags: Optional[list[str]] = None
 ) -> list[str]:
     """The runtime's object files, compiled once and kept for every link
-    (docs/testing.md §5.2). They are kept under a key of what they are compiled
+    (docs/codegen-c.md §11.3). They are kept under a key of what they are compiled
     from: the runtime's sources and headers, the compiler and its version, and
     the flags, so that changing any of them compiles them again. Each object is
     written to a temporary file and renamed, so that processes linking at once

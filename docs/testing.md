@@ -460,10 +460,9 @@ changes go into the self-hosted compiler alone, while language changes and bug f
 
 ### 2.9. The Generated C (`tools/c-diff`)
 
-The suites check what compiled programs do (`run_c_compiled`), not the C they compile to. Digests of each program's C
-were goldens until 2026-10-28; they changed with every change to the C, an ABI's or an imported interface's as much as
-the backend's, and a mismatch showed nothing of what had changed. Instead, `tools/c-diff` shows the change itself: it
-prints the C of every program `run_c_compiled` compiles, as a revision's compiler prints it (`--stop-after codegen_c
+The suites check what compiled programs do (`run_c_compiled`), not the C they compile to. Goldens of the C would change
+with every change to it, an ABI's or an imported interface's as much as the backend's, and a digest's mismatch would
+show nothing of what had changed. Instead, `tools/c-diff` shows the change itself: it prints the C of every program `run_c_compiled` compiles, as a revision's compiler prints it (`--stop-after codegen_c
 --print-result`), against the working tree's, as unified diffs.
 
 ```sh
@@ -613,7 +612,7 @@ Which tests a change needs depends on which compilers it changes (section 2.8, a
 ## 5. Test Suite Performance
 
 ### 5.1. Where the Time Goes
-Measured 2026-10-28 on a quiet 10-core machine, after the C digests went (section 2.9):
+Measured 2026-10-28 on a quiet 10-core machine:
 
 | Suite | Alone, 8 workers | At once with the others |
 | :--- | ---: | ---: |
@@ -627,32 +626,18 @@ as with 8, so it is bound by what it does serially, not by cores: building the d
 between phases, and its long unit checks (`self-hosted/build_errors` and the others), each of which builds its cases
 one after another. Those are where a shorter run would come from.
 
-Measured 2026-10-06 on the full golden and error suites (about 160 s in total, each phase timed separately with a
-fresh build directory):
-
-| Part | Time | Notes |
-| :--- | ---: | :--- |
-| `run_c_compiled` (58 tests) | 77 s | Every link recompiled the C runtime then (~0.4 s; see §5.2); includes the cold `ast`/`astprint` module build |
-| Error suite (85 tests) | 42 s | Each test starts the compiler 2-5 times (precursor phases plus the target phase) |
-| `typecheck` / `interpret` | 14 s / 14 s | |
-| `tokenize` / `parse` | 7 s / 7 s | Almost entirely process startup |
-
-Starting one compiler process costs about 0.12 s (mostly importing the `quest` package), and a full run starts roughly
-370 processes for the golden tests, plus more for the error tests.
+Each suite runs a phase's tests in a pool of `-j` workers (by default 8, or the number of CPUs if fewer), each with
+its own build directory; the phases run one after another. The questlang tests are built once, in the background,
+into a shared build directory, and then run in parallel there (section 2.3). The runtime's C files are compiled once
+into objects that every link reuses ([codegen-c.md](codegen-c.md) §11.3).
 
 ### 5.2. Possible Speedups (largest first)
-1. **Run tests in parallel (done).** `run_tests.py` runs each phase's tests in a pool of `-j` workers (default: 8 or
-   the CPU count, whichever is smaller), each with its own build directory, and a phase's error tests the same way.
-   Phases still run one after another. The questlang tests are built once, in the background, into a shared build
-   directory, and their `run_c_compiled` tests then run in parallel there (section 2.3). The suites themselves
-   (self-hosted, bootstrap, unit tests) do not interfere: each builds into its own temporary directory, and the
-   runtime's objects are written atomically, so they can run at once if the workers are split between them.
-2. **Build the C runtime once (done).** Every link recompiled the runtime's C files from source at `-O2` (about 1.1 s
-   by 2026-10-26, three files). They are now compiled once into objects kept under a key of their sources, compiler,
-   and flags (`compiler_runner.runtime_objects`, [codegen-c.md](codegen-c.md) §11.3), and reused by every link.
-3. **Avoid redundant precursor runs in error tests.** Each error test first reruns every earlier phase in its own
+1. **Avoid redundant precursor runs in error tests.** Each error test first reruns every earlier phase in its own
    process to confirm that it passes (section 3.4), although the target-phase run already executes those phases in the
    same process. If the target run's diagnostics recorded which phase failed, one process per test would suffice,
    probably cutting the error suite by half to two-thirds.
-4. **Reuse build artifacts safely.** `--build-dir .build` already skips rebuilding library modules, but it is only safe
-   once compiled artifacts record the compiler version that produced them, so that a compiler change invalidates them.
+2. **Reuse build artifacts safely.** `--build-dir .build` skips rebuilding library modules, but it is not safe across
+   changes to the compiler. Artifacts record their ABI version and `producer` ([build-process.md](build-process.md)
+   §5.2.1), and both change only by hand, so a change to the compiler that does not bump the ABI version leaves the
+   artifacts it would compile differently fresh (build-process.md §5.2.5). Keying the build directory by a digest of the
+   compiler, as the runtime's objects are keyed, would make it safe.

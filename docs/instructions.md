@@ -191,6 +191,11 @@ See [testing.md](testing.md) for the framework. In practice:
 - **Describe the system as it is,** with the decisions and limitations that shaped it and the reasons for them;
   history belongs in commit messages. A limitation accepted for now is documented where the behavior is, and gets a
   task.
+- **Measurements carry their dates,** since a number is only as current as the code it was taken on: a timing, a
+  profile, or a benchmark baseline says when it was measured. [benchmarks.md](benchmarks.md) is the one document that
+  keeps history: its dated baselines stay as later ones are added, so that each can be compared with the ones before.
+  Take the dates from the measurements themselves (the commit that recorded them, or the results' files), so that
+  they are accurate.
 - **Style:** prose and bullets at 120 columns, numbered sections (`### 5.1.`), relative links, code and names in
   backticks. Refer to code by file and function (`_elaborate_fun_expr` in `typechecker/bindings.py`), and check that
   the names exist. Cite Cardelli's papers (in `docs/`) by title and section when following or departing from them.
