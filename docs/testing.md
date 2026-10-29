@@ -168,8 +168,10 @@ Programs that must be rejected belong in the error suite (§3).
 
 **Hermetic builds:** every phase builds into a fresh temporary build directory for each run (shared by the tests of
 that run and deleted afterwards), so results never depend on artifacts left by earlier runs or compiler versions.
-Pass `--build-dir <dir>` to reuse a build directory across runs for speed. Unit tests that invoke the driver give it
-a build directory inside their own temporary directory, so no test writes into the repository.
+Pass `--build-dir <dir>` to reuse a build directory across runs for speed: safe only while the compiler is
+unchanged, since artifacts are judged stale by their sources and ABI version, not by the compiler that wrote them.
+Unit tests that invoke the driver give it a build directory inside their own temporary directory, so no test writes
+into the repository.
 
 **One session per test:** each test is a driver run of its own, and so a compilation session of its own, with its own
 unit graph and resolver (`docs/build-process.md` §2.1). Tests share only the artifacts in their worker's build
@@ -631,13 +633,8 @@ its own build directory; the phases run one after another. The questlang tests a
 into a shared build directory, and then run in parallel there (section 2.3). The runtime's C files are compiled once
 into objects that every link reuses ([codegen-c.md](codegen-c.md) §11.3).
 
-### 5.2. Possible Speedups (largest first)
-1. **Avoid redundant precursor runs in error tests.** Each error test first reruns every earlier phase in its own
-   process to confirm that it passes (section 3.4), although the target-phase run already executes those phases in the
-   same process. If the target run's diagnostics recorded which phase failed, one process per test would suffice,
-   probably cutting the error suite by half to two-thirds.
-2. **Reuse build artifacts safely.** `--build-dir .build` skips rebuilding library modules, but it is not safe across
-   changes to the compiler. Artifacts record their ABI version and `producer` ([build-process.md](build-process.md)
-   §5.2.1), and both change only by hand, so a change to the compiler that does not bump the ABI version leaves the
-   artifacts it would compile differently fresh (build-process.md §5.2.5). Keying the build directory by a digest of the
-   compiler, as the runtime's objects are keyed, would make it safe.
+### 5.2. A Possible Speedup
+**Avoid redundant precursor runs in error tests.** Each error test first reruns every earlier phase in its own process
+to confirm that it passes (section 3.4), although the target-phase run already executes those phases in the same
+process. If the target run's diagnostics recorded which phase failed, one process per test would suffice, probably
+cutting the error suite by half to two-thirds.
