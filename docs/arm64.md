@@ -59,21 +59,22 @@ the IR and leave the hard lowering to the arm64 stage.
 
 ### 3.1. Where the backends fork
 
-The C backend leaves much of the lowering to C and clang: struct layout, padding, and alignment; static
-initializers; the 64 `static inline` helpers and the macros of `runtime/quest_runtime.h` (integer division, `Real`
-results, word operations, proxies, closure calls, ...); and `setjmp`. The arm64 backend must decide each of these
-itself, and must decide them as C does, since its units link with C's.
+The C backend leaves much of the lowering to C and clang: struct layout, static initializers, the 89 `static
+inline` helpers and the macros of `runtime/quest_runtime.h` (integer division, `Real` results, word operations,
+proxies, ...), the calling convention, and `setjmp`. The SSA backends must decide each of these themselves, as C does,
+since their units link with C's.
 
-- **An inventory first** (step 1): every decision the C printer (`questlang/codegen/c/printer` and `declarations`)
-  and the runtime header make that is not just C syntax, and for each, where the arm64 backend gets it: a shared
-  IR pass both backends consume, a shared module (as `questlang/codegen/layout` and `descriptors` are now), or the
-  SSA's construction.
-- **Lean toward sharing.** Descriptor materialization (the descriptor operands of §8.4 become explicit loads and
-  calls), conversion plans, and record offset tables are candidates for shared passes or modules, so that one
-  implementation decides what a value's bits are.
-- **Runtime helpers.** Native code cannot call a `static inline` function. Each helper the backend needs gets an
-  out-of-line definition in `quest_runtime.c`, which the backend calls at first; hot ones are later expanded inline by
-  instruction selection, with tests that compare the two.
+The inventory (§7) lists each decision and where the SSA backends get it. In short:
+
+- **Layout is simple.** Every aggregate slot is one word, so tuples, records, options, and offset tables are word
+  arithmetic, which the shared `layout` module can compute (step 3). Closure environments are private to their unit,
+  so the SSA backends need not lay them out as C does.
+- **Shared by step 2** (§7.5): thunks become IR functions made by a pass, so that every backend gets them; static data
+  (descriptors, offset tables, tag maps) gets a shared description; slot conversions become data in `layout`; and
+  the runtime's inline helpers get external definitions too.
+- **Everything else is the SSA's construction:** each operation's access sequence (proxies, offset tables, view maps,
+  option payloads, checks), `try`, and the unit's structure. It is a second implementation of what the C printer
+  prints, kept in agreement by the mixed builds (§4).
 
 ### 3.2. The SSA
 
@@ -214,13 +215,16 @@ which is all a `double` needs). A pointer is never held only in a floating-point
 
 Native code must do what the C helpers do, including the cases where arm64 and C differ:
 
-- `sdiv` does not trap on zero, and gives `INT64_MIN` for `INT64_MIN / -1`, which is undefined in C; the helpers
-  (`quest_int_div_at`, ...) say what Quest does.
+- `Int` `+`, `-`, and `*` overflow is undefined in C, and wraps in practice; what Quest does is open (§8, question
+  1).
+- `sdiv` does not trap on zero, and gives `INT64_MIN` for `INT64_MIN / -1`, which is undefined in C (`quest_int_div_at`
+  checks only for zero).
 - Shift counts are taken modulo 64 by arm64 and are undefined in C past 63; the word helpers handle the counts.
 - `fcvtzs` saturates; C's conversion of an out-of-range `double` is undefined.
 - `Real` arithmetic raises `real.error` on a NaN result, and division on a zero divisor (`quest_real_result_at`).
+- `Char` is C's `char`, which is signed on Darwin arm64, so a `Char` widened to a slot is sign-extended.
 
-The inventory of step 1 lists every helper, and the arm64 tests (§4) cover each edge case against the C backend.
+The inventory (§7.2) lists every helper, and the arm64 tests (§4) cover each edge case against the C backend.
 
 ### 3.10. Frames, symbols, and unwind information
 
@@ -309,11 +313,11 @@ the SSA, and one that fails with both is a bug in it or before it.
 
 ## 5. Steps
 
-1. **Inventory the C backend's implicit decisions** (§3.1, §3.9). *Done when* this document lists each decision and
-   where the arm64 backend gets it, and the shared passes or modules it calls for are planned here.
-2. **Share what the inventory says to share,** and give the runtime's `static inline` helpers out-of-line
-   definitions. *Done when* the C backend consumes the shared passes, the suites and the self-hosting check pass, and
-   the goldens they change are updated.
+1. **Inventory the C backend's implicit decisions** (§3.1, §3.9). *Done* (2026-10-29): §7, with what step 2 shares in
+   §7.5 and the questions it raised in §8.
+2. **Share what §7.5 lists:** thunks as IR functions, the description of static data, slot conversions as data, and
+   the runtime helpers' external definitions. *Done when* the C backend consumes the shared pass and description,
+   the suites and the self-hosting check pass, and the goldens they change are updated.
 3. **Shared layout with assertions** (§3.3). *Done when* every C unit and the runtime assert the offsets the shared
    module computes, and the suites pass.
 4. **The SSA:** nodes, printer, verifier, construction (§3.2), with `--stop-after ssa`. *Done when* every run test's
@@ -356,3 +360,122 @@ The list grows as ideas come up; when the plan is complete, what remains moves t
 - **Allocating spill slots and stack slots better:** sharing slots between values whose lifetimes do not overlap, and
   `ldp`/`stp` for adjacent spills.
 - **Better register allocation** than linear scan, if measurements show spilling costs.
+
+## 7. Inventory of the C Backend's Decisions
+
+Step 1's survey (2026-10-29) of `questlang/codegen/c/printer`, `declarations`, and `types`, and of
+`runtime/quest_runtime.h`: what the C backend decides that is more than C syntax, and where the SSA backends (`ssac`
+and `arm64`) get each decision. The sources are:
+
+- **layout**: `questlang/codegen/layout` and `ir/shapes`, already shared;
+- **pass**: a shared IR pass after describe (§7.5), whose results the C printer prints too;
+- **data**: a shared description of static data (§7.5);
+- **build**: the SSA's construction, which does what the C printer prints for the operation; the mixed builds (§4)
+  check that the two agree;
+- **runtime**: a call of the runtime, with the out-of-line helpers of §7.5;
+- **abi**: the arm64 backend's ABI lowering (§3.3).
+
+### 7.1. Values and Layout
+
+Every aggregate slot is one 8-byte word, so most layouts are arithmetic on word indices, with no padding and no
+alignment beyond 8.
+
+| Decision | In the C backend | SSA backends |
+|---|---|---|
+| Scalars: `Int` `int64_t`, `Real` `double`, `Word` `uint64_t`, `Bool` C `bool` (1 byte), `Char` C `char` (signed on Darwin arm64), `Ok` nothing (a `void` result; `QVal` 0 where stored) | `layout.representation` | layout; a narrow value in a register is always extended to 64 bits (`Char` signed, `Bool` zero), and one received is extended again, never trusted (Apple's ABI extends only to 32 bits) |
+| 16-byte values: a record is `QRecordVal { val, dict }`, a variant `QVariantVal { tag, payload }` | runtime structs | layout; two SSA values each (§3.2) |
+| Slots: a record or variant in a slot is a pointer to an immutable 16-byte box; `Bool` and `Char` are widened to a word (`QBoolSlot`, `QCharSlot`); every other value is its own word | `layout.slotRepresentation` | layout |
+| Slot conversions, value to slot and back: `Real` by its bits, `Bool`, `Char`, and `Int` as `.i`, a record or variant boxed or dereferenced | `codegen/c/types` (`shapeSlotToQval`, `qvalWrap`, ...), as C text | build, by rules moved into layout (§7.5) |
+| Tuples: component `i` at `8i` | `emitAggregateStructs` | layout |
+| Records: one allocation of the box (`QRecordVal`, 16 bytes) and then the payload: a header word (the layout's descriptor), then the fields sorted by name, a word each | `makeRecord`, `emitAggregateStructs` | layout |
+| Options: `int64_t tag` at 0, then a union of the cases' components at 8, a word each; a case's binder points at offset 8, sharing the components | `emitAggregateStructs`, `optionCasePayload` | layout |
+| Embedded boxes: the boxes of an aggregate's fresh record and variant components, 16 bytes each, after it in the same allocation | `embeddedBoxes`, `fillEmbedded` | build |
+| Closure environments: descriptors `d_i`, then captures `c_i` in their C types, not slots (so `bool`, `char`, and 16-byte values, with C's padding); a type application's environment `{ orig, desc[n] }` | `envStruct`, `typeAppThunk` | build; only the unit that makes an environment reads it, so the SSA backends lay environments out as they like |
+| Offset tables (record evidence): a `size_t` for each field of the view, sorted by name, then `stored_types`; static ones by `offsetof` | `emitEvidenceDictionaries` | layout for the offsets (word indices), data for the tables |
+| Variant tags: a case's index in name order; tag maps between subtypes are static `int64_t` arrays | `shapes`, `emitCoercionTables` | layout, data |
+| Tuple casts: a supertype's components at the same offsets as the subtype's prefix, checked by `static_assert` | `emitCoercionTables` | nothing: true of word slots by construction |
+| Array elements: `QVal` words after `length`; a `Bool` or `Char` element's address is its word's first byte (little-endian) | `arraySlot` | build |
+| Runtime structs read or written directly: `QClosure`, `QArray`, `QAuto`, `QRecordHeader`, `QExceptionState`, `QExceptionHandler`, `QViewMap.index`, offset tables, the proxy tag bit | `quest_runtime.h` | layout, with assertions in `quest_runtime.c` (step 3) |
+| Descriptor structs: every `QTypeDescriptor` kind and its payload structs, with `bool` and `size_t` fields | `emitTypeDescriptors` (500 lines), `types.descriptorForm` | data, laid out by the runtime structs' layouts |
+
+### 7.2. Operations
+
+| Decision | In the C backend | SSA backends |
+|---|---|---|
+| `Int` `+`, `-`, `*`: C operators, without `-fwrapv`, so overflow is undefined; comparisons | `prim` | build (§3.9, §8 question 1) |
+| `Int` `/`, `%`, `mod`: a zero divisor raises `int.error`; `INT64_MIN / -1` and `INT64_MIN % -1` are undefined in C | `quest_int_div_at`, `quest_int_mod_at` (inline) | build: the zero check inline, then `sdiv` (and `msub`), which give `INT64_MIN` and 0 |
+| `Real` `++`, `--`, `**`, `//`: a NaN result raises `real.error`, as does a zero divisor; `^^` | `quest_real_*_at` (inline), `quest_real_pow_at` | build for the inline ones; runtime for `^^` |
+| `is`: `==` on words and pointers; through `quest_unproxy` for an original access; `quest_val_is(d, a, b)` on `QVal` words | `prim` | build; runtime for `quest_val_is` |
+| `<>` and string constants: `quest_string_concat`; a constant is `quest_string_new(literal, length)` at each evaluation | `prim`, `const` | runtime, the literal's bytes as data |
+| Word operations: the externals of `lib/word`, called directly (ABI 50), all `static inline` | `quest_word_*` | runtime, out of line (§7.5); inline later (§6) |
+| Arrays: `quest_check_array_bounds_at` and `quest_check_array_count_at` (inline), `quest_array_new`; a literal allocated and filled inline | `arraySlot`, `makeArray` | build for the checks; runtime for the rest |
+| Tuple components, and option tags and payloads, by access: direct; original (`quest_unproxy`: the tag bit cleared); proxy (the tag bit tested, then the runtime's `quest_proxy_*`, or the slot) | `tupleComponent`, `optionTag`, `optionComponent` | build; runtime for the proxy paths |
+| Record fields: through the offset table (`dict->offset_f`); a stored field (`stored_types`) converted by `quest_convert`; through a view map (`quest_view_record_*`) | `recordSlot`, `recordField` | build; runtime for conversions and view maps |
+| Records made: box and payload allocated together, the header's descriptor, the offset table static or `quest_record_dict(view, layout)` | `makeRecord` | build, data |
+| Options made: allocated, the tag stored (an ordinal checked by `quest_check_option_ordinal_at` and mapped through a table), the payload stored; payloads read into a new tuple, with the ordinal first for `#n` | `makeOption`, `payload`, `optionCaseTuple` | build |
+| Variants: tag tests, the payload's check (`quest_raise_variant_error_at`), tags translated through a view map (`index[tag]`) or a tag map | `payload`, `tagOf`, `convert` | build |
+| Conversion plans: `box`, `unbox`, `cast`, `unproxy`, `slot_box`, `slot_unbox`, and `variant_tags` inline; `record_view`, `view`, and `runtime` through the runtime; `copy` as a new tuple; `adapt` as a thunk | `convert` | build; `adapt` by the shared pass (§7.5) |
+| Thunks: adapters (`qa_adapt`), type applications' thunks (`qa_type_app`) and environments, closures of externals (`qx_`), each made once for its key | `adapter`, `typeAppThunk`, `externalClosure` | pass (§7.5) |
+| Calls: a known closure directly (`f(env or NULL, ...)`), an external directly, an imported module's member through its exported function `qv_<mod>_<member>`, others through `fn` and `env`; descriptors after the environment; an `Ok` result is `void`, an `Ok` argument `QVal` 0 | `callClosure`, `callOp` | build, abi |
+| Closures: a static closure `{ f, NULL }` for every function; otherwise environment and closure allocated apart; a `let rec`'s captures of its own variables filled in afterwards | `makeClosure`, `sLetRec` | build, data |
+| Descriptor operands: variables, static descriptors (symbols), templates instantiated by `quest_instantiate_descriptor(t, n, array)` with the array on the stack; view maps fetched in the prologue (`quest_view_map`) | `descriptor`, `function` | build, data; the array a stack slot |
+| Auto values and `inspect`: `quest_auto_new`, `quest_is_subtype`, `quest_layout_equivalent`, conversions arm by arm | `makeAuto`, `inspectAuto` | build, runtime |
+| Exceptions: `quest_alloc_exception(name)` at each evaluation; the handler record and catch array on the C stack, popped on every way out (`leaveTo`); the handler's variable a copy of `QExceptionState` (32 bytes); `quest_raise_at(exc, payload, site)`, `quest_reraise(state)` (by value, so through memory) | `sTry`, `sRaise`, `emitCatches` | build (§3.6), runtime, abi |
+| Raise sites: a C string `"file:line:col"` for each, or `NULL` | `site` | data |
+| Mutable variables: locals, `volatile` when assigned in a `try` body; `var` and `out` parameters as pointers to their locations; boxed mutable variables; a cell for `var(e)`, a C local whose address is passed | `assign`, `atom`, `opAddrVar`, `opAddrCell`, `volatileVars` | build: stack slots (§3.2, §3.6) |
+| Echo: `quest_print_value`, `quest_print_typed` | `echo` | runtime |
+
+### 7.3. The Unit
+
+| Decision | In the C backend | SSA backends |
+|---|---|---|
+| `main`: `quest_gc_init`, `quest_builtins_init(argc, argv)`, `qr_register_dicts`, the imports' initializers, the modules', the top level, `return 0` | `printUnit` | build |
+| A module's initializer: its guard; its abstract types registered (`quest_register_abstract_type`); for an exported module, `qr_register_dicts` and the imports' initializers; its body; its record stored in the module's global | `moduleInit` | build |
+| `qr_register_dicts`: the function table and the registered offset tables | `printUnit` | build, data |
+| The function table `qr_funcs` | `funcTableEntries` | data |
+| Exported functions `qv_<mod>_<member>` (without an environment), the module record, and the initializer: what the interface header declares and C importers use | `exportedFunctions`, `headers` | build, abi; names from `symbols` |
+| Globals: a unit's top-level variables as `static` C globals; module records as `QRecordVal` globals | `globalDeclarations` | data |
+| Allocation: `quest_alloc` is `GC_MALLOC` (zeroed), or `calloc` with `--nogc`; `quest_alloc_atomic` is not zeroed with `--nogc` | `quest_runtime.h` (inline) | runtime, out of line, so that the mode is the runtime's |
+
+### 7.4. What clang Does
+
+- **The calling convention** (§3.3), with the composites: `QRecordVal` and `QVariantVal` in two `x` registers, and
+  `QExceptionState` (32 bytes) through memory, as any composite over 16 bytes.
+- **Frames and unwind information** (§3.10): clang keeps frame pointers on Darwin and emits compact unwind.
+- **`setjmp`** (§3.6).
+- **Optimization:** the inline helpers inlined, registers allocated, and more, none of which the SSA backends must
+  match.
+
+### 7.5. What Step 2 Shares
+
+1. **Thunks as IR functions.** A pass after describe makes the adapters, type applications' thunks, and closures of
+   externals into IR functions and closures. The IR can express them: a thunk's closure captures the original closure
+   and, for a type application, takes the descriptors (`closure f {orig} [τ...]`), and the conversions in its body are
+   `convert` operations. The C printer then prints them as it prints any function, and loses `adapter`,
+   `typeAppThunk`, `externalClosure`, and `finishThunkCall`; the SSA backends get them for nothing. Since the pass
+   runs after describe, it makes described IR itself (a thunk's descriptor parameters and its plans' descriptor
+   operands, which the represent and describe passes now leave on the plans), and the verifier checks it as it checks
+   the describe pass's output.
+2. **A description of static data.** A shared module describes each descriptor, offset table, and tag map as
+   structured data, its runtime struct's fields (integers, booleans, strings, and references to other data and to
+   functions), as `declarations.emitTypeDescriptors` computes them now. The C printer prints the description as it
+   prints the structs now; the SSA backends lay it out by the runtime structs' layouts (step 3).
+3. **Slot conversions as data.** `layout` says which of a few kinds of conversion takes a shape's value to its slot's
+   word and back, and `codegen/c/types` spells each kind in C.
+4. **Out-of-line runtime helpers.** The header's `static inline` helpers are declared `Q_INLINE`, which is
+   `static inline` everywhere but one runtime file, which defines it as nothing before including the header and so
+   gives the runtime an external definition of each, under its own name. Every other translation unit keeps its own
+   inline copies, as C allows.
+
+Everything else in §7.2 and §7.3 is the SSA's construction. An operation's access sequence is short, and its C text
+does not translate into SSA, so sharing it would need an intermediate form that neither backend wants. The mixed
+builds (§4) keep the two implementations agreeing.
+
+## 8. Questions From the Inventory
+
+1. **`Int` overflow.** The three implementations disagree today (tried 2026-10-29, on `9223372036854775807 + 1` and
+   `INT64_MIN / ~1`): the bootstrap's interpreter gives `9223372036854775808` (Python's unbounded integers, outside
+   `Int`'s range), and compiled code and the self-hosted interpreter (which is compiled code) wrap, to
+   `-9223372036854775808`, by C's undefined behavior. `INT64_MIN % ~1` is 0 in all three. What should `Int`
+   arithmetic do: wrap (with `-fwrapv` for C and masking in the bootstrap's interpreter), or raise `int.error`, which
+   arm64 makes cheap (`adds` and `b.vs`)?
