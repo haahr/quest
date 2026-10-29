@@ -476,8 +476,9 @@ builds the compiler the release does (docs/testing.md §2.3).
 
 `./questc` builds the self-hosted compiler in two stages under `.build/questc`, each an ordinary incremental build
 with its own build directory (docs/release-compiler.md §2):
-1. The seed builds stage 1. The seed is the current release in `release/current`, compiling against its own `lib/`
-   and `runtime/` (its `home/`) and finding the tree's `questlang/` through `-I`, or the bootstrap.
+1. The seed builds stage 1. The seed is the current release, which every worktree shares (in the common git
+   directory's `quest-release/`, docs/release-compiler.md §1), compiling against its own `lib/` and `runtime/` (its
+   `home/`) and finding the tree's `questlang/` through `-I`, or the bootstrap.
 2. Stage 1 builds stage 2 against the tree's `lib/` and `runtime/`.
 
 The stages record their seed and are discarded when it changes. A release's `home/` has its commit's file times, so
@@ -933,9 +934,10 @@ stale. The build hashes the contents of files in these places, each with SHA-256
    name, its `--version` output, the compile flags, and the name and contents of every `.c` and `.h` file in
    `runtime/` ([codegen-c.md](codegen-c.md) §11.3). Changing any of them compiles the runtime again.
 2. **The release's compiler** ([release-compiler.md](release-compiler.md)):
-   - `./questc` hashes `release/current/questc` (with `shasum -a 256`) each time it runs with the release as its
-     seed, and refuses a binary whose digest is not the one `release.json` records. The digest is also the seed's
-     identity, recorded in `.build/questc/seed`: when it changes, the stages are built again from nothing.
+   - `./questc` hashes the current release's `questc` (with `shasum -a 256`) each time it runs with the release as
+     its seed, and refuses a binary whose digest is not the one `release.json` records. The release's commit and the
+     digest are the seed's identity, recorded in `.build/questc/seed`: when either changes, the stages are built
+     again from nothing.
    - `run_tests.py --seed release` (`current_release` in `bootstrap/python/quest/testing/runner.py`) makes the same
      check before building from the release.
    - `tools/release` records the digest of the new `questc` in `release.json` when it cuts a release, and checks it

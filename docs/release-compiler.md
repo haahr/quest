@@ -1,8 +1,8 @@
 # Releases of the Self-Hosted Compiler
 
-A *released* self-hosted compiler, a binary kept in `release/` (ignored by git), builds each new self-hosted compiler
-from the working tree. The bootstrap is the fallback: it made the first release, and it can still build the tree's
-compiler from nothing (§4).
+A *released* self-hosted compiler, a binary kept beside the repository and shared by all its worktrees (§1), builds
+each new self-hosted compiler from the working tree. The bootstrap is the fallback: it made the first release, and it
+can still build the tree's compiler from nothing (§4).
 
 Building from a release is fast. The self-hosted compiler builds `questlang/driver/main` from nothing in under a
 minute, compiling modules in parallel ([build-process.md](build-process.md) §7.4), against the bootstrap's ten, so a
@@ -14,14 +14,24 @@ seconds.
 ## 1. The Release
 
 ```
-release/                  (in .gitignore)
-├── current/              the release in use
-│   ├── questc            the compiler binary (stage 2 of the commit it was built from)
-│   ├── home/             a snapshot of that commit's lib/ and runtime/, which questc compiles against
-│   └── release.json      what it is: commit, ABI version, producer, sha256 of questc, date, how it was checked
-└── previous/             the release before it, kept so that a bad release can be rolled back
+.git/quest-release/       in the repository's common git directory, which every worktree shares
+├── COMMIT/               a release, named by the commit it was cut from
+│   ├── questc            the compiler binary (stage 2 of the commit)
+│   ├── home/             a snapshot of the commit's lib/ and runtime/, which questc compiles against
+│   └── release.json      what it is: commit, ABI version, producer, sha256 of questc, date, seed, how it was checked
+├── current -> COMMIT     the release in use
+├── previous -> COMMIT    the release before it, kept so that a bad release can be rolled back
+└── lock                  held while current or previous changes
 ```
 
+- **One set of releases serves every worktree.** A release is cut from a commit on main, which they all share, so
+  each worktree finds it in the common git directory (`git rev-parse --git-common-dir`), and a release cut in one
+  is the seed in all. `QUEST_RELEASE_DIR` names another directory; outside a git checkout, the releases are in the
+  checkout's `release/`. `bootstrap/python/quest/testing/releases.py` finds them for the runner and `tools/release`,
+  and `./questc` the same way.
+- **A user of a release resolves `current` once,** to the release's own directory, and uses that directory's
+  `questc` and `home/` throughout, so that a cut or rollback in another worktree while it runs cannot give it one
+  release's compiler and another's `home/`.
 - **A release is a commit's stage 2.** It is cut only from a clean tree at a commit on main. `release.json` records
   the commit, so the release can be rebuilt from its sources: from the release before it, or from the bootstrap while
   it lasts.
@@ -36,14 +46,17 @@ release/                  (in .gitignore)
      built from the one before it. The check still builds the driver with the bootstrap too, to compare artifacts.
      `--seed bootstrap` seeds the check from the bootstrap instead, for the first release, or when the current release
      cannot compile the commit (§2).
-  3. If both pass, write the new release into `release/new/`: stage 2 as `questc`, `git archive` of the commit's
-     `lib/` and `runtime/` as `home/`, and `release.json`, which records the seed: `release COMMIT` or `bootstrap`.
+  3. If both pass, write the new release into a directory of its own beside the releases (`new-COMMIT-PID`): stage 2
+     as `questc`, `git archive` of the commit's `lib/` and `runtime/` as `home/`, and `release.json`, which records
+     the seed: `release COMMIT` or `bootstrap`.
   4. Check it as `--verify` does: its digest, and a small program it builds against its own `home/` and runs.
-  5. Rename `current` to `previous` and `new` to `current`. The renames are atomic, so an interrupted release never
-     leaves a half-written `current`.
+  5. With the lock held, rename it to `COMMIT`, point `previous` at the old current release and `current` at the new
+     one, and remove the releases neither names. Each link is replaced by renaming a new one over it, which is
+     atomic, so an interrupted release never leaves `current` naming a half-written release.
 
-  `tools/release --verify` checks the current release, `--rollback` swaps `previous` and `current`, and `--show`
-  describes both. A release lives in the checkout that cut it, so each checkout or worktree has its own.
+  `tools/release --verify` checks the current release, `--rollback` swaps `previous` and `current` (with the lock
+  held), and `--show` describes both. A release removed while a build in another worktree still uses it can only be
+  one two cuts old.
 - **When to cut one:** by hand, when the working tree needs something the current release cannot compile (§2), and
   otherwise when convenient, for example after a larger piece of work. A release is never cut automatically by a push.
 
@@ -61,8 +74,9 @@ Stage 2 is the new compiler. Each stage has its own build directory, and the eng
   Then it brings stages 1 and 2 up to date (when anything under `questlang/`, `lib/`, or `runtime/` is newer than
   stage 2) and runs stage 2. With no release, it says how to make one and falls back to the bootstrap seed
   (`QUESTC_SEED=bootstrap` forces that, and also watches `bootstrap/`). It records the seed that built its stages
-  (`.build/questc/seed`) and starts over when the seed changes. A release's `home/` carries its commit's times, so
-  artifacts built against one release could look fresh against the next one's older sources.
+  (`.build/questc/seed`: the release's commit and the digest of its `questc`) and starts over when the seed changes,
+  as when a release is cut in another worktree. A release's `home/` carries its commit's times, so artifacts built
+  against one release could look fresh against the next one's older sources.
 - **The release finds the tree's `questlang/` through `-I`,** because its `QUEST_HOME` is its own `home/`, which
   holds only `lib/` and `runtime/`.
 - **Both stages build in parallel,** with `-j` set to the number of CPUs (`QUESTC_JOBS` for `./questc`).
@@ -100,5 +114,4 @@ language's changes and bug fixes, not the self-hosted compiler's optimizations, 
 that it still builds the compiler the release does. Deleting it would leave the chain of releases, each rebuildable
 from its commit by the one before, as the compiler's only provenance.
 
-Releases are not published outside the checkout that cut them (as GitHub releases, or in a shared directory, for
-other machines or a CI).
+Releases are not published outside the repository (as GitHub releases, for other machines or a CI).

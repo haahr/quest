@@ -240,8 +240,8 @@ requires:
 Each stage builds with `-j` set to the number of CPUs. The bootstrap's artifacts are not compared with the
 self-hosted compiler's, which are its own (§2.8). The check runs before every push, as part of `tools/check` (§4.1).
 
-**Seeds:** `--seed release` makes the current release (`release/current`, [release-compiler.md](release-compiler.md))
-build the driver, rather than the bootstrap.
+**Seeds:** `--seed release` makes the current release (which all worktrees share,
+[release-compiler.md](release-compiler.md) §1) build the driver, rather than the bootstrap.
 - `--self-hosted` then builds it in two stages, the release's against its own `lib/` and `runtime/` and that build's
   against the tree's, and tests the second.
 - `--self-hosting` then starts from the release, and also checks bootstrappability.
@@ -577,7 +577,7 @@ bidirectional matching:
 | **Self-Hosted** | The self-hosted compiler against the bootstrap's goldens | `python3 run_tests.py --self-hosted` |
 | **Questlang** | The self-hosted compiler's modules, compiled (each suite runs them too) | `python3 run_tests.py -k questlang/` |
 | **Self-Hosting** | The self-hosted compiler's fixed point, then the self-hosted suite with stage 2 | `python3 run_tests.py --self-hosting` |
-| **Release** | The self-hosting check, then a new release in `release/current` | `tools/release` |
+| **Release** | The self-hosting check, then a new current release, shared by all worktrees | `tools/release` |
 | **Before a push** | The suites a change needs, at once (section 4.1) | `tools/check` or `tools/check --self-hosted-only` |
 
 ### 4.1. Before a Push (`tools/check`)

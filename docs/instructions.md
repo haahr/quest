@@ -50,7 +50,7 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   `tokenize`, `parse`, `typecheck`, `interpret`, `codegen_c` (prints the C), `run_c_compiled`; `--echo` echoes
   top-level phrases; `--build-dir DIR` keeps a program's compiled interfaces and modules out of the source tree.
 - **The self-hosted compiler:** `./questc` takes the same options, building itself first when its sources have
-  changed: from the current release in `release/current` when there is one, else from the bootstrap
+  changed: from the current release when there is one (which all worktrees share), else from the bootstrap
   ([release-compiler.md](release-compiler.md)). Its `-j N` compiles up to N modules at once
   ([build-process.md](build-process.md) §7.4).
 - **The generated C:** `tools/c-diff` diffs the C of the golden programs as a revision's compiler (`--base`, HEAD by
@@ -183,6 +183,9 @@ See [testing.md](testing.md) for the framework. In practice:
   compile, after a larger piece of work, and otherwise when convenient. Only the owner asks for one, as for a push.
 - **Roll back** (`tools/release --rollback`) when a release turns out to be bad, and say so; one previous release is
   kept.
+- **Releases are shared:** every worktree of the repository uses the same releases, in the common git directory
+  ([release-compiler.md](release-compiler.md) §1), so a release cut or rolled back in one worktree is the seed in all
+  of them, whose `./questc` then rebuilds its stages.
 
 ## 7. Documentation
 

@@ -44,6 +44,7 @@ from quest.pipeline import (
 )
 from quest.modules.graph import UnitKind, file_unit_kind
 from quest.syntax.sources import BYTE_ENCODING
+from quest.testing import releases
 from quest.testing.errors import relativize_root_paths, run_error_test
 
 TESTS_SOURCE_DIR = ROOT_DIR / "tests" / "source"
@@ -550,21 +551,22 @@ def build_driver_with(driver: Path, build_dir: Path, binary: Path, home: Path = 
     return time.perf_counter() - start
 
 
-# The current release of the self-hosted compiler (docs/release-compiler.md)
-RELEASE_DIR = ROOT_DIR / "release" / "current"
-
-
 def current_release() -> Path:
-    """The current release's compiler, after checking that it is the binary
-    its release.json describes."""
-    binary = RELEASE_DIR / "questc"
-    description = RELEASE_DIR / "release.json"
+    """The current release of the self-hosted compiler (docs/release-compiler.md):
+    its directory, after checking that its compiler is the binary its
+    release.json describes."""
+    release = releases.current_release(ROOT_DIR)
+    if release is None:
+        sys.exit(f"There is no current release in {releases.releases_dir(ROOT_DIR)}; make one with tools/release, "
+                 "or use --seed bootstrap")
+    binary = release / "questc"
+    description = release / "release.json"
     if not binary.is_file() or not description.is_file():
-        sys.exit("There is no release in release/current; make one with tools/release, or use --seed bootstrap")
+        sys.exit(f"The current release, {release}, has no questc or release.json")
     recorded = json.loads(description.read_text(encoding="utf-8"))["sha256"]
     if hashlib.sha256(binary.read_bytes()).hexdigest() != recorded:
-        sys.exit("release/current/questc is not the binary its release.json describes")
-    return binary
+        sys.exit(f"{binary} is not the binary its release.json describes")
+    return release
 
 
 def build_seeded_driver(build_dir: Path) -> Path:
@@ -577,7 +579,7 @@ def build_seeded_driver(build_dir: Path) -> Path:
     stage1 = seeded / "stage1" / "questlang-driver"
     stage2 = seeded / "stage2" / "questlang-driver"
     print("  stage 1 (by the release)...")
-    print(f"    {build_driver_with(release, seeded / 'stage1' / 'build', stage1, RELEASE_DIR / 'home'):.1f}s")
+    print(f"    {build_driver_with(release / 'questc', seeded / 'stage1' / 'build', stage1, release / 'home'):.1f}s")
     print("  stage 2 (by stage 1)...")
     print(f"    {build_driver_with(stage1, seeded / 'stage2' / 'build', stage2):.1f}s")
     return stage2
@@ -648,7 +650,7 @@ def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "boo
         stage1 = stages / "stage1" / "questlang-driver"
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             bootstrap = executor.submit(build_self_hosted_driver, python_executable, build_dir)
-            seconds = build_driver_with(release, stages / "stage1" / "build", stage1, RELEASE_DIR / "home")
+            seconds = build_driver_with(release / "questc", stages / "stage1" / "build", stage1, release / "home")
             bootstrap_stage1 = bootstrap.result()
         print(f"  {seconds:.1f}s")
     else:
