@@ -80,9 +80,9 @@ whose inner function has type parameters, `q(A::TYPE)(B::TYPE)`, is the same cas
 as they are. The audit (step 3) found these direct uses of global `var` variables, each rewritten as a tuple of one
 `var` component (an own variable):
 
-| Where | Variables |
+| Where | Vars |
 | --- | --- |
-| `tests/source/language/`: `closures_captures`, `functions_recursion`, `lvalues_references`, `top_level_rebinding` | one |
+| `tests/source/language`: `closures_captures`, `functions_recursion`, `lvalues_references`, `top_level_rebinding` | 1 |
 | `tests/source/language/inline_modules`, `tests/source/modules/base.mod`, `usepick.mod` | a module's own |
 | `tests/repl/modules` (the module it writes) | one |
 | `benchmarks/mlton/hamlet` | `tabS`, `tabIndex` |
