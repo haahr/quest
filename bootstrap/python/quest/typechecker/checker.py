@@ -135,17 +135,14 @@ class Checker:
         return require_subtype(expr, typed, expected_type, env, type_desc)
 
     def _check_capturable(self, sym: ValueSymbol, offset: int) -> None:
-        """Rejects a use, from a closure, of a var or out parameter or a mutable
-        local variable of an enclosing function: such locations live in that
-        function's frame, so closures may not capture them. Module-level
-        variables (function depth 0) may be used anywhere."""
+        """Rejects a use, from a closure, of a var or out parameter of an
+        enclosing function: such a parameter is the address of its caller's
+        location, which may not outlive the call. A closure may capture a local
+        var variable, which the lowering then holds in a box the frame and the
+        closure share (_captured_mutables in ir/lower.py)."""
         sym_depth = sym.function_depth
-        if (sym.is_out or sym.is_var) and sym_depth > 0 and self.function_depth > sym_depth:
-            kind_str = (
-                "'out' parameter"
-                if sym.is_out
-                else ("'var' parameter" if sym.is_param else "'var' variable")
-            )
+        if (sym.is_out or sym.is_var) and sym.is_param and sym_depth > 0 and self.function_depth > sym_depth:
+            kind_str = "'out' parameter" if sym.is_out else "'var' parameter"
             raise TypeError(f"Cannot capture {kind_str} '{sym.name}' in closure", offset=offset)
 
     # --- Dispatch, which typecheck.TypeElaborator defines ---

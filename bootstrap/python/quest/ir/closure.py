@@ -6,7 +6,8 @@ lifted function, and its captures are the function's free variables other than
 globals (global_variables), in the order of their first use. The lifted function
 reads them from its environment at its start (`let x = env_field(env, i)`) and
 uses those variables in their place. Closures do not capture mutable variables
-(Core does not allow it), so captures are values, copied into the closure. A
+(the lowering holds a captured var variable in a box), so captures are values,
+copied into the closure. A
 function nested in a polymorphic one takes the enclosing functions' type
 parameters as its leading type parameters, which its closure supplies (its types
 mention them).

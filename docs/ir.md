@@ -44,9 +44,10 @@ every golden test compares the two.
 3. **Structured control flow.** `if`, `switch`, `loop`, and `try` stay structured, so the C printer produces
    structured, readable C, and exceptions remain regions rather than edges.
 4. **Single assignment for compiler values; mutable variables only where the source has them.** Source-level
-   `let var` locals are mutable variables with an assignment node; everything else is bound once. Since closures may
-   not capture local mutable variables or `var`/`out` parameters ([type-system.md](type-system.md) §6.2.3), every
-   mutable local whose address is not taken could be promoted to SSA values later.
+   `let var` locals are mutable variables with an assignment node; everything else is bound once. A local that a
+   closure captures is held in a box instead, a tuple of one `var` component, and closures may not capture `var`/`out`
+   parameters ([type-system.md](type-system.md) §6.2.3); so every mutable local whose address is not taken could be
+   promoted to SSA values later.
 5. **Symbols for every binder.** Variables, functions, join points, type parameters, and globals are IR symbols
    (unique ids, with a name hint for printing). Lookups are by symbol only.
 6. **Types are lowered shapes; type arguments become values.** Quest cannot erase types (`Dynamic`, auto types,
@@ -357,7 +358,7 @@ part of the clone, and are lifted with it.
 statement with lets of `closure f {captures...}`. A function's captures are its free variables (by identity) other
 than globals, in the order of their first use; globals are the variables the unit's top levels (its main body and
 its modules' initializers) bind outside loops, each bound at most once in a run, which lifted functions use
-directly. Since closures do not capture mutable locals, captures are values, copied into the closure; the lifted
+directly. Since closures do not capture mutable locals (the lowering boxes those they would), captures are values, copied into the closure; the lifted
 function reads them from its environment (`fun f {env} ...`) at its start, `let x = env_field(env, i)`, and uses
 those variables in their place. Nested functions are converted first, so a function's captures include what the
 closures it makes capture.

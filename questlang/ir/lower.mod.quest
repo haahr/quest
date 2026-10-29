@@ -10,6 +10,7 @@ import
     questlang/types/canonical : questlang/types/Canonical
     questlang/types/env : questlang/types/Env
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/typechecker/scoping : questlang/typechecker/Scoping
     questlang/modules/elaboration : questlang/modules/Elaboration
     questlang/modules/stdlib : questlang/modules/Stdlib
     questlang/modules/paths : questlang/modules/Paths
@@ -189,7 +190,50 @@ export
          * sees: made before the binding containing them, and not yet reached
          * where they are written (by variable id) *)
         made: hashMap.T(Int Bool)
+        (* The local var variables that closures capture (capturedMutables),
+         * and the boxes that hold those bound so far: a tuple of one var
+         * component, which the frame and the closures share *)
+        captured: hashMap.T(Int Bool)
+        boxes: hashMap.T(Int Variable)
     end
+
+    (* Adds to captured the symbols of the local var variables that functions
+     * nested in their scope use: a let var inside a function, used inside a
+     * function within it. A var variable of a unit's top level is global, and
+     * not one of them. *)
+    let capturedMutables(prog: typedAst.Program captured: hashMap.T(Int Bool)): Ok =
+        begin
+            let declared = hashMap.new(:Int :Int fun(a: Int b: Int): Bool a is b hash.int)
+            let rec walkChild(c: scoping.Child depth: Int): Ok =
+                case c
+                    when childExpr with x then walkExpr(x.e depth)
+                    when childBinding with x then
+                        let lets = scoping.letValues(x.b)
+                        for i = 0 upto {extent lets - 1} do
+                            if lets[i].symbol.isVar andif {depth > 0} then
+                                hashMap.insert(:Int :Int declared lets[i].symbol.symbolId depth)
+                            end
+                        end
+                        walkChildren(scoping.bindingChildren(x.b) depth)
+                end
+            and walkExpr(e: typedAst.Expr depth: Int): Ok =
+                begin
+                    case e.form
+                        when exprVar with x then
+                            let d = hashMap.get(:Int :Int declared x.symbol.symbolId)
+                            if maybe.isSome(:Int d) andif {maybe.unwrap(:Int d) < depth} then
+                                hashMap.insert(:Int :Bool captured x.symbol.symbolId true)
+                            end
+                        else ok
+                    end
+                    walkChildren(scoping.children(e) if e.form?exprFun then depth + 1 else depth end)
+                end
+            and walkChildren(cs: Array(scoping.Child) depth: Int): Ok =
+                for i = 0 upto {extent cs - 1} do walkChild(cs[i] depth) end
+            for i = 0 upto {extent prog.phrases - 1} do
+                walkChild(option childBinding of scoping.Child with let b = prog.phrases[i] end 0)
+            end
+        end
 
     let newLowerer(e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult: Bool): Lowerer =
         begin
@@ -210,6 +254,8 @@ export
                 let imports = vector.new(:nodes.Import)
                 let moduleRefs = hashMap.new(:Int :nodes.ModuleRef intEqual hash.int)
                 let made = hashMap.new(:Int :Bool intEqual hash.int)
+                let captured = hashMap.new(:Int :Bool intEqual hash.int)
+                let boxes = hashMap.new(:Int :Variable intEqual hash.int)
             end
         end
 
@@ -293,6 +339,14 @@ export
     let boundVar(l: Lowerer e: Expr): maybe.T(Variable) =
         case e.form
             when exprVar with x then hashMap.get(:Int :Variable l.vars x.symbol.symbolId)
+            else maybe.none(:Variable)
+        end
+
+    (* The box holding a captured var variable (capturedMutables), if e is
+     * one *)
+    let boxOf(l: Lowerer e: Expr): maybe.T(Variable) =
+        case e.form
+            when exprVar with x then hashMap.get(:Int :Variable l.boxes x.symbol.symbolId)
             else maybe.none(:Variable)
         end
 
@@ -382,7 +436,10 @@ export
             when exprVar then varValue(l e into)
             when exprDerefCell with x then
                 let target = boundVar(l x.target)
-                if maybe.isSome(:Variable target) andif maybe.unwrap(:Variable target).isMutable then
+                let box = boxOf(l x.target)
+                if maybe.isSome(:Variable box) then
+                    letOp(l nodes.tupleField(va(maybe.unwrap(:Variable box)) 0) e.type into)
+                elsif maybe.isSome(:Variable target) andif maybe.unwrap(:Variable target).isMutable then
                     (* Reading a mutable variable *)
                     copyInto(l va(maybe.unwrap(:Variable target)) into)
                 else
@@ -535,7 +592,14 @@ export
                 let symbolId = x.symbol.symbolId
                 let bound = hashMap.get(:Int :Variable l.vars symbolId)
                 let builtin = hashMap.get(:Int :String l.builtins symbolId)
-                if maybe.isSome(:Variable bound) then
+                let box = hashMap.get(:Int :Variable l.boxes symbolId)
+                if maybe.isSome(:Variable box) then
+                    (* A boxed variable's address is its box's component's *)
+                    letOp(l option opAddrComponent of Op with
+                        let var base = va(maybe.unwrap(:Variable box)) let index = 0 let var access = nodes.direct
+                        let var viewMap = maybe.none(:Variable)
+                    end e.type into)
+                elsif maybe.isSome(:Variable bound) then
                     let v = maybe.unwrap(:Variable bound)
                     if v.isMutable then
                         (* A mutable variable not read through a dereference is
@@ -969,7 +1033,14 @@ export
     and assign(l: Lowerer target: Expr v: Expr): Ok =
         begin
             let bound = boundVar(l target)
-            if maybe.isSome(:Variable bound) andif maybe.unwrap(:Variable bound).isMutable then
+            let box = boxOf(l target)
+            if maybe.isSome(:Variable box) then
+                let a = value(l v none)
+                emit(l option sStoreComponent of Stmt with
+                    let var value = a let var base = va(maybe.unwrap(:Variable box)) let index = 0
+                    let var access = nodes.direct let var viewMap = maybe.none(:Variable)
+                end)
+            elsif maybe.isSome(:Variable bound) andif maybe.unwrap(:Variable bound).isMutable then
                 let a = value(l v none)
                 emit(l option sAssign of Stmt with let var v = maybe.unwrap(:Variable bound) let var value = a end)
             else
@@ -1310,7 +1381,17 @@ export
                     end)
                     if show then emit(l funText(lv.name symbol.type)) end
                 else
-                    let v = if symbol.isVar then
+                    let v = if symbol.isVar andif hashMap.contains(:Int :Bool l.captured symbol.symbolId) then
+                        (* Held in a box that closures capture
+                         * (capturedMutables) *)
+                        let init = value(l lv.value none)
+                        let boxType = model.tupleType(array of
+                            model.tupleField(maybe.some(:String lv.name) symbol.type true)
+                        end)
+                        let box = letVar(l nodes.makeTuple(array of init end array of :nodes.TypeComponent end) boxType none lv.name)
+                        hashMap.insert(:Int :Variable l.boxes symbol.symbolId box)
+                        box
+                    elsif symbol.isVar then
                         let init = value(l lv.value none)
                         let mv = bindSymbol(l symbol maybe.none(:Type) true)
                         emit(l option sVarDecl of Stmt with let var v = mv let var init = maybe.some(:Atom init) end)
@@ -1577,6 +1658,7 @@ export
 
     let program(l: Lowerer prog: typedAst.Program): nodes.Unit =
         begin
+            capturedMutables(prog l.captured)
             let main = nodes.newBody()
             let modules = vector.new(:nodes.Module)
             let phrases = prog.phrases

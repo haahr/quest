@@ -28,6 +28,7 @@ from quest.codegen.layout import resolved_shape
 from quest.ir.shapes import shape
 from quest.types.canonical import collect_fun_quantifiers, option_case_names
 from quest.typechecker.typed_ast import (
+    typed_fields,
     TypedApp,
     TypedArray,
     TypedArrayRep,
@@ -99,6 +100,8 @@ from quest.types import (
     QAllType,
     QFunType,
     QRecordField,
+    QTupleField,
+    QTupleType,
     QRecordType,
     QType,
     QTypeVar,
@@ -132,6 +135,37 @@ _BUILTIN_FUNCTIONS = frozenset(INFIX_OPERATORS) | {"is", "isnot", "not", "extent
 # The standard library's array operations, which are lowered to the IR's
 # (array_op)
 _ARRAY_OPS = frozenset({"new", "size", "get", "set"})
+
+
+def _captured_mutables(prog: TypedProgram) -> set[int]:
+    """The symbols of the local var variables that functions nested in their
+    scope use: a let var inside a function, used inside a function within it.
+    A var variable of a unit's top level is global, and not one of them."""
+    declared: dict[int, int] = {}
+    captured: set[int] = set()
+    seen: set[int] = set()
+
+    def walk(n, depth: int) -> None:
+        if isinstance(n, (list, tuple)):
+            for item in n:
+                walk(item, depth)
+            return
+        if id(n) in seen:
+            return
+        fields = typed_fields(n)
+        if fields is None:
+            return
+        seen.add(id(n))
+        if isinstance(n, TypedLetValue) and n.symbol.is_var and depth > 0:
+            declared[n.symbol.symbol_id] = depth
+        elif isinstance(n, TypedVar) and declared.get(n.symbol.symbol_id, depth) < depth:
+            captured.add(n.symbol.symbol_id)
+        inner = depth + 1 if isinstance(n, TypedFun) else depth
+        for part in fields:
+            walk(part, inner)
+
+    walk(prog, 0)
+    return captured
 
 
 class LoweringError(Exception):
@@ -208,6 +242,11 @@ class _Lowerer:
         # sees: made before the binding containing them (make_scope_exceptions),
         # and not yet reached where they are written
         self.made: set[int] = set()
+        # The local var variables that closures capture (_captured_mutables),
+        # and the boxes that hold those bound so far: a tuple of one var
+        # component, which the frame and the closures share
+        self.captured: set[int] = set()
+        self.boxes: dict[int, ir.Var] = {}
 
     # Building
 
@@ -286,6 +325,8 @@ class _Lowerer:
             case TypedVar():
                 return self.var_value(e, into)
             case TypedDerefCell(target=target):
+                if isinstance(target, TypedVar) and (box := self.boxes.get(target.symbol.symbol_id)) is not None:
+                    return self.let(ir.TupleField(box, 0), e.type_val, into)
                 if isinstance(target, TypedVar) and (var := self.vars.get(target.symbol.symbol_id)) and var.mutable:
                     # Reading a mutable variable
                     return self.copy_into(var, into)
@@ -380,6 +421,9 @@ class _Lowerer:
 
     def var_value(self, e: TypedVar, into: Optional[ir.Var]) -> ir.Atom:
         sym_id = e.symbol.symbol_id
+        if (box := self.boxes.get(sym_id)) is not None:
+            # A boxed variable's address is its box's component's
+            return self.let(ir.AddrComponent(box, 0), e.type_val, into)
         var = self.vars.get(sym_id)
         if var is not None:
             if var.mutable:
@@ -681,6 +725,8 @@ class _Lowerer:
 
     def assign(self, target: TypedExpr, value: TypedExpr) -> None:
         match target:
+            case TypedVar() if (box := self.boxes.get(target.symbol.symbol_id)) is not None:
+                self.emit(ir.StoreComponent(self.value(value), box, 0))
             case TypedVar() if (var := self.vars.get(target.symbol.symbol_id)) is not None and var.mutable:
                 v = self.value(value)
                 self.emit(ir.Assign(var, v))
@@ -944,7 +990,13 @@ class _Lowerer:
                     if show:
                         self.emit(ir.EchoText(f"let {name}:{_display(symbol.type_val)} = <fun>"))
                     return
-                if symbol.is_var:
+                if symbol.is_var and symbol.symbol_id in self.captured:
+                    # Held in a box that closures capture (_captured_mutables)
+                    init = self.value(value)
+                    box_t = QTupleType((QTupleField(name=name, type_val=symbol.type_val, is_var=True),))
+                    box = self.let(ir.MakeTuple((init,)), box_t, hint=name)
+                    self.boxes[symbol.symbol_id] = box
+                elif symbol.is_var:
                     init = self.value(value)
                     var = self.bind_symbol(symbol, mutable=True)
                     self.emit(ir.VarDecl(var, init))
@@ -1092,6 +1144,7 @@ class _Lowerer:
         return module
 
     def program(self, prog: TypedProgram) -> ir.Unit:
+        self.captured = _captured_mutables(prog)
         main = ir.Body()
         modules: list[ir.Module] = []
         phrases = prog.phrases

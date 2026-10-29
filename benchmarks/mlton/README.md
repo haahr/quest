@@ -68,7 +68,8 @@ exactly what its conversion does. No recorded output depends on those bits.
   found with MLton's execution-count profiling (`-profile count`).
 - Quest's `Int` has 64 bits and MLton's `int` 32; programs whose results depend on overflow do the 32-bit arithmetic
   explicitly, and `Word32` values are masked to 32 bits.
-- An SML `ref` that a closure captures becomes a tuple with a `var` field, since closures cannot capture `var` locals.
+- An SML `ref` that a closure captures was a tuple with a `var` field, since closures could not capture `var` locals
+  until 2026-10-28; a conversion may still do so.
 - SML's formatting of reals (`Real.toString`, `Real.fmt`) and its `IntInf` come from `support/`, checked against MLton.
 - Where Quest lacks something the original uses, the header says what replaces it. Quest cannot read the clock: zern,
   tensor, and model-elimination, which time their work, read 0.

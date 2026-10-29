@@ -110,15 +110,15 @@ export
     ): typedAst.Expr =
         checks.requireSubtype(expr.span.startOffset synthExpr(c expr e loopDepth) expected e typeDesc)
 
+    (* Rejects a use, from a closure, of a var or out parameter of an enclosing
+     * function: such a parameter is the address of its caller's location,
+     * which may not outlive the call. A closure may capture a local var
+     * variable, which the lowering then holds in a box the frame and the
+     * closure share (capturedMutables in questlang/ir/lower). *)
     let checkCapturable(c: T sym: symbols.ValueSymbol offset: Int): Ok =
-        if {sym.isOut orif sym.isVar} andif {sym.functionDepth > 0} andif {c.functionDepth > sym.functionDepth} then
-            let kindStr = if sym.isOut then
-                "'out' parameter"
-            elsif sym.isParam then
-                "'var' parameter"
-            else
-                "'var' variable"
-            end
+        if {sym.isOut orif sym.isVar} andif sym.isParam andif {sym.functionDepth > 0}
+            andif {c.functionDepth > sym.functionDepth} then
+            let kindStr = if sym.isOut then "'out' parameter" else "'var' parameter" end
             diagnostics.fail(:Ok "Cannot capture " <> kindStr <> " '" <> sym.name <> "' in closure" offset)
         end
 

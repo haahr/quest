@@ -536,8 +536,10 @@ Cardelli's mutable reference parameters compile directly to native C pointers:
     so a field or element is updated in place. Any other location whose representation differs from a `QVal` (a
     `Bool` local, a closure) is passed as the address of a shadow cell of the parameter's representation, copied in
     from the location for `var` and copied out to it after the call (`ref_argument`, ir.md §8.3).
-- **Closure Capture Restrictions:** Closure capture of `out`/`var` parameters or local stack mutable variables
-  is prohibited at compile time, guaranteeing that pointers never outlive their stack frames.
+- **Closure Capture Restrictions:** Closure capture of `out`/`var` parameters is prohibited at compile time,
+  guaranteeing that pointers never outlive their stack frames. A local mutable variable that a closure captures is
+  held in a heap box (a tuple of one `var` component), so `@x` of it is a pointer into the box
+  ([type-system.md](type-system.md) §6.2.3).
 
 ### 10.9. Existential Tuples & Dot-Projections
 Existential tuples (weak sums `Tuple A::TYPE ... end`), path-type projection (`p.T`), and member projection (`p.v`)

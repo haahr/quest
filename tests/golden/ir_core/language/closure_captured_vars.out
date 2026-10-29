@@ -1,0 +1,190 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun s(text: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(text, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs {
+    fun counter(): Fun(): Int {
+      let n: Tuple var n: Int end = tuple(0)
+      funs {
+        fun f(): Int {
+          let %4: Int = tuple_field(n, 0)
+          let %5: Int = prim +(%4, 1)
+          store n.#0 := %5
+          let %6: Int = tuple_field(n, 0)
+          return %6
+        }
+      }
+      return f
+    }
+  }
+  let c: Fun(): Int = call counter()
+  let %7: Int = call c()
+  let %8: Int = call c()
+  let %9: Int = call c()
+  let %10: String = call conv.int(%9)
+  do call s(%10)
+  funs {
+    fun pair(): Int {
+      let total: Tuple var total: Int end = tuple(10)
+      funs {
+        fun add(k: Int): Ok {
+          let %11: Int = tuple_field(total, 0)
+          let %12: Int = prim +(%11, k)
+          store total.#0 := %12
+          return ok
+        }
+      }
+      funs {
+        fun get(): Int {
+          let %13: Int = tuple_field(total, 0)
+          return %13
+        }
+      }
+      do call add(5)
+      do call add(7)
+      let %14: Int = tuple_field(total, 0)
+      let %15: Int = prim *(%14, 2)
+      store total.#0 := %15
+      let %16: Int = call get()
+      return %16
+    }
+  }
+  let %17: Int = call pair()
+  let %18: String = call conv.int(%17)
+  do call s(%18)
+  funs {
+    fun looped(): Int {
+      let sum: Tuple var sum: Int end = tuple(0)
+      funs {
+        fun addTo(k.1: Int): Ok {
+          let %19: Int = tuple_field(sum, 0)
+          let %20: Int = prim +(%19, k.1)
+          store sum.#0 := %20
+          return ok
+        }
+      }
+      var i: Int = 1
+      loop L1 {
+        let %21: Bool = prim <=(i, 4)
+        if %21 {
+          let i.1: Int = i
+          do call addTo(i.1)
+          let %22: Int = prim +(i, 1)
+          i := %22
+        } else {
+          break L1
+        }
+      }
+      let %23: Int = tuple_field(sum, 0)
+      let %24: Int = prim +(%23, 100)
+      store sum.#0 := %24
+      funs {
+        fun read(): Int {
+          let %25: Int = tuple_field(sum, 0)
+          return %25
+        }
+      }
+      let %26: Int = call read()
+      return %26
+    }
+  }
+  let %27: Int = call looped()
+  let %28: String = call conv.int(%27)
+  do call s(%28)
+  funs {
+    fun incr(var x: Int): Ok {
+      let %29: Int = prim +(x, 1)
+      x := %29
+      return ok
+    }
+  }
+  funs {
+    fun viaAddress(): Int {
+      let v: Tuple var v: Int end = tuple(41)
+      funs {
+        fun read.1(): Int {
+          let %30: Int = tuple_field(v, 0)
+          return %30
+        }
+      }
+      let %31: Var(Int) = addr v.#0
+      do call incr(%31)
+      let %32: Int = call read.1()
+      return %32
+    }
+  }
+  let %33: Int = call viaAddress()
+  let %34: String = call conv.int(%33)
+  do call s(%34)
+  funs {
+    fun records(): Int {
+      let %35: Record x: Int end = record(x = 1)
+      let p: Tuple var p: P end = tuple(%35)
+      funs {
+        fun set(k.2: Int): Ok {
+          let %36: Record x: Int end = record(x = k.2)
+          store p.#0 := %36
+          return ok
+        }
+      }
+      do call set(9)
+      let %37: P = tuple_field(p, 0)
+      let %38: Int = record_field(%37, x)
+      return %38
+    }
+  }
+  let %39: Int = call records()
+  let %40: String = call conv.int(%39)
+  do call s(%40)
+  funs {
+    fun latest [A::TYPE](first: A, second: A): A {
+      let v.1: Tuple var v: A end = tuple(first)
+      funs {
+        fun replace(x.1: A): Ok {
+          store v.1.#0 := x.1
+          return ok
+        }
+      }
+      do call replace(second)
+      let %41: A = tuple_field(v.1, 0)
+      return %41
+    }
+  }
+  let %42: String = call latest [String]("first", "second")
+  do call s(%42)
+  funs {
+    fun deep(): Int {
+      let d: Tuple var d: Int end = tuple(1)
+      funs {
+        fun outer(): Int {
+          funs {
+            fun inner(): Ok {
+              let %43: Int = tuple_field(d, 0)
+              let %44: Int = prim *(%43, 7)
+              store d.#0 := %44
+              return ok
+            }
+          }
+          do call inner()
+          let %45: Int = tuple_field(d, 0)
+          return %45
+        }
+      }
+      let %46: Int = call outer()
+      let %47: Int = tuple_field(d, 0)
+      let %48: Int = prim +(%46, %47)
+      return %48
+    }
+  }
+  let %49: Int = call deep()
+  let %50: String = call conv.int(%49)
+  do call s(%50)
+}
+

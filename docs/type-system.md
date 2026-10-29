@@ -492,10 +492,12 @@ Following Cardelli (*Typeful Programming* §4.8), function signatures support re
   pointer without re-referencing.
 
 #### 6.2.3. Closure Capture Restrictions
-To ensure stack safety and prevent escaping pointer references without requiring boxing every local variable:
-- Capturing `var` or `out` parameters inside closures is prohibited.
-- Capturing local stack-allocated mutable variables (`let var x = ...` inside a function body) inside closures is
-  prohibited.
+- A closure may capture a local mutable variable (`let var x = ...` inside a function body), read it, and assign it.
+  The function's frame and every closure that captures the variable share it: the lowering holds such a variable in a
+  box, a tuple of one `var` component (`_captured_mutables` in `ir/lower.py`, `capturedMutables` in
+  `questlang/ir/lower`), and the variables no closure captures stay unboxed in their frames.
+- Capturing `var` or `out` parameters inside closures is prohibited: such a parameter is the address of the caller's
+  location, which may not outlive the call. *Typeful Programming* does not discuss them.
 - Top-level module-level `var` variables are global module state and may be referenced freely by closures.
 
 ### 6.3. Strict Non-Overloaded Operators and Numeric Non-Coercion

@@ -301,6 +301,8 @@ let acc = tuple let var total = 0 end
 let add(x:Int):Ok = acc.total := acc.total+x
 ```
 
+A local function may capture an enclosing function's `let var` and update it, as Python's `nonlocal` does.
+
 **24. Translate `None` and `Optional[T]` to `maybe.T(A)`.** Returning `None` from a procedure becomes returning `ok :
 Ok`. `Optional[int]` becomes `maybe.T(Int)`:
 
