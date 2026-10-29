@@ -492,13 +492,19 @@ Following Cardelli (*Typeful Programming* §4.8), function signatures support re
   pointer without re-referencing.
 
 #### 6.2.3. Closure Capture Restrictions
-- A closure may capture a local mutable variable (`let var x = ...` inside a function body), read it, and assign it.
-  The function's frame and every closure that captures the variable share it: the lowering holds such a variable in a
-  box, a tuple of one `var` component (`_captured_mutables` in `ir/lower.py`, `capturedMutables` in
-  `questlang/ir/lower`), and the variables no closure captures stay unboxed in their frames.
-- Capturing `var` or `out` parameters inside closures is prohibited: such a parameter is the address of the caller's
-  location, which may not outlive the call. *Typeful Programming* does not discuss them.
-- Top-level module-level `var` variables are global module state and may be referenced freely by closures.
+These are *Typeful Programming*'s rules (§4.8), with one for parameters, which the paper does not discuss:
+
+- **Functions may not refer directly to global `var` variables**, those declared directly at a unit's or a module's
+  top level: they must be passed as `var` parameters or held in data structures, as in the own-variable idiom
+  (`let counter = tuple let var count = 0 end`, then `counter.count := counter.count + 1`). A use of one from inside
+  a function, read, assignment, or `@`, is an error (`_is_global_var` in `typechecker/checker.py`). A `var` declared
+  in a block, a loop's body, a branch, or a tuple is local, wherever it is.
+- **A closure may capture a local `var` variable**, read it, and assign it. The function's frame and every closure
+  that captures the variable share it: the lowering holds such a variable in a box, a tuple of one `var` component
+  (`_captured_mutables` in `ir/lower.py`, `capturedMutables` in `questlang/ir/lower`), and the variables no closure
+  captures stay unboxed in their frames.
+- **Capturing `var` or `out` parameters inside closures is prohibited:** such a parameter is the address of the
+  caller's location, which may not outlive the call.
 
 ### 6.3. Strict Non-Overloaded Operators and Numeric Non-Coercion
 Quest disallows implicit numeric coercions: `Int` and `Real` are disjoint types. Arithmetic between differing numeric

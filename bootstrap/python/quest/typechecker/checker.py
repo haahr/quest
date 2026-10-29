@@ -28,6 +28,13 @@ from quest.types.env import Environment, Scope, ValueSymbol
 TypeError = QuestTypeError
 
 
+# The scopes whose var variables are local to them: a var declared in one, or in
+# a scope inside one, is not global (_is_global_var); and the prefixes of the
+# names of case and try branches' and for loops' scopes
+_LOCAL_SCOPES = frozenset({"block", "fun", "poly_fun", "tuple_check", "tuple_synth", "inspect_branch", "auto_value"})
+_LOCAL_SCOPE_PREFIXES = ("case_", "try_", "for_")
+
+
 class Checker:
     """The state of one type check, and the helpers its construct families
     share."""
@@ -144,6 +151,29 @@ class Checker:
         if (sym.is_out or sym.is_var) and sym.is_param and sym_depth > 0 and self.function_depth > sym_depth:
             kind_str = "'out' parameter" if sym.is_out else "'var' parameter"
             raise TypeError(f"Cannot capture {kind_str} '{sym.name}' in closure", offset=offset)
+        if self.function_depth > 0 and self._is_global_var(sym):
+            raise TypeError(
+                f"A function may not refer directly to the global 'var' variable '{sym.name}': pass it as a 'var' "
+                f"parameter, or hold it in a data structure",
+                offset=offset,
+            )
+
+    def _is_global_var(self, sym: ValueSymbol) -> bool:
+        """Whether sym is a global var variable, which functions may not refer
+        to directly (Typeful Programming §4.8): one a unit's or a module's top
+        level declares, outside any block, function, or tuple. The scope that
+        declares it is the first one, out from the current scope, that has its
+        name, since it was just looked up by its name."""
+        if not sym.is_var or sym.is_param or sym.is_out or sym.function_depth > 0:
+            return False
+        scope = self.env.current_scope
+        while scope is not None and scope._values.get(sym.name) is not sym:
+            scope = scope.parent
+        while scope is not None:
+            if scope.name in _LOCAL_SCOPES or scope.name.startswith(_LOCAL_SCOPE_PREFIXES):
+                return False
+            scope = scope.parent
+        return True
 
     # --- Dispatch, which typecheck.TypeElaborator defines ---
 

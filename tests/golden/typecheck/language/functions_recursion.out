@@ -153,18 +153,22 @@
               (TypedInt 10 :type Int)
             ))
         )))
-    (TypedLetValue 'count' :type Int
-      :value (TypedInt 0 :type Int))
+    (TypedLetValue 'counter' :type Tuple var count: Int end
+      :value (TypedTuple :type Tuple var count: Int end
+        :elements (
+          (TypedInt 0 :type Int)
+        )))
     (TypedLetValue 'increment' :type Fun(step: Int): Ok
       :value (TypedFun :params (('step' : Int)) :type Fun(step: Int): Ok
         :body (TypedBlock :type Ok
           :bindings (
             (TypedExprStmt
               :expr (TypedAssign
-                :target (TypedVar 'count' :type Var(Int))
+                :target (TypedSelect 'count' :type Int
+                  :target (TypedVar 'counter' :type Tuple var count: Int end))
                 :value (TypedInfix '+' :type Int
-                  :left (TypedDerefCell :type Int
-                    :target (TypedVar 'count' :type Var(Int)))
+                  :left (TypedSelect 'count' :type Int
+                    :target (TypedVar 'counter' :type Tuple var count: Int end))
                   :right (TypedVar 'step' :type Int))))
           )
           :result (TypedOk))))
@@ -184,8 +188,8 @@
       :expr (TypedApp :type Ok
         :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
         :args (
-          (TypedDerefCell :type Int
-            :target (TypedVar 'count' :type Var(Int)))
+          (TypedSelect 'count' :type Int
+            :target (TypedVar 'counter' :type Tuple var count: Int end))
         )))
     (TypedLetValue 'doubleVal' :type Fun(x: Int): Int
       :value (TypedFun :params (('x' : Int)) :type Fun(x: Int): Int

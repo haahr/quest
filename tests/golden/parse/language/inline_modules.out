@@ -42,9 +42,16 @@
           :value (ExprInt 100 '100')
         )
         (LetValueBinding
-          :name 'sum'
-          :value (ExprInt 0 '0')
-          :is_var True
+          :name 'state'
+          :value (ExprTuple
+            :fields (
+              (TupleBinding
+                :name 'sum'
+                :value (ExprInt 0 '0')
+                :is_var True
+              )
+            )
+          )
         )
         (LetValueBinding
           :name 'add'
@@ -52,17 +59,26 @@
             :bindings (
               (ExprStmt
                 :expr (ExprInfix
-                  :left (ExprId 'sum')
+                  :left (ExprSelect
+                    :target (ExprId 'state')
+                    :field 'sum'
+                  )
                   :op ':='
                   :right (ExprInfix
-                    :left (ExprId 'sum')
+                    :left (ExprSelect
+                      :target (ExprId 'state')
+                      :field 'sum'
+                    )
                     :op '+'
                     :right (ExprId 'n')
                   )
                 )
               )
               (ExprStmt
-                :expr (ExprId 'sum')
+                :expr (ExprSelect
+                  :target (ExprId 'state')
+                  :field 'sum'
+                )
               )
             )
           )
@@ -82,7 +98,10 @@
             :body (ExprInfix
               :left (ExprId 'start')
               :op '+'
-              :right (ExprId 'sum')
+              :right (ExprSelect
+                :target (ExprId 'state')
+                :field 'sum'
+              )
             )
           )
           :type_annot (TypeAll

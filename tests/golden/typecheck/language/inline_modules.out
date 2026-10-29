@@ -6,28 +6,32 @@
       :bindings (
         (TypedLetValue 'start' :type Int
           :value (TypedInt 100 :type Int))
-        (TypedLetValue 'sum' :type Int
-          :value (TypedInt 0 :type Int))
+        (TypedLetValue 'state' :type Tuple var sum: Int end
+          :value (TypedTuple :type Tuple var sum: Int end
+            :elements (
+              (TypedInt 0 :type Int)
+            )))
         (TypedLetValue 'add' :type Fun(n: Int): Int
           :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
             :body (TypedBlock :type Int
               :bindings (
                 (TypedExprStmt
                   :expr (TypedAssign
-                    :target (TypedVar 'sum' :type Var(Int))
+                    :target (TypedSelect 'sum' :type Int
+                      :target (TypedVar 'state' :type Tuple var sum: Int end))
                     :value (TypedInfix '+' :type Int
-                      :left (TypedDerefCell :type Int
-                        :target (TypedVar 'sum' :type Var(Int)))
+                      :left (TypedSelect 'sum' :type Int
+                        :target (TypedVar 'state' :type Tuple var sum: Int end))
                       :right (TypedVar 'n' :type Int))))
               )
-              :result (TypedDerefCell :type Int
-                :target (TypedVar 'sum' :type Var(Int))))))
+              :result (TypedSelect 'sum' :type Int
+                :target (TypedVar 'state' :type Tuple var sum: Int end)))))
         (TypedLetValue 'total' :type Fun(): Int
           :value (TypedFun :params () :type Fun(): Int
             :body (TypedInfix '+' :type Int
               :left (TypedVar 'start' :type Int)
-              :right (TypedDerefCell :type Int
-                :target (TypedVar 'sum' :type Var(Int))))))
+              :right (TypedSelect 'sum' :type Int
+                :target (TypedVar 'state' :type Tuple var sum: Int end)))))
       ))
     (TypedExprStmt
       :expr (TypedSelect 'start' :type Int

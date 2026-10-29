@@ -96,8 +96,8 @@ let isDigit(c: Char): Bool = {ascii.val(c) >= ascii.val('0')} andif {ascii.val(c
 
 (* functor HeaderFun *)
 
-let var lineno = 0
-let var text = lists.nil(:String)
+let lineno = tuple let var value = 0 end
+let text = tuple let var value = lists.nil(:String) end
 
 Let InputSource = Tuple name: String errStream: writer.T var errorOccurred: Bool end
 
@@ -289,24 +289,24 @@ let gotoTData: Array(Int) = array of 1 101 0 6 2 0 5 3 0 0 0 0 2 24 0 0 13 28 14
 let numstates = 102
 let numrules = 54
 
-let var tabS: Array(Int) = actionRowsData
-let var tabIndex = 0
+let tabS = tuple let var value: Array(Int) = actionRowsData end
+let tabIndex = tuple let var value = 0 end
 
 let stringToInt(): Int =
     begin
-        let i = tabIndex
-        tabIndex := i + 1
-        tabS[i]
+        let i = tabIndex.value
+        tabIndex.value := i + 1
+        tabS.value[i]
     end
 
 let stringToList(s: Array(Int)): Ints =
     begin
         let len = extent s
-        let rec f(): Ints = if tabIndex < len then begin let i = stringToInt() lists.cons(:Int)(i f()) end
+        let rec f(): Ints = if tabIndex.value < len then begin let i = stringToInt() lists.cons(:Int)(i f()) end
             else lists.nil(:Int)
             end
-        tabIndex := 0
-        tabS := s
+        tabIndex.value := 0
+        tabS.value := s
         f()
     end
 
@@ -342,9 +342,9 @@ let stringToTable(A::TYPE)(convertRow: All() A s: Array(Int)): lists.T(A) =
     begin
         let len = extent s
         let rec f(): lists.T(A) =
-            if tabIndex < len then begin let r = convertRow() lists.cons(:A)(r f()) end else lists.nil(:A) end
-        tabS := s
-        tabIndex := 0
+            if tabIndex.value < len then begin let r = convertRow() lists.cons(:A)(r f()) end else lists.nil(:A) end
+        tabS.value := s
+        tabIndex.value := 0
         f()
     end
 
@@ -603,17 +603,17 @@ let precToken(i: Prec p1: Int p2: Int): Token = token(tPREC option vPrec of SVal
 
 (* functor LexMLYACC: the user declarations *)
 
-let var pcount = 0
-let var commentLevel = 0
-let var actionstart = 0
+let pcount = tuple let var value = 0 end
+let commentLevel = tuple let var value = 0 end
+let actionstart = tuple let var value = 0 end
 
 let eof(i: InputSource): Token =
     begin
-        if pcount > 0 then error(i actionstart " eof encountered in action beginning here !") end
-        voidToken(tEOF lineno lineno)
+        if pcount.value > 0 then error(i actionstart.value " eof encountered in action beginning here !") end
+        voidToken(tEOF lineno.value lineno.value)
     end
 
-let add(s: String): Ok = text := lists.cons(:String)(s text)
+let add(s: String): Ok = text.value := lists.cons(:String)(s text.value)
 
 Let DictEntry = Tuple s: String t: Int end
 let dict: lists.T(DictEntry) =
@@ -929,28 +929,28 @@ let makeLexer(yyinput: All(n: Int) String): All(yyarg: InputSource) All() Token 
                     elsif yyk is 108 then
                         begin
                             add(yytext)
-                            commentLevel := commentLevel - 1
-                            if commentLevel is 0 then voidToken(tBOGUSVALUE lineno lineno) else continue() end
+                            commentLevel.value := commentLevel.value - 1
+                            if commentLevel.value is 0 then voidToken(tBOGUSVALUE lineno.value lineno.value) else continue() end
                         end
                     elsif yyk is 11 then begin add(yytext) continue() end
-                    elsif yyk is 111 then begin add(yytext) commentLevel := commentLevel + 1 continue() end
+                    elsif yyk is 111 then begin add(yytext) commentLevel.value := commentLevel.value + 1 continue() end
                     elsif yyk is 114 then begin add(yytext) continue() end
                     elsif yyk is 116 then continue()
                     elsif yyk is 119 then
                         begin
-                            commentLevel := commentLevel - 1
-                            if commentLevel is 0 then b.yybegin := startA end
+                            commentLevel.value := commentLevel.value - 1
+                            if commentLevel.value is 0 then b.yybegin := startA end
                             continue()
                         end
-                    elsif yyk is 122 then begin commentLevel := commentLevel + 1 continue() end
+                    elsif yyk is 122 then begin commentLevel.value := commentLevel.value + 1 continue() end
                     elsif yyk is 125 then continue()
                     elsif yyk is 127 then begin add(yytext) b.yybegin := startCODE continue() end
                     elsif yyk is 129 then begin add(yytext) continue() end
                     elsif yyk is 131 then
                         begin
                             add(yytext)
-                            error(inputSource lineno "unclosed string")
-                            lineno := lineno + 1
+                            error(inputSource lineno.value "unclosed string")
+                            lineno.value := lineno.value + 1
                             b.yybegin := startCODE
                             continue()
                         end
@@ -959,12 +959,12 @@ let makeLexer(yyinput: All(n: Int) String): All(yyarg: InputSource) All() Token 
                     elsif yyk is 14 then
                         begin
                             b.yybegin := startA
-                            stringToken(tHEADER concat(lists.rev(:String)(text)) lineno lineno)
+                            stringToken(tHEADER concat(lists.rev(:String)(text.value)) lineno.value lineno.value)
                         end
                     elsif yyk is 140 then
                         begin
                             add(yytext)
-                            if strEq(stringOp.getSub(yytext 1 1) "\n") then lineno := lineno + 1 end
+                            if strEq(stringOp.getSub(yytext 1 1) "\n") then lineno.value := lineno.value + 1 end
                             b.yybegin := startF
                             continue()
                         end
@@ -973,67 +973,67 @@ let makeLexer(yyinput: All(n: Int) String): All(yyarg: InputSource) All() Token 
                     elsif yyk is 147 then
                         begin
                             add(yytext)
-                            error(inputSource lineno "unclosed string")
+                            error(inputSource lineno.value "unclosed string")
                             b.yybegin := startCODE
                             continue()
                         end
-                    elsif yyk is 16 then begin add(yytext) lineno := lineno + 1 continue() end
+                    elsif yyk is 16 then begin add(yytext) lineno.value := lineno.value + 1 continue() end
                     elsif yyk is 18 then begin add(yytext) continue() end
                     elsif yyk is 2 then
                         begin
                             add(yytext)
                             b.yybegin := startCOMMENT
-                            commentLevel := 1
+                            commentLevel.value := 1
                             let t = continue()
                             b.yybegin := startINITIAL
                             t
                         end
-                    elsif yyk is 20 then begin lineno := lineno + 1 continue() end
+                    elsif yyk is 20 then begin lineno.value := lineno.value + 1 continue() end
                     elsif yyk is 25 then continue()
-                    elsif yyk is 28 then voidToken(tOF lineno lineno)
-                    elsif yyk is 32 then voidToken(tFOR lineno lineno)
-                    elsif yyk is 34 then voidToken(tLBRACE lineno lineno)
-                    elsif yyk is 36 then voidToken(tRBRACE lineno lineno)
-                    elsif yyk is 38 then voidToken(tCOMMA lineno lineno)
-                    elsif yyk is 40 then voidToken(tASTERISK lineno lineno)
-                    elsif yyk is 43 then voidToken(tARROW lineno lineno)
-                    elsif yyk is 49 then precToken(option pLeft of Prec end lineno lineno)
-                    elsif yyk is 5 then begin b.yybegin := startEMPTYCOMMENT commentLevel := 1 continue() end
-                    elsif yyk is 56 then precToken(option pRight of Prec end lineno lineno)
-                    elsif yyk is 66 then precToken(option pNonassoc of Prec end lineno lineno)
-                    elsif yyk is 70 then lookup(yytext lineno lineno)
-                    elsif yyk is 73 then stringToken(tTYVAR yytext lineno lineno)
-                    elsif yyk is 77 then stringToken(tIDDOT yytext lineno lineno)
+                    elsif yyk is 28 then voidToken(tOF lineno.value lineno.value)
+                    elsif yyk is 32 then voidToken(tFOR lineno.value lineno.value)
+                    elsif yyk is 34 then voidToken(tLBRACE lineno.value lineno.value)
+                    elsif yyk is 36 then voidToken(tRBRACE lineno.value lineno.value)
+                    elsif yyk is 38 then voidToken(tCOMMA lineno.value lineno.value)
+                    elsif yyk is 40 then voidToken(tASTERISK lineno.value lineno.value)
+                    elsif yyk is 43 then voidToken(tARROW lineno.value lineno.value)
+                    elsif yyk is 49 then precToken(option pLeft of Prec end lineno.value lineno.value)
+                    elsif yyk is 5 then begin b.yybegin := startEMPTYCOMMENT commentLevel.value := 1 continue() end
+                    elsif yyk is 56 then precToken(option pRight of Prec end lineno.value lineno.value)
+                    elsif yyk is 66 then precToken(option pNonassoc of Prec end lineno.value lineno.value)
+                    elsif yyk is 70 then lookup(yytext lineno.value lineno.value)
+                    elsif yyk is 73 then stringToken(tTYVAR yytext lineno.value lineno.value)
+                    elsif yyk is 77 then stringToken(tIDDOT yytext lineno.value lineno.value)
                     elsif yyk is 8 then
                         begin
                             add(yytext)
                             b.yybegin := startCOMMENT
-                            commentLevel := 1
+                            commentLevel.value := 1
                             let t = continue()
                             b.yybegin := startCODE
                             t
                         end
-                    elsif yyk is 80 then stringToken(tINT yytext lineno lineno)
-                    elsif yyk is 83 then voidToken(tDELIMITER lineno lineno)
-                    elsif yyk is 85 then voidToken(tCOLON lineno lineno)
-                    elsif yyk is 87 then voidToken(tBAR lineno lineno)
-                    elsif yyk is 90 then idToken(tuple let name = yytext let pos = lineno end lineno lineno)
+                    elsif yyk is 80 then stringToken(tINT yytext lineno.value lineno.value)
+                    elsif yyk is 83 then voidToken(tDELIMITER lineno.value lineno.value)
+                    elsif yyk is 85 then voidToken(tCOLON lineno.value lineno.value)
+                    elsif yyk is 87 then voidToken(tBAR lineno.value lineno.value)
+                    elsif yyk is 90 then idToken(tuple let name = yytext let pos = lineno.value end lineno.value lineno.value)
                     elsif yyk is 92 then
                         begin
-                            pcount := 1
-                            actionstart := lineno
-                            text := lists.nil(:String)
+                            pcount.value := 1
+                            actionstart.value := lineno.value
+                            text.value := lists.nil(:String)
                             b.yybegin := startCODE
                             let t = continue()
                             b.yybegin := startA
                             t
                         end
-                    elsif yyk is 94 then stringToken(tUNKNOWN yytext lineno lineno)
-                    elsif yyk is 96 then begin pcount := pcount + 1 add(yytext) continue() end
+                    elsif yyk is 94 then stringToken(tUNKNOWN yytext lineno.value lineno.value)
+                    elsif yyk is 96 then begin pcount.value := pcount.value + 1 add(yytext) continue() end
                     elsif yyk is 98 then
                         begin
-                            pcount := pcount - 1
-                            if pcount is 0 then stringToken(tPROG concat(lists.rev(:String)(text)) lineno lineno)
+                            pcount.value := pcount.value - 1
+                            if pcount.value is 0 then stringToken(tPROG concat(lists.rev(:String)(text.value)) lineno.value lineno.value)
                             else begin add(yytext) continue() end
                             end
                         end
@@ -1615,8 +1615,8 @@ let parse(file: String): Parsed =
         let stream = streamify(makeLexer(fun(i: Int): String if reader.more(inStr)
             then reader.getString(inStr i) else "" end
             )(source))
-        lineno := 1
-        text := lists.nil(:String)
+        lineno.value := 1
+        text.value := lists.nil(:String)
         let result = extract(lrParse(source parserTable stream actions voidValue 15).v)
         reader.close(inStr)
         tuple let result = result let source = source end

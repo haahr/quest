@@ -198,23 +198,26 @@ export
     end
 
     (* Adds to captured the symbols of the local var variables that functions
-     * nested in their scope use: a let var inside a function, used inside a
-     * function within it. A var variable of a unit's top level is global, and
-     * not one of them. *)
+     * nested in their scope use: a let var anywhere but directly at a unit's or
+     * a module's top level (where it is global), used inside a function within
+     * its scope. *)
     let capturedMutables(prog: typedAst.Program captured: hashMap.T(Int Bool)): Ok =
         begin
             let declared = hashMap.new(:Int :Int fun(a: Int b: Int): Bool a is b hash.int)
-            let rec walkChild(c: scoping.Child depth: Int): Ok =
+            let rec walkChild(c: scoping.Child depth: Int top: Bool): Ok =
                 case c
                     when childExpr with x then walkExpr(x.e depth)
                     when childBinding with x then
                         let lets = scoping.letValues(x.b)
                         for i = 0 upto {extent lets - 1} do
-                            if lets[i].symbol.isVar andif {depth > 0} then
+                            if lets[i].symbol.isVar andif not(top) then
                                 hashMap.insert(:Int :Int declared lets[i].symbol.symbolId depth)
                             end
                         end
-                        walkChildren(scoping.bindingChildren(x.b) depth)
+                        (* A module's bindings are at the top level it is at *)
+                        let children = scoping.bindingChildren(x.b)
+                        let childTop = top andif x.b.form?bindModule
+                        for i = 0 upto {extent children - 1} do walkChild(children[i] depth childTop) end
                 end
             and walkExpr(e: typedAst.Expr depth: Int): Ok =
                 begin
@@ -229,9 +232,9 @@ export
                     walkChildren(scoping.children(e) if e.form?exprFun then depth + 1 else depth end)
                 end
             and walkChildren(cs: Array(scoping.Child) depth: Int): Ok =
-                for i = 0 upto {extent cs - 1} do walkChild(cs[i] depth) end
+                for i = 0 upto {extent cs - 1} do walkChild(cs[i] depth false) end
             for i = 0 upto {extent prog.phrases - 1} do
-                walkChild(option childBinding of scoping.Child with let b = prog.phrases[i] end 0)
+                walkChild(option childBinding of scoping.Child with let b = prog.phrases[i] end 0 true)
             end
         end
 

@@ -76,6 +76,21 @@ whose inner function has type parameters, `q(A::TYPE)(B::TYPE)`, is the same cas
 
 ## 2. Capture Rules for `var` Variables
 
+**Done** (both halves). Step 2, simplifying the conversions that hold captured `ref`s in tuples, was left: they work
+as they are. The audit (step 3) found these direct uses of global `var` variables, each rewritten as a tuple of one
+`var` component (an own variable):
+
+| Where | Variables |
+| --- | --- |
+| `tests/source/language/`: `closures_captures`, `functions_recursion`, `lvalues_references`, `top_level_rebinding` | one |
+| `tests/source/language/inline_modules`, `tests/source/modules/base.mod`, `usepick.mod` | a module's own |
+| `tests/repl/modules` (the module it writes) | one |
+| `benchmarks/mlton/hamlet` | `tabS`, `tabIndex` |
+| `benchmarks/mlton/mlyacc` | `lineno`, `text`, `tabS`, `tabIndex`, `pcount`, `commentLevel`, `actionstart` |
+| `benchmarks/mlton/model-elimination` | `tracing`, `traces` |
+
+`lib/`, `questlang/`, and `examples/` had none.
+
 **Facts.** No module in `lib/` or `questlang/` has a module-level `let var`. The benchmarks have 41 top-level ones and
 the tests 48, some of them used directly by functions. The REPL's idiom of a top-level `let var` updated by a function
 is one of them.

@@ -122,18 +122,22 @@
               (TypedInt 12 :type Int)
             ))
         )))
-    (TypedLetValue 'count' :type Int
-      :value (TypedInt 10 :type Int))
+    (TypedLetValue 'counter' :type Tuple var count: Int end
+      :value (TypedTuple :type Tuple var count: Int end
+        :elements (
+          (TypedInt 10 :type Int)
+        )))
     (TypedLetValue 'bump' :type Fun(delta: Int): Ok
       :value (TypedFun :params (('delta' : Int)) :type Fun(delta: Int): Ok
         :body (TypedBlock :type Ok
           :bindings (
             (TypedExprStmt
               :expr (TypedAssign
-                :target (TypedVar 'count' :type Var(Int))
+                :target (TypedSelect 'count' :type Int
+                  :target (TypedVar 'counter' :type Tuple var count: Int end))
                 :value (TypedInfix '+' :type Int
-                  :left (TypedDerefCell :type Int
-                    :target (TypedVar 'count' :type Var(Int)))
+                  :left (TypedSelect 'count' :type Int
+                    :target (TypedVar 'counter' :type Tuple var count: Int end))
                   :right (TypedVar 'delta' :type Int))))
           )
           :result (TypedOk))))
@@ -153,7 +157,7 @@
       :expr (TypedApp :type Ok
         :func (TypedVar 'printInt' :type Fun(x: Int): Ok)
         :args (
-          (TypedDerefCell :type Int
-            :target (TypedVar 'count' :type Var(Int)))
+          (TypedSelect 'count' :type Int
+            :target (TypedVar 'counter' :type Tuple var count: Int end))
         )))
   ))

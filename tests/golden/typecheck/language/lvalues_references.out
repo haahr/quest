@@ -121,16 +121,19 @@
             :target (TypedSelect 'mid' :type Record var val: Int end
               :target (TypedVar 'outer' :type Record var mid: Record var val: Int end end)))
         )))
-    (TypedLetValue 'g' :type Int
-      :value (TypedInt 10 :type Int))
+    (TypedLetValue 'globals' :type Tuple var g: Int end
+      :value (TypedTuple :type Tuple var g: Int end
+        :elements (
+          (TypedInt 10 :type Int)
+        )))
     (TypedLetValue 'readG' :type Fun(dummy: Int): Int
       :value (TypedFun :params (('dummy' : Int)) :type Fun(dummy: Int): Int
         :body (TypedBlock :type Int
           :bindings (
             (TypedLetValue 'get' :type Fun(d: Int): Int
               :value (TypedFun :params (('d' : Int)) :type Fun(d: Int): Int
-                :body (TypedDerefCell :type Int
-                  :target (TypedVar 'g' :type Var(Int)))))
+                :body (TypedSelect 'g' :type Int
+                  :target (TypedVar 'globals' :type Tuple var g: Int end))))
           )
           :result (TypedApp :type Int
             :func (TypedVar 'get' :type Fun(d: Int): Int)

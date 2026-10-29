@@ -11,7 +11,9 @@ import
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/typechecker/checks : questlang/typechecker/Checks
     collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
     util/maybe : util/Maybe
+    stringOp = string : StringOp
     conv : Conv
 export
     Let PendingTypeArg = Tuple meta: model.Type quantifier: model.Quantifier offset: Int end
@@ -110,6 +112,47 @@ export
     ): typedAst.Expr =
         checks.requireSubtype(expr.span.startOffset synthExpr(c expr e loopDepth) expected e typeDesc)
 
+    (* Whether a scope's var variables are local to it: a block's, a function's,
+     * a tuple's, an inspect, case, or try branch's, a for loop's *)
+    let localScope(name: String): Bool =
+        begin
+            let prefixed(p: String): Bool =
+                {stringOp.length(name) >= stringOp.length(p)} andif stringOp.equal(stringOp.getSub(name 0 stringOp.length(p)) p)
+            stringOp.equal(name "block") orif stringOp.equal(name "fun") orif stringOp.equal(name "poly_fun")
+                orif stringOp.equal(name "tuple_check") orif stringOp.equal(name "tuple_synth")
+                orif stringOp.equal(name "inspect_branch") orif stringOp.equal(name "auto_value")
+                orif prefixed("case_") orif prefixed("try_") orif prefixed("for_")
+        end
+
+    (* Whether sym is a global var variable, which functions may not refer to
+     * directly (Typeful Programming section 4.8): one a unit's or a module's
+     * top level declares, outside any block, function, or tuple. The scope that
+     * declares it is the first one, out from the current scope, that has its
+     * name, since it was just looked up by its name. *)
+    let isGlobalVar(c: T sym: symbols.ValueSymbol): Bool =
+        if not(sym.isVar) orif sym.isParam orif sym.isOut orif {sym.functionDepth > 0} then
+            false
+        else
+            let var scope = maybe.some(:symbols.Scope c.env.currentScope)
+            let var searching = true
+            while searching andif maybe.isSome(:symbols.Scope scope) do
+                let s = maybe.unwrap(:symbols.Scope scope)
+                let found = hashMap.get(:String :symbols.ValueSymbol s.values sym.name)
+                if maybe.isSome(:symbols.ValueSymbol found) andif {maybe.unwrap(:symbols.ValueSymbol found).symbolId is sym.symbolId} then
+                    searching := false
+                else
+                    scope := s.parent
+                end
+            end
+            let var isGlobal = true
+            while isGlobal andif maybe.isSome(:symbols.Scope scope) do
+                let s = maybe.unwrap(:symbols.Scope scope)
+                if localScope(s.name) then isGlobal := false end
+                scope := s.parent
+            end
+            isGlobal
+        end
+
     (* Rejects a use, from a closure, of a var or out parameter of an enclosing
      * function: such a parameter is the address of its caller's location,
      * which may not outlive the call. A closure may capture a local var
@@ -120,6 +163,9 @@ export
             andif {c.functionDepth > sym.functionDepth} then
             let kindStr = if sym.isOut then "'out' parameter" else "'var' parameter" end
             diagnostics.fail(:Ok "Cannot capture " <> kindStr <> " '" <> sym.name <> "' in closure" offset)
+        elsif {c.functionDepth > 0} andif isGlobalVar(c sym) then
+            diagnostics.fail(:Ok "A function may not refer directly to the global 'var' variable '" <> sym.name <>
+                "': pass it as a 'var' parameter, or hold it in a data structure" offset)
         end
 
     let checkPoisoned(sym: symbols.ValueSymbol): Ok =

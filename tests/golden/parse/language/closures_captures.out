@@ -311,9 +311,16 @@
       )
     )
     (LetValueBinding
-      :name 'count'
-      :value (ExprInt 10 '10')
-      :is_var True
+      :name 'counter'
+      :value (ExprTuple
+        :fields (
+          (TupleBinding
+            :name 'count'
+            :value (ExprInt 10 '10')
+            :is_var True
+          )
+        )
+      )
     )
     (LetValueBinding
       :name 'bump'
@@ -321,10 +328,16 @@
         :bindings (
           (ExprStmt
             :expr (ExprInfix
-              :left (ExprId 'count')
+              :left (ExprSelect
+                :target (ExprId 'counter')
+                :field 'count'
+              )
               :op ':='
               :right (ExprInfix
-                :left (ExprId 'count')
+                :left (ExprSelect
+                  :target (ExprId 'counter')
+                  :field 'count'
+                )
                 :op '+'
                 :right (ExprId 'delta')
               )
@@ -364,7 +377,10 @@
       :expr (ExprApp
         :func (ExprId 'printInt')
         :args (
-          (ExprId 'count')
+          (ExprSelect
+            :target (ExprId 'counter')
+            :field 'count'
+          )
         )
       )
     )
