@@ -127,12 +127,13 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   `self-hosted/compile_command` checks that the two drivers' commands do the same.
 
 ### Step 6: Native AArch64 Code Generator (Written in Quest)
-- Replace C emission with native AArch64 machine code generation consuming the represented IR ([ir.md](ir.md) §8.6):
-  1. *Descriptor Materialization*
-  2. *Control-Flow Graph (CFG) & SSA Construction*
-  3. *Instruction Selection (AArch64 assembly AST)*
-  4. *Liveness Analysis & Register Allocation*
-  5. *Prolog/Epilog Generation & Binary/Assembly Emission (linked with `libgc`)*
+- A native arm64 backend for Darwin, an alternative to C emission whose objects link with the C backend's, unit by
+  unit; the plan is [arm64.md](arm64.md):
+  1. *Shared lowering and layout, taken out of the C printer*
+  2. *Low-level SSA with block arguments, and an SSA-to-C printer as an oracle*
+  3. *Instruction selection (machine SSA over virtual registers)*
+  4. *Register allocation (a trivial allocator, then linear scan on SSA)*
+  5. *Frames, tail calls, exceptions, and assembly emission (linked with `libgc`)*
 - Follows the evidence-passing object model and AAPCS64 register conventions in [runtime-design.md](runtime-design.md).
 
 ### Step 7: Native AArch64 JIT & Interactive Incremental Runtime

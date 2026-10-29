@@ -532,7 +532,7 @@ The native AArch64 backend would add, after §8.4 (whose descriptor operands it 
 building a control-flow graph from the structured IR (join points
 become blocks with arguments), promoting mutable locals whose address is not taken to SSA values, and then
 instruction selection, register allocation (simpler on SSA), and emission. The C path does not need these: clang
-builds its own SSA and optimizes.
+builds its own SSA and optimizes. The plan for the backend is [arm64.md](arm64.md).
 
 ## 9. Stages and Invariants
 
