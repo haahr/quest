@@ -1,0 +1,33 @@
+(* Language: a polymorphic function applied to fewer types than it takes is a polymorphic function of the rest,
+   which runs only when it has all of them (and its value arguments, if it takes any). *)
+
+import writer: Writer;
+import conv: Conv;
+
+let s(text: String): Ok = writer.putString(writer.output text <> "\n");
+
+(* 1. Type parameters only *)
+let g(A::TYPE B::TYPE): Int = begin s("g runs") 1 end;
+let h = g(:Int);
+s("g applied to its first type");
+s(conv.int(h(:Bool)));
+s(conv.int(g(:Int)(:Bool)));
+
+(* 2. Type and value parameters *)
+let k(A::TYPE B::TYPE x: B): Int = begin s("k runs") 2 end;
+let kp = k(:Int);
+s("k applied to its first type");
+s(conv.int(kp(:Bool true)));
+
+(* 3. A var parameter, through the partial application *)
+let bump(A::TYPE B::TYPE var n: Int): Ok = n := n + 1;
+let bumpInt = bump(:Int);
+let var count = 0;
+bumpInt(:Bool @count);
+bumpInt(:String @count);
+s(conv.int(count));
+
+(* 4. A library function, applied to its type through a module *)
+import list: List;
+let nilOf = list.nil;
+s(conv.int(list.length(nilOf(:Int))));

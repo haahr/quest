@@ -7,6 +7,7 @@ import
     questlang/types/model : questlang/types/Model
     questlang/types/symbols : questlang/types/Symbols
     questlang/types/subtyping : questlang/types/Subtyping
+    questlang/types/canonical : questlang/types/Canonical
     questlang/types/env : questlang/types/Env
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/typechecker/checker : questlang/typechecker/Checker
@@ -162,6 +163,75 @@ export
             let params = params let body = body let typeParamIds = typeParamIds(quants) let typeOnly = typeOnly
         end
 
+    (* A function of type parameters only whose result is a function or a
+     * polymorphic value, fun(A::TYPE) e with e of type All(B::TYPE x: B) R, as
+     * the function of all those parameters, fun(A::TYPE B::TYPE x: B)
+     * e(:B x), which computes e when it is called and applies it. The two have
+     * the same type, as which callers call either one, with all its arguments
+     * at once; so what e does before it yields its function happens at each
+     * call (type-system.md section 6.4). The result's type parameters are
+     * made afresh, since they are bound in its type, and here become the
+     * function's. *)
+    let mergeTypeOnlyFun(c: checker.T fun0: typedAst.Expr e: env.T): typedAst.Expr =
+        case fun0.form
+            when exprFun with x then
+                case fun0.type.form
+                    when typeAll with all then
+                        begin
+                            let collected = canonical.collectFunQuantifiers(all.body)
+                            let rest = collected.quantifiers
+                            if {extent rest is 0} andif not(collected.body.form?typeFun) then
+                                fun0
+                            else
+                                let subst = model.newSubst()
+                                let quants = vector.fromArray(:model.Quantifier all.quantifiers)
+                                let typeArgs = vector.new(:Type)
+                                for i = 0 upto {extent rest - 1} do
+                                    let q = rest[i]
+                                    let id = env.freshSymbolId(e)
+                                    let bound = model.substituteInKind(q.bound subst)
+                                    let v = model.typeVariable(q.name id maybe.some(:model.Kind bound))
+                                    hashMap.insert(:Int :Type subst q.symbolId v)
+                                    vector.append(:model.Quantifier quants tuple let name = q.name let symbolId = id let bound = bound end)
+                                    vector.append(:Type typeArgs v)
+                                end
+                                let inner = if extent rest > 0 then model.substitute(collected.body subst) else collected.body end
+                                let var body = x.body
+                                if extent rest > 0 then
+                                    body := typedAst.expr(fun0.offset inner option exprTypeApp of typedAst.ExprForm with
+                                        let func = body let typeArgs = vector.toArray(:Type typeArgs)
+                                    end)
+                                end
+                                let params = vector.new(:typedAst.Param)
+                                let isFun = case inner.form
+                                    when typeFun with f then
+                                        let args = vector.new(:typedAst.Expr)
+                                        for i = 0 upto {extent f.params - 1} do
+                                            let p = f.params[i]
+                                            let sym = symbols.newValueSymbol(p.name p.type p.isVar p.isOut true {c.functionDepth + 1} 0)
+                                            vector.append(:typedAst.Param params tuple
+                                                let offset = fun0.offset let name = p.name let symbol = sym let type = p.type
+                                                let isVar = p.isVar let isOut = p.isOut
+                                            end)
+                                            vector.append(:typedAst.Expr args typedAst.expr(fun0.offset p.type
+                                                option exprVar of typedAst.ExprForm with let name = p.name let symbol = sym end))
+                                        end
+                                        body := typedAst.expr(fun0.offset f.result option exprApp of typedAst.ExprForm with
+                                            let func = body let args = vector.toArray(:typedAst.Expr args)
+                                        end)
+                                        true
+                                    else false
+                                end
+                                let quantArray = vector.toArray(:model.Quantifier quants)
+                                typedAst.expr(fun0.offset model.allType(quantArray inner)
+                                    funForm(vector.toArray(:typedAst.Param params) body quantArray not(isFun)))
+                            end
+                        end
+                    else fun0
+                end
+            else fun0
+        end
+
     (* Checks a function against an expected polymorphic type, All(B::K) T.
      *
      * The function is made polymorphic in the expected type parameters, under
@@ -257,8 +327,8 @@ export
                                      * own. Otherwise its type parameters are
                                      * its only ones. *)
                                     let typeOnly(): typedAst.Expr =
-                                        typedAst.expr(expr.span.startOffset model.allType(quantArray innerExp)
-                                            funForm(array of :typedAst.Param end innerTyped quantArray true))
+                                        mergeTypeOnlyFun(c typedAst.expr(expr.span.startOffset model.allType(quantArray innerExp)
+                                            funForm(array of :typedAst.Param end innerTyped quantArray true)) e)
                                     case innerTyped.form
                                         when exprFun with f then
                                             if hasParams orif {extent f.typeParamIds is 0} then
@@ -424,7 +494,8 @@ export
                         model.funType(declared.formals b.ret)
                     end
                     let typeOnly = {extent quantArray > 0} andif {extent declared.formals is 0}
-                    typedAst.expr(expr.span.startOffset funType funForm(declared.typed b.typed quantArray typeOnly))
+                    let typedFun = typedAst.expr(expr.span.startOffset funType funForm(declared.typed b.typed quantArray typeOnly))
+                    if typeOnly then mergeTypeOnlyFun(c typedFun e) else typedFun end
                 end)
         end
 

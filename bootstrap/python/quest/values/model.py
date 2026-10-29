@@ -510,6 +510,11 @@ class QClosure(QValue):
             self.type_only,
         )
 
+    def runs_when_applied(self) -> bool:
+        """Whether applying it to types runs it: when its type parameters are
+        its only parameters, and all of them are bound."""
+        return self.type_only and all(i in self.type_bindings for i in self.type_param_ids)
+
     @property
     def type_name(self) -> str:
         return "Function"

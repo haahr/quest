@@ -1,0 +1,75 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import list = "list" : List
+main {
+  funs {
+    fun s(text: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(text, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs {
+    fun g [A::TYPE B::TYPE](): Int {
+      do call s("g runs")
+      return 1
+    }
+  }
+  funs {
+    fun h [B::TYPE](): Int {
+      let %4: Int = type_app g [Int B]
+      return %4
+    }
+  }
+  do call s("g applied to its first type")
+  let %5: Int = type_app h [Bool]
+  let %6: String = call conv.int(%5)
+  do call s(%6)
+  let %7: Int = type_app g [Int Bool]
+  let %8: String = call conv.int(%7)
+  do call s(%8)
+  funs {
+    fun k [A::TYPE B::TYPE](x: B): Int {
+      do call s("k runs")
+      return 2
+    }
+  }
+  funs {
+    fun kp [B::TYPE](x.1: B): Int {
+      let %9: Int = call k [Int B](x.1)
+      return %9
+    }
+  }
+  do call s("k applied to its first type")
+  let %10: Int = call kp [Bool](true)
+  let %11: String = call conv.int(%10)
+  do call s(%11)
+  funs {
+    fun bump [A::TYPE B::TYPE](var n: Int): Ok {
+      let %12: Int = prim +(n, 1)
+      n := %12
+      return ok
+    }
+  }
+  funs {
+    fun bumpInt [B::TYPE](var n.1: Int): Ok {
+      let %13: Var(Int) = addr n.1
+      let %14: Ok = call bump [Int B](%13)
+      return %14
+    }
+  }
+  var count: Int = 0
+  let %15: Var(Int) = addr count
+  do call bumpInt [Bool](%15)
+  let %16: Var(Int) = addr count
+  do call bumpInt [String](%16)
+  let %17: String = call conv.int(count)
+  do call s(%17)
+  let nilOf: All(A :: TYPE) list.T(A) = member list.nil
+  let %18: list.T(Int) = type_app nilOf [Int]
+  let %19: Int = call list.length [Int](%18)
+  let %20: String = call conv.int(%19)
+  do call s(%20)
+}
+

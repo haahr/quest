@@ -22,6 +22,7 @@ from quest.types import (
     is_subtype,
     is_type_equal,
 )
+from quest.types.canonical import collect_fun_quantifiers
 from quest.types.env import (
     Environment,
     TypeSymbol,
@@ -51,6 +52,9 @@ from quest.typechecker.typed_ast import (
     TypedLetValueGroup,
     TypedLetValue,
     TypedParam,
+    TypedTypeApp,
+    TypedVar,
+    TypedApp,
 )
 from quest.typechecker.checks import check_distinct_names, not_desugared
 from quest.typechecker.escape import check_no_escaping_path_types
@@ -262,7 +266,7 @@ class BindingMixin(Checker):
             else:
                 fun_type = QFunType(params=tuple(q_params), result_type=ret_type)
 
-            return TypedFun(
+            typed_fun = TypedFun(
                 params=tuple(formal_params),
                 body=body_typed,
                 type_val=fun_type,
@@ -270,6 +274,52 @@ class BindingMixin(Checker):
                 type_only=bool(quants) and not q_params,
                 offset=expr.offset,
             )
+        return self._merge_type_only_fun(typed_fun, env) if typed_fun.type_only else typed_fun
+
+    def _merge_type_only_fun(self, fun: TypedFun, env: Environment) -> TypedFun:
+        """A function of type parameters only whose result is a function or a
+        polymorphic value, fun(A::TYPE) e with e of type All(B::TYPE x: B) R, as
+        the function of all those parameters, fun(A::TYPE B::TYPE x: B) e(:B
+        x), which computes e when it is called and applies it. The two have the
+        same type, as which callers call either one, with all its arguments at
+        once; so what e does before it yields its function happens at each call
+        (type-system.md §6.4). The result's type parameters are made afresh,
+        since they are bound in its type, and here become the function's."""
+        assert isinstance(fun.type_val, QAllType)
+        rest, inner = collect_fun_quantifiers(fun.type_val.body)
+        if not rest and not isinstance(inner, QFunType):
+            return fun
+        subst: dict[int, QType] = {}
+        fresh: list[QQuantifier] = []
+        for q in rest:
+            renamed = QQuantifier(name=q.name, symbol_id=env.fresh_symbol_id(), bound=q.bound.substitute_types(subst))
+            subst[q.symbol_id] = QTypeVar(name=renamed.name, symbol_id=renamed.symbol_id, bound=renamed.bound)
+            fresh.append(renamed)
+        if subst:
+            inner = inner.substitute(subst)
+        body = fun.body
+        if fresh:
+            type_args = tuple(QTypeVar(name=q.name, symbol_id=q.symbol_id, bound=q.bound) for q in fresh)
+            body = TypedTypeApp(func=body, type_args=type_args, type_val=inner, offset=fun.offset)
+        quants = fun.type_val.quantifiers + tuple(fresh)
+        params: list[TypedParam] = []
+        if isinstance(inner, QFunType):
+            args = []
+            for p in inner.params:
+                symbol = ValueSymbol(name=p.name, type_val=p.type_val, is_var=p.is_var, is_out=p.is_out, is_param=True,
+                                     function_depth=self.function_depth + 1)
+                params.append(TypedParam(name=p.name, symbol=symbol, type_val=p.type_val, is_var=p.is_var,
+                                         is_out=p.is_out, offset=fun.offset))
+                args.append(TypedVar(name=p.name, symbol=symbol, type_val=p.type_val, offset=fun.offset))
+            body = TypedApp(func=body, args=tuple(args), type_val=inner.result_type, offset=fun.offset)
+        return TypedFun(
+            params=tuple(params),
+            body=body,
+            type_val=QAllType(quantifiers=quants, body=inner),
+            type_param_ids=tuple(q.symbol_id for q in quants),
+            type_only=not isinstance(inner, QFunType),
+            offset=fun.offset,
+        )
 
     def _check_polymorphic_fun_expr(
         self,
@@ -353,7 +403,7 @@ class BindingMixin(Checker):
             # parameters of its own. Otherwise its type parameters are its only
             # ones.
             merged = isinstance(inner_typed, TypedFun) and (bool(expr.params) or not inner_typed.type_param_ids)
-            return TypedFun(
+            typed_fun = TypedFun(
                 params=inner_typed.params if merged else (),
                 body=inner_typed.body if merged else inner_typed,
                 type_val=QAllType(quantifiers=tuple(quants), body=inner_typed.type_val if merged else inner_exp),
@@ -361,6 +411,7 @@ class BindingMixin(Checker):
                 type_only=not merged,
                 offset=expr.offset,
             )
+            return typed_fun if merged else self._merge_type_only_fun(typed_fun, env)
 
     def _declare_rec_value(self, binding: ast.LetValueBinding, env: Environment) -> ValueSymbol:
         """Declares the symbol of a recursive value declaration (let rec) before

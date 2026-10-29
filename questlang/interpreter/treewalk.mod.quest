@@ -338,6 +338,17 @@ export
             end
         end
 
+    (* Whether applying the closure to types runs it: when its type parameters
+     * are its only parameters, and all of them are bound *)
+    let runsWhenApplied(c: model.Closure): Bool =
+        begin
+            let var all = c.typeOnly
+            for i = 0 upto {extent c.typeParamIds - 1} do
+                if not(hashMap.contains(:Int :tm.Type c.typeBindings c.typeParamIds[i])) then all := false end
+            end
+            all
+        end
+
     let reversedStack(f: Frame): Array(String) =
         begin
             let n = vector.length(:String f.root.callStack)
@@ -603,7 +614,7 @@ export
                         else ok
                     end
                     case callee
-                        when vClosure with c then if c.c.typeOnly then runClosure(c.c array of :Value end offset) else callee end
+                        when vClosure with c then if runsWhenApplied(c.c) then runClosure(c.c array of :Value end offset) else callee end
                         else callee
                     end
                 when exprApp with x then

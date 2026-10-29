@@ -1,0 +1,92 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun s(text: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(text, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs {
+    fun h [A::TYPE](): Int {
+      do call s("h runs")
+      funs {
+        fun f(): Int {
+          do call s("h's result runs")
+          return 1
+        }
+      }
+      let %4: Int = call f()
+      return %4
+    }
+  }
+  let hi: Fun(): Int = type_app h [Int]
+  do call s("h applied to types")
+  let %5: Int = call hi()
+  let %6: String = call conv.int(%5)
+  do call s(%6)
+  funs {
+    fun lam [A::TYPE](): Int {
+      funs {
+        fun f.1(): Int {
+          do call s("lam's result runs")
+          return 2
+        }
+      }
+      let %7: Int = call f.1()
+      return %7
+    }
+  }
+  let la: Fun(): Int = type_app lam [Int]
+  do call s("lam applied to types")
+  let %8: Int = call la()
+  let %9: String = call conv.int(%8)
+  do call s(%9)
+  funs {
+    fun q [A::TYPE B::TYPE](): Int {
+      funs {
+        fun f.2 [B::TYPE](): Int {
+          do call s("q runs")
+          return 3
+        }
+      }
+      let %10: Int = type_app f.2 [B]
+      return %10
+    }
+  }
+  funs {
+    fun qa [B::TYPE](): Int {
+      let %11: Int = type_app q [Int B]
+      return %11
+    }
+  }
+  do call s("q applied to its first types")
+  let %12: Int = type_app qa [Bool]
+  let %13: String = call conv.int(%12)
+  do call s(%13)
+  funs {
+    fun r [A::TYPE B::TYPE](x: B): Int {
+      funs {
+        fun f.3 [B::TYPE](x.1: B): Int {
+          do call s("r runs")
+          return 4
+        }
+      }
+      let %14: Int = call f.3 [B](x)
+      return %14
+    }
+  }
+  funs {
+    fun ra [B::TYPE](x.2: B): Int {
+      let %15: Int = call r [Int B](x.2)
+      return %15
+    }
+  }
+  do call s("r applied to its first types")
+  let %16: Int = call ra [Bool](true)
+  let %17: String = call conv.int(%16)
+  do call s(%17)
+}
+

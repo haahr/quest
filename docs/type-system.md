@@ -563,6 +563,24 @@ let n = id(:Int)(42)
 Type arguments prefixed with `:` (`:Type`) match leading type quantifiers in `QAllType`. The typechecker
 validates that actual type arguments satisfy their corresponding kind bounds and emits `TypedTypeApp` nodes.
 
+**Curried and uncurried types are one type.** `let f(A::TYPE)(x: A): Int` and `let g(A::TYPE x: A): Int` both have
+the type `All(A :: TYPE) Fun(x: A): Int`, and either may be bound where the other's type is written. The C backend
+calls a value of that type with its type and value arguments at once. Three rules follow, which both interpreters and
+both compilers keep:
+
+- **A type application computes only a function of type parameters only** (`fun(A::TYPE) e`, a polymorphic constant
+  such as `list.nil`), and only once it has all of them. Applying `f` above to `:Int` yields a function, whose body
+  runs when it is called.
+- **A function of type parameters only whose result is a function or a polymorphic value is that function of all the
+  parameters** (`TypedFun.type_only`; `_merge_type_only_fun` in `typechecker/bindings.py`, `mergeTypeOnlyFun` in
+  `questlang/typechecker/bindings`). `let h(A::TYPE): All() Int = e` is checked as `let h(A::TYPE)(): Int = e()`, and
+  `fun(A::TYPE) fun(B::TYPE x: B) e` as `fun(A::TYPE B::TYPE x: B) e`. So what `e` does before it yields its function
+  happens at each call, not when `h` is applied to types: the paper evaluates a type application, but a type that
+  cannot tell `h` from `f` cannot give them different conventions.
+- **A partial type application is a polymorphic function of the rest.** `g(:Int)` for `let g(A::TYPE B::TYPE): Int`
+  has type `All(B :: TYPE) Int`; the lowering makes it a closure that applies `g` to `:Int` and its own type argument
+  (and passes on its value arguments, if it takes any) when it is applied (`type_app` in `ir/lower.py`).
+
 ### 6.5. Parameter Passing Modes, Out Types, and Lvalues
 Quest supports three parameter passing modes in signatures:
 - **Value (`val`, default):** Pass-by-value.

@@ -539,7 +539,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             type_args = tuple(env.resolve_type(t) for t in type_args)
             if isinstance(callee, QClosure) and callee.type_param_ids:
                 callee = callee.instantiate(type_args)
-            if isinstance(callee, QClosure) and callee.type_only:
+            if isinstance(callee, QClosure) and callee.runs_when_applied():
                 return run_closure(callee, [], offset=expr.offset)
             return callee
 

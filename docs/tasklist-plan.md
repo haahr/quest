@@ -26,6 +26,9 @@ list in the commit that finishes it.
 
 ## 1. Type Application
 
+**Done** (decision (a)): partial type application in the interpreters and in compiled code, and type-only functions
+with function results merged by the type checker; type-system.md §6.4 states the rules.
+
 **Facts.** The implementation identifies a curried polymorphic type with the uncurried one: `let g(A::TYPE x: A): Int`
 and `let f(A::TYPE)(x: A): Int` both have the type `All(A :: TYPE) Fun(x: A): Int`, and either can be bound to a
 variable declared with the other's written type. About 400 definitions in `lib/`, `questlang/`, and the benchmarks are

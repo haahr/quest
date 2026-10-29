@@ -298,10 +298,8 @@ class _Lowerer:
                 return var
             case TypedApp():
                 return self.call(e, into)
-            case TypedTypeApp(func=func, type_args=type_args):
-                callee, module, member = self.callee(func)
-                callee_type = func.type_val if module is not None else None
-                return self.let(ir.TypeApp(callee, tuple(type_args), module, member, callee_type), e.type_val, into)
+            case TypedTypeApp():
+                return self.type_app(e, into)
             case TypedInfix(left=left, op=op, right=right):
                 l = self.value(left)
                 r = self.value(right)
@@ -425,6 +423,54 @@ class _Lowerer:
         if not isinstance(atom, ir.Var):
             raise LoweringError(f"calling a constant: {func}")
         return atom, None, None
+
+    def type_app(self, e: TypedTypeApp, into: Optional[ir.Var]) -> ir.Atom:
+        """A type application, f(:A)(:B) as one. Applied to fewer types than
+        it takes, a polymorphic function is a closure over the rest (and its
+        value parameters, if it has any), which applies it to all of them, since
+        the backend calls a polymorphic function with all its type arguments
+        at once."""
+        func: TypedExpr = e
+        type_args: tuple[QType, ...] = ()
+        while isinstance(func, TypedTypeApp):
+            type_args = tuple(func.type_args) + type_args
+            func = func.func
+        callee, module, member = self.callee(func)
+        callee_type = func.type_val if module is not None else None
+        quants, _ = collect_fun_quantifiers(func.type_val)
+        if len(type_args) >= len(quants):
+            return self.let(ir.TypeApp(callee, type_args, module, member, callee_type), e.type_val, into)
+        rest, inner = collect_fun_quantifiers(e.type_val)
+        var = into if into is not None else self.fresh("f", e.type_val)
+        type_params = tuple(
+            ir.TypeParam(q.name, q.symbol_id, q.bound, shape(q.bound.bound) if isinstance(q.bound, QPowerKind) else None)
+            for q in rest
+        )
+        all_type_args = type_args + tuple(QTypeVar(q.name, q.symbol_id, q.bound) for q in rest)
+        params = []
+        body = ir.Body()
+        with self.in_body(body):
+            if isinstance(inner, QFunType):
+                args = []
+                for p in inner.params:
+                    param_t = p.type_val.element_type if isinstance(p.type_val, (QVarType, QOutType)) else p.type_val
+                    mode = "var" if p.is_var or isinstance(p.type_val, QVarType) else (
+                        "out" if p.is_out or isinstance(p.type_val, QOutType) else "value")
+                    param = self.fresh(p.name, param_t, mutable=mode != "value")
+                    params.append((param, mode))
+                    if mode == "value":
+                        args.append(param)
+                    else:
+                        ref_t = QVarType(element_type=param_t) if mode == "var" else QOutType(element_type=param_t)
+                        args.append(self.let(ir.AddrVar(param), ref_t))
+                result_t = inner.result_type
+                result = self.let(ir.Call(callee, all_type_args, tuple(args), module, member, callee_type), result_t)
+            else:
+                result_t = inner
+                result = self.let(ir.TypeApp(callee, all_type_args, module, member, callee_type), result_t)
+            self.terminate(ir.Return(result))
+        self.emit(ir.Funs((ir.Function(var, type_params, tuple(params), result_t, body, trace_name=self.frame),)))
+        return var
 
     def call(self, e: TypedApp, into: Optional[ir.Var]) -> ir.Atom:
         func, type_args = e.func, ()
@@ -791,10 +837,6 @@ class _Lowerer:
                 for q in t.quantifiers
             )
             inner = t.body
-        if e.type_only and isinstance(inner, (QFunType, QAllType)):
-            # Its type is that of a function of type parameters then value
-            # parameters, as which callers would call it (docs/tasklist.md)
-            raise LoweringError(f"a function of type parameters only whose result is a function, of type {t}")
         result_t = inner.result_type if isinstance(inner, QFunType) else inner
         expected = _expected_params(var.type, t, len(e.params))
         params = []

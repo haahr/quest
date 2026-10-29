@@ -394,10 +394,7 @@ export
                 emit(l option sFuns of Stmt with let var functions = array of function(l e v maybe.none(:String)) end let recursive = false end)
                 va(v)
             when exprApp then call(l e into)
-            when exprTypeApp with x then
-                let c = calleeOf(l x.func)
-                let calleeType = if maybe.isSome(:nodes.ModuleRef c.moduleRef) then maybe.some(:Type x.func.type) else maybe.none(:Type) end
-                letOp(l nodes.typeApp(c.callee x.typeArgs c.moduleRef c.member calleeType) e.type into)
+            when exprTypeApp then typeApplication(l e into)
             when exprInfix with x then
                 let left = value(l x.left none)
                 let right = value(l x.right none)
@@ -587,6 +584,89 @@ export
                         tuple let callee = some(x.v) let moduleRef = maybe.none(:nodes.ModuleRef) let member = maybe.none(:String) end
                     else fail(:Callee "calling a constant")
                 end
+            end
+        end
+
+    (* A type application, f(:A)(:B) as one. Applied to fewer types than it
+     * takes, a polymorphic function is a closure over the rest (and its value
+     * parameters, if it has any), which applies it to all of them, since the
+     * backend calls a polymorphic function with all its type arguments at
+     * once. *)
+    and typeApplication(l: Lowerer e: Expr into: maybe.T(Variable)): Atom =
+        begin
+            (* The applications' type arguments, innermost first *)
+            let var func = e
+            let levels = vector.new(:Array(Type))
+            let var unwrapping = true
+            while unwrapping do
+                case func.form
+                    when exprTypeApp with x then
+                        vector.append(:Array(Type) levels x.typeArgs)
+                        func := x.func
+                    else unwrapping := false
+                end
+            end
+            let typeArgs = vector.new(:Type)
+            for i = {vector.length(:Array(Type) levels) - 1} downto 0 do
+                let level = vector.get(:Array(Type) levels i)
+                for j = 0 upto {extent level - 1} do vector.append(:Type typeArgs level[j]) end
+            end
+            let c = calleeOf(l func)
+            let calleeType = if maybe.isSome(:nodes.ModuleRef c.moduleRef) then maybe.some(:Type func.type) else maybe.none(:Type) end
+            let given = vector.toArray(:Type typeArgs)
+            if extent given >= extent canonical.collectFunQuantifiers(func.type).quantifiers then
+                letOp(l nodes.typeApp(c.callee given c.moduleRef c.member calleeType) e.type into)
+            else
+                let rest = canonical.collectFunQuantifiers(e.type)
+                let v = if maybe.isSome(:Variable into) then maybe.unwrap(:Variable into) else fresh("f" e.type false) end
+                let typeParams = vector.new(:nodes.TypeParam)
+                for i = 0 upto {extent rest.quantifiers - 1} do
+                    let q = rest.quantifiers[i]
+                    vector.append(:nodes.TypeParam typeParams tuple
+                        let name = q.name
+                        let symbolId = q.symbolId
+                        let kind = q.bound
+                        let bound = if model.isPower(q.bound) then maybe.some(:shapes.Shape shapes.shape(model.powerBound(q.bound)))
+                            else maybe.none(:shapes.Shape) end
+                    end)
+                    vector.append(:Type typeArgs model.typeVariable(q.name q.symbolId maybe.some(:model.Kind q.bound)))
+                end
+                let allTypeArgs = vector.toArray(:Type typeArgs)
+                let params = vector.new(:nodes.ParamEntry)
+                let fbody = nodes.newBody()
+                let resultType = case rest.body.form when typeFun with f then f.result else rest.body end
+                inBody(l fbody fun(): Ok
+                    begin
+                        let result = case rest.body.form
+                            when typeFun with f then
+                                let args = vector.new(:Atom)
+                                for i = 0 upto {extent f.params - 1} do
+                                    let p = f.params[i]
+                                    let mode = if p.isVar orif p.type.form?typeVar then "var"
+                                        elsif p.isOut orif p.type.form?typeOut then "out" else "value" end
+                                    let param = fresh(p.name unref(p.type) not(eq(mode "value")))
+                                    vector.append(:nodes.ParamEntry params tuple let v = param let mode = mode end)
+                                    if eq(mode "value") then
+                                        vector.append(:Atom args va(param))
+                                    else
+                                        let refType = if eq(mode "var") then model.varType(param.type) else model.outType(param.type) end
+                                        vector.append(:Atom args letOp(l option opAddrVar of Op with let var v = param end refType none))
+                                    end
+                                end
+                                letOp(l nodes.call(c.callee allTypeArgs vector.toArray(:Atom args) c.moduleRef c.member calleeType)
+                                    f.result none)
+                            else letOp(l nodes.typeApp(c.callee allTypeArgs c.moduleRef c.member calleeType) rest.body none)
+                        end
+                        terminate(l option sReturn of Stmt with let var value = result end)
+                    end)
+                emit(l option sFuns of Stmt with
+                    let var functions = array of
+                        nodes.newFunction(v vector.toArray(:nodes.TypeParam typeParams) vector.toArray(:nodes.ParamEntry params)
+                            resultType fbody maybe.some(:String l.frame))
+                    end
+                    let recursive = false
+                end)
+                va(v)
             end
         end
 
@@ -1114,12 +1194,6 @@ export
                         end
                         all.body
                     else t
-                end
-                if x.typeOnly andif {inner.form?typeFun orif inner.form?typeAll} then
-                    (* Its type is that of a function of type parameters then
-                     * value parameters, as which callers would call it
-                     * (docs/tasklist.md) *)
-                    fail(:Ok "a function of type parameters only whose result is a function, of type " <> model.show(t))
                 end
                 let resultType = case inner.form when typeFun with f then f.result else inner end
                 let expected = expectedParams(v.type t extent x.params)
