@@ -12,10 +12,6 @@ import
 (* The original overrides print, so the benchmark is silent *)
 let print(s: String): Ok = ok
 
-(* SML's unit, as a value folds carry: the empty tuple *)
-Let Unit = Tuple end
-let unit: Unit = tuple end
-
 Let Ints = lists.T(Int)
 Let Classes = lists.T(Ints)
 Let Connected = All(from: Int to: Int) Bool
@@ -284,10 +280,10 @@ let minimal(nverts: Int classes: Classes connected: Connected): maybe.T(Int) =
  * state.
  *
  * The original is polymorphic in the element state 'a and the fold state 'b.
- * This one is at the types h uses, unit and int: a polymorphic function passing
+ * This one is at the types h uses, Ok and Int: a polymorphic function passing
  * a function with a parameter of type Exception(B) to another polymorphic
  * function does not yet compile to C (docs/tasklist.md). *)
-Let E = Unit
+Let E = Ok
 Let B = Int
 let foldOverGraphs(
     eFolder: All(from: Int to: Int isinc: Bool eState: E state: B accross: Exception(B)) EStep(E B)
@@ -336,8 +332,8 @@ let short(lst: Ints): Bool = case lst when nil then true when cons with c then l
 
 let okSoFar(size: Int verts: Ints connected: Connected): Bool =
     begin
-        let fini: Exception(Unit) = exception fini: Unit end
-        let eFolder(elem: Int isinc: Bool eState: Picked state: Unit accross: Exception(Unit)): EStep(Picked Unit) =
+        let fini: Exception(Ok) = exception fini: Ok end
+        let eFolder(elem: Int isinc: Bool eState: Picked state: Ok accross: Exception(Ok)): EStep(Picked Ok) =
             tuple
                 let e =
                     if isinc then
@@ -348,14 +344,14 @@ let okSoFar(size: Int verts: Ints connected: Connected): Bool =
                         end
                     else eState
                     end
-                let s = unit
+                let s = ok
             end
-        let folder(eState: Picked state: Unit): Unit =
-            if {eState.ac >= 0} orif short(eState.picked) then state else raise fini with unit end end
+        let folder(eState: Picked state: Ok): Ok =
+            if {eState.ac >= 0} orif short(eState.picked) then state else raise fini with ok end end
         try
             begin
-                foldOverSubsets(:Picked :Unit)(verts eFolder tuple let ac = ~4
-                    let picked = lists.nil(:Int) end folder unit)
+                foldOverSubsets(:Picked :Ok)(verts eFolder tuple let ac = ~4
+                    let picked = lists.nil(:Int) end folder ok)
                 true
             end
         when fini then false
@@ -371,11 +367,11 @@ let h(maxSize: Int folder: All(size: Int connected: Connected state: Int) Int st
         let update(from: Int to: Int value: Bool): Ok = if from > to then ctab[from][to] := value
             else ctab[to][from] := value end
         let triangle(vnum: Int e: Int): Bool = naturalAny(e fun(f: Int): Bool connected(vnum f) andif connected(e f))
-        let eFolder(from: Int to: Int isinc: Bool eState: Unit state: Int accross: Exception(Int)): EStep(Unit Int) =
+        let eFolder(from: Int to: Int isinc: Bool eState: Ok state: Int accross: Exception(Int)): EStep(Ok Int) =
             if isinc andif triangle(from to) then raise accross with state end
-            else begin update(from to isinc) tuple let e = unit let s = state end end
+            else begin update(from to isinc) tuple let e = ok let s = state end end
             end
-        let gFolder(size: Int eState: Unit state: Int accross: Exception(Int)): Int =
+        let gFolder(size: Int eState: Ok state: Int accross: Exception(Int)): Int =
             begin
                 if size isnot 0 then classesv[size] := refine(size - 1 classesv[size - 1] connected) end
                 if maybe.isNone(:Int minimal(size classesv[size] connected)) then raise accross with state end
@@ -387,7 +383,7 @@ let h(maxSize: Int folder: All(size: Int connected: Connected state: Int) Int st
                 else raise accross with state end
                 end
             end
-        foldOverGraphs(eFolder unit gFolder state)
+        foldOverGraphs(eFolder ok gFolder state)
     end
 
 let final(size: Int connected: Connected): Int =

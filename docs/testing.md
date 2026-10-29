@@ -595,9 +595,12 @@ Starting one compiler process costs about 0.12 s (mostly importing the `quest` p
 370 processes for the golden tests, plus more for the error tests.
 
 ### 5.2. Possible Speedups (largest first)
-1. **Run tests in parallel.** `run_tests.py` runs one test at a time. Six to eight workers could plausibly bring the
-   suite under a minute. The shared build directory then needs care: either build the library modules once before
-   starting the workers, or give each worker its own build directory.
+1. **Run tests in parallel (done).** `run_tests.py` runs each phase's tests in a pool of `-j` workers (default: 8 or
+   the CPU count, whichever is smaller), each with its own build directory, and a phase's error tests the same way.
+   Phases still run one after another. The questlang tests are built once, in the background, into a shared build
+   directory, and their `run_c_compiled` tests then run in parallel there (section 2.3). The suites themselves
+   (self-hosted, bootstrap, unit tests) do not interfere: each builds into its own temporary directory, and the
+   runtime's objects are written atomically, so they can run at once if the workers are split between them.
 2. **Build the C runtime once (done).** Every link recompiled the runtime's C files from source at `-O2` (about 1.1 s
    by 2026-10-26, three files). They are now compiled once into objects kept under a key of their sources, compiler,
    and flags (`compiler_runner.runtime_objects`, [codegen-c.md](codegen-c.md) §11.3), and reused by every link.

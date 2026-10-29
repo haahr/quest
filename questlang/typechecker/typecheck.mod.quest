@@ -386,7 +386,26 @@ export
         begin
             loader.install()
             elaboration.hooks.elaborateBinding := fun(b: ast.Decl en: env.T loopDepth: Int): maybe.T(typedAst.Binding)
-                maybe.some(:typedAst.Binding bindings.elaborateBinding(newChecker(en loopDepth) b en loopDepth))
+                begin
+                    let c = newChecker(en loopDepth)
+                    (* A block recovers from its members' errors, recording
+                     * them and failing silently: the member fails with the
+                     * first one *)
+                    let firstRecorded(): Ok =
+                        if not(vector.empty(:diagnostics.CompilerError c.errors)) then
+                            diagnostics.raiseError(:Ok vector.get(:diagnostics.CompilerError c.errors 0))
+                        end
+                    let typed = try
+                        bindings.elaborateBinding(c b en loopDepth)
+                    when diagnostics.compilerError with err then
+                        begin
+                            firstRecorded()
+                            diagnostics.raiseError(:typedAst.Binding err)
+                        end
+                    end
+                    firstRecorded()
+                    maybe.some(:typedAst.Binding typed)
+                end
             ok
         end
 
