@@ -8,9 +8,9 @@
 # they are built from (under questlang/, lib/, or runtime/, and bootstrap/ for
 # the bootstrap seed) is newer than stage 2, each build compiling only the units
 # that are stale, and from nothing when the seed has changed. Set
-# QUESTC_VERBOSE=1 to see the builds' steps. Stage 1 builds stage 2 compiling
-# QUESTC_JOBS modules at once (-j; by default, as many as there are CPUs);
-# the release builds stage 1 one at a time, until a release has -j.
+# QUESTC_VERBOSE=1 to see the builds' steps. The release builds stage 1, and
+# stage 1 builds stage 2, compiling QUESTC_JOBS modules at once (-j; by default,
+# as many as there are CPUs); the bootstrap builds stage 1 one at a time.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD="$SCRIPT_DIR/.build/questc"
 STAGE1="$BUILD/stage1/questc"
@@ -69,7 +69,7 @@ if stale; then
     printf '%s\n' "$SEED_ID" > "$BUILD/seed"
     if [ "$SEED" = release ]; then
         echo "questc: building stage 1 (the release compiling $DRIVER)..." >&2
-        (cd "$SCRIPT_DIR" && QUEST_HOME="$RELEASE/home" "$RELEASE/questc" $VERBOSE -I "$SCRIPT_DIR" \
+        (cd "$SCRIPT_DIR" && QUEST_HOME="$RELEASE/home" "$RELEASE/questc" $VERBOSE -j "$JOBS" -I "$SCRIPT_DIR" \
             --build-dir "$BUILD/stage1/build" -o "$STAGE1" "$DRIVER") || exit 1
     else
         echo "questc: building stage 1 (the bootstrap compiling $DRIVER)..." >&2

@@ -794,7 +794,7 @@ build engine, so there is exactly one implementation of staleness checks, artifa
 
 ### 7.4. Parallel Builds (`-j N`, the Self-Hosted Compiler)
 The self-hosted driver's `-j N` compiles up to N modules at once (`questlang/build/engine`, `questlang/build/workers`).
-`./questc` builds its stage 2 with as many as there are CPUs (`QUESTC_JOBS`); the runner builds the self-hosting
+`./questc` builds both its stages with as many as there are CPUs (`QUESTC_JOBS`); the runner builds the self-hosting
 check's stages and the questlang tests that way. The bootstrap builds serially. A parallel build writes the same
 artifacts as a serial one, and the same `build.log` entries in the same order; only the times differ.
 
