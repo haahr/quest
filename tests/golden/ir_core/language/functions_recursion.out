@@ -4,7 +4,7 @@ main {
   let wOut: writer.T = member writer.output
   funs {
     fun printInt(x: Int): Ok {
-      let %1: String = call conv.int(x)
+      let %1: String = call external "quest_conv_int"(x)
       do call writer.putString(wOut, %1)
       let %2: Ok = call writer.putString(wOut, "\n")
       return %2
@@ -90,32 +90,35 @@ main {
   }
   let %23: Int = call fib(10)
   do call printInt(%23)
-  var count: Int = 0
+  let count: Int = 0
+  let counter: Tuple var count: Int end = tuple(count)
   funs {
     fun increment(step: Int): Ok {
-      let %24: Int = prim +(count, step)
-      count := %24
+      let %24: Int = tuple_field(counter, 0)
+      let %25: Int = prim +(%24, step)
+      store counter.#0 := %25
       return ok
     }
   }
   do call increment(5)
   do call increment(10)
-  do call printInt(count)
+  let %26: Int = tuple_field(counter, 0)
+  do call printInt(%26)
   funs {
     fun doubleVal(x.3: Int): Int {
-      let %25: Int = prim +(x.3, x.3)
-      return %25
+      let %27: Int = prim +(x.3, x.3)
+      return %27
     }
   }
   funs {
     fun combine(a.1: Int, b.1: Int): Int {
-      let %26: Int = call square(a.1)
-      let %27: Int = call doubleVal(b.1)
-      let %28: Int = prim +(%26, %27)
-      return %28
+      let %28: Int = call square(a.1)
+      let %29: Int = call doubleVal(b.1)
+      let %30: Int = prim +(%28, %29)
+      return %30
     }
   }
-  let %29: Int = call combine(5, 3)
-  do call printInt(%29)
+  let %31: Int = call combine(5, 3)
+  do call printInt(%31)
 }
 

@@ -49,8 +49,8 @@ end;
 
 COUNTER_MODULE = """module counter : Counter
 export
-    let var n = 0
-    let next(): Int = begin n := n + 1 n end
+    let s = tuple let var n = 0 end
+    let next(): Int = begin s.n := s.n + 1 s.n end
 end;
 """
 

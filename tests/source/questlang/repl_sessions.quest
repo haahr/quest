@@ -50,17 +50,17 @@ e.programDir := maybe.some(:String dir);
 e.sourceFile := "<repl>";
 
 (* The frame the next input runs in *)
-let var f = treewalk.newRoot(e.units);
-f.currentDir := e.currentDir;
-vector.append(:String f.root.callStack diagnostics.mainFrame);
+let session = tuple let var f = treewalk.newRoot(e.units) end;
+session.f.currentDir := e.currentDir;
+vector.append(:String session.f.root.callStack diagnostics.mainFrame);
 
 (* Elaborates and runs an input as a transaction, showing its phrases' results, or why it failed *)
 let input(text: String): Ok =
     begin
         emit(">> " <> text)
         let envSnapshot = env.snapshot(e)
-        let start = f
-        let frameSnapshot = treewalk.snapshot(f)
+        let start = session.f
+        let frameSnapshot = treewalk.snapshot(session.f)
         graph.newSession(e.units)
         let sm = location.newSourceMap("<repl>" text)
         let bag = diagbag.new()
@@ -72,15 +72,15 @@ let input(text: String): Ok =
                 emit("type error: " <> message(result.errors[0]))
                 failed := true
             else
-                f.sourceMap := maybe.some(:location.SourceMap sm)
+                session.f.sourceMap := maybe.some(:location.SourceMap sm)
                 try
-                    let ran = treewalk.evalProgramPhrasesIn(maybe.unwrap(:typedAst.Program result.program) f
+                    let ran = treewalk.evalProgramPhrasesIn(maybe.unwrap(:typedAst.Program result.program) session.f
                         fun(r: treewalk.PhraseResult): Ok
                             begin
                                 let shown = formatting.formatInteractiveResult(r.phrase r.value)
                                 if stringOp.length(shown) > 0 then emit(shown) end
                             end)
-                    f := ran.frame
+                    session.f := ran.frame
                 when model.runError with err then
                     emit("raised: " <> model.runErrorMessage(err))
                     failed := true
@@ -92,8 +92,8 @@ let input(text: String): Ok =
         end
         if failed then
             env.restore(e envSnapshot)
-            f := start
-            treewalk.restore(f frameSnapshot)
+            session.f := start
+            treewalk.restore(session.f frameSnapshot)
         end
     end;
 
@@ -102,11 +102,11 @@ let known(name: String): Ok =
     begin
         let unit = graph.find(e.units option moduleUnit of units.UnitKind end name)
         emit("  " <> name <> ": unit " <> if maybe.isSome(:graph.Unit unit) then "loaded" else "absent" end
-            <> ", value " <> if hashMap.contains(:String :model.Value f.root.moduleValues name) then "run" else "absent" end)
+            <> ", value " <> if hashMap.contains(:String :model.Value session.f.root.moduleValues name) then "run" else "absent" end)
     end;
 
 save("counter.int.quest" "interface Counter export next(): Int end\n");
-save("counter.mod.quest" "module counter: Counter export let var n = 0 let next(): Int = begin n := n + 1 n end end\n");
+save("counter.mod.quest" "module counter: Counter export let s = tuple let var n = 0 end let next(): Int = begin s.n := s.n + 1 s.n end end\n");
 
 (* Bindings stay for later inputs, and a failed input's are rolled back *)
 input("let a = 10");

@@ -4,7 +4,7 @@ main {
   let wOut: writer.T = member writer.output
   funs {
     fun printInt(x: Int): Ok {
-      let %1: String = call conv.int(x)
+      let %1: String = call external "quest_conv_int"(x)
       do call writer.putString(wOut, %1)
       let %2: Ok = call writer.putString(wOut, "\n")
       return %2
@@ -67,16 +67,19 @@ main {
   let %13: Fun(c: Int): Int = call %12(20)
   let %14: Int = call %13(12)
   do call printInt(%14)
-  var count: Int = 10
+  let count: Int = 10
+  let counter: Tuple var count: Int end = tuple(count)
   funs {
     fun bump(delta: Int): Ok {
-      let %15: Int = prim +(count, delta)
-      count := %15
+      let %15: Int = tuple_field(counter, 0)
+      let %16: Int = prim +(%15, delta)
+      store counter.#0 := %16
       return ok
     }
   }
   do call bump(5)
   do call bump(27)
-  do call printInt(count)
+  let %17: Int = tuple_field(counter, 0)
+  do call printInt(%17)
 }
 

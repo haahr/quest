@@ -1,24 +1,24 @@
 import writer = "writer" : Writer
 import conv = "conv" : Conv
 fun printInt(x: Int): Ok {
-  let %8: String = call conv.int(x)
-  do call writer.putString(wOut, %8)
-  let %9: Ok = call writer.putString(wOut, "\n")
-  return %9
-}
-fun square(x.1: Int): Int {
-  let %10: Int = prim *(x.1, x.1)
+  let %9: String = call external "quest_conv_int"(x)
+  do call writer.putString(wOut, %9)
+  let %10: Ok = call writer.putString(wOut, "\n")
   return %10
 }
+fun square(x.1: Int): Int {
+  let %11: Int = prim *(x.1, x.1)
+  return %11
+}
 fun add3(a: Int, b: Int, c: Int): Int {
-  let %11: Int = prim +(b, c)
-  let %12: Int = prim +(a, %11)
-  return %12
+  let %12: Int = prim +(b, c)
+  let %13: Int = prim +(a, %12)
+  return %13
 }
 fun f {env}(y: Int): Int {
   let x.2: Int = env_field(env, 0)
-  let %13: Int = prim -(x.2, y)
-  return %13
+  let %14: Int = prim -(x.2, y)
+  return %14
 }
 fun sub(x.3: Int): Fun(y: Int): Int {
   let f.1: Fun(y: Int): Int = closure f {x.3}
@@ -28,14 +28,14 @@ fun fact(n: Int): Int {
   join k1(r: Int) {
     return r
   } in {
-    let %14: Bool = prim <=(n, 1)
-    if %14 {
+    let %15: Bool = prim <=(n, 1)
+    if %15 {
       jump k1(1)
     } else {
-      let %15: Int = prim -(n, 1)
-      let %16: Int = call fact.1(%15)
-      let %17: Int = prim *(n, %16)
-      jump k1(%17)
+      let %16: Int = prim -(n, 1)
+      let %17: Int = call fact.1(%16)
+      let %18: Int = prim *(n, %17)
+      jump k1(%18)
     }
   }
 }
@@ -43,42 +43,43 @@ fun fib(n.1: Int): Int {
   join k2(r.1: Int) {
     return r.1
   } in {
-    let %18: Bool = prim <=(n.1, 0)
-    if %18 {
+    let %19: Bool = prim <=(n.1, 0)
+    if %19 {
       jump k2(0)
     } else {
       join k3(r.2: Int) {
         jump k2(r.2)
       } in {
-        let %19: Bool = prim is(n.1, 1)
-        if %19 {
+        let %20: Bool = prim is(n.1, 1)
+        if %20 {
           jump k3(1)
         } else {
-          let %20: Int = prim -(n.1, 1)
-          let %21: Int = call fib.1(%20)
-          let %22: Int = prim -(n.1, 2)
-          let %23: Int = call fib.1(%22)
-          let %24: Int = prim +(%21, %23)
-          jump k3(%24)
+          let %21: Int = prim -(n.1, 1)
+          let %22: Int = call fib.1(%21)
+          let %23: Int = prim -(n.1, 2)
+          let %24: Int = call fib.1(%23)
+          let %25: Int = prim +(%22, %24)
+          jump k3(%25)
         }
       }
     }
   }
 }
 fun increment(step: Int): Ok {
-  let %25: Int = prim +(count, step)
-  count := %25
+  let %26: Int = tuple_field(counter, 0)
+  let %27: Int = prim +(%26, step)
+  store counter.#0 := %27
   return ok
 }
 fun doubleVal(x.4: Int): Int {
-  let %26: Int = prim +(x.4, x.4)
-  return %26
+  let %28: Int = prim +(x.4, x.4)
+  return %28
 }
 fun combine(a.1: Int, b.1: Int): Int {
-  let %27: Int = call square.1(a.1)
-  let %28: Int = call doubleVal.1(b.1)
-  let %29: Int = prim +(%27, %28)
-  return %29
+  let %29: Int = call square.1(a.1)
+  let %30: Int = call doubleVal.1(b.1)
+  let %31: Int = prim +(%29, %30)
+  return %31
 }
 main {
   let wOut: writer.T = member writer.output
@@ -99,14 +100,16 @@ main {
   let fib.1: Fun(n: Int): Int = closure fib {}
   let %6: Int = call fib.1(10)
   do call printInt.1(%6)
-  var count: Int = 0
+  let count: Int = 0
+  let counter: Tuple var count: Int end = tuple(count)
   let increment.1: Fun(step: Int): Ok = closure increment {}
   do call increment.1(5)
   do call increment.1(10)
-  do call printInt.1(count)
+  let %7: Int = tuple_field(counter, 0)
+  do call printInt.1(%7)
   let doubleVal.1: Fun(x: Int): Int = closure doubleVal {}
   let combine.1: Fun(a: Int b: Int): Int = closure combine {}
-  let %7: Int = call combine.1(5, 3)
-  do call printInt.1(%7)
+  let %8: Int = call combine.1(5, 3)
+  do call printInt.1(%8)
 }
 

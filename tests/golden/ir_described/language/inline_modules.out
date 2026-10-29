@@ -1,21 +1,24 @@
 import int = "int" : IntOp
-static descriptor(Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end)
+static descriptor(Record start: Int state: Tuple var sum: Int end add: Fun(n: Int): Int total: Fun(): Int end)
 static descriptor(Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end)
 static descriptor(Int)
 static descriptor(Record value: Fun(n: Int): Int end)
 static descriptor(Fun(c: counter.T): Int)
 static descriptor(Fun(n: Int): counter.T)
-static offsets(Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end <- Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end) registered
+static offsets(Record start: Int state: Tuple var sum: Int end add: Fun(n: Int): Int total: Fun(): Int end <- Record start: Int state: Tuple var sum: Int end add: Fun(n: Int): Int total: Fun(): Int end) registered
 static offsets(Record make: Fun(n: Int): Int get: Fun(c: Int): Int next: Fun(c: Int): Int end <- Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end) registered
 static offsets(Record value: Fun(n: Int): Int end <- Record value: Fun(n: Int): Int end) registered
 fun add(n: Int): Int {
-  let %16: Int = prim +(sum, n)
-  sum := %16
-  return sum
+  let %16: Int = tuple_field(state, 0)
+  let %17: Int = prim +(%16, n)
+  store state.#0 := %17
+  let %18: Int = tuple_field(state, 0)
+  return %18
 }
 fun total(): Int {
-  let %17: Int = prim +(start, sum)
-  return %17
+  let %19: Int = tuple_field(state, 0)
+  let %20: Int = prim +(start, %19)
+  return %20
 }
 fun make(n.1: Int): T {
   return n.1
@@ -24,26 +27,27 @@ fun get(c: T): Int {
   return c
 }
 fun next(c.1: T): T {
-  let %18: Int = prim +(c.1, 1)
-  return %18
+  let %21: Int = prim +(c.1, 1)
+  return %21
 }
 fun value(n.2: Int): Int {
-  let %19: Int = call int.abs(n.2)
-  return %19
+  let %22: Int = call int.abs(n.2)
+  return %22
 }
 fun addTwice(n.3: Int): Int {
-  let %20: Int = call tally.add(n.3)
-  let %21: Int = call tally.add(n.3)
-  return %21
+  let %23: Int = call tally.add(n.3)
+  let %24: Int = call tally.add(n.3)
+  return %24
 }
 module tally : Tally {
   let start: Int = 100
-  var sum: Int = 0
+  let sum: Int = 0
+  let state: Tuple var sum: Int end = tuple(sum)
   let add.1: Fun(n: Int): Int = closure add {}
   let total.1: Fun(): Int = closure total {}
-  let tally_record_box: box(Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end) = record(start = start, sum = sum, add = add.1, total = total.1) with offsets(Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end <- Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end) of descriptor(Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end)
-  let tally_record: Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end = convert(tally_record_box, slot_unbox)
-  export start = start, sum = sum, add = add.1, total = total.1
+  let tally_record_box: box(Record start: Int state: Tuple var sum: Int end add: Fun(n: Int): Int total: Fun(): Int end) = record(start = start, state = state, add = add.1, total = total.1) with offsets(Record start: Int state: Tuple var sum: Int end add: Fun(n: Int): Int total: Fun(): Int end <- Record start: Int state: Tuple var sum: Int end add: Fun(n: Int): Int total: Fun(): Int end) of descriptor(Record start: Int state: Tuple var sum: Int end add: Fun(n: Int): Int total: Fun(): Int end)
+  let tally_record: Record start: Int state: Tuple var sum: Int end add: Fun(n: Int): Int total: Fun(): Int end = convert(tally_record_box, slot_unbox)
+  export start = start, state = state, add = add.1, total = total.1
   record tally_record
 }
 module counter : Counter {

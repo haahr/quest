@@ -8,23 +8,23 @@ import dynamic = "dynamic" : Dynamic
 import writer = "writer" : Writer
 import reader = "reader" : Reader
 main {
-  let %1: String = call conv.int(42)
-  let %2: String = call conv.int(-42)
-  let %3: String = call conv.real(3.14)
-  let %4: String = call conv.real(-2.5)
+  let %1: String = call external "quest_conv_int"(42)
+  let %2: String = call external "quest_conv_int"(-42)
+  let %3: String = call external "quest_conv_real"(3.14)
+  let %4: String = call external "quest_conv_real"(-2.5)
   let %5: String = call conv.bool(true)
   let %6: String = call conv.okay()
-  let c: Char = call ascii.char(65)
-  let %7: Int = call ascii.val(c)
+  let c: Char = call external "quest_ascii_char"(65)
+  let %7: Int = call external "quest_ascii_val"(c)
   join k1(r: Char) {
     let %8: Int = prim -(0, 100)
     let %9: Int = call int.abs(%8)
     let %10: Int = call int.min(5, 10)
     let %11: Int = call int.max(5, 10)
-    let %12: Int = call ascii.val('Z')
+    let %12: Int = call external "quest_ascii_val"('Z')
     let %13: Int = call int.max(%12, 100)
-    let %14: Int = call real.floor(3.9)
-    let %15: Int = call real.round(3.2)
+    let %14: Int = call external "quest_real_floor"(3.9)
+    let %15: Int = call external "quest_real_round"(3.2)
     let %16: Real = prim --(0.0, 5.5)
     let %17: Real = call real.abs(%16)
     let %18: Real = call real.min(1.5, 2.5)
@@ -36,50 +36,50 @@ main {
     let %24: Bool = call real.greater(2.0, 1.0)
     let %25: Bool = call real.smallerEq(1.0, 1.0)
     let %26: Bool = call real.greaterEq(1.0, 1.0)
-    let s: String = call string.new(5, 'x')
-    do call string.setSub(s, 0, "hello", 0, 5)
-    let %27: Int = call string.length(s)
-    let %28: Char = call string.getChar(s, 1)
-    do call string.setChar(s, 0, 'H')
-    let %29: String = call string.getSub(s, 0, 2)
-    let %30: String = call string.cat(s, " world")
+    let s: String = call external "quest_string_alloc"(5, 'x')
+    let %27: Ok = call external "quest_string_set_sub"(s, 0, "hello", 0, 5)
+    let %28: Int = call external "quest_string_length"(s)
+    let %29: Char = call external "quest_string_get_char"(s, 1)
+    let %30: Ok = call external "quest_string_set_char"(s, 0, 'H')
+    let %31: String = call external "quest_string_get_sub"(s, 0, 2)
+    let %32: String = call external "quest_string_concat"(s, " world")
     let a: Array(Int) = array_rep(4, 10)
-    let %31: Int = prim extent(a)
+    let %33: Int = prim extent(a)
     store a[2] := 99
-    let %32: Int = index(a, 2)
+    let %34: Int = index(a, 2)
     join k2(r.1: Int) {
       let d: T = call dynamic.new [Int](123)
       let copied: T = call dynamic.copy(d)
-      let %33: Int = call dynamic.be [Int](copied)
+      let %35: Int = call dynamic.be [Int](copied)
       let w: writer.T = call writer.file("io.txt")
       do call writer.putString(w, "Quest I/O\n")
       do call writer.close(w)
       let r.2: reader.T = call reader.file("io.txt")
-      let %34: String = call reader.getString(r.2, 9)
+      let %36: String = call reader.getString(r.2, 9)
       do call reader.close(r.2)
     } in {
-      let %35: Exception = member arrayOp.error
-      try catching (%35) {
-        let %36: Int = index(a, 10)
-        jump k2(%36)
+      let %37: Exception = member arrayOp.error
+      try catching (%37) {
+        let %38: Int = index(a, 10)
+        jump k2(%38)
       } handle (e: Exception) {
-        let %37: Bool = prim is(e, %35)
-        if %37 {
-          let %38: Int = prim -(0, 1)
-          jump k2(%38)
+        let %39: Bool = prim is(e, %37)
+        if %39 {
+          let %40: Int = prim -(0, 1)
+          jump k2(%40)
         } else {
           reraise e
         }
       }
     }
   } in {
-    let %39: Exception = member ascii.error
-    try catching (%39) {
-      let %40: Char = call ascii.char(999)
-      jump k1(%40)
+    let %41: Exception = member ascii.error
+    try catching (%41) {
+      let %42: Char = call external "quest_ascii_char"(999)
+      jump k1(%42)
     } handle (e.1: Exception) {
-      let %41: Bool = prim is(e.1, %39)
-      if %41 {
+      let %43: Bool = prim is(e.1, %41)
+      if %43 {
         jump k1('?')
       } else {
         reraise e.1

@@ -15,7 +15,7 @@ main {
   funs {
     fun show(what: String, r: process.Result): Ok {
       let %4: Int = tuple_field(r, 0)
-      let %5: String = call conv.int(%4)
+      let %5: String = call external "quest_conv_int"(%4)
       let %6: String = tuple_field(r, 1)
       let %7: String = tuple_field(r, 2)
       let %8: String = prim <>(%7, "]")
@@ -53,10 +53,10 @@ main {
   let %27: process.T = call sh("i=0; while [ $i -lt 20000 ]; do echo line; i=$((i+1)); done")
   let big: Result = call process.wait(%27)
   let %28: Int = tuple_field(big, 0)
-  let %29: String = call conv.int(%28)
+  let %29: String = call external "quest_conv_int"(%28)
   let %30: String = tuple_field(big, 1)
-  let %31: Int = call stringOp.length(%30)
-  let %32: String = call conv.int(%31)
+  let %31: Int = call external "quest_string_length"(%30)
+  let %32: String = call external "quest_conv_int"(%31)
   let %33: String = prim <>(" ", %32)
   let %34: String = prim <>(%29, %33)
   let %35: String = prim <>("big: ", %34)
@@ -65,14 +65,14 @@ main {
   let %37: process.T = call sh("echo quick; exit 4")
   let ps: Array(process.T) = array(%36, %37)
   let first: Int = call process.waitAny(ps)
-  let %38: String = call conv.int(first)
+  let %38: String = call external "quest_conv_int"(first)
   let %39: String = prim <>("first to finish: ", %38)
   do call print(%39)
   let %40: process.T = index(ps, first)
   let %41: Result = call process.wait(%40)
   do call show("quick", %41)
   let %42: Int = call process.waitAny(ps)
-  let %43: String = call conv.int(%42)
+  let %43: String = call external "quest_conv_int"(%42)
   let %44: String = prim <>("waitAny again: ", %43)
   do call print(%44)
   let %45: process.T = index(ps, 0)
@@ -100,23 +100,23 @@ main {
       break L1
     }
   }
-  let %57: String = call conv.int(total)
+  let %57: String = call external "quest_conv_int"(total)
   let %58: String = prim <>("total: ", %57)
   do call print(%58)
-  do call system.makeDirectory("sub")
+  let %59: Ok = call external "quest_system_make_directory"("sub")
   let w: writer.T = call writer.file("sub/inside.txt")
   do call writer.close(w)
-  let %59: Array(String) = array("ls")
-  let %60: process.T = call process.spawnIn(%59, "sub")
-  let %61: Result = call process.wait(%60)
-  do call show("spawnIn", %61)
+  let %60: Array(String) = array("ls")
+  let %61: process.T = call process.spawnIn(%60, "sub")
+  let %62: Result = call process.wait(%61)
+  do call show("spawnIn", %62)
   let sleeper: process.T = call sh("sleep 10")
   do call process.kill(sleeper, 15)
-  let %62: Result = call process.wait(sleeper)
-  let %63: Int = tuple_field(%62, 0)
-  let %64: String = call conv.int(%63)
-  let %65: String = prim <>("killed: ", %64)
-  do call print(%65)
+  let %63: Result = call process.wait(sleeper)
+  let %64: Int = tuple_field(%63, 0)
+  let %65: String = call external "quest_conv_int"(%64)
+  let %66: String = prim <>("killed: ", %65)
+  do call print(%66)
   do call process.kill(sleeper, 15)
   do call print("kill after wait: ok")
   join k1(r.1: String) {
@@ -128,15 +128,15 @@ main {
         join k4(r.4: String) {
           do call print(r.4)
         } in {
-          let %66: Exception = member system.error
-          try catching (%66) {
-            let %67: Array(process.T) = array()
-            let %68: Int = call process.waitAny(%67)
-            let %69: String = call conv.int(%68)
-            jump k4(%69)
+          let %67: Exception = member system.error
+          try catching (%67) {
+            let %68: Array(process.T) = array()
+            let %69: Int = call process.waitAny(%68)
+            let %70: String = call external "quest_conv_int"(%69)
+            jump k4(%70)
           } handle (e: Exception) {
-            let %70: Bool = prim is(e, %66)
-            if %70 {
+            let %71: Bool = prim is(e, %67)
+            if %71 {
               jump k4("nothing to wait for")
             } else {
               reraise e
@@ -144,16 +144,16 @@ main {
           }
         }
       } in {
-        let %71: Exception = member system.error
-        try catching (%71) {
-          let %72: Array(String) = array("ls")
-          let %73: process.T = call process.spawnIn(%72, "no-such-dir")
-          let %74: Int = call process.pid(%73)
-          let %75: String = call conv.int(%74)
-          jump k3(%75)
+        let %72: Exception = member system.error
+        try catching (%72) {
+          let %73: Array(String) = array("ls")
+          let %74: process.T = call process.spawnIn(%73, "no-such-dir")
+          let %75: Int = call process.pid(%74)
+          let %76: String = call external "quest_conv_int"(%75)
+          jump k3(%76)
         } handle (e.1: Exception) {
-          let %76: Bool = prim is(e.1, %71)
-          if %76 {
+          let %77: Bool = prim is(e.1, %72)
+          if %77 {
             jump k3("no directory")
           } else {
             reraise e.1
@@ -161,16 +161,16 @@ main {
         }
       }
     } in {
-      let %77: Exception = member system.error
-      try catching (%77) {
-        let %78: Array(String) = array()
-        let %79: process.T = call process.spawn(%78)
-        let %80: Int = call process.pid(%79)
-        let %81: String = call conv.int(%80)
-        jump k2(%81)
+      let %78: Exception = member system.error
+      try catching (%78) {
+        let %79: Array(String) = array()
+        let %80: process.T = call process.spawn(%79)
+        let %81: Int = call process.pid(%80)
+        let %82: String = call external "quest_conv_int"(%81)
+        jump k2(%82)
       } handle (e.2: Exception) {
-        let %82: Bool = prim is(e.2, %77)
-        if %82 {
+        let %83: Bool = prim is(e.2, %78)
+        if %83 {
           jump k2("no program")
         } else {
           reraise e.2
@@ -178,16 +178,16 @@ main {
       }
     }
   } in {
-    let %83: Exception = member system.error
-    try catching (%83) {
-      let %84: Array(String) = array("no-such-program-quest")
-      let %85: process.T = call process.spawn(%84)
-      let %86: Int = call process.pid(%85)
-      let %87: String = call conv.int(%86)
-      jump k1(%87)
+    let %84: Exception = member system.error
+    try catching (%84) {
+      let %85: Array(String) = array("no-such-program-quest")
+      let %86: process.T = call process.spawn(%85)
+      let %87: Int = call process.pid(%86)
+      let %88: String = call external "quest_conv_int"(%87)
+      jump k1(%88)
     } handle (e.3: Exception) {
-      let %88: Bool = prim is(e.3, %83)
-      if %88 {
+      let %89: Bool = prim is(e.3, %84)
+      if %89 {
         jump k1("cannot start")
       } else {
         reraise e.3

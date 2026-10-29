@@ -1,22 +1,26 @@
 import int = "int" : IntOp
 module tally : Tally {
   let start: Int = 100
-  var sum: Int = 0
+  let sum: Int = 0
+  let state: Tuple var sum: Int end = tuple(sum)
   funs {
     fun add(n: Int): Int {
-      let %1: Int = prim +(sum, n)
-      sum := %1
-      return sum
+      let %1: Int = tuple_field(state, 0)
+      let %2: Int = prim +(%1, n)
+      store state.#0 := %2
+      let %3: Int = tuple_field(state, 0)
+      return %3
     }
   }
   funs {
     fun total(): Int {
-      let %2: Int = prim +(start, sum)
-      return %2
+      let %4: Int = tuple_field(state, 0)
+      let %5: Int = prim +(start, %4)
+      return %5
     }
   }
-  let tally_record: Record start: Int sum: Int add: Fun(n: Int): Int total: Fun(): Int end = record(start = start, sum = sum, add = add, total = total)
-  export start = start, sum = sum, add = add, total = total
+  let tally_record: Record start: Int state: Tuple var sum: Int end add: Fun(n: Int): Int total: Fun(): Int end = record(start = start, state = state, add = add, total = total)
+  export start = start, state = state, add = add, total = total
   record tally_record
 }
 module counter : Counter {
@@ -32,8 +36,8 @@ module counter : Counter {
   }
   funs {
     fun next(c.1: T): T {
-      let %3: Int = prim +(c.1, 1)
-      return %3
+      let %6: Int = prim +(c.1, 1)
+      return %6
     }
   }
   let counter_record: Record make: Fun(n: Int): T get: Fun(c: T): Int next: Fun(c: T): T end = record(make = make, get = get, next = next)
@@ -43,8 +47,8 @@ module counter : Counter {
 module absolute : Absolute {
   funs {
     fun value(n.2: Int): Int {
-      let %4: Int = call int.abs(n.2)
-      return %4
+      let %7: Int = call int.abs(n.2)
+      return %7
     }
   }
   let absolute_record: Record value: Fun(n: Int): Int end = record(value = value)
@@ -52,27 +56,27 @@ module absolute : Absolute {
   record absolute_record
 }
 main {
-  let %5: Int = member tally.start
-  let %6: Int = call tally.add(3)
-  let %7: Int = call tally.add(4)
-  let %8: Int = call tally.total()
+  let %8: Int = member tally.start
+  let %9: Int = call tally.add(3)
+  let %10: Int = call tally.add(4)
+  let %11: Int = call tally.total()
   funs {
     fun addTwice(n.3: Int): Int {
-      let %9: Int = call tally.add(n.3)
-      let %10: Int = call tally.add(n.3)
-      return %10
+      let %12: Int = call tally.add(n.3)
+      let %13: Int = call tally.add(n.3)
+      return %13
     }
   }
-  let %11: Int = call addTwice(10)
-  let %12: Int = call tally.total()
+  let %14: Int = call addTwice(10)
+  let %15: Int = call tally.total()
   let k: counter.T = call counter.make(4)
-  let %13: counter.T = call counter.next(k)
-  let %14: Int = call counter.get(%13)
+  let %16: counter.T = call counter.next(k)
+  let %17: Int = call counter.get(%16)
   let m: Module 'counter' = module counter
-  let %15: Fun(c: counter.T): Int = record_field(m, get)
-  let %16: Fun(n: Int): counter.T = record_field(m, make)
-  let %17: counter.T = call %16(9)
-  let %18: Int = call %15(%17)
-  let %19: Int = call absolute.value(-7)
+  let %18: Fun(c: counter.T): Int = record_field(m, get)
+  let %19: Fun(n: Int): counter.T = record_field(m, make)
+  let %20: counter.T = call %19(9)
+  let %21: Int = call %18(%20)
+  let %22: Int = call absolute.value(-7)
 }
 

@@ -67,13 +67,13 @@ main {
       } in {
         let %14: Bool = prim <(n, 8)
         if %14 {
-          let %15: String = call conv.int(n)
+          let %15: String = call external "quest_conv_int"(n)
           jump k4(%15)
         } else {
           let %16: Int = prim /(n, 8)
           let %17: String = call octal(%16)
           let %18: Int = prim %(n, 8)
-          let %19: String = call conv.int(%18)
+          let %19: String = call external "quest_conv_int"(%18)
           let %20: String = prim <>(%17, %19)
           jump k4(%20)
         }
@@ -88,11 +88,11 @@ main {
         let %23: Int = tuple_field(s.1, 1)
         let %24: String = call octal(%23)
         let %25: Real = tuple_field(s.1, 4)
-        let %26: String = call conv.real(%25)
+        let %26: String = call external "quest_conv_real"(%25)
         let %27: Int = tuple_field(s.1, 7)
-        let %28: String = call conv.int(%27)
+        let %28: String = call external "quest_conv_int"(%27)
         let %29: Int = tuple_field(s.1, 6)
-        let %30: String = call conv.int(%29)
+        let %30: String = call external "quest_conv_int"(%29)
         let %31: String = prim <>(" atime_ns ", %30)
         let %32: String = prim <>(%28, %31)
         let %33: String = prim <>(" mtime_ns ", %32)
@@ -113,7 +113,7 @@ main {
           jump k5("")
         } else {
           let %45: Int = tuple_field(s.1, 0)
-          let %46: String = call conv.int(%45)
+          let %46: String = call external "quest_conv_int"(%45)
           let %47: String = prim <>(" size ", %46)
           jump k5(%47)
         }
@@ -123,40 +123,40 @@ main {
   let w: writer.T = call writer.file("data.txt")
   do call writer.putString(w, "twelve bytes")
   do call writer.close(w)
-  do call system.makeDirectory("dir")
+  let %48: Ok = call external "quest_system_make_directory"("dir")
   do call sh("chmod 640 data.txt && chmod 750 dir")
   do call sh("touch -d 2020-01-02T03:04:05.25Z data.txt && touch -d 2021-06-07T08:09:10Z dir")
   do call sh("ln -s data.txt link && ln -s missing.txt dangling")
-  let %48: T = call fileStats.stat("data.txt")
-  do call show("data.txt", %48)
-  let %49: T = call fileStats.stat("dir")
-  do call show("dir", %49)
-  let %50: T = call fileStats.stat("link")
-  do call show("link", %50)
-  let %51: T = call fileStats.lstat("link")
-  let %52: Kind = tuple_field(%51, 2)
-  let %53: String = call kindName(%52)
-  let %54: String = prim <>("lstat link: ", %53)
-  do call print(%54)
-  let %55: T = call fileStats.lstat("dangling")
-  let %56: Kind = tuple_field(%55, 2)
-  let %57: String = call kindName(%56)
-  let %58: String = prim <>("lstat dangling: ", %57)
-  do call print(%58)
+  let %49: T = call fileStats.stat("data.txt")
+  do call show("data.txt", %49)
+  let %50: T = call fileStats.stat("dir")
+  do call show("dir", %50)
+  let %51: T = call fileStats.stat("link")
+  do call show("link", %51)
+  let %52: T = call fileStats.lstat("link")
+  let %53: Kind = tuple_field(%52, 2)
+  let %54: String = call kindName(%53)
+  let %55: String = prim <>("lstat link: ", %54)
+  do call print(%55)
+  let %56: T = call fileStats.lstat("dangling")
+  let %57: Kind = tuple_field(%56, 2)
+  let %58: String = call kindName(%57)
+  let %59: String = prim <>("lstat dangling: ", %58)
+  do call print(%59)
   let s.2: T = call fileStats.stat("data.txt")
-  let %59: Int = tuple_field(s.2, 8)
-  let %60: Bool = prim >(%59, 0)
-  let %61: String = call conv.bool(%60)
-  let %62: String = prim <>("ctime_ns positive: ", %61)
-  do call print(%62)
+  let %60: Int = tuple_field(s.2, 8)
+  let %61: Bool = prim >(%60, 0)
+  let %62: String = call conv.bool(%61)
+  let %63: String = prim <>("ctime_ns positive: ", %62)
+  do call print(%63)
   funs {
     fun found(path: String): String {
       join k6(r.5: String) {
         return r.5
       } in {
-        let %63: maybe.T(T) = call fileStats.find(path)
-        let %64: Bool = call maybe.isSome [fileStats.T](%63)
-        if %64 {
+        let %64: maybe.T(T) = call fileStats.find(path)
+        let %65: Bool = call maybe.isSome [fileStats.T](%64)
+        if %65 {
           jump k6("found")
         } else {
           jump k6("none")
@@ -169,9 +169,9 @@ main {
       join k7(r.6: String) {
         return r.6
       } in {
-        let %65: maybe.T(T) = call fileStats.lfind(path.1)
-        let %66: Bool = call maybe.isSome [fileStats.T](%65)
-        if %66 {
+        let %66: maybe.T(T) = call fileStats.lfind(path.1)
+        let %67: Bool = call maybe.isSome [fileStats.T](%66)
+        if %67 {
           jump k7("found")
         } else {
           jump k7("none")
@@ -179,34 +179,34 @@ main {
       }
     }
   }
-  let %67: String = call found("data.txt")
-  let %68: String = prim <>("find data.txt: ", %67)
-  do call print(%68)
-  let %69: String = call found("missing.txt")
-  let %70: String = prim <>("find missing.txt: ", %69)
-  do call print(%70)
-  let %71: String = call found("data.txt/x")
-  let %72: String = prim <>("find data.txt/x: ", %71)
-  do call print(%72)
-  let %73: String = call found("dangling")
-  let %74: String = prim <>("find dangling: ", %73)
-  do call print(%74)
-  let %75: String = call lfound("dangling")
-  let %76: String = prim <>("lfind dangling: ", %75)
-  do call print(%76)
+  let %68: String = call found("data.txt")
+  let %69: String = prim <>("find data.txt: ", %68)
+  do call print(%69)
+  let %70: String = call found("missing.txt")
+  let %71: String = prim <>("find missing.txt: ", %70)
+  do call print(%71)
+  let %72: String = call found("data.txt/x")
+  let %73: String = prim <>("find data.txt/x: ", %72)
+  do call print(%73)
+  let %74: String = call found("dangling")
+  let %75: String = prim <>("find dangling: ", %74)
+  do call print(%75)
+  let %76: String = call lfound("dangling")
+  let %77: String = prim <>("lfind dangling: ", %76)
+  do call print(%77)
   join k8(r.7: String) {
-    let %77: String = prim <>("stat missing.txt: ", r.7)
-    do call print(%77)
+    let %78: String = prim <>("stat missing.txt: ", r.7)
+    do call print(%78)
   } in {
-    let %78: Exception = member system.error
-    try catching (%78) {
-      let %79: T = call fileStats.stat("missing.txt")
-      let %80: Kind = tuple_field(%79, 2)
-      let %81: String = call kindName(%80)
-      jump k8(%81)
+    let %79: Exception = member system.error
+    try catching (%79) {
+      let %80: T = call fileStats.stat("missing.txt")
+      let %81: Kind = tuple_field(%80, 2)
+      let %82: String = call kindName(%81)
+      jump k8(%82)
     } handle (e: Exception) {
-      let %82: Bool = prim is(e, %78)
-      if %82 {
+      let %83: Bool = prim is(e, %79)
+      if %83 {
         jump k8("system.error")
       } else {
         reraise e

@@ -217,12 +217,13 @@ In all contexts, `/` in expressions (e.g. `10 / 2`) remains the standard divisio
 Cardelli's module system defines modules as link-time singletons. At runtime:
 - Each module is evaluated at most once when first imported.
 - Subsequent imports of the same module retrieve the cached module record (`QRecord`).
-- Mutable state (`let var`) encapsulated within a module is preserved across all importing sites.
+- Mutable state encapsulated within a module (held in a data structure, `let state = tuple let var count = 0 end`,
+  since its functions may not refer directly to a global `var`) is preserved across all importing sites.
 
 ### Example: Shared Mutable State Across Diamond Imports
 ```
         +---------------+
-        |  store.mod    |  (let var count = 0)
+        |  store.mod    |  (let state = tuple let var count = 0 end)
         +---------------+
           /           \
          /             \

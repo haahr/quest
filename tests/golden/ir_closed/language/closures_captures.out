@@ -1,27 +1,27 @@
 import writer = "writer" : Writer
 import conv = "conv" : Conv
 fun printInt(x: Int): Ok {
-  let %7: String = call conv.int(x)
-  do call writer.putString(wOut, %7)
-  let %8: Ok = call writer.putString(wOut, "\n")
-  return %8
-}
-fun apply(fn: Fun(x: Int): Int, x.1: Int): Int {
-  let %9: Int = call fn(x.1)
+  let %8: String = call external "quest_conv_int"(x)
+  do call writer.putString(wOut, %8)
+  let %9: Ok = call writer.putString(wOut, "\n")
   return %9
 }
-fun inc(x.2: Int): Int {
-  let %10: Int = prim +(x.2, 1)
+fun apply(fn: Fun(x: Int): Int, x.1: Int): Int {
+  let %10: Int = call fn(x.1)
   return %10
 }
-fun f(x.3: Int): Int {
-  let %11: Int = prim *(x.3, 3)
+fun inc(x.2: Int): Int {
+  let %11: Int = prim +(x.2, 1)
   return %11
+}
+fun f(x.3: Int): Int {
+  let %12: Int = prim *(x.3, 3)
+  return %12
 }
 fun f.1 {env}(x.4: Int): Int {
   let base: Int = env_field(env, 0)
-  let %12: Int = prim +(base, x.4)
-  return %12
+  let %13: Int = prim +(base, x.4)
+  return %13
 }
 fun makeAdder(base.1: Int): Fun(x: Int): Int {
   let f.7: Fun(x: Int): Int = closure f.1 {base.1}
@@ -30,9 +30,9 @@ fun makeAdder(base.1: Int): Fun(x: Int): Int {
 fun f.2 {env.1}(c: Int): Int {
   let b: Int = env_field(env.1, 0)
   let a: Int = env_field(env.1, 1)
-  let %13: Int = prim +(b, c)
-  let %14: Int = prim +(a, %13)
-  return %14
+  let %14: Int = prim +(b, c)
+  let %15: Int = prim +(a, %14)
+  return %15
 }
 fun f.3 {env.2}(b.1: Int): Fun(c: Int): Int {
   let a.1: Int = env_field(env.2, 0)
@@ -44,8 +44,9 @@ fun f.4(a.2: Int): Fun(b: Int): Fun(c: Int): Int {
   return f.9
 }
 fun bump(delta: Int): Ok {
-  let %15: Int = prim +(count, delta)
-  count := %15
+  let %16: Int = tuple_field(counter, 0)
+  let %17: Int = prim +(%16, delta)
+  store counter.#0 := %17
   return ok
 }
 main {
@@ -67,10 +68,12 @@ main {
   let %5: Fun(c: Int): Int = call %4(20)
   let %6: Int = call %5(12)
   do call printInt.1(%6)
-  var count: Int = 10
+  let count: Int = 10
+  let counter: Tuple var count: Int end = tuple(count)
   let bump.1: Fun(delta: Int): Ok = closure bump {}
   do call bump.1(5)
   do call bump.1(27)
-  do call printInt.1(count)
+  let %7: Int = tuple_field(counter, 0)
+  do call printInt.1(%7)
 }
 
