@@ -1115,6 +1115,12 @@ export
                         all.body
                     else t
                 end
+                if x.typeOnly andif {inner.form?typeFun orif inner.form?typeAll} then
+                    (* Its type is that of a function of type parameters then
+                     * value parameters, as which callers would call it
+                     * (docs/tasklist.md) *)
+                    fail(:Ok "a function of type parameters only whose result is a function, of type " <> model.show(t))
+                end
                 let resultType = case inner.form when typeFun with f then f.result else inner end
                 let expected = expectedParams(v.type t extent x.params)
                 let params = vector.new(:nodes.ParamEntry)

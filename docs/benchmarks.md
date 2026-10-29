@@ -370,9 +370,11 @@ would close most of it, for these two benchmarks only.
 Neither interpreter implements tail calls, and both stop a program that has more than 1000 calls active with
 `stack.overflow` (`MAX_CALL_DEPTH`, `primitives.maxCallDepth`), as a portable stand-in for the native stack. The
 conversions keep the originals' recursive loops, so most of the suite overflows when interpreted (§2.4). Running the
-suite in an interpreter needs tail calls there, or a much deeper limit. Both interpreters also mis-evaluate a function
-whose type parameters are followed by an empty value-parameter list (`let f(A::TYPE)(): Int = 3`, called as
-`f(:Int)()`), which stops hamlet; compiled code is right.
+suite in an interpreter needs tail calls there, or a much deeper limit. When the baseline was taken, both interpreters
+also mis-evaluated a function whose type parameters are followed by an empty value-parameter list (`let f(A::TYPE)():
+Int = 3`, called as `f(:Int)()`), which stopped hamlet, mlyacc, model-elimination, and vliw (the tables' "type
+application bug"). Since that was fixed, hamlet, mlyacc, and vliw overflow in both interpreters, and model-elimination
+reaches the 10-minute timeout.
 
 ### 3.10. The conversions
 

@@ -267,6 +267,7 @@ class BindingMixin(Checker):
                 body=body_typed,
                 type_val=fun_type,
                 type_param_ids=tuple(q.symbol_id for q in quants),
+                type_only=bool(quants) and not q_params,
                 offset=expr.offset,
             )
 
@@ -345,12 +346,19 @@ class BindingMixin(Checker):
                         offset=expr.return_type.offset,
                     )
             inner_typed = self.check_expr(inner_expr, body_exp, env, loop_depth)
-            inner_t = inner_typed.type_val if isinstance(inner_typed, TypedFun) else inner_exp
+            # The function's value parameters: those it writes, or, for a
+            # function written with type parameters only, those of a body that
+            # is itself a function, fun(A::TYPE) fun() e, as a curried
+            # definition f(A::TYPE)() is, unless that function has type
+            # parameters of its own. Otherwise its type parameters are its only
+            # ones.
+            merged = isinstance(inner_typed, TypedFun) and (bool(expr.params) or not inner_typed.type_param_ids)
             return TypedFun(
-                params=inner_typed.params if isinstance(inner_typed, TypedFun) else (),
-                body=inner_typed.body if isinstance(inner_typed, TypedFun) else inner_typed,
-                type_val=QAllType(quantifiers=tuple(quants), body=inner_t),
+                params=inner_typed.params if merged else (),
+                body=inner_typed.body if merged else inner_typed,
+                type_val=QAllType(quantifiers=tuple(quants), body=inner_typed.type_val if merged else inner_exp),
                 type_param_ids=tuple(q.symbol_id for q in quants),
+                type_only=not merged,
                 offset=expr.offset,
             )
 

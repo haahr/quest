@@ -155,9 +155,11 @@ export
             vector.toArray(:Int ids)
         end
 
-    let funForm(params: Array(typedAst.Param) body: typedAst.Expr quants: Array(model.Quantifier)): typedAst.ExprForm =
+    let funForm(
+        params: Array(typedAst.Param) body: typedAst.Expr quants: Array(model.Quantifier) typeOnly: Bool
+    ): typedAst.ExprForm =
         option exprFun of typedAst.ExprForm with
-            let params = params let body = body let typeParamIds = typeParamIds(quants)
+            let params = params let body = body let typeParamIds = typeParamIds(quants) let typeOnly = typeOnly
         end
 
     (* Checks a function against an expected polymorphic type, All(B::K) T.
@@ -245,13 +247,27 @@ export
                                     end
                                     let innerTyped = checker.checkExpr(c innerExpr bodyExp e loopDepth)
                                     let quantArray = vector.toArray(:model.Quantifier quants)
+                                    (* The function's value parameters: those
+                                     * it writes, or, for a function written
+                                     * with type parameters only, those of a
+                                     * body that is itself a function,
+                                     * fun(A::TYPE) fun() e, as a curried
+                                     * definition f(A::TYPE)() is, unless that
+                                     * function has type parameters of its
+                                     * own. Otherwise its type parameters are
+                                     * its only ones. *)
+                                    let typeOnly(): typedAst.Expr =
+                                        typedAst.expr(expr.span.startOffset model.allType(quantArray innerExp)
+                                            funForm(array of :typedAst.Param end innerTyped quantArray true))
                                     case innerTyped.form
                                         when exprFun with f then
-                                            typedAst.expr(expr.span.startOffset model.allType(quantArray innerTyped.type)
-                                                funForm(f.params f.body quantArray))
-                                        else
-                                            typedAst.expr(expr.span.startOffset model.allType(quantArray innerExp)
-                                                funForm(array of :typedAst.Param end innerTyped quantArray))
+                                            if hasParams orif {extent f.typeParamIds is 0} then
+                                                let t = model.allType(quantArray innerTyped.type)
+                                                typedAst.expr(expr.span.startOffset t funForm(f.params f.body quantArray false))
+                                            else
+                                                typeOnly()
+                                            end
+                                        else typeOnly()
                                     end
                                 end)
                         end
@@ -407,7 +423,8 @@ export
                     else
                         model.funType(declared.formals b.ret)
                     end
-                    typedAst.expr(expr.span.startOffset funType funForm(declared.typed b.typed quantArray))
+                    let typeOnly = {extent quantArray > 0} andif {extent declared.formals is 0}
+                    typedAst.expr(expr.span.startOffset funType funForm(declared.typed b.typed quantArray typeOnly))
                 end)
         end
 

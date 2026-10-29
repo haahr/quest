@@ -1,0 +1,64 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import list = "list" : List
+main {
+  funs {
+    fun s(text: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(text, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs {
+    fun f [A::TYPE](): Int {
+      do call s("f runs")
+      return 1
+    }
+  }
+  let g: Fun(): Int = type_app f [Int]
+  do call s("f applied to types")
+  let %4: Int = call g()
+  let %5: String = call conv.int(%4)
+  do call s(%5)
+  let %6: Int = call f [Bool]()
+  let %7: String = call conv.int(%6)
+  do call s(%7)
+  let fv: All(A :: TYPE) Fun(): Int = f
+  let gv: Fun(): Int = type_app fv [Int]
+  do call s("fv applied to types")
+  let %8: Int = call gv()
+  let %9: String = call conv.int(%8)
+  do call s(%9)
+  funs {
+    fun k [A::TYPE](x: A): Fun(): Int {
+      funs {
+        fun f.1(): Int {
+          do call s("k runs")
+          return 2
+        }
+      }
+      return f.1
+    }
+  }
+  let ka: Fun(): Int = call k [Int](0)
+  do call s("k applied to its first parameters")
+  let %10: Int = call ka()
+  let %11: String = call conv.int(%10)
+  do call s(%11)
+  funs {
+    fun c [A::TYPE](): Int {
+      do call s("c runs")
+      return 3
+    }
+  }
+  let cv: All(A :: TYPE) Int = c
+  let %12: Int = type_app cv [Int]
+  let %13: String = call conv.int(%12)
+  do call s(%13)
+  let %14: list.T(Int) = type_app list.nil [Int]
+  let %15: Int = call list.length [Int](%14)
+  let %16: String = call conv.int(%15)
+  do call s(%16)
+}
+

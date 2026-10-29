@@ -300,6 +300,7 @@ export
                             let name = name
                             let typeParamIds = x.typeParamIds
                             let typeBindings = hashMap.new(:Int :tm.Type intEqual hash.int)
+                            let typeOnly = x.typeOnly
                             let traceName = diagnostics.frameName(enclosing binder)
                         end
                     end
@@ -332,7 +333,8 @@ export
             end
             tuple
                 let params = c.params let body = c.body let env = c.env let name = c.name
-                let typeParamIds = c.typeParamIds let typeBindings = bindings let traceName = c.traceName
+                let typeParamIds = c.typeParamIds let typeBindings = bindings let typeOnly = c.typeOnly
+                let traceName = c.traceName
             end
         end
 
@@ -507,8 +509,9 @@ export
      * (exprTypeApp) binds them in a copy of the closure (instantiate), the
      * body runs with them bound (the frame's typeBindings), and resolveType
      * replaces a type's parameters by their bindings. A polymorphic constant,
-     * such as list.nil, is a closure without value parameters, so
-     * instantiating it, as list.nil() does, also runs it. *)
+     * such as list.nil, is a closure whose type parameters are its only
+     * parameters, so instantiating it, as list.nil() does, also runs it;
+     * instantiating a curried f(A::TYPE)() does not. *)
     let rec evalExpr(e: Expr f: Frame): Value =
         begin
             let offset = at(e.offset)
@@ -600,7 +603,7 @@ export
                         else ok
                     end
                     case callee
-                        when vClosure with c then if extent c.c.params is 0 then runClosure(c.c array of :Value end offset) else callee end
+                        when vClosure with c then if c.c.typeOnly then runClosure(c.c array of :Value end offset) else callee end
                         else callee
                     end
                 when exprApp with x then

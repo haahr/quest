@@ -791,6 +791,10 @@ class _Lowerer:
                 for q in t.quantifiers
             )
             inner = t.body
+        if e.type_only and isinstance(inner, (QFunType, QAllType)):
+            # Its type is that of a function of type parameters then value
+            # parameters, as which callers would call it (docs/tasklist.md)
+            raise LoweringError(f"a function of type parameters only whose result is a function, of type {t}")
         result_t = inner.result_type if isinstance(inner, QFunType) else inner
         expected = _expected_params(var.type, t, len(e.params))
         params = []

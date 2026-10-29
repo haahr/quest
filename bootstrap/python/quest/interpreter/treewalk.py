@@ -425,8 +425,9 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
     them in a copy of the closure (QClosure.instantiate), the body runs with
     them bound (RuntimeEnvironment.type_bindings), and env.resolve_type replaces
     a type's parameters by their bindings. A polymorphic constant, such as
-    list.nil, is a closure without value parameters, so instantiating it, as
-    list.nil() does, also runs it.
+    list.nil, is a closure whose type parameters are its only parameters, so
+    instantiating it, as list.nil() does, also runs it; instantiating a curried
+    f(A::TYPE)() does not.
     """
     match expr:
         # 1. Literals
@@ -538,7 +539,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
             type_args = tuple(env.resolve_type(t) for t in type_args)
             if isinstance(callee, QClosure) and callee.type_param_ids:
                 callee = callee.instantiate(type_args)
-            if isinstance(callee, QClosure) and len(callee.params) == 0:
+            if isinstance(callee, QClosure) and callee.type_only:
                 return run_closure(callee, [], offset=expr.offset)
             return callee
 
@@ -1006,6 +1007,7 @@ def make_closure(fun: TypedFun, env: RuntimeEnvironment, binder: Optional[str] =
         name=name,
         type_param_ids=fun.type_param_ids,
         trace_name=frame_name(enclosing, binder),
+        type_only=fun.type_only,
     )
 
 

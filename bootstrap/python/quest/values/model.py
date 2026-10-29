@@ -483,6 +483,7 @@ class QClosure(QValue):
         type_param_ids: tuple[int, ...] = (),
         type_bindings: Optional[dict[int, Any]] = None,
         trace_name: str = "<anon>",
+        type_only: bool = False,
     ):
         self.params = tuple(params)
         self.body = body
@@ -494,6 +495,9 @@ class QClosure(QValue):
         # bound to them by type applications
         self.type_param_ids = tuple(type_param_ids)
         self.type_bindings: dict[int, Any] = dict(type_bindings or {})
+        # Whether the type parameters are its only parameters, so that applying
+        # it to types runs it (TypedFun.type_only)
+        self.type_only = type_only
 
     def instantiate(self, type_args: Sequence[Any]) -> QClosure:
         """This closure with its next unbound type parameters bound to type_args
@@ -501,7 +505,10 @@ class QClosure(QValue):
         unbound = [i for i in self.type_param_ids if i not in self.type_bindings]
         bindings = dict(self.type_bindings)
         bindings.update(zip(unbound, type_args))
-        return QClosure(self.params, self.body, self.env, self.name, self.type_param_ids, bindings, self.trace_name)
+        return QClosure(
+            self.params, self.body, self.env, self.name, self.type_param_ids, bindings, self.trace_name,
+            self.type_only,
+        )
 
     @property
     def type_name(self) -> str:

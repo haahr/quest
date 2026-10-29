@@ -5,6 +5,32 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
+## Compile functions of type parameters only whose results are functions
+
+**Problem.** A function whose only parameters are type parameters runs when it is applied to types, and its result
+may be a function or another polymorphic function: `let h(A::TYPE): All() Int = begin ... fun(): Int 1 end`,
+`fun(A::TYPE) fun(): Int 2`, or the curried `let q(A::TYPE)(B::TYPE): Int` (whose inner function has type parameters
+of its own, so the type checker keeps the two functions apart). Its type, `All(A::TYPE) All() Int`, is the type of a
+function of type parameters then value parameters, `let f(A::TYPE)(): Int`, and the backend's calling convention
+follows the type, so a caller would call `h` as it calls `f`: with the type and value arguments together, with no
+point at which `h`'s body runs alone. Before the lowering rejected these functions, the C backends crashed on them or,
+in the bootstrap, compiled `fun(A::TYPE) fun(B::TYPE x: B): Int 6` into code that printed a pointer as its result. The
+interpreters run them correctly (the typed AST's `TypedFun.type_only`, `exprFun`'s `typeOnly`).
+
+**Reproduce.** Compiling `tests/source/language/type_only_functions_returning_functions.quest` (`./questc
+--stop-after run_c_compiled`) reports `a function of type parameters only whose result is a function`; the test skips its lowering phases.
+
+**Where to start.** `function` in `quest/ir/lower.py` and `questlang/ir/lower.mod.quest`, where the check is. The
+choice is the owner's, since it affects what a program prints: compile such a function as one of type parameters then
+value parameters whose body computes the result and calls it (`h(A)() = (body)()`), which runs the body at each call
+rather than once when it is applied to types; or give type-only functions a representation of their own, which
+callers cannot choose from the type alone (a first-class value of type `All(A::TYPE) All() Int` may be either kind).
+
+**Done when.** The test runs compiled with the interpreters' output, or the language says what such functions do and
+both compilers do it, and the check in the lowering is gone.
+
+---
+
 ## Faster word operations in compiled code
 
 **Problem.** Each `word` operation in compiled code (`word.xorBits`, `word.shift`, `word.rotate`, and the rest of

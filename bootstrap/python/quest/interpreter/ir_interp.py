@@ -379,7 +379,7 @@ class Interpreter:
                 return inst
             case QClosure():
                 inst = callee.instantiate(type_args) if callee.type_param_ids else callee
-                if len(inst.params) == 0:
+                if inst.type_only:
                     return run_closure(inst, [])
                 return inst
         return callee

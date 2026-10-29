@@ -236,6 +236,11 @@ class TypedFun(TypedExpr):
     # from the expected type's quantifiers), bound at run time by type
     # applications
     type_param_ids: tuple[int, ...] = ()
+    # Whether its type parameters are its only parameters, as in fun(A::TYPE)
+    # e, whose application to types computes e. A function of type parameters
+    # then value parameters, even none, as in fun(A::TYPE)() e, can have the
+    # same type, but its application to types is a function.
+    type_only: bool = False
 
     def dump_header(self, env: Optional[Any] = None) -> str:
         params_str = " ".join(
@@ -1056,7 +1061,7 @@ _TYPED_FIELDS: dict[type, Callable[[Any], tuple]] = {
     TypedExternal: lambda node: (node.symbol, node.type_val),
     TypedVar: lambda node: (node.name, node.symbol, node.type_val),
     TypedParam: lambda node: (node.name, node.symbol, node.type_val, node.is_var, node.is_out),
-    TypedFun: lambda node: (node.params, node.body, node.type_val, node.type_param_ids),
+    TypedFun: lambda node: (node.params, node.body, node.type_val, node.type_param_ids, node.type_only),
     TypedApp: lambda node: (node.func, node.args, node.type_val),
     TypedTypeApp: lambda node: (node.func, node.type_args, node.type_val),
     TypedInfix: lambda node: (node.left, node.op, node.right, node.type_val),
@@ -1128,6 +1133,7 @@ _REBUILD_TYPED: dict[type, Callable[[Any, tuple], Any]] = {
     ),
     TypedFun: lambda node, values: TypedFun(
         offset=node.offset, params=values[0], body=values[1], type_val=values[2], type_param_ids=values[3],
+        type_only=values[4],
     ),
     TypedApp: lambda node, values: TypedApp(offset=node.offset, func=values[0], args=values[1], type_val=values[2]),
     TypedTypeApp: lambda node, values: TypedTypeApp(

@@ -1,0 +1,34 @@
+(* Language: a function of type parameters only runs when applied to types, even when its result is a function or
+   another polymorphic function. The IR lowering does not handle such functions yet, since their types are those of
+   functions of type parameters then value parameters (docs/tasklist.md), so the phases that lower are skipped. *)
+(* @skip-phase: ir_core, run_ir_core, run_ir_specialized, run_ir_closed, run_ir_represented, run_ir_described *)
+(* @skip-phase: run_c_compiled *)
+
+import writer: Writer;
+import conv: Conv;
+
+let s(text: String): Ok = writer.putString(writer.output text <> "\n");
+
+(* 1. A result that is a function *)
+let h(A::TYPE): All() Int = begin s("h runs") fun(): Int begin s("h's result runs") 1 end end;
+let hi = h(:Int);
+s("h applied to types");
+s(conv.int(hi()));
+
+(* 2. The same, anonymous *)
+let lam = fun(A::TYPE) fun(): Int begin s("lam's result runs") 2 end;
+let la = lam(:Int);
+s("lam applied to types");
+s(conv.int(la()));
+
+(* 3. Type parameters, then type parameters *)
+let q(A::TYPE)(B::TYPE): Int = begin s("q runs") 3 end;
+let qa = q(:Int);
+s("q applied to its first types");
+s(conv.int(qa(:Bool)));
+
+(* 4. Type parameters, then type and value parameters *)
+let r(A::TYPE)(B::TYPE x: B): Int = begin s("r runs") 4 end;
+let ra = r(:Int);
+s("r applied to its first types");
+s(conv.int(ra(:Bool true)));

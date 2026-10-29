@@ -1,0 +1,34 @@
+(* Language: a function of type parameters then value parameters, even none, as in f(A::TYPE)(), applied to types
+   is a function, whose body runs when it is called; a function of type parameters only, as in c(A::TYPE), runs
+   when applied to types. *)
+
+import writer: Writer;
+import conv: Conv;
+import list: List;
+
+let s(text: String): Ok = writer.putString(writer.output text <> "\n");
+
+(* 1. Type parameters, then no value parameters *)
+let f(A::TYPE)(): Int = begin s("f runs") 1 end;
+let g = f(:Int);
+s("f applied to types");
+s(conv.int(g()));
+s(conv.int(f(:Bool)()));
+
+(* 2. The same through a first-class value of its type *)
+let fv: All(A::TYPE) All() Int = f;
+let gv = fv(:Int);
+s("fv applied to types");
+s(conv.int(gv()));
+
+(* 3. Type and value parameters, then no value parameters *)
+let k(A::TYPE x: A)(): Int = begin s("k runs") 2 end;
+let ka = k(:Int 0);
+s("k applied to its first parameters");
+s(conv.int(ka()));
+
+(* 4. Type parameters only: a polymorphic constant, written and from the library *)
+let c(A::TYPE): Int = begin s("c runs") 3 end;
+let cv: All(A::TYPE) Int = c;
+s(conv.int(cv(:Int)));
+s(conv.int(list.length(list.nil(:Int))));
