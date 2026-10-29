@@ -14,9 +14,10 @@ runtime error handling across the Quest compiler, interpreter, and REPL.
    - **Context (`notes` & `secondary_labels`):** Explanatory source positions and background information (e.g. "type
      defined here", "previously declared here").
    - **Remedy (`help_text` & `suggestions`):** Prescriptive advice or machine-applicable code replacements.
-3. **Single-Pass Error Accumulation & Poison Recovery:** The typechecker can collect multiple independent errors across
-   a compilation unit instead of halting on the very first error, using an error sentinel type (`QErrorType`) to prevent
-   cascading false positives.
+3. **Several Errors, No Cascades:** The self-hosted type checker reports every independent error it can find in a
+   unit rather than stopping at the first, and binds the names a failed declaration declares to poisoned symbols so
+   that one error does not cause others (§4.5). The bootstrap stops at the first error, which the self-hosted checker
+   reports first.
 4. **Immediate Fatal Abort with Full Prior Diagnostic Reporting:** Unrecoverable conditions (such as Internal Compiler
    Errors) emit a `FATAL` diagnostic which raises a `FatalDiagnosticError`. The outermost driver catches this exception
    and renders all prior accumulated diagnostics alongside the fatal diagnostic before terminating.
@@ -174,14 +175,9 @@ def compile_stream(source_text: str, file_name: str) -> int:
   - Information: Expected token kinds vs encountered token kind.
 
 ### 4.2. Kind & Type Elaboration
-- **Error Accumulation with Poison Type (`QErrorType`):**
-  - When an expression fails typechecking (e.g. `1 + "str"`), the typechecker records a `Diagnostic(ERROR, ...)` in the
-    sink and returns `TypedErrorExpr(type_val=QErrorType())`.
-  - `QErrorType` is a universal sentinel:
-    - `is_subtype(QErrorType(), AnyType) == True`
-    - `is_subtype(AnyType, QErrorType()) == True`
-    - Synthesizing an operation on `QErrorType` produces `QErrorType` *without emitting secondary errors*.
-  - This stops a single bad variable definition from generating 50 downstream errors across an entire module.
+- **The first error, or several.** The bootstrap raises `QuestTypeError` at the first type error, and the pipeline
+  reports it. The self-hosted checker reports that error first, with the same message and span, and goes on to find
+  others (§4.5).
 - **Compiler Warnings:**
   - **Unused Local Bindings:** `let unused = ...` where `unused` is never read in scope.
   - **Variable Shadowing:** Declaring `let x = ...` when an outer `x` is in scope (configurable warning).
@@ -252,6 +248,42 @@ grp.int.quest:3:29: error: Undefined type 'Nope'
 
 In C builds a module's body is compiled only when the program is linked, so an error in it is located in the module's
 file but has no import label.
+
+### 4.5. Reporting Several Errors (the Self-Hosted Compiler)
+The self-hosted type checker (`questlang/typechecker/`) reports the bootstrap's error first, with the same message and
+span, and then any further errors it finds:
+
+- **Reporting.** Where the bootstrap raises `QuestCompilerError` or one of its subclasses, the self-hosted compiler
+  raises `diagnostics.compilerError`. Its payload is the message, the offset in the unit being checked, the length,
+  the help and notes, and whether the error is fatal. The offset is 0 where the raiser does not know it, as for the
+  bootstrap's kind errors, which it reports at 1:1. Raising stops the work the error was part of, as in the bootstrap.
+  An error that propagates out of a unit loaded from a file records the file (`env.withUnitSource`, the bootstrap's
+  `in_unit`, §4.4), and `diagnostics.errorDiagnostic` makes the diagnostic, in that file or the current one.
+- **Recovery points.** The checker catches `compilerError` at each binding and adds its diagnostic to the checker's
+  errors: each phrase of a program, each binding of a block (function bodies, conditionals, and loops are made of
+  blocks), each import, interface, and module declaration, and each member of an interface or module
+  (`bindings.elaborateRecovering`). A failed binding contributes nothing to the typed AST, and the checker goes on
+  with the next. Code that changes the environment's state (its scopes, the unit being elaborated) restores it as the
+  error propagates, as the bootstrap's `finally` blocks do.
+- **No cascades.** The names a failed binding declares are bound to poisoned symbols (`symbols.poisonValue`,
+  `symbols.poison`): a poisoned value symbol, or a type or kind symbol whose definition is unknown. Using one raises
+  `diagnostics.silentError`, which no recovery point reports, so a binding that depends on a failed one fails
+  silently. So does a block or a module with a failed member. A binding with a declared type (`let f(x: Int): Int =
+  ...`, `let x: T = ...`) is bound at that type even when its value fails, so its users are still checked. A failed
+  import or module poisons the names it would have bound.
+- **Fatal errors** stay fatal. An error that leaves nothing sensible to check (a cycle of imports, an internal error,
+  the well-scopedness check of `scoping`) adds a fatal diagnostic and raises `diagbag.fatalError`, as syntax errors
+  do.
+- **Limit.** After 20 errors the checker reports that it stopped (`checker.maxErrors`), with a fatal diagnostic.
+- **Output.** The typed AST is printed only when there are no errors. The errors are printed in the order found,
+  which is source order.
+- **Unit-file compiles.** Compiling an interface or module file on its own (`-c`, and the build engine's compiles of
+  imported units) stops at a unit's first error, as the bootstrap's does: `typecheck.install` gives the module system
+  a binding elaborator that fails with a member's first error, even one a block recovered from.
+
+The error tests check the first error against the bootstrap's expectation, and any further errors against a reviewed
+record of the driver's output; tests of several errors are the self-hosted compiler's own ([testing.md](testing.md)
+§2.3).
 
 ---
 

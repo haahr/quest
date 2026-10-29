@@ -24,9 +24,10 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   why. Conventional or easily reversed choices are yours: make them and mention them.
 - **Report faithfully.** Say what you found, not just what you did: failures with their output, steps skipped,
   bugs found in passing, and anything that surprised you enough to change a plan. A claim of done means tested.
-- **Plans live in documents.** Larger work gets a written plan with numbered steps and a "done when" for each (for
-  example [reorganization.md](reorganization.md)). Each step is a commit (or a few), and the plan is updated as steps
-  finish and as surprises change it.
+- **Plans live in documents.** Larger work gets a written plan in `docs/` with numbered steps and a "done when" for
+  each. Each step is a commit (or a few), and the plan is updated as steps finish and as surprises change it. When the
+  plan is complete, what it found that is still true moves into the reference documents, and the plan is deleted;
+  its history stays in git.
 - **The task list** ([tasklist.md](tasklist.md)) records known problems and planned work nobody has started: each
   task has **Problem**, **Reproduce**, **Where to start**, and **Done when**. Add a task for a bug you find but do not
   fix (with the owner's agreement), verify its reproduction before writing it down, and remove the task in the
@@ -176,7 +177,7 @@ See [testing.md](testing.md) for the framework. In practice:
   release cut from that commit, and then a commit that uses it. `QUESTC_SEED=bootstrap` builds past such a gap when
   the bootstrap has the feature too.
 - **Cut a release** by hand, never automatically: when `questlang/` needs something the current release cannot
-  compile, at the end of a milestone, and otherwise when convenient. Only the owner asks for one, as for a push.
+  compile, after a larger piece of work, and otherwise when convenient. Only the owner asks for one, as for a push.
 - **Roll back** (`tools/release --rollback`) when a release turns out to be bad, and say so; one previous release is
   kept.
 
@@ -216,8 +217,8 @@ See [testing.md](testing.md) for the framework. In practice:
   bounded type parameters, and tagged `QProxy` views for depth-upcast tuples and options
   ([runtime-design.md](runtime-design.md), [c-representation.md](c-representation.md)).
 - Open bugs and planned follow-up work for the compiler are tracked in [tasklist.md](tasklist.md).
-- The self-hosted compiler compiles itself to a fixed point ([roadmap.md](roadmap.md) step 5,
-  [milestone-5.md](milestone-5.md)), seeded by a release ([release-compiler.md](release-compiler.md)). It is the
+- The self-hosted compiler compiles itself to a fixed point ([roadmap.md](roadmap.md) step 5), seeded by a release
+  ([release-compiler.md](release-compiler.md)). It is the
   primary compiler; the bootstrap is kept so that the compiler can be rebuilt from nothing ([testing.md](testing.md)
   §2.8):
   - **Both compilers get** language changes, `lib/` changes, and fixes to bugs in what programs do or what errors

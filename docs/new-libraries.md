@@ -650,7 +650,7 @@ end
 ### 3.1. `io/readline : io/Readline`
 
 Lines read from the user, edited at a terminal, with a history; both REPLs, the bootstrap's and the self-hosted one,
-read their input through it ([repl.md](repl.md) §4, [self-hosted-repl.md](self-hosted-repl.md) §1). Its externals are
+read their input through it ([repl.md](repl.md) §4). Its externals are
 `runtime/quest_readline.c`'s, built with GNU readline when it is installed, else libedit, else neither (lines are then
 not edited); `QUEST_READLINE=gnu|edit|none` chooses. The bootstrap's interpreters implement them with Python's
 `readline`, and the self-hosted interpreter with the compiled library's own (`questlang/interpreter/builtins`), so a
@@ -684,6 +684,35 @@ end
 
 `readLine` does not add the lines it reads to the history: its caller decides which lines to keep. `readHistory`
 does nothing if the file does not exist, and `writeHistory` writes the history's last `maxLines` lines.
+
+#### The Runtime (`runtime/quest_readline.c`)
+
+- **The line editor.** The readline API, which GNU readline and libedit both provide (`<readline/readline.h>`). The
+  build detects them as it does Boehm GC (`detect_readline_flags` in `codegen/c/compiler_runner.py`, and
+  `codegen/c/compilerrunner` in `questlang/`): GNU readline where it is installed (Homebrew's `readline`, or the
+  system's), compiled `-DQUEST_GNU_READLINE`; else libedit (`-ledit`, part of macOS, and `libedit-dev` on Linux); else
+  neither, `-DQUEST_NOREADLINE`, when `editing` is false. The runtime keeps the two libraries' differences (signal
+  handling, history truncation) behind that flag. GNU readline is GPL, which binds the programs linked with it; that
+  is the user's choice when they install it.
+- **Linking.** `quest_readline.c` is compiled and linked with every program, as `quest_serialization.c` is. Linking
+  only the programs that import `io/readline` would need the build to know a module's link flags, which it does not;
+  libedit is a system library, so linking it always costs little.
+- **Editing.** `readLine` uses readline's callback interface, waiting for input with `select`, as CPython's `readline`
+  module does. Its `SIGINT` handler, installed only while it reads, sets a flag that ends the wait (the handler has no
+  `SA_RESTART`); the line is then abandoned (`rl_free_line_state`, `rl_callback_sigcleanup` for GNU readline,
+  `rl_cleanup_after_signal`) and `interrupted` raised. Nothing `longjmp`s out of the library.
+- **Without editing,** `readLine` writes the prompt to `writer.output`, flushes it, and reads up to a newline through
+  `quest_reader_input`'s buffer. End of input before any byte is `endOfInput`.
+- **The history** is the runtime's own list, mirrored into the line editor's, and its file is plain lines. The line
+  editors' own files differ (libedit's starts with a cookie and escapes its lines), and the bootstrap's REPL, whose
+  Python may use libedit, shares `~/.quest_history` with compiled REPLs, which may use GNU readline.
+- **The bootstrap** implements the externals with Python's `readline` module, and `input()` with standard input read
+  as bytes, and keeps a history list of its own, as the C runtime does (Python's automatic history is off, since
+  `readLine`'s caller adds lines). Its REPL reads lines and history through these same functions, not through
+  `readline` directly, so the two REPLs share one definition of editing, dumb terminals, and the end of input.
+
+`tests/python/test_readline_terminal.py` runs editing, history, Ctrl-C, and Ctrl-D through a pseudo-terminal, for a
+program compiled with each line editor installed and interpreted by the bootstrap, and for both REPLs.
 
 ---
 

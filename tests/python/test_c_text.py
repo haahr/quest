@@ -1,5 +1,6 @@
 """The C backend's text: its literals, and the rules that keep its formatting of
-C translatable to Quest line by line (docs/self-hosting-refactorings.md §2)."""
+C translatable to Quest line by line (docs/converting-python-to-quest.md, rule
+6)."""
 
 import ast
 import math

@@ -1,20 +1,13 @@
-# A Released Compiler as the Seed
+# Releases of the Self-Hosted Compiler
 
-This plan replaces the bootstrap as the compiler that builds new self-hosted compilers. Once Milestone 5 ends
-([milestone-5.md](milestone-5.md)), the self-hosted compiler compiles itself to a fixed point. From then on, a
-*released* self-hosted compiler, a binary kept in `release/` (ignored by git), builds each new compiler from the
-working tree. The bootstrap becomes a fallback for making the first release, and later for nothing. It is also the
-step that lets `questlang/` and the bootstrap diverge, as the Milestone 5 decisions anticipate.
+A *released* self-hosted compiler, a binary kept in `release/` (ignored by git), builds each new self-hosted compiler
+from the working tree. The bootstrap is the fallback: it made the first release, and it can still build the tree's
+compiler from nothing (§4).
 
-The plan expected builds to get faster too, and they have. The self-hosted compiler builds `questlang/driver/main`
-from nothing in about a minute, against the bootstrap's 10, so a seeded build's two stages take about two minutes
-(with a release cut after the speedups of 2026-10-27; an older release takes 8 minutes for stage 1). The release also
-pays off in incremental builds (`./questc` rebuilds only stale units) and in freedom from the bootstrap. Parallel
-builds ([build-process.md](build-process.md) §7.4) make stage 2's build faster still: about 34 seconds rather than 56;
-since release c787e2d6, which has `-j`, `./questc` builds stage 1 that way too.
-
-The decisions (2026-10-26): a release seeds in two stages, against its own `lib/` and `runtime/` (§2); releases are
-cut by hand; one previous release is kept; and the plan is carried out after Milestone 5.
+Building from a release is fast. The self-hosted compiler builds `questlang/driver/main` from nothing in under a
+minute, compiling modules in parallel ([build-process.md](build-process.md) §7.4), against the bootstrap's ten, so a
+seeded build's two stages take about two minutes. Incremental builds (`./questc` rebuilds only stale units) take
+seconds.
 
 ---
 
@@ -45,7 +38,6 @@ release/                  (in .gitignore)
      cannot compile the commit (§2).
   3. If both pass, write the new release into `release/new/`: stage 2 as `questc`, `git archive` of the commit's
      `lib/` and `runtime/` as `home/`, and `release.json`, which records the seed: `release COMMIT` or `bootstrap`.
-     The releases before 2026-10-28 were all seeded by the bootstrap and record no seed.
   4. Check it as `--verify` does: its digest, and a small program it builds against its own `home/` and runs.
   5. Rename `current` to `previous` and `new` to `current`. The renames are atomic, so an interrupted release never
      leaves a half-written `current`.
@@ -53,7 +45,7 @@ release/                  (in .gitignore)
   `tools/release --verify` checks the current release, `--rollback` swaps `previous` and `current`, and `--show`
   describes both. A release lives in the checkout that cut it, so each checkout or worktree has its own.
 - **When to cut one:** by hand, when the working tree needs something the current release cannot compile (§2), and
-  otherwise when convenient, for example at the end of each milestone. A release is never cut automatically by a push.
+  otherwise when convenient, for example after a larger piece of work. A release is never cut automatically by a push.
 
 ## 2. Building With It
 
@@ -73,14 +65,20 @@ Stage 2 is the new compiler. Each stage has its own build directory, and the eng
   artifacts built against one release could look fresh against the next one's older sources.
 - **The release finds the tree's `questlang/` through `-I`,** because its `QUEST_HOME` is its own `home/`, which
   holds only `lib/` and `runtime/`.
+- **Both stages build in parallel,** with `-j` set to the number of CPUs (`QUESTC_JOBS` for `./questc`).
 - **The runner's `--self-hosted`** builds the driver it tests from the bootstrap by default, and from the release
-  with `--seed release`. The plan had the release as the default. But the runner builds from nothing every time, and
-  building with the bootstrap keeps it able to build the tree's compiler between releases.
+  with `--seed release`. The runner builds from nothing every time, and building with the bootstrap keeps it able to
+  build the tree's compiler between releases. `tools/check` seeds the self-hosting check from the release.
 - **The one rule this imposes:** `questlang/` must be compilable by the current release against the release's own
   `lib/`. Using a new language feature, a new `lib/` function, or a new runtime primitive in `questlang/` takes two
   commits: one that adds the feature, then a release, then one that uses it. While the bootstrap is maintained, it
   can be used instead to build past such a gap (`QUESTC_SEED=bootstrap`), as long as the feature is in the bootstrap
   too.
+- **A new library** in `lib/` that `questlang/` will use lands that way: a commit adding the interface and module,
+  their natives in `runtime/` (with an ABI bump if there are any), both interpreters' builtins, goldens, a section in
+  [new-libraries.md](new-libraries.md), and a snapshot of the interface in the ABI corpus's inputs; then a release;
+  then a commit moving `questlang/`'s callers over. The self-hosted interpreter's builtins are the one use inside
+  `questlang/` that cannot wait for the release, so until it is cut, `./questc` needs `QUESTC_SEED=bootstrap`.
 
 ## 3. Checking
 
@@ -91,23 +89,16 @@ Stage 2 is the new compiler. Each stage has its own build directory, and the eng
   2. The artifacts stage 2 writes must equal those stage 1 wrote (the fixed point). With the release as the seed, the
      bootstrap's stage 1 must write the release's stage 1's artifacts: the bootstrap still builds the same compiler.
   3. The self-hosted suite runs with stage 2.
-- **The goldens.** The compilers diverged on 2026-10-28 (testing.md §2.8). The goldens of what programs do stay
-  shared, and the bootstrap writes them; the self-hosted compiler's IR dumps are its own, written by `--update-golden`
+- **The goldens** ([testing.md](testing.md) §2.8). The goldens of what programs do are shared, and the bootstrap
+  writes them; the self-hosted compiler's IR dumps are its own, written by `--update-golden`
   with the self-hosted driver. The generated C has no goldens (testing.md §2.9).
 
-## 4. Steps
+## 4. The Bootstrap's Place
 
-1. **`release/` and `tools/release` (done):** cutting, verifying, and rolling back (`tools/release --rollback` swaps
-   `previous` and `current`); `.gitignore` gains `/release/`. The first release was c21ae1aa.
-2. **Seeding from a release (done):** `./questc` and the runner's `--self-hosted` build stages 1 and 2 from the
-   release (`--seed`, `QUESTC_SEED`); `--self-hosting` starts from the seed.
-3. **Documentation (done):** build-process.md, testing.md, and compiler-organization.md describe the release, the
-   stages, and the rule of §2. instructions.md says when to cut a release.
+The bootstrap is kept as a correct compiler rather than an identical one ([testing.md](testing.md) §2.8): it gets the
+language's changes and bug fixes, not the self-hosted compiler's optimizations, and the self-hosting check confirms
+that it still builds the compiler the release does. Deleting it would leave the chain of releases, each rebuildable
+from its commit by the one before, as the compiler's only provenance.
 
-## 5. Not in This Plan
-
-- **Retiring the bootstrap.** It is kept as a correct compiler rather than an identical one (testing.md §2.8): it
-  gets the language's changes and bug fixes, not the self-hosted compiler's optimizations, and the self-hosting
-  check confirms that it still builds the compiler the release does. Deleting it would leave the chain of releases,
-  each rebuildable from its commit by the one before, as the compiler's only provenance.
-- **Publishing releases** outside the checkout (GitHub releases, or a shared directory), for other machines or a CI.
+Releases are not published outside the checkout that cut them (as GitHub releases, or in a shared directory, for
+other machines or a CI).

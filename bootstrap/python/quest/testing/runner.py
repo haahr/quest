@@ -8,7 +8,7 @@ rules decide whether they are reused (docs/testing.md §2.2).
 
 With --self-hosted, the tests of the phases the self-hosted compiler has run its
 driver instead (questlang/driver/main, compiled to C first), against the
-bootstrap's goldens and error expectations (docs/milestone-2.md §3).
+bootstrap's goldens and error expectations (docs/testing.md §2.3).
 """
 
 import argparse
@@ -56,7 +56,7 @@ DRIVER_SCRIPT = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
 
 # The self-hosted compiler's driver, the phases it has, the tests it is not yet
 # expected to pass, and where the errors it reports after the bootstrap's one
-# are recorded (docs/milestone-2.md §3)
+# are recorded (docs/testing.md §2.3)
 SELF_HOSTED_DRIVER = ROOT_DIR / "questlang" / "driver" / "main.quest"
 SELF_HOSTED_PHASES = (
     "tokenize", "parse", "typecheck", *IR_DUMP_PHASES, *IR_RUN_PHASES, "interpret", "run_c_compiled", "repl",
@@ -70,7 +70,7 @@ SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 # Tests of several errors, which only the self-hosted driver reports:
 # tests/self-hosted/errors/PHASE/NAME.quest
 # The programs the self-hosted driver's -e runs, and the bootstrap's transcript
-# of them (docs/milestone-3.md §3.2), which tests/eval/generate.py writes
+# of them (docs/testing.md §2.3), which tests/eval/generate.py writes
 EVAL_CASES = ROOT_DIR / "tests" / "eval" / "cases.quest"
 # The checks of the self-hosted driver's unit files (-c): interfaces against its
 # ABI corpus (tests/abi/corpus-self-hosted), and that lib/'s modules compile;
@@ -627,7 +627,7 @@ def compare_build_dirs(expected_dir: Path, actual_dir: Path, what: str) -> list[
 
 
 def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "bootstrap") -> Path:
-    """Builds the three stages of the self-hosted compiler (docs/milestone-5.md
+    """Builds the three stages of the self-hosted compiler (docs/testing.md
     section 2.3) and checks the fixed point: stage 2 (stage 1's build, stage 1
     being the seed's build of the self-hosted driver) writes the artifacts stage
     1 wrote, for every unit of the driver. Stage 3, stage 2's build, should be

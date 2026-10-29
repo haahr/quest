@@ -381,7 +381,7 @@ def run_error_test(
     or diagnostic matching.
 
     With driver_command, the test runs the self-hosted driver, which may report
-    errors after the bootstrap's one (docs/milestone-2.md §2): its first
+    errors after the bootstrap's one (docs/diagnostics.md §4.5): its first
     diagnostic must be the one expected, and when it reports more, its whole
     output must be further_errors_file's, which --update-golden writes for
     review. With all_errors (a test of several errors,

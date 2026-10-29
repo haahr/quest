@@ -467,8 +467,8 @@ self-hosted compiler's, which its suite regenerates with the self-hosted driver 
 
 The self-hosted compiler (`questlang/`, run by `./questc`) writes its artifacts in the same places, under the same
 rules, and with the same engine (`questlang/build/engine`, a port of this document's `BuildEngine`). Until the two
-compilers diverged (2026-10-28), it wrote the same artifacts as the bootstrap, up to the producer. Now they may
-differ, as optimizations go into the self-hosted compiler alone, so neither compiler uses the other's artifacts
+compilers diverged, it wrote the same artifacts as the bootstrap, up to the producer. Now they may differ, as
+optimizations go into the self-hosted compiler alone, so neither compiler uses the other's artifacts
 (§5.2.1). `run_tests.py --self-hosting` checks the self-hosted compiler's fixed point, and that the bootstrap still
 builds the compiler the release does (docs/testing.md §2.3).
 

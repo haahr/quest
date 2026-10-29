@@ -1,9 +1,9 @@
 # Quest Intermediate Representation (IR)
 
 This document specifies the intermediate representation between the typed AST and the C backend
-(`bootstrap/python/quest/ir/`). The self-hosted compiler's IR (`questlang/ir/`, [milestone-4.md](milestone-4.md))
-follows it module for module, and its printer writes the same textual form (§10), which the self-hosted suite compares
-at every stage.
+(`bootstrap/python/quest/ir/`). The self-hosted compiler's IR (`questlang/ir/`) follows it module for module, and
+its printer writes the same textual form (§10). The IR's dumps are the self-hosted compiler's goldens, not the
+bootstrap's ([testing.md](testing.md) §2.8), so the two compilers' IR may differ where the self-hosted one optimizes.
 The IR is one data structure, refined by a sequence of small passes (nanopass style); each pass establishes invariants
 that the IR verifier checks. The C printer consumes the last stage. A future native AArch64 backend
 ([roadmap.md](roadmap.md) step 6) would consume the same stage, adding its own late passes.
@@ -160,8 +160,8 @@ the runtime's `quest_layout_equivalent`.
 The nodes are defined in `ir/nodes.py`, printed by `ir/printer.py`, and checked by `ir/verify.py`. `ir/walk.py` has
 the traversals the passes share, and the IR's explicit traversal of nodes' fields (`fields_of` and `rebuild`,
 `contents`, `replace_vars`, `view_map_of`), with an entry or case for each class of node, which every walker of fields
-uses rather than reading the dataclasses' fields by reflection
-([self-hosting-refactorings.md](self-hosting-refactorings.md) §3).
+uses rather than reading the dataclasses' fields by reflection, so that the Quest port, which has no reflection,
+writes each traversal once (`tests/python/test_traversals.py` checks the tables against the dataclasses).
 
 **Variables are objects.** An IR variable (`Var`) has a name hint and its Quest type (with alias names, for
 printing); its shape is the type's, derived rather than stored, so that a pass rewriting types (specialization

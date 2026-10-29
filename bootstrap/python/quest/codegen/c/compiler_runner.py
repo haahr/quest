@@ -70,7 +70,7 @@ def detect_gc_flags(nogc: bool = False) -> list[str]:
 @functools.cache
 def detect_readline_flags() -> tuple[str, ...]:
     """Detects the line editor quest_readline.c is compiled with
-    (docs/self-hosted-repl.md §1.1): GNU readline where it is installed, else
+    (docs/new-libraries.md §3.1): GNU readline where it is installed, else
     libedit's readline-compatible API, else none (-DQUEST_NOREADLINE).
     QUEST_READLINE, if set, chooses one: gnu, edit, or none."""
     choice = os.environ.get("QUEST_READLINE", "")

@@ -30,10 +30,10 @@ interpreter** (`questlang`). The self-hosted system replaces the Python bootstra
 
 All self-hosted compiler and interpreter source code lives under the `questlang/` directory with module path prefixes
 starting with `questlang/`. The tree follows the bootstrap (`bootstrap/python/quest/`) module for module: each
-bootstrap module becomes the Quest module of the same name, lowercased with its underscores removed (canonical names are
-letters and digits, [modules.md](modules.md) §2.3), so that a port is translation rather than redesign. Where Quest
-needs a split the bootstrap does not have (an import cycle, §5), the bootstrap is refactored first, so that the two
-trees stay the same.
+bootstrap module is the Quest module of the same name, lowercased with its underscores removed (canonical names are
+letters and digits, [modules.md](modules.md) §2.3), so that the port was translation rather than redesign. Where Quest
+needed a split the bootstrap did not have (an import cycle, §5), the bootstrap was refactored first, so the two trees
+match.
 
 ```
 questlang/
@@ -43,7 +43,7 @@ questlang/
 │   ├── diagbag              # Diagnostic accumulator and reporter
 │   └── keys                 # Integer keys for the type tables (the bootstrap keys them by tuples)
 │
-├── syntax/                  # Concrete syntax and parsing (Milestone 1; desugar, Milestone 2)
+├── syntax/                  # Concrete syntax and parsing
 │   ├── tokens               # TokenKind and Token definitions
 │   ├── tokenizer            # Lexical scanner
 │   ├── ast                  # Abstract syntax tree: Node, TypeForm, ExprForm, PhraseForm (§3)
@@ -55,7 +55,7 @@ questlang/
 │   │   └── actions          # Semantic actions constructing AST nodes
 │   └── desugar              # Rewriting syntactic sugar into the forms the type checker elaborates
 │
-├── types/                   # Semantic types and kinds (Milestone 2; canonical, Milestone 4)
+├── types/                   # Semantic types and kinds
 │   ├── symbols              # Symbols and scopes
 │   ├── model                # Types, kinds, substitution, interning
 │   ├── kinds                # Kind synthesis and checking, operator signatures
@@ -65,7 +65,7 @@ questlang/
 │   ├── dump                 # Canonical and compact type formatters
 │   └── canonical            # Reduced and canonical forms of types, for the backends
 │
-├── typechecker/             # Bidirectional type checker (Milestone 2)
+├── typechecker/             # Bidirectional type checker
 │   ├── typedast             # The typed AST
 │   ├── typedastprint        # Its printer, matching the bootstrap's typed AST dump
 │   ├── checker              # The checker's state, shared helpers, and dispatch hooks
@@ -75,7 +75,7 @@ questlang/
 │   ├── typecheck            # Dispatch on expression forms, phrases, programs, entry points
 │   └── scoping              # Well-scopedness check of typed programs
 │
-├── modules/                 # Units, imports, interfaces, modules (Milestone 2 from source; artifacts, Milestone 5)
+├── modules/                 # Units, imports, interfaces, modules, and their artifacts
 │   ├── paths                # File discovery, search paths, canonical names; files' text and times (over util/path)
 │   ├── units                # Unit files
 │   ├── graph                # The unit graph: resolution, loaded units
@@ -85,37 +85,38 @@ questlang/
 │   ├── stdlib               # The standard library's interfaces and module scopes
 │   ├── interfacecompiler, modulecompiler, manifest   # .qi and .qm artifacts, compiled modules
 │
-├── values/                  # Runtime values (Milestone 3)
+├── values/                  # Runtime values
 │   ├── model                # Values, and the interpreter's frames
 │   ├── json                 # JSON text, as the dynamic format uses it
 │   └── dynamicjson          # The serialized form of dynamic values
 │
-├── interpreter/             # Interpreters (tree walking, Milestone 3; IR, Milestone 4)
+├── interpreter/             # Interpreters: tree walking and IR
 │   ├── primitives, formatting, builtins
 │   ├── treewalk             # Tree-walking interpreter over the typed AST
 │   └── irinterp             # IR interpreter
 │
-├── ir/                      # IR lowering and passes (Milestone 4; docs/ir.md)
+├── ir/                      # IR lowering and passes (docs/ir.md)
 │   └── nodes, walk, lower, specialize, closure, shapes, represent, slots, describe, written, verify, printer
 │
-├── codegen/                 # Backends (the shared layer, Milestone 4; the C backend, Milestone 5)
+├── codegen/                 # Backends: the shared layer and the C backend
 │   ├── syntax, layout, descriptors, sha256   # C spelling, layouts and digests, descriptors' type-level forms
 │   ├── backend, symbols
 │   └── c/                   # backend, declarations, headers, printer, types, compilerrunner
 │
-├── config/                  # The ABI version and artifacts' format (Milestone 5)
-├── build/                   # The build engine and its log (Milestone 5)
+├── config/                  # The ABI version and artifacts' format
+├── build/                   # The build engine and its log
 │
 └── driver/                  # Compiler driver (bootstrap pipeline and quest/__main__)
     ├── main                 # Main routine: every phase, -e, -i, and the bootstrap's compiling options
     └── repl                 # The REPL: input completeness, rollback, the loop over io/readline
 ```
 
-The whole tree exists. The self-hosted compiler compiles itself, and its output is the bootstrap's (Milestone 5).
-`./questc` runs it, built from the tree by a released self-hosted compiler ([release-compiler.md](release-compiler.md))
-or by the bootstrap. So `questlang/` may use only what the current release compiles. The bootstrap's `config/options`
-was not ported, because the driver and the build engine take their options directly. (`codegen/sha256` is the SHA-256
-that the bootstrap takes from Python's `hashlib`, for layout tags and type digests.)
+The self-hosted compiler compiles itself to a fixed point, and it is the primary compiler: the two compilers agree
+on what programs do, not on how they compile them ([testing.md](testing.md) §2.8). `./questc` runs it, built from the
+tree by a released self-hosted compiler ([release-compiler.md](release-compiler.md)) or by the bootstrap. So
+`questlang/` may use only what the current release compiles. The bootstrap's `config/options` was not ported, because
+the driver and the build engine take their options directly. (`codegen/sha256` is the SHA-256 that the bootstrap takes
+from Python's `hashlib`, for layout tags and type digests.)
 
 ---
 
@@ -124,7 +125,7 @@ that the bootstrap takes from Python's `hashlib`, for layout tags and type diges
 The AST is one module, `questlang/syntax/ast` (interface `Ast`, in [ast.int.quest](../questlang/syntax/ast.int.quest)).
 It mirrors the bootstrap parser's AST (`bootstrap/python/quest/syntax/ast.py`) node for node, so that
 `questlang/syntax/astprint` can print it in the same canonical S-expression form as the bootstrap `ast_dump`, and the
-two can be compared on every parseable Quest file (§6). The interface declares its types with `Def`, so that importers
+two can be compared on every parseable Quest file ([testing.md](testing.md) §2.3). The interface declares its types with `Def`, so that importers
 see their structure; the module defines them with `Let`.
 
 In Quest, type names must be alphanumeric and cannot contain underscores (`_`). Furthermore, the term "Kind" has a
@@ -374,7 +375,7 @@ Layer 9: driver/*
 ```
 
 The bootstrap's lazy imports made cycles that this order does not allow; they were broken in the bootstrap before the
-port ([milestone-2.md](milestone-2.md) §1.1): symbols and scopes are `types/symbols`; the operator table is
+port: symbols and scopes are `types/symbols`; the operator table is
 `types/env`'s, so that `kinds`, which uses environments, is above it; the loader and the checker
 register the functions module elaboration calls back, rather than elaboration importing them; and the checker's
 construct families reach the dispatch through `typechecker/checker` (in Quest, a tuple whose function fields
@@ -382,60 +383,41 @@ construct families reach the dispatch through `typechecker/checker` (in Quest, a
 
 ---
 
-## 6. Implementation Milestones
+## 6. Differences from the Bootstrap
 
-Porting proceeds through five self-contained milestones:
+The self-hosted compiler prints what the bootstrap prints, in every shared phase ([testing.md](testing.md) §2.8). Where
+the two differ inside, it is because Quest cannot hold what Python does, or because the self-hosted compiler goes
+further:
 
-### Milestone 1: Front End (`common` and `syntax`) — done
-- `questlang/common/location`, `diagnostics`, `diagbag`.
-- `questlang/syntax/tokens` and `questlang/syntax/tokenizer` (verified against `tokenize` goldens).
-- `questlang/syntax/ast` and `questlang/syntax/astprint` (verified against the bootstrap's `parse` goldens by the
-  self-hosted driver; see [testing.md](testing.md)).
-- `questlang/syntax/parser` and `parser/*`: generic PEG engine with memoization, and the grammar's rules and actions
-  for types, declarations, expressions, operators, and modules (verified against the bootstrap parser by the
-  `parser_*` golden tests; see [testing.md](testing.md)).
-
-### Milestone 2: Types & Type Checking (`types`, `typechecker`, `modules` from source) — done
-The plan is [milestone-2.md](milestone-2.md): `syntax/desugar`, the semantic types, the type checker (reporting every
-error it can), the module system's loading and elaboration of units from source, and a driver for the front end's
-phases, compiled, which passes the bootstrap's tokenize, parse, and typecheck goldens and error tests. The
-self-hosted suite (`run_tests.py --self-hosted`) verifies it, with the
-generated tests of the types (`types_*`) and of elaboration (`elaborate_*`), and tests of several errors
-(`tests/self-hosted/errors`); see [testing.md](testing.md).
-
-### Milestone 3: Values & the Tree-Walking Interpreter (`values`, `interpreter`) — done
-The plan is [milestone-3.md](milestone-3.md): `values/model`, `interpreter/primitives`, `formatting`, `builtins`
-(which call the native standard library), and `treewalk`; `values/json` and `dynamicjson` for `dynamic.extern` and
-`intern`; and the driver's interpret phase and `-e`. The self-hosted suite verifies it against the run goldens and
-run-time error tests, and `-e` against a generated transcript of the bootstrap's (`tests/eval`); see
-[testing.md](testing.md). The REPL, which Milestone 3 left out, followed ([self-hosted-repl.md](self-hosted-repl.md)):
-`driver/repl` on the `io/readline` library, verified against the bootstrap's REPL transcripts and at a terminal.
-
-### Milestone 4: IR (`ir`, `types/canonical`, the IR interpreter) — done
-The plan is [milestone-4.md](milestone-4.md): the rest of `types/canonical` (canonical forms of recursive types),
-`ir/*` (lowering, the passes, the printer, and the verifier), `codegen/syntax`, `layout`, and `descriptors`, and
-`interpreter/irinterp`. The self-hosted suite verifies each stage's dumps against the `ir_*` goldens and runs every
-program at every stage (`run_ir_*`) against the run goldens and run-time error tests, with the verifier and the
-canonical-form guard on; see [testing.md](testing.md).
-
-### Milestone 5: C Code Generation & Self-Hosting (`codegen`, artifacts, `driver`) — done
-The plan is [milestone-5.md](milestone-5.md): `codegen/backend`, `symbols`, and `c/*`; `config/abi`; the artifacts
-(`modules/interfacecompiler`, `manifest`, and `modulecompiler`); `build/engine` and `logger`; and the driver's
-compiling options. The self-hosted suite checks the C of every run program against digests of its own
-(`codegen_c`), and compiles and runs every program (`run_c_compiled`) against the run goldens and run-time error
-tests, which the two compilers share. `run_tests.py --self-hosting` checks the fixed point: the driver's build of
-itself writes the artifacts its seed's build wrote, and rebuilds itself as the same binary; seeded by the release, it
-also checks that the bootstrap's build of the driver compiles as the release's does. Until 2026-10-28, the
-self-hosted compiler wrote the bootstrap's artifacts and C; now optimizations go into it alone (testing.md §2.8).
-
----
-
-### 6.1. Milestone 1 Verification Strategy
-
-Milestone 1 is validated by the self-hosted driver, which `run_tests.py --self-hosted` runs on every test program
-and error test of the tokenize and parse phases against the bootstrap's goldens, and by golden tests in
-`tests/source/questlang` ([testing.md](testing.md)):
-- `syntax_tokenizer` and `syntax_tokens` check the tokenizer's tokens and errors.
-- The `parser_*` tests, generated by `tests/parser/generate.py`, parse cases that use every rule of the grammar, and
-  cases with syntax errors; their goldens are the bootstrap parser's ASTs and errors. `syntax_parser` and
-  `syntax_parser_engine` test what only the self-hosted parser has.
+- **Errors.** The self-hosted type checker reports several errors, not only the first
+  ([diagnostics.md](diagnostics.md) §4.5). One Quest exception, `diagnostics.compilerError`, stands for the
+  bootstrap's `QuestCompilerError` and its subclasses, and in the interpreters `model.runError` for both
+  `QuestException` and `QuestRuntimeError`; its cause tells a Quest exception from an error of the interpreter.
+- **The checker's families** are one tuple, `checker.T`, which holds the checker's state and, in `var` fields, the
+  dispatch functions that `typecheck` fills; a family calls the families below it directly. Module elaboration calls
+  the loader and the checker back through hooks, `var` fields of a tuple that `elaboration` exports (§5).
+- **Keys.** The bootstrap keys its type tables by tuples, which Python hashes. Keys built as strings made the
+  self-hosted compiler several times slower, so its tables use integer keys interned through `common/keys`. Caches
+  that the bootstrap keys by an object's identity are hash maps keyed by its id, or its identity hash.
+- **Traversals.** Quest has no reflection, so every walk over the nodes of a family (the syntax tree, the typed AST,
+  the IR, types) lists each node's fields, case by case. The bootstrap uses the same explicit tables
+  (`ir/walk.py`'s `fields_of` and `rebuild`, [ir.md](ir.md) §5), but its debugging printers read fields by name.
+- **Names.** Fields and variables named with Quest's keywords are renamed (`ir/nodes`), and the IR's `Var` is
+  `Variable`, since `Var` is a type keyword. The C printer names keyword-named variables of the bootstrap's otherwise
+  (`rec`, `out`, `record`, `inspect`).
+- **Paths** are `util/path`'s, normalized lexically without following symbolic links. The project directory, which
+  the bootstrap knows as its own source tree, is `QUEST_HOME`, which the runners set, or else the current directory.
+- **JSON.** `values/json`, private to `questlang/values/`, keeps a number's text, so that a word's integer (up to
+  2^64 - 1) is read exactly; an integer read as an `Int` must fit one, where Python's are unbounded. A `\u` escape
+  above `\u00ff` fails as the text is parsed, since a character is a byte. `dynamic.intern` reads from a native reader,
+  which cannot put a character back, so after a value that is not an object, array, or string it reads the delimiter
+  that ends it too; such a document is not a dynamic value, so it fails either way.
+- **The interpreters' builtins** are only the symbols `lib/` binds, and each calls the native library
+  ([interpreter.md](interpreter.md) §1).
+- **The build.** A Quest program can neither read the clock nor append to a file, so the build log's entries are
+  timestamped and appended by `sh` with `date` (`build/logger`). Temporary files are made by `mktemp`, and a program's
+  C goes into a temporary directory of its own. A compiled program runs without the bootstrap's 10-second timeout. An
+  error that is not a compiler error (a C compiler's failure, say) is reported at the program's first character,
+  without the bootstrap's Python traceback. `--dump-after` is ported for the C phases only.
+- **The REPL's snapshots** record no symbol counter and no frame parent, neither of which the self-hosted compiler can
+  observe ([repl.md](repl.md) §7).

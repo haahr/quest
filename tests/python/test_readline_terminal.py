@@ -1,7 +1,7 @@
 """io/readline at a terminal: line editing, history, Ctrl-C, and Ctrl-D, through
 a pseudo-terminal, compiled with each line editor installed and in the
 bootstrap's interpreter, and the REPL that reads its input through it
-(docs/self-hosted-repl.md §1). Golden tests and REPL transcripts cover what
+(docs/new-libraries.md §3.1). Golden tests and REPL transcripts cover what
 needs no terminal (tests/source/stdlib/readline.quest, tests/repl)."""
 
 from __future__ import annotations

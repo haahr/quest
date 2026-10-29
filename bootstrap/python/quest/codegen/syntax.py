@@ -1,5 +1,5 @@
-"""The spelling of C text (docs/self-hosting-refactorings.md §2): literals and
-the forms the C backend repeats.
+"""The spelling of C text (docs/converting-python-to-quest.md, rule 6):
+literals and the forms the C backend repeats.
 
 Every piece of C the backend writes is a string built from these and from
 strings: a value interpolated into C text is a string (numbers go through c_int

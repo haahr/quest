@@ -603,7 +603,7 @@ The compiler runner manages external C compiler toolchain discovery, Boehm GC fl
 - If not found or when `--nogc` flag is specified: passes `-DQUEST_NOGC`, using standard libc `calloc`/`malloc`.
 
 `detect_readline_flags()` locates the line editor `runtime/quest_readline.c` uses (GNU readline, then libedit, else
-`-DQUEST_NOREADLINE`; `QUEST_READLINE` chooses one), as [self-hosted-repl.md](self-hosted-repl.md) §1.1 describes.
+`-DQUEST_NOREADLINE`; `QUEST_READLINE` chooses one), as [new-libraries.md](new-libraries.md) §3.1 describes.
 
 ### 11.3. Compilation Invocation
 The runtime's C files (`quest_runtime.c`, `quest_serialization.c`, `quest_readline.c`) are compiled once into objects

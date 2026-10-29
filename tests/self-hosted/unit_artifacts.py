@@ -5,7 +5,7 @@ directory of its own, which must leave its C translation (.mod.c), manifest
 (.qm), object (.o), and its interface's .qi and C header (.int.h). The artifacts
 are the self-hosted compiler's own, so they are not compared with the
 bootstrap's (docs/testing.md section 2.8); the ABI corpus pins its interfaces'.
-run_tests.py --self-hosted runs it (docs/milestone-5.md).
+run_tests.py --self-hosted runs it (docs/testing.md section 2.3).
 
     python tests/self-hosted/unit_artifacts.py DRIVER [MODULE...]
 """

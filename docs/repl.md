@@ -224,5 +224,7 @@ The two REPLs are the same loop over the same steps; only their languages differ
 
 The self-hosted snapshots leave out two things the bootstrap's record, neither observable: a symbol counter (the
 bootstrap's ids come from a global allocator that no restore resets, so they are never reused either) and a frame's
-parent (which cannot change in `model.Frame`). docs/self-hosted-repl.md is the plan the self-hosted REPL was built
-by.
+parent (which cannot change in `model.Frame`). The two `io/readline`s differ too: the self-hosted interpreter's is
+the compiled library, built with GNU readline or libedit, and the bootstrap's is Python's `readline`, with the same
+history file format ([new-libraries.md](new-libraries.md) §3.1). Each driver decides for itself whether standard input
+is a terminal: Python's `isatty` in the bootstrap's, `system.isTerminal` in the self-hosted one.

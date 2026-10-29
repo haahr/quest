@@ -21,10 +21,23 @@ compilation or machine code generation. It serves three primary purposes:
 
 The interpreter consumes the typed AST produced by `typecheck` and produces runtime Quest values (`QValue`).
 
-The self-hosted compiler has the same interpreter, in Quest (`questlang/values/`, `questlang/interpreter/`;
-[milestone-3.md](milestone-3.md)): a value is a case of `model.Value`, a frame is `model.Frame`, and the standard
-library's externals call the native library rather than reimplementing it. Its output, errors, and dynamic documents
-are the bootstrap's; where they differ is recorded in milestone-3.md.
+The self-hosted compiler has the same interpreter, in Quest (`questlang/values/`, `questlang/interpreter/`): a value
+is a case of `model.Value`, a frame is `model.Frame`, and the standard library's externals call the native library
+rather than reimplementing it. Its output, errors, and dynamic documents are the bootstrap's; where its insides differ
+is in [compiler-organization.md](compiler-organization.md) §6.
+
+- **Values.** A scalar holds its Quest value; a string, reader, writer, string builder, or list holds the native
+  object, so `is` on interpreted values is `is` on what they hold. Records, tuples, arrays, closures, auto values,
+  exception values, and type values are tuples whose identity is the interpreted value's. References are cells with
+  `var` fields.
+- **Builtins.** `interpreter/builtins` maps each external symbol `lib/` binds to an implementation: a function of the
+  argument values, or a value (such as `quest_writer_output` and `QUEST_INT_MAX`). A function unwraps its arguments,
+  calls the native library function the symbol names (`quest_string_get_char` is `stringOp.getChar`), and wraps the
+  result, so its semantics are compiled code's. A library function raises its module's native exception
+  (`stringOp.error`); the implementation catches it and raises the interpreted one, which the interpreted library binds
+  to `error` through the same table, so the program's `try` catches it. Only what acts on interpreted values
+  themselves is the interpreter's own: `dynamic.copy`, `extern`, and `intern`, the identity hash of what `is`
+  compares, `list`, and `system.args`.
 
 ```
                               ┌─────────────────────────┐

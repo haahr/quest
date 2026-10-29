@@ -1,5 +1,5 @@
 """Measures the C backend and the code it produces, for comparing a change with
-the baseline taken before it (docs/reorganization.md §2, 0b).
+the baseline taken before it (docs/testing.md section 2.3).
 
     # Print a summary, comparing with tests/perf/baseline.json if present:
     python tests/perf/measure.py

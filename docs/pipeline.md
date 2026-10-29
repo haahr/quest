@@ -84,7 +84,7 @@ All compiler phases are named by their **Verb / Action Form**:
 - `run_c_compiled`: Host compilation and execution of generated C code. Runs the binary and captures standard output.
 
 ### Uniform Enforcement Across Interfaces
-1. **CLI Milestones:** `quest --stop-after <phase>` and `quest --dump-after <phase>`.
+1. **CLI Options:** `quest --stop-after <phase>` and `quest --dump-after <phase>`.
 2. **Golden Output Directories:** `tests/golden/<phase>/<test>.out` (with `interpret` and `run_c_compiled` both
    mapping to `tests/golden/run/<test>.out`).
 3. **Diagnostic Error Directories:** `tests/errors/<phase>/<test>.quest`.
@@ -96,7 +96,7 @@ All compiler phases are named by their **Verb / Action Form**:
 
 ### 3.1. `CompilerOptions` (`bootstrap/python/quest/config/options.py`)
 Encapsulates runtime configuration:
-- `stop_after: Optional[str]`: Pipeline milestone to halt after (implicitly dumping output).
+- `stop_after: Optional[str]`: Pipeline phase to halt after (implicitly dumping output).
 - `dump_after: set[str]`: Intermediate phase outputs to dump to stdout while continuing pipeline execution.
 - `include_paths: list[Path]`: Search directories for imported interfaces and modules (`-I`).
 - `echo: bool`: When true, echoes top-level binding signatures and evaluated values in batch mode.

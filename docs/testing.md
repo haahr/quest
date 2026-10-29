@@ -1,7 +1,8 @@
 # Quest Compiler Testing Framework
 
-This document describes the testing architecture for the Quest bootstrap compiler, including unit tests, golden-file
-end-to-end tests for valid programs, and diagnostic inline-comment tests for invalid programs.
+This document describes the testing architecture for the two Quest compilers, the bootstrap and the self-hosted one,
+including unit tests, golden-file end-to-end tests for valid programs, and diagnostic inline-comment tests for invalid
+programs.
 
 ---
 
@@ -189,9 +190,7 @@ headers for a frozen snapshot of the library's interfaces) change without a bump
 **Self-hosted compiler:** `python3 run_tests.py --self-hosted` compiles the self-hosted compiler's driver
 (`questlang/driver/main.quest`) to C with the bootstrap, then runs it, instead of the bootstrap's driver, on every test
 of the phases it has (tokenize, parse, typecheck, the IR's dumps and runs at every stage, `ir_STAGE` and
-`run_ir_STAGE`, interpret, and `run_c_compiled`; [milestone-2.md](milestone-2.md) §3,
-[milestone-3.md](milestone-3.md) §3, [milestone-4.md](milestone-4.md) §2, [milestone-5.md](milestone-5.md) §2),
-against the shared goldens and error expectations, which the bootstrap writes, and against its own (§2.8). The driver
+`run_ir_STAGE`, interpret, and `run_c_compiled`), against the shared goldens and error expectations, which the bootstrap writes, and against its own (§2.8). The driver
 takes the bootstrap driver's `--stop-after PHASE FILE` and prints
 the phase's dump in the bootstrap's format (it also has `desugar`, which has no goldens). It reports errors after the
 bootstrap's one: an error test passes when the driver's first diagnostic is the expected one and, if it reports more,
@@ -223,8 +222,8 @@ change alters it (§2.9). `run_c_compiled` builds into a directory of its own un
 artifacts. The self-hosted driver builds the questlang tests once, one after another, into a shared directory
 (`self-hosted-questlang-tests`).
 
-**Self-hosting:** `python3 run_tests.py --self-hosting` checks the self-hosted compiler's fixed point
-([milestone-5.md](milestone-5.md) §2.3), then runs the self-hosted suite with stage 2. Stage 1 is the seed's
+**Self-hosting:** `python3 run_tests.py --self-hosting` checks the self-hosted compiler's fixed point, then runs the
+self-hosted suite with stage 2. Stage 1 is the seed's
 build of the driver: the bootstrap's by default. Stage 2 is stage 1's build of it, and stage 3 is stage 2's. The check
 requires:
 - **The fixed point:** every artifact stage 2 writes for the driver's units (`.mod.c`, `.main.c`, `.int.h`, `.qi`, and
@@ -236,8 +235,8 @@ requires:
   rebuild the compiler from nothing once the two compilers' outputs differ (§2.8). `tools/release` runs the check
   this way.
 
-The bootstrap's own artifacts are no longer compared with the self-hosted compiler's. The check takes a few minutes
-plus the bootstrap's build of the driver, about ten, and isn't part of the routine runs.
+Each stage builds with `-j` set to the number of CPUs. The bootstrap's artifacts are not compared with the
+self-hosted compiler's, which are its own (§2.8). The check runs before every push, as part of `tools/check` (§4.1).
 
 **Seeds:** `--seed release` makes the current release (`release/current`, [release-compiler.md](release-compiler.md))
 build the driver, rather than the bootstrap.
@@ -253,9 +252,8 @@ one per line, and `python tests/eval/generate.py` writes the bootstrap driver's 
 (`tests/golden/self-hosted/eval.out`, each program's output, errors, and exit status), which the self-hosted suite
 compares the driver's with (`interpret:self-hosted/eval`).
 
-**Which runs:** a change to the self-hosted compiler alone (`questlang/`) runs the self-hosted suite and the questlang
-tests, `python3 run_tests.py -k questlang/`. A change to the bootstrap, `lib/`, or `runtime/` also runs the
-bootstrap's suites (`run_tests.py` and the unit tests).
+**Which runs:** a change to the self-hosted compiler alone runs the self-hosting check, and any other change the
+bootstrap's suites too (`run_tests.py` and the unit tests); `tools/check` runs them (§4.1).
 
 **The questlang tests run compiled only:** the bootstrap's suites skip them in `interpret` and the `run_ir_*` phases,
 as if every one said so with `@skip-phase` (§2.4), since each would interpret the self-hosted compiler's code for half

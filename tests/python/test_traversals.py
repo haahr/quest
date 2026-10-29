@@ -1,5 +1,5 @@
-"""The node families' explicit traversals (docs/self-hosting-refactorings.md
-§3): each has an entry for every class of its family, and agrees with the
+"""The node families' explicit traversals (docs/ir.md section 5): each has an
+entry for every class of its family, and agrees with the
 dataclasses' own fields (which the compiler itself no longer reads by
 reflection) on every node of real programs: those of the syntax tree, the typed
 AST, the IR, and the types they mention."""

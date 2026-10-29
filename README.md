@@ -26,7 +26,7 @@ Otherwise, if you're interested in a retro programming language and an interesti
 
 ## Roadmap Summary
 
-The compiler is built using a staged bootstrap methodology across seven milestones:
+The compiler is built using a staged bootstrap methodology across seven steps:
 
 | Stage | Language | Subsystem | Status |
 | :--- | :--- | :--- | :--- |
@@ -244,12 +244,10 @@ system, intermediate representation, and native runtime design. If you are new t
 - [docs/instructions.md](docs/instructions.md): Guide for contributors and models working on Quest: workflow, commands,
   invariants, code and documentation conventions, and Quest syntax traps.
 
-### 5. Roadmap & Self-Hosting Plans
+### 5. Roadmap & the Self-Hosted Compiler
 - [docs/roadmap.md](docs/roadmap.md): Seven-stage implementation roadmap from Python bootstrap to native AArch64 JIT.
-- [docs/compiler-organization.md](docs/compiler-organization.md): Module architecture and milestones for the
-  self-hosted Quest compiler (`questlang/`).
-- [docs/quest-self-hosting-prerequisites.md](docs/quest-self-hosting-prerequisites.md): Library and runtime
-  prerequisites for self-hosting.
+- [docs/compiler-organization.md](docs/compiler-organization.md): Module architecture of the self-hosted Quest
+  compiler (`questlang/`), and how it differs from the bootstrap.
 - [docs/release-compiler.md](docs/release-compiler.md): Releases of the self-hosted compiler (`tools/release`), which
   seed `./questc` in two stages.
 - [docs/tasklist.md](docs/tasklist.md): Open bugs and planned tasks.

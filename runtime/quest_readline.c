@@ -4,7 +4,7 @@
  * readline API.
  *
  * The build compiles this file with the line editor it finds
- * (docs/self-hosted-repl.md §1.1): GNU readline (QUEST_GNU_READLINE), libedit's
+ * (docs/new-libraries.md §3.1): GNU readline (QUEST_GNU_READLINE), libedit's
  * readline-compatible API (neither flag), or none (QUEST_NOREADLINE), when
  * readLine reads plain lines. The history is the runtime's own, mirrored into
  * the line editor's, and its file is plain lines.

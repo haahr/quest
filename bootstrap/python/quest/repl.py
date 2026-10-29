@@ -8,7 +8,7 @@ Implements Phase 3.6 of the Quest bootstrap compiler:
   (response).
 - Line editing and history in ~/.quest_history through io/readline's externals
   (interpreter/builtins), which a dumb or emacs terminal turns off, as compiled
-  code's do (docs/self-hosted-repl.md §1).
+  code's do (docs/new-libraries.md §3.1).
 - Clean rollback of environment state, units included, on typecheck error or
   runtime exception (QuestREPL.evaluate).
 """
