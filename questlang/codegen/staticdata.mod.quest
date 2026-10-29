@@ -1,0 +1,433 @@
+(* Quest Self-Hosted Compiler: Static Data Implementation *)
+
+module staticdata : StaticData
+import
+    questlang/types/model : questlang/types/Model
+    questlang/types/dump : questlang/types/Dump
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/ir/written : questlang/ir/Written
+    questlang/codegen/syntax : questlang/codegen/Syntax
+    questlang/codegen/layout : questlang/codegen/Layout
+    questlang/codegen/descriptors : questlang/codegen/Descriptors
+    questlang/codegen/symbols : questlang/codegen/Symbols
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    conv : Conv
+    ascii : Ascii
+export
+    Let Type = model.Type
+    Let Shape = shapes.Shape
+
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+    let isOneOf(s: String items: Array(String)): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent items - 1} do if eq(s items[i]) then found := true end end
+            found
+        end
+
+    let missingDescriptor: Exception(String) = exception missingDescriptor: String end
+
+    Def DescriptorForm = Tuple
+        kind: String
+        tag: String
+        type: maybe.T(Type)
+        name: String
+        expr: String
+        struct: String
+        display: maybe.T(Type)
+        symbol: String
+        index: Int
+    end
+
+    (* A descriptor of the runtime's, element index of the array symbol *)
+    let base(expr: String symbol: String index: Int): DescriptorForm =
+        tuple
+            let kind = "base" let tag = "" let type = maybe.none(:Type) let name = "" let expr = expr
+            let struct = "" let display = maybe.none(:Type) let symbol = symbol let index = index
+        end
+    let described(kind: String tag: String t: maybe.T(Type) name: String): DescriptorForm =
+        tuple
+            let kind = kind let tag = tag let type = t let name = name let expr = "" let struct = ""
+            let display = maybe.none(:Type) let symbol = "quest_type_" <> tag let index = 0
+        end
+    let ofType(kind: String tag: String t: Type): DescriptorForm = described(kind tag maybe.some(:Type t) "")
+
+    (* =========================================================================
+     * Python's repr, for the texts some names digest
+     * ====================================================================== *)
+
+    (* A string as Python's repr writes it: in single quotes, or in double
+     * quotes when it has a single quote and no double quote, with backslash
+     * escapes for the quote, backslash, and unprintable characters *)
+    let pyRepr(s: String): String =
+        begin
+            let var hasSingle = false
+            let var hasDouble = false
+            for i = 0 upto {stringOp.length(s) - 1} do
+                let c = stringOp.getChar(s i)
+                if c is '\'' then hasSingle := true elsif c is '"' then hasDouble := true end
+            end
+            let quote = if hasSingle andif not(hasDouble) then '"' else '\'' end
+            let hex = "0123456789abcdef"
+            let b = stringBuilder.new()
+            b.char(quote)
+            for i = 0 upto {stringOp.length(s) - 1} do
+                let c = stringOp.getChar(s i)
+                let code = ascii.val(c)
+                if {c is quote} orif {c is '\\'} then
+                    b.char('\\').char(c)
+                elsif c is '\t' then
+                    b.str("\\t")
+                elsif c is '\n' then
+                    b.str("\\n")
+                elsif c is '\r' then
+                    b.str("\\r")
+                elsif {code < 32} orif {{code >= 127} andif {code <= 160}} orif {code is 173} then
+                    (* Unprintable, as Python decides it for the character
+                     * a byte decodes to *)
+                    b.str("\\x").char(stringOp.getChar(hex code / 16)).char(stringOp.getChar(hex code % 16))
+                else
+                    b.char(c)
+                end
+            end
+            b.char(quote)
+            b.toString()
+        end
+
+    (* Items in Python's repr of a tuple (one item has a trailing comma) and of
+     * a list *)
+    let pyTuple(items: vector.T(String)): String =
+        "(" <> syntax.joined(", " items) <> if vector.length(:String items) is 1 then ",)" else ")" end
+    let pyList(items: vector.T(String)): String = "[" <> syntax.joined(", " items) <> "]"
+
+    (* =========================================================================
+     * Record naming
+     * ====================================================================== *)
+
+    Def RecordNaming = Tuple
+        aliasByShape: hashMap.T(String String)
+        canonicalNames: hashMap.T(String String)
+    end
+
+    let newRecordNaming(): RecordNaming =
+        tuple
+            let aliasByShape = hashMap.new(:String :String eq hash.string)
+            let canonicalNames = hashMap.new(:String :String eq hash.string)
+        end
+
+    let recordFields(t: Type): Array(model.RecordField) =
+        case t.form
+            when typeRecord with r then r.fields
+            else vector.toArray(:model.RecordField vector.new(:model.RecordField))
+        end
+
+    let compareFields(a: model.RecordField b: model.RecordField): Int = sort.stringCompare(a.name b.name)
+
+    (* What tells record layouts apart: the record's shape's fields (the
+     * structure of its canonical form, so that a record is named alike however
+     * it is written), by name, with their types' tags and digests (records
+     * share a struct only if their fields have the same types, not merely the
+     * same C representations), as Python's repr writes them *)
+    let shapeKey(t: Type): String =
+        begin
+            let s = shapes.shape(t)
+            let unsorted = if eq(s.kind "record") then recordFields(s.structure) else recordFields(t) end
+            let fields = sort.sorted(:model.RecordField unsorted compareFields)
+            let items = vector.new(:String)
+            for i = 0 upto {extent fields - 1} do
+                let f = fields[i]
+                let parts = vector.new(:String)
+                vector.append(:String parts pyRepr(f.name))
+                vector.append(:String parts pyRepr(layout.typeTag(f.type)))
+                vector.append(:String parts pyRepr(layout.typeDigest(f.type)))
+                vector.append(:String items pyTuple(parts))
+            end
+            pyTuple(items)
+        end
+
+    let registerAlias(ctx: RecordNaming aliasName: String t: Type): Ok =
+        begin
+            let key = shapeKey(t)
+            if not(hashMap.contains(:String :String ctx.aliasByShape key)) then
+                let name = aliasName <> "_" <> layout.textDigest(key)
+                hashMap.insert(:String :String ctx.aliasByShape key name)
+                hashMap.insert(:String :String ctx.canonicalNames key name)
+            end
+            ok
+        end
+
+    let recordName(ctx: RecordNaming t: Type): String =
+        begin
+            let key = shapeKey(t)
+            let found = hashMap.get(:String :String ctx.canonicalNames key)
+            if maybe.isSome(:String found) then
+                maybe.unwrap(:String found)
+            else
+                let name = "record_" <> layout.textDigest(key)
+                hashMap.insert(:String :String ctx.canonicalNames key name)
+                name
+            end
+        end
+
+    let recordStructName(t: Type ctx: maybe.T(RecordNaming)): String =
+        if maybe.isSome(:RecordNaming ctx) then "QT_" <> recordName(maybe.unwrap(:RecordNaming ctx) t)
+        else layout.typeTag(t)
+        end
+
+    let offsetDictStructName(ctx: RecordNaming t: Type): String = "OffsetDict_" <> recordName(ctx t)
+
+    let offsetDictInstanceName(ctx: RecordNaming target: Type source: Type): String =
+        "offsetdict_" <> recordName(ctx target) <> "_" <> recordName(ctx source)
+
+    (* =========================================================================
+     * Descriptors
+     * ====================================================================== *)
+
+    (* The name of an opaque descriptor, by which descriptors are compared: a
+     * module abstract type's global name, or the type as printed, or for a type
+     * that prints longer than the limit, the start of it followed by the digest
+     * of the whole *)
+    let opaqueName(t: Type): String =
+        begin
+            let globalName = descriptors.moduleAbstractTypeName(t)
+            if maybe.isSome(:String globalName) then
+                maybe.unwrap(:String globalName)
+            else
+                let p = layout.printedType(t)
+                if p.length <= layout.printedTextLimit then model.show(t)
+                else dump.shortTypeName(t) <> "#" <> stringOp.getSub(p.digest 0 16)
+                end
+            end
+        end
+
+    let baseExpr(kind: String): maybe.T(String) =
+        begin
+            let some(s: String): maybe.T(String) = maybe.some(:String s)
+            if eq(kind "int") then some("&quest_type_Int") elsif eq(kind "real") then some("&quest_type_Real")
+            elsif eq(kind "bool") then some("&quest_type_Bool") elsif eq(kind "char") then some("&quest_type_Char")
+            elsif eq(kind "string") then some("&quest_type_String") elsif eq(kind "ok") then some("&quest_type_Ok")
+            else maybe.none(:String)
+            end
+        end
+
+    let boundIsPower(b: maybe.T(model.Kind)): Bool =
+        maybe.isSome(:model.Kind b) andif model.isPower(maybe.unwrap(:model.Kind b))
+
+    let rec descriptorForm(t0: Type ctx: maybe.T(RecordNaming)): DescriptorForm =
+        begin
+            let s = shapes.shape(t0)
+            let hole = descriptors.holeIndex(s.type)
+            if maybe.isSome(:Int hole) then
+                (* A template's hole (described as such, not by the bound a
+                 * bounded type variable resolves to) *)
+                let index = maybe.unwrap(:Int hole)
+                let bound = case s.type.form when typeVariable with v then v.bound else maybe.none(:model.Kind) end
+                let tag = "hole_" <> syntax.cInt(index) <> if boundIsPower(bound) then
+                    "_" <> layout.typeDigest(model.powerBound(maybe.unwrap(:model.Kind bound)))
+                else
+                    ""
+                end
+                described("hole" tag maybe.some(:Type s.type) syntax.cInt(index))
+            else
+                (* Equal types share a descriptor: a type is described by its
+                 * shape's structure, the unfolding of its canonical form *)
+                let t = s.structure
+                let held = layout.resolvedShape(s)
+                let boundVar = descriptors.boundVarIndex(t)
+                let abstractName = descriptors.moduleAbstractTypeName(t)
+                let isEmptyTuple = case t.form when typeTuple with x then extent x.fields is 0 else false end
+                let isBoundedVariable = case t.form when typeVariable with v then boundIsPower(v.bound) else false end
+                if maybe.isSome(:String baseExpr(s.kind)) then
+                    let expr = maybe.unwrap(:String baseExpr(s.kind))
+                    base(expr stringOp.getSub(expr 1 stringOp.length(expr) - 1) 0)
+                elsif eq(s.kind "word") then
+                    base("&quest_type_Word" "quest_type_Word" 0)
+                elsif maybe.isSome(:Int boundVar) then
+                    let index = maybe.unwrap(:Int boundVar)
+                    base("(&quest_type_bound_vars[" <> syntax.cInt(index) <> "])" "quest_type_bound_vars" index)
+                elsif isEmptyTuple then
+                    base("&quest_type_EmptyTuple" "quest_type_EmptyTuple" 0)
+                elsif isBoundedVariable andif maybe.isSome(:String abstractName) then
+                    (* A module's abstract type with a bound: opaque, and held
+                     * outside the module in the representation of its bound,
+                     * viewed at the bound (a stored descriptor) *)
+                    let g = maybe.unwrap(:String abstractName)
+                    described("stored" "stored_" <> layout.textDigest(g) maybe.some(:Type t) g)
+                elsif eq(held.kind "record") then
+                    (* A type variable bounded by a record, variant, or option
+                     * type is described by its bound *)
+                    ofType("record" recordStructName(held.structure ctx) held.structure)
+                elsif eq(s.kind "tuple") then
+                    ofType("tuple" layout.tupleStructName(t) <> "_" <> layout.typeDigest(t) t)
+                elsif eq(held.kind "variant") then
+                    let v = held.structure
+                    ofType("variant" layout.typeTag(v) <> "_" <> layout.typeDigest(v) v)
+                elsif eq(held.kind "option") then
+                    let o = held.structure
+                    let f = ofType("option" layout.optionStructName(o) <> "_" <> layout.typeDigest(o) o)
+                    tuple
+                        let kind = f.kind let tag = f.tag let type = f.type let name = f.name let expr = f.expr
+                        let struct = layout.optionStructName(o) let display = f.display let symbol = f.symbol
+                        let index = f.index
+                    end
+                else
+                    let opaque(tag: String name: String): DescriptorForm =
+                        described("opaque" tag maybe.none(:Type) name)
+                    let named(name: String): DescriptorForm = opaque("opaque_" <> symbols.mangleIdent(name) name)
+                    case t.form
+                        when typeApp with x then
+                            (* An application of an abstract type operator
+                             * (list.T(Int)): opaque, compared by the
+                             * operator's name and the arguments *)
+                            described("opaque" "opaque_" <> layout.typeDigest(t) maybe.some(:Type t)
+                                opaqueName(x.constructor))
+                        when typeArray then ofType("array" "array_" <> layout.typeDigest(t) t)
+                        when typeException then ofType("exception" "exception_" <> layout.typeDigest(t) t)
+                        when typeFun, typeAll then
+                            let canonical = descriptors.canonicalFunType(t)
+                            ofType("fun" "fun_" <> layout.typeDigest(canonical) canonical)
+                        when typeExternal with x then
+                            let name = if stringOp.length(x.name) > 0 then x.name else x.cType end
+                            named(name)
+                        else
+                            if maybe.isSome(:String abstractName) then
+                                let g = maybe.unwrap(:String abstractName)
+                                opaque("opaque_" <> layout.textDigest(g) g)
+                            else
+                                case t.form
+                                    when typeVariable with x then named(x.name)
+                                    when typeAbstract with x then named(x.name)
+                                    when typePath with x then
+                                        (* An abstract type of a package value
+                                         * (t.A): opaque, and distinct for each
+                                         * binding of t *)
+                                        let name = x.rootName <> "." <> x.fieldName <> "#"
+                                            <> syntax.cInt(x.rootSymbolId)
+                                        opaque("opaque_" <> layout.textDigest(name) name)
+                                    when typeAuto then
+                                        let canonical = descriptors.canonicalAutoType(t)
+                                        ofType("auto" "auto_" <> layout.typeDigest(canonical) canonical)
+                                    when typeVar with x then descriptorForm(x.element ctx)
+                                    when typeOut with x then descriptorForm(x.element ctx)
+                                    when typeOperator then
+                                        (* A type operator, passed for a
+                                         * higher-kinded type parameter:
+                                         * opaque, compared by name *)
+                                        let name = opaqueName(t)
+                                        opaque("opaque_" <> layout.textDigest(name) name)
+                                    else
+                                        raise missingDescriptor with
+                                            "no runtime type descriptor for type '" <> model.show(t) <> "'"
+                                        end
+                                end
+                            end
+                    end
+                end
+            end
+        end
+
+    (* The name of the Python class of an echo head, which its key records *)
+    let headClassName(t: Type): String =
+        case t.form
+            when typeTuple then "QTupleType"
+            when typeRecord then "QRecordType"
+            when typeArray then "QArrayType"
+            when typeOption then "QOptionType"
+            when typeVariant then "QVariantType"
+            else "QType"
+        end
+
+    (* What tells apart the echo-only descriptors of t: the type components that
+     * echo writes for it and its parts, with their alias names, or none if it
+     * writes none. recursive holds the recursive types being unfolded around t:
+     * an occurrence of one adds nothing, which keeps the key finite. *)
+    let rec echoKey(t: Type recursive: vector.T(Int)): maybe.T(String) =
+        begin
+            let identity = written.recursiveIdentity(t)
+            let var inner = recursive
+            let var repeated = false
+            if maybe.isSome(:Int identity) then
+                let id = maybe.unwrap(:Int identity)
+                for i = 0 upto {vector.length(:Int recursive) - 1} do
+                    if vector.get(:Int recursive i) is id then repeated := true end
+                end
+                inner := vector.copy(:Int recursive)
+                vector.append(:Int inner id)
+            end
+            if repeated then
+                maybe.none(:String)
+            else
+                let head = written.echoHead(t)
+                let own = case head.form
+                    when typeTuple then written.tupleTypeComponents(head)
+                    else array of(0 tuple let position = 0 let text = "" end)
+                end
+                let children = written.echoChildren(head)
+                let parts = vector.new(:String)
+                let var anyPart = false
+                for i = 0 upto {extent children - 1} do
+                    let key = echoKey(children[i].type inner)
+                    if maybe.isSome(:String key) then anyPart := true end
+                    let pair = vector.new(:String)
+                    vector.append(:String pair pyRepr(children[i].key))
+                    let keyText = if maybe.isSome(:String key) then pyRepr(maybe.unwrap(:String key)) else "None" end
+                    vector.append(:String pair keyText)
+                    vector.append(:String parts pyTuple(pair))
+                end
+                if {extent own is 0} andif not(anyPart) then
+                    maybe.none(:String)
+                else
+                    let owned = vector.new(:String)
+                    for i = 0 upto {extent own - 1} do
+                        let pair = vector.new(:String)
+                        vector.append(:String pair conv.int(own[i].position))
+                        vector.append(:String pair pyRepr(own[i].text))
+                        vector.append(:String owned pyTuple(pair))
+                    end
+                    let whole = vector.new(:String)
+                    vector.append(:String whole pyRepr(headClassName(head)))
+                    vector.append(:String whole pyList(owned))
+                    vector.append(:String whole pyList(parts))
+                    maybe.some(:String pyTuple(whole))
+                end
+            end
+        end
+
+    let echoDescriptorForm(t: Type ctx: maybe.T(RecordNaming)): maybe.T(DescriptorForm) =
+        begin
+            let key = echoKey(t vector.new(:Int))
+            if maybe.isNone(:String key) then
+                maybe.none(:DescriptorForm)
+            else
+                let f = descriptorForm(t ctx)
+                if not(isOneOf(f.kind array of "tuple" "record" "array" "option" "variant" end)) then
+                    maybe.none(:DescriptorForm)
+                else
+                    (* A record's tag names its struct too, which the copy
+                     * keeps *)
+                    let struct = if stringOp.length(f.struct) > 0 then f.struct
+                        elsif eq(f.kind "record") then f.tag
+                        else ""
+                    end
+                    let tag = f.tag <> "_echo_" <> layout.textDigest(maybe.unwrap(:String key))
+                    maybe.some(:DescriptorForm tuple
+                        let kind = f.kind
+                        let tag = tag
+                        let type = f.type
+                        let name = f.name
+                        let expr = f.expr
+                        let struct = struct
+                        let display = maybe.some(:Type written.echoHead(t))
+                        let symbol = "quest_type_" <> tag
+                        let index = 0
+                    end)
+                end
+            end
+        end
+end

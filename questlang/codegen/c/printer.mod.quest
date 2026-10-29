@@ -17,6 +17,7 @@ import
     questlang/codegen/layout : questlang/codegen/Layout
     questlang/codegen/symbols : questlang/codegen/Symbols
     questlang/codegen/externals : questlang/codegen/Externals
+    questlang/codegen/staticdata : questlang/codegen/StaticData
     questlang/codegen/c/types : questlang/codegen/c/Types
     questlang/codegen/c/declarations : questlang/codegen/c/Declarations
     collections/hashMap : collections/HashMap
@@ -168,7 +169,7 @@ export
     Let P = Tuple
         unit: nodes.Unit
         interfaceHeader: maybe.T(String)
-        ctx: types.RecordNaming
+        ctx: staticdata.RecordNaming
         globals: hashMap.T(Int Bool)
         names: hashMap.T(Int String)
         usedNames: hashMap.T(String Bool)
@@ -308,19 +309,19 @@ export
      * Descriptors
      * ====================================================================== *)
 
-    let staticForm(p: P t: Type): types.DescriptorForm =
-        try types.descriptorForm(t maybe.some(:types.RecordNaming p.ctx))
-        when types.missingDescriptor with m then raise unsupported with "C code generation: " <> m end
+    let staticForm(p: P t: Type): staticdata.DescriptorForm =
+        try staticdata.descriptorForm(t maybe.some(:staticdata.RecordNaming p.ctx))
+        when staticdata.missingDescriptor with m then raise unsupported with "C code generation: " <> m end
         end
 
     let staticDescriptor(p: P t: Type): String = types.cExpr(staticForm(p t))
 
     let staticDescriptorOf(p: P d: nodes.StaticDescriptor): String =
         begin
-            let form = if d.echo then types.echoDescriptorForm(d.type maybe.some(:types.RecordNaming p.ctx))
-                else maybe.none(:types.DescriptorForm)
+            let form = if d.echo then staticdata.echoDescriptorForm(d.type maybe.some(:staticdata.RecordNaming p.ctx))
+                else maybe.none(:staticdata.DescriptorForm)
             end
-            types.cExpr(if maybe.isSome(:types.DescriptorForm form) then maybe.unwrap(:types.DescriptorForm form)
+            types.cExpr(if maybe.isSome(:staticdata.DescriptorForm form) then maybe.unwrap(:staticdata.DescriptorForm form)
                 else staticForm(p d.type)
             end)
         end
@@ -664,7 +665,7 @@ export
                     strings(array of recC name(p maybe.unwrap(:Variable viewMap)) cInt(k) end))
                 tuple let ptr = "((" <> slotCType(fs) <> " *)" <> slot <> ")" let shape = fs end
             else
-                let dictType = types.offsetDictStructName(p.ctx rs.structure)
+                let dictType = staticdata.offsetDictStructName(p.ctx rs.structure)
                 tuple
                     let ptr = "((" <> slotCType(fs) <> " *)((char *)" <> recC <> ".val + ((const " <> dictType <> " *)"
                         <> recC <> ".dict)->offset_" <> field <> "))"
@@ -827,7 +828,7 @@ export
                 end)
             end
             let concrete = model.recordType(vector.toArray(:model.RecordField fields) maybe.none(:String))
-            let struct = types.recordStructName(concrete maybe.some(:types.RecordNaming p.ctx))
+            let struct = staticdata.recordStructName(concrete maybe.some(:staticdata.RecordNaming p.ctx))
             let box = temp(p "QRecordVal *")
             let payload = temp(p struct <> " *")
             Let Stored = Tuple index: Int name: String a: Atom end
@@ -864,7 +865,7 @@ export
                     <> ")"
             else
                 let table = maybe.unwrap(:nodes.OffsetTable o.offsets)
-                "(const void *)&" <> types.offsetDictInstanceName(p.ctx table.view table.layout)
+                "(const void *)&" <> staticdata.offsetDictInstanceName(p.ctx table.view table.layout)
             end
             emit(p "*" <> box <> " = (QRecordVal){ .val = (void *)" <> payload <> ", .dict = " <> dictExpr <> " };")
             if result.boxed then box else "(*" <> box <> ")" end
@@ -888,7 +889,7 @@ export
             else
                 let index = fieldIndex(rs field)
                 let cField = layout.shapeRepresentation(slot.shape)
-                let dictType = types.offsetDictStructName(p.ctx rs.structure)
+                let dictType = staticdata.offsetDictStructName(p.ctx rs.structure)
                 let val = temp(p cField)
                 let stored = "((const " <> dictType <> " *)" <> recC <> ".dict)->stored_types"
                 let converted = types.shapeQvalUnwrap("quest_convert(quest_slot_read(" <> slot.ptr <> "), " <> stored
@@ -1278,7 +1279,7 @@ export
                         end
                     end
                     let cField = slotCType(shapeOf(maybe.unwrap(:Type fieldType)))
-                    let dictType = types.offsetDictStructName(p.ctx recType)
+                    let dictType = staticdata.offsetDictStructName(p.ctx recType)
                     (* In its slot form (a record or variant, for a boxed
                      * variable) *)
                     "(*((" <> cField <> " *)((char *)" <> recordIdent <> ".val + ((const " <> dictType <> " *)"
@@ -2189,12 +2190,12 @@ export
             let aggregates = declarations.collectAggregateTypes(vector.toArray(:Type data.types) p.ctx).aggregates
             (* The static tables the unit's operations refer to, by their C
              * names *)
-            let ctx = maybe.some(:types.RecordNaming p.ctx)
+            let ctx = maybe.some(:staticdata.RecordNaming p.ctx)
             let tableKeys = vector.new(:String)
             let tables = hashMap.new(:String :declarations.Pair eq hash.string)
             for i = 0 upto {vector.length(:nodes.OffsetTable data.offsetTables) - 1} do
                 let t = vector.get(:nodes.OffsetTable data.offsetTables i)
-                let key = types.recordStructName(t.view ctx) <> "\n" <> types.recordStructName(t.layout ctx)
+                let key = staticdata.recordStructName(t.view ctx) <> "\n" <> staticdata.recordStructName(t.layout ctx)
                 if not(hashMap.contains(:String :declarations.Pair tables key)) then add(tableKeys key) end
                 put(:String :declarations.Pair tables key tuple let target = t.view let source = t.layout end)
             end
@@ -2335,14 +2336,14 @@ export
             let res = vector.new(:String)
             for i = 0 upto {extent m.abstractTypes - 1} do
                 let entry = m.abstractTypes[i]
-                let form = try maybe.some(:types.DescriptorForm types.descriptorForm(entry.descriptor.type
-                        maybe.some(:types.RecordNaming p.ctx)))
-                    when types.missingDescriptor then maybe.none(:types.DescriptorForm)
+                let form = try maybe.some(:staticdata.DescriptorForm staticdata.descriptorForm(entry.descriptor.type
+                        maybe.some(:staticdata.RecordNaming p.ctx)))
+                    when staticdata.missingDescriptor then maybe.none(:staticdata.DescriptorForm)
                 end
-                if maybe.isSome(:types.DescriptorForm form) then
+                if maybe.isSome(:staticdata.DescriptorForm form) then
                     let registered = syntax.call("quest_register_abstract_type"
                         strings(array of syntax.cString(entry.name) cInt(entry.arity)
-                            types.cExpr(maybe.unwrap(:types.DescriptorForm form)) end))
+                            types.cExpr(maybe.unwrap(:staticdata.DescriptorForm form)) end))
                     add(res "    " <> registered <> ";")
                 end
             end
@@ -2532,7 +2533,7 @@ export
             let tables = staticData(p).offsetTables
             for i = 0 upto {vector.length(:nodes.OffsetTable tables) - 1} do
                 let table = vector.get(:nodes.OffsetTable tables i)
-                let dictName = types.offsetDictInstanceName(p.ctx table.view table.layout)
+                let dictName = staticdata.offsetDictInstanceName(p.ctx table.view table.layout)
                 if maybe.isSome(:nodes.Registered table.registered)
                     andif not(hashMap.contains(:String :Bool registered dictName)) then
                     put(:String :Bool registered dictName true)
@@ -2576,7 +2577,7 @@ export
         printUnit(tuple
             let unit = unit
             let interfaceHeader = interfaceHeader
-            let ctx = types.newRecordNaming()
+            let ctx = staticdata.newRecordNaming()
             let globals = walk.globalVariables(unit)
             let names = hashMap.new(:Int :String intEqual hash.int)
             let usedNames = hashMap.new(:String :Bool eq hash.string)

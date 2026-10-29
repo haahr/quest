@@ -1,0 +1,71 @@
+(* Quest Self-Hosted Compiler: Static Data Interface
+ *
+ * A unit's static data, for every backend (docs/arm64.md section 7.5): how
+ * each type is described at run time (its descriptor's form), and the names of
+ * record types and their offset tables. The C backend spells these in C
+ * (codegen/c/types, codegen/c/declarations); the SSA's backends lay them out
+ * themselves. *)
+
+interface StaticData
+import
+    questlang/types/model : questlang/types/Model
+    collections/hashMap : collections/HashMap
+    util/maybe : util/Maybe
+export
+    (* A type that has no runtime type descriptor (such as Var(T) or a type
+     * operator), with the message the bootstrap's MissingDescriptorError
+     * has *)
+    missingDescriptor: Exception(String)
+
+    (* How a type is described at run time. kind is base or boundVar (expr is
+     * the descriptor expression), or record, tuple, variant, option, array,
+     * exception, fun, auto, opaque, stored, and hole (the descriptor is
+     * quest_type_<tag>, describing type; an opaque descriptor is compared by
+     * name and, for an application of an abstract type operator, its
+     * arguments; a hole's name is its index). struct is the C struct laid out
+     * as type, when its name is not derived from type itself, and display, for
+     * a descriptor that only echo uses, the type as written, with alias names,
+     * whose type components the descriptor writes. The kinds are spelled as
+     * the bootstrap's are: base, bound_var, and so on. *)
+    Def DescriptorForm = Tuple
+        kind: String
+        tag: String
+        type: maybe.T(model.Type)
+        name: String
+        expr: String
+        struct: String
+        display: maybe.T(model.Type)
+        (* A descriptor's address, for a backend that is not C: the symbol,
+         * and the element of it, when the symbol is an array of descriptors
+         * (quest_type_bound_vars) *)
+        symbol: String
+        index: Int
+    end
+
+    (* Names record types and offset tables in C, after a type alias for the
+     * record where there is one. Every name ends with a digest of the record's
+     * shape, so a name stands for one layout in every C unit. *)
+    Def RecordNaming = Tuple
+        aliasByShape: hashMap.T(String String)
+        canonicalNames: hashMap.T(String String)
+    end
+    newRecordNaming(): RecordNaming
+    registerAlias(ctx: RecordNaming aliasName: String t: model.Type): Ok
+    (* A record type's name (record_<digest>, or an alias's name with the
+     * digest) *)
+    recordName(ctx: RecordNaming t: model.Type): String
+    (* A record's struct name: QT_ and its name, or without a naming context,
+     * its layout tag *)
+    recordStructName(t: model.Type ctx: maybe.T(RecordNaming)): String
+    offsetDictStructName(ctx: RecordNaming t: model.Type): String
+    offsetDictInstanceName(ctx: RecordNaming target: model.Type source: model.Type): String
+
+    (* How a closed type is described at run time (type parameters in scope
+     * are the printer's business); raises missingDescriptor for a type that
+     * has none *)
+    descriptorForm(t: model.Type ctx: maybe.T(RecordNaming)): DescriptorForm
+    (* The descriptor echo writes a value of the closed type t by, when t's
+     * shared descriptor would leave out its type components or write them
+     * without their alias names *)
+    echoDescriptorForm(t: model.Type ctx: maybe.T(RecordNaming)): maybe.T(DescriptorForm)
+end
