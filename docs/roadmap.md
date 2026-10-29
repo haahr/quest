@@ -30,7 +30,7 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
 +-----------------------------------------------------------------------------------+
 | SELF-HOSTING & NATIVE TARGETING IN QUEST (Located in questlang/)                  |
 |                                                                                   |
-|  [Step 5] Self-Hosted Front-End, Typechecker, & C Compiler (Ported) [COMPLETE]    |
+|  [Step 5] Self-Hosted Front-End, Typechecker, & C Compiler [COMPLETE]             |
 |       │   • Compile self-hosted Quest using Python bootstrap C emitter            |
 |       │   • Achieve self-compilation loop: Quest compiles Quest                   |
 |       ▼                                                                           |
@@ -108,18 +108,20 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   [extensions.md](extensions.md).
 
 ### Step 5: Self-Hosted Compiler & Interpreter (Written in Quest) — *Complete*
-- Port the compiler and interpreter into idiomatic, modular Quest under `questlang/` (see
-  [compiler-organization.md](compiler-organization.md) and
-  [quest-self-hosting-prerequisites.md](quest-self-hosting-prerequisites.md)).
-- Implement collection and utility libraries in Quest (`collections/vector`, `collections/hashMap`,
-  `collections/hashSet`, `util/maybe`, `util/stringBuilder`, `util/strutil`, `util/path`, `util/argParse`, `util/hash`;
-  see [new-libraries.md](new-libraries.md)).
+- Port the compiler and interpreter into idiomatic, modular Quest under `questlang/`
+  ([compiler-organization.md](compiler-organization.md)). Done, in five milestones: the front end, the type checker
+  (which reports several errors, [diagnostics.md](diagnostics.md) §4.5), the tree-walking interpreter and the REPL,
+  the IR and its interpreter, and the C backend, build artifacts, and build engine.
+- Implement collection, utility, and operating-system libraries in Quest (`collections/vector`, `collections/hashMap`,
+  `collections/hashSet`, `util/maybe`, `util/stringBuilder`, `util/strutil`, `util/path`, `util/argParse`, `util/hash`,
+  `io/readline`, `os/fileStats`, `os/process`; see [new-libraries.md](new-libraries.md)). Done.
 - Compile the self-hosted Quest compiler using the Python bootstrap C compiler and validate the bootstrap fixed-point:
-  `Quest(Quest) == Quest`. Done ([milestone-5.md](milestone-5.md)): the bootstrap's build of the self-hosted compiler
-  wrote the bootstrap's artifacts for every unit of the compiler, its own build writes the same ones, and that build
-  rebuilds itself as the same binary (`run_tests.py --self-hosting`). `./questc` runs it. Since 2026-10-28 it is the
-  primary compiler: the two compilers share what programs do, not how they compile them
-  ([testing.md](testing.md) §2.8).
+  `Quest(Quest) == Quest`. Done: the self-hosted compiler's build of itself writes the artifacts its seed's build
+  wrote, and rebuilds itself as the same binary (`run_tests.py --self-hosting`). `./questc` runs it, built by a
+  released self-hosted compiler ([release-compiler.md](release-compiler.md)), compiling modules in parallel.
+- It is the primary compiler: the two compilers share what programs do, not how they compile them
+  ([testing.md](testing.md) §2.8). The bootstrap is kept so that the compiler can be rebuilt from nothing, and the
+  self-hosting check confirms that it still builds the compiler the release does.
 - Give the self-hosted driver the bootstrap's commands and options: the interpreter and REPL, `compile` (with
   `--emit-c`, `--nogc`, and `-c`), separate compilation of units, and every phase's `--stop-after` and `--dump-after`.
   `self-hosted/compile_command` checks that the two drivers' commands do the same.
@@ -149,5 +151,6 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
 - [c-representation.md](c-representation.md): C ABI and runtime representation.
 - [runtime-design.md](runtime-design.md): Object representation (Evidence Passing vs Fat Pointers) and ABI.
 - [interpreter.md](interpreter.md): Interpreter runtime architecture, value model, and semantic decisions.
-- [compiler-organization.md](compiler-organization.md): Organization and milestones of the self-hosted compiler.
+- [compiler-organization.md](compiler-organization.md): Organization of the self-hosted compiler, and how it differs
+  from the bootstrap.
 - [extensions.md](extensions.md): OS, CLI, and native interop extensions to the core language.
