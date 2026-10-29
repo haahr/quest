@@ -45,13 +45,47 @@ For architectural details on each stage, see [docs/roadmap.md](docs/roadmap.md).
 ## Quickstart
 
 ### Prerequisites
-- Python 3.11+ (used for the bootstrap compiler and test runner).
-- Host C compiler (`clang` or `gcc`) for compiling generated C99 code.
-- Optional: [Boehm GC](https://github.com/ivmai/bdw-gc) (`bdw-gc` via Homebrew: `brew install bdw-gc`).
-  The compiler automatically falls back to standard libc allocations when `--nogc` is specified.
+- Python 3.11 or later, for the bootstrap compiler and the test runner. The launchers use Homebrew's `python@3.11`,
+  else `python3.11`, else `python3` (`PYTHON` overrides them).
+- A C compiler (`clang` or `gcc`), which compiles the generated C99 and the runtime.
+- Git: the self-hosted compiler's releases live in the clone's git directory.
+- Optional: [Boehm GC](https://github.com/ivmai/bdw-gc) (`brew install bdw-gc`). Without it, or with `--nogc`,
+  compiled programs allocate with libc and never free.
+- Optional: GNU readline (`brew install readline`) for the REPL's line editing; without it the REPL uses libedit's,
+  or none.
+
+### Building a Fresh Clone
+`./quest` is the self-hosted compiler. It is not checked in: it is built from `questlang/` on first use, and again
+whenever `questlang/`, `lib/`, or `runtime/` changes. In a fresh clone there is no release of the compiler to build it
+with, so the first run builds it with the bootstrap, which takes about ten minutes; later builds compile only what
+changed:
+
+```bash
+git clone https://github.com/haahr/quest.git
+cd quest
+./quest -e "40 + 2"       # builds .build/quest-stages, then prints 42 : Int
+./questboot -e "40 + 2"   # the Python bootstrap needs no build
+```
+
+The build has two stages: the bootstrap (or a release) compiles `questlang/driver/main.quest` into stage 1, and stage
+1 compiles it again, against the tree's `lib/` and `runtime/`, into stage 2, which is what `./quest` runs. Set
+`QUEST_VERBOSE=1` to see the steps, and `QUEST_JOBS` to change how many modules build at once (by default, one per CPU).
+
+To build faster, and to run the tests as a push needs them, cut the clone's first release, from a clean checkout of
+`main`. It runs the self-hosting check and the self-hosted suite first, so it takes about twenty minutes:
+
+```bash
+tools/release --seed bootstrap   # the first release, built by the bootstrap
+tools/release --show             # what it is
+```
+
+From then on `./quest` builds from the release, in about two minutes from nothing, and `tools/check` seeds the
+self-hosting check from it. Every worktree of the clone shares the release
+([docs/release-compiler.md](docs/release-compiler.md)). Without a release, `tools/check --seed bootstrap` runs the same
+suites.
 
 ### Running and Compiling Quest Code
-Use the unified compiler driver script `./quest`:
+`./quest` runs and compiles programs:
 
 ```bash
 # Evaluate an inline Quest expression via the interpreter
@@ -94,11 +128,8 @@ As with `python script.py`, the driver's options come before the program file: e
 included, is the program's. (`quest compile`, which does not run the program, takes options anywhere, as does the
 driver for an interface or module file.)
 
-`./quest` runs the self-hosted compiler (`questlang/`). It builds itself first when its sources have changed: from the
-current release, when `tools/release` has cut one, else from the bootstrap
-([docs/release-compiler.md](docs/release-compiler.md)). `./questboot` runs the Python bootstrap, which takes the same
-commands and options, apart from the self-hosted compiler's `-j N` (build N modules at once); only the bootstrap has
-the deprecated `--emit-deps` and the `--option=value` spelling.
+`./questboot`, the Python bootstrap, takes the same commands and options, apart from the self-hosted compiler's `-j N`
+(build N modules at once); only the bootstrap has the deprecated `--emit-deps` and the `--option=value` spelling.
 
 ### Running Tests
 The project includes comprehensive unit tests, golden-file integration tests, and inline diagnostic error tests:
