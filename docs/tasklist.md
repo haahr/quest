@@ -21,7 +21,8 @@ descriptor where `g` takes two (clang rejects the C), and both interpreters run 
 [tasklist-plan.md](tasklist-plan.md) §1 plans both.
 
 **Reproduce.** Compiling `tests/source/language/type_only_functions_returning_functions.quest` (`./questc
---stop-after run_c_compiled`) reports `a function of type parameters only whose result is a function`; the test skips its lowering phases.
+--stop-after run_c_compiled`) reports `a function of type parameters only whose result is a function`; the test
+skips its lowering phases.
 
 **Where to start.** `function` in `quest/ir/lower.py` and `questlang/ir/lower.mod.quest`, where the check is. The
 choice is the owner's, since it affects what a program prints: compile such a function as one of type parameters then

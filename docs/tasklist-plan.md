@@ -4,11 +4,11 @@ A plan for the three tasks left in [tasklist.md](tasklist.md) (2026-10-28), in t
 each needs from the owner. Each step is a commit (or a few) and passes both suites; each task's entry leaves the task
 list in the commit that finishes it.
 
-| Order | Task | Kind | Compilers | Decision needed |
+| Order | Task | Kind | Compilers | Decision |
 | --- | --- | --- | --- | --- |
-| 1 | Type application: type-only functions with function results, and partial type application | correctness | both | the semantics (§1.1) |
-| 2 | Capture rules for `var` variables as the paper has them | language change | both | whether to ban global `var` use (§2.1) |
-| 3 | Faster word operations in compiled code | optimization | self-hosted | how importers learn of externals (§3.1) |
+| 1 | Type application (type-only functions with function results; partial) | correctness | both | semantics (§1.1) |
+| 2 | Capture rules for `var` variables as the paper has them | language | both | ban global `var` use? (§2.1) |
+| 3 | Faster word operations in compiled code | optimization | self-hosted | finding externals (§3.1) |
 
 **Why this order.** Correctness before speed, and language changes before optimizations:
 
@@ -111,8 +111,8 @@ directly to global `var` variables. (i) only accepts more programs. (ii) rejects
 
 **Facts.** A `word` operation costs three calls (wrapper, module-record closure, runtime function), none inlinable.
 The same holds for every external in `lib/`: about 150 external declarations across 17 modules (`real` 29, `word` 26,
-`system` 16, `string` 15, ...). [benchmarks.md](benchmarks.md) §3.3 measured link-time inlining at 1.67 times faster for md5 and
-1.43 for checksum.
+`system` 16, `string` 15, ...). [benchmarks.md](benchmarks.md) §3.3 measured link-time inlining at 1.67 times faster
+for md5 and 1.43 for checksum.
 
 ### 3.1. Decision: how an importer learns that a member is an external
 
