@@ -533,13 +533,13 @@ def build_driver_with(driver: Path, build_dir: Path, binary: Path, home: Path = 
     build took, in seconds."""
     environment = os.environ.copy()
     environment["QUEST_HOME"] = str(home)
-    # Against a release's home, the tree's questlang/ is found through -I. A
-    # driver built from the tree compiles modules in parallel (-j); a release
-    # may be older than -j.
-    include = ["-I", str(ROOT_DIR)] if home != ROOT_DIR else ["-j", str(os.cpu_count() or 1)]
+    # Against a release's home, the tree's questlang/ is found through -I.
+    # Modules compile in parallel (-j), as every release since c787e2d6 can.
+    flags = ["-I", str(ROOT_DIR)] if home != ROOT_DIR else []
+    flags += ["-j", str(os.cpu_count() or 1)]
     start = time.perf_counter()
     process = subprocess.run(
-        [str(driver), *include, "--build-dir", str(build_dir), "-o", str(binary), str(SELF_HOSTED_DRIVER)],
+        [str(driver), *flags, "--build-dir", str(build_dir), "-o", str(binary), str(SELF_HOSTED_DRIVER)],
         capture_output=True, encoding=BYTE_ENCODING, env=environment, cwd=ROOT_DIR,
     )
     if process.returncode != 0:
