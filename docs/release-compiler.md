@@ -92,8 +92,8 @@ Stage 2 is the new compiler. Each stage has its own build directory, and the eng
      bootstrap's stage 1 must write the release's stage 1's artifacts: the bootstrap still builds the same compiler.
   3. The self-hosted suite runs with stage 2.
 - **The goldens.** The compilers diverged on 2026-10-28 (testing.md §2.8). The goldens of what programs do stay
-  shared, and the bootstrap writes them; the self-hosted compiler's IR dumps and C digests are its own, written by
-  `--update-golden` with the self-hosted driver, and the bootstrap keeps C digests of its own.
+  shared, and the bootstrap writes them; the self-hosted compiler's IR dumps are its own, written by `--update-golden`
+  with the self-hosted driver. The generated C has no goldens (testing.md §2.9).
 
 ## 4. Steps
 

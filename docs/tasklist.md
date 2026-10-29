@@ -47,8 +47,8 @@ compare the time in the `qv_word_*` wrappers and closures with the time in the `
 runtime function, or into the C operator (`^`, `<<`, ...) for the simple ones. An importer does not know today which
 members of `word` are externals, or which runtime functions they are: neither the `.qi` nor the `.qm` records it, so
 either the artifacts record it (an ABI change) or the backend treats `word` as a builtin it knows. Do the same in the
-bootstrap, and in the same commit, while the two compilers are kept in step. Every compiled program's C changes, so the
-`codegen_c` digests are regenerated. A native SHA-256 primitive would remove most of the remaining cost of `layout`'s
+bootstrap, and in the same commit, while the two compilers are kept in step. Every compiled program's C changes, which
+`tools/c-diff` shows. A native SHA-256 primitive would remove most of the remaining cost of `layout`'s
 digests, but needs a new runtime primitive and so a release before `questlang/` can use it (docs/release-compiler.md
 §2).
 

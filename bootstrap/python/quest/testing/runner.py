@@ -59,7 +59,7 @@ DRIVER_SCRIPT = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
 # are recorded (docs/milestone-2.md §3)
 SELF_HOSTED_DRIVER = ROOT_DIR / "questlang" / "driver" / "main.quest"
 SELF_HOSTED_PHASES = (
-    "tokenize", "parse", "typecheck", *IR_DUMP_PHASES, *IR_RUN_PHASES, "interpret", "codegen_c", "run_c_compiled", "repl",
+    "tokenize", "parse", "typecheck", *IR_DUMP_PHASES, *IR_RUN_PHASES, "interpret", "run_c_compiled", "repl",
 )
 # Where the self-hosted driver builds the units of the programs it compiles to
 # C, under each worker's build directory: apart from the bootstrap's artifacts,
@@ -220,19 +220,12 @@ SUBSET_PHASES = IR_DUMP_PHASES[1:]
 # The phases that run programs, whose output is compared with the run goldens
 RUN_PHASES = ("interpret", "run_c_compiled", *IR_RUN_PHASES)
 
-# The phase printing each run program's C as run_c_compiled compiles it (with
-# --print-result, and --echo where the program asks for it). Its goldens are
-# digests of the C (c_digest), as the C is about 37 KB a program.
-CODEGEN_PHASE = "codegen_c"
-
 # The goldens of how a compiler compiles, rather than of what programs do, are
-# each compiler's own (docs/testing.md section 2.8): the IR dumps are the
-# self-hosted compiler's alone, and the C digests are its in
-# tests/golden/codegen_c and the bootstrap's in tests/golden/bootstrap/codegen_c.
+# the self-hosted compiler's own (docs/testing.md section 2.8): the IR dumps.
 # The other phases' goldens are shared: both compilers must match them, and the
-# bootstrap writes them, since what programs do changes in both.
-BOOTSTRAP_GOLDEN_DIR = TESTS_GOLDEN_DIR / "bootstrap"
-SELF_HOSTED_OWN_PHASES = (*IR_DUMP_PHASES, CODEGEN_PHASE)
+# bootstrap writes them, since what programs do changes in both. The C itself
+# has no goldens; tools/c-diff shows how a change alters it.
+SELF_HOSTED_OWN_PHASES = IR_DUMP_PHASES
 
 
 def writes_golden(phase_name: str, self_hosted: bool) -> bool:
@@ -241,30 +234,6 @@ def writes_golden(phase_name: str, self_hosted: bool) -> bool:
     if self_hosted:
         return phase_name in SELF_HOSTED_OWN_PHASES
     return phase_name not in IR_DUMP_PHASES
-
-
-def c_digest(c_text: str) -> str:
-    """The golden of a program's C: the SHA-256 of its text, with the paths in
-    it under the checkout relative to it (raise sites name the program's
-    file), so that the digest does not depend on where the checkout is."""
-    text = relativize_root_paths(c_text, ROOT_DIR)
-    return hashlib.sha256(text.encode(BYTE_ENCODING)).hexdigest() + "\n"
-
-
-def bootstrap_c(source_file: Path, echo: bool, python_executable: str, build_dir: Path, timeout: float) -> str:
-    """The bootstrap's C for a program, to show how another compiler's
-    differs."""
-    command = [python_executable, str(DRIVER_SCRIPT), "--stop-after", CODEGEN_PHASE, "--print-result",
-               "--build-dir", str(build_dir)]
-    if echo:
-        command.append("--echo")
-    command.append(str(source_file.resolve()))
-    environment = os.environ.copy()
-    environment["PYTHONPATH"] = str(ROOT_DIR / "bootstrap" / "python")
-    with tempfile.TemporaryDirectory(prefix="quest-test-") as scratch_dir:
-        process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding=BYTE_ENCODING,
-                                 env=environment, timeout=timeout, cwd=scratch_dir)
-    return process.stdout
 
 
 # The tests of the self-hosted compiler's modules run compiled only: under the
@@ -314,11 +283,9 @@ def self_hosted_units_dir(build_dir: Path) -> Path:
     return build_dir if build_dir.name == QUESTLANG_SELF_HOSTED_BUILD_SUBDIR else build_dir / SELF_HOSTED_UNITS_SUBDIR
 
 
-def golden_dir_for_phase(phase_name: str, self_hosted: bool = False) -> Path:
+def golden_dir_for_phase(phase_name: str) -> Path:
     if phase_name in RUN_PHASES:
         return TESTS_GOLDEN_DIR / "run"
-    if phase_name == CODEGEN_PHASE and not self_hosted:
-        return BOOTSTRAP_GOLDEN_DIR / phase_name
     return TESTS_GOLDEN_DIR / phase_name
 
 
@@ -384,7 +351,7 @@ def run_single_golden_test(
     runs (the self-hosted driver), against the phase's goldens for that compiler
     (golden_dir_for_phase), writing them with update_golden if it writes them
     (writes_golden)."""
-    golden_base = golden_dir_for_phase(phase_name, driver_command is not None)
+    golden_base = golden_dir_for_phase(phase_name)
     rel_source = golden_test_id(source_file)
     target_dir = golden_base / rel_source.parent
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -397,7 +364,7 @@ def run_single_golden_test(
     if driver_command is not None:
         command = [*driver_command, "--stop-after", phase_name]
         # The units of programs compiled to C are built and reused there
-        if phase_name in (CODEGEN_PHASE, "run_c_compiled") and build_dir is not None:
+        if phase_name == "run_c_compiled" and build_dir is not None:
             command.extend(["--build-dir", str(self_hosted_units_dir(build_dir))])
     else:
         command = [
@@ -416,10 +383,8 @@ def run_single_golden_test(
         command.extend(["--build-dir", str(build_dir)])
     if expected_exit != 0:
         command.extend(["--expected-exit", str(expected_exit)])
-    if directives.echo and phase_name in (*RUN_PHASES, CODEGEN_PHASE):
+    if directives.echo and phase_name in RUN_PHASES:
         command.append("--echo")
-    if phase_name == CODEGEN_PHASE:
-        command.append("--print-result")
 
     command.append(str(source_file.resolve()))
 
@@ -464,7 +429,7 @@ def run_single_golden_test(
             msg += f"\n{process.stderr.rstrip()}"
         return False, "[FAIL]", msg
 
-    output = c_digest(process.stdout) if phase_name == CODEGEN_PHASE else process.stdout
+    output = process.stdout
     if update_golden and writes_golden(phase_name, driver_command is not None):
         out_file.write_text(output, encoding=BYTE_ENCODING)
         return True, "[UPDATED]", ""
@@ -475,22 +440,6 @@ def run_single_golden_test(
     expected_output = out_file.read_text(encoding=BYTE_ENCODING)
     if output == expected_output:
         return True, "[PASS]", ""
-
-    if phase_name == CODEGEN_PHASE:
-        # A digest tells nothing of the difference. For the self-hosted
-        # compiler, the bootstrap's C shows how it differs from that, which
-        # was the same C until the compilers diverged.
-        msg = "  (C digest mismatch)"
-        if driver_command is not None and build_dir is not None:
-            expected_c = bootstrap_c(source_file, directives.echo, python_executable, build_dir, effective_timeout)
-            diff = list(difflib.unified_diff(
-                relativize_root_paths(expected_c, ROOT_DIR).splitlines(keepends=True),
-                relativize_root_paths(process.stdout, ROOT_DIR).splitlines(keepends=True),
-                fromfile=f"bootstrap/{rel_source.with_suffix('.c')}",
-                tofile=f"actual/{rel_source.with_suffix('.c')}",
-            ))
-            msg += "\n" + "".join(diff[:80]).rstrip()
-        return False, "[FAIL]", msg
 
     diff = difflib.unified_diff(
         expected_output.splitlines(keepends=True),
@@ -906,7 +855,6 @@ def main() -> int:
         *IR_DUMP_PHASES,
         *IR_RUN_PHASES,
         "interpret",
-        CODEGEN_PHASE,
         "run_c_compiled",
         "repl",
     ]
@@ -1092,7 +1040,7 @@ def run_all_tests(
             if source_files or runs_eval or repl_files:
                 print("=== Golden Tests ===")
                 for phase in phases_to_run:
-                    golden_dir = golden_dir_for_phase(phase, driver_command is not None)
+                    golden_dir = golden_dir_for_phase(phase)
                     if not golden_dir.exists():
                         continue
                     print(f"--- Phase: {phase} ---")
@@ -1125,12 +1073,6 @@ def run_all_tests(
                         if phase in SUBSET_PHASES and not (golden_dir / rel_source.with_suffix(".out")).exists():
                             # Dumped for a subset of the programs only: those
                             # with goldens
-                            continue
-                        if phase == CODEGEN_PHASE and (
-                            "run_c_compiled" in skipped_phases
-                            or not (golden_dir_for_phase("run_c_compiled") / rel_source.with_suffix(".out")).exists()
-                        ):
-                            # The C of the programs run_c_compiled runs
                             continue
 
                         def make_golden_runner(
@@ -1172,7 +1114,7 @@ def run_all_tests(
                             ),
                         ))
 
-                    if phase == CODEGEN_PHASE and driver_command is not None:
+                    if phase == "run_c_compiled" and driver_command is not None:
                         for check_id, script, script_args in UNIT_CHECKS:
                             if args.test and args.test not in check_id:
                                 continue

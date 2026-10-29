@@ -939,9 +939,8 @@ stale. The build hashes the contents of files in these places, each with SHA-256
    - `tools/release` records the digest of the new `questc` in `release.json` when it cuts a release, and checks it
      again in `--verify` and before installing a new release.
 
-The tests hash files too, though no build does: the `codegen_c` goldens are digests of each program's generated C,
-with paths in the checkout made relative (`c_digest` in the runner), and the ABI corpus records a digest of
-`runtime/quest_runtime.h` (§5.2.3).
+The tests hash a file too, though no build does: the ABI corpus records a digest of `runtime/quest_runtime.h`
+(§5.2.3).
 
 The C backend's other digests are of text it makes, not of files: the names of generated C types (a type's printed
 form, in `layout.type_digest` and `layout.text_digest`, `questlang/codegen/layout` in the self-hosted compiler), and

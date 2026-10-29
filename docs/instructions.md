@@ -45,6 +45,9 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   changed: from the current release in `release/current` when there is one, else from the bootstrap
   ([release-compiler.md](release-compiler.md)). Its `-j N` compiles up to N modules at once
   ([build-process.md](build-process.md) §7.4).
+- **The generated C:** `tools/c-diff` diffs the C of the golden programs as a revision's compiler (`--base`, HEAD by
+  default) prints it against the working tree's; the suites check what the C does, not its text
+  ([testing.md](testing.md) §2.9).
 - **Releases:** `tools/release` cuts one from a clean tree at a commit on `main`, after the self-hosting check seeded
   from the current release (`--seed bootstrap` for the first, or past a gap); `--verify`, `--rollback`, and `--show`
   check, undo, and describe them.

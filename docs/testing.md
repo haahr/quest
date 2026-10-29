@@ -188,7 +188,7 @@ headers for a frozen snapshot of the library's interfaces) change without a bump
 **Self-hosted compiler:** `python3 run_tests.py --self-hosted` compiles the self-hosted compiler's driver
 (`questlang/driver/main.quest`) to C with the bootstrap, then runs it, instead of the bootstrap's driver, on every test
 of the phases it has (tokenize, parse, typecheck, the IR's dumps and runs at every stage, `ir_STAGE` and
-`run_ir_STAGE`, interpret, `codegen_c`, and `run_c_compiled`; [milestone-2.md](milestone-2.md) §3,
+`run_ir_STAGE`, interpret, and `run_c_compiled`; [milestone-2.md](milestone-2.md) §3,
 [milestone-3.md](milestone-3.md) §3, [milestone-4.md](milestone-4.md) §2, [milestone-5.md](milestone-5.md) §2),
 against the shared goldens and error expectations, which the bootstrap writes, and against its own (§2.8). The driver
 takes the bootstrap driver's `--stop-after PHASE FILE` and prints
@@ -212,12 +212,10 @@ directory, finds `lib/`. `--self-hosted-driver PATH` runs a driver already compi
 questlang/driver/main.quest`, or `./questc`'s stage 2 in `.build/questc/stage2/questc`) rather than compiling one,
 which takes minutes.
 
-`codegen_c` compares a digest of each run program's C, as the driver prints it, with `tests/golden/codegen_c`, the
-SHA-256 of the self-hosted compiler's C for the program, which `--self-hosted --update-golden` writes. The bootstrap's
-suite compares its own C with `tests/golden/bootstrap/codegen_c` (§2.8). When a digest differs, the failure shows a
-diff of the driver's C against the bootstrap's for the same program. `run_c_compiled`
-compiles and runs every run program and run-time error test with the self-hosted driver. Its C phases build into a
-directory of their own under each worker's (`self-hosted-units`), so that they don't reuse the bootstrap's fresh
+`run_c_compiled` compiles and runs every run program and run-time error test with the self-hosted driver, and runs the
+checks of its unit files, builds, and ABI corpus (`self-hosted/abi_corpus`, `self-hosted/unit_artifacts`,
+`self-hosted/build_errors`, `self-hosted/parallel_build`). The generated C has no goldens: `tools/c-diff` shows how a
+change alters it (§2.9). `run_c_compiled` builds into a directory of its own under each worker's (`self-hosted-units`), so that they don't reuse the bootstrap's fresh
 artifacts. The self-hosted driver builds the questlang tests once, one after another, into a shared directory
 (`self-hosted-questlang-tests`).
 
@@ -438,7 +436,6 @@ changes go into the self-hosted compiler alone, while language changes and bug f
 | `interpret`, `run_ir_STAGE`, `run_c_compiled` | shared: `tests/golden/run` | the bootstrap |
 | `repl`, error tests, `-e` (`self-hosted/eval`) | shared | the bootstrap |
 | `ir_STAGE` (the IR's dumps) | the self-hosted compiler's alone: `tests/golden/ir_STAGE` | the self-hosted compiler |
-| `codegen_c` (digests of the C) | each compiler's own: `tests/golden/codegen_c` (self-hosted), `tests/golden/bootstrap/codegen_c` | each compiler |
 | the ABI corpus | each compiler's own: `tests/abi/corpus` (bootstrap), `tests/abi/corpus-self-hosted` | each compiler |
 
 - **Shared goldens** describe what programs do and what errors they report. Both suites must match them, and only the
@@ -446,11 +443,10 @@ changes go into the self-hosted compiler alone, while language changes and bug f
   lands in both compilers. So **every bug fix adds or changes a test in a shared phase,** most often a run test: if
   only one compiler has the fix, the other's suite fails until it has it too. A bug in what only the self-hosted
   compiler does (an optimization, say) is fixed there alone, but still gets a run test.
-- **Own goldens** describe how a compiler compiles: its IR and its C. `--self-hosted --update-golden` writes the
-  self-hosted compiler's, and plain `--update-golden` the bootstrap's C digests. The bootstrap's suite skips the IR
-  dumps: when its later phases agree, its IR adds nothing, and `--phase ir_STAGE` still runs one, to compare the
-  bootstrap's IR with the self-hosted compiler's goldens when a bootstrap test fails. The bootstrap's goldens change
-  only when the bootstrap does, which is rarely.
+- **Own goldens** describe how a compiler compiles: the self-hosted compiler's IR, which `--self-hosted
+  --update-golden` writes. The bootstrap's suite skips the IR dumps: when its later phases agree, its IR adds nothing,
+  and `--phase ir_STAGE` still runs one, to compare the bootstrap's IR with the self-hosted compiler's goldens when a
+  bootstrap test fails. Neither compiler's C has goldens (§2.9).
 - **The self-hosting check** keeps the bootstrap honest: its build of the compiler must compile as the release does
   (§2.3, bootstrappability).
 - **Artifacts are each compiler's own.** The compilers share `ABI_VERSION`, which changes when either one's artifact
@@ -459,6 +455,28 @@ changes go into the self-hosted compiler alone, while language changes and bug f
   cannot (`config/abi`).
 - **The runtime is shared,** so a change to it must keep the bootstrap's C working: adding a function for the
   self-hosted compiler is fine, but changing what existing C relies on means changing the bootstrap too.
+
+### 2.9. The Generated C (`tools/c-diff`)
+
+The suites check what compiled programs do (`run_c_compiled`), not the C they compile to. Digests of each program's C
+were goldens until 2026-10-28; they changed with every change to the C, an ABI's or an imported interface's as much as
+the backend's, and a mismatch showed nothing of what had changed. Instead, `tools/c-diff` shows the change itself: it
+prints the C of every program `run_c_compiled` compiles, as a revision's compiler prints it (`--stop-after codegen_c
+--print-result`), against the working tree's, as unified diffs.
+
+```sh
+tools/c-diff                     # the self-hosted compiler's C at HEAD against the working tree's
+tools/c-diff --base origin/main  # against another revision's
+tools/c-diff --bootstrap         # the bootstrap's C
+tools/c-diff -k option --stat    # the programs whose names contain "option": which differ, by how many lines
+tools/c-diff --questlang         # the tests of the self-hosted compiler's modules too (slow)
+```
+
+Each side compiles its own copy of the programs against its own `lib/` and `runtime/`, and paths under each tree are
+made relative to it. The revision's files are exported into `.build/c-diff/REVISION` and kept with what is built
+there, so its self-hosted compiler (about six minutes to build from the bootstrap) is built once. The exit status is 0
+when no program's C differs, 1 when some does, and 2 when one does not compile. Use it to confirm that a change meant
+to leave the C alone does (a refactoring, a change to the front end), and to review what a backend change does to it.
 
 ## 3. Diagnostic & Error Testing Framework (`tests/errors/`)
 
