@@ -15,7 +15,10 @@ function of type parameters then value parameters, `let f(A::TYPE)(): Int`, and 
 follows the type, so a caller would call `h` as it calls `f`: with the type and value arguments together, with no
 point at which `h`'s body runs alone. Before the lowering rejected these functions, the C backends crashed on them or,
 in the bootstrap, compiled `fun(A::TYPE) fun(B::TYPE x: B): Int 6` into code that printed a pointer as its result. The
-interpreters run them correctly (the typed AST's `TypedFun.type_only`, `exprFun`'s `typeOnly`).
+interpreters run them correctly (the typed AST's `TypedFun.type_only`, `exprFun`'s `typeOnly`). Partial type
+application is broken the same way: given `let g(A::TYPE B::TYPE): Int`, compiled code calls `g(:Int)` with one
+descriptor where `g` takes two (clang rejects the C), and both interpreters run `g`'s body at the partial application.
+[tasklist-plan.md](tasklist-plan.md) §1 plans both.
 
 **Reproduce.** Compiling `tests/source/language/type_only_functions_returning_functions.quest` (`./questc
 --stop-after run_c_compiled`) reports `a function of type parameters only whose result is a function`; the test skips its lowering phases.
