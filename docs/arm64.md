@@ -332,7 +332,10 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
 - **Inner loops index arrays directly.** A call of `vector.get`, `maybe.isSome`, or `hashMap` crosses modules through
   closures and descriptors; a local function that captures variables allocates each time its definition is
   evaluated (benchmarks.md §3.2); a `try` costs a `_setjmp`. Helpers in the same module, not polymorphic, are cheap.
-- **`case` on a `maybe.T`** rather than `isSome` and `unwrap`, which take their type arguments at every call.
+- **`maybe.T` is abstract** (`lib/util/maybe.int.quest` exports `T::ALL(A::TYPE) TYPE`), so code reaches it only
+  through `isSome`, `unwrap`, and the rest, which take their type arguments at every call and cross modules. Making
+  it a manifest option type (proposed; a library change, so released before `questlang/` uses it) would let code
+  `case` on it directly. Until then, integer tables keep most `maybe.T`s out of the backend.
 - **Patterns as functions.** `case` matches one level, with no nested patterns or guards, so instruction selection's
   patterns (§3.5) are functions over the table of definitions (`defOf(value)`, `shiftedByConstant(value)`).
 - **Text through a string builder** (`util/stringbuilder`) or straight to a writer, not chains of `<>`, each of which
@@ -414,6 +417,18 @@ The list grows as ideas come up; when the plan is complete, what remains moves t
 - **Payload-free option cases as shared constants** (benchmarks.md §3.6), so that a case such as `maybe.none` or an
   opcode allocates nothing. `is` compares options by address, so this changes what `is` says of two such values, a
   decision for the language.
+- **Options like `maybe.T` as a pointer or 0, with nothing allocated** (noted 2026-10-29; nothing done yet): for an
+  option with one case whose payload is one pointer, which is never 0, and other cases without payloads, the
+  payload-free case is 0 (or, for several, small integers below the first page) and the other case is its payload's
+  pointer itself, as Rust represents `Option<&T>`. To be worked out:
+  - **proxies** (c-representation.md §5.8): an option value may be a proxy, its low bit set, and so may a tuple or
+    option payload, so the encoding must still tell a proxied option from a payload that is itself a proxy;
+  - **case binders share payloads**, `var` components included, and a payload held as the option itself has no
+    memory of its own for a binder to share, so only immutable payloads qualify;
+  - **`is`**, which compares options by address now;
+  - **everything that reads options by descriptor:** the runtime's readers (`quest_option_tag`,
+    `quest_option_element`), `quest_convert`, dynamic values and their serialization, and the interpreters'
+    agreement with compiled code.
 - **Cross-module inlining** (benchmarks.md §3.3), which would also let the backend's ids be abstract types (§3.15).
 
 ## 7. Inventory of the C Backend's Decisions
