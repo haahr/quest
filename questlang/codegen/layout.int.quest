@@ -49,6 +49,32 @@ export
     (* Whether a slot holds values of shape s boxed: records and variants *)
     isBoxedInSlots(s: shapes.Shape): Bool
 
+    (* How a value is held in a QVal word (as generic code holds a value of a
+     * type parameter, and a slot holds one in its QVal form), which says how
+     * every backend converts between the value and the word (docs/arm64.md
+     * section 7.5) *)
+    Def WordForm = Option
+        (* already a QVal word: a value of a type parameter *)
+        wordItself
+        (* Ok, which has no value: the word 0 *)
+        wordOk
+        (* a record or a variant, 16 bytes: a pointer to an immutable box of
+         * them *)
+        wordRecordBox
+        wordVariantBox
+        (* a Word: its 64 bits *)
+        wordBits
+        (* an Int, Bool, or Char: the integer, extended to 64 bits (a Char
+         * as C's char, signed on Darwin arm64) *)
+        wordInteger
+        (* a Real: its 64 bits *)
+        wordReal
+        (* any other value, which is a pointer *)
+        wordPointer
+    end
+    (* The word form of values of shape s, as resolved to its bound *)
+    wordForm(s: shapes.Shape): WordForm
+
     (* A deterministic, valid C identifier component for a type, and for the
      * types of shape s *)
     typeTag(t: model.Type): String

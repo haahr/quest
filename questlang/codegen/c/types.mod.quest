@@ -431,37 +431,32 @@ export
 
     let qtypeToCType(t: Type): String = layout.representation(t)
 
-    let shapeQvalWrap(e: String s0: Shape): String =
-        begin
-            let s = layout.resolvedShape(s0)
-            let kind = s.kind
-            if eq(layout.shapeRepresentation(s) "QVal") then e
-            elsif eq(kind "ok") then "Q_OK_VAL"
-            elsif eq(kind "record") then "((QVal){ .p = (void *)quest_record_box(" <> e <> ") })"
-            elsif eq(kind "variant") then "((QVal){ .p = (void *)quest_variant_box(" <> e <> ") })"
-            elsif eq(kind "word") then "((QVal){ .u = (uint64_t)(" <> e <> ") })"
-            elsif isOneOf(kind array of "int" "bool" "char" end) then "((QVal){ .i = (int64_t)(" <> e <> ") })"
-            elsif eq(kind "real") then "((QVal){ .r = (double)(" <> e <> ") })"
-            else "((QVal){ .p = (void *)(" <> e <> ") })"
-            end
+    (* The C of a value's QVal word, and of the value of a word, by the
+     * value's word form (layout.wordForm) *)
+    let shapeQvalWrap(e: String s: Shape): String =
+        case layout.wordForm(s)
+            when wordItself then e
+            when wordOk then "Q_OK_VAL"
+            when wordRecordBox then "((QVal){ .p = (void *)quest_record_box(" <> e <> ") })"
+            when wordVariantBox then "((QVal){ .p = (void *)quest_variant_box(" <> e <> ") })"
+            when wordBits then "((QVal){ .u = (uint64_t)(" <> e <> ") })"
+            when wordInteger then "((QVal){ .i = (int64_t)(" <> e <> ") })"
+            when wordReal then "((QVal){ .r = (double)(" <> e <> ") })"
+            when wordPointer then "((QVal){ .p = (void *)(" <> e <> ") })"
         end
 
     let qvalWrap(e: String t: Type): String = shapeQvalWrap(e shapes.shape(t))
 
-    let shapeQvalUnwrap(e: String s0: Shape): String =
-        begin
-            let s = layout.resolvedShape(s0)
-            let kind = s.kind
-            let c = layout.shapeRepresentation(s)
-            if eq(c "QVal") then e
-            elsif eq(kind "record") then "(*((QRecordVal *)(" <> e <> ".p)))"
-            elsif eq(kind "variant") then "(*((QVariantVal *)(" <> e <> ".p)))"
-            elsif eq(kind "word") then "(" <> e <> ".u)"
-            elsif isOneOf(kind array of "int" "bool" "char" end) then "(" <> e <> ".i)"
-            elsif eq(kind "real") then "(" <> e <> ".r)"
-            elsif eq(kind "ok") then "((void)0)"
-            else "((" <> c <> ")(" <> e <> ".p))"
-            end
+    let shapeQvalUnwrap(e: String s: Shape): String =
+        case layout.wordForm(s)
+            when wordItself then e
+            when wordOk then "((void)0)"
+            when wordRecordBox then "(*((QRecordVal *)(" <> e <> ".p)))"
+            when wordVariantBox then "(*((QVariantVal *)(" <> e <> ".p)))"
+            when wordBits then "(" <> e <> ".u)"
+            when wordInteger then "(" <> e <> ".i)"
+            when wordReal then "(" <> e <> ".r)"
+            when wordPointer then "((" <> layout.shapeRepresentation(layout.resolvedShape(s)) <> ")(" <> e <> ".p))"
         end
 
     let qvalUnwrap(e: String t: Type): String = shapeQvalUnwrap(e shapes.shape(t))
