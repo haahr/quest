@@ -1008,4 +1008,13 @@ export
 
     let buildMain(eng: T mainFile: String output: maybe.T(String)): Ok =
         flushingLog(:Ok eng fun(): Ok unflushedBuildMain(eng mainFile output))
+
+    let compileMain(eng: T mainFile: String): Ok =
+        flushingLog(:Ok eng fun(): Ok
+            begin
+                let main = paths.absolute(mainFile)
+                if not(system.isFile(main)) then fail(:Ok "Main routine file not found: " <> main) end
+                compileMainUnit(eng main)
+                ok
+            end)
 end

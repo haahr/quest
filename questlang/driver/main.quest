@@ -17,7 +17,11 @@
  * (questlang/driver/repl) after running FILE, in its environment and frame;
  * with neither FILE nor `-e`, the driver enters the REPL when standard input is
  * a terminal, and otherwise runs the program standard input holds, as it does
- * for a FILE of `-`.
+ * for a FILE of `-`. `main compile FILE` compiles the program to a binary
+ * (FILE without its .quest, or -o), as the bootstrap's `quest compile` does:
+ * with --emit-c it writes the program's C instead (to -o, else standard
+ * output), with --nogc it compiles without the collector, and with -c it
+ * compiles the program into the build directory without linking it.
  * run_tests.py --self-hosted compiles it and checks it against the
  * bootstrap's goldens (docs/milestone-2.md and docs/milestone-3.md, section
  * 3). *)
@@ -62,7 +66,6 @@ import
     questlang/build/engine : questlang/build/Engine
     questlang/build/workers : questlang/build/Workers
     passes = questlang/codegen/backend : questlang/codegen/Backend
-    cBackend = questlang/codegen/c/backend : questlang/codegen/c/Backend
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -106,23 +109,34 @@ let isObjectFile(arg: String): Bool =
 
 let isProgramFile(arg: String): Bool = case units.unitKind(arg) when programUnit then true else false end;
 
+(* `compile`, before the options, translates the program to C and compiles it
+ * to a binary (or with --emit-c, writes its C), as the bootstrap's `quest
+ * compile` does *)
+let compileMode = {extent system.args > 1} andif stringOp.equal(system.args[1] "compile");
+
+(* The program's name in errors that are not diagnostics *)
+let programName = if compileMode then "quest compile" else "quest" end;
+
 let usage(message: String): Ok =
     begin
         writer.putString(writer.err "main: " <> message <> "\n")
         writer.putString(writer.err
             "usage: main [--stop-after tokenize|parse|desugar|typecheck|ir_STAGE|run_ir_STAGE|interpret|codegen_c"
-            <> "|run_c_compiled] [--dump-after codegen_c] [--show-offsets] [--echo] [--print-result] "
+            <> "|run_c_compiled] [--dump-after PHASE] [--show-offsets] [--show-values] [--echo] [--print-result] "
             <> "[--expected-exit N] [-c] [-I DIR] [-o FILE] [-v] [-j N] [--build-dir DIR] [--whole-program] [-i] "
             <> "[OBJECT...] "
-            <> "[FILE|- [ARG...] | -e PROGRAM [-- ARG...] | -- ARG...]\n")
+            <> "[FILE|- [ARG...] | -e PROGRAM [-- ARG...] | -- ARG...]\n"
+            <> "       main compile [--stop-after PHASE] [--dump-after PHASE] [--emit-c] [--nogc] [--echo] "
+            <> "[--print-result] [-c] [-I DIR] [-o FILE] [-v] [-j N] [--build-dir DIR] [--whole-program] [OBJECT...] "
+            <> "[FILE|- | -e PROGRAM]\n")
         system.sysexit(2)
     end;
 
 (* The command line: the phase to stop after, the file or the program given, and
- * the program's arguments *)
+ * the program's arguments. Each option has the bootstrap's spellings. *)
 let options =
     begin
-        let var stopAfter = "interpret"
+        let var stopAfter = if compileMode then "codegen_c" else "interpret" end
         let var stopGiven = false
         let var buildDir = maybe.none(:String)
         let var output = maybe.none(:String)
@@ -136,35 +150,54 @@ let options =
         let var file = ""
         let var code = maybe.none(:String)
         let var showOffsets = false
+        let var showValues = false
         let var echo = false
         let var printResult = false
         let var interactive = false
+        let var compileOnly = false
+        let var emitC = false
+        let var nogc = false
         let programArgs = vector.new(:String)
-        let var i = 1
+        (* The file, of which compile takes only one *)
+        let setFile = fun(arg: String): Ok
+            begin
+                if compileMode andif not(stringOp.equal(file "")) then
+                    writer.putString(writer.err "quest compile: error: multiple source files specified: '" <> file
+                        <> "' and '" <> arg <> "'\n")
+                    system.sysexit(1)
+                end
+                file := arg
+            end
+        (* An option of compile alone *)
+        let compiling = fun(arg: String): Ok if not(compileMode) then usage(arg <> " is an option of compile") end
+        (* A worker's command line is the worker's to read *)
+        let var i = if workers.isUnitMode(system.args) then extent system.args elsif compileMode then 2 else 1 end
         while i < extent system.args do
             let arg = system.args[i]
-            if {stringOp.equal(arg "--stop-after")} andif {{i + 1} < extent system.args} then
+            let valued = {i + 1} < extent system.args
+            if isOneOf(arg array of "--stop-after" "--stop_after" end) andif valued then
                 stopAfter := system.args[i + 1]
                 stopGiven := true
                 i := i + 2
-            elsif {stringOp.equal(arg "--build-dir")} andif {{i + 1} < extent system.args} then
+            elsif isOneOf(arg array of "--build-dir" "--build_dir" end) andif valued then
                 buildDir := maybe.some(:String system.args[i + 1])
                 i := i + 2
-            elsif {stringOp.equal(arg "--dump-after")} andif {{i + 1} < extent system.args} then
+            elsif isOneOf(arg array of "--dump-after" "--dump_after" end) andif valued then
                 vector.append(:String dumpAfter system.args[i + 1])
                 i := i + 2
-            elsif {stringOp.equal(arg "-o")} andif {{i + 1} < extent system.args} then
+            elsif isOneOf(arg array of "-o" "--output" end) andif valued then
                 output := maybe.some(:String system.args[i + 1])
                 i := i + 2
-            elsif {stringOp.equal(arg "-I")} andif {{i + 1} < extent system.args} then
+            elsif isOneOf(arg array of "-I" "--include" end) andif valued then
                 vector.append(:String includePaths system.args[i + 1])
                 i := i + 2
-            elsif stringOp.equal(arg "-c") then
+            elsif isOneOf(arg array of "-c" "--compile-only" end) then
+                compileOnly := true
                 i := i + 1
-            elsif stringOp.equal(arg "-v") then
+            elsif isOneOf(arg array of "-v" "--verbose" end) then
                 verbose := true
                 i := i + 1
-            elsif {stringOp.equal(arg "-j")} andif {{i + 1} < extent system.args} then
+            elsif {stringOp.equal(arg "-j")} andif valued then
                 (* How many modules a build compiles at once *)
                 let n = strutil.tryToInt(system.args[i + 1])
                 if maybe.isNone(:Int n) orif {maybe.unwrap(:Int n) < 1} then
@@ -172,32 +205,56 @@ let options =
                 end
                 jobs := maybe.unwrap(:Int n)
                 i := i + 2
-            elsif stringOp.equal(arg "--whole-program") then
+            elsif isOneOf(arg array of "--whole-program" "--whole_program" end) then
                 wholeProgram := true
                 i := i + 1
-            elsif {stringOp.equal(arg "--expected-exit")} andif {{i + 1} < extent system.args} then
+            elsif isOneOf(arg array of "--expected-exit" "--expected_exit" end) andif valued andif not(compileMode) then
                 (* What a compiled program's exit status must be; the
                  * interpreter's is the program's own *)
                 expectedExit := strutil.toInt(system.args[i + 1])
                 i := i + 2
-            elsif {stringOp.equal(arg "-e")} andif {{i + 1} < extent system.args} then
+            elsif isOneOf(arg array of "-e" "--eval" "--code" "--command" end) andif valued then
                 code := maybe.some(:String system.args[i + 1])
                 i := i + 2
-            elsif stringOp.equal(arg "--show-offsets") then
+            elsif stringOp.equal(arg "--show-offsets") andif not(compileMode) then
                 showOffsets := true
+                i := i + 1
+            elsif stringOp.equal(arg "--show-values") andif not(compileMode) then
+                showValues := true
                 i := i + 1
             elsif stringOp.equal(arg "--echo") then
                 echo := true
                 i := i + 1
-            elsif stringOp.equal(arg "--print-result") then
+            elsif isOneOf(arg array of "--print-result" "--print_result" end) then
                 printResult := true
                 i := i + 1
-            elsif stringOp.equal(arg "-i") then
+            elsif isOneOf(arg array of "-i" "--interactive" end) andif not(compileMode) then
                 interactive := true
+                i := i + 1
+            elsif stringOp.equal(arg "--emit-c") then
+                compiling(arg)
+                emitC := true
+                i := i + 1
+            elsif stringOp.equal(arg "--nogc") then
+                compiling(arg)
+                nogc := true
                 i := i + 1
             elsif isObjectFile(arg) then
                 vector.append(:String extraObjects if system.fileExists(arg) then paths.absolute(arg) else arg end)
                 i := i + 1
+            elsif {stringOp.length(arg) > 1} andif {stringOp.getChar(arg 0) is '-'} andif not(stringOp.equal(arg "--"))
+                then
+                usage("unknown option '" <> arg <> "'")
+            elsif compileMode then
+                (* compile runs no program, so options may follow its file;
+                 * after a --, every argument is a file *)
+                if stringOp.equal(arg "--") then
+                    for j = {i + 1} upto {extent system.args - 1} do setFile(system.args[j]) end
+                    i := extent system.args
+                else
+                    setFile(arg)
+                    i := i + 1
+                end
             elsif not(stringOp.equal(arg "--")) andif not(stringOp.equal(arg "-")) andif not(isProgramFile(arg)) then
                 (* Options may follow a unit file, which is compiled, not
                  * run *)
@@ -213,17 +270,17 @@ let options =
         end
         (* Objects given without -o or a phase are linked with the program,
          * which runs compiled *)
-        if {vector.length(:String extraObjects) > 0} andif maybe.isNone(:String output) andif not(stopGiven)
-            andif vector.empty(:String dumpAfter) then
+        if not(compileMode) andif {vector.length(:String extraObjects) > 0} andif maybe.isNone(:String output)
+            andif not(stopGiven) andif vector.empty(:String dumpAfter) then
             stopAfter := "run_c_compiled"
         end
-        let var known = false
-        for j = 0 upto {extent phases - 1} do
-            if stringOp.equal(phases[j] stopAfter) then known := true end
-        end
-        if not(known) then usage("unknown phase '" <> stopAfter <> "'") end
+        (* compile neither runs the program nor interprets it *)
+        let allowed = fun(phase: String): Bool
+            isOneOf(phase phases) andif not(compileMode andif {strutil.startsWith(phase "run_")
+                orif stringOp.equal(phase "interpret")})
+        if not(allowed(stopAfter)) then usage("unknown phase '" <> stopAfter <> "'") end
         for j = 0 upto {vector.length(:String dumpAfter) - 1} do
-            if not(isOneOf(vector.get(:String dumpAfter j) phases)) then
+            if not(allowed(vector.get(:String dumpAfter j))) then
                 usage("unknown phase '" <> vector.get(:String dumpAfter j) <> "'")
             end
         end
@@ -232,6 +289,7 @@ let options =
          * as it does for a file of - *)
         let noProgram = stringOp.equal(file "") andif maybe.isNone(:String code)
         let atTerminal = system.isTerminal(0)
+        if compileMode andif noProgram andif atTerminal then usage("compile takes a FILE, -, or -e PROGRAM") end
         let fromStdin = stringOp.equal(file "-") orif {noProgram andif not(interactive) andif not(atTerminal)}
         let fromFile = not(stringOp.equal(file "")) andif not(fromStdin)
         tuple
@@ -246,6 +304,7 @@ let options =
             let fromStdin = fromStdin
             let code = code
             let showOffsets = showOffsets
+            let showValues = showValues
             let echo = echo
             let printResult = printResult
             let stopGiven = stopGiven
@@ -260,6 +319,9 @@ let options =
             let includePaths = vector.toArray(:String includePaths)
             let interactive = interactive orif {noProgram andif atTerminal}
             let programArgs = vector.toArray(:String programArgs)
+            let compileOnly = compileOnly
+            let emitC = emitC
+            let nogc = nogc
         end
     end;
 
@@ -289,17 +351,32 @@ let printResult(phrase: typedAst.Binding v: model.Value): Ok =
         if stringOp.length(shown) > 0 then print(shown) end
     end;
 
-(* Reports the diagnostics and exits, with 1 if there are errors, else, for a
- * compiled run, with the status it was expected to exit with *)
-let finish(bag: diagbag.T sm: location.SourceMap): Ok =
+(* The dumps of the phases --dump-after names, and of the one --stop-after
+ * does, in phase order. As the bootstrap's driver prints its phases' dumps once
+ * its pipeline has run, they follow what the program writes as it runs, but
+ * precede an interpreted program's result and a compiled program's output. *)
+let pendingDumps = vector.new(:String);
+let dump(text: String): Ok = vector.append(:String pendingDumps text);
+let flushDumps(): Ok =
     begin
-        diagbag.renderAll(bag sm writer.err)
-        writer.flush(writer.output)
-        writer.flush(writer.err)
-        system.sysexit(if diagbag.hasErrors(bag) then 1
-            elsif stringOp.equal(options.stopAfter "run_c_compiled") then options.expectedExit
-            else 0 end)
+        for i = 0 upto {vector.length(:String pendingDumps) - 1} do print(vector.get(:String pendingDumps i)) end
+        vector.clear(:String pendingDumps)
     end;
+
+(* Whether the program goes through the C backend: compiled, with compile or
+ * -o, linked with objects, or for a C phase *)
+let cPipeline =
+    begin
+        let var dumpsC = false
+        for i = 0 upto {extent options.dumpAfter - 1} do
+            if isOneOf(options.dumpAfter[i] cPhases) then dumpsC := true end
+        end
+        compileMode orif maybe.isSome(:String options.output) orif {extent options.extraObjects > 0}
+            orif isOneOf(options.stopAfter cPhases)
+            orif dumpsC
+    end;
+
+let dumps(phase: String): Bool = isOneOf(phase options.dumpAfter);
 
 (* The stage a phase dumps or runs the IR at (the phase's name after its
  * prefix), if it is an IR phase *)
@@ -312,13 +389,87 @@ let irStage(prefix: String): maybe.T(String) =
         found
     end;
 
+(* The phases the program goes through, as the bootstrap's pipelines have them:
+ * the front end's, then either the C backend's (with run_c_compiled unless
+ * compile or -o writes a binary), the IR's through the stage run_ir_STAGE runs,
+ * the IR's through the last stage dumped or stopped after, or interpret; and of
+ * those, the phases through the one --stop-after names *)
+let pipeline: Array(String) =
+    begin
+        let ps = vector.fromArray(:String array of "tokenize" "parse" "desugar" "typecheck" end)
+        let irThrough = fun(stage: String): Ok
+            begin
+                let var i = 0
+                let var more = true
+                while more andif {i < extent irStages} do
+                    vector.append(:String ps "ir_" <> irStages[i])
+                    more := not(stringOp.equal(irStages[i] stage))
+                    i := i + 1
+                end
+            end
+        let var lastIr = ~1
+        for i = 0 upto {extent irStages - 1} do
+            if stringOp.equal(options.stopAfter "ir_" <> irStages[i]) orif dumps("ir_" <> irStages[i]) then
+                lastIr := i
+            end
+        end
+        if cPipeline then
+            irThrough("described")
+            vector.append(:String ps "codegen_c")
+            if not(compileMode) andif maybe.isNone(:String options.output) then
+                vector.append(:String ps "run_c_compiled")
+            end
+        elsif maybe.isSome(:String irStage("run_ir_")) then
+            irThrough(maybe.unwrap(:String irStage("run_ir_")))
+            vector.append(:String ps "run_ir_" <> maybe.unwrap(:String irStage("run_ir_")))
+        elsif lastIr >= 0 then
+            irThrough(irStages[lastIr])
+        else
+            vector.append(:String ps "interpret")
+        end
+        let through = vector.new(:String)
+        let var stopped = false
+        for i = 0 upto {vector.length(:String ps) - 1} do
+            if not(stopped) then
+                vector.append(:String through vector.get(:String ps i))
+                stopped := stringOp.equal(vector.get(:String ps i) options.stopAfter)
+            end
+        end
+        vector.toArray(:String through)
+    end;
+
+let reaches(phase: String): Bool = isOneOf(phase pipeline);
+
+(* Whether a phase's dump is printed: --dump-after names it, or --stop-after
+ * does, and the program goes through it *)
+let shows(phase: String): Bool =
+    reaches(phase) andif {dumps(phase) orif {options.stopGiven andif stringOp.equal(options.stopAfter phase)}};
+
+(* Reports the diagnostics and exits, with 1 if there are errors, else, for a
+ * compiled run, with the status it was expected to exit with *)
+let finish(bag: diagbag.T sm: location.SourceMap): Ok =
+    begin
+        flushDumps()
+        diagbag.renderAll(bag sm writer.err)
+        writer.flush(writer.output)
+        writer.flush(writer.err)
+        system.sysexit(if diagbag.hasErrors(bag) then 1
+            elsif reaches("run_c_compiled") then options.expectedExit
+            else 0 end)
+    end;
+
 (* A type-checked program lowered to the IR and taken through the passes to
- * stage, each result verified when QUEST_CHECK_IR=1 *)
+ * stage, each result verified when QUEST_CHECK_IR=1, and dumped when it is
+ * shown *)
 let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResult: Bool stage: String): nodes.Unit =
     begin
         let var unit = lower.lowerProgram(program e maybe.some(:location.SourceMap sm) options.echo printResult)
-        let check = fun(u: nodes.Unit): Ok if verify.irChecksEnabled() then verify.checkUnit(u) end
-        check(unit)
+        let check = fun(u: nodes.Unit at: String): Ok
+            begin
+                if verify.irChecksEnabled() then verify.checkUnit(u) end
+                if shows("ir_" <> at) then dump(printer.formatUnit(u)) end
+            end
+        check(unit irStages[0])
         let passes = array of
             fun(u: nodes.Unit): nodes.Unit specialize.specializeUnit(u)
             fun(u: nodes.Unit): nodes.Unit closure.closureConvertUnit(u)
@@ -328,18 +479,22 @@ let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResul
         let var i = 1
         while {i < extent irStages} andif not(stringOp.equal(irStages[i - 1] stage)) do
             unit := passes[i - 1](unit)
-            check(unit)
+            check(unit irStages[i])
             i := i + 1
         end
         unit
     end;
 
-(* Dumps the IR at the stage asked for, as the bootstrap's ir_STAGE phases do *)
-let dumpIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T stage: String): Ok =
+(* Lowers the program through the last IR stage it goes through, dumping the
+ * stages shown, as the bootstrap's ir_STAGE phases do *)
+let lowerOnly(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
     begin
         let internal = fun(message: String): Ok diagbag.add(bag diagnostics.error(message location.span("" ~1 ~1)))
+        let var last = irStages[0]
+        for i = 0 upto {extent irStages - 1} do if reaches("ir_" <> irStages[i]) then last := irStages[i] end end
         try
-            print(printer.formatUnit(lowered(program e sm false stage)))
+            lowered(program e sm false last)
+            ok
         when lower.loweringError with m then internal(m)
         when verify.verifyError with m then internal(m)
         when closure.capturesMutable with m then internal(m)
@@ -349,20 +504,18 @@ let dumpIr(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagba
         end
     end;
 
-(* Whether the program goes through the C backend: compiled with -o, linked
- * with objects, or for a C phase *)
-let cPipeline =
-    begin
-        let var dumpsC = false
-        for i = 0 upto {extent options.dumpAfter - 1} do
-            if isOneOf(options.dumpAfter[i] cPhases) then dumpsC := true end
-        end
-        maybe.isSome(:String options.output) orif {extent options.extraObjects > 0}
-            orif isOneOf(options.stopAfter cPhases)
-            orif dumpsC
+(* Where compile writes the binary, or with --emit-c and no -o, nowhere (the C
+ * goes to standard output): -o, else the program's file without its .quest
+ * (else with .bin added), else a.out *)
+let compileOutput =
+    if maybe.isSome(:String options.output) then options.output
+    elsif options.emitC then maybe.none(:String)
+    elsif options.fromFile then
+        maybe.some(:String if strutil.endsWith(options.file ".quest") then
+            stringOp.getSub(options.file 0 {stringOp.length(options.file) - 6})
+        else options.file <> ".bin" end)
+    else maybe.some(:String "a.out")
     end;
-
-let dumps(phase: String): Bool = isOneOf(phase options.dumpAfter);
 
 (* Running compiled code prints the last phrase's result, as the interpreter
  * does *)
@@ -513,15 +666,16 @@ let binaryErrorDiagnostic(stderr: String sm: location.SourceMap): diagnostics.Di
  * and exits with 1 *)
 let failWith(message: String): Ok =
     begin
+        flushDumps()
         writer.flush(writer.output)
-        writer.putString(writer.err "quest: error: " <> message <> "\n")
+        writer.putString(writer.err programName <> ": error: " <> message <> "\n")
         writer.flush(writer.err)
         system.sysexit(1)
     end;
 
 (* The engine that builds the modules a program's C imports *)
 let newEngine(e: env.T): engine.T =
-    engine.parallel(engine.new(maybe.some(:String buildDir) options.includePaths options.verbose false
+    engine.parallel(engine.new(maybe.some(:String buildDir) options.includePaths options.verbose options.nogc
         options.extraObjects maybe.some(:graph.Resolver e.units.resolver)) options.jobs system.args[0]);
 
 (* A type-checked program's imports, as the engine resolves them *)
@@ -546,17 +700,20 @@ let importRefs(program: typedAst.Program): Array(engine.ImportRef) =
     end;
 
 (* Takes a type-checked program through the C backend, as the bootstrap's
- * codegen_c and run_c_compiled phases (and -o) do: prints its C, or compiles
- * it, with the modules it imports (built by the engine), and runs it or writes
- * it to -o *)
+ * codegen_c and run_c_compiled phases (and -o and compile) do: prints its C, or
+ * compiles it, with the modules it imports (built by the engine), and runs it
+ * or writes it to -o (or compile's output). compile --emit-c writes the C. *)
 let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
     begin
         let internal = fun(message: String): Ok diagbag.add(bag diagnostics.error(message location.span("" ~1 ~1)))
         let located = fun(message: String): Ok
             diagbag.add(bag diagnostics.error(message location.span(location.file(sm) 0 1)))
         let translated = try
-            maybe.some(:Tuple c: String unit: nodes.Unit end
-                cBackend.programToC(program e maybe.some(:location.SourceMap sm) options.echo compiledPrintsResult))
+            begin
+                let unit = lowered(program e sm compiledPrintsResult "described")
+                maybe.some(:Tuple c: String unit: nodes.Unit end
+                    tuple let c = cPrinter.printC(unit maybe.none(:String)) let unit = unit end)
+            end
         when lower.loweringError with m then begin internal(m) maybe.none(:Tuple c: String unit: nodes.Unit end) end
         when verify.verifyError with m then begin internal(m) maybe.none(:Tuple c: String unit: nodes.Unit end) end
         when closure.capturesMutable with m then begin internal(m) maybe.none(:Tuple c: String unit: nodes.Unit end) end
@@ -570,18 +727,33 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
         end
         if maybe.isSome(:Tuple c: String unit: nodes.Unit end translated) then
             let t = maybe.unwrap(:Tuple c: String unit: nodes.Unit end translated)
-            if stringOp.equal(options.stopAfter "codegen_c") orif dumps("codegen_c") then print(t.c) end
-            let running = stringOp.equal(options.stopAfter "run_c_compiled")
-            let writing = maybe.isSome(:String options.output) andif not(options.stopGiven)
-            if running orif writing then
+            if shows("codegen_c") then dump(t.c) end
+            let running = reaches("run_c_compiled")
+            let writing = {compileMode orif maybe.isSome(:String options.output)} andif not(options.stopGiven)
+                andif not(options.emitC)
+            if compileMode andif options.emitC andif not(options.stopGiven) then
+                if maybe.isSome(:String compileOutput) then
+                    let target = maybe.unwrap(:String compileOutput)
+                    try
+                        let w = writer.file(target)
+                        writer.putString(w t.c)
+                        writer.close(w)
+                    when writer.error then
+                        failWith("error writing '" <> target <> "'")
+                    end
+                else
+                    flushDumps()
+                    writer.putString(writer.output t.c)
+                end
+            elsif running orif writing then
                 let modules = engine.unitModuleRefs(importRefs(program) passes.implicitImports(t.unit program)
                     e.currentDir vector.toArray(:String e.includePaths) e.programDir e.units.resolver)
                 let importer = if strutil.startsWith(options.file "<") then options.file else stem(options.file) end
                 try
                     let objects = engine.buildModules(newEngine(e) modules importer e.programDir)
                     if writing then
-                        compilerRunner.compileCSource(t.c paths.absolute(maybe.unwrap(:String options.output)) false
-                            maybe.none(:String) objects)
+                        compilerRunner.compileCSource(t.c paths.absolute(maybe.unwrap(:String compileOutput))
+                            options.nogc maybe.none(:String) objects)
                     else
                         let binary = compilerRunner.temporaryBinary()
                         compilerRunner.compileCSource(t.c binary false maybe.none(:String) objects)
@@ -600,7 +772,15 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                             andif {stringOp.getChar(shown {stringOp.length(shown) - 1}) is '\n'} then
                             shown := stringOp.getSub(shown 0 {stringOp.length(shown) - 1})
                         end
-                        if stringOp.length(shown) > 0 then print(shown) end
+                        (* Its output is run_c_compiled's dump, as the
+                         * bootstrap has it, printed when that phase is
+                         * stopped after (as linking objects alone does) or
+                         * dumped *)
+                        flushDumps()
+                        if {stringOp.length(shown) > 0} andif {stringOp.equal(options.stopAfter "run_c_compiled")
+                            orif dumps("run_c_compiled")} then
+                            print(shown)
+                        end
                     end
                 when diagnostics.compilerError with err then
                     (* Such as a type error in an imported module's body, found
@@ -666,6 +846,7 @@ let interpret(program: typedAst.Program e: env.T sm: location.SourceMap bag: dia
             let ran = treewalk.evalProgramPhrasesIn(program f fun(r: treewalk.PhraseResult): Ok
                 if options.echo then printResult(r.phrase r.value) end)
             let results = ran.results
+            flushDumps()
             if not(options.echo) andif {extent results > 0} then
                 printResult(results[extent results - 1].phrase results[extent results - 1].value)
             end
@@ -681,6 +862,7 @@ let interpret(program: typedAst.Program e: env.T sm: location.SourceMap bag: dia
  * program's diagnostics, and exits with its status *)
 let interactive(e: env.T f: model.Frame bag: diagbag.T sm: location.SourceMap): Ok =
     begin
+        flushDumps()
         writer.flush(writer.output)
         diagbag.renderAll(bag sm writer.err)
         writer.flush(writer.err)
@@ -711,7 +893,7 @@ let compileUnitFile(): Ok =
                 when moduleUnit then
                     if maybe.isSome(:String outputDir) then system.makeDirectory(maybe.unwrap(:String outputDir)) end
                     moduleCompiler.compileModuleFile(paths.absolute(options.file) outputDir includes maybe.none(:String)
-                        false vector.toArray(:String vector.new(:String)) options.buildDir maybe.none(:String)
+                        options.nogc vector.toArray(:String vector.new(:String)) options.buildDir maybe.none(:String)
                         maybe.none(:graph.Resolver))
                     ok
                 else
@@ -741,18 +923,16 @@ let run(): Ok =
         let bag = diagbag.new()
         try
             let toks = tokenizer.tokenizeAll(tokenizer.new(sm bag))
-            if diagbag.hasErrors(bag) then
-                ok
-            elsif stringOp.equal(options.stopAfter "tokenize") then
-                print(tokenizer.formatDump(toks sm false))
-            else
+            if not(diagbag.hasErrors(bag)) andif shows("tokenize") then
+                dump(tokenizer.formatDump(toks sm options.showValues))
+            end
+            if not(diagbag.hasErrors(bag)) andif reaches("parse") then
                 let program = parser.parseProgram(toks sm bag)
                 let show = if options.showOffsets then astprint.dumpWithOffsets else astprint.dump end
-                if stringOp.equal(options.stopAfter "parse") then
-                    print(show(program))
-                elsif stringOp.equal(options.stopAfter "desugar") then
-                    print(show(desugar.program(program)))
-                else
+                if shows("parse") then dump(show(program)) end
+                let desugared = if reaches("desugar") then desugar.program(program) else program end
+                if shows("desugar") then dump(show(desugared)) end
+                if reaches("typecheck") then
                     stdlib.install()
                     let e = env.new()
                     let dir = if options.fromFile then paths.parent(paths.absolute(options.file))
@@ -783,23 +963,22 @@ let run(): Ok =
                             vector.get(:String strutil.split(paths.baseName(o) ".") 0))
                         byName.precompiled := true
                     end
-                    let result = typecheck.elaborateProgram(desugar.program(program) e)
+                    let result = typecheck.elaborateProgram(desugared e)
                     for i = 0 upto {extent result.errors - 1} do
                         diagbag.add(bag diagnostics.errorDiagnostic(result.errors[i] options.file))
                     end
                     if maybe.isSome(:typedAst.Program result.program) then
                         let typed = maybe.unwrap(:typedAst.Program result.program)
-                        if stringOp.equal(options.stopAfter "typecheck") then
-                            print(typedAstPrint.dumpProgram(typed))
-                        elsif maybe.isSome(:String irStage("ir_")) then
-                            if not(diagbag.hasErrors(bag)) then
-                                dumpIr(typed e sm bag maybe.unwrap(:String irStage("ir_"))) end
-                        elsif maybe.isSome(:String irStage("run_ir_")) then
-                            if not(diagbag.hasErrors(bag)) then
-                                runIr(typed e sm bag maybe.unwrap(:String irStage("run_ir_"))) end
-                        elsif cPipeline then
-                            if not(diagbag.hasErrors(bag)) then compiled(typed e sm bag) end
-                        elsif not(diagbag.hasErrors(bag)) then
+                        if shows("typecheck") then dump(typedAstPrint.dumpProgram(typed)) end
+                        if diagbag.hasErrors(bag) then
+                            ok
+                        elsif reaches("codegen_c") then
+                            compiled(typed e sm bag)
+                        elsif maybe.isSome(:String irStage("run_ir_")) andif reaches(options.stopAfter) then
+                            runIr(typed e sm bag maybe.unwrap(:String irStage("run_ir_")))
+                        elsif reaches("ir_core") then
+                            lowerOnly(typed e sm bag)
+                        elsif reaches("interpret") then
                             let f = interpret(typed e sm bag)
                             if options.interactive andif not(diagbag.hasErrors(bag)) then interactive(e f bag sm) end
                         end
@@ -812,17 +991,19 @@ let run(): Ok =
         finish(bag sm)
     end;
 
-(* Builds the program with the build engine, as -o does: its modules compiled
- * separately, each only if stale *)
+(* Builds the program with the build engine, as -o and compile do: its modules
+ * compiled separately, each only if stale. With compile -c, the program is
+ * compiled into the build directory but not linked. *)
 let buildProgram(): Ok =
     begin
         let bag = diagbag.new()
         let sm = location.newSourceMap(options.file maybe.unwrapOr(:String paths.readText(options.file) ""))
         stdlib.install()
         try
-            let eng = engine.parallel(engine.new(options.buildDir options.includePaths options.verbose false
+            let eng = engine.parallel(engine.new(options.buildDir options.includePaths options.verbose options.nogc
                 options.extraObjects maybe.none(:graph.Resolver)) options.jobs system.args[0])
-            engine.buildMain(eng options.file options.output)
+            if compileMode andif options.compileOnly then engine.compileMain(eng options.file)
+            else engine.buildMain(eng options.file compileOutput) end
         when diagnostics.compilerError with err then
             diagbag.add(bag diagnostics.errorDiagnostic(err options.file))
         when engine.buildError with m then
@@ -839,8 +1020,9 @@ if workers.isUnitMode(system.args) then
 else
     case units.unitKind(options.file)
         when programUnit then
-            if maybe.isSome(:String options.output) andif not(options.wholeProgram) andif not(options.stopGiven)
-                andif {extent options.dumpAfter is 0} andif not(options.echo) andif options.fromFile then
+            if {compileMode orif maybe.isSome(:String options.output)} andif not(options.wholeProgram)
+                andif not(options.stopGiven) andif {extent options.dumpAfter is 0} andif not(options.echo)
+                andif not(compileMode andif {options.emitC orif options.printResult}) andif options.fromFile then
                 buildProgram()
             else
                 run()

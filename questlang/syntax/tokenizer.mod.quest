@@ -4,6 +4,7 @@ module tokenizer : Tokenizer
 import
     location = questlang/common/location : questlang/common/Location
     diagbag = questlang/common/diagbag : questlang/common/DiagBag
+    diagnostics = questlang/common/diagnostics : questlang/common/Diagnostics
     tokens = questlang/syntax/tokens : questlang/syntax/Tokens
     vector = collections/vector : collections/Vector
     hashmap = collections/hashmap : collections/HashMap
@@ -465,6 +466,22 @@ export
                     when eof then b.str("EOF")
                     else b.str(tokens.tokenKindName(t.kind)).char('\t').str(t.lexeme)
                 end
+                (* A literal's value as Python's repr writes it, as the
+                 * bootstrap's dump does *)
+                let number = fun(s: String): String
+                    if {stringOp.length(s) > 0} andif {stringOp.getChar(s 0) is '~'} then
+                        "-" <> stringOp.getSub(s 1 {stringOp.length(s) - 1})
+                    else s end
+                let shown = if not(showValues) then maybe.none(:String) else
+                    case t.value
+                        when intVal with x then maybe.some(:String number(conv.int(x.val)))
+                        when realVal with x then maybe.some(:String number(conv.real(x.val)))
+                        when charVal with x then maybe.some(:String diagnostics.pyRepr(stringOp.new(1 x.val)))
+                        when stringVal with x then maybe.some(:String diagnostics.pyRepr(x.val))
+                        else maybe.none(:String)
+                    end
+                end
+                if maybe.isSome(:String shown) then b.str("\t(value=").str(maybe.unwrap(:String shown)).char(')') end
             end
             b.toString()
         end

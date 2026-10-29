@@ -95,8 +95,9 @@ included, is the program's. (`quest compile`, which does not run the program, ta
 driver for an interface or module file.)
 
 `./quest` runs the Python bootstrap. `./questc` runs the self-hosted compiler (`questlang/`), which takes the same
-options apart from `compile`. It builds itself first when its sources have changed: from the current release, when
-`tools/release` has cut one, else from the bootstrap ([docs/release-compiler.md](docs/release-compiler.md)).
+commands and options, apart from the deprecated `--emit-deps` and the `--option=value` spelling, and adds `-j N` (build N modules at once). It builds
+itself first when its sources have changed: from the current release, when `tools/release` has cut one, else from the
+bootstrap ([docs/release-compiler.md](docs/release-compiler.md)).
 
 ### Running Tests
 The project includes comprehensive unit tests, golden-file integration tests, and inline diagnostic error tests:

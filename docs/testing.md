@@ -206,7 +206,10 @@ and each expectation must be reported. The error tests check one file at a time;
 what the bootstrap does: the error in the unit's file, with its line. `self-hosted/parallel_build`
 (`tests/self-hosted/parallel_build.py`) builds those programs and the ones under `tests/self-hosted/parallel-build`
 with `-j 1` and `-j 4`: a parallel build must leave a serial one's artifacts, log, and program output, or report its
-error ([build-process.md](build-process.md) §7.4).
+error ([build-process.md](build-process.md) §7.4). `self-hosted/compile_command` (`tests/self-hosted/compile_command.py`)
+runs `compile` command lines (`--emit-c`, `--nogc`, `-c`, `-e`, and the rest), and options the drivers share, with both
+drivers: each must exit with the bootstrap's status and errors, leave its files, and print what it prints, apart from
+the C.
 
 The runners set `QUEST_HOME` to the project directory, where the self-hosted driver, which runs in a scratch
 directory, finds `lib/`. `--self-hosted-driver PATH` runs a driver already compiled (as by `./quest -o build/questlang/main
@@ -215,7 +218,7 @@ which takes minutes.
 
 `run_c_compiled` compiles and runs every run program and run-time error test with the self-hosted driver, and runs the
 checks of its unit files, builds, and ABI corpus (`self-hosted/abi_corpus`, `self-hosted/unit_artifacts`,
-`self-hosted/build_errors`, `self-hosted/parallel_build`). The generated C has no goldens: `tools/c-diff` shows how a
+`self-hosted/build_errors`, `self-hosted/parallel_build`, `self-hosted/compile_command`). The generated C has no goldens: `tools/c-diff` shows how a
 change alters it (§2.9). `run_c_compiled` builds into a directory of its own under each worker's (`self-hosted-units`), so that they don't reuse the bootstrap's fresh
 artifacts. The self-hosted driver builds the questlang tests once, one after another, into a shared directory
 (`self-hosted-questlang-tests`).

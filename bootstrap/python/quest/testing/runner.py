@@ -74,13 +74,15 @@ SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 EVAL_CASES = ROOT_DIR / "tests" / "eval" / "cases.quest"
 # The checks of the self-hosted driver's unit files (-c): interfaces against its
 # ABI corpus (tests/abi/corpus-self-hosted), and that lib/'s modules compile;
-# and of the errors its builds report, against the bootstrap's; and that its
-# parallel builds (-j) are its serial ones
+# and of the errors its builds report, against the bootstrap's; that its
+# parallel builds (-j) are its serial ones; and that its compile command does
+# what the bootstrap's does
 UNIT_CHECKS = (
     ("self-hosted/abi_corpus", ROOT_DIR / "tests" / "abi" / "corpus.py", ("--compiler",)),
     ("self-hosted/unit_artifacts", ROOT_DIR / "tests" / "self-hosted" / "unit_artifacts.py", ()),
     ("self-hosted/build_errors", ROOT_DIR / "tests" / "self-hosted" / "build_errors.py", ()),
     ("self-hosted/parallel_build", ROOT_DIR / "tests" / "self-hosted" / "parallel_build.py", ()),
+    ("self-hosted/compile_command", ROOT_DIR / "tests" / "self-hosted" / "compile_command.py", ()),
 )
 EVAL_GOLDEN = TESTS_GOLDEN_DIR / "self-hosted" / "eval.out"
 SELF_HOSTED_ERRORS_DIR = ROOT_DIR / "tests" / "self-hosted" / "errors"
