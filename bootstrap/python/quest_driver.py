@@ -700,7 +700,8 @@ def run_compile(args: list[str]) -> int:
     if not result.success:
         return 1
 
-    if parsed_args.stop_after and parsed_args.stop_after != "codegen_c":
+    # A phase stopped after has been dumped; codegen_c's dump is the C
+    if parsed_args.stop_after:
         return 0
 
     c_code = result.artifacts.get("codegen_c")
