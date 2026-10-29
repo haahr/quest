@@ -369,9 +369,10 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
 1. **Inventory the C backend's implicit decisions** (§3.1, §3.9). *Done* (2026-10-29): §7, with what step 2 shares in
    §7.5 and what it decided in §8.
 2. **Share what §7.5 lists:** thunks as IR functions, the description of static data, slot conversions as data, and
-   the runtime helpers' external definitions; and make `Int` arithmetic wrap everywhere (§8). *Done when* the C
-   backend consumes the shared pass and description, `Int` wraps in every implementation, the suites and the
-   self-hosting check pass, and the goldens they change are updated.
+   the runtime helpers' external definitions; and make `Int` arithmetic wrap everywhere (§8). Done so far: `Int`
+   wraps (ABI 52), the helpers' external definitions (ABI 53), thunks as IR functions, slot conversions as layout's
+   word forms. *Done when* the C backend consumes the shared pass and description, `Int` wraps in every
+   implementation, the suites and the self-hosting check pass, and the goldens they change are updated.
 3. **Shared layout with assertions** (§3.3), and `collections/bitset` (§3.15). *Done when* every C unit and the
    runtime assert the offsets the shared module computes, the suites pass, and a release has the bitset library.
 4. **The SSA:** nodes, printer, verifier, construction (§3.2), with `--stop-after ssa`. *Done when* every run test's
@@ -467,6 +468,7 @@ alignment beyond 8.
 | Array elements: `QVal` words after `length`; a `Bool` or `Char` element's address is its word's first byte (little-endian) | `arraySlot` | build |
 | Runtime structs read or written directly: `QClosure`, `QArray`, `QAuto`, `QRecordHeader`, `QExceptionState`, `QExceptionHandler`, `QViewMap.index`, offset tables, the proxy tag bit | `quest_runtime.h` | layout, with assertions in `quest_runtime.c` (step 3) |
 | Descriptor structs: every `QTypeDescriptor` kind and its payload structs, with `bool` and `size_t` fields | `emitTypeDescriptors` (500 lines), `types.descriptorForm` | data, laid out by the runtime structs' layouts |
+| Function-type adapters: for each function type described, `quest_adapt_<T>` (wraps a closure converted at run time by descriptor), its thunk, and `quest_invoke_<T>` (calls a closure with `QVal` arguments), which the runtime calls through the type's descriptor (found in step 2) | `emitFunTypeAdapters` | data describes them; each backend generates their code from it (the SSA's backends in the SSA), since the IR cannot express a call through a descriptor's invoker |
 
 ### 7.2. Operations
 
@@ -526,10 +528,15 @@ alignment beyond 8.
    runs after describe, it makes described IR itself (a thunk's descriptor parameters and its plans' descriptor
    operands, which the represent and describe passes now leave on the plans), and the verifier checks it as it checks
    the describe pass's output.
-2. **A description of static data.** A shared module describes each descriptor, offset table, and tag map as
-   structured data, its runtime struct's fields (integers, booleans, strings, and references to other data and to
-   functions), as `declarations.emitTypeDescriptors` computes them now. The C printer prints the description as it
-   prints the structs now; the SSA backends lay it out by the runtime structs' layouts (step 3).
+2. **A description of static data** (decided 2026-10-29: now, rather than C for native units' data until the JIT
+   needs it). A shared module describes each descriptor, offset table, and tag map as structured data, its runtime
+   struct's fields (integers, booleans, strings, and references to other data and to functions), as
+   `declarations.emitTypeDescriptors` computes them now, and lists the function types whose adapters and invokers the
+   unit supplies, with their signatures. Each value carries both its C spelling (`sizeof`, `offsetof`, a descriptor's
+   expression) and what the SSA backends need (bytes, offsets, a symbol and an index). The C printer prints the
+   description, its C unchanged; the SSA backends lay it out by the runtime structs' layouts (step 3) and generate
+   the adapters' and invokers' code in the SSA. In order: the descriptor forms and record naming move from
+   `codegen/c/types` into a shared module; the description is built there; then `declarations` prints it.
 3. **Slot conversions as data.** `layout` says which of a few kinds of conversion takes a shape's value to its slot's
    word and back, and `codegen/c/types` spells each kind in C.
 4. **Out-of-line runtime helpers.** The header's `static inline` helpers are declared `Q_INLINE`, which is
