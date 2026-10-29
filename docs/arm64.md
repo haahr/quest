@@ -392,7 +392,7 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
     in constant stack.
 11. **Linear scan** (§3.8). *Done when* the suite passes with it, and benchmarks.md has dated run and compile times
     for both backends.
-12. **Self-hosting with the arm64 backend** (§4). *Done when* the check passes, and `./questc` can build its stages
+12. **Self-hosting with the arm64 backend** (§4). *Done when* the check passes, and `./quest` can build its stages
     with either backend.
 
 13. **Whole-program compilation** with the arm64 backend (build-process.md §1.2). *Done when* `--whole-program`
