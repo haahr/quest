@@ -58,6 +58,13 @@ without language extensions via a standard negative-sized array in a typedef. Th
 If `cond` evaluates to 0, the array dimension is `-1`, triggering an immediate compiler error pointing to the
 declaration and printing the descriptive message token in the error output.
 
+The self-hosted compiler's C asserts the layouts of the unit's static data too: for each descriptor it defines, the
+size of the struct it describes and the offset of each field, element, or component, and for each static offset
+table, each field's offset, as `static_assert(sizeof(struct S) == 24, layout_<tag>_size)` and
+`static_assert(offsetof(...) == 8, layout_<tag>_0)`. The numbers are those `questlang/codegen/staticdata` computes
+from the layouts of §5, which the native backend lays data out by ([arm64.md](arm64.md) §3.3), so that every C
+compilation checks them.
+
 ---
 
 ## 3. Primitives and the Universal Value Word (`QVal`)

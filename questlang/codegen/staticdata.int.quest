@@ -10,6 +10,7 @@ interface StaticData
 import
     questlang/types/model : questlang/types/Model
     collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
     util/maybe : util/Maybe
 export
     (* A type that has no runtime type descriptor (such as Var(T) or a type
@@ -68,4 +69,103 @@ export
      * shared descriptor would leave out its type components or write them
      * without their alias names *)
     echoDescriptorForm(t: model.Type ctx: maybe.T(RecordNaming)): maybe.T(DescriptorForm)
+    (* The C expression of a descriptor: expr, or the address of
+     * quest_type_<tag> *)
+    cExpr(f: DescriptorForm): String
+
+    (* The parameters and result of a function type's shape, with its type
+     * parameters' bounds, its quantifiers flattened *)
+    Def ShapeSignature = Tuple
+        bounds: vector.T(maybe.T(model.Type))
+        params: vector.T(model.Param)
+        result: model.Type
+    end
+    funShapeSignature(t: model.Type): ShapeSignature
+
+    (* ======================================================================
+     * The descriptors a unit defines (docs/c-representation.md section 6.4)
+     * ====================================================================== *)
+
+    (* The descriptors a unit's types need, by kind (types.descriptorKinds),
+     * those already emitted left out: the closed types' and their parts', and
+     * for the echo types, their echo-only descriptors and those of their
+     * parts *)
+    Def Collected = Tuple
+        (* In the order first reached *)
+        tags: vector.T(String)
+        byKind: hashMap.T(String vector.T(DescriptorForm))
+    end
+    descriptorKinds: Array(String)
+    collectDescriptors(ts: vector.T(model.Type) echoTypes: vector.T(model.Type) ctx: maybe.T(RecordNaming)
+        emittedBefore: hashMap.T(String Bool)): Collected
+    formsOf(c: Collected kind: String): vector.T(DescriptorForm)
+
+    (* A reference from a descriptor to another (or NULL): its C expression,
+     * and its address as a symbol and an index into it ("" when NULL) *)
+    Def Ref = Tuple expr: String symbol: String index: Int end
+    nullRef: Ref
+    refOf(f: DescriptorForm): Ref
+    (* A size or an offset: its C spelling (sizeof, offsetof, or a number),
+     * and its bytes as the layouts of docs/c-representation.md section 5 give
+     * them, for backends that lay out data themselves *)
+    Def Size = Tuple c: String bytes: Int end
+
+    (* A field of a record, an element of a tuple, or a component of an auto
+     * type, in its struct *)
+    Def Component = Tuple name: maybe.T(String) type: Ref offset: Size isVar: Bool end
+    Def FunParam = Tuple type: Ref isVar: Bool isOut: Bool end
+    Def Case = Tuple name: String payload: Ref tagIndex: Int isVar: Bool end
+    Def TypeComponentText = Tuple position: Int text: String end
+
+    (* What a descriptor's extra field points at, by kind *)
+    Def Payload = Option
+        payloadNone
+        (* An application of an abstract type operator: its arguments *)
+        payloadOpaque with args: Array(Ref) end
+        (* A module's bounded abstract type: its own opaque descriptor
+         * (quest_type_<tag>_abstract) and its bound's *)
+        payloadStored with storage: Ref end
+        payloadHole with index: Int storage: Ref end
+        (* Its parameters, result, and type parameters' bounds; its adapter
+         * and invoker are quest_adapt_<tag> and quest_invoke_<tag> *)
+        payloadFun with params: Array(FunParam) result: Ref bounds: Array(Ref) end
+        payloadAuto with bound: Ref payloadSize: Size components: Array(Component) end
+        payloadException with payloadType: Ref end
+        payloadArray with element: Ref end
+        payloadRecord with fields: Array(Component) end
+        payloadTuple with typeComponents: Array(TypeComponentText) elements: Array(Component) end
+        payloadVariant with cases: Array(Case) end
+        payloadOption with cases: Array(Case) end
+    end
+
+    (* A descriptor the unit defines (quest_type_<tag>): its kind (a QTypeKind
+     * constant's name), its name, its size, and its payload *)
+    Def Descriptor = Tuple
+        form: DescriptorForm
+        tag: String
+        kindConstant: String
+        name: String
+        size: Size
+        payload: Payload
+    end
+    (* The descriptor of form f, its parts' references made by partOf (the
+     * static descriptor of a closed type), as C names structs *)
+    describeDescriptor(f: DescriptorForm ctx: maybe.T(RecordNaming) partOf: All(t: model.Type) DescriptorForm): Descriptor
+    (* The bytes of a value of t as a variable holds it (its representation) *)
+    representationBytes(t: model.Type): Int
+    (* ======================================================================
+     * Offset tables and tag maps
+     * ====================================================================== *)
+
+    (* The static offset table of records laid out as layout, seen at view
+     * (docs/c-representation.md section 5.2): its symbol, its struct (a
+     * size_t offset for each of view's fields, in the order of their names,
+     * then stored_types, NULL here), and each field's offset in layout's
+     * struct *)
+    Def OffsetTableData = Tuple symbol: String struct: String offsets: Array(Size) end
+    describeOffsetTable(ctx: RecordNaming view: model.Type layout: model.Type): OffsetTableData
+    (* The static table renumbering source's variant tags as target's: for each
+     * of source's cases, in its order, target's tag for it *)
+    Def TagMapData = Tuple symbol: String entries: Array(Int) end
+    describeTagMap(target: model.Type source: model.Type): TagMapData
 end

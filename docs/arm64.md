@@ -371,7 +371,9 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
 2. **Share what §7.5 lists:** thunks as IR functions, the description of static data, slot conversions as data, and
    the runtime helpers' external definitions; and make `Int` arithmetic wrap everywhere (§8). Done so far: `Int`
    wraps (ABI 52), the helpers' external definitions (ABI 53), thunks as IR functions, slot conversions as layout's
-   word forms. *Done when* the C backend consumes the shared pass and description, `Int` wraps in every
+   word forms, and the description of static data (`codegen/staticdata`: descriptor forms, record naming,
+   descriptors, offset tables, tag maps; the function-type adapters are those of its function descriptors), whose
+   sizes and offsets the C asserts. *Done when* the C backend consumes the shared pass and description, `Int` wraps in every
    implementation, the suites and the self-hosting check pass, and the goldens they change are updated.
 3. **Shared layout with assertions** (§3.3), and `collections/bitset` (§3.15). *Done when* every C unit and the
    runtime assert the offsets the shared module computes, the suites pass, and a release has the bitset library.
