@@ -322,10 +322,11 @@ functions in the runtime header, and calling an imported module's functions dire
 closures, would get most of this without LTO. Quest has no inliner of its own, which also hurts higher-order code
 such as imp-for, where MLton inlines `forLoop` and its arguments into straight loops.
 
-**Done in part (ABI 50):** the self-hosted compiler now calls a standard library function that its module defines as
-an external C function directly, rather than through the module's wrapper and closure, and the word module's
-primitives are `static inline` in the runtime header ([c-representation.md](c-representation.md) §6.2). Measured
-against the compiler before it, alternately, at a tenth of the suite's counts on a loaded machine (two runs each):
+**Done in part (ABI 50, and 51 for the table):** the self-hosted compiler now calls a standard library function that its
+module defines as an external C function directly, from a table of them built into the compiler, rather than through the
+module's wrapper and closure, and the word module's primitives are `static inline` in the runtime header
+([c-representation.md](c-representation.md) §6.2). Measured against the compiler before it, alternately, at a tenth of
+the suite's counts on a loaded machine (two runs each):
 
 | Benchmark | Before (s) | After (s) |
 | --- | --: | --: |

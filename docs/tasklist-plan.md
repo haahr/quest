@@ -128,10 +128,13 @@ directly to global `var` variables. (i) only accepts more programs. (ii) rejects
 
 ## 3. Faster Word Operations
 
-**Done**, with decision (b) in effect rather than (a): an interface's `.qi` is compiled from the interface alone, so
-it cannot record what a module defines. Instead the self-hosted compiler parses a standard library module's source
-for its external functions, as it already did for its external types, and calls those directly (ABI 50). Step 3,
-native SHA-256, was left. Results are in [benchmarks.md](benchmarks.md) §3.3.
+**Done**, differently from both options: an interface's `.qi` is compiled from the interface alone, so it cannot
+record what a module defines. The first version (ABI 50) parsed a library module's source while compiling its
+importers, which broke separate compilation. The owner's design replaced it (ABI 51): a table of the library's
+external functions and external types, generated from `lib/` by `tools/externals` into
+`questlang/codegen/externals.mod.quest`, committed, checked by a test, and recorded in the ABI corpus, so changing it
+needs a new ABI version. It applies only to imports that resolve to `lib/`. Step 3, native SHA-256, was left.
+Results are in [benchmarks.md](benchmarks.md) §3.3.
 
 **Facts.** A `word` operation costs three calls (wrapper, module-record closure, runtime function), none inlinable.
 The same holds for every external in `lib/`: about 150 external declarations across 17 modules (`real` 29, `word` 26,

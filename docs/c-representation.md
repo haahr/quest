@@ -735,11 +735,18 @@ static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
    `RetType qv_<mod>_<fn>(<descriptors>, <params>)` without an environment parameter is emitted at C file scope so
    other compilation units can call it directly via `extern` declarations ([modules.md](modules.md) §5.3).
    A standard library module's function that the module defines as an external C function, monomorphic, of value
-   parameters only, and of scalar and external shapes, is called by its importers as that C function itself
-   (`quest_word_xor_bits(a, b)` for `word.xorBits(a b)`), so the C compiler can inline it: the self-hosted
-   compiler's lowering finds such members by parsing the module's source (`directExternal` in `questlang/ir/lower`,
-   `moduleExternalFunctions` in `questlang/modules/elaboration`), as it finds a module's external types. The word
-   module's primitives are `static inline` in `runtime/quest_runtime.h`, so such a call compiles to its operator.
+   parameters only, and of scalar and external types, is called by the self-hosted compiler's importers as that C
+   function itself (`quest_word_xor_bits(a, b)` for `word.xorBits(a b)`), so the C compiler can inline it. The
+   compiler has these functions, and the library's external types, built in: `tools/externals` generates
+   `questlang/codegen/externals.mod.quest` from `lib/`, a test checks that it is current, and the ABI corpus records
+   it, so a change to it needs a new ABI version. Compiling an importer never reads a module's source: the table
+   applies only to imports that resolve to `lib/`'s modules (the lowering marks them, `libModulePath` in
+   `questlang/modules/paths`), so a program's own module of the same name is called through its wrapper. The call
+   stays an ordinary call of the member until the C printer, which names the C function in place of the wrapper
+   (`libraryExternal` in `questlang/codegen/c/printer`) when the wrapper has its signature: when the importer holds
+   no parameter or result as a `QVal`, as it holds an external type it sees only as abstract (`os/process`'s
+   `process.T`). The word module's primitives are `static inline` in `runtime/quest_runtime.h`, so such a call
+   compiles to its operator.
 4. **Indirect Call Site:**
    ```c
    ((RetType (*)(void *, ParamTypes...))(c_func->fn))(c_func->env, args...);

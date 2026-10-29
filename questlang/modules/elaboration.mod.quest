@@ -17,6 +17,7 @@ import
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
     questlang/modules/paths : questlang/modules/Paths
+    questlang/codegen/externals : questlang/codegen/Externals
     questlang/modules/units : questlang/modules/Units
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/abstractTypes : questlang/modules/AbstractTypes
@@ -183,10 +184,26 @@ export
         end
 
     (* The external type declarations (Let T = external "...") of a module's
-     * source file *)
+     * source file: for a module in lib/, as the compiler has them built in
+     * (questlang/codegen/externals), without reading the module *)
     let externalsByText = hashMap.new(:String :hashMap.T(String Type) stringOp.equal hash.string)
 
+    let libraryExternalTypes(modulePath: String): hashMap.T(String Type) =
+        begin
+            let defs = hashMap.new(:String :Type stringOp.equal hash.string)
+            for i = 0 upto {extent externals.types - 1} do
+                let entry = externals.types[i]
+                if stringOp.equal(entry[0] modulePath) then
+                    hashMap.insert(:String :Type defs entry[1] model.externalType(entry[2] entry[3]))
+                end
+            end
+            defs
+        end
+
     let extractModuleExternalTypes(src: maybe.T(String)): hashMap.T(String Type) =
+        if maybe.isSome(:String src) andif maybe.isSome(:String paths.libModulePath(maybe.unwrap(:String src))) then
+            libraryExternalTypes(maybe.unwrap(:String paths.libModulePath(maybe.unwrap(:String src))))
+        else
         begin
             let defs = hashMap.new(:String :Type stringOp.equal hash.string)
             let text = if maybe.isSome(:String src) then paths.readText(maybe.unwrap(:String src)) else maybe.none(:String) end
@@ -236,73 +253,6 @@ export
                 defs
             end
         end
-
-    let externalFunctionsByText = hashMap.new(:String :hashMap.T(String String) stringOp.equal hash.string)
-
-    let moduleExternalFunctions(src: maybe.T(String)): hashMap.T(String String) =
-        begin
-            let text = if maybe.isSome(:String src) then paths.readText(maybe.unwrap(:String src)) else maybe.none(:String) end
-            let known = if maybe.isSome(:String text) then
-                hashMap.get(:String :hashMap.T(String String) externalFunctionsByText maybe.unwrap(:String text))
-            else
-                maybe.none(:hashMap.T(String String))
-            end
-            if maybe.isSome(:hashMap.T(String String) known) then
-                maybe.unwrap(:hashMap.T(String String) known)
-            else
-                let functions = hashMap.new(:String :String stringOp.equal hash.string)
-                if maybe.isSome(:String text) andif strutil.contains(maybe.unwrap(:String text) "external") then
-                    try
-                        let sm = location.newSourceMap(paths.baseName(maybe.unwrap(:String src)) maybe.unwrap(:String text))
-                        let bag = diagbag.new()
-                        let prog = parser.parseProgram(tokenizer.tokenizeAll(tokenizer.new(sm bag)) sm bag)
-                        if vector.length(:ast.Phrase prog.form.phrases) is 1 then
-                            case vector.get(:ast.Phrase prog.form.phrases 0).form
-                                when phraseModule with m then
-                                    for i = 0 upto {vector.length(:ast.Decl m.modDecl.bindings) - 1} do
-                                        case vector.get(:ast.Decl m.modDecl.bindings i).form
-                                            when declLetVal with b then
-                                                (* let f(x: T): R = external "symbol" keeps its
-                                                 * parameters in the binding, until desugaring
-                                                 * (which leaves externals alone) *)
-                                                let declared = vector.toArray(:ast.FormalParam b.params)
-                                                let var plainDecl = {extent declared > 0} andif not(b.isVar)
-                                                for j = 0 upto {extent declared - 1} do
-                                                    case declared[j].mode when modeValue then ok else plainDecl := false end
-                                                end
-                                                case b.value.form
-                                                    when exprExternal with x then
-                                                        if plainDecl then hashMap.insert(:String :String functions b.name x.symbol) end
-                                                    when exprFun with f then
-                                                        let valueParams = vector.toArray(:ast.FormalParam f.params)
-                                                        let var plain = vector.empty(:ast.TypeFormal f.typeParams)
-                                                        for j = 0 upto {extent valueParams - 1} do
-                                                            case valueParams[j].mode when modeValue then ok else plain := false end
-                                                        end
-                                                        case f.body.form
-                                                            when exprExternal with x then
-                                                                if plain andif not(b.isVar) then
-                                                                    hashMap.insert(:String :String functions b.name x.symbol)
-                                                                end
-                                                            else ok
-                                                        end
-                                                    else ok
-                                                end
-                                            else ok
-                                        end
-                                    end
-                                else ok
-                            end
-                        end
-                    when diagbag.fatalError then
-                        ok
-                    end
-                end
-                if maybe.isSome(:String text) then
-                    hashMap.insert(:String :hashMap.T(String String) externalFunctionsByText maybe.unwrap(:String text) functions)
-                end
-                functions
-            end
         end
 
     let separatelyCompiledModuleScope(modPath: String interfaceScope: Scope e: env.T): Scope =

@@ -164,6 +164,22 @@ export
             absolute(if stringOp.length(home) > 0 then home else system.currentDirectory() end)
         end
     let libDir(): String = join(projectDir() "lib")
+    let libModulePath(source: String): maybe.T(String) =
+        begin
+            let prefix = libDir() <> "/"
+            let full = absolute(source)
+            let suffix = ".mod.quest"
+            let n = stringOp.length(full)
+            let p = stringOp.length(prefix)
+            let s = stringOp.length(suffix)
+            let size = {n - p} - s
+            if {size > 0} andif stringOp.equal(stringOp.getSub(full 0 p) prefix)
+                andif stringOp.equal(stringOp.getSub(full {n - s} s) suffix) then
+                maybe.some(:String stringOp.getSub(full p size))
+            else
+                maybe.none(:String)
+            end
+        end
 
     (* ======================================================================
      * Units

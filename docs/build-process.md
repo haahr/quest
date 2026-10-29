@@ -451,7 +451,9 @@ A version number is only as reliable as the discipline of bumping it, so a test 
 (`tests/abi/corpus`) records, for a frozen snapshot of every interface in the library and in `questlang/`
 (`tests/abi/inputs`):
 - the generated `.qi` files and `<stem>.int.h` headers, with the producer stamp and comments left out;
-- a digest of `runtime/quest_runtime.h`.
+- a digest of `runtime/quest_runtime.h`;
+- the self-hosted compiler's table of the standard library's externals (`questlang/codegen/externals.mod.quest`),
+  whose functions importers call directly ([c-representation.md](c-representation.md) §6.2).
 
 The inputs are a snapshot, not the live library, so that the corpus changes only when the compiler's output for the
 same input changes; editing a library interface is a source change, not a contract change.

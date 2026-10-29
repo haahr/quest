@@ -16,6 +16,7 @@ import
     questlang/codegen/syntax : questlang/codegen/Syntax
     questlang/codegen/layout : questlang/codegen/Layout
     questlang/codegen/symbols : questlang/codegen/Symbols
+    questlang/codegen/externals : questlang/codegen/Externals
     questlang/codegen/c/types : questlang/codegen/c/Types
     questlang/codegen/c/declarations : questlang/codegen/c/Declarations
     collections/hashMap : collections/HashMap
@@ -1355,6 +1356,39 @@ export
             end
         end
 
+    (* The C function a call of an imported member is, if the member is one of
+     * the standard library's external functions built into the compiler
+     * (questlang/codegen/externals), the import resolves to lib/, and the
+     * member's wrapper has the C function's signature: no parameter or result
+     * held as a QVal, as the importer holds an external type it sees only as
+     * abstract (os/process's process.T) *)
+    let libraryExternal(imp: nodes.Import member: String calleeType: maybe.T(Type)): maybe.T(String) =
+        begin
+            let var symbol = maybe.none(:String)
+            let concrete = if maybe.isSome(:Type calleeType) then
+                case maybe.unwrap(:Type calleeType).form
+                    when typeFun with f then
+                        let var all = not(eq(types.qtypeToCType(f.result) "QVal"))
+                        for i = 0 upto {extent f.params - 1} do
+                            if eq(types.qtypeToCType(f.params[i].type) "QVal") then all := false end
+                        end
+                        all
+                    else false
+                end
+            else
+                false
+            end
+            if concrete andif maybe.isSome(:String imp.libPath) then
+                for i = 0 upto {extent externals.functions - 1} do
+                    let entry = externals.functions[i]
+                    if eq(entry[0] maybe.unwrap(:String imp.libPath)) andif eq(entry[1] member) then
+                        symbol := maybe.some(:String entry[2])
+                    end
+                end
+            end
+            symbol
+        end
+
     let callOp(p: P o: nodes.OpCall): String =
         begin
             let descs = descriptors(p o.descriptors)
@@ -1364,8 +1398,17 @@ export
                 if maybe.isSome(:nodes.Module moduleOf(r)) then
                     callClosure(p memberOf(maybe.unwrap(:nodes.Module moduleOf(r)) member) descs o.args)
                 else
-                    let clean = symbols.mangleModuleName(maybe.unwrap(:nodes.Import importOf(r)).canonicalPath)
-                    syntax.call(symbols.mangleModuleIdent(clean member) joinedWith(descs atoms(p o.args)))
+                    let imp = maybe.unwrap(:nodes.Import importOf(r))
+                    let direct = libraryExternal(imp member o.calleeType)
+                    if maybe.isSome(:String direct) then
+                        (* The C function itself, which the C compiler may
+                         * inline, rather than the module's wrapper, whose
+                         * signature it has *)
+                        syntax.call(maybe.unwrap(:String direct) atoms(p o.args))
+                    else
+                        let clean = symbols.mangleModuleName(imp.canonicalPath)
+                        syntax.call(symbols.mangleModuleIdent(clean member) joinedWith(descs atoms(p o.args)))
+                    end
                 end
             else
                 callClosure(p maybe.unwrap(:Variable o.callee) descs o.args)

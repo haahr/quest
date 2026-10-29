@@ -366,7 +366,10 @@ export
             else
                 maybe.none(:Type)
             end
-            nodes.newImport(name modulePath canonicalPath interfacePath recordType)
+            let source = env.resolveModule(l.env canonicalPath).source
+            let libPath = if maybe.isSome(:String source) then paths.libModulePath(maybe.unwrap(:String source))
+                else maybe.none(:String) end
+            nodes.newImport(name modulePath canonicalPath interfacePath recordType libPath)
         end
 
     (* The module e refers to, if it is a reference to a module rather than a
@@ -654,57 +657,6 @@ export
             end
         end
 
-    (* The C symbol of the function a call calls, if it is a member of a
-     * standard library module that the module defines as an external C
-     * function (elaboration.moduleExternalFunctions), of scalar and external
-     * shapes only, whose values need no conversion between the caller's and the
-     * module's representations. The standard library comes with the compiler,
-     * so its modules cannot be replaced behind their importers' backs. *)
-    and directExternal(l: Lowerer c: Callee funType: Type): maybe.T(String) =
-        begin
-            let simple(t: Type): Bool =
-                begin
-                    let kind = shapes.shape(t).kind
-                    let var found = eq(kind "external")
-                    for i = 0 upto {extent shapes.scalarKinds - 1} do
-                        if eq(kind shapes.scalarKinds[i]) then found := true end
-                    end
-                    found
-                end
-            let typesSimple = case funType.form
-                when typeFun with f then
-                    let var all = simple(f.result)
-                    for i = 0 upto {extent f.params - 1} do
-                        if f.params[i].isVar orif f.params[i].isOut orif not(simple(f.params[i].type)) then all := false end
-                    end
-                    all
-                else false
-            end
-            let imported = if maybe.isSome(:nodes.ModuleRef c.moduleRef) then
-                case maybe.unwrap(:nodes.ModuleRef c.moduleRef)
-                    when refImport with x then maybe.some(:nodes.Import x.i)
-                    else maybe.none(:nodes.Import)
-                end
-            else
-                maybe.none(:nodes.Import)
-            end
-            if typesSimple andif maybe.isSome(:nodes.Import imported) andif maybe.isSome(:String c.member) then
-                let canonical = maybe.unwrap(:nodes.Import imported).canonicalPath
-                let var standard = false
-                for i = 0 upto {extent stdlib.standardModules - 1} do
-                    if eq(paths.lower(stdlib.standardModules[i][0]) paths.lower(canonical)) then standard := true end
-                end
-                if standard then
-                    let functions = elaboration.moduleExternalFunctions(env.resolveModule(l.env canonical).source)
-                    hashMap.get(:String :String functions maybe.unwrap(:String c.member))
-                else
-                    maybe.none(:String)
-                end
-            else
-                maybe.none(:String)
-            end
-        end
-
     (* A type application, f(:A)(:B) as one. Applied to fewer types than it
      * takes, a polymorphic function is a closure over the rest (and its value
      * parameters, if it has any), which applies it to all of them, since the
@@ -834,18 +786,8 @@ export
                     else
                         false
                     end
-                    let direct = if vector.empty(:Type typeArgs) then directExternal(l c func.type) else maybe.none(:String) end
                     if isArrayOp then
                         arrayOperation(l maybe.unwrap(:String c.member) atoms e.type into offsetOf(e))
-                    elsif maybe.isSome(:String direct) then
-                        (* A call of the C function itself, which clang may
-                         * inline, rather than of the module's wrapper *)
-                        letOp(l option opCallExternal of Op with
-                            let symbol = maybe.unwrap(:String direct)
-                            let var typeArgs = array of :Type end
-                            let var args = atoms
-                            let var descriptors = array of :nodes.Descriptor end
-                        end e.type into)
                     else
                         let calleeType = if maybe.isSome(:nodes.ModuleRef c.moduleRef) then maybe.some(:Type func.type) else maybe.none(:Type) end
                         letOp(l nodes.call(c.callee vector.toArray(:Type typeArgs) atoms c.moduleRef c.member calleeType) e.type into)
