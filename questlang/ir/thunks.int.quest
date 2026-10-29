@@ -1,0 +1,25 @@
+(* Quest Self-Hosted Compiler: The Thunks Pass Interface
+ *
+ * The described IR's thunks as functions of the unit (docs/ir.md section 8.5),
+ * so that every backend compiles them as it compiles any function, rather
+ * than making them itself: the adapters of adapt plans, the thunks of type
+ * applications whose instances are functions, and the closures of external C
+ * functions used as values. The pass ends the described stage; the bootstrap
+ * has no such pass, and its C printer makes its thunks as it prints. *)
+
+interface Thunks
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+export
+    (* The unit with its thunks among its functions:
+     * - an adapt plan names its adapter (Plan.thunk), a function whose
+     *   environment is the closure it adapts;
+     * - a type application whose instance is a function is a closure of its
+     *   thunk, capturing the function applied and the type arguments;
+     * - an external C function used as a value is the static closure of a
+     *   function calling it, and a call of a variable bound to one calls it
+     *   directly.
+     * Thunks alike (by the types they convert between, and their layout) are
+     * one function. *)
+    thunkUnit(unit: nodes.Unit): nodes.Unit
+end

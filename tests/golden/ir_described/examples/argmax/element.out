@@ -34,14 +34,26 @@ fun argmax [E::TYPE K::TYPE](descriptor_E: descriptor, descriptor_K: descriptor,
   let %13: E = index(a, best)
   return %13
 }
+fun qa_adapt {orig}(e: E): K {
+  let e.1: String = convert(e, unbox)
+  let r: Int = call orig(e.1)
+  let r.1: K = convert(r, box)
+  return r.1
+}
+fun qa_adapt.1 {orig.1}(x: K, y: K): Bool {
+  let x.1: Int = convert(x, unbox)
+  let y.1: Int = convert(y, unbox)
+  let r.2: Bool = call orig.1(x.1, y.1)
+  return r.2
+}
 main {
   let empty: Exception = exception empty
   let argmax.1: All(E :: TYPE K :: TYPE) Fun(a: Array(E) key: Fun(e: E): K isGreater: Fun(x: K y: K): Bool): E = closure argmax {}
   let words: Array(String) = array("pear", "fig", "banana", "kiwi")
   let %1: Fun(string: String): Int = member string.length
   let %2: Fun(a: Int b: Int): Bool = builtin >
-  let %3: Fun(e: E): K = convert(%1, adapt)
-  let %4: Fun(x: K y: K): Bool = convert(%2, adapt)
+  let %3: Fun(e: E): K = convert(%1, adapt by qa_adapt)
+  let %4: Fun(x: K y: K): Bool = convert(%2, adapt by qa_adapt.1)
   let longest: E = call argmax.1 [descriptor(String), descriptor(Int)](words, %3, %4)
   let longest.1: String = convert(longest, unbox)
   let longest.2: String = longest.1

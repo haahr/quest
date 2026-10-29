@@ -675,17 +675,6 @@ export
      * a static descriptor must not mention *)
     Let DescriptorScope = Tuple vars: Ids symbols: Ids end
 
-    let thunkScope(scope: DescriptorScope params: Array(nodes.DescriptorParam)): DescriptorScope =
-        begin
-            let vars = newIds()
-            let symbols = copyIds(scope.symbols)
-            for i = 0 upto {extent params - 1} do
-                hashMap.insert(:Int :Bool vars params[i].v.id true)
-                for j = 0 upto {extent params[i].symbols - 1} do hashMap.insert(:Int :Bool symbols params[i].symbols[j] true) end
-            end
-            tuple let vars = vars let symbols = symbols end
-        end
-
     let withParams(scope: DescriptorScope params: Array(nodes.DescriptorParam)): DescriptorScope =
         begin
             let vars = copyIds(scope.vars)
@@ -794,16 +783,13 @@ export
                             orif not(hashMap.contains(:Int :Bool tagMaps maybe.unwrap(:nodes.TagMap p.tagMap).id))} then
                             problem(where <> ": a variant_tags plan whose tag map is not in the unit's static data")
                         end
-                        let var inner = scope
-                        if eq(p.kind "adapt") then
-                            if extent p.thunkParams isnot extent p.thunkSymbols then
-                                problem(where <> ": an adapt plan's thunk has " <> conv.int(extent p.thunkParams) <> " descriptor parameters")
-                            end
-                            bind(p.thunkParams where)
-                            inner := thunkScope(scope p.thunkParams)
+                        (* An adapt plan's thunk parameters and fields are its
+                         * adapter's, a function of the unit (the thunks pass) *)
+                        if eq(p.kind "adapt") andif {maybe.isNone(:nodes.Function p.thunk)
+                            orif {extent p.fields > 0} orif {extent p.thunkParams > 0}} then
+                            problem(where <> ": an adapt plan without its adapter")
                         end
-                        let fieldScope = inner
-                        for i = 0 upto {extent p.fields - 1} do plan(p.fields[i] fieldScope where) end
+                        for i = 0 upto {extent p.fields - 1} do plan(p.fields[i] scope where) end
                     end
                 let operation = fun(o: Op scope: DescriptorScope where: String): Ok
                     case o
@@ -812,17 +798,12 @@ export
                         when opMakeClosure with x then descriptorList(x.descriptors extent x.typeArgs scope where)
                         when opTypeApp with x then
                             descriptorList(x.descriptors extent x.typeArgs scope where)
-                            let var inner = scope
+                            (* An instance that is a function is its thunk's
+                             * closure (the thunks pass) *)
                             if maybe.isSome(:Array(nodes.DescriptorParam) x.thunkParams) then
-                                let params = maybe.unwrap(:Array(nodes.DescriptorParam) x.thunkParams)
-                                if extent params isnot extent x.thunkSymbols then
-                                    problem(where <> ": a type application's thunk has " <> conv.int(extent params) <> " descriptor parameters")
-                                end
-                                bind(params where)
-                                inner := thunkScope(scope params)
+                                problem(where <> ": a type application whose instance is a function, not its thunk's closure")
                             end
-                            let planScope = inner
-                            for i = 0 upto {extent x.plans - 1} do plan(x.plans[i] planScope where) end
+                            for i = 0 upto {extent x.plans - 1} do plan(x.plans[i] scope where) end
                         when opConvert with x then plan(maybe.some(:nodes.Plan x.plan) scope where)
                         when opPrim with x then
                             if {eq(x.op "is") orif eq(x.op "isnot")} andif {extent x.args > 0} then

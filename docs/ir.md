@@ -507,6 +507,35 @@ without an IR body, and an inspect arm uses the witness's before its case's body
 share little: an instantiation repeated in a function costs a lookup in the runtime's cache, and few programs repeat
 one.)
 
+#### 8.4.1. Thunks (the Self-Hosted Compiler)
+
+In the self-hosted compiler, the described stage ends with `questlang/ir/thunks`, which makes the thunks the C
+printer used to make as it printed into functions of the unit, so that every backend (the C printer, and the SSA's
+backends, [arm64.md](arm64.md) §7.5) compiles them as it compiles any function. The bootstrap has no such pass: its C
+printer makes its thunks itself.
+
+- **An `adapt` plan's adapter** is a function of the plan's target type (`qa_adapt`) whose environment is the closure
+  it adapts, of the plan's source type: its `env` variable has that closure's type, unlike a lifted function's,
+  whose environment is a struct of captures read by `env_field`. It takes the target's type parameters (the plan's
+  thunk parameters, now the function's descriptor parameters), passes them on to the closure, converting each
+  argument by the plan's fields and the result by the last (a call returning `Ok` returns `ok`, which is `Ok`'s
+  value where the result is a type parameter's). The plan names its adapter (`Plan.thunk`, printed `adapt by
+  qa_adapt`) and keeps neither thunk parameters nor fields, which are the adapter's; a conversion by it is a new
+  closure of the adapter whose environment is the converted closure.
+- **A type application whose instance is a function** is a closure of its thunk (`qa_type_app`), capturing the
+  function applied and taking the type arguments, as closure conversion's lifted functions take their enclosing
+  functions' type parameters: the thunk's type parameters are the applied function's first ones, supplied by the
+  closure, then the instance's own (the application's thunk parameters). It calls the function with all of them,
+  converting by the application's plans. A member of an imported module applied to types is first bound by a let.
+- **An external C function used as a value** is the static closure of a function calling it (`qx_<symbol>`), without
+  its type parameters' descriptors; a call of a variable bound to one, without type arguments, is an external call.
+
+Thunks alike are one function: adapters by the types they convert between and their plan's layout, type
+applications' thunks by the applied type, the instance's, and the type arguments, and externals' by symbol and type,
+as the bootstrap's C printer shares its thunks. The pass gives adapters to the plans of conversions, type
+applications without thunks, inspect arms, and the copies among them, and to those in the thunks it makes, which may
+need adapters of their own.
+
 ### 8.5. Print C
 
 Prints the last stage as C (`codegen/c/printer.py`): struct declarations and descriptors for the layouts it meets, a
@@ -522,7 +551,8 @@ descriptors it is given and makes none (§8.4): it names descriptor variables (a
 tables and tag maps of the unit's static data, and calls `quest_instantiate_descriptor` for an instantiated template.
 It declares the structs of the aggregates of the unit's listed types (`ir.StaticData.types`), and the C compiler
 checks that every struct the C names is among them. What it still decides is how to spell the IR in C: the C
-signatures of thunks and of a module file's exported functions, the `static_assert`s of the tuple casts it prints,
+signatures of thunks (in the bootstrap; the self-hosted compiler's are functions, §8.4.1) and of a module file's
+exported functions, the `static_assert`s of the tuple casts it prints,
 and the reinterpretation of a slot's word as a QVal (and back) for a variant's or exception's payload and an echoed
 value, which the slots pass gives it in their slot forms.
 
@@ -542,7 +572,9 @@ builds its own SSA and optimizes. The plan for the backend is [arm64.md](arm64.m
 | **Specialized** | §8.1 | as Core; every specialized call refers to an existing clone |
 | **Closed** | §8.2 | no `funs` statement remains; every closure is of one of the unit's functions; those functions use only their parameters, their environment, and globals (the variables the unit's top levels bind outside loops). `type_app` remains, an operation on closures |
 | **Represented** | §8.3 | every value is used in the representation its use requires (a let's copy, an assignment, a return, a jump's argument, and a call's arguments and result have the C representations of what they bind, assign, return, or pass to; a boxed value's is its slot representation); conversions only through `convert`; slots (components of tuples, records, and arrays being made, stores, cells) take records and variants boxed, but for those embedded; only variables of record or variant types are boxed |
-| **Described** | §8.4 | every run-time use of a type has its descriptor operands (type arguments, auto values' witnesses, inspect cases and arms, `is` of QVal words, record literals, stored field reads, echo, the plans converted by descriptor), and every function its type parameters' descriptor variables; every descriptor variable an operand uses is bound where it is used and of the `descriptor` type (a thunk's plans use only the thunk's own); no static descriptor or template mentions a type parameter whose descriptor is a variable there (nor, in a thunk, one of the enclosing function's); the static descriptors and tables operations refer to are the unit's static data. The IR interpreter also checks that each operation's descriptors describe the types they stand for |
+| **Described** | §8.4 | every run-time use of a type has its descriptor operands (type arguments, auto values' witnesses, inspect cases and arms, `is` of QVal words, record literals, stored field reads, echo, the plans converted by descriptor), and every function its type parameters' descriptor variables; every descriptor variable an operand uses is bound where it is used and of the `descriptor` type (a thunk's plans use only the thunk's own); no static descriptor or template mentions a type parameter whose descriptor is a variable there (nor, in a thunk, one of the enclosing function's); the static descriptors and tables operations refer to are the unit's static data. In the self-hosted compiler
+(§8.4.1), every `adapt` plan has its adapter and no thunk parameters or fields, and no type application's instance is a
+function. The IR interpreter also checks that each operation's descriptors describe the types they stand for |
 
 The verifier runs after every pass when `QUEST_CHECK_IR=1`, which the test runners set (like
 `QUEST_CHECK_CANONICAL`); production builds skip it.

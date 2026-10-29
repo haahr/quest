@@ -1,0 +1,94 @@
+(* Language: the thunks compiled code needs, which the self-hosted compiler makes into functions of the unit
+   (docs/ir.md section 8.4.1): adapters of functions used at a supertype, polymorphic functions applied to types, and
+   external C functions used as values *)
+
+import writer: Writer;
+import conv: Conv;
+import list: List;
+
+let p(n: Int): Ok = writer.putString(writer.output conv.int(n) <> "\n");
+let s(text: String): Ok = writer.putString(writer.output text <> "\n");
+
+Let Big = Record a: Int b: Int c: Int end;
+Let Small = Record c: Int end;
+let big: Big = record a = 1 b = 2 c = 3 end;
+
+(* 1. Adapters, converting arguments and results *)
+let small(x: Small): Int = x.c;
+let useBig(h: All(x: Big) Int): Int = h(big);
+p(useBig(small));
+let makeBig(): Big = big;
+let useSmall(h: All() Small): Int = h().c;
+p(useSmall(makeBig));
+(* Two conversions of the same type share one adapter *)
+let small2(x: Small): Int = x.c * 10;
+p(useBig(small2));
+
+(* 2. An adapter of a function of functions, which needs an adapter of its own *)
+let applyBig(h: All(x: Big) Int): Int = h(big) + 100;
+let applySmall: All(h: All(x: Small) Int) Int = applyBig;
+p(applySmall(small));
+
+(* 3. An adapter of a polymorphic function, which takes its type parameter's descriptor *)
+let first(A::TYPE x: A y: Small): A = x;
+let firstBig: All(A::TYPE x: A y: Big) A = first;
+p(firstBig(:Int 7 big));
+s(firstBig(:String "first" big));
+p(firstBig(:Big big big).b);
+
+(* 4. An adapter of a function with a var parameter, whose location it passes on *)
+let bump(var n: Int y: Small): Ok = n := n + y.c;
+let bumpBig: All(var n: Int y: Big) Ok = bump;
+let var count = 0;
+bumpBig(@count big);
+bumpBig(@count big);
+p(count);
+
+(* 5. A function returning Ok used where its result is a type parameter's *)
+let run(A::TYPE f: All() A): A = f();
+let effect(): Ok = s("effect");
+run(:Ok effect);
+
+(* 6. Polymorphic functions applied to types: closures of thunks, which convert between the generic layout (a QVal
+   word) and the native one of each type argument *)
+let id(A::TYPE v: A): A = v;
+let idInt = id(:Int);
+p(idInt(5));
+let idReal = id(:Real);
+s(conv.real(idReal(2.5)));
+let idBool = id(:Bool);
+s(conv.bool(idBool(true)));
+let idChar = id(:Char);
+s(conv.char(idChar('q')));
+let idBig = id(:Big);
+p(idBig(big).c);
+let idSmall = id(:Small);
+p(idSmall(big).c);
+(* Applied twice to the same type: one thunk *)
+let idInt2 = id(:Int);
+p(idInt2(6));
+
+(* 7. Applied to fewer types than it takes: a thunk that takes the rest *)
+let pick(A::TYPE B::TYPE x: A y: B): A = x;
+let pickInt = pick(:Int);
+p(pickInt(:String 8 "ignored"));
+p(pickInt(:Big 9 big));
+
+(* 8. A thunk passed to a polymorphic function, and called there *)
+let twice(A::TYPE f: All(x: A) A x: A): A = f(f(x));
+p(twice(:Int idInt 11));
+let inc(n: Int): Int = n + 1;
+p(twice(:Int inc 12));
+
+(* 9. A library function applied to its type through an imported module *)
+let consInt = list.cons(:Int);
+let nilInt = list.nil(:Int);
+p(list.length(:Int consInt(1 consInt(2 nilInt))));
+
+(* 10. An external C function: called directly, and as a value passed to a function *)
+let show: All(n: Int) String = external "quest_conv_int";
+s(show(~4));
+let applyTo(f: All(n: Int) String n: Int): String = f(n);
+s(applyTo(show 9));
+let fns = array of show conv.int end;
+s(fns[0](~13) <> fns[1](0));

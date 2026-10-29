@@ -1,0 +1,331 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import list = "list" : List
+static descriptor(Record a: Int b: Int c: Int end)
+static descriptor(Record c: Int end)
+static descriptor(Int)
+static descriptor(String)
+static descriptor(Ok)
+static descriptor(Real)
+static descriptor(Bool)
+static descriptor(Char)
+static offsets(Record a: Int b: Int c: Int end <- Record a: Int b: Int c: Int end) registered
+fun p(n: Int): Ok {
+  let %53: writer.T = member writer.output
+  let %54: String = call conv.int(n)
+  let %55: String = prim <>(%54, "\n")
+  let %56: Ok = call writer.putString(%53, %55)
+  return %56
+}
+fun s(text: String): Ok {
+  let %57: writer.T = member writer.output
+  let %58: String = prim <>(text, "\n")
+  let %59: Ok = call writer.putString(%57, %58)
+  return %59
+}
+fun small(x: Small): Int {
+  let %60: Int = record_field(x, c)
+  return %60
+}
+fun useBig(h: Fun(x: Big): Int): Int {
+  let %61: Int = call h(big)
+  return %61
+}
+fun makeBig(): Big {
+  return big
+}
+fun useSmall(h.1: Fun(): Small): Int {
+  let %62: Small = call h.1()
+  let %63: Int = record_field(%62, c)
+  return %63
+}
+fun small2(x.1: Small): Int {
+  let %64: Int = record_field(x.1, c)
+  let %65: Int = prim *(%64, 10)
+  return %65
+}
+fun applyBig(h.2: Fun(x: Big): Int): Int {
+  let %66: Int = call h.2(big)
+  let %67: Int = prim +(%66, 100)
+  return %67
+}
+fun first [A::TYPE](descriptor_A: descriptor, x.2: A, y: Small): A {
+  return x.2
+}
+fun bump(var n.1: Int, y.1: Small): Ok {
+  let %68: Int = record_field(y.1, c)
+  let %69: Int = prim +(n.1, %68)
+  n.1 := %69
+  return ok
+}
+fun run [A::TYPE](descriptor_A.1: descriptor, f: Fun(): A): A {
+  let %70: A = call f()
+  return %70
+}
+fun effect(): Ok {
+  let %71: Ok = call s.1("effect")
+  return %71
+}
+fun id [A::TYPE](descriptor_A.2: descriptor, v: A): A {
+  return v
+}
+fun pick [A::TYPE B::TYPE](descriptor_A.3: descriptor, descriptor_B: descriptor, x.3: A, y.2: B): A {
+  return x.3
+}
+fun pick_spec(x.4: Int, y.3: Big): Int {
+  return x.4
+}
+fun pickInt [B::TYPE](descriptor_B.1: descriptor, x.5: Int, y.4: B): Int {
+  let x.6: A = convert(x.5, box)
+  let %72: A = call pick.1 [descriptor(Int), descriptor_B.1](x.6, y.4)
+  let %73: Int = convert(%72, unbox)
+  let %74: Int = %73
+  return %74
+}
+fun pickInt_spec(x.7: Int, y.5: Big): Int {
+  let %75: Int = call pick_spec.1(x.7, y.5)
+  return %75
+}
+fun twice [A::TYPE](descriptor_A.4: descriptor, f.1: Fun(x: A): A, x.8: A): A {
+  let %76: A = call f.1(x.8)
+  let %77: A = call f.1(%76)
+  return %77
+}
+fun inc(n.2: Int): Int {
+  let %78: Int = prim +(n.2, 1)
+  return %78
+}
+fun applyTo(f.2: Fun(n: Int): String, n.3: Int): String {
+  let %79: String = call f.2(n.3)
+  return %79
+}
+fun qa_adapt {orig}(x.9: Record a: Int b: Int c: Int end): Int {
+  let x.10: Record c: Int end = convert(x.9, record_view(descriptor(Record c: Int end)))
+  let r: Int = call orig(x.10)
+  return r
+}
+fun qa_adapt.1 {orig.1}(): Record c: Int end {
+  let r.1: Record a: Int b: Int c: Int end = call orig.1()
+  let r.2: Record c: Int end = convert(r.1, record_view(descriptor(Record c: Int end)))
+  return r.2
+}
+fun qa_adapt.2 {orig.2}(h.3: Fun(x: Record c: Int end): Int): Int {
+  let h.4: Fun(x: Record a: Int b: Int c: Int end): Int = convert(h.3, adapt by qa_adapt.8)
+  let r.3: Int = call orig.2(h.4)
+  return r.3
+}
+fun qa_adapt.3 {orig.3} [A::TYPE](qd_0: descriptor, x.11: A, y.6: Record a: Int b: Int c: Int end): A {
+  let y.7: Record c: Int end = convert(y.6, record_view(descriptor(Record c: Int end)))
+  let r.4: A = call orig.3 [qd_0](x.11, y.7)
+  return r.4
+}
+fun qa_adapt.4 {orig.4}(var n.4: Int, y.8: Record a: Int b: Int c: Int end): Ok {
+  let n.5: Var(Int) = addr n.4
+  let y.9: Record c: Int end = convert(y.8, record_view(descriptor(Record c: Int end)))
+  do call orig.4(n.5, y.9)
+  return ok
+}
+fun qa_adapt.5 {orig.5}(): A {
+  do call orig.5()
+  return ok
+}
+fun qa_type_app {env} [A::TYPE](descriptor_A.5: descriptor, v.1: Int): Int {
+  let orig.6: All(A :: TYPE) Fun(v: A): A = env_field(env, 0)
+  let v.2: A = convert(v.1, box)
+  let r.5: A = call orig.6 [descriptor_A.5](v.2)
+  let r.6: Int = convert(r.5, unbox)
+  return r.6
+}
+fun qa_type_app.1 {env.1} [A::TYPE](descriptor_A.6: descriptor, v.3: Real): Real {
+  let orig.7: All(A :: TYPE) Fun(v: A): A = env_field(env.1, 0)
+  let v.4: A = convert(v.3, box)
+  let r.7: A = call orig.7 [descriptor_A.6](v.4)
+  let r.8: Real = convert(r.7, unbox)
+  return r.8
+}
+fun qa_type_app.2 {env.2} [A::TYPE](descriptor_A.7: descriptor, v.5: Bool): Bool {
+  let orig.8: All(A :: TYPE) Fun(v: A): A = env_field(env.2, 0)
+  let v.6: A = convert(v.5, box)
+  let r.9: A = call orig.8 [descriptor_A.7](v.6)
+  let r.10: Bool = convert(r.9, unbox)
+  return r.10
+}
+fun qa_type_app.3 {env.3} [A::TYPE](descriptor_A.8: descriptor, v.7: Char): Char {
+  let orig.9: All(A :: TYPE) Fun(v: A): A = env_field(env.3, 0)
+  let v.8: A = convert(v.7, box)
+  let r.11: A = call orig.9 [descriptor_A.8](v.8)
+  let r.12: Char = convert(r.11, unbox)
+  return r.12
+}
+fun qa_type_app.4 {env.4} [A::TYPE](descriptor_A.9: descriptor, v.9: Record a: Int b: Int c: Int end): Record a: Int b: Int c: Int end {
+  let orig.10: All(A :: TYPE) Fun(v: A): A = env_field(env.4, 0)
+  let v.10: A = convert(v.9, box)
+  let r.13: A = call orig.10 [descriptor_A.9](v.10)
+  let r.14: Record a: Int b: Int c: Int end = convert(r.13, unbox)
+  return r.14
+}
+fun qa_type_app.5 {env.5} [A::TYPE](descriptor_A.10: descriptor, v.11: Record c: Int end): Record c: Int end {
+  let orig.11: All(A :: TYPE) Fun(v: A): A = env_field(env.5, 0)
+  let v.12: A = convert(v.11, box)
+  let r.15: A = call orig.11 [descriptor_A.10](v.12)
+  let r.16: Record c: Int end = convert(r.15, unbox)
+  return r.16
+}
+fun qa_adapt.6 {orig.12}(x.12: A): A {
+  let x.13: Int = convert(x.12, unbox)
+  let r.17: Int = call orig.12(x.13)
+  let r.18: A = convert(r.17, box)
+  return r.18
+}
+fun qa_adapt.7 {orig.13}(x.14: A): A {
+  let x.15: Int = convert(x.14, unbox)
+  let r.19: Int = call orig.13(x.15)
+  let r.20: A = convert(r.19, box)
+  return r.20
+}
+fun qa_type_app.6 {env.6} [A::TYPE](descriptor_A.11: descriptor, item: Int, list: list.T(Int)): list.T(Int) {
+  let orig.14: All(A :: TYPE) Fun(item: A list: list.T(A)): list.T(A) = env_field(env.6, 0)
+  let item.1: A = convert(item, box)
+  let r.21: list.T(A) = call orig.14 [descriptor_A.11](item.1, list)
+  return r.21
+}
+fun qx_quest_conv_int(n.6: Int): String {
+  let r.22: String = call external "quest_conv_int"(n.6)
+  return r.22
+}
+fun qa_adapt.8 {orig.15}(x.16: Record a: Int b: Int c: Int end): Int {
+  let x.17: Record c: Int end = convert(x.16, record_view(descriptor(Record c: Int end)))
+  let r.23: Int = call orig.15(x.17)
+  return r.23
+}
+main {
+  let p.1: Fun(n: Int): Ok = closure p {}
+  let s.1: Fun(text: String): Ok = closure s {}
+  let big_box: box(Big) = record(a = 1, b = 2, c = 3) with offsets(Record a: Int b: Int c: Int end <- Record a: Int b: Int c: Int end) of descriptor(Record a: Int b: Int c: Int end)
+  let big: Big = convert(big_box, slot_unbox)
+  let small.1: Fun(x: Small): Int = closure small {}
+  let useBig.1: Fun(h: Fun(x: Big): Int): Int = closure useBig {}
+  let small.2: Fun(x: Record a: Int b: Int c: Int end): Int = convert(small.1, adapt by qa_adapt)
+  let %1: Int = call useBig.1(small.2)
+  do call p.1(%1)
+  let makeBig.1: Fun(): Big = closure makeBig {}
+  let useSmall.1: Fun(h: Fun(): Small): Int = closure useSmall {}
+  let makeBig.2: Fun(): Record c: Int end = convert(makeBig.1, adapt by qa_adapt.1)
+  let %2: Int = call useSmall.1(makeBig.2)
+  do call p.1(%2)
+  let small2.1: Fun(x: Small): Int = closure small2 {}
+  let small2.2: Fun(x: Record a: Int b: Int c: Int end): Int = convert(small2.1, adapt by qa_adapt)
+  let %3: Int = call useBig.1(small2.2)
+  do call p.1(%3)
+  let applyBig.1: Fun(h: Fun(x: Big): Int): Int = closure applyBig {}
+  let applyBig.2: Fun(h: Fun(x: Small): Int): Int = convert(applyBig.1, adapt by qa_adapt.2)
+  let applySmall: Fun(h: Fun(x: Small): Int): Int = applyBig.2
+  let %4: Int = call applySmall(small.1)
+  do call p.1(%4)
+  let first.1: All(A :: TYPE) Fun(x: A y: Small): A = closure first {}
+  let first.2: All(A :: TYPE) Fun(x: A y: Big): A = convert(first.1, adapt by qa_adapt.3)
+  let firstBig: All(A :: TYPE) Fun(x: A y: Big): A = first.2
+  let %5: A = convert(7, box)
+  let %6: A = call firstBig [descriptor(Int)](%5, big)
+  let %7: Int = convert(%6, unbox)
+  let %8: Int = %7
+  do call p.1(%8)
+  let %9: A = convert("first", box)
+  let %10: A = call firstBig [descriptor(String)](%9, big)
+  let %11: String = convert(%10, unbox)
+  let %12: String = %11
+  do call s.1(%12)
+  let big.1: A = convert(big_box, box)
+  let %13: A = call firstBig [descriptor(Big)](big.1, big)
+  let box: box(Big) = convert(%13, unbox)
+  let %14: Big = convert(box, slot_unbox)
+  let %15: Big = %14
+  let %16: Int = record_field(%15, b)
+  do call p.1(%16)
+  let bump.1: Fun(var n: Int y: Small): Ok = closure bump {}
+  let bump.2: Fun(var n: Int y: Big): Ok = convert(bump.1, adapt by qa_adapt.4)
+  let bumpBig: Fun(var n: Int y: Big): Ok = bump.2
+  var count: Int = 0
+  let %17: Var(Int) = addr count
+  do call bumpBig(%17, big)
+  let %18: Var(Int) = addr count
+  do call bumpBig(%18, big)
+  do call p.1(count)
+  let run.1: All(A :: TYPE) Fun(f: Fun(): A): A = closure run {}
+  let effect.1: Fun(): Ok = closure effect {}
+  let effect.2: Fun(): A = convert(effect.1, adapt by qa_adapt.5)
+  do call run.1 [descriptor(Ok)](effect.2)
+  let id.1: All(A :: TYPE) Fun(v: A): A = closure id {}
+  let idInt: Fun(v: Int): Int = closure qa_type_app {id.1} [descriptor(Int)]
+  let %19: Int = call idInt(5)
+  do call p.1(%19)
+  let idReal: Fun(v: Real): Real = closure qa_type_app.1 {id.1} [descriptor(Real)]
+  let %20: Real = call idReal(2.5)
+  let %21: String = call conv.real(%20)
+  do call s.1(%21)
+  let idBool: Fun(v: Bool): Bool = closure qa_type_app.2 {id.1} [descriptor(Bool)]
+  let %22: Bool = call idBool(true)
+  let %23: String = call conv.bool(%22)
+  do call s.1(%23)
+  let idChar: Fun(v: Char): Char = closure qa_type_app.3 {id.1} [descriptor(Char)]
+  let %24: Char = call idChar('q')
+  let %25: String = call conv.char(%24)
+  do call s.1(%25)
+  let idBig: Fun(v: Big): Big = closure qa_type_app.4 {id.1} [descriptor(Big)]
+  let %26: Big = call idBig(big)
+  let %27: Int = record_field(%26, c)
+  do call p.1(%27)
+  let idSmall: Fun(v: Small): Small = closure qa_type_app.5 {id.1} [descriptor(Small)]
+  let big.2: Record c: Int end = convert(big, record_view(descriptor(Record c: Int end)))
+  let %28: Small = call idSmall(big.2)
+  let %29: Int = record_field(%28, c)
+  do call p.1(%29)
+  let idInt2: Fun(v: Int): Int = closure qa_type_app {id.1} [descriptor(Int)]
+  let %30: Int = call idInt2(6)
+  do call p.1(%30)
+  let pick.1: All(A :: TYPE B :: TYPE) Fun(x: A y: B): A = closure pick {}
+  let pick_spec.1: Fun(x: Int y: Big): Int = closure pick_spec {}
+  let pickInt.1: All(B :: TYPE) Fun(x: Int y: B): Int = closure pickInt {}
+  let pickInt_spec.1: Fun(x: Int y: Big): Int = closure pickInt_spec {}
+  let %31: B = convert("ignored", box)
+  let %32: Int = call pickInt.1 [descriptor(String)](8, %31)
+  do call p.1(%32)
+  let %33: Int = call pickInt_spec.1(9, big)
+  do call p.1(%33)
+  let twice.1: All(A :: TYPE) Fun(f: Fun(x: A): A x: A): A = closure twice {}
+  let idInt.1: Fun(x: A): A = convert(idInt, adapt by qa_adapt.6)
+  let %34: A = convert(11, box)
+  let %35: A = call twice.1 [descriptor(Int)](idInt.1, %34)
+  let %36: Int = convert(%35, unbox)
+  let %37: Int = %36
+  do call p.1(%37)
+  let inc.1: Fun(n: Int): Int = closure inc {}
+  let inc.2: Fun(x: A): A = convert(inc.1, adapt by qa_adapt.7)
+  let %38: A = convert(12, box)
+  let %39: A = call twice.1 [descriptor(Int)](inc.2, %38)
+  let %40: Int = convert(%39, unbox)
+  let %41: Int = %40
+  do call p.1(%41)
+  let cons: All(A :: TYPE) Fun(item: A list: list.T(A)): list.T(A) = member list.cons
+  let consInt: Fun(item: Int list: list.T(Int)): list.T(Int) = closure qa_type_app.6 {cons} [descriptor(Int)]
+  let nilInt: list.T(Int) = type_app list.nil [descriptor(Int)]
+  let %42: list.T(Int) = call consInt(2, nilInt)
+  let %43: list.T(Int) = call consInt(1, %42)
+  let %44: Int = call list.length [descriptor(Int)](%43)
+  do call p.1(%44)
+  let show: Fun(n: Int): String = closure qx_quest_conv_int {}
+  let %45: String = call external "quest_conv_int"(-4)
+  do call s.1(%45)
+  let applyTo.1: Fun(f: Fun(n: Int): String n: Int): String = closure applyTo {}
+  let %46: String = call applyTo.1(show, 9)
+  do call s.1(%46)
+  let %47: Fun(n: Int): String = member conv.int
+  let fns: Array(Fun(n: Int): String) = array(show, %47)
+  let %48: Fun(n: Int): String = index(fns, 0)
+  let %49: String = call %48(-13)
+  let %50: Fun(n: Int): String = index(fns, 1)
+  let %51: String = call %50(0)
+  let %52: String = prim <>(%49, %51)
+  do call s.1(%52)
+}
+

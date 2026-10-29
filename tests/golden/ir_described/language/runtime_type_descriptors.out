@@ -85,6 +85,11 @@ fun mk [A::TYPE](descriptor_A: descriptor, x.3: A): Big {
 fun ident [A::TYPE](descriptor_A.1: descriptor, x.4: A): A {
   return x.4
 }
+fun qa_adapt {orig} [B::TYPE](qd_0: descriptor, y: B): Record c: Int end {
+  let r.6: Record a: Int b: Int c: Int end = call orig [qd_0](y)
+  let r.7: Record c: Int end = convert(r.6, record_view(descriptor(Record c: Int end)))
+  return r.7
+}
 main {
   let p.1: Fun(n: Int): Ok = closure p {}
   let s.1: Fun(text: String): Ok = closure s {}
@@ -143,7 +148,7 @@ main {
             let big_box: box(Big) = record(a = 1, b = 2, c = 3) with offsets(Record a: Int b: Int c: Int end <- Record a: Int b: Int c: Int end) of descriptor(Record a: Int b: Int c: Int end)
             let big: Big = convert(big_box, slot_unbox)
             let mk.1: All(A :: TYPE) Fun(x: A): Big = closure mk {}
-            let mk.2: All(B :: TYPE) Fun(y: B): Small = convert(mk.1, adapt [qd_0: descriptor] {none, record_view(descriptor(Record c: Int end))})
+            let mk.2: All(B :: TYPE) Fun(y: B): Small = convert(mk.1, adapt by qa_adapt)
             let mkSmall: All(B :: TYPE) Fun(y: B): Small = mk.2
             let %20: B = convert(0, box)
             let %21: Small = call mkSmall [descriptor(Int)](%20)

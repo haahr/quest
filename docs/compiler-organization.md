@@ -412,6 +412,10 @@ further:
   above `\u00ff` fails as the text is parsed, since a character is a byte. `dynamic.intern` reads from a native reader,
   which cannot put a character back, so after a value that is not an object, array, or string it reads the delimiter
   that ends it too; such a document is not a dynamic value, so it fails either way.
+- **Thunks are IR functions.** The described stage ends with a pass of its own, `ir/thunks`, which makes adapters,
+  type applications' thunks, and closures of external functions into functions of the unit, so that every backend
+  compiles them alike ([ir.md](ir.md) §8.4.1); the bootstrap's C printer makes them as it prints. Its IR dumps of the
+  described stage show them, and are its own (testing.md §2.8).
 - **The interpreters' builtins** are only the symbols `lib/` binds, and each calls the native library
   ([interpreter.md](interpreter.md) §1).
 - **The build.** A Quest program can neither read the clock nor append to a file, so the build log's entries are

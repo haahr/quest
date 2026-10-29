@@ -49,28 +49,54 @@ fun f(x.2: Big): Int {
   let %35: Int = record_field(x.2, a)
   return %35
 }
+fun qa_adapt {orig}(x.3: Record a: Int b: Int c: Int end): Int {
+  let x.4: Record c: Int end = convert(x.3, record_view(descriptor(Record c: Int end)))
+  let r.2: Int = call orig(x.4)
+  return r.2
+}
+fun qa_adapt.1 {orig.1}(): Record c: Int end {
+  let r.3: Record a: Int b: Int c: Int end = call orig.1()
+  let r.4: Record c: Int end = convert(r.3, record_view(descriptor(Record c: Int end)))
+  return r.4
+}
+fun qa_adapt.2 {orig.2}(x.5: Record a: Int b: Int c: Int end): Record c: Int end {
+  let x.6: Record c: Int end = convert(x.5, record_view(descriptor(Record c: Int end)))
+  let r.5: Record a: Int b: Int c: Int end = call orig.2(x.6)
+  let r.6: Record c: Int end = convert(r.5, record_view(descriptor(Record c: Int end)))
+  return r.6
+}
+fun qa_adapt.3 {orig.3}(h.3: Fun(x: Record c: Int end): Int): Int {
+  let h.4: Fun(x: Record a: Int b: Int c: Int end): Int = convert(h.3, adapt by qa_adapt.4)
+  let r.7: Int = call orig.3(h.4)
+  return r.7
+}
+fun qa_adapt.4 {orig.4}(x.7: Record a: Int b: Int c: Int end): Int {
+  let x.8: Record c: Int end = convert(x.7, record_view(descriptor(Record c: Int end)))
+  let r.8: Int = call orig.4(x.8)
+  return r.8
+}
 main {
   let p.1: Fun(n: Int): Ok = closure p {}
   let big_box: box(Big) = record(a = 1, b = 2, c = 3) with offsets(Record a: Int b: Int c: Int end <- Record a: Int b: Int c: Int end) of descriptor(Record a: Int b: Int c: Int end)
   let big: Big = convert(big_box, slot_unbox)
   let small.1: Fun(x: Small): Int = closure small {}
   let useBig.1: Fun(h: Fun(x: Big): Int): Int = closure useBig {}
-  let small.2: Fun(x: Record a: Int b: Int c: Int end): Int = convert(small.1, adapt {record_view(descriptor(Record c: Int end)), none})
+  let small.2: Fun(x: Record a: Int b: Int c: Int end): Int = convert(small.1, adapt by qa_adapt)
   let %1: Int = call useBig.1(small.2)
   do call p.1(%1)
   let makeBig.1: Fun(): Big = closure makeBig {}
   let useSmall.1: Fun(h: Fun(): Small): Int = closure useSmall {}
-  let makeBig.2: Fun(): Record c: Int end = convert(makeBig.1, adapt {record_view(descriptor(Record c: Int end))})
+  let makeBig.2: Fun(): Record c: Int end = convert(makeBig.1, adapt by qa_adapt.1)
   let %2: Int = call useSmall.1(makeBig.2)
   do call p.1(%2)
   let narrow.1: Fun(x: Small): Big = closure narrow {}
-  let narrow.2: Fun(x: Big): Small = convert(narrow.1, adapt {record_view(descriptor(Record c: Int end)), record_view(descriptor(Record c: Int end))})
+  let narrow.2: Fun(x: Big): Small = convert(narrow.1, adapt by qa_adapt.2)
   let wide: Fun(x: Big): Small = narrow.2
   let %3: Small = call wide(big)
   let %4: Int = record_field(%3, c)
   do call p.1(%4)
   let applyBig.1: Fun(h: Fun(x: Big): Int): Int = closure applyBig {}
-  let applyBig.2: Fun(h: Fun(x: Small): Int): Int = convert(applyBig.1, adapt {adapt {record_view(descriptor(Record c: Int end)), none}, none})
+  let applyBig.2: Fun(h: Fun(x: Small): Int): Int = convert(applyBig.1, adapt by qa_adapt.3)
   let applySmall: Fun(h: Fun(x: Small): Int): Int = applyBig.2
   let %5: Int = call applySmall(small.1)
   do call p.1(%5)

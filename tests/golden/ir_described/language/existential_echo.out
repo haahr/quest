@@ -2,11 +2,16 @@ fun f(x: A): Int {
   let %5: Int = prim +(x, 1)
   return %5
 }
+fun qa_adapt {orig}(x.1: A): Int {
+  let x.2: Int = convert(x.1, unbox)
+  let r: Int = call orig(x.2)
+  return r
+}
 main {
   let a: Int = 0
   let f.1: Fun(x: A): Int = closure f {}
   let a.1: A = convert(a, box)
-  let f.2: Fun(x: A): Int = convert(f.1, adapt)
+  let f.2: Fun(x: A): Int = convert(f.1, adapt by qa_adapt)
   let t1: T = tuple(Let A = Int a.1, f.2)
   let %1: t1.A = tuple_field(t1, 0)
   let %2: Fun(x: t1.A): Int = tuple_field(t1, 1)

@@ -175,10 +175,8 @@ export
         nameCounts: hashMap.T(String Int)
         codeNames: hashMap.T(Int String)
         (* Closures bound by lets (by variable), whose calls call their
-         * functions directly, and external C functions bound by lets, which
-         * are called directly *)
+         * functions directly *)
         closures: hashMap.T(Int nodes.OpMakeClosure)
-        externals: hashMap.T(Int String)
         handlerVars: hashMap.T(Int Bool)
         (* The pairs of tuple types converted by casts (whose layouts agree,
          * which the C asserts), in the order first cast *)
@@ -188,11 +186,6 @@ export
         var lines: Lines
         var indent: Int
         var tmp: Int
-        (* The thunks printed (adapters, type applications, and external
-         * functions as values), by what they convert *)
-        thunks: hashMap.T(String String)
-        thunkDecls: Lines
-        thunkDefs: Lines
         var pending: maybe.T(Pending)
         var deferred: maybe.T(Deferred)
         var emitter: maybe.T(declarations.Emitter)
@@ -684,107 +677,6 @@ export
      * Conversions
      * ====================================================================== *)
 
-    let planOf(plans: Array(maybe.T(nodes.Plan)) i: Int): maybe.T(nodes.Plan) = plans[i]
-
-    let typeKey(t: Type): String = layout.typeIdentityKey(t)
-
-    let layoutKey(l: maybe.T(nodes.PlanLayout)): String =
-        if maybe.isNone(:nodes.PlanLayout l) then
-            "()"
-        else
-            let layoutOf = maybe.unwrap(:nodes.PlanLayout l)
-            let keys = sort.sorted(:Int vector.toArray(:Int layoutOf.keys) sort.intCompare)
-            let parts = vector.new(:String)
-            add(parts if layoutOf.toGeneric then "True" else "False" end)
-            for i = 0 upto {extent keys - 1} do
-                let t = maybe.unwrap(:Type hashMap.get(:Int :Type layoutOf.subst keys[i]))
-                add(parts conv.int(keys[i]) <> "=" <> typeKey(t))
-            end
-            syntax.joined("\n" parts)
-        end
-
-    (* Prints an auxiliary function (a thunk) while printing another: the
-     * printing state is saved, and restored after *)
-    Let Saved = Tuple fs: FnState lines: Lines indent: Int end
-    let save(p: P): Saved =
-        begin
-            let saved = tuple let fs = p.fs let lines = p.lines let indent = p.indent end
-            p.fs := newFnState(maybe.none(:nodes.Function))
-            p.lines := vector.new(:String)
-            p.indent := 1
-            saved
-        end
-    let restore(p: P saved: Saved): Ok =
-        begin
-            p.fs := saved.fs
-            p.lines := saved.lines
-            p.indent := saved.indent
-            ok
-        end
-
-    (* A thunk's parameter declarations (after its environment), and the names
-     * of its descriptor parameters (its descriptor variables, or as many as
-     * count says) and value parameters *)
-    Let ThunkParams = Tuple decls: vector.T(String) descs: vector.T(String) names: vector.T(String) end
-    let thunkParams(p: P descriptorParams: maybe.T(Array(nodes.DescriptorParam)) count: Int
-        params: vector.T(model.Param)): ThunkParams =
-        begin
-            let decls = vector.new(:String)
-            let descs = vector.new(:String)
-            let names = vector.new(:String)
-            let n = if maybe.isSome(:Array(nodes.DescriptorParam) descriptorParams) then
-                extent maybe.unwrap(:Array(nodes.DescriptorParam) descriptorParams)
-            else
-                count
-            end
-            for k = 0 upto {n - 1} do
-                add(descs "qd_" <> cInt(k))
-                add(decls "const QTypeDescriptor *qd_" <> cInt(k))
-                if maybe.isSome(:Array(nodes.DescriptorParam) descriptorParams) then
-                    let d = maybe.unwrap(:Array(nodes.DescriptorParam) descriptorParams)[k]
-                    put(:Int :String p.names d.v.id "qd_" <> cInt(k))
-                end
-            end
-            for i = 0 upto {vector.length(:model.Param params) - 1} do
-                let prm = vector.get(:model.Param params i)
-                add(names "qa_" <> cInt(i))
-                if prm.isVar orif prm.isOut then
-                    add(decls locationCType(prm.type) <> " *qa_" <> cInt(i))
-                else
-                    add(decls if isOk(prm.type) then "QVal" else cType(prm.type) end <> " qa_" <> cInt(i))
-                end
-            end
-            tuple let decls = decls let descs = descs let names = names end
-        end
-
-    (* Adds a thunk's definition, from the lines printed and its own
-     * declarations *)
-    let thunk(p: P thunkName: String ret: String decls: vector.T(String) prologue: vector.T(String)): Ok =
-        begin
-            let body = vector.new(:String)
-            for i = 0 upto {vector.length(:String prologue) - 1} do add(body "    "
-                <> vector.get(:String prologue i)) end
-            for i = 0 upto {vector.length(:Local p.fs.locals) - 1} do
-                let l = vector.get(:Local p.fs.locals i)
-                add(body "    " <> l.cType <> " " <> l.name <> ";")
-            end
-            addAll(body p.lines)
-            let sig = "static Q_UNUSED " <> ret <> " " <> syntax.call(thunkName joinedWith(one("void *_raw_env") decls))
-            add(p.thunkDecls sig <> ";")
-            add(p.thunkDefs sig <> " {")
-            addAll(p.thunkDefs body)
-            add(p.thunkDefs "}")
-            add(p.thunkDefs "")
-        end
-
-    let voids(descs: vector.T(String)): vector.T(String) =
-        begin
-            let res = vector.new(:String)
-            for i = 0 upto {vector.length(:String descs) - 1} do add(res "(void)" <> vector.get(:String descs i)
-                <> ";") end
-            res
-        end
-
     (* The C expression for the value of C expression c converted as plan
      * says: the C for a convert operation, whose plan the represent pass chose
      * (plan in ir/represent; nodes.Plan lists the kinds). A plan that needs
@@ -816,9 +708,10 @@ export
      *   an aggregate's slot holds it in, a dereference of c for slot_unbox;
      * - view and runtime: converted by the runtime between the descriptors of
      *   two types (quest_convert), through a QVal;
-     * - adapt: a closure wrapped in a new closure whose function is a thunk
-     *   (adapter) converting the arguments and the result, and whose
-     *   environment is the original closure;
+     * - adapt: a closure wrapped in a new closure whose function is the
+     *   plan's adapter (a function of the unit, made by ir/thunks), converting
+     *   the arguments and the result, and whose environment is the original
+     *   closure;
      * - copy: a new tuple, each component read from the source and converted
      *   by its own plan. *)
     let rec convert(p: P c: String plan: nodes.Plan): String =
@@ -861,10 +754,12 @@ export
                     <> targetD <> ")"
                 types.qvalUnwrap(converted plan.target)
             elsif eq(kind "adapt") then
-                let thunkName = adapter(p plan)
+                if maybe.isNone(:nodes.Function plan.thunk) then
+                    raise unsupported with "C printing of an adapt plan without its adapter" end
+                end
                 let clos = temp(p "QClosure *")
                 emit(p clos <> " = (QClosure *)quest_alloc(sizeof(QClosure));")
-                emit(p clos <> "->fn = (void *)" <> thunkName <> ";")
+                emit(p clos <> "->fn = (void *)" <> codeName(p maybe.unwrap(:nodes.Function plan.thunk)) <> ";")
                 emit(p clos <> "->env = (void *)(" <> c <> ");")
                 clos
             elsif eq(kind "runtime") then
@@ -913,63 +808,6 @@ export
                 makeTuple(p plan.target fields)
             else
                 raise unsupported with "conversion plan " <> kind end
-            end
-        end
-
-    and finishThunkCall(p: P called: String sourceResult: Type targetResult: Type resultPlan: maybe.T(nodes.Plan)): Ok =
-        if isOk(targetResult) then
-            emit(p called <> ";")
-            emit(p "return;")
-        elsif isOk(sourceResult) then
-            (* A closure returning Ok returns nothing in C; adapted to a generic
-             * result (Ok at a type parameter), it returns Ok's value *)
-            emit(p called <> ";")
-            emit(p "return Q_OK_VAL;")
-        elsif maybe.isNone(:nodes.Plan resultPlan) then
-            emit(p "return " <> called <> ";")
-        else
-            let r = temp(p cType(sourceResult))
-            emit(p r <> " = " <> called <> ";")
-            emit(p "return " <> convert(p r maybe.unwrap(:nodes.Plan resultPlan)) <> ";")
-        end
-
-    (* The thunk adapting a closure of plan.source's type to plan.target's *)
-    and adapter(p: P plan: nodes.Plan): String =
-        begin
-            let key = "adapt\n" <> typeKey(plan.source) <> "\n" <> typeKey(plan.target) <> "\n"
-                <> layoutKey(plan.layout)
-            let found = hashMap.get(:String :String p.thunks key)
-            if maybe.isSome(:String found) then
-                maybe.unwrap(:String found)
-            else
-                let thunkName = freshName(p "qa_adapt")
-                put(:String :String p.thunks key thunkName)
-                let sourceSig = declarations.funShapeSignature(plan.source)
-                let targetSig = declarations.funShapeSignature(plan.target)
-                let saved = save(p)
-                (* The thunk's descriptor parameters are its descriptor
-                 * variables, which its plans' descriptors use *)
-                let tp = thunkParams(p maybe.some(:Array(nodes.DescriptorParam) plan.thunkParams) 0 targetSig.params)
-                let args = vector.new(:String)
-                let n = vector.length(:model.Param targetSig.params)
-                for i = 0 upto {n - 1} do
-                    if i < extent plan.fields then
-                        let nm = vector.get(:String tp.names i)
-                        let fp = plan.fields[i]
-                        add(args if maybe.isNone(:nodes.Plan fp) then
-                            nm else convert(p nm maybe.unwrap(:nodes.Plan fp)) end)
-                    end
-                end
-                let fn = "((" <> types.closureFnPtrType(plan.source) <> ")(orig->fn))"
-                let callArgs = joinedWith(joinedWith(one("orig->env") tp.descs) args)
-                let last = if extent plan.fields > 0 then
-                    plan.fields[extent plan.fields - 1] else maybe.none(:nodes.Plan) end
-                finishThunkCall(p syntax.call(fn callArgs) sourceSig.result targetSig.result last)
-                let ret = if isOk(targetSig.result) then "void" else cType(targetSig.result) end
-                thunk(p thunkName ret tp.decls
-                    joinedWith(one("QClosure *orig = (QClosure *)_raw_env;") voids(tp.descs)))
-                restore(p saved)
-                thunkName
             end
         end
 
@@ -1340,11 +1178,8 @@ export
     let callClosure(p: P callee: Variable descs: vector.T(String) args: Array(Atom)): String =
         begin
             let cArgs = joinedWith(descs atoms(p args))
-            let externalSymbol = hashMap.get(:Int :String p.externals callee.id)
             let known = hashMap.get(:Int :nodes.OpMakeClosure p.closures callee.id)
-            if maybe.isSome(:String externalSymbol) then
-                syntax.call(maybe.unwrap(:String externalSymbol) atoms(p args))
-            elsif maybe.isSome(:nodes.OpMakeClosure known)
+            if maybe.isSome(:nodes.OpMakeClosure known)
                 andif {extent maybe.unwrap(:nodes.OpMakeClosure known).typeArgs is 0} then
                 let k = maybe.unwrap(:nodes.OpMakeClosure known)
                 let env = if extent k.captures is 0 then "NULL" else name(p callee) <> "->env" end
@@ -1452,33 +1287,6 @@ export
                 end
         end
 
-    (* An external C function as a value: a static closure over a thunk
-     * calling it *)
-    let externalClosure(p: P symbol: String t: Type): String =
-        begin
-            let key = "external\n" <> symbol <> "\n" <> typeKey(t)
-            let found = hashMap.get(:String :String p.thunks key)
-            if maybe.isSome(:String found) then
-                "(&" <> maybe.unwrap(:String found) <> "_closure)"
-            else
-                let thunkName = freshName(p "qx_" <> removePrefix(symbols.mangleIdent(symbol) "qv_"))
-                put(:String :String p.thunks key thunkName)
-                let sig = declarations.funShapeSignature(t)
-                let saved = save(p)
-                let tp =
-                    thunkParams(p maybe.none(:Array(nodes.DescriptorParam)) vector.length(:maybe.T(Type) sig.bounds)
-                    sig.params)
-                let called = syntax.call(symbol tp.names)
-                let ret = if isOk(sig.result) then "void" else cType(sig.result) end
-                emit(p if eq(ret "void") then called <> ";" else "return " <> called <> ";" end)
-                thunk(p thunkName ret tp.decls joinedWith(one("(void)_raw_env;") voids(tp.descs)))
-                restore(p saved)
-                add(p.thunkDecls "static Q_UNUSED QClosure " <> thunkName <> "_closure = { (void *)" <> thunkName
-                    <> ", NULL };")
-                "(&" <> thunkName <> "_closure)"
-            end
-        end
-
     let makeClosure(p: P o: nodes.OpMakeClosure): String =
         begin
             let code = codeName(p o.code)
@@ -1513,55 +1321,9 @@ export
             end
         end
 
-    (* The thunk of a type application (and its environment's struct),
-     * converting its arguments and result by the plans the represent pass
-     * made, with the descriptors the describe pass gave them *)
-    let typeAppThunk(p: P origType: Type targetType: Type o: nodes.OpTypeApp): String =
-        begin
-            let typeArgKeys = vector.new(:String)
-            for i = 0 upto {extent o.typeArgs - 1} do add(typeArgKeys typeKey(o.typeArgs[i])) end
-            let key = "type_app\n" <> typeKey(origType) <> "\n" <> typeKey(targetType) <> "\n"
-                <> syntax.joined("\t" typeArgKeys)
-            let found = hashMap.get(:String :String p.thunks key)
-            if maybe.isSome(:String found) then
-                maybe.unwrap(:String found)
-            else
-                let thunkName = freshName(p "qa_type_app")
-                let envStruct = "QTypeAppEnv_" <> thunkName
-                put(:String :String p.thunks key thunkName)
-                let n = extent o.typeArgs
-                add(p.thunkDecls "typedef struct { QClosure *orig; const QTypeDescriptor *desc["
-                    <> cInt(if n > 1 then n else 1 end)
-                    <> "]; } " <> envStruct <> ";")
-                let origSig = declarations.funShapeSignature(origType)
-                let targetSig = declarations.funShapeSignature(targetType)
-                let saved = save(p)
-                let tp = thunkParams(p o.thunkParams 0 targetSig.params)
-                let args = vector.new(:String)
-                let count = vector.length(:String tp.names)
-                let planCount = extent o.plans - 1
-                for i = 0 upto {if count < planCount then count - 1 else planCount - 1 end} do
-                    let a = vector.get(:String tp.names i)
-                    let pl = o.plans[i]
-                    add(args if maybe.isNone(:nodes.Plan pl) then a else convert(p a maybe.unwrap(:nodes.Plan pl)) end)
-                end
-                let envDescs = vector.new(:String)
-                for i = 0 upto {n - 1} do add(envDescs "_env->desc[" <> cInt(i) <> "]") end
-                let callArgs = joinedWith(joinedWith(joinedWith(one("_env->orig->env") envDescs) tp.descs) args)
-                let fn = "((" <> types.closureFnPtrType(origType) <> ")(_env->orig->fn))"
-                finishThunkCall(p syntax.call(fn callArgs) origSig.result targetSig.result o.plans[extent o.plans - 1])
-                let ret = if isOk(targetSig.result) then "void" else cType(targetSig.result) end
-                thunk(p thunkName ret tp.decls
-                    joinedWith(one(envStruct <> " *_env = (" <> envStruct <> " *)_raw_env;") voids(tp.descs)))
-                restore(p saved)
-                thunkName
-            end
-        end
-
-    (* A polymorphic value applied to types: a closure binding the type
-     * arguments' descriptors (converting its arguments to the function's
-     * generic layouts and its result back), or, for a polymorphic value of no
-     * parameters, its value at the type arguments *)
+    (* A polymorphic value of no parameters applied to types: its value at the
+     * type arguments (a function applied to types is its thunk's closure,
+     * made by ir/thunks) *)
     let typeApp(p: P o: nodes.OpTypeApp result: Variable): String =
         begin
             let var origType = model.okType
@@ -1596,19 +1358,7 @@ export
                 let pl = o.plans[0]
                 if maybe.isNone(:nodes.Plan pl) then called else convert(p called maybe.unwrap(:nodes.Plan pl)) end
             else
-                let thunkName = typeAppThunk(p origType result.type o)
-                let envStruct = "QTypeAppEnv_" <> thunkName
-                let env = temp(p envStruct <> " *")
-                emit(p env <> " = (" <> envStruct <> " *)quest_alloc(sizeof(" <> envStruct <> "));")
-                emit(p env <> "->orig = " <> clos <> ";")
-                for i = 0 upto {vector.length(:String descs) - 1} do
-                    emit(p env <> "->desc[" <> cInt(i) <> "] = " <> vector.get(:String descs i) <> ";")
-                end
-                let c = temp(p "QClosure *")
-                emit(p c <> " = (QClosure *)quest_alloc(sizeof(QClosure));")
-                emit(p c <> "->fn = (void *)" <> thunkName <> ";")
-                emit(p c <> "->env = (void *)" <> env <> ";")
-                c
+                raise unsupported with "C printing of a type application whose instance is a function, not its thunk's closure" end
             end
         end
 
@@ -1649,10 +1399,9 @@ export
             when opBuiltin with x then "(&" <> symbols.mangleIdent(x.name) <> "_closure)"
             when opExternal with x then
                 if maybe.isSome(:Variable result) andif isFunction(maybe.unwrap(:Variable result).type) then
-                    externalClosure(p x.symbol maybe.unwrap(:Variable result).type)
-                else
-                    x.symbol
+                    raise unsupported with "C printing of an external C function used as a value, not its thunk's closure" end
                 end
+                x.symbol
             when opCallExternal with x then
                 syntax.call(x.symbol joinedWith(descriptors(p x.descriptors) atoms(p x.args)))
             when opMakeClosure with x then makeClosure(p x)
@@ -2334,7 +2083,13 @@ export
             for i = nCaptured upto {extent f.descriptorParams - 1} do
                 add(prologue "(void)" <> name(p f.descriptorParams[i].v) <> ";")
             end
-            if maybe.isSome(:Variable f.env) then
+            if maybe.isSome(:Variable f.env) andif not(isOk(maybe.unwrap(:Variable f.env).type)) then
+                (* An adapter's environment is the closure it adapts, of that
+                 * closure's type (ir/thunks); a lifted function's, a struct of
+                 * captures, has the placeholder type Ok *)
+                let env = maybe.unwrap(:Variable f.env)
+                add(prologue cType(env.type) <> " " <> name(p env) <> " = (" <> cType(env.type) <> ")_raw_env;")
+            elsif maybe.isSome(:Variable f.env) then
                 let envStruct = "struct QEnv_" <> codeName(p f)
                 let envName = name(p maybe.unwrap(:Variable f.env))
                 add(prologue envStruct <> " *" <> envName <> " = (" <> envStruct <> " *)_raw_env;")
@@ -2692,9 +2447,6 @@ export
                                         put(:Int :nodes.OpMakeClosure closuresOf c.code.id c)
                                     end
                                     put(:Int :nodes.OpMakeClosure p.closures x.v.id c)
-                                when opExternal with c then
-                                    (* Called directly *)
-                                    if isFunction(x.v.type) then put(:Int :String p.externals x.v.id c.symbol) end
                                 else ok
                             end
                         else ok
@@ -2751,8 +2503,6 @@ export
                 if maybe.isSome(:nodes.Members m.exports) then add(res "void qv_mod_" <> clean <> "_init(void);") end
             end
             add(res "")
-            addAll(res p.thunkDecls)
-            add(res "")
             (* The unit's functions with frames in tracebacks
              * (docs/exceptions.md section 5.2) *)
             let funcs = funcTableEntries(p)
@@ -2795,7 +2545,6 @@ export
             add(res "}")
             add(res "")
             addAll(res functions)
-            addAll(res p.thunkDefs)
             addAll(res moduleInits)
             if moduleFile then
                 syntax.linesText(res)
@@ -2834,7 +2583,6 @@ export
             let nameCounts = hashMap.new(:String :Int eq hash.string)
             let codeNames = hashMap.new(:Int :String intEqual hash.int)
             let closures = hashMap.new(:Int :nodes.OpMakeClosure intEqual hash.int)
-            let externals = hashMap.new(:Int :String intEqual hash.int)
             let handlerVars = hashMap.new(:Int :Bool intEqual hash.int)
             let tupleCastKeys = vector.new(:String)
             let tupleCasts = hashMap.new(:String :declarations.Pair eq hash.string)
@@ -2842,9 +2590,6 @@ export
             let var lines = vector.new(:String)
             let var indent = 1
             let var tmp = 0
-            let thunks = hashMap.new(:String :String eq hash.string)
-            let thunkDecls = vector.new(:String)
-            let thunkDefs = vector.new(:String)
             let var pending = maybe.none(:Pending)
             let var deferred = maybe.none(:Deferred)
             let var emitter = maybe.none(:declarations.Emitter)

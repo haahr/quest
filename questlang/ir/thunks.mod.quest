@@ -1,0 +1,506 @@
+(* Quest Self-Hosted Compiler: The Thunks Pass Implementation *)
+
+module thunks : Thunks
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/ir/written : questlang/ir/Written
+    questlang/codegen/layout : questlang/codegen/Layout
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Let Type = model.Type
+    Let Variable = nodes.Variable
+    Let Atom = nodes.Atom
+    Let Body = nodes.Body
+    Let Stmt = nodes.Stmt
+    Let Op = nodes.Op
+    Let Plan = nodes.Plan
+    Let Descriptor = nodes.Descriptor
+    Let Function = nodes.Function
+
+    let unsupportedThunk: Exception(String) = exception unsupportedThunk: String end
+
+    let intEqual(a: Int b: Int): Bool = a is b
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+
+    let isOk(t: Type): Bool = eq(shapes.shape(t).kind "ok")
+    let isFunction(t: Type): Bool =
+        begin
+            let var s = shapes.shape(t)
+            while eq(s.kind "all") do s := shapes.body(s) end
+            eq(s.kind "fun")
+        end
+
+    let okAtom(): Atom =
+        nodes.atomOfConst(tuple let value = option constOk of nodes.ConstValue end let shape = shapes.shape(model.okType) end)
+    let descVar(v: Variable): Descriptor = option descVar of Descriptor with let v = v end
+    let doStmt(o: Op): Stmt = option sDo of Stmt with let var value = o end
+    let returnStmt(a: Atom): Stmt = option sReturn of Stmt with let var value = a end
+    let closureOp(code: Function captures: Array(Atom) typeArgs: Array(Type) descriptors: Array(Descriptor)): Op =
+        option opMakeClosure of Op with
+            let var code = code
+            let var captures = captures
+            let var typeArgs = typeArgs
+            let var descriptors = descriptors
+        end
+
+    (* The keys thunks are shared by, as the bootstrap's C printer keys them *)
+    let typeKey(t: Type): String = layout.typeIdentityKey(t)
+    let layoutKey(l: maybe.T(nodes.PlanLayout)): String =
+        if maybe.isNone(:nodes.PlanLayout l) then
+            "()"
+        else
+            let lay = maybe.unwrap(:nodes.PlanLayout l)
+            let keys = sort.sorted(:Int vector.toArray(:Int lay.keys) sort.intCompare)
+            let var text = if lay.toGeneric then "True" else "False" end
+            for i = 0 upto {extent keys - 1} do
+                text := text <> "\n" <> conv.int(keys[i]) <> "=" <> typeKey(hashMap.find(:Int :Type lay.subst keys[i]))
+            end
+            text
+        end
+
+    Let Thunker = Tuple
+        unit: nodes.Unit
+        thunks: hashMap.T(String Function)
+        (* The variables bound to external C functions used as functions, by
+         * id, and their symbols *)
+        externals: hashMap.T(Int String)
+    end
+
+    (* ======================================================================
+     * Building thunks
+     * ====================================================================== *)
+
+    (* A thunk's type parameters: the quantifiers of its function type *)
+    let typeParamsOf(quantifiers: Array(model.Quantifier)): Array(nodes.TypeParam) =
+        begin
+            let res = vector.new(:nodes.TypeParam)
+            for i = 0 upto {extent quantifiers - 1} do
+                let q = quantifiers[i]
+                vector.append(:nodes.TypeParam res tuple
+                    let name = q.name
+                    let symbolId = q.symbolId
+                    let kind = q.bound
+                    let bound = if model.isPower(q.bound) then maybe.some(:shapes.Shape shapes.shape(model.powerBound(q.bound)))
+                        else maybe.none(:shapes.Shape) end
+                end)
+            end
+            vector.toArray(:nodes.TypeParam res)
+        end
+
+    let typeVariables(params: Array(nodes.TypeParam)): Array(Type) =
+        begin
+            let res = array of(extent params model.okType)
+            for i = 0 upto {extent params - 1} do
+                res[i] := model.typeVariable(params[i].name params[i].symbolId maybe.some(:model.Kind params[i].kind))
+            end
+            res
+        end
+
+    let descriptorsOf(params: Array(nodes.DescriptorParam)): Array(Descriptor) =
+        begin
+            let res = vector.new(:Descriptor)
+            for i = 0 upto {extent params - 1} do vector.append(:Descriptor res descVar(params[i].v)) end
+            vector.toArray(:Descriptor res)
+        end
+
+    (* A thunk's parameters, of its function type's signature *)
+    let paramsOf(sig: written.Signature): Array(nodes.ParamEntry) =
+        begin
+            let res = vector.new(:nodes.ParamEntry)
+            for i = 0 upto {extent sig.params - 1} do
+                let p = sig.params[i]
+                let mode = if p.isVar then "var" elsif p.isOut then "out" else "value" end
+                let hint = if stringOp.length(p.name) > 0 then p.name else "a" end
+                vector.append(:nodes.ParamEntry res tuple
+                    let v = nodes.newVar(hint p.type not(eq(mode "value")))
+                    let mode = mode
+                end)
+            end
+            vector.toArray(:nodes.ParamEntry res)
+        end
+
+    (* The arguments a thunk passes on: its parameters, each converted by its
+     * plan, if any (a var or out parameter's location is passed as it is) *)
+    let forwarded(stmts: vector.T(Stmt) params: Array(nodes.ParamEntry) plans: Array(maybe.T(Plan))): Array(Atom) =
+        begin
+            let res = vector.new(:Atom)
+            for i = 0 upto {extent params - 1} do
+                let p = params[i]
+                if not(eq(p.mode "value")) then
+                    (* Of the location's type, as lowering types an argument
+                     * @x *)
+                    let refType = if eq(p.mode "var") then model.varType(p.v.type) else model.outType(p.v.type) end
+                    let a = nodes.newVar(p.v.hint refType false)
+                    vector.append(:Stmt stmts nodes.letStmt(a option opAddrVar of Op with let var v = p.v end))
+                    vector.append(:Atom res nodes.atomOfVar(a))
+                elsif {i < extent plans} andif maybe.isSome(:Plan plans[i]) then
+                    let plan = maybe.unwrap(:Plan plans[i])
+                    let a = nodes.newVar(p.v.hint plan.target false)
+                    vector.append(:Stmt stmts nodes.letStmt(a option opConvert of Op with
+                        let var value = nodes.atomOfVar(p.v)
+                        let var plan = plan
+                    end))
+                    vector.append(:Atom res nodes.atomOfVar(a))
+                else
+                    vector.append(:Atom res nodes.atomOfVar(p.v))
+                end
+            end
+            vector.toArray(:Atom res)
+        end
+
+    (* Ends a thunk's body with the call it makes and the return of its
+     * result, converted by resultPlan: a call returning Ok (a C function
+     * returning nothing) returns ok, which is Ok's value when the thunk's
+     * result is a type parameter's *)
+    let finish(stmts: vector.T(Stmt) called: Op sourceResult: Type targetResult: Type resultPlan: maybe.T(Plan)): Ok =
+        if isOk(targetResult) orif isOk(sourceResult) then
+            vector.append(:Stmt stmts doStmt(called))
+            vector.append(:Stmt stmts returnStmt(okAtom()))
+        else
+            let r = nodes.newVar("r" sourceResult false)
+            vector.append(:Stmt stmts nodes.letStmt(r called))
+            if maybe.isNone(:Plan resultPlan) then
+                vector.append(:Stmt stmts returnStmt(nodes.atomOfVar(r)))
+            else
+                let pl = maybe.unwrap(:Plan resultPlan)
+                let converted = nodes.newVar("r" pl.target false)
+                vector.append(:Stmt stmts nodes.letStmt(converted option opConvert of Op with
+                    let var value = nodes.atomOfVar(r)
+                    let var plan = pl
+                end))
+                vector.append(:Stmt stmts returnStmt(nodes.atomOfVar(converted)))
+            end
+        end
+
+    let addThunk(t: Thunker key: String f: Function): Function =
+        begin
+            hashMap.insert(:String :Function t.thunks key f)
+            vector.append(:Function t.unit.functions f)
+            f
+        end
+
+    (* The adapter of an adapt plan: a function of the plan's target type whose
+     * environment is the closure it adapts, of the plan's source type. It
+     * takes the target's type parameters (the plan's thunk parameters), passes
+     * them on to the closure, converting each argument and the result by the
+     * plan's fields. *)
+    let adapter(t: Thunker plan: Plan): Function =
+        begin
+            let key = "adapt\n" <> typeKey(plan.source) <> "\n" <> typeKey(plan.target) <> "\n" <> layoutKey(plan.layout)
+            let found = hashMap.get(:String :Function t.thunks key)
+            if maybe.isSome(:Function found) then
+                maybe.unwrap(:Function found)
+            else
+                    let source = written.funSignature(plan.source)
+                    let target = written.funSignature(plan.target)
+                    let typeParams = typeParamsOf(written.quantified(plan.target).quantifiers)
+                    let env = nodes.newVar("orig" plan.source false)
+                    let params = paramsOf(target)
+                    let stmts = vector.new(:Stmt)
+                    let args = forwarded(stmts params plan.fields)
+                    let called = nodes.call(maybe.some(:Variable env) typeVariables(typeParams) args maybe.none(:nodes.ModuleRef)
+                        maybe.none(:String) maybe.none(:Type))
+                    case called when opCall with c then c.descriptors := descriptorsOf(plan.thunkParams) else ok end
+                    let last = if extent plan.fields > 0 then plan.fields[extent plan.fields - 1] else maybe.none(:Plan) end
+                    finish(stmts called source.result target.result last)
+                    let f = nodes.newFunction(nodes.newVar("qa_adapt" plan.target false) typeParams params target.result
+                        nodes.bodyOf(vector.toArray(:Stmt stmts)) maybe.none(:String))
+                    f.env := maybe.some(:Variable env)
+                    (* A thunk parameter stands for the target's type parameter
+                     * and the source's it is passed as; as the function's, for
+                     * the target's *)
+                    let descriptorParams = array of(extent plan.thunkParams tuple
+                        let v = nodes.newVar("" nodes.descriptorType false) let symbols = array of :Int end
+                    end)
+                    for i = 0 upto {extent plan.thunkParams - 1} do
+                        let tp = plan.thunkParams[i]
+                        descriptorParams[i] := tuple let v = tp.v let symbols = array of tp.symbols[0] end end
+                    end
+                    f.descriptorParams := descriptorParams
+                    addThunk(t key f)
+            end
+        end
+
+    (* The thunk of a type application whose instance is a function: a function
+     * of the instance's type (targetType) whose environment captures the
+     * function applied (of origType) and the type arguments, which it takes
+     * first, as closure conversion's lifted functions take their enclosing
+     * functions' type parameters. It passes on the type arguments and its own
+     * type parameters, converting each argument and the result by the
+     * application's plans. *)
+    let typeAppThunk(t: Thunker o: nodes.OpTypeApp origType: Type targetType: Type): Function =
+        begin
+            let typeArgKeys = vector.new(:String)
+            for i = 0 upto {extent o.typeArgs - 1} do vector.append(:String typeArgKeys typeKey(o.typeArgs[i])) end
+            let var joined = ""
+            for i = 0 upto {vector.length(:String typeArgKeys) - 1} do
+                joined := joined <> if i > 0 then "\t" else "" end <> vector.get(:String typeArgKeys i)
+            end
+            let key = "type_app\n" <> typeKey(origType) <> "\n" <> typeKey(targetType) <> "\n" <> joined
+            let found = hashMap.get(:String :Function t.thunks key)
+            if maybe.isSome(:Function found) then
+                maybe.unwrap(:Function found)
+            else
+                    let n = extent o.typeArgs
+                    let origQuantifiers = written.quantified(origType).quantifiers
+                    let captured = vector.new(:model.Quantifier)
+                    for i = 0 upto {n - 1} do
+                        if i < extent origQuantifiers then vector.append(:model.Quantifier captured origQuantifiers[i]) end
+                    end
+                    let capturedParams = typeParamsOf(vector.toArray(:model.Quantifier captured))
+                    let ownParams = typeParamsOf(written.quantified(targetType).quantifiers)
+                    let thunkParams = maybe.unwrap(:Array(nodes.DescriptorParam) o.thunkParams)
+                    let allParams = vector.new(:nodes.TypeParam)
+                    let descriptorParams = vector.new(:nodes.DescriptorParam)
+                    for i = 0 upto {extent capturedParams - 1} do
+                        vector.append(:nodes.TypeParam allParams capturedParams[i])
+                        vector.append(:nodes.DescriptorParam descriptorParams tuple
+                            let v = nodes.newVar("descriptor_" <> capturedParams[i].name nodes.descriptorType false)
+                            let symbols = array of capturedParams[i].symbolId end
+                        end)
+                    end
+                    for i = 0 upto {extent ownParams - 1} do vector.append(:nodes.TypeParam allParams ownParams[i]) end
+                    let typeParams = vector.toArray(:nodes.TypeParam allParams)
+                    for i = 0 upto {extent thunkParams - 1} do vector.append(:nodes.DescriptorParam descriptorParams thunkParams[i]) end
+                    (* The environment, as closure conversion makes it: its
+                     * type is a placeholder *)
+                    let env = nodes.newVar("env" model.okType false)
+                    let orig = nodes.newVar("orig" origType false)
+                    let stmts = vector.new(:Stmt)
+                    vector.append(:Stmt stmts nodes.letStmt(orig option opEnvField of Op with
+                        let var env = nodes.atomOfVar(env)
+                        let index = 0
+                    end))
+                    let target = written.funSignature(targetType)
+                    let params = paramsOf(target)
+                    let args = forwarded(stmts params o.plans)
+                    let descriptors = descriptorsOf(vector.toArray(:nodes.DescriptorParam descriptorParams))
+                    let called = nodes.call(maybe.some(:Variable orig) typeVariables(typeParams) args
+                        maybe.none(:nodes.ModuleRef) maybe.none(:String) maybe.none(:Type))
+                    case called when opCall with c then c.descriptors := descriptors else ok end
+                    let resultPlan = if extent o.plans > 0 then o.plans[extent o.plans - 1] else maybe.none(:Plan) end
+                    finish(stmts called written.funSignature(origType).result target.result resultPlan)
+                    let f = nodes.newFunction(nodes.newVar("qa_type_app" targetType false) typeParams params target.result
+                        nodes.bodyOf(vector.toArray(:Stmt stmts)) maybe.none(:String))
+                    f.env := maybe.some(:Variable env)
+                    f.descriptorParams := vector.toArray(:nodes.DescriptorParam descriptorParams)
+                    addThunk(t key f)
+            end
+        end
+
+    (* The function an external C function used as a value is a closure of: it
+     * calls the C function with its arguments (its type parameters'
+     * descriptors are not passed on, as a direct call of the external passes
+     * none) *)
+    let externalThunk(t: Thunker symbol: String ty: Type): Function =
+        begin
+            let key = "external\n" <> symbol <> "\n" <> typeKey(ty)
+            let found = hashMap.get(:String :Function t.thunks key)
+            if maybe.isSome(:Function found) then
+                maybe.unwrap(:Function found)
+            else
+                    let sig = written.funSignature(ty)
+                    let typeParams = typeParamsOf(written.quantified(ty).quantifiers)
+                    let descriptorParams = array of(extent typeParams tuple
+                        let v = nodes.newVar("" nodes.descriptorType false) let symbols = array of :Int end
+                    end)
+                    for i = 0 upto {extent typeParams - 1} do
+                        descriptorParams[i] := tuple
+                            let v = nodes.newVar("qd_" <> conv.int(i) nodes.descriptorType false)
+                            let symbols = array of typeParams[i].symbolId end
+                        end
+                    end
+                    let params = paramsOf(sig)
+                    let stmts = vector.new(:Stmt)
+                    let args = forwarded(stmts params array of :maybe.T(Plan) end)
+                    let called = option opCallExternal of Op with
+                        let symbol = symbol
+                        let var typeArgs = array of :Type end
+                        let var args = args
+                        let var descriptors = array of :Descriptor end
+                    end
+                    finish(stmts called sig.result sig.result maybe.none(:Plan))
+                    let f = nodes.newFunction(nodes.newVar("qx_" <> symbol ty false) typeParams params sig.result
+                        nodes.bodyOf(vector.toArray(:Stmt stmts)) maybe.none(:String))
+                    f.descriptorParams := descriptorParams
+                    addThunk(t key f)
+            end
+        end
+
+    (* ======================================================================
+     * The pass
+     * ====================================================================== *)
+
+    (* Gives every adapt plan in a plan its adapter, in place. The adapter
+     * takes the plan's thunk parameters and converts by its fields, so the
+     * plan keeps neither: a plan shared by several conversions is given its
+     * adapter once. *)
+    let rec plan(t: Thunker p0: maybe.T(Plan)): Ok =
+        if maybe.isSome(:Plan p0) then
+            let p = maybe.unwrap(:Plan p0)
+            if eq(p.kind "adapt") then
+                if maybe.isNone(:Function p.thunk) then
+                    p.thunk := maybe.some(:Function adapter(t p))
+                    p.fields := array of :maybe.T(Plan) end
+                    p.thunkParams := array of :nodes.DescriptorParam end
+                end
+            elsif eq(p.kind "copy") then
+                for i = 0 upto {extent p.fields - 1} do plan(t p.fields[i]) end
+            end
+        end
+
+    let moduleOf(r: nodes.ModuleRef): maybe.T(nodes.Module) =
+        case r when refModule with x then maybe.some(:nodes.Module x.m) else maybe.none(:nodes.Module) end
+
+    (* The function a type application applies, as an atom, after the
+     * statements that compute it (added to before), and its type *)
+    Let Applied = Tuple atom: Atom type: Type end
+    let applied(before: vector.T(Stmt) o: nodes.OpTypeApp): Applied =
+        if maybe.isSome(:Variable o.callee) then
+            let v = maybe.unwrap(:Variable o.callee)
+            tuple let atom = nodes.atomOfVar(v) let type = v.type end
+        else
+            let r = maybe.unwrap(:nodes.ModuleRef o.moduleRef)
+            let member = maybe.unwrap(:String o.member)
+            let m = moduleOf(r)
+            if maybe.isSome(:nodes.Module m) then
+                let v = maybe.unwrap(:Variable nodes.member(maybe.unwrap(:nodes.Module m).members member))
+                tuple let atom = nodes.atomOfVar(v) let type = v.type end
+            else
+                let ty = maybe.unwrap(:Type o.calleeType)
+                let v = nodes.newVar(member ty false)
+                vector.append(:Stmt before nodes.letStmt(v option opModuleMember of Op with
+                    let var moduleRef = r
+                    let var member = maybe.some(:String member)
+                end))
+                tuple let atom = nodes.atomOfVar(v) let type = ty end
+            end
+        end
+
+    (* An operation with its thunks: the operation that replaces it, if any,
+     * after the statements that compute its operands (added to before) *)
+    let operation(t: Thunker before: vector.T(Stmt) o: Op result: maybe.T(Variable)): maybe.T(Op) =
+        case o
+            when opConvert with x then
+                plan(t maybe.some(:Plan x.plan))
+                maybe.none(:Op)
+            when opTypeApp with x then
+                if maybe.isSome(:Array(nodes.DescriptorParam) x.thunkParams) then
+                    let target = maybe.unwrap(:Variable result).type
+                    let a = applied(before x)
+                    let f = typeAppThunk(t x a.type target)
+                    maybe.some(:Op closureOp(f array of a.atom end x.typeArgs x.descriptors))
+                else
+                    for i = 0 upto {extent x.plans - 1} do plan(t x.plans[i]) end
+                    maybe.none(:Op)
+                end
+            when opExternal with x then
+                if maybe.isSome(:Variable result) andif isFunction(maybe.unwrap(:Variable result).type) then
+                    let f = externalThunk(t x.symbol maybe.unwrap(:Variable result).type)
+                    maybe.some(:Op closureOp(f array of :Atom end array of :Type end array of :Descriptor end))
+                else
+                    maybe.none(:Op)
+                end
+            when opCall with x then
+                (* A call of an external C function bound to a variable calls
+                 * it directly, without its type parameters' descriptors *)
+                let symbol = if maybe.isSome(:Variable x.callee) then
+                    hashMap.get(:Int :String t.externals maybe.unwrap(:Variable x.callee).id)
+                else
+                    maybe.none(:String)
+                end
+                if maybe.isSome(:String symbol) andif {extent x.typeArgs is 0} then
+                    maybe.some(:Op option opCallExternal of Op with
+                        let symbol = maybe.unwrap(:String symbol)
+                        let var typeArgs = array of :Type end
+                        let var args = x.args
+                        let var descriptors = array of :Descriptor end
+                    end)
+                else
+                    maybe.none(:Op)
+                end
+            else maybe.none(:Op)
+        end
+
+    let rec body(t: Thunker b: Body): Ok =
+        begin
+            let rewritten = vector.new(:Stmt)
+            for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
+                let s = vector.get(:Stmt b.statements i)
+                let before = vector.new(:Stmt)
+                case s
+                    when sLet with x then
+                        let r = operation(t before x.value maybe.some(:Variable x.v))
+                        if maybe.isSome(:Op r) then x.value := maybe.unwrap(:Op r) end
+                    when sDo with x then
+                        let r = operation(t before x.value maybe.none(:Variable))
+                        if maybe.isSome(:Op r) then x.value := maybe.unwrap(:Op r) end
+                    when sInspect with x then
+                        for j = 0 upto {extent x.cases - 1} do
+                            let arm = x.cases[j].arm
+                            if maybe.isSome(:nodes.InspectArm arm) then plan(t maybe.unwrap(:nodes.InspectArm arm).plan) end
+                        end
+                    else ok
+                end
+                let bodies = walk.statementBodies(s)
+                for j = 0 upto {extent bodies - 1} do body(t bodies[j]) end
+                for j = 0 upto {vector.length(:Stmt before) - 1} do vector.append(:Stmt rewritten vector.get(:Stmt before j)) end
+                vector.append(:Stmt rewritten s)
+            end
+            b.statements := rewritten
+        end
+
+    (* The variables bound to external C functions used as functions *)
+    let findExternals(t: Thunker b: Body): Ok =
+        begin
+            let stmts = walk.walkStatements(b false)
+            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                case vector.get(:Stmt stmts i)
+                    when sLet with x then
+                        case x.value
+                            when opExternal with e then
+                                if isFunction(x.v.type) then hashMap.insert(:Int :String t.externals x.v.id e.symbol) end
+                            else ok
+                        end
+                    else ok
+                end
+            end
+        end
+
+    let thunkUnit(unit: nodes.Unit): nodes.Unit =
+        begin
+            let t = tuple
+                let unit = unit
+                let thunks = hashMap.new(:String :Function stringOp.equal hash.string)
+                let externals = hashMap.new(:Int :String intEqual hash.int)
+            end
+            let bodies = vector.new(:Body)
+            vector.append(:Body bodies unit.main)
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                vector.append(:Body bodies vector.get(:nodes.Module unit.modules i).init)
+            end
+            for i = 0 upto {vector.length(:Function unit.functions) - 1} do
+                vector.append(:Body bodies vector.get(:Function unit.functions i).body)
+            end
+            for i = 0 upto {vector.length(:Body bodies) - 1} do findExternals(t vector.get(:Body bodies i)) end
+            body(t unit.main)
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do body(t vector.get(:nodes.Module unit.modules i).init) end
+            (* The thunks made are functions of the unit too, whose bodies may
+             * need thunks of their own *)
+            let var i = 0
+            while i < vector.length(:Function unit.functions) do
+                body(t vector.get(:Function unit.functions i).body)
+                i := i + 1
+            end
+            unit
+        end
+end

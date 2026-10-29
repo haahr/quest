@@ -296,6 +296,45 @@ fun getter_spec(b.10: Box(Bool)): Bool {
   let %276: Bool = tuple_field(b.10, 0)
   return %276
 }
+fun qa_adapt {orig}(v.16: A): Fun(A :: TYPE) Tuple x: A end(A) {
+  let v.17: Bool = convert(v.16, unbox)
+  let r.7: Fun(A :: TYPE) Tuple x: A end(Bool) = call orig(v.17)
+  let r.8: Fun(A :: TYPE) Tuple x: A end(A) = convert(r.7, cast)
+  return r.8
+}
+fun qa_adapt.1 {orig.1}(m.5: Fun(A :: TYPE) Option none some with Tuple value: A end end(A)): A {
+  let m.6: Fun(A :: TYPE) Option none some with Tuple value: A end end(Bool) = convert(m.5, cast)
+  let r.9: Bool = call orig.1(m.6)
+  let r.10: A = convert(r.9, box)
+  return r.10
+}
+fun qa_type_app {env} [A::TYPE](descriptor_A.23: descriptor, b.11: Fun(A :: TYPE) Tuple x: A end(Bool)): Bool {
+  let orig.2: All(A :: TYPE) Fun(b: Box(A)): A = env_field(env, 0)
+  let b.12: Fun(A :: TYPE) Tuple x: A end(A) = convert(b.11, cast)
+  let r.11: A = call orig.2 [descriptor_A.23](b.12)
+  let r.12: Bool = convert(r.11, unbox)
+  return r.12
+}
+fun qa_type_app.1 {env.1} [A::TYPE](descriptor_A.24: descriptor, b.13: Fun(A :: TYPE) Tuple x: A end(Real)): Real {
+  let orig.3: All(A :: TYPE) Fun(b: Box(A)): A = env_field(env.1, 0)
+  let b.14: Fun(A :: TYPE) Tuple x: A end(A) = convert(b.13, cast)
+  let r.13: A = call orig.3 [descriptor_A.24](b.14)
+  let r.14: Real = convert(r.13, unbox)
+  return r.14
+}
+fun qa_type_app.2 {env.2} [A::TYPE](descriptor_A.25: descriptor, v.18: Record a: Int end): Fun(A :: TYPE) Tuple x: A end(Record a: Int end) {
+  let orig.4: All(A :: TYPE) Fun(v: A): Box(A) = env_field(env.2, 0)
+  let v.19: A = convert(v.18, box)
+  let r.15: Fun(A :: TYPE) Tuple x: A end(A) = call orig.4 [descriptor_A.25](v.19)
+  let r.16: Fun(A :: TYPE) Tuple x: A end(Record a: Int end) = convert(r.15, cast)
+  return r.16
+}
+fun qa_type_app.3 {env.3} [A::TYPE](descriptor_A.26: descriptor, l.3: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(Bool)): Int {
+  let orig.5: All(A :: TYPE) Fun(l: List(A)): Int = env_field(env.3, 0)
+  let l.4: Fun(A :: TYPE) Rec(List :: TYPE) Option nil cons with Tuple head: A tail: List end end(A) = convert(l.3, cast)
+  let r.17: Int = call orig.5 [descriptor_A.26](l.4)
+  return r.17
+}
 main {
   let wOut: writer.T = member writer.output
   let print.1: Fun(s: String): Ok = closure print {}
@@ -588,7 +627,7 @@ main {
     do call print.1(%176)
     let make.1: All(A :: TYPE) Fun(f: Fun(v: A): Box(A) v: A): A = closure make {}
     let boxed.1: Fun(v: Bool): Box(Bool) = closure boxed {}
-    let boxed.2: Fun(v: A): Fun(A :: TYPE) Tuple x: A end(A) = convert(boxed.1, adapt)
+    let boxed.2: Fun(v: A): Fun(A :: TYPE) Tuple x: A end(A) = convert(boxed.1, adapt by qa_adapt)
     let %177: A = convert(false, box)
     let %178: A = call make.1 [descriptor(Bool)](boxed.2, %177)
     let %179: Bool = convert(%178, unbox)
@@ -597,7 +636,7 @@ main {
     do call print.1(%181)
     let applyOpt.1: All(A :: TYPE) Fun(f: Fun(m: Maybe(A)): A m: Maybe(A)): A = closure applyOpt {}
     let orFalse.1: Fun(m: Maybe(Bool)): Bool = closure orFalse {}
-    let orFalse.2: Fun(m: Fun(A :: TYPE) Option none some with Tuple value: A end end(A)): A = convert(orFalse.1, adapt)
+    let orFalse.2: Fun(m: Fun(A :: TYPE) Option none some with Tuple value: A end end(A)): A = convert(orFalse.1, adapt by qa_adapt.1)
     let maybe.4: Fun(A :: TYPE) Option none some with Tuple value: A end end(A) = convert(maybe.2, cast)
     let %182: A = call applyOpt.1 [descriptor(Bool)](orFalse.2, maybe.4)
     let %183: Bool = convert(%182, unbox)
@@ -609,9 +648,9 @@ main {
     let %186: Bool = call getter_spec.1(bools)
     let %187: String = call conv.bool(%186)
     do call print.1(%187)
-    let getBool: Fun(b: Box(Bool)): Bool = type_app getBox.1 [descriptor(Bool)] converting (cast, unbox)
-    let getReal: Fun(b: Box(Real)): Real = type_app getBox.1 [descriptor(Real)] converting (cast, unbox)
-    let mkP: Fun(v: P): Box(P) = type_app mkBox.1 [descriptor(P)] converting (box, cast)
+    let getBool: Fun(b: Box(Bool)): Bool = closure qa_type_app {getBox.1} [descriptor(Bool)]
+    let getReal: Fun(b: Box(Real)): Real = closure qa_type_app.1 {getBox.1} [descriptor(Real)]
+    let mkP: Fun(v: P): Box(P) = closure qa_type_app.2 {mkBox.1} [descriptor(P)]
     let %188: Bool = call getBool(bools)
     let %189: String = call conv.bool(%188)
     let %190: Box(Real) = call mkBox_spec.7(1.5)
@@ -629,7 +668,7 @@ main {
     let %200: String = prim <>(" ", %199)
     let %201: String = prim <>(%189, %200)
     do call print.1(%201)
-    let lengthOf: Fun(l: List(Bool)): Int = type_app length.1 [descriptor(Bool)] converting (cast, none)
+    let lengthOf: Fun(l: List(Bool)): Int = closure qa_type_app.3 {length.1} [descriptor(Bool)]
     let %202: Int = call lengthOf(flags.2)
     let %203: String = call conv.int(%202)
     do call print.1(%203)

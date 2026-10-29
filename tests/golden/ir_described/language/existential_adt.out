@@ -12,15 +12,37 @@ fun add(c.1: Counter, n: Int): Int {
 fun get(c.2: Counter): Int {
   return c.2
 }
+fun qa_adapt {orig}(init.1: Int): Counter {
+  let r: Int = call orig(init.1)
+  let r.1: Counter = convert(r, box)
+  return r.1
+}
+fun qa_adapt.1 {orig.1}(c.3: Counter): Counter {
+  let c.4: Int = convert(c.3, unbox)
+  let r.2: Int = call orig.1(c.4)
+  let r.3: Counter = convert(r.2, box)
+  return r.3
+}
+fun qa_adapt.2 {orig.2}(c.5: Counter, n.1: Int): Counter {
+  let c.6: Int = convert(c.5, unbox)
+  let r.4: Int = call orig.2(c.6, n.1)
+  let r.5: Counter = convert(r.4, box)
+  return r.5
+}
+fun qa_adapt.3 {orig.3}(c.7: Counter): Int {
+  let c.8: Int = convert(c.7, unbox)
+  let r.6: Int = call orig.3(c.8)
+  return r.6
+}
 main {
   let new.1: Fun(init: Int): Int = closure new {}
   let inc.1: Fun(c: Counter): Int = closure inc {}
   let add.1: Fun(c: Counter n: Int): Int = closure add {}
   let get.1: Fun(c: Counter): Int = closure get {}
-  let new.2: Fun(init: Int): Counter = convert(new.1, adapt)
-  let inc.2: Fun(c: Counter): Counter = convert(inc.1, adapt)
-  let add.2: Fun(c: Counter n: Int): Counter = convert(add.1, adapt)
-  let get.2: Fun(c: Counter): Int = convert(get.1, adapt)
+  let new.2: Fun(init: Int): Counter = convert(new.1, adapt by qa_adapt)
+  let inc.2: Fun(c: Counter): Counter = convert(inc.1, adapt by qa_adapt.1)
+  let add.2: Fun(c: Counter n: Int): Counter = convert(add.1, adapt by qa_adapt.2)
+  let get.2: Fun(c: Counter): Int = convert(get.1, adapt by qa_adapt.3)
   let counterModule: CounterPackage = tuple(Let Counter = Int new.2, inc.2, add.2, get.2)
   let %1: Fun(init: Int): counterModule.Counter = tuple_field(counterModule, 0)
   let c0: counterModule.Counter = call %1(0)
