@@ -658,44 +658,6 @@ export
         payload: Payload
     end
 
-    (* The bytes of a representation (codegen/layout), as C's sizeof gives
-     * them on a 64-bit target *)
-    let representationBytes(t: Type): Int =
-        begin
-            let r = layout.representation(t)
-            if eq(r "QRecordVal") orif eq(r "QVariantVal") then 16
-            elsif eq(r "QBool") orif eq(r "QChar") then 1
-            else 8
-            end
-        end
-
-    (* The bytes of a struct of n word slots (C gives a struct of none a char
-     * of its own) *)
-    let wordsBytes(n: Int): Int = if n is 0 then 1 else 8 * n end
-
-    (* The words of a case's payload in its option's union *)
-    let caseWords(payload: Type): Int =
-        begin
-            let s = shapes.shape(payload)
-            if eq(s.kind "tuple") orif eq(s.kind "record") then extent s.components else 1 end
-        end
-
-    let optionBytes(t: Type): Int =
-        case t.form
-            when typeOption with o then
-                let var most = 0
-                let var anyPayload = false
-                for i = 0 upto {extent o.options - 1} do
-                    if maybe.isSome(:Type o.options[i].payload) then
-                        anyPayload := true
-                        let w = caseWords(maybe.unwrap(:Type o.options[i].payload))
-                        if w > most then most := w end
-                    end
-                end
-                if anyPayload then 8 + 8 * most else 8 end
-            else 8
-        end
-
     let structOr(f: DescriptorForm otherwise: String): String = if stringOp.length(f.struct) > 0 then f.struct else otherwise end
     let sizeofStruct(name: String bytes: Int): Size = size("sizeof(struct " <> name <> ")" bytes)
     let offsetof(struct: String field: String bytes: Int): Size =
@@ -746,12 +708,12 @@ export
                 made("QTYPE_KIND_OPAQUE" f.name pointerSize("sizeof(QVal)") payload)
             elsif eq(kind "stored") then
                 let bound = maybe.unwrap(:Type variableBound(t))
-                made("QTYPE_KIND_STORED" f.name size("sizeof(" <> layout.representation(t) <> ")" representationBytes(t))
+                made("QTYPE_KIND_STORED" f.name size("sizeof(" <> layout.representation(t) <> ")" layout.representationBytes(t))
                     option payloadStored of Payload with let storage = refType(bound) end)
             elsif eq(kind "hole") then
                 let bound = variableBound(t)
                 let bounded = maybe.isSome(:Type bound)
-                let sz = if bounded then size("sizeof(" <> layout.representation(t) <> ")" representationBytes(t))
+                let sz = if bounded then size("sizeof(" <> layout.representation(t) <> ")" layout.representationBytes(t))
                     else pointerSize("sizeof(QVal)")
                 end
                 made("QTYPE_KIND_HOLE" "?" <> f.name sz option payloadHole of Payload with
@@ -789,7 +751,7 @@ export
                                 let isVar = s.isVar
                             end
                         end
-                        let payloadSize = if n > 0 then sizeofStruct(structName wordsBytes(n)) else size("0" 0) end
+                        let payloadSize = if n > 0 then sizeofStruct(structName layout.slotsBytes(n)) else size("0" 0) end
                         made("QTYPE_KIND_AUTO" dump.shortTypeName(t) pointerSize("sizeof(QAuto *)")
                             option payloadAuto of Payload with
                                 let bound = refMaybe(kindBound(maybe.some(:model.Kind x.kindBound)))
@@ -823,7 +785,7 @@ export
                 end
                 let payload = option payloadRecord of Payload with let fields = components end
                 if n > 0 then
-                    made("QTYPE_KIND_RECORD" dump.shortTypeName(t) sizeofStruct(structName 8 + 8 * n) payload)
+                    made("QTYPE_KIND_RECORD" dump.shortTypeName(t) sizeofStruct(structName layout.recordBytes(t)) payload)
                 else
                     made("QTYPE_KIND_RECORD" "Record end" pointerSize("sizeof(void *)") payload)
                 end
@@ -849,7 +811,7 @@ export
                         let isVar = fld.isVar
                     end
                 end
-                made("QTYPE_KIND_TUPLE" dump.shortTypeName(t) sizeofStruct(structName wordsBytes(n))
+                made("QTYPE_KIND_TUPLE" dump.shortTypeName(t) sizeofStruct(structName layout.slotsBytes(n))
                     option payloadTuple of Payload with let typeComponents = typeComponents let elements = elements end)
             else
                 (* A variant or an option *)
@@ -876,7 +838,7 @@ export
                     made("QTYPE_KIND_VARIANT" dump.shortTypeName(t) size("sizeof(QVariantVal)" 16)
                         option payloadVariant of Payload with let cases = all end)
                 else
-                    made("QTYPE_KIND_OPTION" dump.shortTypeName(t) sizeofStruct(structOr(f layout.optionStructName(t)) optionBytes(t))
+                    made("QTYPE_KIND_OPTION" dump.shortTypeName(t) sizeofStruct(structOr(f layout.optionStructName(t)) layout.optionBytes(t))
                         option payloadOption of Payload with let cases = all end)
                 end
             end

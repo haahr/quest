@@ -75,6 +75,24 @@ export
     (* The word form of values of shape s, as resolved to its bound *)
     wordForm(s: shapes.Shape): WordForm
 
+    (* The layouts of aggregates' structs (docs/c-representation.md section
+     * 5), in bytes, as C lays them out on a 64-bit target, for backends that
+     * lay them out themselves (docs/arm64.md section 3.3); the C asserts
+     * them. Every slot is one word. *)
+    (* A struct of n slots, which C gives a char of its own when n is 0 *)
+    slotsBytes(n: Int): Int
+    (* A tuple type's struct: its value components, slot i at 8i *)
+    tupleBytes(t: model.Type): Int
+    (* A record type's struct: its header (the layout's descriptor), then
+     * its fields in the order of their names, the k'th at 8 + 8k *)
+    recordBytes(t: model.Type): Int
+    recordFieldOffset(t: model.Type name: String): Int
+    (* An option type's struct: its tag at 0, then the union of its cases'
+     * payloads at 8, each a struct of its components' slots *)
+    optionBytes(t: model.Type): Int
+    (* The bytes of a value of t as a variable holds it (its representation) *)
+    representationBytes(t: model.Type): Int
+
     (* A deterministic, valid C identifier component for a type, and for the
      * types of shape s *)
     typeTag(t: model.Type): String

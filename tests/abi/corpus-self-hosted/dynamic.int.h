@@ -15,6 +15,8 @@ typedef struct QTuple_QVal QTuple_QVal;
 struct QTuple_QVal {
     QVal _0;
 };
+static_assert(offsetof(struct QTuple_QVal, _0) == 0, layout_QTuple_QVal__0);
+static_assert(sizeof(struct QTuple_QVal) == 8, layout_QTuple_QVal_size);
 #endif
 typedef QAuto * quest_type_Dynamic_T;
 typedef const QException * quest_sig_Dynamic_error;

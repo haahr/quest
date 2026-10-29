@@ -25,6 +25,7 @@ typedef struct QTuple_QTuple_String_Int_Int_end_String_Bool QTuple_QTuple_String
 struct QOption_error_fatal_info_warning {
     int64_t tag;
 };
+static_assert(sizeof(struct QOption_error_fatal_info_warning) == 8, layout_QOption_error_fatal_info_warning_size);
 #endif
 #ifndef QUEST_TYPE_QTuple_String_Int_Int_DEFINED
 #define QUEST_TYPE_QTuple_String_Int_Int_DEFINED
@@ -33,6 +34,10 @@ struct QTuple_String_Int_Int {
     QInt _1;
     QInt _2;
 };
+static_assert(offsetof(struct QTuple_String_Int_Int, _0) == 0, layout_QTuple_String_Int_Int__0);
+static_assert(offsetof(struct QTuple_String_Int_Int, _1) == 8, layout_QTuple_String_Int_Int__1);
+static_assert(offsetof(struct QTuple_String_Int_Int, _2) == 16, layout_QTuple_String_Int_Int__2);
+static_assert(sizeof(struct QTuple_String_Int_Int) == 24, layout_QTuple_String_Int_Int_size);
 #endif
 #ifndef QUEST_TYPE_QTuple_QTuple_String_Int_Int_end_String_Bool_DEFINED
 #define QUEST_TYPE_QTuple_QTuple_String_Int_Int_end_String_Bool_DEFINED
@@ -41,6 +46,10 @@ struct QTuple_QTuple_String_Int_Int_end_String_Bool {
     QString * _1;
     QBoolSlot _2;
 };
+static_assert(offsetof(struct QTuple_QTuple_String_Int_Int_end_String_Bool, _0) == 0, layout_QTuple_QTuple_String_Int_Int_end_String_Bool__0);
+static_assert(offsetof(struct QTuple_QTuple_String_Int_Int_end_String_Bool, _1) == 8, layout_QTuple_QTuple_String_Int_Int_end_String_Bool__1);
+static_assert(offsetof(struct QTuple_QTuple_String_Int_Int_end_String_Bool, _2) == 16, layout_QTuple_QTuple_String_Int_Int_end_String_Bool__2);
+static_assert(sizeof(struct QTuple_QTuple_String_Int_Int_end_String_Bool) == 24, layout_QTuple_QTuple_String_Int_Int_end_String_Bool_size);
 #endif
 typedef QOption_error_fatal_info_warning * quest_type_questlang__common__Diagnostics_Severity;
 typedef QTuple_QTuple_String_Int_Int_end_String_Bool * quest_type_questlang__common__Diagnostics_Label;

@@ -1,0 +1,118 @@
+(* Quest Self-Hosted Compiler: The Runtime's Layouts Implementation *)
+
+module runtimeLayout : RuntimeLayout
+import
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    Def Member = Tuple name: String offset: Int bytes: Int end
+    Def Struct = Tuple name: String bytes: Int members: Array(Member) end
+
+    let m(name: String offset: Int bytes: Int): Member = tuple let name = name let offset = offset let bytes = bytes end
+    (* A pointer, a size_t, an int64_t, or a QVal, at offset *)
+    let word(name: String offset: Int): Member = m(name offset 8)
+    (* A bool *)
+    let flag(name: String offset: Int): Member = m(name offset 1)
+    (* A flexible array member, which ends its struct *)
+    let rest(name: String offset: Int): Member = m(name offset 0)
+    let s(name: String bytes: Int members: Array(Member)): Struct =
+        tuple let name = name let bytes = bytes let members = members end
+
+    (* As runtime/quest_runtime.h defines them, on a 64-bit target *)
+    let structs = array of
+        s("QString" 24 array of word("length" 0) word("capacity" 8) word("data" 16) end)
+        s("QClosure" 16 array of word("fn" 0) word("env" 8) end)
+        s("QArray" 8 array of word("length" 0) rest("data" 8) end)
+        s("QRecordHeader" 8 array of word("descriptor" 0) end)
+        s("QRecordVal" 16 array of word("val" 0) word("dict" 8) end)
+        s("QVariantVal" 16 array of word("tag" 0) word("payload" 8) end)
+        s("QOptionHeader" 8 array of word("tag" 0) rest("fields" 8) end)
+        s("QException" 8 array of word("name" 0) end)
+        s("QAuto" 16 array of word("type_desc" 0) word("payload" 8) end)
+        s("QExceptionState" 32 array of word("exc" 0) word("payload" 8) word("loc" 16) word("trace" 24) end)
+        s("QFuncEntry" 16 array of word("addr" 0) word("name" 8) end)
+        s("QViewMap" 48 array of
+            word("actual" 0) word("bound" 8) word("index" 16) word("from" 24) word("to" 32) word("component_start" 40)
+        end)
+        s("QProxy" 48 array of
+            word("orig" 0) word("stored" 8) word("view" 16) word("tags" 24) word("cache" 32) word("cached" 40)
+        end)
+        (* Descriptors (docs/c-representation.md section 6.4); kind is a
+         * QTypeKind, an int *)
+        s("QTypeDescriptor" 48 array of
+            m("kind" 0 4) word("name" 8) word("size" 16) word("alignment" 24) word("is_subtype" 32) word("extra" 40)
+        end)
+        s("QArrayTypeDescriptor" 8 array of word("element_type" 0) end)
+        s("QRecordFieldDescriptor" 32 array of word("name" 0) word("type" 8) word("offset" 16) flag("is_var" 24) end)
+        s("QRecordTypeDescriptor" 8 array of word("field_count" 0) rest("fields" 8) end)
+        s("QTupleElementDescriptor" 32 array of word("name" 0) word("type" 8) word("offset" 16) flag("is_var" 24) end)
+        s("QTupleTypeComponentDescriptor" 16 array of word("position" 0) word("text" 8) end)
+        s("QTupleTypeDescriptor" 24 array of
+            word("component_count" 0) word("components" 8) word("element_count" 16) rest("elements" 24)
+        end)
+        s("QVariantCaseDescriptor" 32 array of
+            word("name" 0) word("payload_type" 8) word("tag_index" 16) flag("is_var" 24)
+        end)
+        s("QVariantTypeDescriptor" 8 array of word("case_count" 0) rest("cases" 8) end)
+        s("QFunParamDescriptor" 16 array of word("type" 0) flag("is_var" 8) flag("is_out" 9) end)
+        s("QFunTypeDescriptor" 48 array of
+            word("param_count" 0) word("result_type" 8) word("adapt" 16) word("invoke" 24) word("quantifier_count" 32)
+            word("quantifier_bounds" 40) rest("params" 48)
+        end)
+        s("QFunAdapterEnv" 32 array of word("orig" 0) word("from" 8) word("to" 16) flag("direct" 24) end)
+        s("QHoleDescriptor" 16 array of word("index" 0) word("storage" 8) end)
+        s("QStoredDescriptor" 24 array of word("type" 0) word("storage" 8) flag("viewed" 16) end)
+        s("QOpaqueTypeDescriptor" 24 array of word("arg_count" 0) word("args" 8) word("rep" 16) end)
+        s("QExceptionTypeDescriptor" 8 array of word("payload_type" 0) end)
+        s("QAutoComponentDescriptor" 32 array of word("name" 0) word("type" 8) word("offset" 16) flag("is_var" 24) end)
+        s("QAutoTypeDescriptor" 24 array of
+            word("bound" 0) word("payload_size" 8) word("component_count" 16) rest("components" 24)
+        end)
+    end
+
+    let struct(name: String): maybe.T(Struct) =
+        begin
+            let var found = maybe.none(:Struct)
+            for i = 0 upto {extent structs - 1} do
+                if stringOp.equal(structs[i].name name) then found := maybe.some(:Struct structs[i]) end
+            end
+            found
+        end
+
+    let unknown: Exception(String) = exception unknown: String end
+
+    let offset(structName: String member: String): Int =
+        begin
+            let found = struct(structName)
+            if maybe.isNone(:Struct found) then raise unknown with structName end end
+            let members = maybe.unwrap(:Struct found).members
+            let var at = ~1
+            for i = 0 upto {extent members - 1} do
+                if stringOp.equal(members[i].name member) then at := members[i].offset end
+            end
+            if at < 0 then raise unknown with structName <> "." <> member end end
+            at
+        end
+
+    Def Constant = Tuple name: String value: Int end
+    let c(name: String value: Int): Constant = tuple let name = name let value = value end
+
+    let constants = array of
+        c("QTYPE_KIND_INT" 0) c("QTYPE_KIND_REAL" 1) c("QTYPE_KIND_BOOL" 2) c("QTYPE_KIND_CHAR" 3)
+        c("QTYPE_KIND_STRING" 4) c("QTYPE_KIND_OK" 5) c("QTYPE_KIND_TUPLE" 6) c("QTYPE_KIND_RECORD" 7)
+        c("QTYPE_KIND_VARIANT" 8) c("QTYPE_KIND_OPTION" 9) c("QTYPE_KIND_ARRAY" 10) c("QTYPE_KIND_FUN" 11)
+        c("QTYPE_KIND_AUTO" 12) c("QTYPE_KIND_EXCEPTION" 13) c("QTYPE_KIND_OPAQUE" 14) c("QTYPE_KIND_BOUND_VAR" 15)
+        c("QTYPE_KIND_HOLE" 16) c("QTYPE_KIND_STORED" 17)
+        c("Q_CATCH_ALL" ~1) c("Q_CATCH_UNKNOWN" ~2) c("QUEST_PROXY_TAG" 1) c("Q_MAX_TRACE_RUNS" 64)
+    end
+
+    let constant(name: String): Int =
+        begin
+            let var value = maybe.none(:Int)
+            for i = 0 upto {extent constants - 1} do
+                if stringOp.equal(constants[i].name name) then value := maybe.some(:Int constants[i].value) end
+            end
+            if maybe.isNone(:Int value) then raise unknown with name end end
+            maybe.unwrap(:Int value)
+        end
+end

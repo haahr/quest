@@ -19,6 +19,10 @@ struct QTuple_String_Int_Int {
     QInt _1;
     QInt _2;
 };
+static_assert(offsetof(struct QTuple_String_Int_Int, _0) == 0, layout_QTuple_String_Int_Int__0);
+static_assert(offsetof(struct QTuple_String_Int_Int, _1) == 8, layout_QTuple_String_Int_Int__1);
+static_assert(offsetof(struct QTuple_String_Int_Int, _2) == 16, layout_QTuple_String_Int_Int__2);
+static_assert(sizeof(struct QTuple_String_Int_Int) == 24, layout_QTuple_String_Int_Int_size);
 #endif
 typedef QVal quest_type_questlang__common__DiagBag_T;
 typedef const QException * quest_sig_questlang__common__DiagBag_fatalError;

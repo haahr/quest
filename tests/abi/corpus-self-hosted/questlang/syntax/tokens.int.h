@@ -43,30 +43,39 @@ typedef struct QTuple_QOption_assign_at_723595ebb1959a6e QTuple_QOption_assign_a
 struct QOption_assign_at_bang_c_9d67c602c649263b {
     int64_t tag;
 };
+static_assert(sizeof(struct QOption_assign_at_bang_c_9d67c602c649263b) == 8, layout_QOption_assign_at_bang_c_9d67c602c649263b_size);
 #endif
 #ifndef QUEST_TYPE_QTuple_Char_DEFINED
 #define QUEST_TYPE_QTuple_Char_DEFINED
 struct QTuple_Char {
     QCharSlot _0;
 };
+static_assert(offsetof(struct QTuple_Char, _0) == 0, layout_QTuple_Char__0);
+static_assert(sizeof(struct QTuple_Char) == 8, layout_QTuple_Char_size);
 #endif
 #ifndef QUEST_TYPE_QTuple_Int_DEFINED
 #define QUEST_TYPE_QTuple_Int_DEFINED
 struct QTuple_Int {
     QInt _0;
 };
+static_assert(offsetof(struct QTuple_Int, _0) == 0, layout_QTuple_Int__0);
+static_assert(sizeof(struct QTuple_Int) == 8, layout_QTuple_Int_size);
 #endif
 #ifndef QUEST_TYPE_QTuple_Real_DEFINED
 #define QUEST_TYPE_QTuple_Real_DEFINED
 struct QTuple_Real {
     QReal _0;
 };
+static_assert(offsetof(struct QTuple_Real, _0) == 0, layout_QTuple_Real__0);
+static_assert(sizeof(struct QTuple_Real) == 8, layout_QTuple_Real_size);
 #endif
 #ifndef QUEST_TYPE_QTuple_String_DEFINED
 #define QUEST_TYPE_QTuple_String_DEFINED
 struct QTuple_String {
     QString * _0;
 };
+static_assert(offsetof(struct QTuple_String, _0) == 0, layout_QTuple_String__0);
+static_assert(sizeof(struct QTuple_String) == 8, layout_QTuple_String_size);
 #endif
 #ifndef QUEST_TYPE_QOption_charVal_QTuple_C_858f5528ce3cda86_DEFINED
 #define QUEST_TYPE_QOption_charVal_QTuple_C_858f5528ce3cda86_DEFINED
@@ -87,6 +96,11 @@ struct QOption_charVal_QTuple_C_858f5528ce3cda86 {
         } qo_stringVal;
     } u;
 };
+static_assert(offsetof(struct QOption_charVal_QTuple_C_858f5528ce3cda86, u.qo_charVal._0) == 8, layout_QOption_charVal_QTuple_C_858f5528ce3cda86_u_qo_charVal__0);
+static_assert(offsetof(struct QOption_charVal_QTuple_C_858f5528ce3cda86, u.qo_intVal._0) == 8, layout_QOption_charVal_QTuple_C_858f5528ce3cda86_u_qo_intVal__0);
+static_assert(offsetof(struct QOption_charVal_QTuple_C_858f5528ce3cda86, u.qo_realVal._0) == 8, layout_QOption_charVal_QTuple_C_858f5528ce3cda86_u_qo_realVal__0);
+static_assert(offsetof(struct QOption_charVal_QTuple_C_858f5528ce3cda86, u.qo_stringVal._0) == 8, layout_QOption_charVal_QTuple_C_858f5528ce3cda86_u_qo_stringVal__0);
+static_assert(sizeof(struct QOption_charVal_QTuple_C_858f5528ce3cda86) == 16, layout_QOption_charVal_QTuple_C_858f5528ce3cda86_size);
 #endif
 #ifndef QUEST_TYPE_QTuple_String_Int_Int_DEFINED
 #define QUEST_TYPE_QTuple_String_Int_Int_DEFINED
@@ -95,6 +109,10 @@ struct QTuple_String_Int_Int {
     QInt _1;
     QInt _2;
 };
+static_assert(offsetof(struct QTuple_String_Int_Int, _0) == 0, layout_QTuple_String_Int_Int__0);
+static_assert(offsetof(struct QTuple_String_Int_Int, _1) == 8, layout_QTuple_String_Int_Int__1);
+static_assert(offsetof(struct QTuple_String_Int_Int, _2) == 16, layout_QTuple_String_Int_Int__2);
+static_assert(sizeof(struct QTuple_String_Int_Int) == 24, layout_QTuple_String_Int_Int_size);
 #endif
 #ifndef QUEST_TYPE_QTuple_QOption_assign_at_723595ebb1959a6e_DEFINED
 #define QUEST_TYPE_QTuple_QOption_assign_at_723595ebb1959a6e_DEFINED
@@ -104,6 +122,11 @@ struct QTuple_QOption_assign_at_723595ebb1959a6e {
     QOption_charVal_QTuple_C_858f5528ce3cda86 * _2;
     QTuple_String_Int_Int * _3;
 };
+static_assert(offsetof(struct QTuple_QOption_assign_at_723595ebb1959a6e, _0) == 0, layout_QTuple_QOption_assign_at_723595ebb1959a6e__0);
+static_assert(offsetof(struct QTuple_QOption_assign_at_723595ebb1959a6e, _1) == 8, layout_QTuple_QOption_assign_at_723595ebb1959a6e__1);
+static_assert(offsetof(struct QTuple_QOption_assign_at_723595ebb1959a6e, _2) == 16, layout_QTuple_QOption_assign_at_723595ebb1959a6e__2);
+static_assert(offsetof(struct QTuple_QOption_assign_at_723595ebb1959a6e, _3) == 24, layout_QTuple_QOption_assign_at_723595ebb1959a6e__3);
+static_assert(sizeof(struct QTuple_QOption_assign_at_723595ebb1959a6e) == 32, layout_QTuple_QOption_assign_at_723595ebb1959a6e_size);
 #endif
 typedef QOption_assign_at_bang_c_9d67c602c649263b * quest_type_questlang__syntax__Tokens_TokenKind;
 typedef QOption_charVal_QTuple_C_858f5528ce3cda86 * quest_type_questlang__syntax__Tokens_TokenValue;

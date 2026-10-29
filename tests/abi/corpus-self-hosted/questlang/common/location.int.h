@@ -24,6 +24,10 @@ struct QTuple_Int_Int_Int {
     QInt _1;
     QInt _2;
 };
+static_assert(offsetof(struct QTuple_Int_Int_Int, _0) == 0, layout_QTuple_Int_Int_Int__0);
+static_assert(offsetof(struct QTuple_Int_Int_Int, _1) == 8, layout_QTuple_Int_Int_Int__1);
+static_assert(offsetof(struct QTuple_Int_Int_Int, _2) == 16, layout_QTuple_Int_Int_Int__2);
+static_assert(sizeof(struct QTuple_Int_Int_Int) == 24, layout_QTuple_Int_Int_Int_size);
 #endif
 #ifndef QUEST_TYPE_QTuple_String_Int_Int_DEFINED
 #define QUEST_TYPE_QTuple_String_Int_Int_DEFINED
@@ -32,6 +36,10 @@ struct QTuple_String_Int_Int {
     QInt _1;
     QInt _2;
 };
+static_assert(offsetof(struct QTuple_String_Int_Int, _0) == 0, layout_QTuple_String_Int_Int__0);
+static_assert(offsetof(struct QTuple_String_Int_Int, _1) == 8, layout_QTuple_String_Int_Int__1);
+static_assert(offsetof(struct QTuple_String_Int_Int, _2) == 16, layout_QTuple_String_Int_Int__2);
+static_assert(sizeof(struct QTuple_String_Int_Int) == 24, layout_QTuple_String_Int_Int_size);
 #endif
 #ifndef QUEST_TYPE_QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end_DEFINED
 #define QUEST_TYPE_QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end_DEFINED
@@ -39,6 +47,9 @@ struct QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end {
     QTuple_Int_Int_Int * _0;
     QTuple_Int_Int_Int * _1;
 };
+static_assert(offsetof(struct QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end, _0) == 0, layout_QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end__0);
+static_assert(offsetof(struct QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end, _1) == 8, layout_QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end__1);
+static_assert(sizeof(struct QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end) == 16, layout_QTuple_QTuple_Int_Int_Int_end_QTuple_Int_Int_Int_end_size);
 #endif
 typedef QTuple_Int_Int_Int * quest_type_questlang__common__Location_Pos;
 typedef QTuple_String_Int_Int * quest_type_questlang__common__Location_Span;

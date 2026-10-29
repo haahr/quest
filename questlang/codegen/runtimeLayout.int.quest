@@ -1,0 +1,34 @@
+(* Quest Self-Hosted Compiler: The Runtime's Layouts Interface
+ *
+ * The layouts of the structs of runtime/quest_runtime.h that generated code
+ * reads, writes, or defines, and the values of its constants, for backends
+ * that are not C (docs/arm64.md section 3.3): the native backend lays out
+ * descriptors, reads closures and arrays, and builds exception state by them.
+ * The table is checked against the header: the questlang test
+ * codegen_runtime_layout prints it as C assertions, which
+ * tests/python/test_runtime_layout.py compiles against quest_runtime.h. *)
+
+interface RuntimeLayout
+import
+    util/maybe : util/Maybe
+export
+    (* A member of a struct: its offset and size in bytes (an array member
+     * that ends a struct has size 0) *)
+    Def Member = Tuple name: String offset: Int bytes: Int end
+    (* A struct of the runtime: its C name, its size in bytes (of the struct
+     * without its final array member, when it has one), and its members *)
+    Def Struct = Tuple name: String bytes: Int members: Array(Member) end
+    structs: Array(Struct)
+    (* The struct named name, if the table has it *)
+    struct(name: String): maybe.T(Struct)
+    (* The offset of member in the struct named structName; raises unknown if
+     * the table has neither *)
+    unknown: Exception(String)
+    offset(structName: String member: String): Int
+
+    (* A constant of the header: its C name and value (QTypeKind's, and the
+     * others generated code uses) *)
+    Def Constant = Tuple name: String value: Int end
+    constants: Array(Constant)
+    constant(name: String): Int
+end

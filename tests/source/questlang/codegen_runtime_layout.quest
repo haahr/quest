@@ -1,0 +1,44 @@
+(* Self-Hosted Quest Compiler: Test the Runtime's Layouts
+ *
+ * Prints the table of questlang/codegen/runtimeLayout as C assertions about runtime/quest_runtime.h: each struct's
+ * size, each member's offset and size, and each constant's value. The golden holds them, and
+ * tests/python/test_runtime_layout.py compiles the golden against the header, so the table and the header agree. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
+    writer : Writer
+    conv : Conv
+;
+
+let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+let check(condition: String name: String): Ok = emit("static_assert(" <> condition <> ", " <> name <> ");");
+
+let structs = runtimeLayout.structs;
+for i = 0 upto {extent structs - 1} do
+    let st = structs[i]
+    check("sizeof(" <> st.name <> ") == " <> conv.int(st.bytes) "runtime_" <> st.name <> "_size")
+    for j = 0 upto {extent st.members - 1} do
+        let mem = st.members[j]
+        check("offsetof(" <> st.name <> ", " <> mem.name <> ") == " <> conv.int(mem.offset)
+            "runtime_" <> st.name <> "_" <> mem.name)
+        (* A flexible array member has no size of its own *)
+        if mem.bytes > 0 then
+            check("sizeof(((" <> st.name <> " *)0)->" <> mem.name <> ") == " <> conv.int(mem.bytes)
+                "runtime_" <> st.name <> "_" <> mem.name <> "_size")
+        end
+    end
+end;
+
+let constants = runtimeLayout.constants;
+for i = 0 upto {extent constants - 1} do
+    let k = constants[i]
+    let value = if k.value < 0 then "(-" <> conv.int(0 - k.value) <> ")" else conv.int(k.value) end
+    check(k.name <> " == " <> value "runtime_" <> k.name)
+end;
+
+(* The lookups *)
+emit("/* QClosure.env at " <> conv.int(runtimeLayout.offset("QClosure" "env")) <> ", QTYPE_KIND_TUPLE is "
+    <> conv.int(runtimeLayout.constant("QTYPE_KIND_TUPLE")) <> " */");
+emit(try conv.int(runtimeLayout.offset("QClosure" "nothing")) when runtimeLayout.unknown with what then
+    "/* unknown: " <> what <> " */" end);

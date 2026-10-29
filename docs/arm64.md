@@ -107,11 +107,20 @@ are its own.
 
 ### 3.3. Layout and the ABI
 
-- **Layout.** The arm64 backend computes every offset, size, and alignment that clang computes for the C backend's
-  structs: tuples, records, options, variants, environments, module records, and the runtime's own types (`QClosure`,
-  `QArray`, `QString`, `QVariantVal`, descriptors, handlers). These live in one shared module, and the C backend
-  emits a `static_assert(offsetof(...) == N)` for each layout it prints, so that any C compilation checks the arm64
-  backend's arithmetic. The runtime's types get the same assertions in `quest_runtime.c`.
+- **Layout.** The arm64 backend computes every offset and size that clang computes for the C backend's structs, and
+  the C asserts each, so that any C compilation checks the arm64 backend's arithmetic:
+  - aggregates' structs (tuples, records, options and their cases' payloads): `codegen/layout` (`tupleBytes`,
+    `recordFieldOffset`, `optionBytes`, `slotsBytes`), asserted after each struct the C defines, in units and in
+    interface headers (`static_assert(... == N, layout_<struct>_...)`);
+  - the unit's static data (descriptors and their payloads, offset tables): `codegen/staticdata` (step 2), asserted
+    after each;
+  - the runtime's own structs that generated code touches (`QClosure`, `QArray`, `QString`, `QExceptionState`,
+    `QViewMap`, every descriptor struct, ...) and its constants (`QTypeKind`'s, `Q_CATCH_ALL`, ...):
+    `codegen/runtimeLayout`, a table that the questlang test `codegen_runtime_layout` prints as C assertions and
+    `tests/python/test_runtime_layout.py` compiles against `quest_runtime.h`.
+
+  Closure environments are private to their unit and need no assertions (§7.1); the exception handler's layout
+  changes in step 8.
 - **Calls** follow Apple's AAPCS64, as clang does for the same C declarations: integer and pointer arguments in
   `x0`–`x7`, `double`s in `d0`–`d7`, the rest on the stack; a 16-byte composite that is not all `double`s in two `x`
   registers, even if it holds a `double`; results in `x0`/`x1` or `d0`; the caller extends arguments narrower than 32

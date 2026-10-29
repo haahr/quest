@@ -371,6 +371,13 @@ export
                         add(lines "#ifndef QUEST_TYPE_" <> name <> "_DEFINED")
                         add(lines "#define QUEST_TYPE_" <> name <> "_DEFINED")
                         add(lines "struct " <> name <> " {")
+                        (* The layout codegen/layout computes, which the C
+                         * asserts after the struct *)
+                        let asserts = vector.new(:String)
+                        let assertAt(member: String bytes: Int): Ok =
+                            add(asserts "static_assert(offsetof(struct " <> name <> ", " <> member <> ") == " <> cInt(bytes)
+                                <> ", layout_" <> name <> "_" <> strutil.replace(member "." "_")
+                                <> ");")
                         case a.type.form
                             when typeTuple then
                                 let fields = valueFields(a.type)
@@ -380,8 +387,11 @@ export
                                     for j = 0 upto {extent fields - 1} do
                                         add(lines "    " <> layout.slotRepresentation(fields[j].type) <> " _"
                                             <> cInt(j) <> ";")
+                                        assertAt("_" <> cInt(j) 8 * j)
                                     end
                                 end
+                                add(asserts "static_assert(sizeof(struct " <> name <> ") == " <> cInt(layout.tupleBytes(a.type))
+                                    <> ", layout_" <> name <> "_size);")
                             when typeRecord with r then
                                 add(lines "    QRecordHeader header;")
                                 if extent r.fields is 0 then
@@ -392,8 +402,11 @@ export
                                         add(lines "    " <> layout.slotRepresentation(fields[j].type) <> " qf_"
                                             <> fields[j].name
                                             <> ";")
+                                        assertAt("qf_" <> fields[j].name layout.recordFieldOffset(a.type fields[j].name))
                                     end
                                 end
+                                add(asserts "static_assert(sizeof(struct " <> name <> ") == " <> cInt(layout.recordBytes(a.type))
+                                    <> ", layout_" <> name <> "_size);")
                             when typeOption with o then
                                 add(lines "    int64_t tag;")
                                 let var anyPayload = false
@@ -419,6 +432,7 @@ export
                                                         add(lines "            " <> layout.slotRepresentation(cs.type)
                                                             <> " _"
                                                             <> cInt(k) <> ";")
+                                                        assertAt("u.qo_" <> c.name <> "._" <> cInt(k) 8 + 8 * k)
                                                     end
                                                 else
                                                     let sorted = shapes.sortedComponents(payload)
@@ -427,6 +441,8 @@ export
                                                         add(lines "            " <> layout.slotRepresentation(cs.type)
                                                             <> " qf_"
                                                             <> maybe.unwrap(:String sorted[k].name) <> ";")
+                                                        assertAt("u.qo_" <> c.name <> ".qf_" <> maybe.unwrap(:String sorted[k].name)
+                                                            8 + 8 * k)
                                                     end
                                                 end
                                                 add(lines "        } qo_" <> c.name <> ";")
@@ -434,14 +450,18 @@ export
                                                 add(lines "        struct { "
                                                     <> layout.slotRepresentation(payloadType) <> " val; } qo_"
                                                     <> c.name <> ";")
+                                                assertAt("u.qo_" <> c.name <> ".val" 8)
                                             end
                                         end
                                     end
                                     add(lines "    } u;")
                                 end
+                                add(asserts "static_assert(sizeof(struct " <> name <> ") == " <> cInt(layout.optionBytes(a.type))
+                                    <> ", layout_" <> name <> "_size);")
                             else ok
                         end
                         add(lines "};")
+                        addAll(lines asserts)
                         add(lines "#endif")
                         add(lines "")
                     end
