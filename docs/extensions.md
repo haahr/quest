@@ -269,7 +269,7 @@ is `^^`, a power, not e raised to a number). Numerical programs need more, and t
 | `ceil(r)`, `trunc(r)` | `ceil`, `trunc` | to `Int`, raising `real.error` as `floor` does for an infinity or a value out of range |
 | `format(r style digits)` | `snprintf` with `%.{digits}{style}` | style `'e'`, `'f'`, or `'g'`; `-` for negatives; digits 0 to 100 |
 
-As for the operators ([type-system.md](type-system.md) §6.3.1), a result that would be NaN raises `real.error`: a
+As for the operators ([type-system.md](type-system.md) §6.3.2), a result that would be NaN raises `real.error`: a
 negative square root, the sine of an infinity, an arc sine outside [-1, 1]. A result too large for a `Real` is an
 infinity. Each is a runtime function `quest_real_<name>` (`runtime/quest_runtime.c`); both interpreters implement
 them, the bootstrap's with Python's `math` (mapping its `ValueError` to `real.error` and its `OverflowError` to an
@@ -405,7 +405,7 @@ end
     `quest_word_count_trailing_zeros_val` (`__builtin_ctzll`; 64 if $w = 0$)
   - `toInt`, `fromInt` $\to$ `quest_word_to_int` (`(int64_t)w`), `quest_word_from_int` (`(uint64_t)n`)
   - `toReal`, `fromReal` $\to$ `quest_word_to_real_val` (union punning, raising `word.error` for a NaN bit pattern;
-    see [type-system.md](type-system.md) §6.3.1), `quest_word_from_real_val`
+    see [type-system.md](type-system.md) §6.3.2), `quest_word_from_real_val`
 - **First-Class Closures**: When `word` functions are passed as first-class values or accessed through module records,
   `lib/word.mod.quest` populates `qm_word` with static `QClosure` wrappers (`qx_quest_word_<op>_closure` and
   `qf_<op>_closure`).

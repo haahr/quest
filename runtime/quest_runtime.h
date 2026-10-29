@@ -933,9 +933,15 @@ static inline int64_t quest_check_array_count_at(int64_t n, const char *loc) {
     return n;
 }
 
+/* Int arithmetic wraps (docs/type-system.md §6.3.1): a zero divisor raises int.error, and the one quotient outside
+   Int's range, QUEST_INT_MIN / -1, wraps to QUEST_INT_MIN, with remainder 0. C leaves both undefined (and -fwrapv does
+   not cover division), so a divisor of -1 is negation, which wraps under -fwrapv. */
 static inline QInt quest_int_div_at(QInt a, QInt b, const char *loc) {
     if (b == 0) {
         quest_raise_int_error_at(loc);
+    }
+    if (b == -1) {
+        return -a;
     }
     return a / b;
 }
@@ -944,6 +950,9 @@ static inline QInt quest_int_mod_at(QInt a, QInt b, const char *loc) {
     if (b == 0) {
         quest_raise_int_error_at(loc);
     }
+    if (b == -1) {
+        return 0;
+    }
     return a % b;
 }
 
@@ -951,7 +960,7 @@ static inline QInt quest_int_div(QInt a, QInt b) { return quest_int_div_at(a, b,
 static inline QInt quest_int_mod(QInt a, QInt b) { return quest_int_mod_at(a, b, NULL); }
 
 /* Real arithmetic keeps NaN out of Quest: an operation whose IEEE result would be NaN raises real.error.
-   Infinities are ordinary Real values. See docs/type-system.md §6.3.1. */
+   Infinities are ordinary Real values. See docs/type-system.md §6.3.2. */
 static inline double quest_real_result_at(double r, const char *loc) {
     if (isnan(r)) {
         quest_raise_real_error_at(loc);

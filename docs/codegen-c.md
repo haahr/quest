@@ -151,7 +151,7 @@ In Quest, operators are strictly non-overloaded (§4.2). The printer writes dire
   quest_int_mod(42LL, qv_x)
   ```
 - **Real Arithmetic (Doubled Symbols):** each calls a runtime function that raises `real.error` instead of producing
-  a NaN ([type-system.md](type-system.md) §6.3.1):
+  a NaN ([type-system.md](type-system.md) §6.3.2):
   - `++` $\rightarrow$ `quest_real_add((l), (r))`
   - `--` $\rightarrow$ `quest_real_sub((l), (r))`
   - `**` $\rightarrow$ `quest_real_mul((l), (r))`

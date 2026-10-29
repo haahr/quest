@@ -653,7 +653,7 @@ class _Writer:
             return val.value
         if ref == "Real" and isinstance(val, (QReal, QInt)):
             r = float(val.value)
-            if math.isnan(r):  # not a Real value (docs/type-system.md §6.3.1)
+            if math.isnan(r):  # not a Real value (docs/type-system.md §6.3.2)
                 raise _fail()
             if math.isinf(r):
                 return "Infinity" if r > 0 else "-Infinity"

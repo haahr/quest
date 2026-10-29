@@ -137,7 +137,7 @@ Quest provides a standard `Word` module (`lib/word.mod.quest`) for 64-bit unsign
     `quest_word_extract_val`, `quest_word_replace_val`, `quest_word_pop_count_val`,
     `quest_word_count_leading_zeros_val`, and `quest_word_count_trailing_zeros_val`.
   - Integer and float bit-casts: `quest_word_to_int`, `quest_word_from_int`, `quest_word_to_real_val` (raising
-    `word.error` on a NaN bit pattern; [type-system.md](type-system.md) §6.3.1), and `quest_word_from_real_val`.
+    `word.error` on a NaN bit pattern; [type-system.md](type-system.md) §6.3.2), and `quest_word_from_real_val`.
 - **Quest-Implemented Operations**: Single-bit operations `getBit`, `setBit`, and `clearBit` are implemented in Quest
   within `lib/word.mod.quest` utilizing `shift`, `andBits`, `orBits`, and `notBits`.
 - **Word Size Constant**: `word.bits` provides the word width `64`.
@@ -1317,7 +1317,7 @@ runtime/
 - **Floating-Point Math:**
   - `double quest_real_add/sub/mul(double a, double b)`, `double quest_real_divide(double a, double b)`: Implement
     `++`, `--`, `**`, and `//` inline, raising `real.error` for a result that would be NaN (and, for `//`, a zero
-    divisor). Infinities pass through. See [type-system.md](type-system.md) §6.3.1.
+    divisor). Infinities pass through. See [type-system.md](type-system.md) §6.3.2.
   - `double quest_real_pow(double base, double exp)`: Implements Quest `^^` (and `real.exp`) via `pow()`, raising
     `real.error` for a zero base with a negative exponent or a NaN result.
   - `QString *quest_conv_real(double r)`: Formats a real as the interpreter does (Python's `repr`: the shortest digits

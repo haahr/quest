@@ -64,7 +64,8 @@ def truncating_div(a: int, b: int) -> int:
 
 def int_arithmetic(op: str, a: int, b: int, offset: Optional[int] = None) -> int:
     """Evaluates integer arithmetic with C-style truncation and an int.error
-    check."""
+    check. The result is exact; QInt wraps it to 64 bits (docs/type-system.md
+    §6.3.1)."""
     match op:
         case "+":
             return a + b
@@ -104,7 +105,7 @@ def real_result(r: float, offset: Optional[int] = None) -> float:
     """Keeps NaN out of Quest: an operation whose IEEE result would be NaN
     raises real.error.
 
-    Infinities are ordinary Real values (docs/type-system.md §6.3.1)."""
+    Infinities are ordinary Real values (docs/type-system.md §6.3.2)."""
     if math.isnan(r):
         raise QuestException(REAL_ERROR_EXC, offset=offset)
     return r

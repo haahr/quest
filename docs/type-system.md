@@ -519,7 +519,20 @@ Quest does not overload operators across types; distinct operators exist for eac
 - **Boolean logic:** `/\`, `\/` : `Bool, Bool -> Bool`
 - **Identity & Equality:** `is`, `isnot` : `All(A) A, A -> Bool`
 
-#### 6.3.1. Real Values
+#### 6.3.1. Int Values
+
+`Int` is a 64-bit two's complement integer, from `-9223372036854775808` to `9223372036854775807` (`int.minInt` and
+`int.maxInt`), and its arithmetic **wraps**: `+`, `-`, and `*` give the low 64 bits of the exact result, so
+`int.maxInt + 1` is `int.minInt`. `/` rounds toward zero, and `%` and `mod` (the same operation) give the remainder
+with the dividend's sign, `a - (a / b) * b`; a zero divisor raises `int.error`. The one quotient outside the range
+wraps too: `int.minInt / ~1` is `int.minInt`, and `int.minInt % ~1` is 0. `int.abs(int.minInt)` is `int.minInt`.
+
+Every implementation does this: compiled C is compiled with `-fwrapv`, under which C's signed overflow wraps, and the
+runtime's division helpers handle a divisor of `-1` (`quest_int_div_at`); the bootstrap's interpreters reduce every
+`Int` they make to 64 bits (`QInt`); the self-hosted interpreter is compiled code. arm64's `add`, `sub`, `mul`,
+`sdiv`, and `msub` wrap the same way, so the native backend needs no checks but the zero divisor's.
+
+#### 6.3.2. Real Values
 
 Cardelli specifies `Real` as "the type of floating point numbers" and defines `is` on it as "ordinary equality"
 (*Typeful Programming* §3.1). He does not mention NaN, infinities, or signed zeros. Quest represents a `Real` as an

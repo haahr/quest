@@ -121,6 +121,8 @@ def base_c_flags(compiler: str) -> list[str]:
         "-Wall",
         "-Wextra",
         "-O2",
+        # Int arithmetic wraps (docs/type-system.md §6.3.1)
+        "-fwrapv",
         *traceback_flags(compiler),
     ]
 

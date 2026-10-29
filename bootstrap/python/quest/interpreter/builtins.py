@@ -817,7 +817,7 @@ def _word_from_int(n: QInt) -> QWord:
 def _word_to_real(w: QWord) -> QReal:
     r = struct.unpack(">d", struct.pack(">Q", w.value))[0]
     if math.isnan(r):
-        # NaN bit patterns have no Real value (docs/type-system.md §6.3.1).
+        # NaN bit patterns have no Real value (docs/type-system.md §6.3.2).
         raise QuestException(WORD_ERROR_EXC, OK_VALUE)
     return QReal(r)
 

@@ -126,10 +126,11 @@ FALSE_VALUE = QBool(False)
 
 
 class QInt(QValue):
-    """Signed 64-bit integer value."""
+    """Signed 64-bit integer value. Int arithmetic wraps (docs/type-system.md
+    §6.3.1), so every Int made is reduced to 64 bits, two's complement."""
 
     def __init__(self, value: int):
-        self.value = int(value)
+        self.value = ((int(value) + (1 << 63)) & 0xFFFF_FFFF_FFFF_FFFF) - (1 << 63)
 
     @property
     def type_name(self) -> str:
