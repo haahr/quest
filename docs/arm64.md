@@ -14,8 +14,8 @@ The code says **arm64** in directory, module, and option names; this document sa
 - **An alternative to C, not a replacement.** The C backend stays, and both write objects with one ABI, so a program
   may mix units of each. Mixing is a requirement, not a convenience: it is how the backend is brought up (§3.12) and
   how a miscompile is found (§4).
-- **Speed is not the first goal.** Code is not expected to be as fast as clang's at first. Optimizations come later,
-  on the SSA (§5); the representation is chosen so that they can be added.
+- **Speed is not the first goal.** Code is not expected to be as fast as clang's at first. Optimizations come later
+  (§6); the representation is chosen so that they can be added.
 - **Tail calls whenever possible** (§3.7), not as a guarantee of the language.
 - **Darwin only.** Mach-O, Apple's variant of AAPCS64, the Darwin assembler and linker. Linux would need another
   object format and relocation spelling (§3.11), kept in one module so that it could be added.
@@ -155,7 +155,7 @@ values in callee-saved registers across any call, so the routine must save them 
 clang save just the registers live across the `try`: an `asm goto` that stores `sp`, `fp`, and the handler label's
 address, names the label as a target, and clobbers every callee-saved register. Whether clang keeps the label's code
 and the frame as the handler expects is not something it promises, so that is an experiment, not part of this plan.
-What C can do reliably is enter fewer handlers (open question 2).
+What C can do reliably is enter fewer handlers (§6).
 
 **Native code can.** A native function controls its own registers, so its handler needs only where to resume:
 
@@ -256,7 +256,7 @@ byte against the assembler.
   the same place. The backend that wrote a unit's `.o` is recorded with its artifacts, and an `.o` from the other
   backend is stale. Interface headers are still written when a C unit needs them; the arm64 backend reads layouts
   from interfaces, not from headers.
-- **Whole-program compilation** (build-process.md §1.2): separate compilation first (open question 1).
+- **Whole-program compilation** (build-process.md §1.2) comes after self-hosting with the arm64 backend (step 13).
 
 ### 3.13. The collector
 
@@ -303,6 +303,8 @@ the SSA, and one that fails with both is a bug in it or before it.
 - **The real allocator against the trivial one:** the suite passes with each.
 - **The self-hosting check** with the arm64 backend: stage 2 built by it compiles the compiler and writes the same
   artifacts as stage 2 built by the C backend.
+- **Before every push,** `tools/check` runs all of these, the `ssac` and `arm64` modes included, though it takes
+  longer for them.
 - **Benchmarks:** compile and run times against the C backend, recorded with their dates in benchmarks.md.
 
 ## 5. Steps
@@ -326,7 +328,8 @@ the SSA, and one that fails with both is a bug in it or before it.
    initialization, function tables. *Done when* only tests that raise or catch exceptions are pending.
 8. **Exceptions** (§3.6): the shared handler record (ABI bump), native `try` and `raise`, tracebacks. *Done when* the
    pending list is empty, and mixed builds raise across the backends both ways.
-9. **Mixed-build and ABI tests** (§4). *Done when* they run in `tools/check`.
+9. **`tools/check` runs everything** (§4): the `ssac` and `arm64` modes and the mixed-build and ABI tests, before
+   every push. *Done when* it does, with both pending lists empty.
 10. **Tail calls** (§3.7). *Done when* self, sibling, and closure tail calls are jumps, and a deep tail recursion runs
     in constant stack.
 11. **Linear scan** (§3.8). *Done when* the suite passes with it, and benchmarks.md has dated run and compile times
@@ -334,15 +337,22 @@ the SSA, and one that fails with both is a bug in it or before it.
 12. **Self-hosting with the arm64 backend** (§4). *Done when* the check passes, and `./questc` can build its stages
     with either backend.
 
-Optimizations on the SSA (copy propagation, constant folding, dead code, value numbering, simple inlining, block
-merging) get their own plan after step 12; inlining is better done on the IR, where both backends gain.
+13. **Whole-program compilation** with the arm64 backend (build-process.md §1.2). *Done when* `--whole-program`
+    builds with `--backend arm64` (and `ssac`) pass the suite.
 
-## 6. Open Questions
+## 6. Possible Future Optimizations
 
-1. **Whole-program compilation** with the arm64 backend: needed by step 7, or later?
-2. **Entering fewer handlers in C.** A `try` whose body cannot raise (no calls and no operations that raise) need
-   not push a handler, and a raise whose handler is in the same function can be a jump (benchmarks.md §3.5). Both
-   help every backend if done on the IR. A task of its own, separate from this plan?
-3. **What `tools/check` runs.** Once complete, the `ssac` and `arm64` modes and the mixed builds roughly triple the
-   compiled run tests. All of them before every push, or `arm64` and the mixed builds before every push and `ssac`
-   only when the SSA or what comes before it changes?
+Not part of this plan: what might be done once it is complete, each to be measured (benchmarks.md) before and after.
+The list grows as ideas come up; when the plan is complete, what remains moves to benchmarks.md §3.
+
+- **On the SSA:** copy propagation, constant folding, dead code elimination, value numbering, block merging and jump
+  threading.
+- **Inlining,** on the IR rather than the SSA, so that every backend gains (benchmarks.md §3.3).
+- **Entering fewer handlers:** a `try` whose body cannot raise (no calls and no operations that raise) pushes no
+  handler, and a raise whose handler is in the same function is a jump (benchmarks.md §3.5). On the IR, for every
+  backend.
+- **Runtime helpers expanded inline** by instruction selection, rather than called out of line (§3.1).
+- **A cheaper `try` in C:** the `asm goto` experiment of §3.6.
+- **Allocating spill slots and stack slots better:** sharing slots between values whose lifetimes do not overlap, and
+  `ldp`/`stp` for adjacent spills.
+- **Better register allocation** than linear scan, if measurements show spilling costs.
