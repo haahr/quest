@@ -1299,7 +1299,8 @@ runtime/
 ├── quest_runtime.c         /* Strings, I/O streams, subtyping, proxies, exceptions, stack unwinding */
 ├── quest_serialization.h   /* Dynamic serialization & deserialization API */
 ├── quest_serialization.c   /* dynamic.extern & dynamic.intern (docs/dynamic.md §2) */
-└── quest_readline.c        /* io/readline: line editing and history (docs/new-libraries.md §3.1) */
+├── quest_readline.c        /* io/readline: line editing and history (docs/new-libraries.md §3.1) */
+└── quest_inline.c          /* External definitions of the header's Q_INLINE helpers (docs/arm64.md §7.5) */
 ```
 
 ### 10.1. Implemented Runtime Functions (`runtime/quest_runtime.c`)

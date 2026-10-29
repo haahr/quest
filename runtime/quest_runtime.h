@@ -33,6 +33,13 @@
 #  define Q_NORETURN
 #endif
 
+/* The runtime's inline helpers are static inline in every translation unit that includes this header, except
+   quest_inline.c, which defines Q_INLINE as nothing first, so that the runtime also has an external definition of
+   each, under its own name, for code that cannot inline them to call (native code; docs/arm64.md §7.5) */
+#ifndef Q_INLINE
+#  define Q_INLINE static inline
+#endif
+
 /* Compile-time portable layout assertions */
 #define Q_ASSERT_CONCAT_(a, b) a##b
 #define Q_ASSERT_CONCAT(a, b)  Q_ASSERT_CONCAT_(a, b)
@@ -426,14 +433,14 @@ static_assert(offsetof(QExceptionState, payload) == 8, qexception_state_payload_
 
 /* Memory allocation abstraction */
 #ifdef QUEST_NOGC
-static inline void *quest_alloc(size_t sz)        { return calloc(1, sz); }
-static inline void *quest_alloc_atomic(size_t sz) { return malloc(sz); }
-static inline void  quest_gc_init(void)           { /* no-op */ }
+Q_INLINE void *quest_alloc(size_t sz)        { return calloc(1, sz); }
+Q_INLINE void *quest_alloc_atomic(size_t sz) { return malloc(sz); }
+Q_INLINE void  quest_gc_init(void)           { /* no-op */ }
 #else
 #  include <gc.h>
-static inline void *quest_alloc(size_t sz)        { return GC_MALLOC(sz); }
-static inline void *quest_alloc_atomic(size_t sz) { return GC_MALLOC_ATOMIC(sz); }
-static inline void  quest_gc_init(void)           { GC_INIT(); }
+Q_INLINE void *quest_alloc(size_t sz)        { return GC_MALLOC(sz); }
+Q_INLINE void *quest_alloc_atomic(size_t sz) { return GC_MALLOC_ATOMIC(sz); }
+Q_INLINE void  quest_gc_init(void)           { GC_INIT(); }
 #endif
 
 /* Runtime helper prototypes */
@@ -621,12 +628,12 @@ int64_t quest_ascii_val(QChar ch);
 #define QUEST_INT_MIN (-9223372036854775807LL - 1LL)
 #define QUEST_INT_MAX (9223372036854775807LL)
 
-static inline int64_t quest_int_abs(int64_t n) {
+Q_INLINE int64_t quest_int_abs(int64_t n) {
     if (n == QUEST_INT_MIN) return QUEST_INT_MIN;
     return n < 0 ? -n : n;
 }
-static inline int64_t quest_int_min(int64_t a, int64_t b) { return a < b ? a : b; }
-static inline int64_t quest_int_max(int64_t a, int64_t b) { return a > b ? a : b; }
+Q_INLINE int64_t quest_int_min(int64_t a, int64_t b) { return a < b ? a : b; }
+Q_INLINE int64_t quest_int_max(int64_t a, int64_t b) { return a > b ? a : b; }
 
 /* RealOp constants & primitives */
 #define QUEST_REAL_MIN (-1.7976931348623157e+308)
@@ -641,9 +648,9 @@ double  quest_real_from_int(int64_t n);
 double  quest_real_log(double r);
 int64_t quest_real_floor(double r);
 int64_t quest_real_round(double r);
-static inline double quest_real_abs(double r) { return fabs(r); }
-static inline double quest_real_min(double a, double b) { return a < b ? a : b; }
-static inline double quest_real_max(double a, double b) { return a > b ? a : b; }
+Q_INLINE double quest_real_abs(double r) { return fabs(r); }
+Q_INLINE double quest_real_min(double a, double b) { return a < b ? a : b; }
+Q_INLINE double quest_real_max(double a, double b) { return a > b ? a : b; }
 double  quest_real_div(double a, double b);
 double  quest_real_exp(double a, double b);
 double  quest_real_sqrt(double r);
@@ -713,23 +720,23 @@ void                   quest_register_record_dict(
     const QTypeDescriptor *view, const QTypeDescriptor *layout, const void *dict);
 
 /* The layout of a record value's payload, recorded in its header when it was created */
-static inline const QTypeDescriptor *quest_record_layout(QRecordVal rec) {
+Q_INLINE const QTypeDescriptor *quest_record_layout(QRecordVal rec) {
     return ((const QRecordHeader *)rec.val)->descriptor;
 }
 
 /* A record value viewed at record type `view`: its payload with the offset table for the payload's own layout */
-static inline QRecordVal quest_record_view(QRecordVal rec, const QTypeDescriptor *view) {
+Q_INLINE QRecordVal quest_record_view(QRecordVal rec, const QTypeDescriptor *view) {
     if (rec.val == NULL) return rec;
     return (QRecordVal){ .val = rec.val, .dict = quest_record_dict(view, quest_record_layout(rec)) };
 }
 
 /* The byte offset in a record value's payload of the i-th field (in name order) of the type it is viewed at */
-static inline size_t quest_record_field_offset(QRecordVal rec, size_t i) {
+Q_INLINE size_t quest_record_field_offset(QRecordVal rec, size_t i) {
     return ((const size_t *)rec.dict)[i];
 }
 
 /* The stored types of a record value's offset table, for a view with field_count fields (see QRecordStoredTypes) */
-static inline QRecordStoredTypes quest_record_stored_types(QRecordVal rec, size_t field_count) {
+Q_INLINE QRecordStoredTypes quest_record_stored_types(QRecordVal rec, size_t field_count) {
     return *(const QRecordStoredTypes *)((const size_t *)rec.dict + (field_count > 0 ? field_count : 1));
 }
 
@@ -751,16 +758,16 @@ typedef struct QProxy {
 
 #define QUEST_PROXY_TAG ((uintptr_t)1)
 
-static inline bool quest_is_proxy(const void *p) {
+Q_INLINE bool quest_is_proxy(const void *p) {
     return ((uintptr_t)p & QUEST_PROXY_TAG) != 0;
 }
 
-static inline const QProxy *quest_proxy_of(const void *p) {
+Q_INLINE const QProxy *quest_proxy_of(const void *p) {
     return (const QProxy *)((uintptr_t)p - QUEST_PROXY_TAG);
 }
 
 /* The object a tuple or option value is: the original of a proxy, or the value itself */
-static inline void *quest_unproxy(const void *p) {
+Q_INLINE void *quest_unproxy(const void *p) {
     return quest_is_proxy(p) ? (void *)quest_proxy_of(p)->orig : (void *)p;
 }
 
@@ -793,11 +800,11 @@ QVal    quest_option_element(const void *opt, const QTypeDescriptor *t, size_t i
 /* Values in aggregate slots (record fields, tuple elements, option payloads, array elements, auto payloads): every
  * slot is one word holding the value's QVal form (records and variants as pointers to immutable boxes, scalars in
  * their bits, pointers as they are), whatever the slot's type, and generic code's slots (QVal) alike */
-static inline QVal quest_slot_read(const void *slot) {
+Q_INLINE QVal quest_slot_read(const void *slot) {
     return *(const QVal *)slot;
 }
 
-static inline void quest_slot_write(void *slot, QVal v) {
+Q_INLINE void quest_slot_write(void *slot, QVal v) {
     *(QVal *)slot = v;
 }
 
@@ -847,18 +854,18 @@ const QViewMap *quest_view_map(const QTypeDescriptor *actual, const QTypeDescrip
 
 /* Part i of a value read through a view map, from its QVal form: converted from the actual's type for it to the
  * bound's when they differ */
-static inline QVal quest_view_part(const QViewMap *m, size_t i, QVal v) {
+Q_INLINE QVal quest_view_part(const QViewMap *m, size_t i, QVal v) {
     return m->from[i] != NULL ? quest_convert(v, m->from[i], m->to[i]) : v;
 }
 
 /* Through a view map of a record type: the slot of field k of the bound (in name order) in a record value at the
  * actual's view, and the field's value (from its QVal form), converted from the type the payload stores it at, or the
  * actual's type for it, to the bound's */
-static inline void *quest_view_record_slot(QRecordVal rec, const QViewMap *m, size_t k) {
+Q_INLINE void *quest_view_record_slot(QRecordVal rec, const QViewMap *m, size_t k) {
     return (char *)rec.val + quest_record_field_offset(rec, (size_t)m->index[k]);
 }
 
-static inline QVal quest_view_record_field(QRecordVal rec, const QViewMap *m, size_t k) {
+Q_INLINE QVal quest_view_record_field(QRecordVal rec, const QViewMap *m, size_t k) {
     size_t j = (size_t)m->index[k];
     QVal v = quest_slot_read((const char *)rec.val + quest_record_field_offset(rec, j));
     size_t field_count = ((const QRecordTypeDescriptor *)m->actual->extra)->field_count;
@@ -869,27 +876,27 @@ static inline QVal quest_view_record_field(QRecordVal rec, const QViewMap *m, si
 
 /* Through a view map of a tuple type: component i of a tuple at the actual's view (or a proxy of one), converted to
  * the bound's type for it, and the slot of a var component (the original's, through a proxy) */
-static inline QVal quest_view_tuple_element(const void *tup, const QViewMap *m, size_t i) {
+Q_INLINE QVal quest_view_tuple_element(const void *tup, const QViewMap *m, size_t i) {
     return quest_view_part(m, i, quest_tuple_element(tup, m->actual, i));
 }
 
-static inline void *quest_view_tuple_slot(const void *tup, const QViewMap *m, size_t i) {
+Q_INLINE void *quest_view_tuple_slot(const void *tup, const QViewMap *m, size_t i) {
     if (quest_is_proxy(tup)) return quest_proxy_slot(tup, i);
     return (char *)tup + ((const QTupleTypeDescriptor *)m->actual->extra)->elements[i].offset;
 }
 
 /* Through a view map of a variant or option type: a value's tag in the bound's numbering, and component j of the
  * payload of case b (the bound's tag) of an option, converted to the bound's type for it */
-static inline int64_t quest_view_option_tag(const void *opt, const QViewMap *m) {
+Q_INLINE int64_t quest_view_option_tag(const void *opt, const QViewMap *m) {
     return m->index[quest_option_tag(opt)];
 }
 
-static inline QVal quest_view_option_component(const void *opt, const QViewMap *m, size_t b, size_t j) {
+Q_INLINE QVal quest_view_option_component(const void *opt, const QViewMap *m, size_t b, size_t j) {
     return quest_view_part(m, m->component_start[b] + j, quest_option_element(opt, m->actual, j));
 }
 
 /* A descriptor's type, looking through QTYPE_KIND_STORED */
-static inline const QTypeDescriptor *quest_stored_type(const QTypeDescriptor *d) {
+Q_INLINE const QTypeDescriptor *quest_stored_type(const QTypeDescriptor *d) {
     return (d != NULL && d->kind == QTYPE_KIND_STORED) ? ((const QStoredDescriptor *)d->extra)->type : d;
 }
 
@@ -899,13 +906,13 @@ void                   quest_layout_conversion_error(const QTypeDescriptor *from
 /* The i-th field (in name order) of record value rec viewed at record type `view`, converted to the view's type */
 QVal                   quest_record_field_value(QRecordVal rec, const QTypeDescriptor *view, size_t i);
 
-static inline QRecordVal *quest_record_box(QRecordVal rec) {
+Q_INLINE QRecordVal *quest_record_box(QRecordVal rec) {
     QRecordVal *box = (QRecordVal *)quest_alloc(sizeof(QRecordVal));
     *box = rec;
     return box;
 }
 
-static inline QVariantVal *quest_variant_box(QVariantVal var) {
+Q_INLINE QVariantVal *quest_variant_box(QVariantVal var) {
     QVariantVal *box = (QVariantVal *)quest_alloc(sizeof(QVariantVal));
     *box = var;
     return box;
@@ -914,19 +921,19 @@ static inline QVariantVal *quest_variant_box(QVariantVal var) {
 /* The checked operations take the site of the operation (loc, "file:line:col"), which only their failing branch
    uses; the versions without _at are the runtime's own, with no site. */
 
-static inline void quest_check_array_bounds_at(const void *arr_ptr, int64_t idx, const char *loc) {
+Q_INLINE void quest_check_array_bounds_at(const void *arr_ptr, int64_t idx, const char *loc) {
     const QArray *a = (const QArray *)arr_ptr;
     if (a == NULL || idx < 0 || idx >= a->length) {
         quest_raise_array_error_at(loc);
     }
 }
 
-static inline void quest_check_array_bounds(const void *arr_ptr, int64_t idx) {
+Q_INLINE void quest_check_array_bounds(const void *arr_ptr, int64_t idx) {
     quest_check_array_bounds_at(arr_ptr, idx, NULL);
 }
 
 /* The count of a new array, which may not be negative */
-static inline int64_t quest_check_array_count_at(int64_t n, const char *loc) {
+Q_INLINE int64_t quest_check_array_count_at(int64_t n, const char *loc) {
     if (n < 0) {
         quest_raise_array_error_at(loc);
     }
@@ -936,7 +943,7 @@ static inline int64_t quest_check_array_count_at(int64_t n, const char *loc) {
 /* Int arithmetic wraps (docs/type-system.md §6.3.1): a zero divisor raises int.error, and the one quotient outside
    Int's range, QUEST_INT_MIN / -1, wraps to QUEST_INT_MIN, with remainder 0. C leaves both undefined (and -fwrapv does
    not cover division), so a divisor of -1 is negation, which wraps under -fwrapv. */
-static inline QInt quest_int_div_at(QInt a, QInt b, const char *loc) {
+Q_INLINE QInt quest_int_div_at(QInt a, QInt b, const char *loc) {
     if (b == 0) {
         quest_raise_int_error_at(loc);
     }
@@ -946,7 +953,7 @@ static inline QInt quest_int_div_at(QInt a, QInt b, const char *loc) {
     return a / b;
 }
 
-static inline QInt quest_int_mod_at(QInt a, QInt b, const char *loc) {
+Q_INLINE QInt quest_int_mod_at(QInt a, QInt b, const char *loc) {
     if (b == 0) {
         quest_raise_int_error_at(loc);
     }
@@ -956,40 +963,40 @@ static inline QInt quest_int_mod_at(QInt a, QInt b, const char *loc) {
     return a % b;
 }
 
-static inline QInt quest_int_div(QInt a, QInt b) { return quest_int_div_at(a, b, NULL); }
-static inline QInt quest_int_mod(QInt a, QInt b) { return quest_int_mod_at(a, b, NULL); }
+Q_INLINE QInt quest_int_div(QInt a, QInt b) { return quest_int_div_at(a, b, NULL); }
+Q_INLINE QInt quest_int_mod(QInt a, QInt b) { return quest_int_mod_at(a, b, NULL); }
 
 /* Real arithmetic keeps NaN out of Quest: an operation whose IEEE result would be NaN raises real.error.
    Infinities are ordinary Real values. See docs/type-system.md §6.3.2. */
-static inline double quest_real_result_at(double r, const char *loc) {
+Q_INLINE double quest_real_result_at(double r, const char *loc) {
     if (isnan(r)) {
         quest_raise_real_error_at(loc);
     }
     return r;
 }
 
-static inline double quest_real_result(double r) { return quest_real_result_at(r, NULL); }
+Q_INLINE double quest_real_result(double r) { return quest_real_result_at(r, NULL); }
 
-static inline double quest_real_add_at(double a, double b, const char *loc) { return quest_real_result_at(a + b, loc); }
-static inline double quest_real_sub_at(double a, double b, const char *loc) { return quest_real_result_at(a - b, loc); }
-static inline double quest_real_mul_at(double a, double b, const char *loc) { return quest_real_result_at(a * b, loc); }
+Q_INLINE double quest_real_add_at(double a, double b, const char *loc) { return quest_real_result_at(a + b, loc); }
+Q_INLINE double quest_real_sub_at(double a, double b, const char *loc) { return quest_real_result_at(a - b, loc); }
+Q_INLINE double quest_real_mul_at(double a, double b, const char *loc) { return quest_real_result_at(a * b, loc); }
 
 /* The // operator and real.div: a zero divisor also raises real.error. */
-static inline double quest_real_divide_at(double a, double b, const char *loc) {
+Q_INLINE double quest_real_divide_at(double a, double b, const char *loc) {
     if (b == 0.0) {
         quest_raise_real_error_at(loc);
     }
     return quest_real_result_at(a / b, loc);
 }
 
-static inline double quest_real_add(double a, double b) { return quest_real_add_at(a, b, NULL); }
-static inline double quest_real_sub(double a, double b) { return quest_real_sub_at(a, b, NULL); }
-static inline double quest_real_mul(double a, double b) { return quest_real_mul_at(a, b, NULL); }
-static inline double quest_real_divide(double a, double b) { return quest_real_divide_at(a, b, NULL); }
+Q_INLINE double quest_real_add(double a, double b) { return quest_real_add_at(a, b, NULL); }
+Q_INLINE double quest_real_sub(double a, double b) { return quest_real_sub_at(a, b, NULL); }
+Q_INLINE double quest_real_mul(double a, double b) { return quest_real_mul_at(a, b, NULL); }
+Q_INLINE double quest_real_divide(double a, double b) { return quest_real_divide_at(a, b, NULL); }
 
 /* is on values of a type known only by its descriptor. Bit equality is identity for every type except Real,
    where 0.0 is ~0.0 (NaN, the other case where bits and IEEE equality differ, never occurs). */
-static inline bool quest_val_is(const QTypeDescriptor *t, QVal a, QVal b) {
+Q_INLINE bool quest_val_is(const QTypeDescriptor *t, QVal a, QVal b) {
     if (a.u == b.u) return true;
     if (t != NULL && t->kind == QTYPE_KIND_STORED) t = ((const QStoredDescriptor *)t->extra)->type;
     if (t != NULL && (t->kind == QTYPE_KIND_TUPLE || t->kind == QTYPE_KIND_OPTION)) {
@@ -999,82 +1006,82 @@ static inline bool quest_val_is(const QTypeDescriptor *t, QVal a, QVal b) {
     return t != NULL && t->kind == QTYPE_KIND_REAL && a.r == b.r;
 }
 
-static inline int64_t quest_check_option_ordinal_at(int64_t n, int64_t count, const char *loc) {
+Q_INLINE int64_t quest_check_option_ordinal_at(int64_t n, int64_t count, const char *loc) {
     if (n < 0 || n >= count) {
         quest_option_ordinal_error_at(n, count, loc);
     }
     return n;
 }
 
-static inline int64_t quest_check_option_ordinal(int64_t n, int64_t count) {
+Q_INLINE int64_t quest_check_option_ordinal(int64_t n, int64_t count) {
     return quest_check_option_ordinal_at(n, count, NULL);
 }
 
-static inline uint64_t quest_word_shift(uint64_t w, int64_t count) {
+Q_INLINE uint64_t quest_word_shift(uint64_t w, int64_t count) {
     if (count >= 64 || count <= -64) return 0ULL;
     if (count > 0) return w << count;
     if (count < 0) return w >> (-count);
     return w;
 }
 
-static inline uint64_t quest_word_rotate(uint64_t w, int64_t count) {
+Q_INLINE uint64_t quest_word_rotate(uint64_t w, int64_t count) {
     int64_t shift = count % 64;
     if (shift < 0) shift += 64;
     if (shift == 0) return w;
     return (w << shift) | (w >> (64 - shift));
 }
 
-static inline uint64_t quest_word_extract(uint64_t w, int64_t pos, int64_t width) {
+Q_INLINE uint64_t quest_word_extract(uint64_t w, int64_t pos, int64_t width) {
     if (pos < 0 || pos >= 64 || width <= 0) return 0ULL;
     if (width > 64 - pos) width = 64 - pos;
     uint64_t mask = (width == 64) ? ~0ULL : ((1ULL << width) - 1ULL);
     return (w >> pos) & mask;
 }
 
-static inline uint64_t quest_word_replace(uint64_t w, uint64_t val, int64_t pos, int64_t width) {
+Q_INLINE uint64_t quest_word_replace(uint64_t w, uint64_t val, int64_t pos, int64_t width) {
     if (pos < 0 || pos >= 64 || width <= 0) return w;
     if (width > 64 - pos) width = 64 - pos;
     uint64_t mask = (width == 64) ? ~0ULL : ((1ULL << width) - 1ULL);
     return (w & ~(mask << pos)) | ((val & mask) << pos);
 }
 
-static inline int64_t quest_word_pop_count(uint64_t w) {
+Q_INLINE int64_t quest_word_pop_count(uint64_t w) {
     return (int64_t)__builtin_popcountll(w);
 }
 
-static inline int64_t quest_word_count_leading_zeros(uint64_t w) {
+Q_INLINE int64_t quest_word_count_leading_zeros(uint64_t w) {
     if (w == 0ULL) return 64;
     return (int64_t)__builtin_clzll(w);
 }
 
-static inline int64_t quest_word_count_trailing_zeros(uint64_t w) {
+Q_INLINE int64_t quest_word_count_trailing_zeros(uint64_t w) {
     if (w == 0ULL) return 64;
     return (int64_t)__builtin_ctzll(w);
 }
 
-static inline bool quest_word_get_bit(uint64_t w, int64_t pos) {
+Q_INLINE bool quest_word_get_bit(uint64_t w, int64_t pos) {
     if (pos < 0 || pos >= 64) return false;
     return ((w >> pos) & 1ULL) != 0;
 }
 
-static inline uint64_t quest_word_set_bit(uint64_t w, int64_t pos) {
+Q_INLINE uint64_t quest_word_set_bit(uint64_t w, int64_t pos) {
     if (pos < 0 || pos >= 64) return w;
     return w | (1ULL << pos);
 }
 
-static inline uint64_t quest_word_clear_bit(uint64_t w, int64_t pos) {
+Q_INLINE uint64_t quest_word_clear_bit(uint64_t w, int64_t pos) {
     if (pos < 0 || pos >= 64) return w;
     return w & ~(1ULL << pos);
 }
 
-static inline uint64_t quest_word_div(uint64_t a, uint64_t b) {
+Q_INLINE uint64_t quest_word_div(uint64_t a, uint64_t b) {
     if (b == 0) {
         quest_raise_word_error();
     }
     return a / b;
 }
 
-static inline uint64_t quest_word_mod(uint64_t a, uint64_t b) {
+Q_INLINE uint64_t quest_word_mod(uint64_t a, uint64_t b) {
     if (b == 0) {
         quest_raise_word_error();
     }
@@ -1083,108 +1090,108 @@ static inline uint64_t quest_word_mod(uint64_t a, uint64_t b) {
 
 /* The word module's primitives (lib/word.mod.quest), inline so that a direct call of
  * one compiles to its operator */
-static inline uint64_t quest_word_not_bits(uint64_t w) {
+Q_INLINE uint64_t quest_word_not_bits(uint64_t w) {
     return ~w;
 }
 
-static inline uint64_t quest_word_and_bits(uint64_t w1, uint64_t w2) {
+Q_INLINE uint64_t quest_word_and_bits(uint64_t w1, uint64_t w2) {
     return w1 & w2;
 }
 
-static inline uint64_t quest_word_or_bits(uint64_t w1, uint64_t w2) {
+Q_INLINE uint64_t quest_word_or_bits(uint64_t w1, uint64_t w2) {
     return w1 | w2;
 }
 
-static inline uint64_t quest_word_xor_bits(uint64_t w1, uint64_t w2) {
+Q_INLINE uint64_t quest_word_xor_bits(uint64_t w1, uint64_t w2) {
     return w1 ^ w2;
 }
 
-static inline uint64_t quest_word_shift_val(uint64_t w, int64_t count) {
+Q_INLINE uint64_t quest_word_shift_val(uint64_t w, int64_t count) {
     return quest_word_shift(w, count);
 }
 
-static inline uint64_t quest_word_rotate_val(uint64_t w, int64_t count) {
+Q_INLINE uint64_t quest_word_rotate_val(uint64_t w, int64_t count) {
     return quest_word_rotate(w, count);
 }
 
-static inline uint64_t quest_word_extract_val(uint64_t w, int64_t pos, int64_t width) {
+Q_INLINE uint64_t quest_word_extract_val(uint64_t w, int64_t pos, int64_t width) {
     return quest_word_extract(w, pos, width);
 }
 
-static inline uint64_t quest_word_replace_val(uint64_t w, uint64_t val, int64_t pos, int64_t width) {
+Q_INLINE uint64_t quest_word_replace_val(uint64_t w, uint64_t val, int64_t pos, int64_t width) {
     return quest_word_replace(w, val, pos, width);
 }
 
-static inline int64_t quest_word_pop_count_val(uint64_t w) {
+Q_INLINE int64_t quest_word_pop_count_val(uint64_t w) {
     return quest_word_pop_count(w);
 }
 
-static inline int64_t quest_word_count_leading_zeros_val(uint64_t w) {
+Q_INLINE int64_t quest_word_count_leading_zeros_val(uint64_t w) {
     return quest_word_count_leading_zeros(w);
 }
 
-static inline int64_t quest_word_count_trailing_zeros_val(uint64_t w) {
+Q_INLINE int64_t quest_word_count_trailing_zeros_val(uint64_t w) {
     return quest_word_count_trailing_zeros(w);
 }
 
-static inline bool quest_word_get_bit_val(uint64_t w, int64_t pos) {
+Q_INLINE bool quest_word_get_bit_val(uint64_t w, int64_t pos) {
     return quest_word_get_bit(w, pos);
 }
 
-static inline uint64_t quest_word_set_bit_val(uint64_t w, int64_t pos) {
+Q_INLINE uint64_t quest_word_set_bit_val(uint64_t w, int64_t pos) {
     return quest_word_set_bit(w, pos);
 }
 
-static inline uint64_t quest_word_clear_bit_val(uint64_t w, int64_t pos) {
+Q_INLINE uint64_t quest_word_clear_bit_val(uint64_t w, int64_t pos) {
     return quest_word_clear_bit(w, pos);
 }
 
-static inline uint64_t quest_word_add(uint64_t w1, uint64_t w2) {
+Q_INLINE uint64_t quest_word_add(uint64_t w1, uint64_t w2) {
     return w1 + w2;
 }
 
-static inline uint64_t quest_word_sub(uint64_t w1, uint64_t w2) {
+Q_INLINE uint64_t quest_word_sub(uint64_t w1, uint64_t w2) {
     return w1 - w2;
 }
 
-static inline uint64_t quest_word_mul(uint64_t w1, uint64_t w2) {
+Q_INLINE uint64_t quest_word_mul(uint64_t w1, uint64_t w2) {
     return w1 * w2;
 }
 
-static inline uint64_t quest_word_div_val(uint64_t w1, uint64_t w2) {
+Q_INLINE uint64_t quest_word_div_val(uint64_t w1, uint64_t w2) {
     return quest_word_div(w1, w2);
 }
 
-static inline uint64_t quest_word_mod_val(uint64_t w1, uint64_t w2) {
+Q_INLINE uint64_t quest_word_mod_val(uint64_t w1, uint64_t w2) {
     return quest_word_mod(w1, w2);
 }
 
-static inline int64_t quest_word_to_int(uint64_t w) {
+Q_INLINE int64_t quest_word_to_int(uint64_t w) {
     return (int64_t)w;
 }
 
-static inline uint64_t quest_word_from_int(int64_t n) {
+Q_INLINE uint64_t quest_word_from_int(int64_t n) {
     return (uint64_t)n;
 }
 
-static inline bool quest_word_lt(uint64_t w1, uint64_t w2) {
+Q_INLINE bool quest_word_lt(uint64_t w1, uint64_t w2) {
     return w1 < w2;
 }
 
-static inline bool quest_word_le(uint64_t w1, uint64_t w2) {
+Q_INLINE bool quest_word_le(uint64_t w1, uint64_t w2) {
     return w1 <= w2;
 }
 
-static inline bool quest_word_gt(uint64_t w1, uint64_t w2) {
+Q_INLINE bool quest_word_gt(uint64_t w1, uint64_t w2) {
     return w1 > w2;
 }
 
-static inline bool quest_word_ge(uint64_t w1, uint64_t w2) {
+Q_INLINE bool quest_word_ge(uint64_t w1, uint64_t w2) {
     return w1 >= w2;
 }
 
 /* Hash utilities & SplitMix64 */
-static inline uint64_t quest_hash_mix64(uint64_t z) {
+Q_INLINE uint64_t quest_hash_mix64(uint64_t z) {
     z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
     z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
     return z ^ (z >> 31);
