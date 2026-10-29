@@ -34,7 +34,7 @@ The compiler is built using a staged bootstrap methodology across seven mileston
 | **Step 2** | Python | Typechecker: $F_{<:}^\omega$ Subtyping, Equi-Recursion, Elaboration | **Complete** |
 | **Step 3** | Python | Tree-Walking Interpreter & Interactive REPL | **Complete** |
 | **Step 4** | Python | Bootstrap C Compiler (IR pipeline emitting C99 + Boehm GC) | **Complete** |
-| **Step 5** | Quest | Self-Hosted Front-End & C Compiler (written in Quest) | In Progress |
+| **Step 5** | Quest | Self-Hosted Front-End & C Compiler (written in Quest) | **Complete** |
 | **Step 6** | Quest | Self-Hosted Native AArch64 Compiler (Nanopass Pipeline) | Queued |
 | **Step 7** | Quest | Native AArch64 JIT & Dynamic Incremental Runtime | Queued |
 

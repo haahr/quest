@@ -28,7 +28,7 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
         │
         ▼
 +-----------------------------------------------------------------------------------+
-| SELF-HOSTING & NATIVE TARGETING IN QUEST (Located in src/)                        |
+| SELF-HOSTING & NATIVE TARGETING IN QUEST (Located in questlang/)                  |
 |                                                                                   |
 |  [Step 5] Self-Hosted Front-End, Typechecker, & C Compiler (Ported) [COMPLETE]    |
 |       │   • Compile self-hosted Quest using Python bootstrap C emitter            |
@@ -120,6 +120,9 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   rebuilds itself as the same binary (`run_tests.py --self-hosting`). `./questc` runs it. Since 2026-10-28 it is the
   primary compiler: the two compilers share what programs do, not how they compile them
   ([testing.md](testing.md) §2.8).
+- Give the self-hosted driver the bootstrap's commands and options: the interpreter and REPL, `compile` (with
+  `--emit-c`, `--nogc`, and `-c`), separate compilation of units, and every phase's `--stop-after` and `--dump-after`.
+  `self-hosted/compile_command` checks that the two drivers' commands do the same.
 
 ### Step 6: Native AArch64 Code Generator (Written in Quest)
 - Replace C emission with native AArch64 machine code generation consuming the represented IR ([ir.md](ir.md) §8.6):
