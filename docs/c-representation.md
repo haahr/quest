@@ -734,6 +734,12 @@ static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
 3. **Exported Module Functions:** For each exported function of a module `mod`, a non-static wrapper
    `RetType qv_<mod>_<fn>(<descriptors>, <params>)` without an environment parameter is emitted at C file scope so
    other compilation units can call it directly via `extern` declarations ([modules.md](modules.md) §5.3).
+   A standard library module's function that the module defines as an external C function, monomorphic, of value
+   parameters only, and of scalar and external shapes, is called by its importers as that C function itself
+   (`quest_word_xor_bits(a, b)` for `word.xorBits(a b)`), so the C compiler can inline it: the self-hosted
+   compiler's lowering finds such members by parsing the module's source (`directExternal` in `questlang/ir/lower`,
+   `moduleExternalFunctions` in `questlang/modules/elaboration`), as it finds a module's external types. The word
+   module's primitives are `static inline` in `runtime/quest_runtime.h`, so such a call compiles to its operator.
 4. **Indirect Call Site:**
    ```c
    ((RetType (*)(void *, ParamTypes...))(c_func->fn))(c_func->env, args...);

@@ -127,6 +127,11 @@ directly to global `var` variables. (i) only accepts more programs. (ii) rejects
 
 ## 3. Faster Word Operations
 
+**Done**, with decision (b) in effect rather than (a): an interface's `.qi` is compiled from the interface alone, so
+it cannot record what a module defines. Instead the self-hosted compiler parses a standard library module's source
+for its external functions, as it already did for its external types, and calls those directly (ABI 50). Step 3,
+native SHA-256, was left. Results are in [benchmarks.md](benchmarks.md) §3.3.
+
 **Facts.** A `word` operation costs three calls (wrapper, module-record closure, runtime function), none inlinable.
 The same holds for every external in `lib/`: about 150 external declarations across 17 modules (`real` 29, `word` 26,
 `system` 16, `string` 15, ...). [benchmarks.md](benchmarks.md) §3.3 measured link-time inlining at 1.67 times faster

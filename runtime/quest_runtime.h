@@ -663,31 +663,6 @@ int64_t quest_real_trunc(double r);
 QString *quest_real_format(double r, QChar style, int64_t digits);
 
 /* Word module primitives */
-uint64_t quest_word_not_bits(uint64_t w);
-uint64_t quest_word_and_bits(uint64_t w1, uint64_t w2);
-uint64_t quest_word_or_bits(uint64_t w1, uint64_t w2);
-uint64_t quest_word_xor_bits(uint64_t w1, uint64_t w2);
-uint64_t quest_word_shift_val(uint64_t w, int64_t count);
-uint64_t quest_word_rotate_val(uint64_t w, int64_t count);
-uint64_t quest_word_extract_val(uint64_t w, int64_t pos, int64_t width);
-uint64_t quest_word_replace_val(uint64_t w, uint64_t val, int64_t pos, int64_t width);
-int64_t  quest_word_pop_count_val(uint64_t w);
-int64_t  quest_word_count_leading_zeros_val(uint64_t w);
-int64_t  quest_word_count_trailing_zeros_val(uint64_t w);
-bool     quest_word_get_bit_val(uint64_t w, int64_t pos);
-uint64_t quest_word_set_bit_val(uint64_t w, int64_t pos);
-uint64_t quest_word_clear_bit_val(uint64_t w, int64_t pos);
-uint64_t quest_word_add(uint64_t w1, uint64_t w2);
-uint64_t quest_word_sub(uint64_t w1, uint64_t w2);
-uint64_t quest_word_mul(uint64_t w1, uint64_t w2);
-uint64_t quest_word_div_val(uint64_t w1, uint64_t w2);
-uint64_t quest_word_mod_val(uint64_t w1, uint64_t w2);
-int64_t  quest_word_to_int(uint64_t w);
-uint64_t quest_word_from_int(int64_t n);
-bool     quest_word_lt(uint64_t w1, uint64_t w2);
-bool     quest_word_le(uint64_t w1, uint64_t w2);
-bool     quest_word_gt(uint64_t w1, uint64_t w2);
-bool     quest_word_ge(uint64_t w1, uint64_t w2);
 double   quest_word_to_real_val(uint64_t w);
 uint64_t quest_word_from_real_val(double r);
 
@@ -1095,6 +1070,108 @@ static inline uint64_t quest_word_mod(uint64_t a, uint64_t b) {
         quest_raise_word_error();
     }
     return a % b;
+}
+
+/* The word module's primitives (lib/word.mod.quest), inline so that a direct call of
+ * one compiles to its operator */
+static inline uint64_t quest_word_not_bits(uint64_t w) {
+    return ~w;
+}
+
+static inline uint64_t quest_word_and_bits(uint64_t w1, uint64_t w2) {
+    return w1 & w2;
+}
+
+static inline uint64_t quest_word_or_bits(uint64_t w1, uint64_t w2) {
+    return w1 | w2;
+}
+
+static inline uint64_t quest_word_xor_bits(uint64_t w1, uint64_t w2) {
+    return w1 ^ w2;
+}
+
+static inline uint64_t quest_word_shift_val(uint64_t w, int64_t count) {
+    return quest_word_shift(w, count);
+}
+
+static inline uint64_t quest_word_rotate_val(uint64_t w, int64_t count) {
+    return quest_word_rotate(w, count);
+}
+
+static inline uint64_t quest_word_extract_val(uint64_t w, int64_t pos, int64_t width) {
+    return quest_word_extract(w, pos, width);
+}
+
+static inline uint64_t quest_word_replace_val(uint64_t w, uint64_t val, int64_t pos, int64_t width) {
+    return quest_word_replace(w, val, pos, width);
+}
+
+static inline int64_t quest_word_pop_count_val(uint64_t w) {
+    return quest_word_pop_count(w);
+}
+
+static inline int64_t quest_word_count_leading_zeros_val(uint64_t w) {
+    return quest_word_count_leading_zeros(w);
+}
+
+static inline int64_t quest_word_count_trailing_zeros_val(uint64_t w) {
+    return quest_word_count_trailing_zeros(w);
+}
+
+static inline bool quest_word_get_bit_val(uint64_t w, int64_t pos) {
+    return quest_word_get_bit(w, pos);
+}
+
+static inline uint64_t quest_word_set_bit_val(uint64_t w, int64_t pos) {
+    return quest_word_set_bit(w, pos);
+}
+
+static inline uint64_t quest_word_clear_bit_val(uint64_t w, int64_t pos) {
+    return quest_word_clear_bit(w, pos);
+}
+
+static inline uint64_t quest_word_add(uint64_t w1, uint64_t w2) {
+    return w1 + w2;
+}
+
+static inline uint64_t quest_word_sub(uint64_t w1, uint64_t w2) {
+    return w1 - w2;
+}
+
+static inline uint64_t quest_word_mul(uint64_t w1, uint64_t w2) {
+    return w1 * w2;
+}
+
+static inline uint64_t quest_word_div_val(uint64_t w1, uint64_t w2) {
+    return quest_word_div(w1, w2);
+}
+
+static inline uint64_t quest_word_mod_val(uint64_t w1, uint64_t w2) {
+    return quest_word_mod(w1, w2);
+}
+
+static inline int64_t quest_word_to_int(uint64_t w) {
+    return (int64_t)w;
+}
+
+static inline uint64_t quest_word_from_int(int64_t n) {
+    return (uint64_t)n;
+}
+
+static inline bool quest_word_lt(uint64_t w1, uint64_t w2) {
+    return w1 < w2;
+}
+
+static inline bool quest_word_le(uint64_t w1, uint64_t w2) {
+    return w1 <= w2;
+}
+
+static inline bool quest_word_gt(uint64_t w1, uint64_t w2) {
+    return w1 > w2;
+}
+
+static inline bool quest_word_ge(uint64_t w1, uint64_t w2) {
+    return w1 >= w2;
 }
 
 /* Hash utilities & SplitMix64 */

@@ -322,6 +322,22 @@ functions in the runtime header, and calling an imported module's functions dire
 closures, would get most of this without LTO. Quest has no inliner of its own, which also hurts higher-order code
 such as imp-for, where MLton inlines `forLoop` and its arguments into straight loops.
 
+**Done in part (ABI 50):** the self-hosted compiler now calls a standard library function that its module defines as
+an external C function directly, rather than through the module's wrapper and closure, and the word module's
+primitives are `static inline` in the runtime header ([c-representation.md](c-representation.md) §6.2). Measured
+against the compiler before it, alternately, at a tenth of the suite's counts on a loaded machine (two runs each):
+
+| Benchmark | Before (s) | After (s) |
+| --- | --: | --: |
+| md5 | 32.3, 34.0 | 9.5, 9.6 |
+| checksum | 167.4, 163.6 | 74.3, 67.5 |
+| psdes-random | 61.5, 74.8 | 33.5, 26.9 |
+| DLXSimulator | 14.1, 14.1 | 14.9, 13.3 |
+
+md5 gained more than LTO gave it. The compiler's own build (`-j 8`, from nothing) went from 37 and 36 seconds to 26
+and 26. Calls of exported Quest functions (`qv_util__maybe_none`) still go through closures, and nothing is inlined
+that is not a runtime primitive.
+
 ### 3.4. Character I/O locks the stream for every character
 
 `reader.getChar` and `reader.more` call `fgetc`, and `writer.putChar` calls `fputc`, each of which locks and unlocks
