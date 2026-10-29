@@ -215,8 +215,7 @@ which is all a `double` needs). A pointer is never held only in a floating-point
 
 Native code must do what the C helpers do, including the cases where arm64 and C differ:
 
-- `Int` `+`, `-`, and `*` overflow is undefined in C, and wraps in practice; what Quest does is open (§8, question
-  1).
+- `Int` arithmetic wraps (§8): `+`, `-`, and `*` overflow, undefined in C, gets `-fwrapv`.
 - `sdiv` does not trap on zero, and gives `INT64_MIN` for `INT64_MIN / -1`, which is undefined in C (`quest_int_div_at`
   checks only for zero).
 - Shift counts are taken modulo 64 by arm64 and are undefined in C past 63; the word helpers handle the counts.
@@ -314,10 +313,11 @@ the SSA, and one that fails with both is a bug in it or before it.
 ## 5. Steps
 
 1. **Inventory the C backend's implicit decisions** (§3.1, §3.9). *Done* (2026-10-29): §7, with what step 2 shares in
-   §7.5 and the questions it raised in §8.
+   §7.5 and what it decided in §8.
 2. **Share what §7.5 lists:** thunks as IR functions, the description of static data, slot conversions as data, and
-   the runtime helpers' external definitions. *Done when* the C backend consumes the shared pass and description,
-   the suites and the self-hosting check pass, and the goldens they change are updated.
+   the runtime helpers' external definitions; and make `Int` arithmetic wrap everywhere (§8). *Done when* the C
+   backend consumes the shared pass and description, `Int` wraps in every implementation, the suites and the
+   self-hosting check pass, and the goldens they change are updated.
 3. **Shared layout with assertions** (§3.3). *Done when* every C unit and the runtime assert the offsets the shared
    module computes, and the suites pass.
 4. **The SSA:** nodes, printer, verifier, construction (§3.2), with `--stop-after ssa`. *Done when* every run test's
@@ -402,7 +402,7 @@ alignment beyond 8.
 
 | Decision | In the C backend | SSA backends |
 |---|---|---|
-| `Int` `+`, `-`, `*`: C operators, without `-fwrapv`, so overflow is undefined; comparisons | `prim` | build (§3.9, §8 question 1) |
+| `Int` `+`, `-`, `*`: C operators, without `-fwrapv`, so overflow is undefined; comparisons | `prim` | build: wraps (§8) |
 | `Int` `/`, `%`, `mod`: a zero divisor raises `int.error`; `INT64_MIN / -1` and `INT64_MIN % -1` are undefined in C | `quest_int_div_at`, `quest_int_mod_at` (inline) | build: the zero check inline, then `sdiv` (and `msub`), which give `INT64_MIN` and 0 |
 | `Real` `++`, `--`, `**`, `//`: a NaN result raises `real.error`, as does a zero divisor; `^^` | `quest_real_*_at` (inline), `quest_real_pow_at` | build for the inline ones; runtime for `^^` |
 | `is`: `==` on words and pointers; through `quest_unproxy` for an original access; `quest_val_is(d, a, b)` on `QVal` words | `prim` | build; runtime for `quest_val_is` |
@@ -471,11 +471,12 @@ Everything else in §7.2 and §7.3 is the SSA's construction. An operation's acc
 does not translate into SSA, so sharing it would need an intermediate form that neither backend wants. The mixed
 builds (§4) keep the two implementations agreeing.
 
-## 8. Questions From the Inventory
+## 8. Decided From the Inventory
 
-1. **`Int` overflow.** The three implementations disagree today (tried 2026-10-29, on `9223372036854775807 + 1` and
-   `INT64_MIN / ~1`): the bootstrap's interpreter gives `9223372036854775808` (Python's unbounded integers, outside
-   `Int`'s range), and compiled code and the self-hosted interpreter (which is compiled code) wrap, to
-   `-9223372036854775808`, by C's undefined behavior. `INT64_MIN % ~1` is 0 in all three. What should `Int`
-   arithmetic do: wrap (with `-fwrapv` for C and masking in the bootstrap's interpreter), or raise `int.error`, which
-   arm64 makes cheap (`adds` and `b.vs`)?
+1. **`Int` arithmetic wraps** (decided 2026-10-29), in two's complement, in every implementation. The three disagree
+   today (tried on `9223372036854775807 + 1` and `INT64_MIN / ~1`): the bootstrap's interpreter gives
+   `9223372036854775808`, outside `Int`'s range, from Python's unbounded integers, and compiled code and the
+   self-hosted interpreter (which is compiled code) wrap, to `-9223372036854775808`, by C's undefined behavior.
+   `INT64_MIN % ~1` is 0 in all three. Step 2 makes them agree: `-fwrapv` for C, `INT64_MIN / -1` defined as
+   `INT64_MIN` (and `% -1` as 0) in the runtime's helpers, results reduced to 64 bits in the bootstrap's interpreter,
+   and run tests of each case. arm64's `add`, `sub`, `mul`, `sdiv`, and `msub` then do what Quest does.
