@@ -149,12 +149,13 @@ def compare(compiler: str) -> int:
     number of differing files."""
     expected = read_checked_in(SELF_HOSTED_CORPUS_DIR)
     actual = generate(compiler)
+    paths = sorted(set(expected) | set(actual))
     differing = 0
-    for rel in sorted(set(expected) | set(actual)):
+    for rel in paths:
         if expected.get(rel) != actual.get(rel):
             differing += 1
             print(f"differs: {rel}")
-    print(f"{len(expected) - differing} of {len(expected)} corpus files agree")
+    print(f"{len(paths) - differing} of {len(paths)} corpus files agree")
     return differing
 
 
