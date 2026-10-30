@@ -1,0 +1,179 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('raised') 'Raised')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (LetValueBinding
+      :name 'print'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'down'
+      :value (ExprInfix
+        :left (ExprInt 1 '1')
+        :op '+'
+        :right (ExprApp
+          :func (ExprId 'down')
+          :args (
+            (ExprInfix
+              :left (ExprId 'n')
+              :op '+'
+              :right (ExprInt 1 '1')
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'n'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+      :is_rec True
+    )
+    (LetValueBinding
+      :name 'seen'
+      :value (ExprTuple
+        :fields (
+          (TupleBinding
+            :name 'n'
+            :value (ExprInt 0 '0')
+            :is_var True
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'guarded'
+      :value (ExprFun
+        :return_type (TypePath ('Int'))
+        :body (ExprTry
+          :body (ExprApp
+            :func (ExprId 'down')
+            :args (
+              (ExprInt 0 '0')
+            )
+          )
+          :else_branch (ExprBlock
+            :bindings (
+              (ExprStmt
+                :expr (ExprInfix
+                  :left (ExprSelect
+                    :target (ExprId 'seen')
+                    :field 'n'
+                  )
+                  :op ':='
+                  :right (ExprInfix
+                    :left (ExprSelect
+                      :target (ExprId 'seen')
+                      :field 'n'
+                    )
+                    :op '+'
+                    :right (ExprInt 1 '1')
+                  )
+                )
+              )
+              (ExprStmt
+                :expr (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'raised')
+                    :field 'reraise'
+                  )
+                  :args (
+                    (ExprId 'e')
+                  )
+                )
+              )
+            )
+          )
+          :else_binder 'e'
+        )
+      )
+      :type_annot (TypeAll
+        :result_type (TypePath ('Int'))
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprTry
+            :body (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprId 'guarded')
+                )
+              )
+            )
+            :else_branch (ExprString 'stack overflow' '"stack overflow"')
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'seen ' '"seen "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprId 'seen')
+                  :field 'n'
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

@@ -887,7 +887,19 @@ export
                                 if maybe.isSome(:Value handled) then
                                     maybe.unwrap(:Value handled)
                                 elsif maybe.isSome(:Expr x.elseBranch) then
-                                    evalExpr(maybe.unwrap(:Expr x.elseBranch) f)
+                                    if maybe.isSome(:symbols.ValueSymbol x.elseBinder) then
+                                        (* The else branch names the exception: the error itself, which
+                                         * raised.reraise raises again (docs/raised.md section 5), located
+                                         * and with its frames as if it left this frame, which it was raised
+                                         * in if it has neither *)
+                                        leaving(err f)
+                                        let child = pushScope(f)
+                                        define(child maybe.unwrap(:symbols.ValueSymbol x.elseBinder).name
+                                            option vRaised of Value with let e = err end)
+                                        evalExpr(maybe.unwrap(:Expr x.elseBranch) child)
+                                    else
+                                        evalExpr(maybe.unwrap(:Expr x.elseBranch) f)
+                                    end
                                 else
                                     rethrow(:Value err)
                                 end

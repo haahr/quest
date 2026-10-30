@@ -50,6 +50,7 @@ from quest.values.model import (
     QInt,
     QOk,
     QOption,
+    QRaised,
     QReal,
     QRecord,
     QRef,
@@ -922,7 +923,7 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                 offset=offset,
             )
 
-        case TypedTry(body=body, branches=branches, else_branch=else_branch, offset=offset):
+        case TypedTry(body=body, branches=branches, else_branch=else_branch, else_binder=else_binder, offset=offset):
             try:
                 return eval_expr(body, env)
             except QuestException as raised_exc:
@@ -943,6 +944,21 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                                 env = child_env.pop_scope()
                         else:
                             return eval_expr(branch.body, env)
+                if else_branch is not None and else_binder is not None:
+                    # The else branch names the exception: the exception
+                    # itself, which raised.reraise raises again
+                    # (docs/raised.md section 5), located and with its frames
+                    # as if it left this frame, which it was raised in if it
+                    # has neither
+                    if raised_exc.source_map is None:
+                        raised_exc.source_map = env.source_map
+                    note_frames(raised_exc, env)
+                    child_env = env.push_scope()
+                    child_env.define(else_binder.name, QRaised(raised_exc))
+                    try:
+                        return eval_expr(else_branch, child_env)
+                    finally:
+                        env = child_env.pop_scope()
                 if else_branch is not None:
                     return eval_expr(else_branch, env)
                 raise

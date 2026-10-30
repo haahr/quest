@@ -21,6 +21,7 @@ from quest.diagnostics import QuestTypeError
 from quest.modules.elaboration import (
     create_module_export_scope,
     elaborate_interface,
+    extract_module_external_types,
     elaborate_module,
     register_unit_loader,
 )
@@ -239,11 +240,14 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
 
         # All importers share one export scope (docs/modules.md §2.3). Name
         # opaque exported types after the module's declared name, as elaborating
-        # its source does.
+        # its source does, and give those the module defines as external types
+        # those types, as separately compiled modules have them (raised.T must
+        # be the type of an else binder, docs/raised.md section 3.2).
         module_export_scope = unit.export_scope
         if module_export_scope is None:
             module_export_scope = create_module_export_scope(
-                declared_module_name(file_path, canon_name), canon_name, target_interface_scope, env
+                declared_module_name(file_path, canon_name), canon_name, target_interface_scope, env,
+                concrete_defs=extract_module_external_types(file_path),
             )
             unit.export_scope = module_export_scope
         env.register_module(canon_name, module_export_scope)

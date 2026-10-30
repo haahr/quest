@@ -1,0 +1,58 @@
+import raised = "raised" : Raised
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs rec {
+    fun down(n: Int): Int {
+      let %4: Int = prim +(n, 1)
+      let %5: Int = call down(%4)
+      let %6: Int = prim +(1, %5)
+      return %6
+    }
+  }
+  let n.1: Int = 0
+  let seen: Tuple var n: Int end = tuple(n.1)
+  funs {
+    fun guarded(): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        try catching all traced {
+          let %7: Int = call down(0)
+          jump k1(%7)
+        } handle (e: Exception) {
+          let e.1: raised.T = caught_exception(e)
+          let %8: Int = tuple_field(seen, 0)
+          let %9: Int = prim +(%8, 1)
+          store seen.#0 := %9
+          let %10: Int = call raised.reraise [Int](e.1)
+          jump k1(%10)
+        }
+      }
+    }
+  }
+  join k2(r.1: String) {
+    do call print(r.1)
+    let %11: Int = tuple_field(seen, 0)
+    let %12: String = call conv.int(%11)
+    let %13: String = prim <>("seen ", %12)
+    do call print(%13)
+  } in {
+    try catching all {
+      let %14: Int = call guarded()
+      let %15: String = call conv.int(%14)
+      jump k2(%15)
+    } handle (e.2: Exception) {
+      jump k2("stack overflow")
+    }
+  }
+}
+

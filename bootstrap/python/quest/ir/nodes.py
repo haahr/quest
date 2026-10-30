@@ -532,6 +532,13 @@ class ExceptionPayload:
     exception: Atom
 
 
+@dataclass(eq=False)
+class CaughtException:
+    """A handler's exception as a value of raised.T, which raised.reraise
+    raises again (docs/raised.md): its exception, payload, site, and frames."""
+    exception: Atom
+
+
 # Addresses of locations, for var and out arguments: of a mutable variable, a
 # fresh cell, a record's var field, a tuple's var component, or an array element
 
@@ -589,7 +596,7 @@ class Load:
 Operation = Union[
     Prim, Call, TypeApp, ModuleMember, Builtin, External, CallExternal, MakeClosure, EnvField, Convert, MakeTuple,
     TupleField, MakeRecord, RecordField, MakeVariant, MakeOption, IsTag, Payload, Ordinal, MakeArray, ArrayRep, Index,
-    MakeAuto, MakeException, ExceptionPayload, AddrVar, AddrCell, AddrField, AddrComponent, AddrElement, Load,
+    MakeAuto, MakeException, ExceptionPayload, CaughtException, AddrVar, AddrCell, AddrField, AddrComponent, AddrElement, Load,
 ]
 
 
@@ -824,7 +831,9 @@ class Try:
     `handler`, with `exception` bound to the exception raised. `catching` says
     what the handler catches (docs/exceptions.md §5.1): CATCH_LISTED, the
     exceptions `catches` (its patterns, atoms bound before the try); CATCH_ALL,
-    every exception (it has an else branch); or CATCH_UNKNOWN, if its patterns
+    every exception (it has an else branch); CATCH_ALL_TRACED, every exception,
+    with its frames captured (its else branch names the exception, which it may
+    raise again, docs/raised.md section 5); or CATCH_UNKNOWN, if its patterns
     are computed in the handler."""
     body: Body
     exception: Var
@@ -834,7 +843,7 @@ class Try:
 
 
 # What a try's handler catches (Try.catching)
-CATCH_LISTED, CATCH_ALL, CATCH_UNKNOWN = "listed", "all", "unknown"
+CATCH_LISTED, CATCH_ALL, CATCH_ALL_TRACED, CATCH_UNKNOWN = "listed", "all", "all_traced", "unknown"
 
 
 @dataclass(eq=False)

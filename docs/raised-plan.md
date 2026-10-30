@@ -6,9 +6,13 @@ A plan for implementing [raised.md](raised.md) (2026-10-29): the binder `else wi
 compiler's alone.
 
 Steps 1 and 7 are commits of their own. Steps 2 through 6 are one commit, since a golden test that uses the binder
-runs in every phase of both suites, and none of them can pass until the whole pipeline handles it. That commit takes
-the next ABI version: the runtime header, the library, and the externals table all change. Each commit passes
+runs in every phase of both suites, and none of them can pass until the whole pipeline handles it. Step 1 took the
+next ABI version (56), since it changes the runtime header and the externals table. Each commit passes
 `tools/check`.
+
+**Status** (2026-10-29): steps 1 to 6 are done, unpushed until the arm64 plan is finished. Step 7 waits for them to be
+pushed and for a release cut from them, since `questlang/` may use only what the current release compiles
+([instructions.md](instructions.md) §6.1).
 
 | Step | What | Compilers |
 | --- | --- | --- |
@@ -88,18 +92,19 @@ unit test passes.
 
 ## 5. The IR and the Backends
 
-- A new IR statement, `CaptureRaised(dest: Var, exception: Var)`: the raised exception a `try`'s handler caught
-  (`exception`, the `Try`'s variable), as a value of `raised.T`. It may appear only in that handler (the verifier
-  checks, as it checks `Reraise`'s variable).
+- A new IR operation, `CaughtException(exception)` (`caught_exception(e)`, `opCaughtException`), beside
+  `ExceptionPayload`: the raised exception a `try`'s handler caught (`exception`, the `Try`'s variable), as a value of
+  `raised.T`, bound by a `let`. (Planned as a statement; an operation like `ExceptionPayload` needed nothing new in
+  the passes.)
 - `ir.Try.catching` gains `CATCH_ALL_TRACED`, for a `try` whose `else` has a binder.
 - Lowering (`ir/lower.py`, `questlang/ir/lower.mod.quest`): with a binder, the handler's `else` path is
-  `CaptureRaised(binder, exception)` then the branch; `catching` is `CATCH_ALL_TRACED`.
+  `let binder = caught_exception(exception)` then the branch; `catching` is `CATCH_ALL_TRACED`.
 - Every pass that matches statements handles the new one: `walk`, `verify`, `specialize`, `printer`, `describe`
   (both compilers), the representation and closure passes in the self-hosted compiler where they enumerate
   statements.
 - C printer (`codegen/c/printer.py`, `questlang/codegen/c/printer.mod.quest`): `dest = quest_raised_capture(&state);`
   and `Q_CATCH_ALL_TRACED` in `emit_catches`.
-- Native backend (self-hosted): the SSA builder (`questlang/ssa/build.mod.quest`) turns `CaptureRaised` into a call of
+- Native backend (self-hosted): the SSA builder (`questlang/ssa/build.mod.quest`) turns `CaughtException` into a call of
   `quest_raised_capture` with the address of the handler's state slot (ssa.md: the state is already a stack slot,
   whose address `quest_reraise` gets); `ssac` and the arm64 code generator need nothing new beyond the call, and the
   catch kind in the handler record. Add the case to whichever arm64 step covers `try` if that step is not done yet
@@ -133,7 +138,7 @@ Tests, as behavior goldens shared by both suites, with error tests in `tests/err
 Documentation:
 
 - [type-system.md](type-system.md): a §6.15 on the binder and `raised.T`, pointing to raised.md.
-- [exceptions.md](exceptions.md) §3.1 and §5.1: `CaptureRaised`, `raised.reraise` as a re-raise, and
+- [exceptions.md](exceptions.md) §3.1 and §5.1: `CaughtException`, `raised.reraise` as a re-raise, and
   `CATCH_ALL_TRACED`.
 - [ir.md](ir.md): the new statement and catch kind; [ssa.md](ssa.md) if the builder's description lists statements.
 - raised.md loses its "This document specifies an extension" framing and becomes the reference.

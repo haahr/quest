@@ -81,6 +81,8 @@ def _local_binders(node: Any) -> Iterator[tuple[ValueSymbol, str]]:
             for br in n.branches:
                 if br.binder is not None:
                     yield br.binder, "binder"
+        if isinstance(n, TypedTry) and n.else_binder is not None:
+            yield n.else_binder, "binder"
         if isinstance(n, TypedInspect):
             for br in n.branches:
                 for b in br.binders:
@@ -216,13 +218,14 @@ class _Checker:
                     inner = values | ({br.binder.symbol_id} if br.binder is not None else set())
                     self.walk(br.body, frozenset(inner), types)
                 self.walk(else_branch, values, types)
-            case TypedTry(body=body, branches=branches, else_branch=else_branch):
+            case TypedTry(body=body, branches=branches, else_branch=else_branch, else_binder=else_binder):
                 self.walk(body, values, types)
                 for br in branches:
                     self.walk(br.exc_pattern, values, types)
                     inner = values | ({br.binder.symbol_id} if br.binder is not None else set())
                     self.walk(br.body, frozenset(inner), types)
-                self.walk(else_branch, values, types)
+                inner = values | ({else_binder.symbol_id} if else_binder is not None else set())
+                self.walk(else_branch, frozenset(inner), types)
             case TypedInspect(target=target, branches=branches, else_branch=else_branch):
                 self.walk(target, values, types)
                 for br in branches:

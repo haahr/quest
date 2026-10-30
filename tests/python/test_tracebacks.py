@@ -98,6 +98,24 @@ g();
 """,
         ["in f", "in g", "in <main>"],
     ),
+    "rethrow": (
+        """import raised: Raised;
+exception Fail end;
+let rec deep(n: Int): Int = if n is 0 then raise Fail end else 1 + deep(n - 1) end;
+let guard(n: Int): Int = try deep(n) else with e then raised.reraise(e) end;
+guard(3);
+""",
+        ["in deep", "... deep repeated 3 more times", "in guard", "in <main>"],
+    ),
+    "rethrow_later": (
+        """import raised: Raised;
+exception Inner end;
+let catch(): raised.T = try raise Inner as raised.T end else with e then e end;
+let later(r: raised.T): Int = raised.reraise(r);
+later(catch());
+""",
+        ["in catch", "in <main>"],
+    ),
     "module_initializer": (
         """import broken: Broken;
 broken.x;

@@ -1425,6 +1425,7 @@ export
                 (* In its slot form (a record or variant, for a boxed
                  * variable) *)
                 types.shapeQvalToSlot(atomName(p x.exc) <> ".payload" shapeOf(maybe.unwrap(:Variable result).type))
+            when opCaughtException with x then syntax.call("quest_raised_capture" one("&" <> atomName(p x.exc)))
             when opAddrVar with x then
                 if isPointerParam(p x.v) then name(p x.v)
                 elsif hashMap.contains(:Int :Bool p.fs.volatile x.v.id) then
@@ -1549,6 +1550,9 @@ export
         if eq(catching nodes.catchAll) then
             emit(p handler <> ".catches = NULL;")
             emit(p handler <> ".n_catches = Q_CATCH_ALL;")
+        elsif eq(catching nodes.catchAllTraced) then
+            emit(p handler <> ".catches = NULL;")
+            emit(p handler <> ".n_catches = Q_CATCH_ALL_TRACED;")
         elsif eq(catching nodes.catchUnknown) then
             emit(p handler <> ".catches = NULL;")
             emit(p handler <> ".n_catches = Q_CATCH_UNKNOWN;")

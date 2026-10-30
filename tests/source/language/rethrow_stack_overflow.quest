@@ -1,0 +1,13 @@
+(* In the interpreters, stack.overflow is caught by an else branch that names
+   it and raised again like any other exception; compiled code cannot catch it
+   (docs/exceptions.md section 6, docs/raised.md section 5). *)
+(* @skip-phase: run_c_compiled *)
+import raised: Raised;
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let rec down(n: Int): Int = 1 + down(n + 1);
+let seen = tuple let var n = 0 end;
+let guarded(): Int = try down(0) else with e then seen.n := seen.n + 1 raised.reraise(e) end;
+print(try conv.int(guarded()) else "stack overflow" end);
+print("seen " <> conv.int(seen.n))

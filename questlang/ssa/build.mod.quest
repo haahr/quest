@@ -543,6 +543,7 @@ export
             when opMakeAuto then "makeAuto"
             when opMakeException then "makeException"
             when opExceptionPayload then "exceptionPayload"
+            when opCaughtException then "caughtException"
             when opAddrVar then "addrVar"
             when opAddrCell then "addrCell"
             when opAddrField then "addrField"
@@ -1623,6 +1624,11 @@ export
                 let state = hashMap.find(:Int :Int fn.handlerVars v.id)
                 slotFromWord(fn loadWord(fn state runtimeLayout.offset("QExceptionState" "payload") tInt)
                     maybe.unwrap(:Variable result).type)
+            when opCaughtException with x then
+                (* The handler's state, copied to the heap (docs/raised.md
+                 * section 6) *)
+                let v = case x.exc when atomVar with y then y.v else ir.newVar("" model.okType false) end
+                array of call1(fn "quest_raised_capture" array of hashMap.find(:Int :Int fn.handlerVars v.id) end tPtr) end
             when opMakeAuto with x then
                 let storedType = model.autoPayloadType(x.autoType maybe.none(:Type))
                 array of call1(fn "quest_auto_new" array of maybeDescriptor(fn x.descriptor) slotToWord(fn atom(fn x.payload) storedType) end
@@ -1946,6 +1952,9 @@ export
             if eq(x.catching ir.catchAll) then
                 store(fn h catchesAt 8 null(fn))
                 store(fn h countAt 8 constant(fn runtimeLayout.constant("Q_CATCH_ALL")))
+            elsif eq(x.catching ir.catchAllTraced) then
+                store(fn h catchesAt 8 null(fn))
+                store(fn h countAt 8 constant(fn runtimeLayout.constant("Q_CATCH_ALL_TRACED")))
             elsif eq(x.catching ir.catchUnknown) then
                 store(fn h catchesAt 8 null(fn))
                 store(fn h countAt 8 constant(fn runtimeLayout.constant("Q_CATCH_UNKNOWN")))

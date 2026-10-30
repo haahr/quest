@@ -435,7 +435,9 @@ export
         end
 
     (* Case, Inspect, Try Branches:
-     * {when Pattern [with Binder [: Type]] then Binding} [else Binding] *)
+     * {when Pattern [with Binder [: Type]] then Binding} [else Binding]; a
+     * try's else may name the exception it caught: else with ident [: Type]
+     * then Binding *)
     let branchRules(x: Targets): Ok =
         begin
             rule(x.caseBranches actions.caseBranches) of
@@ -448,7 +450,7 @@ export
             end
             rule(x.tryBranches actions.tryBranches) of
                 rep of t(kwWhen) x.value opt of p(kwWith) t(ident) opt of p(colon) x.type end end p(kwThen) x.binding end
-                opt of t(kwElse) x.binding end
+                opt of t(kwElse) opt of p(kwWith) t(ident) opt of p(colon) x.type end p(kwThen) end x.binding end
             end
         end
 

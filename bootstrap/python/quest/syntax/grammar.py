@@ -442,6 +442,21 @@ def _try_branch(when_token: Token, exc_pattern: ast.Expr, binder: Any, body: tup
     )
 
 
+def _try_branches(branches: tuple[Any, ...], else_clause: Any) -> tuple[Any, ...]:
+    """A try's branches, its else body, and the else branch's binder and its
+    annotation (docs/raised.md)."""
+    if else_clause is None:
+        return tuple(_try_branch(*branch) for branch in branches), None, None, None
+    else_token, binder, bindings = else_clause
+    binder_token, binder_type = binder or (None, None)
+    return (
+        tuple(_try_branch(*branch) for branch in branches),
+        _body(bindings, else_token.offset),
+        binder_token.lexeme if binder_token else None,
+        binder_type,
+    )
+
+
 # --- imports ---
 
 def _module_import(entries: tuple[tuple[str, str], ...], colon_token: Token, iface_path: str) -> ast.ImportItem:
@@ -1050,6 +1065,8 @@ def build_quest_grammar() -> None:
             body=_body(body_bindings, try_token.offset),
             branches=branches[0],
             else_branch=branches[1],
+            else_binder=branches[2],
+            else_binder_type=branches[3],
             offset=try_token.offset,
         ),
     )
@@ -1149,12 +1166,13 @@ def build_quest_grammar() -> None:
     # ------------------------------------------------------------------------
     # Case, Inspect, Try Branches:
     # {when Pattern [with Binder] then Binding} [else Binding]
-    # Each yields (branches, else_body).
+    # Each yields (branches, else_body); a try's else may name the exception it
+    # caught (else with ide [: Type] then Binding), and its branches yield
+    # (branches, else_body, else_binder, else_binder_type).
     # ------------------------------------------------------------------------
     for branches_target, pattern, binder, build_branch in (
         (CASE_BRANCHES, IDE_LIST, T(TK.IDENT), _case_branch),
         (INSPECT_BRANCHES, TYPE, IDE_LIST, _inspect_branch),
-        (TRY_BRANCHES, VALUE, T(TK.IDENT), _try_branch),
     ):
         branches_target.add_rule(
             (
@@ -1166,6 +1184,13 @@ def build_quest_grammar() -> None:
                 _else_body(else_clause),
             ),
         )
+    TRY_BRANCHES.add_rule(
+        (
+            Rep(T(TK.KW_WHEN), VALUE, Opt(P(TK.KW_WITH), T(TK.IDENT), Opt(P(TK.COLON), TYPE)), P(TK.KW_THEN), BINDING),
+            Opt(T(TK.KW_ELSE), Opt(P(TK.KW_WITH), T(TK.IDENT), Opt(P(TK.COLON), TYPE), P(TK.KW_THEN)), BINDING),
+        ),
+        _try_branches,
+    )
 
     # ------------------------------------------------------------------------
     # HasType / HasMutType / HasKind

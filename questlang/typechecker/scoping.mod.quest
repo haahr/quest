@@ -280,10 +280,17 @@ export
                         end
                     end
                 when exprTry with x then
-                    for i = 0 upto {extent x.branches - 1} do
-                        let binder = x.branches[i].binder
-                        if maybe.isSome(:symbols.ValueSymbol binder) then
-                            hashMap.insert(:Int :Bool st.localIds maybe.unwrap(:symbols.ValueSymbol binder).symbolId true)
+                    begin
+                        for i = 0 upto {extent x.branches - 1} do
+                            let binder = x.branches[i].binder
+                            if maybe.isSome(:symbols.ValueSymbol binder) then
+                                hashMap.insert(:Int :Bool st.localIds maybe.unwrap(:symbols.ValueSymbol binder).symbolId
+                                    true)
+                            end
+                        end
+                        if maybe.isSome(:symbols.ValueSymbol x.elseBinder) then
+                            hashMap.insert(:Int :Bool st.localIds maybe.unwrap(:symbols.ValueSymbol x.elseBinder).symbolId
+                                true)
                         end
                     end
                 when exprInspect with x then
@@ -436,7 +443,12 @@ export
                             end
                             walkExpr(st br.body inner types)
                         end
-                        walkOpt(st x.elseBranch values types)
+                        let elseInner = if maybe.isSome(:symbols.ValueSymbol x.elseBinder) then
+                            withIds(values array of maybe.unwrap(:symbols.ValueSymbol x.elseBinder).symbolId end)
+                        else
+                            values
+                        end
+                        walkOpt(st x.elseBranch elseInner types)
                     end
                 when exprInspect with x then
                     begin

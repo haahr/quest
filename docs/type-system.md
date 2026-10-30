@@ -853,6 +853,18 @@ them with `let`s before the binding (`make_scope_exceptions` in `ir/lower.py`), 
 them in the binding's frame (`make_scope_exceptions` in `interpreter/treewalk.py`), where the expression that makes
 one finds it.
 
+### 6.15. Catching and Raising Again an Exception of Any Type (`else with`)
+
+A `try`'s `else` branch may name the exception it caught, `else with e then ...`, whatever its type
+([raised.md](raised.md)). The binder's type is `raised.T` (`RAISED_TYPE` in `types/model.py`), the external type
+`QRaised *` that `lib/raised` defines and an importer of `raised` sees too, so `else with` needs no import; an
+annotation, if written, must be that type. Its meaning is `Some(A::TYPE) Tuple exc: Exception(A) payload: A end`, the
+caught exception with the payload its raise checked, which is why raising the two again together is sound without
+knowing `A`; it is opaque, and `raise` does not take it: `raised.reraise(A::TYPE r: raised.T): A` raises it again, its
+`A` only there to let a call that does not return stand wherever a value is expected. The binder is immutable, in a
+`try_` scope (local for §6.2.3), and its value first-class. `_elaborate_try_expr` in `typechecker/exceptions.py`
+declares it.
+
 ---
 
 ## 7. Summary Complexity Matrix

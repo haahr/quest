@@ -1,0 +1,100 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('raised') : 'Raised')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'down' :rec :type Fun(n: Int): Int
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+        :body (TypedInfix '+' :type Int
+          :left (TypedInt 1 :type Int)
+          :right (TypedApp :type Int
+            :func (TypedVar 'down' :type Fun(n: Int): Int)
+            :args (
+              (TypedInfix '+' :type Int
+                :left (TypedVar 'n' :type Int)
+                :right (TypedInt 1 :type Int))
+            )))))
+    (TypedLetValue 'seen' :type Tuple var n: Int end
+      :value (TypedTuple :type Tuple var n: Int end
+        :elements (
+          (TypedInt 0 :type Int)
+        )))
+    (TypedLetValue 'guarded' :type Fun(): Int
+      :value (TypedFun :params () :type Fun(): Int
+        :body (TypedTry :type Int
+          :body (TypedApp :type Int
+            :func (TypedVar 'down' :type Fun(n: Int): Int)
+            :args (
+              (TypedInt 0 :type Int)
+            ))
+          :branches ()
+          :else (TypedBlock :type Int
+            :bindings (
+              (TypedExprStmt
+                :expr (TypedAssign
+                  :target (TypedSelect 'n' :type Int
+                    :target (TypedVar 'seen' :type Tuple var n: Int end))
+                  :value (TypedInfix '+' :type Int
+                    :left (TypedSelect 'n' :type Int
+                      :target (TypedVar 'seen' :type Tuple var n: Int end))
+                    :right (TypedInt 1 :type Int))))
+            )
+            :result (TypedApp :type Int
+              :func (TypedTypeApp [Int] :type Fun(r: raised.T): Int
+                :func (TypedSelect 'reraise' :type All(A :: TYPE) Fun(r: raised.T): A
+                  :target (TypedVar 'raised' :type Module 'raised')))
+              :args (
+                (TypedVar 'e' :type raised.T)
+              ))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedVar 'guarded' :type Fun(): Int)
+                  :args ())
+              ))
+            :branches ()
+            :else (TypedString 'stack overflow' :type String))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'seen ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'n' :type Int
+                  :target (TypedVar 'seen' :type Tuple var n: Int end))
+              )))
+        )))
+  ))

@@ -262,6 +262,8 @@ system, intermediate representation, and native runtime design. If you are new t
   `dynamic.be`), and cyclic JSOG serialization (`dynamic.extern` / `dynamic.intern`).
 - [docs/exceptions.md](docs/exceptions.md): Zero-cost stack-unwinding exception tracebacks and raise-site reporting in
   interpreters and compiled code.
+- [docs/raised.md](docs/raised.md): Catching an exception of any type with `else with e then`, and raising it again
+  with `raised.reraise`.
 - [docs/interpreter.md](docs/interpreter.md): Bootstrap tree-walking interpreter, runtime `QValue` model, and
   operational evaluation rules.
 - [docs/repl.md](docs/repl.md): Interactive REPL, multi-line continuation heuristics, and transactional error rollback.

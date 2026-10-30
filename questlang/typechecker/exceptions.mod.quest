@@ -7,6 +7,7 @@ import
     questlang/types/model : questlang/types/Model
     questlang/types/symbols : questlang/types/Symbols
     questlang/types/env : questlang/types/Env
+    questlang/types/subtyping : questlang/types/Subtyping
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/typechecker/checker : questlang/typechecker/Checker
     questlang/typechecker/checks : questlang/typechecker/Checks
@@ -124,7 +125,35 @@ export
                         end)
                         vector.append(:typedAst.Expr bodies handled.body)
                     end
-                    let elseTyped = checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
+                    (* An else branch that names the exception it caught binds it as a
+                     * raised.T (docs/raised.md section 3) *)
+                    let elseBinder = if maybe.isSome(:String x.elseBinder) then
+                        let name = maybe.unwrap(:String x.elseBinder)
+                        if maybe.isSome(:ast.TypeExpr x.elseBinderType) then
+                            let annot = maybe.unwrap(:ast.TypeExpr x.elseBinderType)
+                            let annotated = elaborateTypes.elaborateType(annot e)
+                            if not(subtyping.isTypeEqual(annotated model.raisedType env.lookupOf(e))) then
+                                diagnostics.fail(:Ok "The else branch's binder '" <> name <> "' has type '" <>
+                                    model.show(model.raisedType) <> "', not '" <> model.show(annotated) <> "'"
+                                    annot.span.startOffset)
+                            end
+                        end
+                        maybe.some(:symbols.ValueSymbol
+                            symbols.newValueSymbol(name model.raisedType false false false c.functionDepth 0))
+                    else
+                        maybe.none(:symbols.ValueSymbol)
+                    end
+                    let elseTyped = if maybe.isSome(:symbols.ValueSymbol elseBinder) then
+                        let binderSym = maybe.unwrap(:symbols.ValueSymbol elseBinder)
+                        env.scoped(:maybe.T(typedAst.Expr) e "try_" <> binderSym.name
+                            fun(s: symbols.Scope): maybe.T(typedAst.Expr)
+                                begin
+                                    symbols.declareValue(e.currentScope binderSym)
+                                    checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
+                                end)
+                    else
+                        checker.elaborateOptionalBranch(c x.elseBranch expected e loopDepth)
+                    end
                     let resultType = if maybe.isSome(:Type expected) then
                         maybe.unwrap(:Type expected)
                     else
@@ -139,6 +168,7 @@ export
                         let body = bodyTyped
                         let branches = vector.toArray(:typedAst.TryBranch branches)
                         let elseBranch = elseTyped
+                        let elseBinder = elseBinder
                     end)
                 end
             else internal(:typedAst.Expr "a try" expr)

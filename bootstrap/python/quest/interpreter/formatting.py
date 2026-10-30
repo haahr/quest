@@ -13,6 +13,7 @@ from quest.types import (
     QAllType,
     QArrayType,
     QAutoType,
+    QExternalType,
     QFunType,
     QOptionType,
     QPathType,
@@ -113,12 +114,13 @@ def _format_typed(val: QValue, typ: QType, visited: set[int]) -> str:
 
     # A value of an abstract type, such as a module's T, is hidden, so that the
     # interpreter and compiled code (which cannot see a separately compiled
-    # module's representation) agree. Word.T is a library type with literals of
-    # its own.
+    # module's representation) agree, as is a value of an external type (raised.T,
+    # say), which compiled code cannot look into. Word.T is a library type with
+    # literals of its own.
     match typ:
         case QPathType() | QAbstractType() | QTypeApp():
             return "<hidden>"
-        case QTypeVar() if not isinstance(val, QWord):
+        case QTypeVar() | QExternalType() if not isinstance(val, QWord):
             return "<hidden>"
         case QFunType() | QAllType():
             return "<fun>"

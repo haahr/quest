@@ -37,9 +37,12 @@ export
     original: String
     proxy: String
 
-    (* What a try's handler catches *)
+    (* What a try's handler catches: listed exceptions, all, all with their
+     * frames captured (its else branch names the exception, docs/raised.md
+     * section 5), or unknown until it runs *)
     catchListed: String
     catchAll: String
+    catchAllTraced: String
     catchUnknown: String
 
     (* The IR's stages, in order: each pass produces the next *)
@@ -211,6 +214,8 @@ export
         opMakeAuto with witness: Type autoType: Type var payload: Atom var descriptor: maybe.T(Descriptor) end
         opMakeException with name: String payloadType: maybe.T(Type) end
         opExceptionPayload with var exc: Atom end
+        (* A handler's exception as a value of raised.T (docs/raised.md) *)
+        opCaughtException with var exc: Atom end
         opAddrVar with var v: Variable end
         opAddrCell with var init: Atom end
         opAddrField with var base: Atom name: String var viewMap: maybe.T(Variable) end
@@ -391,6 +396,7 @@ export
     and OpMakeAuto = Tuple witness: Type autoType: Type var payload: Atom var descriptor: maybe.T(Descriptor) end
     and OpMakeException = Tuple name: String payloadType: maybe.T(Type) end
     and OpExceptionPayload = Tuple var exc: Atom end
+    and OpCaughtException = Tuple var exc: Atom end
     and OpAddrVar = Tuple var v: Variable end
     and OpAddrCell = Tuple var init: Atom end
     and OpAddrField = Tuple var base: Atom name: String var viewMap: maybe.T(Variable) end

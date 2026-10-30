@@ -26,6 +26,7 @@ from quest.types.model import (
     MAX_SUBTYPE_FUEL,
     MAX_TYPE_EXPANSION_DEPTH,
     OK_TYPE,
+    RAISED_TYPE,
     REAL_TYPE,
     RESERVED_INDEX_LIMIT,
     STRING_TYPE,

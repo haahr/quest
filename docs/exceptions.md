@@ -127,7 +127,9 @@ raise the errors themselves, so it locates them in that file: the one place the 
 
 A try's handler raises the caught exception again when no branch matches, with its own terminator,
 `ir.Reraise(exception)`, which keeps the original raise site (and, in compiled code, the original frames; §5.4).
-`ir.Raise` always makes a new raise.
+`ir.Raise` always makes a new raise. An `else` branch that names the exception holds it as a value of `raised.T`
+(`ir.CaughtException(exception)`, a heap copy of the handler's state in compiled code), and `raised.reraise` raises it
+again as `ir.Reraise` does, from anywhere ([raised.md](raised.md)).
 
 ### 3.2. In the Interpreters
 
@@ -142,7 +144,10 @@ to errors raised while elaborating it. Raise sites use the same two fields rathe
   line past the end of the program.)
 - The IR interpreter sets `offset` from the raising node and the source map from the unit, for errors the operation
   raises that are not located already.
-- `ir.Reraise` and a non-matching `TypedTry` raise the original `QuestException` object, so its site is kept.
+- `ir.Reraise` and a non-matching `TypedTry` raise the original `QuestException` object, so its site is kept, and so
+  does `raised.reraise`, whose value holds that object. An `else` branch that names an exception first gives it the
+  source map and frames of its own frame, if it has none (it was raised there), as leaving the frame would, since
+  raising it again from elsewhere must not give it the frame `raised.reraise` runs in.
 - An exception raised by a `@qchecked` builtin backing an `external` has no offset: there is no Quest location to give
   it (§2.1).
 
@@ -204,18 +209,21 @@ catches everything. A pattern is an expression, evaluated today after the except
 before the try's body gives the same value, so the try can record what it catches when it is entered:
 
 - `ir.Try` gains `catching` and `catches`: `CATCH_LISTED` and the atoms of its patterns, evaluated before the try
-  (`lower.py` hoists them); or `CATCH_ALL`, when it has an `else` branch; or `CATCH_UNKNOWN`, when some pattern is not
-  pure. The handler still tests the patterns as now, against the hoisted atoms.
-- `QExceptionHandler` gains `const QException *const *catches` and `int n_catches`, with `-1` for `ALL` and `-2` for
-  `UNKNOWN`. Entering a `try` stores them, from a local array of the catch atoms that lives as long as the try's
-  block. The handler is popped on every way out of the block, as now.
+  (`lower.py` hoists them); or `CATCH_ALL`, when it has an `else` branch; or `CATCH_ALL_TRACED`, when its `else`
+  branch names the exception ([raised.md](raised.md) §5); or `CATCH_UNKNOWN`, when some pattern is not pure. The
+  handler still tests the patterns as now, against the hoisted atoms.
+- `QExceptionHandler` gains `const QException *const *catches` and `int n_catches`, with `-1` for `ALL`, `-2` for
+  `UNKNOWN`, and `-3` for `ALL_TRACED`. Entering a `try` stores them, from a local array of the catch atoms that lives
+  as long as the try's block. The handler is popped on every way out of the block, as now.
 
 `quest_raise_at` walks the handler chain from the innermost handler:
 
-- a handler that catches the exception, or catches everything: it **will be caught**. Set `quest_current_exception`
-  and `longjmp`, as now.
+- a handler that catches the exception, or catches everything (`ALL`): it **will be caught**. Set
+  `quest_current_exception` and `longjmp`, as now.
 - a handler that does not list it: go on to the next.
-- an `UNKNOWN` handler: it **might be caught**. Capture the frames (§5.4), then `longjmp`.
+- an `UNKNOWN` handler: it **might be caught**. Capture the frames (§5.4), then `longjmp`. An `ALL_TRACED` handler
+  will catch it, but may give it to `raised.reraise`, which should report the frames of the raise, not its own; so it
+  is treated the same.
 - the end of the chain: it **will not be caught**. Print the exception and its frames from the live stack (§5.3) and
   `exit(1)`, without allocating.
 

@@ -62,6 +62,7 @@ from quest.values.model import (
     QOk,
     QOption,
     QReal,
+    QRaised,
     QRecord,
     QRef,
     QString,
@@ -500,6 +501,14 @@ class Interpreter:
                     raise IRInterpreterError("exception_payload of a value other than a handler's exception")
                 payload = raised.raised.payload
                 return payload if payload is not None else OK_VALUE
+            case ir.CaughtException(exception=e):
+                raised = self.atom(e, frame)
+                if not isinstance(raised, _Raised):
+                    raise IRInterpreterError("caught_exception of a value other than a handler's exception")
+                # With the frames running, as if it left this frame, which it
+                # was raised in if it has none (docs/raised.md section 5)
+                note_frames(raised.raised, self.renv)
+                return QRaised(raised.raised)
             case ir.AddrVar() | ir.AddrCell() | ir.AddrField() | ir.AddrComponent() | ir.AddrElement():
                 return self.address(o, frame)
             case ir.Load(address=a):

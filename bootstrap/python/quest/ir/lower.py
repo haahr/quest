@@ -812,14 +812,16 @@ class _Lowerer:
                     with self.in_body(else_body):
                         lower_branch(else_e)
                 self.emit(ir.Inspect(v, tuple(cases), else_body, auto_type, e.offset))
-            case TypedTry(body=body_e, branches=branches, else_branch=else_e):
+            case TypedTry(body=body_e, branches=branches, else_branch=else_e, else_binder=else_binder):
                 exception = self.fresh("e", EXCEPTION_TYPE)
                 # What the handler catches, when that is known before the try
                 # (docs/exceptions.md §5.1): its patterns' values, computed
                 # before the try when computing them there gives the same values
                 patterns: Optional[list[ir.Atom]] = None
                 catching = ir.CATCH_UNKNOWN
-                if else_e is not None:
+                if else_binder is not None:
+                    catching = ir.CATCH_ALL_TRACED
+                elif else_e is not None:
                     catching = ir.CATCH_ALL
                 elif all(self.pure_pattern(br.exc_pattern) for br in branches):
                     patterns = [self.value(br.exc_pattern) for br in branches]
@@ -829,7 +831,7 @@ class _Lowerer:
                 with self.in_body(stmt.body):
                     lower_branch(body_e)
                 with self.in_body(stmt.handler):
-                    self.handler(exception, branches, else_e, lower_branch, patterns)
+                    self.handler(exception, branches, else_e, lower_branch, patterns, else_binder)
             case _:
                 raise LoweringError(f"branches of {type(e).__name__}")
 
@@ -846,12 +848,15 @@ class _Lowerer:
         return False
 
     def handler(self, exception: ir.Var, branches, else_e, lower_branch,
-                patterns: Optional[list[ir.Atom]] = None) -> None:
+                patterns: Optional[list[ir.Atom]] = None, else_binder: Optional[ValueSymbol] = None) -> None:
         """A try's handler: the branches' patterns (or their values, computed
         before the try) tested in order against the exception, else the else
-        branch, or the exception raised again."""
+        branch (with its binder, if it names the exception), or the exception
+        raised again."""
         if not branches:
             if else_e is not None:
+                if else_binder is not None:
+                    self.emit(ir.Let(self.bind_symbol(else_binder), ir.CaughtException(exception)))
                 lower_branch(else_e)
             else:
                 self.terminate(ir.Reraise(exception))
@@ -866,7 +871,8 @@ class _Lowerer:
                 self.emit(ir.Let(self.bind_symbol(br.binder), ir.ExceptionPayload(exception)))
             lower_branch(br.body)
         with self.in_body(stmt.else_body):
-            self.handler(exception, rest, else_e, lower_branch, patterns[1:] if patterns is not None else None)
+            self.handler(exception, rest, else_e, lower_branch, patterns[1:] if patterns is not None else None,
+                         else_binder)
 
     # Functions
 

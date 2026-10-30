@@ -220,6 +220,8 @@ class _Printer:
                 return f"exception {name}{': ' + self.type(pt) if payload else ''}"
             case ir.ExceptionPayload(exception=e):
                 return f"exception_payload({self.atom(e)})"
+            case ir.CaughtException(exception=e):
+                return f"caught_exception({self.atom(e)})"
             case ir.AddrVar(var=var):
                 return f"addr {self.name(var)}"
             case ir.AddrCell(init=init):
@@ -353,6 +355,8 @@ class _Printer:
                     self.emit(depth, "try {")
                 elif catching == ir.CATCH_ALL:
                     self.emit(depth, "try catching all {")
+                elif catching == ir.CATCH_ALL_TRACED:
+                    self.emit(depth, "try catching all traced {")
                 else:
                     self.emit(depth, f"try catching ({self.atoms(catches)}) {{")
                 self.body(body, depth + 1)

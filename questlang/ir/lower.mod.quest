@@ -1166,7 +1166,9 @@ export
                  * them there gives the same values *)
                 let var catching = nodes.catchUnknown
                 let var patterns = maybe.none(:Array(Atom))
-                if maybe.isSome(:Expr x.elseBranch) then
+                if maybe.isSome(:symbols.ValueSymbol x.elseBinder) then
+                    catching := nodes.catchAllTraced
+                elsif maybe.isSome(:Expr x.elseBranch) then
                     catching := nodes.catchAll
                 else
                     let var pure = true
@@ -1191,7 +1193,7 @@ export
                     let var catches = maybe.unwrapOr(:Array(Atom) listed array of :Atom end)
                 end)
                 inBody(l tryBody fun(): Ok lowerBranch(x.body))
-                inBody(l handlerBody fun(): Ok handler(l exc x.branches 0 x.elseBranch lowerBranch listed))
+                inBody(l handlerBody fun(): Ok handler(l exc x.branches 0 x.elseBranch x.elseBinder lowerBranch listed))
             else fail(:Ok "branches of this expression")
         end
 
@@ -1216,12 +1218,17 @@ export
         end
 
     (* A try's handler: the branches' patterns (or their values, computed before
-     * the try) tested in order against the exception, else the else branch, or
-     * the exception raised again *)
+     * the try) tested in order against the exception, else the else branch
+     * (with its binder, if it names the exception), or the exception raised
+     * again *)
     and handler(l: Lowerer exc: Variable branches: Array(typedAst.TryBranch) first: Int elseBranch: maybe.T(Expr)
-            lowerBranch: All(b: Expr) Ok patterns: maybe.T(Array(Atom))): Ok =
+            elseBinder: maybe.T(symbols.ValueSymbol) lowerBranch: All(b: Expr) Ok patterns: maybe.T(Array(Atom))): Ok =
         if first >= extent branches then
             if maybe.isSome(:Expr elseBranch) then
+                if maybe.isSome(:symbols.ValueSymbol elseBinder) then
+                    let v = bindSymbol(l maybe.unwrap(:symbols.ValueSymbol elseBinder) maybe.none(:Type) false)
+                    emit(l nodes.letStmt(v option opCaughtException of Op with let var exc = va(exc) end))
+                end
                 lowerBranch(maybe.unwrap(:Expr elseBranch))
             else
                 terminate(l option sReraise of Stmt with let var exc = exc end)
@@ -1242,7 +1249,7 @@ export
                     end
                     lowerBranch(br.body)
                 end)
-            inBody(l elseBody fun(): Ok handler(l exc branches first + 1 elseBranch lowerBranch patterns))
+            inBody(l elseBody fun(): Ok handler(l exc branches first + 1 elseBranch elseBinder lowerBranch patterns))
         end
 
     (* Functions *)

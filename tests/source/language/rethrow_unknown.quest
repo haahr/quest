@@ -1,0 +1,64 @@
+(* An else branch that names the exception it caught, of any type, as a
+   raised.T, and raised.reraise raising it again (docs/raised.md). *)
+
+import raised: Raised;
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+exception Fail : String end;
+exception Other end;
+
+(* 1. The finally idiom: the cleanup runs for every exception, known or not,
+   which then goes on with its payload *)
+let cleanups = tuple let var n = 0 end;
+let protect(A::TYPE body: All() A): A =
+    begin
+        let result = try
+            body()
+        else with e then
+            cleanups.n := cleanups.n + 1
+            raised.reraise(:A e)
+        end
+        cleanups.n := cleanups.n + 1
+        result
+    end;
+print(conv.int(protect(:Int fun(): Int 7)));
+print(try protect(:String fun(): String raise Fail with "boom" end) when Fail with m then "caught " <> m end);
+print(try conv.int(protect(:Int fun(): Int 1 / 0)) else "int.error" end);
+print(try conv.int(protect(:Int fun(): Int array of 1 2 end[5])) else "arrayOp.error" end);
+print("cleanups " <> conv.int(cleanups.n));
+
+(* 2. A when branch for a known exception, and else with for the others *)
+let classify(f: All() Int): String =
+    try
+        try conv.int(f()) when Other then "other" else with e then raised.reraise(e) end
+    when Fail with m then
+        "fail " <> m
+    end;
+print(classify(fun(): Int raise Other end));
+print(classify(fun(): Int raise Fail with "known" end));
+print(classify(fun(): Int 3));
+
+(* 3. A raised exception is a value: stored, returned, captured, and raised
+   after its try has finished, any number of times *)
+let catch(f: All() Ok): raised.T = try f() raise Other as raised.T end else with e: raised.T then e end;
+let saved = catch(fun(): Ok raise Fail with "later" end);
+let again = fun(): String raised.reraise(saved);
+print(try again() when Fail with m then "again " <> m end);
+print(try again() when Fail with m then "and again " <> m end);
+let kept = array of saved catch(fun(): Ok raise Other end) end;
+print(try raised.reraise(:String kept[1]) when Other then "other from the array" end);
+
+(* 4. Exceptions raised and caught while handling one do not change it *)
+let nested(): String = try
+    raise Fail with "outer" end
+else with e then
+    print(try
+        raise Fail with "inner" as String end
+    else with i then
+        "handled " <> classify(fun(): Int raised.reraise(i))
+    end)
+    raised.reraise(:String e)
+end;
+print(try nested() when Fail with m then m end)

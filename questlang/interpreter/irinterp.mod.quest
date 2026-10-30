@@ -797,6 +797,16 @@ export
                     when raised with y then maybe.unwrapOr(:Value y.payload model.okValue)
                     else model.okValue
                 end
+            when opCaughtException with x then
+                let e = case x.exc
+                    when atomVar with y then raisedError(f y.v)
+                    else maybe.none(:model.RunError)
+                end
+                if maybe.isNone(:model.RunError e) then fail(:Ok "caught_exception of a value other than a handler's exception") end
+                (* With the frames running, as if it left this frame, which it
+                 * was raised in if it has none (docs/raised.md section 5) *)
+                treewalk.noteFrames(maybe.unwrap(:model.RunError e) it.renv)
+                option vRaised of Value with let e = maybe.unwrap(:model.RunError e) end
             when opAddrVar then address(it o f)
             when opAddrCell then address(it o f)
             when opAddrField then address(it o f)

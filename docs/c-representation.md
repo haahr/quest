@@ -1110,7 +1110,7 @@ typedef struct QExceptionState {
 typedef struct QExceptionHandler {
     struct QExceptionHandler   *prev;
     const QException *const    *catches;    /* what the handler catches (docs/exceptions.md §5.1): these, */
-    int64_t                     n_catches;  /* n_catches of them, or Q_CATCH_ALL, or Q_CATCH_UNKNOWN */
+    int64_t                     n_catches;  /* n_catches of them, or Q_CATCH_ALL(_TRACED), or Q_CATCH_UNKNOWN */
     const void                 *resume;     /* NULL for a C handler; a native one's (docs/arm64.md §3.6): */
     void                       *sp;         /* where it resumes, with these stack */
     void                       *fp;         /* and frame pointers */
@@ -1176,7 +1176,8 @@ q_handler.prev = quest_current_exception_handler;
 q_handler.resume = NULL;                               /* a C handler */
 const QException *q_catches[] = { qv_Exc1, qv_Exc2 };  /* the patterns, computed before the try when they can be */
 q_handler.catches = q_catches;
-q_handler.n_catches = 2;                               /* or Q_CATCH_ALL with an else, or Q_CATCH_UNKNOWN */
+q_handler.n_catches = 2;                               /* or Q_CATCH_ALL with an else (Q_CATCH_ALL_TRACED if it */
+                                                       /* names the exception), or Q_CATCH_UNKNOWN */
 quest_current_exception_handler = &q_handler;
 
 if (Q_SETJMP(q_handler.env_jmp) == 0) {

@@ -532,6 +532,8 @@ class CPrinter:
             case ir.ExceptionPayload(exception=e):
                 # In its slot form (a record or variant, for a boxed variable)
                 return shape_qval_to_slot(f"{self.name(e)}.payload", shape(result.type))
+            case ir.CaughtException(exception=e):
+                return call("quest_raised_capture", [f"&{self.name(e)}"])
             case ir.AddrVar(var=var):
                 if self.is_pointer_param(var):
                     return self.name(var)
@@ -1901,6 +1903,9 @@ class CPrinter:
         if catching == ir.CATCH_ALL:
             self.emit(f"{handler}.catches = NULL;")
             self.emit(f"{handler}.n_catches = Q_CATCH_ALL;")
+        elif catching == ir.CATCH_ALL_TRACED:
+            self.emit(f"{handler}.catches = NULL;")
+            self.emit(f"{handler}.n_catches = Q_CATCH_ALL_TRACED;")
         elif catching == ir.CATCH_UNKNOWN:
             self.emit(f"{handler}.catches = NULL;")
             self.emit(f"{handler}.n_catches = Q_CATCH_UNKNOWN;")

@@ -1,9 +1,9 @@
 # Rethrowing Caught Exceptions (`else with` and `raised`)
 
-This document specifies an extension that lets a `try`'s `else` branch name the exception it caught, whatever its
-type, and raise it again: the binder `else with e then`, and the library module `raised` (`lib/raised.int.quest`,
-`lib/raised.mod.quest`), whose type `raised.T` is the binder's type and whose function `raised.reraise` raises a caught
-exception again. The plan for implementing it is [raised-plan.md](raised-plan.md).
+A `try`'s `else` branch may name the exception it caught, whatever its type, and raise it again: the binder `else
+with e then`, and the library module `raised` (`lib/raised.int.quest`, `lib/raised.mod.quest`), whose type `raised.T`
+is the binder's type and whose function `raised.reraise` raises a caught exception again. The plan that implemented it
+is [raised-plan.md](raised-plan.md).
 
 ---
 
@@ -161,10 +161,11 @@ The rules of [exceptions.md](exceptions.md) apply, with these additions:
 
 - **Interpreters.** A value of `raised.T` holds the caught exception object itself (`QuestException` in the
   bootstrap, the `model.runError` in the self-hosted interpreter), and `reraise` raises that object, which keeps its
-  offset and frames (§3.2, §4 there).
+  offset and frames (§3.2, §4 there). Binding it gives it the source map and frames of the handler's frame, if it has
+  none yet (it was raised in that frame), as leaving the frame would have.
 - **Compiled code.** A `try` whose `else` names its exception records that it catches everything *and* must capture
-  frames: a raise into it captures them (§5.4 there) before jumping to the handler, as for a handler with a pattern
-  that is not pure (`CATCH_UNKNOWN`, §5.1 there). The cost falls only on raises that such a handler catches. Without
+  frames (`Q_CATCH_ALL_TRACED`): a raise into it captures them (§5.4 there) before jumping to the handler, as for a
+  handler with a pattern that is not pure (`Q_CATCH_UNKNOWN`, §5.1 there). The cost falls only on raises that such a handler catches. Without
   it, an exception that `reraise` raises and nothing catches would print the frames active at the `reraise`, not at
   the raise.
 - `stack.overflow` cannot be caught in compiled code (§6 there), so it never reaches an `else with` there; in the
@@ -177,8 +178,8 @@ The rules of [exceptions.md](exceptions.md) apply, with these additions:
 - **Bootstrap interpreters** (tree-walking and IR): a value wrapping the caught `QuestException`.
 - **Self-hosted interpreters**: a new `Value` form holding the caught `model.runError`.
 - **Compiled code**: `QRaised *`, a pointer to a heap copy of the handler's `QExceptionState` (exception, payload,
-  site, captured frames), allocated with `quest_alloc` when the binder is bound. Nothing is allocated on any other
-  path. `raised.reraise` is the runtime's `QVal quest_raised_reraise(const QTypeDescriptor *a, QRaised *r)`, which never
+  site, captured frames), allocated with `quest_alloc` when the binder is bound (`quest_raised_capture`, which the IR's
+  `caught_exception(e)` becomes). Nothing is allocated on any other path. `raised.reraise` is the runtime's `QVal quest_raised_reraise(const QTypeDescriptor *a, QRaised *r)`, which never
   returns: it calls `quest_reraise(*r)`.
 
 ---

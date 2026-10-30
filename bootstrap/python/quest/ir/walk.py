@@ -224,7 +224,7 @@ def replace_vars(node, f) -> None:
         case ir.MakeAuto():
             node.payload = _replaced(node.payload, f)
             node.descriptor = _replaced(node.descriptor, f)
-        case ir.ExceptionPayload():
+        case ir.ExceptionPayload() | ir.CaughtException():
             node.exception = _replaced(node.exception, f)
         case ir.AddrVar():
             node.var = _replaced(node.var, f)
@@ -363,6 +363,7 @@ _FIELDS_OF: dict[type, Callable[[Any], tuple]] = {
     ir.MakeAuto: lambda node: (node.witness, node.auto_type, node.payload, node.descriptor),
     ir.MakeException: lambda node: (node.name, node.payload_type),
     ir.ExceptionPayload: lambda node: (node.exception,),
+    ir.CaughtException: lambda node: (node.exception,),
     ir.AddrVar: lambda node: (node.var,),
     ir.AddrCell: lambda node: (node.init,),
     ir.AddrField: lambda node: (node.base, node.name, node.view_map),
@@ -454,6 +455,7 @@ _CONTENTS: dict[type, Callable[[Any], tuple]] = {
     ir.MakeAuto: lambda node: (node.auto_type, node.payload),
     ir.MakeException: lambda node: (node.name, node.payload_type),
     ir.ExceptionPayload: lambda node: (node.exception,),
+    ir.CaughtException: lambda node: (node.exception,),
     ir.AddrVar: lambda node: (node.var,),
     ir.AddrCell: lambda node: (node.init,),
     ir.AddrField: lambda node: (node.base, node.name),
@@ -572,6 +574,7 @@ _REBUILD: dict[type, Callable[[Any, tuple], Any]] = {
     ),
     ir.MakeException: lambda node, values: ir.MakeException(name=values[0], payload_type=values[1]),
     ir.ExceptionPayload: lambda node, values: ir.ExceptionPayload(exception=values[0]),
+    ir.CaughtException: lambda node, values: ir.CaughtException(exception=values[0]),
     ir.AddrVar: lambda node, values: ir.AddrVar(var=values[0]),
     ir.AddrCell: lambda node, values: ir.AddrCell(init=values[0]),
     ir.AddrField: lambda node, values: ir.AddrField(base=values[0], name=values[1], view_map=values[2]),

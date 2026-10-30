@@ -571,6 +571,10 @@ class ExprTry(Expr):
     body: Expr
     branches: tuple[TryBranch, ...]
     else_branch: Optional[Expr] = None
+    # The else branch's name for the exception it caught (else with e then),
+    # and its annotation (docs/raised.md)
+    else_binder: Optional[str] = None
+    else_binder_type: Optional[Type] = None
 
 
 # ============================================================================
@@ -884,7 +888,7 @@ _AST_FIELDS: dict[type, Callable[[Any], tuple]] = {
     ExprException: lambda node: (node.name, node.type_annot),
     ExprRaise: lambda node: (node.exc, node.payload, node.as_type),
     TryBranch: lambda node: (node.exc_pattern, node.binder, node.binder_type, node.body),
-    ExprTry: lambda node: (node.body, node.branches, node.else_branch),
+    ExprTry: lambda node: (node.body, node.branches, node.else_branch, node.else_binder, node.else_binder_type),
     LetValueBinding: lambda node: (node.name, node.value, node.params, node.type_annot, node.is_rec, node.is_var),
     LetValueBindingGroup: lambda node: (node.bindings,),
     TypeBinding: lambda node: (node.name, node.type_val, node.params, node.bound, node.is_rec, node.is_def),
@@ -1012,7 +1016,8 @@ _REBUILD_AST: dict[type, Callable[[Any, tuple], Any]] = {
         offset=node.offset, exc_pattern=values[0], binder=values[1], binder_type=values[2], body=values[3],
     ),
     ExprTry: lambda node, values: ExprTry(
-        offset=node.offset, body=values[0], branches=values[1], else_branch=values[2],
+        offset=node.offset, body=values[0], branches=values[1], else_branch=values[2], else_binder=values[3],
+        else_binder_type=values[4],
     ),
     LetValueBinding: lambda node, values: LetValueBinding(
         offset=node.offset, name=values[0], value=values[1], params=values[2], type_annot=values[3], is_rec=values[4],

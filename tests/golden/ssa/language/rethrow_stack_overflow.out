@@ -1,0 +1,218 @@
+function qf_print(%0: ptr, %1: ptr) {
+b0(%0: ptr, %1: ptr):
+  %2: ptr = symbol qm_writer
+  %3: ptr = load8 %2 + 0
+  %4: ptr = load8 %2 + 8
+  %5: int = load8 %4 + 40
+  %6: int = ptrToInt %3
+  %7: int = add %6, %5
+  %8: ptr = intToPtr %7
+  %9: ptr = load8 %8 + 0
+  %10: ptr = symbol qs_1
+  %11: int = const 1
+  %12: ptr = call quest_string_new(%10, %11)
+  %13: ptr = call quest_string_concat(%1, %12)
+  tail call qv_writer_putString(%9, %13)
+}
+
+function qf_down(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: int = const 1
+  %3: int = add %1, %2
+  %4: ptr = null
+  %5: int = call qf_down(%4, %3)
+  %6: int = const 1
+  %7: int = add %6, %5
+  return %7
+}
+
+function qf_guarded(%0: ptr): int slots [240:16 32:8] {
+b0(%0: ptr):
+  %2: ptr = slot 0
+  %3: ptr = symbol quest_current_exception_handler
+  %4: ptr = load8 %3 + 0
+  store8 %2 + 0, %4
+  %5: ptr = null
+  store8 %2 + 24, %5
+  %6: ptr = null
+  store8 %2 + 8, %6
+  %7: int = const ~3
+  store8 %2 + 16, %7
+  store8 %3 + 0, %2
+  try slot 0, b2(), handler b3
+b1(%1: int):
+  return %1
+b2():
+  %8: ptr = null
+  %9: int = const 0
+  %10: int = call qf_down(%8, %9)
+  %11: ptr = symbol quest_current_exception_handler
+  %12: ptr = load8 %2 + 0
+  store8 %11 + 0, %12
+  jump b1(%10)
+b3():
+  %13: ptr = symbol quest_current_exception_handler
+  %14: ptr = load8 %2 + 0
+  store8 %13 + 0, %14
+  %15: ptr = slot 1
+  %16: ptr = symbol quest_current_exception
+  %17: int = load8 %16 + 0
+  store8 %15 + 0, %17
+  %18: int = load8 %16 + 8
+  store8 %15 + 8, %18
+  %19: int = load8 %16 + 16
+  store8 %15 + 16, %19
+  %20: int = load8 %16 + 24
+  store8 %15 + 24, %20
+  %21: int = load8 %16 + 32
+  store8 %15 + 32, %21
+  %22: ptr = call quest_raised_capture(%15)
+  %23: ptr = symbol g_seen
+  %24: ptr = load8 %23 + 0
+  %25: int = load8 %24 + 0
+  %26: int = const 1
+  %27: int = add %25, %26
+  %28: ptr = symbol g_seen
+  %29: ptr = load8 %28 + 0
+  store8 %29 + 0, %27
+  %30: int = ptrToInt %22
+  %31: ptr = symbol quest_type_Int
+  %32: int = call qv_raised_reraise(%31, %30)
+  jump b1(%32)
+}
+
+function qr_register_dicts() {
+b0():
+  %0: ptr = symbol qr_funcs
+  %1: int = const 4
+  tail call quest_register_funcs(%0, %1)
+}
+
+function main exported(%0: int, %1: ptr): int slots [240:16 32:8] {
+b0(%0: int, %1: ptr):
+  call quest_gc_init()
+  call quest_builtins_init(%0, %1)
+  call qr_register_dicts()
+  call qv_mod_raised_init()
+  call qv_mod_writer_init()
+  call qv_mod_conv_init()
+  %2: ptr = symbol qf_print_closure
+  %3: ptr = symbol g_print
+  store8 %3 + 0, %2
+  %4: ptr = symbol qf_down_closure
+  %5: ptr = symbol g_down
+  store8 %5 + 0, %4
+  %6: int = const 0
+  %7: ptr = symbol g_n
+  store8 %7 + 0, %6
+  %8: int = const 8
+  %9: ptr = call quest_alloc(%8)
+  %10: ptr = symbol g_n
+  %11: int = load8 %10 + 0
+  store8 %9 + 0, %11
+  %12: ptr = symbol g_seen
+  store8 %12 + 0, %9
+  %13: ptr = symbol qf_guarded_closure
+  %14: ptr = symbol g_guarded
+  store8 %14 + 0, %13
+  %16: ptr = slot 0
+  %17: ptr = symbol quest_current_exception_handler
+  %18: ptr = load8 %17 + 0
+  store8 %16 + 0, %18
+  %19: ptr = null
+  store8 %16 + 24, %19
+  %20: ptr = null
+  store8 %16 + 8, %20
+  %21: int = const ~1
+  store8 %16 + 16, %21
+  store8 %17 + 0, %16
+  try slot 0, b3(), handler b4
+b1(%15: ptr):
+  %45: ptr = null
+  call qf_print(%45, %15)
+  %46: ptr = symbol g_seen
+  %47: ptr = load8 %46 + 0
+  %48: int = load8 %47 + 0
+  %49: ptr = symbol g_global_3
+  store8 %49 + 0, %48
+  %50: ptr = symbol g_global_3
+  %51: int = load8 %50 + 0
+  %52: ptr = call qv_conv_int(%51)
+  %53: ptr = symbol g_global_4
+  store8 %53 + 0, %52
+  %54: ptr = symbol qs_7
+  %55: int = const 5
+  %56: ptr = call quest_string_new(%54, %55)
+  %57: ptr = symbol g_global_4
+  %58: ptr = load8 %57 + 0
+  %59: ptr = call quest_string_concat(%56, %58)
+  %60: ptr = symbol g_global_5
+  store8 %60 + 0, %59
+  %61: ptr = null
+  %62: ptr = symbol g_global_5
+  %63: ptr = load8 %62 + 0
+  call qf_print(%61, %63)
+  jump b2()
+b2():
+  %64: int = const 0
+  return %64
+b3():
+  %22: ptr = null
+  %23: int = call qf_guarded(%22)
+  %24: ptr = symbol g_global
+  store8 %24 + 0, %23
+  %25: ptr = symbol g_global
+  %26: int = load8 %25 + 0
+  %27: ptr = call qv_conv_int(%26)
+  %28: ptr = symbol g_global_2
+  store8 %28 + 0, %27
+  %29: ptr = symbol g_global_2
+  %30: ptr = load8 %29 + 0
+  %31: ptr = symbol quest_current_exception_handler
+  %32: ptr = load8 %16 + 0
+  store8 %31 + 0, %32
+  jump b1(%30)
+b4():
+  %33: ptr = symbol quest_current_exception_handler
+  %34: ptr = load8 %16 + 0
+  store8 %33 + 0, %34
+  %35: ptr = slot 1
+  %36: ptr = symbol quest_current_exception
+  %37: int = load8 %36 + 0
+  store8 %35 + 0, %37
+  %38: int = load8 %36 + 8
+  store8 %35 + 8, %38
+  %39: int = load8 %36 + 16
+  store8 %35 + 16, %39
+  %40: int = load8 %36 + 24
+  store8 %35 + 24, %40
+  %41: int = load8 %36 + 32
+  store8 %35 + 32, %41
+  %42: ptr = symbol qs_6
+  %43: int = const 14
+  %44: ptr = call quest_string_new(%42, %43)
+  jump b1(%44)
+}
+
+data qs_1 text "\n"
+data g_seen writable zero 8
+data qf_print_closure words [qf_print, 0]
+data qf_down_closure words [qf_down, 0]
+data qf_guarded_closure words [qf_guarded, 0]
+data qs_2 text "print"
+data qs_3 text "down"
+data qs_4 text "guarded"
+data qs_5 text "<main>"
+data qr_funcs words [qf_print, qs_2, qf_down, qs_3, qf_guarded, qs_4, main, qs_5]
+data g_print writable zero 8
+data g_down writable zero 8
+data g_n writable zero 8
+data g_guarded writable zero 8
+data g_global writable zero 8
+data g_global_2 writable zero 8
+data qs_6 text "stack overflow"
+data g_global_3 writable zero 8
+data g_global_4 writable zero 8
+data qs_7 text "seen "
+data g_global_5 writable zero 8
+

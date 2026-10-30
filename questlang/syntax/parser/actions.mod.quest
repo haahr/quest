@@ -1063,21 +1063,35 @@ export
                 end
             end)
 
+    let tryBranch(ctx: Ctx whenToken: tokens.Token pattern: Val binding: Val bindings: Val): Val =
+        option tryBranch of Val with
+            let val = tuple
+                let offset = whenToken.span.startOffset
+                let excPattern = ex(pattern)
+                let binder = optName(binderPart(binding 0))
+                let binderType = optTy(binderPart(binding 1))
+                let body = body(ctx bindings whenToken.span.startOffset)
+            end
+        end
+
+    (* A try's branches, its else body, and the else branch's binder and its
+     * annotation (docs/raised.md) *)
     let tryBranches(ctx: Ctx args: Args): Val =
-        branches(ctx args fun(whenToken: tokens.Token pattern: Val binder: Val bindings: Val): Val
-            begin
-                let name = optName(binderPart(binder 0))
-                let nameType = optTy(binderPart(binder 1))
-                option tryBranch of Val with
-                    let val = tuple
-                        let offset = whenToken.span.startOffset
-                        let excPattern = ex(pattern)
-                        let binder = name
-                        let binderType = nameType
-                        let body = body(ctx bindings whenToken.span.startOffset)
-                    end
-                end
-            end)
+        begin
+            let whens = eachVal(items(args[0]) fun(v: Val): Val
+                begin
+                    let b = items(v)
+                    tryBranch(ctx tok(b[0]) b[1] b[2] b[3])
+                end)
+            if present(args[1]) then
+                let c = items(args[1])
+                vList(array of
+                    whens vExpr(body(ctx c[2] tok(c[0]).span.startOffset)) binderPart(c[1] 0) binderPart(c[1] 1)
+                end)
+            else
+                vList(array of whens absent absent absent end)
+            end
+        end
 
     let exprCase(ctx: Ctx args: Args): Val =
         begin
@@ -1110,6 +1124,8 @@ export
                 let branches = each(:ast.TryBranch items(b[0]) fun(v: Val): ast.TryBranch
                     case v when tryBranch with x then x.val else wrong(:ast.TryBranch "a try branch") end)
                 let elseBranch = optEx(b[1])
+                let elseBinder = optName(b[2])
+                let elseBinderType = optTy(b[3])
             end)
         end
 

@@ -599,6 +599,9 @@ STRING_TYPE = QStringType()
 OK_TYPE = QOkType()
 BOTTOM_TYPE = QBottomType()
 EXCEPTION_TYPE = QExceptionType()
+# raised.T, the type of a try's else binder (docs/raised.md section 3.2): the
+# external type lib/raised defines, which is an importer's raised.T too
+RAISED_TYPE = QExternalType(name="raised.T", c_type="QRaised *")
 
 # The names under which the environment declares the primitive types
 # (Environment._init_builtins).

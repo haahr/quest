@@ -8,8 +8,10 @@ import quest.syntax.ast as ast
 from quest.typechecker.checker import Checker
 from quest.types import (
     OK_TYPE,
+    RAISED_TYPE,
     QExceptionType,
     QType,
+    is_type_equal,
 )
 from quest.types.env import (
     Environment,
@@ -147,7 +149,28 @@ class ExceptionMixin(Checker):
                 )
             )
 
-        else_typed = self._elaborate_optional_branch(expr.else_branch, expected_type, env, loop_depth)
+        else_binder: Optional[ValueSymbol] = None
+        if expr.else_binder is not None:
+            # The else branch names the exception it caught, as a raised.T
+            # (docs/raised.md section 3)
+            if expr.else_binder_type is not None:
+                annotated = elaborate_type(expr.else_binder_type, env)
+                if not is_type_equal(annotated, RAISED_TYPE, env):
+                    raise TypeError(
+                        f"The else branch's binder '{expr.else_binder}' has type '{RAISED_TYPE}', not '{annotated}'",
+                        offset=expr.else_binder_type.offset,
+                    )
+            with env.scoped(f"try_{expr.else_binder}"):
+                else_binder = ValueSymbol(
+                    name=expr.else_binder,
+                    type_val=RAISED_TYPE,
+                    is_var=False,
+                    function_depth=self.function_depth,
+                )
+                env.current_scope.declare_value(else_binder)
+                else_typed = self._elaborate_optional_branch(expr.else_branch, expected_type, env, loop_depth)
+        else:
+            else_typed = self._elaborate_optional_branch(expr.else_branch, expected_type, env, loop_depth)
 
         if expected_type is not None:
             result_type = expected_type
@@ -162,6 +185,7 @@ class ExceptionMixin(Checker):
             body=body_typed,
             branches=tuple(typed_branches),
             else_branch=else_typed,
+            else_binder=else_binder,
             type_val=result_type,
             offset=expr.offset,
         )

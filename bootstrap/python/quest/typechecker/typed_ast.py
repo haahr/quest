@@ -796,6 +796,8 @@ class TypedTry(TypedExpr):
     branches: tuple[TypedTryBranch, ...]
     type_val: QType
     else_branch: Optional[TypedExpr] = None
+    # The else branch's binder, of type raised.T (docs/raised.md)
+    else_binder: Optional[ValueSymbol] = None
 
     def dump_children(self) -> list[tuple[str, Any]]:
         children: list[tuple[str, Any]] = [(":body", self.body), (":branches", self.branches)]
@@ -1100,7 +1102,7 @@ _TYPED_FIELDS: dict[type, Callable[[Any], tuple]] = {
     TypedException: lambda node: (node.name, node.payload_type, node.type_val, node.symbol),
     TypedRaise: lambda node: (node.exc, node.type_val, node.payload),
     TypedTryBranch: lambda node: (node.exc_pattern, node.body, node.binder),
-    TypedTry: lambda node: (node.body, node.branches, node.type_val, node.else_branch),
+    TypedTry: lambda node: (node.body, node.branches, node.type_val, node.else_branch, node.else_binder),
     TypedLetValue: lambda node: (node.name, node.value, node.symbol, node.is_rec),
     TypedLetValueGroup: lambda node: (node.members,),
     TypedLetType: lambda node: (node.name, node.symbol),
@@ -1232,6 +1234,7 @@ _REBUILD_TYPED: dict[type, Callable[[Any, tuple], Any]] = {
     ),
     TypedTry: lambda node, values: TypedTry(
         offset=node.offset, body=values[0], branches=values[1], type_val=values[2], else_branch=values[3],
+        else_binder=values[4],
     ),
     TypedLetValue: lambda node, values: TypedLetValue(
         offset=node.offset, name=values[0], value=values[1], symbol=values[2], is_rec=values[3],

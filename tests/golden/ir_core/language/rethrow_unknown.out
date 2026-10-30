@@ -1,0 +1,300 @@
+import raised = "raised" : Raised
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  let Fail: Exception(String) = exception Fail: String
+  let Other: Exception = exception Other
+  let n: Int = 0
+  let cleanups: Tuple var n: Int end = tuple(n)
+  funs {
+    fun protect [A::TYPE](body: Fun(): A): A {
+      join k1(result: A) {
+        let %4: Int = tuple_field(cleanups, 0)
+        let %5: Int = prim +(%4, 1)
+        store cleanups.#0 := %5
+        return result
+      } in {
+        try catching all traced {
+          let %6: A = call body()
+          jump k1(%6)
+        } handle (e: Exception) {
+          let e.1: raised.T = caught_exception(e)
+          let %7: Int = tuple_field(cleanups, 0)
+          let %8: Int = prim +(%7, 1)
+          store cleanups.#0 := %8
+          let %9: A = call raised.reraise [A](e.1)
+          jump k1(%9)
+        }
+      }
+    }
+  }
+  funs {
+    fun f(): Int {
+      return 7
+    }
+  }
+  let %10: Int = call protect [Int](f)
+  let %11: String = call conv.int(%10)
+  do call print(%11)
+  join k2(r: String) {
+    do call print(r)
+    join k3(r.1: String) {
+      do call print(r.1)
+      join k4(r.2: String) {
+        do call print(r.2)
+        let %12: Int = tuple_field(cleanups, 0)
+        let %13: String = call conv.int(%12)
+        let %14: String = prim <>("cleanups ", %13)
+        do call print(%14)
+        funs {
+          fun classify(f.1: Fun(): Int): String {
+            join k5(r.3: String) {
+              return r.3
+            } in {
+              try catching (Fail) {
+                join k6(r.4: String) {
+                  jump k5(r.4)
+                } in {
+                  try catching all traced {
+                    let %15: Int = call f.1()
+                    let %16: String = call conv.int(%15)
+                    jump k6(%16)
+                  } handle (e.2: Exception) {
+                    let %17: Bool = prim is(e.2, Other)
+                    if %17 {
+                      jump k6("other")
+                    } else {
+                      let e.3: raised.T = caught_exception(e.2)
+                      let %18: String = call raised.reraise [String](e.3)
+                      jump k6(%18)
+                    }
+                  }
+                }
+              } handle (e.4: Exception) {
+                let %19: Bool = prim is(e.4, Fail)
+                if %19 {
+                  let m: String = exception_payload(e.4)
+                  let %20: String = prim <>("fail ", m)
+                  jump k5(%20)
+                } else {
+                  reraise e.4
+                }
+              }
+            }
+          }
+        }
+        funs {
+          fun f.2(): Int {
+            raise Other
+          }
+        }
+        let %21: String = call classify(f.2)
+        do call print(%21)
+        funs {
+          fun f.3(): Int {
+            raise Fail with "known"
+          }
+        }
+        let %22: String = call classify(f.3)
+        do call print(%22)
+        funs {
+          fun f.4(): Int {
+            return 3
+          }
+        }
+        let %23: String = call classify(f.4)
+        do call print(%23)
+        funs {
+          fun catch(f.5: Fun(): Ok): raised.T {
+            join k7(r.5: raised.T) {
+              return r.5
+            } in {
+              try catching all traced {
+                do call f.5()
+                raise Other
+              } handle (e.5: Exception) {
+                let e.6: raised.T = caught_exception(e.5)
+                jump k7(e.6)
+              }
+            }
+          }
+        }
+        funs {
+          fun f.6(): Ok {
+            raise Fail with "later"
+          }
+        }
+        let saved: raised.T = call catch(f.6)
+        funs {
+          fun again(): String {
+            let %24: String = call raised.reraise [String](saved)
+            return %24
+          }
+        }
+        join k8(r.6: String) {
+          do call print(r.6)
+          join k9(r.7: String) {
+            do call print(r.7)
+            funs {
+              fun f.7(): Ok {
+                raise Other
+              }
+            }
+            let %25: raised.T = call catch(f.7)
+            let kept: Array(raised.T) = array(saved, %25)
+            join k10(r.8: String) {
+              do call print(r.8)
+              funs {
+                fun nested(): String {
+                  join k11(r.9: String) {
+                    return r.9
+                  } in {
+                    try catching all traced {
+                      raise Fail with "outer"
+                    } handle (e.7: Exception) {
+                      let e.8: raised.T = caught_exception(e.7)
+                      join k12(r.10: String) {
+                        do call print(r.10)
+                        let %26: String = call raised.reraise [String](e.8)
+                        jump k11(%26)
+                      } in {
+                        try catching all traced {
+                          raise Fail with "inner"
+                        } handle (e.9: Exception) {
+                          let i: raised.T = caught_exception(e.9)
+                          funs {
+                            fun f.8(): Int {
+                              let %27: Int = call raised.reraise [Int](i)
+                              return %27
+                            }
+                          }
+                          let %28: String = call classify(f.8)
+                          let %29: String = prim <>("handled ", %28)
+                          jump k12(%29)
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              join k13(r.11: String) {
+                do call print(r.11)
+              } in {
+                try catching (Fail) {
+                  let %30: String = call nested()
+                  jump k13(%30)
+                } handle (e.10: Exception) {
+                  let %31: Bool = prim is(e.10, Fail)
+                  if %31 {
+                    let m.1: String = exception_payload(e.10)
+                    jump k13(m.1)
+                  } else {
+                    reraise e.10
+                  }
+                }
+              }
+            } in {
+              try catching (Other) {
+                let %32: raised.T = index(kept, 1)
+                let %33: String = call raised.reraise [String](%32)
+                jump k10(%33)
+              } handle (e.11: Exception) {
+                let %34: Bool = prim is(e.11, Other)
+                if %34 {
+                  jump k10("other from the array")
+                } else {
+                  reraise e.11
+                }
+              }
+            }
+          } in {
+            try catching (Fail) {
+              let %35: String = call again()
+              jump k9(%35)
+            } handle (e.12: Exception) {
+              let %36: Bool = prim is(e.12, Fail)
+              if %36 {
+                let m.2: String = exception_payload(e.12)
+                let %37: String = prim <>("and again ", m.2)
+                jump k9(%37)
+              } else {
+                reraise e.12
+              }
+            }
+          }
+        } in {
+          try catching (Fail) {
+            let %38: String = call again()
+            jump k8(%38)
+          } handle (e.13: Exception) {
+            let %39: Bool = prim is(e.13, Fail)
+            if %39 {
+              let m.3: String = exception_payload(e.13)
+              let %40: String = prim <>("again ", m.3)
+              jump k8(%40)
+            } else {
+              reraise e.13
+            }
+          }
+        }
+      } in {
+        try catching all {
+          funs {
+            fun f.9(): Int {
+              let %41: Array(Int) = array(1, 2)
+              let %42: Int = index(%41, 5)
+              return %42
+            }
+          }
+          let %43: Int = call protect [Int](f.9)
+          let %44: String = call conv.int(%43)
+          jump k4(%44)
+        } handle (e.14: Exception) {
+          jump k4("arrayOp.error")
+        }
+      }
+    } in {
+      try catching all {
+        funs {
+          fun f.10(): Int {
+            let %45: Int = prim /(1, 0)
+            return %45
+          }
+        }
+        let %46: Int = call protect [Int](f.10)
+        let %47: String = call conv.int(%46)
+        jump k3(%47)
+      } handle (e.15: Exception) {
+        jump k3("int.error")
+      }
+    }
+  } in {
+    try catching (Fail) {
+      funs {
+        fun f.11(): String {
+          raise Fail with "boom"
+        }
+      }
+      let %48: String = call protect [String](f.11)
+      jump k2(%48)
+    } handle (e.16: Exception) {
+      let %49: Bool = prim is(e.16, Fail)
+      if %49 {
+        let m.4: String = exception_payload(e.16)
+        let %50: String = prim <>("caught ", m.4)
+        jump k2(%50)
+      } else {
+        reraise e.16
+      }
+    }
+  }
+}
+

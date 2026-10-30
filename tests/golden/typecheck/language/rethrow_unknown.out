@@ -1,0 +1,393 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('raised') : 'Raised')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedExprStmt
+      :expr (TypedException 'Fail' :type Exception(String)))
+    (TypedExprStmt
+      :expr (TypedException 'Other' :type Exception))
+    (TypedLetValue 'cleanups' :type Tuple var n: Int end
+      :value (TypedTuple :type Tuple var n: Int end
+        :elements (
+          (TypedInt 0 :type Int)
+        )))
+    (TypedLetValue 'protect' :type All(A :: TYPE) Fun(body: Fun(): A): A
+      :value (TypedFun :params (('body' : Fun(): A)) :type All(A :: TYPE) Fun(body: Fun(): A): A
+        :body (TypedBlock :type A
+          :bindings (
+            (TypedLetValue 'result' :type A
+              :value (TypedTry :type A
+                :body (TypedApp :type A
+                  :func (TypedVar 'body' :type Fun(): A)
+                  :args ())
+                :branches ()
+                :else (TypedBlock :type A
+                  :bindings (
+                    (TypedExprStmt
+                      :expr (TypedAssign
+                        :target (TypedSelect 'n' :type Int
+                          :target (TypedVar 'cleanups' :type Tuple var n: Int end))
+                        :value (TypedInfix '+' :type Int
+                          :left (TypedSelect 'n' :type Int
+                            :target (TypedVar 'cleanups' :type Tuple var n: Int end))
+                          :right (TypedInt 1 :type Int))))
+                  )
+                  :result (TypedApp :type A
+                    :func (TypedTypeApp [A] :type Fun(r: raised.T): A
+                      :func (TypedSelect 'reraise' :type All(A :: TYPE) Fun(r: raised.T): A
+                        :target (TypedVar 'raised' :type Module 'raised')))
+                    :args (
+                      (TypedVar 'e' :type raised.T)
+                    )))))
+            (TypedExprStmt
+              :expr (TypedAssign
+                :target (TypedSelect 'n' :type Int
+                  :target (TypedVar 'cleanups' :type Tuple var n: Int end))
+                :value (TypedInfix '+' :type Int
+                  :left (TypedSelect 'n' :type Int
+                    :target (TypedVar 'cleanups' :type Tuple var n: Int end))
+                  :right (TypedInt 1 :type Int))))
+          )
+          :result (TypedVar 'result' :type A))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedApp :type Int
+                :func (TypedTypeApp [Int] :type Fun(body: Fun(): Int): Int
+                  :func (TypedVar 'protect' :type All(A :: TYPE) Fun(body: Fun(): A): A))
+                :args (
+                  (TypedFun :params () :type Fun(): Int
+                    :body (TypedInt 7 :type Int))
+                ))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedTypeApp [String] :type Fun(body: Fun(): String): String
+                :func (TypedVar 'protect' :type All(A :: TYPE) Fun(body: Fun(): A): A))
+              :args (
+                (TypedFun :params () :type Fun(): String
+                  :body (TypedRaise :type String
+                    :exc (TypedVar 'Fail' :type Exception(String))
+                    :payload (TypedString 'boom' :type String)))
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedVar 'Fail' :type Exception(String))
+                :body (TypedInfix '<>' :type String
+                  :left (TypedString 'caught ' :type String)
+                  :right (TypedVar 'm' :type String)))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedTypeApp [Int] :type Fun(body: Fun(): Int): Int
+                    :func (TypedVar 'protect' :type All(A :: TYPE) Fun(body: Fun(): A): A))
+                  :args (
+                    (TypedFun :params () :type Fun(): Int
+                      :body (TypedInfix '/' :type Int
+                        :left (TypedInt 1 :type Int)
+                        :right (TypedInt 0 :type Int)))
+                  ))
+              ))
+            :branches ()
+            :else (TypedString 'int.error' :type String))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedTypeApp [Int] :type Fun(body: Fun(): Int): Int
+                    :func (TypedVar 'protect' :type All(A :: TYPE) Fun(body: Fun(): A): A))
+                  :args (
+                    (TypedFun :params () :type Fun(): Int
+                      :body (TypedIndex :type Int
+                        :target (TypedArray :type Array(Int)
+                          :elements (
+                            (TypedInt 1 :type Int)
+                            (TypedInt 2 :type Int)
+                          ))
+                        :index (TypedInt 5 :type Int)))
+                  ))
+              ))
+            :branches ()
+            :else (TypedString 'arrayOp.error' :type String))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'cleanups ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'n' :type Int
+                  :target (TypedVar 'cleanups' :type Tuple var n: Int end))
+              )))
+        )))
+    (TypedLetValue 'classify' :type Fun(f: Fun(): Int): String
+      :value (TypedFun :params (('f' : Fun(): Int)) :type Fun(f: Fun(): Int): String
+        :body (TypedTry :type String
+          :body (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedVar 'f' :type Fun(): Int)
+                  :args ())
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedVar 'Other' :type Exception)
+                :body (TypedString 'other' :type String))
+            )
+            :else (TypedApp :type String
+              :func (TypedTypeApp [String] :type Fun(r: raised.T): String
+                :func (TypedSelect 'reraise' :type All(A :: TYPE) Fun(r: raised.T): A
+                  :target (TypedVar 'raised' :type Module 'raised')))
+              :args (
+                (TypedVar 'e' :type raised.T)
+              )))
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedVar 'Fail' :type Exception(String))
+              :body (TypedInfix '<>' :type String
+                :left (TypedString 'fail ' :type String)
+                :right (TypedVar 'm' :type String)))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'classify' :type Fun(f: Fun(): Int): String)
+            :args (
+              (TypedFun :params () :type Fun(): Int
+                :body (TypedRaise :type Int
+                  :exc (TypedVar 'Other' :type Exception)))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'classify' :type Fun(f: Fun(): Int): String)
+            :args (
+              (TypedFun :params () :type Fun(): Int
+                :body (TypedRaise :type Int
+                  :exc (TypedVar 'Fail' :type Exception(String))
+                  :payload (TypedString 'known' :type String)))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedApp :type String
+            :func (TypedVar 'classify' :type Fun(f: Fun(): Int): String)
+            :args (
+              (TypedFun :params () :type Fun(): Int
+                :body (TypedInt 3 :type Int))
+            ))
+        )))
+    (TypedLetValue 'catch' :type Fun(f: Fun(): Ok): raised.T
+      :value (TypedFun :params (('f' : Fun(): Ok)) :type Fun(f: Fun(): Ok): raised.T
+        :body (TypedTry :type raised.T
+          :body (TypedBlock :type raised.T
+            :bindings (
+              (TypedExprStmt
+                :expr (TypedApp :type Ok
+                  :func (TypedVar 'f' :type Fun(): Ok)
+                  :args ()))
+            )
+            :result (TypedRaise :type raised.T
+              :exc (TypedVar 'Other' :type Exception)))
+          :branches ()
+          :else (TypedVar 'e' :type raised.T))))
+    (TypedLetValue 'saved' :type raised.T
+      :value (TypedApp :type raised.T
+        :func (TypedVar 'catch' :type Fun(f: Fun(): Ok): raised.T)
+        :args (
+          (TypedFun :params () :type Fun(): Ok
+            :body (TypedRaise :type Ok
+              :exc (TypedVar 'Fail' :type Exception(String))
+              :payload (TypedString 'later' :type String)))
+        )))
+    (TypedLetValue 'again' :type Fun(): String
+      :value (TypedFun :params () :type Fun(): String
+        :body (TypedApp :type String
+          :func (TypedTypeApp [String] :type Fun(r: raised.T): String
+            :func (TypedSelect 'reraise' :type All(A :: TYPE) Fun(r: raised.T): A
+              :target (TypedVar 'raised' :type Module 'raised')))
+          :args (
+            (TypedVar 'saved' :type raised.T)
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedVar 'again' :type Fun(): String)
+              :args ())
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedVar 'Fail' :type Exception(String))
+                :body (TypedInfix '<>' :type String
+                  :left (TypedString 'again ' :type String)
+                  :right (TypedVar 'm' :type String)))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedVar 'again' :type Fun(): String)
+              :args ())
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedVar 'Fail' :type Exception(String))
+                :body (TypedInfix '<>' :type String
+                  :left (TypedString 'and again ' :type String)
+                  :right (TypedVar 'm' :type String)))
+            ))
+        )))
+    (TypedLetValue 'kept' :type Array(raised.T)
+      :value (TypedArray :type Array(raised.T)
+        :elements (
+          (TypedVar 'saved' :type raised.T)
+          (TypedApp :type raised.T
+            :func (TypedVar 'catch' :type Fun(f: Fun(): Ok): raised.T)
+            :args (
+              (TypedFun :params () :type Fun(): Ok
+                :body (TypedRaise :type Ok
+                  :exc (TypedVar 'Other' :type Exception)))
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedTypeApp [String] :type Fun(r: raised.T): String
+                :func (TypedSelect 'reraise' :type All(A :: TYPE) Fun(r: raised.T): A
+                  :target (TypedVar 'raised' :type Module 'raised')))
+              :args (
+                (TypedIndex :type raised.T
+                  :target (TypedVar 'kept' :type Array(raised.T))
+                  :index (TypedInt 1 :type Int))
+              ))
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedVar 'Other' :type Exception)
+                :body (TypedString 'other from the array' :type String))
+            ))
+        )))
+    (TypedLetValue 'nested' :type Fun(): String
+      :value (TypedFun :params () :type Fun(): String
+        :body (TypedTry :type String
+          :body (TypedRaise :type String
+            :exc (TypedVar 'Fail' :type Exception(String))
+            :payload (TypedString 'outer' :type String))
+          :branches ()
+          :else (TypedBlock :type String
+            :bindings (
+              (TypedExprStmt
+                :expr (TypedApp :type Ok
+                  :func (TypedVar 'print' :type Fun(s: String): Ok)
+                  :args (
+                    (TypedTry :type String
+                      :body (TypedRaise :type String
+                        :exc (TypedVar 'Fail' :type Exception(String))
+                        :payload (TypedString 'inner' :type String))
+                      :branches ()
+                      :else (TypedInfix '<>' :type String
+                        :left (TypedString 'handled ' :type String)
+                        :right (TypedApp :type String
+                          :func (TypedVar 'classify' :type Fun(f: Fun(): Int): String)
+                          :args (
+                            (TypedFun :params () :type Fun(): Int
+                              :body (TypedApp :type Int
+                                :func (TypedTypeApp [Int] :type Fun(r: raised.T): Int
+                                  :func (TypedSelect 'reraise' :type All(A :: TYPE) Fun(r: raised.T): A
+                                    :target (TypedVar 'raised' :type Module 'raised')))
+                                :args (
+                                  (TypedVar 'i' :type raised.T)
+                                )))
+                          ))))
+                  )))
+            )
+            :result (TypedApp :type String
+              :func (TypedTypeApp [String] :type Fun(r: raised.T): String
+                :func (TypedSelect 'reraise' :type All(A :: TYPE) Fun(r: raised.T): A
+                  :target (TypedVar 'raised' :type Module 'raised')))
+              :args (
+                (TypedVar 'e' :type raised.T)
+              ))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedTry :type String
+            :body (TypedApp :type String
+              :func (TypedVar 'nested' :type Fun(): String)
+              :args ())
+            :branches (
+              (TypedTryBranch
+                :exc_pattern (TypedVar 'Fail' :type Exception(String))
+                :body (TypedVar 'm' :type String))
+            ))
+        )))
+  ))

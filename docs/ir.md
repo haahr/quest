@@ -190,7 +190,7 @@ The operations, by group (the stage column says where they may appear; `C` is Co
 | Variants and options | `variant(tag, a)`, `option(tag, a...)` or `option(#n in (cases), a...)`, `is_tag(v, tag)`, `payload(v, tag)` (for an option, `payload(v, tag) #n`, its tuple starting with the case's ordinal `n`), `ordinal(v) in (cases)` (ordinals count in `cases`, the names of the cases of the option's static type as written) | C+ |
 | Arrays | `array(a...)`, `array_rep(n, a)`, `index(a, i)` | C+ |
 | Auto values | `auto[τ](a)` | C+ |
-| Exceptions | `exception Name` (generative), `exception_payload(e)` | C+ |
+| Exceptions | `exception Name` (generative), `exception_payload(e)`, `caught_exception(e)` | C+ |
 | Addresses | `addr x` (a mutable variable), `addr r.name`, `addr t.#i`, `addr a[i]`, `cell(a)` (a fresh cell, for `var(e)`), `load p` | C+ |
 | Conversions | `convert(a, plan)` (§8) | R+ |
 
@@ -288,11 +288,15 @@ try { body } handle (e: Exception) { body }
 raise a
 ```
 
-`try` is a region: a `raise` in the body, or in any function it calls, transfers to the handler. The handler's
-variable holds the exception raised together with its payload: `prim is(e, E)` compares the exception, and
-`exception_payload(e)` reads the payload, and `raise e` raises it again with the same payload. Branches of a Quest `try ... when ... else ... end` become tests of the exception's identity in the
-handler, re-raising when none matches. The C printer prints `try` with `setjmp`/`longjmp` (as
-[c-representation.md](c-representation.md) §7 describes), popping the handler on every way out of the body (falling
+`try` is a region: a `raise` in the body, or in any function it calls, transfers to the handler. The handler's variable
+holds the exception raised together with its payload: `prim is(e, E)` compares the exception, and `exception_payload(e)`
+reads the payload, and `raise e` raises it again with the same payload. Branches of a Quest `try ... when ... else ...
+end` become tests of the exception's identity in the handler, re-raising when none matches. `caught_exception(e)` is the
+exception as a value of `raised.T`, for an `else` branch that names it ([raised.md](raised.md)): a heap copy of the
+handler's state (`quest_raised_capture`). What a `try` catches, printed after `try`, is listed exceptions (`catching
+(a...)`), `all`, `all traced` (an `else` that names the exception, whose raise captures its frames,
+[exceptions.md](exceptions.md) §5.1), or unknown (nothing printed). The C printer prints `try` with `setjmp`/`longjmp`
+(as [c-representation.md](c-representation.md) §7 describes), popping the handler on every way out of the body (falling
 off its end, or a jump, break, continue, or return). C makes a non-`volatile` local modified between `setjmp` and
 `longjmp` indeterminate afterwards, so the printer declares `volatile` every mutable variable that is assigned in a
 `try` body and live in its handler or after the `try`. The IR makes this decidable from the region structure.
