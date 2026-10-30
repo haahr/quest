@@ -47,7 +47,7 @@ class TestArm64(unittest.TestCase):
         for name in ("_qf_many", "_qf_caller", "_qf_memory", "_qf_try"):
             self.assertEqual(symbols[name], "t")
         self.assertEqual(symbols["_qr_table"], "s")
-        for name in ("_quest_pop_handler", "_quest_current_exception_handler", "_quest_type_Int"):
+        for name in ("_quest_pop_handler", "_quest_current_exception_handler", "_quest_type_Int", "___chkstk_darwin"):
             self.assertEqual(symbols[name], "U")
         # A native try calls nothing to enter its handler
         self.assertNotIn("__setjmp", symbols)
@@ -66,7 +66,10 @@ class TestArm64(unittest.TestCase):
         self.assertIn("ldrb w9, [x29, #57]", text)
         # A native try records where to resume, with sp and fp, and its
         # function saves and restores every callee-saved register, once each
-        self.assertIn("adr x9, Lf4_b2", text)
+        self.assertIn("adr x9, Lf4_e1", text)
+        self.assertIn("Lf4_e1:\n\tb Lf4_b2", text)
+        # A frame of more than a page is probed (docs/arm64.md section 10.2)
+        self.assertIn("\tbl ___chkstk_darwin\n\tmovz x9, #40160, lsl #0\n\tsub sp, sp, x9", text)
         self.assertIn("str x29, [x10, #40]", text)
         for pair in ("x19, x20", "x27, x28", "d8, d9", "d14, d15"):
             self.assertEqual(text.count(f"stp {pair}, [sp, #-16]!"), 1, pair)

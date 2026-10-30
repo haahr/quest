@@ -697,13 +697,19 @@ with what would address it.
    allocator's loads and stores (§3.8), can exceed them. *Solution:* the emitter relaxes branches itself: once
    instruction sizes are known, an out-of-range conditional branch becomes the inverted condition around an
    unconditional `b` (128 MB), repeated until no branch changes. Jump tables for `switch` hold offsets wide enough for
-   the function.
+   the function. *Addressed* (2026-10-29): `relaxBranches` relaxes each function's conditional branches whose
+   targets are more than 260,000 instructions away, round after round (the questlang test `arm64_relax`, with a reach
+   of a few instructions); a `try`'s `adr`, which also reaches 1 MB, takes the address of a branch beside it to the
+   handler. Step 6 makes no jump tables yet; they will need the same care.
 2. **Large frames and the guard page.** The trivial allocator gives every virtual register a slot, so a large
    function has a large frame, and a frame larger than the stack's guard region can step over it, so that a stack
    overflow writes into whatever memory lies beyond rather than faulting in the guard, and exceptions.md §6's handler
    may never run. Step 6's prologue moves `sp` by the whole frame at once, however large. *Solution:* as clang does,
    a prologue whose frame exceeds a page calls `___chkstk_darwin` (or probes each page itself) before moving `sp`; a
    test recurses through a function with a large frame and checks that the stack overflow is reported.
+   *Addressed* (2026-10-29): a frame of more than 4 KB is moved through `___chkstk_darwin` (`x9` holding its size in
+   bytes), as clang does; `tests/self-hosted/backends.py` recurses without end through a function with a 24 KB
+   frame and checks that each backend reports `stack.overflow`.
 3. **Apple's stack arguments.** Darwin's arm64 ABI places arguments past the registers at their natural size and
    alignment, not in 8-byte slots as standard AAPCS64 does. Step 6 handles the case that arises today, a C `bool` or
    `char` taking one byte (`narrow`, ssa.md §2.2), but any other C type narrower than a word that a signature gains

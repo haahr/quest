@@ -11,9 +11,15 @@
 interface Codegen
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    collections/vector : collections/Vector
 export
     (* What the backend cannot compile, naming it *)
     unsupported: Exception(String)
     (* A unit's assembly *)
     assembleUnit(u: ssa.Unit): String
+    (* A function's lines of assembly with each conditional branch whose
+     * target is more than reach instructions away turned into the inverse
+     * branch around an unconditional one (docs/arm64.md section 10.1); its
+     * labels begin with prefix *)
+    relaxBranches(lines: vector.T(String) prefix: String reach: Int): vector.T(String)
 end

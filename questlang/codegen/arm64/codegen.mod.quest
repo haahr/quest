@@ -413,14 +413,110 @@ export
              * at the handler block with this frame's sp and fp, every register
              * dead, every value in the frame (docs/arm64.md section 3.6) *)
             when termTry with x then
+                (* adr reaches 1 MB: the resume address is a branch beside the
+                 * try, which reaches 128 MB, to the handler *)
+                let resume = newLabel(fr)
                 addImm(fr "x10" "sp" fr.slotAt[x.slot])
-                emit(fr "adr x9, " <> blockLabel(fr x.handler))
+                emit(fr "adr x9, " <> resume)
                 emit(fr "str x9, [x10, #" <> conv.int(runtimeLayout.offset("QExceptionHandler" "resume")) <> "]")
                 emit(fr "mov x9, sp")
                 emit(fr "str x9, [x10, #" <> conv.int(runtimeLayout.offset("QExceptionHandler" "sp")) <> "]")
                 emit(fr "str x29, [x10, #" <> conv.int(runtimeLayout.offset("QExceptionHandler" "fp")) <> "]")
                 jump(fr x.body)
+                label(fr resume)
+                emit(fr "b " <> blockLabel(fr x.handler))
             when termUnreachable then emit(fr "brk #1")
+        end
+
+    (* =========================================================================
+     * Branch relaxation (docs/arm64.md section 10.1)
+     * ====================================================================== *)
+
+    (* How far, in instructions, a conditional branch may reach: 1 MB less a
+     * margin *)
+    let branchReach = 260000
+
+    let isInstruction(line: String): Bool =
+        {stringOp.length(line) > 1} andif {stringOp.getChar(line 0) is '\t'} andif not({stringOp.getChar(line 1) is '.'})
+    let isLabel(line: String): Bool =
+        {stringOp.length(line) > 1} andif {stringOp.getChar(line {stringOp.length(line) - 1}) is ':'}
+            andif not({stringOp.getChar(line 0) is '\t'})
+
+    (* A conditional branch's inverse and target, if line is one: cbz and cbnz
+     * of a register, and b.cond *)
+    Let Conditional = Tuple inverse: String target: String end
+    let conditional(line: String): maybe.T(Conditional) =
+        begin
+            let inverses = array of "cbz" "cbnz" "b.eq" "b.ne" "b.lt" "b.ge" "b.gt" "b.le" "b.lo" "b.hs" "b.hi" "b.ls"
+                "b.mi" "b.pl" "b.vs" "b.vc" end
+            let var found = maybe.none(:Conditional)
+            for k = 0 upto {extent inverses - 1} do
+                let op = inverses[k]
+                let inverse = inverses[k + {if {{k / 2} * 2} is k then 1 else ~1 end}]
+                let head = "\t" <> op <> " "
+                if strutil.startsWith(line head) then
+                    let rest = stringOp.getSub(line stringOp.length(head) {stringOp.length(line) - stringOp.length(head)})
+                    (* cbz's register comes first: the target follows the last
+                     * space *)
+                    let var at = 0
+                    for i = 0 upto {stringOp.length(rest) - 1} do if stringOp.getChar(rest i) is ' ' then at := i + 1 end end
+                    let operands = stringOp.getSub(rest 0 at)
+                    found := maybe.some(:Conditional tuple
+                        let inverse = "\t" <> inverse <> " " <> operands
+                        let target = stringOp.getSub(rest at {stringOp.length(rest) - at})
+                    end)
+                end
+            end
+            found
+        end
+
+    (* A function's lines with each conditional branch whose target is more
+     * than reach instructions away turned into the inverse branch around an
+     * unconditional one, which reaches 128 MB; repeated until none is *)
+    let relaxBranches(lines: Lines prefix: String reach: Int): Lines =
+        begin
+            let var current = lines
+            let var changed = true
+            let var count = 0
+            while changed do
+                changed := false
+                let at = hashMap.new(:String :Int eq hash.string)
+                let var n = 0
+                for i = 0 upto {vector.length(:String current) - 1} do
+                    let line = vector.get(:String current i)
+                    if isLabel(line) then put(:String :Int at stringOp.getSub(line 0 {stringOp.length(line) - 1}) n)
+                    elsif isInstruction(line) then n := n + 1 end
+                end
+                let next = vector.new(:String)
+                let var position = 0
+                for i = 0 upto {vector.length(:String current) - 1} do
+                    let line = vector.get(:String current i)
+                    let c = conditional(line)
+                    let var far = false
+                    (* A branch around a relaxed one jumps two instructions *)
+                    if maybe.isSome(:Conditional c) andif not(strutil.startsWith(maybe.unwrap(:Conditional c).target
+                        prefix <> "_r")) then
+                        let t = hashMap.get(:String :Int at maybe.unwrap(:Conditional c).target)
+                        if maybe.isSome(:Int t) then
+                            let d = maybe.unwrap(:Int t) - position
+                            far := {d > reach} orif {{0 - d} > reach}
+                        end
+                    end
+                    if far then
+                        count := count + 1
+                        let skip = prefix <> "_r" <> conv.int(count)
+                        vector.append(:String next maybe.unwrap(:Conditional c).inverse <> skip)
+                        vector.append(:String next "\tb " <> maybe.unwrap(:Conditional c).target)
+                        vector.append(:String next skip <> ":")
+                        changed := true
+                    else
+                        vector.append(:String next line)
+                    end
+                    if isInstruction(line) then position := position + 1 end
+                end
+                current := next
+            end
+            current
         end
 
     (* =========================================================================
@@ -485,8 +581,17 @@ export
                 for k = 0 upto {extent savedPairs - 1} do emit(fr "stp " <> savedPairs[k] <> ", [sp, #-16]!") end
                 emitAll(fr savedOffsets)
             end
-            if size < 4096 then emit(fr "sub sp, sp, #" <> conv.int(size))
-            else begin movImm(fr "x16" size) emit(fr "sub sp, sp, x16") end end
+            (* A frame of more than a page is probed a page at a time, as clang
+             * does, so that a stack overflow faults in the guard page rather
+             * than past it (docs/arm64.md section 10.2) *)
+            if size <= 4096 then
+                emit(fr "sub sp, sp, #" <> conv.int(size))
+            else
+                movImm(fr "x9" size)
+                emit(fr "bl " <> asm.symbol("__chkstk_darwin"))
+                movImm(fr "x9" size)
+                emit(fr "sub sp, sp, x9")
+            end
             (* The parameters, to their slots; main's argc is a C int *)
             let params = vector.toArray(:Int ssa.block(f 0).params)
             if eq(f.symbol "main") then emit(fr "sxtw x0, w0") end
@@ -509,7 +614,7 @@ export
                 terminator(fr blk.term)
             end
             for k = 0 upto {extent asm.functionEnd - 1} do vector.append(:String fr.lines asm.functionEnd[k]) end
-            fr.lines
+            relaxBranches(fr.lines fr.prefix branchReach)
         end
 
     let assembleUnit(u: ssa.Unit): String =

@@ -1,0 +1,36 @@
+(* Self-Hosted Quest Compiler: Test the arm64 Backend's Branch Relaxation
+ *
+ * questlang/codegen/arm64/codegen's relaxBranches (docs/arm64.md section 10.1),
+ * with a reach of a few instructions rather than a megabyte's: a conditional
+ * branch whose target is too far, forward or back, becomes its inverse around
+ * an unconditional branch; one within reach, an unconditional branch, and
+ * directives are left alone; and relaxing one branch can push another out of
+ * reach, which the next round relaxes. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
+    collections/vector : collections/Vector
+    writer : Writer
+;
+
+let show(title: String lines: Array(String) reach: Int): Ok =
+    begin
+        writer.putString(writer.output "== " <> title <> "\n")
+        let relaxed = codegen.relaxBranches(vector.fromArray(:String lines) "Lt" reach)
+        for i = 0 upto {vector.length(:String relaxed) - 1} do
+            writer.putString(writer.output vector.get(:String relaxed i) <> "\n")
+        end
+    end;
+
+show("near and far, forward and back" array of
+    "Lt_b0:" "\tcbz x9, Lt_b1" "\tcbnz x9, Lt_b2" "\tnop" "\t.cfi_offset w29, -16" "Lt_b1:" "\tnop" "\tnop" "\tnop"
+    "\tb.ne Lt_b0" "\tb Lt_b0" "Lt_b2:" "\tret"
+end 4);
+show("one relaxation pushes another out of reach" array of
+    "\tb.mi Lt_b1" "\tb.lt Lt_b2" "\tnop" "Lt_b1:" "\tnop" "\tnop" "Lt_b2:" "\tret"
+end 3);
+show("every condition inverts" array of
+    "\tb.eq L" "\tb.ge L" "\tb.le L" "\tb.hs L" "\tb.ls L" "\tb.pl L" "\tb.vc L" "\tnop" "\tnop" "\tnop" "\tnop"
+    "\tnop" "\tnop" "\tnop" "\tnop" "\tnop" "\tnop" "\tnop" "L:"
+end 1);

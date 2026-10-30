@@ -1,0 +1,65 @@
+== near and far, forward and back
+Lt_b0:
+	cbz x9, Lt_b1
+	cbz x9, Lt_r1
+	b Lt_b2
+Lt_r1:
+	nop
+	.cfi_offset w29, -16
+Lt_b1:
+	nop
+	nop
+	nop
+	b.eq Lt_r2
+	b Lt_b0
+Lt_r2:
+	b Lt_b0
+Lt_b2:
+	ret
+== one relaxation pushes another out of reach
+	b.pl Lt_r2
+	b Lt_b1
+Lt_r2:
+	b.ge Lt_r1
+	b Lt_b2
+Lt_r1:
+	nop
+Lt_b1:
+	nop
+	nop
+Lt_b2:
+	ret
+== every condition inverts
+	b.ne Lt_r1
+	b L
+Lt_r1:
+	b.lt Lt_r2
+	b L
+Lt_r2:
+	b.gt Lt_r3
+	b L
+Lt_r3:
+	b.lo Lt_r4
+	b L
+Lt_r4:
+	b.hi Lt_r5
+	b L
+Lt_r5:
+	b.mi Lt_r6
+	b L
+Lt_r6:
+	b.vs Lt_r7
+	b L
+Lt_r7:
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+	nop
+L:

@@ -9,7 +9,8 @@ backends both ways. Each build must print what the first printed; each unit's ma
 record the backend that compiled it; a unit compiled by another backend than the
 build's choice must be compiled again, and one compiled by the same must not.
 Malformed options are usage errors, and --whole-program is the c backend's
-alone. run_tests.py --self-hosted runs it (docs/testing.md).
+alone. A runaway recursion through a frame larger than the stack's guard page
+ends with stack.overflow with each backend. run_tests.py --self-hosted runs it (docs/testing.md).
 
     python tests/self-hosted/backends.py DRIVER
 """
@@ -110,11 +111,56 @@ def check(driver: str) -> list[str]:
     return problems
 
 
+OVERFLOW_LETS = 3000
+
+
+def overflow_program(lets: int) -> str:
+    """A recursion through a function whose frame, with the arm64 backend's
+    trivial allocator, is far larger than the stack's guard page: first a
+    hundred deep, which prints the sum of 1 to lets - 1, then without end."""
+    body = "\n".join(f"        let a{i} = a{i - 1} + {i}" for i in range(1, lets))
+    return (f"import writer : Writer conv : Conv ;\n"
+            f"let rec deep(n: Int limit: Int): Int =\n    begin\n        let a0 = n\n{body}\n"
+            # (Not a + deep(n + 1), which clang makes a loop with an accumulator)
+            f"        if n is limit then a{lets - 1}\n"
+            f"        elsif deep({{n + 1}} limit) > a{lets - 1} then a{lets - 1} else 0 end\n    end;\n"
+            f"writer.putString(writer.output conv.int(deep(0 100)) <> \"\\n\");\n"
+            f"writer.putString(writer.output conv.int(deep(0 ~1)));\n")
+
+
+def check_overflow(driver: str) -> list[str]:
+    """Each backend's recursion through a large frame works when bounded, and
+    when runaway ends with stack.overflow, as exceptions.md section 6 has it,
+    rather than a crash past the guard page (docs/arm64.md section 10.2)."""
+    environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
+    problems: list[str] = []
+    with tempfile.TemporaryDirectory() as d:
+        program = Path(d) / "overflow.quest"
+        program.write_text(overflow_program(OVERFLOW_LETS))
+        expected = f"{(OVERFLOW_LETS - 1) * OVERFLOW_LETS // 2}\n"
+        for backend in ("c", "ssac", "arm64"):
+            build = Path(d) / f"build-{backend}"
+            p = subprocess.run([driver, "--backend", backend, "--build-dir", str(build), "-o", str(build / "main"),
+                                str(program)], capture_output=True, text=True, cwd=d, env=environment)
+            if p.returncode != 0:
+                problems.append(f"overflow with {backend}: the build failed: {p.stderr.strip()[:500]}")
+                continue
+            try:
+                run = subprocess.run([str(build / "main")], capture_output=True, text=True, cwd=d, timeout=60)
+            except subprocess.TimeoutExpired:
+                problems.append(f"overflow with {backend}: the program ran for a minute")
+                continue
+            if run.returncode != 1 or run.stdout != expected or "stack.overflow" not in run.stderr:
+                problems.append(f"overflow with {backend}: exit status {run.returncode}, stdout {run.stdout[:100]!r}, "
+                            f"stderr {run.stderr[:300]!r}")
+    return problems
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print(__doc__)
         sys.exit(2)
-    problems = check(sys.argv[1])
+    problems = check(sys.argv[1]) + check_overflow(sys.argv[1])
     for problem in problems:
         print(problem)
     print("the backends agree" if not problems else f"{len(problems)} problems")
