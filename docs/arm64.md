@@ -32,7 +32,13 @@ The code says **arm64** in directory, module, and option names; this document sa
 - **Debug information** (decided 2026-10-29): DWARF line tables (`.file` and `.loc` directives, from the IR's source
   offsets), in a step of their own after linear scan; no variable locations.
 - **The default backend** stays C; whether arm64 becomes the default (for programs, for building the compiler, for
-  releases) is decided after step 12, from measured compile and run times (decided 2026-10-29).
+  releases) is decided after step 12, from measured compile and run times (decided 2026-10-29). No such decision is
+  final: step 12's measurements are of a backend without most optimizations (§6), and as its code improves, arm64
+  becomes the more likely choice. The question is reopened whenever benchmarks.md records a significant change.
+- **One SSA-based C backend in the end** (step 15): the tree-walking C printer is a second, hand-written
+  implementation of every operation's access sequence (§3.1), kept in agreement with the SSA's builder only by tests.
+  Once the SSA's code is good enough, `ssac` replaces it as the self-hosted compiler's C backend, so that each
+  operation is lowered once. The bootstrap's C printer stays, since the bootstrap gets no SSA.
 
 ## 2. Pipeline
 
@@ -239,7 +245,8 @@ Native code must do what the C helpers do, including the cases where arm64 and C
 - Shift counts are taken modulo 64 by arm64 and are undefined in C past 63; the word helpers handle the counts.
 - `fcvtzs` saturates; C's conversion of an out-of-range `double` is undefined.
 - `Real` arithmetic raises `real.error` on a NaN result, and division on a zero divisor (`quest_real_result_at`).
-- `Char` is C's `char`, which is signed on Darwin arm64, so a `Char` widened to a slot is sign-extended.
+- `Char` is C's `char`, which is signed on Darwin arm64, so a `Char` widened to a slot is sign-extended. This ties the
+  language to a platform's choice; the preference is `uint8_t` (§10.4).
 
 The inventory (§7.2) lists every helper, and the arm64 tests (§4) cover each edge case against the C backend.
 
@@ -464,6 +471,13 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
     builds with `--backend arm64` (and `ssac`) pass the suite.
 14. **Line tables** (§1). *Done when* native code has `.file` and `.loc` directives for its source lines, and lldb
     shows a breakpoint's Quest line and a backtrace's lines in a test program.
+15. **`ssac` as the C backend** (§1). Measure `ssac`'s code and compile times against the C printer's, with the
+    SSA's promotion of stack slots (§6) and whatever else the comparison needs. If `ssac` is close enough, it becomes
+    the self-hosted compiler's C backend: `--backend c` selects it, the C printer and its goldens are retired, and
+    `--whole-program` goes through the SSA. *Done when* the self-hosted compiler has one C backend, or benchmarks.md
+    records why the C printer stays and what would change that.
+
+The plan is not complete until each hazard of §10 is addressed or shown not to arise.
 
 ## 6. Possible Future Optimizations
 
@@ -497,6 +511,25 @@ The list grows as ideas come up; when the plan is complete, what remains moves t
     `quest_option_element`), `quest_convert`, dynamic values and their serialization, and the interpreters'
     agreement with compiled code.
 - **Cross-module inlining** (benchmarks.md §3.3), which would also let the backend's ids be abstract types (§3.15).
+- **Promotion before linear scan, and before step 12's measurements:** linear scan gains little while every mutable
+  variable is a stack slot, so promoting slots, with copy propagation and dead code elimination, early would make
+  both linear scan's and the default backend's measurements more representative (§1).
+- **A calling convention of Quest's own for calls between native functions.** The SSA's calls now follow C's: values
+  in the order of the C function's parameters, 16-byte composites' starts and `memory` arguments recorded, narrow
+  results extended after the call (ssa.md §2.2). Making the convention an attribute of each function and call, C's
+  only where C is on the other side (externals, the runtime, exported `qv_` functions, adapters, the function table),
+  would let calls within native code use a convention of their own: no extension of narrow values, a 16-byte value
+  split between registers and the stack, more argument and result registers, a fixed register for the environment,
+  and tail calls that could be guaranteed, which §3.7's limit on stack arguments now prevents. It could start out
+  identical to C's, so that adding the attribute changes no code.
+- **Fixing the language's costs that shape the backend's code** (§3.15), so that its largest and most bug-prone
+  parts can be written with types rather than conventions. Retrofitting typed ids into a mature allocator and
+  instruction selector is costly, so these are worth doing before the backend grows large:
+  - **payload-free option cases as shared constants** (above), so that opcodes need not be made once by hand;
+  - **`maybe.T` as a manifest option type** (§3.15), so that code `case`s on it and needs no `-1` for "none";
+  - **one-case variants unboxed in aggregates' slots,** so that a `Variant block: Int end` id costs nothing in an
+    array or a node, and the type checker tells a block's number from an instruction's;
+  - **typed ids even while they allocate,** if the language fixes come later, accepting their cost until they do.
 
 ## 7. Inventory of the C Backend's Decisions
 
@@ -637,3 +670,40 @@ fixed in the builder, with what the test that found it was:
   without a literal (`QUEST_REAL_INFINITY`, by its bits, `runtimeLayout.realBits`), and a runtime variable read as a
   value (`quest_system_args`, `runtimeLayout.variables`).
 - Static data cannot hold a thread-local's address, which is not a constant; `ssac` refuses such data.
+
+## 10. Hazards to Address
+
+Problems the plan does not yet handle, each to be addressed (or shown not to arise) before the plan is complete (§5),
+with what would address it.
+
+1. **Branch ranges.** `clang -c`'s assembler does not relax arm64 branches whose targets are out of range; it reports
+   a fixup error. `b.cond`, `cbz`, and `cbnz`, which step 6's code uses, reach 1 MB either way, and `tbz` and `tbnz`,
+   which instruction selection (§3.5) would add, only 32 KB, so a large function, above all with the trivial
+   allocator's loads and stores (§3.8), can exceed them. *Solution:* the emitter relaxes branches itself: once
+   instruction sizes are known, an out-of-range conditional branch becomes the inverted condition around an
+   unconditional `b` (128 MB), repeated until no branch changes. Jump tables for `switch` hold offsets wide enough for
+   the function.
+2. **Large frames and the guard page.** The trivial allocator gives every virtual register a slot, so a large
+   function has a large frame, and a frame larger than the stack's guard region can step over it, so that a stack
+   overflow writes into whatever memory lies beyond rather than faulting in the guard, and exceptions.md §6's handler
+   may never run. Step 6's prologue moves `sp` by the whole frame at once, however large. *Solution:* as clang does,
+   a prologue whose frame exceeds a page calls `___chkstk_darwin` (or probes each page itself) before moving `sp`; a
+   test recurses through a function with a large frame and checks that the stack overflow is reported.
+3. **Apple's stack arguments.** Darwin's arm64 ABI places arguments past the registers at their natural size and
+   alignment, not in 8-byte slots as standard AAPCS64 does. Step 6 handles the case that arises today, a C `bool` or
+   `char` taking one byte (`narrow`, ssa.md §2.2), but any other C type narrower than a word that a signature gains
+   (a 4-byte `int`, say) would be packed the same way. *Solution:* the ABI lowering places stack arguments by their
+   C types' sizes and alignments rather than by a list of narrow ones, and §4's tests of calls between C and native
+   code cover narrow types, `double`s, and 16-byte composites past the eighth argument, in both directions.
+4. **`Char` is C's `char`** (§3.9, §7.1), whose signedness is the platform's: signed on Darwin arm64, unsigned on
+   Linux arm64. A `Char` above 127 is then a negative integer on one and not on the other, and the representation
+   leaks into conversions, comparisons, and slots. *Solution (preferred):* `Char` is `uint8_t` everywhere, in the
+   runtime's types, `layout.representation`, both compilers' C printers, the SSA (a `Char` loaded, received, or
+   returned is zero-extended, as `Bool` is), and both interpreters, which must agree; an ABI bump, with run tests of
+   characters above 127. Doing it while there is one platform keeps the change small.
+5. **Pointers through integers.** §3.13 keeps `ptr` apart from `int` so that a precise or moving collector stays
+   possible, but `QVal` words and proxies already cross between them (`intToPtr`, `ptrToInt`, ssa.md §1), so the
+   distinction alone does not give stack maps. *Solution:* state the requirement precisely: the register allocator
+   carries each virtual register's `ptr` or `int` class through allocation, into spill slots, and the frame records
+   which slots hold pointers, so that stack maps at calls could be emitted later; and a word whose pointer-ness is
+   dynamic (a `QVal`) is described as such, for a precise collector to resolve by descriptor.
