@@ -248,6 +248,39 @@ through the copy area, as before. A function that enters a `try` keeps every val
 which also keeps its handler's view of them simple (§3.6). `regalloc_scan` (a questlang test) shows its choices on
 small functions with a target of a few registers.
 
+**With splitting (2026-10-30, after Wimmer and Mössenböck, *Optimized Interval Splitting in a Linear Scan Register
+Allocator*, VEE 2005).** A value's interval is now the ranges where it is live, with holes, so another value can
+use its register in a hole. Intervals are taken in order of their starts:
+
+- **A free register.** An interval takes a register free for all of it, a caller-saved one first. If none is, it
+  takes the one free longest and the rest is split off, as long as some register is free where it starts.
+- **None free.** It takes the register whose holders are next used furthest away, splitting them where it starts,
+  unless its own next use is further. In that case it is spilled until that use, from which the rest is allocated
+  again.
+- **Calls and handlers.** A caller-saved register is unavailable from just after a call the interval is live
+  across. Every register is unavailable at the start of a `try`'s handler that the interval covers.
+
+So a value lives in pieces, each in a register or in memory:
+
+- **Memory.** A value with a piece in memory is stored to its slot where it is defined. Because an SSA value never
+  changes, the slot stays valid wherever the value is live. A piece in memory therefore costs nothing to enter,
+  and a split child is always in memory until its next use.
+- **Back to a register.** A piece in a register that starts inside a block starts at a use. The allocation's
+  `moves` load it there (or move it between registers) just before that instruction.
+- **Block starts.** A piece that starts at a block's start is reached by the code of each edge into the block. Its
+  parallel moves take each parameter to its register and its slot, and each value live in from where it is at the
+  edge's source. They are sequenced so that nothing is overwritten before it is read, and moves that form a cycle
+  go through the copy area. A branch's edges each have their own code (after `cbz`, on each side), so no critical
+  edge needs splitting.
+- **Rematerialization.** A constant, a real constant, the null, a slot's address, or a symbol's address (not a
+  thread-local's) needs no slot. Where it is in memory it is computed again, and if its first piece is in memory,
+  its instruction emits nothing.
+- **`try` functions.** A function that enters a `try` is allocated like any other. What its handler uses is in
+  memory at the handler's start, so the handler's code reloads it. The function still saves every callee-saved
+  pair, which it must restore for its caller after a raise has passed through frames that clobbered them.
+
+`regalloc.spillAll`, every value in memory, remains as the baseline.
+
 ### 3.9. Primitive semantics
 
 Native code must do what the C helpers do, including the cases where arm64 and C differ:
@@ -506,8 +539,10 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
 11. **Linear scan** (§3.8). *Done when* the suite passes with it, and benchmarks.md has dated run and compile times
     for both backends. *Begun* (2026-10-30) with promotion, as §6 suggests: `ssa/promote` makes values of the slots
     of whole words whose addresses do not escape, in functions without a `try` ([ssa.md](ssa.md) §4.1). Then the
-    simplest linear scan (§3.8, as built), which the suite passes with; splitting, rematerialization, and allocation
-    in functions that enter a `try` remain, and so do the measurements.
+    simplest linear scan (§3.8, as built), which the suite passes with. Then interval splitting, rematerialization,
+    and allocation in functions that enter a `try` (§3.8, with splitting). benchmarks.md §4 has the run and build
+    times of both backends from before splitting (arm64's geometric mean against MLton 11.6, C's 5.2); the same
+    measurement with splitting remains.
 12. **Self-hosting with the arm64 backend** (§4). *Done when* the check passes, `./quest` can build its stages with
     either backend, `tools/check` runs the self-hosting check through `ssac` and `arm64` too, and benchmarks.md has
     the measurements from which the default backend is decided.

@@ -2,11 +2,14 @@
  *
  * questlang/codegen/regalloc (docs/arm64.md section 3.8) on small functions of
  * the SSA built by hand, with a target of few registers, so that its choices
- * show: a result takes the register its operand's range ends in; a value live
- * across a call gets only a callee-saved register, or is spilled; when the
- * registers run out, the range that ends last is spilled; a loop's values
- * stay in their registers through it, its parameter's range reaching the jump
- * back that writes it; and reals take registers of their own class. *)
+ * show: a result takes the register its operand's interval ends in; a value
+ * live across a call gets a callee-saved register, or is split, in memory
+ * across the call and back in a register at its next use; when the registers
+ * run out, the interval used furthest away is spilled until its next use; a
+ * loop's values stay in their registers through it; reals take registers of
+ * their own class; and what a try's handler uses is in memory at its start.
+ * Each value's pieces are shown with the positions they start at, then the
+ * moves to pieces that start inside blocks. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
@@ -39,9 +42,18 @@ let show(title: String f: ssa.Function): Ok =
         emit("== " <> title)
         writer.putString(writer.output printer.formatFunction(f))
         let a = regalloc.allocate(f registers isCall)
-        for v = 0 upto {extent a.registers - 1} do
-            let r = if stringOp.length(a.registers[v]) is 0 then "spilled" else a.registers[v] end
-            emit("%" <> conv.int(v) <> ": " <> r)
+        for v = 0 upto {extent a.starts - 1} do
+            let var line = "%" <> conv.int(v) <> ":"
+            for k = 0 upto {extent a.starts[v] - 1} do
+                let r = if stringOp.length(a.homes[v][k]) is 0 then "memory" else a.homes[v][k] end
+                line := line <> {if k > 0 then ", " else " " end} <> r <> " at " <> conv.int(a.starts[v][k])
+            end
+            emit(line)
+        end
+        for k = 0 upto {extent a.moves - 1} do
+            let m = a.moves[k]
+            let from = if stringOp.length(m.from) is 0 then "memory" else m.from end
+            emit("move at " <> conv.int(m.at) <> ": %" <> conv.int(m.value) <> " " <> from <> " -> " <> m.to)
         end
         let var used = ""
         for k = 0 upto {extent a.calleeUsed - 1} do used := used <> " " <> a.calleeUsed[k] end
@@ -66,8 +78,8 @@ let c2 = add(chain 0 c1 c1);
 ret(chain 0 array of add(chain 0 c2 c2) end);
 show("a chain" chain);
 
-(* 2. Across a call: what lives across it needs the callee-saved register, and
- * the second such value is spilled *)
+(* 2. Across a call: what lives across it needs the callee-saved register; the
+ * second such value is in memory across the call, and loaded at its use *)
 let across = ssa.newFunction("across" false array of tInt tInt end array of tInt end);
 let a0 = vector.get(:Int ssa.block(across 0).params 0);
 let a1 = vector.get(:Int ssa.block(across 0).params 1);
@@ -75,8 +87,8 @@ let ignored = ssa.call(across 0 "g" none none noTypes);
 ret(across 0 array of add(across 0 a0 a1) end);
 show("two values across a call" across);
 
-(* 3. Too many at once: four live together, three registers; the one that
- * ends last is spilled *)
+(* 3. Too many at once: four live together, three registers; the one used
+ * furthest away is spilled until it is used *)
 let crowd = ssa.newFunction("crowd" false array of tInt end array of tInt end);
 let k0 = vector.get(:Int ssa.block(crowd 0).params 0);
 let k1 = add(crowd 0 k0 k0);
@@ -87,7 +99,7 @@ let k5 = add(crowd 0 k4 k1);
 ret(crowd 0 array of add(crowd 0 k5 k0) end);
 show("more live values than registers" crowd);
 
-(* 4. A loop: its counter's range reaches the jump back that writes it *)
+(* 4. A loop: its values stay in their registers through it *)
 let loopF = ssa.newFunction("loop" false array of tInt end array of tInt end);
 let n = vector.get(:Int ssa.block(loopF 0).params 0);
 let head = ssa.newBlock(loopF);
@@ -108,3 +120,31 @@ let r2 = ssa.binary(reals 0 option opFadd of ssa.Opcode end r0 r1);
 let ignored2 = ssa.call(reals 0 "g" none none noTypes);
 ret(reals 0 array of ssa.binary(reals 0 option opFmul of ssa.Opcode end r2 r0) end);
 show("reals across a call" reals);
+
+(* 6. Two calls: of the three values live across them, one has the
+ * callee-saved register, and each other is in a caller-saved one until a call,
+ * then in memory until it is used *)
+let calls = ssa.newFunction("calls" false array of tInt tInt tInt end array of tInt end);
+let q0 = vector.get(:Int ssa.block(calls 0).params 0);
+let q1 = vector.get(:Int ssa.block(calls 0).params 1);
+let q2 = vector.get(:Int ssa.block(calls 0).params 2);
+let ignored3 = ssa.call(calls 0 "g" none none noTypes);
+let q3 = add(calls 0 q0 q1);
+let ignored4 = ssa.call(calls 0 "h" none none noTypes);
+ret(calls 0 array of add(calls 0 q3 q2) end);
+show("three values across two calls" calls);
+
+(* 7. A try: its handler is entered with every register dead, so what it uses
+ * is in memory at its start, while the body has it in a register *)
+let tried = ssa.newFunction("tried" false array of tInt end array of tInt end);
+let t0 = vector.get(:Int ssa.block(tried 0).params 0);
+let handlerRecord = ssa.newSlot(tried 64 8);
+let t1 = add(tried 0 t0 t0);
+let tryBody = ssa.newBlock(tried);
+let handler = ssa.newBlock(tried);
+ssa.terminate(tried 0 option termTry of ssa.Terminator with
+    let slot = handlerRecord let body = ssa.target(tryBody none) let handler = handler
+end);
+ret(tried tryBody array of add(tried tryBody t1 t1) end);
+ret(tried handler array of add(tried handler t1 t0) end);
+show("a try" tried);

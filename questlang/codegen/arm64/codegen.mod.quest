@@ -11,6 +11,7 @@ import
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
+    util/sort : util/Sort
     stringOp = string : StringOp
     conv : Conv
     word : Word
@@ -95,8 +96,8 @@ export
     (* =========================================================================
      * A function's frame: below the frame record and the callee-saved
      * registers it saves, the outgoing arguments' area at sp, then a slot for
-     * each value not in a register, the function's stack slots, and an area
-     * for a jump's parallel copies
+     * each value with a piece in memory (but none rematerialized), the
+     * function's stack slots, and an area for a set of moves that form a cycle
      * ====================================================================== *)
 
     Let Frame = Tuple
@@ -109,13 +110,21 @@ export
         prefix: String
         defined: hashMap.T(String Bool)
         threadLocals: hashMap.T(String Bool)
-        (* Each value's register, "" for one in its slot *)
-        registers: Array(String)
+        (* Where each value is at each position (docs/arm64.md section 3.8),
+         * and the positions of the moves inside blocks *)
+        allocation: regalloc.Allocation
+        moveAts: Array(Int)
+        (* The instruction of each value rematerialized rather than kept in
+         * its slot: a constant, the null, a symbol's address, or a slot's *)
+        remat: Array(maybe.T(ssa.Inst))
         (* The pairs of callee-saved registers it saves (indices in
          * savedPairs): every pair if it enters a try, else those its values
          * use *)
         saved: Array(Int)
         var edges: Int
+        (* The position of the instruction or terminator being compiled, the
+         * results it writes at the next *)
+        var pos: Int
     end
 
     let emit(fr: Frame s: String): Ok = vector.append(:String fr.lines "\t" <> s)
@@ -171,23 +180,60 @@ export
                 <> dst <> ", " <> src)
         end
 
-    (* A value into a register, and a register into a value: a move for a
-     * value in a register, else a load or store of its slot *)
-    let loadValue(fr: Frame reg: String v: Int): Ok =
-        if stringOp.length(fr.registers[v]) > 0 then move(fr reg fr.registers[v])
-        else emit(fr "ldr " <> reg <> ", " <> frameAt(fr fr.valueAt[v])) end
-    let storeValue(fr: Frame reg: String v: Int): Ok =
-        if stringOp.length(fr.registers[v]) > 0 then move(fr fr.registers[v] reg)
-        else emit(fr "str " <> reg <> ", " <> frameAt(fr fr.valueAt[v])) end
+    let symbolAddress(fr: Frame reg: String symbol: String offset: Int): Ok =
+        emitAll(fr asm.addressOf(reg symbol offset hashMap.contains(:String :Bool fr.defined symbol)
+            hashMap.contains(:String :Bool fr.threadLocals symbol)))
 
     (* Whether two registers are of a class: x (or w) and d *)
-    let sameClass(a: String b: String): Bool = strutil.startsWith(a "d") is strutil.startsWith(b "d")
+    let isD(reg: String): Bool = strutil.startsWith(reg "d")
+    let sameClass(a: String b: String): Bool = isD(a) is isD(b)
+
+    (* Where a value is at a position: its register, "" for memory *)
+    let homeAt(fr: Frame v: Int p: Int): String = regalloc.home(fr.allocation v p)
+    let isRemat(fr: Frame v: Int): Bool = maybe.isSome(:ssa.Inst fr.remat[v])
+    (* Whether a value is stored in its slot when it is defined *)
+    let needsSlot(fr: Frame v: Int): Bool = fr.allocation.spilled[v] andif not(isRemat(fr v))
+
+    (* A rematerialized value computed again, into a register of either class
+     * (through x16 for a d register) *)
+    let rematerialize(fr: Frame reg: String v: Int): Ok =
+        begin
+            let i = maybe.unwrap(:ssa.Inst fr.remat[v])
+            let x = if isD(reg) then "x16" else reg end
+            case i.op
+                when opNull then movImm(fr x 0)
+                when opSymbol then symbolAddress(fr x i.symbol i.imm)
+                when opSlot then addImm(fr x "sp" fr.slotAt[i.imm])
+                else movImm(fr x i.imm)
+            end
+            if isD(reg) then move(fr reg x) end
+        end
+
+    (* A value in memory into a register: from its slot, or computed again *)
+    let loadMemory(fr: Frame reg: String v: Int): Ok =
+        if isRemat(fr v) then rematerialize(fr reg v)
+        else emit(fr "ldr " <> reg <> ", " <> frameAt(fr fr.valueAt[v])) end
+
+    (* A value into a register, where it is at the current position; and a
+     * result from a register, where it is just after (and to its slot if it
+     * has one) *)
+    let loadValue(fr: Frame reg: String v: Int): Ok =
+        begin
+            let r = homeAt(fr v fr.pos)
+            if stringOp.length(r) > 0 then move(fr reg r) else loadMemory(fr reg v) end
+        end
+    let storeValue(fr: Frame reg: String v: Int): Ok =
+        begin
+            let r = homeAt(fr v fr.pos + 1)
+            if stringOp.length(r) > 0 then move(fr r reg) end
+            if needsSlot(fr v) then emit(fr "str " <> reg <> ", " <> frameAt(fr fr.valueAt[v])) end
+        end
 
     (* The register a value is read from: its own, if of the class of the
      * scratch register given, else that register, loaded *)
     let inReg(fr: Frame v: Int scratch: String): String =
         begin
-            let r = fr.registers[v]
+            let r = homeAt(fr v fr.pos)
             if {stringOp.length(r) > 0} andif sameClass(r scratch) then r
             else begin loadValue(fr scratch v) scratch end end
         end
@@ -197,8 +243,96 @@ export
      * stores *)
     let outReg(fr: Frame v: Int scratch: String): String =
         begin
-            let r = fr.registers[v]
+            let r = homeAt(fr v fr.pos + 1)
             if {stringOp.length(r) > 0} andif sameClass(r scratch) then r else scratch end
+        end
+
+    (* =========================================================================
+     * Moves between pieces (docs/arm64.md section 3.8): a set of them is made
+     * at once, as if in parallel
+     * ====================================================================== *)
+
+    (* A place a move reads or writes: a register; a word of the copy area,
+     * at copy; or else a value's memory, its slot, or for a value
+     * rematerialized (only read), its instruction again *)
+    Let Place = Tuple reg: String value: Int copy: Int end
+    Let Transfer = Tuple dst: Place src: Place end
+
+    let inRegister(r: String): Place = tuple let reg = r let value = ~1 let copy = ~1 end
+    let inMemory(v: Int): Place = tuple let reg = "" let value = v let copy = ~1 end
+    let inCopy(k: Int): Place = tuple let reg = "" let value = ~1 let copy = k end
+    let transfer(dst: Place src: Place): Transfer = tuple let dst = dst let src = src end
+    let samePlace(a: Place b: Place): Bool =
+        if stringOp.length(a.reg) > 0 then eq(a.reg b.reg)
+        elsif a.copy >= 0 then a.copy is b.copy
+        else {stringOp.length(b.reg) is 0} andif {b.copy < 0} andif {a.value is b.value} end
+
+    (* A place's word into a register *)
+    let readInto(fr: Frame reg: String src: Place): Ok =
+        if stringOp.length(src.reg) > 0 then move(fr reg src.reg)
+        elsif src.copy >= 0 then emit(fr "ldr " <> reg <> ", " <> frameAt(fr fr.copyAt + {8 * src.copy}))
+        else loadMemory(fr reg src.value) end
+
+    (* One move, memory to memory through x9 *)
+    let place(fr: Frame dst: Place src: Place): Ok =
+        if stringOp.length(dst.reg) > 0 then readInto(fr dst.reg src)
+        else
+            let r = if stringOp.length(src.reg) > 0 then src.reg else begin readInto(fr "x9" src) "x9" end end
+            let at = if dst.copy >= 0 then fr.copyAt + {8 * dst.copy} else fr.valueAt[dst.value] end
+            emit(fr "str " <> r <> ", " <> frameAt(fr at))
+        end
+
+    (* Moves made at once: each in turn whose destination no other reads; if
+     * those left form cycles, all of them through the copy area *)
+    let parallel(fr: Frame transfers: vector.T(Transfer)): Ok =
+        begin
+            let pending = vector.new(:Transfer)
+            for k = 0 upto {vector.length(:Transfer transfers) - 1} do
+                let t = vector.get(:Transfer transfers k)
+                if not(samePlace(t.dst t.src)) then vector.append(:Transfer pending t) end
+            end
+            let var stuck = false
+            while {vector.length(:Transfer pending) > 0} andif not(stuck) do
+                let n = vector.length(:Transfer pending)
+                let var chosen = ~1
+                for k = 0 upto {n - 1} do
+                    if chosen < 0 then
+                        let t = vector.get(:Transfer pending k)
+                        let var read = false
+                        for j = 0 upto {n - 1} do
+                            if {j isnot k} andif samePlace(vector.get(:Transfer pending j).src t.dst) then read := true end
+                        end
+                        if not(read) then chosen := k end
+                    end
+                end
+                if chosen < 0 then stuck := true
+                else
+                    let t = vector.get(:Transfer pending chosen)
+                    place(fr t.dst t.src)
+                    vector.delete(:Transfer pending chosen)
+                end
+            end
+            if stuck then
+                let n = vector.length(:Transfer pending)
+                for k = 0 upto {n - 1} do place(fr inCopy(k) vector.get(:Transfer pending k).src) end
+                for k = 0 upto {n - 1} do place(fr vector.get(:Transfer pending k).dst inCopy(k)) end
+            end
+        end
+
+    (* The moves to pieces starting at the current position, before its
+     * instruction or terminator *)
+    let movesBefore(fr: Frame): Ok =
+        begin
+            let ms = fr.allocation.moves
+            let transfers = vector.new(:Transfer)
+            let var k = sort.bisectLeft(:Int fr.moveAts fr.pos sort.intCompare)
+            while {k < extent ms} andif {ms[k].at is fr.pos} do
+                let m = ms[k]
+                let src = if stringOp.length(m.from) > 0 then inRegister(m.from) else inMemory(m.value) end
+                vector.append(:Transfer transfers transfer(inRegister(m.to) src))
+                k := k + 1
+            end
+            if vector.length(:Transfer transfers) > 0 then parallel(fr transfers) end
         end
 
     (* An x register's low half, a w register *)
@@ -255,10 +389,6 @@ export
             else maybe.none(:String)
         end
 
-    let symbolAddress(fr: Frame reg: String symbol: String offset: Int): Ok =
-        emitAll(fr asm.addressOf(reg symbol offset hashMap.contains(:String :Bool fr.defined symbol)
-            hashMap.contains(:String :Bool fr.threadLocals symbol)))
-
     (* A call: its arguments in their places, the call, and its results
      * stored *)
     let call(fr: Frame i: ssa.Inst): Ok =
@@ -294,7 +424,7 @@ export
             end
         end
 
-    let instruction(fr: Frame i: ssa.Inst): Ok =
+    let compute(fr: Frame i: ssa.Inst): Ok =
         begin
             let a(k: Int): Int = i.args[k]
             let result = if extent i.results > 0 then i.results[0] else ~1 end
@@ -393,47 +523,44 @@ export
             end
         end
 
+    (* An instruction, but none for a value rematerialized whose first piece
+     * is in memory *)
+    let instruction(fr: Frame i: ssa.Inst): Ok =
+        if {extent i.results is 1} andif isRemat(fr i.results[0])
+                andif {stringOp.length(homeAt(fr i.results[0] fr.pos + 1)) is 0} then ok
+        else compute(fr i) end
+
     (* =========================================================================
      * Terminators
      * ====================================================================== *)
 
-    (* A target's parameters assigned its arguments, at once, through the
-     * copy area *)
-    let copiesThroughMemory(fr: Frame t: ssa.Target): Ok =
-        begin
-            let params = ssa.block(fr.f t.block).params
-            for k = 0 upto {extent t.args - 1} do
-                loadValue(fr "x9" t.args[k])
-                emit(fr "str x9, " <> frameAt(fr fr.copyAt + {8 * k}))
-            end
-            for k = 0 upto {extent t.args - 1} do
-                emit(fr "ldr x9, " <> frameAt(fr fr.copyAt + {8 * k}))
-                storeValue(fr "x9" vector.get(:Int params k))
-            end
-        end
-    (* The same, each directly when no parameter's register holds another's
-     * argument *)
+    (* An edge's moves: each of its target's parameters, to its register and
+     * its slot, from its argument, and each value live into the target from
+     * where it is at the edge's source to its register at the target's start
+     * (in memory there, it is already) *)
     let copies(fr: Frame t: ssa.Target): Ok =
         begin
+            let a = fr.allocation
+            let bs = a.blockStart[t.block]
+            let from(v: Int): Place =
+                begin
+                    let r = homeAt(fr v fr.pos)
+                    if stringOp.length(r) > 0 then inRegister(r) else inMemory(v) end
+                end
+            let transfers = vector.new(:Transfer)
             let params = ssa.block(fr.f t.block).params
-            let var overlap = false
             for k = 0 upto {extent t.args - 1} do
-                let r = fr.registers[vector.get(:Int params k)]
-                if stringOp.length(r) > 0 then
-                    for j = 0 upto {extent t.args - 1} do
-                        if {j isnot k} andif eq(r fr.registers[t.args[j]]) then overlap := true end
-                    end
-                end
+                let param = vector.get(:Int params k)
+                let r = homeAt(fr param bs)
+                if stringOp.length(r) > 0 then vector.append(:Transfer transfers transfer(inRegister(r) from(t.args[k]))) end
+                if needsSlot(fr param) then vector.append(:Transfer transfers transfer(inMemory(param) from(t.args[k]))) end
             end
-            if overlap then copiesThroughMemory(fr t)
-            else
-                for k = 0 upto {extent t.args - 1} do
-                    let param = vector.get(:Int params k)
-                    let r = fr.registers[param]
-                    if stringOp.length(r) > 0 then loadValue(fr r t.args[k])
-                    else storeValue(fr inReg(fr t.args[k] "x9") param) end
-                end
+            let ins = a.liveIn[t.block]
+            for k = 0 upto {extent ins - 1} do
+                let r = homeAt(fr ins[k] bs)
+                if stringOp.length(r) > 0 then vector.append(:Transfer transfers transfer(inRegister(r) from(ins[k]))) end
             end
+            parallel(fr transfers)
         end
     let jump(fr: Frame t: ssa.Target): Ok = begin copies(fr t) emit(fr "b " <> blockLabel(fr t.block)) end
 
@@ -550,7 +677,8 @@ export
             when termTailCall with x then tailCall(fr x.call)
             (* Its handler's record pushed, a native handler's: a raise resumes
              * at the handler block with this frame's sp and fp, every register
-             * dead, every value in the frame (docs/arm64.md section 3.6) *)
+             * dead, what it uses in memory at its start (docs/arm64.md sections
+             * 3.6 and 3.8) *)
             when termTry with x then
                 (* adr reaches 1 MB: the resume address is a branch beside the
                  * try, which reaches 128 MB, to the handler *)
@@ -697,24 +825,77 @@ export
                     if n > copyWords then copyWords := n end
                 end
             end
-            (* Every value in its slot in a function that enters a try, whose
-             * handler finds them there (section 3.6) *)
-            let allocation = if savesAll then regalloc.spillAll(f) else
-                regalloc.allocate(f allocatable fun(i: ssa.Inst): Bool
-                    case i.op
-                        when opCall then true
-                        when opCallIndirect then true
-                        (* A thread-local's address is a call of its accessor *)
-                        when opSymbol then hashMap.contains(:String :Bool threadLocals i.symbol)
-                        else false
-                    end)
-            end
-            (* A slot for each value not in a register *)
+            (* A function that enters a try is allocated as any other: the
+             * allocator keeps what its handlers use in memory at their starts
+             * (section 3.6) *)
+            let allocation = regalloc.allocate(f allocatable fun(i: ssa.Inst): Bool
+                case i.op
+                    when opCall then true
+                    when opCallIndirect then true
+                    (* A thread-local's address is a call of its accessor *)
+                    when opSymbol then hashMap.contains(:String :Bool threadLocals i.symbol)
+                    else false
+                end)
+            (* The values computed again rather than kept in memory *)
             let nValues = vector.length(:ssa.Type f.types)
+            let remat = array of(nValues maybe.none(:ssa.Inst))
+            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    let again = case i.op
+                        when opConst then true when opRealConst then true when opNull then true when opSlot then true
+                        when opSymbol then not(hashMap.contains(:String :Bool threadLocals i.symbol))
+                        else false
+                    end
+                    if again andif {extent i.results is 1} then remat[i.results[0]] := maybe.some(:ssa.Inst i) end
+                end
+            end
+            (* The copy area holds a set of moves: an edge's, one for each
+             * parameter in a register at its block's start and one for each
+             * with a slot, and one for each value live in and in a register
+             * there (for a block an edge goes to: the entry, only with a call
+             * of the function itself in tail position); or those at a
+             * position *)
+            let targeted = array of(vector.length(:ssa.Block f.blocks) false)
+            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                let t = ssa.block(f b).term
+                let ts = ssa.successors(t)
+                for k = 0 upto {extent ts - 1} do targeted[ts[k]] := true end
+                case t when termTailCall with x then if eq(x.call.symbol f.symbol) then targeted[0] := true end else ok end
+            end
+            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                if targeted[b] then
+                    let bs = allocation.blockStart[b]
+                    let params = vector.toArray(:Int ssa.block(f b).params)
+                    let var n = 0
+                    for k = 0 upto {extent params - 1} do
+                        if stringOp.length(regalloc.home(allocation params[k] bs)) > 0 then n := n + 1 end
+                        if allocation.spilled[params[k]] then n := n + 1 end
+                    end
+                    let ins = allocation.liveIn[b]
+                    for k = 0 upto {extent ins - 1} do
+                        if stringOp.length(regalloc.home(allocation ins[k] bs)) > 0 then n := n + 1 end
+                    end
+                    if n > copyWords then copyWords := n end
+                end
+            end
+            let moveAts = array of(extent allocation.moves 0)
+            for k = 0 upto {extent moveAts - 1} do moveAts[k] := allocation.moves[k].at end
+            let var run = 0
+            for k = 0 upto {extent moveAts - 1} do
+                run := if {k > 0} andif {moveAts[k] is moveAts[k - 1]} then run + 1 else 1 end
+                if run > copyWords then copyWords := run end
+            end
+            (* A slot for each value with a piece in memory, unless it is
+             * computed again *)
             let valueAt = array of(nValues 0)
             let var at = outgoing
             for v = 0 upto {nValues - 1} do
-                if stringOp.length(allocation.registers[v]) is 0 then begin valueAt[v] := at at := at + 8 end end
+                if allocation.spilled[v] andif maybe.isNone(:ssa.Inst remat[v]) then
+                    valueAt[v] := at
+                    at := at + 8
+                end
             end
             let nSlots = vector.length(:ssa.Slot f.slots)
             let slotAt = array of(nSlots 0)
@@ -739,7 +920,8 @@ export
             let fr = tuple
                 let f = f let lines = vector.new(:String) let valueAt = valueAt let slotAt = slotAt let copyAt = copyAt
                 let size = size let prefix = "Lf" <> conv.int(index) let defined = defined let threadLocals = threadLocals
-                let registers = allocation.registers let saved = saved let var edges = 0
+                let allocation = allocation let moveAts = moveAts let remat = remat let saved = saved
+                let var edges = 0 let var pos = ~1
             end
             for k = 0 upto {extent asm.functionStart(f.symbol f.exported) - 1} do
                 vector.append(:String fr.lines asm.functionStart(f.symbol f.exported)[k])
@@ -763,7 +945,8 @@ export
                 movImm(fr "x9" size)
                 emit(fr "sub sp, sp, x9")
             end
-            (* The parameters, to their slots; main's argc is a C int *)
+            (* The parameters, to where they are at the start (position 0,
+             * just after the prologue's); main's argc is a C int *)
             let params = vector.toArray(:Int ssa.block(f 0).params)
             if eq(f.symbol "main") then emit(fr "sxtw x0, w0") end
             let types = array of(extent params option typeInt of ssa.Type end)
@@ -781,7 +964,14 @@ export
             for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
                 let blk = ssa.block(f b)
                 label(fr blockLabel(fr b))
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do instruction(fr vector.get(:ssa.Inst blk.insts k)) end
+                fr.pos := allocation.blockStart[b]
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    fr.pos := fr.pos + 2
+                    movesBefore(fr)
+                    instruction(fr vector.get(:ssa.Inst blk.insts k))
+                end
+                fr.pos := fr.pos + 2
+                movesBefore(fr)
                 terminator(fr blk.term)
             end
             for k = 0 upto {extent asm.functionEnd - 1} do vector.append(:String fr.lines asm.functionEnd[k]) end
