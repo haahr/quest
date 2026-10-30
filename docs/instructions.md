@@ -182,7 +182,8 @@ See [testing.md](testing.md) for the framework. In practice:
   release cut from that commit, and then a commit that uses it. `QUEST_SEED=bootstrap` builds past such a gap when
   the bootstrap has the feature too.
 - **Cut a release** by hand, never automatically: when `questlang/` needs something the current release cannot
-  compile, after a larger piece of work, and otherwise when convenient. Only the owner asks for one, as for a push.
+  compile, after a larger piece of work, and otherwise when convenient. A release may be cut whenever it would pick
+  up functionality, after a push, without asking first (since 2026-10-29).
 - **Roll back** (`tools/release --rollback`) when a release turns out to be bad, and say so; one previous release is
   kept.
 - **Releases are shared:** every worktree of the repository uses the same releases, in the common git directory

@@ -29,6 +29,10 @@ The code says **arm64** in directory, module, and option names; this document sa
 - **The exception state stays thread-local** (§3.6), as it is for C.
 - **Shared passes are the self-hosted compiler's.** Decisions moved out of the C printer into passes both of its
   backends use (§3.1) are not made in the bootstrap, whose C printer keeps making them itself.
+- **Debug information** (decided 2026-10-29): DWARF line tables (`.file` and `.loc` directives, from the IR's source
+  offsets), in a step of their own after linear scan; no variable locations.
+- **The default backend** stays C; whether arm64 becomes the default (for programs, for building the compiler, for
+  releases) is decided after step 12, from measured compile and run times (decided 2026-10-29).
 
 ## 2. Pipeline
 
@@ -97,7 +101,10 @@ The inventory (§7) lists each decision and where the SSA backends get it. In sh
   number and types, that terminators end blocks, and the stage's invariants; it runs after each pass when
   `QUEST_CHECK_IR=1`, as the IR's does.
 - **A textual form,** dumped by `--stop-after ssa` and by later stages (`ssa_arm64`, `arm64_asm`), with goldens owned
-  by the self-hosted compiler (testing.md §2.8).
+  by the self-hosted compiler (testing.md §2.8): the SSA's for every run test, since it is target-independent and
+  changes only when the lowering does; machine code's and assembly's for a curated set, each chosen for a construct
+  (switches, `try`, closures, tail calls, spills), since they change with almost any backend change (decided
+  2026-10-29).
 
 **Construction.** The IR is structured, which makes the simple algorithm of Braun et al. (*Simple and Efficient
 Construction of Static Single Assignment Form*, CC 2013) a good fit: blocks are sealed as the structured statements
@@ -370,7 +377,9 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
 - **The self-hosting check** with the arm64 backend: stage 2 built by it compiles the compiler and writes the same
   artifacts as stage 2 built by the C backend.
 - **Before every push,** `tools/check` runs all of these, the `ssac` and `arm64` modes included, though it takes
-  longer for them.
+  longer for them. The self-hosting check through the `ssac` and `arm64` backends (the compiler built by each,
+  compiling itself to a fixed point) runs on demand until the compiler self-hosts fully on arm64 (step 12), and from
+  then on through both before every push (decided 2026-10-29).
 - **Benchmarks:** compile and run times against the C backend, recorded with their dates in benchmarks.md.
 
 ## 5. Steps
@@ -383,8 +392,9 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
    §8.4.1); slot conversions are layout's word forms; and `codegen/staticdata` describes the descriptor forms,
    record naming, descriptors, offset tables, and tag maps (the function-type adapters are those of its function
    descriptors, whose code each backend generates), whose sizes and offsets the C asserts.
-3. **Shared layout with assertions** (§3.3), and `collections/bitset` (§3.15). *Done when* every C unit and the
-   runtime assert the offsets the shared module computes, the suites pass, and a release has the bitset library.
+3. **Shared layout with assertions** (§3.3), and `collections/bitset` (§3.15). *Done* (2026-10-29): `codegen/layout`
+   and `codegen/staticdata` compute every struct's layout and the C asserts them (ABI 54); `codegen/runtimeLayout`'s
+   table of the runtime's structs is checked against the header; release a5ddef5b has `collections/bitset`.
 4. **The SSA:** nodes, printer, verifier, construction (§3.2), with `--stop-after ssa`. *Done when* every run test's
    units build SSA that verifies, with goldens for a selection.
 5. **The SSA-to-C printer** (§3.14) and `--backend ssac`, with its runner mode and pending list. *Done when* the
@@ -403,11 +413,14 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
     in constant stack.
 11. **Linear scan** (§3.8). *Done when* the suite passes with it, and benchmarks.md has dated run and compile times
     for both backends.
-12. **Self-hosting with the arm64 backend** (§4). *Done when* the check passes, and `./quest` can build its stages
-    with either backend.
+12. **Self-hosting with the arm64 backend** (§4). *Done when* the check passes, `./quest` can build its stages with
+    either backend, `tools/check` runs the self-hosting check through `ssac` and `arm64` too, and benchmarks.md has
+    the measurements from which the default backend is decided.
 
 13. **Whole-program compilation** with the arm64 backend (build-process.md §1.2). *Done when* `--whole-program`
     builds with `--backend arm64` (and `ssac`) pass the suite.
+14. **Line tables** (§1). *Done when* native code has `.file` and `.loc` directives for its source lines, and lldb
+    shows a breakpoint's Quest line and a backtrace's lines in a test program.
 
 ## 6. Possible Future Optimizations
 
