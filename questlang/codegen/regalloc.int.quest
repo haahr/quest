@@ -1,0 +1,35 @@
+(* Quest Self-Hosted Compiler: The Register Allocator's Interface
+ *
+ * Linear scan over a function's SSA (docs/arm64.md section 3.8), parameterized
+ * by a target's registers so that it can be tested on its own. The blocks are
+ * laid out in reverse postorder; each value's live range is the hull of the
+ * positions where it is live, from liveness over the blocks (a jump's arguments
+ * used at its end, a block's parameters defined at its start). The ranges are
+ * taken in order of their starts, each given a free register of its class, a
+ * range that crosses a call only a callee-saved one; when none is free, the
+ * range among those of the class that ends last is spilled, whole, to the
+ * value's frame slot. An instruction's operands are read at its position and
+ * its results written just after, so that a result may take a register an
+ * operand's range ends in. *)
+
+interface Regalloc
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* A target's allocatable registers by class: 0 for integers and pointers,
+     * 1 for reals. A call preserves the callee-saved ones and no others. *)
+    Def Registers = Tuple callerSaved: Array(Array(String)) calleeSaved: Array(Array(String)) end
+
+    Def Allocation = Tuple
+        (* Each value's register, "" for one kept in its frame slot *)
+        registers: Array(String)
+        (* The callee-saved registers given to any value *)
+        calleeUsed: Array(String)
+    end
+
+    (* The allocation of a function's values; clobbers says which
+     * instructions are calls, or otherwise use the registers a call may *)
+    allocate(f: ssa.Function regs: Registers clobbers: All(i: ssa.Inst) Bool): Allocation
+    (* None: every value in its frame slot *)
+    spillAll(f: ssa.Function): Allocation
+end

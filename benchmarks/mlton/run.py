@@ -124,16 +124,23 @@ def build_original(name: str) -> Path:
     return binary
 
 
-def build_conversion(name: str, compiler: list[str]) -> Path:
-    """The Quest build of the conversion."""
-    out_dir = BUILD_DIR / "quest"
+BUILD_SECONDS: dict[str, float] = {}
+
+
+def build_conversion(name: str, compiler: list[str], backend: str | None = None) -> Path:
+    """The Quest build of the conversion, with backend if one is named, into a
+    build directory of its own; BUILD_SECONDS records how long it took."""
+    out_dir = BUILD_DIR / ("quest" if backend is None else f"quest-{backend}")
     out_dir.mkdir(parents=True, exist_ok=True)
     binary = out_dir / name
     source = HERE / f"{name}.quest"
     if not source.is_file():
         raise FileNotFoundError(f"{source.relative_to(ROOT)} does not exist")
-    proc = subprocess.run([*compiler, "--build-dir", str(out_dir / "units"), "-o", str(binary), str(source)],
-                          capture_output=True, text=True)
+    backend_args = [] if backend is None else ["--backend", backend]
+    started = time.monotonic()
+    proc = subprocess.run([*compiler, *backend_args, "--build-dir", str(out_dir / "units"), "-o", str(binary),
+                           str(source)], capture_output=True, text=True)
+    BUILD_SECONDS[name] = time.monotonic() - started
     if proc.returncode != 0:
         raise BuildError(proc.stderr.strip() or proc.stdout.strip())
     return binary
@@ -318,6 +325,7 @@ def main() -> int:
     parser.add_argument("--count", type=int, help="run every program at this count (time)")
     parser.add_argument("--mlton", action="store_true", help="also time the originals (time)")
     parser.add_argument("--mlton-only", action="store_true", help="time only the originals (time)")
+    parser.add_argument("--backend", help="build the conversions with this backend: c, ssac, or arm64 (check, time)")
     parser.add_argument("--interpret", action="store_true",
                         help="run the conversions in the compiler's interpreter (check, time)")
     parser.add_argument("--runs", type=int, default=1, help="time each program this many times (time)")
@@ -330,10 +338,11 @@ def main() -> int:
     names = benchmark_names(args.names)
     # Programs run in a scratch directory, so a compiler named by a path is named by its absolute one
     compiler = [str(Path(args.compiler).resolve()) if "/" in args.compiler else args.compiler]
-    system = Path(args.compiler).name + (" interpret" if args.interpret else "")
+    system = Path(args.compiler).name + (" interpret" if args.interpret else "") + \
+        (f" {args.backend}" if args.backend else "")
 
     def conversion(name: str) -> Path | list[str]:
-        return interpreted(name, compiler) if args.interpret else build_conversion(name, compiler)
+        return interpreted(name, compiler) if args.interpret else build_conversion(name, compiler, args.backend)
 
     failed = []
     for name in names:
@@ -361,6 +370,8 @@ def main() -> int:
                 if not args.mlton_only:
                     quest_seconds = median(time_runs(name, system, conversion(name), count, args))
                     line += f" {system} {quest_seconds:9.2f}s"
+                    if name in BUILD_SECONDS:
+                        line += f" (built in {BUILD_SECONDS[name]:.1f}s)"
                     if args.mlton:
                         line += f"  ratio {quest_seconds / mlton_seconds:7.1f}"
                 print(line, flush=True)

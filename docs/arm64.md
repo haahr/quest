@@ -235,6 +235,19 @@ Registers: `x18` is never used; `x16`/`x17` are scratch only within a sequence (
 `x29` is always the frame pointer; `x19`–`x28` and `d8`–`d15` are callee-saved (the low 64 bits of `d8`–`d15`,
 which is all a `double` needs). A pointer is never held only in a floating-point register (§3.13).
 
+**As built (2026-10-30).** `questlang/codegen/regalloc` is linear scan in its simplest form (Poletto and Sarkar's),
+not yet Wimmer and Franz's: each value has one range, the hull of where it is live (liveness over the blocks in
+reverse postorder, a jump's arguments used at its end and its destination's parameters written there), and a value
+spilled is spilled throughout. A range that crosses a call takes only a callee-saved register; when none of its class
+is free, whichever range ends last is spilled. There is no splitting and no rematerialization yet. The registers it
+gives are `x12`–`x15`, `x19`–`x28`, `d16`–`d31`, and `d8`–`d15`, none an argument, a result, or a scratch register
+(`x9`–`x11`, `x16`, `x17`, `d0`, `d1`), so a call's arguments can be loaded in any order; a thread-local's address,
+whose accessor is called, counts as a call. The prologue saves the pairs of callee-saved registers the function's
+values use. A jump's copies are moves when no parameter's register holds another of its arguments, and otherwise go
+through the copy area, as before. A function that enters a `try` keeps every value in its slot, as step 8 left it,
+which also keeps its handler's view of them simple (§3.6). `regalloc_scan` (a questlang test) shows its choices on
+small functions with a target of a few registers.
+
 ### 3.9. Primitive semantics
 
 Native code must do what the C helpers do, including the cases where arm64 and C differ:
@@ -492,7 +505,9 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
       mutual, and closure tail recursions ten million deep with `arm64`, in the default 8 MB stack.
 11. **Linear scan** (§3.8). *Done when* the suite passes with it, and benchmarks.md has dated run and compile times
     for both backends. *Begun* (2026-10-30) with promotion, as §6 suggests: `ssa/promote` makes values of the slots
-    of whole words whose addresses do not escape, in functions without a `try` ([ssa.md](ssa.md) §4.1).
+    of whole words whose addresses do not escape, in functions without a `try` ([ssa.md](ssa.md) §4.1). Then the
+    simplest linear scan (§3.8, as built), which the suite passes with; splitting, rematerialization, and allocation
+    in functions that enter a `try` remain, and so do the measurements.
 12. **Self-hosting with the arm64 backend** (§4). *Done when* the check passes, `./quest` can build its stages with
     either backend, `tools/check` runs the self-hosting check through `ssac` and `arm64` too, and benchmarks.md has
     the measurements from which the default backend is decided.

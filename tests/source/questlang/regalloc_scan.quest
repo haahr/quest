@@ -1,0 +1,110 @@
+(* Self-Hosted Quest Compiler: Test the Register Allocator
+ *
+ * questlang/codegen/regalloc (docs/arm64.md section 3.8) on small functions of
+ * the SSA built by hand, with a target of few registers, so that its choices
+ * show: a result takes the register its operand's range ends in; a value live
+ * across a call gets only a callee-saved register, or is spilled; when the
+ * registers run out, the range that ends last is spilled; a loop's values
+ * stay in their registers through it, its parameter's range reaching the jump
+ * back that writes it; and reals take registers of their own class. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/codegen/regalloc : questlang/codegen/Regalloc
+    collections/vector : collections/Vector
+    writer : Writer
+    conv : Conv
+    stringOp = string : StringOp
+;
+
+let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+
+let tInt = option typeInt of ssa.Type end;
+let tReal = option typeReal of ssa.Type end;
+let none = array of :Int end;
+let noTypes = array of :ssa.Type end;
+
+(* Two caller-saved and one callee-saved integer register, one of each real *)
+let registers = tuple
+    let callerSaved = array of array of "r1" "r2" end array of "f1" end end
+    let calleeSaved = array of array of "s1" end array of "g1" end end
+end;
+
+let isCall(i: ssa.Inst): Bool = case i.op when opCall then true else false end;
+
+let show(title: String f: ssa.Function): Ok =
+    begin
+        emit("== " <> title)
+        writer.putString(writer.output printer.formatFunction(f))
+        let a = regalloc.allocate(f registers isCall)
+        for v = 0 upto {extent a.registers - 1} do
+            let r = if stringOp.length(a.registers[v]) is 0 then "spilled" else a.registers[v] end
+            emit("%" <> conv.int(v) <> ": " <> r)
+        end
+        let var used = ""
+        for k = 0 upto {extent a.calleeUsed - 1} do used := used <> " " <> a.calleeUsed[k] end
+        emit("callee-saved used:" <> used)
+    end;
+
+let ret(f: ssa.Function b: Int vs: Array(Int)): Ok =
+    ssa.terminate(f b option termReturn of ssa.Terminator with let values = vs end);
+let jumpTo(f: ssa.Function b: Int to: Int args: Array(Int)): Ok =
+    ssa.terminate(f b option termJump of ssa.Terminator with let target = ssa.target(to args) end);
+let branch(f: ssa.Function b: Int c: Int t: Int e: Int): Ok =
+    ssa.terminate(f b option termBranch of ssa.Terminator with
+        let cond = c let ifTrue = ssa.target(t none) let ifFalse = ssa.target(e none)
+    end);
+let add(f: ssa.Function b: Int x: Int y: Int): Int = ssa.binary(f b option opAdd of ssa.Opcode end x y);
+
+(* 1. A chain: each result can take its operand's register *)
+let chain = ssa.newFunction("chain" false array of tInt end array of tInt end);
+let c0 = vector.get(:Int ssa.block(chain 0).params 0);
+let c1 = add(chain 0 c0 c0);
+let c2 = add(chain 0 c1 c1);
+ret(chain 0 array of add(chain 0 c2 c2) end);
+show("a chain" chain);
+
+(* 2. Across a call: what lives across it needs the callee-saved register, and
+ * the second such value is spilled *)
+let across = ssa.newFunction("across" false array of tInt tInt end array of tInt end);
+let a0 = vector.get(:Int ssa.block(across 0).params 0);
+let a1 = vector.get(:Int ssa.block(across 0).params 1);
+let ignored = ssa.call(across 0 "g" none none noTypes);
+ret(across 0 array of add(across 0 a0 a1) end);
+show("two values across a call" across);
+
+(* 3. Too many at once: four live together, three registers; the one that
+ * ends last is spilled *)
+let crowd = ssa.newFunction("crowd" false array of tInt end array of tInt end);
+let k0 = vector.get(:Int ssa.block(crowd 0).params 0);
+let k1 = add(crowd 0 k0 k0);
+let k2 = add(crowd 0 k1 k0);
+let k3 = add(crowd 0 k2 k1);
+let k4 = add(crowd 0 k3 k2);
+let k5 = add(crowd 0 k4 k1);
+ret(crowd 0 array of add(crowd 0 k5 k0) end);
+show("more live values than registers" crowd);
+
+(* 4. A loop: its counter's range reaches the jump back that writes it *)
+let loopF = ssa.newFunction("loop" false array of tInt end array of tInt end);
+let n = vector.get(:Int ssa.block(loopF 0).params 0);
+let head = ssa.newBlock(loopF);
+let i = ssa.addParam(loopF head tInt);
+let bodyB = ssa.newBlock(loopF);
+let exitB = ssa.newBlock(loopF);
+jumpTo(loopF 0 head array of ssa.constant(loopF 0 0) end);
+branch(loopF head ssa.binary(loopF head option opLt of ssa.Opcode end i n) bodyB exitB);
+jumpTo(loopF bodyB head array of add(loopF bodyB i ssa.constant(loopF bodyB 1)) end);
+ret(loopF exitB array of i end);
+show("a loop" loopF);
+
+(* 5. Reals: registers of their own class, a callee-saved one across a call *)
+let reals = ssa.newFunction("reals" false array of tReal tReal end array of tReal end);
+let r0 = vector.get(:Int ssa.block(reals 0).params 0);
+let r1 = vector.get(:Int ssa.block(reals 0).params 1);
+let r2 = ssa.binary(reals 0 option opFadd of ssa.Opcode end r0 r1);
+let ignored2 = ssa.call(reals 0 "g" none none noTypes);
+ret(reals 0 array of ssa.binary(reals 0 option opFmul of ssa.Opcode end r2 r0) end);
+show("reals across a call" reals);

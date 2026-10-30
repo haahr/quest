@@ -5,6 +5,7 @@ import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/codegen/arm64/asm : questlang/codegen/arm64/Asm
     questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
+    questlang/codegen/regalloc : questlang/codegen/Regalloc
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
@@ -107,9 +108,12 @@ export
         prefix: String
         defined: hashMap.T(String Bool)
         threadLocals: hashMap.T(String Bool)
-        (* Whether it enters a try, and so saves every callee-saved
-         * register *)
-        savesAll: Bool
+        (* Each value's register, "" for one in its slot *)
+        registers: Array(String)
+        (* The pairs of callee-saved registers it saves (indices in
+         * savedPairs): every pair if it enters a try, else those its values
+         * use *)
+        saved: Array(Int)
         var edges: Int
     end
 
@@ -159,8 +163,45 @@ export
         if off <= 32760 then "[sp, #" <> conv.int(off) <> "]"
         else begin addImm(fr "x16" "sp" off) "[x16]" end end
 
-    let loadValue(fr: Frame reg: String v: Int): Ok = emit(fr "ldr " <> reg <> ", " <> frameAt(fr fr.valueAt[v]))
-    let storeValue(fr: Frame reg: String v: Int): Ok = emit(fr "str " <> reg <> ", " <> frameAt(fr fr.valueAt[v]))
+    (* A register's copy into another, of either class *)
+    let move(fr: Frame dst: String src: String): Ok =
+        if not(eq(dst src)) then
+            emit(fr if strutil.startsWith(dst "d") orif strutil.startsWith(src "d") then "fmov " else "mov " end
+                <> dst <> ", " <> src)
+        end
+
+    (* A value into a register, and a register into a value: a move for a
+     * value in a register, else a load or store of its slot *)
+    let loadValue(fr: Frame reg: String v: Int): Ok =
+        if stringOp.length(fr.registers[v]) > 0 then move(fr reg fr.registers[v])
+        else emit(fr "ldr " <> reg <> ", " <> frameAt(fr fr.valueAt[v])) end
+    let storeValue(fr: Frame reg: String v: Int): Ok =
+        if stringOp.length(fr.registers[v]) > 0 then move(fr fr.registers[v] reg)
+        else emit(fr "str " <> reg <> ", " <> frameAt(fr fr.valueAt[v])) end
+
+    (* Whether two registers are of a class: x (or w) and d *)
+    let sameClass(a: String b: String): Bool = strutil.startsWith(a "d") is strutil.startsWith(b "d")
+
+    (* The register a value is read from: its own, if of the class of the
+     * scratch register given, else that register, loaded *)
+    let inReg(fr: Frame v: Int scratch: String): String =
+        begin
+            let r = fr.registers[v]
+            if {stringOp.length(r) > 0} andif sameClass(r scratch) then r
+            else begin loadValue(fr scratch v) scratch end end
+        end
+
+    (* The register a result is computed in: its own, if of the class of the
+     * scratch register given, else that register, which storeValue then
+     * stores *)
+    let outReg(fr: Frame v: Int scratch: String): String =
+        begin
+            let r = fr.registers[v]
+            if {stringOp.length(r) > 0} andif sameClass(r scratch) then r else scratch end
+        end
+
+    (* An x register's low half, a w register *)
+    let half(x: String): String = "w" <> stringOp.getSub(x 1 {stringOp.length(x) - 1})
 
     (* A load or store of width bytes at base plus imm: op is the scaled form
      * (ldr, ldrsw, ldrsb, ldrb, str, strb), unscaled the form for a small or
@@ -261,66 +302,92 @@ export
             let farith = realOp(i.op)
             let realCond = realCondition(i.op)
             if maybe.isSome(:String arith) then
-                loadValue(fr "x9" a(0))
-                loadValue(fr "x10" a(1))
-                emit(fr maybe.unwrap(:String arith) <> " x9, x9, x10")
-                storeValue(fr "x9" result)
+                let x = inReg(fr a(0) "x9")
+                let y = inReg(fr a(1) "x10")
+                let d = outReg(fr result "x9")
+                emit(fr maybe.unwrap(:String arith) <> " " <> d <> ", " <> x <> ", " <> y)
+                storeValue(fr d result)
             elsif maybe.isSome(:String intCond) then
-                loadValue(fr "x9" a(0))
-                loadValue(fr "x10" a(1))
-                emit(fr "cmp x9, x10")
-                emit(fr "cset x9, " <> maybe.unwrap(:String intCond))
-                storeValue(fr "x9" result)
+                let x = inReg(fr a(0) "x9")
+                let y = inReg(fr a(1) "x10")
+                let d = outReg(fr result "x9")
+                emit(fr "cmp " <> x <> ", " <> y)
+                emit(fr "cset " <> d <> ", " <> maybe.unwrap(:String intCond))
+                storeValue(fr d result)
             elsif maybe.isSome(:String farith) then
-                loadValue(fr "d0" a(0))
-                loadValue(fr "d1" a(1))
-                emit(fr maybe.unwrap(:String farith) <> " d0, d0, d1")
-                storeValue(fr "d0" result)
+                let x = inReg(fr a(0) "d0")
+                let y = inReg(fr a(1) "d1")
+                let d = outReg(fr result "d0")
+                emit(fr maybe.unwrap(:String farith) <> " " <> d <> ", " <> x <> ", " <> y)
+                storeValue(fr d result)
             elsif maybe.isSome(:String realCond) then
-                loadValue(fr "d0" a(0))
-                loadValue(fr "d1" a(1))
-                emit(fr "fcmp d0, d1")
-                emit(fr "cset x9, " <> maybe.unwrap(:String realCond))
-                storeValue(fr "x9" result)
+                let x = inReg(fr a(0) "d0")
+                let y = inReg(fr a(1) "d1")
+                let d = outReg(fr result "x9")
+                emit(fr "fcmp " <> x <> ", " <> y)
+                emit(fr "cset " <> d <> ", " <> maybe.unwrap(:String realCond))
+                storeValue(fr d result)
             else
                 case i.op
                     (* A Real constant's bits are its word *)
-                    when opConst then begin movImm(fr "x9" i.imm) storeValue(fr "x9" result) end
-                    when opRealConst then begin movImm(fr "x9" i.imm) storeValue(fr "x9" result) end
-                    when opSymbol then begin symbolAddress(fr "x9" i.symbol i.imm) storeValue(fr "x9" result) end
+                    when opConst then
+                        let d = outReg(fr result "x9")
+                        movImm(fr d i.imm)
+                        storeValue(fr d result)
+                    when opRealConst then
+                        movImm(fr "x9" i.imm)
+                        storeValue(fr "x9" result)
+                    when opSymbol then
+                        let d = outReg(fr result "x9")
+                        symbolAddress(fr d i.symbol i.imm)
+                        storeValue(fr d result)
                     when opNull then storeValue(fr "xzr" result)
-                    when opSlot then begin addImm(fr "x9" "sp" fr.slotAt[i.imm]) storeValue(fr "x9" result) end
+                    when opSlot then
+                        let d = outReg(fr result "x9")
+                        addImm(fr d "sp" fr.slotAt[i.imm])
+                        storeValue(fr d result)
                     when opRem then
-                        loadValue(fr "x9" a(0))
-                        loadValue(fr "x10" a(1))
-                        emit(fr "sdiv x11, x9, x10")
-                        emit(fr "msub x9, x11, x10, x9")
-                        storeValue(fr "x9" result)
+                        let x = inReg(fr a(0) "x9")
+                        let y = inReg(fr a(1) "x10")
+                        let d = outReg(fr result "x9")
+                        emit(fr "sdiv x11, " <> x <> ", " <> y)
+                        emit(fr "msub " <> d <> ", x11, " <> y <> ", " <> x)
+                        storeValue(fr d result)
                     when opIsNaN then
-                        loadValue(fr "d0" a(0))
-                        emit(fr "fcmp d0, d0")
-                        emit(fr "cset x9, vs")
-                        storeValue(fr "x9" result)
-                    when opSext8 then begin loadValue(fr "x9" a(0)) emit(fr "sxtb x9, w9") storeValue(fr "x9" result) end
-                    when opZext8 then begin loadValue(fr "x9" a(0)) emit(fr "and x9, x9, #0xff") storeValue(fr "x9" result) end
+                        let x = inReg(fr a(0) "d0")
+                        let d = outReg(fr result "x9")
+                        emit(fr "fcmp " <> x <> ", " <> x)
+                        emit(fr "cset " <> d <> ", vs")
+                        storeValue(fr d result)
+                    when opSext8 then
+                        let x = inReg(fr a(0) "x9")
+                        let d = outReg(fr result "x9")
+                        emit(fr "sxtb " <> d <> ", " <> half(x))
+                        storeValue(fr d result)
+                    when opZext8 then
+                        let x = inReg(fr a(0) "x9")
+                        let d = outReg(fr result "x9")
+                        emit(fr "and " <> d <> ", " <> x <> ", #0xff")
+                        storeValue(fr d result)
                     when opLoad then
-                        loadValue(fr "x10" a(0))
-                        if i.width is 8 then access(fr "ldr" "ldur" "x9" "x10" i.imm 8)
-                        elsif i.width is 4 then access(fr "ldrsw" "ldursw" "x9" "x10" i.imm 4)
-                        elsif i.signed then access(fr "ldrsb" "ldursb" "x9" "x10" i.imm 1)
-                        else access(fr "ldrb" "ldurb" "w9" "x10" i.imm 1) end
-                        storeValue(fr "x9" result)
+                        let base = inReg(fr a(0) "x10")
+                        let d = outReg(fr result "x9")
+                        if i.width is 8 then access(fr "ldr" "ldur" d base i.imm 8)
+                        elsif i.width is 4 then access(fr "ldrsw" "ldursw" d base i.imm 4)
+                        elsif i.signed then access(fr "ldrsb" "ldursb" d base i.imm 1)
+                        else access(fr "ldrb" "ldurb" half(d) base i.imm 1) end
+                        storeValue(fr d result)
                     when opStore then
-                        loadValue(fr "x10" a(0))
-                        loadValue(fr "x9" a(1))
-                        if i.width is 8 then access(fr "str" "stur" "x9" "x10" i.imm 8)
-                        elsif i.width is 4 then access(fr "str" "stur" "w9" "x10" i.imm 4)
-                        else access(fr "strb" "sturb" "w9" "x10" i.imm 1) end
+                        let base = inReg(fr a(0) "x10")
+                        let x = inReg(fr a(1) "x9")
+                        if i.width is 8 then access(fr "str" "stur" x base i.imm 8)
+                        elsif i.width is 4 then access(fr "str" "stur" half(x) base i.imm 4)
+                        else access(fr "strb" "sturb" half(x) base i.imm 1) end
                     when opCall then call(fr i)
                     when opCallIndirect then call(fr i)
                     (* The rest copy a word: conversions between ints, pointers,
                      * and a Real's bits *)
-                    else begin loadValue(fr "x9" a(0)) storeValue(fr "x9" result) end
+                    else storeValue(fr inReg(fr a(0) "x9") result)
                 end
             end
         end
@@ -331,7 +398,7 @@ export
 
     (* A target's parameters assigned its arguments, at once, through the
      * copy area *)
-    let copies(fr: Frame t: ssa.Target): Ok =
+    let copiesThroughMemory(fr: Frame t: ssa.Target): Ok =
         begin
             let params = ssa.block(fr.f t.block).params
             for k = 0 upto {extent t.args - 1} do
@@ -343,6 +410,30 @@ export
                 storeValue(fr "x9" vector.get(:Int params k))
             end
         end
+    (* The same, each directly when no parameter's register holds another's
+     * argument *)
+    let copies(fr: Frame t: ssa.Target): Ok =
+        begin
+            let params = ssa.block(fr.f t.block).params
+            let var overlap = false
+            for k = 0 upto {extent t.args - 1} do
+                let r = fr.registers[vector.get(:Int params k)]
+                if stringOp.length(r) > 0 then
+                    for j = 0 upto {extent t.args - 1} do
+                        if {j isnot k} andif eq(r fr.registers[t.args[j]]) then overlap := true end
+                    end
+                end
+            end
+            if overlap then copiesThroughMemory(fr t)
+            else
+                for k = 0 upto {extent t.args - 1} do
+                    let param = vector.get(:Int params k)
+                    let r = fr.registers[param]
+                    if stringOp.length(r) > 0 then loadValue(fr r t.args[k])
+                    else storeValue(fr inReg(fr t.args[k] "x9") param) end
+                end
+            end
+        end
     let jump(fr: Frame t: ssa.Target): Ok = begin copies(fr t) emit(fr "b " <> blockLabel(fr t.block)) end
 
     (* The callee-saved registers a function that enters a try saves, in pairs,
@@ -350,27 +441,47 @@ export
     let savedPairs = array of "x19, x20" "x21, x22" "x23, x24" "x25, x26" "x27, x28" "d8, d9" "d10, d11" "d12, d13"
         "d14, d15" end
 
-    (* Their unwind information: the first of pair k at the CFA less
-     * 16 * (k + 2), the second 8 above it *)
-    let savedOffsets: Array(String) =
+    let savedFirsts = array of "x19" "x21" "x23" "x25" "x27" "d8" "d10" "d12" "d14" end
+    let savedSeconds = array of "x20" "x22" "x24" "x26" "x28" "d9" "d11" "d13" "d15" end
+
+    (* The unwind information of the pairs saved: the first of the kth at the
+     * CFA less 16 * (k + 2), the second 8 above it *)
+    let savedOffsets(saved: Array(Int)): Array(String) =
         begin
             let firsts = array of "w19" "w21" "w23" "w25" "w27" "b8" "b10" "b12" "b14" end
             let seconds = array of "w20" "w22" "w24" "w26" "w28" "b9" "b11" "b13" "b15" end
-            let lines = array of({2 * extent firsts} "")
-            for k = 0 upto {extent firsts - 1} do
-                lines[2 * k] := ".cfi_offset " <> firsts[k] <> ", -" <> conv.int(16 * {k + 2})
-                lines[{2 * k} + 1] := ".cfi_offset " <> seconds[k] <> ", -" <> conv.int({16 * {k + 2}} - 8)
+            let lines = array of({2 * extent saved} "")
+            for k = 0 upto {extent saved - 1} do
+                lines[2 * k] := ".cfi_offset " <> firsts[saved[k]] <> ", -" <> conv.int(16 * {k + 2})
+                lines[{2 * k} + 1] := ".cfi_offset " <> seconds[saved[k]] <> ", -" <> conv.int({16 * {k + 2}} - 8)
             end
             lines
+        end
+
+    (* The registers the allocator gives values (docs/arm64.md section 3.8):
+     * none an argument, a result, or a scratch register *)
+    let allocatable: regalloc.Registers =
+        begin
+            let callerInts = array of "x12" "x13" "x14" "x15" end
+            let callerReals = array of "d16" "d17" "d18" "d19" "d20" "d21" "d22" "d23" "d24" "d25" "d26" "d27" "d28"
+                "d29" "d30" "d31" end
+            let calleeInts = array of "x19" "x20" "x21" "x22" "x23" "x24" "x25" "x26" "x27" "x28" end
+            let calleeReals = array of "d8" "d9" "d10" "d11" "d12" "d13" "d14" "d15" end
+            tuple
+                let callerSaved = array of callerInts callerReals end
+                let calleeSaved = array of calleeInts calleeReals end
+            end
         end
 
     (* The frame popped and the caller's registers restored, short of
      * returning *)
     let restore(fr: Frame): Ok =
         begin
-            if fr.savesAll then
-                emit(fr "sub sp, x29, #" <> conv.int(16 * extent savedPairs))
-                for k = {extent savedPairs - 1} downto 0 do emit(fr "ldp " <> savedPairs[k] <> ", [sp], #16") end
+            if extent fr.saved > 0 then
+                emit(fr "sub sp, x29, #" <> conv.int(16 * extent fr.saved))
+                for k = {extent fr.saved - 1} downto 0 do
+                    emit(fr "ldp " <> savedPairs[fr.saved[k]] <> ", [sp], #16")
+                end
             else
                 emit(fr "mov sp, x29")
             end
@@ -417,8 +528,7 @@ export
             when termJump with x then jump(fr x.target)
             when termBranch with x then
                 let other = newLabel(fr)
-                loadValue(fr "x9" x.cond)
-                emit(fr "cbz x9, " <> other)
+                emit(fr "cbz " <> inReg(fr x.cond "x9") <> ", " <> other)
                 jump(fr x.ifTrue)
                 label(fr other)
                 jump(fr x.ifFalse)
@@ -600,10 +710,32 @@ export
             end
             let copyAt = at
             let size = alignUp(at + {8 * copyWords} 16)
+            (* Every value in its slot in a function that enters a try, whose
+             * handler finds them there (section 3.6) *)
+            let allocation = if savesAll then regalloc.spillAll(f) else
+                regalloc.allocate(f allocatable fun(i: ssa.Inst): Bool
+                    case i.op
+                        when opCall then true
+                        when opCallIndirect then true
+                        (* A thread-local's address is a call of its accessor *)
+                        when opSymbol then hashMap.contains(:String :Bool threadLocals i.symbol)
+                        else false
+                    end)
+            end
+            let savedList = vector.new(:Int)
+            for k = 0 upto {extent savedPairs - 1} do
+                let var any = savesAll
+                for j = 0 upto {extent allocation.calleeUsed - 1} do
+                    let r = allocation.calleeUsed[j]
+                    if eq(r savedFirsts[k]) orif eq(r savedSeconds[k]) then any := true end
+                end
+                if any then vector.append(:Int savedList k) end
+            end
+            let saved = vector.toArray(:Int savedList)
             let fr = tuple
                 let f = f let lines = vector.new(:String) let valueAt = valueAt let slotAt = slotAt let copyAt = copyAt
                 let size = size let prefix = "Lf" <> conv.int(index) let defined = defined let threadLocals = threadLocals
-                let savesAll = savesAll let var edges = 0
+                let registers = allocation.registers let saved = saved let var edges = 0
             end
             for k = 0 upto {extent asm.functionStart(f.symbol f.exported) - 1} do
                 vector.append(:String fr.lines asm.functionStart(f.symbol f.exported)[k])
@@ -614,10 +746,8 @@ export
             emit(fr ".cfi_def_cfa w29, 16")
             emit(fr ".cfi_offset w30, -8")
             emit(fr ".cfi_offset w29, -16")
-            if savesAll then
-                for k = 0 upto {extent savedPairs - 1} do emit(fr "stp " <> savedPairs[k] <> ", [sp, #-16]!") end
-                emitAll(fr savedOffsets)
-            end
+            for k = 0 upto {extent saved - 1} do emit(fr "stp " <> savedPairs[saved[k]] <> ", [sp, #-16]!") end
+            emitAll(fr savedOffsets(saved))
             (* A frame of more than a page is probed a page at a time, as clang
              * does, so that a stack overflow faults in the guard page rather
              * than past it (docs/arm64.md section 10.2) *)

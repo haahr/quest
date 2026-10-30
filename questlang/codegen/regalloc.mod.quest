@@ -1,0 +1,196 @@
+(* Quest Self-Hosted Compiler: The Register Allocator's Implementation *)
+
+module regalloc : Regalloc
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/verify : questlang/ssa/Verify
+    collections/vector : collections/Vector
+    collections/bitset : collections/Bitset
+    util/sort : util/Sort
+    stringOp = string : StringOp
+export
+    Def Registers = Tuple callerSaved: Array(Array(String)) calleeSaved: Array(Array(String)) end
+    Def Allocation = Tuple registers: Array(String) calleeUsed: Array(String) end
+    Let Function = ssa.Function
+
+    let add(s: bitset.T v: Int): Ok = if bitset.insert(s v) then ok else ok end
+    let strings(a: Array(String) b: Array(String)): Array(String) =
+        begin
+            let r = array of({extent a + extent b} "")
+            for i = 0 upto {extent a - 1} do r[i] := a[i] end
+            for i = 0 upto {extent b - 1} do r[extent a + i] := b[i] end
+            r
+        end
+
+    let classOf(f: Function v: Int): Int = case ssa.typeOf(f v) when typeReal then 1 else 0 end
+
+    let spillAll(f: Function): Allocation =
+        tuple let registers = array of(vector.length(:ssa.Type f.types) "") let calleeUsed = array of(0 "") end
+
+    (* The blocks a terminator passes its arguments to: its successors, and
+     * for a call of the function itself in tail position, which jumps to its
+     * entry, the entry *)
+    let destinations(f: Function t: ssa.Terminator): Array(Int) =
+        case t
+            when termTailCall with x then
+                if stringOp.equal(x.call.symbol f.symbol) then array of 0 end else ssa.successors(t) end
+            else ssa.successors(t)
+        end
+
+    let allocate(f: Function regs: Registers clobbers: All(i: ssa.Inst) Bool): Allocation =
+        begin
+            let nValues = vector.length(:ssa.Type f.types)
+            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let d = verify.dominance(f)
+            let order = d.order
+            (* Liveness: each block's definitions, the uses before them, and
+             * what is live into and out of it *)
+            let defs = array of(nBlocks bitset.new(0))
+            let uses = array of(nBlocks bitset.new(0))
+            let liveIn = array of(nBlocks bitset.new(0))
+            let liveOut = array of(nBlocks bitset.new(0))
+            for b = 0 upto {nBlocks - 1} do
+                defs[b] := bitset.new(nValues)
+                uses[b] := bitset.new(nValues)
+                liveIn[b] := bitset.new(nValues)
+                liveOut[b] := bitset.new(nValues)
+            end
+            for k = 0 upto {extent order - 1} do
+                let b = order[k]
+                let blk = ssa.block(f b)
+                let used(v: Int): Ok = if not(bitset.contains(defs[b] v)) then add(uses[b] v) end
+                let defined(v: Int): Ok = add(defs[b] v)
+                for p = 0 upto {vector.length(:Int blk.params) - 1} do defined(vector.get(:Int blk.params p)) end
+                for j = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts j)
+                    for a = 0 upto {extent i.args - 1} do used(i.args[a]) end
+                    for r = 0 upto {extent i.results - 1} do defined(i.results[r]) end
+                end
+                let tu = ssa.terminatorUses(blk.term)
+                for a = 0 upto {extent tu - 1} do used(tu[a]) end
+            end
+            let var changed = true
+            while changed do
+                changed := false
+                for k = {extent order - 1} downto 0 do
+                    let b = order[k]
+                    let flowing = bitset.new(nValues)
+                    let succ = ssa.successors(ssa.block(f b).term)
+                    for s = 0 upto {extent succ - 1} do if bitset.unionWith(flowing liveIn[succ[s]]) then ok end end
+                    bitset.assign(liveOut[b] flowing)
+                    if bitset.subtract(flowing defs[b]) then ok end
+                    if bitset.unionWith(flowing uses[b]) then ok end
+                    if not(bitset.equal(flowing liveIn[b])) then
+                        bitset.assign(liveIn[b] flowing)
+                        changed := true
+                    end
+                end
+            end
+            (* Live ranges: positions in the layout, two for each block's
+             * start, instruction, and terminator *)
+            let start = array of(nValues ~1)
+            let finish = array of(nValues ~1)
+            let touch(v: Int p: Int): Ok =
+                begin
+                    if {start[v] < 0} orif {p < start[v]} then start[v] := p end
+                    if p > finish[v] then finish[v] := p end
+                end
+            let calls = vector.new(:Int)
+            let blockStart = array of(nBlocks 0)
+            let blockEnd = array of(nBlocks 0)
+            let var pos = 0
+            for k = 0 upto {extent order - 1} do
+                let b = order[k]
+                let blk = ssa.block(f b)
+                blockStart[b] := pos
+                for p = 0 upto {vector.length(:Int blk.params) - 1} do touch(vector.get(:Int blk.params p) pos) end
+                pos := pos + 2
+                for j = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts j)
+                    for a = 0 upto {extent i.args - 1} do touch(i.args[a] pos) end
+                    for r = 0 upto {extent i.results - 1} do touch(i.results[r] pos + 1) end
+                    if clobbers(i) then vector.append(:Int calls pos) end
+                    pos := pos + 2
+                end
+                let tu = ssa.terminatorUses(blk.term)
+                for a = 0 upto {extent tu - 1} do touch(tu[a] pos) end
+                (* A jump writes its destination's parameters *)
+                let ds = destinations(f blk.term)
+                for s = 0 upto {extent ds - 1} do
+                    let params = ssa.block(f ds[s]).params
+                    for p = 0 upto {vector.length(:Int params) - 1} do touch(vector.get(:Int params p) pos + 1) end
+                end
+                pos := pos + 2
+                blockEnd[b] := pos - 1
+            end
+            for k = 0 upto {extent order - 1} do
+                let b = order[k]
+                let ins = bitset.elements(liveIn[b])
+                for j = 0 upto {extent ins - 1} do touch(ins[j] blockStart[b]) end
+                let outs = bitset.elements(liveOut[b])
+                for j = 0 upto {extent outs - 1} do touch(outs[j] blockEnd[b]) end
+            end
+            (* Whether a range crosses a call: one strictly inside it *)
+            let callAt = vector.toArray(:Int calls)
+            let crosses(v: Int): Bool =
+                begin
+                    let k = sort.bisectRight(:Int callAt start[v] sort.intCompare)
+                    {k < extent callAt} andif {callAt[k] < finish[v]}
+                end
+            (* The scan, in order of the ranges' starts *)
+            let ranged = vector.new(:Int)
+            for v = 0 upto {nValues - 1} do if start[v] >= 0 then vector.append(:Int ranged v) end end
+            let ids = vector.toArray(:Int ranged)
+            sort.sort(:Int ids fun(a: Int b: Int): Int
+                if start[a] isnot start[b] then sort.intCompare(start[a] start[b]) else sort.intCompare(a b) end)
+            let registers = array of(nValues "")
+            (* Each class's registers, the caller-saved first, and the value in
+             * each, ~1 for none *)
+            let pools = array of(2 array of(0 ""))
+            let owners = array of(2 array of(0 0))
+            let firstCallee = array of(2 0)
+            for c = 0 upto 1 do
+                pools[c] := strings(regs.callerSaved[c] regs.calleeSaved[c])
+                owners[c] := array of(extent pools[c] ~1)
+                firstCallee[c] := extent regs.callerSaved[c]
+            end
+            for n = 0 upto {extent ids - 1} do
+                let v = ids[n]
+                let c = classOf(f v)
+                let pool = pools[c]
+                let owner = owners[c]
+                for r = 0 upto {extent pool - 1} do
+                    if {owner[r] >= 0} andif {finish[owner[r]] < start[v]} then owner[r] := ~1 end
+                end
+                let lowest = if crosses(v) then firstCallee[c] else 0 end
+                let var chosen = ~1
+                for r = lowest upto {extent pool - 1} do if {chosen < 0} andif {owner[r] < 0} then chosen := r end end
+                if chosen < 0 then
+                    (* Spill whichever ends last, this range or one in a
+                     * register it could have *)
+                    let var furthest = ~1
+                    for r = lowest upto {extent pool - 1} do
+                        if {furthest < 0} orif {finish[owner[r]] > finish[owner[furthest]]} then furthest := r end
+                    end
+                    if {furthest >= 0} andif {finish[owner[furthest]] > finish[v]} then
+                        registers[owner[furthest]] := ""
+                        chosen := furthest
+                    end
+                end
+                if chosen >= 0 then
+                    owner[chosen] := v
+                    registers[v] := pool[chosen]
+                end
+            end
+            (* The callee-saved registers in use, in the order of the pool *)
+            let used = vector.new(:String)
+            for c = 0 upto 1 do
+                for r = firstCallee[c] upto {extent pools[c] - 1} do
+                    let var any = false
+                    for v = 0 upto {nValues - 1} do if stringOp.equal(registers[v] pools[c][r]) then any := true end end
+                    if any then vector.append(:String used pools[c][r]) end
+                end
+            end
+            tuple let registers = registers let calleeUsed = vector.toArray(:String used) end
+        end
+end

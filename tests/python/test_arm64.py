@@ -60,7 +60,7 @@ class TestArm64(unittest.TestCase):
         # A thread-local through its descriptor, an undefined symbol through the GOT
         self.assertIn("_quest_current_exception_handler@TLVPPAGE", text)
         self.assertIn("_quest_type_Int+48", text)
-        self.assertIn("ldr x9, [x9, _quest_type_Int@GOTPAGEOFF]", text)
+        self.assertTrue(re.search(r"ldr (x\d+), \[\1, _quest_type_Int@GOTPAGEOFF\]", text), text)
         # The narrow arguments are packed on the stack, a byte each
         self.assertTrue(re.search(r"strb w9, \[sp, #40\]\n.*\n\tstrb w9, \[sp, #41\]", text), text)
         self.assertIn("ldrb w9, [x29, #57]", text)
@@ -71,9 +71,15 @@ class TestArm64(unittest.TestCase):
         # A frame of more than a page is probed (docs/arm64.md section 10.2)
         self.assertIn("\tbl ___chkstk_darwin\n\tmovz x9, #40160, lsl #0\n\tsub sp, sp, x9", text)
         self.assertIn("str x29, [x10, #40]", text)
+        entered = text[text.index("_qf_try:"):]
+        entered = entered[:entered.index(".cfi_endproc")]
         for pair in ("x19, x20", "x27, x28", "d8, d9", "d14, d15"):
-            self.assertEqual(text.count(f"stp {pair}, [sp, #-16]!"), 1, pair)
-            self.assertEqual(text.count(f"ldp {pair}, [sp], #16"), 2, pair)  # at its two returns
+            self.assertEqual(entered.count(f"stp {pair}, [sp, #-16]!"), 1, pair)
+            self.assertEqual(entered.count(f"ldp {pair}, [sp], #16"), 2, pair)  # at its two returns
+        # Elsewhere, only the pairs a function's values use (section 3.8)
+        memory = text[text.index("_qf_memory:"):]
+        memory = memory[:memory.index(".cfi_endproc")]
+        self.assertEqual(re.findall(r"stp (\S+, \S+), \[sp, #-16\]!", memory), ["x29, x30", "x19, x20"])
         self.assertIn(".cfi_offset b15, -152", text)
 
     def test_a_malformed_unit_fails(self) -> None:
