@@ -364,7 +364,9 @@ export
             lines
         end
 
-    let epilogue(fr: Frame): Ok =
+    (* The frame popped and the caller's registers restored, short of
+     * returning *)
+    let restore(fr: Frame): Ok =
         begin
             if fr.savesAll then
                 emit(fr "sub sp, x29, #" <> conv.int(16 * extent savedPairs))
@@ -373,14 +375,40 @@ export
                 emit(fr "mov sp, x29")
             end
             emit(fr "ldp x29, x30, [sp], #16")
-            emit(fr "ret")
         end
+    let epilogue(fr: Frame): Ok = begin restore(fr) emit(fr "ret") end
 
     let returnValues(fr: Frame vs: Array(Int)): Ok =
         begin
             if extent vs is 1 then loadValue(fr if isReal(ssa.typeOf(fr.f vs[0])) then "d0" else "x0" end vs[0])
             elsif extent vs is 2 then begin loadValue(fr "x0" vs[0]) loadValue(fr "x1" vs[1]) end end
             epilogue(fr)
+        end
+
+    (* A call in tail position (docs/arm64.md section 3.7): of the function
+     * itself, a jump to its first block, its parameters bound to the
+     * arguments; of another whose arguments all go in registers, the frame
+     * popped and a branch to it, so that it returns to this function's caller;
+     * otherwise a call and a return *)
+    let tailCall(fr: Frame i: ssa.Inst): Ok =
+        begin
+            let f = fr.f
+            let direct = stringOp.length(i.symbol) > 0
+            let first = if direct then 0 else 1 end
+            let types = array of(extent i.args option typeInt of ssa.Type end)
+            for k = 0 upto {extent i.args - 1} do types[k] := ssa.typeOf(f i.args[k]) end
+            let placed = placeArguments(types i.pairs i.narrow first)
+            if direct andif eq(i.symbol f.symbol) then
+                jump(fr ssa.target(0 i.args))
+            elsif placed.stackBytes > 0 then
+                call(fr i)
+                returnValues(fr i.results)
+            else
+                for k = first upto {extent i.args - 1} do loadValue(fr placed.places[k].reg i.args[k]) end
+                if not(direct) then loadValue(fr "x9" i.args[0]) end
+                restore(fr)
+                emit(fr if direct then "b " <> asm.symbol(i.symbol) else "br x9" end)
+            end
         end
 
     let terminator(fr: Frame t: ssa.Terminator): Ok =
@@ -408,7 +436,7 @@ export
                 end
                 jump(fr x.default)
             when termReturn with x then returnValues(fr x.values)
-            when termTailCall with x then begin call(fr x.call) returnValues(fr x.call.results) end
+            when termTailCall with x then tailCall(fr x.call)
             (* Its handler's record pushed, a native handler's: a raise resumes
              * at the handler block with this frame's sp and fp, every register
              * dead, every value in the frame (docs/arm64.md section 3.6) *)
@@ -542,7 +570,16 @@ export
                     let i = vector.get(:ssa.Inst blk.insts k)
                     case i.op when opCall then measure(i) when opCallIndirect then measure(i) else ok end
                 end
-                case blk.term when termTailCall with x then measure(x.call) when termTry then savesAll := true else ok end
+                case blk.term
+                    when termTailCall with x then
+                        measure(x.call)
+                        (* A call of the function itself jumps to its first block *)
+                        if eq(x.call.symbol f.symbol) andif {extent x.call.args > copyWords} then
+                            copyWords := extent x.call.args
+                        end
+                    when termTry then savesAll := true
+                    else ok
+                end
                 let ts = ssa.successors(blk.term)
                 for k = 0 upto {extent ts - 1} do
                     let n = vector.length(:Int ssa.block(f ts[k]).params)

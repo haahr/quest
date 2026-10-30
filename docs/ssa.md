@@ -69,8 +69,9 @@ call records the argument among its `memory` arguments: AAPCS64 passes such a co
 a `char`, from a `Bool` or a `Char`), which Darwin's AAPCS64 packs on the stack, a byte each, where it passes others
 in 8 aligned bytes; a function records its own (`paramNarrow`), and extends them on entry, since a C caller leaves
 their upper bits unspecified. A C `bool` or `char` result is extended by a `zext8` or `sext8` after the call,
-since AAPCS64 leaves a narrow result's upper bits unspecified. A call of a function that does not return (a raise)
-ends its block with `unreachable`.
+since AAPCS64 leaves a narrow result's upper bits unspecified; a function that returns such an extension of a
+call's result can make the call in tail position, since its own caller extends it again. A call of a function that
+does not return (a raise) ends its block with `unreachable`.
 
 ## 3. Blocks and Control
 
@@ -83,7 +84,7 @@ terminator:
 | `branch v, b1(args), b2(args)` | `b1` if `v` is nonzero, else `b2` |
 | `switch v, [k: b(args)...], default b(args)` | the block of the case whose integer is `v` |
 | `return values` | return the values (none, one, or two for a 16-byte result) |
-| `tailCall` | a call in tail position (arm64.md §3.7): its results are the function's |
+| `tailCall` | a call in tail position (arm64.md §3.7, marked by `ssa/tailCalls`): its results are the function's |
 | `try slot, body(args), handler()` | enter a `try` (below) |
 | `unreachable` | control does not reach the end of the block |
 

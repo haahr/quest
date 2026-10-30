@@ -5,12 +5,14 @@ which pass records, closures, exceptions, and polymorphic values across their
 boundary. The driver builds a copy of it outside the checkout, into one build
 directory, with each of a sequence of choices of backends: every unit by c,
 every unit by ssac or arm64, and the program and its module split between the
-backends both ways. Each build must print what the first printed; each unit's manifest must
-record the backend that compiled it; a unit compiled by another backend than the
-build's choice must be compiled again, and one compiled by the same must not.
-Malformed options are usage errors, and --whole-program is the c backend's
-alone. A runaway recursion through a frame larger than the stack's guard page
-ends with stack.overflow with each backend. run_tests.py --self-hosted runs it (docs/testing.md).
+backends both ways. Each build must print what the first printed; each unit's
+manifest must record the backend that compiled it; a unit compiled by another
+backend than the build's choice must be compiled again, and one compiled by the
+same must not. Malformed options are usage errors, and --whole-program is the c
+backend's alone. A runaway recursion through a frame larger than the stack's
+guard page ends with stack.overflow with each backend, and tail recursions ten
+million deep run in constant stack with arm64. run_tests.py --self-hosted runs
+it (docs/testing.md).
 
     python tests/self-hosted/backends.py DRIVER
 """
@@ -156,11 +158,51 @@ def check_overflow(driver: str) -> list[str]:
     return problems
 
 
+TAIL_PROGRAM = """import writer : Writer conv : Conv ;
+let say(s: String): Ok = writer.putString(writer.output s <> "\\n");
+let rec sum(n: Int acc: Int): Int = if n is 0 then acc else sum({n - 1} {acc + n}) end;
+let rec isEven(n: Int): Bool = if n is 0 then true else isOdd(n - 1) end
+and isOdd(n: Int): Bool = if n is 0 then false else isEven(n - 1) end;
+let rec repeat(n: Int f: All(x: Int) Int x: Int): Int = if n is 0 then x else repeat({n - 1} f f(x)) end;
+let step = 3;
+let rec countdown(n: Int): Int = if n is 0 then 0 else bounce(n) end
+and bounce(n: Int): Int = begin let k = fun(m: Int): Int countdown(m - step) k({n + step} - 1) end;
+say(conv.int(sum(10000000 0)));
+say(conv.bool(isEven(10000001)));
+say(conv.int(repeat(10000000 fun(x: Int): Int {x + step} 0)));
+say(conv.int(countdown(10000000)));
+"""
+
+
+def check_tail_calls(driver: str) -> list[str]:
+    """With arm64, self, mutual, and closure tail recursions ten million deep,
+    which would need hundreds of megabytes of stack as calls, run in the
+    default stack (docs/arm64.md section 3.7)."""
+    environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
+    with tempfile.TemporaryDirectory() as d:
+        program = Path(d) / "tail.quest"
+        program.write_text(TAIL_PROGRAM)
+        build = Path(d) / "build"
+        p = subprocess.run([driver, "--backend", "arm64", "--build-dir", str(build), "-o", str(build / "main"),
+                            str(program)], capture_output=True, text=True, cwd=d, env=environment)
+        if p.returncode != 0:
+            return [f"tail calls: the build failed: {p.stderr.strip()[:500]}"]
+        try:
+            run = subprocess.run([str(build / "main")], capture_output=True, text=True, cwd=d, timeout=60)
+        except subprocess.TimeoutExpired:
+            return ["tail calls: the program ran for a minute"]
+        expected = f"{10000000 * 10000001 // 2}\nfalse\n30000000\n0\n"
+        if run.returncode != 0 or run.stdout != expected:
+            return [f"tail calls: exit status {run.returncode}, stdout {run.stdout[:200]!r}, "
+                    f"stderr {run.stderr[:300]!r}"]
+    return []
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print(__doc__)
         sys.exit(2)
-    problems = check(sys.argv[1]) + check_overflow(sys.argv[1])
+    problems = check(sys.argv[1]) + check_overflow(sys.argv[1]) + check_tail_calls(sys.argv[1])
     for problem in problems:
         print(problem)
     print("the backends agree" if not problems else f"{len(problems)} problems")

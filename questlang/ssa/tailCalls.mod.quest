@@ -1,0 +1,160 @@
+(* Quest Self-Hosted Compiler: The SSA's Tail Calls Implementation *)
+
+module tailCalls : TailCalls
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    Let Function = ssa.Function
+
+    let sameValues(a: Array(Int) b: Array(Int)): Bool =
+        begin
+            let var same = extent a is extent b
+            if same then for i = 0 upto {extent a - 1} do if a[i] isnot b[i] then same := false end end end
+            same
+        end
+
+    (* Whether the values a block's addresses are derived from a stack slot,
+     * and whether any of them escapes: stored, passed to a call, or
+     * returned *)
+    let slotsEscape(f: Function): Bool =
+        begin
+            let n = vector.length(:ssa.Type f.types)
+            let derived = array of(n false)
+            let var changed = true
+            while changed do
+                changed := false
+                let mark(v: Int): Bool = if derived[v] then false else begin derived[v] := true true end end
+                for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                    let blk = ssa.block(f b)
+                    for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                        let i = vector.get(:ssa.Inst blk.insts k)
+                        let var from = false
+                        case i.op
+                            when opSlot then from := true
+                            when opAdd then from := derived[i.args[0]] orif derived[i.args[1]]
+                            when opSub then from := derived[i.args[0]] orif derived[i.args[1]]
+                            when opIntToPtr then from := derived[i.args[0]]
+                            when opPtrToInt then from := derived[i.args[0]]
+                            when opCopy then from := derived[i.args[0]]
+                            else ok
+                        end
+                        if from then
+                            for r = 0 upto {extent i.results - 1} do if mark(i.results[r]) then changed := true end end
+                        end
+                    end
+                    (* A block's parameters, from what jumps pass them *)
+                    let pass(t: ssa.Target): Ok =
+                        begin
+                            let params = ssa.block(f t.block).params
+                            for a = 0 upto {extent t.args - 1} do
+                                if derived[t.args[a]] andif mark(vector.get(:Int params a)) then changed := true end
+                            end
+                        end
+                    case blk.term
+                        when termJump with x then pass(x.target)
+                        when termBranch with x then begin pass(x.ifTrue) pass(x.ifFalse) end
+                        when termSwitch with x then
+                            for t = 0 upto {extent x.targets - 1} do pass(x.targets[t]) end
+                            pass(x.default)
+                        when termTry with x then pass(x.body)
+                        else ok
+                    end
+                end
+            end
+            let var escapes = false
+            let anyDerived(vs: Array(Int)): Bool =
+                begin
+                    let var found = false
+                    for i = 0 upto {extent vs - 1} do if derived[vs[i]] then found := true end end
+                    found
+                end
+            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    case i.op
+                        when opStore then if derived[i.args[1]] then escapes := true end
+                        when opCall then if anyDerived(i.args) then escapes := true end
+                        when opCallIndirect then if anyDerived(i.args) then escapes := true end
+                        else ok
+                    end
+                end
+                case blk.term
+                    when termReturn with x then if anyDerived(x.values) then escapes := true end
+                    when termTailCall with x then if anyDerived(x.call.args) then escapes := true end
+                    else ok
+                end
+            end
+            escapes
+        end
+
+    (* Whether a jump to t returns exactly values: t's block does nothing but
+     * return its parameters, the arguments being values, or pass them on to
+     * another such block (through at most a few) *)
+    let rec returnsThrough(f: Function t: ssa.Target values: Array(Int) depth: Int): Bool =
+        begin
+            let blk = ssa.block(f t.block)
+            let params = vector.toArray(:Int blk.params)
+            if {depth > 8} orif not(vector.empty(:ssa.Inst blk.insts)) orif not(sameValues(t.args values)) then
+                false
+            else
+                case blk.term
+                    when termReturn with x then sameValues(x.values params)
+                    when termJump with x then returnsThrough(f x.target params {depth + 1})
+                    else false
+                end
+            end
+        end
+
+    let markFunction(f: Function): Ok =
+        if not(slotsEscape(f)) then
+            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                let blk = ssa.block(f b)
+                let n = vector.length(:ssa.Inst blk.insts)
+                let isCall(i: ssa.Inst): Bool =
+                    case i.op when opCall then true when opCallIndirect then true else false end
+                let isExtension(i: ssa.Inst): Bool =
+                    case i.op when opZext8 then true when opSext8 then true else false end
+                (* The call, and what it returns: its results, or the extension
+                 * of its byte, which this function's caller makes again
+                 * (docs/ssa.md section 2.2) *)
+                let var call = maybe.none(:ssa.Inst)
+                let var returned = array of(0 0)
+                let var pops = 0
+                if n > 0 then
+                    let last = vector.get(:ssa.Inst blk.insts {n - 1})
+                    if isCall(last) then
+                        call := maybe.some(:ssa.Inst last)
+                        returned := last.results
+                        pops := 1
+                    elsif {n > 1} andif isExtension(last) then
+                        let before = vector.get(:ssa.Inst blk.insts {n - 2})
+                        if isCall(before) andif sameValues(last.args before.results) then
+                            call := maybe.some(:ssa.Inst before)
+                            returned := last.results
+                            pops := 2
+                        end
+                    end
+                end
+                if maybe.isSome(:ssa.Inst call) then
+                    let tail = case blk.term
+                        when termReturn with x then sameValues(x.values returned)
+                        when termJump with x then returnsThrough(f x.target returned 0)
+                        else false
+                    end
+                    if tail then
+                        for k = 1 upto pops do let ignored = vector.pop(:ssa.Inst blk.insts) end
+                        let c = maybe.unwrap(:ssa.Inst call)
+                        blk.term := option termTailCall of ssa.Terminator with let call = c end
+                    end
+                end
+            end
+        end
+
+    let markUnit(u: ssa.Unit): Ok =
+        for i = 0 upto {vector.length(:Function u.functions) - 1} do
+            markFunction(vector.get(:Function u.functions i))
+        end
+end

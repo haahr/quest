@@ -475,7 +475,21 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
    suite runs `self-hosted/backends` (calls of every kind of signature across the backends, both ways), the ABI
    corpus, and `test_ssac`/`test_arm64`.
 10. **Tail calls** (§3.7). *Done when* self, sibling, and closure tail calls are jumps, and a deep tail recursion runs
-    in constant stack.
+    in constant stack. *Done* (2026-10-29): `ssa/tailCalls` marks them as the builder finishes a unit, so the SSA
+    dumps show them (`tail` before the call), and both native backends compile them:
+    - A call is in tail position when its results, or the extension of its byte result (a `Bool` or `Char`, which
+      every caller extends again), are returned, directly or through blocks that only pass them on to a `return`.
+    - A function from which a stack slot's address may escape (stored, passed to a call, or returned, through
+      arithmetic, copies, and block parameters) has no tail calls. That covers §3.7's first two exceptions at
+      once: a `try`'s record is such a slot, and so is a `var` argument's cell and a composite passed through
+      memory. It is coarser than §3.7 asks, a function with any such slot losing all its tail calls; the linear
+      scan's liveness (step 11) can narrow it.
+    - `arm64` compiles a call of the function itself as a jump to its first block (its frame's copy area sized for
+      it), whatever its arguments; one of another function whose arguments all go in registers as the frame
+      popped and `b` or `br`; and the rest as a call and a return, a coarser rule than §3.7's comparison with the
+      caller's incoming argument area. `ssac` prints `return f(...);` and leaves the jump to clang.
+    - `language/tail_calls` covers each case in every phase, a hundred deep; `self-hosted/backends` runs self,
+      mutual, and closure tail recursions ten million deep with `arm64`, in the default 8 MB stack.
 11. **Linear scan** (§3.8). *Done when* the suite passes with it, and benchmarks.md has dated run and compile times
     for both backends.
 12. **Self-hosting with the arm64 backend** (§4). *Done when* the check passes, `./quest` can build its stages with

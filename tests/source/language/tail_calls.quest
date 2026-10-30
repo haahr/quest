@@ -1,0 +1,72 @@
+(* Tail Calls
+ *
+ * Calls in tail position, which the native backends compile as jumps
+ * (docs/arm64.md section 3.7): of the function itself, of another (mutually
+ * recursive or not), through a closure, with results of each kind, through
+ * a conditional whose arms are calls, and calls which cannot be jumps: with
+ * arguments on the stack, or with a var argument's address. The depths here
+ * suit every phase; tests/self-hosted/backends.py runs millions deep. *)
+
+import writer : Writer conv : Conv ;
+
+let say(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+(* Of itself, an accumulator loop *)
+let rec sum(n: Int acc: Int): Int = if n is 0 then acc else sum({n - 1} {acc + n}) end;
+say("sum: " <> conv.int(sum(100 0)));
+
+(* Its arguments swapped, which the jump must bind all at once *)
+let rec swap(n: Int a: Int b: Int): Int = if n is 0 then {a * 10} + b else swap({n - 1} b a) end;
+say("swap 3: " <> conv.int(swap(3 1 2)) <> ", swap 4: " <> conv.int(swap(4 1 2)));
+
+(* Of another, mutually recursive *)
+let rec isEven(n: Int): Bool = if n is 0 then true else isOdd(n - 1) end
+and isOdd(n: Int): Bool = if n is 0 then false else isEven(n - 1) end;
+say("isEven(101): " <> conv.bool(isEven(101)) <> ", isOdd(101): " <> conv.bool(isOdd(101)));
+
+(* Through a closure, passed along *)
+let rec repeat(n: Int f: All(x: Int) Int x: Int): Int = if n is 0 then x else repeat({n - 1} f f(x)) end;
+let step = 3;
+let addStep = fun(x: Int): Int x + step;
+say("repeat: " <> conv.int(repeat(100 addStep 0)));
+
+(* To a closure, as the last thing done *)
+let callWith(f: All(x: Int) Int x: Int): Int = f(x);
+say("callWith: " <> conv.int(callWith(addStep 39)));
+
+(* With results of each kind *)
+let rec text(n: Int s: String): String = if n is 0 then s else text({n - 1} s <> "ab") end;
+let rec half(n: Int r: Real): Real = if n is 0 then r else half({n - 1} r // 2.0) end;
+Let Pair = Record a: Int b: Int end;
+let rec fib(n: Int p: Pair): Pair = if n is 0 then p else fib({n - 1} record a = p.b b = {p.a + p.b} end) end;
+let f = fib(30 record a = 0 b = 1 end);
+say("text: " <> text(3 "") <> ", half: " <> conv.real(half(3 10.0))
+    <> ", fib: " <> conv.int(f.a) <> " " <> conv.int(f.b));
+
+(* Through a conditional whose arms are calls *)
+let rec collatz(n: Int steps: Int): Int =
+    begin
+        let r = if n is 1 then steps elsif {n % 2} is 0 then collatz({n / 2} {steps + 1})
+            else collatz({{3 * n} + 1} {steps + 1}) end
+        r
+    end;
+say("collatz(27): " <> conv.int(collatz(27 0)));
+
+(* With arguments on the stack: of itself, a jump; of another, a call and a
+ * return *)
+let rec many(n: Int a: Int b: Int c: Int d: Int e: Int f: Int g: Int h: Int i: Int j: Int): Int =
+    if n is 0 then a + b + c + d + e + f + g + h + i + j
+    elsif {n % 2} is 0 then many({n - 1} b c d e f g h i j a)
+    else others({n - 1} b c d e f g h i j a) end
+and others(n: Int a: Int b: Int c: Int d: Int e: Int f: Int g: Int h: Int i: Int j: Int): Int =
+    many(n {a + 1} b c d e f g h i j);
+say("many: " <> conv.int(many(100 1 2 3 4 5 6 7 8 9 10)));
+
+(* With a var's address: a call and a return *)
+let bump(var x: Int): Int = begin x := x + 1 x end;
+let rec counted(n: Int): Int =
+    begin
+        let var k = n
+        if n is 0 then 0 else counted(bump(@k) - 2) end
+    end;
+say("counted: " <> conv.int(counted(100)));
