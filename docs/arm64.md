@@ -545,7 +545,13 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
     5.2) and arm64's with splitting (11.0, 2.09 times C's).
 12. **Self-hosting with the arm64 backend** (§4). *Done when* the check passes, `./quest` can build its stages with
     either backend, `tools/check` runs the self-hosting check through `ssac` and `arm64` too, and benchmarks.md has
-    the measurements from which the default backend is decided.
+    the measurements from which the default backend is decided. *Decided* (2026-10-30, by the user):
+    - **§10's hazard 4 first** (`Char` as `uint8_t`), since a `Char`'s signedness differing between the backends
+      could break the fixed point; hazards 3 and 5 after this step.
+    - **`QUEST_BACKEND=c|ssac|arm64`** chooses the backend `./quest` builds its stages with (`c` by default), each
+      backend's stages in their own `.build/quest-stages-<backend>/`, so that switching rebuilds neither.
+    - **The user decides the default backend:** benchmarks.md records the compile and run times of the compiler and
+      the MLton suite under each backend, with a recommendation. Releases are built with C until then.
 
 13. **Whole-program compilation** with the arm64 backend (build-process.md §1.2). *Done when* `--whole-program`
     builds with `--backend arm64` (and `ssac`) pass the suite.
