@@ -27,6 +27,7 @@ import
     util/maybe : util/Maybe
     util/strutil : util/Strutil
     stringOp = string : StringOp
+    raised : Raised
 export
     Let Type = model.Type
     Let Scope = symbols.Scope
@@ -116,18 +117,16 @@ export
         end
 
     (* body with the current scope s, which is restored even if body raises an
-     * error *)
+     * exception *)
     let inScope(A::TYPE e: env.T s: Scope body: All() A): A =
         begin
             let saved = e.currentScope
             e.currentScope := s
             let result = try
                 body()
-            when diagnostics.compilerError with err then
-                begin
-                    e.currentScope := saved
-                    diagnostics.raiseError(:A err)
-                end
+            else with r then
+                e.currentScope := saved
+                raised.reraise(:A r)
             end
             e.currentScope := saved
             result

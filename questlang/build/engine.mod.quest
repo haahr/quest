@@ -33,6 +33,7 @@ import
     conv : Conv
     writer : Writer
     system : System
+    raised : Raised
 export
     let buildError: Exception(String) = exception buildError: String end
 
@@ -1021,20 +1022,14 @@ export
     let runnerFailure(A::TYPE message: String): A = raise compilerRunner.failure with message end
 
     (* body, with the log's batched entries appended to its file when it
-     * returns or fails with an error the driver reports *)
+     * returns or raises an exception *)
     let flushingLog(A::TYPE eng: T body: All() A): A =
         begin
             let result = try
                 body()
-            when diagnostics.compilerError with err then
+            else with r then
                 logger.flush(eng.logger)
-                diagnostics.raiseError(:A err)
-            when buildError with m then
-                logger.flush(eng.logger)
-                fail(:A m)
-            when compilerRunner.failure with m then
-                logger.flush(eng.logger)
-                runnerFailure(:A m)
+                raised.reraise(:A r)
             end
             logger.flush(eng.logger)
             result

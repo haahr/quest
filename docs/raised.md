@@ -13,7 +13,7 @@ A `try` catches an exception it does not know with `else`, but the `else` branch
 it cannot raise it again. Code that must do something whenever its body fails, and then let the failure go on (the
 idiom other languages call `finally`), can only list the exceptions it expects and raise each again by hand, as
 `flushingLog` in `questlang/build/engine.mod.quest`, `loading` in `questlang/modules/loader.mod.quest`, and
-`inScope` in `questlang/modules/elaboration.mod.quest` do today:
+`inScope` in `questlang/modules/elaboration.mod.quest` did before this extension:
 
 ```quest
 let result = try

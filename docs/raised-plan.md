@@ -10,9 +10,7 @@ runs in every phase of both suites, and none of them can pass until the whole pi
 next ABI version (56), since it changes the runtime header and the externals table. Each commit passes
 `tools/check`.
 
-**Status** (2026-10-29): steps 1 to 6 are done, unpushed until the arm64 plan is finished. Step 7 waits for them to be
-pushed and for a release cut from them, since `questlang/` may use only what the current release compiles
-([instructions.md](instructions.md) §6.1).
+**Status** (2026-10-30): complete. Steps 1 to 6 were pushed and released (1876c3e3); step 7 followed.
 
 | Step | What | Compilers |
 | --- | --- | --- |
@@ -150,7 +148,13 @@ corpus. The arm64 work bumps the ABI often; rebase just before committing and ta
 
 Replace the hand-written idiom (raised.md §1) in the self-hosted compiler, where it misses exceptions it does not
 list: `flushingLog` (`questlang/build/engine.mod.quest`), `loading` (`questlang/modules/loader.mod.quest`), `inScope`
-(`questlang/modules/elaboration.mod.quest`), and the scope swap in `questlang/types/env.mod.quest`. The bootstrap
+(`questlang/modules/elaboration.mod.quest`), and the scope swap in `questlang/types/env.mod.quest`. Done, along with
+the other sites that restored state and raised a `diagnostics.compilerError` again: `scoped` and `withUnitNames` in
+`env`, `inLoop` and `inFunction` in `questlang/typechecker/checker.mod.quest`, and the kind memo's reset in
+`questlang/types/kinds.mod.quest`. `env`'s `withUnitSource` and `atImport` keep their `when` branch, which adds a
+location to a compiler error, and gain an `else with` branch for every other exception. The MLton benchmarks'
+conversions now raise again as their originals do: `fluidLet` in zebra, the file cleanup in lexgen, and `try`,
+`time`, and `with_flag` in model-elimination. The bootstrap
 needs nothing: it uses Python's `try`/`finally`. If the four sites end up alike, that is the case for adding
 `raised.ensure` (raised.md §7), which is not part of this plan.
 

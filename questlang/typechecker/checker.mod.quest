@@ -15,6 +15,7 @@ import
     util/maybe : util/Maybe
     stringOp = string : StringOp
     conv : Conv
+    raised : Raised
 export
     Let PendingTypeArg = Tuple meta: model.Type quantifier: model.Quantifier offset: Int end
 
@@ -52,9 +53,9 @@ export
             let result =
                 try
                     body()
-                when diagnostics.compilerError with err then
+                else with r then
                     c.loopDepth := c.loopDepth - 1
-                    diagnostics.raiseError(:A err)
+                    raised.reraise(:A r)
                 end
             c.loopDepth := c.loopDepth - 1
             result
@@ -68,10 +69,10 @@ export
             let result =
                 try
                     body()
-                when diagnostics.compilerError with err then
+                else with r then
                     c.loopDepth := savedDepth
                     c.functionDepth := c.functionDepth - 1
-                    diagnostics.raiseError(:A err)
+                    raised.reraise(:A r)
                 end
             c.loopDepth := savedDepth
             c.functionDepth := c.functionDepth - 1

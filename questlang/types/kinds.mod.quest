@@ -12,6 +12,7 @@ import
     util/hash : util/Hash
     util/maybe : util/Maybe
     conv : Conv
+    raised : Raised
 export
     Let Env = maybe.T(env.T)
     Let Type = model.Type
@@ -148,11 +149,9 @@ export
                     memo.active := maybe.some(:Memo tuple let kinds = newKinds() let e = e end)
                     let k = try
                         synthUncached(t e)
-                    when diagnostics.compilerError with err then
-                        begin
-                            memo.active := maybe.none(:Memo)
-                            diagnostics.raiseError(:Kind err)
-                        end
+                    else with r then
+                        memo.active := maybe.none(:Memo)
+                        raised.reraise(:Kind r)
                     end
                     memo.active := maybe.none(:Memo)
                     k

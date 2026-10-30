@@ -22,6 +22,7 @@ import
     system : System
     stringOp = string : StringOp
     conv : Conv
+    raised : Raised
 export
     (* The scopes of the .qi files loaded in this process, with their
      * modification times: an interface is elaborated once for all the units
@@ -68,7 +69,7 @@ export
         end
 
     (* body with e's current directory dir and name pushed on loading; both are
-     * restored if body raises an error *)
+     * restored if body raises an exception *)
     let loading(A::TYPE e: env.T dir: String stack: vector.T(String) name: String body: All() A): A =
         begin
             let savedDir = e.currentDir
@@ -81,11 +82,9 @@ export
                 end
             let result = try
                 body()
-            when diagnostics.compilerError with err then
-                begin
-                    restore()
-                    diagnostics.raiseError(:A err)
-                end
+            else with r then
+                restore()
+                raised.reraise(:A r)
             end
             restore()
             result
