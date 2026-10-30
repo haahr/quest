@@ -269,9 +269,10 @@ So a value lives in pieces, each in a register or in memory:
   `moves` load it there (or move it between registers) just before that instruction.
 - **Block starts.** A piece that starts at a block's start is reached by the code of each edge into the block. Its
   parallel moves take each parameter to its register and its slot, and each value live in from where it is at the
-  edge's source. They are sequenced so that nothing is overwritten before it is read, and moves that form a cycle
-  go through the copy area. A branch's edges each have their own code (after `cbz`, on each side), so no critical
-  edge needs splitting.
+  edge's source. They are sequenced so that nothing is overwritten before it is read. When only cycles are left,
+  one move's source is copied to the scratch register `x10` (through `fmov` for a `d` register), which breaks its
+  cycle, so a frame no longer needs a copy area. A branch's edges each have their own code (after `cbz`, on each
+  side), so no critical edge needs splitting.
 - **Rematerialization.** A constant, a real constant, the null, a slot's address, or a symbol's address (not a
   thread-local's) needs no slot. Where it is in memory it is computed again, and if its first piece is in memory,
   its instruction emits nothing.
@@ -530,10 +531,9 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
       once: a `try`'s record is such a slot, and so is a `var` argument's cell and a composite passed through
       memory. It is coarser than §3.7 asks, a function with any such slot losing all its tail calls; the linear
       scan's liveness (step 11) can narrow it.
-    - `arm64` compiles a call of the function itself as a jump to its first block (its frame's copy area sized for
-      it), whatever its arguments; one of another function whose arguments all go in registers as the frame
-      popped and `b` or `br`; and the rest as a call and a return, a coarser rule than §3.7's comparison with the
-      caller's incoming argument area. `ssac` prints `return f(...);` and leaves the jump to clang.
+    - `arm64` compiles a call of the function itself as a jump to its first block, whatever its arguments; one of
+      another function whose arguments all go in registers as the frame popped and `b` or `br`; and the rest as a
+      call and a return, a coarser rule than §3.7's comparison with the caller's incoming argument area. `ssac` prints `return f(...);` and leaves the jump to clang.
     - `language/tail_calls` covers each case in every phase, a hundred deep; `self-hosted/backends` runs self,
       mutual, and closure tail recursions ten million deep with `arm64`, in the default 8 MB stack.
 11. **Linear scan** (§3.8). *Done when* the suite passes with it, and benchmarks.md has dated run and compile times

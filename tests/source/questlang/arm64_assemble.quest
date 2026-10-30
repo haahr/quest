@@ -6,7 +6,8 @@
  * with more arguments than registers, Ints, Reals, a composite, and narrow ones
  * packed on the stack; a function that takes as many; Real arithmetic and
  * comparisons; loads and stores of every width at near and far offsets; a
- * switch and a loop; a try, entered with _setjmp; a thread-local's address and
+ * switch and a loop; a try, entered with _setjmp; a loop whose parallel copy
+ * has cycles of either class; a thread-local's address and
  * a symbol the unit does not define; and data of zeros, text, and words.
  * tests/python/test_arm64.py assembles the golden. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
@@ -135,7 +136,29 @@ ret(tries tryBody array of params(tries)[0] end);
 ret(tries handler array of before end);
 add(tries);
 
-(* 6. A main, which calls through a pointer too *)
+(* 6. A loop whose next iteration rotates three Ints and swaps two Reals:
+ * cycles, which its parallel copy breaks through x10 *)
+let rotate = ssa.newFunction("qf_rotate" false array of tInt tInt tInt tInt tReal tReal end array of tInt end);
+let rp = params(rotate);
+let top = ssa.newBlock(rotate);
+let lp = array of(6 0);
+lp[0] := ssa.addParam(rotate top tInt);
+for k = 1 upto 3 do lp[k] := ssa.addParam(rotate top tInt) end;
+for k = 4 upto 5 do lp[k] := ssa.addParam(rotate top tReal) end;
+let next = ssa.newBlock(rotate);
+let finish = ssa.newBlock(rotate);
+jumpTo(rotate 0 top rp);
+ssa.terminate(rotate top option termSwitch of ssa.Terminator with
+    let value = lp[0] let cases = array of 0 end
+    let targets = array of ssa.target(finish none) end
+    let default = ssa.target(next none)
+end);
+jumpTo(rotate next top array of ssa.binary(rotate next option opSub of ssa.Opcode end lp[0] ssa.constant(rotate next 1))
+    lp[2] lp[3] lp[1] lp[5] lp[4] end);
+ret(rotate finish array of lp[1] end);
+add(rotate);
+
+(* 7. A main, which calls through a pointer too *)
 let mainF = ssa.newFunction("main" true array of tInt tPtr end array of tInt end);
 let pair = ssa.call(mainF 0 "qv_test_swap" array of params(mainF)[1] params(mainF)[1] params(mainF)[0] end array of 0 end
     array of tPtr tPtr end);
@@ -147,7 +170,7 @@ ssa.terminate(mainF 0 option termTailCall of ssa.Terminator with let call = tupl
 end end);
 add(mainF);
 
-(* 7. Data *)
+(* 8. Data *)
 let word(n: Int): ssa.Word = option wordInt of ssa.Word with let n = n end;
 let address(s: String n: Int): ssa.Word = option wordSymbol of ssa.Word with let symbol = s let addend = n end;
 vector.append(:ssa.Data unit.data tuple

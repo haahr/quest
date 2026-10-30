@@ -96,8 +96,8 @@ export
     (* =========================================================================
      * A function's frame: below the frame record and the callee-saved
      * registers it saves, the outgoing arguments' area at sp, then a slot for
-     * each value with a piece in memory (but none rematerialized), the
-     * function's stack slots, and an area for a set of moves that form a cycle
+     * each value with a piece in memory (but none rematerialized), and the
+     * function's stack slots
      * ====================================================================== *)
 
     Let Frame = Tuple
@@ -105,7 +105,6 @@ export
         lines: Lines
         valueAt: Array(Int)
         slotAt: Array(Int)
-        copyAt: Int
         size: Int
         prefix: String
         defined: hashMap.T(String Bool)
@@ -252,38 +251,36 @@ export
      * at once, as if in parallel
      * ====================================================================== *)
 
-    (* A place a move reads or writes: a register; a word of the copy area,
-     * at copy; or else a value's memory, its slot, or for a value
-     * rematerialized (only read), its instruction again *)
-    Let Place = Tuple reg: String value: Int copy: Int end
+    (* A place a move reads or writes: a register; or else a value's memory,
+     * its slot, or for a value rematerialized (only read), its instruction
+     * again *)
+    Let Place = Tuple reg: String value: Int end
     Let Transfer = Tuple dst: Place src: Place end
 
-    let inRegister(r: String): Place = tuple let reg = r let value = ~1 let copy = ~1 end
-    let inMemory(v: Int): Place = tuple let reg = "" let value = v let copy = ~1 end
-    let inCopy(k: Int): Place = tuple let reg = "" let value = ~1 let copy = k end
+    let inRegister(r: String): Place = tuple let reg = r let value = ~1 end
+    let inMemory(v: Int): Place = tuple let reg = "" let value = v end
     let transfer(dst: Place src: Place): Transfer = tuple let dst = dst let src = src end
     let samePlace(a: Place b: Place): Bool =
         if stringOp.length(a.reg) > 0 then eq(a.reg b.reg)
-        elsif a.copy >= 0 then a.copy is b.copy
-        else {stringOp.length(b.reg) is 0} andif {b.copy < 0} andif {a.value is b.value} end
+        else {stringOp.length(b.reg) is 0} andif {a.value is b.value} end
 
     (* A place's word into a register *)
     let readInto(fr: Frame reg: String src: Place): Ok =
-        if stringOp.length(src.reg) > 0 then move(fr reg src.reg)
-        elsif src.copy >= 0 then emit(fr "ldr " <> reg <> ", " <> frameAt(fr fr.copyAt + {8 * src.copy}))
-        else loadMemory(fr reg src.value) end
+        if stringOp.length(src.reg) > 0 then move(fr reg src.reg) else loadMemory(fr reg src.value) end
 
     (* One move, memory to memory through x9 *)
     let place(fr: Frame dst: Place src: Place): Ok =
         if stringOp.length(dst.reg) > 0 then readInto(fr dst.reg src)
         else
             let r = if stringOp.length(src.reg) > 0 then src.reg else begin readInto(fr "x9" src) "x9" end end
-            let at = if dst.copy >= 0 then fr.copyAt + {8 * dst.copy} else fr.valueAt[dst.value] end
-            emit(fr "str " <> r <> ", " <> frameAt(fr at))
+            emit(fr "str " <> r <> ", " <> frameAt(fr fr.valueAt[dst.value]))
         end
 
-    (* Moves made at once: each in turn whose destination no other reads; if
-     * those left form cycles, all of them through the copy area *)
+    (* Moves made at once: each in turn whose destination no other reads. When
+     * only cycles are left, each place in them is read by one move, so one
+     * move's source is copied to x10 (of either class, through fmov), which
+     * that move then reads, and its cycle unwinds; the next is broken only
+     * once it has, so x10 holds one value at a time *)
     let parallel(fr: Frame transfers: vector.T(Transfer)): Ok =
         begin
             let pending = vector.new(:Transfer)
@@ -291,8 +288,7 @@ export
                 let t = vector.get(:Transfer transfers k)
                 if not(samePlace(t.dst t.src)) then vector.append(:Transfer pending t) end
             end
-            let var stuck = false
-            while {vector.length(:Transfer pending) > 0} andif not(stuck) do
+            while vector.length(:Transfer pending) > 0 do
                 let n = vector.length(:Transfer pending)
                 let var chosen = ~1
                 for k = 0 upto {n - 1} do
@@ -305,17 +301,15 @@ export
                         if not(read) then chosen := k end
                     end
                 end
-                if chosen < 0 then stuck := true
+                if chosen < 0 then
+                    let t = vector.get(:Transfer pending 0)
+                    readInto(fr "x10" t.src)
+                    vector.set(:Transfer pending 0 transfer(t.dst inRegister("x10")))
                 else
                     let t = vector.get(:Transfer pending chosen)
                     place(fr t.dst t.src)
                     vector.delete(:Transfer pending chosen)
                 end
-            end
-            if stuck then
-                let n = vector.length(:Transfer pending)
-                for k = 0 upto {n - 1} do place(fr inCopy(k) vector.get(:Transfer pending k).src) end
-                for k = 0 upto {n - 1} do place(fr vector.get(:Transfer pending k).dst inCopy(k)) end
             end
         end
 
@@ -792,10 +786,9 @@ export
 
     let function(f: Function index: Int defined: hashMap.T(String Bool) threadLocals: hashMap.T(String Bool)): Lines =
         begin
-            (* The outgoing arguments' area, and the copy area *)
+            (* The outgoing arguments' area *)
             let var savesAll = false
             let var outgoing = 0
-            let var copyWords = 1
             for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
                 let blk = ssa.block(f b)
                 let measure(i: ssa.Inst): Ok =
@@ -810,19 +803,9 @@ export
                     case i.op when opCall then measure(i) when opCallIndirect then measure(i) else ok end
                 end
                 case blk.term
-                    when termTailCall with x then
-                        measure(x.call)
-                        (* A call of the function itself jumps to its first block *)
-                        if eq(x.call.symbol f.symbol) andif {extent x.call.args > copyWords} then
-                            copyWords := extent x.call.args
-                        end
+                    when termTailCall with x then measure(x.call)
                     when termTry then savesAll := true
                     else ok
-                end
-                let ts = ssa.successors(blk.term)
-                for k = 0 upto {extent ts - 1} do
-                    let n = vector.length(:Int ssa.block(f ts[k]).params)
-                    if n > copyWords then copyWords := n end
                 end
             end
             (* A function that enters a try is allocated as any other: the
@@ -851,42 +834,8 @@ export
                     if again andif {extent i.results is 1} then remat[i.results[0]] := maybe.some(:ssa.Inst i) end
                 end
             end
-            (* The copy area holds a set of moves: an edge's, one for each
-             * parameter in a register at its block's start and one for each
-             * with a slot, and one for each value live in and in a register
-             * there (for a block an edge goes to: the entry, only with a call
-             * of the function itself in tail position); or those at a
-             * position *)
-            let targeted = array of(vector.length(:ssa.Block f.blocks) false)
-            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
-                let t = ssa.block(f b).term
-                let ts = ssa.successors(t)
-                for k = 0 upto {extent ts - 1} do targeted[ts[k]] := true end
-                case t when termTailCall with x then if eq(x.call.symbol f.symbol) then targeted[0] := true end else ok end
-            end
-            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
-                if targeted[b] then
-                    let bs = allocation.blockStart[b]
-                    let params = vector.toArray(:Int ssa.block(f b).params)
-                    let var n = 0
-                    for k = 0 upto {extent params - 1} do
-                        if stringOp.length(regalloc.home(allocation params[k] bs)) > 0 then n := n + 1 end
-                        if allocation.spilled[params[k]] then n := n + 1 end
-                    end
-                    let ins = allocation.liveIn[b]
-                    for k = 0 upto {extent ins - 1} do
-                        if stringOp.length(regalloc.home(allocation ins[k] bs)) > 0 then n := n + 1 end
-                    end
-                    if n > copyWords then copyWords := n end
-                end
-            end
             let moveAts = array of(extent allocation.moves 0)
             for k = 0 upto {extent moveAts - 1} do moveAts[k] := allocation.moves[k].at end
-            let var run = 0
-            for k = 0 upto {extent moveAts - 1} do
-                run := if {k > 0} andif {moveAts[k] is moveAts[k - 1]} then run + 1 else 1 end
-                if run > copyWords then copyWords := run end
-            end
             (* A slot for each value with a piece in memory, unless it is
              * computed again *)
             let valueAt = array of(nValues 0)
@@ -905,8 +854,7 @@ export
                 slotAt[s] := at
                 at := at + alignUp(if slot.bytes > 0 then slot.bytes else 8 end 8)
             end
-            let copyAt = at
-            let size = alignUp(at + {8 * copyWords} 16)
+            let size = alignUp(at 16)
             let savedList = vector.new(:Int)
             for k = 0 upto {extent savedPairs - 1} do
                 let var any = savesAll
@@ -918,7 +866,7 @@ export
             end
             let saved = vector.toArray(:Int savedList)
             let fr = tuple
-                let f = f let lines = vector.new(:String) let valueAt = valueAt let slotAt = slotAt let copyAt = copyAt
+                let f = f let lines = vector.new(:String) let valueAt = valueAt let slotAt = slotAt
                 let size = size let prefix = "Lf" <> conv.int(index) let defined = defined let threadLocals = threadLocals
                 let allocation = allocation let moveAts = moveAts let remat = remat let saved = saved
                 let var edges = 0 let var pos = ~1
@@ -937,7 +885,8 @@ export
             (* A frame of more than a page is probed a page at a time, as clang
              * does, so that a stack overflow faults in the guard page rather
              * than past it (docs/arm64.md section 10.2) *)
-            if size <= 4096 then
+            if size is 0 then ok
+            elsif size <= 4096 then
                 emit(fr "sub sp, sp, #" <> conv.int(size))
             else
                 movImm(fr "x9" size)

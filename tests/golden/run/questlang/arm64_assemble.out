@@ -8,7 +8,6 @@ _qv_test_swap:
 	.cfi_def_cfa w29, 16
 	.cfi_offset w30, -8
 	.cfi_offset w29, -16
-	sub sp, sp, #16
 	mov x12, x0
 	mov x13, x1
 	mov x14, x2
@@ -42,7 +41,6 @@ _qf_many:
 	.cfi_offset w26, -72
 	.cfi_offset w27, -96
 	.cfi_offset w28, -88
-	sub sp, sp, #16
 	mov x12, x0
 	mov x13, x1
 	mov x14, x2
@@ -121,7 +119,7 @@ _qf_caller:
 	.cfi_offset w28, -88
 	.cfi_offset b8, -112
 	.cfi_offset b9, -104
-	sub sp, sp, #64
+	sub sp, sp, #48
 	fmov d8, d0
 Lf2_b0:
 	mov x12, #0
@@ -202,9 +200,9 @@ _qf_memory:
 	stp x19, x20, [sp, #-16]!
 	.cfi_offset w19, -32
 	.cfi_offset w20, -24
-	movz x9, #40032, lsl #0
+	movz x9, #40000, lsl #0
 	bl ___chkstk_darwin
-	movz x9, #40032, lsl #0
+	movz x9, #40000, lsl #0
 	sub sp, sp, x9
 	mov x12, x0
 	mov x13, x1
@@ -304,7 +302,7 @@ _qf_try:
 	.cfi_offset b13, -136
 	.cfi_offset b14, -160
 	.cfi_offset b15, -152
-	sub sp, sp, #256
+	sub sp, sp, #240
 	mov x19, x0
 Lf4_b0:
 	add x20, sp, #0
@@ -356,6 +354,52 @@ Lf4_b2:
 	ret
 .cfi_endproc
 .p2align 2
+_qf_rotate:
+.cfi_startproc
+	stp x29, x30, [sp, #-16]!
+	mov x29, sp
+	.cfi_def_cfa w29, 16
+	.cfi_offset w30, -8
+	.cfi_offset w29, -16
+	stp x19, x20, [sp, #-16]!
+	.cfi_offset w19, -32
+	.cfi_offset w20, -24
+	mov x12, x0
+	mov x13, x1
+	mov x14, x2
+	mov x15, x3
+	fmov d16, d0
+	fmov d17, d1
+Lf5_b0:
+	b Lf5_b1
+Lf5_b1:
+	mov x9, x12
+	mov x10, #0
+	cmp x9, x10
+	b.ne Lf5_e1
+	b Lf5_b3
+Lf5_e1:
+	mov x9, x12
+	b Lf5_b2
+Lf5_b2:
+	movz x19, #1, lsl #0
+	sub x12, x12, x19
+	mov x10, x14
+	mov x14, x15
+	mov x15, x13
+	mov x13, x10
+	fmov x10, d17
+	fmov d17, d16
+	fmov d16, x10
+	b Lf5_b1
+Lf5_b3:
+	mov x0, x13
+	sub sp, x29, #16
+	ldp x19, x20, [sp], #16
+	ldp x29, x30, [sp], #16
+	ret
+.cfi_endproc
+.p2align 2
 .globl _main
 _main:
 .cfi_startproc
@@ -371,7 +415,7 @@ _main:
 	sxtw x0, w0
 	mov x19, x0
 	mov x12, x1
-Lf5_b0:
+Lf6_b0:
 	mov x0, x12
 	mov x1, x12
 	mov x2, x19
