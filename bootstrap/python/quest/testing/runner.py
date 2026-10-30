@@ -458,6 +458,11 @@ def run_single_golden_test(
         return False, "[FAIL]", msg
 
     output = process.stdout
+    if phase_name == "ssa":
+        # The SSA's raise sites name the program by the path it was given,
+        # which is absolute, since the test runs in a scratch directory; the
+        # golden names it relative to the checkout, so that it holds in any
+        output = output.replace(str(ROOT_DIR) + os.sep, "")
     if update_golden and writes_golden(phase_name, driver_command is not None):
         out_file.write_text(output, encoding=BYTE_ENCODING)
         return True, "[UPDATED]", ""
