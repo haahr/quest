@@ -446,11 +446,12 @@ static Q_NORETURN void quest_fail_at(const char *loc) {
 
 /* Whether a handler from h out will catch exc (docs/exceptions.md §5.1): 1 if
    one will, 0 if none will, -1 if one might (its patterns are computed when it
-   runs) */
+   runs) or will and needs the frames (an else branch naming the exception,
+   which it may raise again) */
 static int quest_handlers_catch(const QExceptionHandler *h, const QException *exc) {
     for (; h != NULL; h = h->prev) {
         if (h->n_catches == Q_CATCH_ALL) return 1;
-        if (h->n_catches == Q_CATCH_UNKNOWN) return -1;
+        if (h->n_catches == Q_CATCH_UNKNOWN || h->n_catches == Q_CATCH_ALL_TRACED) return -1;
         for (int64_t i = 0; i < h->n_catches; ++i) {
             if (h->catches[i] == exc) return 1;
         }
@@ -494,6 +495,17 @@ void quest_raise_at(const QException *exc, QVal payload, const char *loc) {
 
 void quest_raise(const QException *exc, QVal payload) {
     quest_raise_at(exc, payload, NULL);
+}
+
+QRaised *quest_raised_capture(const QExceptionState *state) {
+    QRaised *r = quest_alloc(sizeof(QRaised));
+    r->state = *state;
+    return r;
+}
+
+QVal quest_raised_reraise(const QTypeDescriptor *a, QRaised *r) {
+    (void)a;
+    quest_reraise(r->state);
 }
 
 void quest_raise_array_error_at(const char *loc) {

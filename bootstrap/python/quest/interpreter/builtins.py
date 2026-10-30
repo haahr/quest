@@ -59,6 +59,7 @@ from quest.values.model import (
     QInt,
     QOk,
     QProcess,
+    QRaised,
     QReader,
     QReal,
     QString,
@@ -686,6 +687,9 @@ def _process_wait_any(procs_val: QArray) -> QInt:
         if reaped is not None:
             reaped.popen.returncode = os.waitstatus_to_exitcode(status)
 
+def _raised_reraise(r: QRaised) -> QValue:
+    raise r.exc
+
 def _process_kill(proc: QProcess, sig: QInt) -> QOk:
     if not 0 <= sig.value <= 0x7FFF_FFFF:
         raise QuestException(SYSTEM_ERROR_EXC)
@@ -1180,6 +1184,9 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_process_wait_any": _process_wait_any,
     "quest_process_kill": _process_kill,
     "quest_system_exit": _system_exit,
+
+    # raised
+    "quest_raised_reraise": _raised_reraise,
 
     # io/readline
     "quest_readline_editing": _readline_editing,

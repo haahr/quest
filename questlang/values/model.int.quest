@@ -52,6 +52,7 @@ export
         vReader with rd: reader.T end
         vStringBuilder with sb: stringBuilder.T end
         vProcess with p: process.T end
+        vRaised with e: RunError end
         vTypeValue with t: TypeValue end
     end
     (* Fields by name; printed in sorted order *)
@@ -121,6 +122,20 @@ export
         (* The frames running, outermost first (docs/exceptions.md section 4) *)
         callStack: vector.T(String)
     end
+    (* An error raised while running (Errors raised while running, below) *)
+    and Cause = Option
+        raised with exc: ExceptionValue payload: maybe.T(Value) payloadType: maybe.T(tm.Type) end
+        internal with message: String end
+    end
+    and RunError = Tuple
+        cause: Cause
+        (* Where it was raised, in the file of sourceMap; none for an error
+         * without a raise site *)
+        var offset: maybe.T(Int)
+        var sourceMap: maybe.T(location.SourceMap)
+        (* The frames running where it was raised, most recent first *)
+        var frames: maybe.T(Array(String))
+    end
 
     (* ======================================================================
      * Constructors
@@ -176,22 +191,11 @@ export
      * QuestRuntimeError (interpreter/primitives.py), both QuestCompilerErrors,
      * which code running a closure or a module locates in its file and gives
      * the frames running, the first time they leave a frame. Here both are
-     * runError, whose cause tells them apart.
+     * runError, whose cause tells them apart (Cause and RunError, above). A
+     * raised exception that an else branch names (docs/raised.md) is the
+     * runError itself, as vRaised.
      * ====================================================================== *)
 
-    Def Cause = Option
-        raised with exc: ExceptionValue payload: maybe.T(Value) payloadType: maybe.T(tm.Type) end
-        internal with message: String end
-    end
-    Def RunError = Tuple
-        cause: Cause
-        (* Where it was raised, in the file of sourceMap; none for an error
-         * without a raise site *)
-        var offset: maybe.T(Int)
-        var sourceMap: maybe.T(location.SourceMap)
-        (* The frames running where it was raised, most recent first *)
-        var frames: maybe.T(Array(String))
-    end
     runError: Exception(RunError)
     (* Raises the Quest exception exc, without a payload *)
     raiseException(A::TYPE exc: ExceptionValue offset: maybe.T(Int)): A

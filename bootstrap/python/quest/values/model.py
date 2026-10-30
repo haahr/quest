@@ -732,6 +732,22 @@ class QProcess(QValue):
         return "<process>"
 
 
+class QRaised(QValue):
+    """A raised exception caught by an else branch that names it (lib/raised,
+    docs/raised.md): the QuestException itself, which raised.reraise raises
+    again, keeping its site and frames."""
+
+    def __init__(self, exc: "QuestException") -> None:
+        self.exc = exc
+
+    @property
+    def type_name(self) -> str:
+        return "Raised.T"
+
+    def to_str(self, visited: Optional[set[int]] = None) -> str:
+        return "<raised>"
+
+
 class QReader(QValue):
     """Input stream handle wrapping a Python text stream or open file."""
 

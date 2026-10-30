@@ -43,6 +43,7 @@ export
         vReader with rd: reader.T end
         vStringBuilder with sb: stringBuilder.T end
         vProcess with p: process.T end
+        vRaised with e: RunError end
         vTypeValue with t: TypeValue end
     end
     and RecordValue = Tuple fields: hashMap.T(String Value) end
@@ -88,6 +89,16 @@ export
         var units: graph.UnitGraph
         moduleValues: hashMap.T(String Value)
         callStack: vector.T(String)
+    end
+    and Cause = Option
+        raised with exc: ExceptionValue payload: maybe.T(Value) payloadType: maybe.T(tm.Type) end
+        internal with message: String end
+    end
+    and RunError = Tuple
+        cause: Cause
+        var offset: maybe.T(Int)
+        var sourceMap: maybe.T(location.SourceMap)
+        var frames: maybe.T(Array(String))
     end
 
     (* ======================================================================
@@ -240,6 +251,7 @@ export
             when vReader then "Reader.T"
             when vStringBuilder then "StringBuilder.Buffer"
             when vProcess then "Process.T"
+            when vRaised then "Raised.T"
             when vTypeValue then "Type"
         end
 
@@ -269,6 +281,7 @@ export
             when vReader with x then case v2 when vReader with y then x.rd is y.rd else false end
             when vStringBuilder with x then case v2 when vStringBuilder with y then x.sb is y.sb else false end
             when vProcess with x then case v2 when vProcess with y then x.p is y.p else false end
+            when vRaised with x then case v2 when vRaised with y then x.e is y.e else false end
             when vTypeValue with x then
                 case v2 when vTypeValue with y then sameType(x.t.type y.t.type) else false end
         end
@@ -422,6 +435,7 @@ export
             when vReader then "<reader>"
             when vStringBuilder then "<string builder>"
             when vProcess then "<process>"
+            when vRaised then "<raised>"
             when vTypeValue with x then tm.show(x.t.type)
         end
     and guarded(v: Value visited: Visited opening: String body: All() String): String =
@@ -451,17 +465,6 @@ export
     (* ======================================================================
      * 5. Errors raised while running
      * ====================================================================== *)
-
-    Let Cause = Option
-        raised with exc: ExceptionValue payload: maybe.T(Value) payloadType: maybe.T(tm.Type) end
-        internal with message: String end
-    end
-    Let RunError = Tuple
-        cause: Cause
-        var offset: maybe.T(Int)
-        var sourceMap: maybe.T(location.SourceMap)
-        var frames: maybe.T(Array(String))
-    end
 
     let runError: Exception(RunError) = exception runError: RunError end
 

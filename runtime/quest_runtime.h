@@ -346,9 +346,17 @@ typedef struct QExceptionState {
 
 /* What a handler catches (docs/exceptions.md §5.1): the n_catches exceptions in catches, or every exception
    (Q_CATCH_ALL, a try with an else branch), or any (Q_CATCH_UNKNOWN, a try whose patterns are computed after the
-   exception is caught) */
-#define Q_CATCH_ALL     (-1)
-#define Q_CATCH_UNKNOWN (-2)
+   exception is caught), or every exception with its frames captured (Q_CATCH_ALL_TRACED, a try whose else branch
+   names the exception, which raised.reraise may raise again; docs/raised.md §5) */
+#define Q_CATCH_ALL        (-1)
+#define Q_CATCH_UNKNOWN    (-2)
+#define Q_CATCH_ALL_TRACED (-3)
+
+/* raised.T: an exception caught by an else branch that names it, a heap copy of the handler's state
+   (docs/raised.md §6) */
+typedef struct QRaised {
+    QExceptionState state;
+} QRaised;
 
 /* A try sets its handler with Q_SETJMP and a raise jumps to it with Q_LONGJMP. On macOS and the BSDs setjmp and
    longjmp save and restore the signal mask, a system call each, which made exceptions slow; _setjmp and _longjmp skip
@@ -383,6 +391,11 @@ typedef struct QFuncEntry {
 } QFuncEntry;
 
 void quest_register_funcs(const QFuncEntry *entries, size_t count);
+
+/* raised (docs/raised.md): the value of an else branch's binder, made from the handler's state, and raising it
+   again */
+QRaised *quest_raised_capture(const QExceptionState *state);
+Q_NORETURN QVal quest_raised_reraise(const QTypeDescriptor *a, QRaised *r);
 
 extern Q_THREAD_LOCAL QExceptionHandler *quest_current_exception_handler;
 extern Q_THREAD_LOCAL QExceptionState    quest_current_exception;

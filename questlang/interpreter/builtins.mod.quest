@@ -59,6 +59,8 @@ export
     let vReader(r: reader.T): Value = option vReader of Value with let rd = r end
     let vException(e: model.ExceptionValue): Value = option vException of Value with let e = e end
     let vProcess(p: process.T): Value = option vProcess of Value with let p = p end
+    let raisedError(v: Value): model.RunError =
+        case v when vRaised with x then x.e else wrong(:model.RunError "QRaised" v) end
 
     let strings(xs: Array(String)): Value =
         begin
@@ -171,6 +173,7 @@ export
             when vReader with x then hash.identityHash(:reader.T x.rd)
             when vStringBuilder with x then hash.identityHash(:stringBuilder.T x.sb)
             when vProcess with x then hash.identityHash(:process.T x.p)
+            when vRaised with x then hash.identityHash(:model.RunError x.e)
             when vTypeValue with x then hash.identityHash(:model.TypeValue x.t)
         end
 
@@ -454,6 +457,9 @@ export
             fn("quest_process_wait" fun(a: Args): Value waited(process.wait(proc(a[0]))))
             fn("quest_process_wait_any" fun(a: Args): Value vInt(process.waitAny(processes(arr(a[0])))))
             fn("quest_process_kill" fun(a: Args): Value begin process.kill(proc(a[0]) int(a[1])) unit end)
+
+            (* raised *)
+            fn("quest_raised_reraise" fun(a: Args): Value raise model.runError with raisedError(a[0]) end)
 
             (* io/readline *)
             exc("quest_exc_readline_error" primitives.readlineError)
