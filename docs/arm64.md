@@ -106,9 +106,11 @@ The inventory (§7) lists each decision and where the SSA backends get it. In sh
   (switches, `try`, closures, tail calls, spills), since they change with almost any backend change (decided
   2026-10-29).
 
-**Construction.** The IR is structured, which makes the simple algorithm of Braun et al. (*Simple and Efficient
-Construction of Static Single Assignment Form*, CC 2013) a good fit: blocks are sealed as the structured statements
-are walked, and a mutable local's reads find their definitions on the fly, with no dominance frontiers. `if`,
+**Construction.** The IR is structured, so its statements become blocks and edges directly. Mutable variables are
+built as stack slots, loaded and stored (decided 2026-10-30, [ssa.md](ssa.md) §4); a later pass promotes those whose
+address is not taken to values, for which Braun et al.'s algorithm (*Simple and Efficient Construction of Static
+Single Assignment Form*, CC 2013) suits the structured IR: blocks sealed as they are walked, with no dominance
+frontiers. `if`,
 `switch`, `loop`, `break`, `continue`, and `join` become blocks and edges; a join point is a block whose parameters
 are its own.
 
@@ -395,11 +397,18 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
 3. **Shared layout with assertions** (§3.3), and `collections/bitset` (§3.15). *Done* (2026-10-29): `codegen/layout`
    and `codegen/staticdata` compute every struct's layout and the C asserts them (ABI 54); `codegen/runtimeLayout`'s
    table of the runtime's structs is checked against the header; release a5ddef5b has `collections/bitset`.
-4. **The SSA:** nodes, printer, verifier, construction (§3.2), with `--stop-after ssa`. *Done when* every run test's
-   units build SSA that verifies, with goldens for a selection.
+4. **The SSA:** nodes, printer, verifier, construction (§3.2), with `--stop-after ssa`. *Done* (2026-10-30): every
+   run test's program unit builds SSA that verifies, with a golden for each ([ssa.md](ssa.md) §6); the questlang test
+   `ssa_verify` checks the verifier. Decided while building it: mutable variables are stack slots, promoted by a later
+   pass, rather than built into values on the fly (ssa.md §4). Module units are built through the SSA by `ssac`'s
+   builds in step 5, which run every unit through it.
 5. **The SSA-to-C printer** (§3.14) and `--backend ssac`, with its runner mode and pending list. *Done when* the
-   suite passes with `ssac`, its pending list is empty, and multi-unit tests pass with their units split between
-   `ssac` and `c`.
+   suite passes with `ssac`, its pending list is empty, multi-unit tests pass with their units split between `ssac`
+   and `c`, and `tools/check` runs the `ssac` mode and those mixed builds before every push (decided 2026-10-30:
+   from this step on, rather than from step 9). Settled for it: `ssac`'s units compile with
+   `-fno-strict-aliasing`, since they read memory by byte offsets; their static data is printed by
+   `codegen/c/declarations`; the backend that built a unit is recorded with its artifacts; and a repeatable
+   `--unit-backend UNIT=BACKEND` overrides `--backend` for one unit.
 6. **A first arm64 backend:** instruction selection, the trivial allocator, frames, static data, emission, and
    linking, for straight-line code, calls, and control flow; other constructs are errors (§3.12). *Done when* the
    tests that use only those pass with `--backend arm64`, and the rest are on its pending list.
@@ -407,8 +416,8 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
    initialization, function tables. *Done when* only tests that raise or catch exceptions are pending.
 8. **Exceptions** (§3.6): the shared handler record (ABI bump), native `try` and `raise`, tracebacks. *Done when* the
    pending list is empty, and mixed builds raise across the backends both ways.
-9. **`tools/check` runs everything** (§4): the `ssac` and `arm64` modes and the mixed-build and ABI tests, before
-   every push. *Done when* it does, with both pending lists empty.
+9. **`tools/check` runs everything** (§4): the `arm64` mode, its mixed builds, and the ABI tests, before every push,
+   besides `ssac`'s (step 5). *Done when* it does, with both pending lists empty.
 10. **Tail calls** (§3.7). *Done when* self, sibling, and closure tail calls are jumps, and a deep tail recursion runs
     in constant stack.
 11. **Linear scan** (§3.8). *Done when* the suite passes with it, and benchmarks.md has dated run and compile times
@@ -427,8 +436,8 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
 Not part of this plan: what might be done once it is complete, each to be measured (benchmarks.md) before and after.
 The list grows as ideas come up; when the plan is complete, what remains moves to benchmarks.md §3.
 
-- **On the SSA:** copy propagation, constant folding, dead code elimination, value numbering, block merging and jump
-  threading.
+- **On the SSA:** promoting mutable variables' stack slots to values (§3.2), copy propagation, constant folding, dead
+  code elimination, value numbering, block merging and jump threading.
 - **Inlining,** on the IR rather than the SSA, so that every backend gains (benchmarks.md §3.3).
 - **Entering fewer handlers:** a `try` whose body cannot raise (no calls and no operations that raise) pushes no
   handler, and a raise whose handler is in the same function is a jump (benchmarks.md §3.5). On the IR, for every

@@ -1,0 +1,86 @@
+function main exported(%0: int, %1: ptr): int {
+b0(%0: int, %1: ptr):
+  call quest_gc_init()
+  call quest_builtins_init(%0, %1)
+  call qr_register_dicts()
+  call qv_mod_writer_init()
+  call qv_mod_reader_init()
+  call qv_mod_ascii_init()
+  call qv_mod_conv_init()
+  %2: ptr = symbol qs_1
+  %3: int = const 20
+  %4: ptr = call quest_string_new(%2, %3)
+  %5: ptr = call qv_writer_file(%4)
+  %6: ptr = symbol g_w
+  store8 %6 + 0, %5
+  %7: ptr = symbol g_w
+  %8: ptr = load8 %7 + 0
+  %9: ptr = symbol qs_2
+  %10: int = const 7
+  %11: ptr = call quest_string_new(%9, %10)
+  call qv_writer_putString(%8, %11)
+  %12: ptr = symbol g_w
+  %13: ptr = load8 %12 + 0
+  call qv_writer_close(%13)
+  %14: ptr = symbol qs_1
+  %15: int = const 20
+  %16: ptr = call quest_string_new(%14, %15)
+  %17: ptr = call qv_reader_file(%16)
+  %18: ptr = symbol g_r
+  store8 %18 + 0, %17
+  jump b1()
+b1():
+  %19: ptr = symbol g_r
+  %20: ptr = load8 %19 + 0
+  %21: int = call qv_reader_more(%20)
+  %22: int = zext8 %21
+  branch %22, b3(), b4()
+b2():
+  %41: ptr = symbol g_r
+  %42: ptr = load8 %41 + 0
+  call qv_reader_close(%42)
+  %43: ptr = symbol qm_writer
+  %44: ptr = load8 %43 + 0
+  %45: ptr = load8 %43 + 8
+  %46: int = load8 %45 + 40
+  %47: int = ptrToInt %44
+  %48: int = add %47, %46
+  %49: ptr = intToPtr %48
+  %50: ptr = load8 %49 + 0
+  %51: ptr = symbol g_global
+  store8 %51 + 0, %50
+  %52: ptr = symbol g_global
+  %53: ptr = load8 %52 + 0
+  %54: ptr = symbol qs_4
+  %55: int = const 1
+  %56: ptr = call quest_string_new(%54, %55)
+  call qv_writer_putString(%53, %56)
+  %57: int = const 0
+  return %57
+b3():
+  %23: ptr = symbol qm_writer
+  %24: ptr = load8 %23 + 0
+  %25: ptr = load8 %23 + 8
+  %26: int = load8 %25 + 40
+  %27: int = ptrToInt %24
+  %28: int = add %27, %26
+  %29: ptr = intToPtr %28
+  %30: ptr = load8 %29 + 0
+  %31: ptr = symbol g_r
+  %32: ptr = load8 %31 + 0
+  %33: int = call qv_reader_getChar(%32)
+  %34: int = sext8 %33
+  %35: int = call qv_ascii_val(%34)
+  %36: ptr = call qv_conv_int(%35)
+  %37: ptr = symbol qs_3
+  %38: int = const 1
+  %39: ptr = call quest_string_new(%37, %38)
+  %40: ptr = call quest_string_concat(%36, %39)
+  call qv_writer_putString(%30, %40)
+  jump b5()
+b4():
+  jump b2()
+b5():
+  jump b1()
+}
+

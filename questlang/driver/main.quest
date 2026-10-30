@@ -60,6 +60,9 @@ import
     questlang/ir/represent : questlang/ir/Represent
     questlang/ir/describe : questlang/ir/Describe
     questlang/ir/thunks : questlang/ir/Thunks
+    ssaBuild = questlang/ssa/build : questlang/ssa/Build
+    ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
+    ssaPrinter = questlang/ssa/printer : questlang/ssa/Printer
     questlang/interpreter/irInterp : questlang/interpreter/IrInterp
     cPrinter = questlang/codegen/c/printer : questlang/codegen/c/Printer
     questlang/driver/repl : questlang/driver/Repl
@@ -84,7 +87,7 @@ let irStages = array of "core" "specialized" "closed" "represented" "described" 
 let phases = array of
     "tokenize" "parse" "desugar" "typecheck" "ir_core" "ir_specialized" "ir_closed" "ir_represented" "ir_described"
     "run_ir_core" "run_ir_specialized" "run_ir_closed" "run_ir_represented" "run_ir_described" "interpret"
-    "codegen_c" "run_c_compiled"
+    "codegen_c" "run_c_compiled" "ssa"
 end;
 
 (* The phases of the C backend *)
@@ -422,6 +425,10 @@ let pipeline: Array(String) =
         elsif maybe.isSome(:String irStage("run_ir_")) then
             irThrough(maybe.unwrap(:String irStage("run_ir_")))
             vector.append(:String ps "run_ir_" <> maybe.unwrap(:String irStage("run_ir_")))
+        elsif stringOp.equal(options.stopAfter "ssa") orif dumps("ssa") then
+            (* The SSA of the described IR (docs/ssa.md) *)
+            irThrough("described")
+            vector.append(:String ps "ssa")
         elsif lastIr >= 0 then
             irThrough(irStages[lastIr])
         else
@@ -493,8 +500,14 @@ let lowerOnly(program: typedAst.Program e: env.T sm: location.SourceMap bag: dia
         let var last = irStages[0]
         for i = 0 upto {extent irStages - 1} do if reaches("ir_" <> irStages[i]) then last := irStages[i] end end
         try
-            lowered(program e sm false last)
-            ok
+            let unit = lowered(program e sm false last)
+            if reaches("ssa") then
+                let built = ssaBuild.buildUnit(unit)
+                ssaVerify.checkUnit(built)
+                if shows("ssa") then dump(ssaPrinter.formatUnit(built)) end
+            end
+        when ssaBuild.unsupported with m then internal("ssa: unsupported: " <> m)
+        when ssaVerify.verifyError with m then internal(m)
         when lower.loweringError with m then internal(m)
         when verify.verifyError with m then internal(m)
         when closure.capturesMutable with m then internal(m)

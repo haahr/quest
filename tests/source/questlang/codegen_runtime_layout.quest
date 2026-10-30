@@ -33,7 +33,8 @@ end;
 let constants = runtimeLayout.constants;
 for i = 0 upto {extent constants - 1} do
     let k = constants[i]
-    let value = if k.value < 0 then "(-" <> conv.int(0 - k.value) <> ")" else conv.int(k.value) end
+    (* A negative constant as C can write it: INT64_MIN has no literal *)
+    let value = if k.value < 0 then "(-" <> conv.int({0 - k.value} - 1) <> " - 1)" else conv.int(k.value) end
     check(k.name <> " == " <> value "runtime_" <> k.name)
 end;
 

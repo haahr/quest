@@ -1,0 +1,130 @@
+(* Quest Self-Hosted Compiler: The SSA's Printer Implementation *)
+
+module printer : Printer
+import
+    questlang/ssa/nodes : questlang/ssa/Nodes
+    collections/vector : collections/Vector
+    util/stringBuilder : util/StringBuilder
+    conv : Conv
+    stringOp = string : StringOp
+export
+    Let Function = nodes.Function
+
+    let value(v: Int): String = "%" <> conv.int(v)
+    let blockName(b: Int): String = "b" <> conv.int(b)
+    let typed(f: Function v: Int): String = value(v) <> ": " <> nodes.typeName(nodes.typeOf(f v))
+
+    let values(vs: Array(Int)): String =
+        begin
+            let var text = ""
+            for i = 0 upto {extent vs - 1} do text := text <> if i > 0 then ", " else "" end <> value(vs[i]) end
+            text
+        end
+
+    let targetText(t: nodes.Target): String = blockName(t.block) <> "(" <> values(t.args) <> ")"
+
+    let values2(xs: Array(Int)): String =
+        begin
+            let var text = ""
+            for i = 0 upto {extent xs - 1} do text := text <> if i > 0 then " " else "" end <> conv.int(xs[i]) end
+            text
+        end
+
+    let pairsText(pairs: Array(Int)): String =
+        if extent pairs is 0 then "" else " pairs [" <> values2(pairs) <> "]" end
+
+    let instText(f: Function i: nodes.Inst): String =
+        begin
+            let var lhs = ""
+            for r = 0 upto {extent i.results - 1} do
+                lhs := lhs <> if r > 0 then ", " else "" end <> typed(f i.results[r])
+            end
+            let head = if extent i.results > 0 then lhs <> " = " else "" end
+            let name = nodes.opcodeName(i.op)
+            let body = case i.op
+                when opConst then name <> " " <> conv.int(i.imm)
+                when opRealConst then name <> " " <> conv.int(i.imm)
+                when opSymbol then name <> " " <> i.symbol <> if i.imm is 0 then "" else " + " <> conv.int(i.imm) end
+                when opSlot then name <> " " <> conv.int(i.imm)
+                when opLoad then
+                    name <> conv.int(i.width) <> if {i.width < 8} andif i.signed then "s" else "" end <> " "
+                        <> values(i.args) <> " + " <> conv.int(i.imm)
+                when opStore then
+                    name <> conv.int(i.width) <> " " <> value(i.args[0]) <> " + " <> conv.int(i.imm) <> ", " <> value(i.args[1])
+                when opCall then
+                    name <> " " <> i.symbol <> "(" <> values(i.args) <> ")" <> pairsText(i.pairs)
+                        <> if extent i.memory is 0 then "" else " memory [" <> values2(i.memory) <> "]" end
+                when opCallIndirect then name <> " " <> values(i.args) <> pairsText(i.pairs)
+                else if extent i.args > 0 then name <> " " <> values(i.args) else name end
+            end
+            head <> body
+        end
+
+    let termText(f: Function t: nodes.Terminator): String =
+        case t
+            when termNone then "(no terminator)"
+            when termJump with x then "jump " <> targetText(x.target)
+            when termBranch with x then "branch " <> value(x.cond) <> ", " <> targetText(x.ifTrue) <> ", " <> targetText(x.ifFalse)
+            when termSwitch with x then
+                let var text = "switch " <> value(x.value) <> " ["
+                for i = 0 upto {extent x.cases - 1} do
+                    text := text <> if i > 0 then ", " else "" end <> conv.int(x.cases[i]) <> ": " <> targetText(x.targets[i])
+                end
+                text <> "] default " <> targetText(x.default)
+            when termReturn with x then if extent x.values > 0 then "return " <> values(x.values) else "return" end
+            when termTailCall with x then "tail " <> instText(f x.call)
+            when termTry with x then
+                "try slot " <> conv.int(x.slot) <> ", " <> targetText(x.body) <> ", handler " <> blockName(x.handler)
+            when termUnreachable then "unreachable"
+        end
+
+    let formatFunction(f: Function): String =
+        begin
+            let b = stringBuilder.new()
+            let params = nodes.block(f 0).params
+            b.str("function " <> f.symbol <> if f.exported then " exported" else "" end <> "(")
+            for i = 0 upto {vector.length(:Int params) - 1} do
+                b.str(if i > 0 then ", " else "" end <> typed(f vector.get(:Int params i)))
+            end
+            b.str(")")
+            if not(vector.empty(:nodes.Type f.resultTypes)) then
+                b.str(": ")
+                for i = 0 upto {vector.length(:nodes.Type f.resultTypes) - 1} do
+                    b.str(if i > 0 then ", " else "" end <> nodes.typeName(vector.get(:nodes.Type f.resultTypes i)))
+                end
+            end
+            if not(vector.empty(:nodes.Slot f.slots)) then
+                b.str(" slots [")
+                for i = 0 upto {vector.length(:nodes.Slot f.slots) - 1} do
+                    let s = vector.get(:nodes.Slot f.slots i)
+                    b.str(if i > 0 then " " else "" end <> conv.int(s.bytes) <> ":" <> conv.int(s.align))
+                end
+                b.str("]")
+            end
+            b.str(" {\n")
+            for bi = 0 upto {vector.length(:nodes.Block f.blocks) - 1} do
+                let blk = nodes.block(f bi)
+                b.str(blockName(bi) <> "(")
+                for i = 0 upto {vector.length(:Int blk.params) - 1} do
+                    b.str(if i > 0 then ", " else "" end <> typed(f vector.get(:Int blk.params i)))
+                end
+                b.str("):\n")
+                for i = 0 upto {vector.length(:nodes.Inst blk.insts) - 1} do
+                    b.str("  " <> instText(f vector.get(:nodes.Inst blk.insts i)) <> "\n")
+                end
+                b.str("  " <> termText(f blk.term) <> "\n")
+            end
+            b.str("}\n")
+            b.toString()
+        end
+
+    let formatUnit(u: nodes.Unit): String =
+        begin
+            let b = stringBuilder.new()
+            for i = 0 upto {vector.length(:Function u.functions) - 1} do
+                if i > 0 then b.str("\n") end
+                b.str(formatFunction(vector.get(:Function u.functions i)))
+            end
+            b.toString()
+        end
+end

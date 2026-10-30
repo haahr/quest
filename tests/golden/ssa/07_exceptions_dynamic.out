@@ -1,0 +1,103 @@
+function qf_safeDiv(%0: ptr, %1: int, %2: int): int {
+b0(%0: ptr, %1: int, %2: int):
+  %4: int = const 0
+  %5: int = eq %2, %4
+  branch %5, b2(), b3()
+b1(%3: int):
+  return %3
+b2():
+  %6: int = const 0
+  %7: ptr = symbol g_DivByZero
+  %8: ptr = load8 %7 + 0
+  %9: ptr = symbol qs_1
+  call quest_raise_at(%8, %6, %9)
+  unreachable
+b3():
+  %10: ptr = symbol qs_2
+  %11: int = call quest_int_div_at(%1, %2, %10)
+  jump b1(%11)
+}
+
+function qf_compute(%0: ptr, %1: int, %2: int): int slots [216:16 32:8] {
+b0(%0: ptr, %1: int, %2: int):
+  %4: ptr = slot 0
+  %5: ptr = symbol quest_current_exception_handler
+  %6: ptr = load8 %5 + 0
+  store8 %4 + 192, %6
+  %7: ptr = null
+  store8 %4 + 200, %7
+  %8: int = const ~1
+  store8 %4 + 208, %8
+  store8 %5 + 0, %4
+  try slot 0, b2(), handler b3
+b1(%3: int):
+  return %3
+b2():
+  %9: ptr = null
+  %10: int = call qf_safeDiv(%9, %1, %2)
+  %11: ptr = symbol quest_current_exception_handler
+  %12: ptr = load8 %4 + 192
+  store8 %11 + 0, %12
+  jump b1(%10)
+b3():
+  %13: ptr = symbol quest_current_exception_handler
+  %14: ptr = load8 %4 + 192
+  store8 %13 + 0, %14
+  %15: ptr = slot 1
+  %16: ptr = symbol quest_current_exception
+  %17: int = load8 %16 + 0
+  store8 %15 + 0, %17
+  %18: int = load8 %16 + 8
+  store8 %15 + 8, %18
+  %19: int = load8 %16 + 16
+  store8 %15 + 16, %19
+  %20: int = load8 %16 + 24
+  store8 %15 + 24, %20
+  %21: int = load8 %16 + 32
+  store8 %15 + 32, %21
+  %22: ptr = load8 %15 + 0
+  %23: ptr = symbol g_DivByZero
+  %24: ptr = load8 %23 + 0
+  %25: int = peq %22, %24
+  branch %25, b4(), b5()
+b4():
+  %26: int = const 0
+  jump b1(%26)
+b5():
+  %27: int = const 0
+  %28: int = const 1
+  %29: int = sub %27, %28
+  jump b1(%29)
+}
+
+function main exported(%0: int, %1: ptr): int {
+b0(%0: int, %1: ptr):
+  call quest_gc_init()
+  call quest_builtins_init(%0, %1)
+  call qr_register_dicts()
+  %2: ptr = symbol qs_3
+  %3: ptr = call quest_alloc_exception(%2)
+  %4: ptr = symbol g_DivByZero
+  store8 %4 + 0, %3
+  %5: ptr = symbol qf_safeDiv_closure
+  %6: ptr = symbol g_safeDiv
+  store8 %6 + 0, %5
+  %7: ptr = symbol qf_compute_closure
+  %8: ptr = symbol g_compute
+  store8 %8 + 0, %7
+  %9: ptr = null
+  %10: int = const 10
+  %11: int = const 2
+  %12: int = call qf_compute(%9, %10, %11)
+  %13: ptr = symbol g_r1
+  store8 %13 + 0, %12
+  %14: ptr = null
+  %15: int = const 10
+  %16: int = const 0
+  %17: int = call qf_compute(%14, %15, %16)
+  %18: ptr = symbol g_r2
+  store8 %18 + 0, %17
+  %19: int = const 0
+  return %19
+}
+

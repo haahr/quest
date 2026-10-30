@@ -60,8 +60,11 @@ DRIVER_SCRIPT = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
 # are recorded (docs/testing.md §2.3)
 SELF_HOSTED_DRIVER = ROOT_DIR / "questlang" / "driver" / "main.quest"
 SELF_HOSTED_PHASES = (
-    "tokenize", "parse", "typecheck", *IR_DUMP_PHASES, *IR_RUN_PHASES, "interpret", "run_c_compiled", "repl",
+    "tokenize", "parse", "typecheck", *IR_DUMP_PHASES, *IR_RUN_PHASES, "ssa", "interpret", "run_c_compiled", "repl",
 )
+# The phases only the self-hosted compiler has: the SSA of its native backends
+# (docs/ssa.md), dumped for every program that has an ir_core dump
+SELF_HOSTED_ONLY_PHASES = ("ssa",)
 # Where the self-hosted driver builds the units of the programs it compiles to
 # C, under each worker's build directory: apart from the bootstrap's artifacts,
 # which it would otherwise find fresh and reuse
@@ -228,7 +231,7 @@ RUN_PHASES = ("interpret", "run_c_compiled", *IR_RUN_PHASES)
 # The other phases' goldens are shared: both compilers must match them, and the
 # bootstrap writes them, since what programs do changes in both. The C itself
 # has no goldens; tools/c-diff shows how a change alters it.
-SELF_HOSTED_OWN_PHASES = IR_DUMP_PHASES
+SELF_HOSTED_OWN_PHASES = (*IR_DUMP_PHASES, *SELF_HOSTED_ONLY_PHASES)
 
 
 def writes_golden(phase_name: str, self_hosted: bool) -> bool:
@@ -236,7 +239,7 @@ def writes_golden(phase_name: str, self_hosted: bool) -> bool:
     bootstrap) writes a phase's goldens."""
     if self_hosted:
         return phase_name in SELF_HOSTED_OWN_PHASES
-    return phase_name not in IR_DUMP_PHASES
+    return phase_name not in IR_DUMP_PHASES and phase_name not in SELF_HOSTED_ONLY_PHASES
 
 
 # The tests of the self-hosted compiler's modules run compiled only: under the
@@ -858,6 +861,7 @@ def main() -> int:
         "typecheck",
         *IR_DUMP_PHASES,
         *IR_RUN_PHASES,
+        *SELF_HOSTED_ONLY_PHASES,
         "interpret",
         "run_c_compiled",
         "repl",
@@ -983,6 +987,9 @@ def run_all_tests(
         # The IR dumps are the self-hosted compiler's; --phase runs one with the
         # bootstrap, to compare its IR with them
         phases_to_run = [phase for phase in phases_to_run if phase not in IR_DUMP_PHASES]
+    if not args.self_hosted:
+        # The bootstrap has no SSA
+        phases_to_run = [phase for phase in phases_to_run if phase not in SELF_HOSTED_ONLY_PHASES]
     if args.self_hosted:
         phases_to_run = [phase for phase in phases_to_run if phase in SELF_HOSTED_PHASES]
         if args.self_hosted_driver:
@@ -1070,6 +1077,9 @@ def run_all_tests(
                         test_id = str(rel_source.with_suffix(""))
                         if driver_command is None and is_questlang_test(source_file):
                             skipped_phases = skipped_phases | set(QUESTLANG_INTERPRETED_PHASES)
+                        if phase in SELF_HOSTED_ONLY_PHASES and "ir_core" in skipped_phases:
+                            # The SSA is dumped for the programs whose IR is
+                            skipped_phases = skipped_phases | {phase}
                         if phase.lower() in skipped_phases:
                             skipped_golden += 1
                             print(f"  [SKIP] {phase}:{test_id}")

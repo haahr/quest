@@ -1,0 +1,270 @@
+(* Quest Self-Hosted Compiler: The SSA's Nodes Implementation *)
+
+module nodes : Nodes
+import
+    collections/vector : collections/Vector
+    stringOp = string : StringOp
+export
+    Def Type = Option typeInt typePtr typeReal end
+
+    Def Opcode = Option
+        opConst opRealConst opSymbol opNull opSlot
+        opAdd opSub opMul opDiv opRem
+        opAnd opOr opXor opShl opLshr opAshr
+        opEq opNe opLt opLe opGt opGe opUlt opPeq opPne
+        opFadd opFsub opFmul opFdiv opFeq opFlt opFle opFgt opFge opIsNaN
+        opIntToPtr opPtrToInt opRealBits opBitsReal opSext8 opZext8
+        opLoad opStore opCall opCallIndirect opCopy
+    end
+
+    Def Inst = Tuple
+        op: Opcode
+        var args: Array(Int)
+        results: Array(Int)
+        imm: Int
+        symbol: String
+        width: Int
+        signed: Bool
+        pairs: Array(Int)
+        memory: Array(Int)
+    end
+
+    Def Target = Tuple block: Int var args: Array(Int) end
+
+    Def Terminator = Option
+        termNone
+        termJump with target: Target end
+        termBranch with cond: Int ifTrue: Target ifFalse: Target end
+        termSwitch with value: Int cases: Array(Int) targets: Array(Target) default: Target end
+        termReturn with values: Array(Int) end
+        termTailCall with call: Inst end
+        termTry with slot: Int body: Target handler: Int end
+        termUnreachable
+    end
+
+    Def Block = Tuple
+        params: vector.T(Int)
+        insts: vector.T(Inst)
+        var term: Terminator
+    end
+
+    Def Slot = Tuple bytes: Int align: Int end
+
+    Def Function = Tuple
+        symbol: String
+        exported: Bool
+        paramTypes: vector.T(Type)
+        resultTypes: vector.T(Type)
+        types: vector.T(Type)
+        blocks: vector.T(Block)
+        slots: vector.T(Slot)
+    end
+
+    Def Unit = Tuple
+        functions: vector.T(Function)
+    end
+
+    let none: Array(Int) = array of :Int end
+    let noMemory: Array(Int) = array of :Int end
+
+    let newUnit(): Unit = tuple let functions = vector.new(:Function) end
+
+    let newValue(f: Function t: Type): Int =
+        begin
+            vector.append(:Type f.types t)
+            vector.length(:Type f.types) - 1
+        end
+
+    let newBlock(f: Function): Int =
+        begin
+            vector.append(:Block f.blocks tuple
+                let params = vector.new(:Int)
+                let insts = vector.new(:Inst)
+                let var term = option termNone of Terminator end
+            end)
+            vector.length(:Block f.blocks) - 1
+        end
+
+    let block(f: Function b: Int): Block = vector.get(:Block f.blocks b)
+    let typeOf(f: Function v: Int): Type = vector.get(:Type f.types v)
+
+    let addParam(f: Function b: Int t: Type): Int =
+        begin
+            let v = newValue(f t)
+            vector.append(:Int block(f b).params v)
+            v
+        end
+
+    let newSlot(f: Function bytes: Int align: Int): Int =
+        begin
+            vector.append(:Slot f.slots tuple let bytes = bytes let align = align end)
+            vector.length(:Slot f.slots) - 1
+        end
+
+    let newFunction(symbol: String exported: Bool params: Array(Type) results: Array(Type)): Function =
+        begin
+            let f = tuple
+                let symbol = symbol
+                let exported = exported
+                let paramTypes = vector.fromArray(:Type params)
+                let resultTypes = vector.fromArray(:Type results)
+                let types = vector.new(:Type)
+                let blocks = vector.new(:Block)
+                let slots = vector.new(:Slot)
+            end
+            let entry = newBlock(f)
+            for i = 0 upto {extent params - 1} do addParam(f entry params[i]) end
+            f
+        end
+
+    let isTerminated(f: Function b: Int): Bool =
+        case block(f b).term when termNone then false else true end
+
+    let append(f: Function b: Int i: Inst): Ok = vector.append(:Inst block(f b).insts i)
+
+    let inst(op: Opcode args: Array(Int) results: Array(Int)): Inst =
+        tuple
+            let op = op let var args = args let results = results let imm = 0 let symbol = "" let width = 0
+            let signed = false let pairs = none let memory = none
+        end
+
+    let emit(f: Function b: Int op: Opcode args: Array(Int) t: Type): Int =
+        begin
+            let v = newValue(f t)
+            append(f b inst(op args array of v end))
+            v
+        end
+
+    let constant(f: Function b: Int n: Int): Int =
+        begin
+            let v = newValue(f option typeInt of Type end)
+            append(f b tuple
+                let op = option opConst of Opcode end let var args = none let results = array of v end let imm = n
+                let symbol = "" let width = 0 let signed = false let pairs = none let memory = none
+            end)
+            v
+        end
+
+    let symbolAddress(f: Function b: Int symbol: String): Int =
+        begin
+            let v = newValue(f option typePtr of Type end)
+            append(f b tuple
+                let op = option opSymbol of Opcode end let var args = none let results = array of v end let imm = 0
+                let symbol = symbol let width = 0 let signed = false let pairs = none let memory = none
+            end)
+            v
+        end
+
+    (* The type of a binary operation's result *)
+    let resultType(op: Opcode x: Type): Type =
+        case op
+            when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge then
+                option typeInt of Type end
+            else x
+        end
+
+    let binary(f: Function b: Int op: Opcode x: Int y: Int): Int = emit(f b op array of x y end resultType(op typeOf(f x)))
+
+    let load(f: Function b: Int address: Int offset: Int width: Int signed: Bool t: Type): Int =
+        begin
+            let v = newValue(f t)
+            append(f b tuple
+                let op = option opLoad of Opcode end let var args = array of address end let results = array of v end
+                let imm = offset let symbol = "" let width = width let signed = signed let pairs = none let memory = none
+            end)
+            v
+        end
+
+    let store(f: Function b: Int address: Int offset: Int width: Int value: Int): Ok =
+        append(f b tuple
+            let op = option opStore of Opcode end let var args = array of address value end let results = none
+            let imm = offset let symbol = "" let width = width let signed = false let pairs = none let memory = none
+        end)
+
+    let call(f: Function b: Int symbol: String args: Array(Int) pairs: Array(Int) results: Array(Type)): Array(Int) =
+        begin
+            let vs = array of(extent results 0)
+            for i = 0 upto {extent results - 1} do vs[i] := newValue(f results[i]) end
+            let op = if stringOp.length(symbol) > 0 then option opCall of Opcode end
+                else option opCallIndirect of Opcode end
+            end
+            append(f b tuple
+                let op = op let var args = args let results = vs let imm = 0 let symbol = symbol let width = 0
+                let signed = false let pairs = pairs let memory = noMemory
+            end)
+            vs
+        end
+
+    let callWithMemory(f: Function b: Int symbol: String args: Array(Int) memory: Array(Int) results: Array(Type)): Array(Int) =
+        begin
+            let vs = array of(extent results 0)
+            for i = 0 upto {extent results - 1} do vs[i] := newValue(f results[i]) end
+            append(f b tuple
+                let op = option opCall of Opcode end let var args = args let results = vs let imm = 0 let symbol = symbol
+                let width = 0 let signed = false let pairs = none let memory = memory
+            end)
+            vs
+        end
+
+    let terminate(f: Function b: Int t: Terminator): Ok = block(f b).term := t
+
+    let target(b: Int args: Array(Int)): Target = tuple let block = b let var args = args end
+
+    let concat(a: Array(Int) b: Array(Int)): Array(Int) =
+        begin
+            let r = array of({extent a + extent b} 0)
+            for i = 0 upto {extent a - 1} do r[i] := a[i] end
+            for i = 0 upto {extent b - 1} do r[extent a + i] := b[i] end
+            r
+        end
+
+    let terminatorUses(t: Terminator): Array(Int) =
+        case t
+            when termNone then none
+            when termJump with x then x.target.args
+            when termBranch with x then concat(array of x.cond end concat(x.ifTrue.args x.ifFalse.args))
+            when termSwitch with x then
+                let var uses = concat(array of x.value end x.default.args)
+                for i = 0 upto {extent x.targets - 1} do uses := concat(uses x.targets[i].args) end
+                uses
+            when termReturn with x then x.values
+            when termTailCall with x then x.call.args
+            when termTry with x then x.body.args
+            when termUnreachable then none
+        end
+
+    let successors(t: Terminator): Array(Int) =
+        case t
+            when termNone then none
+            when termJump with x then array of x.target.block end
+            when termBranch with x then array of x.ifTrue.block x.ifFalse.block end
+            when termSwitch with x then
+                let r = array of({extent x.targets + 1} x.default.block)
+                for i = 0 upto {extent x.targets - 1} do r[i] := x.targets[i].block end
+                r
+            when termReturn then none
+            when termTailCall then none
+            when termTry with x then array of x.body.block x.handler end
+            when termUnreachable then none
+        end
+
+    let typeName(t: Type): String = case t when typeInt then "int" when typePtr then "ptr" when typeReal then "real" end
+
+    let opcodeName(op: Opcode): String =
+        case op
+            when opConst then "const" when opRealConst then "realConst" when opSymbol then "symbol"
+            when opNull then "null" when opSlot then "slot"
+            when opAdd then "add" when opSub then "sub" when opMul then "mul" when opDiv then "div" when opRem then "rem"
+            when opAnd then "and" when opOr then "or" when opXor then "xor" when opShl then "shl"
+            when opLshr then "lshr" when opAshr then "ashr"
+            when opEq then "eq" when opNe then "ne" when opLt then "lt" when opLe then "le" when opGt then "gt"
+            when opGe then "ge" when opUlt then "ult" when opPeq then "peq" when opPne then "pne"
+            when opFadd then "fadd" when opFsub then "fsub" when opFmul then "fmul" when opFdiv then "fdiv"
+            when opFeq then "feq" when opFlt then "flt" when opFle then "fle" when opFgt then "fgt" when opFge then "fge"
+            when opIsNaN then "isNaN"
+            when opIntToPtr then "intToPtr" when opPtrToInt then "ptrToInt" when opRealBits then "realBits"
+            when opBitsReal then "bitsReal" when opSext8 then "sext8" when opZext8 then "zext8"
+            when opLoad then "load" when opStore then "store" when opCall then "call"
+            when opCallIndirect then "callIndirect" when opCopy then "copy"
+        end
+end

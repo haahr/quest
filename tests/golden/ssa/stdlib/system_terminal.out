@@ -1,0 +1,74 @@
+function qf_print(%0: ptr, %1: ptr) {
+b0(%0: ptr, %1: ptr):
+  %2: ptr = symbol qm_writer
+  %3: ptr = load8 %2 + 0
+  %4: ptr = load8 %2 + 8
+  %5: int = load8 %4 + 40
+  %6: int = ptrToInt %3
+  %7: int = add %6, %5
+  %8: ptr = intToPtr %7
+  %9: ptr = load8 %8 + 0
+  %10: ptr = symbol qs_1
+  %11: int = const 1
+  %12: ptr = call quest_string_new(%10, %11)
+  %13: ptr = call quest_string_concat(%1, %12)
+  call qv_writer_putString(%9, %13)
+  return
+}
+
+function qf_show(%0: ptr, %1: int) {
+b0(%0: ptr, %1: int):
+  %3: int = call qv_system_isTerminal(%1)
+  %4: int = zext8 %3
+  branch %4, b2(), b3()
+b1(%2: ptr):
+  %11: ptr = null
+  call qf_print(%11, %2)
+  return
+b2():
+  %5: ptr = symbol qs_2
+  %6: int = const 8
+  %7: ptr = call quest_string_new(%5, %6)
+  jump b1(%7)
+b3():
+  %8: ptr = symbol qs_3
+  %9: int = const 14
+  %10: ptr = call quest_string_new(%8, %9)
+  jump b1(%10)
+}
+
+function main exported(%0: int, %1: ptr): int {
+b0(%0: int, %1: ptr):
+  call quest_gc_init()
+  call quest_builtins_init(%0, %1)
+  call qr_register_dicts()
+  call qv_mod_system_init()
+  call qv_mod_writer_init()
+  %2: ptr = symbol qf_print_closure
+  %3: ptr = symbol g_print
+  store8 %3 + 0, %2
+  %4: ptr = symbol qf_show_closure
+  %5: ptr = symbol g_show
+  store8 %5 + 0, %4
+  %6: ptr = null
+  %7: int = const 0
+  call qf_show(%6, %7)
+  %8: ptr = null
+  %9: int = const 1
+  call qf_show(%8, %9)
+  %10: ptr = null
+  %11: int = const 2
+  call qf_show(%10, %11)
+  %12: ptr = null
+  %13: int = const ~1
+  call qf_show(%12, %13)
+  %14: ptr = null
+  %15: int = const 1000
+  call qf_show(%14, %15)
+  %16: ptr = null
+  %17: int = const 4611686018427387903
+  call qf_show(%16, %17)
+  %18: int = const 0
+  return %18
+}
+

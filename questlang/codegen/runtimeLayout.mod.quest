@@ -31,6 +31,11 @@ export
         s("QAuto" 16 array of word("type_desc" 0) word("payload" 8) end)
         s("QExceptionState" 32 array of word("exc" 0) word("payload" 8) word("loc" 16) word("trace" 24) end)
         s("QFuncEntry" 16 array of word("addr" 0) word("name" 8) end)
+        (* A try's handler record; env_jmp is Darwin arm64's jmp_buf (48 ints).
+         * The native backend's records change it (docs/arm64.md section 3.6). *)
+        s("QExceptionHandler" 216 array of
+            m("env_jmp" 0 192) word("prev" 192) word("catches" 200) word("n_catches" 208)
+        end)
         s("QViewMap" 48 array of
             word("actual" 0) word("bound" 8) word("index" 16) word("from" 24) word("to" 32) word("component_start" 40)
         end)
@@ -104,6 +109,22 @@ export
         c("QTYPE_KIND_AUTO" 12) c("QTYPE_KIND_EXCEPTION" 13) c("QTYPE_KIND_OPAQUE" 14) c("QTYPE_KIND_BOUND_VAR" 15)
         c("QTYPE_KIND_HOLE" 16) c("QTYPE_KIND_STORED" 17)
         c("Q_CATCH_ALL" ~1) c("Q_CATCH_UNKNOWN" ~2) c("QUEST_PROXY_TAG" 1) c("Q_MAX_TRACE_RUNS" 64)
+        c("QUEST_INT_MIN" ~9223372036854775807 - 1) c("QUEST_INT_MAX" 9223372036854775807)
+    end
+
+    Def RealConstant = Tuple name: String value: Real end
+    let r(name: String value: Real): RealConstant = tuple let name = name let value = value end
+    let realConstants = array of
+        r("QUEST_REAL_MIN" ~1.7976931348623157E308) r("QUEST_REAL_MAX" 1.7976931348623157E308)
+        r("QUEST_REAL_POS_EPSILON" 2.2204460492503131E~16) r("QUEST_REAL_NEG_EPSILON" ~2.2204460492503131E~16)
+        r("QUEST_REAL_E" 2.71828182845904523536) r("QUEST_REAL_PI" 3.14159265358979323846)
+    end
+
+    Def Address = Tuple name: String symbol: String end
+    let a(name: String symbol: String): Address = tuple let name = name let symbol = symbol end
+    let addresses = array of
+        a("quest_writer_output" "quest_writer_output_val") a("quest_writer_err" "quest_writer_err_val")
+        a("quest_reader_input" "quest_reader_input_val")
     end
 
     let constant(name: String): Int =

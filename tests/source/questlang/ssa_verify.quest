@@ -1,0 +1,139 @@
+(* Self-Hosted Quest Compiler: Test the SSA's Verifier and Printer
+ *
+ * Builds small functions of the SSA (questlang/ssa/nodes, docs/ssa.md) by hand, well formed and not, prints them, and
+ * prints the problems the verifier (questlang/ssa/verify) finds: undefined and doubly defined values, uses their
+ * definitions do not dominate, arguments of the wrong types, jumps of the wrong arity, blocks without terminators,
+ * returns of the wrong number of values, a try's handler reached from elsewhere, slots that do not exist; and the
+ * dominator tree of a loop. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/verify : questlang/ssa/Verify
+    collections/vector : collections/Vector
+    writer : Writer
+    conv : Conv
+;
+
+let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+
+let tInt = option typeInt of ssa.Type end;
+let tPtr = option typePtr of ssa.Type end;
+let tReal = option typeReal of ssa.Type end;
+let none = array of :Int end;
+
+let show(title: String f: ssa.Function): Ok =
+    begin
+        emit("== " <> title)
+        writer.putString(writer.output printer.formatFunction(f))
+        let problems = verify.functionProblems(f)
+        if extent problems is 0 then emit("well formed") end
+        for i = 0 upto {extent problems - 1} do emit("problem: " <> problems[i]) end
+    end;
+
+let ret(f: ssa.Function b: Int vs: Array(Int)): Ok = ssa.terminate(f b option termReturn of ssa.Terminator with let values = vs end);
+let jumpTo(f: ssa.Function b: Int to: Int args: Array(Int)): Ok =
+    ssa.terminate(f b option termJump of ssa.Terminator with let target = ssa.target(to args) end);
+let branch(f: ssa.Function b: Int c: Int t: Int e: Int): Ok =
+    ssa.terminate(f b option termBranch of ssa.Terminator with
+        let cond = c let ifTrue = ssa.target(t none) let ifFalse = ssa.target(e none)
+    end);
+
+(* 1. A loop counting to its argument: well formed *)
+let loopF = ssa.newFunction("loop" false array of tInt end array of tInt end);
+let n = vector.toArray(:Int ssa.block(loopF 0).params);
+let head = ssa.newBlock(loopF);
+let i = ssa.addParam(loopF head tInt);
+let bodyB = ssa.newBlock(loopF);
+let exitB = ssa.newBlock(loopF);
+jumpTo(loopF 0 head array of ssa.constant(loopF 0 0) end);
+let more = ssa.binary(loopF head option opLt of ssa.Opcode end i n[0]);
+branch(loopF head more bodyB exitB);
+jumpTo(loopF bodyB head array of ssa.binary(loopF bodyB option opAdd of ssa.Opcode end i ssa.constant(loopF bodyB 1)) end);
+ret(loopF exitB array of i end);
+show("a loop" loopF);
+let d = verify.dominance(loopF);
+for b = 0 upto 3 do emit("idom of b" <> conv.int(b) <> ": " <> conv.int(d.idom[b])) end;
+emit("b1 dominates b2: " <> if verify.dominates(d 1 2) then "yes" else "no" end);
+emit("b2 dominates b3: " <> if verify.dominates(d 2 3) then "yes" else "no" end);
+
+(* 2. A use its definition does not dominate: a value of one branch used after
+ * both join *)
+let notDominated = ssa.newFunction("notDominated" false array of tInt end array of tInt end);
+let p = vector.toArray(:Int ssa.block(notDominated 0).params);
+let left = ssa.newBlock(notDominated);
+let right = ssa.newBlock(notDominated);
+let joined = ssa.newBlock(notDominated);
+branch(notDominated 0 p[0] left right);
+let onlyLeft = ssa.constant(notDominated left 7);
+jumpTo(notDominated left joined none);
+jumpTo(notDominated right joined none);
+ret(notDominated joined array of onlyLeft end);
+show("a use not dominated" notDominated);
+
+(* 3. Arguments of the wrong types: an add of a pointer, a load from an
+ * integer, a branch on a real *)
+let badTypes = ssa.newFunction("badTypes" false array of tPtr tReal end array of tInt end);
+let q = vector.toArray(:Int ssa.block(badTypes 0).params);
+let sum = ssa.binary(badTypes 0 option opAdd of ssa.Opcode end q[0] ssa.constant(badTypes 0 1));
+let loaded = ssa.load(badTypes 0 sum 0 8 false tInt);
+let next = ssa.newBlock(badTypes);
+ssa.terminate(badTypes 0 option termBranch of ssa.Terminator with
+    let cond = q[1] let ifTrue = ssa.target(next none) let ifFalse = ssa.target(next none)
+end);
+ret(badTypes next array of loaded end);
+show("arguments of the wrong types" badTypes);
+
+(* 4. A jump of the wrong arity, a block without a terminator, a return of the
+ * wrong number of values, and an argument nothing defines *)
+let arity = ssa.newFunction("arity" false array of :ssa.Type end array of tInt end);
+let target = ssa.newBlock(arity);
+ssa.addParam(arity target tInt);
+let open = ssa.newBlock(arity);
+jumpTo(arity 0 target none);
+ret(arity target array of 41 42 end);
+ssa.constant(arity open 3);
+show("arity, terminators, returns" arity);
+
+(* 5. A try whose handler is reached from elsewhere too, and a slot that does
+ * not exist *)
+let tries = ssa.newFunction("tries" false array of tInt end array of :ssa.Type end);
+let tryBody = ssa.newBlock(tries);
+let handler = ssa.newBlock(tries);
+ssa.terminate(tries 0 option termTry of ssa.Terminator with let slot = 3 let body = ssa.target(tryBody none) let handler = handler end);
+jumpTo(tries tryBody handler none);
+ret(tries handler none);
+show("a try" tries);
+
+(* 6. A well-formed try, whose handler uses only what was defined before it *)
+let goodTry = ssa.newFunction("goodTry" false array of tInt end array of tInt end);
+let handlerSlot = ssa.newSlot(goodTry 216 16);
+let before = ssa.constant(goodTry 0 5);
+let tb = ssa.newBlock(goodTry);
+let th = ssa.newBlock(goodTry);
+ssa.terminate(goodTry 0 option termTry of ssa.Terminator with let slot = handlerSlot let body = ssa.target(tb none) let handler = th end);
+ret(goodTry tb array of vector.get(:Int ssa.block(goodTry 0).params 0) end);
+ret(goodTry th array of before end);
+show("a well-formed try" goodTry);
+
+(* 7. A value defined twice *)
+let twice = ssa.newFunction("twice" false array of :ssa.Type end array of tInt end);
+let v = ssa.constant(twice 0 1);
+ssa.append(twice 0 ssa.inst(option opConst of ssa.Opcode end none array of v end));
+ret(twice 0 array of v end);
+show("a value defined twice" twice);
+
+(* 8. A switch, and a call with a composite *)
+let switches = ssa.newFunction("switches" false array of tInt tPtr tPtr end array of tPtr tPtr end);
+let sp = vector.toArray(:Int ssa.block(switches 0).params);
+let one = ssa.newBlock(switches);
+let other = ssa.newBlock(switches);
+ssa.terminate(switches 0 option termSwitch of ssa.Terminator with
+    let value = sp[0] let cases = array of 0 2 end let targets = array of ssa.target(one none) ssa.target(one none) end
+    let default = ssa.target(other none)
+end);
+let pair = ssa.call(switches one "quest_record_view" array of sp[1] sp[2] sp[1] end array of 0 end array of tPtr tPtr end);
+ret(switches one pair);
+ssa.terminate(switches other option termUnreachable of ssa.Terminator end);
+show("a switch" switches);

@@ -1,0 +1,123 @@
+(* Quest Self-Hosted Compiler: The SSA's Nodes Interface
+ *
+ * The SSA of docs/ssa.md: a function's values, blocks, and stack slots are
+ * numbered densely from 0 and live in tables of the function (docs/arm64.md
+ * section 3.15), so that passes keep their own tables as arrays indexed by
+ * those numbers. Every instruction has one shape: an opcode, argument and
+ * result values, an immediate, a symbol, and for loads, stores, and calls the
+ * few fields they need. *)
+
+interface Nodes
+import
+    collections/vector : collections/Vector
+export
+    (* A value's type (docs/ssa.md section 1) *)
+    Def Type = Option typeInt typePtr typeReal end
+
+    (* The opcodes of instructions (docs/ssa.md section 2) *)
+    Def Opcode = Option
+        opConst opRealConst opSymbol opNull opSlot
+        opAdd opSub opMul opDiv opRem
+        opAnd opOr opXor opShl opLshr opAshr
+        opEq opNe opLt opLe opGt opGe opUlt opPeq opPne
+        opFadd opFsub opFmul opFdiv opFeq opFlt opFle opFgt opFge opIsNaN
+        opIntToPtr opPtrToInt opRealBits opBitsReal opSext8 opZext8
+        opLoad opStore opCall opCallIndirect opCopy
+    end
+
+    (* An instruction. For a load or a store, width is 8, 4, or 1 bytes and
+     * signed says how a narrow load extends; for a call, pairs lists the
+     * argument indices where a 16-byte composite starts, and memory those of
+     * composites larger than 16 bytes that C passes by value: the SSA passes
+     * the address of a copy, as AAPCS64 does (docs/ssa.md section 2.2). *)
+    Def Inst = Tuple
+        op: Opcode
+        var args: Array(Int)
+        results: Array(Int)
+        imm: Int
+        symbol: String
+        width: Int
+        signed: Bool
+        pairs: Array(Int)
+        memory: Array(Int)
+    end
+
+    (* A jump's destination: a block, and the values bound to its
+     * parameters *)
+    Def Target = Tuple block: Int var args: Array(Int) end
+
+    Def Terminator = Option
+        (* A block being built has none yet *)
+        termNone
+        termJump with target: Target end
+        termBranch with cond: Int ifTrue: Target ifFalse: Target end
+        termSwitch with value: Int cases: Array(Int) targets: Array(Target) default: Target end
+        termReturn with values: Array(Int) end
+        termTailCall with call: Inst end
+        termTry with slot: Int body: Target handler: Int end
+        termUnreachable
+    end
+
+    Def Block = Tuple
+        params: vector.T(Int)
+        insts: vector.T(Inst)
+        var term: Terminator
+    end
+
+    (* A stack slot: its size and alignment in bytes *)
+    Def Slot = Tuple bytes: Int align: Int end
+
+    Def Function = Tuple
+        (* Its C symbol, and whether other units call it *)
+        symbol: String
+        exported: Bool
+        (* The types of its parameters (the entry block's) and results *)
+        paramTypes: vector.T(Type)
+        resultTypes: vector.T(Type)
+        (* The type of each value, by number *)
+        types: vector.T(Type)
+        blocks: vector.T(Block)
+        slots: vector.T(Slot)
+    end
+
+    Def Unit = Tuple
+        functions: vector.T(Function)
+    end
+
+    newUnit(): Unit
+    (* A new function with an entry block (block 0), whose parameters are of
+     * the types params *)
+    newFunction(symbol: String exported: Bool params: Array(Type) results: Array(Type)): Function
+    newValue(f: Function t: Type): Int
+    newBlock(f: Function): Int
+    addParam(f: Function block: Int t: Type): Int
+    newSlot(f: Function bytes: Int align: Int): Int
+    block(f: Function b: Int): Block
+    typeOf(f: Function v: Int): Type
+
+    (* Appends an instruction to block b (which has no terminator yet) *)
+    append(f: Function b: Int inst: Inst): Ok
+    (* An instruction with its other fields at their defaults *)
+    inst(op: Opcode args: Array(Int) results: Array(Int)): Inst
+    (* Appends an instruction of one result of type t; the result *)
+    emit(f: Function b: Int op: Opcode args: Array(Int) t: Type): Int
+    constant(f: Function b: Int n: Int): Int
+    symbolAddress(f: Function b: Int symbol: String): Int
+    binary(f: Function b: Int op: Opcode x: Int y: Int): Int
+    load(f: Function b: Int address: Int offset: Int width: Int signed: Bool t: Type): Int
+    store(f: Function b: Int address: Int offset: Int width: Int value: Int): Ok
+    (* A call of symbol (or, with symbol "", of the function pointer that is
+     * the first argument): its results, of the types results *)
+    call(f: Function b: Int symbol: String args: Array(Int) pairs: Array(Int) results: Array(Type)): Array(Int)
+    (* The same, with arguments passed through memory *)
+    callWithMemory(f: Function b: Int symbol: String args: Array(Int) memory: Array(Int) results: Array(Type)): Array(Int)
+    terminate(f: Function b: Int t: Terminator): Ok
+    target(block: Int args: Array(Int)): Target
+    isTerminated(f: Function b: Int): Bool
+
+    (* The values a terminator uses and the blocks it may go to *)
+    terminatorUses(t: Terminator): Array(Int)
+    successors(t: Terminator): Array(Int)
+    typeName(t: Type): String
+    opcodeName(op: Opcode): String
+end

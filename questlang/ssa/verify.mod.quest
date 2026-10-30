@@ -1,0 +1,293 @@
+(* Quest Self-Hosted Compiler: The SSA's Verifier Implementation *)
+
+module verify : Verify
+import
+    questlang/ssa/nodes : questlang/ssa/Nodes
+    collections/vector : collections/Vector
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Let Function = nodes.Function
+    Let Type = nodes.Type
+
+    let verifyError: Exception(String) = exception verifyError: String end
+
+    Def Dominance = Tuple order: Array(Int) idom: Array(Int) preds: Array(Array(Int)) end
+
+    let blockCount(f: Function): Int = vector.length(:nodes.Block f.blocks)
+
+    (* Reverse postorder from the entry, by an explicit stack of (block, next
+     * successor) *)
+    let reversePostorder(f: Function): Array(Int) =
+        begin
+            let n = blockCount(f)
+            let visited = array of(n false)
+            let post = vector.new(:Int)
+            let stackBlocks = vector.new(:Int)
+            let stackNext = vector.new(:Int)
+            if n > 0 then
+                visited[0] := true
+                vector.append(:Int stackBlocks 0)
+                vector.append(:Int stackNext 0)
+            end
+            while not(vector.empty(:Int stackBlocks)) do
+                let top = vector.length(:Int stackBlocks) - 1
+                let b = vector.get(:Int stackBlocks top)
+                let k = vector.get(:Int stackNext top)
+                let succs = nodes.successors(nodes.block(f b).term)
+                if k < extent succs then
+                    vector.set(:Int stackNext top k + 1)
+                    let s = succs[k]
+                    if {s >= 0} andif {s < n} andif not(visited[s]) then
+                        visited[s] := true
+                        vector.append(:Int stackBlocks s)
+                        vector.append(:Int stackNext 0)
+                    end
+                else
+                    vector.pop(:Int stackBlocks)
+                    vector.pop(:Int stackNext)
+                    vector.append(:Int post b)
+                end
+            end
+            let m = vector.length(:Int post)
+            let order = array of(m 0)
+            for i = 0 upto {m - 1} do order[i] := vector.get(:Int post {m - 1} - i) end
+            order
+        end
+
+    let dominance(f: Function): Dominance =
+        begin
+            let n = blockCount(f)
+            let preds = array of(n array of :Int end)
+            let predLists = array of(n vector.new(:Int))
+            for b = 0 upto {n - 1} do predLists[b] := vector.new(:Int) end
+            for b = 0 upto {n - 1} do
+                let succs = nodes.successors(nodes.block(f b).term)
+                for k = 0 upto {extent succs - 1} do
+                    if {succs[k] >= 0} andif {succs[k] < n} then vector.append(:Int predLists[succs[k]] b) end
+                end
+            end
+            for b = 0 upto {n - 1} do preds[b] := vector.toArray(:Int predLists[b]) end
+            let order = reversePostorder(f)
+            let rank = array of(n ~1)
+            for i = 0 upto {extent order - 1} do rank[order[i]] := i end
+            let idom = array of(n ~1)
+            if n > 0 then idom[0] := 0 end
+            let intersect(a0: Int b0: Int): Int =
+                begin
+                    let var a = a0
+                    let var b = b0
+                    while a isnot b do
+                        while rank[a] > rank[b] do a := idom[a] end
+                        while rank[b] > rank[a] do b := idom[b] end
+                    end
+                    a
+                end
+            let var changed = true
+            while changed do
+                changed := false
+                for i = 1 upto {extent order - 1} do
+                    let b = order[i]
+                    let var newIdom = ~1
+                    for k = 0 upto {extent preds[b] - 1} do
+                        let p = preds[b][k]
+                        if {rank[p] >= 0} andif {idom[p] >= 0} then
+                            newIdom := if newIdom < 0 then p else intersect(p newIdom) end
+                        end
+                    end
+                    if newIdom isnot idom[b] then
+                        idom[b] := newIdom
+                        changed := true
+                    end
+                end
+            end
+            if n > 0 then idom[0] := ~1 end
+            tuple let order = order let idom = idom let preds = preds end
+        end
+
+    let dominates(d: Dominance a: Int b: Int): Bool =
+        begin
+            let var x = b
+            let var found = false
+            while {x >= 0} andif not(found) do
+                if x is a then found := true else x := d.idom[x] end
+            end
+            found
+        end
+
+    let functionProblems(f: Function): Array(String) =
+        begin
+            let problems = vector.new(:String)
+            let where = "function " <> f.symbol
+            let problem(text: String): Ok = vector.append(:String problems where <> ": " <> text)
+            let n = blockCount(f)
+            let nValues = vector.length(:Type f.types)
+            let nSlots = vector.length(:nodes.Slot f.slots)
+            let d = dominance(f)
+            let reachable = array of(n false)
+            for i = 0 upto {extent d.order - 1} do reachable[d.order[i]] := true end
+            (* Where each value is defined: its block, and its position in it
+             * (~1 for a block parameter) *)
+            let defBlock = array of(nValues ~1)
+            let defIndex = array of(nValues ~2)
+            let define(v: Int b: Int i: Int): Ok =
+                if {v < 0} orif {v >= nValues} then
+                    problem("block " <> conv.int(b) <> " defines value " <> conv.int(v) <> ", which does not exist")
+                elsif defBlock[v] >= 0 then
+                    problem("value %" <> conv.int(v) <> " is defined more than once")
+                else
+                    defBlock[v] := b
+                    defIndex[v] := i
+                end
+            for b = 0 upto {n - 1} do
+                let blk = nodes.block(f b)
+                for i = 0 upto {vector.length(:Int blk.params) - 1} do define(vector.get(:Int blk.params i) b ~1) end
+                for i = 0 upto {vector.length(:nodes.Inst blk.insts) - 1} do
+                    let inst = vector.get(:nodes.Inst blk.insts i)
+                    for r = 0 upto {extent inst.results - 1} do define(inst.results[r] b i) end
+                end
+            end
+            (* The entry's parameters are the function's *)
+            let entry = nodes.block(f 0)
+            if vector.length(:Int entry.params) isnot vector.length(:Type f.paramTypes) then
+                problem("its entry block's parameters are not its parameters")
+            end
+            let use(v: Int b: Int i: Int what: String): Ok =
+                if {v < 0} orif {v >= nValues} then
+                    problem(what <> " in block " <> conv.int(b) <> " uses value " <> conv.int(v) <> ", which does not exist")
+                elsif defBlock[v] < 0 then
+                    problem(what <> " in block " <> conv.int(b) <> " uses %" <> conv.int(v) <> ", which nothing defines")
+                elsif reachable[b] then
+                    let dominated = if defBlock[v] is b then defIndex[v] < i else dominates(d defBlock[v] b) end
+                    if not(dominated) then
+                        problem(what <> " in block " <> conv.int(b) <> " uses %" <> conv.int(v)
+                            <> ", whose definition does not dominate it")
+                    end
+                end
+            let typeIs(v: Int t: Type what: String): Ok =
+                if {v >= 0} andif {v < nValues} andif not(stringOp.equal(nodes.typeName(nodes.typeOf(f v)) nodes.typeName(t))) then
+                    problem(what <> ": %" <> conv.int(v) <> " is " <> nodes.typeName(nodes.typeOf(f v)) <> ", not "
+                        <> nodes.typeName(t))
+                end
+            let tInt = option typeInt of Type end
+            let tPtr = option typePtr of Type end
+            let tReal = option typeReal of Type end
+            let argsAre(inst: nodes.Inst types: Array(Type) what: String): Ok =
+                if extent inst.args isnot extent types then
+                    problem(what <> " has " <> conv.int(extent inst.args) <> " arguments, not " <> conv.int(extent types))
+                else
+                    for k = 0 upto {extent types - 1} do typeIs(inst.args[k] types[k] what) end
+                end
+            let checkTarget(t: nodes.Target from: Int what: String): Ok =
+                if {t.block < 0} orif {t.block >= n} then
+                    problem(what <> " in block " <> conv.int(from) <> " goes to block " <> conv.int(t.block) <> ", which does not exist")
+                else
+                    let params = nodes.block(f t.block).params
+                    if extent t.args isnot vector.length(:Int params) then
+                        problem(what <> " in block " <> conv.int(from) <> " passes " <> conv.int(extent t.args)
+                            <> " arguments to block " <> conv.int(t.block) <> ", which has " <> conv.int(vector.length(:Int params))
+                            <> " parameters")
+                    else
+                        for k = 0 upto {extent t.args - 1} do
+                            typeIs(t.args[k] nodes.typeOf(f vector.get(:Int params k)) what <> " to block " <> conv.int(t.block))
+                        end
+                    end
+                end
+            for b = 0 upto {n - 1} do
+                let blk = nodes.block(f b)
+                let count = vector.length(:nodes.Inst blk.insts)
+                for i = 0 upto {count - 1} do
+                    let inst = vector.get(:nodes.Inst blk.insts i)
+                    let what = nodes.opcodeName(inst.op)
+                    for k = 0 upto {extent inst.args - 1} do use(inst.args[k] b i what) end
+                    case inst.op
+                        when opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe,
+                            opGt, opGe, opUlt then
+                            argsAre(inst array of tInt tInt end what)
+                        when opPeq, opPne then argsAre(inst array of tPtr tPtr end what)
+                        when opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge then
+                            argsAre(inst array of tReal tReal end what)
+                        when opIsNaN, opRealBits then argsAre(inst array of tReal end what)
+                        when opIntToPtr, opBitsReal, opSext8, opZext8 then argsAre(inst array of tInt end what)
+                        when opPtrToInt then argsAre(inst array of tPtr end what)
+                        when opLoad then
+                            if extent inst.args isnot 1 then problem("a load has " <> conv.int(extent inst.args) <> " arguments")
+                            else typeIs(inst.args[0] tPtr what) end
+                        when opStore then
+                            if extent inst.args isnot 2 then problem("a store has " <> conv.int(extent inst.args) <> " arguments")
+                            else typeIs(inst.args[0] tPtr what) end
+                        when opCallIndirect then
+                            if extent inst.args < 1 then problem("an indirect call has no function")
+                            else typeIs(inst.args[0] tPtr what) end
+                        when opSlot then
+                            if {inst.imm < 0} orif {inst.imm >= nSlots} then
+                                problem("slot " <> conv.int(inst.imm) <> " does not exist")
+                            end
+                        else ok
+                    end
+                    case inst.op
+                        when opLoad, opStore then
+                            if not({inst.width is 8} orif {inst.width is 4} orif {inst.width is 1}) then
+                                problem(what <> " of width " <> conv.int(inst.width))
+                            end
+                        else ok
+                    end
+                end
+                let t = blk.term
+                let uses = nodes.terminatorUses(t)
+                for k = 0 upto {extent uses - 1} do use(uses[k] b count "a terminator") end
+                case t
+                    when termNone then problem("block " <> conv.int(b) <> " has no terminator")
+                    when termJump with x then checkTarget(x.target b "a jump")
+                    when termBranch with x then
+                        typeIs(x.cond tInt "a branch's condition")
+                        checkTarget(x.ifTrue b "a branch")
+                        checkTarget(x.ifFalse b "a branch")
+                    when termSwitch with x then
+                        typeIs(x.value tInt "a switch's value")
+                        if extent x.cases isnot extent x.targets then problem("a switch's cases are not its targets") end
+                        for k = 0 upto {extent x.targets - 1} do checkTarget(x.targets[k] b "a switch") end
+                        checkTarget(x.default b "a switch")
+                    when termReturn with x then
+                        if extent x.values isnot vector.length(:Type f.resultTypes) then
+                            problem("block " <> conv.int(b) <> " returns " <> conv.int(extent x.values) <> " values, not "
+                                <> conv.int(vector.length(:Type f.resultTypes)))
+                        else
+                            for k = 0 upto {extent x.values - 1} do
+                                typeIs(x.values[k] vector.get(:Type f.resultTypes k) "a return")
+                            end
+                        end
+                    when termTailCall then ok
+                    when termTry with x then
+                        checkTarget(x.body b "a try")
+                        if {x.slot < 0} orif {x.slot >= nSlots} then problem("a try's slot " <> conv.int(x.slot) <> " does not exist") end
+                        if {x.handler < 0} orif {x.handler >= n} then
+                            problem("a try's handler " <> conv.int(x.handler) <> " does not exist")
+                        else
+                            let hp = d.preds[x.handler]
+                            if {extent hp isnot 1} orif {hp[0] isnot b} then
+                                problem("block " <> conv.int(x.handler) <> ", a try's handler, is reached from elsewhere too")
+                            end
+                            if not(vector.empty(:Int nodes.block(f x.handler).params)) then
+                                problem("block " <> conv.int(x.handler) <> ", a try's handler, has parameters")
+                            end
+                        end
+                    when termUnreachable then ok
+                end
+            end
+            vector.toArray(:String problems)
+        end
+
+    let checkUnit(u: nodes.Unit): Ok =
+        begin
+            let all = vector.new(:String)
+            for i = 0 upto {vector.length(:Function u.functions) - 1} do
+                let ps = functionProblems(vector.get(:Function u.functions i))
+                for k = 0 upto {extent ps - 1} do vector.append(:String all ps[k]) end
+            end
+            if not(vector.empty(:String all)) then
+                raise verifyError with "internal: the SSA is not well formed:\n  " <> strutil.join("\n  " all) end
+            end
+        end
+end

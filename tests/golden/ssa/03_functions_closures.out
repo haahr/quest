@@ -1,0 +1,60 @@
+function qf_add1(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: int = const 1
+  %3: int = add %1, %2
+  return %3
+}
+
+function qf_f(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: int = load8 %0 + 0
+  %3: int = add %2, %1
+  return %3
+}
+
+function qf_adder(%0: ptr, %1: int): ptr {
+b0(%0: ptr, %1: int):
+  %2: int = const 8
+  %3: ptr = call quest_alloc(%2)
+  store8 %3 + 0, %1
+  %4: int = const 16
+  %5: ptr = call quest_alloc(%4)
+  %6: ptr = symbol qf_f
+  store8 %5 + 0, %6
+  store8 %5 + 8, %3
+  return %5
+}
+
+function qf_apply(%0: ptr, %1: ptr, %2: int): int {
+b0(%0: ptr, %1: ptr, %2: int):
+  %3: ptr = load8 %1 + 0
+  %4: ptr = load8 %1 + 8
+  %5: int = callIndirect %3, %4, %2
+  return %5
+}
+
+function main exported(%0: int, %1: ptr): int {
+b0(%0: int, %1: ptr):
+  call quest_gc_init()
+  call quest_builtins_init(%0, %1)
+  call qr_register_dicts()
+  %2: ptr = symbol qf_add1_closure
+  %3: ptr = symbol g_add1
+  store8 %3 + 0, %2
+  %4: ptr = symbol qf_adder_closure
+  %5: ptr = symbol g_adder
+  store8 %5 + 0, %4
+  %6: ptr = symbol qf_apply_closure
+  %7: ptr = symbol g_apply
+  store8 %7 + 0, %6
+  %8: ptr = null
+  %9: ptr = symbol g_add1
+  %10: ptr = load8 %9 + 0
+  %11: int = const 41
+  %12: int = call qf_apply(%8, %10, %11)
+  %13: ptr = symbol g_res
+  store8 %13 + 0, %12
+  %14: int = const 0
+  return %14
+}
+

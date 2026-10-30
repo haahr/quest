@@ -1,0 +1,150 @@
+# The SSA
+
+The self-hosted compiler's low-level, target-independent intermediate form for its native backends
+([arm64.md](arm64.md) §3.2): built from the described IR ([ir.md](ir.md) §8.4), printed as C by `ssac` (arm64.md
+§3.14), and lowered to arm64. Its values are machine scalars, not Quest values; memory is reached by byte offsets; a
+block's arguments stand for φ nodes. The bootstrap has no SSA.
+
+---
+
+## 1. Values and Types
+
+A function numbers its **values** densely from 0; a value is an instruction's result or a block's parameter, defined
+once. Each has a type:
+
+| Type | What it holds |
+|---|---|
+| `int` | a 64-bit integer: `Int`, `Word`, `Bool` and `Char` (extended to 64 bits: `Bool` 0 or 1, `Char` signed), a tag, a size, an offset |
+| `ptr` | a pointer the collector must see: a heap object, a closure, a descriptor, a static object, a stack slot's address |
+| `real` | a 64-bit IEEE double |
+
+There is no aggregate type: a 16-byte value (a record's `QRecordVal`, a variant's `QVariantVal`) is two values. There
+is no boolean type: a comparison gives an `int` 0 or 1, and a branch tests an `int` for nonzero. `ptr` and `int` are
+apart so that a later collector could find pointers precisely (arm64.md §3.13); converting between them is explicit.
+
+## 2. Instructions
+
+Every instruction has one shape (arm64.md §3.15): an opcode, an array of argument values, an array of result
+values, an immediate integer, and a symbol. Passes that care only about structure (the verifier, liveness, renaming,
+register allocation) walk the arrays; only the passes that care what an instruction means case on its opcode.
+
+| Opcode | Arguments → results | Meaning |
+|---|---|---|
+| `const` | → `int` | the immediate |
+| `realConst` | → `real` | the double whose bits are the immediate |
+| `symbol` | → `ptr` | the address of the symbol (static data, a function, a runtime global), plus the immediate in bytes |
+| `null` | → `ptr` | the null pointer |
+| `slot` | → `ptr` | the address of the stack slot numbered by the immediate |
+| `add`, `sub`, `mul` | `int int` → `int` | wrapping arithmetic ([type-system.md](type-system.md) §6.3.1) |
+| `div`, `rem` | `int int` → `int` | signed, truncating; the divisor is neither 0 nor -1 (the SSA's builder tests both first) |
+| `and`, `or`, `xor`, `shl`, `lshr`, `ashr` | `int int` → `int` | bitwise; shift counts are 0 to 63 |
+| `eq`, `ne`, `lt`, `le`, `gt`, `ge`, `ult` | `int int` → `int` | comparisons, signed but for `ult` |
+| `peq`, `pne` | `ptr ptr` → `int` | pointer identity |
+| `fadd`, `fsub`, `fmul`, `fdiv` | `real real` → `real` | IEEE arithmetic |
+| `feq`, `flt`, `fle`, `fgt`, `fge` | `real real` → `int` | IEEE comparisons |
+| `isNaN` | `real` → `int` | whether the double is a NaN |
+| `intToPtr`, `ptrToInt` | → | a pointer's bits as an integer, and back (a proxy's tag bit, a `QVal` word) |
+| `realBits`, `bitsReal` | → | a double's 64 bits as an integer, and back |
+| `sext8`, `zext8` | `int` → `int` | the low byte, sign- or zero-extended (a C `char` or `bool` received) |
+| `load` | `ptr` → value | the immediate is the byte offset; the width and the result's type are the instruction's (§2.1) |
+| `store` | `ptr value` → | likewise |
+| `call` | args → results | a direct call of the symbol |
+| `callIndirect` | `ptr` args → results | a call through a function pointer |
+| `copy` | value → value | the same value (made by the builder; removed by later passes) |
+
+### 2.1. Loads and Stores
+
+A load or store names its width: 8 bytes (an `int`, `ptr`, or `real`), 4 (a C `int`, read sign-extended), or 1 (a C
+`bool` or `char`: read zero- or sign-extended, as the instruction says). Its address is its pointer argument plus the
+immediate.
+
+### 2.2. Calls
+
+A call's arguments and results are values in the order of the C function's parameters, and the call records, for
+the native backend's ABI lowering, where a 16-byte composite (a `QRecordVal`, a `QVariantVal`) starts: AAPCS64 passes
+one in two consecutive registers or wholly on the stack, never split. A composite larger than 16 bytes, which C passes
+through memory (a `QExceptionState`, to `quest_reraise`), is a stack slot whose address the builder passes, and the
+call records the argument among its `memory` arguments: AAPCS64 passes such a composite as the address of a copy, and
+`ssac` passes the copy's contents. A C `bool` or `char` result is extended by a `zext8` or `sext8` after the call,
+since AAPCS64 leaves a narrow result's upper bits unspecified. A call of a function that does not return (a raise)
+ends its block with `unreachable`.
+
+## 3. Blocks and Control
+
+A function's **blocks** are numbered from 0, the entry first. A block has parameters (values), instructions, and one
+terminator:
+
+| Terminator | Meaning |
+|---|---|
+| `jump b(args)` | continue at block `b`, its parameters bound to the arguments |
+| `branch v, b1(args), b2(args)` | `b1` if `v` is nonzero, else `b2` |
+| `switch v, [k: b(args)...], default b(args)` | the block of the case whose integer is `v` |
+| `return values` | return the values (none, one, or two for a 16-byte result) |
+| `tailCall` | a call in tail position (arm64.md §3.7): its results are the function's |
+| `try slot, body(args), handler()` | enter a `try` (below) |
+| `unreachable` | control does not reach the end of the block |
+
+**`try`.** A `try` enters an exception handler (its record a stack slot, the immediate, which the builder has pushed on
+the runtime's chain, `quest_current_exception_handler`, with what it catches) and goes on to its body block;
+when an exception is raised in the body, or in anything the body calls, control resumes at the handler block, as
+`_setjmp` returns a second time. The handler block's one predecessor is the `try`'s block, so dominance gives the
+rule the handler's resumption needs (arm64.md §3.6): the values a handler uses were defined before the `try`. A mutable
+variable assigned in a `try`'s body lives in a stack slot, not in values, as C makes it `volatile`. Every way out of
+the body (falling off its end, a jump, a return) first leaves the handler (`call` of the runtime, or the native
+handler's pop), as the C printer pops it.
+
+## 4. Building the SSA
+
+`questlang/ssa/build` builds a unit's SSA from its described IR (thunks included, [ir.md](ir.md) §8.4.1), doing for
+each operation what the C printer prints ([arm64.md](arm64.md) §7.2):
+
+- **Variables.** An IR variable of a value is the SSA values of its representation; a boxed variable (a record or
+  variant the represent pass holds in its box) is its box's pointer, and a boxed mutable one's value is its box's
+  record or variant. A **mutable variable is a stack slot**, loaded and stored, as C at `-O0` keeps it: always
+  correct, the rule `try` needs for free, and promotable to values by a later pass. A variable a top level binds
+  outside loops is a global (`g_<name>`), as in C.
+- **Memory.** Every aggregate slot is a word (`layout`); a box or a global holds a record or variant's 16 bytes; a
+  location (a cell, what a `var` or `out` parameter points to) holds a record or variant as its box's pointer
+  (`layout.shapeLocationRepresentation`). Offsets come from `codegen/layout`, `codegen/staticdata`, and
+  `codegen/runtimeLayout`, which the C asserts.
+- **Closures.** A closure's environment is the descriptors of its type arguments then its captures, a word for each
+  of their values: private to the unit, which alone reads it ([arm64.md](arm64.md) §7.1). A call of a variable bound
+  to a closure of one of the unit's functions calls the function directly, as the C printer does.
+- **Thread-locals.** The handler chain and the current exception are the runtime's thread-local variables, which the
+  SSA names as symbols; the native backend reaches them through their accessor (arm64.md §3.6).
+- **Blocks the entry does not reach are dropped** when a function is finished, and the rest renumbered.
+
+What the builder does not yet build raises `unsupported`, naming the construct; `--stop-after ssa` reports it as an
+internal error.
+
+## 5. Functions and Units
+
+A **function** has a symbol (its C name), its parameters (the entry block's), its result types, its blocks, and its
+stack slots (each a size and an alignment in bytes). A **unit** has its functions and the static data of
+`codegen/staticdata` (descriptors, offset tables, tag maps), its strings, its static closures, and the symbols it
+references from elsewhere.
+
+## 6. The Textual Form
+
+`--stop-after ssa` prints a program unit's SSA; its goldens (`tests/golden/ssa`) are the self-hosted compiler's own,
+one for every run test that has an `ir_core` dump (arm64.md §3.2). Values print as `%n`, blocks as `bN`, a
+function's stack slots as `bytes:alignment`, a load or store with its width (`load1s` sign-extends a byte), and a
+call with its `pairs` and `memory` arguments:
+
+```
+function qf_f(%0: ptr, %1: int): int slots [16:8] {
+b0(%0: ptr, %1: int):
+  %2: int = const 1
+  %3: int = add %1, %2
+  return %3
+}
+```
+
+## 7. The Verifier
+
+After the SSA is built, and after every pass that rewrites it when `QUEST_CHECK_IR=1`, the verifier checks that each
+value is defined once and its definition dominates its uses; that every argument has the type its instruction takes;
+that jumps pass their blocks' parameters' number and types; that each block ends in one terminator; that a `try`'s
+handler has the `try`'s block as its only predecessor and no parameters; and that slots and blocks referred to
+exist. The questlang test `ssa_verify` builds well-formed and malformed functions by hand and checks the problems it
+reports.

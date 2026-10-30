@@ -1,0 +1,237 @@
+function qf_printInt(%0: ptr, %1: int) {
+b0(%0: ptr, %1: int):
+  %2: ptr = call qv_conv_int(%1)
+  %3: ptr = symbol g_wOut
+  %4: ptr = load8 %3 + 0
+  call qv_writer_putString(%4, %2)
+  %5: ptr = symbol g_wOut
+  %6: ptr = load8 %5 + 0
+  %7: ptr = symbol qs_1
+  %8: int = const 1
+  %9: ptr = call quest_string_new(%7, %8)
+  call qv_writer_putString(%6, %9)
+  return
+}
+
+function qf_apply(%0: ptr, %1: ptr, %2: int): int {
+b0(%0: ptr, %1: ptr, %2: int):
+  %3: ptr = load8 %1 + 0
+  %4: ptr = load8 %1 + 8
+  %5: int = callIndirect %3, %4, %2
+  return %5
+}
+
+function qf_inc(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: int = const 1
+  %3: int = add %1, %2
+  return %3
+}
+
+function qf_f(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: int = const 3
+  %3: int = mul %1, %2
+  return %3
+}
+
+function qf_f_2(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: int = load8 %0 + 0
+  %3: int = add %2, %1
+  return %3
+}
+
+function qf_makeAdder(%0: ptr, %1: int): ptr {
+b0(%0: ptr, %1: int):
+  %2: int = const 8
+  %3: ptr = call quest_alloc(%2)
+  store8 %3 + 0, %1
+  %4: int = const 16
+  %5: ptr = call quest_alloc(%4)
+  %6: ptr = symbol qf_f_2
+  store8 %5 + 0, %6
+  store8 %5 + 8, %3
+  return %5
+}
+
+function qf_f_3(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: int = load8 %0 + 0
+  %3: int = load8 %0 + 8
+  %4: int = add %2, %1
+  %5: int = add %3, %4
+  return %5
+}
+
+function qf_f_4(%0: ptr, %1: int): ptr {
+b0(%0: ptr, %1: int):
+  %2: int = load8 %0 + 0
+  %3: int = const 16
+  %4: ptr = call quest_alloc(%3)
+  store8 %4 + 0, %1
+  store8 %4 + 8, %2
+  %5: int = const 16
+  %6: ptr = call quest_alloc(%5)
+  %7: ptr = symbol qf_f_3
+  store8 %6 + 0, %7
+  store8 %6 + 8, %4
+  return %6
+}
+
+function qf_f_5(%0: ptr, %1: int): ptr {
+b0(%0: ptr, %1: int):
+  %2: int = const 8
+  %3: ptr = call quest_alloc(%2)
+  store8 %3 + 0, %1
+  %4: int = const 16
+  %5: ptr = call quest_alloc(%4)
+  %6: ptr = symbol qf_f_4
+  store8 %5 + 0, %6
+  store8 %5 + 8, %3
+  return %5
+}
+
+function qf_bump(%0: ptr, %1: int) {
+b0(%0: ptr, %1: int):
+  %2: ptr = symbol g_counter
+  %3: ptr = load8 %2 + 0
+  %4: int = load8 %3 + 0
+  %5: int = add %4, %1
+  %6: ptr = symbol g_counter
+  %7: ptr = load8 %6 + 0
+  store8 %7 + 0, %5
+  return
+}
+
+function main exported(%0: int, %1: ptr): int {
+b0(%0: int, %1: ptr):
+  call quest_gc_init()
+  call quest_builtins_init(%0, %1)
+  call qr_register_dicts()
+  call qv_mod_writer_init()
+  call qv_mod_conv_init()
+  %2: ptr = symbol qm_writer
+  %3: ptr = load8 %2 + 0
+  %4: ptr = load8 %2 + 8
+  %5: int = load8 %4 + 40
+  %6: int = ptrToInt %3
+  %7: int = add %6, %5
+  %8: ptr = intToPtr %7
+  %9: ptr = load8 %8 + 0
+  %10: ptr = symbol g_wOut
+  store8 %10 + 0, %9
+  %11: ptr = symbol qf_printInt_closure
+  %12: ptr = symbol g_printInt
+  store8 %12 + 0, %11
+  %13: ptr = symbol qf_apply_closure
+  %14: ptr = symbol g_apply
+  store8 %14 + 0, %13
+  %15: ptr = symbol qf_inc_closure
+  %16: ptr = symbol g_inc
+  store8 %16 + 0, %15
+  %17: ptr = null
+  %18: ptr = symbol g_inc
+  %19: ptr = load8 %18 + 0
+  %20: int = const 41
+  %21: int = call qf_apply(%17, %19, %20)
+  %22: ptr = symbol g_global
+  store8 %22 + 0, %21
+  %23: ptr = null
+  %24: ptr = symbol g_global
+  %25: int = load8 %24 + 0
+  call qf_printInt(%23, %25)
+  %26: ptr = symbol qf_f_closure
+  %27: ptr = symbol g_f
+  store8 %27 + 0, %26
+  %28: ptr = null
+  %29: ptr = symbol g_f
+  %30: ptr = load8 %29 + 0
+  %31: int = const 14
+  %32: int = call qf_apply(%28, %30, %31)
+  %33: ptr = symbol g_global_2
+  store8 %33 + 0, %32
+  %34: ptr = null
+  %35: ptr = symbol g_global_2
+  %36: int = load8 %35 + 0
+  call qf_printInt(%34, %36)
+  %37: ptr = symbol qf_makeAdder_closure
+  %38: ptr = symbol g_makeAdder
+  store8 %38 + 0, %37
+  %39: ptr = null
+  %40: int = const 100
+  %41: ptr = call qf_makeAdder(%39, %40)
+  %42: ptr = symbol g_add100
+  store8 %42 + 0, %41
+  %43: ptr = symbol g_add100
+  %44: ptr = load8 %43 + 0
+  %45: ptr = load8 %44 + 0
+  %46: ptr = load8 %44 + 8
+  %47: int = const 42
+  %48: int = callIndirect %45, %46, %47
+  %49: ptr = symbol g_global_3
+  store8 %49 + 0, %48
+  %50: ptr = null
+  %51: ptr = symbol g_global_3
+  %52: int = load8 %51 + 0
+  call qf_printInt(%50, %52)
+  %53: ptr = symbol qf_f_5_closure
+  %54: ptr = symbol g_f_2
+  store8 %54 + 0, %53
+  %55: ptr = null
+  %56: int = const 10
+  %57: ptr = call qf_f_5(%55, %56)
+  %58: ptr = symbol g_global_4
+  store8 %58 + 0, %57
+  %59: ptr = symbol g_global_4
+  %60: ptr = load8 %59 + 0
+  %61: ptr = load8 %60 + 0
+  %62: ptr = load8 %60 + 8
+  %63: int = const 20
+  %64: ptr = callIndirect %61, %62, %63
+  %65: ptr = symbol g_global_5
+  store8 %65 + 0, %64
+  %66: ptr = symbol g_global_5
+  %67: ptr = load8 %66 + 0
+  %68: ptr = load8 %67 + 0
+  %69: ptr = load8 %67 + 8
+  %70: int = const 12
+  %71: int = callIndirect %68, %69, %70
+  %72: ptr = symbol g_global_6
+  store8 %72 + 0, %71
+  %73: ptr = null
+  %74: ptr = symbol g_global_6
+  %75: int = load8 %74 + 0
+  call qf_printInt(%73, %75)
+  %76: int = const 10
+  %77: ptr = symbol g_count
+  store8 %77 + 0, %76
+  %78: int = const 8
+  %79: ptr = call quest_alloc(%78)
+  %80: ptr = symbol g_count
+  %81: int = load8 %80 + 0
+  store8 %79 + 0, %81
+  %82: ptr = symbol g_counter
+  store8 %82 + 0, %79
+  %83: ptr = symbol qf_bump_closure
+  %84: ptr = symbol g_bump
+  store8 %84 + 0, %83
+  %85: ptr = null
+  %86: int = const 5
+  call qf_bump(%85, %86)
+  %87: ptr = null
+  %88: int = const 27
+  call qf_bump(%87, %88)
+  %89: ptr = symbol g_counter
+  %90: ptr = load8 %89 + 0
+  %91: int = load8 %90 + 0
+  %92: ptr = symbol g_global_7
+  store8 %92 + 0, %91
+  %93: ptr = null
+  %94: ptr = symbol g_global_7
+  %95: int = load8 %94 + 0
+  call qf_printInt(%93, %95)
+  %96: int = const 0
+  return %96
+}
+
