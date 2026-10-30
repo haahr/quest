@@ -469,3 +469,31 @@ Without the four benchmarks §1.3 sets aside, the mean improved, from 6.49 to 6.
 
 The arm64 numbers are the baseline against which interval splitting, rematerialization, and allocation in `try`
 functions (arm64.md step 11) are to be measured.
+
+### 4.3. With splitting
+
+Quest was `22e03678`: interval splitting, rematerialization, and allocation in `try` functions (arm64.md §3.8, with
+splitting), with an edge's cycles of moves broken through `x10` rather than a copy area. The run was taken as in
+§4.1, after `--clean`, with the machine otherwise idle. Its times are
+`benchmarks/mlton/baselines/2026-10-30/quest-arm64-split.jsonl`.
+
+| System | Geometric mean of time / MLton's | Run time, all 46 |
+|---|---|---|
+| `./quest --backend arm64`, before splitting (§4.2) | 11.62; 11.77 without fib, tailfib, tak, and tensor | 80.8 min |
+| `./quest --backend arm64`, with splitting | **11.01**; 11.13 without them | 76.5 min |
+
+Its programs take 0.94 times as long as before splitting, and 2.09 times as long as the C backend's (from 2.22). Its
+builds took 24.9 s for all but the first, DLXSimulator, whose 57.5 s included rebuilding `./quest`'s stages.
+
+- **Faster:** flat-array (0.49 of its time before), matrix-multiply (0.70), tailfib (0.79, the cycle of moves in its
+  loop now five register moves, not eight memory operations), boyer and hamlet (0.81), count-graphs (0.89),
+  psdes-random (0.90).
+- **The rest:** within 10 percent of before. tak is the slowest relative to before (1.10).
+
+The furthest behind C are as in §4.2: tailfib (26.1 times C), fib (17.6), tak (10.8), md5 (6.0), even-odd (4.8), and
+the word-arithmetic loops vector32-concat, checksum, and psdes-random (3.5 to 3.7).
+
+A first run of this measurement, at `b75ee0fa`, overlapped a release build in another worktree. It showed imp-for,
+tailfib, checksum, and logic 1.35 to 1.74 times slower than before splitting. Their code was unchanged, and an A/B
+of eleven benchmarks at `--scale 0.05` on an idle machine put all but three within 3 percent. Measurements need the
+machine to themselves.

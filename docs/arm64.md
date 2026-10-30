@@ -540,9 +540,9 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
     for both backends. *Begun* (2026-10-30) with promotion, as §6 suggests: `ssa/promote` makes values of the slots
     of whole words whose addresses do not escape, in functions without a `try` ([ssa.md](ssa.md) §4.1). Then the
     simplest linear scan (§3.8, as built), which the suite passes with. Then interval splitting, rematerialization,
-    and allocation in functions that enter a `try` (§3.8, with splitting). benchmarks.md §4 has the run and build
-    times of both backends from before splitting (arm64's geometric mean against MLton 11.6, C's 5.2); the same
-    measurement with splitting remains.
+    and allocation in functions that enter a `try` (§3.8, with splitting). *Done* (2026-10-30): benchmarks.md §4 has
+    the run and build times of both backends from before splitting (arm64's geometric mean against MLton 11.6, C's
+    5.2) and arm64's with splitting (11.0, 2.09 times C's).
 12. **Self-hosting with the arm64 backend** (§4). *Done when* the check passes, `./quest` can build its stages with
     either backend, `tools/check` runs the self-hosting check through `ssac` and `arm64` too, and benchmarks.md has
     the measurements from which the default backend is decided.
