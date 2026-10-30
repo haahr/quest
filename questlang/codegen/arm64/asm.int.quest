@@ -1,0 +1,33 @@
+(* Quest Self-Hosted Compiler: arm64 Assembly Interface
+ *
+ * The spellings of Darwin's arm64 assembly (docs/arm64.md section 3.11), in one
+ * module, so that another object format would replace only it: symbols with
+ * their leading underscore, local labels, the sections of code and data, the
+ * relocations that address a symbol (its page and offset in it, through the
+ * GOT for one the unit does not define, through its descriptor for a
+ * thread-local), and data directives. *)
+
+interface Asm
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    collections/vector : collections/Vector
+export
+    (* A C symbol as the assembler names it *)
+    symbol(name: String): String
+    (* An Int as the assembler spells it (conv.int spells a negative one
+     * with ~) *)
+    decimal(n: Int): String
+    (* The lines that put the address of name plus offset in register reg
+     * (an x register): local is whether the unit defines name; a
+     * thread-local's address is its accessor's result, which clobbers x0, x16,
+     * and lr *)
+    addressOf(reg: String name: String offset: Int local: Bool threadLocal: Bool): Array(String)
+    (* The directives that begin a function's code, and end it *)
+    functionStart(name: String exported: Bool): Array(String)
+    functionEnd: Array(String)
+    (* A datum's directives *)
+    data(d: ssa.Data): Array(String)
+    (* The directives that begin and end a unit *)
+    unitStart: Array(String)
+    unitEnd: Array(String)
+end

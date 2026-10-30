@@ -18,12 +18,13 @@ b0(%0: ptr, %1: ptr, %2: int):
   return %4
 }
 
-function qf_mkTuple_spec(%0: ptr, %1: int): ptr {
+function qf_mkTuple_spec(%0: ptr, %1: int) narrow [1]: ptr {
 b0(%0: ptr, %1: int):
-  %2: int = const 8
-  %3: ptr = call quest_alloc(%2)
-  store8 %3 + 0, %1
-  return %3
+  %2: int = zext8 %1
+  %3: int = const 8
+  %4: ptr = call quest_alloc(%3)
+  store8 %4 + 0, %2
+  return %4
 }
 
 function qf_getTuple(%0: ptr, %1: ptr, %2: ptr): int {
@@ -57,12 +58,13 @@ b0(%0: ptr, %1: ptr, %2: int):
   return %4
 }
 
-function qf_mkBox_spec(%0: ptr, %1: int): ptr {
+function qf_mkBox_spec(%0: ptr, %1: int) narrow [1]: ptr {
 b0(%0: ptr, %1: int):
-  %2: int = const 8
-  %3: ptr = call quest_alloc(%2)
-  store8 %3 + 0, %1
-  return %3
+  %2: int = zext8 %1
+  %3: int = const 8
+  %4: ptr = call quest_alloc(%3)
+  store8 %4 + 0, %2
+  return %4
 }
 
 function qf_mkBox_spec_2(%0: ptr, %1: int): ptr {
@@ -81,12 +83,13 @@ b0(%0: ptr, %1: real):
   return %3
 }
 
-function qf_mkBox_spec_4(%0: ptr, %1: int): ptr {
+function qf_mkBox_spec_4(%0: ptr, %1: int) narrow [1]: ptr {
 b0(%0: ptr, %1: int):
-  %2: int = const 8
-  %3: ptr = call quest_alloc(%2)
-  store8 %3 + 0, %1
-  return %3
+  %2: int = sext8 %1
+  %3: int = const 8
+  %4: ptr = call quest_alloc(%3)
+  store8 %4 + 0, %2
+  return %4
 }
 
 function qf_mkBox_spec_5(%0: ptr, %1: ptr): ptr {
@@ -165,20 +168,21 @@ b0(%0: ptr, %1: ptr, %2: int):
   return %7
 }
 
-function qf_mkPair_spec(%0: ptr, %1: int): ptr {
+function qf_mkPair_spec(%0: ptr, %1: int) narrow [1]: ptr {
 b0(%0: ptr, %1: int):
-  %2: ptr = null
-  %3: ptr = call qf_mkBox_spec(%2, %1)
-  %4: int = const 1
-  %5: int = const 16
-  %6: ptr = call quest_alloc(%5)
-  store8 %6 + 0, %3
-  %7: int = ptrToInt %6
-  %8: int = const 8
-  %9: int = add %7, %8
-  %10: ptr = intToPtr %9
-  store8 %10 + 0, %4
-  return %6
+  %2: int = zext8 %1
+  %3: ptr = null
+  %4: ptr = call qf_mkBox_spec(%3, %2) narrow [1]
+  %5: int = const 1
+  %6: int = const 16
+  %7: ptr = call quest_alloc(%6)
+  store8 %7 + 0, %4
+  %8: int = ptrToInt %7
+  %9: int = const 8
+  %10: int = add %8, %9
+  %11: ptr = intToPtr %10
+  store8 %11 + 0, %5
+  return %7
 }
 
 function qf_firstOf(%0: ptr, %1: ptr, %2: ptr): int {
@@ -682,12 +686,13 @@ b3(%10: int):
   return %10
 }
 
-function qf_boxed(%0: ptr, %1: int): ptr {
+function qf_boxed(%0: ptr, %1: int) narrow [1]: ptr {
 b0(%0: ptr, %1: int):
-  %2: int = const 8
-  %3: ptr = call quest_alloc(%2)
-  store8 %3 + 0, %1
-  return %3
+  %2: int = zext8 %1
+  %3: int = const 8
+  %4: ptr = call quest_alloc(%3)
+  store8 %4 + 0, %2
+  return %4
 }
 
 function qf_applyOpt(%0: ptr, %1: ptr, %2: ptr, %3: ptr): int {
@@ -736,7 +741,7 @@ b0(%0: ptr, %1: int):
   %2: int = zext8 %1
   %3: ptr = load8 %0 + 0
   %4: ptr = load8 %0 + 8
-  %5: ptr = callIndirect %3, %4, %2
+  %5: ptr = callIndirect %3, %4, %2 narrow [2]
   return %5
 }
 
@@ -878,7 +883,7 @@ b0(%0: int, %1: ptr):
   store8 %46 + 0, %45
   %47: ptr = null
   %48: int = const 1
-  %49: ptr = call qf_mkBox_spec(%47, %48)
+  %49: ptr = call qf_mkBox_spec(%47, %48) narrow [1]
   %50: ptr = symbol g_bools
   store8 %50 + 0, %49
   %51: ptr = null
@@ -890,7 +895,7 @@ b0(%0: int, %1: ptr):
   store1 %56 + 0, %55
   %57: ptr = symbol g_global
   %58: int = load1 %57 + 0
-  %59: ptr = call qv_conv_bool(%58)
+  %59: ptr = call qv_conv_bool(%58) narrow [0]
   %60: ptr = symbol g_global_2
   store8 %60 + 0, %59
   %61: ptr = null
@@ -899,7 +904,7 @@ b0(%0: int, %1: ptr):
   call qf_print(%61, %63)
   %64: ptr = null
   %65: int = const 0
-  %66: ptr = call qf_mkTuple_spec(%64, %65)
+  %66: ptr = call qf_mkTuple_spec(%64, %65) narrow [1]
   %67: ptr = symbol g_global_3
   store8 %67 + 0, %66
   %68: ptr = null
@@ -911,7 +916,7 @@ b0(%0: int, %1: ptr):
   store1 %73 + 0, %72
   %74: ptr = symbol g_global_4
   %75: int = load1 %74 + 0
-  %76: ptr = call qv_conv_bool(%75)
+  %76: ptr = call qv_conv_bool(%75) narrow [0]
   %77: ptr = symbol g_global_5
   store8 %77 + 0, %76
   %78: ptr = null
@@ -960,7 +965,7 @@ b0(%0: int, %1: ptr):
   call qf_print(%110, %112)
   %113: ptr = null
   %114: int = const 99
-  %115: ptr = call qf_mkBox_spec_4(%113, %114)
+  %115: ptr = call qf_mkBox_spec_4(%113, %114) narrow [1]
   %116: ptr = symbol g_global_12
   store8 %116 + 0, %115
   %117: ptr = null
@@ -972,7 +977,7 @@ b0(%0: int, %1: ptr):
   store1 %122 + 0, %121
   %123: ptr = symbol g_global_13
   %124: int = load1s %123 + 0
-  %125: ptr = call qv_conv_char(%124)
+  %125: ptr = call qv_conv_char(%124) narrow [0]
   %126: ptr = symbol g_global_14
   store8 %126 + 0, %125
   %127: ptr = null
@@ -1024,7 +1029,7 @@ b0(%0: int, %1: ptr):
   store1 %164 + 0, %163
   %165: ptr = symbol g_global_20
   %166: int = load1 %165 + 0
-  %167: ptr = call qv_conv_bool(%166)
+  %167: ptr = call qv_conv_bool(%166) narrow [0]
   %168: ptr = symbol g_global_21
   store8 %168 + 0, %167
   %169: ptr = null
@@ -1086,7 +1091,7 @@ b0(%0: int, %1: ptr):
   store1 %214 + 0, %213
   %215: ptr = symbol g_global_29
   %216: int = load1 %215 + 0
-  %217: ptr = call qv_conv_bool(%216)
+  %217: ptr = call qv_conv_bool(%216) narrow [0]
   %218: ptr = symbol g_global_30
   store8 %218 + 0, %217
   %219: ptr = null
@@ -1195,7 +1200,7 @@ b0(%0: int, %1: ptr):
   store1 %303 + 0, %302
   %304: ptr = symbol g_global_47
   %305: int = load1s %304 + 0
-  %306: ptr = call qv_conv_char(%305)
+  %306: ptr = call qv_conv_char(%305) narrow [0]
   %307: ptr = symbol g_global_48
   store8 %307 + 0, %306
   %308: ptr = null
@@ -1216,7 +1221,7 @@ b0(%0: int, %1: ptr):
   store8 %318 + 0, %317
   %319: ptr = null
   %320: int = const 1
-  %321: ptr = call qf_mkPair_spec(%319, %320)
+  %321: ptr = call qf_mkPair_spec(%319, %320) narrow [1]
   %322: ptr = symbol g_pair
   store8 %322 + 0, %321
   %323: ptr = symbol g_pair
@@ -1243,7 +1248,7 @@ b3(%328: ptr):
   store1 %337 + 0, %336
   %338: ptr = symbol g_global_50
   %339: int = load1 %338 + 0
-  %340: ptr = call qv_conv_bool(%339)
+  %340: ptr = call qv_conv_bool(%339) narrow [0]
   %341: ptr = symbol g_global_51
   store8 %341 + 0, %340
   %342: ptr = null
@@ -1255,7 +1260,7 @@ b3(%328: ptr):
   store1 %347 + 0, %346
   %348: ptr = symbol g_global_52
   %349: int = load1 %348 + 0
-  %350: ptr = call qv_conv_bool(%349)
+  %350: ptr = call qv_conv_bool(%349) narrow [0]
   %351: ptr = symbol g_global_53
   store8 %351 + 0, %350
   %352: ptr = symbol qs_45
@@ -1342,7 +1347,7 @@ b4():
   store1 %417 + 0, %416
   %418: ptr = symbol g_global_58
   %419: int = load1 %418 + 0
-  %420: ptr = call qv_conv_bool(%419)
+  %420: ptr = call qv_conv_bool(%419) narrow [0]
   %421: ptr = symbol g_global_59
   store8 %421 + 0, %420
   %422: ptr = null
@@ -1376,7 +1381,7 @@ b4():
   store1 %444 + 0, %443
   %445: ptr = symbol g_global_63
   %446: int = load1 %445 + 0
-  %447: ptr = call qv_conv_bool(%446)
+  %447: ptr = call qv_conv_bool(%446) narrow [0]
   %448: ptr = symbol g_global_64
   store8 %448 + 0, %447
   %449: ptr = null
@@ -1416,7 +1421,7 @@ b4():
   store1 %475 + 0, %474
   %476: ptr = symbol g_global_70
   %477: int = load1 %476 + 0
-  %478: ptr = call qv_conv_bool(%477)
+  %478: ptr = call qv_conv_bool(%477) narrow [0]
   %479: ptr = symbol g_global_71
   store8 %479 + 0, %478
   %480: ptr = null
@@ -1468,7 +1473,7 @@ b4():
   store1 %516 + 0, %515
   %517: ptr = symbol g_global_80
   %518: int = load1 %517 + 0
-  %519: ptr = call qv_conv_bool(%518)
+  %519: ptr = call qv_conv_bool(%518) narrow [0]
   %520: ptr = symbol g_global_81
   store8 %520 + 0, %519
   %521: ptr = null
@@ -1520,7 +1525,7 @@ b4():
   store1 %557 + 0, %556
   %558: ptr = symbol g_global_90
   %559: int = load1s %558 + 0
-  %560: ptr = call qv_conv_char(%559)
+  %560: ptr = call qv_conv_char(%559) narrow [0]
   %561: ptr = symbol g_global_91
   store8 %561 + 0, %560
   %562: ptr = null
@@ -1641,7 +1646,7 @@ b4():
   store1 %652 + 0, %651
   %653: ptr = symbol g_global_105
   %654: int = load1 %653 + 0
-  %655: ptr = call qv_conv_bool(%654)
+  %655: ptr = call qv_conv_bool(%654) narrow [0]
   %656: ptr = symbol g_global_106
   store8 %656 + 0, %655
   %657: ptr = symbol qs_45
@@ -1955,7 +1960,7 @@ b18(%872: ptr):
   store1 %894 + 0, %893
   %895: ptr = symbol g_global_122
   %896: int = load1 %895 + 0
-  %897: ptr = call qv_conv_bool(%896)
+  %897: ptr = call qv_conv_bool(%896) narrow [0]
   %898: ptr = symbol g_global_123
   store8 %898 + 0, %897
   %899: ptr = null
@@ -2874,7 +2879,7 @@ b66(%1535: ptr):
   store1 %1585 + 0, %1584
   %1586: ptr = symbol g_global_178
   %1587: int = load1 %1586 + 0
-  %1588: ptr = call qv_conv_bool(%1587)
+  %1588: ptr = call qv_conv_bool(%1587) narrow [0]
   %1589: ptr = symbol g_global_179
   store8 %1589 + 0, %1588
   %1590: ptr = null
@@ -2919,7 +2924,7 @@ b66(%1535: ptr):
   store1 %1619 + 0, %1618
   %1620: ptr = symbol g_global_183
   %1621: int = load1 %1620 + 0
-  %1622: ptr = call qv_conv_bool(%1621)
+  %1622: ptr = call qv_conv_bool(%1621) narrow [0]
   %1623: ptr = symbol g_global_184
   store8 %1623 + 0, %1622
   %1624: ptr = null
@@ -2965,7 +2970,7 @@ b66(%1535: ptr):
   store1 %1654 + 0, %1653
   %1655: ptr = symbol g_global_187
   %1656: int = load1 %1655 + 0
-  %1657: ptr = call qv_conv_bool(%1656)
+  %1657: ptr = call qv_conv_bool(%1656) narrow [0]
   %1658: ptr = symbol g_global_188
   store8 %1658 + 0, %1657
   %1659: ptr = null
@@ -2987,7 +2992,7 @@ b66(%1535: ptr):
   store1 %1671 + 0, %1670
   %1672: ptr = symbol g_global_189
   %1673: int = load1 %1672 + 0
-  %1674: ptr = call qv_conv_bool(%1673)
+  %1674: ptr = call qv_conv_bool(%1673) narrow [0]
   %1675: ptr = symbol g_global_190
   store8 %1675 + 0, %1674
   %1676: ptr = null
@@ -3048,7 +3053,7 @@ b66(%1535: ptr):
   store1 %1714 + 0, %1713
   %1715: ptr = symbol g_global_191
   %1716: int = load1 %1715 + 0
-  %1717: ptr = call qv_conv_bool(%1716)
+  %1717: ptr = call qv_conv_bool(%1716) narrow [0]
   %1718: ptr = symbol g_global_192
   store8 %1718 + 0, %1717
   %1719: ptr = null
@@ -3246,7 +3251,7 @@ b69(%1768: ptr):
   store1 %1869 + 0, %1868
   %1870: ptr = symbol g_global_207
   %1871: int = load1 %1870 + 0
-  %1872: ptr = call qv_conv_bool(%1871)
+  %1872: ptr = call qv_conv_bool(%1871) narrow [0]
   %1873: ptr = symbol g_global_208
   store8 %1873 + 0, %1872
   %1874: ptr = symbol g_wide
@@ -3262,7 +3267,7 @@ b69(%1768: ptr):
   store1 %1882 + 0, %1881
   %1883: ptr = symbol g_global_209
   %1884: int = load1 %1883 + 0
-  %1885: ptr = call qv_conv_bool(%1884)
+  %1885: ptr = call qv_conv_bool(%1884) narrow [0]
   %1886: ptr = symbol g_global_210
   store8 %1886 + 0, %1885
   %1887: ptr = symbol qs_45

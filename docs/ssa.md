@@ -65,7 +65,10 @@ the native backend's ABI lowering, where a 16-byte composite (a `QRecordVal`, a 
 one in two consecutive registers or wholly on the stack, never split. A composite larger than 16 bytes, which C passes
 through memory (a `QExceptionState`, to `quest_reraise`), is a stack slot whose address the builder passes, and the
 call records the argument among its `memory` arguments: AAPCS64 passes such a composite as the address of a copy, and
-`ssac` passes the copy's contents. A C `bool` or `char` result is extended by a `zext8` or `sext8` after the call,
+`ssac` passes the copy's contents. A call also records which arguments C passes as one byte (`narrow`: a `bool` or
+a `char`, from a `Bool` or a `Char`), which Darwin's AAPCS64 packs on the stack, a byte each, where it passes others
+in 8 aligned bytes; a function records its own (`paramNarrow`), and extends them on entry, since a C caller leaves
+their upper bits unspecified. A C `bool` or `char` result is extended by a `zext8` or `sext8` after the call,
 since AAPCS64 leaves a narrow result's upper bits unspecified. A call of a function that does not return (a raise)
 ends its block with `unreachable`.
 

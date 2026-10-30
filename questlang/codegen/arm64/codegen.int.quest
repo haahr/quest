@@ -1,0 +1,19 @@
+(* Quest Self-Hosted Compiler: The arm64 Backend's Code Generator Interface
+ *
+ * Compiles a unit's SSA (questlang/ssa) to Darwin arm64 assembly
+ * (docs/arm64.md section 3), with the trivial register allocator of section
+ * 3.8: each value has a slot in its function's frame, and each instruction
+ * loads its arguments into scratch registers and stores its results. Calls pass
+ * arguments and results as AAPCS64 does (section 3.3); a try enters its handler
+ * with _setjmp, as C does, which is correct here because no value is kept in a
+ * register across a call. The spellings of the assembly are codegen/arm64/asm's. *)
+
+interface Codegen
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* What the backend cannot compile, naming it *)
+    unsupported: Exception(String)
+    (* A unit's assembly *)
+    assembleUnit(u: ssa.Unit): String
+end

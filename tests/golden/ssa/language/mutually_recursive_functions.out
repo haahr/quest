@@ -13,19 +13,20 @@ b0(%0: ptr, %1: int):
   return
 }
 
-function qf_printBool(%0: ptr, %1: int) {
+function qf_printBool(%0: ptr, %1: int) narrow [1] {
 b0(%0: ptr, %1: int):
-  branch %1, b2(), b3()
-b1(%2: int):
-  %5: ptr = null
-  call qf_printInt(%5, %2)
+  %2: int = zext8 %1
+  branch %2, b2(), b3()
+b1(%3: int):
+  %6: ptr = null
+  call qf_printInt(%6, %3)
   return
 b2():
-  %3: int = const 1
-  jump b1(%3)
-b3():
-  %4: int = const 0
+  %4: int = const 1
   jump b1(%4)
+b3():
+  %5: int = const 0
+  jump b1(%5)
 }
 
 function qf_even(%0: ptr, %1: int): int {
@@ -459,7 +460,7 @@ b0(%0: int, %1: ptr):
   %24: ptr = null
   %25: ptr = symbol g_global
   %26: int = load1 %25 + 0
-  call qf_printBool(%24, %26)
+  call qf_printBool(%24, %26) narrow [1]
   %27: ptr = null
   %28: int = const 7
   %29: int = call qf_odd(%27, %28)
@@ -469,7 +470,7 @@ b0(%0: int, %1: ptr):
   %32: ptr = null
   %33: ptr = symbol g_global_2
   %34: int = load1 %33 + 0
-  call qf_printBool(%32, %34)
+  call qf_printBool(%32, %34) narrow [1]
   %35: ptr = symbol qf_countDown_closure
   %36: ptr = symbol g_countDown
   store8 %36 + 0, %35

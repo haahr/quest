@@ -41,6 +41,9 @@ export
     let intLiteral(n: Int): String =
         if n < 0 then "(-INT64_C(" <> conv.int({0 - n} - 1) <> ") - 1)" else "INT64_C(" <> conv.int(n) <> ")" end
 
+    (* An offset as C spells it (conv.int spells a negative one with ~) *)
+    let decimal(n: Int): String = if n < 0 then "(" <> intLiteral(n) <> ")" else conv.int(n) end
+
     (* A value as a word (for a composite's half), and a word as a value of
      * type t *)
     let asWord(f: Function n: Int): String =
@@ -85,7 +88,7 @@ export
 
     (* A pointer to memory of C type t at a value plus an offset *)
     let memory(p: Printer t: String address: Int offset: Int): String =
-        "*(" <> t <> volatile(p) <> " *)(" <> v(address) <> " + " <> conv.int(offset) <> ")"
+        "*(" <> t <> volatile(p) <> " *)(" <> v(address) <> " + " <> decimal(offset) <> ")"
 
     let symbolAddress(p: Printer symbol: String): String =
         if hashMap.contains(:String :Bool p.threadLocals symbol) then "(char *)&" <> symbol
@@ -113,6 +116,11 @@ export
                     if bytes is 0 then raise unsupported with "ssac: a composite through memory not in a slot" end end
                     vector.append(:String types memoryType(bytes))
                     vector.append(:String exprs "*(" <> memoryType(bytes) <> " *)" <> v(i.args[k]))
+                    k := k + 1
+                elsif contains(i.narrow k) then
+                    (* A bool or a char, which C passes as one byte *)
+                    vector.append(:String types "uint8_t")
+                    vector.append(:String exprs "(uint8_t)" <> v(i.args[k]))
                     k := k + 1
                 else
                     vector.append(:String types cType(typeOf(f i.args[k])))
@@ -167,7 +175,7 @@ export
                     when opConst then set(intLiteral(i.imm))
                     when opRealConst then set("ssac_real((uint64_t)" <> intLiteral(i.imm) <> ")")
                     when opSymbol then
-                        set(symbolAddress(p i.symbol) <> if i.imm is 0 then "" else " + " <> conv.int(i.imm) end)
+                        set(symbolAddress(p i.symbol) <> if i.imm is 0 then "" else " + " <> decimal(i.imm) end)
                     when opNull then set("(char *)0")
                     when opSlot then set("(char *)s" <> conv.int(i.imm))
                     when opShl then set("(int64_t)((uint64_t)" <> a(0) <> " << " <> a(1) <> ")")
@@ -283,7 +291,8 @@ export
                     k := k + 2
                 else
                     let n = vector.get(:Int params k)
-                    vector.append(:String decls cType(typeOf(f n)) <> if named then " " <> v(n) else "" end)
+                    let t = if contains(f.paramNarrow k) then "uint8_t" else cType(typeOf(f n)) end
+                    vector.append(:String decls t <> if named then " " <> v(n) else "" end)
                     k := k + 1
                 end
             end
@@ -361,7 +370,7 @@ export
                 if hashMap.contains(:String :Bool threadLocals x.symbol) then
                     raise unsupported with "ssac: static data holding a thread-local's address, " <> x.symbol end
                 end
-                "(void *)((char *)(void *)" <> x.symbol <> " + " <> conv.int(x.addend) <> ")"
+                "(void *)((char *)(void *)" <> x.symbol <> " + " <> decimal(x.addend) <> ")"
         end
 
     (* A datum's C declaration, without its contents *)

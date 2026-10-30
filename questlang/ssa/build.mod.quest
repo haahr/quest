@@ -284,7 +284,7 @@ export
             let addr = i.results[0]
             ssa.append(fn.f fn.cur tuple
                 let op = i.op let var args = noValues let results = i.results let imm = s let symbol = "" let width = 0
-                let signed = false let pairs = noPairs let memory = noPairs
+                let signed = false let pairs = noPairs let memory = noPairs let narrow = noPairs
             end)
             addr
         end
@@ -363,7 +363,7 @@ export
                 let i = ssa.inst(option opRealConst of ssa.Opcode end noValues array of ssa.newValue(fn.f tReal) end)
                 ssa.append(fn.f fn.cur tuple
                     let op = i.op let var args = noValues let results = i.results let imm = realBitsOf(x.r) let symbol = ""
-                    let width = 0 let signed = false let pairs = noPairs let memory = noPairs
+                    let width = 0 let signed = false let pairs = noPairs let memory = noPairs let narrow = noPairs
                 end)
                 i.results
             when constString with x then
@@ -407,7 +407,7 @@ export
             ssa.append(fn.f fn.cur tuple
                 let op = i.op let var args = noValues let results = i.results
                 let imm = f.index * maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct("QTypeDescriptor")).bytes
-                let symbol = f.symbol let width = 0 let signed = false let pairs = noPairs let memory = noPairs
+                let symbol = f.symbol let width = 0 let signed = false let pairs = noPairs let memory = noPairs let narrow = noPairs
             end)
             i.results[0]
         end
@@ -446,7 +446,7 @@ export
             let addr = ssa.newValue(fn.f tPtr)
             ssa.append(fn.f fn.cur tuple
                 let op = option opSlot of ssa.Opcode end let var args = noValues let results = array of addr end let imm = s
-                let symbol = "" let width = 0 let signed = false let pairs = noPairs let memory = noPairs
+                let symbol = "" let width = 0 let signed = false let pairs = noPairs let memory = noPairs let narrow = noPairs
             end)
             for i = 0 upto {extent ptrs - 1} do store(fn addr 8 * i 8 ptrs[i]) end
             addr
@@ -679,10 +679,25 @@ export
             vector.toArray(:Int starts)
         end
 
+    (* Which of a call's arguments C passes as one byte, from the IR atoms
+     * that make them (after leading words) *)
+    let narrowOf(lead: Int args: Array(Atom)): Array(Int) =
+        begin
+            let found = vector.new(:Int)
+            let var at = lead
+            for i = 0 upto {extent args - 1} do
+                let ps = parts(ir.atomType(args[i]))
+                if {extent ps is 1} andif {ps[0].width is 1} then vector.append(:Int found at) end
+                at := at + {if extent ps is 0 then 1 else extent ps end}
+            end
+            vector.toArray(:Int found)
+        end
+
     let directCall(fn: Fn symbol: String lead: Array(Int) args: Array(Atom) resultType: Type): Array(Int) =
         begin
             let ps = resultParts(resultType)
-            let vs = ssa.call(fn.f fn.cur symbol concat(lead atoms(fn args)) pairsOf(extent lead args) typesOf(ps))
+            let vs = ssa.callNarrow(fn.f fn.cur symbol concat(lead atoms(fn args)) pairsOf(extent lead args)
+                narrowOf(extent lead args) typesOf(ps))
             resultsOf(fn ps vs)
         end
 
@@ -712,7 +727,8 @@ export
             let env = loadWord(fn clos runtimeLayout.offset("QClosure" "env") tPtr)
             let ps = resultParts(callee.type)
             let all = concat(concat(array of fnPtr env end descs) atoms(fn args))
-            let vs = ssa.call(fn.f fn.cur "" all pairsOf({2 + extent descs} args) typesOf(ps))
+            let vs = ssa.callNarrow(fn.f fn.cur "" all pairsOf({2 + extent descs} args) narrowOf({2 + extent descs} args)
+                typesOf(ps))
             resultsOf(fn ps vs)
         end
 
@@ -1440,7 +1456,7 @@ export
                     ssa.append(fn.f fn.cur tuple
                         let op = option opRealConst of ssa.Opcode end let var args = noValues let results = array of v end
                         let imm = realBitsOf(r) let symbol = "" let width = 0 let signed = false let pairs = noPairs
-                        let memory = noPairs
+                        let memory = noPairs let narrow = noPairs
                     end)
                     found := maybe.some(:Array(Int) array of v end)
                 end
@@ -1456,7 +1472,7 @@ export
                     ssa.append(fn.f fn.cur tuple
                         let op = option opRealConst of ssa.Opcode end let var args = noValues let results = array of v end
                         let imm = runtimeLayout.realBits[i].value let symbol = "" let width = 0 let signed = false
-                        let pairs = noPairs let memory = noPairs
+                        let pairs = noPairs let memory = noPairs let narrow = noPairs
                     end)
                     found := maybe.some(:Array(Int) array of v end)
                 end
@@ -1566,7 +1582,7 @@ export
                 let addr = ssa.newValue(fn.f tPtr)
                 ssa.append(fn.f fn.cur tuple
                     let op = option opSlot of ssa.Opcode end let var args = noValues let results = array of addr end let imm = s
-                    let symbol = "" let width = 0 let signed = false let pairs = noPairs let memory = noPairs
+                    let symbol = "" let width = 0 let signed = false let pairs = noPairs let memory = noPairs let narrow = noPairs
                 end)
                 writeLocation(fn addr t atom(fn x.init))
                 array of addr end
@@ -1905,7 +1921,7 @@ export
             let h = ssa.newValue(fn.f tPtr)
             ssa.append(fn.f fn.cur tuple
                 let op = option opSlot of ssa.Opcode end let var args = noValues let results = array of h end let imm = slot
-                let symbol = "" let width = 0 let signed = false let pairs = noPairs let memory = noPairs
+                let symbol = "" let width = 0 let signed = false let pairs = noPairs let memory = noPairs let narrow = noPairs
             end)
             let chain = symbolAt(fn handlerChain)
             store(fn h runtimeLayout.offset("QExceptionHandler" "prev") 8 loadWord(fn chain 0 tPtr))
@@ -1943,7 +1959,7 @@ export
             let state = ssa.newValue(fn.f tPtr)
             ssa.append(fn.f fn.cur tuple
                 let op = option opSlot of ssa.Opcode end let var args = noValues let results = array of state end
-                let imm = stateSlot let symbol = "" let width = 0 let signed = false let pairs = noPairs let memory = noPairs
+                let imm = stateSlot let symbol = "" let width = 0 let signed = false let pairs = noPairs let memory = noPairs let narrow = noPairs
             end)
             let current = symbolAt(fn currentException)
             for k = 0 upto {stateRecord.bytes / 8 - 1} do store(fn state 8 * k 8 loadWord(fn current 8 * k tInt)) end
@@ -2148,6 +2164,7 @@ export
             let nCaptured = extent f.typeParams - own
             let paramTypes = vector.new(:ssa.Type)
             let paramPairs = vector.new(:Int)
+            let paramNarrow = vector.new(:Int)
             vector.append(:ssa.Type paramTypes tPtr)
             for i = 0 upto {own - 1} do vector.append(:ssa.Type paramTypes tPtr) end
             for i = 0 upto {extent f.params - 1} do
@@ -2159,11 +2176,15 @@ export
                     (* An Ok parameter is a QVal word in C *)
                     if extent ps is 0 then vector.append(:ssa.Type paramTypes tInt) end
                     if extent ps is 2 then vector.append(:Int paramPairs vector.length(:ssa.Type paramTypes)) end
+                    if {extent ps is 1} andif {ps[0].width is 1} then
+                        vector.append(:Int paramNarrow vector.length(:ssa.Type paramTypes))
+                    end
                     for k = 0 upto {extent ps - 1} do vector.append(:ssa.Type paramTypes ps[k].type) end
                 end
             end
             let sf = ssa.newFunction(codeName(u f) false vector.toArray(:ssa.Type paramTypes) typesOf(parts(f.resultType)))
             sf.paramPairs := vector.toArray(:Int paramPairs)
+            sf.paramNarrow := vector.toArray(:Int paramNarrow)
             let fn = newFn(u sf hashMap.get(:Int :ir.OpMakeClosure u.closuresOf f.id))
             let params = ssa.block(sf 0).params
             let var at = 0
@@ -2191,7 +2212,9 @@ export
                         put(:Int :Array(Int) fn.values entry.v.id noValues)
                     else
                         let vs = array of(extent ps 0)
-                        for k = 0 upto {extent ps - 1} do vs[k] := next() end
+                        (* A Bool or a Char from C, its upper bits unspecified
+                         * (AAPCS64), extended *)
+                        for k = 0 upto {extent ps - 1} do vs[k] := narrowed(fn next() ps[k]) end
                         if entry.v.isMutable then write(fn entry.v vs)
                         else put(:Int :Array(Int) fn.values entry.v.id vs) end
                     end
@@ -2234,11 +2257,12 @@ export
      * signature, after lead pointers: its type parameters' descriptors, then
      * its parameters (a var or out parameter's location, an Ok as a word);
      * and where its 16-byte composites start *)
-    Let Signature = Tuple types: vector.T(ssa.Type) pairs: vector.T(Int) end
+    Let Signature = Tuple types: vector.T(ssa.Type) pairs: vector.T(Int) narrow: vector.T(Int) end
     let signature(lead: Int sig: staticdata.ShapeSignature): Signature =
         begin
             let types = vector.new(:ssa.Type)
             let pairs = vector.new(:Int)
+            let narrow = vector.new(:Int)
             for i = 0 upto {lead + vector.length(:maybe.T(Type) sig.bounds) - 1} do vector.append(:ssa.Type types tPtr) end
             for j = 0 upto {vector.length(:model.Param sig.params) - 1} do
                 let p = vector.get(:model.Param sig.params j)
@@ -2248,23 +2272,24 @@ export
                     let ps = parts(p.type)
                     if extent ps is 0 then vector.append(:ssa.Type types tInt) end
                     if extent ps is 2 then vector.append(:Int pairs vector.length(:ssa.Type types)) end
+                    if {extent ps is 1} andif {ps[0].width is 1} then vector.append(:Int narrow vector.length(:ssa.Type types)) end
                     for k = 0 upto {extent ps - 1} do vector.append(:ssa.Type types ps[k].type) end
                 end
             end
-            tuple let types = types let pairs = pairs end
+            tuple let types = types let pairs = pairs let narrow = narrow end
         end
     let pointers(n: Int): Signature =
         begin
             let types = vector.new(:ssa.Type)
             for i = 0 upto {n - 1} do vector.append(:ssa.Type types tPtr) end
-            tuple let types = types let pairs = vector.new(:Int) end
+            tuple let types = types let pairs = vector.new(:Int) let narrow = vector.new(:Int) end
         end
 
     (* The pairs of a call whose arguments are a signature's parameters after
      * more lead words *)
-    let shiftedPairs(s: Signature by: Int): Array(Int) =
+    let shifted(xs: vector.T(Int) by: Int): Array(Int) =
         begin
-            let r = vector.toArray(:Int s.pairs)
+            let r = vector.toArray(:Int xs)
             for i = 0 upto {extent r - 1} do r[i] := r[i] + by end
             r
         end
@@ -2273,6 +2298,7 @@ export
         begin
             let sf = ssa.newFunction(symbol exported vector.toArray(:ssa.Type s.types) results)
             sf.paramPairs := vector.toArray(:Int s.pairs)
+            sf.paramNarrow := vector.toArray(:Int s.narrow)
             newFn(u sf maybe.none(:ir.OpMakeClosure))
         end
 
@@ -2299,13 +2325,13 @@ export
                     andif {extent maybe.unwrap(:ir.OpMakeClosure known).typeArgs is 0}
                     andif {extent maybe.unwrap(:ir.OpMakeClosure known).captures is 0}
                 let results = if direct then
-                    ssa.call(fn.f fn.cur codeName(u maybe.unwrap(:ir.OpMakeClosure known).code)
-                        concat(array of null(fn) end args) shiftedPairs(s 1) typesOf(ps))
+                    ssa.callNarrow(fn.f fn.cur codeName(u maybe.unwrap(:ir.OpMakeClosure known).code)
+                        concat(array of null(fn) end args) shifted(s.pairs 1) shifted(s.narrow 1) typesOf(ps))
                 else
                     let clos = read(fn v)[0]
                     let fnPtr = loadWord(fn clos runtimeLayout.offset("QClosure" "fn") tPtr)
                     let env = loadWord(fn clos runtimeLayout.offset("QClosure" "env") tPtr)
-                    ssa.call(fn.f fn.cur "" concat(array of fnPtr env end args) shiftedPairs(s 2) typesOf(ps))
+                    ssa.callNarrow(fn.f fn.cur "" concat(array of fnPtr env end args) shifted(s.pairs 2) shifted(s.narrow 2) typesOf(ps))
                 end
                 returnValues(fn resultsOf(fn ps results))
                 maybe.some(:Function finished(fn))
@@ -2373,8 +2399,8 @@ export
                         p.type)
                 else vs end)
             end
-            let directResults = resultsOf(thunk retParts ssa.call(tf thunk.cur "" concat(array of closureFn(thunk orig) end
-                directArgs) shiftedPairs(s 1) typesOf(retParts)))
+            let directResults = resultsOf(thunk retParts ssa.callNarrow(tf thunk.cur "" concat(array of closureFn(thunk orig) end
+                directArgs) shifted(s.pairs 1) shifted(s.narrow 1) typesOf(retParts)))
             returnValues(thunk if not(isOk(ret)) andif slots.mayBeStoredAsSubtype(shapes.shape(ret)) then
                 fromWord(thunk convertWord(thunk toWord(thunk directResults ret) loadWord(thunk from resultAt tPtr)
                     loadWord(thunk to resultAt tPtr)) ret)
@@ -2428,8 +2454,8 @@ export
                 invokeArgs := concat(invokeArgs if byLocation(p) orif isOk(p.type) then array of w end
                     else fromWord(invoke w p.type) end)
             end
-            let invokeResults = resultsOf(invoke retParts ssa.call(vf invoke.cur "" concat(array of closureFn(invoke c) end
-                invokeArgs) shiftedPairs(s 1) typesOf(retParts)))
+            let invokeResults = resultsOf(invoke retParts ssa.callNarrow(vf invoke.cur "" concat(array of closureFn(invoke c) end
+                invokeArgs) shifted(s.pairs 1) shifted(s.narrow 1) typesOf(retParts)))
             returnValues(invoke array of if isOk(ret) then constant(invoke 0) else toWord(invoke invokeResults ret) end end)
             array of finished(thunk) finished(adapt) finished(invoke) end
         end

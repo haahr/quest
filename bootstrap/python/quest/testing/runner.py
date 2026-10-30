@@ -80,9 +80,13 @@ BACKEND_MODES = {
     "ssac": ["--backend", "ssac"],
     "ssac-program": ["--backend", "c", "--unit-backend", "main=ssac"],
     "ssac-modules": ["--backend", "ssac", "--unit-backend", "main=c"],
+    "arm64": ["--backend", "arm64"],
+    "arm64-program": ["--backend", "c", "--unit-backend", "main=arm64"],
+    "arm64-modules": ["--backend", "arm64", "--unit-backend", "main=c"],
 }
 SSAC_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-ssac.txt"
-BACKEND_PENDING = {"ssac": SSAC_PENDING, "ssac-program": SSAC_PENDING, "ssac-modules": SSAC_PENDING}
+ARM64_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-arm64.txt"
+BACKEND_PENDING = {mode: SSAC_PENDING if mode.startswith("ssac") else ARM64_PENDING for mode in BACKEND_MODES}
 # The phases that compile a program, which a backend's mode runs
 BACKEND_PHASES = ("run_c_compiled",)
 SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
@@ -1096,7 +1100,10 @@ def run_all_tests(
             if "run_c_compiled" in phases_to_run and questlang_files:
                 questlang_build = threading.Thread(
                     target=build_questlang_tests,
-                    args=(python_executable, questlang_files, questlang_build_dir, driver_command),
+                    # With the backend mode's options, so that the tests,
+                    # which run at once, find the shared modules up to date
+                    args=(python_executable, questlang_files, questlang_build_dir,
+                          [*driver_command, *driver_args] if driver_command else None),
                 )
                 questlang_build.start()
             if source_files or runs_eval or repl_files:

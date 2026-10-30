@@ -299,14 +299,14 @@ export
         end
 
     let compileCSource(source: String output: String nogc: Bool compiler: maybe.T(String)
-        extraObjects: Array(String) extraFlags: Array(String)): Ok =
+        extraObjects: Array(String) extraFlags: Array(String) assembly: Bool): Ok =
         begin
             let cc = if maybe.isSome(:String compiler) then maybe.unwrap(:String compiler) else findCCompiler() end
             let dir = runtimeDir()
             (* The source, in a temporary file of its own *)
             let tempDir = temporary(true paths.join(maybe.unwrapOr(:String nonEmpty(system.getEnv("TMPDIR")) "/tmp")
                 "questXXXXXXXX"))
-            let cFile = paths.join(tempDir "program.c")
+            let cFile = paths.join(tempDir if assembly then "program.s" else "program.c" end)
             let w = writer.file(cFile)
             writer.putString(w source)
             writer.close(w)

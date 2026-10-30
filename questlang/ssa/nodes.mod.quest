@@ -27,6 +27,7 @@ export
         signed: Bool
         pairs: Array(Int)
         memory: Array(Int)
+        narrow: Array(Int)
     end
 
     Def Target = Tuple block: Int var args: Array(Int) end
@@ -56,6 +57,7 @@ export
         paramTypes: vector.T(Type)
         resultTypes: vector.T(Type)
         var paramPairs: Array(Int)
+        var paramNarrow: Array(Int)
         types: vector.T(Type)
         blocks: vector.T(Block)
         slots: vector.T(Slot)
@@ -135,6 +137,7 @@ export
                 let paramTypes = vector.fromArray(:Type params)
                 let resultTypes = vector.fromArray(:Type results)
                 let var paramPairs = array of :Int end
+                let var paramNarrow = array of :Int end
                 let types = vector.new(:Type)
                 let blocks = vector.new(:Block)
                 let slots = vector.new(:Slot)
@@ -152,7 +155,7 @@ export
     let inst(op: Opcode args: Array(Int) results: Array(Int)): Inst =
         tuple
             let op = op let var args = args let results = results let imm = 0 let symbol = "" let width = 0
-            let signed = false let pairs = none let memory = none
+            let signed = false let pairs = none let memory = none let narrow = none
         end
 
     let emit(f: Function b: Int op: Opcode args: Array(Int) t: Type): Int =
@@ -167,7 +170,7 @@ export
             let v = newValue(f option typeInt of Type end)
             append(f b tuple
                 let op = option opConst of Opcode end let var args = none let results = array of v end let imm = n
-                let symbol = "" let width = 0 let signed = false let pairs = none let memory = none
+                let symbol = "" let width = 0 let signed = false let pairs = none let memory = none let narrow = none
             end)
             v
         end
@@ -177,7 +180,7 @@ export
             let v = newValue(f option typePtr of Type end)
             append(f b tuple
                 let op = option opSymbol of Opcode end let var args = none let results = array of v end let imm = 0
-                let symbol = symbol let width = 0 let signed = false let pairs = none let memory = none
+                let symbol = symbol let width = 0 let signed = false let pairs = none let memory = none let narrow = none
             end)
             v
         end
@@ -197,7 +200,7 @@ export
             let v = newValue(f t)
             append(f b tuple
                 let op = option opLoad of Opcode end let var args = array of address end let results = array of v end
-                let imm = offset let symbol = "" let width = width let signed = signed let pairs = none let memory = none
+                let imm = offset let symbol = "" let width = width let signed = signed let pairs = none let memory = none let narrow = none
             end)
             v
         end
@@ -205,10 +208,11 @@ export
     let store(f: Function b: Int address: Int offset: Int width: Int value: Int): Ok =
         append(f b tuple
             let op = option opStore of Opcode end let var args = array of address value end let results = none
-            let imm = offset let symbol = "" let width = width let signed = false let pairs = none let memory = none
+            let imm = offset let symbol = "" let width = width let signed = false let pairs = none let memory = none let narrow = none
         end)
 
-    let call(f: Function b: Int symbol: String args: Array(Int) pairs: Array(Int) results: Array(Type)): Array(Int) =
+    let callNarrow(f: Function b: Int symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int)
+        results: Array(Type)): Array(Int) =
         begin
             let vs = array of(extent results 0)
             for i = 0 upto {extent results - 1} do vs[i] := newValue(f results[i]) end
@@ -217,10 +221,13 @@ export
             end
             append(f b tuple
                 let op = op let var args = args let results = vs let imm = 0 let symbol = symbol let width = 0
-                let signed = false let pairs = pairs let memory = noMemory
+                let signed = false let pairs = pairs let memory = noMemory let narrow = narrow
             end)
             vs
         end
+
+    let call(f: Function b: Int symbol: String args: Array(Int) pairs: Array(Int) results: Array(Type)): Array(Int) =
+        callNarrow(f b symbol args pairs none results)
 
     let callWithMemory(f: Function b: Int symbol: String args: Array(Int) memory: Array(Int) results: Array(Type)): Array(Int) =
         begin
@@ -228,7 +235,7 @@ export
             for i = 0 upto {extent results - 1} do vs[i] := newValue(f results[i]) end
             append(f b tuple
                 let op = option opCall of Opcode end let var args = args let results = vs let imm = 0 let symbol = symbol
-                let width = 0 let signed = false let pairs = none let memory = memory
+                let width = 0 let signed = false let pairs = none let memory = memory let narrow = none
             end)
             vs
         end

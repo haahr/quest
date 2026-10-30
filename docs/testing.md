@@ -221,9 +221,11 @@ changed, and malformed `--backend` and `--unit-backend` options are errors.
 golden and error) with the driver's units compiled by another backend ([arm64.md](arm64.md) §4): `ssac` compiles
 every unit, the library's included, through the SSA's C printer ([ssa.md](ssa.md) §8), `ssac-program` the program's
 unit alone, and `ssac-modules` its modules' alone, the rest through the C printer, so that the two backends' units
-call each other both ways. Several modes, separated by commas, run one after another with one driver. Each mode's
-pending list adds to `pending.txt`: `tests/self-hosted/pending-ssac.txt` for the `ssac` modes, empty since the
-printer's step.
+call each other both ways; `arm64`, `arm64-program`, and `arm64-modules` do the same with the native backend. Several
+modes, separated by commas, run one after another with one driver. Each mode's pending list adds to `pending.txt`:
+`tests/self-hosted/pending-ssac.txt` for the `ssac` modes and `tests/self-hosted/pending-arm64.txt` for the `arm64`
+ones, both empty. The questlang tests `ssac_print` and `arm64_assemble` print a unit of the SSA built by hand as C and
+as assembly, whose goldens `tests/python/test_ssac.py` compiles and `tests/python/test_arm64.py` assembles.
 
 The runners set `QUEST_HOME` to the project directory, where the self-hosted driver, which runs in a scratch
 directory, finds `lib/`. `--self-hosted-driver PATH` runs a driver already compiled (as by `./questboot -o build/questlang/main
@@ -601,7 +603,7 @@ Which tests a change needs depends on which compilers it changes (section 2.8, a
 
 | Change | Command | Runs | Takes (10 cores) |
 | :--- | :--- | :--- | ---: |
-| **Both compilers,** or what they share: the language, `lib/`, `runtime/`, a fix to what programs do or what errors they report, the tests | `tools/check` | At once: the self-hosting check seeded from the release (50% of the workers), the backends' suite (20%: `--self-hosted --backend ssac,ssac-program,ssac-modules`), the bootstrap's suite (30%), and the unit tests but the terminal ones; then the terminal tests alone | about 11 min |
+| **Both compilers,** or what they share: the language, `lib/`, `runtime/`, a fix to what programs do or what errors they report, the tests | `tools/check` | At once: the self-hosting check seeded from the release (50% of the workers), the backends' suite (20%: `--self-hosted --backend` with the three `ssac` modes and the three `arm64` ones), the bootstrap's suite (30%), and the unit tests but the terminal ones; then the terminal tests alone | about 11 min |
 | **The self-hosted compiler alone:** `questlang/` changes to how it compiles (its IR, its C), and refactorings | `tools/check --self-hosted-only` | The self-hosting check seeded from the release, with 8 workers, and the backends' suite, with a quarter of the cores | about 11 min |
 
 - **Both take about as long,** since the self-hosted suite sets when either ends (section 5.1); `--self-hosted-only`

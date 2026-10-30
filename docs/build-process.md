@@ -433,9 +433,10 @@ Placement:
 - **`<stem>.int.h`:** a leading comment `/* quest abi <version> producer <producer> */`, for diagnosis only. A header is
   produced from the interface its `.qi` describes, and its freshness is decided by the `.qi` (§5.3).
 - **`.qm`:** top-level keys `"abi"` and `"producer"`. A `.c`/`.o` pair is produced together with its `.qm`, and its
-  freshness is decided by the `.qm`. The self-hosted compiler's also records `"backend"`, the backend that compiled
-  the unit (`c` or `ssac`, `c` when absent, [arm64.md](arm64.md) §3.12): a unit the build's choice of backends
-  (`--backend`, `--unit-backend`) assigns to another is stale, as `compiled by the <backend> backend`.
+  freshness is decided by the `.qm`. The self-hosted compiler's also records `"backend"`, the backend that compiled the
+  unit (`c`, `ssac`, or `arm64`, whose unit is `.mod.s` rather than `.mod.c`; `c` when absent, [arm64.md](arm64.md)
+  §3.12): a unit the build's choice of backends (`--backend`, `--unit-backend`) assigns to another is stale, as
+  `compiled by the <backend> backend`.
 
 #### 5.2.2. Staleness Rules with the ABI Version
 An artifact is **up to date** when it exists, is at least as new as each source it depends on (Rules 1 and 2 and the

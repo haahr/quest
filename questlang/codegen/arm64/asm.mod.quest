@@ -1,0 +1,118 @@
+(* Quest Self-Hosted Compiler: arm64 Assembly Implementation *)
+
+module asm : Asm
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    collections/vector : collections/Vector
+    util/stringBuilder : util/StringBuilder
+    stringOp = string : StringOp
+    conv : Conv
+    ascii : Ascii
+export
+    let symbol(name: String): String = "_" <> name
+
+    let decimal(n: Int): String =
+        if n >= 0 then conv.int(n)
+        elsif n is {~9223372036854775807 - 1} then "-9223372036854775808"
+        else "-" <> conv.int(0 - n) end
+
+    let addressOf(reg: String name: String offset: Int local: Bool threadLocal: Bool): Array(String) =
+        begin
+            let s = symbol(name)
+            let lines = vector.new(:String)
+            if threadLocal then
+                vector.append(:String lines "adrp x0, " <> s <> "@TLVPPAGE")
+                vector.append(:String lines "ldr x0, [x0, " <> s <> "@TLVPPAGEOFF]")
+                vector.append(:String lines "ldr x16, [x0]")
+                vector.append(:String lines "blr x16")
+                if not(stringOp.equal(reg "x0")) then vector.append(:String lines "mov " <> reg <> ", x0") end
+            elsif local then
+                vector.append(:String lines "adrp " <> reg <> ", " <> s <> "@PAGE")
+                vector.append(:String lines "add " <> reg <> ", " <> reg <> ", " <> s <> "@PAGEOFF")
+            else
+                vector.append(:String lines "adrp " <> reg <> ", " <> s <> "@GOTPAGE")
+                vector.append(:String lines "ldr " <> reg <> ", [" <> reg <> ", " <> s <> "@GOTPAGEOFF]")
+            end
+            (* An offset past the symbol (small, as the SSA's are) *)
+            if offset isnot 0 then
+                if {offset > 0} andif {offset < 4096} then
+                    vector.append(:String lines "add " <> reg <> ", " <> reg <> ", #" <> conv.int(offset))
+                elsif {offset < 0} andif {offset > ~4096} then
+                    vector.append(:String lines "sub " <> reg <> ", " <> reg <> ", #" <> conv.int(0 - offset))
+                else
+                    vector.append(:String lines "mov x17, #" <> decimal(offset))
+                    vector.append(:String lines "add " <> reg <> ", " <> reg <> ", x17")
+                end
+            end
+            vector.toArray(:String lines)
+        end
+
+    let functionStart(name: String exported: Bool): Array(String) =
+        begin
+            let lines = vector.new(:String)
+            vector.append(:String lines ".p2align 2")
+            if exported then vector.append(:String lines ".globl " <> symbol(name)) end
+            vector.append(:String lines symbol(name) <> ":")
+            vector.append(:String lines ".cfi_startproc")
+            vector.toArray(:String lines)
+        end
+    let functionEnd = array of ".cfi_endproc" end
+
+    (* A string as .ascii spells it: a quote, a backslash, and characters
+     * outside printable ASCII escaped, the last as three octal digits *)
+    let quoted(s: String): String =
+        begin
+            let b = stringBuilder.new()
+            b.char('"')
+            for i = 0 upto {stringOp.length(s) - 1} do
+                let c = stringOp.getChar(s i)
+                let code = ascii.val(c)
+                if {c is '"'} orif {c is '\\'} then
+                    b.char('\\')
+                    b.char(c)
+                elsif {code < 32} orif {code >= 127} then
+                    b.char('\\')
+                    b.str(conv.int(code / 64))
+                    b.str(conv.int({code / 8} - {8 * {code / 64}}))
+                    b.str(conv.int(code - {8 * {code / 8}}))
+                else
+                    b.char(c)
+                end
+            end
+            b.char('"')
+            b.toString()
+        end
+
+    let data(d: ssa.Data): Array(String) =
+        begin
+            let lines = vector.new(:String)
+            let section = case d.contents
+                when contentsText then "__TEXT,__const"
+                when contentsZero then "__DATA,__data"
+                when contentsWords then if d.writable then "__DATA,__data" else "__DATA,__const" end
+            end
+            vector.append(:String lines ".section " <> section)
+            vector.append(:String lines ".p2align 3")
+            if d.exported then vector.append(:String lines ".globl " <> symbol(d.symbol)) end
+            vector.append(:String lines symbol(d.symbol) <> ":")
+            case d.contents
+                when contentsZero with x then vector.append(:String lines ".space " <> conv.int(if x.bytes > 0 then x.bytes else 1 end))
+                when contentsText with x then vector.append(:String lines ".asciz " <> quoted(x.text))
+                when contentsWords with x then
+                    for i = 0 upto {extent x.words - 1} do
+                        vector.append(:String lines ".quad " <> case x.words[i]
+                            when wordInt with w then decimal(w.n)
+                            when wordSymbol with w then
+                                symbol(w.symbol) <> if w.addend is 0 then ""
+                                    elsif w.addend > 0 then "+" <> conv.int(w.addend)
+                                    else "-" <> conv.int(0 - w.addend) end
+                        end)
+                    end
+                    if extent x.words is 0 then vector.append(:String lines ".quad 0") end
+            end
+            vector.toArray(:String lines)
+        end
+
+    let unitStart = array of ".section __TEXT,__text,regular,pure_instructions" end
+    let unitEnd = array of ".subsections_via_symbols" end
+end

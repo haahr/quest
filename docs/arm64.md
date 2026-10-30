@@ -430,10 +430,24 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
      the program as `main`). A unit's manifest records its backend (`"backend"`), and a unit compiled by another is
      stale. `--whole-program` stays the C backend's until step 13.
 6. **A first arm64 backend:** instruction selection, the trivial allocator, frames, static data, emission, and
-   linking, for straight-line code, calls, and control flow; other constructs are errors (§3.12). *Done when* the
-   tests that use only those pass with `--backend arm64`, and the rest are on its pending list.
+   linking, for straight-line code, calls, and control flow; other constructs are errors (§3.12). *Done*
+   (2026-10-29), with step 7: `codegen/arm64/codegen` compiles the SSA with the trivial allocator (every value has a
+   slot in its frame; each instruction loads its arguments into scratch registers and stores its results), and
+   `codegen/arm64/asm` spells Darwin's assembly; a unit's `.mod.s` (or `.main.s`) is assembled by `clang -c`. Every
+   golden and error test passes with `--backend arm64`, with the program's unit alone (`arm64-program`) and with the
+   modules' alone (`arm64-modules`); `tests/self-hosted/pending-arm64.txt` is empty, and `tools/check` runs the
+   three modes (ahead of step 9). Decided while building it:
+   - **A `try` calls `_setjmp`,** with the C backend's handler record, until step 8: the trivial allocator keeps no
+     value in a register across a call, so `_setjmp`'s register restore loses nothing.
+   - **Narrow arguments** (a C `bool` or `char`) are marked in the SSA (`narrow`, ssa.md §2.2): Darwin packs them on
+     the stack a byte each, which a mixed build of `tests/self-hosted/backends` (with more arguments than registers)
+     found, for `ssac` too; and a function extends its own on entry, since a C caller leaves their upper bits
+     unspecified.
+   - **Every symbol the unit does not define is reached through the GOT,** a thread-local through its descriptor's
+     accessor, so that one spelling serves the runtime, other units, and the system's libraries.
 7. **Every construct:** closures, descriptors, conversions, records, variants, arrays, strings, modules and their
-   initialization, function tables. *Done when* only tests that raise or catch exceptions are pending.
+   initialization, function tables. *Done* (2026-10-29) with step 6: the SSA had lowered every construct to loads,
+   stores, and calls, so nothing was pending.
 8. **Exceptions** (§3.6): the shared handler record (ABI bump), native `try` and `raise`, tracebacks. *Done when* the
    pending list is empty, and mixed builds raise across the backends both ways.
 9. **`tools/check` runs everything** (§4): the `arm64` mode, its mixed builds, and the ABI tests, before every push,

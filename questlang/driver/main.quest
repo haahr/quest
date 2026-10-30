@@ -218,14 +218,15 @@ let options =
             elsif stringOp.equal(arg "--backend") andif valued then
                 (* The backend every unit is compiled by (codegen/choice) *)
                 if not(choice.isBackend(system.args[i + 1])) then
-                    usage("--backend takes c or ssac, not '" <> system.args[i + 1] <> "'")
+                    usage("--backend takes c, ssac, or arm64, not '" <> system.args[i + 1] <> "'")
                 end
                 backend := system.args[i + 1]
                 i := i + 2
             elsif stringOp.equal(arg "--unit-backend") andif valued then
                 let o = choice.parseOverride(system.args[i + 1])
                 if maybe.isNone(:choice.Override o) then
-                    usage("--unit-backend takes UNIT=BACKEND, with BACKEND c or ssac, not '" <> system.args[i + 1] <> "'")
+                    usage("--unit-backend takes UNIT=BACKEND, with BACKEND c, ssac, or arm64, not '" <> system.args[i + 1]
+                        <> "'")
                 end
                 vector.append(:choice.Override unitBackends maybe.unwrap(:choice.Override o))
                 i := i + 2
@@ -794,11 +795,12 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     let objects = engine.buildModules(newEngine(e) modules importer e.programDir)
                     if writing then
                         compilerRunner.compileCSource(t.c paths.absolute(maybe.unwrap(:String compileOutput))
-                            options.nogc maybe.none(:String) objects cBackend.cFlags(programBackend))
+                            options.nogc maybe.none(:String) objects cBackend.cFlags(programBackend)
+                            choice.isAssembly(programBackend))
                     else
                         let binary = compilerRunner.temporaryBinary()
                         compilerRunner.compileCSource(t.c binary false maybe.none(:String) objects
-                            cBackend.cFlags(programBackend))
+                            cBackend.cFlags(programBackend) choice.isAssembly(programBackend))
                         let r = compilerRunner.runBinary(binary options.programArgs)
                         if system.fileExists(binary) then system.removeFile(binary) end
                         if not(r.code is options.expectedExit) then

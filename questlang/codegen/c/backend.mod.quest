@@ -13,18 +13,20 @@ import
     ssaBuild = questlang/ssa/build : questlang/ssa/Build
     ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
     questlang/codegen/ssac : questlang/codegen/Ssac
+    arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
     util/maybe : util/Maybe
     stringOp = string : StringOp
 export
     let unitToC(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String): String =
-        if stringOp.equal(backend "ssac") then
+        if stringOp.equal(backend "ssac") orif stringOp.equal(backend "arm64") then
             try
                 let built = ssaBuild.buildUnit(unit)
                 ssaVerify.checkUnit(built)
-                ssac.printUnit(built)
+                if stringOp.equal(backend "ssac") then ssac.printUnit(built) else arm64.assembleUnit(built) end
             when ssaBuild.unsupported with m then raise printer.unsupported with "ssa: unsupported: " <> m end
             when ssaVerify.verifyError with m then raise printer.unsupported with m end
             when ssac.unsupported with m then raise printer.unsupported with m end
+            when arm64.unsupported with m then raise printer.unsupported with m end
             end
         else
             printer.printC(unit interfaceHeader)

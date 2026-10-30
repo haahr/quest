@@ -4,8 +4,8 @@ tests/self-hosted/backends is a program (main.quest) and a module it imports,
 which pass records, closures, exceptions, and polymorphic values across their
 boundary. The driver builds a copy of it outside the checkout, into one build
 directory, with each of a sequence of choices of backends: every unit by c,
-every unit by ssac, and the program and its module split between the two both
-ways. Each build must print what the first printed; each unit's manifest must
+every unit by ssac or arm64, and the program and its module split between the
+backends both ways. Each build must print what the first printed; each unit's manifest must
 record the backend that compiled it; a unit compiled by another backend than the
 build's choice must be compiled again, and one compiled by the same must not.
 Malformed options are usage errors, and --whole-program is the c backend's
@@ -28,7 +28,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 CASE = Path(__file__).resolve().parent / "backends"
 
-EXPECTED = "(6, 8)\n(33, 44)\n(9, 12)\ntoo far: 300\n7\n7\n"
+EXPECTED = "(6, 8)\n(33, 44)\n(9, 12)\ntoo far: 300\n7\n7\n691847.5\n1230539.875\n1231539.875\n"
 
 # The choices built in turn into one build directory: the options, and the
 # backend each unit's manifest must then record
@@ -40,6 +40,10 @@ BUILDS = (
     (["--backend", "ssac", "--unit-backend", "main=c"], {"main": "c", "geometry": "ssac"}),
     (["--backend", "c", "--unit-backend", "geometry=ssac", "--unit-backend", "geometry=c"],
      {"main": "c", "geometry": "c"}),
+    (["--backend", "arm64"], {"main": "arm64", "geometry": "arm64"}),
+    (["--backend", "arm64", "--unit-backend", "geometry=c"], {"main": "arm64", "geometry": "c"}),
+    (["--backend", "c", "--unit-backend", "geometry=arm64"], {"main": "c", "geometry": "arm64"}),
+    (["--backend", "ssac", "--unit-backend", "geometry=arm64"], {"main": "ssac", "geometry": "arm64"}),
 )
 
 
@@ -94,7 +98,7 @@ def check(driver: str) -> list[str]:
                                     f"backend {'changed' if changed else 'did not change'}")
 
         for options, message in (
-            (["--backend", "arm64"], "--backend takes c or ssac"),
+            (["--backend", "x86"], "--backend takes c, ssac, or arm64"),
             (["--unit-backend", "main"], "--unit-backend takes UNIT=BACKEND"),
             (["--unit-backend", "main=x"], "--unit-backend takes UNIT=BACKEND"),
             (["--whole-program", "--backend", "ssac"], "--whole-program compiles with the c backend only"),

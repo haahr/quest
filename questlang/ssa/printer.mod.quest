@@ -33,6 +33,8 @@ export
 
     let pairsText(pairs: Array(Int)): String =
         if extent pairs is 0 then "" else " pairs [" <> values2(pairs) <> "]" end
+    let narrowText(narrow: Array(Int)): String =
+        if extent narrow is 0 then "" else " narrow [" <> values2(narrow) <> "]" end
 
     let instText(f: Function i: nodes.Inst): String =
         begin
@@ -53,9 +55,9 @@ export
                 when opStore then
                     name <> conv.int(i.width) <> " " <> value(i.args[0]) <> " + " <> conv.int(i.imm) <> ", " <> value(i.args[1])
                 when opCall then
-                    name <> " " <> i.symbol <> "(" <> values(i.args) <> ")" <> pairsText(i.pairs)
+                    name <> " " <> i.symbol <> "(" <> values(i.args) <> ")" <> pairsText(i.pairs) <> narrowText(i.narrow)
                         <> if extent i.memory is 0 then "" else " memory [" <> values2(i.memory) <> "]" end
-                when opCallIndirect then name <> " " <> values(i.args) <> pairsText(i.pairs)
+                when opCallIndirect then name <> " " <> values(i.args) <> pairsText(i.pairs) <> narrowText(i.narrow)
                 else if extent i.args > 0 then name <> " " <> values(i.args) else name end
             end
             head <> body
@@ -89,6 +91,7 @@ export
             end
             b.str(")")
             if extent f.paramPairs > 0 then b.str(" pairs [" <> values2(f.paramPairs) <> "]") end
+            b.str(narrowText(f.paramNarrow))
             if not(vector.empty(:nodes.Type f.resultTypes)) then
                 b.str(": ")
                 for i = 0 upto {vector.length(:nodes.Type f.resultTypes) - 1} do

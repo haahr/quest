@@ -8,8 +8,8 @@ between them.
 A change to both runs, at once, the self-hosting check (run_tests.py
 --self-hosting --seed release, which ends by running the self-hosted suite with
 stage 2), the backends' suite (the self-hosted suite's compiled tests through
-the SSA's C printer, ssac, for every unit, and for the program's or the
-modules' alone: docs/arm64.md section 4), the bootstrap's suite, and the unit
+the SSA's C printer, ssac, and the native arm64 backend, each for every unit,
+and for the program's or the modules' alone: docs/arm64.md section 4), the bootstrap's suite, and the unit
 tests but those that drive a terminal, and then, alone, the terminal tests,
 which time out under load. A change to the self-hosted compiler alone runs the
 self-hosting check and the backends' suite only. Each suite builds into a temporary directory of its own, so
@@ -83,7 +83,8 @@ def main() -> int:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     run_tests = [python, str(ROOT_DIR / "run_tests.py")]
     self_hosting = [*run_tests, "--self-hosting", "--seed", args.seed]
-    backends = [*run_tests, "--self-hosted", "--seed", args.seed, "--backend", "ssac,ssac-program,ssac-modules"]
+    backends = [*run_tests, "--self-hosted", "--seed", args.seed, "--backend",
+                "ssac,ssac-program,ssac-modules,arm64,arm64-program,arm64-modules"]
     unit = [python, "-m", "unittest"]
     unit_environment = {"PYTHONPATH": str(ROOT_DIR / "bootstrap" / "python")}
 

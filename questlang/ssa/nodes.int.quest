@@ -29,7 +29,9 @@ export
      * signed says how a narrow load extends; for a call, pairs lists the
      * argument indices where a 16-byte composite starts, and memory those of
      * composites larger than 16 bytes that C passes by value: the SSA passes
-     * the address of a copy, as AAPCS64 does (docs/ssa.md section 2.2). *)
+     * the address of a copy, as AAPCS64 does (docs/ssa.md section 2.2); and
+     * narrow those of arguments C passes as one byte (a bool or a char),
+     * which Darwin's AAPCS64 packs on the stack. *)
     Def Inst = Tuple
         op: Opcode
         var args: Array(Int)
@@ -40,6 +42,7 @@ export
         signed: Bool
         pairs: Array(Int)
         memory: Array(Int)
+        narrow: Array(Int)
     end
 
     (* A jump's destination: a block, and the values bound to its
@@ -77,6 +80,8 @@ export
         paramTypes: vector.T(Type)
         resultTypes: vector.T(Type)
         var paramPairs: Array(Int)
+        (* The parameters C passes as one byte, as a call's narrow *)
+        var paramNarrow: Array(Int)
         (* The type of each value, by number *)
         types: vector.T(Type)
         blocks: vector.T(Block)
@@ -134,6 +139,9 @@ export
     (* A call of symbol (or, with symbol "", of the function pointer that is
      * the first argument): its results, of the types results *)
     call(f: Function b: Int symbol: String args: Array(Int) pairs: Array(Int) results: Array(Type)): Array(Int)
+    (* The same, with narrow arguments *)
+    callNarrow(f: Function b: Int symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int)
+        results: Array(Type)): Array(Int)
     (* The same, with arguments passed through memory *)
     callWithMemory(f: Function b: Int symbol: String args: Array(Int) memory: Array(Int) results: Array(Type)): Array(Int)
     terminate(f: Function b: Int t: Terminator): Ok

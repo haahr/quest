@@ -322,7 +322,12 @@ export
                         importResolutionChange(m maybe.some(:String paths.parent(source)) search programDir eng.resolver)
                     end
                 end
-            manifest.unitStaleness(source a.qm a.c a.o
+            (* Its code file is the one its recorded backend wrote *)
+            let recorded = if system.isFile(a.qm) then manifest.readQm(a.qm) else maybe.none(:manifest.ModuleManifest) end
+            let code = if maybe.isSome(:manifest.ModuleManifest recorded) then
+                choice.codeFile(a.c maybe.unwrap(:manifest.ModuleManifest recorded).backend)
+            else a.c end
+            manifest.unitStaleness(source a.qm code a.o
                 maybe.some(:All(m: manifest.ModuleManifest) maybe.T(String) changed))
         end
 
@@ -419,12 +424,13 @@ export
                             vector.toArray(:String e.includePaths)
                         e.programDir eng.resolver)
 
-                    log(eng "EMIT C" a.c)
-                    let w = writer.file(a.c)
+                    let code = choice.codeFile(a.c backend)
+                    log(eng "EMIT C" code)
+                    let w = writer.file(code)
                     writer.putString(w translated.c)
                     writer.close(w)
-                    log(eng "HOST COMPILE" "clang -c " <> a.c <> " -o " <> a.o)
-                    compilerRunner.compileCToObject(a.c a.o search eng.nogc eng.compiler
+                    log(eng "HOST COMPILE" "clang -c " <> code <> " -o " <> a.o)
+                    compilerRunner.compileCToObject(code a.o search eng.nogc eng.compiler
                         vector.toArray(:String vector.concat(:String vector.fromArray(:String eng.extraCFlags)
                             vector.fromArray(:String cBackend.cFlags(backend)))))
 

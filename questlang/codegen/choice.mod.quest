@@ -10,7 +10,7 @@ export
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
-    let backends = array of "c" "ssac" end
+    let backends = array of "c" "ssac" "arm64" end
     let isBackend(name: String): Bool =
         begin
             let var found = false
@@ -49,6 +49,15 @@ export
                     maybe.some(:Override tuple let unit = stringOp.getSub(s 0 at) let backend = backend end)
                 else maybe.none(:Override) end
             end
+        end
+
+    let isAssembly(backend: String): Bool = eq(backend "arm64")
+    let codeFile(cFile: String backend: String): String =
+        begin
+            let n = stringOp.length(cFile)
+            if isAssembly(backend) andif {n > 2} andif eq(stringOp.getSub(cFile {n - 2} 2) ".c") then
+                stringOp.getSub(cFile 0 {n - 2}) <> ".s"
+            else cFile end
         end
 
     let arguments(c: T): Array(String) =

@@ -1,0 +1,166 @@
+(* Self-Hosted Quest Compiler: Test the arm64 Backend's Code Generator
+ *
+ * Builds a unit of the SSA (questlang/ssa/nodes, docs/ssa.md) by hand and
+ * assembles it with the arm64 backend (questlang/codegen/arm64, docs/arm64.md
+ * section 3): a function that takes and returns a 16-byte composite; a call
+ * with more arguments than registers, Ints, Reals, a composite, and narrow ones
+ * packed on the stack; a function that takes as many; Real arithmetic and
+ * comparisons; loads and stores of every width at near and far offsets; a
+ * switch and a loop; a try, entered with _setjmp; a thread-local's address and
+ * a symbol the unit does not define; and data of zeros, text, and words.
+ * tests/python/test_arm64.py assembles the golden. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/verify : questlang/ssa/Verify
+    questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
+    collections/vector : collections/Vector
+    writer : Writer
+;
+
+let tInt = option typeInt of ssa.Type end;
+let tPtr = option typePtr of ssa.Type end;
+let tReal = option typeReal of ssa.Type end;
+let none = array of :Int end;
+let noTypes = array of :ssa.Type end;
+let params(f: ssa.Function): Array(Int) = vector.toArray(:Int ssa.block(f 0).params);
+let ret(f: ssa.Function b: Int vs: Array(Int)): Ok = ssa.terminate(f b option termReturn of ssa.Terminator with let values = vs end);
+let jumpTo(f: ssa.Function b: Int to: Int args: Array(Int)): Ok =
+    ssa.terminate(f b option termJump of ssa.Terminator with let target = ssa.target(to args) end);
+let slotAddress(f: ssa.Function b: Int s: Int): Int =
+    begin
+        let v = ssa.newValue(f tPtr)
+        ssa.append(f b tuple
+            let op = option opSlot of ssa.Opcode end let var args = none let results = array of v end let imm = s
+            let symbol = "" let width = 0 let signed = false let pairs = none let memory = none let narrow = none
+        end)
+        v
+    end;
+let unit = ssa.newUnit();
+let add(f: ssa.Function): Ok =
+    begin
+        let problems = verify.functionProblems(f)
+        for i = 0 upto {extent problems - 1} do writer.putString(writer.output "problem: " <> problems[i] <> "\n") end
+        vector.append(:ssa.Function unit.functions f)
+    end;
+
+(* 1. An exported function of a pair and an Int, returning a pair *)
+let swap = ssa.newFunction("qv_test_swap" true array of tPtr tPtr tInt end array of tPtr tPtr end);
+swap.paramPairs := array of 0 end;
+let sp = params(swap);
+ret(swap 0 array of sp[1] sp[0] end);
+add(swap);
+
+(* 2. A function of many arguments: seven Ints, a pair (on the stack, since
+ * one x register is left), two Ints, nine Reals, and two narrow ones *)
+let manyTypes = array of tInt tInt tInt tInt tInt tInt tInt tPtr tPtr tInt tInt
+    tReal tReal tReal tReal tReal tReal tReal tReal tReal tInt tInt end;
+let many = ssa.newFunction("qf_many" false manyTypes array of tReal end);
+many.paramPairs := array of 7 end;
+many.paramNarrow := array of 20 21 end;
+let mp = params(many);
+let var total = mp[11];
+for k = 12 upto 19 do total := ssa.binary(many 0 option opFadd of ssa.Opcode end total mp[k]) end;
+let ints = ssa.binary(many 0 option opAdd of ssa.Opcode end ssa.binary(many 0 option opAdd of ssa.Opcode end mp[10] mp[20])
+    mp[21]);
+let both = ssa.binary(many 0 option opFmul of ssa.Opcode end total ssa.emit(many 0 option opBitsReal of ssa.Opcode end
+    array of ints end tReal));
+ret(many 0 array of both end);
+add(many);
+
+(* 3. Its caller, and Real comparisons *)
+let caller = ssa.newFunction("qf_caller" false array of tReal end array of tInt end);
+let x = params(caller)[0];
+let args = array of(22 0);
+for k = 0 upto 10 do args[k] := ssa.constant(caller 0 k) end;
+args[7] := ssa.symbolAddress(caller 0 "qs_text");
+args[8] := ssa.symbolAddress(caller 0 "quest_type_Int");
+for k = 11 upto 19 do args[k] := x end;
+args[20] := ssa.constant(caller 0 1);
+args[21] := ssa.constant(caller 0 ~3);
+let r = ssa.callNarrow(caller 0 "qf_many" args array of 7 end array of 20 21 end array of tReal end)[0];
+let less = ssa.binary(caller 0 option opFlt of ssa.Opcode end r x);
+let nan = ssa.emit(caller 0 option opIsNaN of ssa.Opcode end array of r end tInt);
+ret(caller 0 array of ssa.binary(caller 0 option opOr of ssa.Opcode end less nan) end);
+add(caller);
+
+(* 4. Memory of every width, near and far, in a big frame; a switch; a
+ * loop *)
+let mem = ssa.newFunction("qf_memory" false array of tPtr tInt end array of tInt end);
+let mmp = params(mem);
+let big = ssa.newSlot(mem 40000 16);
+let bigAt = slotAddress(mem 0 big);
+ssa.store(mem 0 bigAt 39992 8 mmp[1]);
+ssa.store(mem 0 mmp[0] ~8 4 mmp[1]);
+ssa.store(mem 0 mmp[0] 3 1 mmp[1]);
+let w8 = ssa.load(mem 0 bigAt 39992 8 false tInt);
+let w4 = ssa.load(mem 0 mmp[0] ~8 4 true tInt);
+let b1 = ssa.load(mem 0 mmp[0] 3 1 true tInt);
+let u1 = ssa.load(mem 0 mmp[0] 70000 1 false tInt);
+let head = ssa.newBlock(mem);
+let i = ssa.addParam(mem head tInt);
+let acc = ssa.addParam(mem head tInt);
+let body = ssa.newBlock(mem);
+let done = ssa.newBlock(mem);
+let other = ssa.newBlock(mem);
+jumpTo(mem 0 head array of ssa.constant(mem 0 0) ssa.binary(mem 0 option opAdd of ssa.Opcode end w8 w4) end);
+ssa.terminate(mem head option termSwitch of ssa.Terminator with
+    let value = i let cases = array of 0 1 2 end
+    let targets = array of ssa.target(body none) ssa.target(body none) ssa.target(other none) end
+    let default = ssa.target(done none)
+end);
+(* The next iteration swaps the accumulator into the counter's place, as a
+ * parallel copy must *)
+jumpTo(mem body head array of ssa.binary(mem body option opAdd of ssa.Opcode end i ssa.constant(mem body 1))
+    ssa.binary(mem body option opMul of ssa.Opcode end acc b1) end);
+jumpTo(mem other head array of ssa.constant(mem other 3) ssa.binary(mem other option opRem of ssa.Opcode end acc u1) end);
+ret(mem done array of ssa.binary(mem done option opShl of ssa.Opcode end acc ssa.constant(mem done 3))
+    end);
+add(mem);
+
+(* 5. A try: the handler record pushed on the thread-local chain *)
+let tries = ssa.newFunction("qf_try" false array of tInt end array of tInt end);
+let handlerSlot = ssa.newSlot(tries 216 16);
+let recordAt = slotAddress(tries 0 handlerSlot);
+ssa.store(tries 0 ssa.symbolAddress(tries 0 "quest_current_exception_handler") 0 8 recordAt);
+let before = ssa.constant(tries 0 5);
+let tryBody = ssa.newBlock(tries);
+let handler = ssa.newBlock(tries);
+ssa.terminate(tries 0 option termTry of ssa.Terminator with
+    let slot = handlerSlot let body = ssa.target(tryBody none) let handler = handler
+end);
+ssa.call(tries tryBody "quest_pop_handler" none none noTypes);
+ret(tries tryBody array of params(tries)[0] end);
+ret(tries handler array of before end);
+add(tries);
+
+(* 6. A main, which calls through a pointer too *)
+let mainF = ssa.newFunction("main" true array of tInt tPtr end array of tInt end);
+let pair = ssa.call(mainF 0 "qv_test_swap" array of params(mainF)[1] params(mainF)[1] params(mainF)[0] end array of 0 end
+    array of tPtr tPtr end);
+let fnAt = ssa.symbolAddress(mainF 0 "qf_try");
+let tried = ssa.call(mainF 0 "" array of fnAt params(mainF)[0] end none array of tInt end)[0];
+ssa.terminate(mainF 0 option termTailCall of ssa.Terminator with let call = tuple
+    let op = option opCall of ssa.Opcode end let var args = array of pair[0] tried end let results = array of ssa.newValue(mainF tInt) end
+    let imm = 0 let symbol = "qf_memory" let width = 0 let signed = false let pairs = none let memory = none let narrow = none
+end end);
+add(mainF);
+
+(* 7. Data *)
+let word(n: Int): ssa.Word = option wordInt of ssa.Word with let n = n end;
+let address(s: String n: Int): ssa.Word = option wordSymbol of ssa.Word with let symbol = s let addend = n end;
+vector.append(:ssa.Data unit.data tuple
+    let symbol = "qs_text" let exported = false let writable = false
+    let contents = option contentsText of ssa.Contents with let text = "a \"quoted\"\tline\n" end
+end);
+vector.append(:ssa.Data unit.data tuple
+    let symbol = "qv_mod_test_record" let exported = true let writable = true
+    let contents = option contentsZero of ssa.Contents with let bytes = 16 end
+end);
+vector.append(:ssa.Data unit.data ssa.words("qr_table" false false array of
+    word(0) word(~1) word(~9223372036854775807 - 1) address("qs_text" 0) address("qf_try" 0) address("quest_type_Int" 48)
+    address("qv_mod_test_record" ~8)
+end));
+
+writer.putString(writer.output codegen.assembleUnit(unit));

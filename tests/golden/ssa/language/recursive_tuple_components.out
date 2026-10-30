@@ -13,19 +13,20 @@ b0(%0: ptr, %1: int):
   return
 }
 
-function qf_printBool(%0: ptr, %1: int) {
+function qf_printBool(%0: ptr, %1: int) narrow [1] {
 b0(%0: ptr, %1: int):
-  branch %1, b2(), b3()
-b1(%2: int):
-  %5: ptr = null
-  call qf_printInt(%5, %2)
+  %2: int = zext8 %1
+  branch %2, b2(), b3()
+b1(%3: int):
+  %6: ptr = null
+  call qf_printInt(%6, %3)
   return
 b2():
-  %3: int = const 1
-  jump b1(%3)
-b3():
-  %4: int = const 0
+  %4: int = const 1
   jump b1(%4)
+b3():
+  %5: int = const 0
+  jump b1(%5)
 }
 
 function qf_addX(%0: ptr, %1: int): int {
@@ -549,7 +550,7 @@ b0(%0: int, %1: ptr):
   %131: ptr = null
   %132: ptr = symbol g_global_9
   %133: int = load1 %132 + 0
-  call qf_printBool(%131, %133)
+  call qf_printBool(%131, %133) narrow [1]
   %134: ptr = symbol g_numbers
   %135: ptr = load8 %134 + 0
   %136: int = ptrToInt %135
@@ -571,7 +572,7 @@ b0(%0: int, %1: ptr):
   %150: ptr = null
   %151: ptr = symbol g_global_11
   %152: int = load1 %151 + 0
-  call qf_printBool(%150, %152)
+  call qf_printBool(%150, %152) narrow [1]
   %153: ptr = symbol qf_countDown_closure
   %154: ptr = symbol g_countDown
   store8 %154 + 0, %153

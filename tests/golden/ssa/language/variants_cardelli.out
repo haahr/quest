@@ -13,18 +13,19 @@ b0(%0: ptr, %1: int):
   return
 }
 
-function qf_printBool(%0: ptr, %1: int) {
+function qf_printBool(%0: ptr, %1: int) narrow [1] {
 b0(%0: ptr, %1: int):
-  %2: ptr = call qv_conv_bool(%1)
-  %3: ptr = symbol g_wOut
-  %4: ptr = load8 %3 + 0
-  call qv_writer_putString(%4, %2)
-  %5: ptr = symbol g_wOut
-  %6: ptr = load8 %5 + 0
-  %7: ptr = symbol qs_1
-  %8: int = const 1
-  %9: ptr = call quest_string_new(%7, %8)
-  call qv_writer_putString(%6, %9)
+  %2: int = zext8 %1
+  %3: ptr = call qv_conv_bool(%2) narrow [0]
+  %4: ptr = symbol g_wOut
+  %5: ptr = load8 %4 + 0
+  call qv_writer_putString(%5, %3)
+  %6: ptr = symbol g_wOut
+  %7: ptr = load8 %6 + 0
+  %8: ptr = symbol qs_1
+  %9: int = const 1
+  %10: ptr = call quest_string_new(%8, %9)
+  call qv_writer_putString(%7, %10)
   return
 }
 
@@ -118,7 +119,7 @@ b0(%0: int, %1: ptr):
   %38: ptr = null
   %39: ptr = symbol g_global
   %40: int = load1 %39 + 0
-  call qf_printBool(%38, %40)
+  call qf_printBool(%38, %40) narrow [1]
   %41: ptr = symbol qf_getDayCode_closure
   %42: ptr = symbol g_getDayCode
   store8 %42 + 0, %41
