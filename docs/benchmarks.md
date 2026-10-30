@@ -10,8 +10,8 @@ Quest has two sets of benchmarks:
   records and variants in hot loops, and the time the backend takes to generate C, for checking that a change to the
   backend does not slow it or its output (`python tests/perf/measure.py`, compared with `tests/perf/baseline.json`).
 
-This document describes the MLton suite, records the baseline taken on 2026-10-28, and lists what profiling the
-slowest benchmarks found and what could be done about it.
+This document describes the MLton suite, records the baseline taken on 2026-10-28, lists what profiling the
+slowest benchmarks found and what could be done about it, and compares the C and arm64 backends (§4).
 
 ## 1. The MLton suite
 
@@ -409,3 +409,63 @@ folds the literal at compile time; md5 spent three quarters of its time parsing 
 after `47b5a20c` wrote them in decimal). peek's original keeps a property list as a list of exceptions, each declaring
 a fresh exception constructor; Quest's exceptions are not values a list can hold, so the conversion uses closures that
 fill a cell instead, which allocates more than the original does.
+
+## 4. The backends compared (2026-10-30)
+
+Step 11 of [arm64.md](arm64.md) (linear scan) asks for dated run and compile times for both backends; these are the
+first. They show what the arm64 backend's code cost before interval splitting (§3.8 of arm64.md, as built: one
+range per value, spilled whole; promotion and tail calls in).
+
+### 4.1. How they were taken
+
+The machine, MLton, clang, and collector are §2.1's. Quest was `074bc251` (ABI 55, native `try` for arm64, the C
+backend still `_setjmp`); the conversions were §2.1's. Both systems are `./quest`, the conversions built with
+`--backend c` and `--backend arm64`, at a quarter of MLton's counts, **one run each** (not three), the C pass first
+and then arm64, one benchmark at a time. The machine was not otherwise busy, but this session was editing files
+meanwhile. MLton's times are the 2026-10-28 baseline's (§2), which were taken at the same counts. The times are in
+`benchmarks/mlton/baselines/2026-10-30/`:
+
+```bash
+cd benchmarks/mlton
+./run.py time --clean --backend c --scale 0.25 --timeout 1800 --results new/quest-c.jsonl
+./run.py time --backend arm64 --scale 0.25 --timeout 1800 --results new/quest-arm64.jsonl
+./run.py report baselines/2026-10-28/compiled.jsonl new/quest-*.jsonl --exclude fib,tailfib,tak,tensor
+```
+
+### 4.2. Summary
+
+| System | Geometric mean of time / MLton's | Run time, all 46 | Build time, all 46 |
+|---|---|---|---|
+| `./quest --backend c` | **5.24**; 6.12 without fib, tailfib, tak, and tensor | 44.0 min | 31.1 s (median 0.3 s) |
+| `./quest --backend arm64` | **11.62**; 11.77 without them | 80.8 min | 27.4 s (median 0.3 s) |
+| `./quest` on 2026-10-28 (C, §2.2), for comparison | 5.05; 6.49 without them | | |
+
+The arm64 backend's programs take 2.22 times as long as the C backend's (geometric mean of the ratios, from 1.11 for
+imp-for and output1 to 32.6 for tailfib). Its builds take 0.93 times as long. Both build times include compiling the
+libraries the program uses: the C build of DLXSimulator, the first, also built the units every later build reused
+(2.1 s, against 1.9 s for arm64). Most of a build is the front end and linking, so the backend's share is small in
+either.
+
+Where arm64 is furthest behind is where clang does the most:
+
+- **fib, tak, tailfib, even-odd** (4.8 to 32.6 times the C backend): small recursive functions, which clang inlines,
+  unrolls, or turns into loops.
+- **md5, psdes-random, checksum** (3.5 to 6.3): word arithmetic in tight loops, where every value spilled is a load
+  and a store, and clang's instruction selection (shifts and rotates folded into operands) does more per
+  instruction.
+- **smith-normal-form, peek, pidigits** (1.4 to 2.0): dominated by the arbitrary-precision library and allocation
+  (§3.1, §3.7), so the backend matters less.
+
+The C backend's 5.24 against 5.05 on 2026-10-28 is mixed:
+
+- **Faster:** md5 (0.29 of its earlier time, from §3.10's decimal constants), psdes-random (0.44), checksum (0.45),
+  string-concat (0.61), and tyan (0.83) are faster since then.
+- **Slower:** tailfib went from 0.01 s to 0.26 s, which is most of the topline's change. fib, tak, flat-array, and
+  even-odd are 1.3 to 1.5 times slower.
+- **The rest:** the other 36 are within 15 percent of their earlier times, which one run per benchmark cannot tell
+  from noise.
+
+Without the four benchmarks §1.3 sets aside, the mean improved, from 6.49 to 6.12.
+
+The arm64 numbers are the baseline against which interval splitting, rematerialization, and allocation in `try`
+functions (arm64.md step 11) are to be measured.
