@@ -1,0 +1,29 @@
+(* Quest Self-Hosted Compiler: The Choice of Backends Interface
+ *
+ * Which backend compiles each unit of a build (docs/arm64.md section 3.12):
+ * --backend names one for every unit, and each --unit-backend UNIT=BACKEND
+ * overrides it for one, named as its manifest names it (a module by its
+ * canonical name, a program as main). The backends are c, the C printer's, and
+ * ssac, the SSA's C printer's. *)
+
+interface Choice
+import
+    util/maybe : util/Maybe
+export
+    Def Override = Tuple unit: String backend: String end
+    Def T = Tuple default: String overrides: Array(Override) end
+    (* The backends there are *)
+    backends: Array(String)
+    isBackend(name: String): Bool
+    (* Every unit compiled by the C printer *)
+    standard: T
+    (* The name a program's unit has *)
+    programUnit: String
+    forUnit(c: T unit: String): String
+    (* Whether every unit is compiled by the C printer *)
+    allC(c: T): Bool
+    (* --unit-backend's value, UNIT=BACKEND, if it is one *)
+    parseOverride(s: String): maybe.T(Override)
+    (* The options that make another driver's choice c *)
+    arguments(c: T): Array(String)
+end

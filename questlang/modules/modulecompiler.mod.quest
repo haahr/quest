@@ -16,6 +16,8 @@ import
     questlang/modules/interfaceCompiler : questlang/modules/InterfaceCompiler
     questlang/codegen/c/headers : questlang/codegen/c/Headers
     cBackend = questlang/codegen/c/backend : questlang/codegen/c/Backend
+    cPrinter = questlang/codegen/c/printer : questlang/codegen/c/Printer
+    questlang/codegen/choice : questlang/codegen/Choice
     questlang/codegen/c/compilerRunner : questlang/codegen/c/CompilerRunner
     collections/vector : collections/Vector
     util/maybe : util/Maybe
@@ -90,7 +92,7 @@ export
 
     let compileModule(decl: ast.ModuleDecl offset: Int e: env.T outputDir: String includePaths: Array(String)
         compiler: maybe.T(String) nogc: Bool extraFlags: Array(String) sourceMap: location.SourceMap stem: String
-        canonicalName: String sourceFile: String buildDir: maybe.T(String)): ModuleCompileResult =
+        canonicalName: String sourceFile: String buildDir: maybe.T(String) backends: choice.T): ModuleCompileResult =
         begin
             system.makeDirectory(outputDir)
             (* Compiled to C: modules are known through their interfaces *)
@@ -167,7 +169,11 @@ export
 
             (* 5. Its C (exporting the interface's members), and 6. its
              * object *)
-            let c = cBackend.moduleFileToC(typed e maybe.some(:location.SourceMap sourceMap) interfaceHeader)
+            let backend = choice.forUnit(backends name)
+            (* What its backend cannot compile is an error *)
+            let c = try cBackend.moduleFileToC(typed e maybe.some(:location.SourceMap sourceMap) interfaceHeader backend)
+                when cPrinter.unsupported with m then diagnostics.fail(:String m 0)
+                end
             let base = if stringOp.length(stem) > 0 then stem else paths.lower(decl.name) end
             let cFile = paths.join(outputDir base <> ".mod.c")
             let oFile = paths.join(outputDir base <> ".o")
@@ -183,7 +189,9 @@ export
                     seen := true end end
                 if not(seen) then vector.append(:String unique d) end
             end
-            compilerRunner.compileCToObject(cFile oFile vector.toArray(:String unique) nogc compiler extraFlags)
+            compilerRunner.compileCToObject(cFile oFile vector.toArray(:String unique) nogc compiler
+                vector.toArray(:String vector.concat(:String vector.fromArray(:String extraFlags)
+                    vector.fromArray(:String cBackend.cFlags(backend)))))
 
             (* 7. Its manifest *)
             let direct = vector.toArray(:manifest.ImportedInterfaceRef interfaces)
@@ -194,13 +202,13 @@ export
             manifest.writeQm(manifest.newManifest(name maybe.some(:String targetName) paths.absolute(sourceFile)
                 paths.absolute(oFile) vector.toArray(:manifest.ImportedModuleRef modules)
                 vector.toArray(:manifest.ImportedInterfaceRef vector.concat(:manifest.ImportedInterfaceRef interfaces
-                    vector.fromArray(:manifest.ImportedInterfaceRef indirect)))) qmFile)
+                    vector.fromArray(:manifest.ImportedInterfaceRef indirect))) backend) qmFile)
             tuple let c = cFile let o = oFile let qm = qmFile end
         end
 
     let compileModuleFile(file: String outputDir: maybe.T(String) includePaths: Array(String) compiler: maybe.T(String)
         nogc: Bool extraFlags: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
-        res: maybe.T(graph.Resolver)): ModuleCompileResult =
+        res: maybe.T(graph.Resolver) backends: choice.T): ModuleCompileResult =
         begin
             let modPath = paths.absolute(file)
             if not(system.isFile(modPath)) then diagnostics.fail(:Ok "Module file not found: '" <> modPath <> "'" 0) end
@@ -256,7 +264,7 @@ export
                     end
                     compileModule(found.decl found.offset e outDir searchPaths compiler nogc extraFlags sm stem canon
                         modPath
-                        buildDir)
+                        buildDir backends)
                 end)
         end
 end

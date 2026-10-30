@@ -8,7 +8,11 @@ rules decide whether they are reused (docs/testing.md §2.2).
 
 With --self-hosted, the tests of the phases the self-hosted compiler has run its
 driver instead (questlang/driver/main, compiled to C first), against the
-bootstrap's goldens and error expectations (docs/testing.md §2.3).
+bootstrap's goldens and error expectations (docs/testing.md §2.3). With
+--backend ssac too, its compiled tests compile every unit through the SSA's C
+printer (docs/arm64.md §3.14); with ssac-program or ssac-modules, the program's
+unit or its modules' alone, the rest through the C printer, so that the two
+backends' units call each other both ways.
 """
 
 import argparse
@@ -70,6 +74,17 @@ SELF_HOSTED_ONLY_PHASES = ("ssa",)
 # which it would otherwise find fresh and reuse
 SELF_HOSTED_UNITS_SUBDIR = "self-hosted-units"
 SELF_HOSTED_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending.txt"
+# The self-hosted driver's options for each backend mode, and the tests the
+# mode is not yet expected to pass, besides the self-hosted pending list's
+BACKEND_MODES = {
+    "ssac": ["--backend", "ssac"],
+    "ssac-program": ["--backend", "c", "--unit-backend", "main=ssac"],
+    "ssac-modules": ["--backend", "ssac", "--unit-backend", "main=c"],
+}
+SSAC_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-ssac.txt"
+BACKEND_PENDING = {"ssac": SSAC_PENDING, "ssac-program": SSAC_PENDING, "ssac-modules": SSAC_PENDING}
+# The phases that compile a program, which a backend's mode runs
+BACKEND_PHASES = ("run_c_compiled",)
 SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 # Tests of several errors, which only the self-hosted driver reports:
 # tests/self-hosted/errors/PHASE/NAME.quest
@@ -87,6 +102,7 @@ UNIT_CHECKS = (
     ("self-hosted/build_errors", ROOT_DIR / "tests" / "self-hosted" / "build_errors.py", ()),
     ("self-hosted/parallel_build", ROOT_DIR / "tests" / "self-hosted" / "parallel_build.py", ()),
     ("self-hosted/compile_command", ROOT_DIR / "tests" / "self-hosted" / "compile_command.py", ()),
+    ("self-hosted/backends", ROOT_DIR / "tests" / "self-hosted" / "backends.py", ()),
 )
 EVAL_GOLDEN = TESTS_GOLDEN_DIR / "self-hosted" / "eval.out"
 SELF_HOSTED_ERRORS_DIR = ROOT_DIR / "tests" / "self-hosted" / "errors"
@@ -372,6 +388,8 @@ def run_single_golden_test(
         # The units of programs compiled to C are built and reused there
         if phase_name == "run_c_compiled" and build_dir is not None:
             command.extend(["--build-dir", str(self_hosted_units_dir(build_dir))])
+        if driver_args:
+            command.extend(driver_args)
     else:
         command = [
             python_executable,
@@ -825,13 +843,13 @@ def run_repl_test(
     return False, "[FAIL]", "  (transcript mismatch)\n" + "".join(diff).rstrip()
 
 
-def self_hosted_pending() -> set[str]:
+def self_hosted_pending(path: Path = SELF_HOSTED_PENDING) -> set[str]:
     """The tests the self-hosted driver is not yet expected to pass: PHASE:TEST
     for a golden test, and errors/PHASE:TEST for an error test, one per line (#
     starts a comment)."""
-    if not SELF_HOSTED_PENDING.exists():
+    if not path.exists():
         return set()
-    entries = (line.split("#", 1)[0].strip() for line in SELF_HOSTED_PENDING.read_text(encoding="utf-8").splitlines())
+    entries = (line.split("#", 1)[0].strip() for line in path.read_text(encoding="utf-8").splitlines())
     return {entry for entry in entries if entry}
 
 
@@ -847,7 +865,7 @@ def with_pending(
     def run(w_dir: Path) -> tuple[bool, str, str]:
         passed, status, report = run_fn(w_dir)
         if passed:
-            return False, "[FAIL]", f"  (passes, but is pending: remove '{key}' from {SELF_HOSTED_PENDING.name})"
+            return False, "[FAIL]", f"  (passes, but is pending: remove '{key}' from its pending list)"
         counts["pending"] += 1
         return True, "[PENDING]", ""
 
@@ -918,6 +936,14 @@ def main() -> int:
         "against the shared goldens and its own (docs/testing.md section 2.8).",
     )
     arg_parser.add_argument(
+        "--backend",
+        default="c",
+        help="With --self-hosted, compile the compiled tests' units with this backend (docs/arm64.md §3.12): "
+        "ssac compiles every unit through the SSA's C printer, ssac-program the program's alone, and ssac-modules "
+        "the modules' alone. Each runs only the phases that compile, with its own pending list too. Several, "
+        "separated by commas, run one after another with one driver.",
+    )
+    arg_parser.add_argument(
         "--self-hosted-driver",
         metavar="PATH",
         help="With --self-hosted, run this compiled self-hosted driver rather than compiling one.",
@@ -952,9 +978,27 @@ def main() -> int:
     else:
         temp_build_dir = Path(tempfile.mkdtemp(prefix="quest-test-build-"))
         build_dir = temp_build_dir
-    driver_args: list[str] = []
+    backends = args.backend.split(",")
+    for backend in backends:
+        if backend != "c" and backend not in BACKEND_MODES:
+            arg_parser.error(f"--backend: {backend!r} is not one of c, {', '.join(BACKEND_MODES)}")
     try:
-        return run_all_tests(args, available_phases, build_dir, driver_args, jobs=jobs)
+        if len(backends) == 1:
+            return run_all_tests(args, available_phases, build_dir, [], jobs=jobs)
+        if not args.self_hosted:
+            arg_parser.error("several backends need --self-hosted")
+        # One driver for every backend's run
+        if not args.self_hosted_driver:
+            python_executable = args.python if os.path.exists(args.python) else sys.executable
+            print(f"Compiling the self-hosted driver ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)}) for the backends:")
+            args.self_hosted_driver = str(build_seeded_driver(build_dir) if args.seed == "release"
+                                          else build_self_hosted_driver(python_executable, build_dir))
+        status = 0
+        for backend in backends:
+            print(f"\n=== Backend: {backend} ===")
+            args.backend = backend
+            status = max(status, run_all_tests(args, available_phases, build_dir, [], jobs=jobs))
+        return status
     finally:
         if temp_build_dir is not None:
             shutil.rmtree(temp_build_dir, ignore_errors=True)
@@ -1001,6 +1045,13 @@ def run_all_tests(
             print(f"Compiling the self-hosted driver ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)})...")
             driver_command = [str(build_self_hosted_driver(python_executable, build_dir))]
         pending = self_hosted_pending()
+        if args.backend != "c":
+            phases_to_run = [phase for phase in phases_to_run if phase in BACKEND_PHASES]
+            driver_args.extend(BACKEND_MODES[args.backend])
+            pending |= self_hosted_pending(BACKEND_PENDING[args.backend])
+    elif args.backend != "c":
+        print("--backend needs --self-hosted", file=sys.stderr)
+        return 2
 
     total_golden = 0
     passed_golden = 0
@@ -1128,7 +1179,8 @@ def run_all_tests(
                             ),
                         ))
 
-                    if phase == "run_c_compiled" and driver_command is not None:
+                    # (The checks run the driver themselves, with its own options)
+                    if phase == "run_c_compiled" and driver_command is not None and args.backend == "c":
                         for check_id, script, script_args in UNIT_CHECKS:
                             if args.test and args.test not in check_id:
                                 continue

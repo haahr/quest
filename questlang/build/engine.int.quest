@@ -17,6 +17,7 @@
 
 interface Engine
 import
+    questlang/codegen/choice : questlang/codegen/Choice
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/manifest : questlang/modules/Manifest
     questlang/build/logger : questlang/build/Logger
@@ -46,6 +47,9 @@ export
          * (docs/build-process.md section 7.4) *)
         jobs: Int
         driver: String
+        (* The backend each unit is compiled by, which its manifest
+         * records: a unit compiled by another is stale *)
+        backends: choice.T
     end
     (* An engine building in buildDir (.build if none), which it makes *)
     new(buildDir: maybe.T(String) includePaths: Array(String) verbose: Bool nogc: Bool extraObjects: Array(String)
@@ -54,6 +58,8 @@ export
     (* eng, compiling up to jobs modules at once, in child processes of
      * driver *)
     parallel(eng: T jobs: Int driver: String): T
+    (* The engine, its units compiled by the backends c chooses *)
+    withBackends(eng: T backends: choice.T): T
 
     (* A program's import item: its interface path and module paths, as written
      * or else its names and interface name, and its names *)

@@ -1,0 +1,19 @@
+(* Calls across a module's boundary that the backends must agree on, when the
+ * program and the module are compiled by different ones: records passed and
+ * returned (16-byte composites), arrays of them, a closure called back, an
+ * exception raised in the module and caught here, a polymorphic function, an
+ * option, and a module value *)
+import
+    geometry : Geometry
+    writer : Writer
+    conv : Conv
+;
+let show(p: geometry.Point): String = "(" <> conv.int(p.x) <> ", " <> conv.int(p.y) <> ")";
+let say(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+let p: geometry.Point = record x = 3 y = 4 end;
+say(show(geometry.scaled(p 2)));
+say(show(geometry.sum(array of p geometry.scaled(p 10) geometry.origin end)));
+say(show(geometry.apply(fun(q: geometry.Point): geometry.Point geometry.scaled(q 3) p)));
+say(try show(geometry.check(geometry.scaled(p 100))) when geometry.tooFar with n then "too far: " <> conv.int(n) end);
+say(conv.int(geometry.first(:Int array of 7 8 9 end)));
+say(conv.int(geometry.length(option segment of geometry.Shape with let from = p let to = geometry.scaled(p 2) end)));

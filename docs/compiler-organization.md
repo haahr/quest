@@ -98,12 +98,13 @@ questlang/
 ├── ir/                      # IR lowering and passes (docs/ir.md)
 │   └── nodes, walk, lower, specialize, closure, shapes, represent, slots, describe, thunks, written, verify, printer
 │
-├── ssa/                     # The native backends' SSA (docs/ssa.md): nodes, build, verify, printer
+├── ssa/                     # The native backends' SSA (docs/ssa.md): nodes, build, statics, verify, printer
 │
 ├── codegen/                 # Backends: the shared layer and the C backend
 │   ├── syntax, layout, descriptors, sha256   # C spelling, layouts and digests, descriptors' type-level forms
 │   ├── staticdata, runtimeLayout   # Static data described for every backend; the runtime's struct layouts
 │   ├── backend, symbols
+│   ├── choice, ssac         # The backend each unit is compiled by; the SSA's C printer (docs/arm64.md §3.14)
 │   └── c/                   # backend, declarations, headers, printer, types, compilerrunner
 │
 ├── config/                  # The ABI version and artifacts' format

@@ -65,6 +65,8 @@ import
     ssaPrinter = questlang/ssa/printer : questlang/ssa/Printer
     questlang/interpreter/irInterp : questlang/interpreter/IrInterp
     cPrinter = questlang/codegen/c/printer : questlang/codegen/c/Printer
+    cBackend = questlang/codegen/c/backend : questlang/codegen/c/Backend
+    questlang/codegen/choice : questlang/codegen/Choice
     questlang/driver/repl : questlang/driver/Repl
     questlang/build/engine : questlang/build/Engine
     questlang/build/workers : questlang/build/Workers
@@ -146,6 +148,8 @@ let options =
         let var verbose = false
         let var jobs = 1
         let var wholeProgram = false
+        let var backend = "c"
+        let unitBackends = vector.new(:choice.Override)
         let var expectedExit = 0
         let dumpAfter = vector.new(:String)
         let extraObjects = vector.new(:String)
@@ -211,6 +215,20 @@ let options =
             elsif isOneOf(arg array of "--whole-program" "--whole_program" end) then
                 wholeProgram := true
                 i := i + 1
+            elsif stringOp.equal(arg "--backend") andif valued then
+                (* The backend every unit is compiled by (codegen/choice) *)
+                if not(choice.isBackend(system.args[i + 1])) then
+                    usage("--backend takes c or ssac, not '" <> system.args[i + 1] <> "'")
+                end
+                backend := system.args[i + 1]
+                i := i + 2
+            elsif stringOp.equal(arg "--unit-backend") andif valued then
+                let o = choice.parseOverride(system.args[i + 1])
+                if maybe.isNone(:choice.Override o) then
+                    usage("--unit-backend takes UNIT=BACKEND, with BACKEND c or ssac, not '" <> system.args[i + 1] <> "'")
+                end
+                vector.append(:choice.Override unitBackends maybe.unwrap(:choice.Override o))
+                i := i + 2
             elsif isOneOf(arg array of "--expected-exit" "--expected_exit" end) andif valued andif not(compileMode) then
                 (* What a compiled program's exit status must be; the
                  * interpreter's is the program's own *)
@@ -316,6 +334,7 @@ let options =
             let verbose = verbose
             let jobs = jobs
             let wholeProgram = wholeProgram
+            let backends = tuple let default = backend let overrides = vector.toArray(:choice.Override unitBackends) end
             let expectedExit = expectedExit
             let dumpAfter = vector.toArray(:String dumpAfter)
             let extraObjects = vector.toArray(:String extraObjects)
@@ -688,8 +707,17 @@ let failWith(message: String): Ok =
 
 (* The engine that builds the modules a program's C imports *)
 let newEngine(e: env.T): engine.T =
-    engine.parallel(engine.new(maybe.some(:String buildDir) options.includePaths options.verbose options.nogc
-        options.extraObjects maybe.some(:graph.Resolver e.units.resolver)) options.jobs system.args[0]);
+    engine.withBackends(engine.parallel(engine.new(maybe.some(:String buildDir) options.includePaths options.verbose
+        options.nogc options.extraObjects maybe.some(:graph.Resolver e.units.resolver)) options.jobs system.args[0])
+        options.backends);
+
+(* The backend that compiles the program's own unit *)
+let programBackend = choice.forUnit(options.backends choice.programUnit);
+(* Whole-program builds with the SSA's backends come later (docs/arm64.md
+ * section 5, step 13) *)
+if options.wholeProgram andif not(choice.allC(options.backends)) then
+    usage("--whole-program compiles with the c backend only")
+end;
 
 (* A type-checked program's imports, as the engine resolves them *)
 let importRefs(program: typedAst.Program): Array(engine.ImportRef) =
@@ -725,7 +753,7 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
             begin
                 let unit = lowered(program e sm compiledPrintsResult "described")
                 maybe.some(:Tuple c: String unit: nodes.Unit end
-                    tuple let c = cPrinter.printC(unit maybe.none(:String)) let unit = unit end)
+                    tuple let c = cBackend.unitToC(unit maybe.none(:String) programBackend) let unit = unit end)
             end
         when lower.loweringError with m then begin internal(m) maybe.none(:Tuple c: String unit: nodes.Unit end) end
         when verify.verifyError with m then begin internal(m) maybe.none(:Tuple c: String unit: nodes.Unit end) end
@@ -766,10 +794,11 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     let objects = engine.buildModules(newEngine(e) modules importer e.programDir)
                     if writing then
                         compilerRunner.compileCSource(t.c paths.absolute(maybe.unwrap(:String compileOutput))
-                            options.nogc maybe.none(:String) objects)
+                            options.nogc maybe.none(:String) objects cBackend.cFlags(programBackend))
                     else
                         let binary = compilerRunner.temporaryBinary()
-                        compilerRunner.compileCSource(t.c binary false maybe.none(:String) objects)
+                        compilerRunner.compileCSource(t.c binary false maybe.none(:String) objects
+                            cBackend.cFlags(programBackend))
                         let r = compilerRunner.runBinary(binary options.programArgs)
                         if system.fileExists(binary) then system.removeFile(binary) end
                         if not(r.code is options.expectedExit) then
@@ -907,7 +936,7 @@ let compileUnitFile(): Ok =
                     if maybe.isSome(:String outputDir) then system.makeDirectory(maybe.unwrap(:String outputDir)) end
                     moduleCompiler.compileModuleFile(paths.absolute(options.file) outputDir includes maybe.none(:String)
                         options.nogc vector.toArray(:String vector.new(:String)) options.buildDir maybe.none(:String)
-                        maybe.none(:graph.Resolver))
+                        maybe.none(:graph.Resolver) options.backends)
                     ok
                 else
                     diagbag.add(bag diagnostics.error("'" <> options.file <> "' is a program, not a unit file"
@@ -1013,8 +1042,8 @@ let buildProgram(): Ok =
         let sm = location.newSourceMap(options.file maybe.unwrapOr(:String paths.readText(options.file) ""))
         stdlib.install()
         try
-            let eng = engine.parallel(engine.new(options.buildDir options.includePaths options.verbose options.nogc
-                options.extraObjects maybe.none(:graph.Resolver)) options.jobs system.args[0])
+            let eng = engine.withBackends(engine.parallel(engine.new(options.buildDir options.includePaths options.verbose
+                options.nogc options.extraObjects maybe.none(:graph.Resolver)) options.jobs system.args[0]) options.backends)
             if compileMode andif options.compileOnly then engine.compileMain(eng options.file)
             else engine.buildMain(eng options.file compileOutput) end
         when diagnostics.compilerError with err then

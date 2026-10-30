@@ -119,17 +119,36 @@ internal error.
 
 ## 5. Functions and Units
 
-A **function** has a symbol (its C name), its parameters (the entry block's), its result types, its blocks, and its
-stack slots (each a size and an alignment in bytes). A **unit** has its functions and the static data of
-`codegen/staticdata` (descriptors, offset tables, tag maps), its strings, its static closures, and the symbols it
-references from elsewhere.
+A **function** has a symbol (its C name), whether other units call it, its parameters (the entry block's) with where
+its 16-byte composites start (`paramPairs`, as a call's `pairs`: a function of two results returns one), its result
+types, its blocks, and its stack slots (each a size and an alignment in bytes). A **unit** has its functions and its
+**data**: each datum a symbol, whether other units refer to it, whether it is written at run time, and its contents,
+8-byte aligned: zeros (a global, a module's record and its initialized flag), a C string's text and its NUL (a
+literal, a name in a descriptor or the function table), or words, each an integer or a symbol's address plus a byte
+offset (a descriptor and what its extra field points at, an offset table, a tag map, a static closure, the function
+table). Words lay out the runtime's structs on a little-endian target, a narrow field in the low bytes of its word.
+
+The builder makes, besides the IR's functions and the module initializers and `main`:
+
+- the data of `ir.StaticData`'s descriptors (`ssa/statics`, from `codegen/staticdata`'s descriptions), offset
+  tables, and tag maps, as the C printer's declarations define them;
+- each function type's adapter, thunk, and invoker (`quest_adapt_<tag>`, `quest_thunk_<tag>`, `quest_invoke_<tag>`),
+  as `codegen/c/declarations` writes them in C;
+- a module file's exported functions (`qv_<module>_<member>`), at its interface's C signatures;
+- the function table (`qr_funcs`) and `qr_register_dicts`, which registers it and the offset tables of records the
+  unit views at supertypes;
+- a static closure (`<function>_closure`) of each function, and the data of globals and strings.
+
+What a unit refers to and does not define is another unit's or the runtime's; the runtime's thread-locals are
+`runtimeLayout.threadLocals`.
 
 ## 6. The Textual Form
 
 `--stop-after ssa` prints a program unit's SSA; its goldens (`tests/golden/ssa`) are the self-hosted compiler's own,
 one for every run test that has an `ir_core` dump (arm64.md §3.2). Values print as `%n`, blocks as `bN`, a
-function's stack slots as `bytes:alignment`, a load or store with its width (`load1s` sign-extends a byte), and a
-call with its `pairs` and `memory` arguments:
+function's stack slots as `bytes:alignment`, a load or store with its width (`load1s` sign-extends a byte), a call
+with its `pairs` and `memory` arguments, and a function with its `pairs`; the unit's data follows its functions, a
+datum per line (`data qs_1 text "add1"`, `data g_res writable zero 8`, `data qf_f_closure words [qf_f, 0]`):
 
 ```
 function qf_f(%0: ptr, %1: int): int slots [16:8] {
@@ -148,3 +167,9 @@ that jumps pass their blocks' parameters' number and types; that each block ends
 handler has the `try`'s block as its only predecessor and no parameters; and that slots and blocks referred to
 exist. The questlang test `ssa_verify` builds well-formed and malformed functions by hand and checks the problems it
 reports.
+
+## 8. The C Printer
+
+`codegen/ssac` prints a unit's SSA as C (arm64.md §3.14), an oracle for the SSA and the backends after it: with
+`--backend ssac`, or `--unit-backend UNIT=ssac` for one unit, a build compiles units through it (arm64.md §5, step
+5). The questlang test `ssac_print` prints a unit built by hand, and `tests/python/test_ssac.py` compiles its golden.

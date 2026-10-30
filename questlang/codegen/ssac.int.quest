@@ -1,0 +1,28 @@
+(* Quest Self-Hosted Compiler: The SSA's C Printer Interface
+ *
+ * ssac (docs/arm64.md section 3.14): prints a unit's SSA (questlang/ssa) as C,
+ * an oracle for the SSA and for the backends that lower it, as MLton's C
+ * backend prints its lowest IR. Each block is a label and each value a local;
+ * a block's arguments are assigned before its goto; a stack slot is a local
+ * array of bytes, and memory is reached by byte offsets. It chooses no
+ * representation and computes no layout: the SSA's data is word arrays, and
+ * every symbol the unit does not define is declared as an array of bytes, so
+ * that the C includes no header and calls each function through a pointer of
+ * the type the call's arguments give it, as AAPCS64 passes them. *)
+
+interface Ssac
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* What the printer cannot print: a malformed unit *)
+    unsupported: Exception(String)
+    (* The C of a unit's SSA *)
+    printUnit(u: ssa.Unit): String
+    (* The flags ssac's C is compiled with, besides the C backend's: GNU C
+     * rather than ISO C, for casts between pointers to functions and to
+     * objects; no type-based aliasing, since a word of memory is read and
+     * written as different C types; no built-in library functions, which the
+     * unit's declarations would conflict with; and no warnings about what the
+     * printer leaves unused *)
+    cFlags: Array(String)
+end

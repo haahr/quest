@@ -1,0 +1,170 @@
+(* Self-Hosted Quest Compiler: Test the SSA's C Printer
+ *
+ * Builds a unit of the SSA (questlang/ssa/nodes, docs/ssa.md) by hand and prints
+ * it with ssac (questlang/codegen/ssac, docs/arm64.md section 3.14): functions
+ * that take and return 16-byte composites, a call that passes one through
+ * memory, an indirect call and a tail call, a try (whose function's values and
+ * memory are volatile), a switch, loads and stores of every width, the
+ * conversions, Int and Real constants (INT64_MIN among them), and data of zeros,
+ * of text, and of words that hold integers and symbols' addresses; and a use of
+ * a thread-local. tests/python/test_ssac.py compiles the golden with the flags
+ * ssac's C is compiled with. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/verify : questlang/ssa/Verify
+    questlang/codegen/ssac : questlang/codegen/Ssac
+    collections/vector : collections/Vector
+    writer : Writer
+;
+
+let tInt = option typeInt of ssa.Type end;
+let tPtr = option typePtr of ssa.Type end;
+let tReal = option typeReal of ssa.Type end;
+let none = array of :Int end;
+let params(f: ssa.Function): Array(Int) = vector.toArray(:Int ssa.block(f 0).params);
+let ret(f: ssa.Function b: Int vs: Array(Int)): Ok = ssa.terminate(f b option termReturn of ssa.Terminator with let values = vs end);
+let jumpTo(f: ssa.Function b: Int to: Int args: Array(Int)): Ok =
+    ssa.terminate(f b option termJump of ssa.Terminator with let target = ssa.target(to args) end);
+let unit = ssa.newUnit();
+let add(f: ssa.Function): Ok =
+    begin
+        let problems = verify.functionProblems(f)
+        for i = 0 upto {extent problems - 1} do writer.putString(writer.output "problem: " <> problems[i] <> "\n") end
+        vector.append(:ssa.Function unit.functions f)
+    end;
+
+(* 1. An exported function of a record (a pair) and an Int, returning a pair:
+ * its halves swapped, the second scaled *)
+let swap = ssa.newFunction("qv_test_swap" true array of tPtr tPtr tInt end array of tPtr tPtr end);
+swap.paramPairs := array of 0 end;
+let sp = params(swap);
+let scaled = ssa.binary(swap 0 option opMul of ssa.Opcode end ssa.emit(swap 0 option opPtrToInt of ssa.Opcode end
+    array of sp[0] end tInt) sp[2]);
+ret(swap 0 array of sp[1] ssa.emit(swap 0 option opIntToPtr of ssa.Opcode end array of scaled end tPtr) end);
+add(swap);
+
+(* 2. Memory of every width, the conversions, and constants *)
+let mem = ssa.newFunction("qf_memory" false array of tPtr tReal end array of tInt end);
+let mp = params(mem);
+let b1 = ssa.load(mem 0 mp[0] 0 1 true tInt);
+let u1 = ssa.load(mem 0 mp[0] 1 1 false tInt);
+let w4 = ssa.load(mem 0 mp[0] 4 4 true tInt);
+let w8 = ssa.load(mem 0 mp[0] 8 8 false tInt);
+let p8 = ssa.load(mem 0 mp[0] 16 8 false tPtr);
+let r8 = ssa.load(mem 0 mp[0] 24 8 false tReal);
+ssa.store(mem 0 mp[0] 0 1 u1);
+ssa.store(mem 0 mp[0] 4 4 b1);
+ssa.store(mem 0 mp[0] 8 8 w4);
+ssa.store(mem 0 p8 0 8 p8);
+ssa.store(mem 0 mp[0] 24 8 ssa.binary(mem 0 option opFadd of ssa.Opcode end r8 mp[1]));
+let minimum = ssa.constant(mem 0 ~9223372036854775807 - 1);
+let shifted = ssa.binary(mem 0 option opLshr of ssa.Opcode end minimum ssa.constant(mem 0 63));
+let arith = ssa.binary(mem 0 option opAshr of ssa.Opcode end ssa.binary(mem 0 option opShl of ssa.Opcode end w8 shifted)
+    ssa.constant(mem 0 2));
+let below = ssa.binary(mem 0 option opUlt of ssa.Opcode end arith minimum);
+let nan = ssa.emit(mem 0 option opIsNaN of ssa.Opcode end array of r8 end tInt);
+let bits = ssa.emit(mem 0 option opRealBits of ssa.Opcode end array of mp[1] end tInt);
+let back = ssa.emit(mem 0 option opBitsReal of ssa.Opcode end array of bits end tReal);
+let half = ssa.newValue(mem tReal);
+ssa.append(mem 0 tuple
+    let op = option opRealConst of ssa.Opcode end let var args = none let results = array of half end
+    let imm = 4602678819172646912 let symbol = "" let width = 0 let signed = false let pairs = none let memory = none
+end);
+let less = ssa.binary(mem 0 option opFlt of ssa.Opcode end back half);
+let narrow = ssa.emit(mem 0 option opSext8 of ssa.Opcode end array of ssa.emit(mem 0 option opZext8 of ssa.Opcode end
+    array of less end tInt) end tInt);
+ret(mem 0 array of ssa.binary(mem 0 option opAdd of ssa.Opcode end ssa.binary(mem 0 option opXor of ssa.Opcode end below nan)
+    narrow) end);
+add(mem);
+
+(* 3. Calls: a pair, a composite through memory, an indirect call, and a tail
+ * call; and a switch *)
+let calls = ssa.newFunction("qf_calls" false array of tInt tPtr end array of tInt end);
+let cp = params(calls);
+let state = ssa.newSlot(calls 32 8);
+let at = ssa.newValue(calls tPtr);
+ssa.append(calls 0 tuple
+    let op = option opSlot of ssa.Opcode end let var args = none let results = array of at end let imm = state
+    let symbol = "" let width = 0 let signed = false let pairs = none let memory = none
+end);
+let pair = ssa.call(calls 0 "qv_test_swap" array of cp[1] cp[1] cp[0] end array of 0 end array of tPtr tPtr end);
+ssa.callWithMemory(calls 0 "quest_reraise" array of at end array of 0 end array of :ssa.Type end);
+let fnPtr = ssa.load(calls 0 pair[0] 0 8 false tPtr);
+let indirect = ssa.call(calls 0 "" array of fnPtr pair[1] end none array of tInt end);
+let one = ssa.newBlock(calls);
+let other = ssa.newBlock(calls);
+let joined = ssa.newBlock(calls);
+let result = ssa.addParam(calls joined tInt);
+ssa.terminate(calls 0 option termSwitch of ssa.Terminator with
+    let value = indirect[0] let cases = array of 1 ~2 end
+    let targets = array of ssa.target(one none) ssa.target(other none) end
+    let default = ssa.target(joined array of indirect[0] end)
+end);
+jumpTo(calls one joined array of ssa.constant(calls one 10) end);
+jumpTo(calls other joined array of ssa.constant(calls other ~20) end);
+let tail = ssa.newValue(calls tInt);
+ssa.terminate(calls joined option termTailCall of ssa.Terminator with let call = tuple
+    let op = option opCall of ssa.Opcode end let var args = array of ssa.symbolAddress(calls joined "qs_text") result end
+    let results = array of tail end let imm = 0 let symbol = "qf_tail" let width = 0 let signed = false
+    let pairs = none let memory = none
+end end);
+add(calls);
+
+let tailF = ssa.newFunction("qf_tail" false array of tPtr tInt end array of tInt end);
+ret(tailF 0 array of params(tailF)[1] end);
+add(tailF);
+
+(* 4. A try, whose handler uses a value defined before it, and a variable in a
+ * slot assigned in its body *)
+let tries = ssa.newFunction("qf_try" false array of tInt end array of tInt end);
+let handlerRecord = ssa.newSlot(tries 216 16);
+let cell = ssa.newSlot(tries 8 8);
+let cellAt = ssa.newValue(tries tPtr);
+ssa.append(tries 0 tuple
+    let op = option opSlot of ssa.Opcode end let var args = none let results = array of cellAt end let imm = cell
+    let symbol = "" let width = 0 let signed = false let pairs = none let memory = none
+end);
+let before = ssa.constant(tries 0 5);
+let body = ssa.newBlock(tries);
+let handler = ssa.newBlock(tries);
+ssa.terminate(tries 0 option termTry of ssa.Terminator with
+    let slot = handlerRecord let body = ssa.target(body none) let handler = handler
+end);
+ssa.store(tries body cellAt 0 8 params(tries)[0]);
+ssa.store(tries body ssa.symbolAddress(tries body "quest_current_exception_handler") 0 8 cellAt);
+ssa.call(tries body "quest_pop_handler" none none array of :ssa.Type end);
+ret(tries body array of ssa.load(tries body cellAt 0 8 false tInt) end);
+ret(tries handler array of ssa.binary(tries handler option opAdd of ssa.Opcode end before
+    ssa.load(tries handler cellAt 0 8 false tInt)) end);
+add(tries);
+
+(* 5. A main *)
+let mainF = ssa.newFunction("main" true array of tInt tPtr end array of tInt end);
+ssa.call(mainF 0 "quest_gc_init" none none array of :ssa.Type end);
+ret(mainF 0 array of ssa.call(mainF 0 "qf_try" array of params(mainF)[0] end none array of tInt end)[0] end);
+add(mainF);
+
+(* 6. Data *)
+let word(n: Int): ssa.Word = option wordInt of ssa.Word with let n = n end;
+let address(s: String n: Int): ssa.Word = option wordSymbol of ssa.Word with let symbol = s let addend = n end;
+vector.append(:ssa.Data unit.data tuple
+    let symbol = "qs_text" let exported = false let writable = false
+    let contents = option contentsText of ssa.Contents with let text = "a \"quoted\"\tline\n" end
+end);
+vector.append(:ssa.Data unit.data tuple
+    let symbol = "g_counter" let exported = false let writable = true
+    let contents = option contentsZero of ssa.Contents with let bytes = 12 end
+end);
+vector.append(:ssa.Data unit.data tuple
+    let symbol = "qv_mod_test_record" let exported = true let writable = true
+    let contents = option contentsZero of ssa.Contents with let bytes = 16 end
+end);
+vector.append(:ssa.Data unit.data ssa.words("qr_table" false false array of
+    word(0) word(~1) word(~9223372036854775807 - 1) address("qs_text" 0) address("qf_try" 0) address("g_counter" 8)
+    address("quest_type_Int" 48)
+end));
+vector.append(:ssa.Data unit.data ssa.words("qf_try_closure" false false array of address("qf_try" 0) word(0) end));
+
+writer.putString(writer.output ssac.printUnit(unit));

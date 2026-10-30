@@ -1,0 +1,45 @@
+(* Self-Hosted Quest Compiler: Test the Choice of Backends
+ *
+ * questlang/codegen/choice (docs/arm64.md section 3.12): --unit-backend's
+ * values, well formed and not; the backend each unit is compiled by, the last
+ * override of a unit winning; whether a build is the C printer's alone; and the
+ * options that pass a choice on to a worker. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    questlang/codegen/choice : questlang/codegen/Choice
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    collections/vector : collections/Vector
+    writer : Writer
+;
+
+let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+let yes(b: Bool): String = if b then "yes" else "no" end;
+
+let values = array of "main=ssac" "lib/collections/vector=c" "a=b=ssac" "=ssac" "main=" "main" "main=arm64" "" end;
+for i = 0 upto {extent values - 1} do
+    let o = choice.parseOverride(values[i])
+    emit("'" <> values[i] <> "': " <> if maybe.isSome(:choice.Override o) then
+        maybe.unwrap(:choice.Override o).unit <> " by " <> maybe.unwrap(:choice.Override o).backend
+    else "not an override" end)
+end;
+
+emit("backends: " <> strutil.join(" " vector.fromArray(:String choice.backends)));
+emit("arm64 a backend: " <> yes(choice.isBackend("arm64")));
+emit("the program's unit: " <> choice.programUnit);
+
+let override(unit: String backend: String): choice.Override = tuple let unit = unit let backend = backend end;
+let mixed = tuple
+    let default = "ssac"
+    let overrides = array of override("main" "c") override("geometry" "c") override("geometry" "ssac") end
+end;
+let units = array of "main" "geometry" "writer" end;
+for i = 0 upto {extent units - 1} do emit(units[i] <> " by " <> choice.forUnit(mixed units[i])) end;
+emit("standard all c: " <> yes(choice.allC(choice.standard)));
+emit("mixed all c: " <> yes(choice.allC(mixed)));
+emit("c with one ssac unit all c: " <> yes(choice.allC(tuple
+    let default = "c" let overrides = array of override("main" "ssac") end
+end)));
+emit("arguments: " <> strutil.join(" " vector.fromArray(:String choice.arguments(mixed))));
+emit("standard arguments: " <> strutil.join(" " vector.fromArray(:String choice.arguments(choice.standard))));

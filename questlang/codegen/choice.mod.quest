@@ -1,0 +1,65 @@
+(* Quest Self-Hosted Compiler: The Choice of Backends Implementation *)
+
+module choice : Choice
+import
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    Def Override = Tuple unit: String backend: String end
+    Def T = Tuple default: String overrides: Array(Override) end
+
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+
+    let backends = array of "c" "ssac" end
+    let isBackend(name: String): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent backends - 1} do if eq(backends[i] name) then found := true end end
+            found
+        end
+
+    let standard: T = tuple let default = "c" let overrides = array of :Override end end
+    let programUnit = "main"
+
+    let forUnit(c: T unit: String): String =
+        begin
+            let var backend = c.default
+            for i = 0 upto {extent c.overrides - 1} do
+                if eq(c.overrides[i].unit unit) then backend := c.overrides[i].backend end
+            end
+            backend
+        end
+
+    let allC(c: T): Bool =
+        begin
+            let var all = eq(c.default "c")
+            for i = 0 upto {extent c.overrides - 1} do if not(eq(c.overrides[i].backend "c")) then all := false end end
+            all
+        end
+
+    let parseOverride(s: String): maybe.T(Override) =
+        begin
+            let var at = ~1
+            for i = 0 upto {stringOp.length(s) - 1} do if {at < 0} andif {stringOp.getChar(s i) is '='} then at := i end end
+            if at <= 0 then
+                maybe.none(:Override)
+            else
+                let backend = stringOp.getSub(s {at + 1} {{stringOp.length(s) - at} - 1})
+                if isBackend(backend) then
+                    maybe.some(:Override tuple let unit = stringOp.getSub(s 0 at) let backend = backend end)
+                else maybe.none(:Override) end
+            end
+        end
+
+    let arguments(c: T): Array(String) =
+        begin
+            let args = array of({2 + 2 * extent c.overrides} "")
+            args[0] := "--backend"
+            args[1] := c.default
+            for i = 0 upto {extent c.overrides - 1} do
+                args[2 + 2 * i] := "--unit-backend"
+                args[3 + 2 * i] := c.overrides[i].unit <> "=" <> c.overrides[i].backend
+            end
+            args
+        end
+end

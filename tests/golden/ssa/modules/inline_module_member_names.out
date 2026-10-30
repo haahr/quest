@@ -5,7 +5,7 @@ b0(%0: ptr, %1: int):
   return %3
 }
 
-function qv_mod_small_init exported() {
+function qv_mod_small_init() {
 b0():
   %0: ptr = symbol qv_mod_small_initialized
   %1: int = load1 %0 + 0
@@ -77,6 +77,73 @@ b2():
   %49: ptr = symbol qm_small
   store8 %49 + 0, %47
   store8 %49 + 8, %48
+  return
+}
+
+function quest_thunk_fun_0c4346157e7c9fc5(%0: ptr, %1: int): int slots [8:8] {
+b0(%0: ptr, %1: int):
+  %2: ptr = load8 %0 + 0
+  %3: ptr = load8 %0 + 8
+  %4: ptr = load8 %3 + 40
+  %5: ptr = load8 %0 + 16
+  %6: ptr = load8 %5 + 40
+  %7: int = load1 %0 + 24
+  branch %7, b1(), b2()
+b1():
+  %8: ptr = load8 %2 + 8
+  %9: ptr = load8 %2 + 0
+  %10: int = callIndirect %9, %8, %1
+  return %10
+b2():
+  %11: ptr = load8 %6 + 48
+  %12: ptr = load8 %4 + 48
+  %13: int = call quest_convert(%1, %11, %12)
+  %14: ptr = slot 0
+  store8 %14 + 0, %13
+  %15: ptr = load8 %4 + 24
+  %16: int = callIndirect %15, %2, %14
+  %17: ptr = load8 %4 + 8
+  %18: ptr = load8 %6 + 8
+  %19: int = call quest_convert(%16, %17, %18)
+  return %19
+}
+
+function quest_adapt_fun_0c4346157e7c9fc5(%0: ptr, %1: ptr, %2: ptr): ptr {
+b0(%0: ptr, %1: ptr, %2: ptr):
+  %3: int = const 32
+  %4: ptr = call quest_alloc(%3)
+  store8 %4 + 0, %0
+  store8 %4 + 8, %1
+  store8 %4 + 16, %2
+  %5: int = call quest_fun_signature_equivalent(%1, %2)
+  %6: int = zext8 %5
+  store1 %4 + 24, %6
+  %7: int = const 16
+  %8: ptr = call quest_alloc(%7)
+  %9: ptr = symbol quest_thunk_fun_0c4346157e7c9fc5
+  store8 %8 + 0, %9
+  store8 %8 + 8, %4
+  return %8
+}
+
+function quest_invoke_fun_0c4346157e7c9fc5(%0: ptr, %1: ptr): int {
+b0(%0: ptr, %1: ptr):
+  %2: ptr = load8 %0 + 8
+  %3: int = load8 %1 + 0
+  %4: ptr = load8 %0 + 0
+  %5: int = callIndirect %4, %2, %3
+  return %5
+}
+
+function qr_register_dicts() {
+b0():
+  %0: ptr = symbol qr_funcs
+  %1: int = const 3
+  call quest_register_funcs(%0, %1)
+  %2: ptr = symbol quest_type_QT_record_3d6538f826e74f6d
+  %3: ptr = symbol quest_type_QT_record_3d6538f826e74f6d
+  %4: ptr = symbol offsetdict_record_3d6538f826e74f6d_record_3d6538f826e74f6d
+  call quest_register_record_dict(%2, %3, %4)
   return
 }
 
@@ -154,7 +221,7 @@ b3():
   %36: int = const 3
   %37: ptr = symbol g_global_3
   %38: ptr = load8 %37 + 0
-  %39: ptr = symbol qs_2
+  %39: ptr = symbol qs_10
   call quest_raise_at(%38, %36, %39)
   unreachable
 b4():
@@ -216,4 +283,46 @@ b8():
   call quest_reraise(%42) memory [0]
   unreachable
 }
+
+data qm_small writable zero 16
+data qv_mod_small_initialized writable zero 8
+data g_q writable zero 8
+data g_v writable zero 8
+data qs_1 text "oops"
+data g_oops writable zero 8
+data g_oops_2 writable zero 8
+data g_small_record_box writable zero 8
+data g_small_record writable zero 16
+data qf_q_closure words [qf_q, 0]
+data qs_2 text "Fun(: Int) Int"
+data qfun_desc_fun_0c4346157e7c9fc5 words [1, quest_type_Int, quest_adapt_fun_0c4346157e7c9fc5, quest_invoke_fun_0c4346157e7c9fc5, 0, 0, quest_type_Int, 0]
+data quest_type_fun_0c4346157e7c9fc5 words [11, qs_2, 8, 8, quest_is_subtype, qfun_desc_fun_0c4346157e7c9fc5]
+data qs_3 text "Exception(Int)"
+data qexc_desc_exception_30576fa72e96528d words [quest_type_Int]
+data quest_type_exception_30576fa72e96528d words [13, qs_3, 8, 8, quest_is_subtype, qexc_desc_exception_30576fa72e96528d]
+data qs_4 text "q"
+data qs_5 text "v"
+data qs_6 text "Record q: Fun(i: Int) Int v: Int oops: Exception(Int) end"
+data qrec_desc_QT_record_3d6538f826e74f6d words [3, qs_1, quest_type_exception_30576fa72e96528d, 8, 0, qs_4, quest_type_fun_0c4346157e7c9fc5, 16, 0, qs_5, quest_type_Int, 24, 0]
+data quest_type_QT_record_3d6538f826e74f6d words [7, qs_6, 32, 8, quest_is_subtype, qrec_desc_QT_record_3d6538f826e74f6d]
+data offsetdict_record_3d6538f826e74f6d_record_3d6538f826e74f6d words [8, 16, 24, 0]
+data qs_7 text "small.q"
+data qs_8 text "small.<init>"
+data qs_9 text "<main>"
+data qr_funcs words [qf_q, qs_7, qv_mod_small_init, qs_8, main, qs_9]
+data g_q_2 writable zero 8
+data g_global writable zero 8
+data g_v_2 writable zero 8
+data g_oops_3 writable zero 8
+data g_oops_4 writable zero 8
+data g_global_2 writable zero 8
+data g_global_3 writable zero 8
+data qs_10 text "/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/tokenizer-cleanup-q/tests/source/modules/inline_module_member_names.quest:20:18"
+data g_global_4 writable zero 8
+data g_n writable zero 8
+data g_global_5 writable zero 8
+data g_global_6 writable zero 8
+data g_n_2 writable zero 8
+data g_global_7 writable zero 8
+data g_global_8 writable zero 8
 

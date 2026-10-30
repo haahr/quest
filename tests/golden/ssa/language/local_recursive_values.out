@@ -319,6 +319,81 @@ b0(%0: ptr):
   return %10
 }
 
+function quest_thunk_fun_eb9eb6d87ddb0060(%0: ptr): ptr, ptr slots [8:8] {
+b0(%0: ptr):
+  %1: ptr = load8 %0 + 0
+  %2: ptr = load8 %0 + 8
+  %3: ptr = load8 %2 + 40
+  %4: ptr = load8 %0 + 16
+  %5: ptr = load8 %4 + 40
+  %6: int = load1 %0 + 24
+  branch %6, b1(), b2()
+b1():
+  %7: ptr = load8 %1 + 8
+  %8: ptr = load8 %1 + 0
+  %9: ptr, %10: ptr = callIndirect %8, %7
+  %11: ptr = call quest_record_box(%9, %10)
+  %12: int = ptrToInt %11
+  %13: ptr = load8 %3 + 8
+  %14: ptr = load8 %5 + 8
+  %15: int = call quest_convert(%12, %13, %14)
+  %16: ptr = intToPtr %15
+  %17: ptr = load8 %16 + 0
+  %18: ptr = load8 %16 + 8
+  return %17, %18
+b2():
+  %19: ptr = slot 0
+  %20: ptr = load8 %3 + 24
+  %21: int = callIndirect %20, %1, %19
+  %22: ptr = load8 %3 + 8
+  %23: ptr = load8 %5 + 8
+  %24: int = call quest_convert(%21, %22, %23)
+  %25: ptr = intToPtr %24
+  %26: ptr = load8 %25 + 0
+  %27: ptr = load8 %25 + 8
+  return %26, %27
+}
+
+function quest_adapt_fun_eb9eb6d87ddb0060(%0: ptr, %1: ptr, %2: ptr): ptr {
+b0(%0: ptr, %1: ptr, %2: ptr):
+  %3: int = const 32
+  %4: ptr = call quest_alloc(%3)
+  store8 %4 + 0, %0
+  store8 %4 + 8, %1
+  store8 %4 + 16, %2
+  %5: int = call quest_fun_signature_equivalent(%1, %2)
+  %6: int = zext8 %5
+  store1 %4 + 24, %6
+  %7: int = const 16
+  %8: ptr = call quest_alloc(%7)
+  %9: ptr = symbol quest_thunk_fun_eb9eb6d87ddb0060
+  store8 %8 + 0, %9
+  store8 %8 + 8, %4
+  return %8
+}
+
+function quest_invoke_fun_eb9eb6d87ddb0060(%0: ptr, %1: ptr): int {
+b0(%0: ptr, %1: ptr):
+  %2: ptr = load8 %0 + 8
+  %3: ptr = load8 %0 + 0
+  %4: ptr, %5: ptr = callIndirect %3, %2
+  %6: ptr = call quest_record_box(%4, %5)
+  %7: int = ptrToInt %6
+  return %7
+}
+
+function qr_register_dicts() {
+b0():
+  %0: ptr = symbol qr_funcs
+  %1: int = const 17
+  call quest_register_funcs(%0, %1)
+  %2: ptr = symbol quest_type_QT_record_c6a8a176f811273a
+  %3: ptr = symbol quest_type_QT_record_c6a8a176f811273a
+  %4: ptr = symbol offsetdict_record_c6a8a176f811273a_record_c6a8a176f811273a
+  call quest_register_record_dict(%2, %3, %4)
+  return
+}
+
 function main exported(%0: int, %1: ptr): int {
 b0(%0: int, %1: ptr):
   call quest_gc_init()
@@ -496,7 +571,7 @@ b9(%85: ptr):
   %136: ptr = symbol g_global_15
   %137: ptr = load8 %136 + 0
   %138: int = const 0
-  %139: ptr = symbol qs_7
+  %139: ptr = symbol qs_26
   call quest_check_array_bounds_at(%137, %138, %139)
   %140: int = const 8
   %141: int = mul %138, %140
@@ -526,7 +601,7 @@ b9(%85: ptr):
   %162: ptr = symbol g_global_18
   %163: ptr = load8 %162 + 0
   %164: int = const 0
-  %165: ptr = symbol qs_7
+  %165: ptr = symbol qs_26
   call quest_check_array_bounds_at(%163, %164, %165)
   %166: int = const 8
   %167: int = mul %164, %166
@@ -674,13 +749,13 @@ b9(%85: ptr):
   store8 %287 + 0, %286
   %288: ptr = symbol g_global_36
   %289: ptr = load8 %288 + 0
-  %290: ptr = symbol qs_8
+  %290: ptr = symbol qs_27
   %291: int = const 1
   %292: ptr = call quest_string_new(%290, %291)
   %293: ptr = call quest_string_concat(%289, %292)
   %294: ptr = symbol g_global_37
   store8 %294 + 0, %293
-  %295: ptr = symbol qs_9
+  %295: ptr = symbol qs_28
   %296: int = const 1
   %297: ptr = call quest_string_new(%295, %296)
   %298: ptr = symbol g_global_37
@@ -766,13 +841,13 @@ b9(%85: ptr):
   store8 %364 + 0, %363
   %365: ptr = symbol g_global_49
   %366: ptr = load8 %365 + 0
-  %367: ptr = symbol qs_8
+  %367: ptr = symbol qs_27
   %368: int = const 1
   %369: ptr = call quest_string_new(%367, %368)
   %370: ptr = call quest_string_concat(%366, %369)
   %371: ptr = symbol g_global_50
   store8 %371 + 0, %370
-  %372: ptr = symbol qs_9
+  %372: ptr = symbol qs_28
   %373: int = const 1
   %374: ptr = call quest_string_new(%372, %373)
   %375: ptr = symbol g_global_50
@@ -805,4 +880,117 @@ b11():
 b12(%89: ptr):
   jump b9(%89)
 }
+
+data qs_1 text "tuple\n"
+data qs_2 text "record\n"
+data qs_3 text "option\n"
+data qs_4 text "array\n"
+data qs_5 text "ping"
+data qs_6 text "pong"
+data qf_say_closure words [qf_say, 0]
+data qf_me_closure words [qf_me, 0]
+data qf_mkT_closure words [qf_mkT, 0]
+data qf_f_closure words [qf_f, 0]
+data qf_mkR_closure words [qf_mkR, 0]
+data qf_me_2_closure words [qf_me_2, 0]
+data qf_mkO_closure words [qf_mkO, 0]
+data qf_nameO_closure words [qf_nameO, 0]
+data qf_me_3_closure words [qf_me_3, 0]
+data qf_mkA_closure words [qf_mkA, 0]
+data qf_add_closure words [qf_add, 0]
+data qf_total_closure words [qf_total, 0]
+data qf_newCounter_closure words [qf_newCounter, 0]
+data qf_other_closure words [qf_other, 0]
+data qf_other_2_closure words [qf_other_2, 0]
+data qf_pair_closure words [qf_pair, 0]
+data qs_7 text "Fun() Rec.0"
+data qfun_desc_fun_eb9eb6d87ddb0060 words [0, quest_type_QT_record_c6a8a176f811273a, quest_adapt_fun_eb9eb6d87ddb0060, quest_invoke_fun_eb9eb6d87ddb0060, 0, 0]
+data quest_type_fun_eb9eb6d87ddb0060 words [11, qs_7, 8, 8, quest_is_subtype, qfun_desc_fun_eb9eb6d87ddb0060]
+data qs_8 text "me"
+data qs_9 text "name"
+data qs_10 text "Record me: Fun() Rec.0 name: String end"
+data qrec_desc_QT_record_c6a8a176f811273a words [2, qs_8, quest_type_fun_eb9eb6d87ddb0060, 8, 0, qs_9, quest_type_String, 16, 0]
+data quest_type_QT_record_c6a8a176f811273a words [7, qs_10, 24, 8, quest_is_subtype, qrec_desc_QT_record_c6a8a176f811273a]
+data offsetdict_record_c6a8a176f811273a_record_c6a8a176f811273a words [8, 16, 0]
+data qs_11 text "say"
+data qs_12 text "mkT.<anon>"
+data qs_13 text "mkT"
+data qs_14 text "mkR.<anon>"
+data qs_15 text "mkR"
+data qs_16 text "mkO.<anon>"
+data qs_17 text "mkO"
+data qs_18 text "nameO"
+data qs_19 text "mkA.<anon>"
+data qs_20 text "mkA"
+data qs_21 text "newCounter.<anon>"
+data qs_22 text "newCounter"
+data qs_23 text "pair.<anon>"
+data qs_24 text "pair"
+data qs_25 text "<main>"
+data qr_funcs words [qf_say, qs_11, qf_me, qs_12, qf_mkT, qs_13, qf_f, qs_14, qf_mkR, qs_15, qf_me_2, qs_16, qf_mkO, qs_17, qf_nameO, qs_18, qf_me_3, qs_19, qf_mkA, qs_20, qf_add, qs_21, qf_total, qs_21, qf_newCounter, qs_22, qf_other, qs_23, qf_other_2, qs_23, qf_pair, qs_24, main, qs_25]
+data g_say writable zero 8
+data g_mkT writable zero 8
+data g_global writable zero 8
+data g_global_2 writable zero 8
+data g_global_3 writable zero 8
+data g_global_4 writable zero 8
+data g_global_5 writable zero 8
+data g_global_6 writable zero 8
+data g_mkR writable zero 8
+data g_global_7 writable zero 16
+data g_global_8 writable zero 8
+data g_global_9 writable zero 16
+data g_global_10 writable zero 8
+data g_global_11 writable zero 16
+data g_global_12 writable zero 8
+data g_mkO writable zero 8
+data g_nameO writable zero 8
+data g_global_13 writable zero 8
+data g_global_14 writable zero 8
+data g_mkA writable zero 8
+data g_global_15 writable zero 8
+data qs_26 text "/Users/haahr/Dropbox/Paul/src/quest/.claude/worktrees/tokenizer-cleanup-q/tests/source/language/local_recursive_values.quest:25:5"
+data g_global_16 writable zero 8
+data g_global_17 writable zero 8
+data g_global_18 writable zero 8
+data g_global_19 writable zero 8
+data g_global_20 writable zero 8
+data g_newCounter writable zero 8
+data g_c1 writable zero 8
+data g_c2 writable zero 8
+data g_global_21 writable zero 8
+data g_global_22 writable zero 8
+data g_global_23 writable zero 8
+data g_global_24 writable zero 8
+data g_global_25 writable zero 8
+data g_global_26 writable zero 8
+data g_global_27 writable zero 8
+data g_global_28 writable zero 8
+data g_global_29 writable zero 8
+data g_global_30 writable zero 8
+data g_global_31 writable zero 8
+data g_global_32 writable zero 8
+data g_global_33 writable zero 8
+data g_global_34 writable zero 8
+data g_global_35 writable zero 8
+data g_global_36 writable zero 8
+data qs_27 text "\n"
+data g_global_37 writable zero 8
+data qs_28 text " "
+data g_global_38 writable zero 8
+data g_global_39 writable zero 8
+data g_pair writable zero 8
+data g_global_40 writable zero 8
+data g_global_41 writable zero 8
+data g_global_42 writable zero 8
+data g_global_43 writable zero 8
+data g_global_44 writable zero 8
+data g_global_45 writable zero 8
+data g_global_46 writable zero 8
+data g_global_47 writable zero 8
+data g_global_48 writable zero 8
+data g_global_49 writable zero 8
+data g_global_50 writable zero 8
+data g_global_51 writable zero 8
+data g_global_52 writable zero 8
 

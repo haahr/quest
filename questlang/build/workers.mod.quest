@@ -2,6 +2,7 @@
 
 module workers : Workers
 import
+    questlang/codegen/choice : questlang/codegen/Choice
     questlang/common/location : questlang/common/Location
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/values/json : questlang/values/Json
@@ -29,6 +30,7 @@ export
         extraCFlags: Array(String)
         buildDir: maybe.T(String)
         programDir: maybe.T(String)
+        backends: choice.T
     end
 
     Let Outcome = Tuple source: String stderr: String failure: maybe.T(String) end
@@ -200,6 +202,8 @@ export
                 add("--cflag")
                 add(job.extraCFlags[i])
             end
+            let backendArgs = choice.arguments(job.backends)
+            for i = 0 upto {extent backendArgs - 1} do add(backendArgs[i]) end
             vector.toArray(:String args)
         end
 
@@ -291,6 +295,8 @@ export
             let var compiler = maybe.none(:String)
             let var nogc = false
             let cflags = vector.new(:String)
+            let var backend = "c"
+            let overrides = vector.new(:choice.Override)
             let var i = 1
             (* Each option but --nogc takes a value *)
             while i < extent args do
@@ -314,6 +320,11 @@ export
                     compiler := maybe.some(:String value)
                 elsif eq(arg "--cflag") then
                     vector.append(:String cflags value)
+                elsif eq(arg "--backend") then
+                    backend := value
+                elsif eq(arg "--unit-backend") then
+                    let o = choice.parseOverride(value)
+                    if maybe.isSome(:choice.Override o) then vector.append(:choice.Override overrides maybe.unwrap(:choice.Override o)) end
                 end
                 let step = if eq(arg "--nogc") then 1 else 2 end
                 i := i + step
@@ -324,6 +335,7 @@ export
             stdlib.install()
             (* One resolver for the batch, as a serial build has one for all *)
             let resolver = graph.newResolver()
+            let backends = tuple let default = backend let overrides = vector.toArray(:choice.Override overrides) end
             let var failed = maybe.none(:String)
             for b = 0 upto {vector.length(:String sources) - 1} do
                 if maybe.isNone(:String failed) then
@@ -333,7 +345,7 @@ export
                             moduleCompiler.compileModuleFile(vector.get(:String sources b)
                                 maybe.some(:String vector.get(:String targetDirs b)) vector.toArray(:String searchPaths)
                                 compiler nogc vector.toArray(:String cflags) buildDir programDir
-                                maybe.some(:graph.Resolver resolver))
+                                maybe.some(:graph.Resolver resolver) backends)
                             maybe.none(:String)
                         end
                     when diagnostics.compilerError with err then

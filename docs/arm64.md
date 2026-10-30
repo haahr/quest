@@ -107,7 +107,7 @@ The inventory (§7) lists each decision and where the SSA backends get it. In sh
   2026-10-29).
 
 **Construction.** The IR is structured, so its statements become blocks and edges directly. Mutable variables are
-built as stack slots, loaded and stored (decided 2026-10-30, [ssa.md](ssa.md) §4); a later pass promotes those whose
+built as stack slots, loaded and stored (decided 2026-10-29, [ssa.md](ssa.md) §4); a later pass promotes those whose
 address is not taken to values, for which Braun et al.'s algorithm (*Simple and Efficient Construction of Static
 Single Assignment Form*, CC 2013) suits the structured IR: blocks sealed as they are walked, with no dominance
 frontiers. `if`,
@@ -298,12 +298,15 @@ memory reached by byte offsets (`*(int64_t *)(p + 16)`). It computes no layout a
 only prints what the SSA says, so a test that passes through it checks the SSA's construction, the shared layout
 (its units link with the C backend's, which assert their offsets), and every lowering before instruction selection.
 
-- **Calls** are C calls of the declared signatures, so clang applies the ABI; the arm64 backend's ABI lowering is
-  checked by the mixed builds instead (§4).
+- **Calls** are C calls through a pointer to a function of the types the call's arguments and results have (a 16-byte
+  composite a struct of two words, one passed through memory a struct of its bytes), so clang applies the ABI as the
+  callee's own C declaration would; the arm64 backend's ABI lowering is checked by the mixed builds instead (§4).
 - **`try`** is a C `try` as now: the handler record, `_setjmp` at the region's entry, and a `goto` to the handler
   block when it returns again. The SSA's rule for `try` (§3.6) is the rule `_setjmp` needs: values the handler uses
-  were defined before the region, and mutable variables live in it are stack slots, which the printer declares
-  `volatile`.
+  were defined before the region, and mutable variables live in it are stack slots. A function that enters a `try`
+  has its values `volatile`, and reaches memory through `volatile` pointers.
+- **Data** is arrays of words (`void *` for words, `char` for text, `uint64_t` for zeros), declared before the
+  functions and defined after them, so that data and functions may refer to one another in any order.
 - **Tail calls** are ordinary calls, which clang may or may not make jumps.
 
 It stays after the arm64 backend is complete: a test that fails with arm64 and passes with `ssac` is a bug after
@@ -370,7 +373,11 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
   self-hosted driver had (`tests/self-hosted/pending.txt`, testing.md §2.3): a pending test that passes fails, so the
   list only shrinks.
 - **Mixed builds:** each multi-unit test also runs with its units split between the backends (alternating, and the
-  other way), which finds any disagreement about layout or calls.
+  other way), which finds any disagreement about layout or calls. For `ssac` (step 5), every test is multi-unit (its
+  library modules are units too), and the runner's `ssac-program` and `ssac-modules` modes compile the program's unit
+  or its modules' through `ssac` and the rest through C, so that calls, closures, records, and exceptions cross
+  between the backends both ways; `tests/self-hosted/backends.py` builds one program with every split in one build
+  directory.
 - **Calls between C and native code,** generated for each kind of signature: integers, `double`s, 16-byte values,
   descriptors, closures, `var`/`out` pointers, more than eight arguments, in both directions.
 - **Layout assertions** (§3.3) compile in every C unit.
@@ -397,18 +404,31 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
 3. **Shared layout with assertions** (§3.3), and `collections/bitset` (§3.15). *Done* (2026-10-29): `codegen/layout`
    and `codegen/staticdata` compute every struct's layout and the C asserts them (ABI 54); `codegen/runtimeLayout`'s
    table of the runtime's structs is checked against the header; release a5ddef5b has `collections/bitset`.
-4. **The SSA:** nodes, printer, verifier, construction (§3.2), with `--stop-after ssa`. *Done* (2026-10-30): every
+4. **The SSA:** nodes, printer, verifier, construction (§3.2), with `--stop-after ssa`. *Done* (2026-10-29): every
    run test's program unit builds SSA that verifies, with a golden for each ([ssa.md](ssa.md) §6); the questlang test
    `ssa_verify` checks the verifier. Decided while building it: mutable variables are stack slots, promoted by a later
    pass, rather than built into values on the fly (ssa.md §4). Module units are built through the SSA by `ssac`'s
    builds in step 5, which run every unit through it.
-5. **The SSA-to-C printer** (§3.14) and `--backend ssac`, with its runner mode and pending list. *Done when* the
-   suite passes with `ssac`, its pending list is empty, multi-unit tests pass with their units split between `ssac`
-   and `c`, and `tools/check` runs the `ssac` mode and those mixed builds before every push (decided 2026-10-30:
-   from this step on, rather than from step 9). Settled for it: `ssac`'s units compile with
-   `-fno-strict-aliasing`, since they read memory by byte offsets; their static data is printed by
-   `codegen/c/declarations`; the backend that built a unit is recorded with its artifacts; and a repeatable
-   `--unit-backend UNIT=BACKEND` overrides `--backend` for one unit.
+5. **The SSA-to-C printer** (§3.14) and `--backend ssac`, with its runner mode and pending list. *Done*
+   (2026-10-29): every golden and error test of the self-hosted suite's compiled phase passes with every unit, the
+   library's included, compiled by `ssac`, and with the program's unit or its modules' alone (`run_tests.py
+   --self-hosted --backend ssac`, `ssac-program`, `ssac-modules`); `tests/self-hosted/pending-ssac.txt` is empty;
+   and `tools/check` runs the three modes before every push (decided 2026-10-29: from this step on, rather than from
+   step 9). What it settled (§9 has the rest):
+   - **`ssac`'s C includes no header** and declares everything itself, so that nothing it prints conflicts with the
+     runtime's declarations: a symbol the unit does not define is `extern char name[]` (a thread-local, `extern
+     __thread`); each call goes through a pointer to a function of the types its arguments and results have, a
+     16-byte composite as a struct of two words and one passed through memory as a struct of its bytes, so that
+     clang passes them as AAPCS64 does. Its units compile as GNU C, with `-fno-strict-aliasing` (they read and write
+     a word of memory as different C types) and `-fno-builtin` (`ssac.cFlags`).
+   - **Static data is the SSA's,** not the C declarations' (superseding what was settled before this step): a unit's
+     data is words, text, and zeros (ssa.md §5), its descriptors laid out by `ssa/statics` from `codegen/staticdata`'s
+     descriptions, and its function types' adapters, thunks, and invokers, its exported functions, its function
+     table, and `qr_register_dicts` built as SSA functions, so that the arm64 backend emits the same data and code.
+   - **The backend is chosen per unit** (`codegen/choice`): `--backend` for every unit, and a repeatable
+     `--unit-backend UNIT=BACKEND` for one, a unit named as its manifest names it (a module by its canonical name,
+     the program as `main`). A unit's manifest records its backend (`"backend"`), and a unit compiled by another is
+     stale. `--whole-program` stays the C backend's until step 13.
 6. **A first arm64 backend:** instruction selection, the trivial allocator, frames, static data, emission, and
    linking, for straight-line code, calls, and control flow; other constructs are errors (§3.12). *Done when* the
    tests that use only those pass with `--backend arm64`, and the rest are on its pending list.
@@ -589,3 +609,17 @@ builds (§4) keep the two implementations agreeing.
    `INT64_MIN % ~1` is 0 in all three. Step 2 makes them agree: `-fwrapv` for C, `INT64_MIN / -1` defined as
    `INT64_MIN` (and `% -1` as 0) in the runtime's helpers, results reduced to 64 bits in the bootstrap's interpreter,
    and run tests of each case. arm64's `add`, `sub`, `mul`, `sdiv`, and `msub` then do what Quest does.
+
+## 9. What the Oracle Found
+
+Running every unit through `ssac` (step 5) found where the SSA's builder did not do what the C printer does, each
+fixed in the builder, with what the test that found it was:
+
+- A static descriptor operand of an echoed type is its echo descriptor (`echoDescriptorForm`), as the C printer's
+  `staticDescriptorOf` has it.
+- Only a module file's initializer (an exported module's) calls `qr_register_dicts` and its imports' initializers; a
+  module file has no `main`.
+- External values the runtime spells as expressions: an object's address (`(&quest_exc_writer_error)`), a Real
+  without a literal (`QUEST_REAL_INFINITY`, by its bits, `runtimeLayout.realBits`), and a runtime variable read as a
+  value (`quest_system_args`, `runtimeLayout.variables`).
+- Static data cannot hold a thread-local's address, which is not a constant; `ssac` refuses such data.

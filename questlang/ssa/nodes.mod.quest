@@ -55,19 +55,45 @@ export
         exported: Bool
         paramTypes: vector.T(Type)
         resultTypes: vector.T(Type)
+        var paramPairs: Array(Int)
         types: vector.T(Type)
         blocks: vector.T(Block)
         slots: vector.T(Slot)
     end
 
+    Def Word = Option
+        wordInt with n: Int end
+        wordSymbol with symbol: String addend: Int end
+    end
+    Def Contents = Option
+        contentsZero with bytes: Int end
+        contentsText with text: String end
+        contentsWords with words: Array(Word) end
+    end
+    Def Data = Tuple symbol: String exported: Bool writable: Bool contents: Contents end
+
     Def Unit = Tuple
         functions: vector.T(Function)
+        data: vector.T(Data)
     end
 
     let none: Array(Int) = array of :Int end
     let noMemory: Array(Int) = array of :Int end
 
-    let newUnit(): Unit = tuple let functions = vector.new(:Function) end
+    let newUnit(): Unit = tuple let functions = vector.new(:Function) let data = vector.new(:Data) end
+
+    let words(symbol: String exported: Bool writable: Bool ws: Array(Word)): Data =
+        tuple
+            let symbol = symbol let exported = exported let writable = writable
+            let contents = option contentsWords of Contents with let words = ws end
+        end
+
+    let wordsBytes(c: Contents): Int =
+        case c
+            when contentsZero with x then x.bytes
+            when contentsText with x then stringOp.length(x.text) + 1
+            when contentsWords with x then 8 * extent x.words
+        end
 
     let newValue(f: Function t: Type): Int =
         begin
@@ -108,6 +134,7 @@ export
                 let exported = exported
                 let paramTypes = vector.fromArray(:Type params)
                 let resultTypes = vector.fromArray(:Type results)
+                let var paramPairs = array of :Int end
                 let types = vector.new(:Type)
                 let blocks = vector.new(:Block)
                 let slots = vector.new(:Slot)

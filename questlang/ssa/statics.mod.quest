@@ -1,0 +1,160 @@
+(* Quest Self-Hosted Compiler: The SSA's Static Descriptors Implementation *)
+
+module statics : Statics
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/staticdata : questlang/codegen/StaticData
+    questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    Let Words = vector.T(ssa.Word)
+
+    let int(n: Int): ssa.Word = option wordInt of ssa.Word with let n = n end
+    let address(symbol: String): ssa.Word = option wordSymbol of ssa.Word with let symbol = symbol let addend = 0 end
+    let flag(b: Bool): ssa.Word = int(if b then 1 else 0 end)
+    let add(ws: Words w: ssa.Word): Ok = vector.append(:ssa.Word ws w)
+    (* Zero words up to n bytes in all *)
+    let padTo(ws: Words bytes: Int): Ok = while {8 * vector.length(:ssa.Word ws)} < bytes do add(ws int(0)) end
+    let bytes(name: String): Int = maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct(name)).bytes
+
+    let refWord(r: staticdata.Ref): ssa.Word =
+        if stringOp.length(r.symbol) is 0 then int(0)
+        else option wordSymbol of ssa.Word with let symbol = r.symbol let addend = r.index * bytes("QTypeDescriptor") end
+        end
+
+    let datum(symbol: String ws: Words): ssa.Data = ssa.words(symbol false false vector.toArray(:ssa.Word ws))
+
+    let descriptorData(d: staticdata.Descriptor text: All(s: String) String): Array(ssa.Data) =
+        begin
+            let tag = d.tag
+            let res = vector.new(:ssa.Data)
+            let named(name: maybe.T(String)): ssa.Word =
+                if maybe.isSome(:String name) then address(text(maybe.unwrap(:String name))) else int(0) end
+            (* A descriptor: QTypeDescriptor's kind, name, size, alignment,
+             * is_subtype, and extra *)
+            let descriptor(symbol: String kind: String name: String size: Int extra: ssa.Word): Ok =
+                begin
+                    let ws = vector.new(:ssa.Word)
+                    add(ws int(runtimeLayout.constant(kind)))
+                    add(ws address(text(name)))
+                    add(ws int(size))
+                    add(ws int(8))
+                    add(ws address("quest_is_subtype"))
+                    add(ws extra)
+                    vector.append(:ssa.Data res datum(symbol ws))
+                end
+            let plain(extra: ssa.Word): Ok = descriptor("quest_type_" <> tag d.kindConstant d.name d.size.bytes extra)
+            (* A struct the extra field points at *)
+            let extra(symbol: String ws: Words): Ok =
+                begin
+                    vector.append(:ssa.Data res datum(symbol ws))
+                    plain(address(symbol))
+                end
+            (* A field, element, or component: name, type, offset, is_var *)
+            let component(ws: Words c: staticdata.Component): Ok =
+                begin add(ws named(c.name)) add(ws refWord(c.type)) add(ws int(c.offset.bytes)) add(ws flag(c.isVar)) end
+            let cases(cs: Array(staticdata.Case)): Ok =
+                begin
+                    let ws = vector.new(:ssa.Word)
+                    add(ws int(extent cs))
+                    for j = 0 upto {extent cs - 1} do
+                        let c = cs[j]
+                        add(ws address(text(c.name)))
+                        add(ws refWord(c.payload))
+                        add(ws int(c.tagIndex))
+                        add(ws flag(c.isVar))
+                    end
+                    (* C has no empty arrays: one case at least *)
+                    padTo(ws 8 + bytes("QVariantCaseDescriptor"))
+                    extra("qvar_desc_" <> tag ws)
+                end
+            case d.payload
+                when payloadNone then plain(int(0))
+                when payloadOpaque with x then
+                    let args = vector.new(:ssa.Word)
+                    for j = 0 upto {extent x.args - 1} do add(args refWord(x.args[j])) end
+                    padTo(args 8)
+                    vector.append(:ssa.Data res datum("qopaque_args_" <> tag args))
+                    let ws = vector.new(:ssa.Word)
+                    add(ws int(extent x.args))
+                    add(ws address("qopaque_args_" <> tag))
+                    add(ws int(0))
+                    extra("qopaque_desc_" <> tag ws)
+                when payloadStored with x then
+                    descriptor("quest_type_" <> tag <> "_abstract" "QTYPE_KIND_OPAQUE" d.name 8 int(0))
+                    let ws = vector.new(:ssa.Word)
+                    add(ws address("quest_type_" <> tag <> "_abstract"))
+                    add(ws refWord(x.storage))
+                    add(ws flag(true))
+                    extra("qstored_desc_" <> tag ws)
+                when payloadHole with x then
+                    let ws = vector.new(:ssa.Word)
+                    add(ws int(x.index))
+                    add(ws refWord(x.storage))
+                    extra("qhole_desc_" <> tag ws)
+                when payloadFun with x then
+                    if extent x.bounds > 0 then
+                        let bs = vector.new(:ssa.Word)
+                        for j = 0 upto {extent x.bounds - 1} do add(bs refWord(x.bounds[j])) end
+                        vector.append(:ssa.Data res datum("qfun_bounds_" <> tag bs))
+                    end
+                    let ws = vector.new(:ssa.Word)
+                    add(ws int(extent x.params))
+                    add(ws refWord(x.result))
+                    add(ws address("quest_adapt_" <> tag))
+                    add(ws address("quest_invoke_" <> tag))
+                    add(ws int(extent x.bounds))
+                    add(ws if extent x.bounds > 0 then address("qfun_bounds_" <> tag) else int(0) end)
+                    for j = 0 upto {extent x.params - 1} do
+                        let p = x.params[j]
+                        add(ws refWord(p.type))
+                        (* is_var and is_out, bytes 8 and 9 *)
+                        add(ws int({if p.isVar then 1 else 0 end} + {if p.isOut then 256 else 0 end}))
+                    end
+                    extra("qfun_desc_" <> tag ws)
+                when payloadAuto with x then
+                    let ws = vector.new(:ssa.Word)
+                    add(ws refWord(x.bound))
+                    add(ws int(x.payloadSize.bytes))
+                    add(ws int(extent x.components))
+                    for j = 0 upto {extent x.components - 1} do component(ws x.components[j]) end
+                    padTo(ws 24 + bytes("QAutoComponentDescriptor"))
+                    extra("qauto_desc_" <> tag ws)
+                when payloadException with x then
+                    let ws = vector.new(:ssa.Word)
+                    add(ws refWord(x.payloadType))
+                    extra("qexc_desc_" <> tag ws)
+                when payloadArray with x then
+                    let ws = vector.new(:ssa.Word)
+                    add(ws refWord(x.element))
+                    extra("qarr_desc_" <> tag ws)
+                when payloadRecord with x then
+                    let ws = vector.new(:ssa.Word)
+                    add(ws int(extent x.fields))
+                    for j = 0 upto {extent x.fields - 1} do component(ws x.fields[j]) end
+                    extra("qrec_desc_" <> tag ws)
+                when payloadTuple with x then
+                    let n = extent x.typeComponents
+                    if n > 0 then
+                        let cs = vector.new(:ssa.Word)
+                        for j = 0 upto {n - 1} do
+                            add(cs int(x.typeComponents[j].position))
+                            add(cs address(text(x.typeComponents[j].text)))
+                        end
+                        vector.append(:ssa.Data res datum("qtup_components_" <> tag cs))
+                    end
+                    let ws = vector.new(:ssa.Word)
+                    add(ws int(n))
+                    add(ws if n > 0 then address("qtup_components_" <> tag) else int(0) end)
+                    add(ws int(extent x.elements))
+                    for j = 0 upto {extent x.elements - 1} do component(ws x.elements[j]) end
+                    padTo(ws 24 + bytes("QTupleElementDescriptor"))
+                    extra("qtup_desc_" <> tag ws)
+                when payloadVariant with x then cases(x.cases)
+                when payloadOption with x then cases(x.cases)
+            end
+            vector.toArray(:ssa.Data res)
+        end
+end

@@ -1,4 +1,4 @@
-function qv_mod_counter_init exported() {
+function qv_mod_counter_init() {
 b0():
   %0: ptr = symbol qv_mod_counter_initialized
   %1: int = load1 %0 + 0
@@ -9,7 +9,6 @@ b2():
   %2: ptr = symbol qv_mod_counter_initialized
   %3: int = const 1
   store1 %2 + 0, %3
-  call qv_mod_int_init()
   %4: int = const ~5
   %5: int = call qv_int_abs(%4)
   %6: ptr = symbol g_get
@@ -50,6 +49,18 @@ b2():
   return
 }
 
+function qr_register_dicts() {
+b0():
+  %0: ptr = symbol qr_funcs
+  %1: int = const 2
+  call quest_register_funcs(%0, %1)
+  %2: ptr = symbol quest_type_QT_record_893079b315d21f73
+  %3: ptr = symbol quest_type_QT_record_893079b315d21f73
+  %4: ptr = symbol offsetdict_record_893079b315d21f73_record_893079b315d21f73
+  call quest_register_record_dict(%2, %3, %4)
+  return
+}
+
 function main exported(%0: int, %1: ptr): int {
 b0(%0: int, %1: ptr):
   call quest_gc_init()
@@ -64,4 +75,19 @@ b0(%0: int, %1: ptr):
   %5: int = const 0
   return %5
 }
+
+data qm_counter writable zero 16
+data qv_mod_counter_initialized writable zero 8
+data g_get writable zero 8
+data g_counter_record_box writable zero 8
+data g_counter_record writable zero 16
+data qs_1 text "get"
+data qs_2 text "Record get: Int end"
+data qrec_desc_QT_record_893079b315d21f73 words [1, qs_1, quest_type_Int, 8, 0]
+data quest_type_QT_record_893079b315d21f73 words [7, qs_2, 16, 8, quest_is_subtype, qrec_desc_QT_record_893079b315d21f73]
+data offsetdict_record_893079b315d21f73_record_893079b315d21f73 words [8, 0]
+data qs_3 text "counter.<init>"
+data qs_4 text "<main>"
+data qr_funcs words [qv_mod_counter_init, qs_3, main, qs_4]
+data g_global writable zero 8
 

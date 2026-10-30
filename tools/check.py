@@ -7,10 +7,12 @@ between them.
 
 A change to both runs, at once, the self-hosting check (run_tests.py
 --self-hosting --seed release, which ends by running the self-hosted suite with
-stage 2), the bootstrap's suite, and the unit tests but those that drive a
-terminal, and then, alone, the terminal tests, which time out under load. A
-change to the self-hosted compiler alone runs the self-hosting check only, with
-all the workers. Each suite builds into a temporary directory of its own, so
+stage 2), the backends' suite (the self-hosted suite's compiled tests through
+the SSA's C printer, ssac, for every unit, and for the program's or the
+modules' alone: docs/arm64.md section 4), the bootstrap's suite, and the unit
+tests but those that drive a terminal, and then, alone, the terminal tests,
+which time out under load. A change to the self-hosted compiler alone runs the
+self-hosting check and the backends' suite only. Each suite builds into a temporary directory of its own, so
 they do not interfere. Their output is kept in .build/check/SUITE.txt, and
 each suite's summary is printed with when it finished. The exit status is 0
 when every suite passes.
@@ -55,7 +57,7 @@ class Suite:
         lines = self.output.read_text(encoding="utf-8", errors="replace").splitlines()
         picked = [line for line in lines if line.startswith(("Summary:", "  Golden tests:", "  Error tests:", "Ran ",
                                                              "OK", "FAILED", "Fixed point", "Bootstrappable",
-                                                             "Stages 2 and 3"))]
+                                                             "Stages 2 and 3", "=== Backend"))]
         return picked or lines[-3:]
 
 
@@ -81,18 +83,23 @@ def main() -> int:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     run_tests = [python, str(ROOT_DIR / "run_tests.py")]
     self_hosting = [*run_tests, "--self-hosting", "--seed", args.seed]
+    backends = [*run_tests, "--self-hosted", "--seed", args.seed, "--backend", "ssac,ssac-program,ssac-modules"]
     unit = [python, "-m", "unittest"]
     unit_environment = {"PYTHONPATH": str(ROOT_DIR / "bootstrap" / "python")}
 
     if args.self_hosted_only:
-        together = [Suite("self-hosting", [*self_hosting, "-j", str(min(8, cores))])]
+        together = [
+            Suite("self-hosting", [*self_hosting, "-j", str(min(8, cores))]),
+            Suite("backends", [*backends, "-j", str(max(1, cores // 4))]),
+        ]
         after: list[Suite] = []
     else:
         # The self-hosted suite takes longest, and sets when the run ends: it
         # gets most of the cores (docs/testing.md section 5.1)
         together = [
-            Suite("self-hosting", [*self_hosting, "-j", str(max(1, cores * 6 // 10))]),
-            Suite("bootstrap", [*run_tests, "-j", str(max(1, cores * 4 // 10))]),
+            Suite("self-hosting", [*self_hosting, "-j", str(max(1, cores * 5 // 10))]),
+            Suite("backends", [*backends, "-j", str(max(1, cores * 2 // 10))]),
+            Suite("bootstrap", [*run_tests, "-j", str(max(1, cores * 3 // 10))]),
             Suite("unit", [*unit, "discover", "-s", "tests/python"], {**unit_environment, "QUEST_SKIP_PTY_TESTS": "1"}),
         ]
         after = [Suite("pty", [*unit, PTY_TESTS], unit_environment)]

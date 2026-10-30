@@ -23,17 +23,19 @@ export
         importedInterfaces: Array(ImportedInterfaceRef)
         abi: maybe.T(Int)
         producer: maybe.T(String)
+        backend: String
     end
 
     let newManifest(name: String interfaceName: maybe.T(String) source: String object: String
-        importedModules: Array(ImportedModuleRef) importedInterfaces: Array(ImportedInterfaceRef)): ModuleManifest =
+        importedModules: Array(ImportedModuleRef) importedInterfaces: Array(ImportedInterfaceRef) backend: String)
+        : ModuleManifest =
         begin
             let version = abi.abiVersion
             let compiler = abi.producer
             tuple
             let name = name let interfaceName = interfaceName let source = source let object = object
             let importedModules = importedModules let importedInterfaces = importedInterfaces
-            let abi = maybe.some(:Int version) let producer = maybe.some(:String compiler)
+            let abi = maybe.some(:Int version) let producer = maybe.some(:String compiler) let backend = backend
             end
         end
 
@@ -45,6 +47,7 @@ export
             let top = json.newObject()
             json.put(top "abi" if maybe.isSome(:Int m.abi) then json.int(maybe.unwrap(:Int m.abi)) else json.null end)
             json.put(top "producer" maybeString(m.producer))
+            json.put(top "backend" json.string(m.backend))
             json.put(top "name" json.string(m.name))
             json.put(top "interface" maybeString(m.interfaceName))
             json.put(top "source" json.string(m.source))
@@ -156,6 +159,7 @@ export
                         let importedModules = vector.toArray(:ImportedModuleRef mods)
                         let importedInterfaces = vector.toArray(:ImportedInterfaceRef ifaces)
                         let abi = abiVersion let producer = stringValue(member(data "producer"))
+                        let backend = stringMember(data "backend" "c")
                     end)
                 when json.error then
                     maybe.none(:ModuleManifest)

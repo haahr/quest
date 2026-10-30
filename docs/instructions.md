@@ -41,8 +41,9 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   goldens). See [testing.md](testing.md).
 - **Unit tests:** `python3.11 -m unittest discover -s tests/python`, from the repository root.
 - **Before a push or a commit:** `tools/check` runs, at once, the self-hosting check seeded from the release (which
-  ends with the self-hosted suite), the bootstrap's suite, and the unit tests, with the cores split between them, and
-  then the terminal tests alone. `tools/check --self-hosted-only` runs only the self-hosting check, for a change to
+  ends with the self-hosted suite), the backends' suite (the self-hosted suite through `ssac`, [arm64.md](arm64.md)
+  §4), the bootstrap's suite, and the unit tests, with the cores split between them, and then the terminal tests
+  alone. `tools/check --self-hosted-only` runs only the self-hosting check and the backends' suite, for a change to
   the self-hosted compiler alone: how it compiles (its IR, its C) or a refactoring of `questlang/`. Anything either
   compiler shares (the language, `lib/`, `runtime/`, what programs do or what errors say, the tests) needs the full
   `tools/check` ([testing.md](testing.md) §4.1).

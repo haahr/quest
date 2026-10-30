@@ -1,0 +1,31 @@
+module geometry : Geometry
+export
+    Def Point = Record x: Int y: Int end
+    Def Shape = Option
+        dot with at: Point end
+        segment with from: Point to: Point end
+    end
+
+    let scaled(p: Point k: Int): Point = record x = p.x * k y = p.y * k end
+    let sum(ps: Array(Point)): Point =
+        begin
+            let var x = 0
+            let var y = 0
+            for i = 0 upto {extent ps - 1} do
+                x := x + ps[i].x
+                y := y + ps[i].y
+            end
+            record x = x y = y end
+        end
+    let apply(f: All(p: Point) Point p: Point): Point = f(p)
+    let tooFar: Exception(Int) = exception tooFar: Int end
+    let fail(A::TYPE n: Int): A = raise tooFar with n end
+    let check(p: Point): Point = if p.x > 100 then fail(:Point p.x) else p end
+    let first(A::TYPE xs: Array(A)): A = xs[0]
+    let length(s: Shape): Int =
+        case s
+            when dot then 0
+            when segment with g: Tuple from: Point to: Point end then {g.to.x - g.from.x} + {g.to.y - g.from.y}
+        end
+    let origin: Point = record x = 0 y = 0 end
+end

@@ -299,7 +299,7 @@ export
         end
 
     let compileCSource(source: String output: String nogc: Bool compiler: maybe.T(String)
-        extraObjects: Array(String)): Ok =
+        extraObjects: Array(String) extraFlags: Array(String)): Ok =
         begin
             let cc = if maybe.isSome(:String compiler) then maybe.unwrap(:String compiler) else findCCompiler() end
             let dir = runtimeDir()
@@ -314,6 +314,7 @@ export
             vector.append(:String command cc)
             appendAll(command baseCFlags(cc))
             vector.append(:String command "-I" <> dir)
+            appendAll(command extraFlags)
             vector.append(:String command cFile)
             appendAll(command runtimeObjects(cc nogc array of :String end))
             appendAll(command extraObjects)

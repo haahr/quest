@@ -71,20 +71,45 @@ export
         (* Its C symbol, and whether other units call it *)
         symbol: String
         exported: Bool
-        (* The types of its parameters (the entry block's) and results *)
+        (* The types of its parameters (the entry block's) and results, and
+         * the indices of the parameters where a 16-byte composite starts, as a
+         * call's pairs (a function of two results returns one) *)
         paramTypes: vector.T(Type)
         resultTypes: vector.T(Type)
+        var paramPairs: Array(Int)
         (* The type of each value, by number *)
         types: vector.T(Type)
         blocks: vector.T(Block)
         slots: vector.T(Slot)
     end
 
+    (* A word of static data: an integer, or a symbol's address plus a byte
+     * offset *)
+    Def Word = Option
+        wordInt with n: Int end
+        wordSymbol with symbol: String addend: Int end
+    end
+    (* What a datum holds: zero bytes, a C string's bytes and its NUL, or
+     * words *)
+    Def Contents = Option
+        contentsZero with bytes: Int end
+        contentsText with text: String end
+        contentsWords with words: Array(Word) end
+    end
+    (* A unit's static datum (docs/ssa.md section 5): its symbol, whether
+     * other units refer to it, and whether it is written at run time;
+     * aligned to 8 bytes *)
+    Def Data = Tuple symbol: String exported: Bool writable: Bool contents: Contents end
+
     Def Unit = Tuple
         functions: vector.T(Function)
+        data: vector.T(Data)
     end
 
     newUnit(): Unit
+    (* A datum of words; the bytes of zero or more words *)
+    words(symbol: String exported: Bool writable: Bool ws: Array(Word)): Data
+    wordsBytes(c: Contents): Int
     (* A new function with an entry block (block 0), whose parameters are of
      * the types params *)
     newFunction(symbol: String exported: Bool params: Array(Type) results: Array(Type)): Function

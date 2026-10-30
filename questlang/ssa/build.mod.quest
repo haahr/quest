@@ -8,6 +8,9 @@ import
     questlang/ir/shapes : questlang/ir/Shapes
     questlang/ir/walk : questlang/ir/Walk
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/statics : questlang/ssa/Statics
+    questlang/ir/slots : questlang/ir/Slots
+    questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/codegen/layout : questlang/codegen/Layout
     questlang/codegen/symbols : questlang/codegen/Symbols
     questlang/codegen/staticdata : questlang/codegen/StaticData
@@ -177,7 +180,13 @@ export
             if not(hashMap.contains(:Int :String u.globalSymbols v.id)) then
                 let base = symbols.mangleIdent(if stringOp.length(v.hint) > 0 then v.hint else "global" end)
                 let bare = if strutil.startsWith(base "qv_") then stringOp.getSub(base 3 {stringOp.length(base) - 3}) else base end
-                put(:Int :String u.globalSymbols v.id freshName(u "g_" <> bare))
+                let symbol = freshName(u "g_" <> bare)
+                put(:Int :String u.globalSymbols v.id symbol)
+                let n = extent varParts(v)
+                vector.append(:ssa.Data u.built.data tuple
+                    let symbol = symbol let exported = false let writable = true
+                    let contents = option contentsZero of ssa.Contents with let bytes = 8 * {if n > 0 then n else 1 end} end
+                end)
             end
             hashMap.find(:Int :String u.globalSymbols v.id)
         end
@@ -186,7 +195,12 @@ export
         begin
             if not(hashMap.contains(:String :String u.strings s)) then
                 u.stringCount := u.stringCount + 1
-                put(:String :String u.strings s "qs_" <> conv.int(u.stringCount))
+                let symbol = "qs_" <> conv.int(u.stringCount)
+                put(:String :String u.strings s symbol)
+                vector.append(:ssa.Data u.built.data tuple
+                    let symbol = symbol let exported = false let writable = false
+                    let contents = option contentsText of ssa.Contents with let text = s end
+                end)
             end
             hashMap.find(:String :String u.strings s)
         end
@@ -398,11 +412,20 @@ export
             i.results[0]
         end
 
+    (* The static descriptor of a static descriptor operand: its echo form,
+     * if it has one *)
+    let staticFormOf(u: UnitBuilder d: ir.StaticDescriptor): staticdata.DescriptorForm =
+        begin
+            let ctx = maybe.some(:staticdata.RecordNaming u.naming)
+            let echo = if d.echo then staticdata.echoDescriptorForm(d.type ctx) else maybe.none(:staticdata.DescriptorForm) end
+            if maybe.isSome(:staticdata.DescriptorForm echo) then maybe.unwrap(:staticdata.DescriptorForm echo)
+            else staticdata.descriptorForm(d.type ctx) end
+        end
+
     let rec descriptor(fn: Fn d: ir.Descriptor): Int =
         case d
             when descVar with x then atom1(fn ir.atomOfVar(x.v))
-            when descStatic with x then
-                formAddress(fn staticdata.descriptorForm(x.d.type maybe.some(:staticdata.RecordNaming fn.u.naming)))
+            when descStatic with x then formAddress(fn staticFormOf(fn.u x.d))
             when descInstantiate with x then
                 let form = staticdata.descriptorForm(x.template maybe.some(:staticdata.RecordNaming fn.u.naming))
                 if eq(form.kind "base") orif eq(form.kind "bound_var") then
@@ -1427,6 +1450,27 @@ export
                     found := maybe.some(:Array(Int) array of symbolAt(fn runtimeLayout.addresses[i].symbol) end)
                 end
             end
+            for i = 0 upto {extent runtimeLayout.realBits - 1} do
+                if eq(runtimeLayout.realBits[i].name symbol) then
+                    let v = ssa.newValue(fn.f tReal)
+                    ssa.append(fn.f fn.cur tuple
+                        let op = option opRealConst of ssa.Opcode end let var args = noValues let results = array of v end
+                        let imm = runtimeLayout.realBits[i].value let symbol = "" let width = 0 let signed = false
+                        let pairs = noPairs let memory = noPairs
+                    end)
+                    found := maybe.some(:Array(Int) array of v end)
+                end
+            end
+            for i = 0 upto {extent runtimeLayout.variables - 1} do
+                if eq(runtimeLayout.variables[i] symbol) then
+                    found := maybe.some(:Array(Int) array of loadWord(fn symbolAt(fn symbol) 0 tPtr) end)
+                end
+            end
+            (* A runtime object's address, as C spells it: (&name) *)
+            let n = stringOp.length(symbol)
+            if {n > 3} andif strutil.startsWith(symbol "(&") andif {stringOp.getChar(symbol n - 1) is ')'} then
+                found := maybe.some(:Array(Int) array of symbolAt(fn stringOp.getSub(symbol 2 {n - 3})) end)
+            end
             if maybe.isNone(:Array(Int) found) then raise unsupported with "the external value " <> symbol end end
             maybe.unwrap(:Array(Int) found)
         end
@@ -2103,6 +2147,7 @@ export
             let own = countTypeParams(f.v.type)
             let nCaptured = extent f.typeParams - own
             let paramTypes = vector.new(:ssa.Type)
+            let paramPairs = vector.new(:Int)
             vector.append(:ssa.Type paramTypes tPtr)
             for i = 0 upto {own - 1} do vector.append(:ssa.Type paramTypes tPtr) end
             for i = 0 upto {extent f.params - 1} do
@@ -2113,10 +2158,12 @@ export
                     let ps = varParts(entry.v)
                     (* An Ok parameter is a QVal word in C *)
                     if extent ps is 0 then vector.append(:ssa.Type paramTypes tInt) end
+                    if extent ps is 2 then vector.append(:Int paramPairs vector.length(:ssa.Type paramTypes)) end
                     for k = 0 upto {extent ps - 1} do vector.append(:ssa.Type paramTypes ps[k].type) end
                 end
             end
             let sf = ssa.newFunction(codeName(u f) false vector.toArray(:ssa.Type paramTypes) typesOf(parts(f.resultType)))
+            sf.paramPairs := vector.toArray(:Int paramPairs)
             let fn = newFn(u sf hashMap.get(:Int :ir.OpMakeClosure u.closuresOf f.id))
             let params = ssa.block(sf 0).params
             let var at = 0
@@ -2164,15 +2211,339 @@ export
     (* A top level (the main routine's, or a module's initializer's): its
      * statements, the variables it binds outside loops the unit's globals *)
     let topLevel(u: UnitBuilder symbol: String b: ir.Body before: All(fn: Fn) Ok after: All(fn: Fn) Ok
-        results: Array(ssa.Type) params: Array(ssa.Type)): Function =
+        results: Array(ssa.Type) params: Array(ssa.Type) exported: Bool): Function =
         begin
-            let sf = ssa.newFunction(symbol true params results)
+            let sf = ssa.newFunction(symbol exported params results)
             let fn = newFn(u sf maybe.none(:ir.OpMakeClosure))
             before(fn)
             body(fn b)
             if not(terminated(fn)) then after(fn) end
             finish(fn)
             sf
+        end
+
+    (* =========================================================================
+     * The unit's other functions: exported functions, function types'
+     * adapters, and the registration of its tables
+     * ====================================================================== *)
+
+    let returnValues(fn: Fn vs: Array(Int)): Ok = terminate(fn option termReturn of ssa.Terminator with let values = vs end)
+    let param(f: Function i: Int): Int = vector.get(:Int ssa.block(f 0).params i)
+
+    (* The SSA types of the parameters of a C function of a function type's
+     * signature, after lead pointers: its type parameters' descriptors, then
+     * its parameters (a var or out parameter's location, an Ok as a word);
+     * and where its 16-byte composites start *)
+    Let Signature = Tuple types: vector.T(ssa.Type) pairs: vector.T(Int) end
+    let signature(lead: Int sig: staticdata.ShapeSignature): Signature =
+        begin
+            let types = vector.new(:ssa.Type)
+            let pairs = vector.new(:Int)
+            for i = 0 upto {lead + vector.length(:maybe.T(Type) sig.bounds) - 1} do vector.append(:ssa.Type types tPtr) end
+            for j = 0 upto {vector.length(:model.Param sig.params) - 1} do
+                let p = vector.get(:model.Param sig.params j)
+                if p.isVar orif p.isOut then
+                    vector.append(:ssa.Type types tPtr)
+                else
+                    let ps = parts(p.type)
+                    if extent ps is 0 then vector.append(:ssa.Type types tInt) end
+                    if extent ps is 2 then vector.append(:Int pairs vector.length(:ssa.Type types)) end
+                    for k = 0 upto {extent ps - 1} do vector.append(:ssa.Type types ps[k].type) end
+                end
+            end
+            tuple let types = types let pairs = pairs end
+        end
+    let pointers(n: Int): Signature =
+        begin
+            let types = vector.new(:ssa.Type)
+            for i = 0 upto {n - 1} do vector.append(:ssa.Type types tPtr) end
+            tuple let types = types let pairs = vector.new(:Int) end
+        end
+
+    (* The pairs of a call whose arguments are a signature's parameters after
+     * more lead words *)
+    let shiftedPairs(s: Signature by: Int): Array(Int) =
+        begin
+            let r = vector.toArray(:Int s.pairs)
+            for i = 0 upto {extent r - 1} do r[i] := r[i] + by end
+            r
+        end
+
+    let newFunction(u: UnitBuilder symbol: String exported: Bool s: Signature results: Array(ssa.Type)): Fn =
+        begin
+            let sf = ssa.newFunction(symbol exported vector.toArray(:ssa.Type s.types) results)
+            sf.paramPairs := vector.toArray(:Int s.pairs)
+            newFn(u sf maybe.none(:ir.OpMakeClosure))
+        end
+
+    let finished(fn: Fn): Function = begin finish(fn) fn.f end
+
+    (* A module file's exported function for a member of its interface that is
+     * a function or a polymorphic value (qv_<module>_<member>): it calls the
+     * member's closure, at the interface's C signature
+     * (codegen/c/declarations' moduleFunctionSignature) *)
+    let exportedFunction(u: UnitBuilder clean: String name: String v: Variable): maybe.T(Function) =
+        begin
+            let shape = shapes.shape(v.type)
+            if not(eq(shape.kind "fun")) andif not(eq(shape.kind "all")) then
+                maybe.none(:Function)
+            else
+                let sig = staticdata.funShapeSignature(v.type)
+                let s = signature(0 sig)
+                let ps = parts(sig.result)
+                let fn = newFunction(u symbols.mangleModuleIdent(clean name) true s typesOf(ps))
+                let args = array of(vector.length(:ssa.Type s.types) 0)
+                for i = 0 upto {extent args - 1} do args[i] := param(fn.f i) end
+                let known = hashMap.get(:Int :ir.OpMakeClosure u.closureVars v.id)
+                let direct = maybe.isSome(:ir.OpMakeClosure known)
+                    andif {extent maybe.unwrap(:ir.OpMakeClosure known).typeArgs is 0}
+                    andif {extent maybe.unwrap(:ir.OpMakeClosure known).captures is 0}
+                let results = if direct then
+                    ssa.call(fn.f fn.cur codeName(u maybe.unwrap(:ir.OpMakeClosure known).code)
+                        concat(array of null(fn) end args) shiftedPairs(s 1) typesOf(ps))
+                else
+                    let clos = read(fn v)[0]
+                    let fnPtr = loadWord(fn clos runtimeLayout.offset("QClosure" "fn") tPtr)
+                    let env = loadWord(fn clos runtimeLayout.offset("QClosure" "env") tPtr)
+                    ssa.call(fn.f fn.cur "" concat(array of fnPtr env end args) shiftedPairs(s 2) typesOf(ps))
+                end
+                returnValues(fn resultsOf(fn ps results))
+                maybe.some(:Function finished(fn))
+            end
+        end
+
+    (* The adapter of a function type (quest_adapt_<tag>), the thunk its
+     * closures call (quest_thunk_<tag>), and its invoker (quest_invoke_<tag>),
+     * as codegen/c/declarations' emitFunTypeAdapters writes them in C *)
+    let funTypeAdapters(u: UnitBuilder tag: String funType: Type): Array(Function) =
+        begin
+            let sig = staticdata.funShapeSignature(funType)
+            let nq = vector.length(:maybe.T(Type) sig.bounds)
+            let np = vector.length(:model.Param sig.params)
+            let ret = sig.result
+            let retParts = parts(ret)
+            let isOk(t: Type): Bool = eq(shapes.shape(t).kind "ok")
+            let byLocation(p: model.Param): Bool = p.isVar orif p.isOut
+            let s = signature(1 sig)
+            let thunkName = "quest_thunk_" <> tag
+            let bytes(name: String): Int = maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct(name)).bytes
+            let extraAt = runtimeLayout.offset("QTypeDescriptor" "extra")
+            let resultAt = runtimeLayout.offset("QFunTypeDescriptor" "result_type")
+            let paramType(fn: Fn d: Int j: Int): Int =
+                loadWord(fn d bytes("QFunTypeDescriptor") + {bytes("QFunParamDescriptor") * j} tPtr)
+            let convertWord(fn: Fn w: Int from: Int to: Int): Int = call1(fn "quest_convert" array of w from to end tInt)
+            let closureFn(fn: Fn c: Int): Int = loadWord(fn c runtimeLayout.offset("QClosure" "fn") tPtr)
+            let closureEnv(fn: Fn c: Int): Int = loadWord(fn c runtimeLayout.offset("QClosure" "env") tPtr)
+
+            (* The thunk, whose environment is a QFunAdapterEnv *)
+            let thunk = newFunction(u thunkName false s typesOf(retParts))
+            let tf = thunk.f
+            let e = param(tf 0)
+            let orig = loadWord(thunk e runtimeLayout.offset("QFunAdapterEnv" "orig") tPtr)
+            let from = loadWord(thunk loadWord(thunk e runtimeLayout.offset("QFunAdapterEnv" "from") tPtr) extraAt tPtr)
+            let to = loadWord(thunk loadWord(thunk e runtimeLayout.offset("QFunAdapterEnv" "to") tPtr) extraAt tPtr)
+            let directFlag = load(thunk e runtimeLayout.offset("QFunAdapterEnv" "direct") part(tInt 1 false))
+            let directB = newBlock(thunk)
+            let uniformB = newBlock(thunk)
+            terminate(thunk option termBranch of ssa.Terminator with
+                let cond = directFlag let ifTrue = ssa.target(directB noValues) let ifFalse = ssa.target(uniformB noValues)
+            end)
+            let descs = array of(nq 0)
+            for k = 0 upto {nq - 1} do descs[k] := param(tf 1 + k) end
+            (* Each parameter's values *)
+            let paramValues = vector.new(:Array(Int))
+            let var at = 1 + nq
+            for j = 0 upto {np - 1} do
+                let p = vector.get(:model.Param sig.params j)
+                let n = if byLocation(p) orif {extent parts(p.type) is 0} then 1 else extent parts(p.type) end
+                let vs = array of(n 0)
+                for k = 0 upto {n - 1} do vs[k] := param(tf at + k) end
+                at := at + n
+                vector.append(:Array(Int) paramValues vs)
+            end
+            (* Called directly, at the type's own C signature *)
+            thunk.cur := directB
+            let var directArgs = concat(array of closureEnv(thunk orig) end descs)
+            for j = 0 upto {np - 1} do
+                let p = vector.get(:model.Param sig.params j)
+                let vs = vector.get(:Array(Int) paramValues j)
+                let converted = not(byLocation(p)) andif not(isOk(p.type)) andif slots.mayBeStoredAsSubtype(shapes.shape(p.type))
+                directArgs := concat(directArgs if converted then
+                    fromWord(thunk convertWord(thunk toWord(thunk vs p.type) paramType(thunk to j) paramType(thunk from j))
+                        p.type)
+                else vs end)
+            end
+            let directResults = resultsOf(thunk retParts ssa.call(tf thunk.cur "" concat(array of closureFn(thunk orig) end
+                directArgs) shiftedPairs(s 1) typesOf(retParts)))
+            returnValues(thunk if not(isOk(ret)) andif slots.mayBeStoredAsSubtype(shapes.shape(ret)) then
+                fromWord(thunk convertWord(thunk toWord(thunk directResults ret) loadWord(thunk from resultAt tPtr)
+                    loadWord(thunk to resultAt tPtr)) ret)
+            else directResults end)
+            (* Called through the invoker of the closure's own type, with
+             * words *)
+            thunk.cur := uniformB
+            let words = array of({nq + np} 0)
+            for k = 0 upto {nq - 1} do words[k] := toInt(thunk descs[k]) end
+            for j = 0 upto {np - 1} do
+                let p = vector.get(:model.Param sig.params j)
+                let vs = vector.get(:Array(Int) paramValues j)
+                words[nq + j] := if byLocation(p) then toInt(thunk vs[0])
+                    elsif isOk(p.type) then vs[0]
+                    else convertWord(thunk toWord(thunk vs p.type) paramType(thunk to j) paramType(thunk from j))
+                    end
+            end
+            let argsArray = slotArray(thunk words)
+            let invoker = loadWord(thunk from runtimeLayout.offset("QFunTypeDescriptor" "invoke") tPtr)
+            let invoked = ssa.call(tf thunk.cur "" array of invoker orig argsArray end noPairs array of tInt end)[0]
+            returnValues(thunk if isOk(ret) then noValues
+                else fromWord(thunk convertWord(thunk invoked loadWord(thunk from resultAt tPtr) loadWord(thunk to resultAt tPtr))
+                    ret)
+                end)
+
+            (* The adapter: a closure of the thunk *)
+            let adapt = newFunction(u "quest_adapt_" <> tag false pointers(3) array of tPtr end)
+            let af = adapt.f
+            let env = alloc(adapt bytes("QFunAdapterEnv"))
+            store(adapt env runtimeLayout.offset("QFunAdapterEnv" "orig") 8 param(af 0))
+            store(adapt env runtimeLayout.offset("QFunAdapterEnv" "from") 8 param(af 1))
+            store(adapt env runtimeLayout.offset("QFunAdapterEnv" "to") 8 param(af 2))
+            let same = narrowed(adapt call1(adapt "quest_fun_signature_equivalent" array of param(af 1) param(af 2) end tInt)
+                part(tInt 1 false))
+            store(adapt env runtimeLayout.offset("QFunAdapterEnv" "direct") 1 same)
+            let adapted = alloc(adapt bytes("QClosure"))
+            store(adapt adapted runtimeLayout.offset("QClosure" "fn") 8 symbolAt(adapt thunkName))
+            store(adapt adapted runtimeLayout.offset("QClosure" "env") 8 env)
+            returnValues(adapt array of adapted end)
+
+            (* The invoker: a call of a closure of this type with words *)
+            let invoke = newFunction(u "quest_invoke_" <> tag false pointers(2) array of tInt end)
+            let vf = invoke.f
+            let c = param(vf 0)
+            let argv = param(vf 1)
+            let var invokeArgs = array of closureEnv(invoke c) end
+            for k = 0 upto {nq - 1} do invokeArgs := concat(invokeArgs array of loadWord(invoke argv 8 * k tPtr) end) end
+            for j = 0 upto {np - 1} do
+                let p = vector.get(:model.Param sig.params j)
+                let w = loadWord(invoke argv 8 * {nq + j} if byLocation(p) then tPtr else tInt end)
+                invokeArgs := concat(invokeArgs if byLocation(p) orif isOk(p.type) then array of w end
+                    else fromWord(invoke w p.type) end)
+            end
+            let invokeResults = resultsOf(invoke retParts ssa.call(vf invoke.cur "" concat(array of closureFn(invoke c) end
+                invokeArgs) shiftedPairs(s 1) typesOf(retParts)))
+            returnValues(invoke array of if isOk(ret) then constant(invoke 0) else toWord(invoke invokeResults ret) end end)
+            array of finished(thunk) finished(adapt) finished(invoke) end
+        end
+
+    let wordOf(n: Int): ssa.Word = option wordInt of ssa.Word with let n = n end
+    let addressWord(symbol: String): ssa.Word = option wordSymbol of ssa.Word with let symbol = symbol let addend = 0 end
+    let addData(u: UnitBuilder d: ssa.Data): Ok = vector.append(:ssa.Data u.built.data d)
+
+    (* The unit's static descriptors, offset tables, and tag maps, as the C
+     * printer's declarations define them, and the adapters of its function
+     * types *)
+    let descriptorData(u: UnitBuilder): Ok =
+        if maybe.isSome(:ir.StaticData u.unit.staticData) then
+            let data = maybe.unwrap(:ir.StaticData u.unit.staticData)
+            let ctx = maybe.some(:staticdata.RecordNaming u.naming)
+            let plain = vector.new(:Type)
+            let echoed = vector.new(:Type)
+            for i = 0 upto {vector.length(:ir.StaticDescriptor data.descriptors) - 1} do
+                let d = vector.get(:ir.StaticDescriptor data.descriptors i)
+                vector.append(:Type if d.echo then echoed else plain end d.type)
+            end
+            let collected = staticdata.collectDescriptors(plain echoed ctx hashMap.new(:String :Bool eq hash.string))
+            let formOf(t: Type): staticdata.DescriptorForm = staticdata.descriptorForm(t ctx)
+            let text(s: String): String = stringSymbol(u s)
+            for k = 0 upto {extent staticdata.descriptorKinds - 1} do
+                let forms = staticdata.formsOf(collected staticdata.descriptorKinds[k])
+                for i = 0 upto {vector.length(:staticdata.DescriptorForm forms) - 1} do
+                    let f = vector.get(:staticdata.DescriptorForm forms i)
+                    let ds = statics.descriptorData(staticdata.describeDescriptor(f ctx formOf) text)
+                    for j = 0 upto {extent ds - 1} do addData(u ds[j]) end
+                    if eq(f.kind "fun") then
+                        let fs = funTypeAdapters(u f.tag maybe.unwrap(:Type f.type))
+                        for j = 0 upto {extent fs - 1} do vector.append(:Function u.built.functions fs[j]) end
+                    end
+                end
+            end
+            let seen = hashMap.new(:String :Bool eq hash.string)
+            for i = 0 upto {vector.length(:ir.OffsetTable data.offsetTables) - 1} do
+                let t = vector.get(:ir.OffsetTable data.offsetTables i)
+                let table = staticdata.describeOffsetTable(u.naming t.view t.layout)
+                if not(hashMap.contains(:String :Bool seen table.symbol)) then
+                    put(:String :Bool seen table.symbol true)
+                    (* Each field's offset, then stored_types *)
+                    let ws = array of({extent table.offsets + 1} wordOf(0))
+                    for j = 0 upto {extent table.offsets - 1} do ws[j] := wordOf(table.offsets[j].bytes) end
+                    addData(u ssa.words(table.symbol false false ws))
+                end
+            end
+            for i = 0 upto {vector.length(:ir.TagMap data.tagMaps) - 1} do
+                let t = vector.get(:ir.TagMap data.tagMaps i)
+                let map = staticdata.describeTagMap(t.target t.source)
+                if not(hashMap.contains(:String :Bool seen map.symbol)) then
+                    put(:String :Bool seen map.symbol true)
+                    let ws = array of({if extent map.entries > 0 then extent map.entries else 1 end} wordOf(0))
+                    for j = 0 upto {extent map.entries - 1} do ws[j] := wordOf(map.entries[j]) end
+                    addData(u ssa.words(map.symbol false false ws))
+                end
+            end
+        end
+
+    let isModuleFile(unit: ir.Unit): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {vector.length(:ir.Module unit.modules) - 1} do
+                if maybe.isSome(:ir.Members vector.get(:ir.Module unit.modules i).exports) then found := true end
+            end
+            found
+        end
+
+    (* The function table (docs/exceptions.md section 5.2) of the unit's
+     * functions with frames in tracebacks, and qr_register_dicts, which
+     * registers it and the offset tables of records the unit views at
+     * supertypes *)
+    let registration(u: UnitBuilder): Function =
+        begin
+            let unit = u.unit
+            let entries = vector.new(:ssa.Word)
+            let entry(symbol: String frame: String): Ok =
+                begin
+                    vector.append(:ssa.Word entries addressWord(symbol))
+                    vector.append(:ssa.Word entries addressWord(stringSymbol(u frame)))
+                end
+            for i = 0 upto {vector.length(:ir.Function unit.functions) - 1} do
+                let f = vector.get(:ir.Function unit.functions i)
+                if maybe.isSome(:String f.traceName) then entry(codeName(u f) maybe.unwrap(:String f.traceName)) end
+            end
+            for i = 0 upto {vector.length(:ir.Module unit.modules) - 1} do
+                let m = vector.get(:ir.Module unit.modules i)
+                entry("qv_mod_" <> symbols.mangleModuleName(m.name) <> "_init" diagnostics.initFrame(m.name))
+            end
+            if not(isModuleFile(unit)) then entry("main" diagnostics.mainFrame) end
+            let fn = newFunction(u "qr_register_dicts" false pointers(0) noValuesTypes)
+            if not(vector.empty(:ssa.Word entries)) then
+                addData(u ssa.words("qr_funcs" false false vector.toArray(:ssa.Word entries)))
+                callVoid(fn "quest_register_funcs"
+                    array of symbolAt(fn "qr_funcs") constant(fn vector.length(:ssa.Word entries) / 2) end)
+            end
+            if maybe.isSome(:ir.StaticData unit.staticData) then
+                let tables = maybe.unwrap(:ir.StaticData unit.staticData).offsetTables
+                let registered = hashMap.new(:String :Bool eq hash.string)
+                for i = 0 upto {vector.length(:ir.OffsetTable tables) - 1} do
+                    let table = vector.get(:ir.OffsetTable tables i)
+                    let dict = staticdata.describeOffsetTable(u.naming table.view table.layout).symbol
+                    if maybe.isSome(:ir.Registered table.registered)
+                        andif not(hashMap.contains(:String :Bool registered dict)) then
+                        put(:String :Bool registered dict true)
+                        let r = maybe.unwrap(:ir.Registered table.registered)
+                        callVoid(fn "quest_register_record_dict" array of formAddress(fn staticFormOf(u r.view))
+                            formAddress(fn staticFormOf(u r.layout)) symbolAt(fn dict) end)
+                    end
+                end
+            end
+            returnValues(fn noValues)
+            finished(fn)
         end
 
     let buildUnit(unit: ir.Unit): ssa.Unit =
@@ -2224,6 +2595,15 @@ export
                 let m = vector.get(:ir.Module unit.modules i)
                 let clean = symbols.mangleModuleName(m.name)
                 let initialized = "qv_mod_" <> clean <> "_initialized"
+                let exported = maybe.isSome(:ir.Members m.exports)
+                addData(u tuple
+                    let symbol = symbols.moduleRecordIdent(clean) let exported = exported let writable = true
+                    let contents = option contentsZero of ssa.Contents with let bytes = 16 end
+                end)
+                addData(u tuple
+                    let symbol = initialized let exported = false let writable = true
+                    let contents = option contentsZero of ssa.Contents with let bytes = 8 end
+                end)
                 vector.append(:Function u.built.functions topLevel(u "qv_mod_" <> clean <> "_init" m.init
                     fun(fn: Fn): Ok
                         begin
@@ -2239,8 +2619,27 @@ export
                             terminate(fn option termReturn of ssa.Terminator with let values = noValues end)
                             fn.cur := go
                             store(fn symbolAt(fn initialized) 0 1 constant(fn 1))
-                            for j = 0 upto {extent unit.imports - 1} do
-                                callVoid(fn "qv_mod_" <> symbols.mangleModuleName(unit.imports[j].canonicalPath) <> "_init" noValues)
+                            (* Its abstract types, registered for dynamic
+                             * values; a representation without a descriptor is
+                             * not *)
+                            for j = 0 upto {extent m.abstractTypes - 1} do
+                                let entry = m.abstractTypes[j]
+                                let form = try maybe.some(:staticdata.DescriptorForm staticFormOf(u entry.descriptor))
+                                    when staticdata.missingDescriptor then maybe.none(:staticdata.DescriptorForm)
+                                end
+                                if maybe.isSome(:staticdata.DescriptorForm form) then
+                                    callVoid(fn "quest_register_abstract_type" array of symbolAt(fn stringSymbol(u entry.name))
+                                        constant(fn entry.arity) formAddress(fn maybe.unwrap(:staticdata.DescriptorForm form)) end)
+                                end
+                            end
+                            (* A module file's initializes the modules it
+                             * imports, as a program's main does *)
+                            if exported then
+                                callVoid(fn "qr_register_dicts" noValues)
+                                for j = 0 upto {extent unit.imports - 1} do
+                                    callVoid(fn "qv_mod_" <> symbols.mangleModuleName(unit.imports[j].canonicalPath) <> "_init"
+                                        noValues)
+                                end
                             end
                         end
                     fun(fn: Fn): Ok
@@ -2252,9 +2651,25 @@ export
                             end
                             terminate(fn option termReturn of ssa.Terminator with let values = noValues end)
                         end
-                    array of :ssa.Type end array of :ssa.Type end))
+                    array of :ssa.Type end array of :ssa.Type end exported))
+                if exported then
+                    let exports = maybe.unwrap(:ir.Members m.exports)
+                    for j = 0 upto {vector.length(:String exports.names) - 1} do
+                        let name = vector.get(:String exports.names j)
+                        let f = exportedFunction(u clean name maybe.unwrap(:Variable ir.member(exports name)))
+                        if maybe.isSome(:Function f) then vector.append(:Function u.built.functions maybe.unwrap(:Function f)) end
+                    end
+                end
             end
-            vector.append(:Function u.built.functions topLevel(u "main" unit.main
+            (* A static closure of each function, for closures without
+             * captures *)
+            for i = 0 upto {vector.length(:ir.Function unit.functions) - 1} do
+                let code = codeName(u vector.get(:ir.Function unit.functions i))
+                addData(u ssa.words(code <> "_closure" false false array of addressWord(code) wordOf(0) end))
+            end
+            descriptorData(u)
+            vector.append(:Function u.built.functions registration(u))
+            if not(isModuleFile(unit)) then vector.append(:Function u.built.functions topLevel(u "main" unit.main
                 fun(fn: Fn): Ok
                     begin
                         let params = ssa.block(fn.f 0).params
@@ -2270,7 +2685,7 @@ export
                         end
                     end
                 fun(fn: Fn): Ok terminate(fn option termReturn of ssa.Terminator with let values = array of constant(fn 0) end end)
-                array of tInt end array of tInt tPtr end))
+                array of tInt end array of tInt tPtr end true)) end
             u.built
         end
 end

@@ -2,6 +2,7 @@
 
 module engine : Engine
 import
+    questlang/codegen/choice : questlang/codegen/Choice
     questlang/common/location : questlang/common/Location
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/syntax/ast : questlang/syntax/Ast
@@ -86,6 +87,7 @@ export
         extraCFlags: Array(String)
         jobs: Int
         driver: String
+        backends: choice.T
     end
     Let ImportRef = Tuple interfacePath: String names: Array(String) modulePaths: Array(String) end
 
@@ -138,7 +140,23 @@ export
                 let extraCFlags = array of :String end
                 let jobs = 1
                 let driver = ""
+                let backends = choice.standard
             end
+        end
+
+    let withBackends(eng: T backends: choice.T): T =
+        tuple
+            let buildDir = eng.buildDir
+            let resolver = eng.resolver
+            let includePaths = eng.includePaths
+            let extraObjects = eng.extraObjects
+            let logger = eng.logger
+            let nogc = eng.nogc
+            let compiler = eng.compiler
+            let extraCFlags = eng.extraCFlags
+            let jobs = eng.jobs
+            let driver = eng.driver
+            let backends = backends
         end
 
     let parallel(eng: T jobs: Int driver: String): T =
@@ -153,6 +171,7 @@ export
             let extraCFlags = eng.extraCFlags
             let jobs = jobs
             let driver = driver
+            let backends = eng.backends
         end
 
     let log(eng: T tag: String message: String): Ok = logger.log(eng.logger tag message)
@@ -292,8 +311,17 @@ export
     let unitStaleness(eng: T source: String a: graph.ModuleArtifacts programDir: maybe.T(String)): maybe.T(String) =
         begin
             let search = searchPaths(eng)
+            (* Its imports would find other files, or another backend compiled
+             * it *)
             let changed = fun(m: manifest.ModuleManifest): maybe.T(String)
-                importResolutionChange(m maybe.some(:String paths.parent(source)) search programDir eng.resolver)
+                begin
+                    let name = if eq(m.name "<main>") then choice.programUnit else m.name end
+                    if not(eq(m.backend choice.forUnit(eng.backends name))) then
+                        maybe.some(:String "compiled by the " <> m.backend <> " backend")
+                    else
+                        importResolutionChange(m maybe.some(:String paths.parent(source)) search programDir eng.resolver)
+                    end
+                end
             manifest.unitStaleness(source a.qm a.c a.o
                 maybe.some(:All(m: manifest.ModuleManifest) maybe.T(String) changed))
         end
@@ -384,7 +412,8 @@ export
                     (* The first error, as the bootstrap raises it *)
                     if extent result.errors > 0 then diagnostics.raiseError(:Ok result.errors[0]) end
                     let typed = maybe.unwrap(:typedAst.Program result.program)
-                    let translated = cBackend.programToC(typed e maybe.some(:location.SourceMap sm) false false)
+                    let backend = choice.forUnit(eng.backends choice.programUnit)
+                    let translated = cBackend.programToC(typed e maybe.some(:location.SourceMap sm) false false backend)
                     let modules = unitModuleRefs(vector.toArray(:ImportRef imports)
                         passes.implicitImports(translated.unit typed) e.currentDir
                             vector.toArray(:String e.includePaths)
@@ -395,7 +424,9 @@ export
                     writer.putString(w translated.c)
                     writer.close(w)
                     log(eng "HOST COMPILE" "clang -c " <> a.c <> " -o " <> a.o)
-                    compilerRunner.compileCToObject(a.c a.o search eng.nogc eng.compiler eng.extraCFlags)
+                    compilerRunner.compileCToObject(a.c a.o search eng.nogc eng.compiler
+                        vector.toArray(:String vector.concat(:String vector.fromArray(:String eng.extraCFlags)
+                            vector.fromArray(:String cBackend.cFlags(backend)))))
 
                     let direct = vector.toArray(:manifest.ImportedInterfaceRef interfaces)
                     let indirect = interfaceCompiler.indirectInterfaceRefs(direct vector.toArray(:String e.includePaths)
@@ -404,7 +435,7 @@ export
                     manifest.writeQm(manifest.newManifest("<main>" maybe.none(:String) paths.absolute(mainFile)
                         paths.absolute(a.o) modules
                         vector.toArray(:manifest.ImportedInterfaceRef vector.concat(:manifest.ImportedInterfaceRef
-                            interfaces vector.fromArray(:manifest.ImportedInterfaceRef indirect)))) a.qm)
+                            interfaces vector.fromArray(:manifest.ImportedInterfaceRef indirect))) backend) a.qm)
                     modules
                 end)
         end
@@ -513,6 +544,7 @@ export
                         let extraCFlags = eng.extraCFlags
                         let buildDir = maybe.some(:String str(eng.buildDir))
                         let programDir = programDir
+                        let backends = eng.backends
                     end
                 let jobs = array of(n jobOf(wave[vector.get(:Int indexes 0)]))
                 for k = 1 upto {n - 1} do jobs[k] := jobOf(wave[vector.get(:Int indexes k)]) end
@@ -891,7 +923,7 @@ export
                             typecheck.install()
                             moduleCompiler.compileModuleFile(maybe.unwrap(:String p.src) maybe.some(:String p.targetDir)
                                 search eng.compiler eng.nogc eng.extraCFlags maybe.some(:String str(eng.buildDir))
-                                programDir maybe.some(:graph.Resolver eng.resolver))
+                                programDir maybe.some(:graph.Resolver eng.resolver) eng.backends)
                             ok
                         end
                         manifest.readQm(p.a.qm)

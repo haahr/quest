@@ -3,6 +3,7 @@
 module printer : Printer
 import
     questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/syntax : questlang/codegen/Syntax
     collections/vector : collections/Vector
     util/stringBuilder : util/StringBuilder
     conv : Conv
@@ -87,6 +88,7 @@ export
                 b.str(if i > 0 then ", " else "" end <> typed(f vector.get(:Int params i)))
             end
             b.str(")")
+            if extent f.paramPairs > 0 then b.str(" pairs [" <> values2(f.paramPairs) <> "]") end
             if not(vector.empty(:nodes.Type f.resultTypes)) then
                 b.str(": ")
                 for i = 0 upto {vector.length(:nodes.Type f.resultTypes) - 1} do
@@ -118,6 +120,28 @@ export
             b.toString()
         end
 
+    let wordText(w: nodes.Word): String =
+        case w
+            when wordInt with x then conv.int(x.n)
+            when wordSymbol with x then x.symbol <> if x.addend is 0 then "" else " + " <> conv.int(x.addend) end
+        end
+
+    let formatData(d: nodes.Data): String =
+        begin
+            let head = "data " <> d.symbol <> if d.exported then " exported" else "" end
+                <> if d.writable then " writable" else "" end <> " "
+            case d.contents
+                when contentsZero with x then head <> "zero " <> conv.int(x.bytes) <> "\n"
+                when contentsText with x then head <> "text " <> syntax.cString(x.text) <> "\n"
+                when contentsWords with x then
+                    let b = stringBuilder.new()
+                    b.str(head <> "words [")
+                    for i = 0 upto {extent x.words - 1} do b.str(if i > 0 then ", " else "" end <> wordText(x.words[i])) end
+                    b.str("]\n")
+                    b.toString()
+            end
+        end
+
     let formatUnit(u: nodes.Unit): String =
         begin
             let b = stringBuilder.new()
@@ -125,6 +149,8 @@ export
                 if i > 0 then b.str("\n") end
                 b.str(formatFunction(vector.get(:Function u.functions i)))
             end
+            if not(vector.empty(:nodes.Data u.data)) then b.str("\n") end
+            for i = 0 upto {vector.length(:nodes.Data u.data) - 1} do b.str(formatData(vector.get(:nodes.Data u.data i))) end
             b.toString()
         end
 end

@@ -1,8 +1,9 @@
 (* Quest Self-Hosted Compiler: The C Backend's Entry Points Interface
  *
  * bootstrap/python/quest/codegen/c/backend.py: a module file lowered to the IR,
- * the IR's passes run (codegen/backend), and the described IR printed as C
- * (codegen/c/printer). *)
+ * the IR's passes run (codegen/backend), and the described IR printed as C, by
+ * the C printer (codegen/c/printer) or, for a unit the ssac backend compiles
+ * (codegen/choice), by the SSA's (questlang/ssa, codegen/ssac). *)
 
 interface Backend
 import
@@ -12,11 +13,18 @@ import
     questlang/ir/nodes : questlang/ir/Nodes
     util/maybe : util/Maybe
 export
+    (* A described unit's C, as the backend prints it: the C printer's
+     * includes the interface's header, if there is one. What a backend cannot
+     * compile raises codegen/c/printer's unsupported. *)
+    unitToC(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String): String
+    (* The flags a backend's C is compiled with, besides the C compiler's
+     * usual ones *)
+    cFlags(backend: String): Array(String)
     (* A program's C translation, and its described unit *)
-    programToC(program: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult: Bool)
+    programToC(program: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult: Bool
+        backend: String)
         : Tuple c: String unit: nodes.Unit end
-    (* A module file's C translation, which exports its interface's members and
-     * includes its interface's header, if it has one *)
+    (* A module file's C translation, which exports its interface's members *)
     moduleFileToC(m: typedAst.Binding e: env.T sourceMap: maybe.T(location.SourceMap)
-        interfaceHeader: maybe.T(String)): String
+        interfaceHeader: maybe.T(String) backend: String): String
 end

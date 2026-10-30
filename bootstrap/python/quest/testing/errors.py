@@ -255,6 +255,8 @@ def execute_phase(
         # from the bootstrap's artifacts
         if phase_name in ("codegen_c", "run_c_compiled") and build_dir is not None:
             command.extend(["--build-dir", str(build_dir / "self-hosted-units")])
+        if driver_args:
+            command.extend(driver_args)
     else:
         driver_script = root_dir / "bootstrap" / "python" / "quest_driver.py"
         command = [
