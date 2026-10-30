@@ -569,6 +569,8 @@ The plan is not complete until each hazard of §10 is addressed or shown not to 
 
 Not part of this plan: what might be done once it is complete, each to be measured (benchmarks.md) before and after.
 The list grows as ideas come up; when the plan is complete, what remains moves to benchmarks.md §3.
+Changes to how the backend is written, rather than to the code it generates, are
+[backend-improvements.md](backend-improvements.md)'s.
 
 - **On the SSA:** promoting mutable variables' stack slots to values (§3.2), copy propagation, constant folding, dead
   code elimination, value numbering, block merging and jump threading.
