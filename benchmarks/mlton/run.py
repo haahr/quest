@@ -21,7 +21,10 @@ A benchmark's output is its standard output, its exit status, and the files it
 writes. Builds go to .build/ here: the conversions are built by ./quest, the
 self-hosted compiler (or --compiler, such as ./questboot), the originals by
 mlton. With --interpret, the conversions are not built but run by the
-compiler's tree-walking interpreter (--stop-after interpret).
+compiler's tree-walking interpreter (--stop-after interpret). A build
+directory reused across compiler changes can keep units the new compiler would
+build differently, so --clean removes all of .build/ first; use it whenever the
+compiler has changed since the last run.
 docs/benchmarks.md describes the baseline these make.
 """
 
@@ -331,11 +334,15 @@ def main() -> int:
     parser.add_argument("--runs", type=int, default=1, help="time each program this many times (time)")
     parser.add_argument("--results", help="append the times to this file, as JSON lines (time)")
     parser.add_argument("--timeout", type=float, default=3600.0, help="seconds a run may take")
+    parser.add_argument("--clean", action="store_true",
+                        help="remove the build tree, .build/, before building anything (reference, check, time)")
     parser.add_argument("--exclude", default="", help="benchmarks to leave out of a second mean, NAME,... (report)")
     args = parser.parse_intermixed_args()
     if args.command == "report":
         return report(args.names, [n for n in args.exclude.split(",") if n])
     names = benchmark_names(args.names)
+    if args.clean:
+        shutil.rmtree(BUILD_DIR, ignore_errors=True)
     # Programs run in a scratch directory, so a compiler named by a path is named by its absolute one
     compiler = [str(Path(args.compiler).resolve()) if "/" in args.compiler else args.compiler]
     system = Path(args.compiler).name + (" interpret" if args.interpret else "") + \

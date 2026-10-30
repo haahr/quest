@@ -50,9 +50,14 @@ Options of `time` (and, where they apply, `check`):
 | `--runs R` | Times each program R times (default 1); the median is reported |
 | `--timeout T` | Seconds a run may take (default 3600); a run that takes longer ends that program's runs |
 | `--results FILE` | Appends each program's times to FILE as a JSON line |
+| `--clean` | Removes `benchmarks/mlton/.build/` before building anything (also for `check` and `reference`) |
 
 A run at count 1 is also checked against `expected/`, and one that prints the wrong output is recorded with the first
 line of its standard error and ends that program's runs. Builds (not timed) go to `benchmarks/mlton/.build/`.
+
+That build tree's unit caches don't notice a change to the compiler, so a run after one can link units the old
+compiler built. Pass `--clean` to the first command of any measurement (or check) taken after the compiler has changed;
+the commands below do.
 
 ### 1.2. Reports
 
@@ -101,7 +106,7 @@ measurement can be reported beside them. To take them again (into a directory of
 
 ```bash
 cd benchmarks/mlton
-./run.py time --mlton --compiler ../../quest --scale 0.25 --runs 3 --timeout 1800 --results new/compiled.jsonl
+./run.py time --clean --mlton --compiler ../../quest --scale 0.25 --runs 3 --timeout 1800 --results new/compiled.jsonl
 ./run.py time --mlton-only --count 1 --runs 3 --results new/mlton-count1.jsonl
 ./run.py time --interpret --compiler ../../quest --count 1 --runs 3 --timeout 600 --results new/quest-interpret.jsonl
 ./run.py time --interpret --compiler ../../questboot --count 1 --runs 3 --timeout 600 --results new/questboot-interpret.jsonl
