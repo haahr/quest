@@ -575,6 +575,24 @@ The list grows as ideas come up; when the plan is complete, what remains moves t
 - **Allocating spill slots and stack slots better:** sharing slots between values whose lifetimes do not overlap, and
   `ldp`/`stp` for adjacent spills.
 - **Better register allocation** than linear scan, if measurements show spilling costs.
+- **What step 11's code still does badly** (seen in tailfib, imp-for, and `arm64_assemble`, 2026-10-30), mostly the
+  instruction selection §3.5 describes but the backend does not yet do:
+  - **Constants in registers rather than immediates.** `n - 1` is `movz x12, #1` then `sub`, and `x == 0` is
+    `mov x12, #0` then `cmp`, where `sub x12, x13, #1` and `cmp x13, #0` (or `cbz`) would do. The constant is a value
+    the allocator must place, so it takes a register for its range, a callee-saved one when the caller-saved are
+    taken (`qf_rotate` in `arm64_assemble` saves `x19` and `x20` only for the constant 1), costing a save and restore
+    in the prologue and epilogue.
+  - **A switch's constants too:** each case is `movz x10, #k` then `cmp x9, x10`, where `cmp x9, #k` would do.
+  - **Comparisons not fused into branches.** `cmp`, `cset` into a register, then `cbz` on it, where `cmp` and
+    `b.cond` would do.
+  - **Blocks that only jump.** An edge with no moves still gets its own label and `b`, and an empty block is a `b`
+    to the next. `cbz x12, Lf0_e1; b Lf0_b2; Lf0_e1: b Lf0_b3` is three branches where one conditional branch, and
+    falling through to the next block, would do (block merging and jump threading, above).
+  - **A rematerialized constant given a register only to be an edge's argument.** tailfib's self call loads the null
+    closure into `x15` before its edge's moves, which made a cycle that `x10` then breaks. Read where it is used, as
+    its rematerialization, it would be one move to the parameter's register and no cycle.
+  - **Eager loads at a block's start.** `repeat` in imp-for loads all four of its closure's fields at entry, two into
+    callee-saved registers (a save and restore on every call), though two are used only on one path.
 - **Payload-free option cases as shared constants** (benchmarks.md §3.6), so that a case such as `maybe.none` or an
   opcode allocates nothing. `is` compares options by address, so this changes what `is` says of two such values, a
   decision for the language.
