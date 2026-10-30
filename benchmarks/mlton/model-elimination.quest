@@ -18,6 +18,7 @@ import
     stringOp = string : StringOp
     ascii : Ascii
     conv : Conv
+    raised : Raised
     writer : Writer
 
 (* raise e, as any type *)
@@ -134,13 +135,12 @@ let bugToString(e: ErrInfo): String = "\nBUG in function " <> e.originFunction <
 let assertErr(b: Bool f: String s: String): Ok = if not(b) then raise errExn with errInfo(f s) end end
 let assertBug(b: Bool f: String s: String): Ok = if not(b) then raise bugExn with errInfo(f s) end end
 
-(* try, which prints the errors that pass through it; Quest cannot raise again
- * an exception it does not name, so others pass through without the
- * original's message *)
+(* try, which prints the errors that pass through it *)
 let tryPrint(A::TYPE B::TYPE)(f: All(a: A) B a: A): B =
     try f(a)
         when errExn with h then begin print(errToString(h)) raise errExn with h end end
         when bugExn with b then begin print(bugToString(b)) raise bugExn with b end end
+        else with e then begin print("\ntry: strange exception raised\n") raised.reraise(:B e) end
     end
 
 let total(A::TYPE B::TYPE)(f: All(a: A) B x: A): Opt(B) = try some(:B)(f(x)) when errExn then none(:B)() end
@@ -3239,16 +3239,12 @@ let show(s: Settings): String =
     "\n" <>
     "limit                  = " <> limitToString(limit.l) <> "\n\n"
 
-(* Milton.time: the times are 0, since Quest cannot read the clock; the
- * exceptions it passes on are those tryPrint does *)
+(* Milton.time: the times are 0, since Quest cannot read the clock *)
 let time(f: All(fm: Formula) Ok x: Formula): Ok =
     begin
         let p(t: Real): String = reals.fmtFix(t 3)
         let pt(): Ok = print("User: " <> p(0.0) <> "  System: " <> p(0.0) <> "  Real: " <> p(0.0) <> "\n")
-        try f(x)
-            when errExn with e then begin pt() raise errExn with e end end
-            when bugExn with e then begin pt() raise bugExn with e end end
-        end
+        try f(x) else with e then begin pt() raised.reraise(:Ok e) end end
         pt()
     end
 
@@ -3280,16 +3276,12 @@ let processSet(n: String s: lists.T(Problem)): Ok =
         end
     end
 
-(* Useful.with_flag, for cnf_normalization, passing on the exceptions tryPrint
- * does *)
+(* Useful.with_flag, for cnf_normalization *)
 let withCnf(b: Bool n: String s: lists.T(Problem)): Ok =
     begin
         let old = cnfNormalization.b
         cnfNormalization.b := b
-        try processSet(n s)
-            when errExn with e then begin cnfNormalization.b := old raise errExn with e end end
-            when bugExn with e then begin cnfNormalization.b := old raise bugExn with e end end
-        end
+        try processSet(n s) else with e then begin cnfNormalization.b := old raised.reraise(:Ok e) end end
         cnfNormalization.b := old
     end
 

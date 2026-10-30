@@ -6,6 +6,7 @@ import
     support/bench : support/Bench
     support/lists : support/Lists
     util/maybe : util/Maybe
+    raised : Raised
 
 Let Cigarette = Option blend blueMaster dunhill pallMall prince end
 Let Color = Option blue green red white yellow end
@@ -26,9 +27,7 @@ let doneSearching: Exception = exception doneSearching: Ok end
 let inconsistent: Exception = exception inconsistent: Ok end
 let continue: Exception(All() Ok) = exception continue: All() Ok end
 
-(* r := x while f runs. Quest has no catch-all handler that re-raises, so
- * fluidLet restores r for each exception that can pass through it, as the
- * original's e => (r := old; raise e) does, and not for Done *)
+(* r := x while f runs, restored when it raises any exception but Done *)
 let fluidLet(A::TYPE)(r: Ref(A) x: Attribute(A) f: All() Ok): Ok =
     begin
         let old = r.v
@@ -36,8 +35,7 @@ let fluidLet(A::TYPE)(r: Ref(A) x: Attribute(A) f: All() Ok): Ok =
         try
             begin f() r.v := old end
         when doneSearching then raise doneSearching end
-        when inconsistent then begin r.v := old raise inconsistent end end
-        when continue with g then begin r.v := old raise continue with g end end
+        else with e then begin r.v := old raised.reraise(:Ok e) end
         end
     end
 

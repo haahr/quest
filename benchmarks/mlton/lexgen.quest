@@ -14,6 +14,7 @@ import
     reader : Reader
     writer : Writer
     system : System
+    raised : Raised
 
 Let Ints = lists.T(Int)
 Let Strings = lists.T(String)
@@ -1392,10 +1393,13 @@ let lexGen(infile: String): Ok =
         g.lineNum := 1
         g.stateTab := enter(:String :Int)(create(:String :Int)(stringLeq) "INITIAL" 1)
         g.leafNum := ~1
-        (* The original closes the files for any exception, and raises it
-         * again; an error is the only one parse raises *)
-        let closeAndRaise(A::TYPE): A = begin closeIbuf(g.lexBuf) writer.close(g.lexOut) raise errorE end end
-        let parsed = try parse() when errorE then closeAndRaise(:Parsed) end
+        let parsed = try
+            parse()
+        else with e then
+            closeIbuf(g.lexBuf)
+            writer.close(g.lexOut)
+            raised.reraise(:Parsed e)
+        end
         let dfa = makedfa(parsed.rules)
         if g.usesTrailingContext then
             begin
