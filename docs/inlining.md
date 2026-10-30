@@ -15,8 +15,8 @@ convert between native and generic layouts, and an exported function is called t
 - **Inlining is on the Core IR,** before specialize and closure conversion (§2), as part of a simplifier that
   runs with it to a bound.
 - **It is always on.** No option enables or disables it, in keeping with as few compiler options as possible; tests
-  and bisection leave passes out through the pipeline's own mechanism ([backend-improvements.md](backend-improvements.md)
-  §3.3), not a flag.
+  and bisection leave passes out through the pipeline's own mechanism
+  ([backend-improvements.md](backend-improvements.md) §3.3), not a flag.
 - **Across modules only in whole-program builds** (`--whole-program`, [build-process.md](build-process.md) §1.2),
   where every module is in one unit. Separate compilation gets no unfoldings: nothing is added to `.qi` files or
   manifests, so an importer still depends on interfaces alone and builds keep their parallelism.
