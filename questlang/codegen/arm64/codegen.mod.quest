@@ -107,6 +107,9 @@ export
         prefix: String
         defined: hashMap.T(String Bool)
         threadLocals: hashMap.T(String Bool)
+        (* Whether it enters a try, and so saves every callee-saved
+         * register *)
+        savesAll: Bool
         var edges: Int
     end
 
@@ -342,9 +345,33 @@ export
         end
     let jump(fr: Frame t: ssa.Target): Ok = begin copies(fr t) emit(fr "b " <> blockLabel(fr t.block)) end
 
+    (* The callee-saved registers a function that enters a try saves, in pairs,
+     * in the order it pushes them below its frame record *)
+    let savedPairs = array of "x19, x20" "x21, x22" "x23, x24" "x25, x26" "x27, x28" "d8, d9" "d10, d11" "d12, d13"
+        "d14, d15" end
+
+    (* Their unwind information: the first of pair k at the CFA less
+     * 16 * (k + 2), the second 8 above it *)
+    let savedOffsets: Array(String) =
+        begin
+            let firsts = array of "w19" "w21" "w23" "w25" "w27" "b8" "b10" "b12" "b14" end
+            let seconds = array of "w20" "w22" "w24" "w26" "w28" "b9" "b11" "b13" "b15" end
+            let lines = array of({2 * extent firsts} "")
+            for k = 0 upto {extent firsts - 1} do
+                lines[2 * k] := ".cfi_offset " <> firsts[k] <> ", -" <> conv.int(16 * {k + 2})
+                lines[{2 * k} + 1] := ".cfi_offset " <> seconds[k] <> ", -" <> conv.int({16 * {k + 2}} - 8)
+            end
+            lines
+        end
+
     let epilogue(fr: Frame): Ok =
         begin
-            emit(fr "mov sp, x29")
+            if fr.savesAll then
+                emit(fr "sub sp, x29, #" <> conv.int(16 * extent savedPairs))
+                for k = {extent savedPairs - 1} downto 0 do emit(fr "ldp " <> savedPairs[k] <> ", [sp], #16") end
+            else
+                emit(fr "mov sp, x29")
+            end
             emit(fr "ldp x29, x30, [sp], #16")
             emit(fr "ret")
         end
@@ -382,12 +409,16 @@ export
                 jump(fr x.default)
             when termReturn with x then returnValues(fr x.values)
             when termTailCall with x then begin call(fr x.call) returnValues(fr x.call.results) end
-            (* Its handler's record pushed, _setjmp saves where to resume: when
-             * it returns again, at the handler *)
+            (* Its handler's record pushed, a native handler's: a raise resumes
+             * at the handler block with this frame's sp and fp, every register
+             * dead, every value in the frame (docs/arm64.md section 3.6) *)
             when termTry with x then
-                addImm(fr "x0" "sp" fr.slotAt[x.slot])
-                emit(fr "bl " <> asm.symbol("_setjmp"))
-                emit(fr "cbnz w0, " <> blockLabel(fr x.handler))
+                addImm(fr "x10" "sp" fr.slotAt[x.slot])
+                emit(fr "adr x9, " <> blockLabel(fr x.handler))
+                emit(fr "str x9, [x10, #" <> conv.int(runtimeLayout.offset("QExceptionHandler" "resume")) <> "]")
+                emit(fr "mov x9, sp")
+                emit(fr "str x9, [x10, #" <> conv.int(runtimeLayout.offset("QExceptionHandler" "sp")) <> "]")
+                emit(fr "str x29, [x10, #" <> conv.int(runtimeLayout.offset("QExceptionHandler" "fp")) <> "]")
                 jump(fr x.body)
             when termUnreachable then emit(fr "brk #1")
         end
@@ -399,6 +430,7 @@ export
     let function(f: Function index: Int defined: hashMap.T(String Bool) threadLocals: hashMap.T(String Bool)): Lines =
         begin
             (* The outgoing arguments' area, and the copy area *)
+            let var savesAll = false
             let var outgoing = 0
             let var copyWords = 1
             for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
@@ -414,7 +446,7 @@ export
                     let i = vector.get(:ssa.Inst blk.insts k)
                     case i.op when opCall then measure(i) when opCallIndirect then measure(i) else ok end
                 end
-                case blk.term when termTailCall with x then measure(x.call) else ok end
+                case blk.term when termTailCall with x then measure(x.call) when termTry then savesAll := true else ok end
                 let ts = ssa.successors(blk.term)
                 for k = 0 upto {extent ts - 1} do
                     let n = vector.length(:Int ssa.block(f ts[k]).params)
@@ -438,7 +470,7 @@ export
             let fr = tuple
                 let f = f let lines = vector.new(:String) let valueAt = valueAt let slotAt = slotAt let copyAt = copyAt
                 let size = size let prefix = "Lf" <> conv.int(index) let defined = defined let threadLocals = threadLocals
-                let var edges = 0
+                let savesAll = savesAll let var edges = 0
             end
             for k = 0 upto {extent asm.functionStart(f.symbol f.exported) - 1} do
                 vector.append(:String fr.lines asm.functionStart(f.symbol f.exported)[k])
@@ -449,6 +481,10 @@ export
             emit(fr ".cfi_def_cfa w29, 16")
             emit(fr ".cfi_offset w30, -8")
             emit(fr ".cfi_offset w29, -16")
+            if savesAll then
+                for k = 0 upto {extent savedPairs - 1} do emit(fr "stp " <> savedPairs[k] <> ", [sp, #-16]!") end
+                emitAll(fr savedOffsets)
+            end
             if size < 4096 then emit(fr "sub sp, sp, #" <> conv.int(size))
             else begin movImm(fr "x16" size) emit(fr "sub sp, sp, x16") end end
             (* The parameters, to their slots; main's argc is a C int *)

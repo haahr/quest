@@ -458,6 +458,18 @@ static int quest_handlers_catch(const QExceptionHandler *h, const QException *ex
     return 0;
 }
 
+/* Resumes a native handler (docs/arm64.md §3.6): its stack and frame pointers
+   restored, at its resume address */
+static Q_NORETURN void quest_resume_native(const QExceptionHandler *h) {
+#if defined(__aarch64__)
+    __asm__ volatile("mov sp, %0\n\tmov x29, %1\n\tbr %2" : : "r"(h->sp), "r"(h->fp), "r"(h->resume) : "memory");
+    __builtin_unreachable();
+#else
+    (void)h;
+    abort();
+#endif
+}
+
 void quest_reraise(QExceptionState state) {
     switch (quest_handlers_catch(quest_current_exception_handler, state.exc)) {
         case 0: {
@@ -472,6 +484,7 @@ void quest_reraise(QExceptionState state) {
             break;
     }
     quest_current_exception = state;
+    if (quest_current_exception_handler->resume != NULL) quest_resume_native(quest_current_exception_handler);
     Q_LONGJMP(quest_current_exception_handler->env_jmp, 1);
 }
 

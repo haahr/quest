@@ -216,6 +216,7 @@ class TestRuntimeDescriptors(unittest.TestCase):
 
             QExceptionHandler handler;
             handler.prev = quest_current_exception_handler;
+            handler.resume = NULL;
             handler.catches = NULL;
             handler.n_catches = Q_CATCH_ALL;
             quest_current_exception_handler = &handler;

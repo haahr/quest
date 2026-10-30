@@ -444,8 +444,8 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
    golden and error test passes with `--backend arm64`, with the program's unit alone (`arm64-program`) and with the
    modules' alone (`arm64-modules`); `tests/self-hosted/pending-arm64.txt` is empty, and `tools/check` runs the
    three modes (ahead of step 9). Decided while building it:
-   - **A `try` calls `_setjmp`,** with the C backend's handler record, until step 8: the trivial allocator keeps no
-     value in a register across a call, so `_setjmp`'s register restore loses nothing.
+   - **A `try` called `_setjmp`,** with the C backend's handler record, until step 8: the trivial allocator keeps no
+     value in a register across a call, so `_setjmp`'s register restore lost nothing.
    - **Narrow arguments** (a C `bool` or `char`) are marked in the SSA (`narrow`, ssa.md §2.2): Darwin packs them on
      the stack a byte each, which a mixed build of `tests/self-hosted/backends` (with more arguments than registers)
      found, for `ssac` too; and a function extends its own on entry, since a C caller leaves their upper bits
@@ -456,9 +456,24 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
    initialization, function tables. *Done* (2026-10-29) with step 6: the SSA had lowered every construct to loads,
    stores, and calls, so nothing was pending.
 8. **Exceptions** (§3.6): the shared handler record (ABI bump), native `try` and `raise`, tracebacks. *Done when* the
-   pending list is empty, and mixed builds raise across the backends both ways.
+   pending list is empty, and mixed builds raise across the backends both ways. *Done* (2026-10-29, ABI 55): the
+   record's common fields come first, then `resume`, `sp`, and `fp`, then the `jmp_buf`; a C handler's `resume` is
+   `NULL` (both C printers and the SSA's builder set it), and the native backend's `try` stores its handler block's
+   address and its frame's `sp` and `fp` instead of calling `_setjmp`. A raise resumes a native handler with a few
+   instructions of inline assembly in the runtime (`quest_resume_native`). Decided while building it:
+   - **A function that enters a `try` saves every callee-saved register** (`x19`-`x28`, `d8`-`d15`) on entry and
+     restores them at each return, with their unwind information: the frames a raise skips may have left anything
+     in them, and the function's caller expects its own. That is one save per call, where `_setjmp` was one per
+     `try` entered, so a `try` in a loop costs only its record's stores. `tests/self-hosted/backends` checks it: a C
+     loop keeps its state in such registers across calls of a native closure that catches what C code raises.
+   - The chain's thread-local address is still taken at each use (its accessor is a call), not once per function as
+     §3.6 suggests; with the linear-scan allocator (step 11), a function that enters a `try` can keep it in a slot.
+   - Tracebacks needed nothing: native functions are in their units' function tables and keep frame pointers.
 9. **`tools/check` runs everything** (§4): the `arm64` mode, its mixed builds, and the ABI tests, before every push,
-   besides `ssac`'s (step 5). *Done when* it does, with both pending lists empty.
+   besides `ssac`'s (step 5). *Done when* it does, with both pending lists empty. *Done* (2026-10-29), with step 8: its
+   backends' suite runs `ssac`, `arm64`, and the mixed modes of each, both pending lists empty; the self-hosted
+   suite runs `self-hosted/backends` (calls of every kind of signature across the backends, both ways), the ABI
+   corpus, and `test_ssac`/`test_arm64`.
 10. **Tail calls** (§3.7). *Done when* self, sibling, and closure tail calls are jumps, and a deep tail recursion runs
     in constant stack.
 11. **Linear scan** (§3.8). *Done when* the suite passes with it, and benchmarks.md has dated run and compile times

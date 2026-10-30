@@ -361,12 +361,18 @@ typedef struct QExceptionState {
 #  define Q_LONGJMP(env, val) longjmp(env, val)
 #endif
 
-/* Linked node in thread-local exception handler stack */
+/* Linked node in thread-local exception handler stack: a try's handler, of one of two kinds (docs/arm64.md §3.6). A C
+   handler's resume is NULL, and a raise resumes it with Q_LONGJMP to env_jmp. A native handler's is where its code
+   resumes, with sp and fp (x29) as they were when it was entered: its function saved every callee-saved register on
+   entry, so no other register need be restored. */
 typedef struct QExceptionHandler {
-    jmp_buf                    env_jmp;
     struct QExceptionHandler  *prev;
     const QException *const   *catches;
     int64_t                    n_catches;
+    const void                *resume;
+    void                      *sp;
+    void                      *fp;
+    jmp_buf                    env_jmp;
 } QExceptionHandler;
 
 /* A generated unit's table of its functions with frames in tracebacks: each one's start and frame name, registered

@@ -47,8 +47,10 @@ class TestArm64(unittest.TestCase):
         for name in ("_qf_many", "_qf_caller", "_qf_memory", "_qf_try"):
             self.assertEqual(symbols[name], "t")
         self.assertEqual(symbols["_qr_table"], "s")
-        for name in ("__setjmp", "_quest_pop_handler", "_quest_current_exception_handler", "_quest_type_Int"):
+        for name in ("_quest_pop_handler", "_quest_current_exception_handler", "_quest_type_Int"):
             self.assertEqual(symbols[name], "U")
+        # A native try calls nothing to enter its handler
+        self.assertNotIn("__setjmp", symbols)
 
     def test_conventions(self) -> None:
         text = GOLDEN.read_text()
@@ -62,6 +64,14 @@ class TestArm64(unittest.TestCase):
         # The narrow arguments are packed on the stack, a byte each
         self.assertTrue(re.search(r"strb w9, \[sp, #40\]\n.*\n\tstrb w9, \[sp, #41\]", text), text)
         self.assertIn("ldrb w9, [x29, #57]", text)
+        # A native try records where to resume, with sp and fp, and its
+        # function saves and restores every callee-saved register, once each
+        self.assertIn("adr x9, Lf4_b2", text)
+        self.assertIn("str x29, [x10, #40]", text)
+        for pair in ("x19, x20", "x27, x28", "d8, d9", "d14, d15"):
+            self.assertEqual(text.count(f"stp {pair}, [sp, #-16]!"), 1, pair)
+            self.assertEqual(text.count(f"ldp {pair}, [sp], #16"), 2, pair)  # at its two returns
+        self.assertIn(".cfi_offset b15, -152", text)
 
     def test_a_malformed_unit_fails(self) -> None:
         # The check can fail: an unknown instruction does not assemble

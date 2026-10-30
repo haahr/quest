@@ -31,10 +31,11 @@ export
         s("QAuto" 16 array of word("type_desc" 0) word("payload" 8) end)
         s("QExceptionState" 32 array of word("exc" 0) word("payload" 8) word("loc" 16) word("trace" 24) end)
         s("QFuncEntry" 16 array of word("addr" 0) word("name" 8) end)
-        (* A try's handler record; env_jmp is Darwin arm64's jmp_buf (48 ints).
-         * The native backend's records change it (docs/arm64.md section 3.6). *)
-        s("QExceptionHandler" 216 array of
-            m("env_jmp" 0 192) word("prev" 192) word("catches" 200) word("n_catches" 208)
+        (* A try's handler record, of either kind (docs/arm64.md section 3.6);
+         * env_jmp is Darwin arm64's jmp_buf (48 ints) *)
+        s("QExceptionHandler" 240 array of
+            word("prev" 0) word("catches" 8) word("n_catches" 16) word("resume" 24) word("sp" 32) word("fp" 40)
+            m("env_jmp" 48 192)
         end)
         s("QViewMap" 48 array of
             word("actual" 0) word("bound" 8) word("index" 16) word("from" 24) word("to" 32) word("component_start" 40)

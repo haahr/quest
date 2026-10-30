@@ -1399,6 +1399,7 @@ class CPrinter:
                 self.indent += 1
                 self.emit(f"QExceptionHandler {h};")
                 self.emit(f"{h}.prev = quest_current_exception_handler;")
+                self.emit(f"{h}.resume = NULL;")
                 self.emit_catches(h, catching, catches)
                 self.emit(f"quest_current_exception_handler = &{h};")
                 self.emit(f"if (Q_SETJMP({h}.env_jmp) == 0) {{")

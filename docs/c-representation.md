@@ -1108,10 +1108,13 @@ typedef struct QExceptionState {
 } QExceptionState;
 
 typedef struct QExceptionHandler {
-    jmp_buf                     env_jmp;
     struct QExceptionHandler   *prev;
     const QException *const    *catches;    /* what the handler catches (docs/exceptions.md §5.1): these, */
     int64_t                     n_catches;  /* n_catches of them, or Q_CATCH_ALL, or Q_CATCH_UNKNOWN */
+    const void                 *resume;     /* NULL for a C handler; a native one's (docs/arm64.md §3.6): */
+    void                       *sp;         /* where it resumes, with these stack */
+    void                       *fp;         /* and frame pointers */
+    jmp_buf                     env_jmp;    /* a C handler's */
 } QExceptionHandler;
 
 /* Thread-local exception handler chain */
@@ -1125,7 +1128,8 @@ extern Q_THREAD_LOCAL QExceptionHandler *quest_current_exception_handler;
 extern Q_THREAD_LOCAL QExceptionState    quest_current_exception;
 ```
 
-A try sets its handler with `Q_SETJMP` and a raise jumps to it with `Q_LONGJMP`: `_setjmp` and `_longjmp` on macOS and
+A C try sets its handler's `resume` to `NULL` and its `env_jmp` with `Q_SETJMP`, and a raise jumps to it with
+`Q_LONGJMP`, or resumes a native handler at its `resume` with its `sp` and `fp` (ABI 55): `_setjmp` and `_longjmp` on macOS and
 the BSDs, where `setjmp` and `longjmp` save and restore the signal mask with a system call each, and `setjmp` and
 `longjmp` elsewhere (glibc's save no mask). Nothing raises from a signal handler, so the mask need not be restored.
 
@@ -1156,6 +1160,7 @@ void quest_reraise(QExceptionState state) {
             break;
     }
     quest_current_exception = state;
+    if (quest_current_exception_handler->resume != NULL) quest_resume_native(quest_current_exception_handler);
     Q_LONGJMP(quest_current_exception_handler->env_jmp, 1);
 }
 
@@ -1168,6 +1173,7 @@ void quest_raise_at(const QException *exc, QVal payload, const char *loc) {
 ```c
 QExceptionHandler q_handler;
 q_handler.prev = quest_current_exception_handler;
+q_handler.resume = NULL;                               /* a C handler */
 const QException *q_catches[] = { qv_Exc1, qv_Exc2 };  /* the patterns, computed before the try when they can be */
 q_handler.catches = q_catches;
 q_handler.n_catches = 2;                               /* or Q_CATCH_ALL with an else, or Q_CATCH_UNKNOWN */

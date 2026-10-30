@@ -263,7 +263,8 @@ export
                 let e = callExpr(p x.call)
                 line(p if extent x.call.results is 0 then e <> "; return;" else "return " <> e <> ";" end)
             when termTry with x then
-                line(p "if (_setjmp((int *)(void *)s" <> conv.int(x.slot) <> ") == 0) " <> jumpText(p x.body))
+                line(p "if (_setjmp((int *)(void *)(s" <> conv.int(x.slot) <> " + "
+                    <> conv.int(runtimeLayout.offset("QExceptionHandler" "env_jmp")) <> ")) == 0) " <> jumpText(p x.body))
                 line(p "goto " <> blockLabel(x.handler) <> ";")
             when termUnreachable then line(p "__builtin_unreachable();")
         end

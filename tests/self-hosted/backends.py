@@ -28,7 +28,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 CASE = Path(__file__).resolve().parent / "backends"
 
-EXPECTED = "(6, 8)\n(33, 44)\n(9, 12)\ntoo far: 300\n7\n7\n691847.5\n1230539.875\n1231539.875\n"
+EXPECTED = "(6, 8)\n(33, 44)\n(9, 12)\ntoo far: 300\n7\n7\n691847.5\n1230539.875\n1231539.875\n908000411\n"
 
 # The choices built in turn into one build directory: the options, and the
 # backend each unit's manifest must then record

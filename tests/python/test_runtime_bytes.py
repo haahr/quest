@@ -41,6 +41,7 @@ static void ascii_char(void) { quest_ascii_char(256); }
 static bool raises(const QException *exc, void (*f)(void)) {
     QExceptionHandler handler;
     handler.prev = quest_current_exception_handler;
+    handler.resume = NULL;
     handler.catches = NULL;
     handler.n_catches = Q_CATCH_ALL;
     quest_current_exception_handler = &handler;
