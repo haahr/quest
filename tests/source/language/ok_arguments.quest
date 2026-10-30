@@ -1,0 +1,35 @@
+(* Ok Arguments
+ *
+ * Ok passed as an argument, where the parameter is Ok or a type variable
+ * instantiated at Ok, followed by arguments of other kinds: the parameter is a
+ * word in C (docs/ssa.md section 2.2), so the call passes one, and the
+ * arguments after it reach their own parameters. A call with six arguments
+ * first leaves other values in the registers those would take. *)
+
+import writer : Writer conv : Conv ;
+
+let say(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+let six(a: Int b: Int c: Int d: Int e: Int g: Int): Int = a + b + c + d + e + g;
+
+(* A type variable instantiated at Ok, then a closure *)
+let apply(B::TYPE)(b: B f: All(x: B) Int): Int = f(b);
+let s1 = six(101 102 103 104 105 106);
+say("apply: " <> conv.int(apply(:Ok)(ok fun(x: Ok): Int 7)));
+
+(* Ok parameters, several, among others *)
+let mixed(a: Ok n: Int b: Ok r: Real c: Ok s: String): String = conv.int(n) <> " " <> conv.real(r) <> " " <> s;
+let s2 = six(201 202 203 204 205 206);
+say("mixed: " <> mixed(ok 3 ok 2.5 ok "end"));
+
+(* Through a closure *)
+let viaClosure = fun(a: Ok n: Int): Int n * 2;
+let s3 = six(301 302 303 304 305 306);
+say("closure: " <> conv.int(viaClosure(ok 21)));
+
+(* A fold over Ok, as the benchmarks' foreach is *)
+let rec fold(B::TYPE)(n: Int b: B f: All(i: Int b: B) B): B = if n is 0 then b else fold(:B)(n - 1 f(n b) f) end;
+let total = array of(1 0);
+let s4 = six(401 402 403 404 405 406);
+fold(:Ok)(4 ok fun(i: Int b: Ok): Ok total[0] := total[0] + i);
+say("fold: " <> conv.int(total[0]));

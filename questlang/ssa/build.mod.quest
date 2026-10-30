@@ -402,6 +402,18 @@ export
             r
         end
 
+    (* A call's arguments: an Ok, which has no values, is a QVal word in C,
+     * and the function's parameter is one (function, below) *)
+    let callAtoms(fn: Fn xs: Array(Atom)): Array(Int) =
+        begin
+            let var r = noValues
+            for i = 0 upto {extent xs - 1} do
+                let vs = atom(fn xs[i])
+                r := concat(r if extent vs is 0 then array of constant(fn 0) end else vs end)
+            end
+            r
+        end
+
     (* The address of a static descriptor, of a form *)
     let formAddress(fn: Fn f: staticdata.DescriptorForm): Int =
         begin
@@ -676,7 +688,7 @@ export
             for i = 0 upto {extent args - 1} do
                 let n = extent parts(ir.atomType(args[i]))
                 if n is 2 then vector.append(:Int starts at) end
-                at := at + n
+                at := at + {if n is 0 then 1 else n end}
             end
             vector.toArray(:Int starts)
         end
@@ -698,7 +710,7 @@ export
     let directCall(fn: Fn symbol: String lead: Array(Int) args: Array(Atom) resultType: Type): Array(Int) =
         begin
             let ps = resultParts(resultType)
-            let vs = ssa.callNarrow(fn.f fn.cur symbol concat(lead atoms(fn args)) pairsOf(extent lead args)
+            let vs = ssa.callNarrow(fn.f fn.cur symbol concat(lead callAtoms(fn args)) pairsOf(extent lead args)
                 narrowOf(extent lead args) typesOf(ps))
             resultsOf(fn ps vs)
         end
@@ -728,7 +740,7 @@ export
             let fnPtr = loadWord(fn clos runtimeLayout.offset("QClosure" "fn") tPtr)
             let env = loadWord(fn clos runtimeLayout.offset("QClosure" "env") tPtr)
             let ps = resultParts(callee.type)
-            let all = concat(concat(array of fnPtr env end descs) atoms(fn args))
+            let all = concat(concat(array of fnPtr env end descs) callAtoms(fn args))
             let vs = ssa.callNarrow(fn.f fn.cur "" all pairsOf({2 + extent descs} args) narrowOf({2 + extent descs} args)
                 typesOf(ps))
             resultsOf(fn ps vs)
@@ -1501,7 +1513,7 @@ export
             when opCallExternal with x then
                 let resultType = if maybe.isSome(:Variable result) then maybe.unwrap(:Variable result).type else model.okType end
                 let ps = parts(resultType)
-                let vs = ssa.call(fn.f fn.cur x.symbol concat(descriptors(fn x.descriptors) atoms(fn x.args))
+                let vs = ssa.call(fn.f fn.cur x.symbol concat(descriptors(fn x.descriptors) callAtoms(fn x.args))
                     pairsOf(extent x.descriptors x.args) typesOf(ps))
                 resultsOf(fn ps vs)
             when opMakeClosure with x then makeClosure(fn x)

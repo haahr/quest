@@ -93,9 +93,10 @@ export
         end
 
     (* =========================================================================
-     * A function's frame: below the frame record, the outgoing arguments' area
-     * at sp, then a slot for each value, the function's stack slots, and an
-     * area for a jump's parallel copies
+     * A function's frame: below the frame record and the callee-saved
+     * registers it saves, the outgoing arguments' area at sp, then a slot for
+     * each value not in a register, the function's stack slots, and an area
+     * for a jump's parallel copies
      * ====================================================================== *)
 
     Let Frame = Tuple
@@ -696,20 +697,6 @@ export
                     if n > copyWords then copyWords := n end
                 end
             end
-            let nValues = vector.length(:ssa.Type f.types)
-            let valueAt = array of(nValues 0)
-            let var at = outgoing
-            for v = 0 upto {nValues - 1} do begin valueAt[v] := at at := at + 8 end end
-            let nSlots = vector.length(:ssa.Slot f.slots)
-            let slotAt = array of(nSlots 0)
-            for s = 0 upto {nSlots - 1} do
-                let slot = vector.get(:ssa.Slot f.slots s)
-                at := alignUp(at if slot.align > 8 then slot.align else 8 end)
-                slotAt[s] := at
-                at := at + alignUp(if slot.bytes > 0 then slot.bytes else 8 end 8)
-            end
-            let copyAt = at
-            let size = alignUp(at + {8 * copyWords} 16)
             (* Every value in its slot in a function that enters a try, whose
              * handler finds them there (section 3.6) *)
             let allocation = if savesAll then regalloc.spillAll(f) else
@@ -722,6 +709,23 @@ export
                         else false
                     end)
             end
+            (* A slot for each value not in a register *)
+            let nValues = vector.length(:ssa.Type f.types)
+            let valueAt = array of(nValues 0)
+            let var at = outgoing
+            for v = 0 upto {nValues - 1} do
+                if stringOp.length(allocation.registers[v]) is 0 then begin valueAt[v] := at at := at + 8 end end
+            end
+            let nSlots = vector.length(:ssa.Slot f.slots)
+            let slotAt = array of(nSlots 0)
+            for s = 0 upto {nSlots - 1} do
+                let slot = vector.get(:ssa.Slot f.slots s)
+                at := alignUp(at if slot.align > 8 then slot.align else 8 end)
+                slotAt[s] := at
+                at := at + alignUp(if slot.bytes > 0 then slot.bytes else 8 end 8)
+            end
+            let copyAt = at
+            let size = alignUp(at + {8 * copyWords} 16)
             let savedList = vector.new(:Int)
             for k = 0 upto {extent savedPairs - 1} do
                 let var any = savesAll

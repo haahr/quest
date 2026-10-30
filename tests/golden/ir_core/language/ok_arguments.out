@@ -1,0 +1,97 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun say(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs {
+    fun six(a: Int, b: Int, c: Int, d: Int, e: Int, g: Int): Int {
+      let %4: Int = prim +(e, g)
+      let %5: Int = prim +(d, %4)
+      let %6: Int = prim +(c, %5)
+      let %7: Int = prim +(b, %6)
+      let %8: Int = prim +(a, %7)
+      return %8
+    }
+  }
+  funs {
+    fun apply [B::TYPE](b.1: B, f: Fun(x: B): Int): Int {
+      let %9: Int = call f(b.1)
+      return %9
+    }
+  }
+  let s1: Int = call six(101, 102, 103, 104, 105, 106)
+  funs {
+    fun f.1(x: Ok): Int {
+      return 7
+    }
+  }
+  let %10: Int = call apply [Ok](ok, f.1)
+  let %11: String = call conv.int(%10)
+  let %12: String = prim <>("apply: ", %11)
+  do call say(%12)
+  funs {
+    fun mixed(a.1: Ok, n: Int, b.2: Ok, r: Real, c.1: Ok, s.1: String): String {
+      let %13: String = call conv.int(n)
+      let %14: String = call conv.real(r)
+      let %15: String = prim <>(" ", s.1)
+      let %16: String = prim <>(%14, %15)
+      let %17: String = prim <>(" ", %16)
+      let %18: String = prim <>(%13, %17)
+      return %18
+    }
+  }
+  let s2: Int = call six(201, 202, 203, 204, 205, 206)
+  let %19: String = call mixed(ok, 3, ok, 2.5, ok, "end")
+  let %20: String = prim <>("mixed: ", %19)
+  do call say(%20)
+  funs {
+    fun viaClosure(a.2: Ok, n.1: Int): Int {
+      let %21: Int = prim *(n.1, 2)
+      return %21
+    }
+  }
+  let s3: Int = call six(301, 302, 303, 304, 305, 306)
+  let %22: Int = call viaClosure(ok, 21)
+  let %23: String = call conv.int(%22)
+  let %24: String = prim <>("closure: ", %23)
+  do call say(%24)
+  funs rec {
+    fun fold [B::TYPE](n.2: Int, b.3: B, f.2: Fun(i: Int b: B): B): B {
+      join k1(r.1: B) {
+        return r.1
+      } in {
+        let %25: Bool = prim is(n.2, 0)
+        if %25 {
+          jump k1(b.3)
+        } else {
+          let %26: Int = prim -(n.2, 1)
+          let %27: B = call f.2(n.2, b.3)
+          let %28: B = call fold [B](%26, %27, f.2)
+          jump k1(%28)
+        }
+      }
+    }
+  }
+  let total: Array(Int) = array_rep(1, 0)
+  let s4: Int = call six(401, 402, 403, 404, 405, 406)
+  funs {
+    fun f.3(i: Int, b.4: Ok): Ok {
+      let %29: Int = index(total, 0)
+      let %30: Int = prim +(%29, i)
+      store total[0] := %30
+      return ok
+    }
+  }
+  do call fold [Ok](4, ok, f.3)
+  let %31: Int = index(total, 0)
+  let %32: String = call conv.int(%31)
+  let %33: String = prim <>("fold: ", %32)
+  do call say(%33)
+}
+

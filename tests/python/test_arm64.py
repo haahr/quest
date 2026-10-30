@@ -69,7 +69,9 @@ class TestArm64(unittest.TestCase):
         self.assertIn("adr x9, Lf4_e1", text)
         self.assertIn("Lf4_e1:\n\tb Lf4_b2", text)
         # A frame of more than a page is probed (docs/arm64.md section 10.2)
-        self.assertIn("\tbl ___chkstk_darwin\n\tmovz x9, #40160, lsl #0\n\tsub sp, sp, x9", text)
+        probe = re.search(r"\tmovz x9, #(\d+), lsl #0\n\tbl ___chkstk_darwin\n\tmovz x9, #\1, lsl #0\n\tsub sp, sp, x9",
+                          text)
+        self.assertTrue(probe and int(probe.group(1)) > 4096, text)
         self.assertIn("str x29, [x10, #40]", text)
         entered = text[text.index("_qf_try:"):]
         entered = entered[:entered.index(".cfi_endproc")]
