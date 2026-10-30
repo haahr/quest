@@ -1,0 +1,106 @@
+(* Mutable Locals
+ *
+ * Local variables assigned in loops and branches, of each kind of value,
+ * which the SSA promotes from stack slots to values (docs/ssa.md section 4.1),
+ * beside those it keeps in slots: captured by a closure, passed as a var
+ * argument, or assigned in a try. *)
+
+import writer : Writer conv : Conv ;
+
+let say(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+(* Integers, through a loop and a branch in it *)
+let evensAndOdds(n: Int): String =
+    begin
+        let var evens = 0
+        let var odds = 0
+        for i = 1 upto n do if {i % 2} is 0 then evens := evens + i else odds := odds + i end end
+        conv.int(evens) <> " " <> conv.int(odds)
+    end;
+say("evensAndOdds: " <> evensAndOdds(10));
+
+(* Reals and strings, through a while loop *)
+let halve(r: Real): String =
+    begin
+        let var x = r
+        let var steps = ""
+        while x >> 1.0 do
+            x := x // 2.0
+            steps := steps <> "."
+        end
+        conv.real(x) <> " " <> steps
+    end;
+say("halve: " <> halve(100.0));
+
+(* Booleans, assigned on some paths only *)
+let anyNegative(xs: Array(Int)): Bool =
+    begin
+        let var found = false
+        for i = 0 upto {extent xs - 1} do if xs[i] < 0 then found := true end end
+        found
+    end;
+say("anyNegative: " <> conv.bool(anyNegative(array of 3 1 ~4 1 end)) <> " " <> conv.bool(anyNegative(array of 5 9 end)));
+
+(* Nested loops, and variables swapped *)
+let fibs(n: Int): String =
+    begin
+        let var shown = ""
+        for row = 1 upto n do
+            let var a = 0
+            let var b = 1
+            for k = 1 upto row do
+                let t = a + b
+                a := b
+                b := t
+            end
+            shown := shown <> conv.int(a) <> " "
+        end
+        shown
+    end;
+say("fibs: " <> fibs(8));
+
+(* A record, reassigned *)
+Let P = Record x: Int y: Int end;
+let walk(n: Int): String =
+    begin
+        let var p: P = record x = 0 y = 0 end
+        for i = 1 upto n do p := record x = p.x + i y = p.y - i end end
+        conv.int(p.x) <> " " <> conv.int(p.y)
+    end;
+say("walk: " <> walk(4));
+
+(* Captured by a closure, which sees each assignment *)
+let counter(n: Int): Int =
+    begin
+        let var c = 0
+        let bump = fun(): Ok c := c + 1
+        for i = 1 upto n do bump() end
+        c
+    end;
+say("counter: " <> conv.int(counter(5)));
+
+(* Passed as a var argument *)
+let twice(var x: Int): Ok = x := x * 2;
+let doubled(n: Int): Int =
+    begin
+        let var x = n
+        twice(@x)
+        twice(@x)
+        x
+    end;
+say("doubled: " <> conv.int(doubled(3)));
+
+(* Assigned in a try, and read in its handler and after it *)
+exception Three end;
+let attempts(n: Int): Int =
+    begin
+        let var tries = 0
+        try
+            for i = 1 upto n do
+                tries := tries + 1
+                if i is 3 then raise Three end
+            end
+        end when Three then tries := tries * 100 end
+        tries
+    end;
+say("attempts: " <> conv.int(attempts(2)) <> " " <> conv.int(attempts(5)));

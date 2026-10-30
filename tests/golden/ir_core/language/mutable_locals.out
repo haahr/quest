@@ -1,0 +1,272 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun say(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs {
+    fun evensAndOdds(n: Int): String {
+      var evens: Int = 0
+      var odds: Int = 0
+      var i: Int = 1
+      loop L1 {
+        let %4: Bool = prim <=(i, n)
+        if %4 {
+          let i.1: Int = i
+          let %5: Int = prim %(i.1, 2)
+          let %6: Bool = prim is(%5, 0)
+          if %6 {
+            let %7: Int = prim +(evens, i.1)
+            evens := %7
+          } else {
+            let %8: Int = prim +(odds, i.1)
+            odds := %8
+          }
+          let %9: Int = prim +(i, 1)
+          i := %9
+        } else {
+          break L1
+        }
+      }
+      let %10: String = call conv.int(evens)
+      let %11: String = call conv.int(odds)
+      let %12: String = prim <>(" ", %11)
+      let %13: String = prim <>(%10, %12)
+      return %13
+    }
+  }
+  let %14: String = call evensAndOdds(10)
+  let %15: String = prim <>("evensAndOdds: ", %14)
+  do call say(%15)
+  funs {
+    fun halve(r: Real): String {
+      var x: Real = r
+      var steps: String = ""
+      loop L2 {
+        let %16: Bool = prim >>(x, 1.0)
+        if %16 {
+          let %17: Real = prim //(x, 2.0)
+          x := %17
+          let %18: String = prim <>(steps, ".")
+          steps := %18
+        } else {
+          break L2
+        }
+      }
+      let %19: String = call conv.real(x)
+      let %20: String = prim <>(" ", steps)
+      let %21: String = prim <>(%19, %20)
+      return %21
+    }
+  }
+  let %22: String = call halve(100.0)
+  let %23: String = prim <>("halve: ", %22)
+  do call say(%23)
+  funs {
+    fun anyNegative(xs: Array(Int)): Bool {
+      var found: Bool = false
+      let %24: Int = prim extent(xs)
+      let %25: Int = prim -(%24, 1)
+      var i.2: Int = 0
+      loop L3 {
+        let %26: Bool = prim <=(i.2, %25)
+        if %26 {
+          let i.3: Int = i.2
+          let %27: Int = index(xs, i.3)
+          let %28: Bool = prim <(%27, 0)
+          if %28 {
+            found := true
+          }
+          let %29: Int = prim +(i.2, 1)
+          i.2 := %29
+        } else {
+          break L3
+        }
+      }
+      return found
+    }
+  }
+  let %30: Array(Int) = array(3, 1, -4, 1)
+  let %31: Bool = call anyNegative(%30)
+  let %32: String = call conv.bool(%31)
+  let %33: Array(Int) = array(5, 9)
+  let %34: Bool = call anyNegative(%33)
+  let %35: String = call conv.bool(%34)
+  let %36: String = prim <>(" ", %35)
+  let %37: String = prim <>(%32, %36)
+  let %38: String = prim <>("anyNegative: ", %37)
+  do call say(%38)
+  funs {
+    fun fibs(n.1: Int): String {
+      var shown: String = ""
+      var row: Int = 1
+      loop L4 {
+        let %39: Bool = prim <=(row, n.1)
+        if %39 {
+          let row.1: Int = row
+          var a: Int = 0
+          var b: Int = 1
+          var k: Int = 1
+          loop L5 {
+            let %40: Bool = prim <=(k, row.1)
+            if %40 {
+              let k.1: Int = k
+              let t: Int = prim +(a, b)
+              a := b
+              b := t
+              let %41: Int = prim +(k, 1)
+              k := %41
+            } else {
+              break L5
+            }
+          }
+          let %42: String = call conv.int(a)
+          let %43: String = prim <>(%42, " ")
+          let %44: String = prim <>(shown, %43)
+          shown := %44
+          let %45: Int = prim +(row, 1)
+          row := %45
+        } else {
+          break L4
+        }
+      }
+      return shown
+    }
+  }
+  let %46: String = call fibs(8)
+  let %47: String = prim <>("fibs: ", %46)
+  do call say(%47)
+  funs {
+    fun walk(n.2: Int): String {
+      let %48: Record x: Int y: Int end = record(x = 0, y = 0)
+      var p: P = %48
+      var i.4: Int = 1
+      loop L6 {
+        let %49: Bool = prim <=(i.4, n.2)
+        if %49 {
+          let i.5: Int = i.4
+          let %50: Int = record_field(p, x)
+          let %51: Int = prim +(%50, i.5)
+          let %52: Int = record_field(p, y)
+          let %53: Int = prim -(%52, i.5)
+          let %54: Record x: Int y: Int end = record(x = %51, y = %53)
+          p := %54
+          let %55: Int = prim +(i.4, 1)
+          i.4 := %55
+        } else {
+          break L6
+        }
+      }
+      let %56: Int = record_field(p, x)
+      let %57: String = call conv.int(%56)
+      let %58: Int = record_field(p, y)
+      let %59: String = call conv.int(%58)
+      let %60: String = prim <>(" ", %59)
+      let %61: String = prim <>(%57, %60)
+      return %61
+    }
+  }
+  let %62: String = call walk(4)
+  let %63: String = prim <>("walk: ", %62)
+  do call say(%63)
+  funs {
+    fun counter(n.3: Int): Int {
+      let c: Tuple var c: Int end = tuple(0)
+      funs {
+        fun bump(): Ok {
+          let %64: Int = tuple_field(c, 0)
+          let %65: Int = prim +(%64, 1)
+          store c.#0 := %65
+          return ok
+        }
+      }
+      var i.6: Int = 1
+      loop L7 {
+        let %66: Bool = prim <=(i.6, n.3)
+        if %66 {
+          let i.7: Int = i.6
+          do call bump()
+          let %67: Int = prim +(i.6, 1)
+          i.6 := %67
+        } else {
+          break L7
+        }
+      }
+      let %68: Int = tuple_field(c, 0)
+      return %68
+    }
+  }
+  let %69: Int = call counter(5)
+  let %70: String = call conv.int(%69)
+  let %71: String = prim <>("counter: ", %70)
+  do call say(%71)
+  funs {
+    fun twice(var x.1: Int): Ok {
+      let %72: Int = prim *(x.1, 2)
+      x.1 := %72
+      return ok
+    }
+  }
+  funs {
+    fun doubled(n.4: Int): Int {
+      var x.2: Int = n.4
+      let %73: Var(Int) = addr x.2
+      do call twice(%73)
+      let %74: Var(Int) = addr x.2
+      do call twice(%74)
+      return x.2
+    }
+  }
+  let %75: Int = call doubled(3)
+  let %76: String = call conv.int(%75)
+  let %77: String = prim <>("doubled: ", %76)
+  do call say(%77)
+  let Three: Exception = exception Three
+  funs {
+    fun attempts(n.5: Int): Int {
+      var tries: Int = 0
+      try catching (Three) {
+        var i.8: Int = 1
+        loop L8 {
+          let %78: Bool = prim <=(i.8, n.5)
+          if %78 {
+            let i.9: Int = i.8
+            let %79: Int = prim +(tries, 1)
+            tries := %79
+            let %80: Bool = prim is(i.9, 3)
+            if %80 {
+              raise Three
+            }
+            let %81: Int = prim +(i.8, 1)
+            i.8 := %81
+          } else {
+            break L8
+          }
+        }
+      } handle (e: Exception) {
+        let %82: Bool = prim is(e, Three)
+        if %82 {
+          let %83: Int = prim *(tries, 100)
+          tries := %83
+        } else {
+          reraise e
+        }
+      }
+      return tries
+    }
+  }
+  let %84: Int = call attempts(2)
+  let %85: String = call conv.int(%84)
+  let %86: Int = call attempts(5)
+  let %87: String = call conv.int(%86)
+  let %88: String = prim <>(" ", %87)
+  let %89: String = prim <>(%85, %88)
+  let %90: String = prim <>("attempts: ", %89)
+  do call say(%90)
+}
+

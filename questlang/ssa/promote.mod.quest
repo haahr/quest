@@ -1,0 +1,411 @@
+(* Quest Self-Hosted Compiler: The SSA's Slot Promotion Implementation *)
+
+module promote : Promote
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/verify : questlang/ssa/Verify
+    collections/vector : collections/Vector
+export
+    Let Function = ssa.Function
+
+    let typeCode(t: ssa.Type): Int = case t when typeInt then 0 when typePtr then 1 else 2 end
+
+    let typeOfCode(code: Int): ssa.Type =
+        if code is 0 then option typeInt of ssa.Type end
+        elsif code is 1 then option typePtr of ssa.Type end
+        else option typeReal of ssa.Type end end
+
+    let enters(f: Function): Bool =
+        begin
+            let var found = false
+            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                case ssa.block(f b).term when termTry then found := true else ok end
+            end
+            found
+        end
+
+    (* The targets of a terminator, whose arguments can be changed in place *)
+    let targets(t: ssa.Terminator): vector.T(ssa.Target) =
+        begin
+            let ts = vector.new(:ssa.Target)
+            case t
+                when termJump with x then vector.append(:ssa.Target ts x.target)
+                when termBranch with x then
+                    vector.append(:ssa.Target ts x.ifTrue)
+                    vector.append(:ssa.Target ts x.ifFalse)
+                when termSwitch with x then
+                    for i = 0 upto {extent x.targets - 1} do vector.append(:ssa.Target ts x.targets[i]) end
+                    vector.append(:ssa.Target ts x.default)
+                when termTry with x then vector.append(:ssa.Target ts x.body)
+                else ok
+            end
+            ts
+        end
+
+    (* A function's slots and their words, the variables promotion makes *)
+    Let Variables = Tuple
+        (* The slot whose address each value is, ~1 for others *)
+        slotOf: Array(Int)
+        (* Each slot's first variable, and whether it is promoted *)
+        base: Array(Int)
+        promoted: Array(Bool)
+        (* Each variable's type code *)
+        kind: Array(Int)
+    end
+
+    (* The variable an access of a slot reads or writes, ~1 if it is not a
+     * whole word or a word's first byte *)
+    let variableOf(f: Function vs: Variables i: ssa.Inst): Int =
+        begin
+            let s = vs.slotOf[i.args[0]]
+            let words = vector.get(:ssa.Slot f.slots s).bytes / 8
+            let aligned = {i.imm >= 0} andif {{i.imm % 8} is 0} andif {{i.imm / 8} < words}
+            if aligned andif {{i.width is 8} orif {i.width is 1}} then vs.base[s] + {i.imm / 8} else ~1 end
+        end
+
+    (* The slots that can be promoted: of whole words, their addresses only
+     * loaded from and stored to, a word at a time, or its first byte; each word
+     * of values of one type, stored all of one width, and loaded whole only if
+     * stored whole *)
+    let variables(f: Function): Variables =
+        begin
+            let nSlots = vector.length(:ssa.Slot f.slots)
+            let slotOf = array of(vector.length(:ssa.Type f.types) ~1)
+            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    case i.op when opSlot then slotOf[i.results[0]] := i.imm else ok end
+                end
+            end
+            let base = array of(nSlots 0)
+            let promoted = array of(nSlots true)
+            let var nVars = 0
+            for s = 0 upto {nSlots - 1} do
+                let bytes = vector.get(:ssa.Slot f.slots s).bytes
+                base[s] := nVars
+                if {bytes % 8} isnot 0 then promoted[s] := false else nVars := nVars + {bytes / 8} end
+            end
+            (* ~2 for a variable not yet seen; 0 for none, else 8 or 1, or ~1
+             * for both *)
+            let kind = array of(nVars ~2)
+            let stored = array of(nVars 0)
+            let loadedWhole = array of(nVars false)
+            let vs = tuple let slotOf = slotOf let base = base let promoted = promoted let kind = kind end
+            let note(v: Int t: ssa.Type): Ok =
+                if kind[v] is ~2 then kind[v] := typeCode(t) elsif kind[v] isnot typeCode(t) then kind[v] := ~1 end
+            let escape(v: Int): Ok = if slotOf[v] >= 0 then promoted[slotOf[v]] := false end
+            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    case i.op
+                        when opSlot then ok
+                        when opLoad then
+                            let s = slotOf[i.args[0]]
+                            if {s >= 0} andif promoted[s] then
+                                let v = variableOf(f vs i)
+                                if v < 0 then promoted[s] := false
+                                else
+                                    note(v ssa.typeOf(f i.results[0]))
+                                    if i.width is 8 then loadedWhole[v] := true end
+                                end
+                            end
+                        when opStore then
+                            let s = slotOf[i.args[0]]
+                            if {s >= 0} andif promoted[s] then
+                                let v = variableOf(f vs i)
+                                if v < 0 then promoted[s] := false
+                                else
+                                    note(v ssa.typeOf(f i.args[1]))
+                                    if stored[v] is 0 then stored[v] := i.width
+                                    elsif stored[v] isnot i.width then stored[v] := ~1 end
+                                end
+                            end
+                            escape(i.args[1])
+                        else for a = 0 upto {extent i.args - 1} do escape(i.args[a]) end
+                    end
+                end
+                let uses = ssa.terminatorUses(blk.term)
+                for a = 0 upto {extent uses - 1} do escape(uses[a]) end
+                case blk.term
+                    when termTailCall with x then for a = 0 upto {extent x.call.args - 1} do escape(x.call.args[a]) end
+                    else ok
+                end
+            end
+            for s = 0 upto {nSlots - 1} do
+                if promoted[s] then
+                    for w = 0 upto {{vector.get(:ssa.Slot f.slots s).bytes / 8} - 1} do
+                        let v = base[s] + w
+                        (* A word never loaded or stored is an integer's *)
+                        if kind[v] is ~2 then kind[v] := 0 end
+                        if {kind[v] < 0} orif {stored[v] < 0} orif {{stored[v] is 1} andif loadedWhole[v]} then
+                            promoted[s] := false
+                        end
+                    end
+                end
+            end
+            vs
+        end
+
+    let promoteFunction(f: Function): Int =
+        if {vector.length(:ssa.Slot f.slots) is 0} orif enters(f) then 0 else
+            begin
+                let nBlocks = vector.length(:ssa.Block f.blocks)
+                let nSlots = vector.length(:ssa.Slot f.slots)
+                let nValues = vector.length(:ssa.Type f.types)
+                let vs = variables(f)
+                let nVars = extent vs.kind
+                let slotOf = vs.slotOf
+                let promoted = vs.promoted
+                let variableAt(i: ssa.Inst): Int =
+                    if {slotOf[i.args[0]] >= 0} andif promoted[slotOf[i.args[0]]] then variableOf(f vs i) else ~1 end
+                let d = verify.dominance(f)
+                let reached = array of(nBlocks false)
+                for k = 0 upto {extent d.order - 1} do reached[d.order[k]] := true end
+                (* Dominance frontiers (Cooper, Harvey, and Kennedy) *)
+                let frontier = array of(nBlocks vector.new(:Int))
+                for b = 0 upto {nBlocks - 1} do frontier[b] := vector.new(:Int) end
+                for b = 0 upto {nBlocks - 1} do
+                    if reached[b] andif {extent d.preds[b] >= 2} then
+                        for p = 0 upto {extent d.preds[b] - 1} do
+                            let var runner = d.preds[b][p]
+                            while reached[runner] andif {runner isnot d.idom[b]} do
+                                vector.append(:Int frontier[runner] b)
+                                runner := d.idom[runner]
+                            end
+                        end
+                    end
+                end
+                (* The blocks that store to each variable *)
+                let stores = array of(nVars vector.new(:Int))
+                for v = 0 upto {nVars - 1} do stores[v] := vector.new(:Int) end
+                for b = 0 upto {nBlocks - 1} do
+                    let blk = ssa.block(f b)
+                    for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                        let i = vector.get(:ssa.Inst blk.insts k)
+                        case i.op
+                            when opStore then
+                                let v = variableAt(i)
+                                if v >= 0 then vector.append(:Int stores[v] b) end
+                            else ok
+                        end
+                    end
+                end
+                (* Where each variable needs a block parameter: the iterated
+                 * frontier of the blocks that store to it *)
+                let needs = array of(nVars array of(0 false))
+                for s = 0 upto {nSlots - 1} do
+                    if promoted[s] then
+                        for w = 0 upto {{vector.get(:ssa.Slot f.slots s).bytes / 8} - 1} do
+                            let v = vs.base[s] + w
+                            needs[v] := array of(nBlocks false)
+                            let queued = array of(nBlocks false)
+                            let work = vector.new(:Int)
+                            for k = 0 upto {vector.length(:Int stores[v]) - 1} do
+                                let b = vector.get(:Int stores[v] k)
+                                if not(queued[b]) then begin queued[b] := true vector.append(:Int work b) end end
+                            end
+                            while not(vector.empty(:Int work)) do
+                                let b = vector.pop(:Int work)
+                                for k = 0 upto {vector.length(:Int frontier[b]) - 1} do
+                                    let x = vector.get(:Int frontier[b] k)
+                                    if not(needs[v][x]) then
+                                        needs[v][x] := true
+                                        if not(queued[x]) then
+                                            queued[x] := true
+                                            vector.append(:Int work x)
+                                        end
+                                    end
+                                end
+                            end
+                            (* The entry's parameters are the function's *)
+                            if needs[v][0] then promoted[s] := false end
+                        end
+                    end
+                end
+                (* The parameters, in each block, after its own *)
+                let paramVariables = array of(nBlocks vector.new(:Int))
+                let paramValues = array of(nBlocks vector.new(:Int))
+                for b = 0 upto {nBlocks - 1} do
+                    paramVariables[b] := vector.new(:Int)
+                    paramValues[b] := vector.new(:Int)
+                end
+                for s = 0 upto {nSlots - 1} do
+                    if promoted[s] then
+                        for w = 0 upto {{vector.get(:ssa.Slot f.slots s).bytes / 8} - 1} do
+                            let v = vs.base[s] + w
+                            for b = 0 upto {nBlocks - 1} do
+                                if needs[v][b] then
+                                    vector.append(:Int paramVariables[b] v)
+                                    vector.append(:Int paramValues[b] ssa.addParam(f b typeOfCode(vs.kind[v])))
+                                end
+                            end
+                        end
+                    end
+                end
+                (* What each load's result is replaced by, and the zeros that
+                 * loads before any store read, made in the entry *)
+                let replaced = array of(nValues ~1)
+                let resolve(v: Int): Int =
+                    begin
+                        let var r = v
+                        while {r < nValues} andif {replaced[r] >= 0} do r := replaced[r] end
+                        r
+                    end
+                let zeros = array of(nVars ~1)
+                let prelude = vector.new(:ssa.Inst)
+                let current = array of(nVars ~1)
+                let valueOf(v: Int): Int =
+                    begin
+                        if current[v] < 0 then
+                            if zeros[v] < 0 then
+                                let t = typeOfCode(vs.kind[v])
+                                let op = case t
+                                    when typeInt then option opConst of ssa.Opcode end
+                                    when typePtr then option opNull of ssa.Opcode end
+                                    else option opRealConst of ssa.Opcode end
+                                end
+                                zeros[v] := ssa.newValue(f t)
+                                vector.append(:ssa.Inst prelude ssa.inst(op array of(0 0) array of zeros[v] end))
+                            end
+                            zeros[v]
+                        else current[v] end
+                    end
+                (* Renaming, along the dominator tree *)
+                let children = array of(nBlocks vector.new(:Int))
+                for b = 0 upto {nBlocks - 1} do children[b] := vector.new(:Int) end
+                for k = 0 upto {extent d.order - 1} do
+                    let b = d.order[k]
+                    if d.idom[b] >= 0 then vector.append(:Int children[d.idom[b]] b) end
+                end
+                let rec rename(b: Int): Ok =
+                    begin
+                        let saved = array of(nVars 0)
+                        for v = 0 upto {nVars - 1} do saved[v] := current[v] end
+                        for k = 0 upto {vector.length(:Int paramVariables[b]) - 1} do
+                            current[vector.get(:Int paramVariables[b] k)] := vector.get(:Int paramValues[b] k)
+                        end
+                        let blk = ssa.block(f b)
+                        let kept = vector.new(:ssa.Inst)
+                        for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                            let i = vector.get(:ssa.Inst blk.insts k)
+                            case i.op
+                                when opSlot then
+                                    let s = slotOf[i.results[0]]
+                                    if not(promoted[s]) then vector.append(:ssa.Inst kept i) end
+                                when opLoad then
+                                    let v = variableAt(i)
+                                    if v < 0 then vector.append(:ssa.Inst kept i)
+                                    elsif i.width is 8 then replaced[i.results[0]] := valueOf(v)
+                                    else
+                                        (* A byte, the extension of the word's *)
+                                        let op = if i.signed then option opSext8 of ssa.Opcode end
+                                            else option opZext8 of ssa.Opcode end end
+                                        vector.append(:ssa.Inst kept ssa.inst(op array of valueOf(v) end i.results))
+                                    end
+                                when opStore then
+                                    let v = variableAt(i)
+                                    if v < 0 then vector.append(:ssa.Inst kept i)
+                                    else current[v] := resolve(i.args[1]) end
+                                else vector.append(:ssa.Inst kept i)
+                            end
+                        end
+                        vector.clear(:ssa.Inst blk.insts)
+                        for k = 0 upto {vector.length(:ssa.Inst kept) - 1} do
+                            vector.append(:ssa.Inst blk.insts vector.get(:ssa.Inst kept k))
+                        end
+                        let ts = targets(blk.term)
+                        for k = 0 upto {vector.length(:ssa.Target ts) - 1} do
+                            let t = vector.get(:ssa.Target ts k)
+                            let n = vector.length(:Int paramVariables[t.block])
+                            if n > 0 then
+                                let args = array of({extent t.args + n} 0)
+                                for a = 0 upto {extent t.args - 1} do args[a] := t.args[a] end
+                                for a = 0 upto {n - 1} do
+                                    args[extent t.args + a] := valueOf(vector.get(:Int paramVariables[t.block] a))
+                                end
+                                t.args := args
+                            end
+                        end
+                        for k = 0 upto {vector.length(:Int children[b]) - 1} do
+                            rename(vector.get(:Int children[b] k))
+                        end
+                        for v = 0 upto {nVars - 1} do current[v] := saved[v] end
+                    end
+                rename(0)
+                (* Every use, of what replaced it; the slots left, renumbered *)
+                let renumbered = array of(nSlots ~1)
+                let left = vector.new(:ssa.Slot)
+                let var count = 0
+                for s = 0 upto {nSlots - 1} do
+                    if promoted[s] then count := count + 1
+                    else
+                        renumbered[s] := vector.length(:ssa.Slot left)
+                        vector.append(:ssa.Slot left vector.get(:ssa.Slot f.slots s))
+                    end
+                end
+                vector.clear(:ssa.Slot f.slots)
+                for s = 0 upto {vector.length(:ssa.Slot left) - 1} do
+                    vector.append(:ssa.Slot f.slots vector.get(:ssa.Slot left s))
+                end
+                let resolveAll(values: Array(Int)): Ok =
+                    for a = 0 upto {extent values - 1} do values[a] := resolve(values[a]) end
+                for b = 0 upto {nBlocks - 1} do
+                    let blk = ssa.block(f b)
+                    if b is 0 then
+                        let rest = vector.copy(:ssa.Inst blk.insts)
+                        vector.clear(:ssa.Inst blk.insts)
+                        for k = 0 upto {vector.length(:ssa.Inst prelude) - 1} do
+                            vector.append(:ssa.Inst blk.insts vector.get(:ssa.Inst prelude k))
+                        end
+                        for k = 0 upto {vector.length(:ssa.Inst rest) - 1} do
+                            vector.append(:ssa.Inst blk.insts vector.get(:ssa.Inst rest k))
+                        end
+                    end
+                    for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                        let i = vector.get(:ssa.Inst blk.insts k)
+                        resolveAll(i.args)
+                        case i.op
+                            when opSlot then
+                                vector.set(:ssa.Inst blk.insts k tuple
+                                    let op = i.op let var args = i.args let results = i.results
+                                    let imm = renumbered[i.imm] let symbol = i.symbol let width = i.width
+                                    let signed = i.signed let pairs = i.pairs let memory = i.memory
+                                    let narrow = i.narrow
+                                end)
+                            else ok
+                        end
+                    end
+                    let ts = targets(blk.term)
+                    for k = 0 upto {vector.length(:ssa.Target ts) - 1} do
+                        resolveAll(vector.get(:ssa.Target ts k).args)
+                    end
+                    case blk.term
+                        when termBranch with x then
+                            blk.term := option termBranch of ssa.Terminator with
+                                let cond = resolve(x.cond) let ifTrue = x.ifTrue let ifFalse = x.ifFalse
+                            end
+                        when termSwitch with x then
+                            blk.term := option termSwitch of ssa.Terminator with
+                                let value = resolve(x.value) let cases = x.cases let targets = x.targets
+                                let default = x.default
+                            end
+                        when termReturn with x then resolveAll(x.values)
+                        when termTailCall with x then resolveAll(x.call.args)
+                        else ok
+                    end
+                end
+                count
+            end
+        end
+
+    let promoteUnit(u: ssa.Unit): Int =
+        begin
+            let var count = 0
+            for i = 0 upto {vector.length(:Function u.functions) - 1} do
+                count := count + promoteFunction(vector.get(:Function u.functions i))
+            end
+            count
+        end
+end

@@ -491,7 +491,8 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
     - `language/tail_calls` covers each case in every phase, a hundred deep; `self-hosted/backends` runs self,
       mutual, and closure tail recursions ten million deep with `arm64`, in the default 8 MB stack.
 11. **Linear scan** (§3.8). *Done when* the suite passes with it, and benchmarks.md has dated run and compile times
-    for both backends.
+    for both backends. *Begun* (2026-10-30) with promotion, as §6 suggests: `ssa/promote` makes values of the slots
+    of whole words whose addresses do not escape, in functions without a `try` ([ssa.md](ssa.md) §4.1).
 12. **Self-hosting with the arm64 backend** (§4). *Done when* the check passes, `./quest` can build its stages with
     either backend, `tools/check` runs the self-hosting check through `ssac` and `arm64` too, and benchmarks.md has
     the measurements from which the default backend is decided.

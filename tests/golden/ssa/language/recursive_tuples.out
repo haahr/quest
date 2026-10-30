@@ -12,12 +12,9 @@ b0(%0: ptr, %1: int):
   tail call qv_writer_putString(%6, %9)
 }
 
-function qf_sum(%0: ptr, %1: ptr): int slots [8:8 8:8] {
+function qf_sum(%0: ptr, %1: ptr): int {
 b0(%0: ptr, %1: ptr):
   %2: int = load8 %1 + 0
-  %3: ptr = slot 0
-  %4: ptr = slot 0
-  store8 %4 + 0, %2
   %5: int = ptrToInt %1
   %6: int = const 8
   %7: int = add %5, %6
@@ -26,32 +23,23 @@ b0(%0: ptr, %1: ptr):
   %10: int = load8 %9 + 0
   %11: int = const 1
   %12: int = sub %10, %11
-  %13: ptr = slot 1
   %14: int = const 0
-  %15: ptr = slot 1
-  store8 %15 + 0, %14
-  jump b1()
-b1():
-  %16: ptr = slot 1
-  %17: int = load8 %16 + 0
-  %18: int = le %17, %12
+  jump b1(%2, %14)
+b1(%51: int, %52: int):
+  %18: int = le %52, %12
   branch %18, b3(), b4()
 b2():
-  %49: ptr = slot 0
-  %50: int = load8 %49 + 0
-  return %50
+  return %51
 b3():
-  %19: ptr = slot 1
-  %20: int = load8 %19 + 0
   %21: int = ptrToInt %1
   %22: int = const 8
   %23: int = add %21, %22
   %24: ptr = intToPtr %23
   %25: ptr = load8 %24 + 0
   %26: ptr = symbol qs_2
-  call quest_check_array_bounds_at(%25, %20, %26)
+  call quest_check_array_bounds_at(%25, %52, %26)
   %27: int = const 8
-  %28: int = mul %20, %27
+  %28: int = mul %52, %27
   %29: int = ptrToInt %25
   %30: int = const 8
   %31: int = add %29, %30
@@ -63,22 +51,14 @@ b3():
   %37: ptr = intToPtr %36
   %38: ptr = null
   %39: int = call qf_sum(%38, %37)
-  %40: ptr = slot 0
-  %41: int = load8 %40 + 0
-  %42: int = add %41, %39
-  %43: ptr = slot 0
-  store8 %43 + 0, %42
-  %44: ptr = slot 1
-  %45: int = load8 %44 + 0
+  %42: int = add %51, %39
   %46: int = const 1
-  %47: int = add %45, %46
-  %48: ptr = slot 1
-  store8 %48 + 0, %47
+  %47: int = add %52, %46
   jump b5()
 b4():
   jump b2()
 b5():
-  jump b1()
+  jump b1(%42, %47)
 }
 
 function qf_id(%0: ptr, %1: ptr, %2: int): int {

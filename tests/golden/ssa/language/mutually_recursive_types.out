@@ -37,7 +37,7 @@ b5():
   jump b1(%14)
 }
 
-function qf_evalBind(%0: ptr, %1: ptr): int slots [8:8 8:8] {
+function qf_evalBind(%0: ptr, %1: ptr): int {
 b0(%0: ptr, %1: ptr):
   %2: int = ptrToInt %1
   %3: int = const 1
@@ -56,9 +56,6 @@ b3(%5: ptr):
   %11: int = load8 %5 + 8
   %12: ptr = null
   %13: int = call qf_eval(%12, %10, %11) pairs [1]
-  %14: ptr = slot 0
-  %15: ptr = slot 0
-  store8 %15 + 0, %13
   %16: ptr = call quest_unproxy(%1)
   %17: int = ptrToInt %16
   %18: int = const 8
@@ -68,23 +65,14 @@ b3(%5: ptr):
   %22: int = load8 %21 + 0
   %23: int = const 1
   %24: int = sub %22, %23
-  %25: ptr = slot 1
   %26: int = const 0
-  %27: ptr = slot 1
-  store8 %27 + 0, %26
-  jump b4()
-b4():
-  %28: ptr = slot 1
-  %29: int = load8 %28 + 0
-  %30: int = le %29, %24
+  jump b4(%13, %26)
+b4(%66: int, %67: int):
+  %30: int = le %67, %24
   branch %30, b6(), b7()
 b5():
-  %64: ptr = slot 0
-  %65: int = load8 %64 + 0
-  return %65
+  return %66
 b6():
-  %31: ptr = slot 1
-  %32: int = load8 %31 + 0
   %33: ptr = call quest_unproxy(%1)
   %34: int = ptrToInt %33
   %35: int = const 8
@@ -92,9 +80,9 @@ b6():
   %37: ptr = intToPtr %36
   %38: ptr = load8 %37 + 0
   %39: ptr = symbol qs_2
-  call quest_check_array_bounds_at(%38, %32, %39)
+  call quest_check_array_bounds_at(%38, %67, %39)
   %40: int = const 8
-  %41: int = mul %32, %40
+  %41: int = mul %67, %40
   %42: int = ptrToInt %38
   %43: int = const 8
   %44: int = add %42, %43
@@ -108,22 +96,14 @@ b6():
   %52: int = load8 %50 + 8
   %53: ptr = null
   %54: int = call qf_eval(%53, %51, %52) pairs [1]
-  %55: ptr = slot 0
-  %56: int = load8 %55 + 0
-  %57: int = add %56, %54
-  %58: ptr = slot 0
-  store8 %58 + 0, %57
-  %59: ptr = slot 1
-  %60: int = load8 %59 + 0
+  %57: int = add %66, %54
   %61: int = const 1
-  %62: int = add %60, %61
-  %63: ptr = slot 1
-  store8 %63 + 0, %62
+  %62: int = add %67, %61
   jump b8()
 b7():
   jump b5()
 b8():
-  jump b4()
+  jump b4(%57, %62)
 }
 
 function qf_num(%0: ptr, %1: int): int, int {
@@ -237,21 +217,20 @@ b8(%28: ptr):
   return %40
 }
 
-function qf_size(%0: ptr, %1: int, %2: int) pairs [1]: int slots [8:8 8:8] {
+function qf_size(%0: ptr, %1: int, %2: int) pairs [1]: int {
 b0(%0: ptr, %1: int, %2: int):
+  %63: int = const 0
+  %64: int = const 0
   switch %1 [0: b2(), 1: b3()] default b4()
-b1(%3: int):
+b1(%3: int, %59: int, %61: int):
   return %3
 b2():
-  jump b1(%2)
+  jump b1(%2, %63, %64)
 b3():
   %4: ptr = intToPtr %2
   %5: ptr = load8 %4 + 0
   %6: ptr = load8 %4 + 8
-  %7: ptr = slot 0
   %8: int = const 0
-  %9: ptr = slot 0
-  store8 %9 + 0, %8
   %10: int = load8 %6 + 0
   %11: int = ptrToInt %5
   %12: int = add %11, %10
@@ -260,35 +239,26 @@ b3():
   %15: int = load8 %14 + 0
   %16: int = const 1
   %17: int = sub %15, %16
-  %18: ptr = slot 1
   %19: int = const 0
-  %20: ptr = slot 1
-  store8 %20 + 0, %19
-  jump b5()
+  jump b5(%8, %19)
 b4():
   %58: int = const 0
-  jump b1(%58)
-b5():
-  %21: ptr = slot 1
-  %22: int = load8 %21 + 0
-  %23: int = le %22, %17
+  jump b1(%58, %63, %64)
+b5(%60: int, %62: int):
+  %23: int = le %62, %17
   branch %23, b7(), b8()
 b6():
-  %56: ptr = slot 0
-  %57: int = load8 %56 + 0
-  jump b1(%57)
+  jump b1(%60, %60, %62)
 b7():
-  %24: ptr = slot 1
-  %25: int = load8 %24 + 0
   %26: int = load8 %6 + 0
   %27: int = ptrToInt %5
   %28: int = add %27, %26
   %29: ptr = intToPtr %28
   %30: ptr = load8 %29 + 0
   %31: ptr = symbol qs_4
-  call quest_check_array_bounds_at(%30, %25, %31)
+  call quest_check_array_bounds_at(%30, %62, %31)
   %32: int = const 8
-  %33: int = mul %25, %32
+  %33: int = mul %62, %32
   %34: int = ptrToInt %30
   %35: int = const 8
   %36: int = add %34, %35
@@ -302,22 +272,14 @@ b7():
   %44: int = load8 %42 + 8
   %45: ptr = null
   %46: int = call qf_size(%45, %43, %44) pairs [1]
-  %47: ptr = slot 0
-  %48: int = load8 %47 + 0
-  %49: int = add %48, %46
-  %50: ptr = slot 0
-  store8 %50 + 0, %49
-  %51: ptr = slot 1
-  %52: int = load8 %51 + 0
+  %49: int = add %60, %46
   %53: int = const 1
-  %54: int = add %52, %53
-  %55: ptr = slot 1
-  store8 %55 + 0, %54
+  %54: int = add %62, %53
   jump b9()
 b8():
   jump b6()
 b9():
-  jump b5()
+  jump b5(%49, %54)
 }
 
 function qf_leaf(%0: ptr, %1: int): int, int {

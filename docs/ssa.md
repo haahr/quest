@@ -105,7 +105,7 @@ each operation what the C printer prints ([arm64.md](arm64.md) §7.2):
 - **Variables.** An IR variable of a value is the SSA values of its representation; a boxed variable (a record or
   variant the represent pass holds in its box) is its box's pointer, and a boxed mutable one's value is its box's
   record or variant. A **mutable variable is a stack slot**, loaded and stored, as C at `-O0` keeps it: always
-  correct, the rule `try` needs for free, and promotable to values by a later pass. A variable a top level binds
+  correct, the rule `try` needs for free, and promoted to values afterwards (§4.1). A variable a top level binds
   outside loops is a global (`g_<name>`), as in C.
 - **Memory.** Every aggregate slot is a word (`layout`); a box or a global holds a record or variant's 16 bytes; a
   location (a cell, what a `var` or `out` parameter points to) holds a record or variant as its box's pointer
@@ -120,6 +120,24 @@ each operation what the C printer prints ([arm64.md](arm64.md) §7.2):
 
 What the builder does not yet build raises `unsupported`, naming the construct; `--stop-after ssa` reports it as an
 internal error.
+
+### 4.1. Promotion and Tail Calls
+
+When a unit is built, two passes finish its functions:
+
+- **`ssa/promote`** turns stack slots into values. A slot can be promoted when it is whole words and its address is
+  only loaded from and stored to, a word at a time or a word's first byte (a `Bool` or `Char` variable's), never
+  passed, stored, or offset otherwise. Each word becomes a variable of one type, stored all at one width, and loaded
+  whole only if stored whole. A block that the definitions reaching it differ at gets a parameter (Cytron et al.'s
+  placement at the iterated dominance frontier); then, along the dominator tree, a load becomes the value last
+  stored, or, for a byte, its `zext8` or `sext8`, and one before any store reads a zero made in the entry. The slots
+  left are renumbered. A function that enters a `try` keeps all its slots, since its handler must see what the body
+  stored (arm64.md §3.6); a variable captured by a closure is a heap cell, and one passed as a `var` argument keeps
+  its slot, its address escaping. `language/mutable_locals` covers each kind.
+- **`ssa/tailCalls`** marks calls in tail position (§3, arm64.md §3.7).
+
+Neither removes values that become dead, such as parameters no load reads; the trivial allocator gives them slots,
+and linear scan none.
 
 ## 5. Functions and Units
 

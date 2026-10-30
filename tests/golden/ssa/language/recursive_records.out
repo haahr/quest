@@ -12,16 +12,13 @@ b0(%0: ptr, %1: int):
   tail call qv_writer_putString(%6, %9)
 }
 
-function qf_sum(%0: ptr, %1: ptr, %2: ptr) pairs [1]: int slots [8:8 8:8] {
+function qf_sum(%0: ptr, %1: ptr, %2: ptr) pairs [1]: int {
 b0(%0: ptr, %1: ptr, %2: ptr):
   %3: int = load8 %2 + 8
   %4: int = ptrToInt %1
   %5: int = add %4, %3
   %6: ptr = intToPtr %5
   %7: int = load8 %6 + 0
-  %8: ptr = slot 0
-  %9: ptr = slot 0
-  store8 %9 + 0, %7
   %10: int = load8 %2 + 0
   %11: int = ptrToInt %1
   %12: int = add %11, %10
@@ -30,32 +27,23 @@ b0(%0: ptr, %1: ptr, %2: ptr):
   %15: int = load8 %14 + 0
   %16: int = const 1
   %17: int = sub %15, %16
-  %18: ptr = slot 1
   %19: int = const 0
-  %20: ptr = slot 1
-  store8 %20 + 0, %19
-  jump b1()
-b1():
-  %21: ptr = slot 1
-  %22: int = load8 %21 + 0
-  %23: int = le %22, %17
+  jump b1(%7, %19)
+b1(%58: int, %59: int):
+  %23: int = le %59, %17
   branch %23, b3(), b4()
 b2():
-  %56: ptr = slot 0
-  %57: int = load8 %56 + 0
-  return %57
+  return %58
 b3():
-  %24: ptr = slot 1
-  %25: int = load8 %24 + 0
   %26: int = load8 %2 + 0
   %27: int = ptrToInt %1
   %28: int = add %27, %26
   %29: ptr = intToPtr %28
   %30: ptr = load8 %29 + 0
   %31: ptr = symbol qs_2
-  call quest_check_array_bounds_at(%30, %25, %31)
+  call quest_check_array_bounds_at(%30, %59, %31)
   %32: int = const 8
-  %33: int = mul %25, %32
+  %33: int = mul %59, %32
   %34: int = ptrToInt %30
   %35: int = const 8
   %36: int = add %34, %35
@@ -69,22 +57,14 @@ b3():
   %44: ptr = load8 %42 + 8
   %45: ptr = null
   %46: int = call qf_sum(%45, %43, %44) pairs [1]
-  %47: ptr = slot 0
-  %48: int = load8 %47 + 0
-  %49: int = add %48, %46
-  %50: ptr = slot 0
-  store8 %50 + 0, %49
-  %51: ptr = slot 1
-  %52: int = load8 %51 + 0
+  %49: int = add %58, %46
   %53: int = const 1
-  %54: int = add %52, %53
-  %55: ptr = slot 1
-  store8 %55 + 0, %54
+  %54: int = add %59, %53
   jump b5()
 b4():
   jump b2()
 b5():
-  jump b1()
+  jump b1(%49, %54)
 }
 
 function qf_id(%0: ptr, %1: ptr, %2: int): int {
