@@ -34,7 +34,7 @@ export
     let blockLabel(b: Int): String = "b" <> conv.int(b)
 
     let cType(t: ssa.Type): String =
-        case t when typeInt then "int64_t" when typePtr then "char *" when typeReal then "double" end
+        case t when typeInt, typeVal then "int64_t" when typePtr then "char *" when typeReal then "double" end
     let typeOf(f: Function n: Int): ssa.Type = ssa.typeOf(f n)
 
     (* An Int as C spells it: INT64_MIN has no literal *)
@@ -48,13 +48,13 @@ export
      * type t *)
     let asWord(f: Function n: Int): String =
         case typeOf(f n)
-            when typeInt then "(uint64_t)" <> v(n)
+            when typeInt, typeVal then "(uint64_t)" <> v(n)
             when typePtr then "(uint64_t)(uintptr_t)" <> v(n)
             when typeReal then "ssac_bits(" <> v(n) <> ")"
         end
     let fromWord(w: String t: ssa.Type): String =
         case t
-            when typeInt then "(int64_t)" <> w
+            when typeInt, typeVal then "(int64_t)" <> w
             when typePtr then "(char *)(uintptr_t)" <> w
             when typeReal then "ssac_real(" <> w <> ")"
         end
@@ -210,6 +210,14 @@ export
                 when opCall, opCallIndirect then call(p i)
                 when opThreadLocal then set("(char *)&" <> i.symbol)
                 when opPtrAdd then set(a(0) <> " + " <> a(1))
+                (* A QVal word is an int64_t *)
+                when opToVal, opFromVal then
+                    let pointer = case typeOf(f if ssa.isOp(i ssa.opToVal) then i.args[0] else i.results[0] end)
+                        when typePtr then true when typeInt, typeReal, typeVal then false
+                    end
+                    set(if not(pointer) then a(0)
+                        elsif ssa.isOp(i ssa.opToVal) then "(int64_t)(uintptr_t)" <> a(0)
+                        else "(char *)(uintptr_t)" <> a(0) end)
             end
         end
 

@@ -17,10 +17,13 @@ once. Each has a type:
 | `int` | a 64-bit integer: `Int`, `Word`, `Bool` and `Char` (extended to 64 bits: `Bool` 0 or 1, `Char` 0 to 255), a tag, a size, an offset |
 | `ptr` | a pointer the collector must see: a heap object, a closure, a descriptor, a static object, a stack slot's address |
 | `real` | a 64-bit IEEE double |
+| `val` | a `QVal` word, whose pointer-ness its type descriptor says: a value of a type parameter, a variant's payload, an aggregate's component in its word form, an `Ok` passed as a word, and the runtime's `QVal` parameters and results |
 
 There is no aggregate type: a 16-byte value (a record's `QRecordVal`, a variant's `QVariantVal`) is two values. There
 is no boolean type: a comparison gives an `int` 0 or 1, and a branch tests an `int` for nonzero. `ptr` and `int` are
 apart so that a later collector could find pointers precisely (arm64.md §3.13); converting between them is explicit.
+`val` is apart from both for the same reason: a precise collector resolves a `val` by its descriptor
+(backend-improvements.md step 10). A `val` is an `int` in registers, and `toVal` and `fromVal` convert it.
 
 ## 2. Instructions
 
@@ -45,7 +48,8 @@ register allocation) walk the arrays; only the passes that care what an instruct
 | `fadd`, `fsub`, `fmul`, `fdiv` | `real real` → `real` | IEEE arithmetic |
 | `feq`, `flt`, `fle`, `fgt`, `fge` | `real real` → `int` | IEEE comparisons |
 | `isNaN` | `real` → `int` | whether the double is a NaN |
-| `intToPtr`, `ptrToInt` | → | a pointer's bits as an integer, and back, for what is truly an integer (a proxy's tag bit, a `QVal` word); a derived pointer is a `ptrAdd`, so that it stays a `ptr` |
+| `intToPtr`, `ptrToInt` | → | a pointer's bits as an integer, and back, for what is truly an integer (a proxy's tag bit); a derived pointer is a `ptrAdd`, so that it stays a `ptr` |
+| `toVal`, `fromVal` | `int` or `ptr` → `val`, and back | a value as a `QVal` word, and a `QVal` word as the `int` or `ptr` its type says |
 | `realBits`, `bitsReal` | → | a double's 64 bits as an integer, and back |
 | `sext8`, `zext8` | `int` → `int` | the low byte, sign- or zero-extended (a C `bool` or a `QChar`, an unsigned byte, received: `zext8`) |
 | `load` | `ptr` → value | the immediate is the byte offset; the width and the result's type are the instruction's (§2.1) |
@@ -64,7 +68,7 @@ immediate.
 ### 2.2. Calls
 
 A call's arguments and results are values in the order of the C function's parameters; an `Ok` argument, which has no
-values, is a zero word, since C passes `Q_OK_VAL` to the `QVal` parameter a function declares for it. A call and a
+values, is a zero `val`, since C passes `Q_OK_VAL` to the `QVal` parameter a function declares for it. A call and a
 function have a **signature** (`nodes.Signature`): how C passes each parameter and result, which the backends lower
 the ABI by and `ssac` writes C's types from (`nodes.Passed`):
 

@@ -40,7 +40,7 @@ b4():
   unreachable
 }
 
-function qf_first(%0: ptr, %1: ptr, %2: ptr, %3: ptr): int {
+function qf_first(%0: ptr, %1: ptr, %2: ptr, %3: ptr): val {
 b0(%0: ptr, %1: ptr, %2: ptr, %3: ptr):
   %4: int = ptrToInt %3
   %5: int = const 1
@@ -48,11 +48,11 @@ b0(%0: ptr, %1: ptr, %2: ptr, %3: ptr):
   branch %6, b1(), b2()
 b1():
   %8: int = const 0
-  tail %9: int = call quest_proxy_element(%3, %8)
+  tail %9: val = call quest_proxy_element(%3, %8)
 b2():
-  %10: int = load8 %3 + 0
+  %10: val = load8 %3 + 0
   jump b3(%10)
-b3(%7: int):
+b3(%7: val):
   return %7
 }
 
@@ -61,7 +61,7 @@ b0(%0: ptr, %1: ptr):
   return
 }
 
-function qf_second(%0: ptr, %1: ptr, %2: ptr, %3: ptr): int {
+function qf_second(%0: ptr, %1: ptr, %2: ptr, %3: ptr): val {
 b0(%0: ptr, %1: ptr, %2: ptr, %3: ptr):
   %4: int = ptrToInt %3
   %5: int = const 1
@@ -69,13 +69,13 @@ b0(%0: ptr, %1: ptr, %2: ptr, %3: ptr):
   branch %6, b1(), b2()
 b1():
   %8: int = const 1
-  tail %9: int = call quest_proxy_element(%3, %8)
+  tail %9: val = call quest_proxy_element(%3, %8)
 b2():
   %10: int = const 8
   %11: ptr = ptrAdd %3, %10
-  %12: int = load8 %11 + 0
+  %12: val = load8 %11 + 0
   jump b3(%12)
-b3(%7: int):
+b3(%7: val):
   return %7
 }
 
@@ -93,8 +93,8 @@ b0(%0: ptr):
   return
 }
 
-function qf_mk2(%0: ptr, %1: int, %2: int): ptr {
-b0(%0: ptr, %1: int, %2: int):
+function qf_mk2(%0: ptr, %1: val, %2: int): ptr {
+b0(%0: ptr, %1: val, %2: int):
   %3: int = const 8
   %4: ptr = call quest_alloc(%3)
   store8 %4 + 0, %2
@@ -339,68 +339,71 @@ b0(%0: int, %1: ptr):
   %165: int = const 2
   store8 %164 + 0, %165
   %166: int = const 0
-  store8 %164 + 8, %166
-  %167: int = const 0
-  store8 %164 + 16, %167
-  %168: ptr = symbol g_arr
-  store8 %168 + 0, %164
-  %169: ptr = symbol g_arr
-  %170: ptr = load8 %169 + 0
-  %171: int = load8 %170 + 0
-  %172: ptr = symbol g_k
-  store8 %172 + 0, %171
-  %173: int = const 16
-  %174: ptr = call quest_alloc(%173)
-  %175: int = const 1
-  %176: int = const 8
-  %177: ptr = ptrAdd %174, %176
-  store8 %177 + 0, %175
-  %178: ptr = symbol g_t
-  store8 %178 + 0, %174
-  %179: ptr = symbol g_o
-  %180: int = const 16
-  %181: ptr = call quest_alloc(%180)
-  %182: ptr = symbol g_t
-  %183: ptr = load8 %182 + 0
-  store8 %181 + 0, %183
-  %184: ptr = symbol g_o
-  %185: int = const 8
-  %186: ptr = ptrAdd %181, %185
-  %187: ptr = symbol g_nested
-  store8 %187 + 0, %181
-  %188: ptr = symbol g_nested
-  %189: ptr = load8 %188 + 0
-  %190: ptr = load8 %189 + 0
-  %191: ptr = symbol g_nn
-  store8 %191 + 0, %190
-  %192: ptr = symbol g_p
-  %193: ptr = load8 %192 + 0
-  %194: ptr = symbol g_p_2
-  store8 %194 + 0, %193
-  %195: ptr = symbol g_p_2
-  %196: ptr = load8 %195 + 0
-  %197: ptr = symbol g_wide
-  store8 %197 + 0, %196
-  %198: ptr = symbol g_wide
-  %199: ptr = load8 %198 + 0
-  %200: ptr = symbol g_ws
-  %201: ptr = symbol qf_mk2_closure
-  %202: ptr = symbol g_mk2
-  store8 %202 + 0, %201
-  %203: ptr = null
-  %204: int = const 0
-  %205: int = const 1
-  %206: ptr = call qf_mk2(%203, %204, %205)
-  %207: ptr = symbol g_h
-  store8 %207 + 0, %206
-  %208: ptr = symbol g_h
-  %209: ptr = load8 %208 + 0
-  %210: ptr = load8 %209 + 0
-  %211: ptr = load8 %209 + 8
-  callIndirect %210, %211
-  %212: ptr = symbol g_hr
-  %213: int = const 0
-  return %213
+  %167: val = toVal %166
+  store8 %164 + 8, %167
+  %168: int = const 0
+  %169: val = toVal %168
+  store8 %164 + 16, %169
+  %170: ptr = symbol g_arr
+  store8 %170 + 0, %164
+  %171: ptr = symbol g_arr
+  %172: ptr = load8 %171 + 0
+  %173: int = load8 %172 + 0
+  %174: ptr = symbol g_k
+  store8 %174 + 0, %173
+  %175: int = const 16
+  %176: ptr = call quest_alloc(%175)
+  %177: int = const 1
+  %178: int = const 8
+  %179: ptr = ptrAdd %176, %178
+  store8 %179 + 0, %177
+  %180: ptr = symbol g_t
+  store8 %180 + 0, %176
+  %181: ptr = symbol g_o
+  %182: int = const 16
+  %183: ptr = call quest_alloc(%182)
+  %184: ptr = symbol g_t
+  %185: ptr = load8 %184 + 0
+  store8 %183 + 0, %185
+  %186: ptr = symbol g_o
+  %187: int = const 8
+  %188: ptr = ptrAdd %183, %187
+  %189: ptr = symbol g_nested
+  store8 %189 + 0, %183
+  %190: ptr = symbol g_nested
+  %191: ptr = load8 %190 + 0
+  %192: ptr = load8 %191 + 0
+  %193: ptr = symbol g_nn
+  store8 %193 + 0, %192
+  %194: ptr = symbol g_p
+  %195: ptr = load8 %194 + 0
+  %196: ptr = symbol g_p_2
+  store8 %196 + 0, %195
+  %197: ptr = symbol g_p_2
+  %198: ptr = load8 %197 + 0
+  %199: ptr = symbol g_wide
+  store8 %199 + 0, %198
+  %200: ptr = symbol g_wide
+  %201: ptr = load8 %200 + 0
+  %202: ptr = symbol g_ws
+  %203: ptr = symbol qf_mk2_closure
+  %204: ptr = symbol g_mk2
+  store8 %204 + 0, %203
+  %205: ptr = null
+  %206: int = const 0
+  %207: val = toVal %206
+  %208: int = const 1
+  %209: ptr = call qf_mk2(%205, %207, %208)
+  %210: ptr = symbol g_h
+  store8 %210 + 0, %209
+  %211: ptr = symbol g_h
+  %212: ptr = load8 %211 + 0
+  %213: ptr = load8 %212 + 0
+  %214: ptr = load8 %212 + 8
+  callIndirect %213, %214
+  %215: ptr = symbol g_hr
+  %216: int = const 0
+  return %216
 }
 
 data g_cr writable zero 16

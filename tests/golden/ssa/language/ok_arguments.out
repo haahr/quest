@@ -23,21 +23,21 @@ b0(%0: ptr, %1: int, %2: int, %3: int, %4: int, %5: int, %6: int):
   return %11
 }
 
-function qf_apply(%0: ptr, %1: ptr, %2: int, %3: ptr): int {
-b0(%0: ptr, %1: ptr, %2: int, %3: ptr):
+function qf_apply(%0: ptr, %1: ptr, %2: val, %3: ptr): int {
+b0(%0: ptr, %1: ptr, %2: val, %3: ptr):
   %4: ptr = load8 %3 + 0
   %5: ptr = load8 %3 + 8
   tail %6: int = callIndirect %4, %5, %2
 }
 
-function qf_f(%0: ptr, %1: int): int {
-b0(%0: ptr, %1: int):
+function qf_f(%0: ptr, %1: val): int {
+b0(%0: ptr, %1: val):
   %2: int = const 7
   return %2
 }
 
-function qf_mixed(%0: ptr, %1: int, %2: int, %3: int, %4: real, %5: int, %6: ptr): ptr {
-b0(%0: ptr, %1: int, %2: int, %3: int, %4: real, %5: int, %6: ptr):
+function qf_mixed(%0: ptr, %1: val, %2: int, %3: val, %4: real, %5: val, %6: ptr): ptr {
+b0(%0: ptr, %1: val, %2: int, %3: val, %4: real, %5: val, %6: ptr):
   %7: ptr = call qv_conv_int(%2)
   %8: ptr = call qv_conv_real(%4)
   %9: ptr = symbol qs_2
@@ -52,19 +52,19 @@ b0(%0: ptr, %1: int, %2: int, %3: int, %4: real, %5: int, %6: ptr):
   tail %18: ptr = call quest_string_concat(%7, %17)
 }
 
-function qf_viaClosure(%0: ptr, %1: int, %2: int): int {
-b0(%0: ptr, %1: int, %2: int):
+function qf_viaClosure(%0: ptr, %1: val, %2: int): int {
+b0(%0: ptr, %1: val, %2: int):
   %3: int = const 2
   %4: int = mul %2, %3
   return %4
 }
 
-function qf_fold(%0: ptr, %1: ptr, %2: int, %3: int, %4: ptr): int {
-b0(%0: ptr, %1: ptr, %2: int, %3: int, %4: ptr):
+function qf_fold(%0: ptr, %1: ptr, %2: int, %3: val, %4: ptr): val {
+b0(%0: ptr, %1: ptr, %2: int, %3: val, %4: ptr):
   %6: int = const 0
   %7: int = eq %2, %6
   branch %7, b2(), b3()
-b1(%5: int):
+b1(%5: val):
   return %5
 b2():
   jump b1(%3)
@@ -73,13 +73,13 @@ b3():
   %9: int = sub %2, %8
   %10: ptr = load8 %4 + 0
   %11: ptr = load8 %4 + 8
-  %12: int = callIndirect %10, %11, %2, %3
+  %12: val = callIndirect %10, %11, %2, %3
   %13: ptr = null
-  tail %14: int = call qf_fold(%13, %1, %9, %12, %4)
+  tail %14: val = call qf_fold(%13, %1, %9, %12, %4)
 }
 
-function qf_f_2(%0: ptr, %1: int, %2: int) {
-b0(%0: ptr, %1: int, %2: int):
+function qf_f_2(%0: ptr, %1: int, %2: val) {
+b0(%0: ptr, %1: int, %2: val):
   %3: ptr = symbol g_total
   %4: ptr = load8 %3 + 0
   %5: int = const 0
@@ -90,29 +90,32 @@ b0(%0: ptr, %1: int, %2: int):
   %9: int = const 8
   %10: ptr = ptrAdd %4, %9
   %11: ptr = ptrAdd %10, %8
-  %12: int = load8 %11 + 0
-  %13: int = add %12, %1
-  %14: ptr = symbol g_total
-  %15: ptr = load8 %14 + 0
-  %16: int = const 0
-  %17: ptr = symbol qs_4
-  call quest_check_array_bounds_at(%15, %16, %17)
-  %18: int = const 8
-  %19: int = mul %16, %18
-  %20: int = const 8
-  %21: ptr = ptrAdd %15, %20
-  %22: ptr = ptrAdd %21, %19
-  store8 %22 + 0, %13
+  %12: val = load8 %11 + 0
+  %13: int = fromVal %12
+  %14: int = add %13, %1
+  %15: ptr = symbol g_total
+  %16: ptr = load8 %15 + 0
+  %17: int = const 0
+  %18: ptr = symbol qs_4
+  call quest_check_array_bounds_at(%16, %17, %18)
+  %19: int = const 8
+  %20: int = mul %17, %19
+  %21: int = const 8
+  %22: ptr = ptrAdd %16, %21
+  %23: ptr = ptrAdd %22, %20
+  %24: val = toVal %14
+  store8 %23 + 0, %24
   return
 }
 
-function qf_qa_adapt(%0: ptr, %1: int, %2: int): int {
-b0(%0: ptr, %1: int, %2: int):
+function qf_qa_adapt(%0: ptr, %1: int, %2: val): val {
+b0(%0: ptr, %1: int, %2: val):
   %3: ptr = load8 %0 + 0
   %4: ptr = load8 %0 + 8
   callIndirect %3, %4, %1, %2
   %5: int = const 0
-  return %5
+  %6: val = toVal %5
+  return %6
 }
 
 function qr_register_dicts() {
@@ -154,172 +157,180 @@ b0(%0: int, %1: ptr):
   %19: ptr = symbol quest_type_Ok
   %20: ptr = null
   %21: int = const 0
-  %22: ptr = symbol g_f
-  %23: ptr = load8 %22 + 0
-  %24: int = call qf_apply(%20, %19, %21, %23)
-  %25: ptr = symbol g_global
-  store8 %25 + 0, %24
+  %22: val = toVal %21
+  %23: ptr = symbol g_f
+  %24: ptr = load8 %23 + 0
+  %25: int = call qf_apply(%20, %19, %22, %24)
   %26: ptr = symbol g_global
-  %27: int = load8 %26 + 0
-  %28: ptr = call qv_conv_int(%27)
-  %29: ptr = symbol g_global_2
-  store8 %29 + 0, %28
-  %30: ptr = symbol qs_13
-  %31: int = const 7
-  %32: ptr = call quest_string_new(%30, %31)
-  %33: ptr = symbol g_global_2
-  %34: ptr = load8 %33 + 0
-  %35: ptr = call quest_string_concat(%32, %34)
-  %36: ptr = symbol g_global_3
-  store8 %36 + 0, %35
-  %37: ptr = null
-  %38: ptr = symbol g_global_3
-  %39: ptr = load8 %38 + 0
-  call qf_say(%37, %39)
-  %40: ptr = symbol qf_mixed_closure
-  %41: ptr = symbol g_mixed
-  store8 %41 + 0, %40
-  %42: ptr = null
-  %43: int = const 201
-  %44: int = const 202
-  %45: int = const 203
-  %46: int = const 204
-  %47: int = const 205
-  %48: int = const 206
-  %49: int = call qf_six(%42, %43, %44, %45, %46, %47, %48)
-  %50: ptr = symbol g_s2
-  store8 %50 + 0, %49
-  %51: ptr = null
-  %52: int = const 0
-  %53: int = const 3
-  %54: int = const 0
-  %55: real = realConst 4612811918334230528
+  store8 %26 + 0, %25
+  %27: ptr = symbol g_global
+  %28: int = load8 %27 + 0
+  %29: ptr = call qv_conv_int(%28)
+  %30: ptr = symbol g_global_2
+  store8 %30 + 0, %29
+  %31: ptr = symbol qs_13
+  %32: int = const 7
+  %33: ptr = call quest_string_new(%31, %32)
+  %34: ptr = symbol g_global_2
+  %35: ptr = load8 %34 + 0
+  %36: ptr = call quest_string_concat(%33, %35)
+  %37: ptr = symbol g_global_3
+  store8 %37 + 0, %36
+  %38: ptr = null
+  %39: ptr = symbol g_global_3
+  %40: ptr = load8 %39 + 0
+  call qf_say(%38, %40)
+  %41: ptr = symbol qf_mixed_closure
+  %42: ptr = symbol g_mixed
+  store8 %42 + 0, %41
+  %43: ptr = null
+  %44: int = const 201
+  %45: int = const 202
+  %46: int = const 203
+  %47: int = const 204
+  %48: int = const 205
+  %49: int = const 206
+  %50: int = call qf_six(%43, %44, %45, %46, %47, %48, %49)
+  %51: ptr = symbol g_s2
+  store8 %51 + 0, %50
+  %52: ptr = null
+  %53: int = const 0
+  %54: val = toVal %53
+  %55: int = const 3
   %56: int = const 0
-  %57: ptr = symbol qs_14
-  %58: int = const 3
-  %59: ptr = call quest_string_new(%57, %58)
-  %60: ptr = call qf_mixed(%51, %52, %53, %54, %55, %56, %59)
-  %61: ptr = symbol g_global_4
-  store8 %61 + 0, %60
-  %62: ptr = symbol qs_15
-  %63: int = const 7
-  %64: ptr = call quest_string_new(%62, %63)
+  %57: val = toVal %56
+  %58: real = realConst 4612811918334230528
+  %59: int = const 0
+  %60: val = toVal %59
+  %61: ptr = symbol qs_14
+  %62: int = const 3
+  %63: ptr = call quest_string_new(%61, %62)
+  %64: ptr = call qf_mixed(%52, %54, %55, %57, %58, %60, %63)
   %65: ptr = symbol g_global_4
-  %66: ptr = load8 %65 + 0
-  %67: ptr = call quest_string_concat(%64, %66)
-  %68: ptr = symbol g_global_5
-  store8 %68 + 0, %67
-  %69: ptr = null
-  %70: ptr = symbol g_global_5
-  %71: ptr = load8 %70 + 0
-  call qf_say(%69, %71)
-  %72: ptr = symbol qf_viaClosure_closure
-  %73: ptr = symbol g_viaClosure
-  store8 %73 + 0, %72
-  %74: ptr = null
-  %75: int = const 301
-  %76: int = const 302
-  %77: int = const 303
-  %78: int = const 304
-  %79: int = const 305
-  %80: int = const 306
-  %81: int = call qf_six(%74, %75, %76, %77, %78, %79, %80)
-  %82: ptr = symbol g_s3
-  store8 %82 + 0, %81
-  %83: ptr = null
-  %84: int = const 0
-  %85: int = const 21
-  %86: int = call qf_viaClosure(%83, %84, %85)
-  %87: ptr = symbol g_global_6
-  store8 %87 + 0, %86
-  %88: ptr = symbol g_global_6
-  %89: int = load8 %88 + 0
-  %90: ptr = call qv_conv_int(%89)
-  %91: ptr = symbol g_global_7
-  store8 %91 + 0, %90
-  %92: ptr = symbol qs_16
-  %93: int = const 9
-  %94: ptr = call quest_string_new(%92, %93)
-  %95: ptr = symbol g_global_7
-  %96: ptr = load8 %95 + 0
-  %97: ptr = call quest_string_concat(%94, %96)
-  %98: ptr = symbol g_global_8
-  store8 %98 + 0, %97
-  %99: ptr = null
-  %100: ptr = symbol g_global_8
+  store8 %65 + 0, %64
+  %66: ptr = symbol qs_15
+  %67: int = const 7
+  %68: ptr = call quest_string_new(%66, %67)
+  %69: ptr = symbol g_global_4
+  %70: ptr = load8 %69 + 0
+  %71: ptr = call quest_string_concat(%68, %70)
+  %72: ptr = symbol g_global_5
+  store8 %72 + 0, %71
+  %73: ptr = null
+  %74: ptr = symbol g_global_5
+  %75: ptr = load8 %74 + 0
+  call qf_say(%73, %75)
+  %76: ptr = symbol qf_viaClosure_closure
+  %77: ptr = symbol g_viaClosure
+  store8 %77 + 0, %76
+  %78: ptr = null
+  %79: int = const 301
+  %80: int = const 302
+  %81: int = const 303
+  %82: int = const 304
+  %83: int = const 305
+  %84: int = const 306
+  %85: int = call qf_six(%78, %79, %80, %81, %82, %83, %84)
+  %86: ptr = symbol g_s3
+  store8 %86 + 0, %85
+  %87: ptr = null
+  %88: int = const 0
+  %89: val = toVal %88
+  %90: int = const 21
+  %91: int = call qf_viaClosure(%87, %89, %90)
+  %92: ptr = symbol g_global_6
+  store8 %92 + 0, %91
+  %93: ptr = symbol g_global_6
+  %94: int = load8 %93 + 0
+  %95: ptr = call qv_conv_int(%94)
+  %96: ptr = symbol g_global_7
+  store8 %96 + 0, %95
+  %97: ptr = symbol qs_16
+  %98: int = const 9
+  %99: ptr = call quest_string_new(%97, %98)
+  %100: ptr = symbol g_global_7
   %101: ptr = load8 %100 + 0
-  call qf_say(%99, %101)
-  %102: ptr = symbol qf_fold_closure
-  %103: ptr = symbol g_fold
+  %102: ptr = call quest_string_concat(%99, %101)
+  %103: ptr = symbol g_global_8
   store8 %103 + 0, %102
-  %104: int = const 1
-  %105: ptr = symbol qs_17
-  %106: int = call quest_check_array_count_at(%104, %105)
-  %107: int = const 0
-  %108: ptr = call quest_array_new(%106, %107)
-  %109: ptr = symbol g_total
-  store8 %109 + 0, %108
-  %110: ptr = null
-  %111: int = const 401
-  %112: int = const 402
-  %113: int = const 403
-  %114: int = const 404
-  %115: int = const 405
-  %116: int = const 406
-  %117: int = call qf_six(%110, %111, %112, %113, %114, %115, %116)
-  %118: ptr = symbol g_s4
-  store8 %118 + 0, %117
-  %119: ptr = symbol qf_f_2_closure
-  %120: ptr = symbol g_f_2
-  store8 %120 + 0, %119
-  %121: ptr = symbol g_f_2
-  %122: ptr = load8 %121 + 0
-  %123: int = const 16
-  %124: ptr = call quest_alloc(%123)
-  %125: ptr = symbol qf_qa_adapt
-  store8 %124 + 0, %125
-  store8 %124 + 8, %122
-  %126: ptr = symbol g_f_3
-  store8 %126 + 0, %124
-  %127: ptr = symbol quest_type_Ok
-  %128: ptr = null
-  %129: int = const 4
-  %130: int = const 0
-  %131: ptr = symbol g_f_3
-  %132: ptr = load8 %131 + 0
-  %133: int = call qf_fold(%128, %127, %129, %130, %132)
-  %134: ptr = symbol g_total
-  %135: ptr = load8 %134 + 0
+  %104: ptr = null
+  %105: ptr = symbol g_global_8
+  %106: ptr = load8 %105 + 0
+  call qf_say(%104, %106)
+  %107: ptr = symbol qf_fold_closure
+  %108: ptr = symbol g_fold
+  store8 %108 + 0, %107
+  %109: int = const 1
+  %110: ptr = symbol qs_17
+  %111: int = call quest_check_array_count_at(%109, %110)
+  %112: int = const 0
+  %113: val = toVal %112
+  %114: ptr = call quest_array_new(%111, %113)
+  %115: ptr = symbol g_total
+  store8 %115 + 0, %114
+  %116: ptr = null
+  %117: int = const 401
+  %118: int = const 402
+  %119: int = const 403
+  %120: int = const 404
+  %121: int = const 405
+  %122: int = const 406
+  %123: int = call qf_six(%116, %117, %118, %119, %120, %121, %122)
+  %124: ptr = symbol g_s4
+  store8 %124 + 0, %123
+  %125: ptr = symbol qf_f_2_closure
+  %126: ptr = symbol g_f_2
+  store8 %126 + 0, %125
+  %127: ptr = symbol g_f_2
+  %128: ptr = load8 %127 + 0
+  %129: int = const 16
+  %130: ptr = call quest_alloc(%129)
+  %131: ptr = symbol qf_qa_adapt
+  store8 %130 + 0, %131
+  store8 %130 + 8, %128
+  %132: ptr = symbol g_f_3
+  store8 %132 + 0, %130
+  %133: ptr = symbol quest_type_Ok
+  %134: ptr = null
+  %135: int = const 4
   %136: int = const 0
-  %137: ptr = symbol qs_18
-  call quest_check_array_bounds_at(%135, %136, %137)
-  %138: int = const 8
-  %139: int = mul %136, %138
-  %140: int = const 8
-  %141: ptr = ptrAdd %135, %140
-  %142: ptr = ptrAdd %141, %139
-  %143: int = load8 %142 + 0
-  %144: ptr = symbol g_global_9
-  store8 %144 + 0, %143
-  %145: ptr = symbol g_global_9
-  %146: int = load8 %145 + 0
-  %147: ptr = call qv_conv_int(%146)
-  %148: ptr = symbol g_global_10
-  store8 %148 + 0, %147
-  %149: ptr = symbol qs_19
-  %150: int = const 6
-  %151: ptr = call quest_string_new(%149, %150)
-  %152: ptr = symbol g_global_10
-  %153: ptr = load8 %152 + 0
-  %154: ptr = call quest_string_concat(%151, %153)
-  %155: ptr = symbol g_global_11
-  store8 %155 + 0, %154
-  %156: ptr = null
-  %157: ptr = symbol g_global_11
-  %158: ptr = load8 %157 + 0
-  call qf_say(%156, %158)
-  %159: int = const 0
-  return %159
+  %137: val = toVal %136
+  %138: ptr = symbol g_f_3
+  %139: ptr = load8 %138 + 0
+  %140: val = call qf_fold(%134, %133, %135, %137, %139)
+  %141: ptr = symbol g_total
+  %142: ptr = load8 %141 + 0
+  %143: int = const 0
+  %144: ptr = symbol qs_18
+  call quest_check_array_bounds_at(%142, %143, %144)
+  %145: int = const 8
+  %146: int = mul %143, %145
+  %147: int = const 8
+  %148: ptr = ptrAdd %142, %147
+  %149: ptr = ptrAdd %148, %146
+  %150: val = load8 %149 + 0
+  %151: int = fromVal %150
+  %152: ptr = symbol g_global_9
+  store8 %152 + 0, %151
+  %153: ptr = symbol g_global_9
+  %154: int = load8 %153 + 0
+  %155: ptr = call qv_conv_int(%154)
+  %156: ptr = symbol g_global_10
+  store8 %156 + 0, %155
+  %157: ptr = symbol qs_19
+  %158: int = const 6
+  %159: ptr = call quest_string_new(%157, %158)
+  %160: ptr = symbol g_global_10
+  %161: ptr = load8 %160 + 0
+  %162: ptr = call quest_string_concat(%159, %161)
+  %163: ptr = symbol g_global_11
+  store8 %163 + 0, %162
+  %164: ptr = null
+  %165: ptr = symbol g_global_11
+  %166: ptr = load8 %165 + 0
+  call qf_say(%164, %166)
+  %167: int = const 0
+  return %167
 }
 
 data qs_1 text "\n"

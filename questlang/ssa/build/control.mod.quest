@@ -119,7 +119,7 @@ export
                 let vs = vals.heldShape(maybe.unwrap(:Variable result).type shapes.shapeVariant)
                 let index = vals.constant(fn vals.tagIndex(vs x.tag))
                 if maybe.isNone(:Atom x.payload) then
-                    array of index vals.constant(fn 0) end
+                    array of index vals.toVal(fn vals.constant(fn 0)) end
                 else
                     let pa = maybe.unwrap(:Atom x.payload)
                     let cs = aggregates.caseShape(vs x.tag)
@@ -155,7 +155,7 @@ export
                     end) end
             when opIndex with x then
                 let address = aggregates.elementAddress(fn vals.atom1(fn x.arr) vals.atom1(fn x.index) x.offset)
-                vals.slotFromWord(fn vals.loadWord(fn address 0 vals.tInt) aggregates.elementShape(x.arr).type)
+                vals.slotFromWord(fn vals.loadWord(fn address 0 vals.tVal) aggregates.elementShape(x.arr).type)
             when opTypeApp with x then aggregates.typeApp(fn x maybe.unwrap(:Variable result))
             when opAddrVar with x then
                 let pointer = vals.pointerOf(fn x.v)
@@ -194,7 +194,7 @@ export
             when opExceptionPayload with x then
                 let v = case x.exc when atomVar with y then y.v else ir.newVar("" model.okType false) end
                 let state = vals.handlerState(fn v)
-                vals.slotFromWord(fn vals.loadWord(fn state runtimeLayout.offset("QExceptionState" "payload") vals.tInt)
+                vals.slotFromWord(fn vals.loadWord(fn state runtimeLayout.offset("QExceptionState" "payload") vals.tVal)
                     maybe.unwrap(:Variable result).type)
             when opCaughtException with x then
                 (* The handler's state, copied to the heap (docs/raised.md
@@ -364,8 +364,15 @@ export
                      * as a QVal word is 0 *)
                     let wanted = vector.length(:ssa.Type fn.f.resultTypes)
                     let vs = if wanted is 0 then vals.noValues else vals.atom(fn x.value) end
-                    let values = if {wanted is 1}
-                        andif {extent vs is 0} then array of vals.constant(fn 0) end else vs end
+                    let zero = fun(): Int
+                        begin
+                            let n = vals.constant(fn 0)
+                            case vector.get(:ssa.Type fn.f.resultTypes 0)
+                                when typeVal then vals.toVal(fn n)
+                                when typeInt, typePtr, typeReal then n
+                            end
+                        end
+                    let values = if {wanted is 1} andif {extent vs is 0} then array of zero() end else vs end
                     leaveTo(fn 0)
                     vals.terminate(fn option termReturn of ssa.Terminator with let values = values end)
                 when sUnreachable then vals.terminate(fn ssa.termUnreachable)
@@ -438,7 +445,7 @@ export
                     end
                 when sEchoText with x then vals.callVoid(fn "puts" array of vals.symbolAt(fn vals.stringSymbol(fn.u x.text)) end)
                 when sRaise with x then
-                    let payload = if maybe.isNone(:Atom x.payload) then vals.constant(fn 0)
+                    let payload = if maybe.isNone(:Atom x.payload) then vals.toVal(fn vals.constant(fn 0))
                         else vals.toWord(fn vals.atom(fn maybe.unwrap(:Atom x.payload)) ir.atomType(maybe.unwrap(:Atom x.payload)))
                     end
                     vals.callVoid(fn "quest_raise_at" array of vals.atom1(fn x.exc) payload vals.site(fn x.offset) end)
@@ -661,7 +668,7 @@ export
             if extent armFields < n then n := extent armFields end
             let a = vals.alloc(fn 8 * {if extent armFields is 0 then 1 else extent armFields end})
             for i = 0 upto {n - 1} do
-                let src = vals.loadWord(fn stored 8 * i vals.tInt)
+                let src = vals.loadWord(fn stored 8 * i vals.tVal)
                 let pair = arm.descriptors[i]
                 if maybe.isNone(:ir.DescriptorPair pair) then
                     vals.store(fn a 8 * i 8 src)

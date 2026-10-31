@@ -42,9 +42,9 @@ b1(%2: ptr):
 b2():
   %8: int = const 8
   %9: ptr = call quest_alloc(%8)
-  %10: int = load8 %4 + 0
+  %10: val = load8 %4 + 0
   %11: ptr = symbol quest_type_EmptyTuple
-  %12: int = call quest_convert(%10, %3, %11)
+  %12: val = call quest_convert(%10, %3, %11)
   store8 %9 + 0, %12
   %13: ptr = symbol qs_2
   %14: int = const 7
@@ -88,8 +88,8 @@ b7(%7: ptr):
   branch %15, b8(), b9()
 b8():
   %17: int = const 1
-  %18: int = call quest_proxy_element(%7, %17)
-  %19: ptr = intToPtr %18
+  %18: val = call quest_proxy_element(%7, %17)
+  %19: ptr = fromVal %18
   jump b10(%19)
 b9():
   %20: int = const 8
@@ -110,21 +110,21 @@ b0(%0: ptr, %1: int):
   return %3
 }
 
-function qf_mk(%0: ptr, %1: ptr, %2: int): ptr, ptr {
-b0(%0: ptr, %1: ptr, %2: int):
+function qf_mk(%0: ptr, %1: ptr, %2: val): ptr, ptr {
+b0(%0: ptr, %1: ptr, %2: val):
   %3: ptr = symbol g_big
   %4: ptr = load8 %3 + 0
   %5: ptr = load8 %3 + 8
   return %4, %5
 }
 
-function qf_ident(%0: ptr, %1: ptr, %2: int): int {
-b0(%0: ptr, %1: ptr, %2: int):
+function qf_ident(%0: ptr, %1: ptr, %2: val): val {
+b0(%0: ptr, %1: ptr, %2: val):
   return %2
 }
 
-function qf_qa_adapt(%0: ptr, %1: ptr, %2: int): ptr, ptr {
-b0(%0: ptr, %1: ptr, %2: int):
+function qf_qa_adapt(%0: ptr, %1: ptr, %2: val): ptr, ptr {
+b0(%0: ptr, %1: ptr, %2: val):
   %3: ptr = load8 %0 + 0
   %4: ptr = load8 %0 + 8
   %5: ptr, %6: ptr = callIndirect %3, %4, %1, %2
@@ -147,17 +147,19 @@ b1():
   %10: int = callIndirect %9, %8, %1
   return %10
 b2():
-  %11: ptr = load8 %6 + 48
-  %12: ptr = load8 %4 + 48
-  %13: int = call quest_convert(%1, %11, %12)
-  %14: ptr = slot 0
-  store8 %14 + 0, %13
-  %15: ptr = load8 %4 + 24
-  %16: int = callIndirect %15, %2, %14
-  %17: ptr = load8 %4 + 8
-  %18: ptr = load8 %6 + 8
-  %19: int = call quest_convert(%16, %17, %18)
-  return %19
+  %11: val = toVal %1
+  %12: ptr = load8 %6 + 48
+  %13: ptr = load8 %4 + 48
+  %14: val = call quest_convert(%11, %12, %13)
+  %15: ptr = slot 0
+  store8 %15 + 0, %14
+  %16: ptr = load8 %4 + 24
+  %17: val = callIndirect %16, %2, %15
+  %18: ptr = load8 %4 + 8
+  %19: ptr = load8 %6 + 8
+  %20: val = call quest_convert(%17, %18, %19)
+  %21: int = fromVal %20
+  return %21
 }
 
 function quest_adapt_fun_0c4346157e7c9fc5(%0: ptr, %1: ptr, %2: ptr): ptr {
@@ -178,16 +180,19 @@ b0(%0: ptr, %1: ptr, %2: ptr):
   return %8
 }
 
-function quest_invoke_fun_0c4346157e7c9fc5(%0: ptr, %1: ptr): int {
+function quest_invoke_fun_0c4346157e7c9fc5(%0: ptr, %1: ptr): val {
 b0(%0: ptr, %1: ptr):
   %2: ptr = load8 %0 + 8
-  %3: int = load8 %1 + 0
-  %4: ptr = load8 %0 + 0
-  tail %5: int = callIndirect %4, %2, %3
+  %3: val = load8 %1 + 0
+  %4: int = fromVal %3
+  %5: ptr = load8 %0 + 0
+  %6: int = callIndirect %5, %2, %4
+  %7: val = toVal %6
+  return %7
 }
 
-function quest_thunk_fun_5e20c2866aa2bc63(%0: ptr, %1: ptr, %2: int): ptr, ptr slots [16:8] {
-b0(%0: ptr, %1: ptr, %2: int):
+function quest_thunk_fun_5e20c2866aa2bc63(%0: ptr, %1: ptr, %2: val): ptr, ptr slots [16:8] {
+b0(%0: ptr, %1: ptr, %2: val):
   %3: ptr = load8 %0 + 0
   %4: ptr = load8 %0 + 8
   %5: ptr = load8 %4 + 40
@@ -200,28 +205,28 @@ b1():
   %10: ptr = load8 %3 + 0
   %11: ptr, %12: ptr = callIndirect %10, %9, %1, %2
   %13: ptr = call quest_record_box(%11, %12) pairs [0]
-  %14: int = ptrToInt %13
+  %14: val = toVal %13
   %15: ptr = load8 %5 + 8
   %16: ptr = load8 %7 + 8
-  %17: int = call quest_convert(%14, %15, %16)
-  %18: ptr = intToPtr %17
+  %17: val = call quest_convert(%14, %15, %16)
+  %18: ptr = fromVal %17
   %19: ptr = load8 %18 + 0
   %20: ptr = load8 %18 + 8
   return %19, %20
 b2():
-  %21: int = ptrToInt %1
+  %21: val = toVal %1
   %22: ptr = load8 %7 + 48
   %23: ptr = load8 %5 + 48
-  %24: int = call quest_convert(%2, %22, %23)
+  %24: val = call quest_convert(%2, %22, %23)
   %25: ptr = slot 0
   store8 %25 + 0, %21
   store8 %25 + 8, %24
   %26: ptr = load8 %5 + 24
-  %27: int = callIndirect %26, %3, %25
+  %27: val = callIndirect %26, %3, %25
   %28: ptr = load8 %5 + 8
   %29: ptr = load8 %7 + 8
-  %30: int = call quest_convert(%27, %28, %29)
-  %31: ptr = intToPtr %30
+  %30: val = call quest_convert(%27, %28, %29)
+  %31: ptr = fromVal %30
   %32: ptr = load8 %31 + 0
   %33: ptr = load8 %31 + 8
   return %32, %33
@@ -245,20 +250,20 @@ b0(%0: ptr, %1: ptr, %2: ptr):
   return %8
 }
 
-function quest_invoke_fun_5e20c2866aa2bc63(%0: ptr, %1: ptr): int {
+function quest_invoke_fun_5e20c2866aa2bc63(%0: ptr, %1: ptr): val {
 b0(%0: ptr, %1: ptr):
   %2: ptr = load8 %0 + 8
   %3: ptr = load8 %1 + 0
-  %4: int = load8 %1 + 8
+  %4: val = load8 %1 + 8
   %5: ptr = load8 %0 + 0
   %6: ptr, %7: ptr = callIndirect %5, %2, %3, %4
   %8: ptr = call quest_record_box(%6, %7) pairs [0]
-  %9: int = ptrToInt %8
+  %9: val = toVal %8
   return %9
 }
 
-function quest_thunk_fun_e5b0470d50adc0e2(%0: ptr, %1: ptr, %2: int): ptr, ptr slots [16:8] {
-b0(%0: ptr, %1: ptr, %2: int):
+function quest_thunk_fun_e5b0470d50adc0e2(%0: ptr, %1: ptr, %2: val): ptr, ptr slots [16:8] {
+b0(%0: ptr, %1: ptr, %2: val):
   %3: ptr = load8 %0 + 0
   %4: ptr = load8 %0 + 8
   %5: ptr = load8 %4 + 40
@@ -271,28 +276,28 @@ b1():
   %10: ptr = load8 %3 + 0
   %11: ptr, %12: ptr = callIndirect %10, %9, %1, %2
   %13: ptr = call quest_record_box(%11, %12) pairs [0]
-  %14: int = ptrToInt %13
+  %14: val = toVal %13
   %15: ptr = load8 %5 + 8
   %16: ptr = load8 %7 + 8
-  %17: int = call quest_convert(%14, %15, %16)
-  %18: ptr = intToPtr %17
+  %17: val = call quest_convert(%14, %15, %16)
+  %18: ptr = fromVal %17
   %19: ptr = load8 %18 + 0
   %20: ptr = load8 %18 + 8
   return %19, %20
 b2():
-  %21: int = ptrToInt %1
+  %21: val = toVal %1
   %22: ptr = load8 %7 + 48
   %23: ptr = load8 %5 + 48
-  %24: int = call quest_convert(%2, %22, %23)
+  %24: val = call quest_convert(%2, %22, %23)
   %25: ptr = slot 0
   store8 %25 + 0, %21
   store8 %25 + 8, %24
   %26: ptr = load8 %5 + 24
-  %27: int = callIndirect %26, %3, %25
+  %27: val = callIndirect %26, %3, %25
   %28: ptr = load8 %5 + 8
   %29: ptr = load8 %7 + 8
-  %30: int = call quest_convert(%27, %28, %29)
-  %31: ptr = intToPtr %30
+  %30: val = call quest_convert(%27, %28, %29)
+  %31: ptr = fromVal %30
   %32: ptr = load8 %31 + 0
   %33: ptr = load8 %31 + 8
   return %32, %33
@@ -316,20 +321,20 @@ b0(%0: ptr, %1: ptr, %2: ptr):
   return %8
 }
 
-function quest_invoke_fun_e5b0470d50adc0e2(%0: ptr, %1: ptr): int {
+function quest_invoke_fun_e5b0470d50adc0e2(%0: ptr, %1: ptr): val {
 b0(%0: ptr, %1: ptr):
   %2: ptr = load8 %0 + 8
   %3: ptr = load8 %1 + 0
-  %4: int = load8 %1 + 8
+  %4: val = load8 %1 + 8
   %5: ptr = load8 %0 + 0
   %6: ptr, %7: ptr = callIndirect %5, %2, %3, %4
   %8: ptr = call quest_record_box(%6, %7) pairs [0]
-  %9: int = ptrToInt %8
+  %9: val = toVal %8
   return %9
 }
 
-function quest_thunk_fun_c16ce15c6abe2d3a(%0: ptr, %1: ptr, %2: int): int slots [16:8] {
-b0(%0: ptr, %1: ptr, %2: int):
+function quest_thunk_fun_c16ce15c6abe2d3a(%0: ptr, %1: ptr, %2: val): val slots [16:8] {
+b0(%0: ptr, %1: ptr, %2: val):
   %3: ptr = load8 %0 + 0
   %4: ptr = load8 %0 + 8
   %5: ptr = load8 %4 + 40
@@ -340,21 +345,21 @@ b0(%0: ptr, %1: ptr, %2: int):
 b1():
   %9: ptr = load8 %3 + 8
   %10: ptr = load8 %3 + 0
-  %11: int = callIndirect %10, %9, %1, %2
+  %11: val = callIndirect %10, %9, %1, %2
   return %11
 b2():
-  %12: int = ptrToInt %1
+  %12: val = toVal %1
   %13: ptr = load8 %7 + 48
   %14: ptr = load8 %5 + 48
-  %15: int = call quest_convert(%2, %13, %14)
+  %15: val = call quest_convert(%2, %13, %14)
   %16: ptr = slot 0
   store8 %16 + 0, %12
   store8 %16 + 8, %15
   %17: ptr = load8 %5 + 24
-  %18: int = callIndirect %17, %3, %16
+  %18: val = callIndirect %17, %3, %16
   %19: ptr = load8 %5 + 8
   %20: ptr = load8 %7 + 8
-  %21: int = call quest_convert(%18, %19, %20)
+  %21: val = call quest_convert(%18, %19, %20)
   return %21
 }
 
@@ -376,13 +381,13 @@ b0(%0: ptr, %1: ptr, %2: ptr):
   return %8
 }
 
-function quest_invoke_fun_c16ce15c6abe2d3a(%0: ptr, %1: ptr): int {
+function quest_invoke_fun_c16ce15c6abe2d3a(%0: ptr, %1: ptr): val {
 b0(%0: ptr, %1: ptr):
   %2: ptr = load8 %0 + 8
   %3: ptr = load8 %1 + 0
-  %4: int = load8 %1 + 8
+  %4: val = load8 %1 + 8
   %5: ptr = load8 %0 + 0
-  tail %6: int = callIndirect %5, %2, %3, %4
+  tail %6: val = callIndirect %5, %2, %3, %4
 }
 
 function quest_thunk_fun_adf0f0587e77b766(%0: ptr, %1: ptr): int slots [8:8] {
@@ -400,18 +405,19 @@ b1():
   %10: int = callIndirect %9, %8, %1
   return %10
 b2():
-  %11: int = ptrToInt %1
+  %11: val = toVal %1
   %12: ptr = load8 %6 + 48
   %13: ptr = load8 %4 + 48
-  %14: int = call quest_convert(%11, %12, %13)
+  %14: val = call quest_convert(%11, %12, %13)
   %15: ptr = slot 0
   store8 %15 + 0, %14
   %16: ptr = load8 %4 + 24
-  %17: int = callIndirect %16, %2, %15
+  %17: val = callIndirect %16, %2, %15
   %18: ptr = load8 %4 + 8
   %19: ptr = load8 %6 + 8
-  %20: int = call quest_convert(%17, %18, %19)
-  return %20
+  %20: val = call quest_convert(%17, %18, %19)
+  %21: int = fromVal %20
+  return %21
 }
 
 function quest_adapt_fun_adf0f0587e77b766(%0: ptr, %1: ptr, %2: ptr): ptr {
@@ -432,13 +438,15 @@ b0(%0: ptr, %1: ptr, %2: ptr):
   return %8
 }
 
-function quest_invoke_fun_adf0f0587e77b766(%0: ptr, %1: ptr): int {
+function quest_invoke_fun_adf0f0587e77b766(%0: ptr, %1: ptr): val {
 b0(%0: ptr, %1: ptr):
   %2: ptr = load8 %0 + 8
-  %3: int = load8 %1 + 0
-  %4: ptr = intToPtr %3
+  %3: val = load8 %1 + 0
+  %4: ptr = fromVal %3
   %5: ptr = load8 %0 + 0
-  tail %6: int = callIndirect %5, %2, %4
+  %6: int = callIndirect %5, %2, %4
+  %7: val = toVal %6
+  return %7
 }
 
 function qr_register_dicts() {
@@ -490,12 +498,12 @@ b0(%0: int, %1: ptr):
   store8 %14 + 0, %11
   %15: ptr = symbol g_global
   %16: ptr = load8 %15 + 0
-  %17: int = ptrToInt %16
+  %17: val = toVal %16
   %18: ptr = symbol g_global_2
   store8 %18 + 0, %17
   %19: ptr = symbol quest_type_QTuple_Int_011f65f4311a8fc9
   %20: ptr = symbol g_global_2
-  %21: int = load8 %20 + 0
+  %21: val = load8 %20 + 0
   %22: ptr = call qv_dynamic_new(%19, %21)
   %23: ptr = symbol g_global_3
   store8 %23 + 0, %22
@@ -510,839 +518,848 @@ b0(%0: int, %1: ptr):
   %31: ptr = load8 %30 + 0
   call qf_s(%29, %31)
   %32: int = const 1
-  %33: ptr = symbol g_global_5
-  store8 %33 + 0, %32
-  %34: ptr = symbol quest_type_Int
-  %35: ptr = symbol g_global_5
-  %36: int = load8 %35 + 0
-  %37: ptr = call qv_dynamic_new(%34, %36)
-  %38: ptr = symbol g_global_6
-  store8 %38 + 0, %37
-  %39: ptr = null
-  %40: ptr = symbol g_global_6
-  %41: ptr = load8 %40 + 0
-  %42: ptr = call qf_whatIs(%39, %41)
-  %43: ptr = symbol g_global_7
-  store8 %43 + 0, %42
-  %44: ptr = null
-  %45: ptr = symbol g_global_7
-  %46: ptr = load8 %45 + 0
-  call qf_s(%44, %46)
-  %47: int = const 32
-  %48: ptr = call quest_alloc(%47)
-  %49: int = const 16
-  %50: ptr = ptrAdd %48, %49
-  %51: ptr = symbol quest_type_QT_record_48ec741deceec319
-  store8 %50 + 0, %51
-  %52: int = const 1
-  %53: int = const 8
-  %54: ptr = ptrAdd %50, %53
-  store8 %54 + 0, %52
-  %55: ptr = symbol offsetdict_record_48ec741deceec319_record_48ec741deceec319
-  store8 %48 + 0, %50
-  store8 %48 + 8, %55
-  %56: ptr = symbol g_box
-  store8 %56 + 0, %48
+  %33: val = toVal %32
+  %34: ptr = symbol g_global_5
+  store8 %34 + 0, %33
+  %35: ptr = symbol quest_type_Int
+  %36: ptr = symbol g_global_5
+  %37: val = load8 %36 + 0
+  %38: ptr = call qv_dynamic_new(%35, %37)
+  %39: ptr = symbol g_global_6
+  store8 %39 + 0, %38
+  %40: ptr = null
+  %41: ptr = symbol g_global_6
+  %42: ptr = load8 %41 + 0
+  %43: ptr = call qf_whatIs(%40, %42)
+  %44: ptr = symbol g_global_7
+  store8 %44 + 0, %43
+  %45: ptr = null
+  %46: ptr = symbol g_global_7
+  %47: ptr = load8 %46 + 0
+  call qf_s(%45, %47)
+  %48: int = const 32
+  %49: ptr = call quest_alloc(%48)
+  %50: int = const 16
+  %51: ptr = ptrAdd %49, %50
+  %52: ptr = symbol quest_type_QT_record_48ec741deceec319
+  store8 %51 + 0, %52
+  %53: int = const 1
+  %54: int = const 8
+  %55: ptr = ptrAdd %51, %54
+  store8 %55 + 0, %53
+  %56: ptr = symbol offsetdict_record_48ec741deceec319_record_48ec741deceec319
+  store8 %49 + 0, %51
+  store8 %49 + 8, %56
   %57: ptr = symbol g_box
-  %58: ptr = load8 %57 + 0
+  store8 %57 + 0, %49
+  %58: ptr = symbol g_box
   %59: ptr = load8 %58 + 0
-  %60: ptr = load8 %58 + 8
-  %61: ptr = symbol g_global_8
-  store8 %61 + 0, %59
-  store8 %61 + 8, %60
-  %62: ptr = symbol g_box
-  %63: ptr = load8 %62 + 0
-  %64: int = ptrToInt %63
-  %65: ptr = symbol g_global_9
-  store8 %65 + 0, %64
-  %66: ptr = symbol quest_type_QT_record_48ec741deceec319
-  %67: ptr = symbol g_global_9
-  %68: int = load8 %67 + 0
-  %69: ptr = call qv_dynamic_new(%66, %68)
-  %70: ptr = symbol g_global_10
-  store8 %70 + 0, %69
-  %71: ptr = null
-  %72: ptr = symbol g_global_10
-  %73: ptr = load8 %72 + 0
-  %74: ptr = call qf_whatIs(%71, %73)
-  %75: ptr = symbol g_global_11
-  store8 %75 + 0, %74
-  %76: ptr = null
-  %77: ptr = symbol g_global_11
-  %78: ptr = load8 %77 + 0
-  call qf_s(%76, %78)
-  %79: ptr = symbol qs_38
-  %80: ptr = call quest_alloc_exception(%79)
-  %81: ptr = symbol g_Boom
-  store8 %81 + 0, %80
+  %60: ptr = load8 %59 + 0
+  %61: ptr = load8 %59 + 8
+  %62: ptr = symbol g_global_8
+  store8 %62 + 0, %60
+  store8 %62 + 8, %61
+  %63: ptr = symbol g_box
+  %64: ptr = load8 %63 + 0
+  %65: val = toVal %64
+  %66: ptr = symbol g_global_9
+  store8 %66 + 0, %65
+  %67: ptr = symbol quest_type_QT_record_48ec741deceec319
+  %68: ptr = symbol g_global_9
+  %69: val = load8 %68 + 0
+  %70: ptr = call qv_dynamic_new(%67, %69)
+  %71: ptr = symbol g_global_10
+  store8 %71 + 0, %70
+  %72: ptr = null
+  %73: ptr = symbol g_global_10
+  %74: ptr = load8 %73 + 0
+  %75: ptr = call qf_whatIs(%72, %74)
+  %76: ptr = symbol g_global_11
+  store8 %76 + 0, %75
+  %77: ptr = null
+  %78: ptr = symbol g_global_11
+  %79: ptr = load8 %78 + 0
+  call qf_s(%77, %79)
+  %80: ptr = symbol qs_38
+  %81: ptr = call quest_alloc_exception(%80)
   %82: ptr = symbol g_Boom
-  %83: ptr = load8 %82 + 0
-  %84: int = ptrToInt %83
-  %85: ptr = symbol g_Boom_2
-  store8 %85 + 0, %84
-  %86: ptr = symbol quest_type_exception_30576fa72e96528d
-  %87: ptr = symbol g_Boom_2
-  %88: int = load8 %87 + 0
-  %89: ptr = call qv_dynamic_new(%86, %88)
-  %90: ptr = symbol g_dBoom
-  store8 %90 + 0, %89
-  %92: ptr = slot 0
-  %93: ptr = threadLocal quest_current_exception_handler
-  %94: ptr = load8 %93 + 0
-  store8 %92 + 0, %94
-  %95: ptr = null
-  store8 %92 + 24, %95
-  %96: ptr = symbol g_Boom
-  %97: ptr = load8 %96 + 0
-  %98: ptr = slot 1
-  store8 %98 + 0, %97
-  store8 %92 + 8, %98
-  %99: int = const 1
-  store8 %92 + 16, %99
-  store8 %93 + 0, %92
+  store8 %82 + 0, %81
+  %83: ptr = symbol g_Boom
+  %84: ptr = load8 %83 + 0
+  %85: val = toVal %84
+  %86: ptr = symbol g_Boom_2
+  store8 %86 + 0, %85
+  %87: ptr = symbol quest_type_exception_30576fa72e96528d
+  %88: ptr = symbol g_Boom_2
+  %89: val = load8 %88 + 0
+  %90: ptr = call qv_dynamic_new(%87, %89)
+  %91: ptr = symbol g_dBoom
+  store8 %91 + 0, %90
+  %93: ptr = slot 0
+  %94: ptr = threadLocal quest_current_exception_handler
+  %95: ptr = load8 %94 + 0
+  store8 %93 + 0, %95
+  %96: ptr = null
+  store8 %93 + 24, %96
+  %97: ptr = symbol g_Boom
+  %98: ptr = load8 %97 + 0
+  %99: ptr = slot 1
+  store8 %99 + 0, %98
+  store8 %93 + 8, %99
+  %100: int = const 1
+  store8 %93 + 16, %100
+  store8 %94 + 0, %93
   try slot 0, b3(), handler b4
-b1(%91: int):
-  %135: ptr = symbol g_raised
-  store8 %135 + 0, %91
-  %136: ptr = null
-  %137: ptr = symbol g_raised
-  %138: int = load8 %137 + 0
-  call qf_p(%136, %138)
-  %140: ptr = symbol g_dBoom
-  %141: ptr = load8 %140 + 0
-  %142: ptr = load8 %141 + 0
-  %143: ptr = load8 %141 + 8
-  %144: ptr = symbol quest_type_exception_26233089883f21b2
-  %145: int = call quest_is_subtype(%142, %144) result narrow
-  %146: int = zext8 %145
-  branch %146, b9(), b10()
+b1(%92: int):
+  %138: ptr = symbol g_raised
+  store8 %138 + 0, %92
+  %139: ptr = null
+  %140: ptr = symbol g_raised
+  %141: int = load8 %140 + 0
+  call qf_p(%139, %141)
+  %143: ptr = symbol g_dBoom
+  %144: ptr = load8 %143 + 0
+  %145: ptr = load8 %144 + 0
+  %146: ptr = load8 %144 + 8
+  %147: ptr = symbol quest_type_exception_26233089883f21b2
+  %148: int = call quest_is_subtype(%145, %147) result narrow
+  %149: int = zext8 %148
+  branch %149, b9(), b10()
 b2():
-  %637: int = const 0
-  return %637
+  %646: int = const 0
+  return %646
 b3():
-  %100: ptr = symbol quest_type_exception_30576fa72e96528d
-  %101: ptr = symbol g_dBoom
-  %102: ptr = load8 %101 + 0
-  %103: int = call qv_dynamic_be(%100, %102)
-  %104: ptr = symbol g_global_12
-  store8 %104 + 0, %103
+  %101: ptr = symbol quest_type_exception_30576fa72e96528d
+  %102: ptr = symbol g_dBoom
+  %103: ptr = load8 %102 + 0
+  %104: val = call qv_dynamic_be(%101, %103)
   %105: ptr = symbol g_global_12
-  %106: int = load8 %105 + 0
-  %107: ptr = intToPtr %106
-  %108: ptr = symbol g_global_13
-  store8 %108 + 0, %107
+  store8 %105 + 0, %104
+  %106: ptr = symbol g_global_12
+  %107: val = load8 %106 + 0
+  %108: ptr = fromVal %107
   %109: ptr = symbol g_global_13
-  %110: ptr = load8 %109 + 0
-  %111: ptr = symbol g_global_14
-  store8 %111 + 0, %110
-  %112: int = const 42
-  %113: ptr = symbol g_global_14
-  %114: ptr = load8 %113 + 0
-  %115: ptr = symbol qs_39
-  call quest_raise_at(%114, %112, %115)
+  store8 %109 + 0, %108
+  %110: ptr = symbol g_global_13
+  %111: ptr = load8 %110 + 0
+  %112: ptr = symbol g_global_14
+  store8 %112 + 0, %111
+  %113: int = const 42
+  %114: val = toVal %113
+  %115: ptr = symbol g_global_14
+  %116: ptr = load8 %115 + 0
+  %117: ptr = symbol qs_39
+  call quest_raise_at(%116, %114, %117)
   unreachable
 b4():
-  %116: ptr = threadLocal quest_current_exception_handler
-  %117: ptr = load8 %92 + 0
-  store8 %116 + 0, %117
-  %118: ptr = slot 2
-  %119: ptr = threadLocal quest_current_exception
-  %120: int = load8 %119 + 0
-  store8 %118 + 0, %120
-  %121: int = load8 %119 + 8
-  store8 %118 + 8, %121
-  %122: int = load8 %119 + 16
-  store8 %118 + 16, %122
-  %123: int = load8 %119 + 24
-  store8 %118 + 24, %123
-  %124: ptr = load8 %118 + 0
-  %125: ptr = symbol g_Boom
-  %126: ptr = load8 %125 + 0
-  %127: int = peq %124, %126
-  %128: ptr = symbol g_global_15
-  store1 %128 + 0, %127
-  %129: ptr = symbol g_global_15
-  %130: int = load1 %129 + 0
-  branch %130, b5(), b6()
+  %118: ptr = threadLocal quest_current_exception_handler
+  %119: ptr = load8 %93 + 0
+  store8 %118 + 0, %119
+  %120: ptr = slot 2
+  %121: ptr = threadLocal quest_current_exception
+  %122: int = load8 %121 + 0
+  store8 %120 + 0, %122
+  %123: int = load8 %121 + 8
+  store8 %120 + 8, %123
+  %124: int = load8 %121 + 16
+  store8 %120 + 16, %124
+  %125: int = load8 %121 + 24
+  store8 %120 + 24, %125
+  %126: ptr = load8 %120 + 0
+  %127: ptr = symbol g_Boom
+  %128: ptr = load8 %127 + 0
+  %129: int = peq %126, %128
+  %130: ptr = symbol g_global_15
+  store1 %130 + 0, %129
+  %131: ptr = symbol g_global_15
+  %132: int = load1 %131 + 0
+  branch %132, b5(), b6()
 b5():
-  %131: int = load8 %118 + 8
-  %132: ptr = symbol g_n
-  store8 %132 + 0, %131
-  %133: ptr = symbol g_n
-  %134: int = load8 %133 + 0
-  jump b1(%134)
+  %133: val = load8 %120 + 8
+  %134: int = fromVal %133
+  %135: ptr = symbol g_n
+  store8 %135 + 0, %134
+  %136: ptr = symbol g_n
+  %137: int = load8 %136 + 0
+  jump b1(%137)
 b6():
-  call quest_reraise(%118) memory [0:32]
+  call quest_reraise(%120) memory [0:32]
   unreachable
-b7(%139: int):
-  %165: ptr = symbol g_r
-  store8 %165 + 0, %139
-  %166: ptr = null
-  %167: ptr = symbol g_r
-  %168: int = load8 %167 + 0
-  call qf_p(%166, %168)
-  %169: int = const 1
-  %170: ptr = symbol g_head
-  store8 %170 + 0, %169
-  %171: int = const 2
-  %172: ptr = symbol g_head_2
-  store8 %172 + 0, %171
-  %173: int = const 24
-  %174: ptr = call quest_alloc(%173)
-  %175: int = const 1
-  store8 %174 + 0, %175
-  %176: ptr = symbol g_tail
-  store8 %176 + 0, %174
-  %177: int = const 16
-  %178: ptr = call quest_alloc(%177)
-  %179: ptr = symbol g_head_2
-  %180: int = load8 %179 + 0
-  store8 %178 + 0, %180
-  %181: ptr = symbol g_tail
-  %182: ptr = load8 %181 + 0
-  %183: int = const 8
-  %184: ptr = ptrAdd %178, %183
-  store8 %184 + 0, %182
-  %185: ptr = symbol g_global_16
-  store8 %185 + 0, %178
-  %186: int = const 24
-  %187: ptr = call quest_alloc(%186)
-  %188: int = const 0
-  store8 %187 + 0, %188
-  %189: ptr = symbol g_global_16
-  %190: ptr = load8 %189 + 0
-  %191: int = const 8
-  %192: ptr = ptrAdd %187, %191
-  %193: int = load8 %190 + 0
-  store8 %192 + 0, %193
-  %194: int = const 16
-  %195: ptr = ptrAdd %187, %194
-  %196: int = const 8
-  %197: ptr = ptrAdd %190, %196
-  %198: ptr = load8 %197 + 0
-  store8 %195 + 0, %198
-  %199: ptr = symbol g_tail_2
-  store8 %199 + 0, %187
-  %200: int = const 16
-  %201: ptr = call quest_alloc(%200)
-  %202: ptr = symbol g_head
-  %203: int = load8 %202 + 0
-  store8 %201 + 0, %203
-  %204: ptr = symbol g_tail_2
-  %205: ptr = load8 %204 + 0
-  %206: int = const 8
-  %207: ptr = ptrAdd %201, %206
-  store8 %207 + 0, %205
-  %208: ptr = symbol g_global_17
-  store8 %208 + 0, %201
-  %209: int = const 24
-  %210: ptr = call quest_alloc(%209)
-  %211: int = const 0
-  store8 %210 + 0, %211
-  %212: ptr = symbol g_global_17
-  %213: ptr = load8 %212 + 0
-  %214: int = const 8
-  %215: ptr = ptrAdd %210, %214
-  %216: int = load8 %213 + 0
-  store8 %215 + 0, %216
-  %217: int = const 16
-  %218: ptr = ptrAdd %210, %217
-  %219: int = const 8
-  %220: ptr = ptrAdd %213, %219
-  %221: ptr = load8 %220 + 0
-  store8 %218 + 0, %221
-  %222: ptr = symbol g_l
-  store8 %222 + 0, %210
-  %223: ptr = symbol g_l
+b7(%142: int):
+  %168: ptr = symbol g_r
+  store8 %168 + 0, %142
+  %169: ptr = null
+  %170: ptr = symbol g_r
+  %171: int = load8 %170 + 0
+  call qf_p(%169, %171)
+  %172: int = const 1
+  %173: ptr = symbol g_head
+  store8 %173 + 0, %172
+  %174: int = const 2
+  %175: ptr = symbol g_head_2
+  store8 %175 + 0, %174
+  %176: int = const 24
+  %177: ptr = call quest_alloc(%176)
+  %178: int = const 1
+  store8 %177 + 0, %178
+  %179: ptr = symbol g_tail
+  store8 %179 + 0, %177
+  %180: int = const 16
+  %181: ptr = call quest_alloc(%180)
+  %182: ptr = symbol g_head_2
+  %183: int = load8 %182 + 0
+  store8 %181 + 0, %183
+  %184: ptr = symbol g_tail
+  %185: ptr = load8 %184 + 0
+  %186: int = const 8
+  %187: ptr = ptrAdd %181, %186
+  store8 %187 + 0, %185
+  %188: ptr = symbol g_global_16
+  store8 %188 + 0, %181
+  %189: int = const 24
+  %190: ptr = call quest_alloc(%189)
+  %191: int = const 0
+  store8 %190 + 0, %191
+  %192: ptr = symbol g_global_16
+  %193: ptr = load8 %192 + 0
+  %194: int = const 8
+  %195: ptr = ptrAdd %190, %194
+  %196: int = load8 %193 + 0
+  store8 %195 + 0, %196
+  %197: int = const 16
+  %198: ptr = ptrAdd %190, %197
+  %199: int = const 8
+  %200: ptr = ptrAdd %193, %199
+  %201: ptr = load8 %200 + 0
+  store8 %198 + 0, %201
+  %202: ptr = symbol g_tail_2
+  store8 %202 + 0, %190
+  %203: int = const 16
+  %204: ptr = call quest_alloc(%203)
+  %205: ptr = symbol g_head
+  %206: int = load8 %205 + 0
+  store8 %204 + 0, %206
+  %207: ptr = symbol g_tail_2
+  %208: ptr = load8 %207 + 0
+  %209: int = const 8
+  %210: ptr = ptrAdd %204, %209
+  store8 %210 + 0, %208
+  %211: ptr = symbol g_global_17
+  store8 %211 + 0, %204
+  %212: int = const 24
+  %213: ptr = call quest_alloc(%212)
+  %214: int = const 0
+  store8 %213 + 0, %214
+  %215: ptr = symbol g_global_17
+  %216: ptr = load8 %215 + 0
+  %217: int = const 8
+  %218: ptr = ptrAdd %213, %217
+  %219: int = load8 %216 + 0
+  store8 %218 + 0, %219
+  %220: int = const 16
+  %221: ptr = ptrAdd %213, %220
+  %222: int = const 8
+  %223: ptr = ptrAdd %216, %222
   %224: ptr = load8 %223 + 0
-  %225: int = ptrToInt %224
-  %226: ptr = symbol g_l_2
-  store8 %226 + 0, %225
-  %227: ptr = symbol quest_type_Rec0_QOption_cons_QTuple_Int_Self0_end_nil_0ad59adb217e0664
-  %228: ptr = symbol g_l_2
-  %229: int = load8 %228 + 0
-  %230: ptr = call qv_dynamic_new(%227, %229)
-  %231: ptr = symbol g_dl
-  store8 %231 + 0, %230
-  %232: ptr = symbol qf_sum_closure
-  %233: ptr = symbol g_sum
-  store8 %233 + 0, %232
-  %234: ptr = symbol quest_type_Rec0_QOption_cons_QTuple_Int_Self0_end_nil_0ad59adb217e0664
-  %235: ptr = symbol g_dl
-  %236: ptr = load8 %235 + 0
-  %237: int = call qv_dynamic_be(%234, %236)
-  %238: ptr = symbol g_global_18
-  store8 %238 + 0, %237
-  %239: ptr = symbol g_global_18
-  %240: int = load8 %239 + 0
-  %241: ptr = intToPtr %240
-  %242: ptr = symbol g_global_19
-  store8 %242 + 0, %241
-  %243: ptr = symbol g_global_19
-  %244: ptr = load8 %243 + 0
-  %245: ptr = symbol g_global_20
+  store8 %221 + 0, %224
+  %225: ptr = symbol g_l
+  store8 %225 + 0, %213
+  %226: ptr = symbol g_l
+  %227: ptr = load8 %226 + 0
+  %228: val = toVal %227
+  %229: ptr = symbol g_l_2
+  store8 %229 + 0, %228
+  %230: ptr = symbol quest_type_Rec0_QOption_cons_QTuple_Int_Self0_end_nil_0ad59adb217e0664
+  %231: ptr = symbol g_l_2
+  %232: val = load8 %231 + 0
+  %233: ptr = call qv_dynamic_new(%230, %232)
+  %234: ptr = symbol g_dl
+  store8 %234 + 0, %233
+  %235: ptr = symbol qf_sum_closure
+  %236: ptr = symbol g_sum
+  store8 %236 + 0, %235
+  %237: ptr = symbol quest_type_Rec0_QOption_cons_QTuple_Int_Self0_end_nil_0ad59adb217e0664
+  %238: ptr = symbol g_dl
+  %239: ptr = load8 %238 + 0
+  %240: val = call qv_dynamic_be(%237, %239)
+  %241: ptr = symbol g_global_18
+  store8 %241 + 0, %240
+  %242: ptr = symbol g_global_18
+  %243: val = load8 %242 + 0
+  %244: ptr = fromVal %243
+  %245: ptr = symbol g_global_19
   store8 %245 + 0, %244
-  %246: ptr = null
-  %247: ptr = symbol g_global_20
-  %248: ptr = load8 %247 + 0
-  %249: int = call qf_sum(%246, %248)
-  %250: ptr = symbol g_global_21
-  store8 %250 + 0, %249
-  %251: ptr = null
-  %252: ptr = symbol g_global_21
-  %253: int = load8 %252 + 0
-  call qf_p(%251, %253)
-  %255: ptr = symbol g_dl
-  %256: ptr = load8 %255 + 0
-  %257: ptr = load8 %256 + 0
-  %258: ptr = load8 %256 + 8
-  %259: ptr = symbol quest_type_QOption_nil_0c2982201332ffae
-  %260: int = call quest_is_subtype(%257, %259) result narrow
-  %261: int = zext8 %260
-  branch %261, b15(), b16()
+  %246: ptr = symbol g_global_19
+  %247: ptr = load8 %246 + 0
+  %248: ptr = symbol g_global_20
+  store8 %248 + 0, %247
+  %249: ptr = null
+  %250: ptr = symbol g_global_20
+  %251: ptr = load8 %250 + 0
+  %252: int = call qf_sum(%249, %251)
+  %253: ptr = symbol g_global_21
+  store8 %253 + 0, %252
+  %254: ptr = null
+  %255: ptr = symbol g_global_21
+  %256: int = load8 %255 + 0
+  call qf_p(%254, %256)
+  %258: ptr = symbol g_dl
+  %259: ptr = load8 %258 + 0
+  %260: ptr = load8 %259 + 0
+  %261: ptr = load8 %259 + 8
+  %262: ptr = symbol quest_type_QOption_nil_0c2982201332ffae
+  %263: int = call quest_is_subtype(%260, %262) result narrow
+  %264: int = zext8 %263
+  branch %264, b15(), b16()
 b8():
   jump b2()
 b9():
-  %147: int = const 8
-  %148: ptr = call quest_alloc(%147)
-  %149: int = load8 %143 + 0
-  %150: ptr = symbol quest_type_exception_26233089883f21b2
-  %151: int = call quest_convert(%149, %142, %150)
-  store8 %148 + 0, %151
-  %152: ptr = symbol g_e
-  store8 %152 + 0, %148
-  %153: int = const 1
-  jump b7(%153)
+  %150: int = const 8
+  %151: ptr = call quest_alloc(%150)
+  %152: val = load8 %146 + 0
+  %153: ptr = symbol quest_type_exception_26233089883f21b2
+  %154: val = call quest_convert(%152, %145, %153)
+  store8 %151 + 0, %154
+  %155: ptr = symbol g_e
+  store8 %155 + 0, %151
+  %156: int = const 1
+  jump b7(%156)
 b10():
-  %154: ptr = symbol quest_type_exception_30576fa72e96528d
-  %155: int = call quest_is_subtype(%142, %154) result narrow
-  %156: int = zext8 %155
-  branch %156, b11(), b12()
+  %157: ptr = symbol quest_type_exception_30576fa72e96528d
+  %158: int = call quest_is_subtype(%145, %157) result narrow
+  %159: int = zext8 %158
+  branch %159, b11(), b12()
 b11():
-  %157: int = const 8
-  %158: ptr = call quest_alloc(%157)
-  %159: int = load8 %143 + 0
-  %160: ptr = symbol quest_type_exception_30576fa72e96528d
-  %161: int = call quest_convert(%159, %142, %160)
-  store8 %158 + 0, %161
-  %162: ptr = symbol g_e_2
-  store8 %162 + 0, %158
-  %163: int = const 2
-  jump b7(%163)
+  %160: int = const 8
+  %161: ptr = call quest_alloc(%160)
+  %162: val = load8 %146 + 0
+  %163: ptr = symbol quest_type_exception_30576fa72e96528d
+  %164: val = call quest_convert(%162, %145, %163)
+  store8 %161 + 0, %164
+  %165: ptr = symbol g_e_2
+  store8 %165 + 0, %161
+  %166: int = const 2
+  jump b7(%166)
 b12():
-  %164: int = const 0
-  jump b7(%164)
-b13(%254: int):
-  %280: ptr = symbol g_r_2
-  store8 %280 + 0, %254
-  %281: ptr = null
-  %282: ptr = symbol g_r_2
-  %283: int = load8 %282 + 0
-  call qf_p(%281, %283)
-  %284: ptr = symbol quest_type_Int
-  %285: int = call qv_list_nil(%284)
-  %286: ptr = symbol g_global_22
-  store8 %286 + 0, %285
-  %287: int = const 5
-  %288: ptr = symbol g_global_23
-  store8 %288 + 0, %287
-  %289: ptr = symbol quest_type_Int
-  %290: ptr = symbol g_global_23
-  %291: int = load8 %290 + 0
-  %292: ptr = symbol g_global_22
-  %293: int = load8 %292 + 0
-  %294: int = call qv_list_cons(%289, %291, %293)
-  %295: ptr = symbol g_ints
-  store8 %295 + 0, %294
-  %296: ptr = symbol quest_type_opaque_1b3197ddf915133b
-  %297: ptr = symbol g_ints
-  %298: int = load8 %297 + 0
-  %299: ptr = call qv_dynamic_new(%296, %298)
-  %300: ptr = symbol g_dInts
-  store8 %300 + 0, %299
-  %302: ptr = symbol g_dInts
-  %303: ptr = load8 %302 + 0
-  %304: ptr = load8 %303 + 0
-  %305: ptr = load8 %303 + 8
-  %306: ptr = symbol quest_type_opaque_fa31bc8e0c56ae45
-  %307: int = call quest_is_subtype(%304, %306) result narrow
-  %308: int = zext8 %307
-  branch %308, b21(), b22()
+  %167: int = const 0
+  jump b7(%167)
+b13(%257: int):
+  %283: ptr = symbol g_r_2
+  store8 %283 + 0, %257
+  %284: ptr = null
+  %285: ptr = symbol g_r_2
+  %286: int = load8 %285 + 0
+  call qf_p(%284, %286)
+  %287: ptr = symbol quest_type_Int
+  %288: val = call qv_list_nil(%287)
+  %289: ptr = symbol g_global_22
+  store8 %289 + 0, %288
+  %290: int = const 5
+  %291: val = toVal %290
+  %292: ptr = symbol g_global_23
+  store8 %292 + 0, %291
+  %293: ptr = symbol quest_type_Int
+  %294: ptr = symbol g_global_23
+  %295: val = load8 %294 + 0
+  %296: ptr = symbol g_global_22
+  %297: val = load8 %296 + 0
+  %298: val = call qv_list_cons(%293, %295, %297)
+  %299: ptr = symbol g_ints
+  store8 %299 + 0, %298
+  %300: ptr = symbol quest_type_opaque_1b3197ddf915133b
+  %301: ptr = symbol g_ints
+  %302: val = load8 %301 + 0
+  %303: ptr = call qv_dynamic_new(%300, %302)
+  %304: ptr = symbol g_dInts
+  store8 %304 + 0, %303
+  %306: ptr = symbol g_dInts
+  %307: ptr = load8 %306 + 0
+  %308: ptr = load8 %307 + 0
+  %309: ptr = load8 %307 + 8
+  %310: ptr = symbol quest_type_opaque_fa31bc8e0c56ae45
+  %311: int = call quest_is_subtype(%308, %310) result narrow
+  %312: int = zext8 %311
+  branch %312, b21(), b22()
 b14():
   jump b8()
 b15():
-  %262: int = const 8
-  %263: ptr = call quest_alloc(%262)
-  %264: int = load8 %258 + 0
-  %265: ptr = symbol quest_type_QOption_nil_0c2982201332ffae
-  %266: int = call quest_convert(%264, %257, %265)
-  store8 %263 + 0, %266
-  %267: ptr = symbol g_o
-  store8 %267 + 0, %263
-  %268: int = const 1
-  jump b13(%268)
+  %265: int = const 8
+  %266: ptr = call quest_alloc(%265)
+  %267: val = load8 %261 + 0
+  %268: ptr = symbol quest_type_QOption_nil_0c2982201332ffae
+  %269: val = call quest_convert(%267, %260, %268)
+  store8 %266 + 0, %269
+  %270: ptr = symbol g_o
+  store8 %270 + 0, %266
+  %271: int = const 1
+  jump b13(%271)
 b16():
-  %269: ptr = symbol quest_type_Rec0_QOption_cons_QTuple_Int_Self0_end_nil_0ad59adb217e0664
-  %270: int = call quest_is_subtype(%257, %269) result narrow
-  %271: int = zext8 %270
-  branch %271, b17(), b18()
+  %272: ptr = symbol quest_type_Rec0_QOption_cons_QTuple_Int_Self0_end_nil_0ad59adb217e0664
+  %273: int = call quest_is_subtype(%260, %272) result narrow
+  %274: int = zext8 %273
+  branch %274, b17(), b18()
 b17():
-  %272: int = const 8
-  %273: ptr = call quest_alloc(%272)
-  %274: int = load8 %258 + 0
-  %275: ptr = symbol quest_type_Rec0_QOption_cons_QTuple_Int_Self0_end_nil_0ad59adb217e0664
-  %276: int = call quest_convert(%274, %257, %275)
-  store8 %273 + 0, %276
-  %277: ptr = symbol g_xs
-  store8 %277 + 0, %273
-  %278: int = const 2
-  jump b13(%278)
+  %275: int = const 8
+  %276: ptr = call quest_alloc(%275)
+  %277: val = load8 %261 + 0
+  %278: ptr = symbol quest_type_Rec0_QOption_cons_QTuple_Int_Self0_end_nil_0ad59adb217e0664
+  %279: val = call quest_convert(%277, %260, %278)
+  store8 %276 + 0, %279
+  %280: ptr = symbol g_xs
+  store8 %280 + 0, %276
+  %281: int = const 2
+  jump b13(%281)
 b18():
-  %279: int = const 0
-  jump b13(%279)
-b19(%301: int):
-  %354: ptr = symbol g_r_3
-  store8 %354 + 0, %301
-  %355: ptr = null
-  %356: ptr = symbol g_r_3
-  %357: int = load8 %356 + 0
-  call qf_p(%355, %357)
-  %358: ptr = symbol qf_f_closure
-  %359: ptr = symbol g_f
-  store8 %359 + 0, %358
-  %360: ptr = symbol g_f
-  %361: ptr = load8 %360 + 0
-  %362: int = ptrToInt %361
-  %363: ptr = symbol g_f_2
-  store8 %363 + 0, %362
-  %364: ptr = symbol quest_type_fun_0c4346157e7c9fc5
-  %365: ptr = symbol g_f_2
-  %366: int = load8 %365 + 0
-  %367: ptr = call qv_dynamic_new(%364, %366)
-  %368: ptr = symbol g_dFun
+  %282: int = const 0
+  jump b13(%282)
+b19(%305: int):
+  %359: ptr = symbol g_r_3
+  store8 %359 + 0, %305
+  %360: ptr = null
+  %361: ptr = symbol g_r_3
+  %362: int = load8 %361 + 0
+  call qf_p(%360, %362)
+  %363: ptr = symbol qf_f_closure
+  %364: ptr = symbol g_f
+  store8 %364 + 0, %363
+  %365: ptr = symbol g_f
+  %366: ptr = load8 %365 + 0
+  %367: val = toVal %366
+  %368: ptr = symbol g_f_2
   store8 %368 + 0, %367
-  %370: ptr = symbol g_dFun
-  %371: ptr = load8 %370 + 0
-  %372: ptr = load8 %371 + 0
-  %373: ptr = load8 %371 + 8
-  %374: ptr = symbol quest_type_fun_adf0f0587e77b766
-  %375: int = call quest_is_subtype(%372, %374) result narrow
-  %376: int = zext8 %375
-  branch %376, b30(), b31()
+  %369: ptr = symbol quest_type_fun_0c4346157e7c9fc5
+  %370: ptr = symbol g_f_2
+  %371: val = load8 %370 + 0
+  %372: ptr = call qv_dynamic_new(%369, %371)
+  %373: ptr = symbol g_dFun
+  store8 %373 + 0, %372
+  %375: ptr = symbol g_dFun
+  %376: ptr = load8 %375 + 0
+  %377: ptr = load8 %376 + 0
+  %378: ptr = load8 %376 + 8
+  %379: ptr = symbol quest_type_fun_adf0f0587e77b766
+  %380: int = call quest_is_subtype(%377, %379) result narrow
+  %381: int = zext8 %380
+  branch %381, b30(), b31()
 b20():
   jump b14()
 b21():
-  %309: int = const 8
-  %310: ptr = call quest_alloc(%309)
-  %311: int = load8 %305 + 0
-  %312: ptr = symbol quest_type_opaque_fa31bc8e0c56ae45
-  %313: int = call quest_convert(%311, %304, %312)
-  store8 %310 + 0, %313
-  %314: ptr = symbol g_x_2
-  store8 %314 + 0, %310
-  %315: int = const 0
-  jump b19(%315)
+  %313: int = const 8
+  %314: ptr = call quest_alloc(%313)
+  %315: val = load8 %309 + 0
+  %316: ptr = symbol quest_type_opaque_fa31bc8e0c56ae45
+  %317: val = call quest_convert(%315, %308, %316)
+  store8 %314 + 0, %317
+  %318: ptr = symbol g_x_2
+  store8 %318 + 0, %314
+  %319: int = const 0
+  jump b19(%319)
 b22():
-  %316: ptr = symbol quest_type_opaque_1b3197ddf915133b
-  %317: int = call quest_is_subtype(%304, %316) result narrow
-  %318: int = zext8 %317
-  branch %318, b23(), b24()
+  %320: ptr = symbol quest_type_opaque_1b3197ddf915133b
+  %321: int = call quest_is_subtype(%308, %320) result narrow
+  %322: int = zext8 %321
+  branch %322, b23(), b24()
 b23():
-  %319: int = const 8
-  %320: ptr = call quest_alloc(%319)
-  %321: int = load8 %305 + 0
-  %322: ptr = symbol quest_type_opaque_1b3197ddf915133b
-  %323: int = call quest_convert(%321, %304, %322)
-  store8 %320 + 0, %323
-  %324: ptr = symbol g_x_3
-  store8 %324 + 0, %320
-  %325: ptr = symbol g_x_3
-  %326: ptr = load8 %325 + 0
-  %327: int = ptrToInt %326
-  %328: int = const 1
-  %329: int = and %327, %328
-  branch %329, b25(), b26()
+  %323: int = const 8
+  %324: ptr = call quest_alloc(%323)
+  %325: val = load8 %309 + 0
+  %326: ptr = symbol quest_type_opaque_1b3197ddf915133b
+  %327: val = call quest_convert(%325, %308, %326)
+  store8 %324 + 0, %327
+  %328: ptr = symbol g_x_3
+  store8 %328 + 0, %324
+  %329: ptr = symbol g_x_3
+  %330: ptr = load8 %329 + 0
+  %331: int = ptrToInt %330
+  %332: int = const 1
+  %333: int = and %331, %332
+  branch %333, b25(), b26()
 b24():
-  %348: int = const 0
-  %349: int = const 1
-  %350: int = sub %348, %349
-  %351: ptr = symbol g_global_28
-  store8 %351 + 0, %350
-  %352: ptr = symbol g_global_28
-  %353: int = load8 %352 + 0
-  jump b19(%353)
+  %353: int = const 0
+  %354: int = const 1
+  %355: int = sub %353, %354
+  %356: ptr = symbol g_global_28
+  store8 %356 + 0, %355
+  %357: ptr = symbol g_global_28
+  %358: int = load8 %357 + 0
+  jump b19(%358)
 b25():
-  %331: int = const 0
-  %332: int = call quest_proxy_element(%326, %331)
-  jump b27(%332)
+  %335: int = const 0
+  %336: val = call quest_proxy_element(%330, %335)
+  jump b27(%336)
 b26():
-  %333: int = load8 %326 + 0
-  jump b27(%333)
-b27(%330: int):
-  %334: ptr = symbol g_global_24
-  store8 %334 + 0, %330
-  %335: ptr = symbol quest_type_Int
-  %336: ptr = symbol g_global_24
-  %337: int = load8 %336 + 0
-  %338: int = call qv_list_head(%335, %337)
-  %339: ptr = symbol g_global_25
-  store8 %339 + 0, %338
-  %340: ptr = symbol g_global_25
-  %341: int = load8 %340 + 0
-  %342: ptr = symbol g_global_26
-  store8 %342 + 0, %341
-  %343: ptr = symbol g_global_26
-  %344: int = load8 %343 + 0
-  %345: ptr = symbol g_global_27
-  store8 %345 + 0, %344
-  %346: ptr = symbol g_global_27
-  %347: int = load8 %346 + 0
-  jump b19(%347)
-b28(%369: int):
-  %421: ptr = symbol g_r_4
-  store8 %421 + 0, %369
-  %422: ptr = null
-  %423: ptr = symbol g_r_4
-  %424: int = load8 %423 + 0
-  call qf_p(%422, %424)
-  %425: int = const 48
-  %426: ptr = call quest_alloc(%425)
-  %427: int = const 16
-  %428: ptr = ptrAdd %426, %427
-  %429: ptr = symbol quest_type_QT_record_9c8d87e00104b699
-  store8 %428 + 0, %429
-  %430: int = const 1
-  %431: int = const 8
-  %432: ptr = ptrAdd %428, %431
-  store8 %432 + 0, %430
-  %433: int = const 2
-  %434: int = const 16
-  %435: ptr = ptrAdd %428, %434
-  store8 %435 + 0, %433
-  %436: int = const 3
-  %437: int = const 24
-  %438: ptr = ptrAdd %428, %437
-  store8 %438 + 0, %436
-  %439: ptr = symbol offsetdict_record_9c8d87e00104b699_record_9c8d87e00104b699
-  store8 %426 + 0, %428
-  store8 %426 + 8, %439
-  %440: ptr = symbol g_big_box
-  store8 %440 + 0, %426
-  %441: ptr = symbol g_big_box
-  %442: ptr = load8 %441 + 0
-  %443: ptr = load8 %442 + 0
-  %444: ptr = load8 %442 + 8
-  %445: ptr = symbol g_big
-  store8 %445 + 0, %443
-  store8 %445 + 8, %444
-  %446: ptr = symbol qf_mk_closure
-  %447: ptr = symbol g_mk
-  store8 %447 + 0, %446
-  %448: ptr = symbol g_mk
-  %449: ptr = load8 %448 + 0
-  %450: int = const 16
-  %451: ptr = call quest_alloc(%450)
-  %452: ptr = symbol qf_qa_adapt
-  store8 %451 + 0, %452
-  store8 %451 + 8, %449
-  %453: ptr = symbol g_mk_2
-  store8 %453 + 0, %451
-  %454: ptr = symbol g_mk_2
-  %455: ptr = load8 %454 + 0
-  %456: ptr = symbol g_mkSmall
-  store8 %456 + 0, %455
-  %457: int = const 0
-  %458: ptr = symbol g_global_33
-  store8 %458 + 0, %457
-  %459: ptr = symbol quest_type_Int
-  %460: ptr = symbol g_mkSmall
-  %461: ptr = load8 %460 + 0
-  %462: ptr = load8 %461 + 0
-  %463: ptr = load8 %461 + 8
+  %337: val = load8 %330 + 0
+  jump b27(%337)
+b27(%334: val):
+  %338: ptr = symbol g_global_24
+  store8 %338 + 0, %334
+  %339: ptr = symbol quest_type_Int
+  %340: ptr = symbol g_global_24
+  %341: val = load8 %340 + 0
+  %342: val = call qv_list_head(%339, %341)
+  %343: ptr = symbol g_global_25
+  store8 %343 + 0, %342
+  %344: ptr = symbol g_global_25
+  %345: val = load8 %344 + 0
+  %346: int = fromVal %345
+  %347: ptr = symbol g_global_26
+  store8 %347 + 0, %346
+  %348: ptr = symbol g_global_26
+  %349: int = load8 %348 + 0
+  %350: ptr = symbol g_global_27
+  store8 %350 + 0, %349
+  %351: ptr = symbol g_global_27
+  %352: int = load8 %351 + 0
+  jump b19(%352)
+b28(%374: int):
+  %426: ptr = symbol g_r_4
+  store8 %426 + 0, %374
+  %427: ptr = null
+  %428: ptr = symbol g_r_4
+  %429: int = load8 %428 + 0
+  call qf_p(%427, %429)
+  %430: int = const 48
+  %431: ptr = call quest_alloc(%430)
+  %432: int = const 16
+  %433: ptr = ptrAdd %431, %432
+  %434: ptr = symbol quest_type_QT_record_9c8d87e00104b699
+  store8 %433 + 0, %434
+  %435: int = const 1
+  %436: int = const 8
+  %437: ptr = ptrAdd %433, %436
+  store8 %437 + 0, %435
+  %438: int = const 2
+  %439: int = const 16
+  %440: ptr = ptrAdd %433, %439
+  store8 %440 + 0, %438
+  %441: int = const 3
+  %442: int = const 24
+  %443: ptr = ptrAdd %433, %442
+  store8 %443 + 0, %441
+  %444: ptr = symbol offsetdict_record_9c8d87e00104b699_record_9c8d87e00104b699
+  store8 %431 + 0, %433
+  store8 %431 + 8, %444
+  %445: ptr = symbol g_big_box
+  store8 %445 + 0, %431
+  %446: ptr = symbol g_big_box
+  %447: ptr = load8 %446 + 0
+  %448: ptr = load8 %447 + 0
+  %449: ptr = load8 %447 + 8
+  %450: ptr = symbol g_big
+  store8 %450 + 0, %448
+  store8 %450 + 8, %449
+  %451: ptr = symbol qf_mk_closure
+  %452: ptr = symbol g_mk
+  store8 %452 + 0, %451
+  %453: ptr = symbol g_mk
+  %454: ptr = load8 %453 + 0
+  %455: int = const 16
+  %456: ptr = call quest_alloc(%455)
+  %457: ptr = symbol qf_qa_adapt
+  store8 %456 + 0, %457
+  store8 %456 + 8, %454
+  %458: ptr = symbol g_mk_2
+  store8 %458 + 0, %456
+  %459: ptr = symbol g_mk_2
+  %460: ptr = load8 %459 + 0
+  %461: ptr = symbol g_mkSmall
+  store8 %461 + 0, %460
+  %462: int = const 0
+  %463: val = toVal %462
   %464: ptr = symbol g_global_33
-  %465: int = load8 %464 + 0
-  %466: ptr, %467: ptr = callIndirect %462, %463, %459, %465
-  %468: ptr = symbol g_global_34
-  store8 %468 + 0, %466
-  store8 %468 + 8, %467
-  %469: ptr = symbol g_global_34
-  %470: ptr = load8 %469 + 0
-  %471: ptr = load8 %469 + 8
-  %472: int = load8 %471 + 0
-  %473: ptr = ptrAdd %470, %472
-  %474: int = load8 %473 + 0
-  %475: ptr = symbol g_global_35
-  store8 %475 + 0, %474
-  %476: ptr = null
-  %477: ptr = symbol g_global_35
+  store8 %464 + 0, %463
+  %465: ptr = symbol quest_type_Int
+  %466: ptr = symbol g_mkSmall
+  %467: ptr = load8 %466 + 0
+  %468: ptr = load8 %467 + 0
+  %469: ptr = load8 %467 + 8
+  %470: ptr = symbol g_global_33
+  %471: val = load8 %470 + 0
+  %472: ptr, %473: ptr = callIndirect %468, %469, %465, %471
+  %474: ptr = symbol g_global_34
+  store8 %474 + 0, %472
+  store8 %474 + 8, %473
+  %475: ptr = symbol g_global_34
+  %476: ptr = load8 %475 + 0
+  %477: ptr = load8 %475 + 8
   %478: int = load8 %477 + 0
-  call qf_p(%476, %478)
-  %479: ptr = symbol g_mk
-  %480: ptr = load8 %479 + 0
-  %481: int = ptrToInt %480
-  %482: ptr = symbol g_mk_3
-  store8 %482 + 0, %481
-  %483: ptr = symbol quest_type_fun_5e20c2866aa2bc63
-  %484: ptr = symbol g_mk_3
-  %485: int = load8 %484 + 0
-  %486: ptr = call qv_dynamic_new(%483, %485)
-  %487: ptr = symbol g_dMk
-  store8 %487 + 0, %486
-  %488: ptr = symbol quest_type_fun_e5b0470d50adc0e2
-  %489: ptr = symbol g_dMk
-  %490: ptr = load8 %489 + 0
-  %491: int = call qv_dynamic_be(%488, %490)
-  %492: ptr = symbol g_fromDynamic
-  store8 %492 + 0, %491
-  %493: ptr = symbol g_fromDynamic
-  %494: int = load8 %493 + 0
-  %495: ptr = intToPtr %494
-  %496: ptr = symbol g_fromDynamic_2
-  store8 %496 + 0, %495
-  %497: ptr = symbol g_fromDynamic_2
-  %498: ptr = load8 %497 + 0
-  %499: ptr = symbol g_fromDynamic_3
-  store8 %499 + 0, %498
-  %500: ptr = symbol qs_40
-  %501: int = const 1
-  %502: ptr = call quest_string_new(%500, %501)
-  %503: int = ptrToInt %502
-  %504: ptr = symbol g_global_36
-  store8 %504 + 0, %503
-  %505: ptr = symbol quest_type_String
-  %506: ptr = symbol g_fromDynamic_3
-  %507: ptr = load8 %506 + 0
-  %508: ptr = load8 %507 + 0
-  %509: ptr = load8 %507 + 8
+  %479: ptr = ptrAdd %476, %478
+  %480: int = load8 %479 + 0
+  %481: ptr = symbol g_global_35
+  store8 %481 + 0, %480
+  %482: ptr = null
+  %483: ptr = symbol g_global_35
+  %484: int = load8 %483 + 0
+  call qf_p(%482, %484)
+  %485: ptr = symbol g_mk
+  %486: ptr = load8 %485 + 0
+  %487: val = toVal %486
+  %488: ptr = symbol g_mk_3
+  store8 %488 + 0, %487
+  %489: ptr = symbol quest_type_fun_5e20c2866aa2bc63
+  %490: ptr = symbol g_mk_3
+  %491: val = load8 %490 + 0
+  %492: ptr = call qv_dynamic_new(%489, %491)
+  %493: ptr = symbol g_dMk
+  store8 %493 + 0, %492
+  %494: ptr = symbol quest_type_fun_e5b0470d50adc0e2
+  %495: ptr = symbol g_dMk
+  %496: ptr = load8 %495 + 0
+  %497: val = call qv_dynamic_be(%494, %496)
+  %498: ptr = symbol g_fromDynamic
+  store8 %498 + 0, %497
+  %499: ptr = symbol g_fromDynamic
+  %500: val = load8 %499 + 0
+  %501: ptr = fromVal %500
+  %502: ptr = symbol g_fromDynamic_2
+  store8 %502 + 0, %501
+  %503: ptr = symbol g_fromDynamic_2
+  %504: ptr = load8 %503 + 0
+  %505: ptr = symbol g_fromDynamic_3
+  store8 %505 + 0, %504
+  %506: ptr = symbol qs_40
+  %507: int = const 1
+  %508: ptr = call quest_string_new(%506, %507)
+  %509: val = toVal %508
   %510: ptr = symbol g_global_36
-  %511: int = load8 %510 + 0
-  %512: ptr, %513: ptr = callIndirect %508, %509, %505, %511
-  %514: ptr = symbol g_global_37
-  store8 %514 + 0, %512
-  store8 %514 + 8, %513
-  %515: ptr = symbol g_global_37
-  %516: ptr = load8 %515 + 0
-  %517: ptr = load8 %515 + 8
-  %518: int = load8 %517 + 0
-  %519: ptr = ptrAdd %516, %518
-  %520: int = load8 %519 + 0
-  %521: ptr = symbol g_global_38
-  store8 %521 + 0, %520
-  %522: ptr = null
-  %523: ptr = symbol g_global_38
+  store8 %510 + 0, %509
+  %511: ptr = symbol quest_type_String
+  %512: ptr = symbol g_fromDynamic_3
+  %513: ptr = load8 %512 + 0
+  %514: ptr = load8 %513 + 0
+  %515: ptr = load8 %513 + 8
+  %516: ptr = symbol g_global_36
+  %517: val = load8 %516 + 0
+  %518: ptr, %519: ptr = callIndirect %514, %515, %511, %517
+  %520: ptr = symbol g_global_37
+  store8 %520 + 0, %518
+  store8 %520 + 8, %519
+  %521: ptr = symbol g_global_37
+  %522: ptr = load8 %521 + 0
+  %523: ptr = load8 %521 + 8
   %524: int = load8 %523 + 0
-  call qf_p(%522, %524)
-  %525: int = const 32
-  %526: ptr = call quest_alloc(%525)
-  %527: int = const 16
-  %528: ptr = ptrAdd %526, %527
-  %529: ptr = symbol quest_type_QT_record_1b0dbf3cbd005b40
-  store8 %528 + 0, %529
-  %530: ptr = symbol g_mk
-  %531: ptr = load8 %530 + 0
-  %532: int = const 8
-  %533: ptr = ptrAdd %528, %532
-  store8 %533 + 0, %531
-  %534: ptr = symbol offsetdict_record_1b0dbf3cbd005b40_record_1b0dbf3cbd005b40
-  store8 %526 + 0, %528
-  store8 %526 + 8, %534
-  %535: ptr = symbol g_hasMk_box
-  store8 %535 + 0, %526
-  %536: ptr = symbol g_hasMk_box
+  %525: ptr = ptrAdd %522, %524
+  %526: int = load8 %525 + 0
+  %527: ptr = symbol g_global_38
+  store8 %527 + 0, %526
+  %528: ptr = null
+  %529: ptr = symbol g_global_38
+  %530: int = load8 %529 + 0
+  call qf_p(%528, %530)
+  %531: int = const 32
+  %532: ptr = call quest_alloc(%531)
+  %533: int = const 16
+  %534: ptr = ptrAdd %532, %533
+  %535: ptr = symbol quest_type_QT_record_1b0dbf3cbd005b40
+  store8 %534 + 0, %535
+  %536: ptr = symbol g_mk
   %537: ptr = load8 %536 + 0
-  %538: ptr = load8 %537 + 0
-  %539: ptr = load8 %537 + 8
-  %540: ptr = symbol g_hasMk
-  store8 %540 + 0, %538
-  store8 %540 + 8, %539
-  %541: ptr = symbol g_hasMk
-  %542: ptr = load8 %541 + 0
-  %543: ptr = load8 %541 + 8
-  %544: ptr = symbol quest_type_QT_record_9429c350bea2f990
-  %545: ptr, %546: ptr = call quest_record_view(%542, %543, %544) pairs [0]
-  %547: ptr = symbol g_hasMk_2
-  store8 %547 + 0, %545
-  store8 %547 + 8, %546
-  %548: ptr = symbol g_hasMk_2
-  %549: ptr = load8 %548 + 0
-  %550: ptr = load8 %548 + 8
-  %551: ptr = symbol g_hasMkSmall
-  store8 %551 + 0, %549
-  store8 %551 + 8, %550
-  %552: ptr = symbol g_hasMkSmall
-  %553: ptr = load8 %552 + 0
-  %554: ptr = load8 %552 + 8
-  %555: int = load8 %554 + 0
-  %556: ptr = ptrAdd %553, %555
-  %557: ptr = load8 %554 + 8
-  %558: ptr = null
-  %559: int = pne %557, %558
-  branch %559, b34(), b35()
+  %538: int = const 8
+  %539: ptr = ptrAdd %534, %538
+  store8 %539 + 0, %537
+  %540: ptr = symbol offsetdict_record_1b0dbf3cbd005b40_record_1b0dbf3cbd005b40
+  store8 %532 + 0, %534
+  store8 %532 + 8, %540
+  %541: ptr = symbol g_hasMk_box
+  store8 %541 + 0, %532
+  %542: ptr = symbol g_hasMk_box
+  %543: ptr = load8 %542 + 0
+  %544: ptr = load8 %543 + 0
+  %545: ptr = load8 %543 + 8
+  %546: ptr = symbol g_hasMk
+  store8 %546 + 0, %544
+  store8 %546 + 8, %545
+  %547: ptr = symbol g_hasMk
+  %548: ptr = load8 %547 + 0
+  %549: ptr = load8 %547 + 8
+  %550: ptr = symbol quest_type_QT_record_9429c350bea2f990
+  %551: ptr, %552: ptr = call quest_record_view(%548, %549, %550) pairs [0]
+  %553: ptr = symbol g_hasMk_2
+  store8 %553 + 0, %551
+  store8 %553 + 8, %552
+  %554: ptr = symbol g_hasMk_2
+  %555: ptr = load8 %554 + 0
+  %556: ptr = load8 %554 + 8
+  %557: ptr = symbol g_hasMkSmall
+  store8 %557 + 0, %555
+  store8 %557 + 8, %556
+  %558: ptr = symbol g_hasMkSmall
+  %559: ptr = load8 %558 + 0
+  %560: ptr = load8 %558 + 8
+  %561: int = load8 %560 + 0
+  %562: ptr = ptrAdd %559, %561
+  %563: ptr = load8 %560 + 8
+  %564: ptr = null
+  %565: int = pne %563, %564
+  branch %565, b34(), b35()
 b29():
   jump b20()
 b30():
-  %377: int = const 8
-  %378: ptr = call quest_alloc(%377)
-  %379: int = load8 %373 + 0
-  %380: ptr = symbol quest_type_fun_adf0f0587e77b766
-  %381: int = call quest_convert(%379, %372, %380)
-  store8 %378 + 0, %381
-  %382: ptr = symbol g_f_3
-  store8 %382 + 0, %378
-  %383: ptr = symbol g_f_3
-  %384: ptr = load8 %383 + 0
-  %385: ptr = load8 %384 + 0
-  %386: ptr = symbol g_global_29
-  store8 %386 + 0, %385
-  %387: ptr = symbol g_global_29
-  %388: ptr = load8 %387 + 0
+  %382: int = const 8
+  %383: ptr = call quest_alloc(%382)
+  %384: val = load8 %378 + 0
+  %385: ptr = symbol quest_type_fun_adf0f0587e77b766
+  %386: val = call quest_convert(%384, %377, %385)
+  store8 %383 + 0, %386
+  %387: ptr = symbol g_f_3
+  store8 %387 + 0, %383
+  %388: ptr = symbol g_f_3
   %389: ptr = load8 %388 + 0
-  %390: ptr = load8 %388 + 8
-  %391: ptr = symbol qs_12
-  %392: int = const 1
-  %393: ptr = call quest_string_new(%391, %392)
-  %394: int = callIndirect %389, %390, %393
-  %395: ptr = symbol g_global_30
-  store8 %395 + 0, %394
-  %396: ptr = symbol g_global_30
-  %397: int = load8 %396 + 0
-  jump b28(%397)
+  %390: ptr = load8 %389 + 0
+  %391: ptr = symbol g_global_29
+  store8 %391 + 0, %390
+  %392: ptr = symbol g_global_29
+  %393: ptr = load8 %392 + 0
+  %394: ptr = load8 %393 + 0
+  %395: ptr = load8 %393 + 8
+  %396: ptr = symbol qs_12
+  %397: int = const 1
+  %398: ptr = call quest_string_new(%396, %397)
+  %399: int = callIndirect %394, %395, %398
+  %400: ptr = symbol g_global_30
+  store8 %400 + 0, %399
+  %401: ptr = symbol g_global_30
+  %402: int = load8 %401 + 0
+  jump b28(%402)
 b31():
-  %398: ptr = symbol quest_type_fun_0c4346157e7c9fc5
-  %399: int = call quest_is_subtype(%372, %398) result narrow
-  %400: int = zext8 %399
-  branch %400, b32(), b33()
+  %403: ptr = symbol quest_type_fun_0c4346157e7c9fc5
+  %404: int = call quest_is_subtype(%377, %403) result narrow
+  %405: int = zext8 %404
+  branch %405, b32(), b33()
 b32():
-  %401: int = const 8
-  %402: ptr = call quest_alloc(%401)
-  %403: int = load8 %373 + 0
-  %404: ptr = symbol quest_type_fun_0c4346157e7c9fc5
-  %405: int = call quest_convert(%403, %372, %404)
-  store8 %402 + 0, %405
-  %406: ptr = symbol g_f_4
-  store8 %406 + 0, %402
-  %407: ptr = symbol g_f_4
-  %408: ptr = load8 %407 + 0
-  %409: ptr = load8 %408 + 0
-  %410: ptr = symbol g_global_31
-  store8 %410 + 0, %409
-  %411: ptr = symbol g_global_31
-  %412: ptr = load8 %411 + 0
+  %406: int = const 8
+  %407: ptr = call quest_alloc(%406)
+  %408: val = load8 %378 + 0
+  %409: ptr = symbol quest_type_fun_0c4346157e7c9fc5
+  %410: val = call quest_convert(%408, %377, %409)
+  store8 %407 + 0, %410
+  %411: ptr = symbol g_f_4
+  store8 %411 + 0, %407
+  %412: ptr = symbol g_f_4
   %413: ptr = load8 %412 + 0
-  %414: ptr = load8 %412 + 8
-  %415: int = const 21
-  %416: int = callIndirect %413, %414, %415
-  %417: ptr = symbol g_global_32
-  store8 %417 + 0, %416
-  %418: ptr = symbol g_global_32
-  %419: int = load8 %418 + 0
-  jump b28(%419)
+  %414: ptr = load8 %413 + 0
+  %415: ptr = symbol g_global_31
+  store8 %415 + 0, %414
+  %416: ptr = symbol g_global_31
+  %417: ptr = load8 %416 + 0
+  %418: ptr = load8 %417 + 0
+  %419: ptr = load8 %417 + 8
+  %420: int = const 21
+  %421: int = callIndirect %418, %419, %420
+  %422: ptr = symbol g_global_32
+  store8 %422 + 0, %421
+  %423: ptr = symbol g_global_32
+  %424: int = load8 %423 + 0
+  jump b28(%424)
 b33():
-  %420: int = const 0
-  jump b28(%420)
+  %425: int = const 0
+  jump b28(%425)
 b34():
-  %561: ptr = load8 %557 + 0
-  %562: ptr = null
-  %563: int = pne %561, %562
-  branch %563, b37(), b38()
+  %567: ptr = load8 %563 + 0
+  %568: ptr = null
+  %569: int = pne %567, %568
+  branch %569, b37(), b38()
 b35():
-  %570: ptr = load8 %556 + 0
-  jump b36(%570)
-b36(%560: ptr):
-  %571: ptr = symbol g_global_39
-  store8 %571 + 0, %560
-  %572: int = const 1
-  %573: ptr = symbol g_global_40
-  store8 %573 + 0, %572
-  %574: ptr = symbol quest_type_Bool
-  %575: ptr = symbol g_global_39
-  %576: ptr = load8 %575 + 0
-  %577: ptr = load8 %576 + 0
-  %578: ptr = load8 %576 + 8
-  %579: ptr = symbol g_global_40
-  %580: int = load8 %579 + 0
-  %581: ptr, %582: ptr = callIndirect %577, %578, %574, %580
-  %583: ptr = symbol g_global_41
-  store8 %583 + 0, %581
-  store8 %583 + 8, %582
-  %584: ptr = symbol g_global_41
-  %585: ptr = load8 %584 + 0
-  %586: ptr = load8 %584 + 8
-  %587: int = load8 %586 + 0
-  %588: ptr = ptrAdd %585, %587
-  %589: int = load8 %588 + 0
-  %590: ptr = symbol g_global_42
-  store8 %590 + 0, %589
-  %591: ptr = null
-  %592: ptr = symbol g_global_42
-  %593: int = load8 %592 + 0
-  call qf_p(%591, %593)
-  %594: ptr = symbol qf_ident_closure
-  %595: ptr = symbol g_ident
-  store8 %595 + 0, %594
-  %596: ptr = symbol g_ident
-  %597: ptr = load8 %596 + 0
-  %598: int = ptrToInt %597
-  %599: ptr = symbol g_ident_2
-  store8 %599 + 0, %598
-  %600: ptr = symbol quest_type_fun_c16ce15c6abe2d3a
-  %601: ptr = symbol g_ident_2
-  %602: int = load8 %601 + 0
-  %603: ptr = call qv_dynamic_new(%600, %602)
-  %604: ptr = symbol g_dIdent
-  store8 %604 + 0, %603
-  %605: ptr = symbol quest_type_fun_c16ce15c6abe2d3a
-  %606: ptr = symbol g_dIdent
-  %607: ptr = load8 %606 + 0
-  %608: int = call qv_dynamic_be(%605, %607)
-  %609: ptr = symbol g_global_43
-  store8 %609 + 0, %608
-  %610: ptr = symbol g_global_43
-  %611: int = load8 %610 + 0
-  %612: ptr = intToPtr %611
-  %613: ptr = symbol g_global_44
-  store8 %613 + 0, %612
-  %614: ptr = symbol g_global_44
-  %615: ptr = load8 %614 + 0
-  %616: ptr = symbol g_global_45
+  %576: ptr = load8 %562 + 0
+  jump b36(%576)
+b36(%566: ptr):
+  %577: ptr = symbol g_global_39
+  store8 %577 + 0, %566
+  %578: int = const 1
+  %579: val = toVal %578
+  %580: ptr = symbol g_global_40
+  store8 %580 + 0, %579
+  %581: ptr = symbol quest_type_Bool
+  %582: ptr = symbol g_global_39
+  %583: ptr = load8 %582 + 0
+  %584: ptr = load8 %583 + 0
+  %585: ptr = load8 %583 + 8
+  %586: ptr = symbol g_global_40
+  %587: val = load8 %586 + 0
+  %588: ptr, %589: ptr = callIndirect %584, %585, %581, %587
+  %590: ptr = symbol g_global_41
+  store8 %590 + 0, %588
+  store8 %590 + 8, %589
+  %591: ptr = symbol g_global_41
+  %592: ptr = load8 %591 + 0
+  %593: ptr = load8 %591 + 8
+  %594: int = load8 %593 + 0
+  %595: ptr = ptrAdd %592, %594
+  %596: int = load8 %595 + 0
+  %597: ptr = symbol g_global_42
+  store8 %597 + 0, %596
+  %598: ptr = null
+  %599: ptr = symbol g_global_42
+  %600: int = load8 %599 + 0
+  call qf_p(%598, %600)
+  %601: ptr = symbol qf_ident_closure
+  %602: ptr = symbol g_ident
+  store8 %602 + 0, %601
+  %603: ptr = symbol g_ident
+  %604: ptr = load8 %603 + 0
+  %605: val = toVal %604
+  %606: ptr = symbol g_ident_2
+  store8 %606 + 0, %605
+  %607: ptr = symbol quest_type_fun_c16ce15c6abe2d3a
+  %608: ptr = symbol g_ident_2
+  %609: val = load8 %608 + 0
+  %610: ptr = call qv_dynamic_new(%607, %609)
+  %611: ptr = symbol g_dIdent
+  store8 %611 + 0, %610
+  %612: ptr = symbol quest_type_fun_c16ce15c6abe2d3a
+  %613: ptr = symbol g_dIdent
+  %614: ptr = load8 %613 + 0
+  %615: val = call qv_dynamic_be(%612, %614)
+  %616: ptr = symbol g_global_43
   store8 %616 + 0, %615
-  %617: int = const 4
-  %618: ptr = symbol g_global_46
-  store8 %618 + 0, %617
-  %619: ptr = symbol quest_type_Int
-  %620: ptr = symbol g_global_45
-  %621: ptr = load8 %620 + 0
+  %617: ptr = symbol g_global_43
+  %618: val = load8 %617 + 0
+  %619: ptr = fromVal %618
+  %620: ptr = symbol g_global_44
+  store8 %620 + 0, %619
+  %621: ptr = symbol g_global_44
   %622: ptr = load8 %621 + 0
-  %623: ptr = load8 %621 + 8
-  %624: ptr = symbol g_global_46
-  %625: int = load8 %624 + 0
-  %626: int = callIndirect %622, %623, %619, %625
-  %627: ptr = symbol g_global_47
-  store8 %627 + 0, %626
-  %628: ptr = symbol g_global_47
-  %629: int = load8 %628 + 0
-  %630: ptr = symbol g_global_48
-  store8 %630 + 0, %629
-  %631: ptr = symbol g_global_48
-  %632: int = load8 %631 + 0
-  %633: ptr = symbol g_global_49
-  store8 %633 + 0, %632
-  %634: ptr = null
-  %635: ptr = symbol g_global_49
-  %636: int = load8 %635 + 0
-  call qf_p(%634, %636)
+  %623: ptr = symbol g_global_45
+  store8 %623 + 0, %622
+  %624: int = const 4
+  %625: val = toVal %624
+  %626: ptr = symbol g_global_46
+  store8 %626 + 0, %625
+  %627: ptr = symbol quest_type_Int
+  %628: ptr = symbol g_global_45
+  %629: ptr = load8 %628 + 0
+  %630: ptr = load8 %629 + 0
+  %631: ptr = load8 %629 + 8
+  %632: ptr = symbol g_global_46
+  %633: val = load8 %632 + 0
+  %634: val = callIndirect %630, %631, %627, %633
+  %635: ptr = symbol g_global_47
+  store8 %635 + 0, %634
+  %636: ptr = symbol g_global_47
+  %637: val = load8 %636 + 0
+  %638: int = fromVal %637
+  %639: ptr = symbol g_global_48
+  store8 %639 + 0, %638
+  %640: ptr = symbol g_global_48
+  %641: int = load8 %640 + 0
+  %642: ptr = symbol g_global_49
+  store8 %642 + 0, %641
+  %643: ptr = null
+  %644: ptr = symbol g_global_49
+  %645: int = load8 %644 + 0
+  call qf_p(%643, %645)
   jump b29()
 b37():
-  %565: int = load8 %556 + 0
-  %566: ptr = symbol quest_type_fun_e5b0470d50adc0e2
-  %567: int = call quest_convert(%565, %561, %566)
-  %568: ptr = intToPtr %567
-  jump b39(%568)
+  %571: val = load8 %562 + 0
+  %572: ptr = symbol quest_type_fun_e5b0470d50adc0e2
+  %573: val = call quest_convert(%571, %567, %572)
+  %574: ptr = fromVal %573
+  jump b39(%574)
 b38():
-  %569: ptr = load8 %556 + 0
-  jump b39(%569)
-b39(%564: ptr):
-  jump b36(%564)
+  %575: ptr = load8 %562 + 0
+  jump b39(%575)
+b39(%570: ptr):
+  jump b36(%570)
 }
 
 data qs_1 text "\n"

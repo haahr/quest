@@ -38,6 +38,7 @@ export
     let tInt = ssa.typeInt
     let tPtr = ssa.typePtr
     let tReal = ssa.typeReal
+    let tVal = ssa.typeVal
     let noValues = array of :Int end
     let noValuesTypes = array of :ssa.Type end
 
@@ -57,11 +58,12 @@ export
     let parts(t: Type): Array(Part) =
         case layout.representationKind(t)
             when repVoid then array of :Part end
-            when repInt, repWord, repQVal then array of wordPart(tInt) end
+            when repInt, repWord then array of wordPart(tInt) end
+            when repQVal then array of wordPart(tVal) end
             when repBool, repChar then array of part(tInt 1 false) end
             when repReal then array of wordPart(tReal) end
             when repRecord then array of wordPart(tPtr) wordPart(tPtr) end
-            when repVariant then array of wordPart(tInt) wordPart(tInt) end
+            when repVariant then array of wordPart(tInt) wordPart(tVal) end
             when repPointer then array of wordPart(tPtr) end
         end
 
@@ -228,6 +230,14 @@ export
     let runtime(fn: Fn name: String args: Array(Int)): Array(Int) =
         begin
             let r = runtimeFunctions.function(name)
+            (* Each argument of the type the table says, a QVal word a val *)
+            let types = runtimeFunctions.paramTypes(r)
+            for k = 0 upto {extent args - 1} do
+                if {k < extent types} andif not(eq(ssa.typeName(ssa.typeOf(fn.f args[k])) ssa.typeName(types[k]))) then
+                    raise unsupported with name <> "'s argument " <> conv.int(k) <> " is "
+                        <> ssa.typeName(ssa.typeOf(fn.f args[k])) <> ", not " <> ssa.typeName(types[k]) end
+                end
+            end
             ssa.call(fn.f fn.cur name args runtimeFunctions.signature(r) runtimeFunctions.resultTypes(r))
         end
     let call1(fn: Fn name: String args: Array(Int)): Int = runtime(fn name args)[0]
@@ -263,6 +273,8 @@ export
     let null(fn: Fn): Int = emit(fn ssa.opNull noValues tPtr)
     let toPtr(fn: Fn v: Int): Int = emit(fn ssa.opIntToPtr array of v end tPtr)
     let toInt(fn: Fn v: Int): Int = emit(fn ssa.opPtrToInt array of v end tInt)
+    let toVal(fn: Fn v: Int): Int = emit(fn ssa.opToVal array of v end tVal)
+    let fromVal(fn: Fn v: Int t: ssa.Type): Int = emit(fn ssa.opFromVal array of v end t)
 
     (* A pointer n bytes past p *)
     let offsetPtr(fn: Fn p: Int n: Int): Int = if n is 0 then p else ssa.ptrAdd(fn.f fn.cur p constant(fn n)) end
@@ -487,7 +499,7 @@ export
             let var r = noValues
             for i = 0 upto {extent xs - 1} do
                 let vs = atom(fn xs[i])
-                r := concat(r if extent vs is 0 then array of constant(fn 0) end else vs end)
+                r := concat(r if extent vs is 0 then array of toVal(fn constant(fn 0)) end else vs end)
             end
             r
         end
@@ -499,32 +511,32 @@ export
     let toWord(fn: Fn vs: Array(Int) t: Type): Int =
         case layout.wordForm(shapes.shape(t))
             when wordItself then vs[0]
-            when wordOk then constant(fn 0)
-            when wordRecordBox then toInt(fn call1(fn "quest_record_box" vs))
-            when wordVariantBox then toInt(fn call1(fn "quest_variant_box" vs))
-            when wordBits then vs[0]
-            when wordInteger then vs[0]
-            when wordReal then emit(fn ssa.opRealBits array of vs[0] end tInt)
-            when wordPointer then toInt(fn vs[0])
+            when wordOk then toVal(fn constant(fn 0))
+            when wordRecordBox then toVal(fn call1(fn "quest_record_box" vs))
+            when wordVariantBox then toVal(fn call1(fn "quest_variant_box" vs))
+            when wordBits then toVal(fn vs[0])
+            when wordInteger then toVal(fn vs[0])
+            when wordReal then toVal(fn emit(fn ssa.opRealBits array of vs[0] end tInt))
+            when wordPointer then toVal(fn vs[0])
         end
 
     let fromWord(fn: Fn w: Int t: Type): Array(Int) =
         case layout.wordForm(shapes.shape(t))
             when wordItself then array of w end
             when wordOk then noValues
-            when wordRecordBox then readValue(fn toPtr(fn w) t)
-            when wordVariantBox then readValue(fn toPtr(fn w) t)
-            when wordBits then array of w end
+            when wordRecordBox then readValue(fn fromVal(fn w tPtr) t)
+            when wordVariantBox then readValue(fn fromVal(fn w tPtr) t)
+            when wordBits then array of fromVal(fn w tInt) end
             when wordInteger then
                 let ps = parts(t)
                 (* A Bool or a Char from a word's low byte, as C converts *)
                 if ps[0].width is 1 then
-                    array of emit(fn extension(ps[0]) array of w end tInt) end
+                    array of emit(fn extension(ps[0]) array of fromVal(fn w tInt) end tInt) end
                 else
-                    array of w end
+                    array of fromVal(fn w tInt) end
                 end
-            when wordReal then array of emit(fn ssa.opBitsReal array of w end tReal) end
-            when wordPointer then array of toPtr(fn w) end
+            when wordReal then array of emit(fn ssa.opBitsReal array of fromVal(fn w tInt) end tReal) end
+            when wordPointer then array of fromVal(fn w tPtr) end
         end
 
     (* The names of IR operations and statements, for what the builder does
@@ -619,9 +631,9 @@ export
     (* A slot's contents as a QVal word, and back (shapeSlotToQval and
      * shapeQvalToSlot): a box is its pointer's word *)
     let slotToWord(fn: Fn vs: Array(Int) t: Type): Int =
-        if layout.isBoxedInSlots(shapes.shape(t)) then toInt(fn vs[0]) else toWord(fn vs t) end
+        if layout.isBoxedInSlots(shapes.shape(t)) then toVal(fn vs[0]) else toWord(fn vs t) end
     let slotFromWord(fn: Fn w: Int t: Type): Array(Int) =
-        if layout.isBoxedInSlots(shapes.shape(t)) then array of toPtr(fn w) end else fromWord(fn w t) end
+        if layout.isBoxedInSlots(shapes.shape(t)) then array of fromVal(fn w tPtr) end else fromWord(fn w t) end
 
     (* A record or variant into a new box, and out of its box *)
     let boxed(fn: Fn vs: Array(Int) t: Type): Array(Int) =

@@ -47,7 +47,7 @@ export
                     vector.append(:ssa.Type types vals.tPtr)
                 else
                     let ps = vals.parts(p.type)
-                    if extent ps is 0 then vector.append(:ssa.Type types vals.tInt) end
+                    if extent ps is 0 then vector.append(:ssa.Type types vals.tVal) end
                     if extent ps is 2 then vector.append(:Int pairs vector.length(:ssa.Type types)) end
                     if {extent ps is 1}
                         andif {ps[0].width is 1} then vector.append(:Int narrow vector.length(:ssa.Type types)) end
@@ -191,11 +191,11 @@ export
              * words *)
             thunk.cur := uniformB
             let words = array of({nq + np} 0)
-            for k = 0 upto {nq - 1} do words[k] := vals.toInt(thunk descs[k]) end
+            for k = 0 upto {nq - 1} do words[k] := vals.toVal(thunk descs[k]) end
             for j = 0 upto {np - 1} do
                 let p = vector.get(:model.Param sig.params j)
                 let vs = vector.get(:Array(Int) paramValues j)
-                words[nq + j] := if byLocation(p) then vals.toInt(thunk vs[0])
+                words[nq + j] := if byLocation(p) then vals.toVal(thunk vs[0])
                     elsif isOk(p.type) then vs[0]
                     else convertWord(thunk vals.toWord(thunk vs p.type) paramType(thunk to j) paramType(thunk from j))
                     end
@@ -203,7 +203,7 @@ export
             let argsArray = descriptors.slotArray(thunk words)
             let invoker = vals.loadWord(thunk from runtimeLayout.offset("QFunTypeDescriptor" "invoke") vals.tPtr)
             let invoked = vals.callQuest(thunk "" array of invoker orig argsArray end vals.noValues vals.noValues
-                array of vals.part(vals.tInt 8 false) end)[0]
+                array of vals.part(vals.tVal 8 false) end)[0]
             returnValues(thunk if isOk(ret) then vals.noValues
                 else vals.fromWord(thunk convertWord(thunk invoked vals.loadWord(thunk from resultAt vals.tPtr) vals.loadWord(thunk to resultAt vals.tPtr))
                     ret)
@@ -227,7 +227,7 @@ export
 
             (* The invoker: a call of a closure of this type with words *)
             let invoke = newFunction(u "quest_invoke_"
-                <> tag false pointers(2) array of vals.part(vals.tInt 8 false) end)
+                <> tag false pointers(2) array of vals.part(vals.tVal 8 false) end)
             let vf = invoke.f
             let c = param(vf 0)
             let argv = param(vf 1)
@@ -235,14 +235,17 @@ export
             for k = 0 upto {nq - 1} do invokeArgs := vals.concat(invokeArgs array of vals.loadWord(invoke argv 8 * k vals.tPtr) end) end
             for j = 0 upto {np - 1} do
                 let p = vector.get(:model.Param sig.params j)
-                let w = vals.loadWord(invoke argv 8 * {nq + j} if byLocation(p) then vals.tPtr else vals.tInt end)
+                let w = vals.loadWord(invoke argv 8 * {nq + j} if byLocation(p) then vals.tPtr else vals.tVal end)
                 invokeArgs := vals.concat(invokeArgs if byLocation(p) orif isOk(p.type) then array of w end
                     else vals.fromWord(invoke w p.type) end)
             end
             let invokeResults = calls.resultsOf(invoke retParts vals.callQuest(invoke ""
                 vals.concat(array of closureFn(invoke c) end invokeArgs) shifted(s.pairs 1) shifted(s.narrow
                     1) retParts))
-            returnValues(invoke array of if isOk(ret) then vals.constant(invoke 0) else vals.toWord(invoke invokeResults ret) end end)
+            returnValues(invoke array of
+                if isOk(ret) then vals.toVal(invoke vals.constant(invoke 0))
+                else vals.toWord(invoke invokeResults ret) end
+            end)
             array of finished(thunk) finished(adapt) finished(invoke) end
         end
 end

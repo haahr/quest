@@ -96,55 +96,63 @@ b0(%0: ptr, %1: int):
   tail call qf_printInt(%2, %1)
 }
 
-function qf_qa_adapt(%0: ptr, %1: int, %2: int): int result narrow {
-b0(%0: ptr, %1: int, %2: int):
+function qf_qa_adapt(%0: ptr, %1: val, %2: val): int result narrow {
+b0(%0: ptr, %1: val, %2: val):
+  %3: int = fromVal %1
+  %4: int = fromVal %2
+  %5: ptr = load8 %0 + 0
+  %6: ptr = load8 %0 + 8
+  tail %7: int = callIndirect %5, %6, %3, %4 result narrow
+}
+
+function qf_qa_adapt_2(%0: ptr, %1: val): int {
+b0(%0: ptr, %1: val):
+  %2: int = fromVal %1
   %3: ptr = load8 %0 + 0
   %4: ptr = load8 %0 + 8
-  tail %5: int = callIndirect %3, %4, %1, %2 result narrow
+  tail %5: int = callIndirect %3, %4, %2
 }
 
-function qf_qa_adapt_2(%0: ptr, %1: int): int {
-b0(%0: ptr, %1: int):
-  %2: ptr = load8 %0 + 0
-  %3: ptr = load8 %0 + 8
-  tail %4: int = callIndirect %2, %3, %1
-}
-
-function qf_qa_adapt_3(%0: ptr, %1: int) {
-b0(%0: ptr, %1: int):
-  %2: ptr = load8 %0 + 0
-  %3: ptr = load8 %0 + 8
-  tail callIndirect %2, %3, %1
-}
-
-function qf_qa_adapt_4(%0: ptr, %1: int) {
-b0(%0: ptr, %1: int):
-  %2: ptr = intToPtr %1
+function qf_qa_adapt_3(%0: ptr, %1: val) {
+b0(%0: ptr, %1: val):
+  %2: int = fromVal %1
   %3: ptr = load8 %0 + 0
   %4: ptr = load8 %0 + 8
   tail callIndirect %3, %4, %2
 }
 
-function qf_qa_adapt_5(%0: ptr, %1: int, %2: int) {
-b0(%0: ptr, %1: int, %2: int):
-  %3: ptr = intToPtr %2
-  %4: ptr = load8 %0 + 0
-  %5: ptr = load8 %0 + 8
-  tail callIndirect %4, %5, %1, %3
-}
-
-function qf_qa_adapt_6(%0: ptr, %1: int, %2: int): int result narrow {
-b0(%0: ptr, %1: int, %2: int):
+function qf_qa_adapt_4(%0: ptr, %1: val) {
+b0(%0: ptr, %1: val):
+  %2: ptr = fromVal %1
   %3: ptr = load8 %0 + 0
   %4: ptr = load8 %0 + 8
-  tail %5: int = callIndirect %3, %4, %1, %2 result narrow
+  tail callIndirect %3, %4, %2
 }
 
-function qf_qa_adapt_7(%0: ptr, %1: int): int {
-b0(%0: ptr, %1: int):
-  %2: ptr = load8 %0 + 0
-  %3: ptr = load8 %0 + 8
-  tail %4: int = callIndirect %2, %3, %1
+function qf_qa_adapt_5(%0: ptr, %1: val, %2: val) {
+b0(%0: ptr, %1: val, %2: val):
+  %3: int = fromVal %1
+  %4: ptr = fromVal %2
+  %5: ptr = load8 %0 + 0
+  %6: ptr = load8 %0 + 8
+  tail callIndirect %5, %6, %3, %4
+}
+
+function qf_qa_adapt_6(%0: ptr, %1: val, %2: val): int result narrow {
+b0(%0: ptr, %1: val, %2: val):
+  %3: int = fromVal %1
+  %4: int = fromVal %2
+  %5: ptr = load8 %0 + 0
+  %6: ptr = load8 %0 + 8
+  tail %7: int = callIndirect %5, %6, %3, %4 result narrow
+}
+
+function qf_qa_adapt_7(%0: ptr, %1: val): int {
+b0(%0: ptr, %1: val):
+  %2: int = fromVal %1
+  %3: ptr = load8 %0 + 0
+  %4: ptr = load8 %0 + 8
+  tail %5: int = callIndirect %3, %4, %2
 }
 
 function qr_register_dicts() {
@@ -215,13 +223,13 @@ b0(%0: int, %1: ptr):
   %36: ptr = load8 %35 + 0
   %37: ptr = symbol g_intHash_2
   %38: ptr = load8 %37 + 0
-  %39: int = call qv_collections__hashmap_new(%33, %34, %36, %38)
+  %39: val = call qv_collections__hashmap_new(%33, %34, %36, %38)
   %40: ptr = symbol g_m
   store8 %40 + 0, %39
   %41: ptr = symbol quest_type_Int
   %42: ptr = symbol quest_type_String
   %43: ptr = symbol g_m
-  %44: int = load8 %43 + 0
+  %44: val = load8 %43 + 0
   %45: int = call qv_collections__hashmap_empty(%41, %42, %44) result narrow
   %46: int = zext8 %45
   %47: ptr = symbol g_global
@@ -233,7 +241,7 @@ b0(%0: int, %1: ptr):
   %51: ptr = symbol quest_type_Int
   %52: ptr = symbol quest_type_String
   %53: ptr = symbol g_m
-  %54: int = load8 %53 + 0
+  %54: val = load8 %53 + 0
   %55: int = call qv_collections__hashmap_size(%51, %52, %54)
   %56: ptr = symbol g_global_2
   store8 %56 + 0, %55
@@ -245,853 +253,879 @@ b0(%0: int, %1: ptr):
   %61: int = const 0
   call qf_printNewline(%60, %61)
   %62: int = const 1
-  %63: ptr = symbol g_global_3
-  store8 %63 + 0, %62
-  %64: ptr = symbol qs_11
-  %65: int = const 3
-  %66: ptr = call quest_string_new(%64, %65)
-  %67: int = ptrToInt %66
-  %68: ptr = symbol g_global_4
-  store8 %68 + 0, %67
-  %69: ptr = symbol quest_type_Int
-  %70: ptr = symbol quest_type_String
-  %71: ptr = symbol g_m
-  %72: int = load8 %71 + 0
-  %73: ptr = symbol g_global_3
-  %74: int = load8 %73 + 0
-  %75: ptr = symbol g_global_4
-  %76: int = load8 %75 + 0
-  %77: int = call qv_collections__hashmap_insert(%69, %70, %72, %74, %76) result narrow
-  %78: int = zext8 %77
-  %79: ptr = symbol g_global_5
-  store1 %79 + 0, %78
-  %80: ptr = null
-  %81: ptr = symbol g_global_5
-  %82: int = load1 %81 + 0
-  call qf_printBool(%80, %82) narrow [1]
-  %83: int = const 2
-  %84: ptr = symbol g_global_6
-  store8 %84 + 0, %83
-  %85: ptr = symbol qs_12
-  %86: int = const 3
-  %87: ptr = call quest_string_new(%85, %86)
-  %88: int = ptrToInt %87
-  %89: ptr = symbol g_global_7
-  store8 %89 + 0, %88
-  %90: ptr = symbol quest_type_Int
-  %91: ptr = symbol quest_type_String
-  %92: ptr = symbol g_m
-  %93: int = load8 %92 + 0
-  %94: ptr = symbol g_global_6
-  %95: int = load8 %94 + 0
-  %96: ptr = symbol g_global_7
-  %97: int = load8 %96 + 0
-  %98: int = call qv_collections__hashmap_insert(%90, %91, %93, %95, %97) result narrow
-  %99: int = zext8 %98
-  %100: ptr = symbol g_global_8
-  store1 %100 + 0, %99
-  %101: ptr = null
+  %63: val = toVal %62
+  %64: ptr = symbol g_global_3
+  store8 %64 + 0, %63
+  %65: ptr = symbol qs_11
+  %66: int = const 3
+  %67: ptr = call quest_string_new(%65, %66)
+  %68: val = toVal %67
+  %69: ptr = symbol g_global_4
+  store8 %69 + 0, %68
+  %70: ptr = symbol quest_type_Int
+  %71: ptr = symbol quest_type_String
+  %72: ptr = symbol g_m
+  %73: val = load8 %72 + 0
+  %74: ptr = symbol g_global_3
+  %75: val = load8 %74 + 0
+  %76: ptr = symbol g_global_4
+  %77: val = load8 %76 + 0
+  %78: int = call qv_collections__hashmap_insert(%70, %71, %73, %75, %77) result narrow
+  %79: int = zext8 %78
+  %80: ptr = symbol g_global_5
+  store1 %80 + 0, %79
+  %81: ptr = null
+  %82: ptr = symbol g_global_5
+  %83: int = load1 %82 + 0
+  call qf_printBool(%81, %83) narrow [1]
+  %84: int = const 2
+  %85: val = toVal %84
+  %86: ptr = symbol g_global_6
+  store8 %86 + 0, %85
+  %87: ptr = symbol qs_12
+  %88: int = const 3
+  %89: ptr = call quest_string_new(%87, %88)
+  %90: val = toVal %89
+  %91: ptr = symbol g_global_7
+  store8 %91 + 0, %90
+  %92: ptr = symbol quest_type_Int
+  %93: ptr = symbol quest_type_String
+  %94: ptr = symbol g_m
+  %95: val = load8 %94 + 0
+  %96: ptr = symbol g_global_6
+  %97: val = load8 %96 + 0
+  %98: ptr = symbol g_global_7
+  %99: val = load8 %98 + 0
+  %100: int = call qv_collections__hashmap_insert(%92, %93, %95, %97, %99) result narrow
+  %101: int = zext8 %100
   %102: ptr = symbol g_global_8
-  %103: int = load1 %102 + 0
-  call qf_printBool(%101, %103) narrow [1]
-  %104: int = const 3
-  %105: ptr = symbol g_global_9
-  store8 %105 + 0, %104
-  %106: ptr = symbol qs_13
-  %107: int = const 5
-  %108: ptr = call quest_string_new(%106, %107)
-  %109: int = ptrToInt %108
-  %110: ptr = symbol g_global_10
-  store8 %110 + 0, %109
-  %111: ptr = symbol quest_type_Int
-  %112: ptr = symbol quest_type_String
-  %113: ptr = symbol g_m
-  %114: int = load8 %113 + 0
-  %115: ptr = symbol g_global_9
-  %116: int = load8 %115 + 0
-  %117: ptr = symbol g_global_10
-  %118: int = load8 %117 + 0
-  %119: int = call qv_collections__hashmap_insert(%111, %112, %114, %116, %118) result narrow
-  %120: int = zext8 %119
-  %121: ptr = symbol g_global_11
-  store1 %121 + 0, %120
-  %122: ptr = null
-  %123: ptr = symbol g_global_11
-  %124: int = load1 %123 + 0
-  call qf_printBool(%122, %124) narrow [1]
-  %125: int = const 1
-  %126: ptr = symbol g_global_12
-  store8 %126 + 0, %125
-  %127: ptr = symbol qs_14
-  %128: int = const 3
-  %129: ptr = call quest_string_new(%127, %128)
-  %130: int = ptrToInt %129
-  %131: ptr = symbol g_global_13
-  store8 %131 + 0, %130
-  %132: ptr = symbol quest_type_Int
-  %133: ptr = symbol quest_type_String
-  %134: ptr = symbol g_m
-  %135: int = load8 %134 + 0
-  %136: ptr = symbol g_global_12
-  %137: int = load8 %136 + 0
-  %138: ptr = symbol g_global_13
-  %139: int = load8 %138 + 0
-  %140: int = call qv_collections__hashmap_insert(%132, %133, %135, %137, %139) result narrow
-  %141: int = zext8 %140
-  %142: ptr = symbol g_global_14
-  store1 %142 + 0, %141
-  %143: ptr = null
-  %144: ptr = symbol g_global_14
-  %145: int = load1 %144 + 0
-  call qf_printBool(%143, %145) narrow [1]
-  %146: ptr = symbol quest_type_Int
-  %147: ptr = symbol quest_type_String
-  %148: ptr = symbol g_m
-  %149: int = load8 %148 + 0
-  %150: int = call qv_collections__hashmap_size(%146, %147, %149)
-  %151: ptr = symbol g_global_15
-  store8 %151 + 0, %150
-  %152: ptr = null
-  %153: ptr = symbol g_global_15
-  %154: int = load8 %153 + 0
-  call qf_printInt(%152, %154)
-  %155: ptr = symbol quest_type_Int
-  %156: ptr = symbol quest_type_String
-  %157: ptr = symbol g_m
+  store1 %102 + 0, %101
+  %103: ptr = null
+  %104: ptr = symbol g_global_8
+  %105: int = load1 %104 + 0
+  call qf_printBool(%103, %105) narrow [1]
+  %106: int = const 3
+  %107: val = toVal %106
+  %108: ptr = symbol g_global_9
+  store8 %108 + 0, %107
+  %109: ptr = symbol qs_13
+  %110: int = const 5
+  %111: ptr = call quest_string_new(%109, %110)
+  %112: val = toVal %111
+  %113: ptr = symbol g_global_10
+  store8 %113 + 0, %112
+  %114: ptr = symbol quest_type_Int
+  %115: ptr = symbol quest_type_String
+  %116: ptr = symbol g_m
+  %117: val = load8 %116 + 0
+  %118: ptr = symbol g_global_9
+  %119: val = load8 %118 + 0
+  %120: ptr = symbol g_global_10
+  %121: val = load8 %120 + 0
+  %122: int = call qv_collections__hashmap_insert(%114, %115, %117, %119, %121) result narrow
+  %123: int = zext8 %122
+  %124: ptr = symbol g_global_11
+  store1 %124 + 0, %123
+  %125: ptr = null
+  %126: ptr = symbol g_global_11
+  %127: int = load1 %126 + 0
+  call qf_printBool(%125, %127) narrow [1]
+  %128: int = const 1
+  %129: val = toVal %128
+  %130: ptr = symbol g_global_12
+  store8 %130 + 0, %129
+  %131: ptr = symbol qs_14
+  %132: int = const 3
+  %133: ptr = call quest_string_new(%131, %132)
+  %134: val = toVal %133
+  %135: ptr = symbol g_global_13
+  store8 %135 + 0, %134
+  %136: ptr = symbol quest_type_Int
+  %137: ptr = symbol quest_type_String
+  %138: ptr = symbol g_m
+  %139: val = load8 %138 + 0
+  %140: ptr = symbol g_global_12
+  %141: val = load8 %140 + 0
+  %142: ptr = symbol g_global_13
+  %143: val = load8 %142 + 0
+  %144: int = call qv_collections__hashmap_insert(%136, %137, %139, %141, %143) result narrow
+  %145: int = zext8 %144
+  %146: ptr = symbol g_global_14
+  store1 %146 + 0, %145
+  %147: ptr = null
+  %148: ptr = symbol g_global_14
+  %149: int = load1 %148 + 0
+  call qf_printBool(%147, %149) narrow [1]
+  %150: ptr = symbol quest_type_Int
+  %151: ptr = symbol quest_type_String
+  %152: ptr = symbol g_m
+  %153: val = load8 %152 + 0
+  %154: int = call qv_collections__hashmap_size(%150, %151, %153)
+  %155: ptr = symbol g_global_15
+  store8 %155 + 0, %154
+  %156: ptr = null
+  %157: ptr = symbol g_global_15
   %158: int = load8 %157 + 0
-  %159: int = call qv_collections__hashmap_empty(%155, %156, %158) result narrow
-  %160: int = zext8 %159
-  %161: ptr = symbol g_global_16
-  store1 %161 + 0, %160
-  %162: ptr = null
-  %163: ptr = symbol g_global_16
-  %164: int = load1 %163 + 0
-  call qf_printBool(%162, %164) narrow [1]
-  %165: ptr = null
-  %166: int = const 0
-  call qf_printNewline(%165, %166)
-  %167: int = const 1
-  %168: ptr = symbol g_global_17
-  store8 %168 + 0, %167
-  %169: ptr = symbol quest_type_Int
-  %170: ptr = symbol quest_type_String
-  %171: ptr = symbol g_m
-  %172: int = load8 %171 + 0
+  call qf_printInt(%156, %158)
+  %159: ptr = symbol quest_type_Int
+  %160: ptr = symbol quest_type_String
+  %161: ptr = symbol g_m
+  %162: val = load8 %161 + 0
+  %163: int = call qv_collections__hashmap_empty(%159, %160, %162) result narrow
+  %164: int = zext8 %163
+  %165: ptr = symbol g_global_16
+  store1 %165 + 0, %164
+  %166: ptr = null
+  %167: ptr = symbol g_global_16
+  %168: int = load1 %167 + 0
+  call qf_printBool(%166, %168) narrow [1]
+  %169: ptr = null
+  %170: int = const 0
+  call qf_printNewline(%169, %170)
+  %171: int = const 1
+  %172: val = toVal %171
   %173: ptr = symbol g_global_17
-  %174: int = load8 %173 + 0
-  %175: int = call qv_collections__hashmap_contains(%169, %170, %172, %174) result narrow
-  %176: int = zext8 %175
-  %177: ptr = symbol g_global_18
-  store1 %177 + 0, %176
-  %178: ptr = null
-  %179: ptr = symbol g_global_18
-  %180: int = load1 %179 + 0
-  call qf_printBool(%178, %180) narrow [1]
-  %181: int = const 2
-  %182: ptr = symbol g_global_19
-  store8 %182 + 0, %181
-  %183: ptr = symbol quest_type_Int
-  %184: ptr = symbol quest_type_String
-  %185: ptr = symbol g_m
-  %186: int = load8 %185 + 0
-  %187: ptr = symbol g_global_19
-  %188: int = load8 %187 + 0
-  %189: int = call qv_collections__hashmap_contains(%183, %184, %186, %188) result narrow
-  %190: int = zext8 %189
-  %191: ptr = symbol g_global_20
-  store1 %191 + 0, %190
-  %192: ptr = null
-  %193: ptr = symbol g_global_20
-  %194: int = load1 %193 + 0
-  call qf_printBool(%192, %194) narrow [1]
-  %195: int = const 4
-  %196: ptr = symbol g_global_21
-  store8 %196 + 0, %195
-  %197: ptr = symbol quest_type_Int
-  %198: ptr = symbol quest_type_String
-  %199: ptr = symbol g_m
-  %200: int = load8 %199 + 0
-  %201: ptr = symbol g_global_21
-  %202: int = load8 %201 + 0
-  %203: int = call qv_collections__hashmap_contains(%197, %198, %200, %202) result narrow
-  %204: int = zext8 %203
-  %205: ptr = symbol g_global_22
-  store1 %205 + 0, %204
-  %206: ptr = null
-  %207: ptr = symbol g_global_22
-  %208: int = load1 %207 + 0
-  call qf_printBool(%206, %208) narrow [1]
-  %209: int = const 1
-  %210: ptr = symbol g_global_23
-  store8 %210 + 0, %209
-  %211: ptr = symbol quest_type_Int
-  %212: ptr = symbol quest_type_String
-  %213: ptr = symbol g_m
-  %214: int = load8 %213 + 0
-  %215: ptr = symbol g_global_23
-  %216: int = load8 %215 + 0
-  %217: int = call qv_collections__hashmap_find(%211, %212, %214, %216)
-  %218: ptr = symbol g_global_24
+  store8 %173 + 0, %172
+  %174: ptr = symbol quest_type_Int
+  %175: ptr = symbol quest_type_String
+  %176: ptr = symbol g_m
+  %177: val = load8 %176 + 0
+  %178: ptr = symbol g_global_17
+  %179: val = load8 %178 + 0
+  %180: int = call qv_collections__hashmap_contains(%174, %175, %177, %179) result narrow
+  %181: int = zext8 %180
+  %182: ptr = symbol g_global_18
+  store1 %182 + 0, %181
+  %183: ptr = null
+  %184: ptr = symbol g_global_18
+  %185: int = load1 %184 + 0
+  call qf_printBool(%183, %185) narrow [1]
+  %186: int = const 2
+  %187: val = toVal %186
+  %188: ptr = symbol g_global_19
+  store8 %188 + 0, %187
+  %189: ptr = symbol quest_type_Int
+  %190: ptr = symbol quest_type_String
+  %191: ptr = symbol g_m
+  %192: val = load8 %191 + 0
+  %193: ptr = symbol g_global_19
+  %194: val = load8 %193 + 0
+  %195: int = call qv_collections__hashmap_contains(%189, %190, %192, %194) result narrow
+  %196: int = zext8 %195
+  %197: ptr = symbol g_global_20
+  store1 %197 + 0, %196
+  %198: ptr = null
+  %199: ptr = symbol g_global_20
+  %200: int = load1 %199 + 0
+  call qf_printBool(%198, %200) narrow [1]
+  %201: int = const 4
+  %202: val = toVal %201
+  %203: ptr = symbol g_global_21
+  store8 %203 + 0, %202
+  %204: ptr = symbol quest_type_Int
+  %205: ptr = symbol quest_type_String
+  %206: ptr = symbol g_m
+  %207: val = load8 %206 + 0
+  %208: ptr = symbol g_global_21
+  %209: val = load8 %208 + 0
+  %210: int = call qv_collections__hashmap_contains(%204, %205, %207, %209) result narrow
+  %211: int = zext8 %210
+  %212: ptr = symbol g_global_22
+  store1 %212 + 0, %211
+  %213: ptr = null
+  %214: ptr = symbol g_global_22
+  %215: int = load1 %214 + 0
+  call qf_printBool(%213, %215) narrow [1]
+  %216: int = const 1
+  %217: val = toVal %216
+  %218: ptr = symbol g_global_23
   store8 %218 + 0, %217
-  %219: ptr = symbol g_global_24
-  %220: int = load8 %219 + 0
-  %221: ptr = intToPtr %220
-  %222: ptr = symbol g_global_25
-  store8 %222 + 0, %221
-  %223: ptr = symbol g_global_25
-  %224: ptr = load8 %223 + 0
-  %225: ptr = symbol g_global_26
-  store8 %225 + 0, %224
-  %226: ptr = null
-  %227: ptr = symbol g_global_26
-  %228: ptr = load8 %227 + 0
-  call qf_printString(%226, %228)
-  %229: int = const 2
-  %230: ptr = symbol g_global_27
+  %219: ptr = symbol quest_type_Int
+  %220: ptr = symbol quest_type_String
+  %221: ptr = symbol g_m
+  %222: val = load8 %221 + 0
+  %223: ptr = symbol g_global_23
+  %224: val = load8 %223 + 0
+  %225: val = call qv_collections__hashmap_find(%219, %220, %222, %224)
+  %226: ptr = symbol g_global_24
+  store8 %226 + 0, %225
+  %227: ptr = symbol g_global_24
+  %228: val = load8 %227 + 0
+  %229: ptr = fromVal %228
+  %230: ptr = symbol g_global_25
   store8 %230 + 0, %229
-  %231: ptr = symbol quest_type_Int
-  %232: ptr = symbol quest_type_String
-  %233: ptr = symbol g_m
-  %234: int = load8 %233 + 0
-  %235: ptr = symbol g_global_27
-  %236: int = load8 %235 + 0
-  %237: int = call qv_collections__hashmap_find(%231, %232, %234, %236)
-  %238: ptr = symbol g_global_28
-  store8 %238 + 0, %237
-  %239: ptr = symbol g_global_28
-  %240: int = load8 %239 + 0
-  %241: ptr = intToPtr %240
-  %242: ptr = symbol g_global_29
-  store8 %242 + 0, %241
-  %243: ptr = symbol g_global_29
-  %244: ptr = load8 %243 + 0
-  %245: ptr = symbol g_global_30
-  store8 %245 + 0, %244
-  %246: ptr = null
-  %247: ptr = symbol g_global_30
-  %248: ptr = load8 %247 + 0
-  call qf_printString(%246, %248)
-  %249: int = const 3
-  %250: ptr = symbol g_global_31
-  store8 %250 + 0, %249
-  %251: ptr = symbol quest_type_Int
-  %252: ptr = symbol quest_type_String
-  %253: ptr = symbol g_m
-  %254: int = load8 %253 + 0
-  %255: ptr = symbol g_global_31
-  %256: int = load8 %255 + 0
-  %257: int = call qv_collections__hashmap_get(%251, %252, %254, %256)
-  %258: ptr = symbol g_g1
-  store8 %258 + 0, %257
-  %259: ptr = symbol quest_type_String
-  %260: ptr = symbol g_g1
-  %261: int = load8 %260 + 0
-  %262: int = call qv_util__maybe_isSome(%259, %261) result narrow
-  %263: int = zext8 %262
-  %264: ptr = symbol g_global_32
-  store1 %264 + 0, %263
-  %265: ptr = null
-  %266: ptr = symbol g_global_32
-  %267: int = load1 %266 + 0
-  call qf_printBool(%265, %267) narrow [1]
-  %268: ptr = symbol quest_type_String
-  %269: ptr = symbol g_g1
-  %270: int = load8 %269 + 0
-  %271: int = call qv_util__maybe_unwrap(%268, %270)
-  %272: ptr = symbol g_global_33
-  store8 %272 + 0, %271
-  %273: ptr = symbol g_global_33
-  %274: int = load8 %273 + 0
-  %275: ptr = intToPtr %274
-  %276: ptr = symbol g_global_34
-  store8 %276 + 0, %275
-  %277: ptr = symbol g_global_34
-  %278: ptr = load8 %277 + 0
-  %279: ptr = symbol g_global_35
-  store8 %279 + 0, %278
-  %280: ptr = null
-  %281: ptr = symbol g_global_35
-  %282: ptr = load8 %281 + 0
-  call qf_printString(%280, %282)
-  %283: int = const 4
-  %284: ptr = symbol g_global_36
-  store8 %284 + 0, %283
-  %285: ptr = symbol quest_type_Int
-  %286: ptr = symbol quest_type_String
-  %287: ptr = symbol g_m
-  %288: int = load8 %287 + 0
-  %289: ptr = symbol g_global_36
-  %290: int = load8 %289 + 0
-  %291: int = call qv_collections__hashmap_get(%285, %286, %288, %290)
-  %292: ptr = symbol g_g4
-  store8 %292 + 0, %291
-  %293: ptr = symbol quest_type_String
-  %294: ptr = symbol g_g4
-  %295: int = load8 %294 + 0
-  %296: int = call qv_util__maybe_isNone(%293, %295) result narrow
-  %297: int = zext8 %296
-  %298: ptr = symbol g_global_37
-  store1 %298 + 0, %297
-  %299: ptr = null
-  %300: ptr = symbol g_global_37
-  %301: int = load1 %300 + 0
-  call qf_printBool(%299, %301) narrow [1]
-  %302: ptr = null
-  %303: int = const 0
-  call qf_printNewline(%302, %303)
-  %304: ptr = symbol quest_type_Int
-  %305: ptr = symbol quest_type_String
-  %306: ptr = symbol g_m
-  %307: int = load8 %306 + 0
-  %308: int = call qv_collections__hashmap_keys(%304, %305, %307)
-  %309: ptr = symbol g_ks
-  store8 %309 + 0, %308
-  %310: ptr = symbol quest_type_Int
-  %311: ptr = symbol g_ks
-  %312: int = load8 %311 + 0
-  %313: int = call qv_collections__vector_length(%310, %312)
-  %314: ptr = symbol g_global_38
-  store8 %314 + 0, %313
-  %315: ptr = null
-  %316: ptr = symbol g_global_38
-  %317: int = load8 %316 + 0
-  call qf_printInt(%315, %317)
-  %318: ptr = symbol qf_f_closure
-  %319: ptr = symbol g_f
-  store8 %319 + 0, %318
-  %320: ptr = symbol g_f
-  %321: ptr = load8 %320 + 0
-  %322: int = const 16
-  %323: ptr = call quest_alloc(%322)
-  %324: ptr = symbol qf_qa_adapt_3
-  store8 %323 + 0, %324
-  store8 %323 + 8, %321
-  %325: ptr = symbol g_f_2
-  store8 %325 + 0, %323
-  %326: ptr = symbol quest_type_Int
-  %327: ptr = symbol g_ks
+  %231: ptr = symbol g_global_25
+  %232: ptr = load8 %231 + 0
+  %233: ptr = symbol g_global_26
+  store8 %233 + 0, %232
+  %234: ptr = null
+  %235: ptr = symbol g_global_26
+  %236: ptr = load8 %235 + 0
+  call qf_printString(%234, %236)
+  %237: int = const 2
+  %238: val = toVal %237
+  %239: ptr = symbol g_global_27
+  store8 %239 + 0, %238
+  %240: ptr = symbol quest_type_Int
+  %241: ptr = symbol quest_type_String
+  %242: ptr = symbol g_m
+  %243: val = load8 %242 + 0
+  %244: ptr = symbol g_global_27
+  %245: val = load8 %244 + 0
+  %246: val = call qv_collections__hashmap_find(%240, %241, %243, %245)
+  %247: ptr = symbol g_global_28
+  store8 %247 + 0, %246
+  %248: ptr = symbol g_global_28
+  %249: val = load8 %248 + 0
+  %250: ptr = fromVal %249
+  %251: ptr = symbol g_global_29
+  store8 %251 + 0, %250
+  %252: ptr = symbol g_global_29
+  %253: ptr = load8 %252 + 0
+  %254: ptr = symbol g_global_30
+  store8 %254 + 0, %253
+  %255: ptr = null
+  %256: ptr = symbol g_global_30
+  %257: ptr = load8 %256 + 0
+  call qf_printString(%255, %257)
+  %258: int = const 3
+  %259: val = toVal %258
+  %260: ptr = symbol g_global_31
+  store8 %260 + 0, %259
+  %261: ptr = symbol quest_type_Int
+  %262: ptr = symbol quest_type_String
+  %263: ptr = symbol g_m
+  %264: val = load8 %263 + 0
+  %265: ptr = symbol g_global_31
+  %266: val = load8 %265 + 0
+  %267: val = call qv_collections__hashmap_get(%261, %262, %264, %266)
+  %268: ptr = symbol g_g1
+  store8 %268 + 0, %267
+  %269: ptr = symbol quest_type_String
+  %270: ptr = symbol g_g1
+  %271: val = load8 %270 + 0
+  %272: int = call qv_util__maybe_isSome(%269, %271) result narrow
+  %273: int = zext8 %272
+  %274: ptr = symbol g_global_32
+  store1 %274 + 0, %273
+  %275: ptr = null
+  %276: ptr = symbol g_global_32
+  %277: int = load1 %276 + 0
+  call qf_printBool(%275, %277) narrow [1]
+  %278: ptr = symbol quest_type_String
+  %279: ptr = symbol g_g1
+  %280: val = load8 %279 + 0
+  %281: val = call qv_util__maybe_unwrap(%278, %280)
+  %282: ptr = symbol g_global_33
+  store8 %282 + 0, %281
+  %283: ptr = symbol g_global_33
+  %284: val = load8 %283 + 0
+  %285: ptr = fromVal %284
+  %286: ptr = symbol g_global_34
+  store8 %286 + 0, %285
+  %287: ptr = symbol g_global_34
+  %288: ptr = load8 %287 + 0
+  %289: ptr = symbol g_global_35
+  store8 %289 + 0, %288
+  %290: ptr = null
+  %291: ptr = symbol g_global_35
+  %292: ptr = load8 %291 + 0
+  call qf_printString(%290, %292)
+  %293: int = const 4
+  %294: val = toVal %293
+  %295: ptr = symbol g_global_36
+  store8 %295 + 0, %294
+  %296: ptr = symbol quest_type_Int
+  %297: ptr = symbol quest_type_String
+  %298: ptr = symbol g_m
+  %299: val = load8 %298 + 0
+  %300: ptr = symbol g_global_36
+  %301: val = load8 %300 + 0
+  %302: val = call qv_collections__hashmap_get(%296, %297, %299, %301)
+  %303: ptr = symbol g_g4
+  store8 %303 + 0, %302
+  %304: ptr = symbol quest_type_String
+  %305: ptr = symbol g_g4
+  %306: val = load8 %305 + 0
+  %307: int = call qv_util__maybe_isNone(%304, %306) result narrow
+  %308: int = zext8 %307
+  %309: ptr = symbol g_global_37
+  store1 %309 + 0, %308
+  %310: ptr = null
+  %311: ptr = symbol g_global_37
+  %312: int = load1 %311 + 0
+  call qf_printBool(%310, %312) narrow [1]
+  %313: ptr = null
+  %314: int = const 0
+  call qf_printNewline(%313, %314)
+  %315: ptr = symbol quest_type_Int
+  %316: ptr = symbol quest_type_String
+  %317: ptr = symbol g_m
+  %318: val = load8 %317 + 0
+  %319: val = call qv_collections__hashmap_keys(%315, %316, %318)
+  %320: ptr = symbol g_ks
+  store8 %320 + 0, %319
+  %321: ptr = symbol quest_type_Int
+  %322: ptr = symbol g_ks
+  %323: val = load8 %322 + 0
+  %324: int = call qv_collections__vector_length(%321, %323)
+  %325: ptr = symbol g_global_38
+  store8 %325 + 0, %324
+  %326: ptr = null
+  %327: ptr = symbol g_global_38
   %328: int = load8 %327 + 0
-  %329: ptr = symbol g_f_2
-  %330: ptr = load8 %329 + 0
-  call qv_collections__vector_forEach(%326, %328, %330)
-  %331: ptr = null
-  %332: int = const 0
-  call qf_printNewline(%331, %332)
-  %333: ptr = symbol quest_type_Int
-  %334: ptr = symbol quest_type_String
-  %335: ptr = symbol g_m
-  %336: int = load8 %335 + 0
-  %337: int = call qv_collections__hashmap_values(%333, %334, %336)
-  %338: ptr = symbol g_vs
-  store8 %338 + 0, %337
-  %339: ptr = symbol quest_type_String
-  %340: ptr = symbol g_vs
-  %341: int = load8 %340 + 0
-  %342: int = call qv_collections__vector_length(%339, %341)
-  %343: ptr = symbol g_global_39
-  store8 %343 + 0, %342
-  %344: ptr = null
-  %345: ptr = symbol g_global_39
-  %346: int = load8 %345 + 0
-  call qf_printInt(%344, %346)
-  %347: ptr = symbol qf_f_2_closure
-  %348: ptr = symbol g_f_3
-  store8 %348 + 0, %347
-  %349: ptr = symbol g_f_3
-  %350: ptr = load8 %349 + 0
-  %351: int = const 16
-  %352: ptr = call quest_alloc(%351)
-  %353: ptr = symbol qf_qa_adapt_4
-  store8 %352 + 0, %353
-  store8 %352 + 8, %350
-  %354: ptr = symbol g_f_4
-  store8 %354 + 0, %352
-  %355: ptr = symbol quest_type_String
-  %356: ptr = symbol g_vs
+  call qf_printInt(%326, %328)
+  %329: ptr = symbol qf_f_closure
+  %330: ptr = symbol g_f
+  store8 %330 + 0, %329
+  %331: ptr = symbol g_f
+  %332: ptr = load8 %331 + 0
+  %333: int = const 16
+  %334: ptr = call quest_alloc(%333)
+  %335: ptr = symbol qf_qa_adapt_3
+  store8 %334 + 0, %335
+  store8 %334 + 8, %332
+  %336: ptr = symbol g_f_2
+  store8 %336 + 0, %334
+  %337: ptr = symbol quest_type_Int
+  %338: ptr = symbol g_ks
+  %339: val = load8 %338 + 0
+  %340: ptr = symbol g_f_2
+  %341: ptr = load8 %340 + 0
+  call qv_collections__vector_forEach(%337, %339, %341)
+  %342: ptr = null
+  %343: int = const 0
+  call qf_printNewline(%342, %343)
+  %344: ptr = symbol quest_type_Int
+  %345: ptr = symbol quest_type_String
+  %346: ptr = symbol g_m
+  %347: val = load8 %346 + 0
+  %348: val = call qv_collections__hashmap_values(%344, %345, %347)
+  %349: ptr = symbol g_vs
+  store8 %349 + 0, %348
+  %350: ptr = symbol quest_type_String
+  %351: ptr = symbol g_vs
+  %352: val = load8 %351 + 0
+  %353: int = call qv_collections__vector_length(%350, %352)
+  %354: ptr = symbol g_global_39
+  store8 %354 + 0, %353
+  %355: ptr = null
+  %356: ptr = symbol g_global_39
   %357: int = load8 %356 + 0
-  %358: ptr = symbol g_f_4
-  %359: ptr = load8 %358 + 0
-  call qv_collections__vector_forEach(%355, %357, %359)
-  %360: ptr = null
-  %361: int = const 0
-  call qf_printNewline(%360, %361)
-  %362: ptr = symbol qf_f_3_closure
-  %363: ptr = symbol g_f_5
-  store8 %363 + 0, %362
-  %364: ptr = symbol g_f_5
-  %365: ptr = load8 %364 + 0
-  %366: int = const 16
-  %367: ptr = call quest_alloc(%366)
-  %368: ptr = symbol qf_qa_adapt_5
-  store8 %367 + 0, %368
-  store8 %367 + 8, %365
-  %369: ptr = symbol g_f_6
-  store8 %369 + 0, %367
-  %370: ptr = symbol quest_type_Int
-  %371: ptr = symbol quest_type_String
-  %372: ptr = symbol g_m
-  %373: int = load8 %372 + 0
-  %374: ptr = symbol g_f_6
-  %375: ptr = load8 %374 + 0
-  call qv_collections__hashmap_forEach(%370, %371, %373, %375)
-  %376: ptr = null
-  %377: int = const 0
-  call qf_printNewline(%376, %377)
-  %378: int = const 2
-  %379: ptr = symbol g_global_40
-  store8 %379 + 0, %378
-  %380: ptr = symbol quest_type_Int
-  %381: ptr = symbol quest_type_String
-  %382: ptr = symbol g_m
-  %383: int = load8 %382 + 0
-  %384: ptr = symbol g_global_40
-  %385: int = load8 %384 + 0
-  %386: int = call qv_collections__hashmap_delete(%380, %381, %383, %385)
-  %387: ptr = symbol g_d2
-  store8 %387 + 0, %386
-  %388: ptr = symbol quest_type_String
-  %389: ptr = symbol g_d2
-  %390: int = load8 %389 + 0
-  %391: int = call qv_util__maybe_isSome(%388, %390) result narrow
-  %392: int = zext8 %391
-  %393: ptr = symbol g_global_41
-  store1 %393 + 0, %392
-  %394: ptr = null
-  %395: ptr = symbol g_global_41
-  %396: int = load1 %395 + 0
-  call qf_printBool(%394, %396) narrow [1]
-  %397: ptr = symbol quest_type_String
-  %398: ptr = symbol g_d2
-  %399: int = load8 %398 + 0
-  %400: int = call qv_util__maybe_unwrap(%397, %399)
-  %401: ptr = symbol g_global_42
-  store8 %401 + 0, %400
-  %402: ptr = symbol g_global_42
-  %403: int = load8 %402 + 0
-  %404: ptr = intToPtr %403
-  %405: ptr = symbol g_global_43
-  store8 %405 + 0, %404
-  %406: ptr = symbol g_global_43
-  %407: ptr = load8 %406 + 0
-  %408: ptr = symbol g_global_44
-  store8 %408 + 0, %407
-  %409: ptr = null
-  %410: ptr = symbol g_global_44
-  %411: ptr = load8 %410 + 0
-  call qf_printString(%409, %411)
-  %412: ptr = symbol quest_type_Int
-  %413: ptr = symbol quest_type_String
-  %414: ptr = symbol g_m
-  %415: int = load8 %414 + 0
-  %416: int = call qv_collections__hashmap_size(%412, %413, %415)
-  %417: ptr = symbol g_global_45
+  call qf_printInt(%355, %357)
+  %358: ptr = symbol qf_f_2_closure
+  %359: ptr = symbol g_f_3
+  store8 %359 + 0, %358
+  %360: ptr = symbol g_f_3
+  %361: ptr = load8 %360 + 0
+  %362: int = const 16
+  %363: ptr = call quest_alloc(%362)
+  %364: ptr = symbol qf_qa_adapt_4
+  store8 %363 + 0, %364
+  store8 %363 + 8, %361
+  %365: ptr = symbol g_f_4
+  store8 %365 + 0, %363
+  %366: ptr = symbol quest_type_String
+  %367: ptr = symbol g_vs
+  %368: val = load8 %367 + 0
+  %369: ptr = symbol g_f_4
+  %370: ptr = load8 %369 + 0
+  call qv_collections__vector_forEach(%366, %368, %370)
+  %371: ptr = null
+  %372: int = const 0
+  call qf_printNewline(%371, %372)
+  %373: ptr = symbol qf_f_3_closure
+  %374: ptr = symbol g_f_5
+  store8 %374 + 0, %373
+  %375: ptr = symbol g_f_5
+  %376: ptr = load8 %375 + 0
+  %377: int = const 16
+  %378: ptr = call quest_alloc(%377)
+  %379: ptr = symbol qf_qa_adapt_5
+  store8 %378 + 0, %379
+  store8 %378 + 8, %376
+  %380: ptr = symbol g_f_6
+  store8 %380 + 0, %378
+  %381: ptr = symbol quest_type_Int
+  %382: ptr = symbol quest_type_String
+  %383: ptr = symbol g_m
+  %384: val = load8 %383 + 0
+  %385: ptr = symbol g_f_6
+  %386: ptr = load8 %385 + 0
+  call qv_collections__hashmap_forEach(%381, %382, %384, %386)
+  %387: ptr = null
+  %388: int = const 0
+  call qf_printNewline(%387, %388)
+  %389: int = const 2
+  %390: val = toVal %389
+  %391: ptr = symbol g_global_40
+  store8 %391 + 0, %390
+  %392: ptr = symbol quest_type_Int
+  %393: ptr = symbol quest_type_String
+  %394: ptr = symbol g_m
+  %395: val = load8 %394 + 0
+  %396: ptr = symbol g_global_40
+  %397: val = load8 %396 + 0
+  %398: val = call qv_collections__hashmap_delete(%392, %393, %395, %397)
+  %399: ptr = symbol g_d2
+  store8 %399 + 0, %398
+  %400: ptr = symbol quest_type_String
+  %401: ptr = symbol g_d2
+  %402: val = load8 %401 + 0
+  %403: int = call qv_util__maybe_isSome(%400, %402) result narrow
+  %404: int = zext8 %403
+  %405: ptr = symbol g_global_41
+  store1 %405 + 0, %404
+  %406: ptr = null
+  %407: ptr = symbol g_global_41
+  %408: int = load1 %407 + 0
+  call qf_printBool(%406, %408) narrow [1]
+  %409: ptr = symbol quest_type_String
+  %410: ptr = symbol g_d2
+  %411: val = load8 %410 + 0
+  %412: val = call qv_util__maybe_unwrap(%409, %411)
+  %413: ptr = symbol g_global_42
+  store8 %413 + 0, %412
+  %414: ptr = symbol g_global_42
+  %415: val = load8 %414 + 0
+  %416: ptr = fromVal %415
+  %417: ptr = symbol g_global_43
   store8 %417 + 0, %416
-  %418: ptr = null
-  %419: ptr = symbol g_global_45
-  %420: int = load8 %419 + 0
-  call qf_printInt(%418, %420)
-  %421: int = const 2
-  %422: ptr = symbol g_global_46
-  store8 %422 + 0, %421
-  %423: ptr = symbol quest_type_Int
-  %424: ptr = symbol quest_type_String
-  %425: ptr = symbol g_m
-  %426: int = load8 %425 + 0
-  %427: ptr = symbol g_global_46
-  %428: int = load8 %427 + 0
-  %429: int = call qv_collections__hashmap_contains(%423, %424, %426, %428) result narrow
-  %430: int = zext8 %429
-  %431: ptr = symbol g_global_47
-  store1 %431 + 0, %430
-  %432: ptr = null
-  %433: ptr = symbol g_global_47
-  %434: int = load1 %433 + 0
-  call qf_printBool(%432, %434) narrow [1]
-  %435: int = const 4
-  %436: ptr = symbol g_global_48
-  store8 %436 + 0, %435
-  %437: ptr = symbol quest_type_Int
-  %438: ptr = symbol quest_type_String
-  %439: ptr = symbol g_m
-  %440: int = load8 %439 + 0
-  %441: ptr = symbol g_global_48
-  %442: int = load8 %441 + 0
-  %443: int = call qv_collections__hashmap_delete(%437, %438, %440, %442)
-  %444: ptr = symbol g_d4
-  store8 %444 + 0, %443
-  %445: ptr = symbol quest_type_String
-  %446: ptr = symbol g_d4
-  %447: int = load8 %446 + 0
-  %448: int = call qv_util__maybe_isNone(%445, %447) result narrow
-  %449: int = zext8 %448
-  %450: ptr = symbol g_global_49
-  store1 %450 + 0, %449
-  %451: ptr = null
-  %452: ptr = symbol g_global_49
-  %453: int = load1 %452 + 0
-  call qf_printBool(%451, %453) narrow [1]
-  %454: ptr = null
-  %455: int = const 0
-  call qf_printNewline(%454, %455)
-  %456: ptr = symbol quest_type_Int
-  %457: ptr = symbol quest_type_String
-  %458: ptr = symbol g_m
-  %459: int = load8 %458 + 0
-  %460: int = call qv_collections__hashmap_keys(%456, %457, %459)
-  %461: ptr = symbol g_ksAfter
-  store8 %461 + 0, %460
-  %462: ptr = symbol quest_type_Int
-  %463: ptr = symbol g_ksAfter
-  %464: int = load8 %463 + 0
-  %465: int = call qv_collections__vector_length(%462, %464)
-  %466: ptr = symbol g_global_50
-  store8 %466 + 0, %465
-  %467: ptr = null
-  %468: ptr = symbol g_global_50
-  %469: int = load8 %468 + 0
-  call qf_printInt(%467, %469)
-  %470: ptr = symbol qf_f_4_closure
-  %471: ptr = symbol g_f_7
-  store8 %471 + 0, %470
-  %472: ptr = symbol g_f_7
-  %473: ptr = load8 %472 + 0
-  %474: int = const 16
-  %475: ptr = call quest_alloc(%474)
-  %476: ptr = symbol qf_qa_adapt_3
-  store8 %475 + 0, %476
-  store8 %475 + 8, %473
-  %477: ptr = symbol g_f_8
-  store8 %477 + 0, %475
-  %478: ptr = symbol quest_type_Int
-  %479: ptr = symbol g_ksAfter
-  %480: int = load8 %479 + 0
-  %481: ptr = symbol g_f_8
-  %482: ptr = load8 %481 + 0
-  call qv_collections__vector_forEach(%478, %480, %482)
-  %483: ptr = null
-  %484: int = const 0
-  call qf_printNewline(%483, %484)
-  %485: int = const 2
-  %486: ptr = symbol g_global_51
-  store8 %486 + 0, %485
-  %487: ptr = symbol qs_15
-  %488: int = const 14
-  %489: ptr = call quest_string_new(%487, %488)
-  %490: int = ptrToInt %489
-  %491: ptr = symbol g_global_52
-  store8 %491 + 0, %490
+  %418: ptr = symbol g_global_43
+  %419: ptr = load8 %418 + 0
+  %420: ptr = symbol g_global_44
+  store8 %420 + 0, %419
+  %421: ptr = null
+  %422: ptr = symbol g_global_44
+  %423: ptr = load8 %422 + 0
+  call qf_printString(%421, %423)
+  %424: ptr = symbol quest_type_Int
+  %425: ptr = symbol quest_type_String
+  %426: ptr = symbol g_m
+  %427: val = load8 %426 + 0
+  %428: int = call qv_collections__hashmap_size(%424, %425, %427)
+  %429: ptr = symbol g_global_45
+  store8 %429 + 0, %428
+  %430: ptr = null
+  %431: ptr = symbol g_global_45
+  %432: int = load8 %431 + 0
+  call qf_printInt(%430, %432)
+  %433: int = const 2
+  %434: val = toVal %433
+  %435: ptr = symbol g_global_46
+  store8 %435 + 0, %434
+  %436: ptr = symbol quest_type_Int
+  %437: ptr = symbol quest_type_String
+  %438: ptr = symbol g_m
+  %439: val = load8 %438 + 0
+  %440: ptr = symbol g_global_46
+  %441: val = load8 %440 + 0
+  %442: int = call qv_collections__hashmap_contains(%436, %437, %439, %441) result narrow
+  %443: int = zext8 %442
+  %444: ptr = symbol g_global_47
+  store1 %444 + 0, %443
+  %445: ptr = null
+  %446: ptr = symbol g_global_47
+  %447: int = load1 %446 + 0
+  call qf_printBool(%445, %447) narrow [1]
+  %448: int = const 4
+  %449: val = toVal %448
+  %450: ptr = symbol g_global_48
+  store8 %450 + 0, %449
+  %451: ptr = symbol quest_type_Int
+  %452: ptr = symbol quest_type_String
+  %453: ptr = symbol g_m
+  %454: val = load8 %453 + 0
+  %455: ptr = symbol g_global_48
+  %456: val = load8 %455 + 0
+  %457: val = call qv_collections__hashmap_delete(%451, %452, %454, %456)
+  %458: ptr = symbol g_d4
+  store8 %458 + 0, %457
+  %459: ptr = symbol quest_type_String
+  %460: ptr = symbol g_d4
+  %461: val = load8 %460 + 0
+  %462: int = call qv_util__maybe_isNone(%459, %461) result narrow
+  %463: int = zext8 %462
+  %464: ptr = symbol g_global_49
+  store1 %464 + 0, %463
+  %465: ptr = null
+  %466: ptr = symbol g_global_49
+  %467: int = load1 %466 + 0
+  call qf_printBool(%465, %467) narrow [1]
+  %468: ptr = null
+  %469: int = const 0
+  call qf_printNewline(%468, %469)
+  %470: ptr = symbol quest_type_Int
+  %471: ptr = symbol quest_type_String
+  %472: ptr = symbol g_m
+  %473: val = load8 %472 + 0
+  %474: val = call qv_collections__hashmap_keys(%470, %471, %473)
+  %475: ptr = symbol g_ksAfter
+  store8 %475 + 0, %474
+  %476: ptr = symbol quest_type_Int
+  %477: ptr = symbol g_ksAfter
+  %478: val = load8 %477 + 0
+  %479: int = call qv_collections__vector_length(%476, %478)
+  %480: ptr = symbol g_global_50
+  store8 %480 + 0, %479
+  %481: ptr = null
+  %482: ptr = symbol g_global_50
+  %483: int = load8 %482 + 0
+  call qf_printInt(%481, %483)
+  %484: ptr = symbol qf_f_4_closure
+  %485: ptr = symbol g_f_7
+  store8 %485 + 0, %484
+  %486: ptr = symbol g_f_7
+  %487: ptr = load8 %486 + 0
+  %488: int = const 16
+  %489: ptr = call quest_alloc(%488)
+  %490: ptr = symbol qf_qa_adapt_3
+  store8 %489 + 0, %490
+  store8 %489 + 8, %487
+  %491: ptr = symbol g_f_8
+  store8 %491 + 0, %489
   %492: ptr = symbol quest_type_Int
-  %493: ptr = symbol quest_type_String
-  %494: ptr = symbol g_m
-  %495: int = load8 %494 + 0
-  %496: ptr = symbol g_global_51
-  %497: int = load8 %496 + 0
-  %498: ptr = symbol g_global_52
-  %499: int = load8 %498 + 0
-  %500: int = call qv_collections__hashmap_insert(%492, %493, %495, %497, %499) result narrow
-  %501: int = zext8 %500
-  %502: ptr = symbol g_global_53
-  store1 %502 + 0, %501
-  %503: ptr = null
-  %504: ptr = symbol g_global_53
-  %505: int = load1 %504 + 0
-  call qf_printBool(%503, %505) narrow [1]
-  %506: ptr = symbol quest_type_Int
-  %507: ptr = symbol quest_type_String
-  %508: ptr = symbol g_m
-  %509: int = load8 %508 + 0
-  %510: int = call qv_collections__hashmap_keys(%506, %507, %509)
-  %511: ptr = symbol g_ksReinserted
-  store8 %511 + 0, %510
-  %512: ptr = symbol qf_f_5_closure
-  %513: ptr = symbol g_f_9
-  store8 %513 + 0, %512
-  %514: ptr = symbol g_f_9
-  %515: ptr = load8 %514 + 0
-  %516: int = const 16
-  %517: ptr = call quest_alloc(%516)
-  %518: ptr = symbol qf_qa_adapt_3
-  store8 %517 + 0, %518
-  store8 %517 + 8, %515
-  %519: ptr = symbol g_f_10
-  store8 %519 + 0, %517
-  %520: ptr = symbol quest_type_Int
-  %521: ptr = symbol g_ksReinserted
-  %522: int = load8 %521 + 0
-  %523: ptr = symbol g_f_10
-  %524: ptr = load8 %523 + 0
-  call qv_collections__vector_forEach(%520, %522, %524)
-  %525: ptr = null
-  %526: int = const 0
-  call qf_printNewline(%525, %526)
-  %527: ptr = symbol g_intEqual
-  %528: ptr = load8 %527 + 0
-  %529: int = const 16
-  %530: ptr = call quest_alloc(%529)
-  %531: ptr = symbol qf_qa_adapt_6
-  store8 %530 + 0, %531
-  store8 %530 + 8, %528
-  %532: ptr = symbol g_intEqual_3
-  store8 %532 + 0, %530
-  %533: ptr = symbol g_intHash
-  %534: ptr = load8 %533 + 0
-  %535: int = const 16
-  %536: ptr = call quest_alloc(%535)
-  %537: ptr = symbol qf_qa_adapt_7
-  store8 %536 + 0, %537
-  store8 %536 + 8, %534
-  %538: ptr = symbol g_intHash_3
-  store8 %538 + 0, %536
-  %539: ptr = symbol quest_type_Int
-  %540: ptr = symbol quest_type_Int
-  %541: int = const 8
-  %542: ptr = symbol g_intEqual_3
+  %493: ptr = symbol g_ksAfter
+  %494: val = load8 %493 + 0
+  %495: ptr = symbol g_f_8
+  %496: ptr = load8 %495 + 0
+  call qv_collections__vector_forEach(%492, %494, %496)
+  %497: ptr = null
+  %498: int = const 0
+  call qf_printNewline(%497, %498)
+  %499: int = const 2
+  %500: val = toVal %499
+  %501: ptr = symbol g_global_51
+  store8 %501 + 0, %500
+  %502: ptr = symbol qs_15
+  %503: int = const 14
+  %504: ptr = call quest_string_new(%502, %503)
+  %505: val = toVal %504
+  %506: ptr = symbol g_global_52
+  store8 %506 + 0, %505
+  %507: ptr = symbol quest_type_Int
+  %508: ptr = symbol quest_type_String
+  %509: ptr = symbol g_m
+  %510: val = load8 %509 + 0
+  %511: ptr = symbol g_global_51
+  %512: val = load8 %511 + 0
+  %513: ptr = symbol g_global_52
+  %514: val = load8 %513 + 0
+  %515: int = call qv_collections__hashmap_insert(%507, %508, %510, %512, %514) result narrow
+  %516: int = zext8 %515
+  %517: ptr = symbol g_global_53
+  store1 %517 + 0, %516
+  %518: ptr = null
+  %519: ptr = symbol g_global_53
+  %520: int = load1 %519 + 0
+  call qf_printBool(%518, %520) narrow [1]
+  %521: ptr = symbol quest_type_Int
+  %522: ptr = symbol quest_type_String
+  %523: ptr = symbol g_m
+  %524: val = load8 %523 + 0
+  %525: val = call qv_collections__hashmap_keys(%521, %522, %524)
+  %526: ptr = symbol g_ksReinserted
+  store8 %526 + 0, %525
+  %527: ptr = symbol qf_f_5_closure
+  %528: ptr = symbol g_f_9
+  store8 %528 + 0, %527
+  %529: ptr = symbol g_f_9
+  %530: ptr = load8 %529 + 0
+  %531: int = const 16
+  %532: ptr = call quest_alloc(%531)
+  %533: ptr = symbol qf_qa_adapt_3
+  store8 %532 + 0, %533
+  store8 %532 + 8, %530
+  %534: ptr = symbol g_f_10
+  store8 %534 + 0, %532
+  %535: ptr = symbol quest_type_Int
+  %536: ptr = symbol g_ksReinserted
+  %537: val = load8 %536 + 0
+  %538: ptr = symbol g_f_10
+  %539: ptr = load8 %538 + 0
+  call qv_collections__vector_forEach(%535, %537, %539)
+  %540: ptr = null
+  %541: int = const 0
+  call qf_printNewline(%540, %541)
+  %542: ptr = symbol g_intEqual
   %543: ptr = load8 %542 + 0
-  %544: ptr = symbol g_intHash_3
-  %545: ptr = load8 %544 + 0
-  %546: int = call qv_collections__hashmap_newWithCapacity(%539, %540, %541, %543, %545)
-  %547: ptr = symbol g_m2
-  store8 %547 + 0, %546
-  %548: int = const 1
-  %549: ptr = symbol g_i
-  store8 %549 + 0, %548
+  %544: int = const 16
+  %545: ptr = call quest_alloc(%544)
+  %546: ptr = symbol qf_qa_adapt_6
+  store8 %545 + 0, %546
+  store8 %545 + 8, %543
+  %547: ptr = symbol g_intEqual_3
+  store8 %547 + 0, %545
+  %548: ptr = symbol g_intHash
+  %549: ptr = load8 %548 + 0
+  %550: int = const 16
+  %551: ptr = call quest_alloc(%550)
+  %552: ptr = symbol qf_qa_adapt_7
+  store8 %551 + 0, %552
+  store8 %551 + 8, %549
+  %553: ptr = symbol g_intHash_3
+  store8 %553 + 0, %551
+  %554: ptr = symbol quest_type_Int
+  %555: ptr = symbol quest_type_Int
+  %556: int = const 8
+  %557: ptr = symbol g_intEqual_3
+  %558: ptr = load8 %557 + 0
+  %559: ptr = symbol g_intHash_3
+  %560: ptr = load8 %559 + 0
+  %561: val = call qv_collections__hashmap_newWithCapacity(%554, %555, %556, %558, %560)
+  %562: ptr = symbol g_m2
+  store8 %562 + 0, %561
+  %563: int = const 1
+  %564: ptr = symbol g_i
+  store8 %564 + 0, %563
   jump b1()
 b1():
-  %550: ptr = symbol g_i
-  %551: int = load8 %550 + 0
-  %552: int = const 50
-  %553: int = le %551, %552
-  branch %553, b3(), b4()
+  %565: ptr = symbol g_i
+  %566: int = load8 %565 + 0
+  %567: int = const 50
+  %568: int = le %566, %567
+  branch %568, b3(), b4()
 b2():
-  %569: ptr = symbol quest_type_Int
-  %570: ptr = symbol quest_type_Int
-  %571: ptr = symbol g_m2
-  %572: int = load8 %571 + 0
-  %573: int = call qv_collections__hashmap_size(%569, %570, %572)
-  %574: ptr = symbol g_global_54
-  store8 %574 + 0, %573
-  %575: ptr = null
-  %576: ptr = symbol g_global_54
-  %577: int = load8 %576 + 0
-  call qf_printInt(%575, %577)
-  %578: int = const 25
-  %579: ptr = symbol g_global_55
-  store8 %579 + 0, %578
-  %580: ptr = symbol quest_type_Int
-  %581: ptr = symbol quest_type_Int
-  %582: ptr = symbol g_m2
-  %583: int = load8 %582 + 0
-  %584: ptr = symbol g_global_55
-  %585: int = load8 %584 + 0
-  %586: int = call qv_collections__hashmap_find(%580, %581, %583, %585)
-  %587: ptr = symbol g_global_56
-  store8 %587 + 0, %586
-  %588: ptr = symbol g_global_56
-  %589: int = load8 %588 + 0
-  %590: ptr = symbol g_global_57
-  store8 %590 + 0, %589
-  %591: ptr = symbol g_global_57
-  %592: int = load8 %591 + 0
-  %593: ptr = symbol g_global_58
-  store8 %593 + 0, %592
-  %594: ptr = null
-  %595: ptr = symbol g_global_58
-  %596: int = load8 %595 + 0
-  call qf_printInt(%594, %596)
-  %597: int = const 50
-  %598: ptr = symbol g_global_59
-  store8 %598 + 0, %597
+  %586: ptr = symbol quest_type_Int
+  %587: ptr = symbol quest_type_Int
+  %588: ptr = symbol g_m2
+  %589: val = load8 %588 + 0
+  %590: int = call qv_collections__hashmap_size(%586, %587, %589)
+  %591: ptr = symbol g_global_54
+  store8 %591 + 0, %590
+  %592: ptr = null
+  %593: ptr = symbol g_global_54
+  %594: int = load8 %593 + 0
+  call qf_printInt(%592, %594)
+  %595: int = const 25
+  %596: val = toVal %595
+  %597: ptr = symbol g_global_55
+  store8 %597 + 0, %596
+  %598: ptr = symbol quest_type_Int
   %599: ptr = symbol quest_type_Int
-  %600: ptr = symbol quest_type_Int
-  %601: ptr = symbol g_m2
-  %602: int = load8 %601 + 0
-  %603: ptr = symbol g_global_59
-  %604: int = load8 %603 + 0
-  %605: int = call qv_collections__hashmap_find(%599, %600, %602, %604)
-  %606: ptr = symbol g_global_60
-  store8 %606 + 0, %605
-  %607: ptr = symbol g_global_60
-  %608: int = load8 %607 + 0
-  %609: ptr = symbol g_global_61
+  %600: ptr = symbol g_m2
+  %601: val = load8 %600 + 0
+  %602: ptr = symbol g_global_55
+  %603: val = load8 %602 + 0
+  %604: val = call qv_collections__hashmap_find(%598, %599, %601, %603)
+  %605: ptr = symbol g_global_56
+  store8 %605 + 0, %604
+  %606: ptr = symbol g_global_56
+  %607: val = load8 %606 + 0
+  %608: int = fromVal %607
+  %609: ptr = symbol g_global_57
   store8 %609 + 0, %608
-  %610: ptr = symbol g_global_61
+  %610: ptr = symbol g_global_57
   %611: int = load8 %610 + 0
-  %612: ptr = symbol g_global_62
+  %612: ptr = symbol g_global_58
   store8 %612 + 0, %611
   %613: ptr = null
-  %614: ptr = symbol g_global_62
+  %614: ptr = symbol g_global_58
   %615: int = load8 %614 + 0
   call qf_printInt(%613, %615)
-  %616: ptr = null
-  %617: int = const 0
-  call qf_printNewline(%616, %617)
-  %618: int = const 1
-  %619: ptr = symbol g_i_2
-  store8 %619 + 0, %618
+  %616: int = const 50
+  %617: val = toVal %616
+  %618: ptr = symbol g_global_59
+  store8 %618 + 0, %617
+  %619: ptr = symbol quest_type_Int
+  %620: ptr = symbol quest_type_Int
+  %621: ptr = symbol g_m2
+  %622: val = load8 %621 + 0
+  %623: ptr = symbol g_global_59
+  %624: val = load8 %623 + 0
+  %625: val = call qv_collections__hashmap_find(%619, %620, %622, %624)
+  %626: ptr = symbol g_global_60
+  store8 %626 + 0, %625
+  %627: ptr = symbol g_global_60
+  %628: val = load8 %627 + 0
+  %629: int = fromVal %628
+  %630: ptr = symbol g_global_61
+  store8 %630 + 0, %629
+  %631: ptr = symbol g_global_61
+  %632: int = load8 %631 + 0
+  %633: ptr = symbol g_global_62
+  store8 %633 + 0, %632
+  %634: ptr = null
+  %635: ptr = symbol g_global_62
+  %636: int = load8 %635 + 0
+  call qf_printInt(%634, %636)
+  %637: ptr = null
+  %638: int = const 0
+  call qf_printNewline(%637, %638)
+  %639: int = const 1
+  %640: ptr = symbol g_i_2
+  store8 %640 + 0, %639
   jump b6()
 b3():
-  %554: ptr = symbol g_i
-  %555: int = load8 %554 + 0
-  %556: int = const 10
-  %557: int = mul %555, %556
-  %558: ptr = symbol quest_type_Int
-  %559: ptr = symbol quest_type_Int
-  %560: ptr = symbol g_m2
-  %561: int = load8 %560 + 0
-  %562: int = call qv_collections__hashmap_insert(%558, %559, %561, %555, %557) result narrow
-  %563: int = zext8 %562
-  %564: ptr = symbol g_i
-  %565: int = load8 %564 + 0
-  %566: int = const 1
-  %567: int = add %565, %566
-  %568: ptr = symbol g_i
-  store8 %568 + 0, %567
+  %569: ptr = symbol g_i
+  %570: int = load8 %569 + 0
+  %571: int = const 10
+  %572: int = mul %570, %571
+  %573: val = toVal %570
+  %574: val = toVal %572
+  %575: ptr = symbol quest_type_Int
+  %576: ptr = symbol quest_type_Int
+  %577: ptr = symbol g_m2
+  %578: val = load8 %577 + 0
+  %579: int = call qv_collections__hashmap_insert(%575, %576, %578, %573, %574) result narrow
+  %580: int = zext8 %579
+  %581: ptr = symbol g_i
+  %582: int = load8 %581 + 0
+  %583: int = const 1
+  %584: int = add %582, %583
+  %585: ptr = symbol g_i
+  store8 %585 + 0, %584
   jump b5()
 b4():
   jump b2()
 b5():
   jump b1()
 b6():
-  %620: ptr = symbol g_i_2
-  %621: int = load8 %620 + 0
-  %622: int = const 50
-  %623: int = le %621, %622
-  branch %623, b8(), b9()
+  %641: ptr = symbol g_i_2
+  %642: int = load8 %641 + 0
+  %643: int = const 50
+  %644: int = le %642, %643
+  branch %644, b8(), b9()
 b7():
-  %641: ptr = symbol quest_type_Int
-  %642: ptr = symbol quest_type_Int
-  %643: ptr = symbol g_m2
-  %644: int = load8 %643 + 0
-  %645: int = call qv_collections__hashmap_size(%641, %642, %644)
-  %646: ptr = symbol g_global_63
-  store8 %646 + 0, %645
-  %647: ptr = null
-  %648: ptr = symbol g_global_63
-  %649: int = load8 %648 + 0
-  call qf_printInt(%647, %649)
-  %650: int = const 2
-  %651: ptr = symbol g_global_64
-  store8 %651 + 0, %650
-  %652: ptr = symbol quest_type_Int
-  %653: ptr = symbol quest_type_Int
-  %654: ptr = symbol g_m2
-  %655: int = load8 %654 + 0
-  %656: ptr = symbol g_global_64
-  %657: int = load8 %656 + 0
-  %658: int = call qv_collections__hashmap_contains(%652, %653, %655, %657) result narrow
-  %659: int = zext8 %658
-  %660: ptr = symbol g_global_65
-  store1 %660 + 0, %659
-  %661: ptr = null
-  %662: ptr = symbol g_global_65
-  %663: int = load1 %662 + 0
-  call qf_printBool(%661, %663) narrow [1]
-  %664: int = const 3
-  %665: ptr = symbol g_global_66
-  store8 %665 + 0, %664
-  %666: ptr = symbol quest_type_Int
-  %667: ptr = symbol quest_type_Int
-  %668: ptr = symbol g_m2
-  %669: int = load8 %668 + 0
-  %670: ptr = symbol g_global_66
+  %663: ptr = symbol quest_type_Int
+  %664: ptr = symbol quest_type_Int
+  %665: ptr = symbol g_m2
+  %666: val = load8 %665 + 0
+  %667: int = call qv_collections__hashmap_size(%663, %664, %666)
+  %668: ptr = symbol g_global_63
+  store8 %668 + 0, %667
+  %669: ptr = null
+  %670: ptr = symbol g_global_63
   %671: int = load8 %670 + 0
-  %672: int = call qv_collections__hashmap_contains(%666, %667, %669, %671) result narrow
-  %673: int = zext8 %672
-  %674: ptr = symbol g_global_67
-  store1 %674 + 0, %673
-  %675: ptr = null
-  %676: ptr = symbol g_global_67
-  %677: int = load1 %676 + 0
-  call qf_printBool(%675, %677) narrow [1]
-  %678: int = const 3
-  %679: ptr = symbol g_global_68
-  store8 %679 + 0, %678
-  %680: ptr = symbol quest_type_Int
-  %681: ptr = symbol quest_type_Int
-  %682: ptr = symbol g_m2
-  %683: int = load8 %682 + 0
-  %684: ptr = symbol g_global_68
-  %685: int = load8 %684 + 0
-  %686: int = call qv_collections__hashmap_find(%680, %681, %683, %685)
-  %687: ptr = symbol g_global_69
-  store8 %687 + 0, %686
-  %688: ptr = symbol g_global_69
-  %689: int = load8 %688 + 0
-  %690: ptr = symbol g_global_70
-  store8 %690 + 0, %689
-  %691: ptr = symbol g_global_70
-  %692: int = load8 %691 + 0
-  %693: ptr = symbol g_global_71
-  store8 %693 + 0, %692
-  %694: ptr = null
-  %695: ptr = symbol g_global_71
-  %696: int = load8 %695 + 0
-  call qf_printInt(%694, %696)
-  %697: ptr = null
-  %698: int = const 0
-  call qf_printNewline(%697, %698)
-  %699: ptr = symbol quest_type_Int
-  %700: ptr = symbol quest_type_Int
-  %701: ptr = symbol g_m2
-  %702: int = load8 %701 + 0
-  call qv_collections__hashmap_clear(%699, %700, %702)
-  %703: ptr = symbol quest_type_Int
-  %704: ptr = symbol quest_type_Int
-  %705: ptr = symbol g_m2
-  %706: int = load8 %705 + 0
-  %707: int = call qv_collections__hashmap_size(%703, %704, %706)
-  %708: ptr = symbol g_global_72
-  store8 %708 + 0, %707
-  %709: ptr = null
-  %710: ptr = symbol g_global_72
-  %711: int = load8 %710 + 0
-  call qf_printInt(%709, %711)
-  %712: ptr = symbol quest_type_Int
-  %713: ptr = symbol quest_type_Int
-  %714: ptr = symbol g_m2
-  %715: int = load8 %714 + 0
-  %716: int = call qv_collections__hashmap_empty(%712, %713, %715) result narrow
-  %717: int = zext8 %716
-  %718: ptr = symbol g_global_73
-  store1 %718 + 0, %717
-  %719: ptr = null
-  %720: ptr = symbol g_global_73
-  %721: int = load1 %720 + 0
-  call qf_printBool(%719, %721) narrow [1]
-  %722: ptr = null
-  %723: int = const 0
-  call qf_printNewline(%722, %723)
+  call qf_printInt(%669, %671)
+  %672: int = const 2
+  %673: val = toVal %672
+  %674: ptr = symbol g_global_64
+  store8 %674 + 0, %673
+  %675: ptr = symbol quest_type_Int
+  %676: ptr = symbol quest_type_Int
+  %677: ptr = symbol g_m2
+  %678: val = load8 %677 + 0
+  %679: ptr = symbol g_global_64
+  %680: val = load8 %679 + 0
+  %681: int = call qv_collections__hashmap_contains(%675, %676, %678, %680) result narrow
+  %682: int = zext8 %681
+  %683: ptr = symbol g_global_65
+  store1 %683 + 0, %682
+  %684: ptr = null
+  %685: ptr = symbol g_global_65
+  %686: int = load1 %685 + 0
+  call qf_printBool(%684, %686) narrow [1]
+  %687: int = const 3
+  %688: val = toVal %687
+  %689: ptr = symbol g_global_66
+  store8 %689 + 0, %688
+  %690: ptr = symbol quest_type_Int
+  %691: ptr = symbol quest_type_Int
+  %692: ptr = symbol g_m2
+  %693: val = load8 %692 + 0
+  %694: ptr = symbol g_global_66
+  %695: val = load8 %694 + 0
+  %696: int = call qv_collections__hashmap_contains(%690, %691, %693, %695) result narrow
+  %697: int = zext8 %696
+  %698: ptr = symbol g_global_67
+  store1 %698 + 0, %697
+  %699: ptr = null
+  %700: ptr = symbol g_global_67
+  %701: int = load1 %700 + 0
+  call qf_printBool(%699, %701) narrow [1]
+  %702: int = const 3
+  %703: val = toVal %702
+  %704: ptr = symbol g_global_68
+  store8 %704 + 0, %703
+  %705: ptr = symbol quest_type_Int
+  %706: ptr = symbol quest_type_Int
+  %707: ptr = symbol g_m2
+  %708: val = load8 %707 + 0
+  %709: ptr = symbol g_global_68
+  %710: val = load8 %709 + 0
+  %711: val = call qv_collections__hashmap_find(%705, %706, %708, %710)
+  %712: ptr = symbol g_global_69
+  store8 %712 + 0, %711
+  %713: ptr = symbol g_global_69
+  %714: val = load8 %713 + 0
+  %715: int = fromVal %714
+  %716: ptr = symbol g_global_70
+  store8 %716 + 0, %715
+  %717: ptr = symbol g_global_70
+  %718: int = load8 %717 + 0
+  %719: ptr = symbol g_global_71
+  store8 %719 + 0, %718
+  %720: ptr = null
+  %721: ptr = symbol g_global_71
+  %722: int = load8 %721 + 0
+  call qf_printInt(%720, %722)
+  %723: ptr = null
   %724: int = const 0
-  return %724
+  call qf_printNewline(%723, %724)
+  %725: ptr = symbol quest_type_Int
+  %726: ptr = symbol quest_type_Int
+  %727: ptr = symbol g_m2
+  %728: val = load8 %727 + 0
+  call qv_collections__hashmap_clear(%725, %726, %728)
+  %729: ptr = symbol quest_type_Int
+  %730: ptr = symbol quest_type_Int
+  %731: ptr = symbol g_m2
+  %732: val = load8 %731 + 0
+  %733: int = call qv_collections__hashmap_size(%729, %730, %732)
+  %734: ptr = symbol g_global_72
+  store8 %734 + 0, %733
+  %735: ptr = null
+  %736: ptr = symbol g_global_72
+  %737: int = load8 %736 + 0
+  call qf_printInt(%735, %737)
+  %738: ptr = symbol quest_type_Int
+  %739: ptr = symbol quest_type_Int
+  %740: ptr = symbol g_m2
+  %741: val = load8 %740 + 0
+  %742: int = call qv_collections__hashmap_empty(%738, %739, %741) result narrow
+  %743: int = zext8 %742
+  %744: ptr = symbol g_global_73
+  store1 %744 + 0, %743
+  %745: ptr = null
+  %746: ptr = symbol g_global_73
+  %747: int = load1 %746 + 0
+  call qf_printBool(%745, %747) narrow [1]
+  %748: ptr = null
+  %749: int = const 0
+  call qf_printNewline(%748, %749)
+  %750: int = const 0
+  return %750
 b8():
-  %624: ptr = symbol g_i_2
-  %625: int = load8 %624 + 0
-  %626: int = const 2
-  %627: ptr = symbol qs_16
-  %628: int = call quest_int_mod_at(%625, %626, %627)
-  %629: int = const 0
-  %630: int = eq %628, %629
-  branch %630, b11(), b12()
+  %645: ptr = symbol g_i_2
+  %646: int = load8 %645 + 0
+  %647: int = const 2
+  %648: ptr = symbol qs_16
+  %649: int = call quest_int_mod_at(%646, %647, %648)
+  %650: int = const 0
+  %651: int = eq %649, %650
+  branch %651, b11(), b12()
 b9():
   jump b7()
 b10():
   jump b6()
 b11():
-  %631: ptr = symbol quest_type_Int
-  %632: ptr = symbol quest_type_Int
-  %633: ptr = symbol g_m2
-  %634: int = load8 %633 + 0
-  %635: int = call qv_collections__hashmap_delete(%631, %632, %634, %625)
+  %652: val = toVal %646
+  %653: ptr = symbol quest_type_Int
+  %654: ptr = symbol quest_type_Int
+  %655: ptr = symbol g_m2
+  %656: val = load8 %655 + 0
+  %657: val = call qv_collections__hashmap_delete(%653, %654, %656, %652)
   jump b13()
 b12():
   jump b13()
 b13():
-  %636: ptr = symbol g_i_2
-  %637: int = load8 %636 + 0
-  %638: int = const 1
-  %639: int = add %637, %638
-  %640: ptr = symbol g_i_2
-  store8 %640 + 0, %639
+  %658: ptr = symbol g_i_2
+  %659: int = load8 %658 + 0
+  %660: int = const 1
+  %661: int = add %659, %660
+  %662: ptr = symbol g_i_2
+  store8 %662 + 0, %661
   jump b10()
 }
 

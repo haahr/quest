@@ -12,8 +12,9 @@ import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 export
-    (* A value's type (docs/ssa.md section 1) *)
-    Def Type = Option typeInt typePtr typeReal end
+    (* A value's type (docs/ssa.md section 1): val is a QVal word, an int or
+     * a ptr as its type descriptor says *)
+    Def Type = Option typeInt typePtr typeReal typeVal end
 
     (* The opcodes of instructions (docs/ssa.md section 2) *)
     Def Opcode = Option
@@ -23,7 +24,7 @@ export
         opEq opNe opLt opLe opGt opGe opUlt opPeq opPne
         opFadd opFsub opFmul opFdiv opFeq opFlt opFle opFgt opFge opIsNaN
         opIntToPtr opPtrToInt opRealBits opBitsReal opSext8 opZext8
-        opLoad opStore opCall opCallIndirect opCopy opPtrAdd opThreadLocal
+        opLoad opStore opCall opCallIndirect opCopy opPtrAdd opThreadLocal opToVal opFromVal
     end
 
     (* How C passes a parameter or a result (docs/ssa.md section 2.2): an
@@ -146,6 +147,7 @@ export
     typeInt: Type
     typePtr: Type
     typeReal: Type
+    typeVal: Type
     opConst: Opcode
     opRealConst: Opcode
     opSymbol: Opcode
@@ -194,6 +196,8 @@ export
     opCopy: Opcode
     opPtrAdd: Opcode
     opThreadLocal: Opcode
+    opToVal: Opcode
+    opFromVal: Opcode
     termNone: Terminator
     termUnreachable: Terminator
 
@@ -236,6 +240,9 @@ export
     threadLocal(f: Function b: Int symbol: String): Int
     (* A pointer n bytes past p (n a value) *)
     ptrAdd(f: Function b: Int p: Int n: Int): Int
+    (* An int or a ptr as a QVal word, and a QVal word as an int or a ptr *)
+    toVal(f: Function b: Int v: Int): Int
+    fromVal(f: Function b: Int v: Int t: Type): Int
     (* The address of stack slot s *)
     slotAddress(f: Function b: Int s: Int): Int
     binary(f: Function b: Int op: Opcode x: Int y: Int): Int

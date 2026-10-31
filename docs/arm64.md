@@ -891,4 +891,5 @@ with what would address it.
    its class, a value's SSA type or, for a stack slot, memory; `questlang/arm64_frames` prints them for functions
    that spill pointers, integers, and reals across a call. Nothing emits stack maps. A derived pointer is a `ptr`
    throughout (`ptrAdd`, [backend-improvements.md](backend-improvements.md) step 7). What remains is that plan's
-   step 10: a `val` type for `QVal` words, which are `int`s now, so that the frame tells them apart.
+   step 10: a `val` type for `QVal` words, which are `int`s now, so that the frame tells them apart. *Done*
+   (2026-10-31): `QVal` words are `val`s, and `arm64_frames` shows their slots.

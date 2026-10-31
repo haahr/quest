@@ -202,8 +202,8 @@ b6(%7: ptr):
   branch %15, b7(), b8()
 b7():
   %17: int = const 1
-  %18: int = call quest_proxy_element(%7, %17)
-  %19: ptr = intToPtr %18
+  %18: val = call quest_proxy_element(%7, %17)
+  %19: ptr = fromVal %18
   jump b9(%19)
 b8():
   %20: int = const 8
@@ -217,22 +217,23 @@ b9(%16: ptr):
   jump b1(%25)
 }
 
-function qf_size(%0: ptr, %1: int, %2: int) pairs [1]: int {
-b0(%0: ptr, %1: int, %2: int):
+function qf_size(%0: ptr, %1: int, %2: val) pairs [1]: int {
+b0(%0: ptr, %1: int, %2: val):
   switch %1 [0: b2(), 1: b3()] default b4()
 b1(%3: int):
   return %3
 b2():
-  jump b1(%2)
+  %4: int = fromVal %2
+  jump b1(%4)
 b3():
-  %4: ptr = intToPtr %2
-  %5: ptr = load8 %4 + 0
-  %6: ptr = load8 %4 + 8
-  %7: ptr = null
-  tail %8: int = call qf_sizeForest(%7, %5, %6) pairs [1]
+  %5: ptr = fromVal %2
+  %6: ptr = load8 %5 + 0
+  %7: ptr = load8 %5 + 8
+  %8: ptr = null
+  tail %9: int = call qf_sizeForest(%8, %6, %7) pairs [1]
 b4():
-  %9: int = const 0
-  jump b1(%9)
+  %10: int = const 0
+  jump b1(%10)
 }
 
 function qf_sizeForest(%0: ptr, %1: ptr, %2: ptr) pairs [1]: int {
@@ -262,10 +263,10 @@ b3():
   %26: int = const 8
   %27: ptr = ptrAdd %22, %26
   %28: ptr = ptrAdd %27, %25
-  %29: int = load8 %28 + 0
-  %30: ptr = intToPtr %29
+  %29: val = load8 %28 + 0
+  %30: ptr = fromVal %29
   %31: int = load8 %30 + 0
-  %32: int = load8 %30 + 8
+  %32: val = load8 %30 + 8
   %33: ptr = null
   %34: int = call qf_size(%33, %31, %32) pairs [1]
   %37: int = add %46, %34
@@ -278,10 +279,11 @@ b5():
   jump b1(%37, %42)
 }
 
-function qf_leaf(%0: ptr, %1: int): int, int {
+function qf_leaf(%0: ptr, %1: int): int, val {
 b0(%0: ptr, %1: int):
   %2: int = const 0
-  return %2, %1
+  %3: val = toVal %1
+  return %2, %3
 }
 
 function qf_toInt(%0: ptr, %1: ptr): int {
@@ -312,8 +314,8 @@ b6(%7: ptr):
   branch %13, b7(), b8()
 b7():
   %15: int = const 0
-  %16: int = call quest_proxy_element(%7, %15)
-  %17: ptr = intToPtr %16
+  %16: val = call quest_proxy_element(%7, %15)
+  %17: ptr = fromVal %16
   jump b9(%17)
 b8():
   %18: ptr = load8 %7 + 0
@@ -750,25 +752,25 @@ b0(%0: int, %1: ptr):
   store8 %319 + 0, %318
   %320: ptr = null
   %321: int = const 5
-  %322: int, %323: int = call qf_leaf(%320, %321)
+  %322: int, %323: val = call qf_leaf(%320, %321)
   %324: ptr = symbol g_global_27
   store8 %324 + 0, %322
   store8 %324 + 8, %323
   %325: ptr = null
   %326: int = const 6
-  %327: int, %328: int = call qf_leaf(%325, %326)
+  %327: int, %328: val = call qf_leaf(%325, %326)
   %329: ptr = symbol g_global_28
   store8 %329 + 0, %327
   store8 %329 + 8, %328
   %330: ptr = symbol g_global_27
   %331: int = load8 %330 + 0
-  %332: int = load8 %330 + 8
+  %332: val = load8 %330 + 8
   %333: ptr = call quest_variant_box(%331, %332) pairs [0]
   %334: ptr = symbol g_box
   store8 %334 + 0, %333
   %335: ptr = symbol g_global_28
   %336: int = load8 %335 + 0
-  %337: int = load8 %335 + 8
+  %337: val = load8 %335 + 8
   %338: ptr = call quest_variant_box(%336, %337) pairs [0]
   %339: ptr = symbol g_box_2
   store8 %339 + 0, %338
@@ -778,11 +780,11 @@ b0(%0: int, %1: ptr):
   store8 %341 + 0, %342
   %343: ptr = symbol g_box
   %344: ptr = load8 %343 + 0
-  %345: int = ptrToInt %344
+  %345: val = toVal %344
   store8 %341 + 8, %345
   %346: ptr = symbol g_box_2
   %347: ptr = load8 %346 + 0
-  %348: int = ptrToInt %347
+  %348: val = toVal %347
   store8 %341 + 16, %348
   %349: ptr = symbol g_global_29
   store8 %349 + 0, %341

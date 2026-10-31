@@ -319,7 +319,11 @@ the same modules, so each step starts from a fresh rebase.
     (`codegen.frameSlots`, which classes each by the SSA type of what it holds) tell a precise collector which words
     to resolve by descriptor. Generic values, option payloads, and aggregate slots read as words are `int`s now.
     *Done when* the SSA's builder gives every `QVal` word the type, the verifier keeps it apart from `ptr` and `int`
-    but where a conversion says, and `questlang/arm64_frames` shows a `val` slot.
+    but where a conversion says, and `questlang/arm64_frames` shows a `val` slot. *Done* (2026-10-31): `toVal` and
+    `fromVal` are the conversions, from and to an `int` or a `ptr`; a value of a type parameter, a variant's payload
+    word, a word form (`layout.wordForm`), an `Ok` passed as a word, and the runtime's `QVal` parameters and results
+    are `val`s, and the builder checks each runtime call's arguments against the table's types. A `val` is an `int`
+    to the backends (`int64_t` to `ssac`, the integer class to the allocator).
 
 ## 6. Not Part of This Plan
 

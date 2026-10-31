@@ -3,7 +3,9 @@ b0(%0: ptr, %1: ptr, %2: ptr, %3: ptr):
   %4: ptr = symbol quest_type_QT_record_b1f368c0b07c1f37
   %5: ptr = call quest_view_map(%1, %4)
   %6: int = const 0
-  tail %7: int = call quest_view_record_field(%2, %3, %5, %6) pairs [0]
+  %7: val = call quest_view_record_field(%2, %3, %5, %6) pairs [0]
+  %8: int = fromVal %7
+  return %8
 }
 
 function qf_id(%0: ptr, %1: ptr, %2: ptr, %3: ptr) pairs [2]: ptr, ptr {
@@ -21,8 +23,8 @@ b0(%0: ptr, %1: ptr, %2: ptr):
   branch %7, b1(), b2()
 b1():
   %9: int = const 0
-  %10: int = call quest_proxy_element(%2, %9)
-  %11: ptr = intToPtr %10
+  %10: val = call quest_proxy_element(%2, %9)
+  %11: ptr = fromVal %10
   jump b3(%11)
 b2():
   %12: ptr = load8 %2 + 0
@@ -36,8 +38,8 @@ b3(%8: ptr):
   branch %17, b4(), b5()
 b4():
   %19: int = const 0
-  %20: int = call quest_proxy_element(%2, %19)
-  %21: ptr = intToPtr %20
+  %20: val = call quest_proxy_element(%2, %19)
+  %21: ptr = fromVal %20
   jump b6(%21)
 b5():
   %22: ptr = load8 %2 + 0
@@ -46,18 +48,19 @@ b6(%18: ptr):
   %23: ptr = load8 %18 + 0
   %24: ptr = load8 %18 + 8
   %25: int = const 0
-  %26: int = call quest_view_record_field(%23, %24, %4, %25) pairs [0]
-  %27: int = const 16
-  %28: ptr = call quest_alloc(%27)
-  store8 %28 + 0, %8
-  %29: int = const 8
-  %30: ptr = ptrAdd %28, %29
-  store8 %30 + 0, %26
-  return %28
+  %26: val = call quest_view_record_field(%23, %24, %4, %25) pairs [0]
+  %27: int = fromVal %26
+  %28: int = const 16
+  %29: ptr = call quest_alloc(%28)
+  store8 %29 + 0, %8
+  %30: int = const 8
+  %31: ptr = ptrAdd %29, %30
+  store8 %31 + 0, %27
+  return %29
 }
 
-function qf_pick(%0: ptr, %1: ptr, %2: int, %3: int) pairs [2]: int {
-b0(%0: ptr, %1: ptr, %2: int, %3: int):
+function qf_pick(%0: ptr, %1: ptr, %2: int, %3: val) pairs [2]: int {
+b0(%0: ptr, %1: ptr, %2: int, %3: val):
   %4: ptr = symbol quest_type_QVariant_a_Bool_q_Int_1ec2f18fb52bee98
   %5: ptr = call quest_view_map(%1, %4)
   %7: ptr = load8 %5 + 16
@@ -70,20 +73,23 @@ b1(%6: int):
   return %6
 b2():
   %12: int = const 1
-  tail %13: int = call quest_view_part(%5, %12, %3)
+  %13: val = call quest_view_part(%5, %12, %3)
+  %14: int = fromVal %13
+  jump b1(%14)
 b3():
-  %14: int = const 0
-  %15: int = call quest_view_part(%5, %14, %3)
-  %16: int = zext8 %15
-  %17: int = const 0
-  jump b1(%17)
+  %15: int = const 0
+  %16: val = call quest_view_part(%5, %15, %3)
+  %17: int = fromVal %16
+  %18: int = zext8 %17
+  %19: int = const 0
+  jump b1(%19)
 b4():
   call quest_raise_variant_error()
   unreachable
 }
 
-function qf_back(%0: ptr, %1: ptr, %2: int, %3: int) pairs [2]: int, int {
-b0(%0: ptr, %1: ptr, %2: int, %3: int):
+function qf_back(%0: ptr, %1: ptr, %2: int, %3: val) pairs [2]: int, val {
+b0(%0: ptr, %1: ptr, %2: int, %3: val):
   return %2, %3
 }
 
@@ -246,8 +252,8 @@ b0(%0: int, %1: ptr):
   branch %104, b1(), b2()
 b1():
   %106: int = const 0
-  %107: int = call quest_proxy_element(%101, %106)
-  %108: ptr = intToPtr %107
+  %107: val = call quest_proxy_element(%101, %106)
+  %108: ptr = fromVal %107
   jump b3(%108)
 b2():
   %109: ptr = load8 %101 + 0
@@ -287,81 +293,84 @@ b3(%105: ptr):
   store8 %135 + 0, %134
   %136: int = const 0
   %137: int = const 9
-  %138: ptr = symbol g_global_6
-  store8 %138 + 0, %136
-  store8 %138 + 8, %137
-  %139: ptr = symbol quest_type_QVariant_q_Int_35cb143d3b915350
-  %140: ptr = symbol g_pickQ
-  %141: ptr = load8 %140 + 0
+  %138: val = toVal %137
+  %139: ptr = symbol g_global_6
+  store8 %139 + 0, %136
+  store8 %139 + 8, %138
+  %140: ptr = symbol quest_type_QVariant_q_Int_35cb143d3b915350
+  %141: ptr = symbol g_pickQ
   %142: ptr = load8 %141 + 0
-  %143: ptr = load8 %141 + 8
-  %144: ptr = symbol g_global_6
-  %145: int = load8 %144 + 0
-  %146: int = load8 %144 + 8
-  %147: int = callIndirect %142, %143, %139, %145, %146 pairs [3]
-  %148: ptr = symbol g_viaPick
-  store8 %148 + 0, %147
-  %150: int = const 0
-  %151: int = const 7
-  %152: ptr = symbol g_global_7
-  store8 %152 + 0, %150
-  store8 %152 + 8, %151
-  %153: ptr = symbol quest_type_QVariant_q_Int_35cb143d3b915350
-  %154: ptr = symbol g_backQ
-  %155: ptr = load8 %154 + 0
-  %156: ptr = load8 %155 + 0
-  %157: ptr = load8 %155 + 8
-  %158: ptr = symbol g_global_7
-  %159: int = load8 %158 + 0
-  %160: int = load8 %158 + 8
-  %161: int, %162: int = callIndirect %156, %157, %153, %159, %160 pairs [3]
-  %163: ptr = symbol g_global_8
-  store8 %163 + 0, %161
-  store8 %163 + 8, %162
-  %164: ptr = symbol g_global_8
-  %165: int = load8 %164 + 0
-  %166: int = load8 %164 + 8
-  switch %165 [0: b6()] default b7()
-b4(%149: int):
-  %170: ptr = symbol g_viaBack
-  store8 %170 + 0, %149
-  %171: int = const 40
-  %172: ptr = call quest_alloc(%171)
-  %173: ptr = symbol g_viaG
-  %174: int = load8 %173 + 0
-  store8 %172 + 0, %174
-  %175: ptr = symbol g_viaId
-  %176: int = load8 %175 + 0
-  %177: int = const 8
-  %178: ptr = ptrAdd %172, %177
-  store8 %178 + 0, %176
-  %179: ptr = symbol g_viaPair
-  %180: int = load8 %179 + 0
-  %181: int = const 16
-  %182: ptr = ptrAdd %172, %181
-  store8 %182 + 0, %180
-  %183: ptr = symbol g_viaPick
-  %184: int = load8 %183 + 0
-  %185: int = const 24
-  %186: ptr = ptrAdd %172, %185
-  store8 %186 + 0, %184
-  %187: ptr = symbol g_viaBack
-  %188: int = load8 %187 + 0
-  %189: int = const 32
-  %190: ptr = ptrAdd %172, %189
-  store8 %190 + 0, %188
-  %191: ptr = symbol g_global_9
-  store8 %191 + 0, %172
+  %143: ptr = load8 %142 + 0
+  %144: ptr = load8 %142 + 8
+  %145: ptr = symbol g_global_6
+  %146: int = load8 %145 + 0
+  %147: val = load8 %145 + 8
+  %148: int = callIndirect %143, %144, %140, %146, %147 pairs [3]
+  %149: ptr = symbol g_viaPick
+  store8 %149 + 0, %148
+  %151: int = const 0
+  %152: int = const 7
+  %153: val = toVal %152
+  %154: ptr = symbol g_global_7
+  store8 %154 + 0, %151
+  store8 %154 + 8, %153
+  %155: ptr = symbol quest_type_QVariant_q_Int_35cb143d3b915350
+  %156: ptr = symbol g_backQ
+  %157: ptr = load8 %156 + 0
+  %158: ptr = load8 %157 + 0
+  %159: ptr = load8 %157 + 8
+  %160: ptr = symbol g_global_7
+  %161: int = load8 %160 + 0
+  %162: val = load8 %160 + 8
+  %163: int, %164: val = callIndirect %158, %159, %155, %161, %162 pairs [3]
+  %165: ptr = symbol g_global_8
+  store8 %165 + 0, %163
+  store8 %165 + 8, %164
+  %166: ptr = symbol g_global_8
+  %167: int = load8 %166 + 0
+  %168: val = load8 %166 + 8
+  switch %167 [0: b6()] default b7()
+b4(%150: int):
+  %173: ptr = symbol g_viaBack
+  store8 %173 + 0, %150
+  %174: int = const 40
+  %175: ptr = call quest_alloc(%174)
+  %176: ptr = symbol g_viaG
+  %177: int = load8 %176 + 0
+  store8 %175 + 0, %177
+  %178: ptr = symbol g_viaId
+  %179: int = load8 %178 + 0
+  %180: int = const 8
+  %181: ptr = ptrAdd %175, %180
+  store8 %181 + 0, %179
+  %182: ptr = symbol g_viaPair
+  %183: int = load8 %182 + 0
+  %184: int = const 16
+  %185: ptr = ptrAdd %175, %184
+  store8 %185 + 0, %183
+  %186: ptr = symbol g_viaPick
+  %187: int = load8 %186 + 0
+  %188: int = const 24
+  %189: ptr = ptrAdd %175, %188
+  store8 %189 + 0, %187
+  %190: ptr = symbol g_viaBack
+  %191: int = load8 %190 + 0
+  %192: int = const 32
+  %193: ptr = ptrAdd %175, %192
+  store8 %193 + 0, %191
+  %194: ptr = symbol g_global_9
+  store8 %194 + 0, %175
   jump b5()
 b5():
-  %192: int = const 0
-  return %192
+  %195: int = const 0
+  return %195
 b6():
-  %167: ptr = symbol g_n
-  store8 %167 + 0, %166
-  %168: ptr = symbol g_n
-  %169: int = load8 %168 + 0
-  jump b4(%169)
+  %169: int = fromVal %168
+  %170: ptr = symbol g_n
+  store8 %170 + 0, %169
+  %171: ptr = symbol g_n
+  %172: int = load8 %171 + 0
+  jump b4(%172)
 b7():
   call quest_raise_variant_error()
   unreachable

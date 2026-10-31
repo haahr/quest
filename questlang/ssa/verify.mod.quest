@@ -21,9 +21,10 @@ export
 
     let sameType(a: Type b: Type): Bool =
         case a
-            when typeInt then case b when typeInt then true when typePtr, typeReal then false end
-            when typePtr then case b when typePtr then true when typeInt, typeReal then false end
-            when typeReal then case b when typeReal then true when typeInt, typePtr then false end
+            when typeInt then case b when typeInt then true when typePtr, typeReal, typeVal then false end
+            when typePtr then case b when typePtr then true when typeInt, typeReal, typeVal then false end
+            when typeReal then case b when typeReal then true when typeInt, typePtr, typeVal then false end
+            when typeVal then case b when typeVal then true when typeInt, typePtr, typeReal then false end
         end
 
     (* The problems with f; callee is the unit's function of a symbol, if the
@@ -83,6 +84,11 @@ export
             let tInt = nodes.typeInt
             let tPtr = nodes.typePtr
             let tReal = nodes.typeReal
+            let tVal = nodes.typeVal
+            let isReal(v: Int): Bool =
+                case nodes.typeOf(f v) when typeReal then true when typeInt, typePtr, typeVal then false end
+            let isVal(v: Int): Bool =
+                case nodes.typeOf(f v) when typeVal then true when typeInt, typePtr, typeReal then false end
             let argsAre(inst: nodes.Inst types: Array(Type) what: String): Ok =
                 if extent inst.args isnot extent types then
                     problem(what <> " has " <> conv.int(extent inst.args) <> " arguments, not " <> conv.int(extent types))
@@ -262,6 +268,18 @@ export
                         when opThreadLocal then
                             argsAre(inst noTypes what)
                             resultsAre(inst one(tPtr) what)
+                        (* A QVal word from an int or a ptr, and back *)
+                        when opToVal then
+                            if {extent inst.args isnot 1} orif isReal(inst.args[0]) orif isVal(inst.args[0]) then
+                                problem(what <> " of other than an int or a ptr")
+                            end
+                            resultsAre(inst one(tVal) what)
+                        when opFromVal then
+                            argsAre(inst one(tVal) what)
+                            if {extent inst.results isnot 1} orif isReal(inst.results[0]) orif isVal(inst.results[0])
+                                    then
+                                problem(what <> " to other than an int or a ptr")
+                            end
                         when opCopy then
                             if extent inst.args isnot 1 then
                                 problem("a copy has " <> conv.int(extent inst.args) <> " arguments")

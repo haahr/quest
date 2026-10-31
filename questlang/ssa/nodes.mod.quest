@@ -6,7 +6,7 @@ import
     util/maybe : util/Maybe
     stringOp = string : StringOp
 export
-    Def Type = Option typeInt typePtr typeReal end
+    Def Type = Option typeInt typePtr typeReal typeVal end
 
     Def Opcode = Option
         opConst opRealConst opSymbol opNull opSlot
@@ -15,7 +15,7 @@ export
         opEq opNe opLt opLe opGt opGe opUlt opPeq opPne
         opFadd opFsub opFmul opFdiv opFeq opFlt opFle opFgt opFge opIsNaN
         opIntToPtr opPtrToInt opRealBits opBitsReal opSext8 opZext8
-        opLoad opStore opCall opCallIndirect opCopy opPtrAdd opThreadLocal
+        opLoad opStore opCall opCallIndirect opCopy opPtrAdd opThreadLocal opToVal opFromVal
     end
 
     Def Passed = Option
@@ -101,7 +101,7 @@ export
             found
         end
 
-    let wordOf(t: Type): Passed = case t when typeInt, typePtr then passWord when typeReal then passReal end
+    let wordOf(t: Type): Passed = case t when typeInt, typePtr, typeVal then passWord when typeReal then passReal end
 
     let signature(params: Array(Type) results: Array(Type) pairs: Array(Int) narrow: Array(Int)): Signature =
         begin
@@ -163,6 +163,7 @@ export
     let typeInt: Type = option typeInt of Type end
     let typePtr: Type = option typePtr of Type end
     let typeReal: Type = option typeReal of Type end
+    let typeVal: Type = option typeVal of Type end
     let opConst: Opcode = option opConst of Opcode end
     let opRealConst: Opcode = option opRealConst of Opcode end
     let opSymbol: Opcode = option opSymbol of Opcode end
@@ -211,6 +212,8 @@ export
     let opCopy: Opcode = option opCopy of Opcode end
     let opPtrAdd: Opcode = option opPtrAdd of Opcode end
     let opThreadLocal: Opcode = option opThreadLocal of Opcode end
+    let opToVal: Opcode = option opToVal of Opcode end
+    let opFromVal: Opcode = option opFromVal of Opcode end
     let termNone: Terminator = option termNone of Terminator end
     let termUnreachable: Terminator = option termUnreachable of Terminator end
 
@@ -326,6 +329,8 @@ export
     let slotAddress(f: Function b: Int s: Int): Int = nullary(f b opSlot typePtr s "")
     let threadLocal(f: Function b: Int symbol: String): Int = nullary(f b opThreadLocal typePtr 0 symbol)
     let ptrAdd(f: Function b: Int p: Int n: Int): Int = emit(f b opPtrAdd array of p n end typePtr)
+    let toVal(f: Function b: Int v: Int): Int = emit(f b opToVal array of v end typeVal)
+    let fromVal(f: Function b: Int v: Int t: Type): Int = emit(f b opFromVal array of v end t)
 
     (* The type of a binary operation's result *)
     let resultType(op: Opcode x: Type): Type =
@@ -334,7 +339,7 @@ export
             when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor,
                 opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
                 opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
-                opThreadLocal then
+                opThreadLocal, opToVal, opFromVal then
                 x
         end
 
@@ -530,12 +535,15 @@ export
             when opCopy then 45
             when opPtrAdd then 46
             when opThreadLocal then 47
+            when opToVal then 48
+            when opFromVal then 49
         end
 
     let isOp(i: Inst op: Opcode): Bool = opcodeIndex(i.op) is opcodeIndex(op)
     let isCall(i: Inst): Bool = isOp(i opCall) orif isOp(i opCallIndirect)
 
-    let typeName(t: Type): String = case t when typeInt then "int" when typePtr then "ptr" when typeReal then "real" end
+    let typeName(t: Type): String =
+        case t when typeInt then "int" when typePtr then "ptr" when typeReal then "real" when typeVal then "val" end
 
     let opcodeName(op: Opcode): String =
         case op
@@ -555,14 +563,14 @@ export
             when opBitsReal then "bitsReal" when opSext8 then "sext8" when opZext8 then "zext8"
             when opLoad then "load" when opStore then "store" when opCall then "call"
             when opCallIndirect then "callIndirect" when opCopy then "copy" when opPtrAdd then "ptrAdd"
-            when opThreadLocal then "threadLocal"
+            when opThreadLocal then "threadLocal" when opToVal then "toVal" when opFromVal then "fromVal"
         end
 
     let opcodes: Array(Opcode) = array of
         opConst opRealConst opSymbol opNull opSlot opAdd opSub opMul opDiv opRem opAnd opOr opXor opShl opLshr opAshr
         opEq opNe opLt opLe opGt opGe opUlt opPeq opPne opFadd opFsub opFmul opFdiv opFeq opFlt opFle opFgt opFge
         opIsNaN opIntToPtr opPtrToInt opRealBits opBitsReal opSext8 opZext8 opLoad opStore opCall opCallIndirect opCopy
-        opPtrAdd opThreadLocal
+        opPtrAdd opThreadLocal opToVal opFromVal
     end
 
     let opcodeNamed(name: String): maybe.T(Opcode) =

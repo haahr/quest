@@ -27,7 +27,7 @@ export
     let unsupported: Exception(String) = exception unsupported: String end
     let none = array of :Int end
     let alignUp(n: Int a: Int): Int = {{{n + a} - 1} / a} * a
-    let isReal(t: ssa.Type): Bool = case t when typeInt, typePtr then false when typeReal then true end
+    let isReal(t: ssa.Type): Bool = case t when typeInt, typePtr, typeVal then false when typeReal then true end
     let x0 = target.x(0)
     let x1 = target.x(1)
     let x9 = target.x(9)
@@ -216,7 +216,7 @@ export
                     opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul,
                     opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
                     opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
-                    opThreadLocal then
+                    opThreadLocal, opToVal, opFromVal then
                     maybe.none(:Int)
             end
         end
@@ -298,7 +298,7 @@ export
             when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr,
                 opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits,
                 opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
-                opThreadLocal then
+                opThreadLocal, opToVal, opFromVal then
                 minst.condEq
         end
     let isComparison(op: ssa.Opcode): Bool =
@@ -309,7 +309,7 @@ export
             when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr,
                 opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits,
                 opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
-                opThreadLocal then
+                opThreadLocal, opToVal, opFromVal then
                 false
         end
     let isRealComparison(op: ssa.Opcode): Bool =
@@ -318,7 +318,7 @@ export
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opConst, opRealConst, opSymbol, opNull,
                 opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub,
                 opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opLoad, opStore,
-                opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal then
+                opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal, opFromVal then
                 false
         end
     let setFlags(s: S i: ssa.Inst): Ok =
@@ -450,7 +450,7 @@ export
                 when opFdiv then arith(minst.arithFdiv)
                 (* Copies of a word: conversions between ints, pointers, and a
                  * Real's bits *)
-                when opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opCopy then emitMove(s d a(0))
+                when opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opCopy, opToVal, opFromVal then emitMove(s d a(0))
                 when opSext8 then emit(s minst.sxtb(d a(0)))
                 when opZext8 then emit(s minst.andImm(d a(0) 255))
                 when opLoad then

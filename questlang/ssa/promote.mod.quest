@@ -8,12 +8,14 @@ import
 export
     Let Function = ssa.Function
 
-    let typeCode(t: ssa.Type): Int = case t when typeInt then 0 when typePtr then 1 when typeReal then 2 end
+    let typeCode(t: ssa.Type): Int =
+        case t when typeInt then 0 when typePtr then 1 when typeReal then 2 when typeVal then 3 end
 
     let typeOfCode(code: Int): ssa.Type =
         if code is 0 then ssa.typeInt
         elsif code is 1 then ssa.typePtr
-        else ssa.typeReal end
+        elsif code is 2 then ssa.typeReal
+        else ssa.typeVal end
 
     let enters(f: Function): Bool =
         begin
@@ -226,13 +228,19 @@ export
                         if current[v] < 0 then
                             if zeros[v] < 0 then
                                 let t = typeOfCode(vs.kind[v])
-                                let op = case t
-                                    when typeInt then ssa.opConst
-                                    when typePtr then ssa.opNull
-                                    when typeReal then ssa.opRealConst
-                                end
                                 zeros[v] := ssa.newValue(f t)
-                                vector.append(:ssa.Inst prelude ssa.inst(op array of(0 0) array of zeros[v] end))
+                                let zero(op: ssa.Opcode args: Array(Int) result: Int): Ok =
+                                    vector.append(:ssa.Inst prelude ssa.inst(op args array of result end))
+                                case t
+                                    when typeInt then zero(ssa.opConst array of :Int end zeros[v])
+                                    when typePtr then zero(ssa.opNull array of :Int end zeros[v])
+                                    when typeReal then zero(ssa.opRealConst array of :Int end zeros[v])
+                                    (* A QVal word's zero, from an int's *)
+                                    when typeVal then
+                                        let n = ssa.newValue(f ssa.typeInt)
+                                        zero(ssa.opConst array of :Int end n)
+                                        zero(ssa.opToVal array of n end zeros[v])
+                                end
                             end
                             zeros[v]
                         else current[v] end
