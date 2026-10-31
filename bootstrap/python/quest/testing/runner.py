@@ -17,6 +17,7 @@ backends' units call each other both ways.
 
 import argparse
 import concurrent.futures
+import contextlib
 import difflib
 import hashlib
 import json
@@ -578,11 +579,31 @@ def build_self_hosted_driver(python_executable: str, build_dir: Path) -> Path:
     return binary
 
 
-def build_driver_with(driver: Path, build_dir: Path, binary: Path, home: Path = ROOT_DIR, backend: str = "c") -> float:
+def build_driver_with(driver: Path, build_dir: Path, binary: Path, home: Path = ROOT_DIR, backend: str = "c",
+                      whole_program: bool = False) -> float:
     """Compiles the self-hosted driver with the compiled driver `driver`, as
     -o does, into binary, its units' artifacts in build_dir, against the lib/
     and runtime/ in home (a release's own, or the tree's), its units through
-    backend (docs/arm64.md section 3.12). Returns the time the build took, in
+    backend (docs/arm64.md section 3.12), or as one unit with whole_program.
+    Returns the time the build took, in seconds."""
+    return run_driver_build(driver, ["--build-dir", str(build_dir), "-o", str(binary)], home, backend,
+                            whole_program, None)
+
+
+def emit_whole_driver_with(driver: Path, build_dir: Path, output: Path, backend: str = "c") -> float:
+    """Writes to output the code (C, or arm64's assembly) the compiled driver
+    `driver` writes for the self-hosted driver as a whole program, through
+    backend: the unit that -o --whole-program compiles in a temporary directory
+    of its own, and so keeps nowhere. Returns the time it took, in seconds."""
+    return run_driver_build(driver, ["compile", "--emit-c", "--build-dir", str(build_dir)], ROOT_DIR, backend, True,
+                            output)
+
+
+def run_driver_build(driver: Path, arguments: list[str], home: Path, backend: str, whole_program: bool,
+                     output: Optional[Path]) -> float:
+    """Runs the compiled driver `driver` on the self-hosted driver, with
+    arguments, as build_driver_with and emit_whole_driver_with describe, its
+    standard output into output if given. Returns the time it took, in
     seconds."""
     environment = os.environ.copy()
     environment["QUEST_HOME"] = str(home)
@@ -592,14 +613,17 @@ def build_driver_with(driver: Path, build_dir: Path, binary: Path, home: Path = 
     flags += ["-j", str(os.cpu_count() or 1)]
     if backend != "c":
         flags += ["--backend", backend]
+    if whole_program:
+        flags.append("--whole-program")
+    # compile is a subcommand, ahead of the options
+    command = arguments[:1] + flags + arguments[1:] if arguments[0] == "compile" else flags + arguments
     start = time.perf_counter()
-    process = subprocess.run(
-        [str(driver), *flags, "--build-dir", str(build_dir), "-o", str(binary), str(SELF_HOSTED_DRIVER)],
-        capture_output=True, encoding=BYTE_ENCODING, env=environment, cwd=ROOT_DIR,
-    )
+    with output.open("w", encoding=BYTE_ENCODING) if output else contextlib.nullcontext(subprocess.PIPE) as out:
+        process = subprocess.run([str(driver), *command, str(SELF_HOSTED_DRIVER)], stdout=out, stderr=subprocess.PIPE,
+                                 encoding=BYTE_ENCODING, env=environment, cwd=ROOT_DIR)
     if process.returncode != 0:
         sys.exit(f"{driver} failed to compile {SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)}:\n"
-                 f"{process.stdout}{process.stderr}")
+                 f"{process.stdout or ''}{process.stderr}")
     return time.perf_counter() - start
 
 
@@ -683,7 +707,42 @@ def compare_build_dirs(expected_dir: Path, actual_dir: Path, what: str) -> list[
     return problems
 
 
-def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "bootstrap", backend: str = "c") -> Path:
+def check_whole_program_fixed_point(stage2: Path, stages: Path, backend: str) -> list[str]:
+    """Checks the whole-program fixed point through backend (docs/testing.md
+    section 2.3): stage 2 builds the driver as a whole program, and that
+    compiler must write the whole program's code stage 2 writes. Its own
+    whole-program build must then be the same compiler, so is not built.
+    Returns the problems found, if any."""
+    whole = stages / "whole"
+    binary = whole / "questlang-driver"
+    expected, actual = whole / "stage2.out", whole / "whole.out"
+    whole.mkdir(parents=True, exist_ok=True)
+    through = "" if backend == "c" else f", through {backend}"
+    print(f"Compiling stage 2 as a whole program (by stage 2{through}), and its whole program's code alongside it...")
+    # Each is mostly one unit, so they share the cores
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        emitted = executor.submit(emit_whole_driver_with, stage2, whole / "stage2-emit", expected, backend)
+        seconds = build_driver_with(stage2, whole / "build", binary, backend=backend, whole_program=True)
+        emit_seconds = emitted.result()
+    print(f"  {seconds:.1f}s, and {emit_seconds:.1f}s")
+    print(f"Writing the whole program's code with the whole-program stage 2{through}...")
+    print(f"  {emit_whole_driver_with(binary, whole / 'whole-emit', actual, backend):.1f}s")
+    a = expected.read_text(encoding=BYTE_ENCODING)
+    b = actual.read_text(encoding=BYTE_ENCODING)
+    if not a:
+        return [f"whole program{through}: stage 2 wrote no code"]
+    if a != b:
+        diff = list(difflib.unified_diff(a.splitlines(keepends=True), b.splitlines(keepends=True),
+                                         fromfile="stage 2", tofile="whole-program stage 2", n=1))
+        return [f"whole program{through}: the whole-program stage 2 writes other code than stage 2\n"
+                + "".join(diff[:40]).rstrip()]
+    print(f"Whole-program fixed point{through}: the whole-program stage 2 writes the {len(a.encode(BYTE_ENCODING))} "
+          "bytes stage 2 wrote")
+    return []
+
+
+def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "bootstrap", backend: str = "c",
+                       whole_program: bool = False) -> Path:
     """Builds the three stages of the self-hosted compiler (docs/testing.md
     section 2.3) and checks the fixed point: stage 2 (stage 1's build, stage 1
     being the seed's build of the self-hosted driver) writes the artifacts stage
@@ -701,7 +760,10 @@ def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "boo
     built by stage 1, compiled by C, and the fixed point is that it writes what
     stage 1 wrote, assembly or C, for every unit. The bootstrap's comparison,
     which does not depend on the backend, is left to the check with c.
-    Returns stage 2, which the self-hosted suite then runs."""
+
+    With whole_program, it then checks the whole-program fixed point through
+    the backend too (check_whole_program_fixed_point). Returns stage 2, which
+    the self-hosted suite then runs."""
     stages = build_dir / "self-hosting"
     shutil.rmtree(stages, ignore_errors=True)
     if seed == "release":
@@ -738,6 +800,8 @@ def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "boo
         print(f"  {seconds:.1f}s")
         problems += compare_build_dirs(stages / "stage2" / "build", stages / "stage2-bootstrap" / "build",
                                        "the bootstrap's stage 1 against the release's")
+    if whole_program and not problems:
+        problems += check_whole_program_fixed_point(stage2, stages, backend)
     if problems:
         print("\n\n".join(problems))
         sys.exit("The self-hosting check failed")
@@ -939,6 +1003,14 @@ def main() -> int:
         "--phase", choices=available_phases + ["all"], default="all", help="Compiler phase to test."
     )
     arg_parser.add_argument(
+        "--skip-phase",
+        choices=available_phases,
+        action="append",
+        default=[],
+        help="A phase not to test, though --phase would; repeated for several (tools/check skips the IR runs "
+        "between Core and the described stage, docs/testing.md section 4.1).",
+    )
+    arg_parser.add_argument(
         "--suite",
         choices=["golden", "errors", "all"],
         default="all",
@@ -1010,6 +1082,12 @@ def main() -> int:
         default="c",
         help="With --self-hosting, build stages 2 and 3 through this backend, so that the fixed point is the "
         "compiler as the backend compiles it (docs/arm64.md step 12).",
+    )
+    arg_parser.add_argument(
+        "--whole-program-fixed-point",
+        action="store_true",
+        help="With --self-hosting, also check the whole-program fixed point through the stage backend: stage 2's "
+        "whole-program build must write the whole program's code stage 2 writes (docs/testing.md section 2.3).",
     )
     arg_parser.add_argument(
         "--fixed-point-only",
@@ -1087,7 +1165,8 @@ def run_all_tests(
     pending_counts = {"pending": 0}
     if args.self_hosting:
         args.self_hosted = True
-        args.self_hosted_driver = str(check_self_hosting(python_executable, build_dir, args.seed, args.stage_backend))
+        args.self_hosted_driver = str(check_self_hosting(python_executable, build_dir, args.seed, args.stage_backend,
+                                                         args.whole_program_fixed_point))
         if args.fixed_point_only:
             return 0
     if not args.self_hosted and args.phase == "all":
@@ -1115,6 +1194,7 @@ def run_all_tests(
     elif args.backend != "c":
         print("--backend needs --self-hosted", file=sys.stderr)
         return 2
+    phases_to_run = [phase for phase in phases_to_run if phase not in args.skip_phase]
 
     total_golden = 0
     passed_golden = 0

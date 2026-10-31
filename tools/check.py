@@ -2,23 +2,37 @@
 4.1), with the suites that it needs at once, the machine's cores split
 between them.
 
-    tools/check                    a change to both compilers, or to lib/, runtime/, or the tests
-    tools/check --self-hosted-only a change to the self-hosted compiler alone (questlang/: its IR, its C)
+    tools/check                    the suites the change needs, from the files it changes
+    tools/check --self-hosted-only the self-hosted compiler's suites alone, whatever the change
+    tools/check --all              every suite, whatever the change
 
-A change to both runs, at once, the self-hosting check (run_tests.py
---self-hosting --seed release, which ends by running the self-hosted suite with
-stage 2), the fixed point through ssac and through arm64 (stages 2 and 3 built
-by each backend, which must write what stage 1 wrote: docs/arm64.md step 12),
-the backends' suite (the self-hosted suite's compiled tests through
-the SSA's C printer, ssac, and the native arm64 backend, each for every unit,
-and for the program's or the modules' alone, and whole programs through C,
-ssac, and arm64: docs/arm64.md sections 4 and 5), the bootstrap's suite, and the unit
-tests but those that drive a terminal, and then, alone, the terminal tests,
-which time out under load. A change to the self-hosted compiler alone runs the
-self-hosting checks and the backends' suite only. Each suite builds into a temporary directory of its own, so
-they do not interfere. Their output is kept in .build/check/SUITE.txt, and
-each suite's summary is printed with when it finished. The exit status is 0
-when every suite passes.
+The change is what differs from origin/main: the commits since they diverged,
+and what is not yet committed. A change only to the self-hosted compiler, its
+own goldens and pending lists, or the docs (SELF_HOSTED_ONLY_PATHS) needs the
+self-hosted compiler's suites alone; any other change needs every suite.
+
+The self-hosted compiler's suites, run at once: the self-hosting check
+(run_tests.py --self-hosting --seed release, which ends by running the
+self-hosted suite with stage 2), the fixed point through arm64 (stages 2 and 3
+built by it, which must write what stage 1 wrote: docs/arm64.md step 12), each
+self-hosting check also checking the whole-program fixed point through its
+backend (stage 2's whole-program build writes stage 2's whole-program code), and
+the backends' suite (the self-hosted suite's compiled tests through the SSA's C
+printer, ssac, for every unit; through the native arm64 backend, for every unit,
+and for the program's alone; and whole programs through C and arm64:
+docs/arm64.md sections 4 and 5). Every suite adds, at once, the bootstrap's
+suite and the unit tests but those that drive a terminal, and then, alone, the
+terminal tests, which time out under load.
+
+Left to run by hand (docs/testing.md section 4.1): ssac's other modes and its
+fixed points, since arm64 tests the SSA they share and the plain mode keeps
+ssac's C printer working; arm64-modules, the boundary arm64-program tests from
+the other side; and the IR runs between Core and the described stage
+(SKIPPED_PHASES), whose failures the described stage's run and the compiled
+runs still show. Each suite builds into a temporary directory of its own, so
+they do not interfere. Their output is kept in .build/check/SUITE.txt, and each
+suite's summary is printed with when it finished. The exit status is 0 when
+every suite passes.
 """
 
 from __future__ import annotations
@@ -35,6 +49,13 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = ROOT_DIR / ".build" / "check"
 # The unit tests that drive a terminal (tests/python/test_readline_terminal.py)
 PTY_TESTS = "tests/python/test_readline_terminal.py"
+# The paths a change may touch and still need the self-hosted compiler's suites
+# alone: its sources, its own goldens (its IR and SSA dumps among them) and
+# pending lists, and the docs
+SELF_HOSTED_ONLY_PATHS = ("questlang/", "tests/golden/self-hosted/", "tests/golden/ir_", "tests/golden/ssa/",
+                          "tests/self-hosted/", "docs/")
+# The IR runs left to run by hand: those between Core and the described stage
+SKIPPED_PHASES = ("run_ir_simplified", "run_ir_specialized", "run_ir_closed", "run_ir_represented")
 
 
 class Suite:
@@ -59,8 +80,8 @@ class Suite:
         unittest's count and verdict."""
         lines = self.output.read_text(encoding="utf-8", errors="replace").splitlines()
         picked = [line for line in lines if line.startswith(("Summary:", "  Golden tests:", "  Error tests:", "Ran ",
-                                                             "OK", "FAILED", "Fixed point", "Bootstrappable",
-                                                             "Stages 2 and 3", "=== Backend"))]
+                                                             "OK", "FAILED", "Fixed point", "Whole-program fixed point",
+                                                             "Bootstrappable", "Stages 2 and 3", "=== Backend"))]
         return picked or lines[-3:]
 
 
@@ -72,28 +93,62 @@ def run_at_once(suites: list[Suite], start: float) -> None:
         thread.join()
 
 
+def changed_files() -> list[str] | None:
+    """The files that differ from origin/main: in the commits since the two
+    diverged, and not yet committed (untracked files included). None if git
+    cannot say."""
+    def git(*arguments: str) -> list[str] | None:
+        process = subprocess.run(["git", *arguments], capture_output=True, text=True, cwd=ROOT_DIR)
+        return process.stdout.splitlines() if process.returncode == 0 else None
+
+    base = git("merge-base", "HEAD", "origin/main")
+    committed = git("diff", "--name-only", base[0]) if base else None
+    untracked = git("ls-files", "--others", "--exclude-standard")
+    if committed is None or untracked is None:
+        return None
+    return sorted({*committed, *untracked})
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--self-hosted-only", action="store_true",
-                        help="a change to the self-hosted compiler alone: the self-hosting check only")
+    which = parser.add_mutually_exclusive_group()
+    which.add_argument("--self-hosted-only", action="store_true",
+                       help="the self-hosted compiler's suites alone, whatever the change")
+    which.add_argument("--all", action="store_true", help="every suite, whatever the change")
     parser.add_argument("--seed", choices=("release", "bootstrap"), default="release",
                         help="what builds the self-hosting check's stage 1 (default: the current release; the "
                         "bootstrap past a gap, docs/instructions.md section 6.1)")
     args = parser.parse_args()
 
+    if args.self_hosted_only or args.all:
+        self_hosted_only = args.self_hosted_only
+    else:
+        changed = changed_files()
+        others = None if changed is None else [f for f in changed if not f.startswith(SELF_HOSTED_ONLY_PATHS)]
+        self_hosted_only = others == []
+        if changed is None:
+            print("Running every suite: git cannot say what the change is")
+        elif others:
+            print(f"Running every suite: the change touches {others[0]}"
+                  + (f" and {len(others) - 1} more files" if len(others) > 1 else "")
+                  + " outside the self-hosted compiler")
+        else:
+            print(f"Running the self-hosted compiler's suites alone: the change's {len(changed)} files are all its "
+                  "own (--all runs every suite)")
+
     python = sys.executable
     cores = os.cpu_count() or 4
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    run_tests = [python, str(ROOT_DIR / "run_tests.py")]
-    self_hosting = [*run_tests, "--self-hosting", "--seed", args.seed]
+    run_tests = [python, str(ROOT_DIR / "run_tests.py"), *(f"--skip-phase={phase}" for phase in SKIPPED_PHASES)]
+    self_hosting = [*run_tests, "--self-hosting", "--seed", args.seed, "--whole-program-fixed-point"]
     fixed_points = [Suite(f"self-hosting-{backend}", [*self_hosting, "--stage-backend", backend, "--fixed-point-only"])
-                    for backend in ("ssac", "arm64")]
+                    for backend in ("arm64",)]
     backends = [*run_tests, "--self-hosted", "--seed", args.seed, "--backend",
-                "ssac,ssac-program,ssac-modules,arm64,arm64-program,arm64-modules,c-whole,ssac-whole,arm64-whole"]
+                "ssac,arm64,arm64-program,c-whole,arm64-whole"]
     unit = [python, "-m", "unittest"]
     unit_environment = {"PYTHONPATH": str(ROOT_DIR / "bootstrap" / "python")}
 
-    if args.self_hosted_only:
+    if self_hosted_only:
         together = [
             Suite("self-hosting", [*self_hosting, "-j", str(min(8, cores))]),
             Suite("backends", [*backends, "-j", str(max(1, cores // 4))]),

@@ -136,8 +136,8 @@ The project includes comprehensive unit tests, golden-file integration tests, an
 
 ```bash
 # Before a push: every suite a change needs, at once (docs/testing.md section 4.1)
-tools/check
-tools/check --self-hosted-only   # a change to the self-hosted compiler alone
+tools/check                      # chooses the suites from the files the change touches
+tools/check --all                # every suite, whatever the change
 
 # Run all golden integration tests and diagnostic error tests
 python3 run_tests.py

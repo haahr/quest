@@ -516,8 +516,8 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
    slot in its frame; each instruction loads its arguments into scratch registers and stores its results), and
    `codegen/arm64/asm` spells Darwin's assembly; a unit's `.mod.s` (or `.main.s`) is assembled by `clang -c`. Every
    golden and error test passes with `--backend arm64`, with the program's unit alone (`arm64-program`) and with the
-   modules' alone (`arm64-modules`); `tests/self-hosted/pending-arm64.txt` is empty, and `tools/check` runs the
-   three modes (ahead of step 9). Decided while building it:
+   modules' alone (`arm64-modules`); `tests/self-hosted/pending-arm64.txt` is empty, and `tools/check` ran the
+   three modes (ahead of step 9; `arm64-modules` by hand since 2026-10-31, testing.md §4.1). Decided while building it:
    - **A `try` called `_setjmp`,** with the C backend's handler record, until step 8: the trivial allocator keeps no
      value in a register across a call, so `_setjmp`'s register restore lost nothing.
    - **Narrow arguments** (a C `bool` or `char`) are marked in the SSA (`narrow`, ssa.md §2.2): Darwin packs them on
@@ -587,7 +587,7 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
     `language/global_joins`). Fixed, the compiler built by `arm64`, and the one built by `ssac`, each write the
     C-built compiler's artifacts for every unit, and the arm64-built one passes the self-hosted suite.
     `run_tests.py --self-hosting --stage-backend ssac|arm64` checks that fixed point, and `tools/check` runs it
-    through both (testing.md §4.1). benchmarks.md §5 has the measurements: the compiler compiled by `ssac` takes 1.2
+    through `arm64`, with the whole-program fixed point (testing.md §4.1; through `ssac` by hand since 2026-10-31). benchmarks.md §5 has the measurements: the compiler compiled by `ssac` takes 1.2
     to 1.4 times as long as the one compiled by C, by `arm64` 1.6 to 2.2; with §4's suite times, it recommends keeping
     `c` the default for now. The suite through `ssac` is still to be timed (step 15's measurement).
 

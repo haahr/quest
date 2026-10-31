@@ -16,8 +16,7 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   is not a request to push, and an instruction to push one change does not carry over to later ones. When work is
   ready, commit it and say that it is ready to push.
 - **Before pushing:** fetch, rebase on `origin/main` (or bring the branch up to date as your environment provides),
-  and run `tools/check` (§2), or `tools/check --self-hosted-only` for a change to the self-hosted compiler alone.
-  Push only a branch whose tests all pass.
+  and run `tools/check` (§2), which chooses the suites the change needs. Push only a branch whose tests all pass.
 - **Ask about decisions that are his,** and act on the rest. Language semantics, deviations from Cardelli's papers,
   policies (what to fix now and what to record), and trade-offs with lasting cost (representations, performance
   versus simplicity) are his. Present them with options and a recommendation, and say which one you would choose and
@@ -41,10 +40,11 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   goldens). See [testing.md](testing.md).
 - **Unit tests:** `python3.11 -m unittest discover -s tests/python`, from the repository root.
 - **Before a push or a commit:** `tools/check` runs, at once, the self-hosting check seeded from the release (which
-  ends with the self-hosted suite), the backends' suite (the self-hosted suite through `ssac`, [arm64.md](arm64.md)
-  §4), the bootstrap's suite, and the unit tests, with the cores split between them, and then the terminal tests
-  alone. `tools/check --self-hosted-only` runs only the self-hosting check and the backends' suite, for a change to
-  the self-hosted compiler alone: how it compiles (its IR, its C) or a refactoring of `questlang/`. Anything either
+  ends with the self-hosted suite), the backends' suite (the self-hosted suite through `ssac` and `arm64`,
+  [arm64.md](arm64.md) §4), the bootstrap's suite, and the unit tests, with the cores split between them, and then
+  the terminal tests alone. For a change to the self-hosted compiler alone (`questlang/`, its own goldens, and the
+  docs: how it compiles, or a refactoring), it runs only the self-hosting checks and the backends' suite; it decides
+  from the files that differ from `origin/main` (testing.md §4.1), and `--all` overrides it. Anything either
   compiler shares (the language, `lib/`, `runtime/`, what programs do or what errors say, the tests) needs the full
   `tools/check` ([testing.md](testing.md) §4.1).
 - **The compiler:** `./quest PROGRAM` runs the self-hosted compiler, which is the default; `./quest --stop-after PHASE
@@ -86,7 +86,7 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
 - **Policy for bugs found along the way:** silent wrong answers (miscompilations) are fixed promptly; other failures
   are recorded (a task, and where a test cannot pass, a skipped phase with the reason) unless the owner decides
   otherwise. Ask when a case does not fit.
-- **Validate before every commit:** `tools/check` (or `--self-hosted-only`, §2), all passing; a comment- or
+- **Validate before every commit:** `tools/check` (§2), all passing; a comment- or
   documentation-only change needs no suites. Keep the worktree clean between steps.
 - **Measure when performance is at stake:** `python3.11 tests/perf/measure.py` compares C generation time, C size,
   and benchmark run times with `tests/perf/baseline.json` (on the same machine).

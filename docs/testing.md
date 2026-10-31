@@ -255,6 +255,12 @@ requires:
 - **The fixed point:** every artifact stage 2 writes for the driver's units (`.mod.c`, `.main.c`, `.int.h`, `.qi`, and
   `.qm`) must be the one stage 1 wrote, up to the producer and the build directory's path. Stages 2 and 3 should be
   the same binary, and the check says so if they are not.
+- **The whole-program fixed point,** with `--whole-program-fixed-point`: stage 2 builds the driver as a whole program
+  (`--whole-program`, [arm64.md](arm64.md) step 13), through the stage backend, and that compiler must write the
+  whole program's code (`compile --whole-program --emit-c`: C, or arm64's assembly) that stage 2 writes. Its own
+  whole-program build would then be the same compiler, so it is not built. The code is compared rather than the
+  binaries, which `-o --whole-program` compiles and links in a temporary directory of its own, whose path the
+  linker's UUID depends on.
 - **Bootstrappability,** with `--seed release`: the bootstrap's build of the driver, which runs alongside the release's
   stage 1, builds a stage 2 of its own, whose artifacts must be the release's stage 1's. The two stage 1s are the same
   compiler built by different compilers, so they must compile the same way. This is what keeps the bootstrap able to
@@ -603,33 +609,46 @@ bidirectional matching:
 | **Questlang** | The self-hosted compiler's modules, compiled (each suite runs them too) | `python3 run_tests.py -k questlang/` |
 | **Self-Hosting** | The self-hosted compiler's fixed point, then the self-hosted suite with stage 2 | `python3 run_tests.py --self-hosting` |
 | **Release** | The self-hosting check, then a new current release, shared by all worktrees | `tools/release` |
-| **Before a push** | The suites a change needs, at once (section 4.1) | `tools/check` or `tools/check --self-hosted-only` |
+| **Before a push** | The suites a change needs, at once, chosen from the files it changes (section 4.1) | `tools/check` |
 
 ### 4.1. Before a Push (`tools/check`)
 
 Which tests a change needs depends on which compilers it changes (section 2.8, and
-[instructions.md](instructions.md) §9):
+[instructions.md](instructions.md) §9). `tools/check` decides from the files that differ from `origin/main`, committed
+or not: a change only to `questlang/`, the self-hosted compiler's own goldens (`tests/golden/self-hosted/`, and its IR
+and SSA dumps, `tests/golden/ir_*/` and `tests/golden/ssa/`), `tests/self-hosted/`, or `docs/` runs the second row's
+suites, and any other change the first's. It says which, and why; `--all` and `--self-hosted-only` choose for it.
 
-| Change | Command | Runs | Takes (10 cores) |
-| :--- | :--- | :--- | ---: |
-| **Both compilers,** or what they share: the language, `lib/`, `runtime/`, a fix to what programs do or what errors they report, the tests | `tools/check` | At once: the self-hosting check seeded from the release (50% of the workers), the fixed point through `ssac` and through `arm64`, the backends' suite (20%: `--self-hosted --backend` with the three `ssac` modes, the three `arm64` ones, and the three whole ones), the bootstrap's suite (30%), and the unit tests but the terminal ones; then the terminal tests alone | about 11 min |
-| **The self-hosted compiler alone:** `questlang/` changes to how it compiles (its IR, its C), and refactorings | `tools/check --self-hosted-only` | The self-hosting check seeded from the release, with 8 workers, the fixed point through `ssac` and `arm64`, and the backends' suite, with a quarter of the cores | about 11 min |
+| Change | Runs | Takes (10 cores) |
+| :--- | :--- | ---: |
+| **Both compilers,** or what they share: the language, `lib/`, `runtime/`, `bootstrap/`, a fix to what programs do or what errors they report, the shared tests | At once: the self-hosting check seeded from the release (50% of the workers), the fixed point through `arm64`, each with the whole-program fixed point through its backend, the backends' suite (20%: `--self-hosted --backend` with `ssac`, `arm64`, `arm64-program`, `c-whole`, and `arm64-whole`), the bootstrap's suite (30%), and the unit tests but the terminal ones; then the terminal tests alone | about 11 min |
+| **The self-hosted compiler alone:** `questlang/` changes to how it compiles (its IR, its C), refactorings, and its own goldens | The self-hosting check seeded from the release, with 8 workers, the fixed point through `arm64`, each with the whole-program one, and the backends' suite, with a quarter of the cores | about 11 min |
 
-- **Both take about as long,** since the self-hosted suite sets when either ends (section 5.1); `--self-hosted-only`
-  leaves the bootstrap's suite and the unit tests out, which a change to the self-hosted compiler alone cannot
-  affect, and frees the cores they would use.
+- **Both take about as long,** since the self-hosted suite sets when either ends (section 5.1); the second leaves the
+  bootstrap's suite and the unit tests out, which a change to the self-hosted compiler alone cannot affect, and frees
+  the cores they would use.
+- **Phases left out:** every suite passes `--skip-phase` for the IR runs between Core and the described stage
+  (`run_ir_simplified`, `run_ir_specialized`, `run_ir_closed`, and `run_ir_represented`). A pass that breaks a
+  program still fails `run_ir_described` and the compiled runs, and `QUEST_CHECK_IR` verifies the IR after every
+  pass in every mode; rerunning the four phases (`run_tests.py --self-hosted --phase PHASE`) finds which pass.
 - **The self-hosting check** (`run_tests.py --self-hosting --seed release`) builds stage 1 with the release, and the
   bootstrap's build alongside it, then stages 2 and 3. It checks the fixed point, that the bootstrap still builds what
-  the release does, and that stages 2 and 3 are the same binary, and then runs the whole self-hosted suite with
-  stage 2. It replaces `--self-hosted`, for 2-3 minutes more. Past a gap (a feature the release does not have yet,
+  the release does, that stages 2 and 3 are the same binary, and the whole-program fixed point
+  (`--whole-program-fixed-point`, section 2.3, about 3 minutes), and then runs the whole self-hosted suite with
+  stage 2. It replaces `--self-hosted`, for 5-6 minutes more. Past a gap (a feature the release does not have yet,
   [instructions.md](instructions.md) §6.1), `tools/check --seed bootstrap` builds stage 1 with the bootstrap.
 - **The fixed point through the other backends** (`run_tests.py --self-hosting --stage-backend ssac|arm64
   --fixed-point-only`, [arm64.md](arm64.md) step 12): stage 1, built by the release, builds stage 2 through the
   backend, and stage 2, the compiler as that backend compiles it, builds stage 3 through it too, which must write
-  the same artifacts (C, or arm64's assembly) for every unit. It compares artifacts rather than binaries: two
-  arm64 binaries linked from the same assembly differ in their Mach-O UUID and code signature. Without
-  `--fixed-point-only`, the self-hosted suite then runs with that stage 2 (not part of `tools/check`, which would
-  take as long again).
+  the same artifacts (C, or arm64's assembly) for every unit, and then checks the whole-program fixed point through
+  the backend too. It compares artifacts rather than binaries: two arm64 binaries linked from the same assembly
+  differ in their Mach-O UUID and code signature. Without `--fixed-point-only`, the self-hosted suite then runs with
+  that stage 2 (not part of `tools/check`, which would take as long again).
+- **ssac in `tools/check`** is the backends' plain `ssac` mode alone, which keeps the SSA's C printer working; its
+  fixed point, and `ssac-program`, `ssac-modules`, and `ssac-whole`, run by hand. The `arm64` modes and fixed point
+  test the SSA the two backends share, and the other `ssac` runs added a quarter of an hour to the check.
+  `arm64-modules` runs by hand too: `arm64-program` tests the same boundary between arm64's units and C's, from the
+  other side.
 - **The questlang tests** (`tests/source/questlang/`) need no run of their own: each suite runs them compiled, with its
   own compiler.
 - **The suites do not interfere:** each builds into a temporary directory of its own, the runtime's cached objects
