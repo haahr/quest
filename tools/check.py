@@ -11,7 +11,8 @@ stage 2), the fixed point through ssac and through arm64 (stages 2 and 3 built
 by each backend, which must write what stage 1 wrote: docs/arm64.md step 12),
 the backends' suite (the self-hosted suite's compiled tests through
 the SSA's C printer, ssac, and the native arm64 backend, each for every unit,
-and for the program's or the modules' alone: docs/arm64.md section 4), the bootstrap's suite, and the unit
+and for the program's or the modules' alone, and whole programs through C,
+ssac, and arm64: docs/arm64.md sections 4 and 5), the bootstrap's suite, and the unit
 tests but those that drive a terminal, and then, alone, the terminal tests,
 which time out under load. A change to the self-hosted compiler alone runs the
 self-hosting checks and the backends' suite only. Each suite builds into a temporary directory of its own, so
@@ -88,7 +89,7 @@ def main() -> int:
     fixed_points = [Suite(f"self-hosting-{backend}", [*self_hosting, "--stage-backend", backend, "--fixed-point-only"])
                     for backend in ("ssac", "arm64")]
     backends = [*run_tests, "--self-hosted", "--seed", args.seed, "--backend",
-                "ssac,ssac-program,ssac-modules,arm64,arm64-program,arm64-modules"]
+                "ssac,ssac-program,ssac-modules,arm64,arm64-program,arm64-modules,c-whole,ssac-whole,arm64-whole"]
     unit = [python, "-m", "unittest"]
     unit_environment = {"PYTHONPATH": str(ROOT_DIR / "bootstrap" / "python")}
 

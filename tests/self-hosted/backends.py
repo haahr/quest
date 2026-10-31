@@ -8,8 +8,8 @@ every unit by ssac or arm64, and the program and its module split between the
 backends both ways. Each build must print what the first printed; each unit's
 manifest must record the backend that compiled it; a unit compiled by another
 backend than the build's choice must be compiled again, and one compiled by the
-same must not. Malformed options are usage errors, and --whole-program is the c
-backend's alone. A runaway recursion through a frame larger than the stack's
+same must not. Malformed options are usage errors, and so is --unit-backend
+with --whole-program, which compiles one unit. A runaway recursion through a frame larger than the stack's
 guard page ends with stack.overflow with each backend, and tail recursions ten
 million deep run in constant stack with arm64. run_tests.py --self-hosted runs
 it (docs/testing.md).
@@ -104,7 +104,7 @@ def check(driver: str) -> list[str]:
             (["--backend", "x86"], "--backend takes c, ssac, or arm64"),
             (["--unit-backend", "main"], "--unit-backend takes UNIT=BACKEND"),
             (["--unit-backend", "main=x"], "--unit-backend takes UNIT=BACKEND"),
-            (["--whole-program", "--backend", "ssac"], "--whole-program compiles with the c backend only"),
+            (["--whole-program", "--unit-backend", "main=arm64"], "--whole-program compiles one unit"),
         ):
             p = subprocess.run([driver, *options, "--build-dir", str(build), "-o", str(build / "other"), "main.quest"],
                                capture_output=True, text=True, cwd=program, env=environment)

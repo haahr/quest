@@ -10,6 +10,7 @@ import
     util/hash : util/Hash
     util/maybe : util/Maybe
     stringOp = string : StringOp
+    conv : Conv
 export
     Let Type = model.Type
     Let Shape = shapes.Shape
@@ -450,12 +451,14 @@ export
 
     (* A compilation unit *)
     Let Unit = Tuple
+        var isProgram: Bool
         var main: Body
         var modules: vector.T(Module)
         var imports: Array(Import)
         var functions: vector.T(Function)
         var stage: String
         var sourceMap: maybe.T(location.SourceMap)
+        var mergedSources: vector.T(maybe.T(location.SourceMap))
         var staticData: maybe.T(StaticData)
     end
 
@@ -608,13 +611,36 @@ export
 
     let newUnit(main: Body modules: vector.T(Module) imports: Array(Import) sourceMap: maybe.T(location.SourceMap)): Unit =
         tuple
+            let var isProgram = true
             let var main = main
             let var modules = modules
             let var imports = imports
             let var functions = vector.new(:Function)
             let var stage = "core"
             let var sourceMap = sourceMap
+            let var mergedSources = vector.new(:maybe.T(location.SourceMap))
             let var staticData = maybe.none(:StaticData)
+        end
+
+    (* Each file's offsets are below 2^32, so a unit's offsets carry their file
+     * above them *)
+    let fileSpan: Int = 4294967296
+
+    let fileOffset(file: Int offset: Int): Int = {file * fileSpan} + offset
+
+    let site(u: Unit offset: Int): maybe.T(String) =
+        begin
+            let file = offset / fileSpan
+            let sm = if file is 0 then u.sourceMap
+                else if file <= vector.length(:maybe.T(location.SourceMap) u.mergedSources) then
+                    vector.get(:maybe.T(location.SourceMap) u.mergedSources {file - 1})
+                else maybe.none(:location.SourceMap) end end
+            if maybe.isNone(:location.SourceMap sm) then maybe.none(:String)
+            else
+                let m = maybe.unwrap(:location.SourceMap sm)
+                let pos = location.locate(m offset - {file * fileSpan})
+                maybe.some(:String location.file(m) <> ":" <> conv.int(pos.line) <> ":" <> conv.int(pos.col))
+            end
         end
 
     let atomOfVar(v: Variable): Atom = option atomVar of Atom with let v = v end

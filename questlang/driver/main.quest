@@ -53,6 +53,7 @@ import
     questlang/interpreter/treewalk : questlang/interpreter/Treewalk
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/lower : questlang/ir/Lower
+    questlang/ir/whole : questlang/ir/Whole
     questlang/ir/printer : questlang/ir/Printer
     questlang/ir/verify : questlang/ir/Verify
     questlang/ir/specialize : questlang/ir/Specialize
@@ -505,6 +506,8 @@ let finish(bag: diagbag.T sm: location.SourceMap): Ok =
 let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResult: Bool stage: String): nodes.Unit =
     begin
         let var unit = lower.lowerProgram(program e maybe.some(:location.SourceMap sm) options.echo printResult)
+        (* A whole program is one unit, its modules merged into it *)
+        if options.wholeProgram then unit := whole.mergeImports(unit e) end
         let check = fun(u: nodes.Unit at: String): Ok
             begin
                 if verify.irChecksEnabled() then verify.checkUnit(u) end
@@ -738,10 +741,11 @@ let newEngine(e: env.T): engine.T =
 
 (* The backend that compiles the program's own unit *)
 let programBackend = choice.forUnit(options.backends choice.programUnit);
-(* Whole-program builds with the SSA's backends come later (docs/arm64.md
- * section 5, step 13) *)
-if options.wholeProgram andif not(choice.allC(options.backends)) then
-    usage("--whole-program compiles with the c backend only")
+(* A whole program is one unit, the program's with its modules', which
+ * --backend chooses the backend of (docs/arm64.md section 5, step 13), so a
+ * unit of its own has none *)
+if options.wholeProgram andif {extent options.backends.overrides > 0} then
+    usage("--whole-program compiles one unit, so --unit-backend has none to choose for")
 end;
 
 (* A type-checked program's imports, as the engine resolves them *)
@@ -763,6 +767,19 @@ let importRefs(program: typedAst.Program): Array(engine.ImportRef) =
             end
         end
         vector.toArray(:engine.ImportRef refs)
+    end;
+
+(* The modules a whole program's unit still imports, by canonical name and
+ * interface *)
+let keptImports(unit: nodes.Unit): Array(passes.ImplicitImport) =
+    begin
+        let kept = vector.new(:passes.ImplicitImport)
+        for i = 0 upto {extent unit.imports - 1} do
+            vector.append(:passes.ImplicitImport kept tuple
+                let canonicalPath = unit.imports[i].canonicalPath let interfacePath = unit.imports[i].interfacePath
+            end)
+        end
+        vector.toArray(:passes.ImplicitImport kept)
     end;
 
 (* Takes a type-checked program through the C backend, as the bootstrap's
@@ -812,8 +829,15 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                     writer.putString(writer.output t.c)
                 end
             elsif running orif writing then
-                let modules = engine.unitModuleRefs(importRefs(program) passes.implicitImports(t.unit program)
-                    e.currentDir vector.toArray(:String e.includePaths) e.programDir e.units.resolver)
+                (* A whole program's modules are in its unit, but for those it
+                 * still imports, known only through their interfaces (the
+                 * library's, ir/whole), which are built apart *)
+                let modules = if options.wholeProgram then
+                        engine.unitModuleRefs(array of :engine.ImportRef end keptImports(t.unit)
+                            e.currentDir vector.toArray(:String e.includePaths) e.programDir e.units.resolver)
+                    else engine.unitModuleRefs(importRefs(program) passes.implicitImports(t.unit program)
+                        e.currentDir vector.toArray(:String e.includePaths) e.programDir e.units.resolver)
+                    end
                 let importer = if strutil.startsWith(options.file "<") then options.file else stem(options.file) end
                 try
                     let objects = engine.buildModules(newEngine(e) modules importer e.programDir)

@@ -176,6 +176,9 @@ export
         (* The source file's map, in which the offsets of the nodes that can
          * raise are *)
         sourceMap: maybe.T(location.SourceMap)
+        (* The number of the file whose offsets these are in the unit
+         * (nodes.fileOffset) *)
+        file: Int
         (* The frame of the code being lowered, which names the functions it
          * makes *)
         var frame: String
@@ -238,7 +241,7 @@ export
             end
         end
 
-    let newLowerer(e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult: Bool): Lowerer =
+    let newLowerer(e: env.T sourceMap: maybe.T(location.SourceMap) file: Int echo: Bool printResult: Bool): Lowerer =
         begin
             let builtins = hashMap.new(:Int :String intEqual hash.int)
             hashMap.forEach(:String :symbols.ValueSymbol e.baseScope.values fun(name: String sym: symbols.ValueSymbol): Ok
@@ -250,6 +253,7 @@ export
                 let echo = echo
                 let printResult = printResult
                 let sourceMap = sourceMap
+                let file = file
                 let var frame = diagnostics.mainFrame
                 let var body = nodes.newBody()
                 let var loops = vector.new(:String)
@@ -335,7 +339,7 @@ export
 
     let some(v: Variable): maybe.T(Variable) = maybe.some(:Variable v)
     let none: maybe.T(Variable) = maybe.none(:Variable)
-    let offsetOf(e: Expr): maybe.T(Int) = maybe.some(:Int e.offset)
+    let offsetOf(l: Lowerer e: Expr): maybe.T(Int) = maybe.some(:Int nodes.fileOffset(l.file e.offset))
 
     (* The variable of the value symbol of e, if it is a variable whose binder
      * the unit has *)
@@ -462,7 +466,7 @@ export
             when exprInfix with x then
                 let left = value(l x.left none)
                 let right = value(l x.right none)
-                letOp(l nodes.prim(nodes.primNamed(x.op) array of left right end offsetOf(e)) e.type into)
+                letOp(l nodes.prim(nodes.primNamed(x.op) array of left right end offsetOf(l e)) e.type into)
             when exprRecord with x then
                 let fields = vector.new(:nodes.FieldAtom)
                 for i = 0 upto {extent x.fields - 1} do
@@ -476,7 +480,7 @@ export
             when exprIndex with x then
                 let a = value(l x.target none)
                 let i = value(l x.index none)
-                letOp(l option opIndex of Op with let var arr = a let var index = i let offset = offsetOf(e) end e.type into)
+                letOp(l option opIndex of Op with let var arr = a let var index = i let offset = offsetOf(l e) end e.type into)
             when exprArray with x then
                 let atoms = vector.new(:Atom)
                 for i = 0 upto {extent x.elements - 1} do vector.append(:Atom atoms value(l x.elements[i] none)) end
@@ -484,7 +488,7 @@ export
             when exprArrayRep with x then
                 let n = value(l x.count none)
                 let v = value(l x.initVal none)
-                letOp(l option opArrayRep of Op with let var count = n let var init = v let offset = offsetOf(e) end e.type into)
+                letOp(l option opArrayRep of Op with let var count = n let var init = v let offset = offsetOf(l e) end e.type into)
             when exprVarCell with x then
                 letOp(l option opAddrCell of Op with let var init = value(l x.value none) end e.type into)
             when exprSelectRef with x then
@@ -496,7 +500,7 @@ export
             when exprIndexRef with x then
                 let a = value(l x.target none)
                 let i = value(l x.index none)
-                letOp(l option opAddrElement of Op with let var base = a let var index = i let offset = offsetOf(e) end e.type into)
+                letOp(l option opAddrElement of Op with let var base = a let var index = i let offset = offsetOf(l e) end e.type into)
             when exprTupleSelectRef with x then
                 let t = value(l x.target none)
                 letOp(l option opAddrComponent of Op with
@@ -518,7 +522,7 @@ export
                 let p = if maybe.isSome(:Expr x.payload) then maybe.some(:Atom value(l maybe.unwrap(:Expr x.payload) none))
                     else maybe.none(:Atom) end
                 let cases = if maybe.isSome(:Atom ordinalAtom) then canonical.optionCaseNames(e.type) else array of :String end end
-                letOp(l nodes.makeOption(x.tag p ordinalAtom offsetOf(e) cases) e.type into)
+                letOp(l nodes.makeOption(x.tag p ordinalAtom offsetOf(l e) cases) e.type into)
             when exprVariantCheck with x then letOp(l nodes.isTag(value(l x.target none) x.tag) e.type into)
             when exprVariantAssert with x then
                 let cases = optionCases(x.target.type)
@@ -530,7 +534,7 @@ export
                     end
                     if maybe.isNone(:Int ordinalIndex) then fail(:Ok "no case '" <> x.tag <> "'") end
                 end
-                letOp(l nodes.payload(value(l x.target none) x.tag offsetOf(e) ordinalIndex) e.type into)
+                letOp(l nodes.payload(value(l x.target none) x.tag offsetOf(l e) ordinalIndex) e.type into)
             when exprAuto with x then
                 letOp(l option opMakeAuto of Op with
                     let witness = x.witnessType
@@ -770,7 +774,7 @@ export
                     let o = if eq(name "ordinal") then
                         nodes.ordinalOf(atoms[0] canonical.optionCaseNames(app.args[0].type))
                     else
-                        nodes.prim(nodes.primNamed(name) atoms offsetOf(e))
+                        nodes.prim(nodes.primNamed(name) atoms offsetOf(l e))
                     end
                     letOp(l o e.type into)
                 else
@@ -788,7 +792,7 @@ export
                         false
                     end
                     if isArrayOp then
-                        arrayOperation(l maybe.unwrap(:String c.member) atoms e.type into offsetOf(e))
+                        arrayOperation(l maybe.unwrap(:String c.member) atoms e.type into offsetOf(l e))
                     else
                         let calleeType = if maybe.isSome(:nodes.ModuleRef c.moduleRef) then maybe.some(:Type func.type) else maybe.none(:Type) end
                         letOp(l nodes.call(c.callee vector.toArray(:Type typeArgs) atoms c.moduleRef c.member calleeType) e.type into)
@@ -1013,12 +1017,12 @@ export
                 let a = value(l x.target none)
                 let i = value(l x.index none)
                 let v = value(l x.value none)
-                emit(l option sStoreElement of Stmt with let var value = v let var base = a let var index = i let offset = offsetOf(e) end)
+                emit(l option sStoreElement of Stmt with let var value = v let var base = a let var index = i let offset = offsetOf(l e) end)
             when exprRaise with x then
                 let exc = value(l x.exc none)
                 let p = if maybe.isSome(:Expr x.payload) then maybe.some(:Atom value(l maybe.unwrap(:Expr x.payload) none))
                     else maybe.none(:Atom) end
-                terminate(l option sRaise of Stmt with let var exc = exc let var payload = p let offset = offsetOf(e) end)
+                terminate(l option sRaise of Stmt with let var exc = exc let var payload = p let offset = offsetOf(l e) end)
             when exprApp then
                 if isOk(e.type) then
                     let a = call(l e none)
@@ -1167,7 +1171,7 @@ export
                     vector.append(:nodes.InspectCase cases c)
                 end
                 let elseBody = elseOf(l x.elseBranch lowerBranch)
-                emit(l nodes.inspectStmt(v vector.toArray(:nodes.InspectCase cases) elseBody x.autoType offsetOf(e)))
+                emit(l nodes.inspectStmt(v vector.toArray(:nodes.InspectCase cases) elseBody x.autoType offsetOf(l e)))
             when exprTry with x then
                 let exc = fresh("e" model.exceptionType false)
                 (* What the handler catches, when that is known before the try:
@@ -1720,14 +1724,14 @@ export
     let lowerProgram(prog: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) echo: Bool printResult: Bool):
             nodes.Unit =
         begin
-            let unit = program(newLowerer(e sourceMap echo printResult) prog)
+            let unit = program(newLowerer(e sourceMap 0 echo printResult) prog)
             for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do addModuleRecord(vector.get(:nodes.Module unit.modules i)) end
             unit
         end
 
-    let lowerModuleFile(b: Binding e: env.T sourceMap: maybe.T(location.SourceMap)): nodes.Unit =
+    let lowerModuleFile(b: Binding e: env.T sourceMap: maybe.T(location.SourceMap) file: Int): nodes.Unit =
         begin
-            let unit = program(newLowerer(e sourceMap false false) tuple let offset = b.offset let phrases = array of b end end)
+            let unit = program(newLowerer(e sourceMap file false false) tuple let offset = b.offset let phrases = array of b end end)
             let m = vector.get(:nodes.Module unit.modules 0)
             let exports = nodes.newMembers()
             case b.form
@@ -1755,6 +1759,7 @@ export
             end
             m.exports := maybe.some(:nodes.Members exports)
             addModuleRecord(m)
+            unit.isProgram := false
             unit
         end
 end

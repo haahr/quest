@@ -356,7 +356,8 @@ byte against the assembler.
   the same place. The backend that wrote a unit's `.o` is recorded with its artifacts, and an `.o` from the other
   backend is stale. Interface headers are still written when a C unit needs them; the arm64 backend reads layouts
   from interfaces, not from headers.
-- **Whole-program compilation** (build-process.md §1.2) comes after self-hosting with the arm64 backend (step 13).
+- **Whole-program compilation** (build-process.md §1.2) goes through either backend: the modules are merged into the
+  program's unit (`ir/whole`, step 13).
 
 ### 3.13. The collector
 
@@ -508,7 +509,7 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
    - **The backend is chosen per unit** (`codegen/choice`): `--backend` for every unit, and a repeatable
      `--unit-backend UNIT=BACKEND` for one, a unit named as its manifest names it (a module by its canonical name,
      the program as `main`). A unit's manifest records its backend (`"backend"`), and a unit compiled by another is
-     stale. `--whole-program` stays the C backend's until step 13.
+     stale. `--whole-program` compiles one unit, so it takes no `--unit-backend` (step 13).
 6. **A first arm64 backend:** instruction selection, the trivial allocator, frames, static data, emission, and
    linking, for straight-line code, calls, and control flow; other constructs are errors (§3.12). *Done*
    (2026-10-29), with step 7: `codegen/arm64/codegen` compiles the SSA with the trivial allocator (every value has a
@@ -592,6 +593,21 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
 
 13. **Whole-program compilation** with the arm64 backend (build-process.md §1.2). *Done when* `--whole-program`
     builds with `--backend arm64` (and `ssac`) pass the suite.
+
+    *Done* (2026-10-30). The C printer had compiled whole programs from the typed program; the SSA's backends take a
+    unit. `ir/whole` lowers each imported module with a source as a module file is lowered and merges it into the
+    program's unit, its references to merged modules made the unit's own, while the library's modules known only
+    through interfaces and objects stay imported and are linked. A unit says whether it is a program's
+    (`Unit.isProgram`, where it had been inferred from its modules' exports). The merged files' offsets are numbered
+    apart, so that a raise names its own file (`nodes.site`). Merged, the library is specialized with the program,
+    which showed that a polymorphic value applied to types alone (`hashMap.newIdentityMap(:Real :Int)`) made its
+    result generically while the calls that used it, specialized, read it natively: such a type application is now
+    specialized as a call (ir.md §8.1). A module imported by two names (`arrayOp`, prelinked, and `arrayop`, imported
+    by a library module) is merged once, by its name in lower case. And a type application of a member of one of the
+    unit's modules used the module's variable outside its initialization, in a program's own modules too
+    (`language/inline_module_type_applications`): the thunks pass now binds the member by a let, as an imported
+    module's. The runner's `c-whole`, `ssac-whole`, and `arm64-whole` modes run the suite whole through each backend,
+    and `tools/check` runs all three (testing.md §4.1).
 14. **Line tables** (§1). *Done when* native code has `.file` and `.loc` directives for its source lines, and lldb
     shows a breakpoint's Quest line and a backtrace's lines in a test program.
 15. **`ssac` as the C backend** (§1). Measure `ssac`'s code and compile times against the C printer's, with the

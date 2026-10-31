@@ -34,6 +34,13 @@ In whole-program compilation mode:
 - Generates a single consolidated C file (e.g. `main.c`), with no `.qi` or `.qm` metadata files produced or read from
   disk.
 - The single C file is compiled and linked directly to produce the native executable.
+- *The self-hosted compiler* lowers each imported module with a source to IR as a module file of its own would be,
+  and merges it into the program's unit, each after those it imports, its references made the unit's own
+  (`questlang/ir/whole`); the unit then goes through any backend (`--backend c`, `ssac`, or `arm64`), as one unit, so
+  `--unit-backend` has none to choose. A module known only through its interface and object (the library's prelinked
+  modules) stays imported and is linked as in separate compilation. A raise's site names the file it is in: the
+  offsets of each merged file are numbered apart (`nodes.fileOffset`). Specialization reaches across the merged
+  modules, as within one unit ([ir.md](ir.md) §8.1).
 - *Note:* Bytecode/AST interpretation (`interpret`) always operates in whole-program mode, evaluating loaded modules
   directly in memory.
 

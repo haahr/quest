@@ -348,13 +348,16 @@ result, over the function's type parameters, also decided on its shape (so a tup
 a type operator's application, `Box(A)`, counts as one written out).
 
 The clone has fresh binders throughout and is bound by the same `funs` statement as the original, so it is in scope
-wherever the original is and sees the same free variables (a local function's clone captures what the original
-does). A clone of a module's function is also a member of the module (`first_spec1`), which calls from outside the
-module name. Clones are specialized in turn, and shared by function and type arguments (by identity, never by name),
-so a recursive function's clone calls itself; clones made for calls in clones are bounded in depth (16), beyond
-which calls stay generic, since polymorphic recursion (a function of `A` calling itself at `List(A)`) would
-otherwise specialize without end. Specialization runs *before* closure conversion: a clone's local functions are
-part of the clone, and are lifted with it.
+wherever the original is and sees the same free variables (a local function's clone captures what the original does). A
+clone of a module's function is also a member of the module (`first_spec1`), which calls from outside the module name.
+Clones are specialized in turn, and shared by function and type arguments (by identity, never by name), so a recursive
+function's clone calls itself; clones made for calls in clones are bounded in depth (16), beyond which calls stay
+generic, since polymorphic recursion (a function of `A` calling itself at `List(A)`) would otherwise specialize without
+end. A `type_app` whose instance is not a function (a polymorphic value, such as `hashMap.newIdentityMap`) runs the
+function applied, so it is specialized as a call without arguments would be, and becomes a `call` of the clone, which
+takes no parameters: otherwise its result would be laid out generically while the specialized calls given it read it
+natively. Specialization runs *before* closure conversion: a clone's local functions are part of the clone, and are
+lifted with it.
 
 ### 8.2. Closure-convert
 
@@ -526,11 +529,12 @@ printer makes its thunks itself.
   value where the result is a type parameter's). The plan names its adapter (`Plan.thunk`, printed `adapt by
   qa_adapt`) and keeps neither thunk parameters nor fields, which are the adapter's; a conversion by it is a new
   closure of the adapter whose environment is the converted closure.
-- **A type application whose instance is a function** is a closure of its thunk (`qa_type_app`), capturing the
-  function applied and taking the type arguments, as closure conversion's lifted functions take their enclosing
-  functions' type parameters: the thunk's type parameters are the applied function's first ones, supplied by the
-  closure, then the instance's own (the application's thunk parameters). It calls the function with all of them,
-  converting by the application's plans. A member of an imported module applied to types is first bound by a let.
+- **A type application whose instance is a function** is a closure of its thunk (`qa_type_app`), capturing the function
+  applied and taking the type arguments, as closure conversion's lifted functions take their enclosing functions' type
+  parameters: the thunk's type parameters are the applied function's first ones, supplied by the closure, then the
+  instance's own (the application's thunk parameters). It calls the function with all of them, converting by the
+  application's plans. A module's member applied to types is first bound by a let, the module's own or an imported
+  one's: the variable the member is bound to is the module's, in scope in its initialization alone.
 - **An external C function used as a value** is the static closure of a function calling it (`qx_<symbol>`), without
   its type parameters' descriptors; a call of a variable bound to one, without type arguments, is an external call.
 

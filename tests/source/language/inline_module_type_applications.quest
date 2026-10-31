@@ -1,0 +1,19 @@
+(* A polymorphic function of a module declared in the program, applied to types alone and then called, and a
+   polymorphic value of the module applied to types: the module's members are read in the program's code, not its
+   initialization's variables (the self-hosted thunks pass, docs/ir.md section 8.4.1). *)
+(* @echo *)
+
+interface Pair export
+    first(A::TYPE)(x: A y: A): A
+    empty: All(A::TYPE) Tuple items: Array(A) end
+end;
+module pair: Pair export
+    let first(A::TYPE)(x: A y: A): A = x
+    let empty(A::TYPE): Tuple items: Array(A) end = tuple let items = array of :A end end
+end;
+
+let firstInt = pair.first(:Int);
+firstInt(3 4);
+let firstString = pair.first(:String);
+firstString("a" "b");
+extent pair.empty(:Real).items

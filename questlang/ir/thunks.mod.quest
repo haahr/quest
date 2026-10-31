@@ -372,21 +372,20 @@ export
             let v = maybe.unwrap(:Variable o.callee)
             tuple let atom = nodes.atomOfVar(v) let type = v.type end
         else
+            (* A module's member, read by a let: the variable bound to it is
+             * the module's, in scope in its initialization alone *)
             let r = maybe.unwrap(:nodes.ModuleRef o.moduleRef)
             let member = maybe.unwrap(:String o.member)
             let m = moduleOf(r)
-            if maybe.isSome(:nodes.Module m) then
-                let v = maybe.unwrap(:Variable nodes.member(maybe.unwrap(:nodes.Module m).members member))
-                tuple let atom = nodes.atomOfVar(v) let type = v.type end
-            else
-                let ty = maybe.unwrap(:Type o.calleeType)
-                let v = nodes.newVar(member ty false)
-                vector.append(:Stmt before nodes.letStmt(v option opModuleMember of Op with
-                    let var moduleRef = r
-                    let var member = maybe.some(:String member)
-                end))
-                tuple let atom = nodes.atomOfVar(v) let type = ty end
-            end
+            let ty = if maybe.isSome(:nodes.Module m) then
+                maybe.unwrap(:Variable nodes.member(maybe.unwrap(:nodes.Module m).members member)).type
+            else maybe.unwrap(:Type o.calleeType) end
+            let v = nodes.newVar(member ty false)
+            vector.append(:Stmt before nodes.letStmt(v option opModuleMember of Op with
+                let var moduleRef = r
+                let var member = maybe.some(:String member)
+            end))
+            tuple let atom = nodes.atomOfVar(v) let type = ty end
         end
 
     (* An operation with its thunks: the operation that replaces it, if any,

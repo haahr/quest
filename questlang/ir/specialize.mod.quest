@@ -109,6 +109,14 @@ export
             found orif {shapes.kindIs(shapes.shape(f.resultType) shapes.shapeTuple) andif mentionsAny(f.resultType ids)}
         end
 
+    (* Whether values of type t are functions, polymorphic or not *)
+    let isFunction(t: Type): Bool =
+        begin
+            let var s = shapes.shape(t)
+            while shapes.kindIs(s shapes.shapeAll) do s := shapes.body(s) end
+            shapes.kindIs(s shapes.shapeFun)
+        end
+
     (* ======================================================================
      * Cloning: a function copied with types substituted; every variable it
      * binds is a fresh one, and every other node is copied, except module
@@ -537,20 +545,20 @@ export
                     ns
                 else array of :String end
             end
-            let cloneType = if inner.form?typeFun orif {extent params > 0} then
-                let ps = array of(extent params tuple let name = "" let type = model.okType let isVar = false let isOut = false end)
-                for i = 0 upto {extent params - 1} do
-                    ps[i] := tuple
-                        let name = if i < extent names then names[i] else params[i].v.hint end
-                        let type = params[i].v.type
-                        let isVar = eq(params[i].mode "var")
-                        let isOut = eq(params[i].mode "out")
-                    end
+            (* A function of type parameters alone (a polymorphic value,
+             * hashMap.newIdentityMap) is cloned as a function without
+             * parameters, which its type application is a call of *)
+            let ps = array of(extent params
+                tuple let name = "" let type = model.okType let isVar = false let isOut = false end)
+            for i = 0 upto {extent params - 1} do
+                ps[i] := tuple
+                    let name = if i < extent names then names[i] else params[i].v.hint end
+                    let type = params[i].v.type
+                    let isVar = eq(params[i].mode "var")
+                    let isOut = eq(params[i].mode "out")
                 end
-                model.funType(ps resultType)
-            else
-                resultType
             end
+            let cloneType = model.funType(ps resultType)
             let v = nodes.newVar(f.v.hint <> "_spec" cloneType f.v.isMutable)
             nodes.newFunction(v array of :nodes.TypeParam end params resultType copyBody(c f.body) f.traceName)
         end
@@ -683,31 +691,44 @@ export
             end
         end
 
+    (* The definition of the function a call or a type application applies:
+     * its callee, or a member of one of the unit's modules *)
+    let definitionOf(sp: Specializer callee: maybe.T(Variable) moduleRef: maybe.T(nodes.ModuleRef)
+            member: maybe.T(String)): maybe.T(Definition) =
+        if maybe.isSome(:Variable callee) then
+            hashMap.get(:Int :Definition sp.definitions maybe.unwrap(:Variable callee).id)
+        elsif maybe.isSome(:nodes.ModuleRef moduleRef) then
+            case maybe.unwrap(:nodes.ModuleRef moduleRef)
+                when refModule with r then
+                    let m = nodes.member(r.m.members maybe.unwrapOr(:String member ""))
+                    if maybe.isSome(:Variable m) then
+                        hashMap.get(:Int :Definition sp.definitions maybe.unwrap(:Variable m).id)
+                    else maybe.none(:Definition) end
+                (* A function of another unit, whose IR this unit does not
+                 * have *)
+                else maybe.none(:Definition)
+            end
+        else
+            maybe.none(:Definition)
+        end
+
+    (* Whether f applied to typeArgs (closed, since they mention none of the
+     * enclosing type parameters) is specialized *)
+    let specializes(f: nodes.Function typeArgs: Array(Type) enclosing: Ids): Bool =
+        begin
+            let var open = false
+            for i = 0 upto {extent typeArgs - 1} do if mentionsAny(typeArgs[i] enclosing) then open := true end end
+            {extent typeArgs is extent f.typeParams} andif not(open) andif shouldSpecialize(f typeArgs)
+        end
+
     let specializeCall(sp: Specializer o: Op enclosing: Ids): Ok =
         case o
             when opCall with call then
                 if extent call.typeArgs > 0 then
-                    let definition = if maybe.isSome(:Variable call.callee) then
-                        hashMap.get(:Int :Definition sp.definitions maybe.unwrap(:Variable call.callee).id)
-                    elsif maybe.isSome(:nodes.ModuleRef call.moduleRef) then
-                        case maybe.unwrap(:nodes.ModuleRef call.moduleRef)
-                            when refModule with r then
-                                let member = nodes.member(r.m.members maybe.unwrapOr(:String call.member ""))
-                                if maybe.isSome(:Variable member) then hashMap.get(:Int :Definition sp.definitions maybe.unwrap(:Variable member).id)
-                                else maybe.none(:Definition) end
-                            (* A function of another unit, whose IR this unit
-                             * does not have *)
-                            else maybe.none(:Definition)
-                        end
-                    else
-                        maybe.none(:Definition)
-                    end
+                    let definition = definitionOf(sp call.callee call.moduleRef call.member)
                     if maybe.isSome(:Definition definition) then
                         let d = maybe.unwrap(:Definition definition)
-                        let f = d.function
-                        let var open = false
-                        for i = 0 upto {extent call.typeArgs - 1} do if mentionsAny(call.typeArgs[i] enclosing) then open := true end end
-                        if {extent call.typeArgs is extent f.typeParams} andif not(open) andif shouldSpecialize(f call.typeArgs) then
+                        if specializes(d.function call.typeArgs enclosing) then
                             let cloned = clone(sp d call.typeArgs)
                             if maybe.isSome(:nodes.Function cloned) then
                                 let c = maybe.unwrap(:nodes.Function cloned)
@@ -724,11 +745,45 @@ export
             else ok
         end
 
+    (* A type application whose instance is not a function runs the function
+     * applied, as a call without arguments does: specialized as such a call
+     * is, it is a call of the clone. Its result is otherwise laid out
+     * generically where the clones that a whole program's calls of a module's
+     * functions are specialized to expect it native (an identity hash map of
+     * Reals, hashMap.newIdentityMap) *)
+    let specializeTypeApp(sp: Specializer o: Op result: Variable enclosing: Ids): maybe.T(Op) =
+        case o
+            when opTypeApp with app then
+                let definition = definitionOf(sp app.callee app.moduleRef app.member)
+                if maybe.isSome(:Definition definition) andif not(isFunction(result.type)) then
+                    let d = maybe.unwrap(:Definition definition)
+                    if {extent d.function.params is 0} andif specializes(d.function app.typeArgs enclosing) then
+                        let cloned = clone(sp d app.typeArgs)
+                        if maybe.isSome(:nodes.Function cloned) then
+                            let c = maybe.unwrap(:nodes.Function cloned)
+                            let none = array of :Type end
+                            if maybe.isSome(:Variable app.callee) then
+                                maybe.some(:Op nodes.call(maybe.some(:Variable c.v) none array of :Atom end
+                                    maybe.none(:nodes.ModuleRef) maybe.none(:String) app.calleeType))
+                            else
+                                let member = memberName(maybe.unwrap(:nodes.Module d.owner) c.v)
+                                maybe.some(:Op nodes.call(maybe.none(:Variable) none array of :Atom end app.moduleRef
+                                    maybe.some(:String member) app.calleeType))
+                            end
+                        else maybe.none(:Op) end
+                    else maybe.none(:Op) end
+                else maybe.none(:Op) end
+            else maybe.none(:Op)
+        end
+
     let rec specializeBody(sp: Specializer b: Body enclosing: Ids): Ok =
         for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
             let s = vector.get(:Stmt b.statements i)
             case s
-                when sLet with x then specializeCall(sp x.value enclosing)
+                when sLet with x then
+                    specializeCall(sp x.value enclosing)
+                    let call = specializeTypeApp(sp x.value x.v enclosing)
+                    if maybe.isSome(:Op call) then x.value := maybe.unwrap(:Op call) end
                 when sDo with x then specializeCall(sp x.value enclosing)
                 when sFuns with x then
                     let functions = x.functions

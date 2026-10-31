@@ -543,14 +543,19 @@ export
         refImport with i: Import end
     end
 
-    (* A compilation unit *)
+    (* A compilation unit: a program's, with a main (and with --whole-program,
+     * the modules it imports, ir/whole), or a module file's *)
     Def Unit = Tuple
+        var isProgram: Bool
         var main: Body
         var modules: vector.T(Module)
         var imports: Array(Import)
         var functions: vector.T(Function)
         var stage: String
         var sourceMap: maybe.T(location.SourceMap)
+        (* With --whole-program, the maps of the files of the modules merged
+         * into the unit (ir/whole): file k's offsets are fileOffset(k + 1 ...) *)
+        var mergedSources: vector.T(maybe.T(location.SourceMap))
         var staticData: maybe.T(StaticData)
     end
 
@@ -574,6 +579,13 @@ export
     newImport(name: String modulePath: String canonicalPath: String interfacePath: String recordType: maybe.T(Type)
         libPath: maybe.T(String)): Import
     newUnit(main: Body modules: vector.T(Module) imports: Array(Import) sourceMap: maybe.T(location.SourceMap)): Unit
+
+    (* The offset in a unit of offset in its file numbered file: 0 for the
+     * unit's own source, k + 1 for its kth merged one *)
+    fileOffset(file: Int offset: Int): Int
+    (* The site of a raise or a check at offset in unit u, as "file:line:col",
+     * if its file is known *)
+    site(u: Unit offset: Int): maybe.T(String)
 
     atomOfVar(v: Variable): Atom
     atomOfConst(c: Const): Atom

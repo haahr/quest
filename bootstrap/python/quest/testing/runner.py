@@ -83,10 +83,17 @@ BACKEND_MODES = {
     "arm64": ["--backend", "arm64"],
     "arm64-program": ["--backend", "c", "--unit-backend", "main=arm64"],
     "arm64-modules": ["--backend", "arm64", "--unit-backend", "main=c"],
+    # A whole program, its modules merged into the program's unit (ir/whole,
+    # docs/arm64.md step 13), through each backend
+    "c-whole": ["--whole-program"],
+    "ssac-whole": ["--whole-program", "--backend", "ssac"],
+    "arm64-whole": ["--whole-program", "--backend", "arm64"],
 }
 SSAC_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-ssac.txt"
 ARM64_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-arm64.txt"
-BACKEND_PENDING = {mode: SSAC_PENDING if mode.startswith("ssac") else ARM64_PENDING for mode in BACKEND_MODES}
+WHOLE_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-whole.txt"
+BACKEND_PENDING = {mode: WHOLE_PENDING if mode.endswith("-whole") else SSAC_PENDING if mode.startswith("ssac")
+                   else ARM64_PENDING for mode in BACKEND_MODES}
 # The phases that compile a program, which a backend's mode runs
 BACKEND_PHASES = ("run_c_compiled",)
 SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"

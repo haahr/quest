@@ -400,15 +400,13 @@ export
             res
         end
 
-    (* The site of a raise at offset in the unit's file, as a C string
+    (* The site of a raise at offset in the unit, as a C string
      * ("file:line:col"), or NULL if it is not known *)
     let site(p: P offset: maybe.T(Int)): String =
-        if maybe.isNone(:Int offset) orif maybe.isNone(:location.SourceMap p.unit.sourceMap) then
-            "NULL"
-        else
-            let sm = maybe.unwrap(:location.SourceMap p.unit.sourceMap)
-            let pos = location.locate(sm maybe.unwrap(:Int offset))
-            syntax.cString(location.file(sm) <> ":" <> cInt(pos.line) <> ":" <> cInt(pos.col))
+        begin
+            let s = if maybe.isNone(:Int offset) then maybe.none(:String)
+                else nodes.site(p.unit maybe.unwrap(:Int offset)) end
+            if maybe.isNone(:String s) then "NULL" else syntax.cString(maybe.unwrap(:String s)) end
         end
 
     (* =========================================================================
@@ -2313,15 +2311,7 @@ export
             found
         end
 
-    let isModuleFile(p: P): Bool =
-        begin
-            let var found = false
-            for i = 0 upto {vector.length(:nodes.Module p.unit.modules) - 1} do
-                if maybe.isSome(:nodes.Members vector.get(:nodes.Module p.unit.modules i).exports) then
-                    found := true end
-            end
-            found
-        end
+    let isModuleFile(p: P): Bool = not(p.unit.isProgram)
 
     (* The C functions of the unit that have frames in tracebacks, and their
      * frame names: its functions with names (not those the passes made), its

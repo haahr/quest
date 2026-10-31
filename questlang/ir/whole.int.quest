@@ -1,0 +1,19 @@
+(* Quest Self-Hosted Compiler: Whole-Program Units Interface
+ *
+ * A program's Core IR unit with every module it imports, and every module
+ * those import, merged into it (docs/build-process.md section 1.2, the
+ * self-hosted compiler's --whole-program; docs/arm64.md section 5, step 13):
+ * each module lowered from its typed module as a module file is, then its
+ * module and functions moved into the program's unit, dependencies first, and
+ * every reference to it made a reference to the module the unit now defines.
+ * The passes and every backend then see one unit. *)
+interface Whole
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/types/env : questlang/types/Env
+export
+    (* unit, a program's, with the modules it imports merged into it; raises
+     * lower.loweringError if one is known only through its interface (a
+     * precompiled module, whose source the build does not have) *)
+    mergeImports(unit: nodes.Unit e: env.T): nodes.Unit
+end

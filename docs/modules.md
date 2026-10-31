@@ -468,7 +468,8 @@ When a client compilation unit (another `.mod.quest` or a main `.quest` program)
      transitively imported modules are compiled to `.o` files and passed to `clang` alongside the runtime objects
      ([build-process.md §7](build-process.md)).
    - The `--whole-program` compiler flag overrides separate compilation, loading all imported modules from `.mod.quest`
-     source and emitting their definitions directly into a single C translation unit.
+     source and emitting their definitions directly into a single C translation unit (or assembly file), but for
+     those known only through interfaces and objects ([build-process.md §1.2](build-process.md)).
 
 ### 9.4. Hierarchical Modules and C Symbol Mangling
 When compiling hierarchical interfaces and modules:

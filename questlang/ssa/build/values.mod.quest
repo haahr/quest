@@ -2,7 +2,6 @@
 
 module values : Values
 import
-    questlang/common/location : questlang/common/Location
     questlang/types/model : questlang/types/Model
     ir = questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/shapes : questlang/ir/Shapes
@@ -305,12 +304,10 @@ export
 
     (* The source site of a raise or a check, a C string, or NULL *)
     let site(fn: Fn offset: maybe.T(Int)): Int =
-        if maybe.isNone(:Int offset) orif maybe.isNone(:location.SourceMap fn.u.unit.sourceMap) then
-            null(fn)
-        else
-            let sm = maybe.unwrap(:location.SourceMap fn.u.unit.sourceMap)
-            let pos = location.locate(sm maybe.unwrap(:Int offset))
-            symbolAt(fn stringSymbol(fn.u location.file(sm) <> ":" <> conv.int(pos.line) <> ":" <> conv.int(pos.col)))
+        begin
+            let s = if maybe.isNone(:Int offset) then maybe.none(:String)
+                else ir.site(fn.u.unit maybe.unwrap(:Int offset)) end
+            if maybe.isNone(:String s) then null(fn) else symbolAt(fn stringSymbol(fn.u maybe.unwrap(:String s))) end
         end
 
     (* =========================================================================

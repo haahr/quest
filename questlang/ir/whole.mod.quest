@@ -1,0 +1,147 @@
+(* Quest Self-Hosted Compiler: Whole-Program Units Implementation *)
+
+module whole : Whole
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/lower : questlang/ir/Lower
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/types/env : questlang/types/Env
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/units : questlang/modules/Units
+    questlang/common/location : questlang/common/Location
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    Let Module = nodes.Module
+
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+
+    (* The key of the module of a canonical name: a module's name is imported
+     * in any case (arrayOp, prelinked, is arrayop where a library module
+     * imports it) *)
+    let key(canonical: String): String = paths.lower(canonical)
+
+    (* The source map of the module named canonical, from the file the
+     * resolver resolved its name to, if any: what its raises' sites name *)
+    let sourceMapOf(e: env.T canonical: String): maybe.T(location.SourceMap) =
+        begin
+            let var found = maybe.none(:location.SourceMap)
+            let resolved = hashMap.values(:String :graph.Resolved e.units.resolver.memo)
+            for k = 0 upto {vector.length(:graph.Resolved resolved) - 1} do
+                let r = vector.get(:graph.Resolved resolved k)
+                if maybe.isNone(:location.SourceMap found) andif maybe.isSome(:String r.source)
+                    andif maybe.isSome(:String r.canonical) andif eq(maybe.unwrap(:String r.canonical) canonical)
+                    andif case r.kind when moduleUnit then true when interfaceUnit, programUnit then false end
+                    then
+                    let file = maybe.unwrap(:String r.source)
+                    let text = paths.readText(file)
+                    if maybe.isSome(:String text) then
+                        found := maybe.some(:location.SourceMap location.newSourceMap(file maybe.unwrap(:String text)))
+                    end
+                end
+            end
+            found
+        end
+
+    (* Each reference to an imported module in body, and the bodies and
+     * functions in it, made a reference to the module merged (by canonical
+     * name) *)
+    let rewriteRefs(body: nodes.Body merged: hashMap.T(String Module)): Ok =
+        begin
+            let ref(r: nodes.ModuleRef): nodes.ModuleRef =
+                case r
+                    when refImport with x then
+                        let m = hashMap.get(:String :Module merged key(x.i.canonicalPath))
+                        if maybe.isSome(:Module m) then
+                            option refModule of nodes.ModuleRef with let m = maybe.unwrap(:Module m) end
+                        else r end
+                    when refModule then r
+                end
+            let optRef(r: maybe.T(nodes.ModuleRef)): maybe.T(nodes.ModuleRef) =
+                if maybe.isSome(:nodes.ModuleRef r) then
+                    maybe.some(:nodes.ModuleRef ref(maybe.unwrap(:nodes.ModuleRef r)))
+                else r end
+            let op(o: nodes.Op): Ok =
+                case o
+                    when opCall with x then x.moduleRef := optRef(x.moduleRef)
+                    when opTypeApp with x then x.moduleRef := optRef(x.moduleRef)
+                    when opModuleMember with x then x.moduleRef := ref(x.moduleRef)
+                    else ok
+                end
+            let stmts = walk.walkStatements(body true)
+            for k = 0 upto {vector.length(:nodes.Stmt stmts) - 1} do
+                case vector.get(:nodes.Stmt stmts k)
+                    when sLet with x then op(x.value)
+                    when sDo with x then op(x.value)
+                    else ok
+                end
+            end
+        end
+
+    let mergeImports(unit: nodes.Unit e: env.T): nodes.Unit =
+        begin
+            let merged = hashMap.new(:String :Module eq hash.string)
+            (* The modules merged, each after those it imports *)
+            let order = vector.new(:Module)
+            let functions = vector.new(:nodes.Function)
+            (* The modules known only through their interfaces and objects (the
+             * library's), which stay imported *)
+            let kept = vector.new(:nodes.Import)
+            let keptNames = hashMap.new(:String :Bool eq hash.string)
+            let rec visit(i: nodes.Import): Ok =
+                if hashMap.contains(:String :Module merged key(i.canonicalPath))
+                    orif hashMap.contains(:String :Bool keptNames key(i.canonicalPath)) then
+                    ok
+                else
+                    let typed = graph.typedModule(e.units i.canonicalPath)
+                    let precompiled = if maybe.isNone(:typedAst.Binding typed) then true
+                        else case maybe.unwrap(:typedAst.Binding typed).form
+                            when bindModule with x then x.isPrecompiled
+                            else true
+                        end end
+                    if precompiled then
+                        hashMap.insert(:String :Bool keptNames key(i.canonicalPath) true)
+                        vector.append(:nodes.Import kept i)
+                    else merge(i maybe.unwrap(:typedAst.Binding typed)) end
+                end
+            and merge(i: nodes.Import typed: typedAst.Binding): Ok =
+                begin
+                    let sm = sourceMapOf(e i.canonicalPath)
+                    vector.append(:maybe.T(location.SourceMap) unit.mergedSources sm)
+                    let file = vector.length(:maybe.T(location.SourceMap) unit.mergedSources)
+                    let mu = lower.lowerModuleFile(typed e sm file)
+                    let m = vector.get(:Module mu.modules 0)
+                    hashMap.insert(:String :Module merged key(i.canonicalPath) m)
+                    for k = 0 upto {extent mu.imports - 1} do visit(mu.imports[k]) end
+                    for k = 0 upto {vector.length(:nodes.Function mu.functions) - 1} do
+                        vector.append(:nodes.Function functions vector.get(:nodes.Function mu.functions k))
+                    end
+                    vector.append(:Module order m)
+                end
+            for k = 0 upto {extent unit.imports - 1} do visit(unit.imports[k]) end
+            (* The unit's own modules (defined in the program) after those
+             * merged, which they may import *)
+            for k = 0 upto {vector.length(:Module unit.modules) - 1} do
+                vector.append(:Module order vector.get(:Module unit.modules k))
+            end
+            for k = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                vector.append(:nodes.Function functions vector.get(:nodes.Function unit.functions k))
+            end
+            rewriteRefs(unit.main merged)
+            for k = 0 upto {vector.length(:Module order) - 1} do
+                rewriteRefs(vector.get(:Module order k).init merged)
+            end
+            for k = 0 upto {vector.length(:nodes.Function functions) - 1} do
+                rewriteRefs(vector.get(:nodes.Function functions k).body merged)
+            end
+            unit.modules := order
+            unit.functions := functions
+            unit.imports := vector.toArray(:nodes.Import kept)
+            unit
+        end
+end
