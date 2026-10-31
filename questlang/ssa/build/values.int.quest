@@ -79,14 +79,24 @@ export
      * has run: the environment, the capture's offset in it, and the atom *)
     Def DeferredCapture = Tuple env: Int offset: Int a: Atom end
     Def Deferred = Tuple vars: hashMap.T(Int Bool) captures: vector.T(DeferredCapture) end
+    (* How a variable of the function being built is held: as SSA values (an
+     * immutable variable), in a stack slot (a mutable one), at the location a
+     * var or out parameter points to, in a handler's copy of the exception
+     * state (the handler's variable), or in the unit's static data (a global,
+     * which no function's table holds) *)
+    Def Binding = Option
+        bindValues with values: Array(Int) end
+        bindSlot with slot: Int end
+        bindPointer with address: Int end
+        bindHandler with state: Int end
+        bindGlobal
+    end
     Def Fn = Tuple
         u: UnitBuilder
         f: Function
         var cur: Int
-        values: hashMap.T(Int Array(Int))
-        slots: hashMap.T(Int Int)
-        (* A var or out parameter's location *)
-        pointers: hashMap.T(Int Int)
+        (* How each variable is held, by variable id *)
+        bindings: hashMap.T(Int Binding)
         joins: hashMap.T(String Int)
         loops: hashMap.T(String LoopTargets)
         (* The function's IR closure (its environment's layout), if it is a
@@ -97,9 +107,6 @@ export
          * each loop and join point the number entered where it is defined *)
         handlers: vector.T(Int)
         labelDepth: hashMap.T(String Int)
-        (* The copy of the exception state each handler's variable is, by
-         * variable id *)
-        handlerVars: hashMap.T(Int Int)
     end
     codeName(u: UnitBuilder f: ir.Function): String
     globalSymbol(u: UnitBuilder v: Variable): String
@@ -133,6 +140,15 @@ export
 
     (* Variables *)
     isGlobal(fn: Fn v: Variable): Bool
+    (* Binds v to values, to the location a var or out parameter points to,
+     * or to a handler's copy of the exception state *)
+    bindToValues(fn: Fn v: Variable vs: Array(Int)): Ok
+    bindToPointer(fn: Fn v: Variable address: Int): Ok
+    bindToHandler(fn: Fn v: Variable state: Int): Ok
+    (* The location a var or out parameter points to, if v is one *)
+    pointerOf(fn: Fn v: Variable): maybe.T(Int)
+    (* The exception state of a handler's variable *)
+    handlerState(fn: Fn v: Variable): Int
     (* The address of a mutable variable's slot (made the first time) *)
     slotOf(fn: Fn v: Variable): Int
     readLocation(fn: Fn address: Int t: Type): Array(Int)

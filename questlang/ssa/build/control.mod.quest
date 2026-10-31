@@ -154,7 +154,8 @@ export
                 vals.slotFromWord(fn vals.loadWord(fn address 0 vals.tInt) aggregates.elementShape(x.arr).type)
             when opTypeApp with x then aggregates.typeApp(fn x maybe.unwrap(:Variable result))
             when opAddrVar with x then
-                if hashMap.contains(:Int :Int fn.pointers x.v.id) then array of hashMap.find(:Int :Int fn.pointers x.v.id) end
+                let pointer = vals.pointerOf(fn x.v)
+                if maybe.isSome(:Int pointer) then array of maybe.unwrap(:Int pointer) end
                 elsif vals.isGlobal(fn x.v) then array of vals.symbolAt(fn vals.globalSymbol(fn.u x.v)) end
                 else array of vals.slotOf(fn x.v) end
                 end
@@ -186,14 +187,14 @@ export
             when opAddrElement with x then array of aggregates.elementAddress(fn vals.atom1(fn x.base) vals.atom1(fn x.index) x.offset) end
             when opExceptionPayload with x then
                 let v = case x.exc when atomVar with y then y.v else ir.newVar("" model.okType false) end
-                let state = hashMap.find(:Int :Int fn.handlerVars v.id)
+                let state = vals.handlerState(fn v)
                 vals.slotFromWord(fn vals.loadWord(fn state runtimeLayout.offset("QExceptionState" "payload") vals.tInt)
                     maybe.unwrap(:Variable result).type)
             when opCaughtException with x then
                 (* The handler's state, copied to the heap (docs/raised.md
                  * section 6) *)
                 let v = case x.exc when atomVar with y then y.v else ir.newVar("" model.okType false) end
-                array of vals.call1(fn "quest_raised_capture" array of hashMap.find(:Int :Int fn.handlerVars v.id) end vals.tPtr) end
+                array of vals.call1(fn "quest_raised_capture" array of vals.handlerState(fn v) end vals.tPtr) end
             when opMakeAuto with x then
                 let storedType = model.autoPayloadType(x.autoType maybe.none(:Type))
                 array of vals.call1(fn "quest_auto_new" array of descriptors.maybeDescriptor(fn x.descriptor) vals.slotToWord(fn vals.atom(fn x.payload) storedType) end
@@ -397,7 +398,7 @@ export
                 when sTry with x then tryStatement(fn x)
                 when sInspect with x then inspectAuto(fn x)
                 when sReraise with x then
-                    let state = hashMap.find(:Int :Int fn.handlerVars x.exc.id)
+                    let state = vals.handlerState(fn x.exc)
                     let byMemory = ssa.passing(vals.noValues array of 0 end vals.noValues)
                     ssa.call(fn.f fn.cur "quest_reraise" array of state end byMemory vals.noValuesTypes)
                     vals.terminate(fn ssa.termUnreachable)
@@ -554,7 +555,7 @@ export
             let state = ssa.slotAddress(fn.f fn.cur stateSlot)
             let current = vals.symbolAt(fn currentException)
             for k = 0 upto {stateRecord.bytes / 8 - 1} do vals.store(fn state 8 * k 8 vals.loadWord(fn current 8 * k vals.tInt)) end
-            vals.put(:Int :Int fn.handlerVars x.exc.id state)
+            vals.bindToHandler(fn x.exc state)
             body(fn x.handler)
             if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
             fn.cur := after
@@ -569,7 +570,7 @@ export
             let tgt = vals.atom1(fn x.value)
             let typeDesc = vals.loadWord(fn tgt runtimeLayout.offset("QAuto" "type_desc") vals.tPtr)
             if maybe.isSome(:ir.DescriptorParam x.witness) then
-                vals.put(:Int :Array(Int) fn.values maybe.unwrap(:ir.DescriptorParam x.witness).v.id array of typeDesc end)
+                vals.bindToValues(fn maybe.unwrap(:ir.DescriptorParam x.witness).v array of typeDesc end)
             end
             let stored = vals.loadWord(fn tgt runtimeLayout.offset("QAuto" "payload") vals.tPtr)
             let after = newBlock(fn)

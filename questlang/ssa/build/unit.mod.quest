@@ -77,39 +77,39 @@ export
             let next(): Int = begin let v = vector.get(:Int params at) at := at + 1 v end
             let envValue = next()
             if maybe.isSome(:Variable f.env) then
-                vals.put(:Int :Array(Int) fn.values maybe.unwrap(:Variable f.env).id array of envValue end)
+                vals.bindToValues(fn maybe.unwrap(:Variable f.env) array of envValue end)
             end
             (* The descriptors its closure supplies, from its environment *)
             for i = 0 upto {nCaptured - 1} do
                 let d = vals.loadWord(fn envValue 8 * i vals.tPtr)
-                vals.put(:Int :Array(Int) fn.values f.descriptorParams[i].v.id array of d end)
+                vals.bindToValues(fn f.descriptorParams[i].v array of d end)
             end
             for i = nCaptured upto {extent f.descriptorParams - 1} do
-                vals.put(:Int :Array(Int) fn.values f.descriptorParams[i].v.id array of next() end)
+                vals.bindToValues(fn f.descriptorParams[i].v array of next() end)
             end
             for i = 0 upto {extent f.params - 1} do
                 let entry = f.params[i]
                 if not(vals.eq(entry.mode "value")) then
-                    vals.put(:Int :Int fn.pointers entry.v.id next())
+                    vals.bindToPointer(fn entry.v next())
                 else
                     let ps = vals.varParts(entry.v)
                     if extent ps is 0 then
                         let ignored = next()
-                        vals.put(:Int :Array(Int) fn.values entry.v.id vals.noValues)
+                        vals.bindToValues(fn entry.v vals.noValues)
                     else
                         let vs = array of(extent ps 0)
                         (* A Bool or a Char from C, its upper bits unspecified
                          * (AAPCS64), extended *)
                         for k = 0 upto {extent ps - 1} do vs[k] := vals.narrowed(fn next() ps[k]) end
                         if entry.v.isMutable then vals.write(fn entry.v vs)
-                        else vals.put(:Int :Array(Int) fn.values entry.v.id vs) end
+                        else vals.bindToValues(fn entry.v vs) end
                     end
                 end
             end
             for i = 0 upto {extent f.viewMaps - 1} do
                 let m = f.viewMaps[i]
                 let d = vals.atom1(fn ir.atomOfVar(m.descriptor))
-                vals.put(:Int :Array(Int) fn.values m.v.id
+                vals.bindToValues(fn m.v
                     array of vals.call1(fn "quest_view_map" array of d descriptors.descriptor(fn m.bound) end vals.tPtr) end)
             end
             control.body(fn f.body)

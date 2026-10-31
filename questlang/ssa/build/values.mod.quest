@@ -132,14 +132,24 @@ export
     Def DeferredCapture = Tuple env: Int offset: Int a: Atom end
     Def Deferred = Tuple vars: hashMap.T(Int Bool) captures: vector.T(DeferredCapture) end
 
+    (* How a variable of the function being built is held: as SSA values (an
+     * immutable variable), in a stack slot (a mutable one), at the location a
+     * var or out parameter points to, in a handler's copy of the exception
+     * state (the handler's variable), or in the unit's static data (a global,
+     * which no function's table holds) *)
+    Def Binding = Option
+        bindValues with values: Array(Int) end
+        bindSlot with slot: Int end
+        bindPointer with address: Int end
+        bindHandler with state: Int end
+        bindGlobal
+    end
     Def Fn = Tuple
         u: UnitBuilder
         f: Function
         var cur: Int
-        values: hashMap.T(Int Array(Int))
-        slots: hashMap.T(Int Int)
-        (* A var or out parameter's location *)
-        pointers: hashMap.T(Int Int)
+        (* How each variable is held, by variable id *)
+        bindings: hashMap.T(Int Binding)
         joins: hashMap.T(String Int)
         loops: hashMap.T(String LoopTargets)
         (* The function's IR closure (its environment's layout), if it is a
@@ -150,9 +160,6 @@ export
          * each loop and join point the number entered where it is defined *)
         handlers: vector.T(Int)
         labelDepth: hashMap.T(String Int)
-        (* The copy of the exception state each handler's variable is, by
-         * variable id *)
-        handlerVars: hashMap.T(Int Int)
     end
 
     let freshName(u: UnitBuilder base: String): String =
@@ -274,14 +281,65 @@ export
 
     let isGlobal(fn: Fn v: Variable): Bool = hashMap.contains(:Int :Bool fn.u.globals v.id)
 
+    (* How a variable is held, if anything holds it *)
+    let binding(fn: Fn v: Variable): maybe.T(Binding) =
+        if hashMap.contains(:Int :Binding fn.bindings v.id) then
+            hashMap.get(:Int :Binding fn.bindings v.id)
+        elsif isGlobal(fn v) then maybe.some(:Binding option bindGlobal of Binding end)
+        else maybe.none(:Binding) end
+
+    let bind(fn: Fn v: Variable b: Binding): Ok = put(:Int :Binding fn.bindings v.id b)
+    let bindToValues(fn: Fn v: Variable vs: Array(Int)): Ok =
+        bind(fn v option bindValues of Binding with let values = vs end)
+    let bindToPointer(fn: Fn v: Variable address: Int): Ok =
+        bind(fn v option bindPointer of Binding with let address = address end)
+    let bindToHandler(fn: Fn v: Variable state: Int): Ok =
+        bind(fn v option bindHandler of Binding with let state = state end)
+
+    (* The location a var or out parameter points to, if v is one *)
+    let pointerOf(fn: Fn v: Variable): maybe.T(Int) =
+        begin
+            let b = binding(fn v)
+            if maybe.isNone(:Binding b) then maybe.none(:Int)
+            else
+                case maybe.unwrap(:Binding b)
+                    when bindPointer with x then maybe.some(:Int x.address)
+                    when bindValues, bindSlot, bindHandler, bindGlobal then maybe.none(:Int)
+                end
+            end
+        end
+
+    (* The exception state of a handler's variable *)
+    let handlerState(fn: Fn v: Variable): Int =
+        begin
+            let b = binding(fn v)
+            let var state = ~1
+            if maybe.isSome(:Binding b) then
+                case maybe.unwrap(:Binding b)
+                    when bindHandler with x then state := x.state
+                    when bindValues, bindSlot, bindPointer, bindGlobal then ok
+                end
+            end
+            if state < 0 then raise unsupported with "variable " <> v.hint <> " is not a handler's" end end
+            state
+        end
+
     (* The address of a mutable variable's slot (made the first time) *)
     let slotOf(fn: Fn v: Variable): Int =
         begin
-            if not(hashMap.contains(:Int :Int fn.slots v.id)) then
-                let n = extent varParts(v)
-                put(:Int :Int fn.slots v.id ssa.newSlot(fn.f 8 * {if n is 0 then 1 else n end} 8))
+            let var s = ~1
+            let b = binding(fn v)
+            if maybe.isSome(:Binding b) then
+                case maybe.unwrap(:Binding b)
+                    when bindSlot with x then s := x.slot
+                    when bindValues, bindPointer, bindHandler, bindGlobal then ok
+                end
             end
-            let s = hashMap.find(:Int :Int fn.slots v.id)
+            if s < 0 then
+                let n = extent varParts(v)
+                s := ssa.newSlot(fn.f 8 * {if n is 0 then 1 else n end} 8)
+                bind(fn v option bindSlot of Binding with let slot = s end)
+            end
             ssa.slotAddress(fn.f fn.cur s)
         end
 
@@ -314,31 +372,37 @@ export
 
     (* The values a variable holds now *)
     let read(fn: Fn v: Variable): Array(Int) =
-        if hashMap.contains(:Int :Int fn.handlerVars v.id) then
-            array of loadWord(fn hashMap.find(:Int :Int fn.handlerVars v.id) runtimeLayout.offset("QExceptionState" "exc") tPtr) end
-        elsif hashMap.contains(:Int :Array(Int) fn.values v.id) then
-            hashMap.find(:Int :Array(Int) fn.values v.id)
-        elsif hashMap.contains(:Int :Int fn.pointers v.id) then
-            readParts(fn hashMap.find(:Int :Int fn.pointers v.id) locationParts(v.type))
-        elsif isGlobal(fn v) then
-            readParts(fn symbolAt(fn globalSymbol(fn.u v)) varParts(v))
-        elsif hashMap.contains(:Int :Int fn.slots v.id) then
-            readParts(fn slotOf(fn v) varParts(v))
-        else
-            raise unsupported with "a use of variable " <> v.hint <> " (" <> conv.int(v.id)
-                <> "), which nothing binds" end
+        begin
+            let b = binding(fn v)
+            if maybe.isNone(:Binding b) then
+                raise unsupported with "a use of variable " <> v.hint <> " (" <> conv.int(v.id)
+                    <> "), which nothing binds" end
+            end
+            case maybe.unwrap(:Binding b)
+                when bindHandler with x then
+                    array of loadWord(fn x.state runtimeLayout.offset("QExceptionState" "exc") tPtr) end
+                when bindValues with x then x.values
+                when bindPointer with x then readParts(fn x.address locationParts(v.type))
+                when bindGlobal then readParts(fn symbolAt(fn globalSymbol(fn.u v)) varParts(v))
+                when bindSlot then readParts(fn slotOf(fn v) varParts(v))
+            end
         end
 
     (* Binds or assigns a variable *)
     let write(fn: Fn v: Variable values: Array(Int)): Ok =
-        if hashMap.contains(:Int :Int fn.pointers v.id) then
-            writeParts(fn hashMap.find(:Int :Int fn.pointers v.id) locationParts(v.type) values)
-        elsif isGlobal(fn v) then
-            writeParts(fn symbolAt(fn globalSymbol(fn.u v)) varParts(v) values)
-        elsif v.isMutable orif hashMap.contains(:Int :Int fn.slots v.id) then
-            writeParts(fn slotOf(fn v) varParts(v) values)
-        else
-            put(:Int :Array(Int) fn.values v.id values)
+        begin
+            let b = binding(fn v)
+            if maybe.isNone(:Binding b) then
+                if v.isMutable then writeParts(fn slotOf(fn v) varParts(v) values) else bindToValues(fn v values) end
+            else
+                case maybe.unwrap(:Binding b)
+                    when bindPointer with x then writeParts(fn x.address locationParts(v.type) values)
+                    when bindGlobal then writeParts(fn symbolAt(fn globalSymbol(fn.u v)) varParts(v) values)
+                    when bindSlot then writeParts(fn slotOf(fn v) varParts(v) values)
+                    when bindValues then bindToValues(fn v values)
+                    when bindHandler then raise unsupported with "an assignment to a handler's variable" end
+                end
+            end
         end
 
     (* =========================================================================
@@ -368,7 +432,7 @@ export
             when atomConst with x then constValues(fn x.c)
             when atomVar with x then
                 let vs = read(fn x.v)
-                if x.v.boxed andif {x.v.isMutable orif hashMap.contains(:Int :Int fn.pointers x.v.id)} then
+                if x.v.boxed andif {x.v.isMutable orif maybe.isSome(:Int pointerOf(fn x.v))} then
                     readValue(fn vs[0] x.v.type)
                 else
                     vs
@@ -761,16 +825,13 @@ export
     let newFn(u: UnitBuilder f: Function closure: maybe.T(ir.OpMakeClosure)): Fn =
         tuple
             let u = u let f = f let var cur = 0
-            let values = hashMap.new(:Int :Array(Int) intEqual hash.int)
-            let slots = hashMap.new(:Int :Int intEqual hash.int)
-            let pointers = hashMap.new(:Int :Int intEqual hash.int)
+            let bindings = hashMap.new(:Int :Binding intEqual hash.int)
             let joins = hashMap.new(:String :Int eq hash.string)
             let loops = hashMap.new(:String :LoopTargets eq hash.string)
             let closure = closure
             let var deferred = maybe.none(:Deferred)
             let handlers = vector.new(:Int)
             let labelDepth = hashMap.new(:String :Int eq hash.string)
-            let handlerVars = hashMap.new(:Int :Int intEqual hash.int)
         end
 
     (* Finishes a function: blocks nothing reaches the end of end in
