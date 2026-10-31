@@ -193,7 +193,7 @@ export
         pools: Array(Array(Int))
         firstCallee: Array(Int)
         (* The positions of calls, and of the starts of blocks a raise
-         * enters *)
+         * enters, in order *)
         calls: Array(Int)
         handlers: Array(Int)
         (* Where each register of each class's pool is fixed, as an interval
@@ -223,9 +223,10 @@ export
                 k := k + 1
             end
             let var handler = never
-            for j = 0 upto {extent sc.handlers - 1} do
-                let h = sc.handlers[j]
-                if {h >= s} andif {h < handler} andif covers(cur h) then handler := h end
+            let var j = sort.bisectLeft(:Int sc.handlers s sort.intCompare)
+            while {handler is never} andif {j < extent sc.handlers} andif {sc.handlers[j] <= e} do
+                if covers(cur sc.handlers[j]) then handler := sc.handlers[j] end
+                j := j + 1
             end
             let r = array of(extent sc.pools[c] handler)
             if call < handler then for j = 0 upto {sc.firstCallee[c] - 1} do r[j] := call end end
@@ -632,16 +633,16 @@ export
             sort.sort(:Move moved fun(a: Move b: Move): Int
                 if a.at isnot b.at then sort.intCompare(a.at b.at) else sort.intCompare(a.value b.value) end)
             (* The callee-saved registers in use, in the order of the pool *)
+            let given = array of(nRegisters false)
+            for v = 0 upto {nValues - 1} do
+                for k = 0 upto {extent homes[v] - 1} do
+                    if homes[v][k] isnot memory then given[homes[v][k]] := true end
+                end
+            end
             let used = vector.new(:Int)
             for c = 0 upto {targets.classes - 1} do
                 for r = firstCallee[c] upto {extent pools[c] - 1} do
-                    let var any = false
-                    for v = 0 upto {nValues - 1} do
-                        for k = 0 upto {extent homes[v] - 1} do
-                            if homes[v][k] is pools[c][r] then any := true end
-                        end
-                    end
-                    if any then vector.append(:Int used pools[c][r]) end
+                    if given[pools[c][r]] then vector.append(:Int used pools[c][r]) end
                 end
             end
             let ins = array of(nBlocks array of(0 0))
