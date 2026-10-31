@@ -662,24 +662,32 @@ static void quest_put_real(double r) {
     fputs(buf, stdout);
 }
 
-/* Writes a character of a char or string literal, escaped as the interpreter
- * does */
-static void quest_put_escaped_char(unsigned char c, char quote) {
+/* A character of a char or string literal, escaped as the interpreter writes
+ * it, into out (at most 4 characters and a NUL); returns its length */
+static int quest_escape_char(unsigned char c, char quote, char out[5]) {
     switch (c) {
-        case '\n': fputs("\\n", stdout); return;
-        case '\t': fputs("\\t", stdout); return;
-        case '\r': fputs("\\r", stdout); return;
-        case '\\': fputs("\\\\", stdout); return;
+        case '\n': return snprintf(out, 5, "\\n");
+        case '\t': return snprintf(out, 5, "\\t");
+        case '\r': return snprintf(out, 5, "\\r");
+        case '\\': return snprintf(out, 5, "\\\\");
         default: break;
     }
-    if (c == (unsigned char)quote) {
-        putchar('\\');
-        putchar(c);
-    } else if (c >= 32 && c <= 126) {
-        putchar(c);
-    } else {
-        printf("\\x%02x", c);
-    }
+    if (c == (unsigned char)quote) return snprintf(out, 5, "\\%c", c);
+    if (c >= 32 && c <= 126) return snprintf(out, 5, "%c", c);
+    return snprintf(out, 5, "\\x%02x", c);
+}
+
+/* Writes a character of a char or string literal, escaped */
+static void quest_put_escaped_char(unsigned char c, char quote) {
+    char out[5];
+    fwrite(out, 1, (size_t)quest_escape_char(c, quote, out), stdout);
+}
+
+/* Appends a character of a char or string literal, escaped */
+static void quest_sb_append_escaped(QStringBuilder *b, unsigned char c, char quote) {
+    char out[5];
+    int n = quest_escape_char(c, quote, out);
+    for (int i = 0; i < n; ++i) quest_sb_append_char(b, (QChar)out[i]);
 }
 
 /* Writes prefix, val, suffix, and a newline. kind says how to write the value,
@@ -3807,28 +3815,22 @@ QString *quest_conv_real(double r) {
     return quest_string_new(buf, (int64_t)strlen(buf));
 }
 
+/* conv.char and conv.string: quoted, with escapes, as the interpreters write
+ * them (and as quest_print_value does) */
 QString *quest_conv_char(QChar ch) {
-    char buf[8];
-    buf[0] = '\'';
-    buf[1] = (char)ch;
-    buf[2] = '\'';
-    buf[3] = 0;
-    return quest_string_new(buf, 3);
+    QStringBuilder *b = quest_sb_new();
+    quest_sb_append_char(b, '\'');
+    quest_sb_append_escaped(b, ch, '\'');
+    quest_sb_append_char(b, '\'');
+    return quest_sb_to_string(b);
 }
 
 QString *quest_conv_string(const QString *s) {
-    if (s == NULL) return quest_string_new("\"\"", 2);
-    int64_t len = s->length;
-    char *buf = (char *)quest_alloc_atomic((size_t)(len + 3));
-    buf[0] = '"';
-    if (len > 0) memcpy(buf + 1, s->data, (size_t)len);
-    buf[len + 1] = '"';
-    buf[len + 2] = 0;
-    QString *res = (QString *)quest_alloc(sizeof(QString));
-    res->length = len + 2;
-    res->capacity = len + 2;
-    res->data = buf;
-    return res;
+    QStringBuilder *b = quest_sb_new();
+    quest_sb_append_char(b, '"');
+    for (int64_t i = 0; s != NULL && i < s->length; ++i) quest_sb_append_escaped(b, (unsigned char)s->data[i], '"');
+    quest_sb_append_char(b, '"');
+    return quest_sb_to_string(b);
 }
 
 /* Strutil module primitives */
