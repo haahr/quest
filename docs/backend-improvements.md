@@ -273,20 +273,20 @@ the same modules, so each step starts from a fresh rebase.
    §3.1, none over about 800 lines, and the goldens are unchanged. *Done* (2026-10-30, 4aaf6e9a): seven modules in
    `questlang/ssa/build/` (imported as `vals` and `units` where locals are named `values` and `unit`), the largest
    790 lines; tuples went to `aggregates` and modules' members to `calls`.
-4. **Analyses and the pipeline** (§3.3), with `promote`, `tailCalls`, and `regalloc` using them, and the verifier's
-   gaps closed. *Done when* no pass computes dominance, liveness, or a terminator's targets itself, `--dump-after
-   promote` works, and `QUEST_CHECK_IR=1` verifies after each pass. *Done* (2026-10-30, f68cedd8): `ssa/cfg`, `ssa/liveness`,
-   and `ssa/pipeline`; the dump phases are `ssa_built`, `ssa_promote`, and `ssa_tailCalls`, as the IR's are `ir_NAME`,
-   and `QUEST_SKIP_PASSES` leaves passes out. `ssa/uses` waits for the first pass that needs it: the verifier finds
-   bad definitions itself.
+4. **Analyses and the pipeline** (§3.3), with `promote`, `tailCalls`, and `regalloc` using them, and the verifier's gaps
+   closed. *Done when* no pass computes dominance, liveness, or a terminator's targets itself, `--dump-after promote`
+   works, and `QUEST_CHECK_IR=1` verifies after each pass. *Done* (2026-10-30, f68cedd8): `ssa/cfg`, `ssa/liveness`, and
+   `ssa/pipeline`; the dump phases are `ssa_built`, `ssa_promote`, and `ssa_tailCalls`, as the IR's are `ir_NAME`, and
+   `QUEST_SKIP_PASSES` leaves passes out. `ssa/uses` waits for the first pass that needs it: the verifier finds bad
+   definitions itself.
 5. **The SSA reader and per-pass goldens** (§3.4). *Done when* every SSA golden round-trips, and `promote` and
    `tailCalls` have goldens of their own. *Done* (2026-10-30, 7da9edda): the reader is `ssa/parser`, since the standard
    library has an interface `Reader`; with `QUEST_CHECK_IR=1` the driver reads back every SSA it prints. The goldens
    of `promote` and `tailCalls` are the questlang tests `ssa_promote` and `ssa_tailcalls`, SSA written as text.
-6. **Signatures and the runtime functions' table** (§3.5). *Done when* calls and functions carry signatures, no
-   backend recognizes `main` by name, and the builder names no runtime function's signature itself. *Done*
-   (2026-10-30, a6db41fb): `ssac` still recognizes `main`, only to spell its argument array `char **`, as C requires; the
-   table found that `quest_record_box`'s and `quest_variant_box`'s struct had not been marked a pair.
+6. **Signatures and the runtime functions' table** (§3.5). *Done when* calls and functions carry signatures, no backend
+   recognizes `main` by name, and the builder names no runtime function's signature itself. *Done* (2026-10-30,
+   a6db41fb): `ssac` still recognizes `main`, only to spell its argument array `char **`, as C requires; the table found
+   that `quest_record_box`'s and `quest_variant_box`'s struct had not been marked a pair.
 7. **`ptrAdd`, `threadLocal`, and `try` by control flow** (§3.6). *Done when* no derived pointer passes through
    `int`, no backend keeps a list of thread-locals' names, and ssa.md defines `try` without `_setjmp`. *Done*
    (2026-10-30, 8130949e).
