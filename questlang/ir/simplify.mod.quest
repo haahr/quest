@@ -482,6 +482,20 @@ export
             end
         end
 
+    (* The variable a call of a member of one of the unit's modules calls (a
+     * placeholder, which names no function, for any other call) *)
+    let noVariable = nodes.newVar("" model.okType false)
+    let memberOf(x: nodes.OpCall): Variable =
+        if maybe.isSome(:nodes.ModuleRef x.moduleRef) andif maybe.isSome(:String x.member) then
+            case maybe.unwrap(:nodes.ModuleRef x.moduleRef)
+                when refModule with r then
+                    maybe.unwrapOr(:Variable nodes.member(r.m.members maybe.unwrap(:String x.member)) noVariable)
+                when refImport then noVariable
+            end
+        else
+            noVariable
+        end
+
     (* A call to inline: its function, the variables passed by address for its
      * var and out parameters, and the function's size *)
     Let Choice = Tuple function: nodes.Function byRef: Array(maybe.T(Variable)) size: Int end
@@ -496,20 +510,33 @@ export
             let callee = if maybe.isSome(:Variable x.callee) then
                 maybe.some(:Resolved resolve(s maybe.unwrap(:Variable x.callee)))
             else
-                maybe.none(:Resolved)
+                maybe.some(:Resolved tuple let v = memberOf(x) let once = false end)
             end
             let found = if maybe.isSome(:Resolved callee) then
                 hashMap.get(:Int :nodes.Function s.analysis.functions maybe.unwrap(:Resolved callee).v.id)
             else
                 maybe.none(:nodes.Function)
             end
+            (* A member called as a module's (from outside its module) is
+             * called at its interface's type, which may hold the module's
+             * abstract types, laid out otherwise outside it, and may name
+             * variables of its module's, out of the caller's scope: such a call
+             * is inlined only at the function's own type, and of a closed
+             * function *)
+            let sameShape = fun(f: nodes.Function): Bool
+                maybe.isNone(:model.Type x.calleeType)
+                    orif {shapes.shape(maybe.unwrap(:model.Type x.calleeType)).id is shapes.shape(f.v.type).id}
+            let atItsType = maybe.isSome(:Variable x.callee) orif {maybe.isSome(:nodes.Function found)
+                andif hashMap.find(:Int :Bool s.analysis.closed maybe.unwrap(:nodes.Function found).v.id)
+                andif sameShape(maybe.unwrap(:nodes.Function found))}
             if maybe.isSome(:nodes.Function found) then
                 let f = maybe.unwrap(:nodes.Function found)
                 let component = hashMap.find(:Int :Int s.analysis.components f.v.id)
                 let within1 = maybe.isSome(:Int within) andif {maybe.unwrap(:Int within) is component}
                 let size = hashMap.find(:Int :Int s.analysis.sizes f.v.id)
                 let byRef = array of(extent f.params maybe.none(:Variable))
-                let var fits = not(within1) andif not(hashMap.find(:Int :Bool s.analysis.recursive f.v.id))
+                let var fits = atItsType andif not(within1)
+                    andif not(hashMap.find(:Int :Bool s.analysis.recursive f.v.id))
                     andif {extent x.typeArgs is extent f.typeParams} andif {extent x.args is extent f.params}
                 (* A bounded type parameter's values are seen at its bound (an
                  * option's ordinal counts the bound's cases), which a type
@@ -591,7 +618,8 @@ export
             case st
                 when sJump with x then
                     if eq(x.label label) then
-                        vector.set(:Stmt b.statements i option sReturn of Stmt with let var value = returnOf(x.args) end)
+                        vector.set(:Stmt b.statements i
+                            option sReturn of Stmt with let var value = returnOf(x.args) end)
                     end
                 else
                     let inner = walk.statementBodies(st)

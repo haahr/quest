@@ -29,6 +29,7 @@ export
         functions: hashMap.T(Int nodes.Function)
         components: hashMap.T(Int Int)
         recursive: hashMap.T(Int Bool)
+        closed: hashMap.T(Int Bool)
         sizes: hashMap.T(Int Int)
         size: Int
     end
@@ -143,6 +144,43 @@ export
             result
         end
 
+    (* Whether a function names only variables it binds: its parameters, and
+     * the binders of its body and its functions *)
+    let isClosed(f: nodes.Function): Bool =
+        begin
+            let bound = hashMap.new(:Int :Bool intEqual hash.int)
+            for i = 0 upto {extent f.params - 1} do hashMap.insert(:Int :Bool bound f.params[i].v.id true) end
+            hashMap.insert(:Int :Bool bound f.v.id true)
+            let stmts = walk.walkStatements(f.body true)
+            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                let st = vector.get(:Stmt stmts i)
+                let binders = walk.statementBinders(st)
+                for k = 0 upto {extent binders - 1} do hashMap.insert(:Int :Bool bound binders[k].id true) end
+                case st
+                    when sFuns with x then
+                        for k = 0 upto {extent x.functions - 1} do
+                            let g = x.functions[k]
+                            for j = 0 upto {extent g.params - 1} do
+                                hashMap.insert(:Int :Bool bound g.params[j].v.id true)
+                            end
+                        end
+                    else ok
+                end
+            end
+            let var closed = true
+            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                let used = walk.statementUses(vector.get(:Stmt stmts i))
+                for k = 0 upto {extent used - 1} do
+                    case used[k]
+                        when atomVar with x then
+                            if not(hashMap.contains(:Int :Bool bound x.v.id)) then closed := false end
+                        when atomConst then ok
+                    end
+                end
+            end
+            closed
+        end
+
     let analyze(all: Array(Body)): Analysis =
         begin
             let order = collect(all)
@@ -171,10 +209,16 @@ export
                 for k = 0 upto {extent targets - 1} do if targets[k] is f.v.id then self := true end end
                 hashMap.insert(:Int :Bool recursive f.v.id self)
             end
+            let closed = hashMap.new(:Int :Bool intEqual hash.int)
+            for i = 0 upto {vector.length(:nodes.Function order) - 1} do
+                let f = vector.get(:nodes.Function order i)
+                hashMap.insert(:Int :Bool closed f.v.id isClosed(f))
+            end
             tuple
                 let functions = functions
                 let components = numbers
                 let recursive = recursive
+                let closed = closed
                 let sizes = sizes
                 let size = total
             end

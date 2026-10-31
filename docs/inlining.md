@@ -211,6 +211,13 @@ benchmarks.md §3.3, independent of the inliner, and the first step.
    descriptors dropped, tuple parameters flattened, `var` parameters as values, more components and kinds) is
    what would make it matter.
 6. **Whole-program builds** inline across modules. *Done when* `--whole-program` builds inline the library's small
-   functions into their callers, and benchmarks.md compares them with separate compilation.
+   functions into their callers, and benchmarks.md compares them with separate compilation. *In part*
+   (2026-10-31): a whole program's modules are one unit since arm64.md step 13, and a call of one of a unit's
+   modules' members (`call m.x`) is now inlined as a call of the member's function is, when the function names no
+   variable of its module's (none is in the caller's scope) and the interface's type for the member has the
+   function's own shape. The second rules out most of the library: `maybe`, `vector`, `hashMap`, and the like
+   export functions of their abstract types, whose values are laid out generically outside the module
+   (c-representation.md §5.1) and natively inside it, so an inlined body would need conversions at its edges.
+   `run.py --whole-program` builds the suite whole.
 7. **Tuning:** the threshold, bonuses, and growth bounds set from the measurements. *Done when* benchmarks.md
    records the settings and why.
