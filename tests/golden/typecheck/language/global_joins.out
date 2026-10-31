@@ -1,0 +1,149 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+        (TypedImportItem ('conv') : 'Conv')
+        (TypedImportItem ('ascii') : 'Ascii')
+        (TypedImportItem ('string') : 'StringOp')
+        (TypedImportItem ('maybe') : 'Maybe')
+      ))
+    (TypedLetValue 'n' :type Int
+      :value (TypedApp :type Int
+        :func (TypedSelect 'length' :type Fun(string: String): Int
+          :target (TypedVar 'string' :type Module 'string'))
+        :args (
+          (TypedString 'abc' :type String)
+        )))
+    (TypedLetValue 'size' :type String
+      :value (TypedIf :type String
+        :cond (TypedInfix '>' :type Bool
+          :left (TypedVar 'n' :type Int)
+          :right (TypedInt 2 :type Int))
+        :then (TypedString 'big' :type String)
+        :else (TypedIf :type String
+          :cond (TypedInfix '>' :type Bool
+            :left (TypedVar 'n' :type Int)
+            :right (TypedInt 1 :type Int))
+          :then (TypedString 'middling' :type String)
+          :else (TypedString 'small' :type String))))
+    (TypedLetValue 'char' :type Char
+      :value (TypedTry :type Char
+        :body (TypedApp :type Char
+          :func (TypedSelect 'char' :type Fun(n: Int): Char
+            :target (TypedVar 'ascii' :type Module 'ascii'))
+          :args (
+            (TypedInfix '*' :type Int
+              :left (TypedVar 'n' :type Int)
+              :right (TypedInt 100 :type Int))
+          ))
+        :branches (
+          (TypedTryBranch
+            :exc_pattern (TypedSelect 'error' :type Exception
+              :target (TypedVar 'ascii' :type Module 'ascii'))
+            :body (TypedChar '?' :type Char))
+        )))
+    (TypedLetValue 'found' :type Int
+      :value (TypedApp :type Int
+        :func (TypedTypeApp [Int] :type Fun(o: maybe.T(Int) default: Int): Int
+          :func (TypedSelect 'unwrapOr' :type All(A :: TYPE) Fun(o: maybe.T(A) default: A): A
+            :target (TypedVar 'maybe' :type Module 'maybe')))
+        :args (
+          (TypedIf :type maybe.T(Int)
+            :cond (TypedInfix '>' :type Bool
+              :left (TypedVar 'n' :type Int)
+              :right (TypedInt 2 :type Int))
+            :then (TypedApp :type maybe.T(Int)
+              :func (TypedTypeApp [Int] :type Fun(val: Int): maybe.T(Int)
+                :func (TypedSelect 'some' :type All(A :: TYPE) Fun(val: A): maybe.T(A)
+                  :target (TypedVar 'maybe' :type Module 'maybe')))
+              :args (
+                (TypedVar 'n' :type Int)
+              ))
+            :else (TypedTypeApp [Int] :type maybe.T(Int)
+              :func (TypedSelect 'none' :type All(A :: TYPE) maybe.T(A)
+                :target (TypedVar 'maybe' :type Module 'maybe'))))
+          (TypedInt 0 :type Int)
+        )))
+    (TypedLetValue 'count' :type Int
+      :value (TypedIf :type Int
+        :cond (TypedInfix '>' :type Bool
+          :left (TypedVar 'n' :type Int)
+          :right (TypedInt 2 :type Int))
+        :then (TypedInt 10 :type Int)
+        :else (TypedInt 20 :type Int)))
+    (TypedLetValue 'show' :type Fun(): String
+      :value (TypedFun :params () :type Fun(): String
+        :body (TypedInfix '<>' :type String
+          :left (TypedVar 'size' :type String)
+          :right (TypedInfix '<>' :type String
+            :left (TypedString ' ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'char' :type Fun(c: Char): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedVar 'char' :type Char)
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedVar 'found' :type Int)
+                  ))))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedSelect 'output' :type writer.T
+            :target (TypedVar 'writer' :type Module 'writer'))
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedVar 'show' :type Fun(): String)
+              :args ())
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedDerefCell :type Int
+                      :target (TypedVar 'count' :type Var(Int)))
+                  ))
+                :right (TypedString '\n' :type String))))
+        )))
+    (TypedExprStmt
+      :expr (TypedAssign
+        :target (TypedVar 'count' :type Var(Int))
+        :value (TypedInfix '+' :type Int
+          :left (TypedDerefCell :type Int
+            :target (TypedVar 'count' :type Var(Int)))
+          :right (TypedInt 1 :type Int))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedSelect 'output' :type writer.T
+            :target (TypedVar 'writer' :type Module 'writer'))
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedVar 'show' :type Fun(): String)
+              :args ())
+            :right (TypedInfix '<>' :type String
+              :left (TypedString ' ' :type String)
+              :right (TypedInfix '<>' :type String
+                :left (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedDerefCell :type Int
+                      :target (TypedVar 'count' :type Var(Int)))
+                  ))
+                :right (TypedString '\n' :type String))))
+        )))
+  ))

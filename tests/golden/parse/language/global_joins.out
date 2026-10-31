@@ -1,0 +1,259 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+        (ImportItem ('conv') 'Conv')
+        (ImportItem ('ascii') 'Ascii')
+        (ImportItem ('string') 'StringOp')
+        (ImportItem ('maybe') 'Maybe' ('util/maybe') 'util/Maybe')
+      )
+    )
+    (LetValueBinding
+      :name 'n'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'string')
+          :field 'length'
+        )
+        :args (
+          (ExprString 'abc' '"abc"')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'size'
+      :value (ExprIf
+        :cond (ExprInfix
+          :left (ExprId 'n')
+          :op '>'
+          :right (ExprInt 2 '2')
+        )
+        :then_branch (ExprString 'big' '"big"')
+        :elsifs (
+          (
+            (ExprInfix
+              :left (ExprId 'n')
+              :op '>'
+              :right (ExprInt 1 '1')
+            )
+            (ExprString 'middling' '"middling"')
+          )
+        )
+        :else_branch (ExprString 'small' '"small"')
+      )
+    )
+    (LetValueBinding
+      :name 'char'
+      :value (ExprTry
+        :body (ExprApp
+          :func (ExprSelect
+            :target (ExprId 'ascii')
+            :field 'char'
+          )
+          :args (
+            (ExprInfix
+              :left (ExprId 'n')
+              :op '*'
+              :right (ExprInt 100 '100')
+            )
+          )
+        )
+        :branches (
+          (TryBranch
+            :exc_pattern (ExprSelect
+              :target (ExprId 'ascii')
+              :field 'error'
+            )
+            :body (ExprChar '?' "'?'")
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'found'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'maybe')
+          :field 'unwrapOr'
+        )
+        :args (
+          (TypeArgument
+            :type_val (TypePath ('Int'))
+          )
+          (ExprIf
+            :cond (ExprInfix
+              :left (ExprId 'n')
+              :op '>'
+              :right (ExprInt 2 '2')
+            )
+            :then_branch (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'maybe')
+                :field 'some'
+              )
+              :args (
+                (TypeArgument
+                  :type_val (TypePath ('Int'))
+                )
+                (ExprId 'n')
+              )
+            )
+            :else_branch (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'maybe')
+                :field 'none'
+              )
+              :args (
+                (TypeArgument
+                  :type_val (TypePath ('Int'))
+                )
+              )
+            )
+          )
+          (ExprInt 0 '0')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'count'
+      :value (ExprIf
+        :cond (ExprInfix
+          :left (ExprId 'n')
+          :op '>'
+          :right (ExprInt 2 '2')
+        )
+        :then_branch (ExprInt 10 '10')
+        :else_branch (ExprInt 20 '20')
+      )
+      :is_var True
+    )
+    (LetValueBinding
+      :name 'show'
+      :value (ExprFun
+        :return_type (TypePath ('String'))
+        :body (ExprInfix
+          :left (ExprId 'size')
+          :op '<>'
+          :right (ExprInfix
+            :left (ExprString ' ' '" "')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'char'
+                )
+                :args (
+                  (ExprId 'char')
+                )
+              )
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprString ' ' '" "')
+                :op '<>'
+                :right (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'int'
+                  )
+                  :args (
+                    (ExprId 'found')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :result_type (TypePath ('String'))
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprApp
+              :func (ExprId 'show')
+            )
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprString ' ' '" "')
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'int'
+                  )
+                  :args (
+                    (ExprId 'count')
+                  )
+                )
+                :op '<>'
+                :right (ExprString '\n' '"\\n"')
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprInfix
+        :left (ExprId 'count')
+        :op ':='
+        :right (ExprInfix
+          :left (ExprId 'count')
+          :op '+'
+          :right (ExprInt 1 '1')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprApp
+              :func (ExprId 'show')
+            )
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprString ' ' '" "')
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'int'
+                  )
+                  :args (
+                    (ExprId 'count')
+                  )
+                )
+                :op '<>'
+                :right (ExprString '\n' '"\\n"')
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

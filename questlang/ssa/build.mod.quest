@@ -1759,12 +1759,12 @@ export
                     jump(fn hashMap.find(:String :LoopTargets fn.loops x.label).head noValues)
                 when sJoin with x then
                     let k = newBlock(fn)
+                    let received = array of(extent x.params noValues)
                     for i = 0 upto {extent x.params - 1} do
-                        let p = x.params[i]
-                        let ps = varParts(p)
+                        let ps = varParts(x.params[i])
                         let vs = array of(extent ps 0)
                         for j = 0 upto {extent ps - 1} do vs[j] := ssa.addParam(fn.f k ps[j].type) end
-                        put(:Int :Array(Int) fn.values p.id vs)
+                        received[i] := vs
                     end
                     put(:String :Int fn.joins x.label k)
                     put(:String :Int fn.labelDepth x.label vector.length(:Int fn.handlers))
@@ -1772,6 +1772,9 @@ export
                     body(fn x.body)
                     if not(terminated(fn)) then jump(fn after noValues) end
                     fn.cur := k
+                    (* Its parameters bound as any variable is: a global's
+                     * stored, so that the functions that read it see it *)
+                    for i = 0 upto {extent x.params - 1} do write(fn x.params[i] received[i]) end
                     body(fn x.continuation)
                     if not(terminated(fn)) then jump(fn after noValues) end
                     fn.cur := after

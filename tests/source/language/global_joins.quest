@@ -1,0 +1,20 @@
+(* A program's top-level variables bound by an if, a try, or a case, whose
+ * value the IR passes to a join point, are globals that the program's
+ * functions read: each must be stored where it is bound, not only passed to
+ * the code after it (the SSA once bound such a join's parameter as a local, so
+ * that a function read the global unset). A var, which a function cannot read,
+ * is bound so too, and assigned. *)
+
+import writer : Writer conv : Conv ascii : Ascii string : StringOp util/maybe : util/Maybe ;
+
+let n = string.length("abc");
+let size = if n > 2 then "big" elsif n > 1 then "middling" else "small" end;
+let char = try ascii.char(n * 100) when ascii.error then '?' end;
+let found = maybe.unwrapOr(:Int if n > 2 then maybe.some(:Int n) else maybe.none(:Int) end 0);
+let var count = if n > 2 then 10 else 20 end;
+
+let show(): String = size <> " " <> conv.char(char) <> " " <> conv.int(found);
+
+writer.putString(writer.output show() <> " " <> conv.int(count) <> "\n");
+count := count + 1;
+writer.putString(writer.output show() <> " " <> conv.int(count) <> "\n");

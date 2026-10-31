@@ -108,7 +108,10 @@ each operation what the C printer prints ([arm64.md](arm64.md) §7.2):
   variant the represent pass holds in its box) is its box's pointer, and a boxed mutable one's value is its box's
   record or variant. A **mutable variable is a stack slot**, loaded and stored, as C at `-O0` keeps it: always
   correct, the rule `try` needs for free, and promoted to values afterwards (§4.1). A variable a top level binds
-  outside loops is a global (`g_<name>`), as in C.
+  outside loops is a global (`g_<name>`), as in C, however it is bound: a join's parameter (the value of a
+  top-level `if`, `case`, or `try`) is stored to its global at the join, as any binding is, so that the program's
+  functions see it (once bound as a local, it left the global unset, which the compiler built by the arm64 backend
+  found at once: `language/global_joins`).
 - **Memory.** Every aggregate slot is a word (`layout`); a box or a global holds a record or variant's 16 bytes; a
   location (a cell, what a `var` or `out` parameter points to) holds a record or variant as its box's pointer
   (`layout.shapeLocationRepresentation`). Offsets come from `codegen/layout`, `codegen/staticdata`, and
