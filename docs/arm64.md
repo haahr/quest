@@ -348,7 +348,8 @@ Boehm's collector scans the stack and registers conservatively, so native code n
   kept as a loop's end). Nothing in this plan makes one; later optimizations must not;
 - interior pointers to be recognized, as for C now (a proxy is its original's address plus one).
 
-The SSA's `ptr` type costs little and keeps stack maps, and so a precise or moving collector, possible later.
+The SSA's `ptr` type costs little and keeps stack maps, and so a precise or moving collector, possible later: each
+frame slot's class is known (`codegen.frameSlots`, §10.5), though nothing emits maps yet.
 
 ### 3.14. The SSA-to-C printer
 
@@ -855,4 +856,16 @@ with what would address it.
    distinction alone does not give stack maps. *Solution:* state the requirement precisely: the register allocator
    carries each virtual register's `ptr` or `int` class through allocation, into spill slots, and the frame records
    which slots hold pointers, so that stack maps at calls could be emitted later; and a word whose pointer-ness is
-   dynamic (a `QVal`) is described as such, for a precise collector to resolve by descriptor.
+   dynamic (a `QVal`) is described as such, for a precise collector to resolve by descriptor. *Addressed in part*
+   (2026-10-30, the user choosing this scope). The requirement, precisely: at each call, a precise collector must
+   find every live pointer, so every value live across a call is either in a callee-saved register, whose class the
+   allocation knows from the value's SSA type, or in a frame slot of its own, never shared, whose class is that
+   type; a stack slot's memory is described by what the code stores in it, word by word, which nothing records yet;
+   and a word that may or may not be a pointer is resolved through its type descriptor. What is done: the
+   allocator keeps a value's type through allocation (each interval is one value's), a value in memory has a slot
+   of its own at a fixed offset (rematerialized ones have none: they hold no pointer the collector must see, or one
+   to static data), and `codegen.frameSlots` returns each slot of a function's frame with its offset, its size, and
+   its class, a value's SSA type or, for a stack slot, memory; `questlang/arm64_frames` prints them for functions
+   that spill pointers, integers, and reals across a call. Nothing emits stack maps. A derived pointer is a `ptr`
+   throughout (`ptrAdd`, [backend-improvements.md](backend-improvements.md) step 7). What remains is that plan's
+   step 10: a `val` type for `QVal` words, which are `int`s now, so that the frame tells them apart.

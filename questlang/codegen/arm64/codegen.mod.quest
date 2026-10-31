@@ -810,7 +810,24 @@ export
      * Functions and the unit
      * ====================================================================== *)
 
-    let function(f: Function index: Int defined: hashMap.T(String Bool)): Lines =
+    Let FrameSlot = Tuple offset: Int bytes: Int type: maybe.T(ssa.Type) id: Int end
+
+    (* A function's frame, laid out: whether it saves every callee-saved pair
+     * (it enters a try), its allocation, what it computes again, the positions
+     * of its moves, the offsets of its values in memory and its stack slots,
+     * its size below the saved registers, and its slots, classed *)
+    Let Layout = Tuple
+        savesAll: Bool
+        allocation: regalloc.Allocation
+        remat: Array(maybe.T(ssa.Inst))
+        moveAts: Array(Int)
+        valueAt: Array(Int)
+        slotAt: Array(Int)
+        size: Int
+        slots: Array(FrameSlot)
+    end
+
+    let layOut(f: Function): Layout =
         begin
             (* The outgoing arguments' area *)
             let var savesAll = false
@@ -863,12 +880,17 @@ export
             let moveAts = array of(extent allocation.moves 0)
             for k = 0 upto {extent moveAts - 1} do moveAts[k] := allocation.moves[k].at end
             (* A slot for each value with a piece in memory, unless it is
-             * computed again *)
+             * computed again, of the value's type; then the stack slots, memory
+             * of no type *)
+            let slots = vector.new(:FrameSlot)
             let valueAt = array of(nValues 0)
             let var at = outgoing
             for v = 0 upto {nValues - 1} do
                 if allocation.spilled[v] andif maybe.isNone(:ssa.Inst remat[v]) then
                     valueAt[v] := at
+                    vector.append(:FrameSlot slots tuple
+                        let offset = at let bytes = 8 let type = maybe.some(:ssa.Type ssa.typeOf(f v)) let id = v
+                    end)
                     at := at + 8
                 end
             end
@@ -878,9 +900,27 @@ export
                 let slot = vector.get(:ssa.Slot f.slots s)
                 at := alignUp(at if slot.align > 8 then slot.align else 8 end)
                 slotAt[s] := at
-                at := at + alignUp(if slot.bytes > 0 then slot.bytes else 8 end 8)
+                let bytes = alignUp(if slot.bytes > 0 then slot.bytes else 8 end 8)
+                vector.append(:FrameSlot slots tuple
+                    let offset = at let bytes = bytes let type = maybe.none(:ssa.Type) let id = s
+                end)
+                at := at + bytes
             end
-            let size = alignUp(at 16)
+            tuple
+                let savesAll = savesAll let allocation = allocation let remat = remat let moveAts = moveAts
+                let valueAt = valueAt let slotAt = slotAt let size = alignUp(at 16)
+                let slots = vector.toArray(:FrameSlot slots)
+            end
+        end
+
+    let frameSlots(f: Function): Array(FrameSlot) = layOut(f).slots
+
+    let function(f: Function index: Int defined: hashMap.T(String Bool)): Lines =
+        begin
+            let layout = layOut(f)
+            let allocation = layout.allocation
+            let savesAll = layout.savesAll
+            let size = layout.size
             let savedList = vector.new(:Int)
             for k = 0 upto {extent savedPairs - 1} do
                 let var any = savesAll
@@ -892,9 +932,9 @@ export
             end
             let saved = vector.toArray(:Int savedList)
             let fr = tuple
-                let f = f let lines = vector.new(:String) let valueAt = valueAt let slotAt = slotAt
+                let f = f let lines = vector.new(:String) let valueAt = layout.valueAt let slotAt = layout.slotAt
                 let size = size let prefix = "Lf" <> conv.int(index) let defined = defined
-                let allocation = allocation let moveAts = moveAts let remat = remat let saved = saved
+                let allocation = allocation let moveAts = layout.moveAts let remat = layout.remat let saved = saved
                 let var edges = 0 let var pos = ~1
             end
             for k = 0 upto {extent asm.functionStart(f.symbol f.exported) - 1} do

@@ -298,6 +298,12 @@ the same modules, so each step starts from a fresh rebase.
    rematerialized arguments, blocks that only jump).
 9. **The compiler's performance** (§3.9). *Done when* each change's compile time is recorded in benchmarks.md, and the
    ones that do not pay are reverted.
+10. **A `val` type for `QVal` words** (arm64.md §10, hazard 5, deferred here by the user on 2026-10-30): an `int` in
+    registers and arithmetic, but a word whose pointer-ness its type descriptor says, so that the frame's slots
+    (`codegen.frameSlots`, which classes each by the SSA type of what it holds) tell a precise collector which words
+    to resolve by descriptor. Generic values, option payloads, and aggregate slots read as words are `int`s now.
+    *Done when* the SSA's builder gives every `QVal` word the type, the verifier keeps it apart from `ptr` and `int`
+    but where a conversion says, and `questlang/arm64_frames` shows a `val` slot.
 
 ## 6. Not Part of This Plan
 

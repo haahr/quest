@@ -1,0 +1,81 @@
+(* Self-Hosted Quest Compiler: Test the arm64 Backend's Frame Slots
+ *
+ * codegen.frameSlots (docs/arm64.md section 10, hazard 5) on functions of the
+ * SSA built by hand: each slot of a frame with its offset, its size, and its
+ * class, the SSA type of a value in memory (a ptr, an int, or a real) or no
+ * type for a stack slot's memory, from which a precise collector's stack maps
+ * would be made. More values live across a call than there are callee-saved
+ * registers of their class are spilled, each to a slot of its type; a
+ * constant, computed again, has none; a value kept in a register has none. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    writer : Writer
+    conv : Conv
+;
+
+let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+let none = array of :Int end;
+let noTypes = array of :ssa.Type end;
+let call(f: ssa.Function b: Int symbol: String args: Array(Int)): Array(Int) =
+    ssa.call(f b symbol args ssa.signature(ssa.valueTypes(f args) noTypes none none) noTypes);
+
+let typeName(t: ssa.Type): String = case t when typeInt then "int" when typePtr then "ptr" when typeReal then "real" end;
+
+let show(title: String f: ssa.Function): Ok =
+    begin
+        emit("== " <> title)
+        let slots = codegen.frameSlots(f)
+        for k = 0 upto {extent slots - 1} do
+            let s = slots[k]
+            emit(conv.int(s.offset) <> ", " <> conv.int(s.bytes) <> " bytes: "
+                <> if maybe.isSome(:ssa.Type s.type) then typeName(maybe.unwrap(:ssa.Type s.type)) <> " %" <> conv.int(s.id)
+                else "memory, slot " <> conv.int(s.id) end)
+        end
+    end;
+
+(* 1. Twelve pointers, twelve integers, and ten reals live across a call: ten
+ * x and eight d registers survive it, so the rest are spilled, each to a slot
+ * of its type; the constant used after the call is computed again, so it has
+ * no slot *)
+let spills = ssa.newFunction("spills" false array of ssa.typePtr end array of ssa.typeInt end);
+let p0 = vector.get(:Int ssa.block(spills 0).params 0);
+let ptrs = array of(12 0);
+let ints = array of(12 0);
+let reals = array of(10 0);
+for k = 0 upto 11 do
+    ptrs[k] := ssa.load(spills 0 p0 {8 * k} 8 false ssa.typePtr)
+    ints[k] := ssa.load(spills 0 p0 {100 + {8 * k}} 8 false ssa.typeInt)
+end;
+for k = 0 upto 9 do reals[k] := ssa.load(spills 0 p0 {200 + {8 * k}} 8 false ssa.typeReal) end;
+let seven = ssa.constant(spills 0 7);
+let ignored = call(spills 0 "g" none);
+let var total = seven;
+for k = 0 upto 11 do
+    total := ssa.binary(spills 0 ssa.opAdd total ssa.emit(spills 0 ssa.opPtrToInt array of ptrs[k] end ssa.typeInt))
+    total := ssa.binary(spills 0 ssa.opAdd total ints[k])
+end;
+let var sum = reals[0];
+for k = 1 upto 9 do sum := ssa.binary(spills 0 ssa.opFadd sum reals[k]) end;
+total := ssa.binary(spills 0 ssa.opAdd total ssa.emit(spills 0 ssa.opRealBits array of sum end ssa.typeInt));
+ssa.terminate(spills 0 option termReturn of ssa.Terminator with let values = array of total end end);
+show("spills" spills);
+
+(* 2. A stack slot whose address a call is passed: memory, whose words have
+ * no class here; the parameter, live across the call in a callee-saved
+ * register, has no slot *)
+let held = ssa.newFunction("held" false array of ssa.typeInt end array of ssa.typeInt end);
+let h0 = vector.get(:Int ssa.block(held 0).params 0);
+let cell = ssa.newSlot(held 24 8);
+let at = ssa.slotAddress(held 0 cell);
+ssa.store(held 0 at 0 8 h0);
+let ignored2 = call(held 0 "g" array of at end);
+let back = ssa.load(held 0 at 0 8 false ssa.typeInt);
+ssa.terminate(held 0 option termReturn of ssa.Terminator with
+    let values = array of ssa.binary(held 0 ssa.opAdd back h0) end
+end);
+show("held" held);

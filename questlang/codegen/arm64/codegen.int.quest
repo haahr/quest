@@ -12,6 +12,7 @@ interface Codegen
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     collections/vector : collections/Vector
+    util/maybe : util/Maybe
 export
     (* What the backend cannot compile, naming it *)
     unsupported: Exception(String)
@@ -22,4 +23,15 @@ export
      * branch around an unconditional one (docs/arm64.md section 10.1); its
      * labels begin with prefix *)
     relaxBranches(lines: vector.T(String) prefix: String reach: Int): vector.T(String)
+
+    (* A slot of a function's frame, at offset from sp after the prologue, of
+     * bytes (docs/arm64.md section 10, hazard 5): a value in memory, of its
+     * SSA type (a ptr is a pointer and an int is not, though an int may be a
+     * QVal word, whose pointer-ness its type descriptor says), id being the
+     * value; or with no type, a stack slot's memory, whose words have no class
+     * here, id being the slot. What a precise collector's stack maps would be
+     * made from; nothing emits them yet. *)
+    Def FrameSlot = Tuple offset: Int bytes: Int type: maybe.T(ssa.Type) id: Int end
+    (* The slots of the frame f is compiled with, in order of their offsets *)
+    frameSlots(f: ssa.Function): Array(FrameSlot)
 end
