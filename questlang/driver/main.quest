@@ -63,6 +63,7 @@ import
     ssaBuild = questlang/ssa/build : questlang/ssa/Build
     ssaNodes = questlang/ssa/nodes : questlang/ssa/Nodes
     ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
+    ssaParser = questlang/ssa/parser : questlang/ssa/Parser
     ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
     ssaPrinter = questlang/ssa/printer : questlang/ssa/Printer
     questlang/interpreter/irInterp : questlang/interpreter/IrInterp
@@ -537,10 +538,19 @@ let lowerOnly(program: typedAst.Program e: env.T sm: location.SourceMap bag: dia
             if reaches("ssa_built") then
                 let built = ssaPipeline.run(unit fun(name: String u: ssaNodes.Unit): Ok
                     if shows("ssa_" <> name) then dump(ssaPrinter.formatUnit(u)) end)
-                if shows("ssa") then dump(ssaPrinter.formatUnit(built)) end
+                if shows("ssa") then
+                    let text = ssaPrinter.formatUnit(built)
+                    (* The SSA's text reads back as itself (ssa/parser) *)
+                    if verify.irChecksEnabled() andif not(stringOp.equal(ssaPrinter.formatUnit(ssaParser.readUnit(text)) text))
+                        then
+                        internal("ssa: the SSA does not read back as printed")
+                    end
+                    dump(text)
+                end
             end
         when ssaBuild.unsupported with m then internal("ssa: unsupported: " <> m)
         when ssaVerify.verifyError with m then internal(m)
+        when ssaParser.readError with m then internal("ssa: " <> m)
         when lower.loweringError with m then internal(m)
         when verify.verifyError with m then internal(m)
         when closure.capturesMutable with m then internal(m)

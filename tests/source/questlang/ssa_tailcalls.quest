@@ -1,0 +1,79 @@
+(* Self-Hosted Quest Compiler: Test Marking Tail Calls
+ *
+ * questlang/ssa/tailCalls (docs/ssa.md section 4.1, docs/arm64.md section
+ * 3.7) on functions of the SSA written as text and read by
+ * questlang/ssa/parser, each printed before and after the pass and verified:
+ * a call whose results are returned; one whose results a jump passes to a
+ * block that returns them; one whose byte result is extended, which the
+ * caller's caller extends again; and calls that are not in tail position, one
+ * whose result is added to and one in a function a slot's address escapes
+ * from. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/tailCalls : questlang/ssa/TailCalls
+    questlang/ssa/verify : questlang/ssa/Verify
+    util/strutil : util/Strutil
+    writer : Writer
+;
+
+let emit(s: String): Ok = writer.putString(writer.output s);
+
+let show(title: String lines: Array(String)): Ok =
+    begin
+        emit("== " <> title <> "\n")
+        let u = parser.readUnit(strutil.joinArray("\n" lines) <> "\n")
+        emit(printer.formatUnit(u))
+        tailCalls.markUnit(u)
+        emit("-- after tailCalls\n")
+        emit(printer.formatUnit(u))
+        try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
+    end;
+
+show("results returned" array of
+    "function direct(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = call g(%0)"
+    "  return %1"
+    "}"
+end);
+
+show("results returned through a jump" array of
+    "function through(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = call g(%0)"
+    "  jump b1(%1)"
+    "b1(%2: int):"
+    "  return %2"
+    "}"
+end);
+
+show("a byte result extended" array of
+    "function extended(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = call g(%0)"
+    "  %2: int = zext8 %1"
+    "  return %2"
+    "}"
+end);
+
+show("a result added to" array of
+    "function added(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = call g(%0)"
+    "  %2: int = add %1, %0"
+    "  return %2"
+    "}"
+end);
+
+show("a slot's address escaping" array of
+    "function escaping(%0: int): int slots [8:8] {"
+    "b0(%0: int):"
+    "  %1: ptr = slot 0"
+    "  store8 %1 + 0, %0"
+    "  %2: int = call h(%1)"
+    "  return %2"
+    "}"
+end);

@@ -1,0 +1,424 @@
+(* Quest Self-Hosted Compiler: The SSA's Parser Implementation *)
+
+module parser : Parser
+import
+    questlang/ssa/nodes : questlang/ssa/Nodes
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+    ascii : Ascii
+export
+    Let Function = nodes.Function
+    Let Type = nodes.Type
+
+    let readError: Exception(String) = exception readError: String end
+
+    (* A line being read: its text, its number, and the position read to *)
+    Let Line = Tuple text: String number: Int var at: Int end
+
+    let fail(A::TYPE l: Line message: String): A =
+        raise readError with "line " <> conv.int(l.number) <> ": " <> message end
+
+    let atEnd(l: Line): Bool = l.at >= stringOp.length(l.text)
+    let peek(l: Line): Char = if atEnd(l) then '\n' else stringOp.getChar(l.text l.at) end
+    let skip(l: Line): Ok = while not(atEnd(l)) andif {peek(l) is ' '} do l.at := l.at + 1 end
+
+    (* Whether the line goes on with s, after spaces, which it reads if so *)
+    let lit(l: Line s: String): Bool =
+        begin
+            skip(l)
+            let n = stringOp.length(s)
+            if {{l.at + n} <= stringOp.length(l.text)} andif stringOp.equal(stringOp.getSub(l.text l.at n) s) then
+                l.at := l.at + n
+                true
+            else false end
+        end
+
+    let expect(l: Line s: String): Ok = if not(lit(l s)) then fail(:Ok l "expected '" <> s <> "'") end
+
+    let isWordChar(c: Char): Bool =
+        begin
+            let n = ascii.val(c)
+            {{n >= 48} andif {n <= 57}} orif {{n >= 65} andif {n <= 90}} orif {{n >= 97} andif {n <= 122}} orif {c is '_'}
+                orif {c is '.'} orif {c is '$'}
+        end
+    let isDigit(c: Char): Bool = {ascii.val(c) >= 48} andif {ascii.val(c) <= 57}
+
+    (* A name: a symbol, an opcode, a keyword *)
+    let word(l: Line): String =
+        begin
+            skip(l)
+            let start = l.at
+            while not(atEnd(l)) andif isWordChar(peek(l)) do l.at := l.at + 1 end
+            if l.at is start then fail(:Ok l "expected a name") end
+            stringOp.getSub(l.text start l.at - start)
+        end
+
+    (* An integer, ~ (or -) for a negative one, accumulated negatively so that
+     * the least Int reads *)
+    let integer(l: Line): Int =
+        begin
+            skip(l)
+            let negative = {peek(l) is '~'} orif {peek(l) is '-'}
+            if negative then l.at := l.at + 1 end
+            if not(isDigit(peek(l))) then fail(:Ok l "expected an integer") end
+            let var n = 0
+            while not(atEnd(l)) andif isDigit(peek(l)) do
+                n := {n * 10} - {ascii.val(peek(l)) - 48}
+                l.at := l.at + 1
+            end
+            if negative then n else 0 - n end
+        end
+
+    let value(l: Line): Int = begin expect(l "%") integer(l) end
+
+    let typeNamed(l: Line): Type =
+        begin
+            let name = word(l)
+            if stringOp.equal(name "int") then nodes.typeInt
+            elsif stringOp.equal(name "ptr") then nodes.typePtr
+            elsif stringOp.equal(name "real") then nodes.typeReal
+            else fail(:Type l "unknown type " <> name) end
+        end
+
+    (* Gives value v type t, the numbers before it int until defined *)
+    let setType(f: Function v: Int t: Type): Ok =
+        begin
+            while vector.length(:Type f.types) <= v do vector.append(:Type f.types nodes.typeInt) end
+            vector.set(:Type f.types v t)
+        end
+
+    (* A typed value, %n: type, defined *)
+    let typedValue(f: Function l: Line): Int =
+        begin
+            let v = value(l)
+            expect(l ":")
+            setType(f v typeNamed(l))
+            v
+        end
+
+    (* Values separated by commas, up to close (not read) or the end *)
+    let values(l: Line close: String): Array(Int) =
+        begin
+            let vs = vector.new(:Int)
+            skip(l)
+            if peek(l) is '%' then
+                vector.append(:Int vs value(l))
+                while lit(l ",") do vector.append(:Int vs value(l)) end
+            end
+            vector.toArray(:Int vs)
+        end
+
+    (* [a b c] *)
+    let intList(l: Line): Array(Int) =
+        begin
+            expect(l "[")
+            let xs = vector.new(:Int)
+            while not(lit(l "]")) do vector.append(:Int xs integer(l)) end
+            vector.toArray(:Int xs)
+        end
+
+    (* A block's name, bN *)
+    let blockNumber(l: Line): Int =
+        begin
+            let name = word(l)
+            if {stringOp.length(name) < 2} orif not({stringOp.getChar(name 0) is 'b'}) then
+                fail(:Ok l "expected a block, not " <> name)
+            end
+            let digits = tuple let text = stringOp.getSub(name 1 stringOp.length(name) - 1) let number = l.number let var at = 0 end
+            integer(digits)
+        end
+
+    let target(l: Line): nodes.Target =
+        begin
+            let b = blockNumber(l)
+            expect(l "(")
+            let args = values(l ")")
+            expect(l ")")
+            nodes.target(b args)
+        end
+
+    (* An instruction's text after its results: its opcode and operands *)
+    let instructionBody(l: Line results: Array(Int)): nodes.Inst =
+        begin
+            let name = word(l)
+            let none = array of :Int end
+            let make(op: nodes.Opcode args: Array(Int) imm: Int symbol: String width: Int signed: Bool p: nodes.Passing)
+                : nodes.Inst =
+                nodes.instruction(op args results imm symbol width signed p)
+            (* A call's pairs, narrow, and memory arguments *)
+            let passing(): nodes.Passing =
+                begin
+                    let var pairs = none
+                    let var narrow = none
+                    let var memory = none
+                    let var more = true
+                    while more do
+                        if lit(l "pairs") then pairs := intList(l)
+                        elsif lit(l "narrow") then narrow := intList(l)
+                        elsif lit(l "memory") then memory := intList(l)
+                        else more := false end
+                    end
+                    nodes.passing(pairs memory narrow)
+                end
+            (* load8, load1s, store4: the width, and for a load whether it
+             * sign-extends *)
+            let width(prefix: String): Int =
+                begin
+                    let rest = stringOp.getSub(name stringOp.length(prefix) stringOp.length(name) - stringOp.length(prefix))
+                    let digits = if strutil.endsWith(rest "s") then stringOp.getSub(rest 0 stringOp.length(rest) - 1) else rest end
+                    integer(tuple let text = digits let number = l.number let var at = 0 end)
+                end
+            if strutil.startsWith(name "load") andif {stringOp.length(name) > 4} andif isDigit(stringOp.getChar(name 4)) then
+                let w = width("load")
+                let address = value(l)
+                expect(l "+")
+                make(nodes.opLoad array of address end integer(l) "" w strutil.endsWith(name "s") nodes.plain)
+            elsif strutil.startsWith(name "store") andif {stringOp.length(name) > 5} andif isDigit(stringOp.getChar(name 5)) then
+                let w = width("store")
+                let address = value(l)
+                expect(l "+")
+                let offset = integer(l)
+                expect(l ",")
+                make(nodes.opStore array of address value(l) end offset "" w false nodes.plain)
+            else
+                let op = nodes.opcodeNamed(name)
+                if maybe.isNone(:nodes.Opcode op) then fail(:Ok l "unknown opcode " <> name) end
+                let o = maybe.unwrap(:nodes.Opcode op)
+                case o
+                    when opConst, opRealConst, opSlot then make(o none integer(l) "" 0 false nodes.plain)
+                    when opSymbol then
+                        let symbol = word(l)
+                        let addend = if lit(l "+") then integer(l) else 0 end
+                        make(o none addend symbol 0 false nodes.plain)
+                    when opCall then
+                        let symbol = word(l)
+                        expect(l "(")
+                        let args = values(l ")")
+                        expect(l ")")
+                        make(o args 0 symbol 0 false passing())
+                    when opCallIndirect then
+                        let args = values(l "")
+                        make(o args 0 "" 0 false passing())
+                    when opNull, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe,
+                        opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle,
+                        opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opCopy,
+                        opLoad, opStore then
+                        make(o values(l "") 0 "" 0 false nodes.plain)
+                end
+            end
+        end
+
+    (* An instruction with its results, %n: type, ... = *)
+    let instruction(f: Function l: Line): nodes.Inst =
+        begin
+            let results = vector.new(:Int)
+            skip(l)
+            if peek(l) is '%' then
+                vector.append(:Int results typedValue(f l))
+                while lit(l ",") do vector.append(:Int results typedValue(f l)) end
+                expect(l "=")
+            end
+            instructionBody(l vector.toArray(:Int results))
+        end
+
+    (* A terminator, if the line is one *)
+    let terminator(f: Function l: Line): maybe.T(nodes.Terminator) =
+        begin
+            let some = fun(t: nodes.Terminator): maybe.T(nodes.Terminator) maybe.some(:nodes.Terminator t)
+            let start = l.at
+            skip(l)
+            if lit(l "(no terminator)") then some(nodes.termNone)
+            elsif not(isWordChar(peek(l))) then maybe.none(:nodes.Terminator)
+            else
+                let name = word(l)
+                if stringOp.equal(name "jump") then some(option termJump of nodes.Terminator with let target = target(l) end)
+                elsif stringOp.equal(name "branch") then
+                    let cond = value(l)
+                    expect(l ",")
+                    let ifTrue = target(l)
+                    expect(l ",")
+                    some(option termBranch of nodes.Terminator with let cond = cond let ifTrue = ifTrue let ifFalse = target(l) end)
+                elsif stringOp.equal(name "switch") then
+                    let v = value(l)
+                    expect(l "[")
+                    let cases = vector.new(:Int)
+                    let targets = vector.new(:nodes.Target)
+                    while not(lit(l "]")) do
+                        if not(vector.empty(:Int cases)) then expect(l ",") end
+                        vector.append(:Int cases integer(l))
+                        expect(l ":")
+                        vector.append(:nodes.Target targets target(l))
+                    end
+                    expect(l "default")
+                    some(option termSwitch of nodes.Terminator with
+                        let value = v let cases = vector.toArray(:Int cases) let targets = vector.toArray(:nodes.Target targets)
+                        let default = target(l)
+                    end)
+                elsif stringOp.equal(name "return") then
+                    some(option termReturn of nodes.Terminator with let values = values(l "") end)
+                elsif stringOp.equal(name "tail") then
+                    some(option termTailCall of nodes.Terminator with let call = instruction(f l) end)
+                elsif stringOp.equal(name "try") then
+                    expect(l "slot")
+                    let slot = integer(l)
+                    expect(l ",")
+                    let body = target(l)
+                    expect(l ",")
+                    expect(l "handler")
+                    some(option termTry of nodes.Terminator with let slot = slot let body = body let handler = blockNumber(l) end)
+                elsif stringOp.equal(name "unreachable") then some(nodes.termUnreachable)
+                else
+                    l.at := start
+                    maybe.none(:nodes.Terminator)
+                end
+            end
+        end
+
+    (* function SYMBOL [exported](params) [pairs [..]] [narrow [..]][: results] [slots [..]] { *)
+    let header(l: Line): Function =
+        begin
+            expect(l "function")
+            let symbol = word(l)
+            let exported = lit(l "exported")
+            let f = nodes.newFunction(symbol exported array of :Type end array of :Type end)
+            expect(l "(")
+            if not(lit(l ")")) then
+                let first = typedValue(f l)
+                vector.append(:Type f.paramTypes nodes.typeOf(f first))
+                while lit(l ",") do vector.append(:Type f.paramTypes nodes.typeOf(f typedValue(f l))) end
+                expect(l ")")
+            end
+            if lit(l "pairs") then f.paramPairs := intList(l) end
+            if lit(l "narrow") then f.paramNarrow := intList(l) end
+            if lit(l ":") then
+                vector.append(:Type f.resultTypes typeNamed(l))
+                while lit(l ",") do vector.append(:Type f.resultTypes typeNamed(l)) end
+            end
+            if lit(l "slots") then
+                expect(l "[")
+                while not(lit(l "]")) do
+                    let bytes = integer(l)
+                    expect(l ":")
+                    let ignored = nodes.newSlot(f bytes integer(l))
+                end
+            end
+            expect(l "{")
+            f
+        end
+
+    (* bN(params): *)
+    let blockHeader(f: Function l: Line): Int =
+        begin
+            let b = blockNumber(l)
+            while vector.length(:nodes.Block f.blocks) <= b do let ignored = nodes.newBlock(f) end
+            expect(l "(")
+            if not(lit(l ")")) then
+                vector.append(:Int nodes.block(f b).params typedValue(f l))
+                while lit(l ",") do vector.append(:Int nodes.block(f b).params typedValue(f l)) end
+                expect(l ")")
+            end
+            expect(l ":")
+            b
+        end
+
+    (* A C string's text, its escapes read (codegen/syntax's cString) *)
+    let cString(l: Line): String =
+        begin
+            expect(l "\"")
+            let b = stringBuilder.new()
+            while not(atEnd(l)) andif not({peek(l) is '"'}) do
+                let c = peek(l)
+                l.at := l.at + 1
+                if c is '\\' then
+                    let e = peek(l)
+                    l.at := l.at + 1
+                    if e is 'n' then b.char('\n')
+                    elsif e is 't' then b.char('\t')
+                    elsif e is 'r' then b.char('\r')
+                    elsif isDigit(e) then
+                        let d2 = ascii.val(peek(l)) - 48
+                        let d3 = ascii.val(stringOp.getChar(l.text l.at + 1)) - 48
+                        l.at := l.at + 2
+                        b.char(ascii.char({{{ascii.val(e) - 48} * 64} + {d2 * 8}} + d3))
+                    else b.char(e) end
+                else
+                    b.char(c)
+                end
+            end
+            expect(l "\"")
+            b.toString()
+        end
+
+    (* data SYMBOL [exported] [writable] zero N | text "..." | words [...] *)
+    let datum(l: Line): nodes.Data =
+        begin
+            expect(l "data")
+            let symbol = word(l)
+            let exported = lit(l "exported")
+            let writable = lit(l "writable")
+            let contents = if lit(l "zero") then option contentsZero of nodes.Contents with let bytes = integer(l) end
+                elsif lit(l "text") then option contentsText of nodes.Contents with let text = cString(l) end
+                elsif lit(l "words") then
+                    expect(l "[")
+                    let ws = vector.new(:nodes.Word)
+                    while not(lit(l "]")) do
+                        if not(vector.empty(:nodes.Word ws)) then expect(l ",") end
+                        skip(l)
+                        if isDigit(peek(l)) orif {peek(l) is '~'} orif {peek(l) is '-'} then
+                            vector.append(:nodes.Word ws option wordInt of nodes.Word with let n = integer(l) end)
+                        else
+                            let s = word(l)
+                            let addend = if lit(l "+") then integer(l) else 0 end
+                            vector.append(:nodes.Word ws option wordSymbol of nodes.Word with let symbol = s let addend = addend end)
+                        end
+                    end
+                    option contentsWords of nodes.Contents with let words = vector.toArray(:nodes.Word ws) end
+                else fail(:nodes.Contents l "expected zero, text, or words") end
+            tuple let symbol = symbol let exported = exported let writable = writable let contents = contents end
+        end
+
+    let readUnit(text: String): nodes.Unit =
+        begin
+            let u = nodes.newUnit()
+            let lines = strutil.splitlines(text)
+            let var current = maybe.none(:Function)
+            let var b = ~1
+            for i = 0 upto {vector.length(:String lines) - 1} do
+                let l = tuple let text = vector.get(:String lines i) let number = i + 1 let var at = 0 end
+                let finished = fun(): Ok if not(atEnd(l)) then fail(:Ok l "unexpected " <> stringOp.getSub(l.text l.at
+                    stringOp.length(l.text) - l.at)) end
+                skip(l)
+                if atEnd(l) then ok
+                elsif strutil.startsWith(l.text "function ") then
+                    current := maybe.some(:Function header(l))
+                    b := ~1
+                    finished()
+                elsif strutil.startsWith(l.text "}") then
+                    if maybe.isNone(:Function current) then fail(:Ok l "a } outside a function") end
+                    vector.append(:Function u.functions maybe.unwrap(:Function current))
+                    current := maybe.none(:Function)
+                elsif strutil.startsWith(l.text "data ") then
+                    vector.append(:nodes.Data u.data datum(l))
+                    finished()
+                elsif maybe.isNone(:Function current) then
+                    fail(:Ok l "a line outside a function")
+                else
+                    let f = maybe.unwrap(:Function current)
+                    if l.at is 0 then b := blockHeader(f l)
+                    elsif b < 0 then fail(:Ok l "an instruction outside a block")
+                    else
+                        let t = terminator(f l)
+                        if maybe.isSome(:nodes.Terminator t) then nodes.terminate(f b maybe.unwrap(:nodes.Terminator t))
+                        else nodes.append(f b instruction(f l)) end
+                    end
+                    finished()
+                end
+            end
+            if maybe.isSome(:Function current) then raise readError with "a function without its }" end end
+            u
+        end
+end

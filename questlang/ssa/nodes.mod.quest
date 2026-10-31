@@ -3,6 +3,7 @@
 module nodes : Nodes
 import
     collections/vector : collections/Vector
+    util/maybe : util/Maybe
     stringOp = string : StringOp
 export
     Def Type = Option typeInt typePtr typeReal end
@@ -211,22 +212,21 @@ export
 
     let append(f: Function b: Int i: Inst): Ok = vector.append(:Inst block(f b).insts i)
 
-    (* An instruction of every field *)
-    let make(op: Opcode args: Array(Int) results: Array(Int) imm: Int symbol: String width: Int signed: Bool p: Passing)
+    let instruction(op: Opcode args: Array(Int) results: Array(Int) imm: Int symbol: String width: Int signed: Bool p: Passing)
         : Inst =
         tuple
             let op = op let var args = args let results = results let var imm = imm let symbol = symbol
             let width = width let signed = signed let pairs = p.pairs let memory = p.memory let narrow = p.narrow
         end
 
-    let inst(op: Opcode args: Array(Int) results: Array(Int)): Inst = make(op args results 0 "" 0 false plain)
+    let inst(op: Opcode args: Array(Int) results: Array(Int)): Inst = instruction(op args results 0 "" 0 false plain)
 
     (* Appends an instruction of no arguments and one result of type t, with
      * an immediate and a symbol *)
     let nullary(f: Function b: Int op: Opcode t: Type imm: Int symbol: String): Int =
         begin
             let v = newValue(f t)
-            append(f b make(op none array of v end imm symbol 0 false plain))
+            append(f b instruction(op none array of v end imm symbol 0 false plain))
             v
         end
 
@@ -259,12 +259,12 @@ export
     let load(f: Function b: Int address: Int offset: Int width: Int signed: Bool t: Type): Int =
         begin
             let v = newValue(f t)
-            append(f b make(opLoad array of address end array of v end offset "" width signed plain))
+            append(f b instruction(opLoad array of address end array of v end offset "" width signed plain))
             v
         end
 
     let store(f: Function b: Int address: Int offset: Int width: Int value: Int): Ok =
-        append(f b make(opStore array of address value end none offset "" width false plain))
+        append(f b instruction(opStore array of address value end none offset "" width false plain))
 
     (* A call's instruction, its results new values *)
     let callInst(f: Function symbol: String args: Array(Int) p: Passing results: Array(Type)): Inst =
@@ -272,7 +272,7 @@ export
             let vs = array of(extent results 0)
             for i = 0 upto {extent results - 1} do vs[i] := newValue(f results[i]) end
             let op = if stringOp.length(symbol) > 0 then opCall else opCallIndirect end
-            make(op args vs 0 symbol 0 false p)
+            instruction(op args vs 0 symbol 0 false p)
         end
 
     let call(f: Function b: Int symbol: String args: Array(Int) p: Passing results: Array(Type)): Array(Int) =
@@ -461,5 +461,20 @@ export
             when opBitsReal then "bitsReal" when opSext8 then "sext8" when opZext8 then "zext8"
             when opLoad then "load" when opStore then "store" when opCall then "call"
             when opCallIndirect then "callIndirect" when opCopy then "copy"
+        end
+
+    let opcodes: Array(Opcode) = array of
+        opConst opRealConst opSymbol opNull opSlot opAdd opSub opMul opDiv opRem opAnd opOr opXor opShl opLshr opAshr
+        opEq opNe opLt opLe opGt opGe opUlt opPeq opPne opFadd opFsub opFmul opFdiv opFeq opFlt opFle opFgt opFge
+        opIsNaN opIntToPtr opPtrToInt opRealBits opBitsReal opSext8 opZext8 opLoad opStore opCall opCallIndirect opCopy
+    end
+
+    let opcodeNamed(name: String): maybe.T(Opcode) =
+        begin
+            let var found = maybe.none(:Opcode)
+            for i = 0 upto {extent opcodes - 1} do
+                if stringOp.equal(opcodeName(opcodes[i]) name) then found := maybe.some(:Opcode opcodes[i]) end
+            end
+            found
         end
 end

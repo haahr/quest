@@ -200,6 +200,12 @@ b0(%0: ptr, %1: int):
 }
 ```
 
+`questlang/ssa/parser` reads the text back into a unit, values keeping their numbers, so that printing what it reads
+prints what it read: with `QUEST_CHECK_IR=1` the driver reads back the SSA it prints and reports any difference, so
+every golden is checked to read back as itself. A pass is tested on SSA written as text: the questlang tests
+`ssa_promote` and `ssa_tailcalls` read small functions, run their pass and the verifier, and print the functions
+before and after; and a program's SSA can be cut down to the functions that show a bug.
+
 ## 7. The Verifier
 
 After the pipeline, and when `QUEST_CHECK_IR=1` after the builder and after every pass too, the verifier checks that

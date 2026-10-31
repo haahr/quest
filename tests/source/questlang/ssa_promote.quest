@@ -1,0 +1,130 @@
+(* Self-Hosted Quest Compiler: Test Slot Promotion
+ *
+ * questlang/ssa/promote (docs/ssa.md section 4.1) on functions of the SSA
+ * written as text and read by questlang/ssa/parser, each printed before and
+ * after the pass and verified: a variable assigned on both arms of a branch,
+ * which the join takes as a parameter; a loop's counter, a parameter of the
+ * loop's head; a byte variable, whose load becomes an extension; a load before
+ * any store, which reads a zero made in the entry; and slots that stay, one
+ * whose address a call takes and one in a function that enters a try. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/promote : questlang/ssa/Promote
+    questlang/ssa/verify : questlang/ssa/Verify
+    util/strutil : util/Strutil
+    collections/vector : collections/Vector
+    writer : Writer
+    conv : Conv
+;
+
+let emit(s: String): Ok = writer.putString(writer.output s);
+
+let show(title: String lines: Array(String)): Ok =
+    begin
+        emit("== " <> title <> "\n")
+        let u = parser.readUnit(strutil.joinArray("\n" lines) <> "\n")
+        emit(printer.formatUnit(u))
+        let n = promote.promoteUnit(u)
+        emit("-- after promote: " <> conv.int(n) <> " promoted\n")
+        emit(printer.formatUnit(u))
+        try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
+    end;
+
+show("a variable assigned on both arms" array of
+    "function choose(%0: int): int slots [8:8] {"
+    "b0(%0: int):"
+    "  %1: ptr = slot 0"
+    "  branch %0, b1(), b2()"
+    "b1():"
+    "  %2: int = const 1"
+    "  store8 %1 + 0, %2"
+    "  jump b3()"
+    "b2():"
+    "  %3: int = const 2"
+    "  store8 %1 + 0, %3"
+    "  jump b3()"
+    "b3():"
+    "  %4: int = load8 %1 + 0"
+    "  return %4"
+    "}"
+end);
+
+show("a loop's counter" array of
+    "function count(%0: int): int slots [8:8] {"
+    "b0(%0: int):"
+    "  %1: ptr = slot 0"
+    "  %2: int = const 0"
+    "  store8 %1 + 0, %2"
+    "  jump b1()"
+    "b1():"
+    "  %3: int = load8 %1 + 0"
+    "  %4: int = lt %3, %0"
+    "  branch %4, b2(), b3()"
+    "b2():"
+    "  %5: int = load8 %1 + 0"
+    "  %6: int = const 1"
+    "  %7: int = add %5, %6"
+    "  store8 %1 + 0, %7"
+    "  jump b1()"
+    "b3():"
+    "  %8: int = load8 %1 + 0"
+    "  return %8"
+    "}"
+end);
+
+show("a byte variable" array of
+    "function flag(%0: int): int slots [8:8] {"
+    "b0(%0: int):"
+    "  %1: ptr = slot 0"
+    "  store1 %1 + 0, %0"
+    "  %2: int = load1s %1 + 0"
+    "  return %2"
+    "}"
+end);
+
+show("a load before any store" array of
+    "function early(%0: int): int slots [8:8] {"
+    "b0(%0: int):"
+    "  %1: ptr = slot 0"
+    "  branch %0, b1(), b2()"
+    "b1():"
+    "  %2: int = const 5"
+    "  store8 %1 + 0, %2"
+    "  jump b2()"
+    "b2():"
+    "  %3: int = load8 %1 + 0"
+    "  return %3"
+    "}"
+end);
+
+show("a slot whose address a call takes" array of
+    "function escapes(): int slots [8:8] {"
+    "b0():"
+    "  %0: ptr = slot 0"
+    "  %1: int = const 3"
+    "  store8 %0 + 0, %1"
+    "  call fill(%0)"
+    "  %2: int = load8 %0 + 0"
+    "  return %2"
+    "}"
+end);
+
+show("a function that enters a try" array of
+    "function tries(): int slots [240:16 8:8] {"
+    "b0():"
+    "  %0: ptr = slot 1"
+    "  %1: int = const 4"
+    "  store8 %0 + 0, %1"
+    "  try slot 0, b1(), handler b2"
+    "b1():"
+    "  %2: int = load8 %0 + 0"
+    "  return %2"
+    "b2():"
+    "  %3: int = load8 %0 + 0"
+    "  return %3"
+    "}"
+end);

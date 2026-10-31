@@ -227,7 +227,9 @@ call each other both ways; `arm64`, `arm64-program`, and `arm64-modules` do the 
 modes, separated by commas, run one after another with one driver. Each mode's pending list adds to `pending.txt`:
 `tests/self-hosted/pending-ssac.txt` for the `ssac` modes and `tests/self-hosted/pending-arm64.txt` for the `arm64`
 ones, both empty. The questlang tests `ssac_print` and `arm64_assemble` print a unit of the SSA built by hand as C and
-as assembly, whose goldens `tests/python/test_ssac.py` compiles and `tests/python/test_arm64.py` assembles.
+as assembly, whose goldens `tests/python/test_ssac.py` compiles and `tests/python/test_arm64.py` assembles. The SSA's
+passes are tested on SSA written as text (`questlang/ssa/parser`): `ssa_promote` and `ssa_tailcalls` print small
+functions before and after their pass, and `ssa_verify` the problems the verifier finds ([ssa.md](ssa.md) §6).
 
 The runners set `QUEST_HOME` to the project directory, where the self-hosted driver, which runs in a scratch
 directory, finds `lib/`. `--self-hosted-driver PATH` runs a driver already compiled (as by `./questboot -o build/questlang/main

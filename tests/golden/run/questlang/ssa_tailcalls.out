@@ -1,0 +1,68 @@
+== results returned
+function direct(%0: int): int {
+b0(%0: int):
+  %1: int = call g(%0)
+  return %1
+}
+-- after tailCalls
+function direct(%0: int): int {
+b0(%0: int):
+  tail %1: int = call g(%0)
+}
+== results returned through a jump
+function through(%0: int): int {
+b0(%0: int):
+  %1: int = call g(%0)
+  jump b1(%1)
+b1(%2: int):
+  return %2
+}
+-- after tailCalls
+function through(%0: int): int {
+b0(%0: int):
+  tail %1: int = call g(%0)
+b1(%2: int):
+  return %2
+}
+== a byte result extended
+function extended(%0: int): int {
+b0(%0: int):
+  %1: int = call g(%0)
+  %2: int = zext8 %1
+  return %2
+}
+-- after tailCalls
+function extended(%0: int): int {
+b0(%0: int):
+  tail %1: int = call g(%0)
+}
+== a result added to
+function added(%0: int): int {
+b0(%0: int):
+  %1: int = call g(%0)
+  %2: int = add %1, %0
+  return %2
+}
+-- after tailCalls
+function added(%0: int): int {
+b0(%0: int):
+  %1: int = call g(%0)
+  %2: int = add %1, %0
+  return %2
+}
+== a slot's address escaping
+function escaping(%0: int): int slots [8:8] {
+b0(%0: int):
+  %1: ptr = slot 0
+  store8 %1 + 0, %0
+  %2: int = call h(%1)
+  return %2
+}
+-- after tailCalls
+function escaping(%0: int): int slots [8:8] {
+b0(%0: int):
+  %1: ptr = slot 0
+  store8 %1 + 0, %0
+  %2: int = call h(%1)
+  return %2
+}
