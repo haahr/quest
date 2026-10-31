@@ -56,8 +56,9 @@ words of explanation, or why this compiler needs one.
 - **Wrap comments at 80 columns,** indentation included (docs/instructions.md §4), even though code goes to 120.
   Keep examples, aligned text, and lists on lines of their own.
 - **Quest:** `(* ... *)`, continuation lines starting ` * ` aligned under the opening `*`, the closing `*)` on the last
-  text line. No period after a single noun phrase or sentence, matching the tree; multiple sentences end with periods
-  except the last, as the surrounding code does.
+  text line. A comment that is a single noun phrase or sentence has no final period; one of several sentences ends
+  each with a period, the last included. A heading that starts a paragraph of a long comment ends with a colon, not
+  a period (`Hints: A move from one register...`).
 - **Python:** docstrings for modules, classes, and functions; `#` comments inside code. **C:** `/* ... */` as in
   `runtime/`.
 - **Match the surrounding code's density and idiom.** Don't comment every binding in a module that comments few; don't

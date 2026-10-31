@@ -1,44 +1,87 @@
 (* Quest Self-Hosted Compiler: The Register Allocator's Interface
  *
- * Linear scan with interval splitting over a machine function's virtual
- * registers (codegen/machine; docs/arm64.md section 3.8, after Wimmer and
- * Mossenbock), parameterized by a target's registers (codegen/target), so
- * that it can be tested on its own. The blocks are laid out in reverse
- * postorder, two positions for each block's start and each instruction: an
- * instruction's operands are read at its position and its results written at
- * the next, so that a result may take a register an operand's interval ends
- * in. Each virtual register's lifetime interval is the ranges of positions
- * where it is live, with holes where it is not, from liveness over the
- * blocks. The intervals are taken in order of their starts; each gets a
- * register free for all of it, or for a part, the rest split off; when none is
- * free, the interval whose next use is furthest is spilled until its next use.
+ * Gives each virtual register of a machine function (codegen/machine) one of
+ * the target's physical registers (codegen/target), or memory, by linear scan
+ * with interval splitting (after Wimmer and Mossenbock, "Optimized Interval
+ * Splitting in a Linear Scan Register Allocator"; docs/arm64.md section 3.8).
+ * The target is a parameter, so that a test (regalloc_scan) can run the
+ * allocator on a toy target with a few registers.
  *
- * A register is not free where a physical operand fixes it: from an
- * instruction that writes it to the last that reads it (an argument's register
- * from its move to the call, a result's from the call to its move). A move
- * between two registers is a hint, as is a jump's argument for its target's
- * parameter: an interval takes the register of what it is hinted to, if that
- * one is free for all of it, so that the move costs nothing.
+ * Linear scan, compared with coloring: A coloring allocator builds an
+ * interference graph, with an edge between two values live at the same time,
+ * and colors it with the registers. Linear scan lays the code out in one
+ * line, numbers its positions, and describes each value by its lifetime
+ * interval: the positions where it is live. Two values interfere exactly when
+ * their intervals intersect. Taking the intervals in order of their starts,
+ * it gives each one a register that no interval already in that register
+ * intersects. It never builds the graph and never backtracks, so it is fast;
+ * its choices are greedy, and can be worse than coloring's.
  *
- * So a virtual register lives in pieces, each in a register or in memory. One
- * with a piece in memory is stored there when it is defined, and since it is
- * defined once, its memory is valid wherever it is live: going from a register
- * to memory costs nothing, and going back is a load (or, for one an
- * instruction that reads no virtual register computes, that instruction again,
- * rematerialized) where the piece starts, before an instruction that uses it.
- * A piece starting at a block's start is reached on each edge into the block,
- * whose code moves each value live there from where it is at the edge's
- * source: before a jump, or at the start of a branch's target, which has no
- * other predecessor. A call clobbers the caller-saved registers, so a value
- * live across one is in a callee-saved register or in memory there; a block a
- * raise enters has every register dead, so a value live into one is in memory
- * at its start.
+ * Positions: The blocks are laid out in reverse postorder, so a block comes
+ * after the blocks that jump to it, except a loop's header, which a later
+ * block jumps back to. Each block's start and each instruction get two
+ * positions. An instruction at position p reads its operands at p and writes
+ * its results at p + 1, so a result does not intersect an operand read for
+ * the last time at p, and may take its register.
  *
- * rewrite then makes the function's instructions read and write the
- * registers allocated: an operand in memory where an instruction reads it is
- * loaded into a scratch register first, a result in memory is written to one
- * and stored, and the moves between pieces, and on edges, are made, as if in
- * parallel, through the target's Lowering. *)
+ * Intervals: An interval is a list of ranges of positions, with holes between
+ * them where the value is not live (say, in the other arm of an if); another
+ * interval can use its register in a hole. The ranges come from liveness over
+ * the blocks. The positions where the value is read (its uses) are recorded
+ * too, for the choices below.
+ *
+ * The scan: In order of their starts, each interval gets:
+ *
+ *   - a register free for all of it, if there is one: first one that a hint
+ *     (below) names, then a caller-saved one;
+ *   - otherwise, if a register is free where it starts, the one free the
+ *     longest; the interval is split where that register stops being free,
+ *     and the rest is spilled (below);
+ *   - otherwise, a register taken from the intervals holding it: the register
+ *     whose holders are next read furthest away, which are split where they
+ *     meet the interval and spilled from there; unless the interval's own
+ *     next read is further away still, when it is the one spilled.
+ *
+ * A spilled interval, or part of one, is in memory only until its next read;
+ * there the rest is split off and allocated again, as if it were a new
+ * interval. "Furthest next read" takes the place of a coloring allocator's
+ * spill costs.
+ *
+ * Unavailable registers: A register is not free for an interval where:
+ *
+ *   - a physical operand fixes it: the calling convention's moves to argument
+ *     registers before a call, and from result registers after it, fix each
+ *     register from the instruction that writes it to the last that reads it;
+ *   - a call clobbers it: a value live across a call cannot be in a
+ *     caller-saved register after the call;
+ *   - a raise enters: every register is dead at the start of a block that a
+ *     raise enters (where a try lands, before jumping to its handler), so a
+ *     value live there is in memory there.
+ *
+ * Hints: A move from one register to another, and a jump's argument and the
+ * parameter of its target that it is passed to, are hints that the two should
+ * share a register. An interval takes the register of what it is hinted to,
+ * if that one is free for all of it, and the move then costs nothing. This is
+ * what coalescing does in a coloring allocator.
+ *
+ * Pieces: Thus a value lives in pieces, each in one register or in memory.
+ * Since the code is in SSA form, every virtual register is defined once: a
+ * value with a piece in memory is stored to its stack slot once, where it is
+ * defined, and the slot holds it wherever it is live. Going from a register
+ * to memory costs nothing. Going back costs a load at the start of the piece,
+ * which is just before an instruction that reads the value; or, for a value
+ * that an instruction computes from no virtual register, such as a constant,
+ * that instruction again (rematerialized), and the value has no slot at all.
+ * A piece that starts at a block's start is reached on each edge into the
+ * block, whose code moves each value live there from where it is at the
+ * edge's source: before a jump, or at the start of a branch's target, which
+ * has no other predecessor.
+ *
+ * rewrite then makes the instructions use the registers chosen: an operand in
+ * memory is loaded into one of the target's scratch registers first, a result
+ * in memory is written to one and stored, and the moves between pieces and on
+ * edges are made, in an order that has the effect of making them all at once
+ * (a parallel move), through the target's Lowering. *)
 
 interface Regalloc
 import
@@ -48,9 +91,9 @@ export
     (* Where a value is when it is in memory rather than a register *)
     memory: Int
 
-    (* At a position, a virtual register's (by its index) move from a
-     * register (memory for its memory) to the register its next piece is
-     * in *)
+    (* A move just before the instruction at position at, where a virtual
+     * register's (value, by its index) piece in register to starts, and its
+     * previous piece was in from: another register, or memory *)
     Def Move = Tuple at: Int value: Int from: Int to: Int end
 
     Def Allocation = Tuple
@@ -72,21 +115,22 @@ export
         (* What each block's edges in must move: the virtual registers (by
          * index) live into it *)
         liveIn: Array(Array(Int))
-        (* The callee-saved registers given to any *)
+        (* The callee-saved registers given to any, which the function must
+         * save and restore for its caller *)
         calleeUsed: Array(Int)
     end
 
     (* The allocation of a function's virtual registers to the target's
      * allocatable registers (a call preserves the callee-saved ones and no
-     * others); rematerializable says which instructions may be made again
-     * wherever their result is needed, rather than it stored, if they read
-     * no virtual register *)
+     * others). rematerializable says which instructions can be made again
+     * wherever their result is needed, rather than the result stored; only
+     * those that read no virtual register and write one are asked. *)
     allocate(f: machine.Function t: targets.Target rematerializable: All(i: machine.Inst) Bool): Allocation
     (* Where a virtual register (by its index) is at a position: its register,
      * or memory *)
     home(a: Allocation v: Int p: Int): Int
     (* Whether a virtual register (by index) is stored in its memory when it
-     * is defined *)
+     * is defined, and so needs a stack slot *)
     needsSlot(a: Allocation v: Int): Bool
 
     (* The function, its virtual registers replaced by those allocated, the

@@ -1,4 +1,10 @@
-(* Quest Self-Hosted Compiler: The Register Allocator's Implementation *)
+(* Quest Self-Hosted Compiler: The Register Allocator's Implementation
+ *
+ * The interface's header describes the algorithm. This module has four
+ * parts: lifetime intervals and the operations on them; a heap of the
+ * intervals not yet allocated, earliest start first; the scan, allocate,
+ * which chooses each interval's register; and rewrite, which puts the
+ * choices into the function's instructions. *)
 
 module regalloc : Regalloc
 import
@@ -17,9 +23,12 @@ export
     Let Function = machine.Function
 
     (* A lifetime interval, or a piece split from one: its virtual register's
-     * index, its ranges of positions (each inclusive, in order, apart), the
-     * positions where it is read, and its register's index in its class's
-     * pool, ~1 for memory and ~2 for none chosen yet *)
+     * index; its ranges of positions, from froms[k] to tos[k] inclusive, in
+     * order, with gaps (holes) between them; the positions where it is read,
+     * in order; and its register, as an index in its class's pool (Scan,
+     * below), ~1 for memory, and ~2 for none chosen yet. Splitting shortens an
+     * interval in place, and the scan sets its register, so the fields are
+     * var. *)
     Let Interval = Tuple
         value: Int
         var froms: Array(Int)
@@ -28,9 +37,11 @@ export
         var reg: Int
     end
 
-    (* Past every position *)
+    (* A position past every position: the next use of an interval that has
+     * none left, and the limit of a register that nothing makes unavailable *)
     let never = 4611686018427387903
 
+    (* Adds v to s, whether or not it was there *)
     let add(s: bitset.T v: Int): Ok = if bitset.insert(s v) then ok else ok end
     let concat(a: Array(Int) b: Array(Int)): Array(Int) =
         begin
@@ -39,6 +50,7 @@ export
             for i = 0 upto {extent b - 1} do r[extent a + i] := b[i] end
             r
         end
+    (* v's elements, last first: allocate builds its lists backwards *)
     let reversed(v: vector.T(Int)): Array(Int) =
         begin
             let n = vector.length(:Int v)
@@ -47,11 +59,15 @@ export
             r
         end
 
+    (* The piece holding v at p is the last that starts at or before p. Before
+     * its first piece v is not yet defined, so nothing reads it there. *)
     let home(a: Allocation v: Int p: Int): Int =
         begin
             let k = sort.bisectRight(:Int a.starts[v] p sort.intCompare) - 1
             if k < 0 then memory else a.homes[v][k] end
         end
+    (* A value with a piece in memory is stored when it is defined, unless it
+     * is rematerialized: computed again wherever it is needed instead *)
     let needsSlot(a: Allocation v: Int): Bool = a.spilled[v] andif not(a.remat[v])
 
     (* =========================================================================
@@ -61,13 +77,17 @@ export
     let firstPos(it: Interval): Int = it.froms[0]
     let lastPos(it: Interval): Int = it.tos[extent it.tos - 1]
 
+    (* Whether p is in one of its ranges, rather than in a hole or outside
+     * it: a binary search for the last range starting at or before p *)
     let covers(it: Interval p: Int): Bool =
         begin
             let k = sort.bisectRight(:Int it.froms p sort.intCompare) - 1
             {k >= 0} andif {it.tos[k] >= p}
         end
 
-    (* The first position both cover, ~1 for none *)
+    (* The first position both cover, ~1 for none. It walks the two lists of
+     * ranges together, as a merge does, each time moving past whichever
+     * current range ends first, until two ranges overlap. *)
     let intersection(a: Interval b: Interval): Int =
         begin
             let var i = 0
@@ -90,7 +110,11 @@ export
             if k < extent it.uses then it.uses[k] else never end
         end
 
-    (* Its part from p on, split off: it keeps what is before p *)
+    (* Its part from p on, split off as a new piece with no register yet: it
+     * keeps what is before p. A range that spans p is cut in two, up to p - 1
+     * and from p; each use goes with the side its position is on. If p is in
+     * a hole, the new piece starts at the next range. The caller must split
+     * where both sides are left with a range. *)
     let split(it: Interval p: Int): Interval =
         begin
             let hf = vector.new(:Int)
@@ -129,8 +153,16 @@ export
 
     (* =========================================================================
      * The unhandled intervals: a heap, earliest start first
+     *
+     * A binary heap in a vector, the children of element k at 2k + 1 and
+     * 2k + 2. Splitting adds intervals that start no earlier than the
+     * current one, so the intervals waiting to be allocated are a priority
+     * queue rather than a list sorted once.
      * ====================================================================== *)
 
+    (* Whether a comes out of the heap before b: the earlier start first, and
+     * at the same start, the lower virtual register, so that the order
+     * depends only on the intervals *)
     let before(a: Interval b: Interval): Bool =
         {firstPos(a) < firstPos(b)} orif {{firstPos(a) is firstPos(b)} andif {a.value < b.value}}
 
@@ -141,6 +173,7 @@ export
             vector.set(:Interval h j t)
         end
 
+    (* Adds it at the end, then moves it up past each parent it comes before *)
     let push(h: vector.T(Interval) it: Interval): Ok =
         begin
             vector.append(:Interval h it)
@@ -151,6 +184,9 @@ export
             end
         end
 
+    (* Removes and returns the first interval: the last element takes its
+     * place, and moves down, swapped with its earlier child, while either
+     * child comes before it *)
     let pop(h: vector.T(Interval)): Interval =
         begin
             let top = vector.get(:Interval h 0)
@@ -178,6 +214,13 @@ export
 
     (* =========================================================================
      * The scan
+     *
+     * The intervals come off the heap in order of their starts. When one
+     * does, call its start the current position. Each interval already given
+     * a register that has not ended is either active, covering the current
+     * position, or inactive, in a hole there; those are the only intervals
+     * whose registers the current one must avoid. Intervals in memory need no
+     * tracking, since memory is never short.
      * ====================================================================== *)
 
     Let Scan = Tuple
@@ -190,6 +233,9 @@ export
          * those in a hole there *)
         var active: vector.T(Interval)
         var inactive: vector.T(Interval)
+        (* Each class's allocatable registers, caller-saved first, and the
+         * index in each of the first callee-saved one. An interval's reg is an
+         * index into its class's pool. *)
         pools: Array(Array(Int))
         firstCallee: Array(Int)
         (* The positions of calls, and of the starts of blocks a raise
@@ -206,16 +252,23 @@ export
         given: Array(Int)
     end
 
+    (* Records a new interval or piece, so that the allocation can list every
+     * piece at the end *)
     let made(sc: Scan it: Interval): Ok = vector.append(:Interval sc.intervals it)
 
-    (* Each register's first position, from where cur starts, at which cur
-     * cannot be in it: just after a call cur is live across, for a
-     * caller-saved one, the start of a block a raise enters that cur covers,
-     * for any, and where an operand fixes it *)
+    (* For each register of class c's pool, the first position from where cur
+     * starts at which cur cannot be in it, or never: for a caller-saved one,
+     * just after the first call cur is live across; for any, the start of the
+     * first block a raise enters that cur covers, and where an operand first
+     * fixes it within cur. Only the first of each matters, since the result is
+     * where the register first becomes unavailable. *)
     let blocked(sc: Scan cur: Interval c: Int): Array(Int) =
         begin
             let s = firstPos(cur)
             let e = lastPos(cur)
+            (* cur is live across a call at p if it covers p, where the call
+             * reads its operands, and p + 1, where it writes its results: live
+             * after the call, not only an argument to it *)
             let var call = never
             let var k = sort.bisectLeft(:Int sc.calls s sort.intCompare)
             while {call is never} andif {k < extent sc.calls} andif {sc.calls[k] < e} do
@@ -237,8 +290,12 @@ export
             r
         end
 
-    (* An interval's part from p, in memory until its next use, from which
-     * the rest is to be allocated again *)
+    (* Spills it from p: splits off its part from p, which is in memory until
+     * its next use, where the rest is split off again and goes back on the
+     * heap to be allocated. Memory already holds the value there, since a
+     * value with a piece in memory is stored where it is defined. If the part
+     * from p starts with a use, it needs a register at once, so it goes back
+     * on the heap whole. *)
     let splitSpill(sc: Scan it: Interval p: Int): Ok =
         begin
             let child = split(it p)
@@ -255,7 +312,10 @@ export
             end
         end
 
-    (* cur in memory, to its next use after its start *)
+    (* Puts cur in memory until its next use after its start, where the rest
+     * is split off and goes back on the heap. A use at its start stays in
+     * this piece, since splitting there would leave this piece empty; rewrite
+     * reads that use from memory. *)
     let spillCurrent(sc: Scan cur: Interval): Ok =
         begin
             cur.reg := ~1
@@ -267,13 +327,18 @@ export
             end
         end
 
-    (* A register free for all of cur, one it is hinted to first, then the
-     * caller-saved, or for a part, the rest split off; false if none is free
-     * at its start *)
+    (* Gives cur a register free for all of it: first one it is hinted to, then
+     * the first in the pool, so a caller-saved one before a callee-saved one,
+     * which the function would have to save and restore. Failing that, the
+     * register free the longest, for the part of cur where it is free, the
+     * rest spilled. False if no register is free at cur's start. *)
     let tryFree(sc: Scan cur: Interval): Bool =
         begin
             let c = sc.classes[cur.value]
             let n = extent sc.pools[c]
+            (* free[r]: the first position from cur's start at which register r
+             * stops being free for cur. An active interval holds its register
+             * now; an inactive one, until it is next live where cur is. *)
             let free = blocked(sc cur c)
             for k = 0 upto {vector.length(:Interval sc.active) - 1} do
                 let it = vector.get(:Interval sc.active k)
@@ -288,6 +353,9 @@ export
             end
             let s = firstPos(cur)
             let e = lastPos(cur)
+            (* A register is free for all of cur if it is free past cur's end.
+             * A hint to a virtual register means the register that one was
+             * last given, if it has been allocated yet. *)
             let var chosen = ~1
             let hints = sc.hints[cur.value]
             for k = 0 upto {vector.length(:Int hints) - 1} do
@@ -324,6 +392,9 @@ export
             let n = extent sc.pools[c]
             let s = firstPos(cur)
             let block = blocked(sc cur c)
+            (* use[r]: the first use, from cur's start, of an interval holding
+             * register r while cur would; ~1 for a register that cannot be
+             * taken *)
             let use = array of(n never)
             for k = 0 upto {vector.length(:Interval sc.active) - 1} do
                 let it = vector.get(:Interval sc.active k)
@@ -342,12 +413,18 @@ export
                     if u < use[it.reg] then use[it.reg] := u end
                 end
             end
+            (* Of the registers available at cur's start, the one whose
+             * holders' next use is furthest *)
             let var best = ~1
             for r = 0 upto {n - 1} do
                 if {block[r] > s} andif {use[r] >= 0} andif {{best < 0} orif {use[r] > use[best]}} then best := r end
             end
             if {best < 0} orif {nextUse(cur s) > use[best]} then spillCurrent(sc cur)
             else
+                (* Take it: spill each holder from where it meets cur (an
+                 * active one, at cur's start; an inactive one, where it first
+                 * overlaps cur), and cur itself from where the register
+                 * becomes unavailable, if that is before cur ends *)
                 cur.reg := best
                 let holders = vector.toArray(:Interval sc.active)
                 for k = 0 upto {extent holders - 1} do
@@ -379,7 +456,10 @@ export
             let classes = array of(nValues 0)
             for v = 0 upto {nValues - 1} do classes[v] := targets.index(machine.virtualClass(f f.firstVirtual + v)) end
             (* The layout: two positions for each block's start and
-             * instruction *)
+             * instruction. A block of n instructions starting at bs has its
+             * start at bs, its jth instruction at bs + 2(j + 1), and its last
+             * position at bs + 2n + 1, where its last instruction writes. A
+             * block's parameters are defined at its start. *)
             let blockStart = array of(nBlocks 0 - never)
             let var pos = 0
             for k = 0 upto {extent order - 1} do
@@ -402,7 +482,14 @@ export
                 for j = 0 upto {extent pools[c] - 1} do allocatable[pools[c][j]] := true end
             end
             (* Where operands fix registers: from an instruction that writes
-             * one to the last that reads it, or from its block's start *)
+             * one to the last that reads it, or from its block's start. A
+             * physical register lives only within a block, so the blocks in
+             * layout order give each register's ranges in order. For each
+             * instruction, its reads come before its writes: a read extends
+             * the register's latest range to here if that range began in this
+             * block, and otherwise (a function's parameters, read at its
+             * entry) starts a range at the block's start. A write starts a
+             * range at p + 1, where it happens. *)
             let fixedFroms = array of(nRegisters vector.new(:Int))
             let fixedTos = array of(nRegisters vector.new(:Int))
             for r = 0 upto {nRegisters - 1} do
@@ -454,7 +541,12 @@ export
             end
             (* The intervals, built backwards (Wimmer and Franz's
              * BuildIntervals): each register's ranges and uses, latest
-             * first *)
+             * first. Walking the blocks, and each block's instructions, from
+             * last to first, a value live out of a block is first taken to be
+             * live through all of it; a definition at p + 1 then makes its
+             * range start there, and a use at p makes it live from the block's
+             * start to p, until a definition earlier in the block cuts that
+             * short. *)
             let rangeFroms = array of(nValues vector.new(:Int))
             let rangeTos = array of(nValues vector.new(:Int))
             let usesAt = array of(nValues vector.new(:Int))
@@ -478,7 +570,8 @@ export
                         vector.append(:Int rangeTos[v] to)
                     end
                 end
-            (* A definition at p: the earliest range starts there *)
+            (* A definition at p: the earliest range starts there, or, for a
+             * value never used, is just p *)
             let setFrom(v: Int p: Int): Ok =
                 begin
                     let n = vector.length(:Int rangeFroms[v])
@@ -488,6 +581,8 @@ export
                         vector.append(:Int rangeTos[v] p)
                     end
                 end
+            (* The same walk finds the calls and the blocks a raise enters, for
+             * blocked *)
             let calls = vector.new(:Int)
             let handlers = vector.new(:Int)
             for k = {extent order - 1} downto 0 do
@@ -522,7 +617,10 @@ export
             let handlerAt = vector.toArray(:Int handlers)
             sort.sort(:Int handlerAt sort.intCompare)
             (* The hints: a move's registers, and a jump's arguments and its
-             * target's parameters, each other's; and what is rematerialized *)
+             * target's parameters, each other's. A virtual register may be
+             * hinted to an allocatable physical one, such as an argument's
+             * register, but not the other way, since only virtual registers
+             * are allocated. *)
             let hints = array of(nValues vector.new(:Int))
             for v = 0 upto {nValues - 1} do hints[v] := vector.new(:Int) end
             let hint(a: Int b: Int): Ok =
@@ -544,7 +642,10 @@ export
                             hint(i.operands[a].reg vector.get(:Int params a))
                         end
                     end
-                    (* One result, computed from no virtual register *)
+                    (* What is rematerialized: the result of an instruction with
+                     * one result, computed from no virtual register, that the
+                     * target says can be made again (so it gives the same
+                     * value anywhere) *)
                     let var results = 0
                     let var reads = 0
                     for a = 0 upto {extent i.operands - 1} do
@@ -566,6 +667,8 @@ export
                 let fixed = fixed let firstVirtual = f.firstVirtual let hints = hints
                 let given = array of(nValues ~1)
             end
+            (* Every value defined or used has an interval; the lists were
+             * built latest first, so each is reversed *)
             for v = 0 upto {nValues - 1} do
                 if vector.length(:Int rangeFroms[v]) > 0 then
                     let it = tuple
@@ -576,6 +679,9 @@ export
                     push(sc.heap it)
                 end
             end
+            (* The scan itself. For each interval, from the earliest start:
+             * drop the intervals that ended before its start, sort the rest
+             * into active and inactive at its start, and allocate it. *)
             while vector.length(:Interval sc.heap) > 0 do
                 let cur = pop(sc.heap)
                 let s = firstPos(cur)
@@ -620,7 +726,11 @@ export
                 for k = 0 upto {extent ps - 1} do
                     starts[v][k] := firstPos(ps[k])
                     if ps[k].reg >= 0 then homes[v][k] := pools[c][ps[k].reg] else spilled[v] := true end
-                    (* A piece in a register inside a block is moved to *)
+                    (* A piece in a register inside a block is moved to. Such
+                     * a piece starts where its previous piece ends, at a use,
+                     * so the value is in that piece's register or memory just
+                     * before. A piece starting at a block's start is left to
+                     * the block's edges. *)
                     let inside = {k > 0} andif {ps[k].reg >= 0} andif not(bitset.contains(isStart starts[v][k]))
                     if inside andif {homes[v][k] isnot homes[v][k - 1]} then
                         vector.append(:Move moves tuple
@@ -655,6 +765,12 @@ export
 
     (* =========================================================================
      * Rewriting the function in the registers allocated
+     *
+     * Each block's instructions are rebuilt in order: before each
+     * instruction, the moves to pieces that start there; then the
+     * instruction, its virtual registers replaced by where they are, with
+     * loads before it and stores after it as needed; and on each edge, the
+     * moves that put every value where the target block expects it.
      * ====================================================================== *)
 
     (* A place a move reads or writes: a register; or else (reg memory) a
@@ -677,6 +793,7 @@ export
         (* Each virtual register's defining instruction, for those
          * rematerialized *)
         defs: Array(machine.Inst)
+        (* The block's instructions so far *)
         code: vector.T(machine.Inst)
     end
 
@@ -684,7 +801,7 @@ export
     let emitAll(w: Rewriter insts: Array(machine.Inst)): Ok = for k = 0 upto {extent insts - 1} do emit(w insts[k]) end
 
     (* A virtual register's memory into a register: loaded from its slot, or
-     * its instruction made again *)
+     * its instruction made again, writing reg instead *)
     let reload(w: Rewriter reg: Int v: Int): Ok =
         if w.a.remat[v] then
             let i = w.defs[v]
@@ -710,12 +827,17 @@ export
             emitAll(w w.lowering.store(r w.f.firstVirtual + dst.value))
         end
 
-    (* Moves made at once: each in turn whose destination no other reads. When
-     * only cycles are left, each place in them is read by one move, so one
-     * move's source is copied to the second integer scratch register (of
-     * either class), which that move then reads, and its cycle unwinds; the
-     * next is broken only once it has, so the register holds one value at a
-     * time *)
+    (* Moves made as if all at once (a parallel move): a jump's arguments may
+     * be its target's parameters' registers in another order, say. It makes,
+     * in turn, a move whose destination no other move still to be made reads,
+     * so nothing is overwritten before it is read. When none is left, the
+     * moves left form cycles (a swap is the smallest), and each place in them
+     * is read by exactly one move. Then one move's source is copied to the
+     * second integer scratch register (which the target's move can do for
+     * either class), the move reads that instead, and its cycle unwinds. The
+     * scratch register holds one value at a time: the move that reads it is
+     * the last of its cycle to become free, and until then another move of
+     * the cycle always is. *)
     let parallel(w: Rewriter transfers: vector.T(Transfer)): Ok =
         begin
             let pending = vector.new(:Transfer)
@@ -763,7 +885,9 @@ export
     (* An edge's moves, from a jump or a branch at p: each of its target's
      * parameters, to its register and its slot, from its argument, and each
      * register live into the target from where it is at p to its register at
-     * the target's start (in memory there, it is already) *)
+     * the target's start (in memory there, it is already). A parameter is
+     * defined on the edge, so the edge also does the store that a value
+     * defined by an instruction gets after it. *)
     let edge(w: Rewriter p: Int target: Int args: Array(Int)): Ok =
         begin
             let bs = w.a.blockStart[target]
@@ -794,11 +918,14 @@ export
     let ordinary(w: Rewriter i: machine.Inst p: Int): Ok =
         begin
             let f = w.f
+            (* How many of each class's scratch registers the operands have
+             * taken, so that each operand in memory gets its own *)
             let used = array of(targets.classes 0)
             let operands = array of(extent i.operands machine.reads(0))
             let stores = vector.new(:Int)
             let stored = vector.new(:Int)
             let var skip = false
+            (* Operands are where their values are at p *)
             for k = 0 upto {extent operands - 1} do
                 let o = i.operands[k]
                 operands[k] := o
@@ -815,6 +942,10 @@ export
                     end
                 end
             end
+            (* Results, where their first pieces are, at p + 1. A result in
+             * memory is written to the first scratch register of its class,
+             * which an operand may also have been loaded into: the
+             * instruction reads its operands before it writes its results. *)
             for k = 0 upto {extent operands - 1} do
                 let o = i.operands[k]
                 if machine.isVirtual(f o.reg) andif o.defines then
@@ -861,7 +992,11 @@ export
             let nBlocks = vector.length(:machine.Block f.blocks)
             let nothing = machine.inst(machine.kindOrdinary array of :machine.Operand end ~1 ~1)
             let defs = array of(machine.virtuals(f) nothing)
-            (* Where each branch target's one branch is *)
+            (* Where each branch target's one branch is. A branch's edge has no
+             * code of its own to put moves in, so they go at the start of its
+             * target, which no other edge enters; nothing runs between the
+             * branch and there, so every value is where it was at the
+             * branch. *)
             let branchAt = array of(nBlocks ~1)
             for b = 0 upto {nBlocks - 1} do
                 let insts = machine.block(f b).insts
@@ -884,12 +1019,19 @@ export
                 let w = tuple
                     let f = f let a = a let lowering = lowering let defs = defs let code = vector.new(:machine.Inst)
                 end
+                (* A block not reached is left empty *)
                 if bs >= 0 then
                     if branchAt[b] >= 0 then edge(w branchAt[b] b array of :Int end) end
                     for j = 0 upto {vector.length(:machine.Inst blk.insts) - 1} do
                         let i = vector.get(:machine.Inst blk.insts j)
                         let p = bs + {2 * {j + 1}}
-                        (* The moves to pieces starting here *)
+                        (* Values whose next piece starts at this instruction,
+                         * in a register, are moved there from memory or from
+                         * their previous register first. The moves are made as
+                         * one parallel move, not one after another, because a
+                         * value's new register may still hold another value
+                         * that moves here too (two values that swap registers,
+                         * say) *)
                         let transfers = vector.new(:Transfer)
                         let var next = sort.bisectLeft(:Int moveAts p sort.intCompare)
                         while {next < extent a.moves} andif {a.moves[next].at is p} do
@@ -899,6 +1041,8 @@ export
                             next := next + 1
                         end
                         if vector.length(:Transfer transfers) > 0 then parallel(w transfers) end
+                        (* A jump's arguments become its edge's moves, so it
+                         * keeps no operands *)
                         case i.kind
                             when kindJump then
                                 let args = array of(extent i.operands 0)
