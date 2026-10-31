@@ -65,17 +65,21 @@ export
      * none for Ok, two for a record or a variant, a byte for a Bool or a Char
      * stored, and otherwise a word *)
     let parts(t: Type): Array(Part) =
-        begin
-            let r = layout.representation(t)
-            if eq(r "void") then array of :Part end
-            elsif eq(r "QInt") orif eq(r "uint64_t") orif eq(r "QVal") then array of wordPart(tInt) end
-            elsif eq(r "QBool") then array of part(tInt 1 false) end
-            elsif eq(r "QChar") then array of part(tInt 1 false) end
-            elsif eq(r "QReal") then array of wordPart(tReal) end
-            elsif eq(r "QRecordVal") then array of wordPart(tPtr) wordPart(tPtr) end
-            elsif eq(r "QVariantVal") then array of wordPart(tInt) wordPart(tInt) end
-            else array of wordPart(tPtr) end
-            end
+        case layout.representationKind(t)
+            when repVoid then array of :Part end
+            when repInt, repWord, repQVal then array of wordPart(tInt) end
+            when repBool, repChar then array of part(tInt 1 false) end
+            when repReal then array of wordPart(tReal) end
+            when repRecord then array of wordPart(tPtr) wordPart(tPtr) end
+            when repVariant then array of wordPart(tInt) wordPart(tInt) end
+            when repPointer then array of wordPart(tPtr) end
+        end
+
+    (* Whether a value of shape s is a QVal in a slot (an Ok's is too) *)
+    let slotIsQVal(s: shapes.Shape): Bool =
+        case layout.shapeRepresentationKind(s)
+            when repQVal, repVoid then true
+            when repInt, repWord, repBool, repChar, repReal, repRecord, repVariant, repPointer then false
         end
 
     (* The parts of a value of t in an aggregate's slot or a QVal word: one
@@ -585,14 +589,15 @@ export
             let identity(isIs: Bool): Array(Int) =
                 begin
                     let first = o.args[0]
-                    let r = layout.representation(ir.atomType(first))
-                    let same = if eq(r "QVal") then
+                    let same = if layout.isQVal(shapes.shape(ir.atomType(first))) then
                         let args = array of maybeDescriptor(fn o.descriptor) atom1(fn o.args[0]) atom1(fn o.args[1]) end
                         narrowed(fn call1(fn "quest_val_is" args tInt) part(tInt 1 false))
                     else
                         let a = atom(fn o.args[0])
                         let b = atom(fn o.args[1])
-                        if extent a isnot 1 then raise unsupported with "is of a value of " <> r end end
+                        if extent a isnot 1 then
+                            raise unsupported with "is of a value of " <> layout.representation(ir.atomType(first)) end
+                        end
                         case ssa.typeOf(fn.f a[0])
                             when typePtr then
                                 case o.access
@@ -763,7 +768,12 @@ export
     (* A record or variant into a new box, and out of its box *)
     let boxed(fn: Fn vs: Array(Int) t: Type): Array(Int) =
         begin
-            let helper = if eq(layout.representation(t) "QRecordVal") then "quest_record_box" else "quest_variant_box" end
+            let helper = case layout.representationKind(t)
+                when repRecord then "quest_record_box"
+                (* Only records and variants are boxed (layout.isBoxedInSlots) *)
+                when repVariant, repVoid, repInt, repWord, repBool, repChar, repReal, repPointer, repQVal then
+                    "quest_variant_box"
+            end
             array of call1(fn helper vs tPtr) end
         end
     let unboxed(fn: Fn vs: Array(Int) t: Type): Array(Int) = readValue(fn vs[0] t)
@@ -1288,8 +1298,9 @@ export
                         let src = optionComponent(fn opt os tag i access[i])
                         let wanted = componentShape(ts i + offset)
                         let have = componentShape(pts i)
-                        let value = if eq(layout.shapeSlotRepresentation(have) "QVal") andif not(eq(layout.shapeSlotRepresentation(wanted) "QVal"))
-                            then slotFromWord(fn src[0] wanted.type) else src end
+                        let value = if slotIsQVal(have) andif not(slotIsQVal(wanted)) then
+                            slotFromWord(fn src[0] wanted.type)
+                        else src end
                         writeSlot(fn offsetPtr(fn tup 8 * {i + offset}) wanted.type value)
                     end
                 end

@@ -277,7 +277,8 @@ export
                     end
                     let fieldShape = shapes.componentShape(field)
                     let own = layout.ownView(shapes.shape(typeOf(x.recordAtom)))
-                    if not(field.isVar) andif {own orif eq(layout.shapeRepresentation(fieldShape) "QVal") orif mayBeStoredAsSubtype(fieldShape)} then
+                    if not(field.isVar)
+                        andif {own orif layout.isQVal(fieldShape) orif mayBeStoredAsSubtype(fieldShape)} then
                         (* A subtype's payload may store it at another type, or
                          * a bounded type parameter's value at its type
                          * argument's type for it: read through the offset table
@@ -448,7 +449,7 @@ export
                 if nodes.comparesIdentity(x.op) andif {extent x.args is 2} then
                     let t = typeOf(x.args[0])
                     let t2 = typeOf(x.args[1])
-                    if not(eq(layout.shapeRepresentation(shapes.shape(t)) "QVal"))
+                    if not(layout.isQVal(shapes.shape(t)))
                         andif {layout.mayBeProxied(shapes.shape(t)) orif layout.mayBeProxied(shapes.shape(t2))} then
                         (* A proxy is the object it views *)
                         x.access := nodes.original

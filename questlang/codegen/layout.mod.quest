@@ -290,6 +290,44 @@ export
             when shapeBottom, shapeAbstract, shapeOperator, shapePending then "QVal"
         end
 
+    Def Representation = Option
+        repVoid repInt repWord repBool repChar repReal repRecord repVariant repPointer repQVal
+    end
+
+    let isWriter(s: Shape): Bool = isOneOf(s.name array of "Writer.T" "writer.T" end)
+    let isReader(s: Shape): Bool = isOneOf(s.name array of "Reader.T" "reader.T" end)
+
+    let rec shapeRepresentationKind(s0: Shape): Representation =
+        begin
+            let s = resolvedShape(s0)
+            case s.kind
+                when shapeOk then option repVoid of Representation end
+                when shapeInt then option repInt of Representation end
+                when shapeWord then option repWord of Representation end
+                when shapeBool then option repBool of Representation end
+                when shapeChar then option repChar of Representation end
+                when shapeReal then option repReal of Representation end
+                when shapeRecord then option repRecord of Representation end
+                when shapeVariant then option repVariant of Representation end
+                when shapeTypevar then
+                    if isWriter(s) orif isReader(s) then option repPointer of Representation end
+                    else option repQVal of Representation end end
+                when shapeString, shapeAuto, shapeExternal, shapeTuple, shapeOption, shapeFun, shapeAll, shapeArray,
+                    shapeException, shapeCell, shapeOut then
+                    option repPointer of Representation end
+                when shapeBottom, shapeAbstract, shapeOperator, shapePending then option repQVal of Representation end
+            end
+        end
+
+    (* Whether s is represented as a QVal *)
+    and isQVal(s: Shape): Bool =
+        case shapeRepresentationKind(s)
+            when repQVal then true
+            when repVoid, repInt, repWord, repBool, repChar, repReal, repRecord, repVariant, repPointer then false
+        end
+
+    let representationKind(t: Type): Representation = shapeRepresentationKind(shapes.shape(t))
+
     let rec shapeRepresentation(s: Shape): String =
         begin
             let l = layoutOf(s)
@@ -317,35 +355,43 @@ export
             end
         end
 
-    and isBoxedInSlots(s: Shape): Bool = isOneOf(shapeRepresentation(s) array of "QRecordVal" "QVariantVal" end)
+    and isBoxedInSlots(s: Shape): Bool =
+        case shapeRepresentationKind(s)
+            when repRecord, repVariant then true
+            when repVoid, repInt, repWord, repBool, repChar, repReal, repPointer, repQVal then false
+        end
 
+    (* The C spelling of a representation, of shape s's *)
     and rawRepresentation(s0: Shape): String =
         begin
             let s = resolvedShape(s0)
-            case s.kind
-                when shapeWord then "uint64_t"
-                when shapeInt then "QInt"
-                when shapeReal then "QReal"
-                when shapeBool then "QBool"
-                when shapeChar then "QChar"
-                when shapeString then "QString *"
-                when shapeOk then "void"
-                (* An auto value (including a dynamic value): its type
-                 * component's descriptor and its payload *)
-                when shapeAuto then "QAuto *"
-                when shapeExternal then s.name
-                when shapeTypevar then
-                    if isOneOf(s.name array of "Writer.T" "writer.T" end) then "QWriter *"
-                    elsif isOneOf(s.name array of "Reader.T" "reader.T" end) then "QReader *"
-                    else "QVal" end
-                when shapeTuple, shapeOption then shapeTag(s) <> " *"
-                when shapeRecord then "QRecordVal"
-                when shapeFun, shapeAll then "QClosure *"
-                when shapeArray then "QArray *"
-                when shapeVariant then "QVariantVal"
-                when shapeException then "const QException *"
-                when shapeCell, shapeOut then shapeLocationRepresentation(shapes.element(s)) <> " *"
-                when shapeBottom, shapeAbstract, shapeOperator, shapePending then "QVal"
+            case shapeRepresentationKind(s)
+                when repVoid then "void"
+                when repInt then "QInt"
+                when repWord then "uint64_t"
+                when repBool then "QBool"
+                when repChar then "QChar"
+                when repReal then "QReal"
+                when repRecord then "QRecordVal"
+                when repVariant then "QVariantVal"
+                when repQVal then "QVal"
+                when repPointer then
+                    case s.kind
+                        when shapeString then "QString *"
+                        (* An auto value (including a dynamic value): its type
+                         * component's descriptor and its payload *)
+                        when shapeAuto then "QAuto *"
+                        when shapeExternal then s.name
+                        when shapeTypevar then if isWriter(s) then "QWriter *" else "QReader *" end
+                        when shapeTuple, shapeOption then shapeTag(s) <> " *"
+                        when shapeFun, shapeAll then "QClosure *"
+                        when shapeArray then "QArray *"
+                        when shapeException then "const QException *"
+                        when shapeCell, shapeOut then shapeLocationRepresentation(shapes.element(s)) <> " *"
+                        when shapeInt, shapeReal, shapeBool, shapeChar, shapeOk, shapeWord, shapeBottom, shapeRecord,
+                            shapeVariant, shapeAbstract, shapeOperator, shapePending then
+                            "QVal"
+                    end
             end
         end
 
@@ -363,7 +409,7 @@ export
     let wordForm(s0: Shape): WordForm =
         begin
             let s = resolvedShape(s0)
-            if eq(shapeRepresentation(s) "QVal") then option wordItself of WordForm end
+            if isQVal(s) then option wordItself of WordForm end
             else
                 case s.kind
                     when shapeOk then option wordOk of WordForm end
