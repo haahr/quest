@@ -102,7 +102,9 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   own lines. A comment at the end of a line of code goes with the code and its 120 columns.
 - **Docstrings and comments explain what and why,** in full sentences: what a function returns or does, what
   invariant it relies on, why a non-obvious choice was made. Do not narrate the code or its history ("now",
-  "previously", "fixed"); that belongs in commit messages.
+  "previously", "fixed"); that belongs in commit messages. The `write-clear-comments` skill
+  (`.claude/skills/write-clear-comments/SKILL.md`) gives the reader to write for and the process: an expert's draft,
+  revised for a generalist, then checked against the code.
 - **Identity is by symbol, never by name or by object.**
   - Bindings, type parameters, functions, and globals are identified by their symbols (`symbol_id`). Never look one
     up by name where another binding of the same name could be in scope (shadowing, a caller's and a callee's `A`).
