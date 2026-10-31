@@ -8,6 +8,9 @@ current names the release that seeds builds, and previous the one before it.
     tools/release              cut a release from HEAD, after the self-hosting check, seeded from the current release
     tools/release --seed bootstrap
                                the same, seeded from the bootstrap (the first release, or past a gap)
+    tools/release --whole-program
+                               the same, releasing stage 2's whole-program build, after its fixed point and the
+                               self-hosted suite with it
     tools/release --verify     check the current release: its binary's digest, and a program it builds and runs
     tools/release --rollback   swap the current and previous releases
     tools/release --show       print the current and previous releases' descriptions
@@ -145,7 +148,7 @@ def verify(release: Path) -> str:
     return smoke_test(release)
 
 
-def cut(python: str, check_dir: Path, seed: str) -> None:
+def cut(python: str, check_dir: Path, seed: str, whole_program: bool) -> None:
     commit = check_tree()
     abi, producer = abi_constants()
     current = target(CURRENT)
@@ -162,12 +165,26 @@ def cut(python: str, check_dir: Path, seed: str) -> None:
     else:
         seeded_by = "bootstrap"
     command = ["run_tests.py", "--self-hosting", "--seed", seed, "--build-dir", str(check_dir)]
+    stages = check_dir / "self-hosting"
+    if whole_program:
+        # The fixed points first, the whole-program one among them, and then
+        # the suite with the whole-program build, which is what is released
+        command += ["--whole-program-fixed-point", "--fixed-point-only"]
+        binary = stages / "whole" / "questlang-driver"
+        suite = ["run_tests.py", "--self-hosted", "--self-hosted-driver", str(binary), "--build-dir",
+                 str(check_dir / "whole-suite")]
+    else:
+        binary = stages / "stage2" / "questlang-driver"
     print(f"Checking {commit[:8]} ({' '.join(command)})...", flush=True)
     shutil.rmtree(check_dir, ignore_errors=True)
     check = subprocess.run([python, str(ROOT_DIR / command[0]), *command[1:]], cwd=ROOT_DIR)
     if check.returncode != 0:
         fail("the self-hosting check or the self-hosted suite failed; no release was cut")
-    stage2 = check_dir / "self-hosting" / "stage2" / "questlang-driver"
+    if whole_program:
+        print(f"Checking the whole-program build ({' '.join(suite)})...", flush=True)
+        check = subprocess.run([python, str(ROOT_DIR / suite[0]), *suite[1:]], cwd=ROOT_DIR)
+        if check.returncode != 0:
+            fail("the self-hosted suite failed with the whole-program build; no release was cut")
 
     # Written beside the releases, under a name no other cut uses, and
     # renamed into place once it works
@@ -175,7 +192,7 @@ def cut(python: str, check_dir: Path, seed: str) -> None:
     shutil.rmtree(new, ignore_errors=True)
     new.mkdir(parents=True)
 
-    shutil.copy2(stage2, new / "quest")
+    shutil.copy2(binary, new / "quest")
     snapshot_home(commit, new / "home")
     description = {
         "commit": commit,
@@ -189,6 +206,11 @@ def cut(python: str, check_dir: Path, seed: str) -> None:
         "checked": f"run_tests.py --self-hosting --seed {seed} (the fixed point, and the self-hosted suite with "
                    "stage 2)",
     }
+    if whole_program:
+        # Stage 2's build of the driver as a whole program (--whole-program)
+        description["build"] = "whole program"
+        description["checked"] = (f"run_tests.py --self-hosting --seed {seed} --whole-program-fixed-point (the fixed "
+                                  "points), and the self-hosted suite with the whole-program build")
     (new / "release.json").write_text(json.dumps(description, indent=2) + "\n", encoding="utf-8")
     problem = verify(new)
     if problem:
@@ -241,7 +263,8 @@ def show() -> None:
             # theirs was the bootstrap
             seed = d.get("seed", "bootstrap")
             seed = f"release {seed.split()[1][:8]}" if seed.startswith("release ") else seed
-            print(f"{release.name}: {d['commit'][:8]} abi {d['abi']} {d['producer']}, cut {d['date']}, "
+            build = f", {d['build']}" if "build" in d else ""
+            print(f"{release.name}: {d['commit'][:8]} abi {d['abi']} {d['producer']}{build}, cut {d['date']}, "
                   f"seeded by {seed}")
         else:
             print(f"{release.name}: none")
@@ -257,6 +280,8 @@ def main() -> None:
                         help="what builds the check's stage 1: the current release (default), or the bootstrap")
     parser.add_argument("--check-dir", type=Path, default=DEFAULT_CHECK_DIR,
                         help="where the self-hosting check builds its stages (default .build/release-check)")
+    parser.add_argument("--whole-program", action="store_true",
+                        help="release stage 2's whole-program build of the driver rather than stage 2")
     args = parser.parse_args()
     if args.verify:
         problem = verify(target(CURRENT)) if CURRENT.is_dir() else f"there is no current release in {RELEASES}"
@@ -268,7 +293,7 @@ def main() -> None:
     elif args.show:
         show()
     else:
-        cut(sys.executable, args.check_dir.resolve(), args.seed)
+        cut(sys.executable, args.check_dir.resolve(), args.seed, args.whole_program)
 
 
 if __name__ == "__main__":

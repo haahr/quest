@@ -32,7 +32,8 @@ seconds.
 - **A user of a release resolves `current` once,** to the release's own directory, and uses that directory's
   `quest` and `home/` throughout, so that a cut or rollback in another worktree while it runs cannot give it one
   release's compiler and another's `home/`.
-- **A release is a commit's stage 2.** It is cut only from a clean tree at a commit on main. `release.json` records
+- **A release is a commit's stage 2,** or with `--whole-program`, stage 2's whole-program build of the driver
+  (`--whole-program`, [arm64.md](arm64.md) step 13), which `release.json` records as its `build`. It is cut only from a clean tree at a commit on main. `release.json` records
   the commit, so the release can be rebuilt from its sources: from the release before it, or from the bootstrap while
   it lasts.
 - **The release carries its own `lib/` and `runtime/`** (`home/`, run as its `QUEST_HOME`). The binary was compiled
@@ -45,9 +46,11 @@ seconds.
      §3), building in `.build/release-check` (`--check-dir`). The current release builds stage 1, so each release is
      built from the one before it. The check still builds the driver with the bootstrap too, to compare artifacts.
      `--seed bootstrap` seeds the check from the bootstrap instead, for the first release, or when the current release
-     cannot compile the commit (§2).
+     cannot compile the commit (§2). With `--whole-program`, the check stops after the fixed points, the
+     whole-program one among them (`--whole-program-fixed-point --fixed-point-only`, [testing.md](testing.md) §2.3),
+     and the self-hosted suite runs with the whole-program build instead, the binary released.
   3. If both pass, write the new release into a directory of its own beside the releases (`new-COMMIT-PID`): stage 2
-     as `quest`, `git archive` of the commit's `lib/` and `runtime/` as `home/`, and `release.json`, which records
+     (or its whole-program build) as `quest`, `git archive` of the commit's `lib/` and `runtime/` as `home/`, and `release.json`, which records
      the seed: `release COMMIT` or `bootstrap`.
   4. Check it as `--verify` does: its digest, and a small program it builds against its own `home/` and runs.
   5. With the lock held, rename it to `COMMIT`, point `previous` at the old current release and `current` at the new
