@@ -11,7 +11,13 @@ interface Printer
 import
     questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
 export
-    (* An instruction's line: a label's name and a colon, else a tab and the
-     * instruction or directive *)
-    line(i: minst.Inst): String
+    (* How registers are named: a register's name, or its 32-bit half's; and
+     * whether it is a d register *)
+    Def Names = Tuple full: All(r: Int) String half: All(r: Int) String real: All(r: Int) Bool end
+    (* arm64's own names, of codegen/arm64/target's numbers *)
+    physical: Names
+    (* An instruction's lines: a label's name and a colon, else for each
+     * instruction it is (a constant's movz and movk, a symbol's adrp and
+     * add) or directive, a tab and its text *)
+    lines(op: minst.Op regs: Array(Int) names: Names): Array(String)
 end

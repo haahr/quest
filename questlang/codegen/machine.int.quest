@@ -1,0 +1,122 @@
+(* Quest Self-Hosted Compiler: Machine Functions Interface
+ *
+ * The shape of a function's machine code that the shared machine-level code
+ * (the register allocator, liveness, and moves between registers) works on,
+ * whatever the target (docs/backend-improvements.md section 3.8). A machine
+ * function's blocks hold instructions, each with its operands and a kind
+ * shared by every target; the target's own operation for each instruction
+ * sits in a table of the target's, at the index the instruction holds, which
+ * shared code never reads. When shared code makes an instruction, it asks the
+ * target, through Lowering, a record of the target's functions.
+ *
+ * An operand is a register, physical (a codegen/target number, below the
+ * function's firstVirtual) or virtual, that the instruction reads (uses) or
+ * writes (defines). A physical operand is fixed: what the target's calling
+ * convention requires, an argument's register before a call or a result's
+ * after. Virtual registers are in SSA form, each defined once, by an
+ * instruction or as a block's parameter, which each jump to the block passes
+ * an argument for; a move between two registers is a hint that they share
+ * one. Physical registers live only within a block, from a definition to its
+ * uses.
+ *
+ * A block ends in a jump or a return; a branch, which may go to its target or
+ * on, may come before. A branch's target has no parameters, and no other
+ * predecessor, so that what an edge into it moves is moved at its start. A
+ * block entered by a raise, rather than by a jump or a branch, has every
+ * register dead at its start; a branch to it says only that a raise may go
+ * there. *)
+
+interface Machine
+import
+    targets = questlang/codegen/target : questlang/codegen/Target
+    collections/vector : collections/Vector
+    collections/bitset : collections/Bitset
+export
+    (* What shared code knows of an instruction: an ordinary one; a copy of
+     * one register to another; a jump, the block's last, its uses the
+     * arguments of its target's parameters; a branch; a call, which
+     * clobbers the registers a call does not preserve; or a return (or
+     * another way of leaving the function), the block's last *)
+    Def Kind = Option kindOrdinary kindMove kindJump kindBranch kindCall kindReturn end
+    Def Operand = Tuple var reg: Int defines: Bool end
+    Def Inst = Tuple
+        kind: Kind
+        var operands: Array(Operand)
+        (* The index of its operation in the target's table *)
+        op: Int
+        (* A jump's or a branch's target block, else ~1 *)
+        target: Int
+    end
+    Def Block = Tuple
+        params: vector.T(Int)
+        insts: vector.T(Inst)
+        (* Whether a raise enters it, every register dead *)
+        var raised: Bool
+    end
+    Def Function = Tuple
+        blocks: vector.T(Block)
+        (* The first virtual register's number, past the target's physical
+         * registers *)
+        firstVirtual: Int
+        (* Each virtual register's class, by its index (its number less
+         * firstVirtual) *)
+        classes: vector.T(targets.Class)
+    end
+
+    (* What shared code asks a target to make: a copy of a register into
+     * another, of either class *)
+    Def Lowering = Tuple
+        move: All(dst: Int src: Int) Inst
+    end
+
+    (* A function of no blocks, for a target of physical registers *)
+    newFunction(physical: Int): Function
+    newBlock(f: Function): Int
+    block(f: Function b: Int): Block
+    (* A new virtual register of a class *)
+    newVirtual(f: Function c: targets.Class): Int
+    (* A new parameter of a block *)
+    addParam(f: Function b: Int c: targets.Class): Int
+    append(f: Function b: Int i: Inst): Ok
+    isVirtual(f: Function r: Int): Bool
+    (* A virtual register's index, and its class *)
+    index(f: Function r: Int): Int
+    virtualClass(f: Function r: Int): targets.Class
+    virtuals(f: Function): Int
+
+    (* An operand: a register used, or defined *)
+    reads(r: Int): Operand
+    writes(r: Int): Operand
+    kindOrdinary: Kind
+    kindMove: Kind
+    kindJump: Kind
+    kindBranch: Kind
+    kindCall: Kind
+    kindReturn: Kind
+    (* An instruction of a kind, its operands, its operation's index, and
+     * its target block (~1 for none) *)
+    inst(kind: Kind operands: Array(Operand) op: Int target: Int): Inst
+    isKind(i: Inst k: Kind): Bool
+    kindName(k: Kind): String
+
+    (* The function without the ordinary instructions and moves whose
+     * results no instruction uses (a result's register is virtual), of those
+     * pure says only compute their results *)
+    removeDead(f: Function pure: All(i: Inst) Bool): Ok
+
+    (* The blocks a block goes to, its branches' targets then its jump's *)
+    successors(f: Function b: Int): Array(Int)
+    (* The blocks in reverse postorder from the first, those not reached
+     * left out *)
+    order(f: Function): Array(Int)
+
+    (* Which virtual registers (by index) are live into and out of each
+     * block: liveIn has no block's parameters, which its jumps define *)
+    Def Live = Tuple liveIn: Array(bitset.T) liveOut: Array(bitset.T) end
+    live(f: Function): Live
+
+    (* A function's instructions, a block's parameters and a label for each
+     * block, each instruction as line spells it, its operands' registers in
+     * the order its operands are *)
+    format(f: Function name: All(r: Int) String line: All(i: Inst) String): String
+end

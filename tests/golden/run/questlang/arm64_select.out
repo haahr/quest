@@ -1,0 +1,182 @@
+== immediates
+b0:
+	mov %18, x0 [move]
+	mov %19, x1 [move]
+	b Lt_b1 { %18 %19 } [jump] -> b1
+b1(%0 %1):
+	add %3, %0, #5
+	sub %5, %3, #7
+	sub %7, %5, #10
+	add %9, %7, #3, lsl #12
+	lsl %11, %9, #3
+	movz %12, #16960, lsl #0; movk %12, #15, lsl #16
+	add %13, %11, %12
+	cmp %13, #100
+	cset %15, lt
+	str xzr, [%1, #8]
+	str xzr, [%1, #16]
+	mov x0, %15 [move]
+	ret { x0 } [return]
+== fused comparisons
+b0:
+	mov %11, x0 [move]
+	mov %12, x1 [move]
+	fmov %13, d0 [move]
+	mov %14, x2 [move]
+	b Lt_b1 { %11 %12 %13 %14 } [jump] -> b1
+b1(%0 %1 %2 %3):
+	cmp %0, #10
+	b.lt Lt_b8 [branch] -> b8
+	b Lt_b6 [jump] -> b6
+b2:
+	cbz %1, Lt_b9 [branch] -> b9
+	b Lt_b6 [jump] -> b6
+b3:
+	fcmp %2, %2
+	b.mi Lt_b10 [branch] -> b10
+	b Lt_b6 [jump] -> b6
+b4:
+	cbnz %3, Lt_b11 [branch] -> b11
+	b Lt_b6 [jump] -> b6
+b5:
+	cmp %0, %3
+	cset %9, ge
+	cbnz %9, Lt_b12 [branch] -> b12
+	b Lt_b6 [jump] -> b6
+b6:
+	mov %10, #0
+	mov x0, %10 [move]
+	ret { x0 } [return]
+b7:
+	mov x0, %9 [move]
+	ret { x0 } [return]
+b8:
+	b Lt_b2 [jump] -> b2
+b9:
+	b Lt_b3 [jump] -> b3
+b10:
+	b Lt_b4 [jump] -> b4
+b11:
+	b Lt_b5 [jump] -> b5
+b12:
+	b Lt_b7 [jump] -> b7
+== addressing
+b0:
+	mov %6, x0 [move]
+	b Lt_b1 { %6 } [jump] -> b1
+b1(%0):
+	ldr %3, [%0, #24]
+	str %3, [%0, #20]
+	movz %4, #40000, lsl #0
+	add %5, %0, %4
+	str %3, [%5, #8]
+	mov x0, %5 [move]
+	ret { x0 } [return]
+== calls
+b0:
+	mov %5, x0 [move]
+	fmov %6, d0 [move]
+	b Lt_b1 { %5 %6 } [jump] -> b1
+b1(%0 %1):
+	str %0, [sp, #0]
+	mov x0, %0 [move]
+	fmov d0, %1 [move]
+	mov x1, %0 [move]
+	mov x2, %0 [move]
+	mov x3, %0 [move]
+	mov x4, %0 [move]
+	mov x5, %0 [move]
+	mov x6, %0 [move]
+	mov x7, %0 [move]
+	bl _qf_local { x0 d0 x1 x2 x3 x4 x5 x6 x7 =d0 } [call]
+	fmov %2, d0 [move]
+	adrp %3, _qf_other@GOTPAGE; ldr %3, [%3, _qf_other@GOTPAGEOFF]
+	mov x0, %0 [move]
+	blr %3 { x0 } [call]
+	adrp x0, _quest_current_exception_handler@TLVPPAGE; ldr x0, [x0, _quest_current_exception_handler@TLVPPAGEOFF]; ldr x16, [x0]; blr x16 { =x0 } [call]
+	mov %4, x0 [move]
+	str %0, [%4, #0]
+	fmov d0, %2 [move]
+	ret { d0 } [return]
+== tail calls
+b0:
+	mov %9, x0 [move]
+	mov %10, x1 [move]
+	b Lt_b1 { %9 %10 } [jump] -> b1
+b1(%0 %1):
+	cbnz %0, Lt_b6 [branch] -> b6
+	b Lt_b3 [jump] -> b3
+b2:
+	sub %3, %0, #1
+	b Lt_b1 { %3 %1 } [jump] -> b1
+b3:
+	cbnz %1, Lt_b7 [branch] -> b7
+	b Lt_b5 [jump] -> b5
+b4:
+	mov x0, %0 [move]
+	mov x1, %1 [move]
+	b _qf_other { x0 x1 } [return]
+b5:
+	mov x0, %0 [move]
+	mov x9, %1 [move]
+	br x9 { x9 x0 } [return]
+b6:
+	b Lt_b2 [jump] -> b2
+b7:
+	b Lt_b4 [jump] -> b4
+== a switch
+b0:
+	mov %4, x0 [move]
+	b Lt_b1 { %4 } [jump] -> b1
+b1(%0):
+	cmp %0, #0
+	b.eq Lt_b6 [branch] -> b6
+	cmp %0, #1
+	b.eq Lt_b7 [branch] -> b7
+	movz %5, #5000, lsl #0
+	cmp %0, %5
+	b.eq Lt_b8 [branch] -> b8
+	b Lt_b5 [jump] -> b5
+b2:
+	movz %1, #1, lsl #0
+	mov x0, %1 [move]
+	ret { x0 } [return]
+b3:
+	movz %2, #2, lsl #0
+	mov x0, %2 [move]
+	ret { x0 } [return]
+b4:
+	movz %3, #3, lsl #0
+	mov x0, %3 [move]
+	ret { x0 } [return]
+b5:
+	mov x0, %0 [move]
+	ret { x0 } [return]
+b6:
+	b Lt_b2 [jump] -> b2
+b7:
+	b Lt_b3 [jump] -> b3
+b8:
+	b Lt_b4 [jump] -> b4
+== a try
+b0:
+	mov %2, x0 [move]
+	b Lt_b1 { %2 } [jump] -> b1
+b1(%0):
+	mul %1, %0, %0
+	add %3, sp, #0
+	adr %4, Lt_b4 [branch] -> b4
+	str %4, [%3, #24]
+	mov %5, sp
+	str %5, [%3, #32]
+	str x29, [%3, #40]
+	b Lt_b2 [jump] -> b2
+b2:
+	bl _quest_pop_handler [call]
+	mov x0, %0 [move]
+	ret { x0 } [return]
+b3:
+	mov x0, %1 [move]
+	ret { x0 } [return]
+b4: raised
+	b Lt_b3 [jump] -> b3

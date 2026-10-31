@@ -1,0 +1,753 @@
+(* Quest Self-Hosted Compiler: arm64 Instruction Selection Implementation *)
+
+module select : Select
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    questlang/codegen/machine : questlang/codegen/Machine
+    targets = questlang/codegen/target : questlang/codegen/Target
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+    questlang/codegen/arm64/printer : questlang/codegen/arm64/Printer
+    questlang/codegen/arm64/target : questlang/codegen/arm64/Target
+    questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
+    collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Def Selection = Tuple
+        f: machine.Function ops: vector.T(minst.Op) types: vector.T(ssa.Type) layout: vector.T(Int) prefix: String
+        outgoing: Int slotAt: Array(Int) slotsEnd: Int entersTry: Bool
+    end
+    Def ArgumentPlace = Tuple reg: Int offset: Int bytes: Int end
+    Def Placed = Tuple places: Array(ArgumentPlace) stackBytes: Int end
+
+    let unsupported: Exception(String) = exception unsupported: String end
+    let none = array of :Int end
+    let alignUp(n: Int a: Int): Int = {{{n + a} - 1} / a} * a
+    let isReal(t: ssa.Type): Bool = case t when typeInt, typePtr then false when typeReal then true end
+    let x0 = target.x(0)
+    let x1 = target.x(1)
+    let x9 = target.x(9)
+    let d0 = target.d(0)
+    let sp = target.sp
+    let fp = target.fp
+    let xzr = target.xzr
+    let memory = ~1
+
+    (* =========================================================================
+     * Where arguments go (AAPCS64, docs/arm64.md section 3.3)
+     * ====================================================================== *)
+
+    let isPair(p: ssa.Passed): Bool =
+        case p
+            when passPair then true
+            when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false
+        end
+
+    (* An integer or a pointer (and a composite's copy's address) in the next
+     * x register, a double in the next d register, a 16-byte composite in two
+     * consecutive x registers or wholly on the stack, and the rest on the
+     * stack, as Darwin packs them: a byte (a C bool or char) in a byte, a C
+     * int in 4 aligned bytes, the others in 8 *)
+    let placeArguments(types: Array(ssa.Type) passed: Array(ssa.Passed) first: Int): Placed =
+        begin
+            let places = array of(extent types tuple let reg = memory let offset = 0 let bytes = 8 end)
+            let var ngrn = 0
+            let var nsrn = 0
+            let var nsaa = 0
+            let x(n: Int): ArgumentPlace = tuple let reg = target.x(n) let offset = 0 let bytes = 8 end
+            (* The stack place of the argument at k, after at bytes: at its C
+             * type's size and alignment, as Darwin places them (a C bool or
+             * char a byte, a C int 4 bytes, the rest 8; the runtime's
+             * functions take no other narrow type, which
+             * tests/python/test_runtime_signatures.py checks, docs/arm64.md
+             * section 10, hazard 3) *)
+            let stackAfter(at: Int k: Int): ArgumentPlace =
+                begin
+                    let bytes = case passed[k]
+                        when passByte then 1
+                        when passInt32 then 4
+                        when passWord, passReal, passPair, passPairRest, passMemory then 8
+                    end
+                    tuple let reg = memory let offset = alignUp(at bytes) let bytes = bytes end
+                end
+            let var k = first
+            while k < extent types do
+                if isPair(passed[k]) then
+                    if ngrn <= 6 then
+                        places[k] := x(ngrn)
+                        places[k + 1] := x(ngrn + 1)
+                        ngrn := ngrn + 2
+                    else
+                        ngrn := 8
+                        places[k] := stackAfter(nsaa k)
+                        places[k + 1] := stackAfter({places[k].offset + places[k].bytes} {k + 1})
+                        nsaa := places[k + 1].offset + places[k + 1].bytes
+                    end
+                    k := k + 2
+                else
+                    if isReal(types[k]) then
+                        if nsrn < 8 then
+                            places[k] := tuple let reg = target.d(nsrn) let offset = 0 let bytes = 8 end
+                            nsrn := nsrn + 1
+                        else
+                            places[k] := stackAfter(nsaa k)
+                            nsaa := places[k].offset + places[k].bytes
+                        end
+                    else
+                        if ngrn < 8 then begin places[k] := x(ngrn) ngrn := ngrn + 1 end
+                        else
+                            places[k] := stackAfter(nsaa k)
+                            nsaa := places[k].offset + places[k].bytes
+                        end
+                    end
+                    k := k + 1
+                end
+            end
+            tuple let places = places let stackBytes = alignUp(nsaa 16) end
+        end
+
+    (* A call's argument places *)
+    let placeCall(f: ssa.Function i: ssa.Inst): Placed =
+        begin
+            let types = array of(extent i.args ssa.typeInt)
+            for k = 0 upto {extent i.args - 1} do types[k] := ssa.typeOf(f i.args[k]) end
+            placeArguments(types i.signature.params if stringOp.length(i.symbol) > 0 then 0 else 1 end)
+        end
+
+    (* =========================================================================
+     * The selector's state
+     * ====================================================================== *)
+
+    Let S = Tuple
+        f: ssa.Function
+        m: machine.Function
+        ops: vector.T(minst.Op)
+        types: vector.T(ssa.Type)
+        layout: vector.T(Int)
+        prefix: String
+        defined: hashMap.T(String Bool)
+        (* Each SSA block's machine block, ~1 for one not reached *)
+        blockOf: Array(Int)
+        (* Each SSA value's defining instruction, its block, and its uses *)
+        defs: Array(maybe.T(ssa.Inst))
+        defBlock: Array(Int)
+        uses: Array(Int)
+        (* The comparisons each fused into the branch on it *)
+        fused: Array(Bool)
+        slotAt: Array(Int)
+        (* The machine block being filled *)
+        var b: Int
+    end
+
+    let label(s: Selection b: Int): String = s.prefix <> "_b" <> conv.int(b)
+    let labelOf(s: S b: Int): String = s.prefix <> "_b" <> conv.int(b)
+    let classOf(t: ssa.Type): targets.Class = targets.classOfType(t)
+
+    (* An SSA value's virtual register *)
+    let r(s: S v: Int): Int = s.m.firstVirtual + v
+    (* A new virtual register, of an SSA type *)
+    let temp(s: S t: ssa.Type): Int =
+        begin
+            vector.append(:ssa.Type s.types t)
+            machine.newVirtual(s.m classOf(t))
+        end
+
+    (* An instruction, its first registers written (as minst.results says)
+     * and the rest read, with fixed registers it also reads and writes (a
+     * call's arguments and results) *)
+    let emitFull(s: S kind: machine.Kind i: minst.Inst reads: Array(Int) writes: Array(Int) target: Int): Ok =
+        begin
+            vector.append(:minst.Op s.ops i.op)
+            let n = minst.results(i.op)
+            let operands = array of({{extent i.regs + extent reads} + extent writes} machine.reads(0))
+            for k = 0 upto {extent i.regs - 1} do
+                operands[k] := if k < n then machine.writes(i.regs[k]) else machine.reads(i.regs[k]) end
+            end
+            for k = 0 upto {extent reads - 1} do operands[extent i.regs + k] := machine.reads(reads[k]) end
+            for k = 0 upto {extent writes - 1} do
+                operands[{extent i.regs + extent reads} + k] := machine.writes(writes[k])
+            end
+            machine.append(s.m s.b machine.inst(kind operands vector.length(:minst.Op s.ops) - 1 target))
+        end
+    let emit(s: S i: minst.Inst): Ok = emitFull(s machine.kindOrdinary i none none ~1)
+    let emitMove(s: S dst: Int src: Int): Ok = emitFull(s machine.kindMove minst.mov(dst src) none none ~1)
+
+    (* A jump to a machine block, with the arguments of its parameters *)
+    let jumpTo(s: S mb: Int args: Array(Int)): Ok =
+        begin
+            vector.append(:minst.Op s.ops minst.b(labelOf(s mb)).op)
+            let operands = array of(extent args machine.reads(0))
+            for k = 0 upto {extent args - 1} do operands[k] := machine.reads(args[k]) end
+            machine.append(s.m s.b machine.inst(machine.kindJump operands vector.length(:minst.Op s.ops) - 1 mb))
+        end
+    let jump(s: S t: ssa.Target): Ok =
+        begin
+            let args = array of(extent t.args 0)
+            for k = 0 upto {extent t.args - 1} do args[k] := r(s t.args[k]) end
+            jumpTo(s s.blockOf[t.block] args)
+        end
+
+    (* A new block after the current one's in the layout, the target of a
+     * branch from it, which jumps to t *)
+    let edge(s: S t: ssa.Target): Int =
+        begin
+            let e = machine.newBlock(s.m)
+            vector.append(:Int s.layout e)
+            let from = s.b
+            s.b := e
+            jump(s t)
+            s.b := from
+            e
+        end
+
+    (* The constant a value is, if it is one: an Int's, or the null's 0 *)
+    let constOf(s: S v: Int): maybe.T(Int) =
+        if maybe.isNone(:ssa.Inst s.defs[v]) then maybe.none(:Int)
+        else
+            let i = maybe.unwrap(:ssa.Inst s.defs[v])
+            case i.op
+                when opConst then maybe.some(:Int i.imm)
+                when opNull then maybe.some(:Int 0)
+                when opRealConst, opSymbol, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl,
+                    opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul,
+                    opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
+                    opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
+                    opThreadLocal then
+                    maybe.none(:Int)
+            end
+        end
+    let isConst(s: S v: Int n: Int): Bool = maybe.isSome(:Int constOf(s v)) andif {maybe.unwrap(:Int constOf(s v)) is n}
+    (* An add's or a sub's immediate: 12 bits, perhaps shifted 12 *)
+    let addable(n: Int): Bool =
+        {{n >= 0} andif {n < 4096}} orif {{n >= 0} andif {n is {{n / 4096} * 4096}} andif {{n / 4096} < 4096}}
+    (* A value's register, or xzr for a zero *)
+    let zeroOr(s: S v: Int): Int = if isConst(s v 0) then xzr else r(s v) end
+
+    (* =========================================================================
+     * Instructions
+     * ====================================================================== *)
+
+    (* d := x + n, n an add's immediate, or its negation *)
+    let addConst(s: S d: Int x: Int n: Int): Ok =
+        if {n >= 0} andif {n < 4096} then emit(s minst.addImm(d x n 0))
+        elsif {n >= 0} andif addable(n) then emit(s minst.addImm(d x n / 4096 12))
+        elsif {0 - n} < 4096 then emit(s minst.subImm(d x 0 - n))
+        else
+            let t = temp(s ssa.typeInt)
+            emit(s minst.movConst(t n))
+            emit(s minst.arith(minst.arithAdd d x t))
+        end
+
+    (* d := sp + n, n at least 0 *)
+    let spPlus(s: S d: Int n: Int): Ok =
+        if n < 4096 then emit(s minst.addImm(d sp n 0))
+        elsif addable(n) then emit(s minst.addImm(d sp n / 4096 12))
+        elsif n < 16777216 then
+            let t = temp(s ssa.typePtr)
+            emit(s minst.addImm(t sp n / 4096 12))
+            emit(s minst.addImm(d t n - {4096 * {n / 4096}} 0))
+        else
+            let t = temp(s ssa.typeInt)
+            emit(s minst.movConst(t n))
+            emit(s minst.arith(minst.arithAdd d sp t))
+        end
+
+    (* Whether a value is a constant an add or a sub takes, either sign *)
+    let immediate(s: S v: Int): Bool =
+        maybe.isSome(:Int constOf(s v))
+            andif {addable(maybe.unwrap(:Int constOf(s v))) orif addable(0 - maybe.unwrap(:Int constOf(s v)))}
+
+    (* d := x + y, an immediate for a constant that fits either *)
+    let add(s: S d: Int x: Int y: Int): Ok =
+        if immediate(s y) then addConst(s d r(s x) maybe.unwrap(:Int constOf(s y)))
+        elsif immediate(s x) then addConst(s d r(s y) maybe.unwrap(:Int constOf(s x)))
+        else emit(s minst.arith(minst.arithAdd d r(s x) r(s y))) end
+
+    let sub(s: S d: Int x: Int y: Int): Ok =
+        if immediate(s y) then addConst(s d r(s x) 0 - maybe.unwrap(:Int constOf(s y)))
+        else emit(s minst.arith(minst.arithSub d r(s x) r(s y))) end
+
+    let shift(s: S a: minst.Arith d: Int x: Int y: Int): Ok =
+        begin
+            let c = constOf(s y)
+            if maybe.isSome(:Int c) andif {maybe.unwrap(:Int c) >= 0} andif {maybe.unwrap(:Int c) < 64} then
+                emit(s minst.shiftImm(a d r(s x) maybe.unwrap(:Int c)))
+            else emit(s minst.arith(a d r(s x) r(s y))) end
+        end
+
+    (* The condition a comparison sets the flags for, after its flags are
+     * set: cmp of integers or pointers (an immediate for a constant that
+     * fits), fcmp of reals *)
+    let condition(op: ssa.Opcode): minst.Cond =
+        case op
+            when opEq, opPeq, opFeq then minst.condEq
+            when opNe, opPne then minst.condNe
+            when opLt then minst.condLt
+            when opLe then minst.condLe
+            when opGt, opFgt then minst.condGt
+            when opGe, opFge then minst.condGe
+            when opUlt then minst.condLo
+            (* After fcmp, false when either is a NaN *)
+            when opFlt then minst.condMi
+            when opFle then minst.condLs
+            when opIsNaN then minst.condVs
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr,
+                opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits,
+                opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
+                opThreadLocal then
+                minst.condEq
+        end
+    let isComparison(op: ssa.Opcode): Bool =
+        case op
+            when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge,
+                opIsNaN then
+                true
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr,
+                opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits,
+                opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
+                opThreadLocal then
+                false
+        end
+    let isRealComparison(op: ssa.Opcode): Bool =
+        case op
+            when opFeq, opFlt, opFle, opFgt, opFge, opIsNaN then true
+            when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opConst, opRealConst, opSymbol, opNull,
+                opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub,
+                opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opLoad, opStore,
+                opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal then
+                false
+        end
+    let setFlags(s: S i: ssa.Inst): Ok =
+        if isRealComparison(i.op) then
+            emit(s minst.fcmp(r(s i.args[0]) r(s i.args[if extent i.args > 1 then 1 else 0 end])))
+        else
+            let c = constOf(s i.args[1])
+            if maybe.isSome(:Int c) andif {maybe.unwrap(:Int c) >= 0} andif {maybe.unwrap(:Int c) < 4096} then
+                emit(s minst.cmpImm(r(s i.args[0]) maybe.unwrap(:Int c)))
+            else emit(s minst.cmp(r(s i.args[0]) r(s i.args[1]))) end
+        end
+
+    (* Memory at a value plus imm, for a load or store of width bytes: the
+     * offset of a ptrAdd of a constant folded in, then an immediate offset,
+     * scaled or unscaled, if it fits, else the address computed *)
+    Let Address = Tuple base: Int mode: minst.Mode end
+    let fits(imm: Int width: Int): Bool =
+        {{imm >= 0} andif {imm is {{imm / width} * width}} andif {{imm / width} < 4096}}
+            orif {{imm >= ~256} andif {imm < 256}}
+    let address(s: S v: Int imm: Int width: Int): Address =
+        begin
+            let var base = v
+            let var offset = imm
+            if maybe.isSome(:ssa.Inst s.defs[v]) then
+                let p = maybe.unwrap(:ssa.Inst s.defs[v])
+                if ssa.isOp(p ssa.opPtrAdd) andif maybe.isSome(:Int constOf(s p.args[1]))
+                        andif fits(imm + maybe.unwrap(:Int constOf(s p.args[1])) width) then
+                    base := p.args[0]
+                    offset := imm + maybe.unwrap(:Int constOf(s p.args[1]))
+                end
+            end
+            if fits(offset width) then tuple let base = r(s base) let mode = minst.offset(offset) end
+            else
+                let t = temp(s ssa.typeInt)
+                let a = temp(s ssa.typePtr)
+                emit(s minst.movConst(t offset))
+                emit(s minst.arith(minst.arithAdd a r(s base) t))
+                tuple let base = a let mode = minst.modeBase end
+            end
+        end
+
+    (* The registers results come back in *)
+    let resultRegisters(f: ssa.Function results: Array(Int)): Array(Int) =
+        if extent results is 1 then array of if isReal(ssa.typeOf(f results[0])) then d0 else x0 end end
+        elsif extent results is 2 then array of x0 x1 end
+        else none end
+
+    (* A call's arguments to their places: the stack's first, then the
+     * registers'; the registers they are in *)
+    let arguments(s: S i: ssa.Inst placed: Placed first: Int): Array(Int) =
+        begin
+            for k = first upto {extent i.args - 1} do
+                let p = placed.places[k]
+                if p.reg is memory then
+                    let width = if p.bytes is 1 then minst.store8 elsif p.bytes is 4 then minst.store32
+                        else minst.store64 end
+                    emit(s minst.store(width zeroOr(s i.args[k]) sp minst.offset(p.offset)))
+                end
+            end
+            let regs = vector.new(:Int)
+            for k = first upto {extent i.args - 1} do
+                let p = placed.places[k]
+                if p.reg isnot memory then
+                    emitMove(s p.reg r(s i.args[k]))
+                    vector.append(:Int regs p.reg)
+                end
+            end
+            vector.toArray(:Int regs)
+        end
+
+    (* A call: its arguments in their places, the call, and its results
+     * from theirs *)
+    let call(s: S i: ssa.Inst): Ok =
+        begin
+            let direct = stringOp.length(i.symbol) > 0
+            let regs = arguments(s i placeCall(s.f i) if direct then 0 else 1 end)
+            let results = resultRegisters(s.f i.results)
+            if direct then emitFull(s machine.kindCall minst.bl(i.symbol) regs results ~1)
+            else emitFull(s machine.kindCall minst.blr(r(s i.args[0])) regs results ~1) end
+            for k = 0 upto {extent i.results - 1} do emitMove(s r(s i.results[k]) results[k]) end
+        end
+
+    let instruction(s: S i: ssa.Inst): Ok =
+        begin
+            let a(k: Int): Int = r(s i.args[k])
+            let d = if extent i.results > 0 then r(s i.results[0]) else ~1 end
+            let arith(op: minst.Arith): Ok = emit(s minst.arith(op d a(0) a(1)))
+            case i.op
+                when opConst then emit(s minst.movConst(d i.imm))
+                (* A Real constant's bits are its word *)
+                when opRealConst then
+                    if i.imm is 0 then emitMove(s d xzr)
+                    else
+                        let t = temp(s ssa.typeInt)
+                        emit(s minst.movConst(t i.imm))
+                        emitMove(s d t)
+                    end
+                when opNull then emit(s minst.movConst(d 0))
+                when opSymbol then
+                    emit(s minst.symbolAddress(d i.symbol i.imm hashMap.contains(:String :Bool s.defined i.symbol)))
+                (* A thread-local's address is a call of its accessor *)
+                when opThreadLocal then
+                    emitFull(s machine.kindCall minst.tlvAddress(x0 i.symbol) none none ~1)
+                    emitMove(s d x0)
+                when opSlot then spPlus(s d s.slotAt[i.imm])
+                when opAdd, opPtrAdd then add(s d i.args[0] i.args[1])
+                when opSub then sub(s d i.args[0] i.args[1])
+                when opMul then arith(minst.arithMul)
+                when opDiv then arith(minst.arithSdiv)
+                when opAnd then arith(minst.arithAnd)
+                when opOr then arith(minst.arithOrr)
+                when opXor then arith(minst.arithEor)
+                when opShl then shift(s minst.arithLsl d i.args[0] i.args[1])
+                when opLshr then shift(s minst.arithLsr d i.args[0] i.args[1])
+                when opAshr then shift(s minst.arithAsr d i.args[0] i.args[1])
+                when opRem then
+                    let q = temp(s ssa.typeInt)
+                    emit(s minst.arith(minst.arithSdiv q a(0) a(1)))
+                    emit(s minst.msub(d q a(1) a(0)))
+                when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge,
+                    opIsNaN then
+                    if not(s.fused[i.results[0]]) then
+                        setFlags(s i)
+                        emit(s minst.cset(condition(i.op) d))
+                    end
+                when opFadd then arith(minst.arithFadd)
+                when opFsub then arith(minst.arithFsub)
+                when opFmul then arith(minst.arithFmul)
+                when opFdiv then arith(minst.arithFdiv)
+                (* Copies of a word: conversions between ints, pointers, and a
+                 * Real's bits *)
+                when opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opCopy then emitMove(s d a(0))
+                when opSext8 then emit(s minst.sxtb(d a(0)))
+                when opZext8 then emit(s minst.andImm(d a(0) 255))
+                when opLoad then
+                    let width = if i.width is 8 then minst.load64 elsif i.width is 4 then minst.loadS32
+                        elsif i.signed then minst.loadS8 else minst.loadU8 end
+                    let at = address(s i.args[0] i.imm if i.width >= 4 then i.width else 1 end)
+                    emit(s minst.load(width d at.base at.mode))
+                when opStore then
+                    let width = if i.width is 8 then minst.store64 elsif i.width is 4 then minst.store32
+                        else minst.store8 end
+                    let at = address(s i.args[0] i.imm if i.width >= 4 then i.width else 1 end)
+                    emit(s minst.store(width zeroOr(s i.args[1]) at.base at.mode))
+                when opCall, opCallIndirect then call(s i)
+            end
+        end
+
+    (* =========================================================================
+     * Terminators
+     * ====================================================================== *)
+
+    let returnValues(s: S vs: Array(Int)): Ok =
+        begin
+            let regs = resultRegisters(s.f vs)
+            for k = 0 upto {extent vs - 1} do emitMove(s regs[k] r(s vs[k])) end
+            emitFull(s machine.kindReturn minst.ret regs none ~1)
+        end
+
+    (* A call in tail position (docs/arm64.md section 3.7): of the function
+     * itself, a jump to its first block; of another whose arguments all go in
+     * registers, a branch to it (once the frame is popped, which restores the
+     * callee-saved registers, so an indirect call's target is moved to x9);
+     * otherwise a call and a return *)
+    let tailCall(s: S i: ssa.Inst): Ok =
+        begin
+            let direct = stringOp.length(i.symbol) > 0
+            let placed = placeCall(s.f i)
+            if direct andif stringOp.equal(i.symbol s.f.symbol) then
+                jump(s ssa.target(0 i.args))
+            elsif placed.stackBytes > 0 then
+                call(s i)
+                returnValues(s i.results)
+            else
+                let regs = arguments(s i placed if direct then 0 else 1 end)
+                if direct then emitFull(s machine.kindReturn minst.bSymbol(i.symbol) regs none ~1)
+                else
+                    emitMove(s x9 r(s i.args[0]))
+                    emitFull(s machine.kindReturn minst.br(x9) regs none ~1)
+                end
+            end
+        end
+
+    let terminator(s: S t: ssa.Terminator): Ok =
+        case t
+            when termNone then raise unsupported with "arm64: a block without a terminator" end
+            when termJump with x then jump(s x.target)
+            when termBranch with x then
+                let e = edge(s x.ifTrue)
+                if s.fused[x.cond] then
+                    let i = maybe.unwrap(:ssa.Inst s.defs[x.cond])
+                    if not(isRealComparison(i.op)) andif isConst(s i.args[1] 0) andif {ssa.isOp(i ssa.opEq)
+                            orif ssa.isOp(i ssa.opPeq) orif ssa.isOp(i ssa.opNe) orif ssa.isOp(i ssa.opPne)} then
+                        let zero = ssa.isOp(i ssa.opEq) orif ssa.isOp(i ssa.opPeq)
+                        let v = r(s i.args[0])
+                        let l = labelOf(s e)
+                        emitFull(s machine.kindBranch if zero then minst.cbz(v l) else minst.cbnz(v l) end none none e)
+                    else
+                        setFlags(s i)
+                        emitFull(s machine.kindBranch minst.bCond(condition(i.op) labelOf(s e)) none none e)
+                    end
+                else
+                    emitFull(s machine.kindBranch minst.cbnz(r(s x.cond) labelOf(s e)) none none e)
+                end
+                jump(s x.ifFalse)
+            when termSwitch with x then
+                let v = r(s x.value)
+                for k = 0 upto {extent x.cases - 1} do
+                    let e = edge(s x.targets[k])
+                    if {x.cases[k] >= 0} andif {x.cases[k] < 4096} then emit(s minst.cmpImm(v x.cases[k]))
+                    else
+                        let c = temp(s ssa.typeInt)
+                        emit(s minst.movConst(c x.cases[k]))
+                        emit(s minst.cmp(v c))
+                    end
+                    emitFull(s machine.kindBranch minst.bCond(minst.condEq labelOf(s e)) none none e)
+                end
+                jump(s x.default)
+            when termReturn with x then returnValues(s x.values)
+            when termTailCall with x then tailCall(s x.call)
+            (* Its handler's record pushed, a native handler's, resuming at a
+             * block beside the try, which adr reaches, that jumps to the
+             * handler: a raise resumes there with this frame's sp and fp,
+             * every register dead (docs/arm64.md sections 3.6 and 3.8) *)
+            when termTry with x then
+                let resume = machine.newBlock(s.m)
+                vector.append(:Int s.layout resume)
+                machine.block(s.m resume).raised := true
+                let field(name: String): minst.Mode = minst.offset(runtimeLayout.offset("QExceptionHandler" name))
+                let handlerRecord = temp(s ssa.typePtr)
+                let at = temp(s ssa.typePtr)
+                let stack = temp(s ssa.typePtr)
+                spPlus(s handlerRecord s.slotAt[x.slot])
+                emitFull(s machine.kindBranch minst.adr(at labelOf(s resume)) none none resume)
+                emit(s minst.store(minst.store64 at handlerRecord field("resume")))
+                emit(s minst.mov(stack sp))
+                emit(s minst.store(minst.store64 stack handlerRecord field("sp")))
+                emit(s minst.store(minst.store64 fp handlerRecord field("fp")))
+                jump(s x.body)
+                let from = s.b
+                s.b := resume
+                jumpTo(s s.blockOf[x.handler] none)
+                s.b := from
+            when termUnreachable then emitFull(s machine.kindReturn minst.brk(1) none none ~1)
+        end
+
+    (* =========================================================================
+     * Functions
+     * ====================================================================== *)
+
+    (* The entry: each parameter from its register or the caller's frame
+     * (a C int's upper bits unspecified, extended), then a jump to the first
+     * block *)
+    let entry(s: S): Ok =
+        begin
+            let f = s.f
+            let params = vector.toArray(:Int ssa.block(f 0).params)
+            let types = array of(extent params ssa.typeInt)
+            for k = 0 upto {extent params - 1} do types[k] := ssa.typeOf(f params[k]) end
+            let placed = placeArguments(types f.signature.params 0)
+            let args = array of(extent params 0)
+            for k = 0 upto {extent params - 1} do
+                let p = placed.places[k]
+                let t = temp(s types[k])
+                args[k] := t
+                let isInt32 = case f.signature.params[k]
+                    when passInt32 then true
+                    when passWord, passReal, passPair, passPairRest, passByte, passMemory then false
+                end
+                if p.reg isnot memory then
+                    if isInt32 then emit(s minst.sxtw(t p.reg)) else emitMove(s t p.reg) end
+                else
+                    let width = if p.bytes is 1 then minst.loadU8 elsif p.bytes is 4 then minst.loadS32
+                        else minst.load64 end
+                    emit(s minst.load(width t fp minst.offset(16 + p.offset)))
+                end
+            end
+            jumpTo(s s.blockOf[0] args)
+        end
+
+    let pure(s: Selection i: machine.Inst): Bool = minst.pure(vector.get(:minst.Op s.ops i.op))
+
+    let select(f: ssa.Function prefix: String defined: hashMap.T(String Bool)): Selection =
+        begin
+            let nValues = vector.length(:ssa.Type f.types)
+            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let g = cfg.graph(f)
+            (* Each value's definition and uses; the outgoing arguments' area;
+             * whether it enters a try *)
+            let defs = array of(nValues maybe.none(:ssa.Inst))
+            let defBlock = array of(nValues ~1)
+            let uses = array of(nValues 0)
+            let var outgoing = 0
+            let var entersTry = false
+            let measure(i: ssa.Inst): Ok =
+                begin
+                    let placed = placeCall(f i)
+                    if placed.stackBytes > outgoing then outgoing := placed.stackBytes end
+                end
+            for b = 0 upto {nBlocks - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    for j = 0 upto {extent i.results - 1} do
+                        defs[i.results[j]] := maybe.some(:ssa.Inst i)
+                        defBlock[i.results[j]] := b
+                    end
+                    for j = 0 upto {extent i.args - 1} do uses[i.args[j]] := uses[i.args[j]] + 1 end
+                    if ssa.isCall(i) then measure(i) end
+                end
+                let tu = ssa.terminatorUses(blk.term)
+                for j = 0 upto {extent tu - 1} do uses[tu[j]] := uses[tu[j]] + 1 end
+                case blk.term
+                    when termTailCall with x then measure(x.call)
+                    when termTry then entersTry := true
+                    when termNone, termJump, termBranch, termSwitch, termReturn, termUnreachable then ok
+                end
+            end
+            (* The comparisons fused into their branches *)
+            let fused = array of(nValues false)
+            for b = 0 upto {nBlocks - 1} do
+                case ssa.block(f b).term
+                    when termBranch with x then
+                        let c = x.cond
+                        if maybe.isSome(:ssa.Inst defs[c]) andif isComparison(maybe.unwrap(:ssa.Inst defs[c]).op)
+                                andif {defBlock[c] is b} andif {uses[c] is 1} then
+                            fused[c] := true
+                        end
+                    when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then ok
+                end
+            end
+            (* The stack slots, after the outgoing arguments *)
+            let nSlots = vector.length(:ssa.Slot f.slots)
+            let slotAt = array of(nSlots 0)
+            let var at = outgoing
+            for k = 0 upto {nSlots - 1} do
+                let slot = vector.get(:ssa.Slot f.slots k)
+                at := alignUp(at if slot.align > 8 then slot.align else 8 end)
+                slotAt[k] := at
+                at := at + alignUp(if slot.bytes > 0 then slot.bytes else 8 end 8)
+            end
+            let m = machine.newFunction(extent target.description.registers)
+            let s = tuple
+                let f = f let m = m let ops = vector.new(:minst.Op) let types = vector.new(:ssa.Type)
+                let layout = vector.new(:Int) let prefix = prefix let defined = defined
+                let blockOf = array of(nBlocks ~1) let defs = defs let defBlock = defBlock let uses = uses
+                let fused = fused let slotAt = slotAt let var b = 0
+            end
+            for v = 0 upto {nValues - 1} do
+                vector.append(:ssa.Type s.types ssa.typeOf(f v))
+                if machine.newVirtual(m classOf(ssa.typeOf(f v))) is 0 then ok end
+            end
+            s.b := machine.newBlock(m)
+            vector.append(:Int s.layout s.b)
+            for b = 0 upto {nBlocks - 1} do
+                if cfg.reached(g b) then
+                    s.blockOf[b] := machine.newBlock(m)
+                    let params = ssa.block(f b).params
+                    for k = 0 upto {vector.length(:Int params) - 1} do
+                        vector.append(:Int machine.block(m s.blockOf[b]).params r(s vector.get(:Int params k)))
+                    end
+                end
+            end
+            entry(s)
+            for b = 0 upto {nBlocks - 1} do
+                if cfg.reached(g b) then
+                    let blk = ssa.block(f b)
+                    s.b := s.blockOf[b]
+                    vector.append(:Int s.layout s.b)
+                    for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                        instruction(s vector.get(:ssa.Inst blk.insts k))
+                    end
+                    terminator(s blk.term)
+                end
+            end
+            let selection = tuple
+                let f = m let ops = s.ops let types = s.types let layout = s.layout let prefix = prefix
+                let outgoing = outgoing let slotAt = slotAt let slotsEnd = at let entersTry = entersTry
+            end
+            machine.removeDead(m fun(i: machine.Inst): Bool pure(selection i))
+            selection
+        end
+
+    let lowering(s: Selection): machine.Lowering =
+        tuple
+            let move = fun(dst: Int src: Int): machine.Inst
+                begin
+                    vector.append(:minst.Op s.ops minst.mov(dst src).op)
+                    machine.inst(machine.kindMove array of machine.writes(dst) machine.reads(src) end
+                        vector.length(:minst.Op s.ops) - 1 ~1)
+                end
+        end
+
+    let format(s: Selection): String =
+        begin
+            let m = s.f
+            let virtual(r: Int): Bool = machine.isVirtual(m r)
+            let name(r: Int): String = if virtual(r) then "%" <> conv.int(machine.index(m r)) else target.name(r) end
+            let names = tuple
+                let full = name
+                let half = fun(r: Int): String if virtual(r) then name(r) else target.half(r) end
+                let real = fun(r: Int): Bool
+                    if not(virtual(r)) then target.isReal(r)
+                    else case machine.virtualClass(m r) when classInt then false when classReal then true end end
+            end
+            machine.format(m name fun(i: machine.Inst): String
+                begin
+                    let regs = array of(extent i.operands 0)
+                    for k = 0 upto {extent regs - 1} do regs[k] := i.operands[k].reg end
+                    let op = vector.get(:minst.Op s.ops i.op)
+                    let lines = printer.lines(op regs names)
+                    for k = 0 upto {extent lines - 1} do lines[k] := strutil.strip(lines[k]) end
+                    (* A jump's arguments, and the fixed registers a call or a
+                     * return also reads and writes *)
+                    let var fixed = ""
+                    if machine.isKind(i machine.kindJump) then
+                        for k = 0 upto {extent i.operands - 1} do fixed := fixed <> " " <> name(i.operands[k].reg) end
+                    elsif machine.isKind(i machine.kindCall) orif machine.isKind(i machine.kindReturn) then
+                        for k = 0 upto {extent i.operands - 1} do
+                            let o = i.operands[k]
+                            if not(virtual(o.reg)) then
+                                fixed := fixed <> " " <> {if o.defines then "=" else "" end} <> name(o.reg)
+                            end
+                        end
+                    end
+                    let kind = if machine.isKind(i machine.kindOrdinary) then ""
+                        else " [" <> machine.kindName(i.kind) <> "]" end
+                    let fixedText = if stringOp.length(fixed) > 0 then " {" <> fixed <> " }" else "" end
+                    strutil.joinArray("; " lines) <> fixedText <> kind
+                end)
+        end
+end

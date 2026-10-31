@@ -23,16 +23,21 @@ export
         opMovImm with imm: Int end
         opMovz with imm: Int shift: Int end
         opMovk with imm: Int shift: Int end
+        opMovConst with imm: Int end
+        opSymbolAddress with symbol: String offset: Int local: Bool end
+        opTlvAddress with symbol: String end
         opMov
         opArith with arith: Arith end
         opAddImm with imm: Int shift: Int end
         opSubImm with imm: Int end
         opAndImm with imm: Int end
+        opShiftImm with arith: Arith imm: Int end
         opMsub
         opSxtb
         opSxtw
         opCmp
         opFcmp
+        opCmpImm with imm: Int end
         opCset with cond: Cond end
         opLoad with load: Load mode: Mode end
         opStore with store: Store mode: Mode end
@@ -116,6 +121,26 @@ export
     let store32: Store = option store32 of Store end
     let store8: Store = option store8 of Store end
 
+    let results(op: Op): Int =
+        case op
+            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
+                opSubImm, opAndImm, opShiftImm, opMsub, opSxtb, opSxtw, opCset, opLoad, opAdrp, opAddPageOff, opAdr then
+                1
+            when opLdp then 2
+            when opCmp, opFcmp, opCmpImm, opStore, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz,
+                opBCond, opBrk, opLabel, opCfiDefCfa, opCfiOffset then
+                0
+        end
+    let pure(op: Op): Bool =
+        case op
+            when opMovImm, opMovz, opMovConst, opSymbolAddress, opMov, opArith, opAddImm, opSubImm, opAndImm,
+                opShiftImm, opMsub, opSxtb, opSxtw, opAdrp, opAddPageOff, opAdr then
+                true
+            when opMovk, opTlvAddress, opCmp, opFcmp, opCmpImm, opCset, opLoad, opStore, opLdp, opStp, opB, opBSymbol,
+                opBl, opBlr, opBr, opRet, opCbz, opCbnz, opBCond, opBrk, opLabel, opCfiDefCfa, opCfiOffset then
+                false
+        end
+
     let inst(op: Op regs: Array(Int)): Inst = tuple let op = op let regs = regs end
     let none = array of :Int end
     let movImm(d: Int imm: Int): Inst = inst(option opMovImm of Op with let imm = imm end array of d end)
@@ -123,6 +148,12 @@ export
         inst(option opMovz of Op with let imm = imm let shift = shift end array of d end)
     let movk(d: Int imm: Int shift: Int): Inst =
         inst(option opMovk of Op with let imm = imm let shift = shift end array of d end)
+    let movConst(d: Int imm: Int): Inst = inst(option opMovConst of Op with let imm = imm end array of d end)
+    let symbolAddress(d: Int symbol: String offset: Int local: Bool): Inst =
+        inst(option opSymbolAddress of Op with let symbol = symbol let offset = offset let local = local end
+            array of d end)
+    let tlvAddress(d: Int symbol: String): Inst =
+        inst(option opTlvAddress of Op with let symbol = symbol end array of d end)
     let mov(d: Int s: Int): Inst = inst(option opMov of Op end array of d s end)
     let arith(a: Arith d: Int x: Int y: Int): Inst =
         inst(option opArith of Op with let arith = a end array of d x y end)
@@ -130,6 +161,9 @@ export
         inst(option opAddImm of Op with let imm = imm let shift = shift end array of d s end)
     let subImm(d: Int s: Int imm: Int): Inst = inst(option opSubImm of Op with let imm = imm end array of d s end)
     let andImm(d: Int s: Int imm: Int): Inst = inst(option opAndImm of Op with let imm = imm end array of d s end)
+    let shiftImm(a: Arith d: Int s: Int imm: Int): Inst =
+        inst(option opShiftImm of Op with let arith = a let imm = imm end array of d s end)
+    let cmpImm(x: Int imm: Int): Inst = inst(option opCmpImm of Op with let imm = imm end array of x end)
     let msub(d: Int x: Int y: Int z: Int): Inst = inst(option opMsub of Op end array of d x y z end)
     let sxtb(d: Int s: Int): Inst = inst(option opSxtb of Op end array of d s end)
     let sxtw(d: Int s: Int): Inst = inst(option opSxtw of Op end array of d s end)

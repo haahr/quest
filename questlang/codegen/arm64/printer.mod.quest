@@ -5,11 +5,14 @@ import
     questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
     questlang/codegen/arm64/asm : questlang/codegen/arm64/Asm
     questlang/codegen/arm64/target : questlang/codegen/arm64/Target
+    collections/vector : collections/Vector
     util/strutil : util/Strutil
     conv : Conv
     word : Word
 export
-    let name(r: Int): String = target.name(r)
+    Def Names = Tuple full: All(r: Int) String half: All(r: Int) String real: All(r: Int) Bool end
+    let physical: Names = tuple let full = target.name let half = target.half let real = target.isReal end
+    let unexpanded: Exception(String) = exception unexpanded: String end
     let immediate(n: Int): String = "#" <> asm.decimal(n)
     let operands(rs: Array(String)): String = strutil.joinArray(", " rs)
 
@@ -30,13 +33,13 @@ export
         end
 
     (* The memory a mode addresses from a base register *)
-    let address(base: Int m: minst.Mode): String =
+    let address(n: Names base: Int m: minst.Mode): String =
         case m
-            when modeOffset with x then "[" <> name(base) <> ", " <> immediate(x.imm) <> "]"
-            when modeBase then "[" <> name(base) <> "]"
-            when modePre with x then "[" <> name(base) <> ", " <> immediate(x.imm) <> "]!"
-            when modePost with x then "[" <> name(base) <> "], " <> immediate(x.imm)
-            when modePageOff with x then "[" <> name(base) <> ", " <> asm.reference(x.symbol x.reloc true) <> "]"
+            when modeOffset with x then "[" <> n.full(base) <> ", " <> immediate(x.imm) <> "]"
+            when modeBase then "[" <> n.full(base) <> "]"
+            when modePre with x then "[" <> n.full(base) <> ", " <> immediate(x.imm) <> "]!"
+            when modePost with x then "[" <> n.full(base) <> "], " <> immediate(x.imm)
+            when modePageOff with x then "[" <> n.full(base) <> ", " <> asm.reference(x.symbol x.reloc true) <> "]"
         end
 
     (* Whether a mode needs a load's or store's unscaled form, for width
@@ -50,63 +53,71 @@ export
 
     (* A load or store: its scaled mnemonic, its unscaled one, the register
      * as the width names it, and its address *)
-    let access(scaled: String unscaledForm: String t: String base: Int m: minst.Mode width: Int): String =
-        {if unscaled(m width) then unscaledForm else scaled end} <> " " <> t <> ", " <> address(base m)
+    let access(n: Names scaled: String unscaledForm: String t: String base: Int m: minst.Mode width: Int): String =
+        {if unscaled(m width) then unscaledForm else scaled end} <> " " <> t <> ", " <> address(n base m)
 
     (* A register as the unwind information names it *)
     let cfiName(r: Int): String =
         if target.isReal(r) then "b" <> conv.int(r - target.d(0)) else "w" <> conv.int(r) end
 
-    let instruction(op: minst.Op rs: Array(Int)): String =
+    let shifted(shift: Int): String = ", lsl #" <> conv.int(shift)
+
+    let instruction(n: Names op: minst.Op rs: Array(Int)): String =
         case op
-            when opMovImm with x then "mov " <> name(rs[0]) <> ", " <> immediate(x.imm)
-            when opMovz with x then "movz " <> name(rs[0]) <> ", #" <> conv.int(x.imm) <> ", lsl #" <> conv.int(x.shift)
-            when opMovk with x then "movk " <> name(rs[0]) <> ", #" <> conv.int(x.imm) <> ", lsl #" <> conv.int(x.shift)
+            when opMovImm with x then "mov " <> n.full(rs[0]) <> ", " <> immediate(x.imm)
+            when opMovz with x then "movz " <> n.full(rs[0]) <> ", #" <> conv.int(x.imm) <> shifted(x.shift)
+            when opMovk with x then "movk " <> n.full(rs[0]) <> ", #" <> conv.int(x.imm) <> shifted(x.shift)
             when opMov then
-                {if target.isReal(rs[0]) orif target.isReal(rs[1]) then "fmov " else "mov " end}
-                    <> operands(array of name(rs[0]) name(rs[1]) end)
+                {if n.real(rs[0]) orif n.real(rs[1]) then "fmov " else "mov " end}
+                    <> operands(array of n.full(rs[0]) n.full(rs[1]) end)
             when opArith with x then
-                mnemonic(x.arith) <> " " <> operands(array of name(rs[0]) name(rs[1]) name(rs[2]) end)
+                mnemonic(x.arith) <> " " <> operands(array of n.full(rs[0]) n.full(rs[1]) n.full(rs[2]) end)
             when opAddImm with x then
-                "add " <> operands(array of name(rs[0]) name(rs[1]) immediate(x.imm) end)
+                "add " <> operands(array of n.full(rs[0]) n.full(rs[1]) immediate(x.imm) end)
                     <> if x.shift > 0 then ", lsl #" <> conv.int(x.shift) else "" end
-            when opSubImm with x then "sub " <> operands(array of name(rs[0]) name(rs[1]) immediate(x.imm) end)
+            when opSubImm with x then "sub " <> operands(array of n.full(rs[0]) n.full(rs[1]) immediate(x.imm) end)
+            when opShiftImm with x then
+                mnemonic(x.arith) <> " " <> operands(array of n.full(rs[0]) n.full(rs[1]) immediate(x.imm) end)
+            when opCmpImm with x then "cmp " <> n.full(rs[0]) <> ", " <> immediate(x.imm)
+            when opMovConst, opSymbolAddress, opTlvAddress then
+                raise unexpanded with "a pseudo-instruction, unexpanded" end
             when opAndImm with x then
-                "and " <> operands(array of name(rs[0]) name(rs[1]) "#0x" <> strutil.formatWord(word.fromInt(x.imm) 16)
-                    end)
-            when opMsub then "msub " <> operands(array of name(rs[0]) name(rs[1]) name(rs[2]) name(rs[3]) end)
-            when opSxtb then "sxtb " <> name(rs[0]) <> ", " <> target.half(rs[1])
-            when opSxtw then "sxtw " <> name(rs[0]) <> ", " <> target.half(rs[1])
-            when opCmp then "cmp " <> name(rs[0]) <> ", " <> name(rs[1])
-            when opFcmp then "fcmp " <> name(rs[0]) <> ", " <> name(rs[1])
-            when opCset with x then "cset " <> name(rs[0]) <> ", " <> condition(x.cond)
+                let hex = "#0x" <> strutil.formatWord(word.fromInt(x.imm) 16)
+                "and " <> operands(array of n.full(rs[0]) n.full(rs[1]) hex end)
+            when opMsub then "msub " <> operands(array of n.full(rs[0]) n.full(rs[1]) n.full(rs[2]) n.full(rs[3]) end)
+            when opSxtb then "sxtb " <> n.full(rs[0]) <> ", " <> n.half(rs[1])
+            when opSxtw then "sxtw " <> n.full(rs[0]) <> ", " <> n.half(rs[1])
+            when opCmp then "cmp " <> n.full(rs[0]) <> ", " <> n.full(rs[1])
+            when opFcmp then "fcmp " <> n.full(rs[0]) <> ", " <> n.full(rs[1])
+            when opCset with x then "cset " <> n.full(rs[0]) <> ", " <> condition(x.cond)
             when opLoad with x then
                 case x.load
-                    when load64 then access("ldr" "ldur" name(rs[0]) rs[1] x.mode 8)
-                    when loadS32 then access("ldrsw" "ldursw" name(rs[0]) rs[1] x.mode 4)
-                    when loadS8 then access("ldrsb" "ldursb" name(rs[0]) rs[1] x.mode 1)
-                    when loadU8 then access("ldrb" "ldurb" target.half(rs[0]) rs[1] x.mode 1)
+                    when load64 then access(n "ldr" "ldur" n.full(rs[0]) rs[1] x.mode 8)
+                    when loadS32 then access(n "ldrsw" "ldursw" n.full(rs[0]) rs[1] x.mode 4)
+                    when loadS8 then access(n "ldrsb" "ldursb" n.full(rs[0]) rs[1] x.mode 1)
+                    when loadU8 then access(n "ldrb" "ldurb" n.half(rs[0]) rs[1] x.mode 1)
                 end
             when opStore with x then
                 case x.store
-                    when store64 then access("str" "stur" name(rs[0]) rs[1] x.mode 8)
-                    when store32 then access("str" "stur" target.half(rs[0]) rs[1] x.mode 4)
-                    when store8 then access("strb" "sturb" target.half(rs[0]) rs[1] x.mode 1)
+                    when store64 then access(n "str" "stur" n.full(rs[0]) rs[1] x.mode 8)
+                    when store32 then access(n "str" "stur" n.half(rs[0]) rs[1] x.mode 4)
+                    when store8 then access(n "strb" "sturb" n.half(rs[0]) rs[1] x.mode 1)
                 end
-            when opLdp with x then "ldp " <> name(rs[0]) <> ", " <> name(rs[1]) <> ", " <> address(rs[2] x.mode)
-            when opStp with x then "stp " <> name(rs[0]) <> ", " <> name(rs[1]) <> ", " <> address(rs[2] x.mode)
-            when opAdrp with x then "adrp " <> name(rs[0]) <> ", " <> asm.reference(x.symbol x.reloc false)
+            when opLdp with x then "ldp " <> n.full(rs[0]) <> ", " <> n.full(rs[1]) <> ", " <> address(n rs[2] x.mode)
+            when opStp with x then "stp " <> n.full(rs[0]) <> ", " <> n.full(rs[1]) <> ", " <> address(n rs[2] x.mode)
+            when opAdrp with x then "adrp " <> n.full(rs[0]) <> ", " <> asm.reference(x.symbol x.reloc false)
             when opAddPageOff with x then
-                "add " <> operands(array of name(rs[0]) name(rs[1]) asm.reference(x.symbol minst.relocPage true) end)
-            when opAdr with x then "adr " <> name(rs[0]) <> ", " <> x.label
+                "add "
+                    <> operands(array of n.full(rs[0]) n.full(rs[1]) asm.reference(x.symbol minst.relocPage true) end)
+            when opAdr with x then "adr " <> n.full(rs[0]) <> ", " <> x.label
             when opB with x then "b " <> x.label
             when opBSymbol with x then "b " <> asm.symbol(x.symbol)
             when opBl with x then "bl " <> asm.symbol(x.symbol)
-            when opBlr then "blr " <> name(rs[0])
-            when opBr then "br " <> name(rs[0])
+            when opBlr then "blr " <> n.full(rs[0])
+            when opBr then "br " <> n.full(rs[0])
             when opRet then "ret"
-            when opCbz with x then "cbz " <> name(rs[0]) <> ", " <> x.label
-            when opCbnz with x then "cbnz " <> name(rs[0]) <> ", " <> x.label
+            when opCbz with x then "cbz " <> n.full(rs[0]) <> ", " <> x.label
+            when opCbnz with x then "cbnz " <> n.full(rs[0]) <> ", " <> x.label
             when opBCond with x then "b." <> condition(x.cond) <> " " <> x.label
             when opBrk with x then "brk " <> immediate(x.imm)
             when opLabel with x then x.label
@@ -114,12 +125,71 @@ export
             when opCfiOffset with x then ".cfi_offset " <> cfiName(rs[0]) <> ", " <> asm.decimal(x.offset)
         end
 
-    let line(i: minst.Inst): String =
-        case i.op
-            when opLabel with x then x.label <> ":"
-            when opMovImm, opMovz, opMovk, opMov, opArith, opAddImm, opSubImm, opAndImm, opMsub, opSxtb, opSxtw, opCmp,
-                opFcmp, opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
-                opBr, opRet, opCbz, opCbnz, opBCond, opBrk, opCfiDefCfa, opCfiOffset then
-                "\t" <> instruction(i.op i.regs)
+    (* The instructions a pseudo-instruction stands for *)
+    let expansion(op: minst.Op rs: Array(Int)): Array(minst.Inst) =
+        begin
+            let code = vector.new(:minst.Inst)
+            let d = if extent rs > 0 then rs[0] else ~1 end
+            case op
+                when opMovConst with x then
+                    if x.imm is 0 then vector.append(:minst.Inst code minst.movImm(d 0))
+                    else
+                        let w = word.fromInt(x.imm)
+                        let var first = true
+                        for k = 0 upto 3 do
+                            let h = word.toInt(word.extract(w 16 * k 16))
+                            if h isnot 0 then
+                                vector.append(:minst.Inst code
+                                    if first then minst.movz(d h 16 * k) else minst.movk(d h 16 * k) end)
+                                first := false
+                            end
+                        end
+                    end
+                when opSymbolAddress with x then
+                    if x.local then
+                        vector.append(:minst.Inst code minst.adrp(d x.symbol minst.relocPage))
+                        vector.append(:minst.Inst code minst.addPageOff(d d x.symbol))
+                    else
+                        vector.append(:minst.Inst code minst.adrp(d x.symbol minst.relocGot))
+                        vector.append(:minst.Inst code minst.load(minst.load64 d d minst.pageOff(x.symbol
+                            minst.relocGot)))
+                    end
+                    (* An offset past the symbol (small, as the SSA's are) *)
+                    if x.offset is 0 then ok
+                    elsif {x.offset > 0} andif {x.offset < 4096} then
+                        vector.append(:minst.Inst code minst.addImm(d d x.offset 0))
+                    elsif {x.offset < 0} andif {x.offset > ~4096} then
+                        vector.append(:minst.Inst code minst.subImm(d d 0 - x.offset))
+                    else
+                        vector.append(:minst.Inst code minst.movImm(target.x(17) x.offset))
+                        vector.append(:minst.Inst code minst.arith(minst.arithAdd d d target.x(17)))
+                    end
+                when opTlvAddress with x then
+                    vector.append(:minst.Inst code minst.adrp(d x.symbol minst.relocTlv))
+                    vector.append(:minst.Inst code minst.load(minst.load64 d d minst.pageOff(x.symbol minst.relocTlv)))
+                    vector.append(:minst.Inst code minst.load(minst.load64 target.x(16) d minst.modeBase))
+                    vector.append(:minst.Inst code minst.blr(target.x(16)))
+                when opMovImm, opMovz, opMovk, opMov, opArith, opAddImm, opSubImm, opAndImm, opShiftImm, opMsub, opSxtb,
+                    opSxtw, opCmp, opFcmp, opCmpImm, opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr,
+                    opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opBCond, opBrk, opLabel, opCfiDefCfa,
+                    opCfiOffset then
+                    vector.append(:minst.Inst code tuple let op = op let regs = rs end)
+            end
+            vector.toArray(:minst.Inst code)
+        end
+
+    let lines(op: minst.Op regs: Array(Int) n: Names): Array(String) =
+        case op
+            when opLabel with x then array of x.label <> ":" end
+            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
+                opSubImm, opAndImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCset, opLoad,
+                opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz,
+                opCbnz, opBCond, opBrk, opCfiDefCfa, opCfiOffset then
+                let expanded = expansion(op regs)
+                let ls = array of(extent expanded "")
+                for k = 0 upto {extent expanded - 1} do
+                    ls[k] := "\t" <> instruction(n expanded[k].op expanded[k].regs)
+                end
+                ls
         end
 end

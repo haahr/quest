@@ -48,23 +48,36 @@ export
         opMovImm with imm: Int end
         opMovz with imm: Int shift: Int end
         opMovk with imm: Int shift: Int end
+        (* d := any Int, by the fewest of movz and movk (or a mov of 0),
+         * which the printer writes *)
+        opMovConst with imm: Int end
+        (* d := a symbol's address plus offset: local is whether the unit
+         * defines it, else its address is in the GOT (x17 holds a large
+         * offset) *)
+        opSymbolAddress with symbol: String offset: Int local: Bool end
+        (* d (x0) := a thread-local's address, from its accessor, which
+         * clobbers x16 and lr: a call *)
+        opTlvAddress with symbol: String end
         (* d, s: a register's copy, of either class *)
         opMov
         (* d, x, y *)
         opArith with arith: Arith end
         (* d, s: d := s plus, less, or and an immediate; add's shifted left
-         * by shift (0 or 12) *)
+         * by shift (0 or 12); or s shifted by one (lsl, lsr, or asr) *)
         opAddImm with imm: Int shift: Int end
         opSubImm with imm: Int end
         opAndImm with imm: Int end
+        opShiftImm with arith: Arith imm: Int end
         (* d, x, y, z: d := z - x * y *)
         opMsub
         (* d, s: s's low byte, or its low 4 bytes, sign-extended *)
         opSxtb
         opSxtw
-        (* x, y: the flags set by their comparison *)
+        (* x, y: the flags set by their comparison; x: by its comparison
+         * with an immediate *)
         opCmp
         opFcmp
+        opCmpImm with imm: Int end
         (* d: 1 if the condition holds, else 0 *)
         opCset with cond: Cond end
         (* t, base: t loaded from, or stored to, memory *)
@@ -117,6 +130,11 @@ export
     condVc: Cond
     (* The condition that holds where c does not *)
     inverse(c: Cond): Cond
+    (* How many of an Op's registers, its first, it writes *)
+    results(op: Op): Int
+    (* Whether an Op only computes its results: no memory, flags, or
+     * control *)
+    pure(op: Op): Bool
 
     arithAdd: Arith
     arithSub: Arith
@@ -155,16 +173,21 @@ export
     movImm(d: Int imm: Int): Inst
     movz(d: Int imm: Int shift: Int): Inst
     movk(d: Int imm: Int shift: Int): Inst
+    movConst(d: Int imm: Int): Inst
+    symbolAddress(d: Int symbol: String offset: Int local: Bool): Inst
+    tlvAddress(d: Int symbol: String): Inst
     mov(d: Int s: Int): Inst
     arith(a: Arith d: Int x: Int y: Int): Inst
     addImm(d: Int s: Int imm: Int shift: Int): Inst
     subImm(d: Int s: Int imm: Int): Inst
     andImm(d: Int s: Int imm: Int): Inst
+    shiftImm(a: Arith d: Int s: Int imm: Int): Inst
     msub(d: Int x: Int y: Int z: Int): Inst
     sxtb(d: Int s: Int): Inst
     sxtw(d: Int s: Int): Inst
     cmp(x: Int y: Int): Inst
     fcmp(x: Int y: Int): Inst
+    cmpImm(x: Int imm: Int): Inst
     cset(c: Cond d: Int): Inst
     load(l: Load t: Int base: Int m: Mode): Inst
     store(s: Store t: Int base: Int m: Mode): Inst

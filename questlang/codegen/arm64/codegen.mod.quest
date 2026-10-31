@@ -6,6 +6,7 @@ import
     questlang/codegen/arm64/asm : questlang/codegen/arm64/Asm
     questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
     questlang/codegen/arm64/printer : questlang/codegen/arm64/Printer
+    questlang/codegen/arm64/select : questlang/codegen/arm64/Select
     questlang/codegen/arm64/target : questlang/codegen/arm64/Target
     questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
     questlang/codegen/regalloc : questlang/codegen/Regalloc
@@ -55,84 +56,9 @@ export
     (* Not a register: a value's memory *)
     let memory = regalloc.memory
 
-    (* =========================================================================
-     * Where arguments go (AAPCS64, docs/arm64.md section 3.3)
-     * ====================================================================== *)
-
-    (* A register (x0-x7 or d0-d7), or with reg memory, the stack at offset,
-     * of bytes 8, 4, or 1 *)
-    Let ArgumentPlace = Tuple reg: Int offset: Int bytes: Int end
-    Let Placed = Tuple places: Array(ArgumentPlace) stackBytes: Int end
-
-    let isPair(p: ssa.Passed): Bool =
-        case p
-            when passPair then true
-            when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false
-        end
-
-    (* The places of values of types from first on, passed as the signature's
-     * parameters say: an integer or a pointer (and a composite's copy's
-     * address) in the next x register, a double in the next d register, a
-     * 16-byte composite in two consecutive x registers or wholly on the stack,
-     * and the rest on the stack, as Darwin packs them: a byte (a C bool or
-     * char) in a byte, a C int in 4 aligned bytes, the others in 8 *)
+    Let Placed = select.Placed
     let placeArguments(types: Array(ssa.Type) passed: Array(ssa.Passed) first: Int): Placed =
-        begin
-            let places = array of(extent types tuple let reg = memory let offset = 0 let bytes = 8 end)
-            let var ngrn = 0
-            let var nsrn = 0
-            let var nsaa = 0
-            let x(n: Int): ArgumentPlace = tuple let reg = target.x(n) let offset = 0 let bytes = 8 end
-            (* The stack place of the argument at k, after at bytes: at its C
-             * type's size and alignment, as Darwin places them (a C bool or
-             * char a byte, a C int 4 bytes, the rest 8; the runtime's
-             * functions take no other narrow type, which
-             * tests/python/test_runtime_signatures.py checks, docs/arm64.md
-             * section 10, hazard 3) *)
-            let stackAfter(at: Int k: Int): ArgumentPlace =
-                begin
-                    let bytes = case passed[k]
-                        when passByte then 1
-                        when passInt32 then 4
-                        when passWord, passReal, passPair, passPairRest, passMemory then 8
-                    end
-                    tuple let reg = memory let offset = alignUp(at bytes) let bytes = bytes end
-                end
-            let var k = first
-            while k < extent types do
-                if isPair(passed[k]) then
-                    if ngrn <= 6 then
-                        places[k] := x(ngrn)
-                        places[k + 1] := x(ngrn + 1)
-                        ngrn := ngrn + 2
-                    else
-                        ngrn := 8
-                        places[k] := stackAfter(nsaa k)
-                        places[k + 1] := stackAfter({places[k].offset + places[k].bytes} {k + 1})
-                        nsaa := places[k + 1].offset + places[k + 1].bytes
-                    end
-                    k := k + 2
-                else
-                    if isReal(types[k]) then
-                        if nsrn < 8 then
-                            places[k] := tuple let reg = target.d(nsrn) let offset = 0 let bytes = 8 end
-                            nsrn := nsrn + 1
-                        else
-                            places[k] := stackAfter(nsaa k)
-                            nsaa := places[k].offset + places[k].bytes
-                        end
-                    else
-                        if ngrn < 8 then begin places[k] := x(ngrn) ngrn := ngrn + 1 end
-                        else
-                            places[k] := stackAfter(nsaa k)
-                            nsaa := places[k].offset + places[k].bytes
-                        end
-                    end
-                    k := k + 1
-                end
-            end
-            tuple let places = places let stackBytes = alignUp(nsaa 16) end
-        end
+        select.placeArguments(types passed first)
 
     (* =========================================================================
      * A function's frame: below the frame record and the callee-saved
@@ -1048,7 +974,9 @@ export
             let start = asm.functionStart(f.symbol f.exported)
             for k = 0 upto {extent start - 1} do vector.append(:String lines start[k]) end
             for k = 0 upto {vector.length(:minst.Inst fr.code) - 1} do
-                vector.append(:String lines printer.line(vector.get(:minst.Inst fr.code k)))
+                let i = vector.get(:minst.Inst fr.code k)
+                let ls = printer.lines(i.op i.regs printer.physical)
+                for j = 0 upto {extent ls - 1} do vector.append(:String lines ls[j]) end
             end
             for k = 0 upto {extent asm.functionEnd - 1} do vector.append(:String lines asm.functionEnd[k]) end
             relaxBranches(lines fr.prefix branchReach)

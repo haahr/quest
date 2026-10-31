@@ -1,0 +1,227 @@
+(* Quest Self-Hosted Compiler: Machine Functions Implementation *)
+
+module machine : Machine
+import
+    targets = questlang/codegen/target : questlang/codegen/Target
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    collections/vector : collections/Vector
+    collections/bitset : collections/Bitset
+    util/stringBuilder : util/StringBuilder
+    conv : Conv
+export
+    Def Kind = Option kindOrdinary kindMove kindJump kindBranch kindCall kindReturn end
+    Def Operand = Tuple var reg: Int defines: Bool end
+    Def Inst = Tuple kind: Kind var operands: Array(Operand) op: Int target: Int end
+    Def Block = Tuple params: vector.T(Int) insts: vector.T(Inst) var raised: Bool end
+    Def Function = Tuple blocks: vector.T(Block) firstVirtual: Int classes: vector.T(targets.Class) end
+    Def Lowering = Tuple move: All(dst: Int src: Int) Inst end
+    Def Live = Tuple liveIn: Array(bitset.T) liveOut: Array(bitset.T) end
+
+    let add(s: bitset.T v: Int): Ok = if bitset.insert(s v) then ok else ok end
+
+    let newFunction(physical: Int): Function =
+        tuple
+            let blocks = vector.new(:Block) let firstVirtual = physical let classes = vector.new(:targets.Class)
+        end
+    let newBlock(f: Function): Int =
+        begin
+            vector.append(:Block f.blocks tuple
+                let params = vector.new(:Int) let insts = vector.new(:Inst) let var raised = false
+            end)
+            vector.length(:Block f.blocks) - 1
+        end
+    let block(f: Function b: Int): Block = vector.get(:Block f.blocks b)
+    let newVirtual(f: Function c: targets.Class): Int =
+        begin
+            vector.append(:targets.Class f.classes c)
+            {f.firstVirtual + vector.length(:targets.Class f.classes)} - 1
+        end
+    let addParam(f: Function b: Int c: targets.Class): Int =
+        begin
+            let r = newVirtual(f c)
+            vector.append(:Int block(f b).params r)
+            r
+        end
+    let append(f: Function b: Int i: Inst): Ok = vector.append(:Inst block(f b).insts i)
+    let isVirtual(f: Function r: Int): Bool = r >= f.firstVirtual
+    let index(f: Function r: Int): Int = r - f.firstVirtual
+    let virtualClass(f: Function r: Int): targets.Class = vector.get(:targets.Class f.classes r - f.firstVirtual)
+    let virtuals(f: Function): Int = vector.length(:targets.Class f.classes)
+
+    let reads(r: Int): Operand = tuple let var reg = r let defines = false end
+    let writes(r: Int): Operand = tuple let var reg = r let defines = true end
+    let kindOrdinary: Kind = option kindOrdinary of Kind end
+    let kindMove: Kind = option kindMove of Kind end
+    let kindJump: Kind = option kindJump of Kind end
+    let kindBranch: Kind = option kindBranch of Kind end
+    let kindCall: Kind = option kindCall of Kind end
+    let kindReturn: Kind = option kindReturn of Kind end
+    let inst(kind: Kind operands: Array(Operand) op: Int target: Int): Inst =
+        tuple let kind = kind let var operands = operands let op = op let target = target end
+    let kindIndex(k: Kind): Int =
+        case k
+            when kindOrdinary then 0 when kindMove then 1 when kindJump then 2 when kindBranch then 3
+            when kindCall then 4 when kindReturn then 5
+        end
+    let isKind(i: Inst k: Kind): Bool = kindIndex(i.kind) is kindIndex(k)
+    let kindName(k: Kind): String =
+        case k
+            when kindOrdinary then "ordinary" when kindMove then "move" when kindJump then "jump"
+            when kindBranch then "branch" when kindCall then "call" when kindReturn then "return"
+        end
+
+    (* Each virtual register's uses counted, then each pure instruction whose
+     * results have none removed, its operands' counts lowered, until no
+     * more is *)
+    let removeDead(f: Function pure: All(i: Inst) Bool): Ok =
+        begin
+            let nBlocks = vector.length(:Block f.blocks)
+            let uses = array of(virtuals(f) 0)
+            let count(i: Inst by: Int): Ok =
+                for a = 0 upto {extent i.operands - 1} do
+                    let o = i.operands[a]
+                    if isVirtual(f o.reg) andif not(o.defines) then
+                        uses[index(f o.reg)] := uses[index(f o.reg)] + by
+                    end
+                end
+            let dead(i: Inst): Bool =
+                begin
+                    let var unused = {isKind(i kindOrdinary) orif isKind(i kindMove)} andif pure(i)
+                    for a = 0 upto {extent i.operands - 1} do
+                        let o = i.operands[a]
+                        if o.defines andif {not(isVirtual(f o.reg)) orif {uses[index(f o.reg)] > 0}} then
+                            unused := false
+                        end
+                    end
+                    unused
+                end
+            for b = 0 upto {nBlocks - 1} do
+                let insts = block(f b).insts
+                for j = 0 upto {vector.length(:Inst insts) - 1} do count(vector.get(:Inst insts j) 1) end
+            end
+            let var changed = true
+            while changed do
+                changed := false
+                for b = 0 upto {nBlocks - 1} do
+                    let insts = block(f b).insts
+                    let kept = vector.new(:Inst)
+                    for j = 0 upto {vector.length(:Inst insts) - 1} do
+                        let i = vector.get(:Inst insts j)
+                        if dead(i) then
+                            count(i ~1)
+                            changed := true
+                        else vector.append(:Inst kept i) end
+                    end
+                    vector.clear(:Inst insts)
+                    for j = 0 upto {vector.length(:Inst kept) - 1} do
+                        vector.append(:Inst insts vector.get(:Inst kept j))
+                    end
+                end
+            end
+        end
+
+    let successors(f: Function b: Int): Array(Int) =
+        begin
+            let blk = block(f b)
+            let succs = vector.new(:Int)
+            for k = 0 upto {vector.length(:Inst blk.insts) - 1} do
+                let i = vector.get(:Inst blk.insts k)
+                if i.target >= 0 then vector.append(:Int succs i.target) end
+            end
+            vector.toArray(:Int succs)
+        end
+
+    let order(f: Function): Array(Int) =
+        begin
+            let n = vector.length(:Block f.blocks)
+            let succs = array of(n array of :Int end)
+            for b = 0 upto {n - 1} do succs[b] := successors(f b) end
+            cfg.reversePostorder(succs)
+        end
+
+    (* Each block's definitions and the uses before them, then what flows
+     * backward to a fixed point, the blocks taken in postorder *)
+    let live(f: Function): Live =
+        begin
+            let n = virtuals(f)
+            let nBlocks = vector.length(:Block f.blocks)
+            let blocks = order(f)
+            let defs = array of(nBlocks bitset.new(0))
+            let uses = array of(nBlocks bitset.new(0))
+            let liveIn = array of(nBlocks bitset.new(0))
+            let liveOut = array of(nBlocks bitset.new(0))
+            let succs = array of(nBlocks array of :Int end)
+            for b = 0 upto {nBlocks - 1} do
+                defs[b] := bitset.new(n)
+                uses[b] := bitset.new(n)
+                liveIn[b] := bitset.new(n)
+                liveOut[b] := bitset.new(n)
+                succs[b] := successors(f b)
+            end
+            for k = 0 upto {extent blocks - 1} do
+                let b = blocks[k]
+                let blk = block(f b)
+                for p = 0 upto {vector.length(:Int blk.params) - 1} do
+                    add(defs[b] index(f vector.get(:Int blk.params p)))
+                end
+                for j = 0 upto {vector.length(:Inst blk.insts) - 1} do
+                    let i = vector.get(:Inst blk.insts j)
+                    for a = 0 upto {extent i.operands - 1} do
+                        let o = i.operands[a]
+                        if isVirtual(f o.reg) andif not(o.defines)
+                            andif not(bitset.contains(defs[b] index(f o.reg))) then
+                            add(uses[b] index(f o.reg))
+                        end
+                    end
+                    for a = 0 upto {extent i.operands - 1} do
+                        let o = i.operands[a]
+                        if isVirtual(f o.reg) andif o.defines then add(defs[b] index(f o.reg)) end
+                    end
+                end
+            end
+            let var changed = true
+            while changed do
+                changed := false
+                for k = {extent blocks - 1} downto 0 do
+                    let b = blocks[k]
+                    let flowing = bitset.new(n)
+                    for s = 0 upto {extent succs[b] - 1} do
+                        if bitset.unionWith(flowing liveIn[succs[b][s]]) then ok end
+                    end
+                    bitset.assign(liveOut[b] flowing)
+                    if bitset.subtract(flowing defs[b]) then ok end
+                    if bitset.unionWith(flowing uses[b]) then ok end
+                    if not(bitset.equal(flowing liveIn[b])) then
+                        bitset.assign(liveIn[b] flowing)
+                        changed := true
+                    end
+                end
+            end
+            tuple let liveIn = liveIn let liveOut = liveOut end
+        end
+
+    let format(f: Function name: All(r: Int) String line: All(i: Inst) String): String =
+        begin
+            let text = stringBuilder.new()
+            for b = 0 upto {vector.length(:Block f.blocks) - 1} do
+                let blk = block(f b)
+                text.str("b" <> conv.int(b))
+                if vector.length(:Int blk.params) > 0 then
+                    text.str("(")
+                    for p = 0 upto {vector.length(:Int blk.params) - 1} do
+                        if p > 0 then text.str(" ") end
+                        text.str(name(vector.get(:Int blk.params p)))
+                    end
+                    text.str(")")
+                end
+                text.str(if blk.raised then ": raised\n" else ":\n" end)
+                for j = 0 upto {vector.length(:Inst blk.insts) - 1} do
+                    let i = vector.get(:Inst blk.insts j)
+                    text.str("\t" <> line(i))
+                    if i.target >= 0 then text.str(" -> b" <> conv.int(i.target)) end
+                    text.str("\n")
+                end
+            end
+            text.toString()
+        end
+end

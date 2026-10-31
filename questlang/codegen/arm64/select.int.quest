@@ -1,0 +1,76 @@
+(* Quest Self-Hosted Compiler: arm64 Instruction Selection Interface
+ *
+ * A function's SSA as a machine function (codegen/machine) of arm64's
+ * instructions (codegen/arm64/minst) over virtual registers, one for each SSA
+ * value, the same number less the function's firstVirtual, and more for what
+ * an instruction needs in between (docs/backend-improvements.md section 3.8,
+ * docs/arm64.md section 3.5). What it chooses:
+ *
+ *   - immediates: an add, a sub, a shift, or a comparison of a constant that
+ *     fits takes it as an immediate, a store of zero stores xzr, and a load
+ *     or store takes its offset, all leaving the constant unused unless
+ *     something else uses it;
+ *   - fused comparisons: a branch on a comparison in its block used nowhere
+ *     else is the comparison and a conditional branch (cbz or cbnz against
+ *     zero);
+ *   - addressing: a load or store from a ptrAdd of a constant addresses
+ *     memory from the ptrAdd's pointer, its offset folded in;
+ *   - the calling convention (AAPCS64, docs/arm64.md section 3.3) as moves to
+ *     and from fixed registers: arguments before a call, its results after,
+ *     a function's parameters at its entry, and returned values before a
+ *     return;
+ *   - control: the entry, a block of its own, jumps to the first block with
+ *     the parameters; a conditional branch goes to a block of its own that
+ *     jumps on with the target's arguments; a try stores its handler's
+ *     record and jumps to its body, its handler entered by a raise through a
+ *     block beside it (section 3.6).
+ *
+ * Instructions whose results nothing uses are then removed. Labels are
+ * prefix_bN for the Nth block. The frame is the outgoing arguments' area at
+ * sp, then the stack slots, then what codegen adds after allocation. *)
+
+interface Select
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/machine : questlang/codegen/Machine
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+    collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
+export
+    Def Selection = Tuple
+        f: machine.Function
+        (* Each instruction's operation, by its index *)
+        ops: vector.T(minst.Op)
+        (* Each virtual register's SSA type, by its index (an SSA value's own) *)
+        types: vector.T(ssa.Type)
+        (* The blocks, in the order their code is laid out *)
+        layout: vector.T(Int)
+        prefix: String
+        (* The bytes of the outgoing arguments' area, each stack slot's offset
+         * from sp, and the offset past the slots *)
+        outgoing: Int
+        slotAt: Array(Int)
+        slotsEnd: Int
+        (* Whether the function enters a try *)
+        entersTry: Bool
+    end
+
+    (* A function's selection; defined says which symbols the unit defines *)
+    select(f: ssa.Function prefix: String defined: hashMap.T(String Bool)): Selection
+    label(s: Selection b: Int): String
+    (* The instructions shared code makes, their operations added to s's *)
+    lowering(s: Selection): machine.Lowering
+    (* Whether an instruction only computes its results *)
+    pure(s: Selection i: machine.Inst): Bool
+    (* The selection as text, a virtual register %N *)
+    format(s: Selection): String
+
+    (* Where an argument goes (AAPCS64, docs/arm64.md section 3.3): a
+     * register (x0-x7 or d0-d7), or with reg ~1, the stack at offset, of
+     * bytes 8, 4, or 1 *)
+    Def ArgumentPlace = Tuple reg: Int offset: Int bytes: Int end
+    Def Placed = Tuple places: Array(ArgumentPlace) stackBytes: Int end
+    (* The places of values of types from first on, passed as the signature's
+     * parameters say *)
+    placeArguments(types: Array(ssa.Type) passed: Array(ssa.Passed) first: Int): Placed
+end

@@ -1,0 +1,163 @@
+(* Self-Hosted Quest Compiler: Test the arm64 Backend's Instruction Selection
+ *
+ * questlang/codegen/arm64/select (docs/backend-improvements.md section 3.8)
+ * on functions of the SSA built by hand, each shown as its machine function
+ * over virtual registers (%N, the SSA value N or a register selection added):
+ * constants an add, a sub, a shift, or a comparison takes as an immediate,
+ * and a store of zero storing xzr, the constants left unused and removed; a
+ * branch on a comparison fused into a cmp (or a cbz) and a conditional branch,
+ * but not one used twice; a load or store from a ptrAdd of a constant with
+ * the offset folded in; a call's arguments and results moved to and from
+ * fixed registers, on the stack past them, and a call through a pointer; a
+ * return; tail calls of the function itself, of another, and through a
+ * pointer; a switch; and a try, its handler entered through a block beside
+ * it. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/verify : questlang/ssa/Verify
+    questlang/codegen/arm64/select : questlang/codegen/arm64/Select
+    collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
+    writer : Writer
+    stringOp = string : StringOp
+;
+
+let tInt = ssa.typeInt;
+let tPtr = ssa.typePtr;
+let tReal = ssa.typeReal;
+let none = array of :Int end;
+let noTypes = array of :ssa.Type end;
+let params(f: ssa.Function): Array(Int) = vector.toArray(:Int ssa.block(f 0).params);
+let ret(f: ssa.Function b: Int vs: Array(Int)): Ok =
+    ssa.terminate(f b option termReturn of ssa.Terminator with let values = vs end);
+let branch(f: ssa.Function b: Int c: Int t: Int e: Int): Ok =
+    ssa.terminate(f b option termBranch of ssa.Terminator with
+        let cond = c let ifTrue = ssa.target(t none) let ifFalse = ssa.target(e none)
+    end);
+let call(f: ssa.Function b: Int symbol: String args: Array(Int) results: Array(ssa.Type)): Array(Int) =
+    ssa.call(f b symbol args ssa.signature(ssa.valueTypes(f args) results none none) results);
+let defined = hashMap.new(:String :Bool stringOp.equal hash.string);
+hashMap.insert(:String :Bool defined "qf_local" true);
+let show(title: String f: ssa.Function): Ok =
+    begin
+        let problems = verify.functionProblems(f)
+        for i = 0 upto {extent problems - 1} do writer.putString(writer.output "problem: " <> problems[i] <> "\n") end
+        writer.putString(writer.output "== " <> title <> "\n")
+        writer.putString(writer.output select.format(select.select(f "Lt" defined)))
+    end;
+
+(* 1. Immediates: an add, a sub (and an add of a negative), a large add, a
+ * shift, a comparison, and a store of zero; the add of a constant too large
+ * keeps it *)
+let imm = ssa.newFunction("qf_imm" false array of tInt tPtr end array of tInt end);
+let ip = params(imm);
+let a1 = ssa.binary(imm 0 ssa.opAdd ip[0] ssa.constant(imm 0 5));
+let a2 = ssa.binary(imm 0 ssa.opSub a1 ssa.constant(imm 0 7));
+let a3 = ssa.binary(imm 0 ssa.opAdd ssa.constant(imm 0 ~10) a2);
+let a4 = ssa.binary(imm 0 ssa.opAdd a3 ssa.constant(imm 0 12288));
+let a5 = ssa.binary(imm 0 ssa.opShl a4 ssa.constant(imm 0 3));
+let a6 = ssa.binary(imm 0 ssa.opAdd a5 ssa.constant(imm 0 1000000));
+let a7 = ssa.binary(imm 0 ssa.opLt a6 ssa.constant(imm 0 100));
+ssa.store(imm 0 ip[1] 8 8 ssa.constant(imm 0 0));
+ssa.store(imm 0 ip[1] 16 8 ssa.null(imm 0));
+ret(imm 0 array of a7 end);
+show("immediates" imm);
+
+(* 2. Branches: on a comparison with an immediate, on a pointer's equality to
+ * the null, on a Real comparison, on a Bool, and on a comparison used twice *)
+let br = ssa.newFunction("qf_branches" false array of tInt tPtr tReal tInt end array of tInt end);
+let bp = params(br);
+let b1 = ssa.newBlock(br);
+let b2 = ssa.newBlock(br);
+let b3 = ssa.newBlock(br);
+let b4 = ssa.newBlock(br);
+let b5 = ssa.newBlock(br);
+branch(br 0 ssa.binary(br 0 ssa.opLt bp[0] ssa.constant(br 0 10)) b1 b5);
+branch(br b1 ssa.binary(br b1 ssa.opPeq bp[1] ssa.null(br b1)) b2 b5);
+branch(br b2 ssa.binary(br b2 ssa.opFlt bp[2] bp[2]) b3 b5);
+branch(br b3 bp[3] b4 b5);
+let twice = ssa.binary(br b4 ssa.opGe bp[0] bp[3]);
+let b6 = ssa.newBlock(br);
+branch(br b4 twice b6 b5);
+ret(br b6 array of twice end);
+ret(br b5 array of ssa.constant(br b5 0) end);
+show("fused comparisons" br);
+
+(* 3. Addressing: a load and a store from a ptrAdd of a constant, its offset
+ * folded in; one whose sum does not fit; and a ptrAdd used as a value *)
+let addr = ssa.newFunction("qf_addressing" false array of tPtr end array of tPtr end);
+let ap = params(addr);
+let field = ssa.ptrAdd(addr 0 ap[0] ssa.constant(addr 0 16));
+let loaded = ssa.load(addr 0 field 8 8 false tInt);
+ssa.store(addr 0 field 4 4 loaded);
+let far = ssa.ptrAdd(addr 0 ap[0] ssa.constant(addr 0 40000));
+ssa.store(addr 0 far 8 8 loaded);
+ret(addr 0 array of far end);
+show("addressing" addr);
+
+(* 4. Calls: one of a local function, its Int and Real arguments in
+ * registers and two past them on the stack, with a result; one through a
+ * pointer; a thread-local's address *)
+let calls = ssa.newFunction("qf_calls" false array of tInt tReal end array of tReal end);
+let cp = params(calls);
+let cargs = array of(10 cp[0]);
+cargs[1] := cp[1];
+let cr = call(calls 0 "qf_local" cargs array of tReal end)[0];
+let fnAt = ssa.symbolAddress(calls 0 "qf_other");
+let ignored = call(calls 0 "" array of fnAt cp[0] end noTypes);
+let tl = ssa.threadLocal(calls 0 "quest_current_exception_handler");
+ssa.store(calls 0 tl 0 8 cp[0]);
+ret(calls 0 array of cr end);
+show("calls" calls);
+
+(* 5. Tail calls: of itself, of another, and through a pointer *)
+let tails = ssa.newFunction("qf_tails" false array of tInt tPtr end array of tInt end);
+let tp = params(tails);
+let t1 = ssa.newBlock(tails);
+let t2 = ssa.newBlock(tails);
+let t3 = ssa.newBlock(tails);
+let t4 = ssa.newBlock(tails);
+branch(tails 0 tp[0] t1 t2);
+let sig = ssa.signature(array of tInt tPtr end array of tInt end none none);
+ssa.tailCall(tails t1 "qf_tails" array of ssa.binary(tails t1 ssa.opSub tp[0] ssa.constant(tails t1 1)) tp[1] end sig
+    array of tInt end);
+branch(tails t2 ssa.binary(tails t2 ssa.opPne tp[1] ssa.null(tails t2)) t3 t4);
+ssa.tailCall(tails t3 "qf_other" array of tp[0] tp[1] end sig array of tInt end);
+ssa.tailCall(tails t4 "" array of tp[1] tp[0] end ssa.signature(array of tPtr tInt end array of tInt end none none)
+    array of tInt end);
+show("tail calls" tails);
+
+(* 6. A switch, a constant too large for cmp's immediate among its cases *)
+let sw = ssa.newFunction("qf_switch" false array of tInt end array of tInt end);
+let swp = params(sw);
+let s1 = ssa.newBlock(sw);
+let s2 = ssa.newBlock(sw);
+let s3 = ssa.newBlock(sw);
+let s4 = ssa.newBlock(sw);
+ssa.terminate(sw 0 option termSwitch of ssa.Terminator with
+    let value = swp[0] let cases = array of 0 1 5000 end
+    let targets = array of ssa.target(s1 none) ssa.target(s2 none) ssa.target(s3 none) end
+    let default = ssa.target(s4 none)
+end);
+ret(sw s1 array of ssa.constant(sw s1 1) end);
+ret(sw s2 array of ssa.constant(sw s2 2) end);
+ret(sw s3 array of ssa.constant(sw s3 3) end);
+ret(sw s4 array of swp[0] end);
+show("a switch" sw);
+
+(* 7. A try *)
+let tries = ssa.newFunction("qf_try" false array of tInt end array of tInt end);
+let handlerSlot = ssa.newSlot(tries 240 16);
+let tryBody = ssa.newBlock(tries);
+let handler = ssa.newBlock(tries);
+let before = ssa.binary(tries 0 ssa.opMul params(tries)[0] params(tries)[0]);
+ssa.terminate(tries 0 option termTry of ssa.Terminator with
+    let slot = handlerSlot let body = ssa.target(tryBody none) let handler = handler
+end);
+call(tries tryBody "quest_pop_handler" none noTypes);
+ret(tries tryBody array of params(tries)[0] end);
+ret(tries handler array of before end);
+show("a try" tries);
