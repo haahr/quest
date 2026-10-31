@@ -1,0 +1,220 @@
+(* Quest Self-Hosted Compiler: The SSA's Control Flow Graph Implementation *)
+
+module cfg : Cfg
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    collections/vector : collections/Vector
+export
+    Def Graph = Tuple
+        preds: Array(Array(Int))
+        succs: Array(Array(Int))
+        order: Array(Int)
+        rank: Array(Int)
+        idom: Array(Int)
+        children: Array(Array(Int))
+        pre: Array(Int)
+        post: Array(Int)
+    end
+
+    let none: Array(Int) = array of :Int end
+
+    (* Reverse postorder from the entry, by an explicit stack of (block, next
+     * successor) *)
+    let reversePostorder(succs: Array(Array(Int))): Array(Int) =
+        begin
+            let n = extent succs
+            let visited = array of(n false)
+            let post = vector.new(:Int)
+            let stackBlocks = vector.new(:Int)
+            let stackNext = vector.new(:Int)
+            if n > 0 then
+                visited[0] := true
+                vector.append(:Int stackBlocks 0)
+                vector.append(:Int stackNext 0)
+            end
+            while not(vector.empty(:Int stackBlocks)) do
+                let top = vector.length(:Int stackBlocks) - 1
+                let b = vector.get(:Int stackBlocks top)
+                let k = vector.get(:Int stackNext top)
+                if k < extent succs[b] then
+                    vector.set(:Int stackNext top k + 1)
+                    let s = succs[b][k]
+                    if {s >= 0} andif {s < n} andif not(visited[s]) then
+                        visited[s] := true
+                        vector.append(:Int stackBlocks s)
+                        vector.append(:Int stackNext 0)
+                    end
+                else
+                    vector.pop(:Int stackBlocks)
+                    vector.pop(:Int stackNext)
+                    vector.append(:Int post b)
+                end
+            end
+            let m = vector.length(:Int post)
+            let order = array of(m 0)
+            for i = 0 upto {m - 1} do order[i] := vector.get(:Int post {m - 1} - i) end
+            order
+        end
+
+    let graph(f: ssa.Function): Graph =
+        begin
+            let n = vector.length(:ssa.Block f.blocks)
+            let succs = array of(n none)
+            for b = 0 upto {n - 1} do succs[b] := ssa.successors(ssa.block(f b).term) end
+            let predLists = array of(n vector.new(:Int))
+            for b = 0 upto {n - 1} do predLists[b] := vector.new(:Int) end
+            for b = 0 upto {n - 1} do
+                for k = 0 upto {extent succs[b] - 1} do
+                    let s = succs[b][k]
+                    if {s >= 0} andif {s < n} then vector.append(:Int predLists[s] b) end
+                end
+            end
+            let preds = array of(n none)
+            for b = 0 upto {n - 1} do preds[b] := vector.toArray(:Int predLists[b]) end
+            let order = reversePostorder(succs)
+            let rank = array of(n ~1)
+            for i = 0 upto {extent order - 1} do rank[order[i]] := i end
+            (* Immediate dominators, to a fixed point in reverse postorder *)
+            let idom = array of(n ~1)
+            if n > 0 then idom[0] := 0 end
+            let intersect(a0: Int b0: Int): Int =
+                begin
+                    let var a = a0
+                    let var b = b0
+                    while a isnot b do
+                        while rank[a] > rank[b] do a := idom[a] end
+                        while rank[b] > rank[a] do b := idom[b] end
+                    end
+                    a
+                end
+            let var changed = true
+            while changed do
+                changed := false
+                for i = 1 upto {extent order - 1} do
+                    let b = order[i]
+                    let var newIdom = ~1
+                    for k = 0 upto {extent preds[b] - 1} do
+                        let p = preds[b][k]
+                        if {rank[p] >= 0} andif {idom[p] >= 0} then
+                            newIdom := if newIdom < 0 then p else intersect(p newIdom) end
+                        end
+                    end
+                    if newIdom isnot idom[b] then
+                        idom[b] := newIdom
+                        changed := true
+                    end
+                end
+            end
+            if n > 0 then idom[0] := ~1 end
+            (* The dominator tree, and its preorder and postorder numbers, by an
+             * explicit stack of (block, next child) *)
+            let childLists = array of(n vector.new(:Int))
+            for b = 0 upto {n - 1} do childLists[b] := vector.new(:Int) end
+            for i = 0 upto {extent order - 1} do
+                let b = order[i]
+                if idom[b] >= 0 then vector.append(:Int childLists[idom[b]] b) end
+            end
+            let children = array of(n none)
+            for b = 0 upto {n - 1} do children[b] := vector.toArray(:Int childLists[b]) end
+            let pre = array of(n ~1)
+            let post = array of(n ~1)
+            let var nextPre = 0
+            let var nextPost = 0
+            if extent order > 0 then
+                let stackBlocks = vector.new(:Int)
+                let stackNext = vector.new(:Int)
+                vector.append(:Int stackBlocks 0)
+                vector.append(:Int stackNext 0)
+                pre[0] := nextPre
+                nextPre := nextPre + 1
+                while not(vector.empty(:Int stackBlocks)) do
+                    let top = vector.length(:Int stackBlocks) - 1
+                    let b = vector.get(:Int stackBlocks top)
+                    let k = vector.get(:Int stackNext top)
+                    if k < extent children[b] then
+                        vector.set(:Int stackNext top k + 1)
+                        let c = children[b][k]
+                        pre[c] := nextPre
+                        nextPre := nextPre + 1
+                        vector.append(:Int stackBlocks c)
+                        vector.append(:Int stackNext 0)
+                    else
+                        vector.pop(:Int stackBlocks)
+                        vector.pop(:Int stackNext)
+                        post[b] := nextPost
+                        nextPost := nextPost + 1
+                    end
+                end
+            end
+            tuple
+                let preds = preds let succs = succs let order = order let rank = rank let idom = idom
+                let children = children let pre = pre let post = post
+            end
+        end
+
+    let reached(g: Graph b: Int): Bool = {b >= 0} andif {b < extent g.rank} andif {g.rank[b] >= 0}
+
+    let dominates(g: Graph a: Int b: Int): Bool =
+        reached(g a) andif reached(g b) andif {g.pre[a] <= g.pre[b]} andif {g.post[b] <= g.post[a]}
+
+    (* Cooper, Harvey, and Kennedy's: from each predecessor of a join up the
+     * dominator tree to the join's immediate dominator *)
+    let frontiers(g: Graph): Array(Array(Int)) =
+        begin
+            let n = extent g.preds
+            let lists = array of(n vector.new(:Int))
+            for b = 0 upto {n - 1} do lists[b] := vector.new(:Int) end
+            for b = 0 upto {n - 1} do
+                if reached(g b) andif {extent g.preds[b] >= 2} then
+                    for p = 0 upto {extent g.preds[b] - 1} do
+                        let var runner = g.preds[b][p]
+                        while reached(g runner) andif {runner isnot g.idom[b]} do
+                            vector.append(:Int lists[runner] b)
+                            runner := g.idom[runner]
+                        end
+                    end
+                end
+            end
+            let result = array of(n none)
+            for b = 0 upto {n - 1} do result[b] := vector.toArray(:Int lists[b]) end
+            result
+        end
+
+    let loopDepths(g: Graph): Array(Int) =
+        begin
+            let n = extent g.preds
+            let depth = array of(n 0)
+            for h = 0 upto {n - 1} do
+                if reached(g h) then
+                    (* The loop of h: the blocks that reach a back edge's source
+                     * without passing h *)
+                    let inLoop = array of(n false)
+                    let work = vector.new(:Int)
+                    for k = 0 upto {extent g.preds[h] - 1} do
+                        let p = g.preds[h][k]
+                        if dominates(g h p) andif not(inLoop[p]) then
+                            inLoop[p] := true
+                            vector.append(:Int work p)
+                        end
+                    end
+                    if not(vector.empty(:Int work)) then
+                        inLoop[h] := true
+                        while not(vector.empty(:Int work)) do
+                            let b = vector.pop(:Int work)
+                            if b isnot h then
+                                for k = 0 upto {extent g.preds[b] - 1} do
+                                    let p = g.preds[b][k]
+                                    if reached(g p) andif not(inLoop[p]) then
+                                        inLoop[p] := true
+                                        vector.append(:Int work p)
+                                    end
+                                end
+                            end
+                        end
+                        for b = 0 upto {n - 1} do if inLoop[b] then depth[b] := depth[b] + 1 end end
+                    end
+                end
+            end
+            depth
+        end
+end

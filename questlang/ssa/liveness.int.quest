@@ -1,0 +1,18 @@
+(* Quest Self-Hosted Compiler: The SSA's Liveness Interface
+ *
+ * Which values are live into and out of each block the entry reaches
+ * (docs/backend-improvements.md section 3.3): a block's parameters and
+ * results are defined in it, its instructions' arguments and its
+ * terminator's operands (a jump's arguments among them) are used, and a value
+ * is live out of a block when it is live into a successor. *)
+
+interface Liveness
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    collections/bitset : collections/Bitset
+export
+    (* Sets of value numbers, by block (empty for a block not reached) *)
+    Def Live = Tuple liveIn: Array(bitset.T) liveOut: Array(bitset.T) end
+    live(f: ssa.Function g: cfg.Graph): Live
+end

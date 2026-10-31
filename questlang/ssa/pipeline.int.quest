@@ -1,0 +1,24 @@
+(* Quest Self-Hosted Compiler: The SSA's Pipeline Interface
+ *
+ * The SSA's passes, by name, in the order they run after the builder
+ * (docs/backend-improvements.md section 3.3): promote, then tailCalls. The
+ * driver dumps the SSA after a pass as phase ssa_NAME (ssa_built for the
+ * builder's, ssa for the last); with QUEST_CHECK_IR=1 the verifier checks the
+ * SSA after the builder and after each pass; QUEST_SKIP_PASSES, a comma-
+ * separated list of names, leaves passes out, for a test or a bisection. The
+ * final SSA is verified whatever the variables say. *)
+
+interface Pipeline
+import
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* The passes' names, in order *)
+    passes: Array(String)
+    (* The SSA of a described IR unit, built, then each pass that is not left
+     * out run on it in order; after says when the builder and each pass are
+     * done, with their names (built for the builder) *)
+    run(unit: ir.Unit after: All(name: String u: ssa.Unit) Ok): ssa.Unit
+    (* The same, saying nothing *)
+    build(unit: ir.Unit): ssa.Unit
+end

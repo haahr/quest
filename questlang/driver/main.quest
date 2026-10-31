@@ -61,6 +61,8 @@ import
     questlang/ir/describe : questlang/ir/Describe
     questlang/ir/thunks : questlang/ir/Thunks
     ssaBuild = questlang/ssa/build : questlang/ssa/Build
+    ssaNodes = questlang/ssa/nodes : questlang/ssa/Nodes
+    ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
     ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
     ssaPrinter = questlang/ssa/printer : questlang/ssa/Printer
     questlang/interpreter/irInterp : questlang/interpreter/IrInterp
@@ -89,8 +91,12 @@ let irStages = array of "core" "specialized" "closed" "represented" "described" 
 let phases = array of
     "tokenize" "parse" "desugar" "typecheck" "ir_core" "ir_specialized" "ir_closed" "ir_represented" "ir_described"
     "run_ir_core" "run_ir_specialized" "run_ir_closed" "run_ir_represented" "run_ir_described" "interpret"
-    "codegen_c" "run_c_compiled" "ssa"
+    "codegen_c" "run_c_compiled" "ssa_built" "ssa_promote" "ssa_tailCalls" "ssa"
 end;
+
+(* The SSA's phases (docs/ssa.md): the builder's, each pass's
+ * (questlang/ssa/pipeline), and the last *)
+let ssaPhases = array of "ssa_built" "ssa_promote" "ssa_tailCalls" "ssa" end;
 
 (* The phases of the C backend *)
 let cPhases = array of "codegen_c" "run_c_compiled" end;
@@ -401,6 +407,13 @@ let cPipeline =
 
 let dumps(phase: String): Bool = isOneOf(phase options.dumpAfter);
 
+let dumpsSsa: Bool =
+    begin
+        let var any = false
+        for i = 0 upto {extent ssaPhases - 1} do if dumps(ssaPhases[i]) then any := true end end
+        any
+    end;
+
 (* The stage a phase dumps or runs the IR at (the phase's name after its
  * prefix), if it is an IR phase *)
 let irStage(prefix: String): maybe.T(String) =
@@ -445,10 +458,10 @@ let pipeline: Array(String) =
         elsif maybe.isSome(:String irStage("run_ir_")) then
             irThrough(maybe.unwrap(:String irStage("run_ir_")))
             vector.append(:String ps "run_ir_" <> maybe.unwrap(:String irStage("run_ir_")))
-        elsif stringOp.equal(options.stopAfter "ssa") orif dumps("ssa") then
+        elsif isOneOf(options.stopAfter ssaPhases) orif dumpsSsa then
             (* The SSA of the described IR (docs/ssa.md) *)
             irThrough("described")
-            vector.append(:String ps "ssa")
+            for i = 0 upto {extent ssaPhases - 1} do vector.append(:String ps ssaPhases[i]) end
         elsif lastIr >= 0 then
             irThrough(irStages[lastIr])
         else
@@ -521,9 +534,9 @@ let lowerOnly(program: typedAst.Program e: env.T sm: location.SourceMap bag: dia
         for i = 0 upto {extent irStages - 1} do if reaches("ir_" <> irStages[i]) then last := irStages[i] end end
         try
             let unit = lowered(program e sm false last)
-            if reaches("ssa") then
-                let built = ssaBuild.buildUnit(unit)
-                ssaVerify.checkUnit(built)
+            if reaches("ssa_built") then
+                let built = ssaPipeline.run(unit fun(name: String u: ssaNodes.Unit): Ok
+                    if shows("ssa_" <> name) then dump(ssaPrinter.formatUnit(u)) end)
                 if shows("ssa") then dump(ssaPrinter.formatUnit(built)) end
             end
         when ssaBuild.unsupported with m then internal("ssa: unsupported: " <> m)

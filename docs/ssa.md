@@ -102,9 +102,16 @@ handler's pop), as the C printer pops it.
 ## 4. Building the SSA
 
 `questlang/ssa/build` builds a unit's SSA from its described IR (thunks included, [ir.md](ir.md) §8.4.1), doing for
-each operation what the C printer prints ([arm64.md](arm64.md) §7.2):
+each operation what the C printer prints ([arm64.md](arm64.md) §7.2). Its modules, in `questlang/ssa/build/`, each
+use only those before them: `values` (representations, the builder's state, emitting, variables, atoms, words, and
+aggregates' components), `descriptors`, `calls` (primitives, calls, and modules' members), `aggregates`
+(conversions, tuples, records, variants and options, arrays, and type applications), `control` (operations and
+statements), `adapters` (exported functions and function types' adapters), and `unit` (functions, static data,
+registration, and the unit).
 
-- **Variables.** An IR variable of a value is the SSA values of its representation; a boxed variable (a record or
+- **Variables.** Each variable has one binding (`values.Binding`): SSA values, a stack slot, the location a `var` or
+  `out` parameter points to, a handler's copy of the exception state, or a global. An IR variable of a value is the
+  SSA values of its representation; a boxed variable (a record or
   variant the represent pass holds in its box) is its box's pointer, and a boxed mutable one's value is its box's
   record or variant. A **mutable variable is a stack slot**, loaded and stored, as C at `-O0` keeps it: always
   correct, the rule `try` needs for free, and promoted to values afterwards (§4.1). A variable a top level binds
@@ -126,9 +133,9 @@ each operation what the C printer prints ([arm64.md](arm64.md) §7.2):
 What the builder does not yet build raises `unsupported`, naming the construct; `--stop-after ssa` reports it as an
 internal error.
 
-### 4.1. Promotion and Tail Calls
+### 4.1. The Pipeline: Promotion and Tail Calls
 
-When a unit is built, two passes finish its functions:
+`questlang/ssa/pipeline` builds a unit and then runs its passes, by name, in order, each on every function:
 
 - **`ssa/promote`** turns stack slots into values. A slot can be promoted when it is whole words and its address is
   only loaded from and stored to, a word at a time or a word's first byte (a `Bool` or `Char` variable's), never
@@ -143,6 +150,13 @@ When a unit is built, two passes finish its functions:
 
 Neither removes values that become dead, such as parameters no load reads; the trivial allocator gives them slots,
 and linear scan none.
+
+The passes share their analyses: `ssa/cfg` (predecessors, successors, reverse postorder, the dominator tree with
+preorder and postorder numbers, dominance frontiers, and loop depths) and `ssa/liveness` (each block's live-in and
+live-out values, which the register allocator uses); `nodes` has the mutators (`targets`, `mapTargets`, `mapBlocks`,
+`replaceUses`). The driver dumps the SSA after the builder (`--dump-after ssa_built`), after each pass
+(`ssa_promote`, `ssa_tailCalls`), and at the end (`ssa`); `QUEST_SKIP_PASSES`, a comma-separated list of passes'
+names, leaves passes out, for a test or a bisection.
 
 ## 5. Functions and Units
 
@@ -188,12 +202,15 @@ b0(%0: ptr, %1: int):
 
 ## 7. The Verifier
 
-After the SSA is built, and after every pass that rewrites it when `QUEST_CHECK_IR=1`, the verifier checks that each
-value is defined once and its definition dominates its uses; that every argument has the type its instruction takes;
-that jumps pass their blocks' parameters' number and types; that each block ends in one terminator; that a `try`'s
-handler has the `try`'s block as its only predecessor and no parameters; and that slots and blocks referred to
-exist. The questlang test `ssa_verify` builds well-formed and malformed functions by hand and checks the problems it
-reports.
+After the pipeline, and when `QUEST_CHECK_IR=1` after the builder and after every pass too, the verifier checks that
+each value is defined once and its definition dominates its uses; that every instruction has the number and types of
+arguments and results its opcode takes, a narrow load's result and a narrow store's value being ints; that a call's
+`pairs`, `memory`, and `narrow` arguments are among its arguments, and a call of the unit's own function matches its
+parameters and results; that jumps pass their blocks' parameters' number and types; that a switch's cases are
+distinct; that returns and tail calls give the function's results; that each block ends in one terminator; that a
+`try`'s handler has the `try`'s block as its only predecessor and no parameters; and that slots and blocks referred
+to exist. The questlang test `ssa_verify` builds well-formed and malformed functions by hand and checks the problems
+it reports.
 
 ## 8. The C Printer
 

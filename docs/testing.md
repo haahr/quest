@@ -139,7 +139,9 @@ The test runner executes each test source file across active compiler phases via
   own (`run_ir_<stage>`), so that a pass that changes a program's output fails in its stage's phase. The run error
   tests are not run through them.
 - `ssa` (the self-hosted driver only): the SSA of the native backends ([ssa.md](ssa.md)), built from the described
-  IR, verified, and printed, for every program that has an `ir_core` dump, compared against `tests/golden/ssa/`.
+  IR, its passes run, verified, and printed, for every program that has an `ir_core` dump, compared against
+  `tests/golden/ssa/`. `ssa_built`, `ssa_promote`, and `ssa_tailCalls` dump it after the builder and each pass
+  (ssa.md §4.1); they have no goldens yet.
 - `interpret`: Runs `quest_driver.py --stop-after interpret <source_file>` (compared against `tests/golden/run/`).
 - `run_c_compiled`: Runs `quest_driver.py --stop-after run_c_compiled <source_file>`, which compiles the program
   through the IR to C (`quest/codegen/c/printer.py`, [ir.md](ir.md)), links it with the modules it imports (compiled

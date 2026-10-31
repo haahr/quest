@@ -3,7 +3,7 @@
 module promote : Promote
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/verify : questlang/ssa/Verify
+    questlang/ssa/cfg : questlang/ssa/Cfg
     collections/vector : collections/Vector
 export
     Let Function = ssa.Function
@@ -142,23 +142,8 @@ export
                 let promoted = vs.promoted
                 let variableAt(i: ssa.Inst): Int =
                     if {slotOf[i.args[0]] >= 0} andif promoted[slotOf[i.args[0]]] then variableOf(f vs i) else ~1 end
-                let d = verify.dominance(f)
-                let reached = array of(nBlocks false)
-                for k = 0 upto {extent d.order - 1} do reached[d.order[k]] := true end
-                (* Dominance frontiers (Cooper, Harvey, and Kennedy) *)
-                let frontier = array of(nBlocks vector.new(:Int))
-                for b = 0 upto {nBlocks - 1} do frontier[b] := vector.new(:Int) end
-                for b = 0 upto {nBlocks - 1} do
-                    if reached[b] andif {extent d.preds[b] >= 2} then
-                        for p = 0 upto {extent d.preds[b] - 1} do
-                            let var runner = d.preds[b][p]
-                            while reached[runner] andif {runner isnot d.idom[b]} do
-                                vector.append(:Int frontier[runner] b)
-                                runner := d.idom[runner]
-                            end
-                        end
-                    end
-                end
+                let g = cfg.graph(f)
+                let frontier = cfg.frontiers(g)
                 (* The blocks that store to each variable *)
                 let stores = array of(nVars vector.new(:Int))
                 for v = 0 upto {nVars - 1} do stores[v] := vector.new(:Int) end
@@ -188,8 +173,8 @@ export
                             end
                             while not(vector.empty(:Int work)) do
                                 let b = vector.pop(:Int work)
-                                for k = 0 upto {vector.length(:Int frontier[b]) - 1} do
-                                    let x = vector.get(:Int frontier[b] k)
+                                for k = 0 upto {extent frontier[b] - 1} do
+                                    let x = frontier[b][k]
                                     if not(needs[v][x]) then
                                         needs[v][x] := true
                                         if not(queued[x]) then
@@ -252,13 +237,7 @@ export
                             zeros[v]
                         else current[v] end
                     end
-                (* Renaming, along the dominator tree *)
-                let children = array of(nBlocks vector.new(:Int))
-                for b = 0 upto {nBlocks - 1} do children[b] := vector.new(:Int) end
-                for k = 0 upto {extent d.order - 1} do
-                    let b = d.order[k]
-                    if d.idom[b] >= 0 then vector.append(:Int children[d.idom[b]] b) end
-                end
+                let children = g.children
                 (* Renaming each block before its children, in order, by an
                  * explicit stack: a block's entry, then its exit, which
                  * restores the definitions saved at its entry *)
@@ -318,8 +297,8 @@ export
                         end
                         vector.append(:Int stackBlocks b)
                         vector.append(:Bool stackExits true)
-                        for k = {vector.length(:Int children[b]) - 1} downto 0 do
-                            vector.append(:Int stackBlocks vector.get(:Int children[b] k))
+                        for k = {extent children[b] - 1} downto 0 do
+                            vector.append(:Int stackBlocks children[b][k])
                             vector.append(:Bool stackExits false)
                         end
                     end
@@ -339,8 +318,6 @@ export
                 for s = 0 upto {vector.length(:ssa.Slot left) - 1} do
                     vector.append(:ssa.Slot f.slots vector.get(:ssa.Slot left s))
                 end
-                let resolveAll(values: Array(Int)): Ok =
-                    for a = 0 upto {extent values - 1} do values[a] := resolve(values[a]) end
                 for b = 0 upto {nBlocks - 1} do
                     let blk = ssa.block(f b)
                     if b is 0 then
@@ -355,26 +332,10 @@ export
                     end
                     for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
                         let i = vector.get(:ssa.Inst blk.insts k)
-                        resolveAll(i.args)
                         if ssa.isOp(i ssa.opSlot) then i.imm := renumbered[i.imm] end
                     end
-                    let ts = ssa.targets(blk.term)
-                    for k = 0 upto {extent ts - 1} do resolveAll(ts[k].args) end
-                    case blk.term
-                        when termBranch with x then
-                            blk.term := option termBranch of ssa.Terminator with
-                                let cond = resolve(x.cond) let ifTrue = x.ifTrue let ifFalse = x.ifFalse
-                            end
-                        when termSwitch with x then
-                            blk.term := option termSwitch of ssa.Terminator with
-                                let value = resolve(x.value) let cases = x.cases let targets = x.targets
-                                let default = x.default
-                            end
-                        when termReturn with x then resolveAll(x.values)
-                        when termTailCall with x then resolveAll(x.call.args)
-                        when termNone, termJump, termTry, termUnreachable then ok
-                    end
                 end
+                ssa.replaceUses(f resolve)
                 count
             end
         end

@@ -7,6 +7,7 @@ import
     ir = questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/shapes : questlang/ir/Shapes
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/cfg : questlang/ssa/Cfg
     questlang/codegen/layout : questlang/codegen/Layout
     questlang/codegen/symbols : questlang/codegen/Symbols
     questlang/codegen/staticdata : questlang/codegen/StaticData
@@ -744,47 +745,18 @@ export
             for b = 0 upto {n - 1} do
                 if not(ssa.isTerminated(f b)) then ssa.terminate(f b ssa.termUnreachable) end
             end
-            let reached = array of(n false)
-            let work = vector.new(:Int)
-            reached[0] := true
-            vector.append(:Int work 0)
-            while not(vector.empty(:Int work)) do
-                let b = vector.pop(:Int work)
-                let succs = ssa.successors(ssa.block(f b).term)
-                for k = 0 upto {extent succs - 1} do
-                    if not(reached[succs[k]]) then
-                        reached[succs[k]] := true
-                        vector.append(:Int work succs[k])
-                    end
-                end
-            end
+            let g = cfg.graph(f)
             let number = array of(n ~1)
             let kept = vector.new(:ssa.Block)
             for b = 0 upto {n - 1} do
-                if reached[b] then
+                if cfg.reached(g b) then
                     number[b] := vector.length(:ssa.Block kept)
                     vector.append(:ssa.Block kept ssa.block(f b))
                 end
             end
-            let renumber(t: ssa.Target): ssa.Target = ssa.target(number[t.block] t.args)
             for b = 0 upto {vector.length(:ssa.Block kept) - 1} do
                 let blk = vector.get(:ssa.Block kept b)
-                blk.term := case blk.term
-                    when termJump with x then option termJump of ssa.Terminator with let target = renumber(x.target) end
-                    when termBranch with x then option termBranch of ssa.Terminator with
-                        let cond = x.cond let ifTrue = renumber(x.ifTrue) let ifFalse = renumber(x.ifFalse)
-                    end
-                    when termSwitch with x then
-                        let targets = array of(extent x.targets ssa.target(0 noValues))
-                        for k = 0 upto {extent x.targets - 1} do targets[k] := renumber(x.targets[k]) end
-                        option termSwitch of ssa.Terminator with
-                            let value = x.value let cases = x.cases let targets = targets let default = renumber(x.default)
-                        end
-                    when termTry with x then option termTry of ssa.Terminator with
-                        let slot = x.slot let body = renumber(x.body) let handler = number[x.handler]
-                    end
-                    when termNone, termReturn, termTailCall, termUnreachable then blk.term
-                end
+                blk.term := ssa.mapBlocks(blk.term fun(x: Int): Int number[x])
             end
             vector.clear(:ssa.Block f.blocks)
             for b = 0 upto {vector.length(:ssa.Block kept) - 1} do vector.append(:ssa.Block f.blocks vector.get(:ssa.Block kept b)) end

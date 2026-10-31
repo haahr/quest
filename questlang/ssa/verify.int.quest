@@ -1,27 +1,24 @@
 (* Quest Self-Hosted Compiler: The SSA's Verifier Interface
  *
  * The SSA's invariants (docs/ssa.md section 6): each value defined once, and
- * its definition dominating its uses; arguments of the types their
- * instructions take; jumps passing their blocks' parameters' number and types;
- * each block terminated; a try's handler reached only from its try; slots and
- * blocks that exist. Dominance is computed by Cooper, Harvey, and Kennedy's
- * iterative algorithm, over the blocks in reverse postorder. *)
+ * its definition dominating its uses (questlang/ssa/cfg); each instruction's
+ * arguments and results of the number and types its opcode takes, a narrow
+ * load's result and a narrow store's value ints; a call's pairs, memory, and
+ * narrow arguments among its arguments, and a call of the unit's own function
+ * matching its parameters and results; jumps passing their blocks'
+ * parameters' number and types; a switch's cases distinct; returns and tail
+ * calls of the function's results; each block terminated; a try's handler
+ * reached only from its try; slots and blocks that exist. *)
 
 interface Verify
 import
     questlang/ssa/nodes : questlang/ssa/Nodes
 export
     verifyError: Exception(String)
-    (* The problems with a function, none if it is well formed *)
+    (* The problems with a function, none if it is well formed (its calls of
+     * other functions unchecked) *)
     functionProblems(f: nodes.Function): Array(String)
     (* Raises verifyError, listing the problems, if a function of the unit is
      * not well formed *)
     checkUnit(u: nodes.Unit): Ok
-
-    (* The blocks reachable from the entry, in reverse postorder, and each
-     * block's immediate dominator (~1 for the entry and unreachable
-     * blocks) *)
-    Def Dominance = Tuple order: Array(Int) idom: Array(Int) preds: Array(Array(Int)) end
-    dominance(f: nodes.Function): Dominance
-    dominates(d: Dominance a: Int b: Int): Bool
 end

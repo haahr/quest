@@ -339,6 +339,56 @@ export
             when termNone, termReturn, termTailCall, termUnreachable then array of :Target end
         end
 
+    let mapTargets(t: Terminator map: All(target: Target) Target): Terminator =
+        case t
+            when termJump with x then option termJump of Terminator with let target = map(x.target) end
+            when termBranch with x then
+                option termBranch of Terminator with let cond = x.cond let ifTrue = map(x.ifTrue) let ifFalse = map(x.ifFalse) end
+            when termSwitch with x then
+                let ts = array of(extent x.targets x.default)
+                for k = 0 upto {extent x.targets - 1} do ts[k] := map(x.targets[k]) end
+                option termSwitch of Terminator with
+                    let value = x.value let cases = x.cases let targets = ts let default = map(x.default)
+                end
+            when termTry with x then
+                option termTry of Terminator with let slot = x.slot let body = map(x.body) let handler = x.handler end
+            when termNone, termReturn, termTailCall, termUnreachable then t
+        end
+
+    let mapBlocks(t: Terminator map: All(b: Int) Int): Terminator =
+        begin
+            let mapped = mapTargets(t fun(x: Target): Target target(map(x.block) x.args))
+            case mapped
+                when termTry with x then
+                    option termTry of Terminator with let slot = x.slot let body = x.body let handler = map(x.handler) end
+                when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then mapped
+            end
+        end
+
+    let replaceUses(f: Function replace: All(v: Int) Int): Ok =
+        begin
+            let all(vs: Array(Int)): Ok = for a = 0 upto {extent vs - 1} do vs[a] := replace(vs[a]) end
+            for b = 0 upto {vector.length(:Block f.blocks) - 1} do
+                let blk = block(f b)
+                for k = 0 upto {vector.length(:Inst blk.insts) - 1} do all(vector.get(:Inst blk.insts k).args) end
+                let ts = targets(blk.term)
+                for k = 0 upto {extent ts - 1} do all(ts[k].args) end
+                case blk.term
+                    when termBranch with x then
+                        blk.term := option termBranch of Terminator with
+                            let cond = replace(x.cond) let ifTrue = x.ifTrue let ifFalse = x.ifFalse
+                        end
+                    when termSwitch with x then
+                        blk.term := option termSwitch of Terminator with
+                            let value = replace(x.value) let cases = x.cases let targets = x.targets let default = x.default
+                        end
+                    when termReturn with x then all(x.values)
+                    when termTailCall with x then all(x.call.args)
+                    when termNone, termJump, termTry, termUnreachable then ok
+                end
+            end
+        end
+
     (* An opcode's position in Opcode *)
     let opcodeIndex(op: Opcode): Int =
         case op

@@ -3,7 +3,11 @@
 module verify : Verify
 import
     questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
     util/strutil : util/Strutil
     stringOp = string : StringOp
     conv : Conv
@@ -13,110 +17,18 @@ export
 
     let verifyError: Exception(String) = exception verifyError: String end
 
-    Def Dominance = Tuple order: Array(Int) idom: Array(Int) preds: Array(Array(Int)) end
-
     let blockCount(f: Function): Int = vector.length(:nodes.Block f.blocks)
 
-    (* Reverse postorder from the entry, by an explicit stack of (block, next
-     * successor) *)
-    let reversePostorder(f: Function): Array(Int) =
-        begin
-            let n = blockCount(f)
-            let visited = array of(n false)
-            let post = vector.new(:Int)
-            let stackBlocks = vector.new(:Int)
-            let stackNext = vector.new(:Int)
-            if n > 0 then
-                visited[0] := true
-                vector.append(:Int stackBlocks 0)
-                vector.append(:Int stackNext 0)
-            end
-            while not(vector.empty(:Int stackBlocks)) do
-                let top = vector.length(:Int stackBlocks) - 1
-                let b = vector.get(:Int stackBlocks top)
-                let k = vector.get(:Int stackNext top)
-                let succs = nodes.successors(nodes.block(f b).term)
-                if k < extent succs then
-                    vector.set(:Int stackNext top k + 1)
-                    let s = succs[k]
-                    if {s >= 0} andif {s < n} andif not(visited[s]) then
-                        visited[s] := true
-                        vector.append(:Int stackBlocks s)
-                        vector.append(:Int stackNext 0)
-                    end
-                else
-                    vector.pop(:Int stackBlocks)
-                    vector.pop(:Int stackNext)
-                    vector.append(:Int post b)
-                end
-            end
-            let m = vector.length(:Int post)
-            let order = array of(m 0)
-            for i = 0 upto {m - 1} do order[i] := vector.get(:Int post {m - 1} - i) end
-            order
+    let sameType(a: Type b: Type): Bool =
+        case a
+            when typeInt then case b when typeInt then true when typePtr, typeReal then false end
+            when typePtr then case b when typePtr then true when typeInt, typeReal then false end
+            when typeReal then case b when typeReal then true when typeInt, typePtr then false end
         end
 
-    let dominance(f: Function): Dominance =
-        begin
-            let n = blockCount(f)
-            let preds = array of(n array of :Int end)
-            let predLists = array of(n vector.new(:Int))
-            for b = 0 upto {n - 1} do predLists[b] := vector.new(:Int) end
-            for b = 0 upto {n - 1} do
-                let succs = nodes.successors(nodes.block(f b).term)
-                for k = 0 upto {extent succs - 1} do
-                    if {succs[k] >= 0} andif {succs[k] < n} then vector.append(:Int predLists[succs[k]] b) end
-                end
-            end
-            for b = 0 upto {n - 1} do preds[b] := vector.toArray(:Int predLists[b]) end
-            let order = reversePostorder(f)
-            let rank = array of(n ~1)
-            for i = 0 upto {extent order - 1} do rank[order[i]] := i end
-            let idom = array of(n ~1)
-            if n > 0 then idom[0] := 0 end
-            let intersect(a0: Int b0: Int): Int =
-                begin
-                    let var a = a0
-                    let var b = b0
-                    while a isnot b do
-                        while rank[a] > rank[b] do a := idom[a] end
-                        while rank[b] > rank[a] do b := idom[b] end
-                    end
-                    a
-                end
-            let var changed = true
-            while changed do
-                changed := false
-                for i = 1 upto {extent order - 1} do
-                    let b = order[i]
-                    let var newIdom = ~1
-                    for k = 0 upto {extent preds[b] - 1} do
-                        let p = preds[b][k]
-                        if {rank[p] >= 0} andif {idom[p] >= 0} then
-                            newIdom := if newIdom < 0 then p else intersect(p newIdom) end
-                        end
-                    end
-                    if newIdom isnot idom[b] then
-                        idom[b] := newIdom
-                        changed := true
-                    end
-                end
-            end
-            if n > 0 then idom[0] := ~1 end
-            tuple let order = order let idom = idom let preds = preds end
-        end
-
-    let dominates(d: Dominance a: Int b: Int): Bool =
-        begin
-            let var x = b
-            let var found = false
-            while {x >= 0} andif not(found) do
-                if x is a then found := true else x := d.idom[x] end
-            end
-            found
-        end
-
-    let functionProblems(f: Function): Array(String) =
+    (* The problems with f; callee is the unit's function of a symbol, if the
+     * unit has one *)
+    let problemsIn(f: Function callee: All(symbol: String) maybe.T(Function)): Array(String) =
         begin
             let problems = vector.new(:String)
             let where = "function " <> f.symbol
@@ -124,9 +36,7 @@ export
             let n = blockCount(f)
             let nValues = vector.length(:Type f.types)
             let nSlots = vector.length(:nodes.Slot f.slots)
-            let d = dominance(f)
-            let reachable = array of(n false)
-            for i = 0 upto {extent d.order - 1} do reachable[d.order[i]] := true end
+            let g = cfg.graph(f)
             (* Where each value is defined: its block, and its position in it
              * (~1 for a block parameter) *)
             let defBlock = array of(nValues ~1)
@@ -158,15 +68,15 @@ export
                     problem(what <> " in block " <> conv.int(b) <> " uses value " <> conv.int(v) <> ", which does not exist")
                 elsif defBlock[v] < 0 then
                     problem(what <> " in block " <> conv.int(b) <> " uses %" <> conv.int(v) <> ", which nothing defines")
-                elsif reachable[b] then
-                    let dominated = if defBlock[v] is b then defIndex[v] < i else dominates(d defBlock[v] b) end
+                elsif cfg.reached(g b) then
+                    let dominated = if defBlock[v] is b then defIndex[v] < i else cfg.dominates(g defBlock[v] b) end
                     if not(dominated) then
                         problem(what <> " in block " <> conv.int(b) <> " uses %" <> conv.int(v)
                             <> ", whose definition does not dominate it")
                     end
                 end
             let typeIs(v: Int t: Type what: String): Ok =
-                if {v >= 0} andif {v < nValues} andif not(stringOp.equal(nodes.typeName(nodes.typeOf(f v)) nodes.typeName(t))) then
+                if {v >= 0} andif {v < nValues} andif not(sameType(nodes.typeOf(f v) t)) then
                     problem(what <> ": %" <> conv.int(v) <> " is " <> nodes.typeName(nodes.typeOf(f v)) <> ", not "
                         <> nodes.typeName(t))
                 end
@@ -178,6 +88,40 @@ export
                     problem(what <> " has " <> conv.int(extent inst.args) <> " arguments, not " <> conv.int(extent types))
                 else
                     for k = 0 upto {extent types - 1} do typeIs(inst.args[k] types[k] what) end
+                end
+            let resultsAre(inst: nodes.Inst types: Array(Type) what: String): Ok =
+                if extent inst.results isnot extent types then
+                    problem(what <> " has " <> conv.int(extent inst.results) <> " results, not " <> conv.int(extent types))
+                else
+                    for k = 0 upto {extent types - 1} do typeIs(inst.results[k] types[k] what <> "'s result") end
+                end
+            let one(t: Type): Array(Type) = array of t end
+            let noTypes = array of :Type end
+            (* A call's arguments and results: its pairs, memory, and narrow
+             * arguments among its own (after the function pointer of an
+             * indirect call), and for a call of the unit's own function, its
+             * parameters and results *)
+            let callIsValid(inst: nodes.Inst what: String): Ok =
+                begin
+                    let first = if nodes.isOp(inst nodes.opCall) then 0 else 1 end
+                    let inRange(indices: Array(Int) span: Int name: String): Ok =
+                        for k = 0 upto {extent indices - 1} do
+                            if {indices[k] < first} orif {{indices[k] + span} > extent inst.args} then
+                                problem(what <> "'s " <> name <> " argument " <> conv.int(indices[k]) <> " does not exist")
+                            end
+                        end
+                    inRange(inst.pairs 2 "pair")
+                    inRange(inst.memory 1 "memory")
+                    inRange(inst.narrow 1 "narrow")
+                    if extent inst.results > 2 then problem(what <> " has " <> conv.int(extent inst.results) <> " results") end
+                    if nodes.isOp(inst nodes.opCall) then
+                        let target = callee(inst.symbol)
+                        if maybe.isSome(:Function target) then
+                            let c = maybe.unwrap(:Function target)
+                            argsAre(inst vector.toArray(:Type c.paramTypes) what <> " " <> inst.symbol)
+                            resultsAre(inst vector.toArray(:Type c.resultTypes) what <> " " <> inst.symbol)
+                        end
+                    end
                 end
             let checkTarget(t: nodes.Target from: Int what: String): Ok =
                 if {t.block < 0} orif {t.block >= n} then
@@ -206,36 +150,78 @@ export
                             problem(what <> " of width " <> conv.int(inst.width))
                         end
                     case inst.op
-                        when opConst, opRealConst, opSymbol, opNull then argsAre(inst array of :Type end what)
+                        when opConst then
+                            argsAre(inst noTypes what)
+                            resultsAre(inst one(tInt) what)
+                        when opRealConst then
+                            argsAre(inst noTypes what)
+                            resultsAre(inst one(tReal) what)
+                        when opSymbol, opNull then
+                            argsAre(inst noTypes what)
+                            resultsAre(inst one(tPtr) what)
                         when opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe,
                             opGt, opGe, opUlt then
                             argsAre(inst array of tInt tInt end what)
-                        when opPeq, opPne then argsAre(inst array of tPtr tPtr end what)
-                        when opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge then
+                            resultsAre(inst one(tInt) what)
+                        when opPeq, opPne then
+                            argsAre(inst array of tPtr tPtr end what)
+                            resultsAre(inst one(tInt) what)
+                        when opFadd, opFsub, opFmul, opFdiv then
                             argsAre(inst array of tReal tReal end what)
-                        when opIsNaN, opRealBits then argsAre(inst array of tReal end what)
-                        when opIntToPtr, opBitsReal, opSext8, opZext8 then argsAre(inst array of tInt end what)
-                        when opPtrToInt then argsAre(inst array of tPtr end what)
+                            resultsAre(inst one(tReal) what)
+                        when opFeq, opFlt, opFle, opFgt, opFge then
+                            argsAre(inst array of tReal tReal end what)
+                            resultsAre(inst one(tInt) what)
+                        when opIsNaN, opRealBits then
+                            argsAre(inst array of tReal end what)
+                            resultsAre(inst one(tInt) what)
+                        when opIntToPtr then
+                            argsAre(inst one(tInt) what)
+                            resultsAre(inst one(tPtr) what)
+                        when opBitsReal then
+                            argsAre(inst one(tInt) what)
+                            resultsAre(inst one(tReal) what)
+                        when opSext8, opZext8 then
+                            argsAre(inst one(tInt) what)
+                            resultsAre(inst one(tInt) what)
+                        when opPtrToInt then
+                            argsAre(inst one(tPtr) what)
+                            resultsAre(inst one(tInt) what)
                         when opLoad then
                             if extent inst.args isnot 1 then problem("a load has " <> conv.int(extent inst.args) <> " arguments")
                             else typeIs(inst.args[0] tPtr what) end
                             widthIsValid()
+                            if extent inst.results isnot 1 then
+                                problem("a load has " <> conv.int(extent inst.results) <> " results")
+                            elsif inst.width < 8 then
+                                (* A narrow load extends its bytes to an int *)
+                                typeIs(inst.results[0] tInt what <> conv.int(inst.width))
+                            end
                         when opStore then
                             if extent inst.args isnot 2 then problem("a store has " <> conv.int(extent inst.args) <> " arguments")
-                            else typeIs(inst.args[0] tPtr what) end
+                            else
+                                typeIs(inst.args[0] tPtr what)
+                                (* A narrow store truncates an int *)
+                                if inst.width < 8 then typeIs(inst.args[1] tInt what <> conv.int(inst.width)) end
+                            end
                             widthIsValid()
-                        when opCall then ok
+                            resultsAre(inst noTypes what)
+                        when opCall then callIsValid(inst what)
                         when opCallIndirect then
                             if extent inst.args < 1 then problem("an indirect call has no function")
                             else typeIs(inst.args[0] tPtr what) end
+                            callIsValid(inst what)
                         when opSlot then
-                            argsAre(inst array of :Type end what)
+                            argsAre(inst noTypes what)
+                            resultsAre(inst one(tPtr) what)
                             if {inst.imm < 0} orif {inst.imm >= nSlots} then
                                 problem("slot " <> conv.int(inst.imm) <> " does not exist")
                             end
                         when opCopy then
                             if extent inst.args isnot 1 then
                                 problem("a copy has " <> conv.int(extent inst.args) <> " arguments")
+                            else
+                                resultsAre(inst one(nodes.typeOf(f inst.args[0])) what)
                             end
                     end
                 end
@@ -252,6 +238,11 @@ export
                     when termSwitch with x then
                         typeIs(x.value tInt "a switch's value")
                         if extent x.cases isnot extent x.targets then problem("a switch's cases are not its targets") end
+                        for k = 0 upto {extent x.cases - 1} do
+                            for j = 0 upto {k - 1} do
+                                if x.cases[j] is x.cases[k] then problem("a switch's case " <> conv.int(x.cases[k]) <> " repeats") end
+                            end
+                        end
                         for k = 0 upto {extent x.targets - 1} do checkTarget(x.targets[k] b "a switch") end
                         checkTarget(x.default b "a switch")
                     when termReturn with x then
@@ -263,14 +254,24 @@ export
                                 typeIs(x.values[k] vector.get(:Type f.resultTypes k) "a return")
                             end
                         end
-                    when termTailCall then ok
+                    when termTailCall with x then
+                        let what = nodes.opcodeName(x.call.op)
+                        if nodes.isCall(x.call) then
+                            if nodes.isOp(x.call nodes.opCallIndirect) andif {extent x.call.args < 1} then
+                                problem("an indirect call has no function")
+                            end
+                            callIsValid(x.call "a tail " <> what)
+                            resultsAre(x.call vector.toArray(:Type f.resultTypes) "a tail " <> what)
+                        else
+                            problem("block " <> conv.int(b) <> "'s tail call is a " <> what)
+                        end
                     when termTry with x then
                         checkTarget(x.body b "a try")
                         if {x.slot < 0} orif {x.slot >= nSlots} then problem("a try's slot " <> conv.int(x.slot) <> " does not exist") end
                         if {x.handler < 0} orif {x.handler >= n} then
                             problem("a try's handler " <> conv.int(x.handler) <> " does not exist")
                         else
-                            let hp = d.preds[x.handler]
+                            let hp = g.preds[x.handler]
                             if {extent hp isnot 1} orif {hp[0] isnot b} then
                                 problem("block " <> conv.int(x.handler) <> ", a try's handler, is reached from elsewhere too")
                             end
@@ -284,11 +285,19 @@ export
             vector.toArray(:String problems)
         end
 
+    let functionProblems(f: Function): Array(String) = problemsIn(f fun(symbol: String): maybe.T(Function) maybe.none(:Function))
+
     let checkUnit(u: nodes.Unit): Ok =
         begin
+            let functions = hashMap.new(:String :Function stringOp.equal hash.string)
+            for i = 0 upto {vector.length(:Function u.functions) - 1} do
+                let f = vector.get(:Function u.functions i)
+                let ignored = hashMap.insert(:String :Function functions f.symbol f)
+            end
+            let callee = fun(symbol: String): maybe.T(Function) hashMap.get(:String :Function functions symbol)
             let all = vector.new(:String)
             for i = 0 upto {vector.length(:Function u.functions) - 1} do
-                let ps = functionProblems(vector.get(:Function u.functions i))
+                let ps = problemsIn(vector.get(:Function u.functions i) callee)
                 for k = 0 upto {extent ps - 1} do vector.append(:String all ps[k]) end
             end
             if not(vector.empty(:String all)) then

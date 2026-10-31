@@ -1,0 +1,64 @@
+(* Quest Self-Hosted Compiler: The SSA's Liveness Implementation *)
+
+module liveness : Liveness
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    collections/vector : collections/Vector
+    collections/bitset : collections/Bitset
+export
+    Def Live = Tuple liveIn: Array(bitset.T) liveOut: Array(bitset.T) end
+
+    let add(s: bitset.T v: Int): Ok = if bitset.insert(s v) then ok else ok end
+
+    (* Each block's definitions and the uses before them, then what flows
+     * backward to a fixed point, the blocks taken in postorder *)
+    let live(f: ssa.Function g: cfg.Graph): Live =
+        begin
+            let nValues = vector.length(:ssa.Type f.types)
+            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let order = g.order
+            let defs = array of(nBlocks bitset.new(0))
+            let uses = array of(nBlocks bitset.new(0))
+            let liveIn = array of(nBlocks bitset.new(0))
+            let liveOut = array of(nBlocks bitset.new(0))
+            for b = 0 upto {nBlocks - 1} do
+                defs[b] := bitset.new(nValues)
+                uses[b] := bitset.new(nValues)
+                liveIn[b] := bitset.new(nValues)
+                liveOut[b] := bitset.new(nValues)
+            end
+            for k = 0 upto {extent order - 1} do
+                let b = order[k]
+                let blk = ssa.block(f b)
+                let used(v: Int): Ok = if not(bitset.contains(defs[b] v)) then add(uses[b] v) end
+                let defined(v: Int): Ok = add(defs[b] v)
+                for p = 0 upto {vector.length(:Int blk.params) - 1} do defined(vector.get(:Int blk.params p)) end
+                for j = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts j)
+                    for a = 0 upto {extent i.args - 1} do used(i.args[a]) end
+                    for r = 0 upto {extent i.results - 1} do defined(i.results[r]) end
+                end
+                let tu = ssa.terminatorUses(blk.term)
+                for a = 0 upto {extent tu - 1} do used(tu[a]) end
+            end
+            let var changed = true
+            while changed do
+                changed := false
+                for k = {extent order - 1} downto 0 do
+                    let b = order[k]
+                    let flowing = bitset.new(nValues)
+                    let succ = g.succs[b]
+                    for s = 0 upto {extent succ - 1} do if bitset.unionWith(flowing liveIn[succ[s]]) then ok end end
+                    bitset.assign(liveOut[b] flowing)
+                    if bitset.subtract(flowing defs[b]) then ok end
+                    if bitset.unionWith(flowing uses[b]) then ok end
+                    if not(bitset.equal(flowing liveIn[b])) then
+                        bitset.assign(liveIn[b] flowing)
+                        changed := true
+                    end
+                end
+            end
+            tuple let liveIn = liveIn let liveOut = liveOut end
+        end
+end

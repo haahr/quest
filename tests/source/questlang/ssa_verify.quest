@@ -2,15 +2,17 @@
  *
  * Builds small functions of the SSA (questlang/ssa/nodes, docs/ssa.md) by hand, well formed and not, prints them, and
  * prints the problems the verifier (questlang/ssa/verify) finds: undefined and doubly defined values, uses their
- * definitions do not dominate, arguments of the wrong types, jumps of the wrong arity, blocks without terminators,
- * returns of the wrong number of values, a try's handler reached from elsewhere, slots that do not exist; and the
- * dominator tree of a loop. *)
+ * definitions do not dominate, arguments and results of the wrong types, jumps of the wrong arity, blocks without
+ * terminators, returns of the wrong number of values, a try's handler reached from elsewhere, slots that do not exist,
+ * repeated cases, narrow stores of pointers, calls' pairs past their arguments, tail calls and calls of the unit's own
+ * functions of the wrong types; and the dominator tree of a loop (questlang/ssa/cfg). *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/printer : questlang/ssa/Printer
     questlang/ssa/verify : questlang/ssa/Verify
+    questlang/ssa/cfg : questlang/ssa/Cfg
     collections/vector : collections/Vector
     writer : Writer
     conv : Conv
@@ -53,10 +55,10 @@ branch(loopF head more bodyB exitB);
 jumpTo(loopF bodyB head array of ssa.binary(loopF bodyB ssa.opAdd i ssa.constant(loopF bodyB 1)) end);
 ret(loopF exitB array of i end);
 show("a loop" loopF);
-let d = verify.dominance(loopF);
-for b = 0 upto 3 do emit("idom of b" <> conv.int(b) <> ": " <> conv.int(d.idom[b])) end;
-emit("b1 dominates b2: " <> if verify.dominates(d 1 2) then "yes" else "no" end);
-emit("b2 dominates b3: " <> if verify.dominates(d 2 3) then "yes" else "no" end);
+let g = cfg.graph(loopF);
+for b = 0 upto 3 do emit("idom of b" <> conv.int(b) <> ": " <> conv.int(g.idom[b])) end;
+emit("b1 dominates b2: " <> if cfg.dominates(g 1 2) then "yes" else "no" end);
+emit("b2 dominates b3: " <> if cfg.dominates(g 2 3) then "yes" else "no" end);
 
 (* 2. A use its definition does not dominate: a value of one branch used after
  * both join *)
@@ -138,3 +140,31 @@ let pair = ssa.call(switches one "quest_record_view" array of sp[1] sp[2] sp[1] 
 ret(switches one pair);
 ssa.terminate(switches other ssa.termUnreachable);
 show("a switch" switches);
+
+(* 9. A switch's repeated case, a narrow store of a pointer, a call whose pair
+ * is past its arguments, and a tail call of the wrong results *)
+let repeats = ssa.newFunction("repeats" false array of tInt tPtr end array of tInt end);
+let rp = vector.toArray(:Int ssa.block(repeats 0).params);
+let first = ssa.newBlock(repeats);
+let last = ssa.newBlock(repeats);
+ssa.store(repeats 0 rp[1] 0 1 rp[1]);
+ssa.call(repeats 0 "callee" array of rp[0] end ssa.passing(array of 0 end none none) array of :ssa.Type end);
+ssa.terminate(repeats 0 option termSwitch of ssa.Terminator with
+    let value = rp[0] let cases = array of 1 1 end let targets = array of ssa.target(first none) ssa.target(last none) end
+    let default = ssa.target(last none)
+end);
+ret(repeats first array of rp[0] end);
+ssa.tailCall(repeats last "callee" array of rp[0] end ssa.plain array of tInt tInt end);
+show("a repeated case, a narrow pointer, a pair past the arguments, a tail call's results" repeats);
+
+(* 10. Calls of the unit's own function checked against it *)
+let unit = ssa.newUnit();
+let callee = ssa.newFunction("callee" false array of tInt end array of tInt end);
+ret(callee 0 array of vector.get(:Int ssa.block(callee 0).params 0) end);
+let caller = ssa.newFunction("caller" false array of tPtr end array of tInt end);
+let r = ssa.call(caller 0 "callee" array of vector.get(:Int ssa.block(caller 0).params 0) end ssa.plain array of tPtr end);
+ret(caller 0 array of ssa.constant(caller 0 0) end);
+vector.append(:ssa.Function unit.functions callee);
+vector.append(:ssa.Function unit.functions caller);
+emit("== a call of the unit's own function");
+try verify.checkUnit(unit) emit("well formed") when verify.verifyError with m then emit(m) end;

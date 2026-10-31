@@ -1,0 +1,47 @@
+(* Quest Self-Hosted Compiler: The SSA's Control Flow Graph Interface
+ *
+ * A function's blocks as a graph (docs/backend-improvements.md section 3.3):
+ * each block's predecessors and successors, the blocks the entry reaches in
+ * reverse postorder, the dominator tree (Cooper, Harvey, and Kennedy), with
+ * each block's preorder and postorder numbers in it, so that whether one
+ * block dominates another is two comparisons, and on demand, dominance
+ * frontiers and loop depths. A graph describes the function as it was when it
+ * was made; a pass that changes the blocks or their terminators makes it
+ * again. *)
+
+interface Cfg
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    Def Graph = Tuple
+        (* Each block's predecessors, in order of block (a predecessor once
+         * for each edge from it), and successors, as its terminator lists
+         * them *)
+        preds: Array(Array(Int))
+        succs: Array(Array(Int))
+        (* The blocks the entry reaches, in reverse postorder, and each
+         * block's position in it (~1 for a block not reached) *)
+        order: Array(Int)
+        rank: Array(Int)
+        (* Each reached block's immediate dominator (~1 for the entry and for
+         * a block not reached), and its children in the dominator tree, in
+         * reverse postorder *)
+        idom: Array(Int)
+        children: Array(Array(Int))
+        (* Each reached block's preorder and postorder numbers in the
+         * dominator tree *)
+        pre: Array(Int)
+        post: Array(Int)
+    end
+
+    graph(f: ssa.Function): Graph
+    reached(g: Graph b: Int): Bool
+    (* Whether block a dominates block b (both reached): a block dominates
+     * itself *)
+    dominates(g: Graph a: Int b: Int): Bool
+    (* Each block's dominance frontier: the blocks where its dominance ends *)
+    frontiers(g: Graph): Array(Array(Int))
+    (* Each block's loop depth: the number of natural loops (of back edges to
+     * a block that dominates their source) it is in *)
+    loopDepths(g: Graph): Array(Int)
+end

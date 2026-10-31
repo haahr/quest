@@ -1,0 +1,53 @@
+(* Quest Self-Hosted Compiler: The SSA's Pipeline Implementation *)
+
+module pipeline : Pipeline
+import
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    ssaBuild = questlang/ssa/build : questlang/ssa/Build
+    collections/vector : collections/Vector
+    questlang/ssa/verify : questlang/ssa/Verify
+    questlang/ssa/promote : questlang/ssa/Promote
+    questlang/ssa/tailCalls : questlang/ssa/TailCalls
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    system : System
+export
+    let passes = array of "promote" "tailCalls" end
+
+    let unknownPass: Exception(String) = exception unknownPass: String end
+
+    let runPass(name: String u: ssa.Unit): Ok =
+        if stringOp.equal(name "promote") then begin let ignored = promote.promoteUnit(u) end
+        elsif stringOp.equal(name "tailCalls") then tailCalls.markUnit(u)
+        else raise unknownPass with name end end
+
+    let skipped(name: String): Bool =
+        begin
+            let names = strutil.split(system.getEnv("QUEST_SKIP_PASSES") ",")
+            let var found = false
+            for i = 0 upto {vector.length(:String names) - 1} do
+                if stringOp.equal(strutil.strip(vector.get(:String names i)) name) then found := true end
+            end
+            found
+        end
+
+    let run(unit: ir.Unit after: All(name: String u: ssa.Unit) Ok): ssa.Unit =
+        begin
+            let checks = stringOp.equal(system.getEnv("QUEST_CHECK_IR") "1")
+            let u = ssaBuild.buildUnit(unit)
+            if checks then verify.checkUnit(u) end
+            after("built" u)
+            for i = 0 upto {extent passes - 1} do
+                if not(skipped(passes[i])) then
+                    runPass(passes[i] u)
+                    if checks then verify.checkUnit(u) end
+                end
+                after(passes[i] u)
+            end
+            verify.checkUnit(u)
+            u
+        end
+
+    let build(unit: ir.Unit): ssa.Unit = run(unit fun(name: String u: ssa.Unit): Ok ok)
+end
