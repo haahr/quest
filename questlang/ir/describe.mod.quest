@@ -330,26 +330,30 @@ export
     let rec describePlan(d: Describer p0: maybe.T(Plan)): Ok =
         if maybe.isSome(:Plan p0) then
             let p = maybe.unwrap(:Plan p0)
-            if eq(p.kind "record_view") then
-                p.descriptors := array of describeType(d heldStructure(p.target "record")) end
-            elsif eq(p.kind "view") then
-                p.descriptors := array of describeType(d p.source) describeType(d p.target) end
-            elsif eq(p.kind "runtime") then
-                let lay = maybe.unwrap(:nodes.PlanLayout p.layout)
-                let genericType = if lay.toGeneric then p.target else p.source end
-                let genericD = layoutDescriptor(d genericType lay)
-                let nativeD = describeType(d model.substitute(genericType lay.subst))
-                p.descriptors := if lay.toGeneric then array of nativeD genericD end else array of genericD nativeD end end
-            elsif eq(p.kind "variant_tags") then
-                p.tagMap := maybe.some(:nodes.TagMap tagMap(d heldStructure(p.target "variant") heldStructure(p.source "variant")))
-            elsif eq(p.kind "copy") then
-                for i = 0 upto {extent p.fields - 1} do describePlan(d p.fields[i]) end
-            elsif eq(p.kind "adapt") then
-                thunk(d p.thunkSymbols fun(params: Array(nodes.DescriptorParam)): Ok
-                    begin
-                        p.thunkParams := params
-                        for i = 0 upto {extent p.fields - 1} do describePlan(d p.fields[i]) end
-                    end)
+            case p.kind
+                when planRecordView then
+                    p.descriptors := array of describeType(d heldStructure(p.target "record")) end
+                when planView then
+                    p.descriptors := array of describeType(d p.source) describeType(d p.target) end
+                when planRuntime then
+                    let lay = maybe.unwrap(:nodes.PlanLayout p.layout)
+                    let genericType = if lay.toGeneric then p.target else p.source end
+                    let genericD = layoutDescriptor(d genericType lay)
+                    let nativeD = describeType(d model.substitute(genericType lay.subst))
+                    p.descriptors := if lay.toGeneric then array of nativeD genericD end
+                        else array of genericD nativeD end end
+                when planVariantTags then
+                    let map = tagMap(d heldStructure(p.target "variant") heldStructure(p.source "variant"))
+                    p.tagMap := maybe.some(:nodes.TagMap map)
+                when planCopy then
+                    for i = 0 upto {extent p.fields - 1} do describePlan(d p.fields[i]) end
+                when planAdapt then
+                    thunk(d p.thunkSymbols fun(params: Array(nodes.DescriptorParam)): Ok
+                        begin
+                            p.thunkParams := params
+                            for i = 0 upto {extent p.fields - 1} do describePlan(d p.fields[i]) end
+                        end)
+                when planBox, planUnbox, planCast, planUnproxy, planSlotBox, planSlotUnbox then ok
             end
         end
 

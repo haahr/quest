@@ -40,7 +40,13 @@ export
     let lookupNone = maybe.none(:model.Lookup)
 
     let some(p: Plan): maybe.T(Plan) = maybe.some(:Plan p)
-    let newPlan(kind: String source: Type target: Type): maybe.T(Plan) = some(nodes.newPlan(kind source target))
+    let newPlan(kind: nodes.PlanKind source: Type target: Type): maybe.T(Plan) = some(nodes.newPlan(kind source target))
+    (* Whether there is a plan of kind k *)
+    let isPlan(p: maybe.T(Plan) k: nodes.PlanKind): Bool =
+        maybe.isSome(:Plan p) andif nodes.planIs(maybe.unwrap(:Plan p) k)
+    (* Whether a plan boxes or unboxes, which changes no slot: a slot holds a
+     * value's QVal form *)
+    let boxing(p: maybe.T(Plan)): Bool = isPlan(p nodes.planBox) orif isPlan(p nodes.planUnbox)
     (* A polymorphic callee's type parameters' instantiation, its symbols in the
      * order they were bound *)
     Let Instantiation = Tuple subst: model.Subst keys: vector.T(Int) end
@@ -208,7 +214,7 @@ export
             elsif not(isRecord) andif {not(endsStar(genericC)) orif not(endsStar(nativeC))} then
                 none
             elsif layout.genericLayoutAgrees(genericType lay.subst) then
-                if eq(genericC nativeC) then none else newPlan("cast" source target) end
+                if eq(genericC nativeC) then none else newPlan(nodes.planCast source target) end
             elsif layout.genericLayoutCopiesMutableData(genericType lay.subst) then
                 raise rejectedConversion with
                     "C code generation cannot pass a value of type '" <> model.show(nativeType)
@@ -217,7 +223,7 @@ export
                         <> "not share its updates"
                 end
             else
-                let p = nodes.newPlan("runtime" source target)
+                let p = nodes.newPlan(nodes.planRuntime source target)
                 p.layout := maybe.some(:nodes.PlanLayout lay)
                 some(p)
             end
@@ -340,14 +346,14 @@ export
     (* p, or for a cast from a tuple or option type that may be proxied to one
      * that may not, an unproxy plan *)
     and unproxied(p: maybe.T(Plan)): maybe.T(Plan) =
-        if maybe.isNone(:Plan p) orif not(eq(maybe.unwrap(:Plan p).kind "cast")) then
+        if not(isPlan(p nodes.planCast)) then
             p
         else
             let x = maybe.unwrap(:Plan p)
             let ss = shapes.shape(x.source)
             let ts = shapes.shape(x.target)
             if {eq(ts.kind "tuple") orif eq(ts.kind "option")} andif layout.mayBeProxied(ss) andif not(layout.mayBeProxied(ts)) then
-                newPlan("unproxy" x.source x.target)
+                newPlan(nodes.planUnproxy x.source x.target)
             else
                 p
             end
@@ -397,7 +403,7 @@ export
                         thunkSymbols[k] := if k < extent sQuants then array of tQuants[k].symbolId sQuants[k].symbolId end
                             else array of tQuants[k].symbolId end end
                     end
-                    let p = nodes.newPlan("adapt" source target)
+                    let p = nodes.newPlan(nodes.planAdapt source target)
                     p.fields := fields
                     p.layout := lay
                     p.thunkSymbols := thunkSymbols
@@ -440,9 +446,9 @@ export
         (* A value of a type parameter, held as a QVal word: a scalar or pointer
          * in its bits, a record or variant boxed *)
         if eq(ct "QVal") andif not(eq(cs "QVal")) then
-            newPlan("box" source target)
+            newPlan(nodes.planBox source target)
         elsif eq(cs "QVal") andif not(eq(ct "QVal")) then
-            newPlan("unbox" source target)
+            newPlan(nodes.planUnbox source target)
         elsif eq(cs "QVal") orif {equal(source target) andif sameViews(source target)} then
             none
         elsif layout.ownView(ss) andif layout.ownView(ts) andif {ss.symbolId is ts.symbolId} then
@@ -453,12 +459,12 @@ export
             (* A bounded type parameter's value is held at its own view: used at
              * another type, it is converted by the runtime between the two
              * types' descriptors *)
-            newPlan("view" source target)
+            newPlan(nodes.planView source target)
         else
             let sHeld = layout.resolvedShape(ss)
             let tHeld = layout.resolvedShape(ts)
             if eq(sHeld.kind "record") andif eq(tHeld.kind "record") then
-                if equal(sHeld.type tHeld.type) then none else newPlan("record_view" source target) end
+                if equal(sHeld.type tHeld.type) then none else newPlan(nodes.planRecordView source target) end
             elsif eq(sHeld.kind "variant") andif eq(tHeld.kind "variant") then
                 let var sameIndices = true
                 for i = 0 upto {extent sHeld.cases - 1} do
@@ -473,21 +479,21 @@ export
                     if not(variantPayloadsChange(sHeld tHeld)) then none
                     (* A payload changes view: converted by the runtime, which
                      * converts the payload *)
-                    else newPlan("view" sHeld.structure tHeld.structure) end
+                    else newPlan(nodes.planView sHeld.structure tHeld.structure) end
                 elsif variantSubtype(sHeld tHeld) then
-                    newPlan("variant_tags" source target)
+                    newPlan(nodes.planVariantTags source target)
                 else
                     (* From a bounded type parameter's view at its bound back to
                      * the type the caller holds it at *)
-                    newPlan("view" sHeld.structure tHeld.structure)
+                    newPlan(nodes.planView sHeld.structure tHeld.structure)
                 end
             elsif eq(sHeld.kind "option") andif eq(tHeld.kind "option") andif not(equal(sHeld.type tHeld.type)) then
                 if not(boundedView(ss) orif boundedView(ts)) andif optionCasesAgree(sHeld tHeld) then
-                    if eq(cs ct) then none else newPlan("cast" source target) end
+                    if eq(cs ct) then none else newPlan(nodes.planCast source target) end
                 else
                     (* A proxy (made by the runtime, between the two views'
                      * descriptors) *)
-                    newPlan("view" sHeld.structure tHeld.structure)
+                    newPlan(nodes.planView sHeld.structure tHeld.structure)
                 end
             elsif eq(ss.kind "tuple") andif eq(ts.kind "tuple") then
                 if extent ss.components < extent ts.components then
@@ -498,16 +504,16 @@ export
                         let p = plan(shapes.componentShape(ss.components[i]).type shapes.componentShape(ts.components[i]).type noLayout)
                         (* A box or unbox changes no slot: a slot holds a
                          * value's QVal form *)
-                        if maybe.isSome(:Plan p) andif not(eq(maybe.unwrap(:Plan p).kind "box") orif eq(maybe.unwrap(:Plan p).kind "unbox")) then
+                        if maybe.isSome(:Plan p) andif not(boxing(p)) then
                             changing := true
                         end
                     end
                     if not(changing) then
-                        if eq(cs ct) then none else newPlan("cast" source target) end
+                        if eq(cs ct) then none else newPlan(nodes.planCast source target) end
                     else
                         (* Components change view: a proxy of the tuple, which
                          * converts them as they are read *)
-                        newPlan("view" source target)
+                        newPlan(nodes.planView source target)
                     end
                 end
             elsif eq(cs ct) andif not(isFunctionKind(ts) orif eq(ts.kind "option") orif eq(ts.kind "array")) then
@@ -519,8 +525,7 @@ export
                      * conversion either way, or only a box or unbox *)
                     let there = plan(shapes.element(ss).type shapes.element(ts).type noLayout)
                     let back = plan(shapes.element(ts).type shapes.element(ss).type noLayout)
-                    let fine = fun(p: maybe.T(Plan)): Bool
-                        maybe.isNone(:Plan p) orif eq(maybe.unwrap(:Plan p).kind "box") orif eq(maybe.unwrap(:Plan p).kind "unbox")
+                    let fine = fun(p: maybe.T(Plan)): Bool maybe.isNone(:Plan p) orif boxing(p)
                     fine(there) andif fine(back)
                 else
                     false
@@ -545,7 +550,7 @@ export
                 if maybe.isSome(:Shape c.shape) andif maybe.isSome(:shapes.Component other)
                     andif maybe.isSome(:Shape maybe.unwrap(:shapes.Component other).shape) then
                     let p = plan(maybe.unwrap(:Shape c.shape).type maybe.unwrap(:Shape maybe.unwrap(:shapes.Component other).shape).type noLayout)
-                    if maybe.isSome(:Plan p) andif not(eq(maybe.unwrap(:Plan p).kind "box") orif eq(maybe.unwrap(:Plan p).kind "unbox")) then
+                    if maybe.isSome(:Plan p) andif not(boxing(p)) then
                         changes := true
                     end
                 end
@@ -569,7 +574,7 @@ export
                         agree := false
                     elsif maybe.isSome(:Shape c.shape) andif agree then
                         let p = plan(maybe.unwrap(:Shape c.shape).type maybe.unwrap(:Shape tc.shape).type noLayout)
-                        if maybe.isSome(:Plan p) andif not(eq(maybe.unwrap(:Plan p).kind "cast")) then agree := false end
+                        if maybe.isSome(:Plan p) andif not(isPlan(p nodes.planCast)) then agree := false end
                     end
                 end
             end
@@ -627,13 +632,13 @@ export
                 if eq(layout.shapeRepresentation(shapes.shape(payloadType)) layout.shapeRepresentation(shapes.shape(storedType))) then
                     none
                 else
-                    unproxied(newPlan("cast" payloadType storedType))
+                    unproxied(newPlan(nodes.planCast payloadType storedType))
                 end
             else
                 let payloadShape = shapes.shape(payloadType)
                 let access = array of(count nodes.direct)
                 for i = 0 upto {count - 1} do access[i] := slots.tupleAccess(payloadShape i false) end
-                let p = nodes.newPlan("copy" payloadType storedType)
+                let p = nodes.newPlan(nodes.planCopy payloadType storedType)
                 p.fields := fields
                 p.access := access
                 some(p)
@@ -824,14 +829,14 @@ export
                 address
             else
                 let refType = if param.isOut then model.outType(paramType) else model.varType(paramType) end
-                let boxOrNone = fun(p: maybe.T(Plan)): Bool
-                    maybe.isNone(:Plan p) orif eq(maybe.unwrap(:Plan p).kind "box") orif eq(maybe.unwrap(:Plan p).kind "unbox")
+                let boxOrNone = fun(p: maybe.T(Plan)): Bool maybe.isNone(:Plan p) orif boxing(p)
                 if layout.isBoxedInSlots(shapes.shape(locationType)) andif eq(layout.shapeRepresentation(shapes.shape(paramType)) "QVal")
                     andif boxOrNone(pIn) andif boxOrNone(pOut) then
                     (* The location holds the record or variant boxed, as the
                      * generic parameter's QVal does *)
                     let cast = nodes.newVar("" refType false)
-                    vector.append(:Stmt before letConvert(cast address nodes.newPlan("cast" typeOf(address) refType)))
+                    let castPlan = nodes.newPlan(nodes.planCast typeOf(address) refType)
+                    vector.append(:Stmt before letConvert(cast address castPlan))
                     nodes.atomOfVar(cast)
                 else
                     let temp = nodes.newVar("cell" paramType true)

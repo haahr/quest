@@ -347,14 +347,17 @@ export
     let rec plan(t: Thunker p0: maybe.T(Plan)): Ok =
         if maybe.isSome(:Plan p0) then
             let p = maybe.unwrap(:Plan p0)
-            if eq(p.kind "adapt") then
-                if maybe.isNone(:Function p.thunk) then
-                    p.thunk := maybe.some(:Function adapter(t p))
-                    p.fields := array of :maybe.T(Plan) end
-                    p.thunkParams := array of :nodes.DescriptorParam end
-                end
-            elsif eq(p.kind "copy") then
-                for i = 0 upto {extent p.fields - 1} do plan(t p.fields[i]) end
+            case p.kind
+                when planAdapt then
+                    if maybe.isNone(:Function p.thunk) then
+                        p.thunk := maybe.some(:Function adapter(t p))
+                        p.fields := array of :maybe.T(Plan) end
+                        p.thunkParams := array of :nodes.DescriptorParam end
+                    end
+                when planCopy then
+                    for i = 0 upto {extent p.fields - 1} do plan(t p.fields[i]) end
+                when planBox, planUnbox, planRecordView, planVariantTags, planCast, planUnproxy, planSlotBox,
+                    planSlotUnbox, planView, planRuntime then ok
             end
         end
 

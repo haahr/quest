@@ -114,7 +114,9 @@ export
         end
 
     let slotUnbox(box: Variable t: Type): Op =
-        option opConvert of Op with let var value = nodes.atomOfVar(box) let var plan = nodes.newPlan("slot_unbox" t t) end
+        option opConvert of Op with
+            let var value = nodes.atomOfVar(box) let var plan = nodes.newPlan(nodes.planSlotUnbox t t)
+        end
 
     Let SlotState = Tuple
         (* The boxes of the records and variants read from slots (by the
@@ -148,7 +150,7 @@ export
                 let t = typeOf(a)
                 let box = newBox("box" t)
                 vector.append(:Stmt before nodes.letStmt(box option opConvert of Op with
-                    let var value = a let var plan = nodes.newPlan("slot_box" t t)
+                    let var value = a let var plan = nodes.newPlan(nodes.planSlotBox t t)
                 end))
                 nodes.atomOfVar(box)
             end
@@ -282,11 +284,11 @@ export
                 end
             when opConvert with x then
                 let p = x.plan
-                if eq(p.kind "unbox") andif boxed(maybe.some(:Shape shapes.shape(p.target))) then
+                if nodes.planIs(p nodes.planUnbox) andif boxed(maybe.some(:Shape shapes.shape(p.target))) then
                     (* A QVal word holds a record or variant as its box *)
                     true
                 else
-                    if eq(p.kind "box") then
+                    if nodes.planIs(p nodes.planBox) then
                         case x.value
                             when atomVar with y then
                                 let remembered = hashMap.get(:Int :Variable st.boxes y.v.id)
@@ -296,7 +298,7 @@ export
                             else ok
                         end
                     end
-                    if eq(p.kind "copy") andif isFresh(st x.value) then
+                    if nodes.planIs(p nodes.planCopy) andif isFresh(st x.value) then
                         (* A copy of a tuple the function made reads its
                          * components directly *)
                         let copy = nodes.newPlan(p.kind p.source p.target)

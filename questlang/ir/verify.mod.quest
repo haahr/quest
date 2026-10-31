@@ -774,18 +774,25 @@ export
                 let rec plan(p0: maybe.T(nodes.Plan) scope: DescriptorScope where: String): Ok =
                     if maybe.isSome(:nodes.Plan p0) then
                         let p = maybe.unwrap(:nodes.Plan p0)
-                        let wanted = if eq(p.kind "record_view") then 1 elsif eq(p.kind "view") orif eq(p.kind "runtime") then 2 else 0 end
+                        let wanted = case p.kind
+                            when planRecordView then 1
+                            when planView, planRuntime then 2
+                            when planBox, planUnbox, planVariantTags, planCast, planUnproxy, planSlotBox, planSlotUnbox,
+                                planAdapt, planCopy then
+                                0
+                        end
                         if extent p.descriptors isnot wanted then
-                            problem(where <> ": a " <> p.kind <> " plan with " <> conv.int(extent p.descriptors) <> " descriptors")
+                            problem(where <> ": a " <> nodes.planKindName(p.kind) <> " plan with "
+                                <> conv.int(extent p.descriptors) <> " descriptors")
                         end
                         for i = 0 upto {extent p.descriptors - 1} do descriptor(maybe.some(:nodes.Descriptor p.descriptors[i]) scope where) end
-                        if eq(p.kind "variant_tags") andif {maybe.isNone(:nodes.TagMap p.tagMap)
+                        if nodes.planIs(p nodes.planVariantTags) andif {maybe.isNone(:nodes.TagMap p.tagMap)
                             orif not(hashMap.contains(:Int :Bool tagMaps maybe.unwrap(:nodes.TagMap p.tagMap).id))} then
                             problem(where <> ": a variant_tags plan whose tag map is not in the unit's static data")
                         end
                         (* An adapt plan's thunk parameters and fields are its
                          * adapter's, a function of the unit (the thunks pass) *)
-                        if eq(p.kind "adapt") andif {maybe.isNone(:nodes.Function p.thunk)
+                        if nodes.planIs(p nodes.planAdapt) andif {maybe.isNone(:nodes.Function p.thunk)
                             orif {extent p.fields > 0} orif {extent p.thunkParams > 0}} then
                             problem(where <> ": an adapt plan without its adapter")
                         end

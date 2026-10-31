@@ -718,97 +718,99 @@ export
     let rec convert(p: P c: String plan: nodes.Plan): String =
         begin
             let kind = plan.kind
-            if eq(kind "box") then
-                types.qvalWrap(c plan.source)
-            elsif eq(kind "unbox") then
-                types.qvalUnwrap(c plan.target)
-            elsif eq(kind "record_view") then
-                "quest_record_view(" <> c <> ", " <> descriptor(p plan.descriptors[0]) <> ")"
-            elsif eq(kind "variant_tags") then
-                let table = maybe.unwrap(:nodes.TagMap plan.tagMap)
-                let v = temp(p "QVariantVal")
-                emit(p v <> " = " <> c <> ";")
-                let tagmap = "tagmap_" <> layout.typeTag(table.target) <> "_" <> layout.typeTag(table.source)
-                "((QVariantVal){ .tag = " <> tagmap <> "[" <> v <> ".tag], .payload = " <> v <> ".payload })"
-            elsif eq(kind "cast") then
-                let sourceS = shapeOf(plan.source)
-                let targetS = shapeOf(plan.target)
-                if eq(sourceS.kind "tuple") andif eq(targetS.kind "tuple")
-                    andif not(eq(layout.shapeTag(sourceS) layout.shapeTag(targetS))) then
-                    let key = layout.shapeTag(targetS) <> "\n" <> layout.shapeTag(sourceS)
-                    if not(hashMap.contains(:String :declarations.Pair p.tupleCasts key)) then
-                        add(p.tupleCastKeys key) end
-                    put(:String :declarations.Pair p.tupleCasts key
-                        tuple let target = targetS.structure let source = sourceS.structure end)
-                end
-                "((" <> cType(plan.target) <> ")" <> c <> ")"
-            elsif eq(kind "unproxy") then
-                "((" <> cType(plan.target) <> ")quest_unproxy(" <> c <> "))"
-            elsif eq(kind "slot_box") then
-                types.shapeSlotStore(c shapeOf(plan.source))
-            elsif eq(kind "slot_unbox") then
-                "(*" <> c <> ")"
-            elsif eq(kind "view") then
-                let sourceD = descriptor(p plan.descriptors[0])
-                let targetD = descriptor(p plan.descriptors[1])
-                let converted = "quest_convert(" <> types.qvalWrap(c plan.source) <> ", " <> sourceD <> ", "
-                    <> targetD <> ")"
-                types.qvalUnwrap(converted plan.target)
-            elsif eq(kind "adapt") then
-                if maybe.isNone(:nodes.Function plan.thunk) then
-                    raise unsupported with "C printing of an adapt plan without its adapter" end
-                end
-                let clos = temp(p "QClosure *")
-                emit(p clos <> " = (QClosure *)quest_alloc(sizeof(QClosure));")
-                emit(p clos <> "->fn = (void *)" <> codeName(p maybe.unwrap(:nodes.Function plan.thunk)) <> ";")
-                emit(p clos <> "->env = (void *)(" <> c <> ");")
-                clos
-            elsif eq(kind "runtime") then
-                let l = maybe.unwrap(:nodes.PlanLayout plan.layout)
-                let genericType = if l.toGeneric then plan.target else plan.source end
-                let nativeType = model.substitute(genericType l.subst)
-                let fromType = if l.toGeneric then nativeType else genericType end
-                let toType = if l.toGeneric then genericType else nativeType end
-                let fromD = descriptor(p plan.descriptors[0])
-                let toD = descriptor(p plan.descriptors[1])
-                let converted = "quest_convert(" <> types.qvalWrap(c fromType) <> ", " <> fromD <> ", " <> toD <> ")"
-                types.qvalUnwrap(converted toType)
-            elsif eq(kind "copy") then
-                let src = temp(p cType(plan.source))
-                emit(p src <> " = " <> c <> ";")
-                let fields = vector.new(:Field)
-                let sourceS = shapeOf(plan.source)
-                let targetS = shapeOf(plan.target)
-                let n = if extent targetS.components < extent plan.fields then extent targetS.components
-                    else extent plan.fields
-                end
-                for i = 0 upto {n - 1} do
-                    let tc = componentShape(targetS i)
-                    let fp = plan.fields[i]
-                    let sc = componentShape(sourceS i)
-                    let fc = tupleComponent(p src sourceS i plan.access[i])
-                    if maybe.isSome(:nodes.Plan fp) andif eq(maybe.unwrap(:nodes.Plan fp).kind "view") then
-                        (* Converted by descriptor, from the slot's QVal form to
-                         * the target slot's *)
-                        let f = maybe.unwrap(:nodes.Plan fp)
-                        let sourceD = descriptor(p f.descriptors[0])
-                        let targetD = descriptor(p f.descriptors[1])
-                        let converted = "quest_convert(" <> types.shapeSlotToQval(fc sc) <> ", " <> sourceD <> ", "
-                            <> targetD <> ")"
-                        vector.append(:Field fields text(types.shapeQvalToSlot(converted tc)))
-                    elsif maybe.isSome(:nodes.Plan fp) then
-                        vector.append(:Field fields
-                            text(types.shapeSlotStore(convert(p types.shapeSlotLoad(fc sc)
-                                maybe.unwrap(:nodes.Plan fp)) tc)))
-                    elsif eq(slotCType(sc) slotCType(tc)) then
-                        vector.append(:Field fields text(fc))
-                    else
-                        vector.append(:Field fields text(types.shapeQvalToSlot(types.shapeSlotToQval(fc sc) tc)))
+            case kind
+                when planBox then
+                    types.qvalWrap(c plan.source)
+                when planUnbox then
+                    types.qvalUnwrap(c plan.target)
+                when planRecordView then
+                    "quest_record_view(" <> c <> ", " <> descriptor(p plan.descriptors[0]) <> ")"
+                when planVariantTags then
+                    let table = maybe.unwrap(:nodes.TagMap plan.tagMap)
+                    let v = temp(p "QVariantVal")
+                    emit(p v <> " = " <> c <> ";")
+                    let tagmap = "tagmap_" <> layout.typeTag(table.target) <> "_" <> layout.typeTag(table.source)
+                    "((QVariantVal){ .tag = " <> tagmap <> "[" <> v <> ".tag], .payload = " <> v <> ".payload })"
+                when planCast then
+                    let sourceS = shapeOf(plan.source)
+                    let targetS = shapeOf(plan.target)
+                    if eq(sourceS.kind "tuple") andif eq(targetS.kind "tuple")
+                        andif not(eq(layout.shapeTag(sourceS) layout.shapeTag(targetS))) then
+                        let key = layout.shapeTag(targetS) <> "\n" <> layout.shapeTag(sourceS)
+                        if not(hashMap.contains(:String :declarations.Pair p.tupleCasts key)) then
+                            add(p.tupleCastKeys key) end
+                        put(:String :declarations.Pair p.tupleCasts key
+                            tuple let target = targetS.structure let source = sourceS.structure end)
                     end
-                end
-                makeTuple(p plan.target fields)
-            else
-                raise unsupported with "conversion plan " <> kind end
+                    "((" <> cType(plan.target) <> ")" <> c <> ")"
+                when planUnproxy then
+                    "((" <> cType(plan.target) <> ")quest_unproxy(" <> c <> "))"
+                when planSlotBox then
+                    types.shapeSlotStore(c shapeOf(plan.source))
+                when planSlotUnbox then
+                    "(*" <> c <> ")"
+                when planView then
+                    let sourceD = descriptor(p plan.descriptors[0])
+                    let targetD = descriptor(p plan.descriptors[1])
+                    let converted = "quest_convert(" <> types.qvalWrap(c plan.source) <> ", " <> sourceD <> ", "
+                        <> targetD <> ")"
+                    types.qvalUnwrap(converted plan.target)
+                when planAdapt then
+                    if maybe.isNone(:nodes.Function plan.thunk) then
+                        raise unsupported with "C printing of an adapt plan without its adapter" end
+                    end
+                    let clos = temp(p "QClosure *")
+                    emit(p clos <> " = (QClosure *)quest_alloc(sizeof(QClosure));")
+                    emit(p clos <> "->fn = (void *)" <> codeName(p maybe.unwrap(:nodes.Function plan.thunk)) <> ";")
+                    emit(p clos <> "->env = (void *)(" <> c <> ");")
+                    clos
+                when planRuntime then
+                    let l = maybe.unwrap(:nodes.PlanLayout plan.layout)
+                    let genericType = if l.toGeneric then plan.target else plan.source end
+                    let nativeType = model.substitute(genericType l.subst)
+                    let fromType = if l.toGeneric then nativeType else genericType end
+                    let toType = if l.toGeneric then genericType else nativeType end
+                    let fromD = descriptor(p plan.descriptors[0])
+                    let toD = descriptor(p plan.descriptors[1])
+                    let converted = "quest_convert(" <> types.qvalWrap(c fromType) <> ", " <> fromD <> ", " <> toD
+                        <> ")"
+                    types.qvalUnwrap(converted toType)
+                when planCopy then
+                    let src = temp(p cType(plan.source))
+                    emit(p src <> " = " <> c <> ";")
+                    let fields = vector.new(:Field)
+                    let sourceS = shapeOf(plan.source)
+                    let targetS = shapeOf(plan.target)
+                    let n = if extent targetS.components < extent plan.fields then extent targetS.components
+                        else extent plan.fields
+                    end
+                    for i = 0 upto {n - 1} do
+                        let tc = componentShape(targetS i)
+                        let fp = plan.fields[i]
+                        let sc = componentShape(sourceS i)
+                        let fc = tupleComponent(p src sourceS i plan.access[i])
+                        let byDescriptor =
+                            maybe.isSome(:nodes.Plan fp) andif nodes.planIs(maybe.unwrap(:nodes.Plan fp) nodes.planView)
+                        if byDescriptor then
+                            (* Converted by descriptor, from the slot's QVal form to
+                             * the target slot's *)
+                            let f = maybe.unwrap(:nodes.Plan fp)
+                            let sourceD = descriptor(p f.descriptors[0])
+                            let targetD = descriptor(p f.descriptors[1])
+                            let converted = "quest_convert(" <> types.shapeSlotToQval(fc sc) <> ", " <> sourceD <> ", "
+                                <> targetD <> ")"
+                            vector.append(:Field fields text(types.shapeQvalToSlot(converted tc)))
+                        elsif maybe.isSome(:nodes.Plan fp) then
+                            vector.append(:Field fields
+                                text(types.shapeSlotStore(convert(p types.shapeSlotLoad(fc sc)
+                                    maybe.unwrap(:nodes.Plan fp)) tc)))
+                        elsif eq(slotCType(sc) slotCType(tc)) then
+                            vector.append(:Field fields text(fc))
+                        else
+                            vector.append(:Field fields text(types.shapeQvalToSlot(types.shapeSlotToQval(fc sc) tc)))
+                        end
+                    end
+                    makeTuple(p plan.target fields)
             end
         end
 
@@ -1397,12 +1399,12 @@ export
             when opEnvField with x then atomName(p x.env) <> "->c" <> cInt(x.index)
             when opConvert with x then
                 let v = atomVar(x.value)
-                if eq(x.plan.kind "unbox") andif maybe.isSome(:Variable result)
+                if nodes.planIs(x.plan nodes.planUnbox) andif maybe.isSome(:Variable result)
                     andif maybe.unwrap(:Variable result).boxed then
                     (* A QVal word holds a record or variant as its box *)
                     types.shapeQvalToSlot(atom(p x.value) shapeOf(x.plan.target))
-                elsif eq(x.plan.kind "box") andif maybe.isSome(:Variable v) andif maybe.unwrap(:Variable v).boxed
-                    andif not(maybe.unwrap(:Variable v).isMutable) then
+                elsif nodes.planIs(x.plan nodes.planBox) andif maybe.isSome(:Variable v)
+                    andif maybe.unwrap(:Variable v).boxed andif not(maybe.unwrap(:Variable v).isMutable) then
                     (* A box is a record's or variant's QVal word *)
                     types.shapeSlotToQval(atom(p x.value) shapeOf(x.plan.source))
                 else

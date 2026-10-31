@@ -977,73 +977,81 @@ export
     let rec convert(fn: Fn vs: Array(Int) plan: ir.Plan): Array(Int) =
         begin
             let kind = plan.kind
-            if eq(kind "box") then
-                array of toWord(fn vs plan.source) end
-            elsif eq(kind "unbox") then
-                fromWord(fn vs[0] plan.target)
-            elsif eq(kind "record_view") then
-                ssa.call(fn.f fn.cur "quest_record_view" array of vs[0] vs[1] descriptor(fn plan.descriptors[0]) end
-                    firstPair array of tPtr tPtr end)
-            elsif eq(kind "variant_tags") then
-                let table = maybe.unwrap(:ir.TagMap plan.tagMap)
-                let map = staticdata.describeTagMap(table.target table.source)
-                let scaled = binary(fn ssa.opMul vs[0] constant(fn 8))
-                array of loadWord(fn indexPtr(fn symbolAt(fn map.symbol) scaled) 0 tInt) vs[1] end
-            elsif eq(kind "cast") then
-                vs
-            elsif eq(kind "unproxy") then
-                array of unproxy(fn vs[0]) end
-            elsif eq(kind "slot_box") then
-                if layout.isBoxedInSlots(shapes.shape(plan.source)) then boxed(fn vs plan.source) else vs end
-            elsif eq(kind "slot_unbox") then
-                unboxed(fn vs plan.target)
-            elsif eq(kind "view") then
-                let converted = call1(fn "quest_convert" array of toWord(fn vs plan.source) descriptor(fn plan.descriptors[0])
-                    descriptor(fn plan.descriptors[1]) end tInt)
-                fromWord(fn converted plan.target)
-            elsif eq(kind "runtime") then
-                let l = maybe.unwrap(:ir.PlanLayout plan.layout)
-                let genericType = if l.toGeneric then plan.target else plan.source end
-                let nativeType = model.substitute(genericType l.subst)
-                let fromType = if l.toGeneric then nativeType else genericType end
-                let toType = if l.toGeneric then genericType else nativeType end
-                let converted = call1(fn "quest_convert" array of toWord(fn vs fromType) descriptor(fn plan.descriptors[0])
-                    descriptor(fn plan.descriptors[1]) end tInt)
-                fromWord(fn converted toType)
-            elsif eq(kind "adapt") then
-                if maybe.isNone(:ir.Function plan.thunk) then raise unsupported with "an adapt plan without its adapter" end end
-                let clos = alloc(fn 16)
-                store(fn clos runtimeLayout.offset("QClosure" "fn") 8 symbolAt(fn codeName(fn.u maybe.unwrap(:ir.Function plan.thunk))))
-                store(fn clos runtimeLayout.offset("QClosure" "env") 8 vs[0])
-                array of clos end
-            elsif eq(kind "copy") then
-                let source = vs[0]
-                let sourceS = shapes.shape(plan.source)
-                let targetS = shapes.shape(plan.target)
-                let n = if extent targetS.components < extent plan.fields then extent targetS.components else extent plan.fields end
-                let tup = alloc(fn 8 * {if n is 0 then 1 else n end})
-                for i = 0 upto {n - 1} do
-                    let tc = componentShape(targetS i)
-                    let sc = componentShape(sourceS i)
-                    let fc = tupleComponent(fn source sourceS i plan.access[i])
-                    let fp = plan.fields[i]
-                    let converted = if maybe.isSome(:ir.Plan fp) andif eq(maybe.unwrap(:ir.Plan fp).kind "view") then
-                        (* Converted by descriptor, from the slot's QVal form to
-                         * the target slot's *)
-                        let f = maybe.unwrap(:ir.Plan fp)
-                        let w = call1(fn "quest_convert" array of slotToWord(fn fc sc.type) descriptor(fn f.descriptors[0])
-                            descriptor(fn f.descriptors[1]) end tInt)
-                        slotFromWord(fn w tc.type)
-                    elsif maybe.isSome(:ir.Plan fp) then
-                        slotStore(fn convert(fn slotLoad(fn fc sc.type) maybe.unwrap(:ir.Plan fp)) tc.type)
-                    else
-                        slotFromWord(fn slotToWord(fn fc sc.type) tc.type)
+            case kind
+                when planBox then
+                    array of toWord(fn vs plan.source) end
+                when planUnbox then
+                    fromWord(fn vs[0] plan.target)
+                when planRecordView then
+                    ssa.call(fn.f fn.cur "quest_record_view" array of vs[0] vs[1] descriptor(fn plan.descriptors[0]) end
+                        firstPair array of tPtr tPtr end)
+                when planVariantTags then
+                    let table = maybe.unwrap(:ir.TagMap plan.tagMap)
+                    let map = staticdata.describeTagMap(table.target table.source)
+                    let scaled = binary(fn ssa.opMul vs[0] constant(fn 8))
+                    array of loadWord(fn indexPtr(fn symbolAt(fn map.symbol) scaled) 0 tInt) vs[1] end
+                when planCast then
+                    vs
+                when planUnproxy then
+                    array of unproxy(fn vs[0]) end
+                when planSlotBox then
+                    if layout.isBoxedInSlots(shapes.shape(plan.source)) then boxed(fn vs plan.source) else vs end
+                when planSlotUnbox then
+                    unboxed(fn vs plan.target)
+                when planView then
+                    let word = toWord(fn vs plan.source)
+                    let converted = call1(fn "quest_convert"
+                        array of word descriptor(fn plan.descriptors[0]) descriptor(fn plan.descriptors[1]) end tInt)
+                    fromWord(fn converted plan.target)
+                when planRuntime then
+                    let l = maybe.unwrap(:ir.PlanLayout plan.layout)
+                    let genericType = if l.toGeneric then plan.target else plan.source end
+                    let nativeType = model.substitute(genericType l.subst)
+                    let fromType = if l.toGeneric then nativeType else genericType end
+                    let toType = if l.toGeneric then genericType else nativeType end
+                    let word = toWord(fn vs fromType)
+                    let converted = call1(fn "quest_convert"
+                        array of word descriptor(fn plan.descriptors[0]) descriptor(fn plan.descriptors[1]) end tInt)
+                    fromWord(fn converted toType)
+                when planAdapt then
+                    if maybe.isNone(:ir.Function plan.thunk) then
+                        raise unsupported with "an adapt plan without its adapter" end
                     end
-                    writeSlot(fn offsetPtr(fn tup 8 * i) tc.type converted)
-                end
-                array of tup end
-            else
-                raise unsupported with "conversion plan " <> kind end
+                    let clos = alloc(fn 16)
+                    let code = symbolAt(fn codeName(fn.u maybe.unwrap(:ir.Function plan.thunk)))
+                    store(fn clos runtimeLayout.offset("QClosure" "fn") 8 code)
+                    store(fn clos runtimeLayout.offset("QClosure" "env") 8 vs[0])
+                    array of clos end
+                when planCopy then
+                    let source = vs[0]
+                    let sourceS = shapes.shape(plan.source)
+                    let targetS = shapes.shape(plan.target)
+                    let n = if extent targetS.components < extent plan.fields then extent targetS.components
+                        else extent plan.fields end
+                    let tup = alloc(fn 8 * {if n is 0 then 1 else n end})
+                    for i = 0 upto {n - 1} do
+                        let tc = componentShape(targetS i)
+                        let sc = componentShape(sourceS i)
+                        let fc = tupleComponent(fn source sourceS i plan.access[i])
+                        let fp = plan.fields[i]
+                        let byDescriptor =
+                            maybe.isSome(:ir.Plan fp) andif ir.planIs(maybe.unwrap(:ir.Plan fp) ir.planView)
+                        let converted = if byDescriptor then
+                            (* Converted by descriptor, from the slot's QVal form to
+                             * the target slot's *)
+                            let f = maybe.unwrap(:ir.Plan fp)
+                            let word = slotToWord(fn fc sc.type)
+                            let w = call1(fn "quest_convert"
+                                array of word descriptor(fn f.descriptors[0]) descriptor(fn f.descriptors[1]) end tInt)
+                            slotFromWord(fn w tc.type)
+                        elsif maybe.isSome(:ir.Plan fp) then
+                            slotStore(fn convert(fn slotLoad(fn fc sc.type) maybe.unwrap(:ir.Plan fp)) tc.type)
+                        else
+                            slotFromWord(fn slotToWord(fn fc sc.type) tc.type)
+                        end
+                        writeSlot(fn offsetPtr(fn tup 8 * i) tc.type converted)
+                    end
+                    array of tup end
             end
         end
 
@@ -1514,10 +1522,11 @@ export
                 array of call1(fn "quest_alloc_exception" array of symbolAt(fn stringSymbol(fn.u x.name)) end tPtr) end
             when opConvert with x then
                 let v = case x.value when atomVar with y then maybe.some(:Variable y.v) else maybe.none(:Variable) end
-                if eq(x.plan.kind "unbox") andif maybe.isSome(:Variable result) andif maybe.unwrap(:Variable result).boxed then
+                if ir.planIs(x.plan ir.planUnbox) andif maybe.isSome(:Variable result)
+                    andif maybe.unwrap(:Variable result).boxed then
                     (* A QVal word holds a record or variant as its box *)
                     slotFromWord(fn atom1(fn x.value) x.plan.target)
-                elsif eq(x.plan.kind "box") andif maybe.isSome(:Variable v) andif maybe.unwrap(:Variable v).boxed
+                elsif ir.planIs(x.plan ir.planBox) andif maybe.isSome(:Variable v) andif maybe.unwrap(:Variable v).boxed
                     andif not(maybe.unwrap(:Variable v).isMutable) then
                     (* A box is a record's or variant's QVal word *)
                     array of slotToWord(fn atom(fn x.value) x.plan.source) end

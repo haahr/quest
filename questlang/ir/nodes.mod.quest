@@ -17,6 +17,10 @@ export
     Def Prim = Option primAdd primSub primMul primDiv primRem primMod primLt primLe primGt primGe primRealAdd
         primRealSub primRealMul primRealDiv primRealPow primRealLt primRealLe primRealGt primRealGe primConcat primAnd
         primOr primIs primIsnot primNot primExtent end
+    Def PlanKind = Option
+        planBox planUnbox planRecordView planVariantTags planCast planUnproxy
+        planSlotBox planSlotUnbox planView planRuntime planAdapt planCopy
+    end
     Def Access = Option direct original proxy end
     Def Catching = Option catchListed catchAll catchAllTraced catchUnknown end
 
@@ -73,7 +77,7 @@ export
     (* How convert changes a value's representation (docs/ir.md section 8.3) *)
     and Plan = Tuple
         id: Int
-        kind: String
+        kind: PlanKind
         source: Type
         target: Type
         var fields: Array(maybe.T(Plan))
@@ -488,7 +492,54 @@ export
 
     let newStaticDescriptor(t: Type echo: Bool): StaticDescriptor = tuple let id = nextId() let type = t let echo = echo end
 
-    let newPlan(kind: String source: Type target: Type): Plan =
+    let planBox: PlanKind = option planBox of PlanKind end
+    let planUnbox: PlanKind = option planUnbox of PlanKind end
+    let planRecordView: PlanKind = option planRecordView of PlanKind end
+    let planVariantTags: PlanKind = option planVariantTags of PlanKind end
+    let planCast: PlanKind = option planCast of PlanKind end
+    let planUnproxy: PlanKind = option planUnproxy of PlanKind end
+    let planSlotBox: PlanKind = option planSlotBox of PlanKind end
+    let planSlotUnbox: PlanKind = option planSlotUnbox of PlanKind end
+    let planView: PlanKind = option planView of PlanKind end
+    let planRuntime: PlanKind = option planRuntime of PlanKind end
+    let planAdapt: PlanKind = option planAdapt of PlanKind end
+    let planCopy: PlanKind = option planCopy of PlanKind end
+
+    let planKindName(k: PlanKind): String =
+        case k
+            when planBox then "box"
+            when planUnbox then "unbox"
+            when planRecordView then "record_view"
+            when planVariantTags then "variant_tags"
+            when planCast then "cast"
+            when planUnproxy then "unproxy"
+            when planSlotBox then "slot_box"
+            when planSlotUnbox then "slot_unbox"
+            when planView then "view"
+            when planRuntime then "runtime"
+            when planAdapt then "adapt"
+            when planCopy then "copy"
+        end
+
+    let planKindIndex(k: PlanKind): Int =
+        case k
+            when planBox then 0
+            when planUnbox then 1
+            when planRecordView then 2
+            when planVariantTags then 3
+            when planCast then 4
+            when planUnproxy then 5
+            when planSlotBox then 6
+            when planSlotUnbox then 7
+            when planView then 8
+            when planRuntime then 9
+            when planAdapt then 10
+            when planCopy then 11
+        end
+
+    let planIs(p: Plan k: PlanKind): Bool = planKindIndex(p.kind) is planKindIndex(k)
+
+    let newPlan(kind: PlanKind source: Type target: Type): Plan =
         tuple
             let id = nextId()
             let kind = kind

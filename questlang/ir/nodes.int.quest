@@ -70,6 +70,26 @@ export
     (* Whether a primitive is is or isnot *)
     comparesIdentity(p: Prim): Bool
 
+    (* The kinds of conversion plans (docs/ir.md section 8.3) *)
+    Def PlanKind = Option
+        planBox planUnbox planRecordView planVariantTags planCast planUnproxy
+        planSlotBox planSlotUnbox planView planRuntime planAdapt planCopy
+    end
+    planBox: PlanKind
+    planUnbox: PlanKind
+    planRecordView: PlanKind
+    planVariantTags: PlanKind
+    planCast: PlanKind
+    planUnproxy: PlanKind
+    planSlotBox: PlanKind
+    planSlotUnbox: PlanKind
+    planView: PlanKind
+    planRuntime: PlanKind
+    planAdapt: PlanKind
+    planCopy: PlanKind
+    (* A plan kind's name in the IR's dumps *)
+    planKindName(k: PlanKind): String
+
     Def Access = Option direct original proxy end
     direct: Access
     original: Access
@@ -145,7 +165,7 @@ export
     (* How convert changes a value's representation (docs/ir.md section 8.3) *)
     and Plan = Tuple
         id: Int
-        kind: String
+        kind: PlanKind
         source: Type
         target: Type
         var fields: Array(maybe.T(Plan))
@@ -542,7 +562,9 @@ export
     newBody(): Body
     bodyOf(statements: Array(Stmt)): Body
     newStaticDescriptor(t: Type echo: Bool): StaticDescriptor
-    newPlan(kind: String source: Type target: Type): Plan
+    newPlan(kind: PlanKind source: Type target: Type): Plan
+    (* Whether plan p is of kind k *)
+    planIs(p: Plan k: PlanKind): Bool
     newFunction(v: Variable typeParams: Array(TypeParam) params: Array(ParamEntry) resultType: Type body: Body
         traceName: maybe.T(String)): Function
     newMembers(): Members
