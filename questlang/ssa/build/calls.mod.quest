@@ -12,6 +12,7 @@ import
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/maybe : util/Maybe
+    util/sort : util/Sort
     vals = questlang/ssa/build/values : questlang/ssa/build/Values
     descriptors = questlang/ssa/build/descriptors : questlang/ssa/build/Descriptors
 export
@@ -194,5 +195,61 @@ export
             else
                 callClosure(fn maybe.unwrap(:Variable o.callee) descs o.args)
             end
+        end
+
+    (* =========================================================================
+     * Module members
+     * ====================================================================== *)
+
+    (* An imported module's member, from its record: the field's offset in the
+     * record's payload is in the record's offset table, at the field's index in
+     * name order *)
+    let sortBefore(a: String b: String): Bool = sort.stringCompare(a b) < 0
+
+    let importedMember(fn: vals.Fn imp: ir.Import member: String): Array(Int) =
+        begin
+            let clean = symbols.mangleModuleName(imp.canonicalPath)
+            let recordAt = vals.symbolAt(fn symbols.moduleRecordIdent(clean))
+            if maybe.isNone(:Type imp.recordType) then raise vals.unsupported with "module " <> imp.name
+                <> ": its interface is unknown" end end
+            let recType = maybe.unwrap(:Type imp.recordType)
+            let fields = case recType.form
+                when typeRecord with rt then rt.fields
+                else vector.toArray(:model.RecordField vector.new(:model.RecordField))
+            end
+            let var fieldType = model.okType
+            let var index = 0
+            for i = 0 upto {extent fields - 1} do
+                if vals.eq(fields[i].name member) then fieldType := fields[i].type end
+                if sortBefore(fields[i].name member) then index := index + 1 end
+            end
+            let val = vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") vals.tPtr)
+            let dict = vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") vals.tPtr)
+            let offset = vals.loadWord(fn dict 8 * index vals.tInt)
+            vals.readSlot(fn vals.indexPtr(fn val offset) fieldType)
+        end
+
+    let moduleMember(fn: vals.Fn r: ir.ModuleRef member: maybe.T(String)): Array(Int) =
+        case r
+            when refModule with x then
+                if maybe.isNone(:String member) then
+                    let recordAt = vals.symbolAt(fn symbols.moduleRecordIdent(symbols.mangleModuleName(x.m.name)))
+                    array of
+                        vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") vals.tPtr)
+                        vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") vals.tPtr)
+                    end
+                else
+                    vals.read(fn maybe.unwrap(:Variable ir.member(x.m.members maybe.unwrap(:String member))))
+                end
+            when refImport with x then
+                if maybe.isNone(:String member) then
+                    let recordAt = vals.symbolAt(fn symbols.moduleRecordIdent(symbols.mangleModuleName(x.i.canonicalPath)))
+                    array of
+                        vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") vals.tPtr)
+                        vals.loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") vals.tPtr)
+                    end
+                else
+                    importedMember(fn x.i maybe.unwrap(:String member))
+                end
         end
 end

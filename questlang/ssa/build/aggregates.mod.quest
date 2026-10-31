@@ -112,6 +112,57 @@ export
         if layout.isBoxedInSlots(shapes.shape(t)) then vals.boxed(fn vs t) else vs end
 
     (* =========================================================================
+     * Tuples
+     * ====================================================================== *)
+
+    (* Stores an aggregate's fields: each its vals.atom's slot form, or for one the
+     * represent pass embedded, a fresh box in the aggregate's allocation after
+     * its struct (at boxes, 16 bytes each), holding the record or variant *)
+    let storeFields(fn: vals.Fn base: Int offsets: Array(Int) args: Array(Atom) types: Array(Type) embedded: Array(Int)
+        boxes: Int): Ok =
+        begin
+            let var k = 0
+            for i = 0 upto {extent args - 1} do
+                let var isEmbedded = false
+                for j = 0 upto {extent embedded - 1} do if embedded[j] is i then isEmbedded := true end end
+                let vs = vals.atom(fn args[i])
+                if isEmbedded then
+                    let box = vals.offsetPtr(fn base boxes + 16 * k)
+                    vals.writeValue(fn box types[i] vs)
+                    vals.store(fn base offsets[i] 8 box)
+                    k := k + 1
+                else
+                    vals.writeSlot(fn vals.offsetPtr(fn base offsets[i]) types[i] vs)
+                end
+            end
+        end
+
+    let embeddedCount(args: Array(Atom) embedded: Array(Int)): Int =
+        begin
+            let var n = 0
+            for i = 0 upto {extent args - 1} do
+                for j = 0 upto {extent embedded - 1} do if embedded[j] is i then n := n + 1 end end
+            end
+            n
+        end
+
+    let makeTuple(fn: vals.Fn x: ir.OpMakeTuple t: Type): Array(Int) =
+        begin
+            let rs = shapes.shape(t)
+            let n = extent rs.components
+            let structBytes = 8 * {if n is 0 then 1 else n end}
+            let tup = vals.alloc(fn structBytes + 16 * embeddedCount(x.args x.embedded))
+            let offsets = array of(extent x.args 0)
+            let types = array of(extent x.args model.okType)
+            for i = 0 upto {extent x.args - 1} do
+                offsets[i] := 8 * i
+                types[i] := if i < n then vals.componentShape(rs i).type else ir.atomType(x.args[i]) end
+            end
+            storeFields(fn tup offsets x.args types x.embedded structBytes)
+            array of tup end
+        end
+
+    (* =========================================================================
      * Records
      * ====================================================================== *)
 
@@ -208,7 +259,7 @@ export
             let box = vals.alloc(fn 16 + structBytes + 16 * extent embeddedArray)
             let payload = vals.offsetPtr(fn box 16)
             vals.store(fn payload runtimeLayout.offset("QRecordHeader" "descriptor") 8 descriptors.maybeDescriptor(fn o.descriptor))
-            vals.storeFields(fn payload offsets args types embeddedArray structBytes)
+            storeFields(fn payload offsets args types embeddedArray structBytes)
             let dict = if o.runtimeOffsets then
                 vals.call1(fn "quest_record_dict" array of descriptors.maybeDescriptor(fn o.viewDescriptor) descriptors.maybeDescriptor(fn o.descriptor) end vals.tPtr)
             else

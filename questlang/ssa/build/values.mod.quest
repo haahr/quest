@@ -15,7 +15,6 @@ import
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
-    util/sort : util/Sort
     util/strutil : util/Strutil
     stringOp = string : StringOp
     conv : Conv
@@ -718,105 +717,6 @@ export
 
     (* A new object of n bytes, zeroed by the collector *)
     let alloc(fn: Fn bytes: Int): Int = call1(fn "quest_alloc" array of constant(fn bytes) end tPtr)
-
-    (* Stores an aggregate's fields: each its atom's slot form, or for one the
-     * represent pass embedded, a fresh box in the aggregate's allocation after
-     * its struct (at boxes, 16 bytes each), holding the record or variant *)
-    let storeFields(fn: Fn base: Int offsets: Array(Int) args: Array(Atom) types: Array(Type) embedded: Array(Int)
-        boxes: Int): Ok =
-        begin
-            let var k = 0
-            for i = 0 upto {extent args - 1} do
-                let var isEmbedded = false
-                for j = 0 upto {extent embedded - 1} do if embedded[j] is i then isEmbedded := true end end
-                let vs = atom(fn args[i])
-                if isEmbedded then
-                    let box = offsetPtr(fn base boxes + 16 * k)
-                    writeValue(fn box types[i] vs)
-                    store(fn base offsets[i] 8 box)
-                    k := k + 1
-                else
-                    writeSlot(fn offsetPtr(fn base offsets[i]) types[i] vs)
-                end
-            end
-        end
-
-    let embeddedCount(args: Array(Atom) embedded: Array(Int)): Int =
-        begin
-            let var n = 0
-            for i = 0 upto {extent args - 1} do
-                for j = 0 upto {extent embedded - 1} do if embedded[j] is i then n := n + 1 end end
-            end
-            n
-        end
-
-    let makeTuple(fn: Fn x: ir.OpMakeTuple t: Type): Array(Int) =
-        begin
-            let rs = shapes.shape(t)
-            let n = extent rs.components
-            let structBytes = 8 * {if n is 0 then 1 else n end}
-            let tup = alloc(fn structBytes + 16 * embeddedCount(x.args x.embedded))
-            let offsets = array of(extent x.args 0)
-            let types = array of(extent x.args model.okType)
-            for i = 0 upto {extent x.args - 1} do
-                offsets[i] := 8 * i
-                types[i] := if i < n then componentShape(rs i).type else ir.atomType(x.args[i]) end
-            end
-            storeFields(fn tup offsets x.args types x.embedded structBytes)
-            array of tup end
-        end
-
-    (* An imported module's member, from its record: the field's offset in the
-     * record's payload is in the record's offset table, at the field's index in
-     * name order *)
-    let sortBefore(a: String b: String): Bool = sort.stringCompare(a b) < 0
-
-    let importedMember(fn: Fn imp: ir.Import member: String): Array(Int) =
-        begin
-            let clean = symbols.mangleModuleName(imp.canonicalPath)
-            let recordAt = symbolAt(fn symbols.moduleRecordIdent(clean))
-            if maybe.isNone(:Type imp.recordType) then raise unsupported with "module " <> imp.name
-                <> ": its interface is unknown" end end
-            let recType = maybe.unwrap(:Type imp.recordType)
-            let fields = case recType.form
-                when typeRecord with rt then rt.fields
-                else vector.toArray(:model.RecordField vector.new(:model.RecordField))
-            end
-            let var fieldType = model.okType
-            let var index = 0
-            for i = 0 upto {extent fields - 1} do
-                if eq(fields[i].name member) then fieldType := fields[i].type end
-                if sortBefore(fields[i].name member) then index := index + 1 end
-            end
-            let val = loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") tPtr)
-            let dict = loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") tPtr)
-            let offset = loadWord(fn dict 8 * index tInt)
-            readSlot(fn indexPtr(fn val offset) fieldType)
-        end
-
-    let moduleMember(fn: Fn r: ir.ModuleRef member: maybe.T(String)): Array(Int) =
-        case r
-            when refModule with x then
-                if maybe.isNone(:String member) then
-                    let recordAt = symbolAt(fn symbols.moduleRecordIdent(symbols.mangleModuleName(x.m.name)))
-                    array of
-                        loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") tPtr)
-                        loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") tPtr)
-                    end
-                else
-                    read(fn maybe.unwrap(:Variable ir.member(x.m.members maybe.unwrap(:String member))))
-                end
-            when refImport with x then
-                if maybe.isNone(:String member) then
-                    let recordAt = symbolAt(fn symbols.moduleRecordIdent(symbols.mangleModuleName(x.i.canonicalPath)))
-                    array of
-                        loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") tPtr)
-                        loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") tPtr)
-                    end
-                else
-                    importedMember(fn x.i maybe.unwrap(:String member))
-                end
-        end
 
     (* =========================================================================
      * Functions being built
