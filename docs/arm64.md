@@ -830,7 +830,9 @@ with what would address it.
    the function. *Addressed* (2026-10-29): `relaxBranches` relaxes each function's conditional branches whose
    targets are more than 260,000 instructions away, round after round (the questlang test `arm64_relax`, with a reach
    of a few instructions); a `try`'s `adr`, which also reaches 1 MB, takes the address of a branch beside it to the
-   handler. Step 6 makes no jump tables yet; they will need the same care.
+   handler. Step 6 makes no jump tables yet; they will need the same care. Since backend-improvements.md step 8,
+   `relaxBranches` works on instructions rather than lines of text, a pseudo-instruction counted as the instructions
+   it expands to.
 2. **Large frames and the guard page.** The trivial allocator gives every virtual register a slot, so a large
    function has a large frame, and a frame larger than the stack's guard region can step over it, so that a stack
    overflow writes into whatever memory lies beyond rather than faulting in the guard, and exceptions.md §6's handler

@@ -15,6 +15,7 @@
 interface Codegen
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 export
@@ -22,11 +23,12 @@ export
     unsupported: Exception(String)
     (* A unit's assembly *)
     assembleUnit(u: ssa.Unit): String
-    (* A function's lines of assembly with each conditional branch whose
-     * target is more than reach instructions away turned into the inverse
-     * branch around an unconditional one (docs/arm64.md section 10.1); its
-     * labels begin with prefix *)
-    relaxBranches(lines: vector.T(String) prefix: String reach: Int): vector.T(String)
+    (* A function's instructions with each conditional branch whose target is
+     * more than reach instructions away (a pseudo-instruction counted as the
+     * instructions it is) turned into the inverse branch around an
+     * unconditional one (docs/arm64.md section 10.1); its labels begin with
+     * prefix *)
+    relaxBranches(code: vector.T(minst.Inst) prefix: String reach: Int): vector.T(minst.Inst)
 
     (* A slot of a function's frame, at offset from sp after the prologue, of
      * bytes (docs/arm64.md section 10, hazard 5): a virtual register in

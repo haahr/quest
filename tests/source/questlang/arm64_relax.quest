@@ -1,36 +1,52 @@
 (* Self-Hosted Quest Compiler: Test the arm64 Backend's Branch Relaxation
  *
  * questlang/codegen/arm64/codegen's relaxBranches (docs/arm64.md section 10.1),
- * with a reach of a few instructions rather than a megabyte's: a conditional
- * branch whose target is too far, forward or back, becomes its inverse around
- * an unconditional branch; one within reach, an unconditional branch, and
- * directives are left alone; and relaxing one branch can push another out of
- * reach, which the next round relaxes. *)
+ * on instructions (questlang/codegen/arm64/minst), with a reach of a few
+ * instructions rather than a megabyte's: a conditional branch whose target is
+ * too far, forward or back, becomes its inverse around an unconditional
+ * branch; one within reach, an unconditional branch, and directives are left
+ * alone; relaxing one branch can push another out of reach, which the next
+ * round relaxes; and a pseudo-instruction counts as the instructions it is. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
     questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+    questlang/codegen/arm64/printer : questlang/codegen/arm64/Printer
+    questlang/codegen/arm64/target : questlang/codegen/arm64/Target
     collections/vector : collections/Vector
     writer : Writer
 ;
 
-let show(title: String lines: Array(String) reach: Int): Ok =
+let show(title: String code: Array(minst.Inst) reach: Int): Ok =
     begin
         writer.putString(writer.output "== " <> title <> "\n")
-        let relaxed = codegen.relaxBranches(vector.fromArray(:String lines) "Lt" reach)
-        for i = 0 upto {vector.length(:String relaxed) - 1} do
-            writer.putString(writer.output vector.get(:String relaxed i) <> "\n")
+        let relaxed = codegen.relaxBranches(vector.fromArray(:minst.Inst code) "Lt" reach)
+        for i = 0 upto {vector.length(:minst.Inst relaxed) - 1} do
+            let inst = vector.get(:minst.Inst relaxed i)
+            let lines = printer.lines(inst.op inst.regs printer.physical)
+            for k = 0 upto {extent lines - 1} do writer.putString(writer.output lines[k] <> "\n") end
         end
     end;
 
+let x9 = target.x(9);
+let label = minst.label;
+let nop = minst.nop;
+let b = minst.b;
+let bCond = minst.bCond;
+
 show("near and far, forward and back" array of
-    "Lt_b0:" "\tcbz x9, Lt_b1" "\tcbnz x9, Lt_b2" "\tnop" "\t.cfi_offset w29, -16" "Lt_b1:" "\tnop" "\tnop" "\tnop"
-    "\tb.ne Lt_b0" "\tb Lt_b0" "Lt_b2:" "\tret"
+    label("Lt_b0") minst.cbz(x9 "Lt_b1") minst.cbnz(x9 "Lt_b2") nop minst.cfiOffset(target.fp ~16) label("Lt_b1") nop
+    nop nop bCond(minst.condNe "Lt_b0") b("Lt_b0") label("Lt_b2") minst.ret
 end 4);
 show("one relaxation pushes another out of reach" array of
-    "\tb.mi Lt_b1" "\tb.lt Lt_b2" "\tnop" "Lt_b1:" "\tnop" "\tnop" "Lt_b2:" "\tret"
+    bCond(minst.condMi "Lt_b1") bCond(minst.condLt "Lt_b2") nop label("Lt_b1") nop nop label("Lt_b2") minst.ret
 end 3);
 show("every condition inverts" array of
-    "\tb.eq L" "\tb.ge L" "\tb.le L" "\tb.hs L" "\tb.ls L" "\tb.pl L" "\tb.vc L" "\tnop" "\tnop" "\tnop" "\tnop"
-    "\tnop" "\tnop" "\tnop" "\tnop" "\tnop" "\tnop" "\tnop" "L:"
+    bCond(minst.condEq "L") bCond(minst.condGe "L") bCond(minst.condLe "L") bCond(minst.condHs "L")
+    bCond(minst.condLs "L") bCond(minst.condPl "L") bCond(minst.condVc "L") nop nop nop nop nop nop nop nop nop nop
+    nop label("L")
 end 1);
+show("a constant of four halfwords is four instructions" array of
+    bCond(minst.condEq "L") minst.movConst(x9 ~2) label("L") minst.ret
+end 3);

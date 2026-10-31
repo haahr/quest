@@ -228,7 +228,7 @@ export
             when opAdr then option opAdr of minst.Op with let label = l end
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                 opSubImm, opAndImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCset, opLoad,
-                opStore, opLdp, opStp, opAdrp, opAddPageOff, opBSymbol, opBl, opBlr, opBr, opRet, opBrk, opLabel,
+                opStore, opLdp, opStp, opAdrp, opAddPageOff, opBSymbol, opBl, opBlr, opBr, opRet, opBrk, opNop, opLabel,
                 opCfiDefCfa, opCfiOffset then
                 op
         end
@@ -238,7 +238,7 @@ export
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                 opSubImm, opAndImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCset, opLoad,
                 opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz,
-                opCbnz, opBCond, opLabel, opCfiDefCfa, opCfiOffset then
+                opCbnz, opBCond, opNop, opLabel, opCfiDefCfa, opCfiOffset then
                 false
         end
 
@@ -250,68 +250,63 @@ export
      * margin *)
     let branchReach = 260000
 
-    let isInstruction(line: String): Bool =
-        {stringOp.length(line) > 1} andif {stringOp.getChar(line 0) is '\t'} andif not({stringOp.getChar(line 1) is '.'})
-    let isLabel(line: String): Bool =
-        {stringOp.length(line) > 1} andif {stringOp.getChar(line {stringOp.length(line) - 1}) is ':'}
-            andif not({stringOp.getChar(line 0) is '\t'})
-
-    (* A conditional branch's inverse and target, if line is one: cbz and cbnz
-     * of a register, and b.cond *)
-    Let Conditional = Tuple inverse: String target: String end
-    let conditional(line: String): maybe.T(Conditional) =
-        begin
-            let inverses = array of "cbz" "cbnz" "b.eq" "b.ne" "b.lt" "b.ge" "b.gt" "b.le" "b.lo" "b.hs" "b.hi" "b.ls"
-                "b.mi" "b.pl" "b.vs" "b.vc" end
-            let var found = maybe.none(:Conditional)
-            for k = 0 upto {extent inverses - 1} do
-                let op = inverses[k]
-                let inverse = inverses[k + {if {{k / 2} * 2} is k then 1 else ~1 end}]
-                let head = "\t" <> op <> " "
-                if strutil.startsWith(line head) then
-                    let rest = stringOp.getSub(line stringOp.length(head) {stringOp.length(line) - stringOp.length(head)})
-                    (* cbz's register comes first: the target follows the last
-                     * space *)
-                    let var at = 0
-                    for i = 0 upto {stringOp.length(rest) - 1} do if stringOp.getChar(rest i) is ' ' then at := i + 1 end end
-                    let operands = stringOp.getSub(rest 0 at)
-                    found := maybe.some(:Conditional tuple
-                        let inverse = "\t" <> inverse <> " " <> operands
-                        let target = stringOp.getSub(rest at {stringOp.length(rest) - at})
-                    end)
-                end
-            end
-            found
+    (* A conditional branch's inverse to a label, and its target, if op is
+     * one: cbz and cbnz of a register, and b.cond *)
+    Let Conditional = Tuple inverse: All(l: String) minst.Op target: String end
+    let conditional(op: minst.Op): maybe.T(Conditional) =
+        case op
+            when opCbz with x then maybe.some(:Conditional tuple
+                let inverse = fun(l: String): minst.Op option opCbnz of minst.Op with let label = l end
+                let target = x.label
+            end)
+            when opCbnz with x then maybe.some(:Conditional tuple
+                let inverse = fun(l: String): minst.Op option opCbz of minst.Op with let label = l end
+                let target = x.label
+            end)
+            when opBCond with x then maybe.some(:Conditional tuple
+                let inverse = fun(l: String): minst.Op minst.bCond(minst.inverse(x.cond) l).op let target = x.label
+            end)
+            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
+                opSubImm, opAndImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCset, opLoad,
+                opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opBrk,
+                opNop, opLabel, opCfiDefCfa, opCfiOffset then
+                maybe.none(:Conditional)
         end
 
-    (* A function's lines with each conditional branch whose target is more
+    (* A function's code with each conditional branch whose target is more
      * than reach instructions away turned into the inverse branch around an
      * unconditional one, which reaches 128 MB; repeated until none is *)
-    let relaxBranches(lines: Lines prefix: String reach: Int): Lines =
+    let relaxBranches(code: Code prefix: String reach: Int): Code =
         begin
-            let var current = lines
+            let var current = code
             let var changed = true
             let var count = 0
             while changed do
                 changed := false
                 let at = hashMap.new(:String :Int eq hash.string)
                 let var n = 0
-                for i = 0 upto {vector.length(:String current) - 1} do
-                    let line = vector.get(:String current i)
-                    if isLabel(line) then put(:String :Int at stringOp.getSub(line 0 {stringOp.length(line) - 1}) n)
-                    elsif isInstruction(line) then n := n + 1 end
+                for k = 0 upto {vector.length(:minst.Inst current) - 1} do
+                    let i = vector.get(:minst.Inst current k)
+                    case i.op
+                        when opLabel with x then put(:String :Int at x.label n)
+                        when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith,
+                            opAddImm, opSubImm, opAndImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm,
+                            opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl,
+                            opBlr, opBr, opRet, opCbz, opCbnz, opBCond, opBrk, opNop, opCfiDefCfa, opCfiOffset then
+                            n := n + printer.count(i.op)
+                    end
                 end
-                let next = vector.new(:String)
+                let next = vector.new(:minst.Inst)
                 let var position = 0
-                for i = 0 upto {vector.length(:String current) - 1} do
-                    let line = vector.get(:String current i)
-                    let c = conditional(line)
+                for k = 0 upto {vector.length(:minst.Inst current) - 1} do
+                    let i = vector.get(:minst.Inst current k)
+                    let c = conditional(i.op)
                     let var far = false
                     (* A branch around a relaxed one jumps two instructions *)
-                    if maybe.isSome(:Conditional c) andif not(strutil.startsWith(maybe.unwrap(:Conditional c).target
-                        prefix <> "_r")) then
-                        let t = hashMap.get(:String :Int at maybe.unwrap(:Conditional c).target)
-                        if maybe.isSome(:Int t) then
+                    if maybe.isSome(:Conditional c) then
+                        let target = maybe.unwrap(:Conditional c).target
+                        let t = hashMap.get(:String :Int at target)
+                        if not(strutil.startsWith(target prefix <> "_r")) andif maybe.isSome(:Int t) then
                             let d = maybe.unwrap(:Int t) - position
                             far := {d > reach} orif {{0 - d} > reach}
                         end
@@ -319,20 +314,21 @@ export
                     if far then
                         count := count + 1
                         let skip = prefix <> "_r" <> conv.int(count)
-                        vector.append(:String next maybe.unwrap(:Conditional c).inverse <> skip)
-                        vector.append(:String next "\tb " <> maybe.unwrap(:Conditional c).target)
-                        vector.append(:String next skip <> ":")
+                        vector.append(:minst.Inst next tuple
+                            let op = maybe.unwrap(:Conditional c).inverse(skip) let regs = i.regs
+                        end)
+                        vector.append(:minst.Inst next minst.b(maybe.unwrap(:Conditional c).target))
+                        vector.append(:minst.Inst next minst.label(skip))
                         changed := true
                     else
-                        vector.append(:String next line)
+                        vector.append(:minst.Inst next i)
                     end
-                    if isInstruction(line) then position := position + 1 end
+                    position := position + printer.count(i.op)
                 end
                 current := next
             end
             current
         end
-
 
     (* =========================================================================
      * Functions and the unit
@@ -391,16 +387,17 @@ export
                     end
                 end
             end
+            let code = relaxBranches(e.code s.prefix branchReach)
             let lines = vector.new(:String)
             let start = asm.functionStart(f.symbol f.exported)
             for k = 0 upto {extent start - 1} do vector.append(:String lines start[k]) end
-            for k = 0 upto {vector.length(:minst.Inst e.code) - 1} do
-                let i = vector.get(:minst.Inst e.code k)
+            for k = 0 upto {vector.length(:minst.Inst code) - 1} do
+                let i = vector.get(:minst.Inst code k)
                 let ls = printer.lines(i.op i.regs printer.physical)
                 for j = 0 upto {extent ls - 1} do vector.append(:String lines ls[j]) end
             end
             for k = 0 upto {extent asm.functionEnd - 1} do vector.append(:String lines asm.functionEnd[k]) end
-            relaxBranches(lines s.prefix branchReach)
+            lines
         end
 
     let assembleUnit(u: ssa.Unit): String =

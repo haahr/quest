@@ -56,6 +56,7 @@ export
         opCbnz with label: String end
         opBCond with cond: Cond label: String end
         opBrk with imm: Int end
+        opNop
         opLabel with label: String end
         opCfiDefCfa with offset: Int end
         opCfiOffset with offset: Int end
@@ -128,7 +129,7 @@ export
                 1
             when opLdp then 2
             when opCmp, opFcmp, opCmpImm, opStore, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz,
-                opBCond, opBrk, opLabel, opCfiDefCfa, opCfiOffset then
+                opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset then
                 0
         end
     let pure(op: Op): Bool =
@@ -137,7 +138,7 @@ export
                 opShiftImm, opMsub, opSxtb, opSxtw, opAdrp, opAddPageOff, opAdr then
                 true
             when opMovk, opTlvAddress, opCmp, opFcmp, opCmpImm, opCset, opLoad, opStore, opLdp, opStp, opB, opBSymbol,
-                opBl, opBlr, opBr, opRet, opCbz, opCbnz, opBCond, opBrk, opLabel, opCfiDefCfa, opCfiOffset then
+                opBl, opBlr, opBr, opRet, opCbz, opCbnz, opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset then
                 false
         end
 
@@ -193,6 +194,7 @@ export
     let cbnz(r: Int label: String): Inst = inst(option opCbnz of Op with let label = label end array of r end)
     let bCond(c: Cond label: String): Inst = inst(option opBCond of Op with let cond = c let label = label end none)
     let brk(imm: Int): Inst = inst(option opBrk of Op with let imm = imm end none)
+    let nop: Inst = inst(option opNop of Op end none)
     let label(l: String): Inst = inst(option opLabel of Op with let label = l end none)
     let cfiDefCfa(r: Int offset: Int): Inst = inst(option opCfiDefCfa of Op with let offset = offset end array of r end)
     let cfiOffset(r: Int offset: Int): Inst = inst(option opCfiOffset of Op with let offset = offset end array of r end)
