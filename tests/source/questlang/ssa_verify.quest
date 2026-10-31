@@ -18,9 +18,9 @@ import
 
 let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
 
-let tInt = option typeInt of ssa.Type end;
-let tPtr = option typePtr of ssa.Type end;
-let tReal = option typeReal of ssa.Type end;
+let tInt = ssa.typeInt;
+let tPtr = ssa.typePtr;
+let tReal = ssa.typeReal;
 let none = array of :Int end;
 
 let show(title: String f: ssa.Function): Ok =
@@ -48,9 +48,9 @@ let i = ssa.addParam(loopF head tInt);
 let bodyB = ssa.newBlock(loopF);
 let exitB = ssa.newBlock(loopF);
 jumpTo(loopF 0 head array of ssa.constant(loopF 0 0) end);
-let more = ssa.binary(loopF head option opLt of ssa.Opcode end i n[0]);
+let more = ssa.binary(loopF head ssa.opLt i n[0]);
 branch(loopF head more bodyB exitB);
-jumpTo(loopF bodyB head array of ssa.binary(loopF bodyB option opAdd of ssa.Opcode end i ssa.constant(loopF bodyB 1)) end);
+jumpTo(loopF bodyB head array of ssa.binary(loopF bodyB ssa.opAdd i ssa.constant(loopF bodyB 1)) end);
 ret(loopF exitB array of i end);
 show("a loop" loopF);
 let d = verify.dominance(loopF);
@@ -76,7 +76,7 @@ show("a use not dominated" notDominated);
  * integer, a branch on a real *)
 let badTypes = ssa.newFunction("badTypes" false array of tPtr tReal end array of tInt end);
 let q = vector.toArray(:Int ssa.block(badTypes 0).params);
-let sum = ssa.binary(badTypes 0 option opAdd of ssa.Opcode end q[0] ssa.constant(badTypes 0 1));
+let sum = ssa.binary(badTypes 0 ssa.opAdd q[0] ssa.constant(badTypes 0 1));
 let loaded = ssa.load(badTypes 0 sum 0 8 false tInt);
 let next = ssa.newBlock(badTypes);
 ssa.terminate(badTypes 0 option termBranch of ssa.Terminator with
@@ -120,7 +120,7 @@ show("a well-formed try" goodTry);
 (* 7. A value defined twice *)
 let twice = ssa.newFunction("twice" false array of :ssa.Type end array of tInt end);
 let v = ssa.constant(twice 0 1);
-ssa.append(twice 0 ssa.inst(option opConst of ssa.Opcode end none array of v end));
+ssa.append(twice 0 ssa.inst(ssa.opConst none array of v end));
 ret(twice 0 array of v end);
 show("a value defined twice" twice);
 
@@ -133,7 +133,8 @@ ssa.terminate(switches 0 option termSwitch of ssa.Terminator with
     let value = sp[0] let cases = array of 0 2 end let targets = array of ssa.target(one none) ssa.target(one none) end
     let default = ssa.target(other none)
 end);
-let pair = ssa.call(switches one "quest_record_view" array of sp[1] sp[2] sp[1] end array of 0 end array of tPtr tPtr end);
+let pair = ssa.call(switches one "quest_record_view" array of sp[1] sp[2] sp[1] end ssa.passing(array of 0 end none none)
+    array of tPtr tPtr end);
 ret(switches one pair);
-ssa.terminate(switches other option termUnreachable of ssa.Terminator end);
+ssa.terminate(switches other ssa.termUnreachable);
 show("a switch" switches);

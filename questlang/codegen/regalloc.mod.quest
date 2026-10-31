@@ -48,7 +48,7 @@ export
             r
         end
 
-    let classOf(f: Function v: Int): Int = case ssa.typeOf(f v) when typeReal then 1 else 0 end
+    let classOf(f: Function v: Int): Int = case ssa.typeOf(f v) when typeInt, typePtr then 0 when typeReal then 1 end
 
     let home(a: Allocation v: Int p: Int): String =
         begin
@@ -467,7 +467,10 @@ export
                     addRange(tu[a] bs tpos)
                     vector.append(:Int usesAt[tu[a]] tpos)
                 end
-                case blk.term when termTry with x then vector.append(:Int handlers x.handler) else ok end
+                case blk.term
+                    when termTry with x then vector.append(:Int handlers x.handler)
+                    when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then ok
+                end
                 for j = {n - 1} downto 0 do
                     let i = vector.get(:ssa.Inst blk.insts j)
                     let p = bs + {2 * {j + 1}}

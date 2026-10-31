@@ -170,9 +170,9 @@ export
                     problem(what <> ": %" <> conv.int(v) <> " is " <> nodes.typeName(nodes.typeOf(f v)) <> ", not "
                         <> nodes.typeName(t))
                 end
-            let tInt = option typeInt of Type end
-            let tPtr = option typePtr of Type end
-            let tReal = option typeReal of Type end
+            let tInt = nodes.typeInt
+            let tPtr = nodes.typePtr
+            let tReal = nodes.typeReal
             let argsAre(inst: nodes.Inst types: Array(Type) what: String): Ok =
                 if extent inst.args isnot extent types then
                     problem(what <> " has " <> conv.int(extent inst.args) <> " arguments, not " <> conv.int(extent types))
@@ -201,7 +201,12 @@ export
                     let inst = vector.get(:nodes.Inst blk.insts i)
                     let what = nodes.opcodeName(inst.op)
                     for k = 0 upto {extent inst.args - 1} do use(inst.args[k] b i what) end
+                    let widthIsValid(): Ok =
+                        if not({inst.width is 8} orif {inst.width is 4} orif {inst.width is 1}) then
+                            problem(what <> " of width " <> conv.int(inst.width))
+                        end
                     case inst.op
+                        when opConst, opRealConst, opSymbol, opNull then argsAre(inst array of :Type end what)
                         when opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe,
                             opGt, opGe, opUlt then
                             argsAre(inst array of tInt tInt end what)
@@ -214,24 +219,24 @@ export
                         when opLoad then
                             if extent inst.args isnot 1 then problem("a load has " <> conv.int(extent inst.args) <> " arguments")
                             else typeIs(inst.args[0] tPtr what) end
+                            widthIsValid()
                         when opStore then
                             if extent inst.args isnot 2 then problem("a store has " <> conv.int(extent inst.args) <> " arguments")
                             else typeIs(inst.args[0] tPtr what) end
+                            widthIsValid()
+                        when opCall then ok
                         when opCallIndirect then
                             if extent inst.args < 1 then problem("an indirect call has no function")
                             else typeIs(inst.args[0] tPtr what) end
                         when opSlot then
+                            argsAre(inst array of :Type end what)
                             if {inst.imm < 0} orif {inst.imm >= nSlots} then
                                 problem("slot " <> conv.int(inst.imm) <> " does not exist")
                             end
-                        else ok
-                    end
-                    case inst.op
-                        when opLoad, opStore then
-                            if not({inst.width is 8} orif {inst.width is 4} orif {inst.width is 1}) then
-                                problem(what <> " of width " <> conv.int(inst.width))
+                        when opCopy then
+                            if extent inst.args isnot 1 then
+                                problem("a copy has " <> conv.int(extent inst.args) <> " arguments")
                             end
-                        else ok
                     end
                 end
                 let t = blk.term

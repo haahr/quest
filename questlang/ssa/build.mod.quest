@@ -41,11 +41,14 @@ export
     let fail(A::TYPE what: String): A = raise unsupported with what end
     let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(:K :V m k v) ok end
 
-    let tInt = option typeInt of ssa.Type end
-    let tPtr = option typePtr of ssa.Type end
-    let tReal = option typeReal of ssa.Type end
+    let tInt = ssa.typeInt
+    let tPtr = ssa.typePtr
+    let tReal = ssa.typeReal
     let noValues = array of :Int end
-    let noPairs = array of :Int end
+    (* How a call passes its arguments: with 16-byte composites starting at
+     * pairs and narrow arguments at narrow; with one starting at the first *)
+    let passing(pairs: Array(Int) narrow: Array(Int)): ssa.Passing = ssa.passing(pairs noValues narrow)
+    let firstPair = passing(array of 0 end noValues)
     let noValuesTypes = array of :ssa.Type end
 
     (* =========================================================================
@@ -219,28 +222,28 @@ export
     let loadWord(fn: Fn address: Int offset: Int t: ssa.Type): Int = ssa.load(fn.f fn.cur address offset 8 false t)
     let store(fn: Fn address: Int offset: Int width: Int value: Int): Ok = ssa.store(fn.f fn.cur address offset width value)
     let callSymbol(fn: Fn symbol: String args: Array(Int) results: Array(ssa.Type)): Array(Int) =
-        ssa.call(fn.f fn.cur symbol args noPairs results)
+        ssa.call(fn.f fn.cur symbol args ssa.plain results)
     let call1(fn: Fn symbol: String args: Array(Int) t: ssa.Type): Int = callSymbol(fn symbol args array of t end)[0]
     let callVoid(fn: Fn symbol: String args: Array(Int)): Ok = begin callSymbol(fn symbol args array of :ssa.Type end) ok end
     let terminate(fn: Fn t: ssa.Terminator): Ok = ssa.terminate(fn.f fn.cur t)
     let terminated(fn: Fn): Bool = ssa.isTerminated(fn.f fn.cur)
     let jump(fn: Fn b: Int args: Array(Int)): Ok =
         terminate(fn option termJump of ssa.Terminator with let target = ssa.target(b args) end)
-    let null(fn: Fn): Int = emit(fn option opNull of ssa.Opcode end noValues tPtr)
-    let toPtr(fn: Fn v: Int): Int = emit(fn option opIntToPtr of ssa.Opcode end array of v end tPtr)
-    let toInt(fn: Fn v: Int): Int = emit(fn option opPtrToInt of ssa.Opcode end array of v end tInt)
+    let null(fn: Fn): Int = emit(fn ssa.opNull noValues tPtr)
+    let toPtr(fn: Fn v: Int): Int = emit(fn ssa.opIntToPtr array of v end tPtr)
+    let toInt(fn: Fn v: Int): Int = emit(fn ssa.opPtrToInt array of v end tInt)
 
     (* A pointer n bytes past p *)
     let offsetPtr(fn: Fn p: Int n: Int): Int =
-        if n is 0 then p else toPtr(fn binary(fn option opAdd of ssa.Opcode end toInt(fn p) constant(fn n))) end
+        if n is 0 then p else toPtr(fn binary(fn ssa.opAdd toInt(fn p) constant(fn n))) end
 
     (* A pointer plus a byte count held in a value *)
-    let indexPtr(fn: Fn p: Int n: Int): Int = toPtr(fn binary(fn option opAdd of ssa.Opcode end toInt(fn p) n))
+    let indexPtr(fn: Fn p: Int n: Int): Int = toPtr(fn binary(fn ssa.opAdd toInt(fn p) n))
 
     (* Whether a tuple's or an option's pointer is a proxy's: its tag bit set
      * (docs/c-representation.md section 5.8) *)
     let isProxy(fn: Fn p: Int): Int =
-        binary(fn option opAnd of ssa.Opcode end toInt(fn p) constant(fn runtimeLayout.constant("QUEST_PROXY_TAG")))
+        binary(fn ssa.opAnd toInt(fn p) constant(fn runtimeLayout.constant("QUEST_PROXY_TAG")))
 
     let concat(a: Array(Int) b: Array(Int)): Array(Int) =
         begin
@@ -252,7 +255,7 @@ export
 
     (* The opcode extending a narrow part's byte *)
     let extension(p: Part): ssa.Opcode =
-        if p.signed then option opSext8 of ssa.Opcode end else option opZext8 of ssa.Opcode end end
+        if p.signed then ssa.opSext8 else ssa.opZext8 end
 
     (* A C bool or char a callee returns, which AAPCS64 does not extend:
      * extended *)
@@ -282,13 +285,7 @@ export
                 put(:Int :Int fn.slots v.id ssa.newSlot(fn.f 8 * {if n is 0 then 1 else n end} 8))
             end
             let s = hashMap.find(:Int :Int fn.slots v.id)
-            let i = ssa.inst(option opSlot of ssa.Opcode end noValues array of ssa.newValue(fn.f tPtr) end)
-            let addr = i.results[0]
-            ssa.append(fn.f fn.cur tuple
-                let op = i.op let var args = noValues let results = i.results let imm = s let symbol = "" let width = 0
-                let signed = false let pairs = noPairs let memory = noPairs let narrow = noPairs
-            end)
-            addr
+            ssa.slotAddress(fn.f fn.cur s)
         end
 
     let readParts(fn: Fn address: Int ps: Array(Part)): Array(Int) =
@@ -360,12 +357,7 @@ export
             (* A QChar, unsigned (arm64.md section 10, hazard 4) *)
             when constChar with x then array of constant(fn ascii.val(x.c)) end
             when constReal with x then
-                let i = ssa.inst(option opRealConst of ssa.Opcode end noValues array of ssa.newValue(fn.f tReal) end)
-                ssa.append(fn.f fn.cur tuple
-                    let op = i.op let var args = noValues let results = i.results let imm = realBitsOf(x.r) let symbol = ""
-                    let width = 0 let signed = false let pairs = noPairs let memory = noPairs let narrow = noPairs
-                end)
-                i.results
+                array of ssa.realConstant(fn.f fn.cur realBitsOf(x.r)) end
             when constString with x then
                 let literal = symbolAt(fn stringSymbol(fn.u x.s))
                 array of call1(fn "quest_string_new" array of literal constant(fn stringOp.length(x.s)) end tPtr) end
@@ -415,13 +407,8 @@ export
     (* The address of a static descriptor, of a form *)
     let formAddress(fn: Fn f: staticdata.DescriptorForm): Int =
         begin
-            let i = ssa.inst(option opSymbol of ssa.Opcode end noValues array of ssa.newValue(fn.f tPtr) end)
-            ssa.append(fn.f fn.cur tuple
-                let op = i.op let var args = noValues let results = i.results
-                let imm = f.index * maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct("QTypeDescriptor")).bytes
-                let symbol = f.symbol let width = 0 let signed = false let pairs = noPairs let memory = noPairs let narrow = noPairs
-            end)
-            i.results[0]
+            ssa.symbolPlus(fn.f fn.cur f.symbol
+                f.index * maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct("QTypeDescriptor")).bytes)
         end
 
     (* The static descriptor of a static descriptor operand: its echo form,
@@ -455,11 +442,7 @@ export
     and slotArray(fn: Fn ptrs: Array(Int)): Int =
         begin
             let s = ssa.newSlot(fn.f 8 * {if extent ptrs is 0 then 1 else extent ptrs end} 8)
-            let addr = ssa.newValue(fn.f tPtr)
-            ssa.append(fn.f fn.cur tuple
-                let op = option opSlot of ssa.Opcode end let var args = noValues let results = array of addr end let imm = s
-                let symbol = "" let width = 0 let signed = false let pairs = noPairs let memory = noPairs let narrow = noPairs
-            end)
+            let addr = ssa.slotAddress(fn.f fn.cur s)
             for i = 0 upto {extent ptrs - 1} do store(fn addr 8 * i 8 ptrs[i]) end
             addr
         end
@@ -488,7 +471,7 @@ export
             when wordVariantBox then toInt(fn call1(fn "quest_variant_box" vs tPtr))
             when wordBits then vs[0]
             when wordInteger then vs[0]
-            when wordReal then emit(fn option opRealBits of ssa.Opcode end array of vs[0] end tInt)
+            when wordReal then emit(fn ssa.opRealBits array of vs[0] end tInt)
             when wordPointer then toInt(fn vs[0])
         end
 
@@ -507,7 +490,7 @@ export
                 else
                     array of w end
                 end
-            when wordReal then array of emit(fn option opBitsReal of ssa.Opcode end array of w end tReal) end
+            when wordReal then array of emit(fn ssa.opBitsReal array of w end tReal) end
             when wordPointer then array of toPtr(fn w) end
         end
 
@@ -584,19 +567,19 @@ export
      * ====================================================================== *)
 
     let intOpcode(op: String): maybe.T(ssa.Opcode) =
-        if eq(op "+") then maybe.some(:ssa.Opcode option opAdd of ssa.Opcode end)
-        elsif eq(op "-") then maybe.some(:ssa.Opcode option opSub of ssa.Opcode end)
-        elsif eq(op "*") then maybe.some(:ssa.Opcode option opMul of ssa.Opcode end)
-        elsif eq(op "<") then maybe.some(:ssa.Opcode option opLt of ssa.Opcode end)
-        elsif eq(op "<=") then maybe.some(:ssa.Opcode option opLe of ssa.Opcode end)
-        elsif eq(op ">") then maybe.some(:ssa.Opcode option opGt of ssa.Opcode end)
-        elsif eq(op ">=") then maybe.some(:ssa.Opcode option opGe of ssa.Opcode end)
-        elsif eq(op "<<") then maybe.some(:ssa.Opcode option opFlt of ssa.Opcode end)
-        elsif eq(op "<<=") then maybe.some(:ssa.Opcode option opFle of ssa.Opcode end)
-        elsif eq(op ">>") then maybe.some(:ssa.Opcode option opFgt of ssa.Opcode end)
-        elsif eq(op ">>=") then maybe.some(:ssa.Opcode option opFge of ssa.Opcode end)
-        elsif eq(op "/\\") then maybe.some(:ssa.Opcode option opAnd of ssa.Opcode end)
-        elsif eq(op "\\/") then maybe.some(:ssa.Opcode option opOr of ssa.Opcode end)
+        if eq(op "+") then maybe.some(:ssa.Opcode ssa.opAdd)
+        elsif eq(op "-") then maybe.some(:ssa.Opcode ssa.opSub)
+        elsif eq(op "*") then maybe.some(:ssa.Opcode ssa.opMul)
+        elsif eq(op "<") then maybe.some(:ssa.Opcode ssa.opLt)
+        elsif eq(op "<=") then maybe.some(:ssa.Opcode ssa.opLe)
+        elsif eq(op ">") then maybe.some(:ssa.Opcode ssa.opGt)
+        elsif eq(op ">=") then maybe.some(:ssa.Opcode ssa.opGe)
+        elsif eq(op "<<") then maybe.some(:ssa.Opcode ssa.opFlt)
+        elsif eq(op "<<=") then maybe.some(:ssa.Opcode ssa.opFle)
+        elsif eq(op ">>") then maybe.some(:ssa.Opcode ssa.opFgt)
+        elsif eq(op ">>=") then maybe.some(:ssa.Opcode ssa.opFge)
+        elsif eq(op "/\\") then maybe.some(:ssa.Opcode ssa.opAnd)
+        elsif eq(op "\\/") then maybe.some(:ssa.Opcode ssa.opOr)
         else maybe.none(:ssa.Opcode)
         end
 
@@ -619,7 +602,7 @@ export
         begin
             let op = o.op
             if eq(op "not") then
-                array of binary(fn option opXor of ssa.Opcode end atom1(fn o.args[0]) constant(fn 1)) end
+                array of binary(fn ssa.opXor atom1(fn o.args[0]) constant(fn 1)) end
             elsif eq(op "extent") then
                 array of loadWord(fn atom1(fn o.args[0]) runtimeLayout.offset("QArray" "length") tInt) end
             elsif eq(op "/") orif eq(op "%") orif eq(op "mod") then
@@ -643,15 +626,15 @@ export
                     case ssa.typeOf(fn.f a[0])
                         when typePtr then
                             if eq(o.access ir.original) then
-                                binary(fn option opPeq of ssa.Opcode end unproxy(fn a[0]) unproxy(fn b[0]))
+                                binary(fn ssa.opPeq unproxy(fn a[0]) unproxy(fn b[0]))
                             else
-                                binary(fn option opPeq of ssa.Opcode end a[0] b[0])
+                                binary(fn ssa.opPeq a[0] b[0])
                             end
-                        when typeReal then binary(fn option opFeq of ssa.Opcode end a[0] b[0])
-                        when typeInt then binary(fn option opEq of ssa.Opcode end a[0] b[0])
+                        when typeReal then binary(fn ssa.opFeq a[0] b[0])
+                        when typeInt then binary(fn ssa.opEq a[0] b[0])
                     end
                 end
-                array of if eq(op "is") then same else binary(fn option opXor of ssa.Opcode end same constant(fn 1)) end end
+                array of if eq(op "is") then same else binary(fn ssa.opXor same constant(fn 1)) end end
             elsif maybe.isSome(:ssa.Opcode intOpcode(op)) then
                 array of binary(fn maybe.unwrap(:ssa.Opcode intOpcode(op)) atom1(fn o.args[0]) atom1(fn o.args[1])) end
             else
@@ -709,8 +692,8 @@ export
     let directCall(fn: Fn symbol: String lead: Array(Int) args: Array(Atom) resultType: Type): Array(Int) =
         begin
             let ps = resultParts(resultType)
-            let vs = ssa.callNarrow(fn.f fn.cur symbol concat(lead callAtoms(fn args)) pairsOf(extent lead args)
-                narrowOf(extent lead args) typesOf(ps))
+            let vs = ssa.call(fn.f fn.cur symbol concat(lead callAtoms(fn args))
+                passing(pairsOf(extent lead args) narrowOf(extent lead args)) typesOf(ps))
             resultsOf(fn ps vs)
         end
 
@@ -740,8 +723,8 @@ export
             let env = loadWord(fn clos runtimeLayout.offset("QClosure" "env") tPtr)
             let ps = resultParts(callee.type)
             let all = concat(concat(array of fnPtr env end descs) callAtoms(fn args))
-            let vs = ssa.callNarrow(fn.f fn.cur "" all pairsOf({2 + extent descs} args) narrowOf({2 + extent descs} args)
-                typesOf(ps))
+            let p = passing(pairsOf({2 + extent descs} args) narrowOf({2 + extent descs} args))
+            let vs = ssa.call(fn.f fn.cur "" all p typesOf(ps))
             resultsOf(fn ps vs)
         end
 
@@ -852,7 +835,7 @@ export
 
     (* The tag of the option at o, read as access says *)
     let optionTag(fn: Fn o: Int access: String): Int =
-        if eq(access ir.direct) then loadWord(fn o 0 tInt)
+        if eq(access ir.direct) then loadWord(fn o runtimeLayout.offset("QOptionHeader" "tag") tInt)
         else call1(fn "quest_option_tag" array of o end tInt)
         end
 
@@ -863,7 +846,7 @@ export
             let vm = atom1(fn ir.atomOfVar(maybe.unwrap(:Variable viewMap)))
             if eq(ts.kind "variant") then
                 let index = loadWord(fn vm runtimeLayout.offset("QViewMap" "index") tPtr)
-                let scaled = binary(fn option opMul of ssa.Opcode end vs[0] constant(fn 8))
+                let scaled = binary(fn ssa.opMul vs[0] constant(fn 8))
                 loadWord(fn indexPtr(fn index scaled) 0 tInt)
             else
                 call1(fn "quest_view_option_tag" array of vs[0] vm end tInt)
@@ -975,14 +958,20 @@ export
             when refModule with x then
                 if maybe.isNone(:String member) then
                     let recordAt = symbolAt(fn symbols.moduleRecordIdent(symbols.mangleModuleName(x.m.name)))
-                    array of loadWord(fn recordAt 0 tPtr) loadWord(fn recordAt 8 tPtr) end
+                    array of
+                        loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") tPtr)
+                        loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") tPtr)
+                    end
                 else
                     read(fn maybe.unwrap(:Variable ir.member(x.m.members maybe.unwrap(:String member))))
                 end
             when refImport with x then
                 if maybe.isNone(:String member) then
                     let recordAt = symbolAt(fn symbols.moduleRecordIdent(symbols.mangleModuleName(x.i.canonicalPath)))
-                    array of loadWord(fn recordAt 0 tPtr) loadWord(fn recordAt 8 tPtr) end
+                    array of
+                        loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") tPtr)
+                        loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") tPtr)
+                    end
                 else
                     importedMember(fn x.i maybe.unwrap(:String member))
                 end
@@ -1001,11 +990,11 @@ export
                 fromWord(fn vs[0] plan.target)
             elsif eq(kind "record_view") then
                 ssa.call(fn.f fn.cur "quest_record_view" array of vs[0] vs[1] descriptor(fn plan.descriptors[0]) end
-                    array of 0 end array of tPtr tPtr end)
+                    firstPair array of tPtr tPtr end)
             elsif eq(kind "variant_tags") then
                 let table = maybe.unwrap(:ir.TagMap plan.tagMap)
                 let map = staticdata.describeTagMap(table.target table.source)
-                let scaled = binary(fn option opMul of ssa.Opcode end vs[0] constant(fn 8))
+                let scaled = binary(fn ssa.opMul vs[0] constant(fn 8))
                 array of loadWord(fn indexPtr(fn symbolAt(fn map.symbol) scaled) 0 tInt) vs[1] end
             elsif eq(kind "cast") then
                 vs
@@ -1091,7 +1080,7 @@ export
             let k = fieldIndex(rs field)
             if maybe.isSome(:Variable viewMap) then
                 let vm = atom1(fn ir.atomOfVar(maybe.unwrap(:Variable viewMap)))
-                ssa.call(fn.f fn.cur "quest_view_record_slot" array of vs[0] vs[1] vm constant(fn k) end array of 0 end
+                ssa.call(fn.f fn.cur "quest_view_record_slot" array of vs[0] vs[1] vm constant(fn k) end firstPair
                     array of tPtr end)[0]
             else
                 indexPtr(fn vs[0] loadWord(fn vs[1] 8 * k tInt))
@@ -1109,7 +1098,7 @@ export
             elsif maybe.isSome(:Variable o.viewMap) then
                 let vm = atom1(fn ir.atomOfVar(maybe.unwrap(:Variable o.viewMap)))
                 let w = ssa.call(fn.f fn.cur "quest_view_record_field" array of vs[0] vs[1] vm constant(fn fieldIndex(rs o.name)) end
-                    array of 0 end array of tInt end)[0]
+                    firstPair array of tInt end)[0]
                 fromWord(fn w fs.type)
             else
                 (* Read as stored, and converted to the field's type, when the
@@ -1120,11 +1109,11 @@ export
                 let t = fs.type
                 let types = typesOf(parts(t))
                 let plainRead = fun(): Array(Int) slotLoad(fn readSlot(fn slot t) t)
-                choose(fn binary(fn option opPne of ssa.Opcode end stored null(fn)) types
+                choose(fn binary(fn ssa.opPne stored null(fn)) types
                     fun(): Array(Int)
                         begin
                             let storedType = loadWord(fn stored 8 * k tPtr)
-                            choose(fn binary(fn option opPne of ssa.Opcode end storedType null(fn)) types
+                            choose(fn binary(fn ssa.opPne storedType null(fn)) types
                                 fun(): Array(Int) fromWord(fn
                                     call1(fn "quest_convert" array of loadWord(fn slot 0 tInt) storedType maybeDescriptor(fn o.descriptor) end
                                         tInt) t)
@@ -1220,7 +1209,7 @@ export
                     cases[i] := i
                 end
                 fn.cur := otherwise
-                terminate(fn option termUnreachable of ssa.Terminator end)
+                terminate(fn ssa.termUnreachable)
                 fn.cur := start
                 terminate(fn option termSwitch of ssa.Terminator with
                     let value = v let cases = cases let targets = blocks let default = ssa.target(otherwise noValues)
@@ -1243,14 +1232,15 @@ export
                     array of atom1(fn ordinalAtom) constant(fn extent os.cases) site(fn o.offset) end tInt)
                 let tags = array of(extent o.cases 0)
                 for i = 0 upto {extent o.cases - 1} do tags[i] := tagIndex(os o.cases[i]) end
-                store(fn opt 0 8 mapped(fn checked tags))
+                store(fn opt runtimeLayout.offset("QOptionHeader" "tag") 8 mapped(fn checked tags))
                 let n = case ordinalAtom
                     when atomConst with x then case x.c.value when constInt with y then y.n else ~1 end
                     else ~1
                 end
                 tag := if {n >= 0} andif {n < extent o.cases} then maybe.some(:String o.cases[n]) else os.cases[0].name end
             else
-                store(fn opt 0 8 constant(fn tagIndex(os maybe.unwrapOr(:String tag ""))))
+                store(fn opt runtimeLayout.offset("QOptionHeader" "tag") 8
+                    constant(fn tagIndex(os maybe.unwrapOr(:String tag ""))))
             end
             if maybe.isSome(:Atom o.payload) andif maybe.isSome(:String tag) then
                 let tagName = maybe.unwrap(:String tag)
@@ -1362,12 +1352,12 @@ export
             let good = ssa.newBlock(fn.f)
             let bad = ssa.newBlock(fn.f)
             terminate(fn option termBranch of ssa.Terminator with
-                let cond = binary(fn option opEq of ssa.Opcode end tag constant(fn index))
+                let cond = binary(fn ssa.opEq tag constant(fn index))
                 let ifTrue = ssa.target(good noValues) let ifFalse = ssa.target(bad noValues)
             end)
             fn.cur := bad
             callVoid(fn "quest_raise_variant_error_at" array of site(fn o.offset) end)
-            terminate(fn option termUnreachable of ssa.Terminator end)
+            terminate(fn ssa.termUnreachable)
             fn.cur := good
             if maybe.isSome(:Variable o.viewMap) then
                 let vm = atom1(fn ir.atomOfVar(maybe.unwrap(:Variable o.viewMap)))
@@ -1393,7 +1383,7 @@ export
     let elementAddress(fn: Fn arr: Int idx: Int offset: maybe.T(Int)): Int =
         begin
             callVoid(fn "quest_check_array_bounds_at" array of arr idx site(fn offset) end)
-            let scaled = binary(fn option opMul of ssa.Opcode end idx constant(fn 8))
+            let scaled = binary(fn ssa.opMul idx constant(fn 8))
             indexPtr(fn offsetPtr(fn arr runtimeLayout.offset("QArray" "data")) scaled)
         end
 
@@ -1414,6 +1404,14 @@ export
      * parameters, at the type arguments
      * ====================================================================== *)
 
+    (* A call of the closure at clos, with its environment and args *)
+    let callClosureWith(fn: Fn clos: Int args: Array(Int) results: Array(ssa.Type)): Array(Int) =
+        begin
+            let code = loadWord(fn clos runtimeLayout.offset("QClosure" "fn") tPtr)
+            let env = loadWord(fn clos runtimeLayout.offset("QClosure" "env") tPtr)
+            ssa.call(fn.f fn.cur "" concat(array of code env end args) ssa.plain results)
+        end
+
     let typeApp(fn: Fn o: ir.OpTypeApp result: Variable): Array(Int) =
         begin
             if maybe.isSome(:Array(ir.DescriptorParam) o.thunkParams) then
@@ -1425,8 +1423,7 @@ export
                 let callee = maybe.unwrap(:Variable o.callee)
                 origType := callee.type
                 let clos = atom1(fn ir.atomOfVar(callee))
-                ssa.call(fn.f fn.cur "" concat(array of loadWord(fn clos 0 tPtr) loadWord(fn clos 8 tPtr) end descs) noPairs
-                    typesOf(resultParts(callee.type)))
+                callClosureWith(fn clos descs typesOf(resultParts(callee.type)))
             else
                 let r = maybe.unwrap(:ir.ModuleRef o.moduleRef)
                 case r
@@ -1434,13 +1431,12 @@ export
                         origType := maybe.unwrapOr(:Type o.calleeType model.okType)
                         let symbol = symbols.mangleModuleIdent(symbols.mangleModuleName(x.i.canonicalPath)
                             maybe.unwrap(:String o.member))
-                        ssa.call(fn.f fn.cur symbol descs noPairs typesOf(resultParts(origType)))
+                        ssa.call(fn.f fn.cur symbol descs ssa.plain typesOf(resultParts(origType)))
                     when refModule with x then
                         let member = maybe.unwrap(:Variable ir.member(x.m.members maybe.unwrap(:String o.member)))
                         origType := member.type
                         let clos = atom1(fn ir.atomOfVar(member))
-                        ssa.call(fn.f fn.cur "" concat(array of loadWord(fn clos 0 tPtr) loadWord(fn clos 8 tPtr) end descs) noPairs
-                            typesOf(resultParts(member.type)))
+                        callClosureWith(fn clos descs typesOf(resultParts(member.type)))
                 end
             end
             let values = resultsOf(fn resultParts(origType) called)
@@ -1465,13 +1461,7 @@ export
             for i = 0 upto {extent runtimeLayout.realConstants - 1} do
                 if eq(runtimeLayout.realConstants[i].name symbol) then
                     let r = runtimeLayout.realConstants[i].value
-                    let v = ssa.newValue(fn.f tReal)
-                    ssa.append(fn.f fn.cur tuple
-                        let op = option opRealConst of ssa.Opcode end let var args = noValues let results = array of v end
-                        let imm = realBitsOf(r) let symbol = "" let width = 0 let signed = false let pairs = noPairs
-                        let memory = noPairs let narrow = noPairs
-                    end)
-                    found := maybe.some(:Array(Int) array of v end)
+                    found := maybe.some(:Array(Int) array of ssa.realConstant(fn.f fn.cur realBitsOf(r)) end)
                 end
             end
             for i = 0 upto {extent runtimeLayout.addresses - 1} do
@@ -1481,12 +1471,7 @@ export
             end
             for i = 0 upto {extent runtimeLayout.realBits - 1} do
                 if eq(runtimeLayout.realBits[i].name symbol) then
-                    let v = ssa.newValue(fn.f tReal)
-                    ssa.append(fn.f fn.cur tuple
-                        let op = option opRealConst of ssa.Opcode end let var args = noValues let results = array of v end
-                        let imm = runtimeLayout.realBits[i].value let symbol = "" let width = 0 let signed = false
-                        let pairs = noPairs let memory = noPairs let narrow = noPairs
-                    end)
+                    let v = ssa.realConstant(fn.f fn.cur runtimeLayout.realBits[i].value)
                     found := maybe.some(:Array(Int) array of v end)
                 end
             end
@@ -1513,7 +1498,7 @@ export
                 let resultType = if maybe.isSome(:Variable result) then maybe.unwrap(:Variable result).type else model.okType end
                 let ps = parts(resultType)
                 let vs = ssa.call(fn.f fn.cur x.symbol concat(descriptors(fn x.descriptors) callAtoms(fn x.args))
-                    pairsOf(extent x.descriptors x.args) typesOf(ps))
+                    passing(pairsOf(extent x.descriptors x.args) noValues) typesOf(ps))
                 resultsOf(fn ps vs)
             when opMakeClosure with x then makeClosure(fn x)
             when opEnvField with x then envField(fn x maybe.unwrap(:Variable result).type)
@@ -1560,7 +1545,7 @@ export
             when opIsTag with x then
                 let ts = tagShape(ir.atomType(x.value))
                 let tag = tagOf(fn atom(fn x.value) ts x.access x.viewMap)
-                array of binary(fn option opEq of ssa.Opcode end tag constant(fn tagIndex(ts x.tag))) end
+                array of binary(fn ssa.opEq tag constant(fn tagIndex(ts x.tag))) end
             when opPayload with x then payload(fn x maybe.unwrap(:Variable result).type)
             when opOrdinal with x then
                 (* The tag numbers the shape's cases, ordered by name; the
@@ -1592,11 +1577,7 @@ export
             when opAddrCell with x then
                 let t = ir.atomType(x.init)
                 let s = ssa.newSlot(fn.f 8 * {if extent parts(t) is 0 then 1 else extent parts(t) end} 8)
-                let addr = ssa.newValue(fn.f tPtr)
-                ssa.append(fn.f fn.cur tuple
-                    let op = option opSlot of ssa.Opcode end let var args = noValues let results = array of addr end let imm = s
-                    let symbol = "" let width = 0 let signed = false let pairs = noPairs let memory = noPairs let narrow = noPairs
-                end)
+                let addr = ssa.slotAddress(fn.f fn.cur s)
                 writeLocation(fn addr t atom(fn x.init))
                 array of addr end
             when opLoad with x then readLocation(fn atom1(fn x.address) maybe.unwrap(:Variable result).type)
@@ -1790,7 +1771,7 @@ export
                     let values = if {wanted is 1} andif {extent vs is 0} then array of constant(fn 0) end else vs end
                     leaveTo(fn 0)
                     terminate(fn option termReturn of ssa.Terminator with let values = values end)
-                when sUnreachable then terminate(fn option termUnreachable of ssa.Terminator end)
+                when sUnreachable then terminate(fn ssa.termUnreachable)
                 when sStoreAt with x then writeLocation(fn atom1(fn x.address) ir.atomType(x.value) atom(fn x.value))
                 when sStoreField with x then
                     let rs = heldShape(ir.atomType(x.base) "record")
@@ -1830,8 +1811,9 @@ export
                 when sInspect with x then inspectAuto(fn x)
                 when sReraise with x then
                     let state = hashMap.find(:Int :Int fn.handlerVars x.exc.id)
-                    ssa.callWithMemory(fn.f fn.cur "quest_reraise" array of state end array of 0 end noValuesTypes)
-                    terminate(fn option termUnreachable of ssa.Terminator end)
+                    let byMemory = ssa.passing(noValues array of 0 end noValues)
+                    ssa.call(fn.f fn.cur "quest_reraise" array of state end byMemory noValuesTypes)
+                    terminate(fn ssa.termUnreachable)
                 when sLetRec with x then
                     let saved = fn.deferred
                     let vars = hashMap.new(:Int :Bool intEqual hash.int)
@@ -1862,7 +1844,7 @@ export
                         else toWord(fn atom(fn maybe.unwrap(:Atom x.payload)) ir.atomType(maybe.unwrap(:Atom x.payload)))
                     end
                     callVoid(fn "quest_raise_at" array of atom1(fn x.exc) payload site(fn x.offset) end)
-                    terminate(fn option termUnreachable of ssa.Terminator end)
+                    terminate(fn ssa.termUnreachable)
                 else raise unsupported with "statement " <> statementName(s) end
             end
         end
@@ -1925,7 +1907,7 @@ export
                 if not(terminated(fn)) then jump(fn after noValues) end
             else
                 callVoid(fn "quest_raise_variant_error" noValues)
-                terminate(fn option termUnreachable of ssa.Terminator end)
+                terminate(fn ssa.termUnreachable)
             end
             fn.cur := after
         end
@@ -1939,11 +1921,7 @@ export
         begin
             let handlerRecord = maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct("QExceptionHandler"))
             let slot = ssa.newSlot(fn.f handlerRecord.bytes 16)
-            let h = ssa.newValue(fn.f tPtr)
-            ssa.append(fn.f fn.cur tuple
-                let op = option opSlot of ssa.Opcode end let var args = noValues let results = array of h end let imm = slot
-                let symbol = "" let width = 0 let signed = false let pairs = noPairs let memory = noPairs let narrow = noPairs
-            end)
+            let h = ssa.slotAddress(fn.f fn.cur slot)
             let chain = symbolAt(fn handlerChain)
             store(fn h runtimeLayout.offset("QExceptionHandler" "prev") 8 loadWord(fn chain 0 tPtr))
             (* A C handler's record, which the native backend makes its own *)
@@ -1982,11 +1960,7 @@ export
             store(fn symbolAt(fn handlerChain) 0 8 loadWord(fn h runtimeLayout.offset("QExceptionHandler" "prev") tPtr))
             let stateRecord = maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct("QExceptionState"))
             let stateSlot = ssa.newSlot(fn.f stateRecord.bytes 8)
-            let state = ssa.newValue(fn.f tPtr)
-            ssa.append(fn.f fn.cur tuple
-                let op = option opSlot of ssa.Opcode end let var args = noValues let results = array of state end
-                let imm = stateSlot let symbol = "" let width = 0 let signed = false let pairs = noPairs let memory = noPairs let narrow = noPairs
-            end)
+            let state = ssa.slotAddress(fn.f fn.cur stateSlot)
             let current = symbolAt(fn currentException)
             for k = 0 upto {stateRecord.bytes / 8 - 1} do store(fn state 8 * k 8 loadWord(fn current 8 * k tInt)) end
             put(:Int :Int fn.handlerVars x.exc.id state)
@@ -2014,7 +1988,7 @@ export
                 let sub = narrowed(fn call1(fn "quest_is_subtype" array of typeDesc matchDesc end tInt) part(tInt 1 false))
                 let cond = if c.exact then
                     let back = narrowed(fn call1(fn "quest_is_subtype" array of matchDesc typeDesc end tInt) part(tInt 1 false))
-                    binary(fn option opAnd of ssa.Opcode end sub back)
+                    binary(fn ssa.opAnd sub back)
                 else
                     sub
                 end
@@ -2057,7 +2031,7 @@ export
                 if not(terminated(fn)) then jump(fn after noValues) end
             else
                 callVoid(fn "quest_raise_dynamic_error_at" array of site(fn x.offset) end)
-                terminate(fn option termUnreachable of ssa.Terminator end)
+                terminate(fn ssa.termUnreachable)
             end
             fn.cur := after
         end
@@ -2122,7 +2096,7 @@ export
             let f = fn.f
             let n = vector.length(:ssa.Block f.blocks)
             for b = 0 upto {n - 1} do
-                if not(ssa.isTerminated(f b)) then ssa.terminate(f b option termUnreachable of ssa.Terminator end) end
+                if not(ssa.isTerminated(f b)) then ssa.terminate(f b ssa.termUnreachable) end
             end
             let reached = array of(n false)
             let work = vector.new(:Int)
@@ -2163,7 +2137,7 @@ export
                     when termTry with x then option termTry of ssa.Terminator with
                         let slot = x.slot let body = renumber(x.body) let handler = number[x.handler]
                     end
-                    else blk.term
+                    when termNone, termReturn, termTailCall, termUnreachable then blk.term
                 end
             end
             vector.clear(:ssa.Block f.blocks)
@@ -2351,13 +2325,14 @@ export
                     andif {extent maybe.unwrap(:ir.OpMakeClosure known).typeArgs is 0}
                     andif {extent maybe.unwrap(:ir.OpMakeClosure known).captures is 0}
                 let results = if direct then
-                    ssa.callNarrow(fn.f fn.cur codeName(u maybe.unwrap(:ir.OpMakeClosure known).code)
-                        concat(array of null(fn) end args) shifted(s.pairs 1) shifted(s.narrow 1) typesOf(ps))
+                    ssa.call(fn.f fn.cur codeName(u maybe.unwrap(:ir.OpMakeClosure known).code)
+                        concat(array of null(fn) end args) passing(shifted(s.pairs 1) shifted(s.narrow 1)) typesOf(ps))
                 else
                     let clos = read(fn v)[0]
                     let fnPtr = loadWord(fn clos runtimeLayout.offset("QClosure" "fn") tPtr)
                     let env = loadWord(fn clos runtimeLayout.offset("QClosure" "env") tPtr)
-                    ssa.callNarrow(fn.f fn.cur "" concat(array of fnPtr env end args) shifted(s.pairs 2) shifted(s.narrow 2) typesOf(ps))
+                    ssa.call(fn.f fn.cur "" concat(array of fnPtr env end args)
+                        passing(shifted(s.pairs 2) shifted(s.narrow 2)) typesOf(ps))
                 end
                 returnValues(fn resultsOf(fn ps results))
                 maybe.some(:Function finished(fn))
@@ -2425,8 +2400,9 @@ export
                         p.type)
                 else vs end)
             end
-            let directResults = resultsOf(thunk retParts ssa.callNarrow(tf thunk.cur "" concat(array of closureFn(thunk orig) end
-                directArgs) shifted(s.pairs 1) shifted(s.narrow 1) typesOf(retParts)))
+            let directResults = resultsOf(thunk retParts ssa.call(tf thunk.cur ""
+                concat(array of closureFn(thunk orig) end directArgs) passing(shifted(s.pairs 1) shifted(s.narrow 1))
+                typesOf(retParts)))
             returnValues(thunk if not(isOk(ret)) andif slots.mayBeStoredAsSubtype(shapes.shape(ret)) then
                 fromWord(thunk convertWord(thunk toWord(thunk directResults ret) loadWord(thunk from resultAt tPtr)
                     loadWord(thunk to resultAt tPtr)) ret)
@@ -2446,7 +2422,7 @@ export
             end
             let argsArray = slotArray(thunk words)
             let invoker = loadWord(thunk from runtimeLayout.offset("QFunTypeDescriptor" "invoke") tPtr)
-            let invoked = ssa.call(tf thunk.cur "" array of invoker orig argsArray end noPairs array of tInt end)[0]
+            let invoked = ssa.call(tf thunk.cur "" array of invoker orig argsArray end ssa.plain array of tInt end)[0]
             returnValues(thunk if isOk(ret) then noValues
                 else fromWord(thunk convertWord(thunk invoked loadWord(thunk from resultAt tPtr) loadWord(thunk to resultAt tPtr))
                     ret)
@@ -2480,8 +2456,9 @@ export
                 invokeArgs := concat(invokeArgs if byLocation(p) orif isOk(p.type) then array of w end
                     else fromWord(invoke w p.type) end)
             end
-            let invokeResults = resultsOf(invoke retParts ssa.callNarrow(vf invoke.cur "" concat(array of closureFn(invoke c) end
-                invokeArgs) shifted(s.pairs 1) shifted(s.narrow 1) typesOf(retParts)))
+            let invokeResults = resultsOf(invoke retParts ssa.call(vf invoke.cur ""
+                concat(array of closureFn(invoke c) end invokeArgs) passing(shifted(s.pairs 1) shifted(s.narrow 1))
+                typesOf(retParts)))
             returnValues(invoke array of if isOk(ret) then constant(invoke 0) else toWord(invoke invokeResults ret) end end)
             array of finished(thunk) finished(adapt) finished(invoke) end
         end

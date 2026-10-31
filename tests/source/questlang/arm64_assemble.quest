@@ -20,24 +20,16 @@ import
     writer : Writer
 ;
 
-let tInt = option typeInt of ssa.Type end;
-let tPtr = option typePtr of ssa.Type end;
-let tReal = option typeReal of ssa.Type end;
+let tInt = ssa.typeInt;
+let tPtr = ssa.typePtr;
+let tReal = ssa.typeReal;
 let none = array of :Int end;
 let noTypes = array of :ssa.Type end;
 let params(f: ssa.Function): Array(Int) = vector.toArray(:Int ssa.block(f 0).params);
 let ret(f: ssa.Function b: Int vs: Array(Int)): Ok = ssa.terminate(f b option termReturn of ssa.Terminator with let values = vs end);
 let jumpTo(f: ssa.Function b: Int to: Int args: Array(Int)): Ok =
     ssa.terminate(f b option termJump of ssa.Terminator with let target = ssa.target(to args) end);
-let slotAddress(f: ssa.Function b: Int s: Int): Int =
-    begin
-        let v = ssa.newValue(f tPtr)
-        ssa.append(f b tuple
-            let op = option opSlot of ssa.Opcode end let var args = none let results = array of v end let imm = s
-            let symbol = "" let width = 0 let signed = false let pairs = none let memory = none let narrow = none
-        end)
-        v
-    end;
+let slotAddress(f: ssa.Function b: Int s: Int): Int = ssa.slotAddress(f b s);
 let unit = ssa.newUnit();
 let add(f: ssa.Function): Ok =
     begin
@@ -62,10 +54,10 @@ many.paramPairs := array of 7 end;
 many.paramNarrow := array of 20 21 end;
 let mp = params(many);
 let var total = mp[11];
-for k = 12 upto 19 do total := ssa.binary(many 0 option opFadd of ssa.Opcode end total mp[k]) end;
-let ints = ssa.binary(many 0 option opAdd of ssa.Opcode end ssa.binary(many 0 option opAdd of ssa.Opcode end mp[10] mp[20])
+for k = 12 upto 19 do total := ssa.binary(many 0 ssa.opFadd total mp[k]) end;
+let ints = ssa.binary(many 0 ssa.opAdd ssa.binary(many 0 ssa.opAdd mp[10] mp[20])
     mp[21]);
-let both = ssa.binary(many 0 option opFmul of ssa.Opcode end total ssa.emit(many 0 option opBitsReal of ssa.Opcode end
+let both = ssa.binary(many 0 ssa.opFmul total ssa.emit(many 0 ssa.opBitsReal
     array of ints end tReal));
 ret(many 0 array of both end);
 add(many);
@@ -80,10 +72,10 @@ args[8] := ssa.symbolAddress(caller 0 "quest_type_Int");
 for k = 11 upto 19 do args[k] := x end;
 args[20] := ssa.constant(caller 0 1);
 args[21] := ssa.constant(caller 0 ~3);
-let r = ssa.callNarrow(caller 0 "qf_many" args array of 7 end array of 20 21 end array of tReal end)[0];
-let less = ssa.binary(caller 0 option opFlt of ssa.Opcode end r x);
-let nan = ssa.emit(caller 0 option opIsNaN of ssa.Opcode end array of r end tInt);
-ret(caller 0 array of ssa.binary(caller 0 option opOr of ssa.Opcode end less nan) end);
+let r = ssa.call(caller 0 "qf_many" args ssa.passing(array of 7 end none array of 20 21 end) array of tReal end)[0];
+let less = ssa.binary(caller 0 ssa.opFlt r x);
+let nan = ssa.emit(caller 0 ssa.opIsNaN array of r end tInt);
+ret(caller 0 array of ssa.binary(caller 0 ssa.opOr less nan) end);
 add(caller);
 
 (* 4. Memory of every width, near and far, in a big frame; a switch; a
@@ -105,7 +97,7 @@ let acc = ssa.addParam(mem head tInt);
 let body = ssa.newBlock(mem);
 let done = ssa.newBlock(mem);
 let other = ssa.newBlock(mem);
-jumpTo(mem 0 head array of ssa.constant(mem 0 0) ssa.binary(mem 0 option opAdd of ssa.Opcode end w8 w4) end);
+jumpTo(mem 0 head array of ssa.constant(mem 0 0) ssa.binary(mem 0 ssa.opAdd w8 w4) end);
 ssa.terminate(mem head option termSwitch of ssa.Terminator with
     let value = i let cases = array of 0 1 2 end
     let targets = array of ssa.target(body none) ssa.target(body none) ssa.target(other none) end
@@ -113,10 +105,10 @@ ssa.terminate(mem head option termSwitch of ssa.Terminator with
 end);
 (* The next iteration swaps the accumulator into the counter's place, as a
  * parallel copy must *)
-jumpTo(mem body head array of ssa.binary(mem body option opAdd of ssa.Opcode end i ssa.constant(mem body 1))
-    ssa.binary(mem body option opMul of ssa.Opcode end acc b1) end);
-jumpTo(mem other head array of ssa.constant(mem other 3) ssa.binary(mem other option opRem of ssa.Opcode end acc u1) end);
-ret(mem done array of ssa.binary(mem done option opShl of ssa.Opcode end acc ssa.constant(mem done 3))
+jumpTo(mem body head array of ssa.binary(mem body ssa.opAdd i ssa.constant(mem body 1))
+    ssa.binary(mem body ssa.opMul acc b1) end);
+jumpTo(mem other head array of ssa.constant(mem other 3) ssa.binary(mem other ssa.opRem acc u1) end);
+ret(mem done array of ssa.binary(mem done ssa.opShl acc ssa.constant(mem done 3))
     end);
 add(mem);
 
@@ -131,7 +123,7 @@ let handler = ssa.newBlock(tries);
 ssa.terminate(tries 0 option termTry of ssa.Terminator with
     let slot = handlerSlot let body = ssa.target(tryBody none) let handler = handler
 end);
-ssa.call(tries tryBody "quest_pop_handler" none none noTypes);
+ssa.call(tries tryBody "quest_pop_handler" none ssa.plain noTypes);
 ret(tries tryBody array of params(tries)[0] end);
 ret(tries handler array of before end);
 add(tries);
@@ -153,21 +145,18 @@ ssa.terminate(rotate top option termSwitch of ssa.Terminator with
     let targets = array of ssa.target(finish none) end
     let default = ssa.target(next none)
 end);
-jumpTo(rotate next top array of ssa.binary(rotate next option opSub of ssa.Opcode end lp[0] ssa.constant(rotate next 1))
+jumpTo(rotate next top array of ssa.binary(rotate next ssa.opSub lp[0] ssa.constant(rotate next 1))
     lp[2] lp[3] lp[1] lp[5] lp[4] end);
 ret(rotate finish array of lp[1] end);
 add(rotate);
 
 (* 7. A main, which calls through a pointer too *)
 let mainF = ssa.newFunction("main" true array of tInt tPtr end array of tInt end);
-let pair = ssa.call(mainF 0 "qv_test_swap" array of params(mainF)[1] params(mainF)[1] params(mainF)[0] end array of 0 end
-    array of tPtr tPtr end);
+let pair = ssa.call(mainF 0 "qv_test_swap" array of params(mainF)[1] params(mainF)[1] params(mainF)[0] end
+    ssa.passing(array of 0 end none none) array of tPtr tPtr end);
 let fnAt = ssa.symbolAddress(mainF 0 "qf_try");
-let tried = ssa.call(mainF 0 "" array of fnAt params(mainF)[0] end none array of tInt end)[0];
-ssa.terminate(mainF 0 option termTailCall of ssa.Terminator with let call = tuple
-    let op = option opCall of ssa.Opcode end let var args = array of pair[0] tried end let results = array of ssa.newValue(mainF tInt) end
-    let imm = 0 let symbol = "qf_memory" let width = 0 let signed = false let pairs = none let memory = none let narrow = none
-end end);
+let tried = ssa.call(mainF 0 "" array of fnAt params(mainF)[0] end ssa.plain array of tInt end)[0];
+ssa.tailCall(mainF 0 "qf_memory" array of pair[0] tried end ssa.plain array of tInt end);
 add(mainF);
 
 (* 8. Data *)

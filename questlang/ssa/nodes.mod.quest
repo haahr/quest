@@ -21,7 +21,7 @@ export
         op: Opcode
         var args: Array(Int)
         results: Array(Int)
-        imm: Int
+        var imm: Int
         symbol: String
         width: Int
         signed: Bool
@@ -80,7 +80,63 @@ export
     end
 
     let none: Array(Int) = array of :Int end
-    let noMemory: Array(Int) = array of :Int end
+
+    Def Passing = Tuple pairs: Array(Int) memory: Array(Int) narrow: Array(Int) end
+    let passing(pairs: Array(Int) memory: Array(Int) narrow: Array(Int)): Passing =
+        tuple let pairs = pairs let memory = memory let narrow = narrow end
+    let plain: Passing = passing(none none none)
+
+    let typeInt: Type = option typeInt of Type end
+    let typePtr: Type = option typePtr of Type end
+    let typeReal: Type = option typeReal of Type end
+    let opConst: Opcode = option opConst of Opcode end
+    let opRealConst: Opcode = option opRealConst of Opcode end
+    let opSymbol: Opcode = option opSymbol of Opcode end
+    let opNull: Opcode = option opNull of Opcode end
+    let opSlot: Opcode = option opSlot of Opcode end
+    let opAdd: Opcode = option opAdd of Opcode end
+    let opSub: Opcode = option opSub of Opcode end
+    let opMul: Opcode = option opMul of Opcode end
+    let opDiv: Opcode = option opDiv of Opcode end
+    let opRem: Opcode = option opRem of Opcode end
+    let opAnd: Opcode = option opAnd of Opcode end
+    let opOr: Opcode = option opOr of Opcode end
+    let opXor: Opcode = option opXor of Opcode end
+    let opShl: Opcode = option opShl of Opcode end
+    let opLshr: Opcode = option opLshr of Opcode end
+    let opAshr: Opcode = option opAshr of Opcode end
+    let opEq: Opcode = option opEq of Opcode end
+    let opNe: Opcode = option opNe of Opcode end
+    let opLt: Opcode = option opLt of Opcode end
+    let opLe: Opcode = option opLe of Opcode end
+    let opGt: Opcode = option opGt of Opcode end
+    let opGe: Opcode = option opGe of Opcode end
+    let opUlt: Opcode = option opUlt of Opcode end
+    let opPeq: Opcode = option opPeq of Opcode end
+    let opPne: Opcode = option opPne of Opcode end
+    let opFadd: Opcode = option opFadd of Opcode end
+    let opFsub: Opcode = option opFsub of Opcode end
+    let opFmul: Opcode = option opFmul of Opcode end
+    let opFdiv: Opcode = option opFdiv of Opcode end
+    let opFeq: Opcode = option opFeq of Opcode end
+    let opFlt: Opcode = option opFlt of Opcode end
+    let opFle: Opcode = option opFle of Opcode end
+    let opFgt: Opcode = option opFgt of Opcode end
+    let opFge: Opcode = option opFge of Opcode end
+    let opIsNaN: Opcode = option opIsNaN of Opcode end
+    let opIntToPtr: Opcode = option opIntToPtr of Opcode end
+    let opPtrToInt: Opcode = option opPtrToInt of Opcode end
+    let opRealBits: Opcode = option opRealBits of Opcode end
+    let opBitsReal: Opcode = option opBitsReal of Opcode end
+    let opSext8: Opcode = option opSext8 of Opcode end
+    let opZext8: Opcode = option opZext8 of Opcode end
+    let opLoad: Opcode = option opLoad of Opcode end
+    let opStore: Opcode = option opStore of Opcode end
+    let opCall: Opcode = option opCall of Opcode end
+    let opCallIndirect: Opcode = option opCallIndirect of Opcode end
+    let opCopy: Opcode = option opCopy of Opcode end
+    let termNone: Terminator = option termNone of Terminator end
+    let termUnreachable: Terminator = option termUnreachable of Terminator end
 
     let newUnit(): Unit = tuple let functions = vector.new(:Function) let data = vector.new(:Data) end
 
@@ -108,7 +164,7 @@ export
             vector.append(:Block f.blocks tuple
                 let params = vector.new(:Int)
                 let insts = vector.new(:Inst)
-                let var term = option termNone of Terminator end
+                let var term = termNone
             end)
             vector.length(:Block f.blocks) - 1
         end
@@ -148,14 +204,30 @@ export
         end
 
     let isTerminated(f: Function b: Int): Bool =
-        case block(f b).term when termNone then false else true end
+        case block(f b).term
+            when termNone then false
+            when termJump, termBranch, termSwitch, termReturn, termTailCall, termTry, termUnreachable then true
+        end
 
     let append(f: Function b: Int i: Inst): Ok = vector.append(:Inst block(f b).insts i)
 
-    let inst(op: Opcode args: Array(Int) results: Array(Int)): Inst =
+    (* An instruction of every field *)
+    let make(op: Opcode args: Array(Int) results: Array(Int) imm: Int symbol: String width: Int signed: Bool p: Passing)
+        : Inst =
         tuple
-            let op = op let var args = args let results = results let imm = 0 let symbol = "" let width = 0
-            let signed = false let pairs = none let memory = none let narrow = none
+            let op = op let var args = args let results = results let var imm = imm let symbol = symbol
+            let width = width let signed = signed let pairs = p.pairs let memory = p.memory let narrow = p.narrow
+        end
+
+    let inst(op: Opcode args: Array(Int) results: Array(Int)): Inst = make(op args results 0 "" 0 false plain)
+
+    (* Appends an instruction of no arguments and one result of type t, with
+     * an immediate and a symbol *)
+    let nullary(f: Function b: Int op: Opcode t: Type imm: Int symbol: String): Int =
+        begin
+            let v = newValue(f t)
+            append(f b make(op none array of v end imm symbol 0 false plain))
+            v
         end
 
     let emit(f: Function b: Int op: Opcode args: Array(Int) t: Type): Int =
@@ -165,32 +237,21 @@ export
             v
         end
 
-    let constant(f: Function b: Int n: Int): Int =
-        begin
-            let v = newValue(f option typeInt of Type end)
-            append(f b tuple
-                let op = option opConst of Opcode end let var args = none let results = array of v end let imm = n
-                let symbol = "" let width = 0 let signed = false let pairs = none let memory = none let narrow = none
-            end)
-            v
-        end
-
-    let symbolAddress(f: Function b: Int symbol: String): Int =
-        begin
-            let v = newValue(f option typePtr of Type end)
-            append(f b tuple
-                let op = option opSymbol of Opcode end let var args = none let results = array of v end let imm = 0
-                let symbol = symbol let width = 0 let signed = false let pairs = none let memory = none let narrow = none
-            end)
-            v
-        end
+    let constant(f: Function b: Int n: Int): Int = nullary(f b opConst typeInt n "")
+    let realConstant(f: Function b: Int n: Int): Int = nullary(f b opRealConst typeReal n "")
+    let null(f: Function b: Int): Int = nullary(f b opNull typePtr 0 "")
+    let symbolPlus(f: Function b: Int symbol: String addend: Int): Int = nullary(f b opSymbol typePtr addend symbol)
+    let symbolAddress(f: Function b: Int symbol: String): Int = symbolPlus(f b symbol 0)
+    let slotAddress(f: Function b: Int s: Int): Int = nullary(f b opSlot typePtr s "")
 
     (* The type of a binary operation's result *)
     let resultType(op: Opcode x: Type): Type =
         case op
-            when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge then
-                option typeInt of Type end
-            else x
+            when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge then typeInt
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor,
+                opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
+                opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy then
+                x
         end
 
     let binary(f: Function b: Int op: Opcode x: Int y: Int): Int = emit(f b op array of x y end resultType(op typeOf(f x)))
@@ -198,49 +259,33 @@ export
     let load(f: Function b: Int address: Int offset: Int width: Int signed: Bool t: Type): Int =
         begin
             let v = newValue(f t)
-            append(f b tuple
-                let op = option opLoad of Opcode end let var args = array of address end let results = array of v end
-                let imm = offset let symbol = "" let width = width let signed = signed let pairs = none let memory = none let narrow = none
-            end)
+            append(f b make(opLoad array of address end array of v end offset "" width signed plain))
             v
         end
 
     let store(f: Function b: Int address: Int offset: Int width: Int value: Int): Ok =
-        append(f b tuple
-            let op = option opStore of Opcode end let var args = array of address value end let results = none
-            let imm = offset let symbol = "" let width = width let signed = false let pairs = none let memory = none let narrow = none
-        end)
+        append(f b make(opStore array of address value end none offset "" width false plain))
 
-    let callNarrow(f: Function b: Int symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int)
-        results: Array(Type)): Array(Int) =
+    (* A call's instruction, its results new values *)
+    let callInst(f: Function symbol: String args: Array(Int) p: Passing results: Array(Type)): Inst =
         begin
             let vs = array of(extent results 0)
             for i = 0 upto {extent results - 1} do vs[i] := newValue(f results[i]) end
-            let op = if stringOp.length(symbol) > 0 then option opCall of Opcode end
-                else option opCallIndirect of Opcode end
-            end
-            append(f b tuple
-                let op = op let var args = args let results = vs let imm = 0 let symbol = symbol let width = 0
-                let signed = false let pairs = pairs let memory = noMemory let narrow = narrow
-            end)
-            vs
+            let op = if stringOp.length(symbol) > 0 then opCall else opCallIndirect end
+            make(op args vs 0 symbol 0 false p)
         end
 
-    let call(f: Function b: Int symbol: String args: Array(Int) pairs: Array(Int) results: Array(Type)): Array(Int) =
-        callNarrow(f b symbol args pairs none results)
-
-    let callWithMemory(f: Function b: Int symbol: String args: Array(Int) memory: Array(Int) results: Array(Type)): Array(Int) =
+    let call(f: Function b: Int symbol: String args: Array(Int) p: Passing results: Array(Type)): Array(Int) =
         begin
-            let vs = array of(extent results 0)
-            for i = 0 upto {extent results - 1} do vs[i] := newValue(f results[i]) end
-            append(f b tuple
-                let op = option opCall of Opcode end let var args = args let results = vs let imm = 0 let symbol = symbol
-                let width = 0 let signed = false let pairs = none let memory = memory let narrow = none
-            end)
-            vs
+            let i = callInst(f symbol args p results)
+            append(f b i)
+            i.results
         end
 
     let terminate(f: Function b: Int t: Terminator): Ok = block(f b).term := t
+
+    let tailCall(f: Function b: Int symbol: String args: Array(Int) p: Passing results: Array(Type)): Ok =
+        terminate(f b option termTailCall of Terminator with let call = callInst(f symbol args p results) end)
 
     let target(b: Int args: Array(Int)): Target = tuple let block = b let var args = args end
 
@@ -281,6 +326,72 @@ export
             when termTry with x then array of x.body.block x.handler end
             when termUnreachable then none
         end
+
+    let targets(t: Terminator): Array(Target) =
+        case t
+            when termJump with x then array of x.target end
+            when termBranch with x then array of x.ifTrue x.ifFalse end
+            when termSwitch with x then
+                let r = array of({extent x.targets + 1} x.default)
+                for i = 0 upto {extent x.targets - 1} do r[i] := x.targets[i] end
+                r
+            when termTry with x then array of x.body end
+            when termNone, termReturn, termTailCall, termUnreachable then array of :Target end
+        end
+
+    (* An opcode's position in Opcode *)
+    let opcodeIndex(op: Opcode): Int =
+        case op
+            when opConst then 0
+            when opRealConst then 1
+            when opSymbol then 2
+            when opNull then 3
+            when opSlot then 4
+            when opAdd then 5
+            when opSub then 6
+            when opMul then 7
+            when opDiv then 8
+            when opRem then 9
+            when opAnd then 10
+            when opOr then 11
+            when opXor then 12
+            when opShl then 13
+            when opLshr then 14
+            when opAshr then 15
+            when opEq then 16
+            when opNe then 17
+            when opLt then 18
+            when opLe then 19
+            when opGt then 20
+            when opGe then 21
+            when opUlt then 22
+            when opPeq then 23
+            when opPne then 24
+            when opFadd then 25
+            when opFsub then 26
+            when opFmul then 27
+            when opFdiv then 28
+            when opFeq then 29
+            when opFlt then 30
+            when opFle then 31
+            when opFgt then 32
+            when opFge then 33
+            when opIsNaN then 34
+            when opIntToPtr then 35
+            when opPtrToInt then 36
+            when opRealBits then 37
+            when opBitsReal then 38
+            when opSext8 then 39
+            when opZext8 then 40
+            when opLoad then 41
+            when opStore then 42
+            when opCall then 43
+            when opCallIndirect then 44
+            when opCopy then 45
+        end
+
+    let isOp(i: Inst op: Opcode): Bool = opcodeIndex(i.op) is opcodeIndex(op)
+    let isCall(i: Inst): Bool = isOp(i opCall) orif isOp(i opCallIndirect)
 
     let typeName(t: Type): String = case t when typeInt then "int" when typePtr then "ptr" when typeReal then "real" end
 

@@ -29,7 +29,7 @@ export
             found
         end
     let alignUp(n: Int a: Int): Int = {{{n + a} - 1} / a} * a
-    let isReal(t: ssa.Type): Bool = case t when typeReal then true else false end
+    let isReal(t: ssa.Type): Bool = case t when typeInt, typePtr then false when typeReal then true end
 
     (* =========================================================================
      * Where arguments go (AAPCS64, docs/arm64.md section 3.3)
@@ -37,8 +37,8 @@ export
 
     (* A register (x0-x7 or d0-d7), or with reg "", the stack at offset, of
      * bytes 8 or 1 *)
-    Let Place = Tuple reg: String offset: Int bytes: Int end
-    Let Placed = Tuple places: Array(Place) stackBytes: Int end
+    Let ArgumentPlace = Tuple reg: String offset: Int bytes: Int end
+    Let Placed = Tuple places: Array(ArgumentPlace) stackBytes: Int end
 
     (* The places of values of types from first on: an integer or a pointer in
      * the next x register, a double in the next d register, a 16-byte
@@ -51,9 +51,9 @@ export
             let var ngrn = 0
             let var nsrn = 0
             let var nsaa = 0
-            let x(n: Int): Place = tuple let reg = "x" <> conv.int(n) let offset = 0 let bytes = 8 end
+            let x(n: Int): ArgumentPlace = tuple let reg = "x" <> conv.int(n) let offset = 0 let bytes = 8 end
             (* The stack place of the argument at k, after at bytes *)
-            let stackAfter(at: Int k: Int): Place =
+            let stackAfter(at: Int k: Int): ArgumentPlace =
                 if contains(narrow k) then tuple let reg = "" let offset = at let bytes = 1 end
                 else tuple let reg = "" let offset = alignUp(at 8) let bytes = 8 end
                 end
@@ -200,10 +200,15 @@ export
             let i = maybe.unwrap(:ssa.Inst fr.remat[v])
             let x = if isD(reg) then "x16" else reg end
             case i.op
+                when opConst, opRealConst then movImm(fr x i.imm)
                 when opNull then movImm(fr x 0)
                 when opSymbol then symbolAddress(fr x i.symbol i.imm)
                 when opSlot then addImm(fr x "sp" fr.slotAt[i.imm])
-                else movImm(fr x i.imm)
+                when opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt,
+                    opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt,
+                    opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opLoad, opStore,
+                    opCall, opCallIndirect, opCopy then
+                    raise unsupported with "arm64: rematerializing " <> ssa.opcodeName(i.op) end
             end
             if isD(reg) then move(fr reg x) end
         end
@@ -350,46 +355,13 @@ export
      * Instructions
      * ====================================================================== *)
 
-    let intOp(op: ssa.Opcode): maybe.T(String) =
-        case op
-            when opAdd then maybe.some(:String "add") when opSub then maybe.some(:String "sub")
-            when opMul then maybe.some(:String "mul") when opDiv then maybe.some(:String "sdiv")
-            when opAnd then maybe.some(:String "and") when opOr then maybe.some(:String "orr")
-            when opXor then maybe.some(:String "eor") when opShl then maybe.some(:String "lsl")
-            when opLshr then maybe.some(:String "lsr") when opAshr then maybe.some(:String "asr")
-            else maybe.none(:String)
-        end
-    let intCondition(op: ssa.Opcode): maybe.T(String) =
-        case op
-            when opEq then maybe.some(:String "eq") when opNe then maybe.some(:String "ne")
-            when opLt then maybe.some(:String "lt") when opLe then maybe.some(:String "le")
-            when opGt then maybe.some(:String "gt") when opGe then maybe.some(:String "ge")
-            when opUlt then maybe.some(:String "lo") when opPeq then maybe.some(:String "eq")
-            when opPne then maybe.some(:String "ne")
-            else maybe.none(:String)
-        end
-    let realOp(op: ssa.Opcode): maybe.T(String) =
-        case op
-            when opFadd then maybe.some(:String "fadd") when opFsub then maybe.some(:String "fsub")
-            when opFmul then maybe.some(:String "fmul") when opFdiv then maybe.some(:String "fdiv")
-            else maybe.none(:String)
-        end
-    (* After fcmp, the conditions false when either is a NaN *)
-    let realCondition(op: ssa.Opcode): maybe.T(String) =
-        case op
-            when opFeq then maybe.some(:String "eq") when opFlt then maybe.some(:String "mi")
-            when opFle then maybe.some(:String "ls") when opFgt then maybe.some(:String "gt")
-            when opFge then maybe.some(:String "ge")
-            else maybe.none(:String)
-        end
-
     (* A call: its arguments in their places, the call, and its results
      * stored *)
     let call(fr: Frame i: ssa.Inst): Ok =
         begin
             let f = fr.f
             let direct = stringOp.length(i.symbol) > 0
-            let types = array of(extent i.args option typeInt of ssa.Type end)
+            let types = array of(extent i.args ssa.typeInt)
             for k = 0 upto {extent i.args - 1} do types[k] := ssa.typeOf(f i.args[k]) end
             let placed = placeArguments(types i.pairs i.narrow if direct then 0 else 1 end)
             (* The stack's first, which may use x16 and x17 *)
@@ -422,98 +394,127 @@ export
         begin
             let a(k: Int): Int = i.args[k]
             let result = if extent i.results > 0 then i.results[0] else ~1 end
-            let arith = intOp(i.op)
-            let intCond = intCondition(i.op)
-            let farith = realOp(i.op)
-            let realCond = realCondition(i.op)
-            if maybe.isSome(:String arith) then
-                let x = inReg(fr a(0) "x9")
-                let y = inReg(fr a(1) "x10")
-                let d = outReg(fr result "x9")
-                emit(fr maybe.unwrap(:String arith) <> " " <> d <> ", " <> x <> ", " <> y)
-                storeValue(fr d result)
-            elsif maybe.isSome(:String intCond) then
-                let x = inReg(fr a(0) "x9")
-                let y = inReg(fr a(1) "x10")
-                let d = outReg(fr result "x9")
-                emit(fr "cmp " <> x <> ", " <> y)
-                emit(fr "cset " <> d <> ", " <> maybe.unwrap(:String intCond))
-                storeValue(fr d result)
-            elsif maybe.isSome(:String farith) then
-                let x = inReg(fr a(0) "d0")
-                let y = inReg(fr a(1) "d1")
-                let d = outReg(fr result "d0")
-                emit(fr maybe.unwrap(:String farith) <> " " <> d <> ", " <> x <> ", " <> y)
-                storeValue(fr d result)
-            elsif maybe.isSome(:String realCond) then
-                let x = inReg(fr a(0) "d0")
-                let y = inReg(fr a(1) "d1")
-                let d = outReg(fr result "x9")
-                emit(fr "fcmp " <> x <> ", " <> y)
-                emit(fr "cset " <> d <> ", " <> maybe.unwrap(:String realCond))
-                storeValue(fr d result)
-            else
-                case i.op
-                    (* A Real constant's bits are its word *)
-                    when opConst then
-                        let d = outReg(fr result "x9")
-                        movImm(fr d i.imm)
-                        storeValue(fr d result)
-                    when opRealConst then
-                        movImm(fr "x9" i.imm)
-                        storeValue(fr "x9" result)
-                    when opSymbol then
-                        let d = outReg(fr result "x9")
-                        symbolAddress(fr d i.symbol i.imm)
-                        storeValue(fr d result)
-                    when opNull then storeValue(fr "xzr" result)
-                    when opSlot then
-                        let d = outReg(fr result "x9")
-                        addImm(fr d "sp" fr.slotAt[i.imm])
-                        storeValue(fr d result)
-                    when opRem then
-                        let x = inReg(fr a(0) "x9")
-                        let y = inReg(fr a(1) "x10")
-                        let d = outReg(fr result "x9")
-                        emit(fr "sdiv x11, " <> x <> ", " <> y)
-                        emit(fr "msub " <> d <> ", x11, " <> y <> ", " <> x)
-                        storeValue(fr d result)
-                    when opIsNaN then
-                        let x = inReg(fr a(0) "d0")
-                        let d = outReg(fr result "x9")
-                        emit(fr "fcmp " <> x <> ", " <> x)
-                        emit(fr "cset " <> d <> ", vs")
-                        storeValue(fr d result)
-                    when opSext8 then
-                        let x = inReg(fr a(0) "x9")
-                        let d = outReg(fr result "x9")
-                        emit(fr "sxtb " <> d <> ", " <> half(x))
-                        storeValue(fr d result)
-                    when opZext8 then
-                        let x = inReg(fr a(0) "x9")
-                        let d = outReg(fr result "x9")
-                        emit(fr "and " <> d <> ", " <> x <> ", #0xff")
-                        storeValue(fr d result)
-                    when opLoad then
-                        let base = inReg(fr a(0) "x10")
-                        let d = outReg(fr result "x9")
-                        if i.width is 8 then access(fr "ldr" "ldur" d base i.imm 8)
-                        elsif i.width is 4 then access(fr "ldrsw" "ldursw" d base i.imm 4)
-                        elsif i.signed then access(fr "ldrsb" "ldursb" d base i.imm 1)
-                        else access(fr "ldrb" "ldurb" half(d) base i.imm 1) end
-                        storeValue(fr d result)
-                    when opStore then
-                        let base = inReg(fr a(0) "x10")
-                        let x = inReg(fr a(1) "x9")
-                        if i.width is 8 then access(fr "str" "stur" x base i.imm 8)
-                        elsif i.width is 4 then access(fr "str" "stur" half(x) base i.imm 4)
-                        else access(fr "strb" "sturb" half(x) base i.imm 1) end
-                    when opCall then call(fr i)
-                    when opCallIndirect then call(fr i)
-                    (* The rest copy a word: conversions between ints, pointers,
-                     * and a Real's bits *)
-                    else storeValue(fr inReg(fr a(0) "x9") result)
+            let arith(mnemonic: String): Ok =
+                begin
+                    let x = inReg(fr a(0) "x9")
+                    let y = inReg(fr a(1) "x10")
+                    let d = outReg(fr result "x9")
+                    emit(fr mnemonic <> " " <> d <> ", " <> x <> ", " <> y)
+                    storeValue(fr d result)
                 end
+            let compare(condition: String): Ok =
+                begin
+                    let x = inReg(fr a(0) "x9")
+                    let y = inReg(fr a(1) "x10")
+                    let d = outReg(fr result "x9")
+                    emit(fr "cmp " <> x <> ", " <> y)
+                    emit(fr "cset " <> d <> ", " <> condition)
+                    storeValue(fr d result)
+                end
+            let realArith(mnemonic: String): Ok =
+                begin
+                    let x = inReg(fr a(0) "d0")
+                    let y = inReg(fr a(1) "d1")
+                    let d = outReg(fr result "d0")
+                    emit(fr mnemonic <> " " <> d <> ", " <> x <> ", " <> y)
+                    storeValue(fr d result)
+                end
+            (* After fcmp, the conditions false when either is a NaN *)
+            let realCompare(condition: String): Ok =
+                begin
+                    let x = inReg(fr a(0) "d0")
+                    let y = inReg(fr a(1) "d1")
+                    let d = outReg(fr result "x9")
+                    emit(fr "fcmp " <> x <> ", " <> y)
+                    emit(fr "cset " <> d <> ", " <> condition)
+                    storeValue(fr d result)
+                end
+            case i.op
+                when opAdd then arith("add")
+                when opSub then arith("sub")
+                when opMul then arith("mul")
+                when opDiv then arith("sdiv")
+                when opAnd then arith("and")
+                when opOr then arith("orr")
+                when opXor then arith("eor")
+                when opShl then arith("lsl")
+                when opLshr then arith("lsr")
+                when opAshr then arith("asr")
+                when opEq, opPeq then compare("eq")
+                when opNe, opPne then compare("ne")
+                when opLt then compare("lt")
+                when opLe then compare("le")
+                when opGt then compare("gt")
+                when opGe then compare("ge")
+                when opUlt then compare("lo")
+                when opFadd then realArith("fadd")
+                when opFsub then realArith("fsub")
+                when opFmul then realArith("fmul")
+                when opFdiv then realArith("fdiv")
+                when opFeq then realCompare("eq")
+                when opFlt then realCompare("mi")
+                when opFle then realCompare("ls")
+                when opFgt then realCompare("gt")
+                when opFge then realCompare("ge")
+                when opConst then
+                    let d = outReg(fr result "x9")
+                    movImm(fr d i.imm)
+                    storeValue(fr d result)
+                (* A Real constant's bits are its word *)
+                when opRealConst then
+                    movImm(fr "x9" i.imm)
+                    storeValue(fr "x9" result)
+                when opSymbol then
+                    let d = outReg(fr result "x9")
+                    symbolAddress(fr d i.symbol i.imm)
+                    storeValue(fr d result)
+                when opNull then storeValue(fr "xzr" result)
+                when opSlot then
+                    let d = outReg(fr result "x9")
+                    addImm(fr d "sp" fr.slotAt[i.imm])
+                    storeValue(fr d result)
+                when opRem then
+                    let x = inReg(fr a(0) "x9")
+                    let y = inReg(fr a(1) "x10")
+                    let d = outReg(fr result "x9")
+                    emit(fr "sdiv x11, " <> x <> ", " <> y)
+                    emit(fr "msub " <> d <> ", x11, " <> y <> ", " <> x)
+                    storeValue(fr d result)
+                when opIsNaN then
+                    let x = inReg(fr a(0) "d0")
+                    let d = outReg(fr result "x9")
+                    emit(fr "fcmp " <> x <> ", " <> x)
+                    emit(fr "cset " <> d <> ", vs")
+                    storeValue(fr d result)
+                when opSext8 then
+                    let x = inReg(fr a(0) "x9")
+                    let d = outReg(fr result "x9")
+                    emit(fr "sxtb " <> d <> ", " <> half(x))
+                    storeValue(fr d result)
+                when opZext8 then
+                    let x = inReg(fr a(0) "x9")
+                    let d = outReg(fr result "x9")
+                    emit(fr "and " <> d <> ", " <> x <> ", #0xff")
+                    storeValue(fr d result)
+                when opLoad then
+                    let base = inReg(fr a(0) "x10")
+                    let d = outReg(fr result "x9")
+                    if i.width is 8 then access(fr "ldr" "ldur" d base i.imm 8)
+                    elsif i.width is 4 then access(fr "ldrsw" "ldursw" d base i.imm 4)
+                    elsif i.signed then access(fr "ldrsb" "ldursb" d base i.imm 1)
+                    else access(fr "ldrb" "ldurb" half(d) base i.imm 1) end
+                    storeValue(fr d result)
+                when opStore then
+                    let base = inReg(fr a(0) "x10")
+                    let x = inReg(fr a(1) "x9")
+                    if i.width is 8 then access(fr "str" "stur" x base i.imm 8)
+                    elsif i.width is 4 then access(fr "str" "stur" half(x) base i.imm 4)
+                    else access(fr "strb" "sturb" half(x) base i.imm 1) end
+                when opCall, opCallIndirect then call(fr i)
+                (* Copies of a word: conversions between ints, pointers, and a
+                 * Real's bits *)
+                when opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opCopy then
+                    storeValue(fr inReg(fr a(0) "x9") result)
             end
         end
 
@@ -628,7 +629,7 @@ export
             let f = fr.f
             let direct = stringOp.length(i.symbol) > 0
             let first = if direct then 0 else 1 end
-            let types = array of(extent i.args option typeInt of ssa.Type end)
+            let types = array of(extent i.args ssa.typeInt)
             for k = 0 upto {extent i.args - 1} do types[k] := ssa.typeOf(f i.args[k]) end
             let placed = placeArguments(types i.pairs i.narrow first)
             if direct andif eq(i.symbol f.symbol) then
@@ -793,32 +794,28 @@ export
                 let blk = ssa.block(f b)
                 let measure(i: ssa.Inst): Ok =
                     begin
-                        let types = array of(extent i.args option typeInt of ssa.Type end)
+                        let types = array of(extent i.args ssa.typeInt)
                         for k = 0 upto {extent i.args - 1} do types[k] := ssa.typeOf(f i.args[k]) end
                         let placed = placeArguments(types i.pairs i.narrow if stringOp.length(i.symbol) > 0 then 0 else 1 end)
                         if placed.stackBytes > outgoing then outgoing := placed.stackBytes end
                     end
                 for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
                     let i = vector.get(:ssa.Inst blk.insts k)
-                    case i.op when opCall then measure(i) when opCallIndirect then measure(i) else ok end
+                    if ssa.isCall(i) then measure(i) end
                 end
                 case blk.term
                     when termTailCall with x then measure(x.call)
                     when termTry then savesAll := true
-                    else ok
+                    when termNone, termJump, termBranch, termSwitch, termReturn, termUnreachable then ok
                 end
             end
             (* A function that enters a try is allocated as any other: the
              * allocator keeps what its handlers use in memory at their starts
              * (section 3.6) *)
             let allocation = regalloc.allocate(f allocatable fun(i: ssa.Inst): Bool
-                case i.op
-                    when opCall then true
-                    when opCallIndirect then true
-                    (* A thread-local's address is a call of its accessor *)
-                    when opSymbol then hashMap.contains(:String :Bool threadLocals i.symbol)
-                    else false
-                end)
+                (* A thread-local's address is a call of its accessor *)
+                ssa.isCall(i)
+                    orif {ssa.isOp(i ssa.opSymbol) andif hashMap.contains(:String :Bool threadLocals i.symbol)})
             (* The values computed again rather than kept in memory *)
             let nValues = vector.length(:ssa.Type f.types)
             let remat = array of(nValues maybe.none(:ssa.Inst))
@@ -827,9 +824,13 @@ export
                 for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
                     let i = vector.get(:ssa.Inst blk.insts k)
                     let again = case i.op
-                        when opConst then true when opRealConst then true when opNull then true when opSlot then true
+                        when opConst, opRealConst, opNull, opSlot then true
                         when opSymbol then not(hashMap.contains(:String :Bool threadLocals i.symbol))
-                        else false
+                        when opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe,
+                            opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt,
+                            opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8,
+                            opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy then
+                            false
                     end
                     if again andif {extent i.results is 1} then remat[i.results[0]] := maybe.some(:ssa.Inst i) end
                 end
@@ -913,7 +914,7 @@ export
              * just after the prologue's); main's argc is a C int *)
             let params = vector.toArray(:Int ssa.block(f 0).params)
             if eq(f.symbol "main") then emit(fr "sxtw x0, w0") end
-            let types = array of(extent params option typeInt of ssa.Type end)
+            let types = array of(extent params ssa.typeInt)
             for k = 0 upto {extent params - 1} do types[k] := ssa.typeOf(f params[k]) end
             let placed = placeArguments(types f.paramPairs f.paramNarrow 0)
             for k = 0 upto {extent params - 1} do

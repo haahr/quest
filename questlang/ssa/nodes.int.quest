@@ -36,7 +36,7 @@ export
         op: Opcode
         var args: Array(Int)
         results: Array(Int)
-        imm: Int
+        var imm: Int
         symbol: String
         width: Int
         signed: Bool
@@ -111,6 +111,66 @@ export
         data: vector.T(Data)
     end
 
+    (* How a call passes its arguments, as an instruction's pairs, memory,
+     * and narrow say; plain passes each in a word *)
+    Def Passing = Tuple pairs: Array(Int) memory: Array(Int) narrow: Array(Int) end
+    plain: Passing
+    passing(pairs: Array(Int) memory: Array(Int) narrow: Array(Int)): Passing
+
+    (* The types, opcodes, and terminators without payloads, each made once
+     * (docs/arm64.md section 3.15) *)
+    typeInt: Type
+    typePtr: Type
+    typeReal: Type
+    opConst: Opcode
+    opRealConst: Opcode
+    opSymbol: Opcode
+    opNull: Opcode
+    opSlot: Opcode
+    opAdd: Opcode
+    opSub: Opcode
+    opMul: Opcode
+    opDiv: Opcode
+    opRem: Opcode
+    opAnd: Opcode
+    opOr: Opcode
+    opXor: Opcode
+    opShl: Opcode
+    opLshr: Opcode
+    opAshr: Opcode
+    opEq: Opcode
+    opNe: Opcode
+    opLt: Opcode
+    opLe: Opcode
+    opGt: Opcode
+    opGe: Opcode
+    opUlt: Opcode
+    opPeq: Opcode
+    opPne: Opcode
+    opFadd: Opcode
+    opFsub: Opcode
+    opFmul: Opcode
+    opFdiv: Opcode
+    opFeq: Opcode
+    opFlt: Opcode
+    opFle: Opcode
+    opFgt: Opcode
+    opFge: Opcode
+    opIsNaN: Opcode
+    opIntToPtr: Opcode
+    opPtrToInt: Opcode
+    opRealBits: Opcode
+    opBitsReal: Opcode
+    opSext8: Opcode
+    opZext8: Opcode
+    opLoad: Opcode
+    opStore: Opcode
+    opCall: Opcode
+    opCallIndirect: Opcode
+    opCopy: Opcode
+    termNone: Terminator
+    termUnreachable: Terminator
+
     newUnit(): Unit
     (* A datum of words; the bytes of zero or more words *)
     words(symbol: String exported: Bool writable: Bool ws: Array(Word)): Data
@@ -127,30 +187,42 @@ export
 
     (* Appends an instruction to block b (which has no terminator yet) *)
     append(f: Function b: Int inst: Inst): Ok
-    (* An instruction with its other fields at their defaults *)
+    (* An instruction with its other fields at their defaults, not
+     * appended *)
     inst(op: Opcode args: Array(Int) results: Array(Int)): Inst
-    (* Appends an instruction of one result of type t; the result *)
+
+    (* The rest append an instruction to block b and return its results; emit
+     * appends one of one result, of type t *)
     emit(f: Function b: Int op: Opcode args: Array(Int) t: Type): Int
     constant(f: Function b: Int n: Int): Int
+    (* A Real of the bits n *)
+    realConstant(f: Function b: Int n: Int): Int
+    null(f: Function b: Int): Int
     symbolAddress(f: Function b: Int symbol: String): Int
+    (* A symbol's address plus a byte offset *)
+    symbolPlus(f: Function b: Int symbol: String addend: Int): Int
+    (* The address of stack slot s *)
+    slotAddress(f: Function b: Int s: Int): Int
     binary(f: Function b: Int op: Opcode x: Int y: Int): Int
     load(f: Function b: Int address: Int offset: Int width: Int signed: Bool t: Type): Int
     store(f: Function b: Int address: Int offset: Int width: Int value: Int): Ok
     (* A call of symbol (or, with symbol "", of the function pointer that is
      * the first argument): its results, of the types results *)
-    call(f: Function b: Int symbol: String args: Array(Int) pairs: Array(Int) results: Array(Type)): Array(Int)
-    (* The same, with narrow arguments *)
-    callNarrow(f: Function b: Int symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int)
-        results: Array(Type)): Array(Int)
-    (* The same, with arguments passed through memory *)
-    callWithMemory(f: Function b: Int symbol: String args: Array(Int) memory: Array(Int) results: Array(Type)): Array(Int)
+    call(f: Function b: Int symbol: String args: Array(Int) p: Passing results: Array(Type)): Array(Int)
+    (* Terminates block b with a call in tail position *)
+    tailCall(f: Function b: Int symbol: String args: Array(Int) p: Passing results: Array(Type)): Ok
     terminate(f: Function b: Int t: Terminator): Ok
     target(block: Int args: Array(Int)): Target
     isTerminated(f: Function b: Int): Bool
 
-    (* The values a terminator uses and the blocks it may go to *)
+    (* The values a terminator uses, the blocks it may go to, and its
+     * targets, whose arguments can be changed in place *)
     terminatorUses(t: Terminator): Array(Int)
     successors(t: Terminator): Array(Int)
+    targets(t: Terminator): Array(Target)
+    (* Whether an instruction's opcode is op; whether it is a call *)
+    isOp(i: Inst op: Opcode): Bool
+    isCall(i: Inst): Bool
     typeName(t: Type): String
     opcodeName(op: Opcode): String
 end

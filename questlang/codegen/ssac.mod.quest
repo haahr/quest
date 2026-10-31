@@ -143,67 +143,57 @@ export
             "((" <> c.fnType <> ")" <> callee <> ")(" <> c.args <> ")"
         end
 
-    let binaryOp(op: ssa.Opcode): maybe.T(String) =
-        case op
-            when opAdd then maybe.some(:String "+") when opSub then maybe.some(:String "-")
-            when opMul then maybe.some(:String "*") when opDiv then maybe.some(:String "/")
-            when opRem then maybe.some(:String "%") when opAnd then maybe.some(:String "&")
-            when opOr then maybe.some(:String "|") when opXor then maybe.some(:String "^")
-            when opAshr then maybe.some(:String ">>")
-            when opEq then maybe.some(:String "==") when opNe then maybe.some(:String "!=")
-            when opLt then maybe.some(:String "<") when opLe then maybe.some(:String "<=")
-            when opGt then maybe.some(:String ">") when opGe then maybe.some(:String ">=")
-            when opPeq then maybe.some(:String "==") when opPne then maybe.some(:String "!=")
-            when opFadd then maybe.some(:String "+") when opFsub then maybe.some(:String "-")
-            when opFmul then maybe.some(:String "*") when opFdiv then maybe.some(:String "/")
-            when opFeq then maybe.some(:String "==") when opFlt then maybe.some(:String "<")
-            when opFle then maybe.some(:String "<=") when opFgt then maybe.some(:String ">")
-            when opFge then maybe.some(:String ">=")
-            else maybe.none(:String)
-        end
-
     let rec instruction(p: Printer i: ssa.Inst): Ok =
         begin
             let f = p.f
             let a(k: Int): String = v(i.args[k])
             let set(rhs: String): Ok = line(p v(i.results[0]) <> " = " <> rhs <> ";")
-            let op = binaryOp(i.op)
-            if maybe.isSome(:String op) then
-                set(a(0) <> " " <> maybe.unwrap(:String op) <> " " <> a(1))
-            else
-                case i.op
-                    when opConst then set(intLiteral(i.imm))
-                    when opRealConst then set("ssac_real((uint64_t)" <> intLiteral(i.imm) <> ")")
-                    when opSymbol then
-                        set(symbolAddress(p i.symbol) <> if i.imm is 0 then "" else " + " <> decimal(i.imm) end)
-                    when opNull then set("(char *)0")
-                    when opSlot then set("(char *)s" <> conv.int(i.imm))
-                    when opShl then set("(int64_t)((uint64_t)" <> a(0) <> " << " <> a(1) <> ")")
-                    when opLshr then set("(int64_t)((uint64_t)" <> a(0) <> " >> " <> a(1) <> ")")
-                    when opUlt then set("(uint64_t)" <> a(0) <> " < (uint64_t)" <> a(1))
-                    when opIsNaN then set(a(0) <> " != " <> a(0))
-                    when opIntToPtr then set("(char *)(uintptr_t)" <> a(0))
-                    when opPtrToInt then set("(int64_t)(uintptr_t)" <> a(0))
-                    when opRealBits then set("(int64_t)ssac_bits(" <> a(0) <> ")")
-                    when opBitsReal then set("ssac_real((uint64_t)" <> a(0) <> ")")
-                    when opSext8 then set("(int64_t)(int8_t)" <> a(0))
-                    when opZext8 then set("(int64_t)(uint8_t)" <> a(0))
-                    when opCopy then set(a(0))
-                    when opLoad then
-                        let t = typeOf(f i.results[0])
-                        set(if i.width is 8 then memory(p cType(t) i.args[0] i.imm)
-                            elsif i.width is 4 then "(int64_t)" <> memory(p "int32_t" i.args[0] i.imm)
-                            elsif i.signed then "(int64_t)" <> memory(p "int8_t" i.args[0] i.imm)
-                            else "(int64_t)" <> memory(p "uint8_t" i.args[0] i.imm) end)
-                    when opStore then
-                        let t = typeOf(f i.args[1])
-                        line(p if i.width is 8 then memory(p cType(t) i.args[0] i.imm) <> " = " <> a(1) <> ";"
-                            elsif i.width is 4 then memory(p "int32_t" i.args[0] i.imm) <> " = (int32_t)" <> a(1) <> ";"
-                            else memory(p "uint8_t" i.args[0] i.imm) <> " = (uint8_t)" <> a(1) <> ";" end)
-                    when opCall then call(p i)
-                    when opCallIndirect then call(p i)
-                    else raise unsupported with "ssac: opcode " <> ssa.opcodeName(i.op) end
-                end
+            let binary(op: String): Ok = set(a(0) <> " " <> op <> " " <> a(1))
+            case i.op
+                when opAdd, opFadd then binary("+")
+                when opSub, opFsub then binary("-")
+                when opMul, opFmul then binary("*")
+                when opDiv, opFdiv then binary("/")
+                when opRem then binary("%")
+                when opAnd then binary("&")
+                when opOr then binary("|")
+                when opXor then binary("^")
+                when opAshr then binary(">>")
+                when opEq, opPeq, opFeq then binary("==")
+                when opNe, opPne then binary("!=")
+                when opLt, opFlt then binary("<")
+                when opLe, opFle then binary("<=")
+                when opGt, opFgt then binary(">")
+                when opGe, opFge then binary(">=")
+                when opConst then set(intLiteral(i.imm))
+                when opRealConst then set("ssac_real((uint64_t)" <> intLiteral(i.imm) <> ")")
+                when opSymbol then
+                    set(symbolAddress(p i.symbol) <> if i.imm is 0 then "" else " + " <> decimal(i.imm) end)
+                when opNull then set("(char *)0")
+                when opSlot then set("(char *)s" <> conv.int(i.imm))
+                when opShl then set("(int64_t)((uint64_t)" <> a(0) <> " << " <> a(1) <> ")")
+                when opLshr then set("(int64_t)((uint64_t)" <> a(0) <> " >> " <> a(1) <> ")")
+                when opUlt then set("(uint64_t)" <> a(0) <> " < (uint64_t)" <> a(1))
+                when opIsNaN then set(a(0) <> " != " <> a(0))
+                when opIntToPtr then set("(char *)(uintptr_t)" <> a(0))
+                when opPtrToInt then set("(int64_t)(uintptr_t)" <> a(0))
+                when opRealBits then set("(int64_t)ssac_bits(" <> a(0) <> ")")
+                when opBitsReal then set("ssac_real((uint64_t)" <> a(0) <> ")")
+                when opSext8 then set("(int64_t)(int8_t)" <> a(0))
+                when opZext8 then set("(int64_t)(uint8_t)" <> a(0))
+                when opCopy then set(a(0))
+                when opLoad then
+                    let t = typeOf(f i.results[0])
+                    set(if i.width is 8 then memory(p cType(t) i.args[0] i.imm)
+                        elsif i.width is 4 then "(int64_t)" <> memory(p "int32_t" i.args[0] i.imm)
+                        elsif i.signed then "(int64_t)" <> memory(p "int8_t" i.args[0] i.imm)
+                        else "(int64_t)" <> memory(p "uint8_t" i.args[0] i.imm) end)
+                when opStore then
+                    let t = typeOf(f i.args[1])
+                    line(p if i.width is 8 then memory(p cType(t) i.args[0] i.imm) <> " = " <> a(1) <> ";"
+                        elsif i.width is 4 then memory(p "int32_t" i.args[0] i.imm) <> " = (int32_t)" <> a(1) <> ";"
+                        else memory(p "uint8_t" i.args[0] i.imm) <> " = (uint8_t)" <> a(1) <> ";" end)
+                when opCall, opCallIndirect then call(p i)
             end
         end
 
@@ -310,12 +300,14 @@ export
             let slotOf = hashMap.new(:Int :Int intEqual hash.int)
             for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
                 let blk = ssa.block(f b)
-                case blk.term when termTry then hasTry := true else ok end
+                case blk.term
+                    when termTry then hasTry := true
+                    when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then ok
+                end
                 for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
                     let i = vector.get(:ssa.Inst blk.insts k)
-                    case i.op
-                        when opSlot then put(:Int :Int slotOf i.results[0] vector.get(:ssa.Slot f.slots i.imm).bytes)
-                        else ok
+                    if ssa.isOp(i ssa.opSlot) then
+                        put(:Int :Int slotOf i.results[0] vector.get(:ssa.Slot f.slots i.imm).bytes)
                     end
                 end
             end
@@ -424,11 +416,7 @@ export
             let memorySizes = hashMap.new(:Int :Bool intEqual hash.int)
             let referInst(f: Function i: ssa.Inst): Ok =
                 begin
-                    case i.op
-                        when opSymbol then refer(i.symbol)
-                        when opCall then refer(i.symbol)
-                        else ok
-                    end
+                    if ssa.isOp(i ssa.opSymbol) orif ssa.isOp(i ssa.opCall) then refer(i.symbol) end
                     for k = 0 upto {extent i.memory - 1} do
                         (* Found by the slot the argument addresses *)
                         let a = i.args[i.memory[k]]
@@ -436,12 +424,8 @@ export
                             let blk = ssa.block(f b)
                             for j = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
                                 let def = vector.get(:ssa.Inst blk.insts j)
-                                case def.op
-                                    when opSlot then
-                                        if def.results[0] is a then
-                                            put(:Int :Bool memorySizes vector.get(:ssa.Slot f.slots def.imm).bytes true)
-                                        end
-                                    else ok
+                                if ssa.isOp(def ssa.opSlot) andif {def.results[0] is a} then
+                                    put(:Int :Bool memorySizes vector.get(:ssa.Slot f.slots def.imm).bytes true)
                                 end
                             end
                         end
@@ -452,7 +436,10 @@ export
                 for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
                     let blk = ssa.block(f b)
                     for j = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do referInst(f vector.get(:ssa.Inst blk.insts j)) end
-                    case blk.term when termTailCall with x then referInst(f x.call) else ok end
+                    case blk.term
+                        when termTailCall with x then referInst(f x.call)
+                        when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable then ok
+                    end
                 end
             end
             for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
