@@ -6,6 +6,7 @@ import
     questlang/codegen/syntax : questlang/codegen/Syntax
     collections/vector : collections/Vector
     util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
     conv : Conv
     stringOp = string : StringOp
 export
@@ -17,18 +18,18 @@ export
 
     let values(vs: Array(Int)): String =
         begin
-            let var text = ""
-            for i = 0 upto {extent vs - 1} do text := text <> if i > 0 then ", " else "" end <> value(vs[i]) end
-            text
+            let texts = array of(extent vs "")
+            for i = 0 upto {extent vs - 1} do texts[i] := value(vs[i]) end
+            strutil.joinArray(", " texts)
         end
 
     let targetText(t: nodes.Target): String = blockName(t.block) <> "(" <> values(t.args) <> ")"
 
     let values2(xs: Array(Int)): String =
         begin
-            let var text = ""
-            for i = 0 upto {extent xs - 1} do text := text <> if i > 0 then " " else "" end <> conv.int(xs[i]) end
-            text
+            let texts = array of(extent xs "")
+            for i = 0 upto {extent xs - 1} do texts[i] := conv.int(xs[i]) end
+            strutil.joinArray(" " texts)
         end
 
     let listed(name: String xs: Array(Int)): String = if extent xs is 0 then "" else " " <> name <> " [" <> values2(xs)
