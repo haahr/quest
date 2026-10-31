@@ -77,6 +77,8 @@ Stage 2 is the new compiler. Each stage has its own build directory, and the eng
   (`.build/quest-stages/seed`: the release's commit and the digest of its `quest`) and starts over when the seed
   changes, as when a release is cut in another worktree. A release's `home/` carries its commit's times, so artifacts
   built against one release could look fresh against the next one's older sources.
+- **`QUEST_BACKEND=ssac` or `arm64`** has stage 1 compile stage 2 through that backend, its stages kept apart in
+  `.build/quest-stages-BACKEND` ([arm64.md](arm64.md) step 12). Stage 1 is the seed's, compiled by C, either way.
 - **The release finds the tree's `questlang/` through `-I`,** because its `QUEST_HOME` is its own `home/`, which
   holds only `lib/` and `runtime/`.
 - **Both stages build in parallel,** with `-j` set to the number of CPUs (`QUEST_JOBS` for `./quest`).

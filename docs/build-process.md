@@ -482,7 +482,10 @@ with its own build directory (docs/release-compiler.md §2):
 1. The seed builds stage 1. The seed is the current release, which every worktree shares (in the common git
    directory's `quest-release/`, docs/release-compiler.md §1), compiling against its own `lib/` and `runtime/` (its
    `home/`) and finding the tree's `questlang/` through `-I`, or the bootstrap.
-2. Stage 1 builds stage 2 against the tree's `lib/` and `runtime/`.
+2. Stage 1 builds stage 2 against the tree's `lib/` and `runtime/`, through the backend `QUEST_BACKEND` names (`c`,
+   the default, `ssac`, or `arm64`; [arm64.md](arm64.md) step 12), so that stage 2 is the compiler as that backend
+   compiles it. Another backend's stages are kept in `.build/quest-stages-BACKEND`, so that switching rebuilds
+   neither.
 
 The stages record their seed and are discarded when it changes. A release's `home/` has its commit's file times, so
 §5's timestamp rules cannot compare artifacts built against one release with another release's sources.

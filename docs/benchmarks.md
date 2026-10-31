@@ -497,3 +497,40 @@ A first run of this measurement, at `b75ee0fa`, overlapped a release build in an
 tailfib, checksum, and logic 1.35 to 1.74 times slower than before splitting. Their code was unchanged, and an A/B
 of eleven benchmarks at `--scale 0.05` on an idle machine put all but three within 3 percent. Measurements need the
 machine to themselves.
+
+## 5. Choosing the default backend (arm64.md step 12, 2026-10-30)
+
+Step 12 asks for the measurements from which the default backend is decided. The user decides; this section gives the
+numbers and a recommendation. Releases are built with C until then.
+
+### 5.1. The compiler as each backend compiles it
+
+`./quest` with `QUEST_BACKEND=c`, `ssac`, or `arm64` builds stage 2, the compiler, through that backend (stage 1, the
+seed's, compiled by C). Each stage 2 then compiled the driver (`questlang/driver/main.quest`, 124 units) from an empty
+build directory, once each, on an otherwise idle machine, at `e804792b` with the SSA's join fix:
+
+| Compiler compiled by | Through arm64, `-j 8` | Through arm64, `-j 1` | Through C, `-j 8` | Against C's compiler |
+|---|--:|--:|--:|--:|
+| `c` (clang `-O2` on the C printer's C) | 24.6 s | 52.6 s | 26.4 s | 1 |
+| `ssac` (clang `-O2` on the SSA's C) | 35.4 s | 64.7 s | 37.8 s | 1.23–1.44 |
+| `arm64` (the native backend) | 53.6 s | 82.9 s | 59.2 s | 1.58–2.24 |
+
+The output's backend matters little (the C output adds clang's time in every row alike); what differs is the compiler
+running. Every stage 2 writes the same artifacts as the C-compiled one (the fixed point, which `tools/check` checks
+through each backend), so the rows differ only in speed.
+
+### 5.2. Programs
+
+From §4, at a quarter of MLton's counts, the MLton suite's programs compiled by the arm64 backend take 2.09 times as
+long as by the C backend (geometric mean against MLton 11.01 and 5.24). Building them takes 0.93 times as long: most
+of a build is the front end and linking. The suite through `ssac` is yet to be timed (an overnight job, the
+measurement step 15 needs).
+
+### 5.3. Recommendation
+
+**Keep `c` the default for now.** The arm64 backend's code runs about twice as long as clang's, in the compiler and in
+the suite, and saves only a few percent of build time, while `c` is the backend everything else is measured against.
+The gap is the instruction selection, jump threading, and inlining that clang does and arm64.md §6 and
+[backend-improvements.md](backend-improvements.md) list. Revisit when arm64's code is within about 1.2 times C's on
+both measures, or when building time matters more than running time (the REPL, the test suite's many small
+programs), where arm64's builds skip clang's compile of the C: an assembly unit needs only the assembler.

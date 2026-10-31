@@ -7,12 +7,14 @@ between them.
 
 A change to both runs, at once, the self-hosting check (run_tests.py
 --self-hosting --seed release, which ends by running the self-hosted suite with
-stage 2), the backends' suite (the self-hosted suite's compiled tests through
+stage 2), the fixed point through ssac and through arm64 (stages 2 and 3 built
+by each backend, which must write what stage 1 wrote: docs/arm64.md step 12),
+the backends' suite (the self-hosted suite's compiled tests through
 the SSA's C printer, ssac, and the native arm64 backend, each for every unit,
 and for the program's or the modules' alone: docs/arm64.md section 4), the bootstrap's suite, and the unit
 tests but those that drive a terminal, and then, alone, the terminal tests,
 which time out under load. A change to the self-hosted compiler alone runs the
-self-hosting check and the backends' suite only. Each suite builds into a temporary directory of its own, so
+self-hosting checks and the backends' suite only. Each suite builds into a temporary directory of its own, so
 they do not interfere. Their output is kept in .build/check/SUITE.txt, and
 each suite's summary is printed with when it finished. The exit status is 0
 when every suite passes.
@@ -83,6 +85,8 @@ def main() -> int:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     run_tests = [python, str(ROOT_DIR / "run_tests.py")]
     self_hosting = [*run_tests, "--self-hosting", "--seed", args.seed]
+    fixed_points = [Suite(f"self-hosting-{backend}", [*self_hosting, "--stage-backend", backend, "--fixed-point-only"])
+                    for backend in ("ssac", "arm64")]
     backends = [*run_tests, "--self-hosted", "--seed", args.seed, "--backend",
                 "ssac,ssac-program,ssac-modules,arm64,arm64-program,arm64-modules"]
     unit = [python, "-m", "unittest"]
@@ -92,6 +96,7 @@ def main() -> int:
         together = [
             Suite("self-hosting", [*self_hosting, "-j", str(min(8, cores))]),
             Suite("backends", [*backends, "-j", str(max(1, cores // 4))]),
+            *fixed_points,
         ]
         after: list[Suite] = []
     else:
@@ -100,6 +105,7 @@ def main() -> int:
         together = [
             Suite("self-hosting", [*self_hosting, "-j", str(max(1, cores * 5 // 10))]),
             Suite("backends", [*backends, "-j", str(max(1, cores * 2 // 10))]),
+            *fixed_points,
             Suite("bootstrap", [*run_tests, "-j", str(max(1, cores * 3 // 10))]),
             Suite("unit", [*unit, "discover", "-s", "tests/python"], {**unit_environment, "QUEST_SKIP_PTY_TESTS": "1"}),
         ]

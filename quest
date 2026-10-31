@@ -12,8 +12,18 @@
 # QUEST_VERBOSE=1 to see the builds' steps. The release builds stage 1, and
 # stage 1 builds stage 2, compiling QUEST_JOBS modules at once (-j; by default,
 # as many as there are CPUs); the bootstrap builds stage 1 one at a time.
+# QUEST_BACKEND (c, ssac, or arm64; c by default) is the backend stage 1
+# compiles stage 2 with, so that stage 2 is the compiler as that backend
+# compiles it (docs/arm64.md step 12); stage 1 is the seed's, compiled by C.
+# Each backend's stages are kept apart (c's in .build/quest-stages, another's in
+# .build/quest-stages-BACKEND), so that switching rebuilds neither.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BUILD="$SCRIPT_DIR/.build/quest-stages"
+BACKEND="${QUEST_BACKEND:-c}"
+case "$BACKEND" in
+    c) BUILD="$SCRIPT_DIR/.build/quest-stages" ;;
+    ssac|arm64) BUILD="$SCRIPT_DIR/.build/quest-stages-$BACKEND" ;;
+    *) echo "quest: QUEST_BACKEND must be c, ssac, or arm64, not $BACKEND" >&2; exit 1 ;;
+esac
 STAGE1="$BUILD/stage1/quest"
 STAGE2="$BUILD/stage2/quest"
 DRIVER="questlang/driver/main.quest"
@@ -84,9 +94,9 @@ if stale; then
         echo "quest: building stage 1 (the bootstrap compiling $DRIVER)..." >&2
         (cd "$SCRIPT_DIR" && ./questboot $VERBOSE --build-dir "$BUILD/stage1/build" -o "$STAGE1" "$DRIVER") || exit 1
     fi
-    echo "quest: building stage 2 (stage 1 compiling $DRIVER)..." >&2
-    (cd "$SCRIPT_DIR" && QUEST_HOME="$SCRIPT_DIR" "$STAGE1" $VERBOSE -j "$JOBS" --build-dir "$BUILD/stage2/build" \
-        -o "$STAGE2" "$DRIVER") || exit 1
+    echo "quest: building stage 2 (stage 1 compiling $DRIVER with the $BACKEND backend)..." >&2
+    (cd "$SCRIPT_DIR" && QUEST_HOME="$SCRIPT_DIR" "$STAGE1" $VERBOSE -j "$JOBS" --backend "$BACKEND" \
+        --build-dir "$BUILD/stage2/build" -o "$STAGE2" "$DRIVER") || exit 1
 fi
 
 QUEST_HOME="${QUEST_HOME:-$SCRIPT_DIR}" exec "$STAGE2" "$@"

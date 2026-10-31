@@ -555,9 +555,20 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
     - **§10's hazard 4 first** (`Char` as `uint8_t`), since a `Char`'s signedness differing between the backends
       could break the fixed point; hazards 3 and 5 after this step.
     - **`QUEST_BACKEND=c|ssac|arm64`** chooses the backend `./quest` builds its stages with (`c` by default), each
-      backend's stages in their own `.build/quest-stages-<backend>/`, so that switching rebuilds neither.
+      backend's stages in their own directory, so that switching rebuilds neither. As built, stage 1 (the seed's)
+      compiles stage 2 through the backend, and `c`'s stages stay in `.build/quest-stages`, where the runner, the
+      benchmarks, and the docs find them; another's are in `.build/quest-stages-<backend>/`.
     - **The user decides the default backend:** benchmarks.md records the compile and run times of the compiler and
       the MLton suite under each backend, with a recommendation. Releases are built with C until then.
+
+    *Done* (2026-10-30). The compiler built by arm64 crashed at once: the SSA bound a join's parameter as a local
+    even when it was a top-level global, so a function read `compileOutput` unset (ssa.md §4,
+    `language/global_joins`). Fixed, the compiler built by `arm64`, and the one built by `ssac`, each write the
+    C-built compiler's artifacts for every unit, and the arm64-built one passes the self-hosted suite.
+    `run_tests.py --self-hosting --stage-backend ssac|arm64` checks that fixed point, and `tools/check` runs it
+    through both (testing.md §4.1). benchmarks.md §5 has the measurements: the compiler compiled by `ssac` takes 1.2
+    to 1.4 times as long as the one compiled by C, by `arm64` 1.6 to 2.2; with §4's suite times, it recommends keeping
+    `c` the default for now. The suite through `ssac` is still to be timed (step 15's measurement).
 
 13. **Whole-program compilation** with the arm64 backend (build-process.md §1.2). *Done when* `--whole-program`
     builds with `--backend arm64` (and `ssac`) pass the suite.

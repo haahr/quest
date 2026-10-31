@@ -603,8 +603,8 @@ Which tests a change needs depends on which compilers it changes (section 2.8, a
 
 | Change | Command | Runs | Takes (10 cores) |
 | :--- | :--- | :--- | ---: |
-| **Both compilers,** or what they share: the language, `lib/`, `runtime/`, a fix to what programs do or what errors they report, the tests | `tools/check` | At once: the self-hosting check seeded from the release (50% of the workers), the backends' suite (20%: `--self-hosted --backend` with the three `ssac` modes and the three `arm64` ones), the bootstrap's suite (30%), and the unit tests but the terminal ones; then the terminal tests alone | about 11 min |
-| **The self-hosted compiler alone:** `questlang/` changes to how it compiles (its IR, its C), and refactorings | `tools/check --self-hosted-only` | The self-hosting check seeded from the release, with 8 workers, and the backends' suite, with a quarter of the cores | about 11 min |
+| **Both compilers,** or what they share: the language, `lib/`, `runtime/`, a fix to what programs do or what errors they report, the tests | `tools/check` | At once: the self-hosting check seeded from the release (50% of the workers), the fixed point through `ssac` and through `arm64`, the backends' suite (20%: `--self-hosted --backend` with the three `ssac` modes and the three `arm64` ones), the bootstrap's suite (30%), and the unit tests but the terminal ones; then the terminal tests alone | about 11 min |
+| **The self-hosted compiler alone:** `questlang/` changes to how it compiles (its IR, its C), and refactorings | `tools/check --self-hosted-only` | The self-hosting check seeded from the release, with 8 workers, the fixed point through `ssac` and `arm64`, and the backends' suite, with a quarter of the cores | about 11 min |
 
 - **Both take about as long,** since the self-hosted suite sets when either ends (section 5.1); `--self-hosted-only`
   leaves the bootstrap's suite and the unit tests out, which a change to the self-hosted compiler alone cannot
@@ -614,6 +614,13 @@ Which tests a change needs depends on which compilers it changes (section 2.8, a
   the release does, and that stages 2 and 3 are the same binary, and then runs the whole self-hosted suite with
   stage 2. It replaces `--self-hosted`, for 2-3 minutes more. Past a gap (a feature the release does not have yet,
   [instructions.md](instructions.md) §6.1), `tools/check --seed bootstrap` builds stage 1 with the bootstrap.
+- **The fixed point through the other backends** (`run_tests.py --self-hosting --stage-backend ssac|arm64
+  --fixed-point-only`, [arm64.md](arm64.md) step 12): stage 1, built by the release, builds stage 2 through the
+  backend, and stage 2, the compiler as that backend compiles it, builds stage 3 through it too, which must write
+  the same artifacts (C, or arm64's assembly) for every unit. It compares artifacts rather than binaries: two
+  arm64 binaries linked from the same assembly differ in their Mach-O UUID and code signature. Without
+  `--fixed-point-only`, the self-hosted suite then runs with that stage 2 (not part of `tools/check`, which would
+  take as long again).
 - **The questlang tests** (`tests/source/questlang/`) need no run of their own: each suite runs them compiled, with its
   own compiler.
 - **The suites do not interfere:** each builds into a temporary directory of its own, the runtime's cached objects

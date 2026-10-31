@@ -559,17 +559,20 @@ def build_self_hosted_driver(python_executable: str, build_dir: Path) -> Path:
     return binary
 
 
-def build_driver_with(driver: Path, build_dir: Path, binary: Path, home: Path = ROOT_DIR) -> float:
+def build_driver_with(driver: Path, build_dir: Path, binary: Path, home: Path = ROOT_DIR, backend: str = "c") -> float:
     """Compiles the self-hosted driver with the compiled driver `driver`, as
     -o does, into binary, its units' artifacts in build_dir, against the lib/
-    and runtime/ in home (a release's own, or the tree's). Returns the time the
-    build took, in seconds."""
+    and runtime/ in home (a release's own, or the tree's), its units through
+    backend (docs/arm64.md section 3.12). Returns the time the build took, in
+    seconds."""
     environment = os.environ.copy()
     environment["QUEST_HOME"] = str(home)
     # Against a release's home, the tree's questlang/ is found through -I.
     # Modules compile in parallel (-j), as every release since c787e2d6 can.
     flags = ["-I", str(ROOT_DIR)] if home != ROOT_DIR else []
     flags += ["-j", str(os.cpu_count() or 1)]
+    if backend != "c":
+        flags += ["--backend", backend]
     start = time.perf_counter()
     process = subprocess.run(
         [str(driver), *flags, "--build-dir", str(build_dir), "-o", str(binary), str(SELF_HOSTED_DRIVER)],
@@ -616,8 +619,11 @@ def build_seeded_driver(build_dir: Path) -> Path:
 
 
 # The artifacts a build directory holds for each unit, compared by
-# --self-hosting
-ARTIFACT_SUFFIXES = (".mod.c", ".main.c", ".int.h", ".qi", ".qm")
+# --self-hosting: the C of the c and ssac backends, or arm64's assembly
+ARTIFACT_SUFFIXES = (".mod.c", ".main.c", ".mod.s", ".main.s", ".int.h", ".qi", ".qm")
+
+# The backends that can build stages 2 and 3 (--stage-backend)
+STAGE_BACKENDS = ("c", "ssac", "arm64")
 
 
 def normalized_artifact(path: Path, build_dir: Path) -> str:
@@ -658,7 +664,7 @@ def compare_build_dirs(expected_dir: Path, actual_dir: Path, what: str) -> list[
     return problems
 
 
-def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "bootstrap") -> Path:
+def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "bootstrap", backend: str = "c") -> Path:
     """Builds the three stages of the self-hosted compiler (docs/testing.md
     section 2.3) and checks the fixed point: stage 2 (stage 1's build, stage 1
     being the seed's build of the self-hosted driver) writes the artifacts stage
@@ -670,32 +676,43 @@ def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "boo
     build of the driver runs alongside it, and builds a stage 2 of its own,
     whose artifacts must be the release's stage 1's: that is, the bootstrap
     still builds the compiler the release does (docs/testing.md section 2.8).
+
+    With a backend other than c (docs/arm64.md step 12), stages 2 and 3 are
+    built through it: stage 2 is then the compiler as that backend compiles it,
+    built by stage 1, compiled by C, and the fixed point is that it writes what
+    stage 1 wrote, assembly or C, for every unit. The bootstrap's comparison,
+    which does not depend on the backend, is left to the check with c.
     Returns stage 2, which the self-hosted suite then runs."""
     stages = build_dir / "self-hosting"
     shutil.rmtree(stages, ignore_errors=True)
     if seed == "release":
         release = current_release()
-        print(f"Compiling stage 1 ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)}, by the release), and the "
-              "bootstrap's build alongside it...")
         stage1 = stages / "stage1" / "questlang-driver"
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            bootstrap = executor.submit(build_self_hosted_driver, python_executable, build_dir)
+        if backend == "c":
+            print(f"Compiling stage 1 ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)}, by the release), and the "
+                  "bootstrap's build alongside it...")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                bootstrap = executor.submit(build_self_hosted_driver, python_executable, build_dir)
+                seconds = build_driver_with(release / "quest", stages / "stage1" / "build", stage1, release / "home")
+                bootstrap_stage1 = bootstrap.result()
+        else:
+            print(f"Compiling stage 1 ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)}, by the release)...")
             seconds = build_driver_with(release / "quest", stages / "stage1" / "build", stage1, release / "home")
-            bootstrap_stage1 = bootstrap.result()
         print(f"  {seconds:.1f}s")
     else:
         print(f"Compiling stage 1 ({SELF_HOSTED_DRIVER.relative_to(ROOT_DIR)}, by the bootstrap)...")
         stage1 = build_self_hosted_driver(python_executable, build_dir)
     stage2 = stages / "stage2" / "questlang-driver"
     stage3 = stages / "stage3" / "questlang-driver"
-    print("Compiling stage 2 (by stage 1)...")
-    seconds = build_driver_with(stage1, stages / "stage2" / "build", stage2)
+    through = "" if backend == "c" else f", through {backend}"
+    print(f"Compiling stage 2 (by stage 1{through})...")
+    seconds = build_driver_with(stage1, stages / "stage2" / "build", stage2, backend=backend)
     print(f"  {seconds:.1f}s")
-    print("Compiling stage 3 (by stage 2)...")
-    seconds = build_driver_with(stage2, stages / "stage3" / "build", stage3)
+    print(f"Compiling stage 3 (by stage 2{through})...")
+    seconds = build_driver_with(stage2, stages / "stage3" / "build", stage3, backend=backend)
     print(f"  {seconds:.1f}s")
     problems = compare_build_dirs(stages / "stage2" / "build", stages / "stage3" / "build", "stage 2 against stage 1")
-    if seed == "release":
+    if seed == "release" and backend == "c":
         print("Compiling stage 2 again, by the bootstrap's stage 1...")
         seconds = build_driver_with(bootstrap_stage1, stages / "stage2-bootstrap" / "build",
                                     stages / "stage2-bootstrap" / "questlang-driver")
@@ -706,13 +723,13 @@ def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "boo
         print("\n\n".join(problems))
         sys.exit("The self-hosting check failed")
     count = sum(1 for f in (stages / "stage2" / "build").rglob("*") if f.name.endswith(ARTIFACT_SUFFIXES))
-    print(f"Fixed point: stage 2 writes the {count} artifacts stage 1 wrote")
-    if seed == "release":
+    print(f"Fixed point{through}: stage 2 writes the {count} artifacts stage 1 wrote")
+    if backend == "c" and seed == "release":
         print("Bootstrappable: the bootstrap's stage 1 writes the release's stage 1's artifacts")
-    else:
+    elif backend == "c":
         print("(Seeded by the bootstrap: --seed release also checks that the bootstrap builds the release's compiler)")
     if stage2.read_bytes() != stage3.read_bytes():
-        print("Note: the binaries of stages 2 and 3 differ, from identical C")
+        print("Note: the binaries of stages 2 and 3 differ, from identical " + ("C" if backend != "arm64" else "assembly"))
     else:
         print("Stages 2 and 3 are the same binary")
     return stage2
@@ -965,6 +982,18 @@ def main() -> int:
         "self-hosted suite with stage 2.",
     )
     arg_parser.add_argument(
+        "--stage-backend",
+        choices=list(STAGE_BACKENDS),
+        default="c",
+        help="With --self-hosting, build stages 2 and 3 through this backend, so that the fixed point is the "
+        "compiler as the backend compiles it (docs/arm64.md step 12).",
+    )
+    arg_parser.add_argument(
+        "--fixed-point-only",
+        action="store_true",
+        help="With --self-hosting, check the fixed point and stop, without running the suite with stage 2.",
+    )
+    arg_parser.add_argument(
         "--seed",
         choices=["bootstrap", "release"],
         default="bootstrap",
@@ -1035,7 +1064,9 @@ def run_all_tests(
     pending_counts = {"pending": 0}
     if args.self_hosting:
         args.self_hosted = True
-        args.self_hosted_driver = str(check_self_hosting(python_executable, build_dir, args.seed))
+        args.self_hosted_driver = str(check_self_hosting(python_executable, build_dir, args.seed, args.stage_backend))
+        if args.fixed_point_only:
+            return 0
     if not args.self_hosted and args.phase == "all":
         # The IR dumps are the self-hosted compiler's; --phase runs one with the
         # bootstrap, to compare its IR with them
