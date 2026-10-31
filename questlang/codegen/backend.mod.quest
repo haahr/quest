@@ -3,6 +3,7 @@
 module backend : Backend
 import
     questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/simplify : questlang/ir/Simplify
     questlang/ir/specialize : questlang/ir/Specialize
     questlang/ir/closure : questlang/ir/Closure
     questlang/ir/represent : questlang/ir/Represent
@@ -22,8 +23,11 @@ export
         end
 
     let runPasses(unit: nodes.Unit): nodes.Unit =
-        checked(thunks.thunkUnit(describe.describeUnit(checked(represent.representUnit(checked(closure.closureConvertUnit(
-            checked(specialize.specializeUnit(unit)))))))))
+        begin
+            let specialized = checked(specialize.specializeUnit(checked(simplify.simplifyUnit(unit))))
+            let represented = checked(represent.representUnit(checked(closure.closureConvertUnit(specialized))))
+            checked(thunks.thunkUnit(describe.describeUnit(represented)))
+        end
 
     let implicitImports(unit: nodes.Unit program: typedAst.Program): Array(ImplicitImport) =
         begin

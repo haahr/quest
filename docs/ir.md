@@ -14,7 +14,7 @@ that the IR verifier checks. The C printer consumes the last stage. A future nat
 
 ```
 source → tokens → AST → typed AST ─┬─→ interpreter
-                                   └─→ lower → Core IR → specialize → closure-convert → represent
+                                   └─→ lower → Core IR → (simplify) → specialize → closure-convert → represent
                                                 → describe → C printer → C → clang
                                                           └→ (future) CFG/SSA → AArch64
 ```
@@ -347,7 +347,8 @@ arrays, or cells) a record or variant, decided on its shape; or a `var` or `out`
 result, over the function's type parameters, also decided on its shape (so a tuple type written through an alias or
 a type operator's application, `Box(A)`, counts as one written out).
 
-The clone has fresh binders throughout and is bound by the same `funs` statement as the original, so it is in scope
+In the self-hosted compiler the copying is `questlang/ir/clone`'s, which the inliner shares (giving its copies fresh
+labels too, since they sit in their callers). The clone has fresh binders throughout and is bound by the same `funs` statement as the original, so it is in scope
 wherever the original is and sees the same free variables (a local function's clone captures what the original does). A
 clone of a module's function is also a member of the module (`first_spec1`), which calls from outside the module name.
 Clones are specialized in turn, and shared by function and type arguments (by identity, never by name), so a recursive
@@ -583,6 +584,7 @@ builds its own SSA and optimizes. The plan for the backend is [arm64.md](arm64.m
 | Stage | After | Invariants (checked by the verifier) |
 |---|---|---|
 | **Core** | lowering | ANF: operation arguments are atoms; every variable is bound once and used only in its scope; functions do not use mutable variables of enclosing functions; jumps name enclosing join points with matching arity, and breaks and continues enclosing loops, within one function; returns only in functions; terminators last; ordinal operations record a permutation of their option's cases, and option payloads their ordinals (`ir/verify.py`). Types are shapes, so aliases and unreduced applications cannot occur. Type parameters are checked on the typed AST (`typechecker/scoping.py`), as abstract types of modules are type variables too |
+| **Simplified** | the simplifier and inliner ([inlining.md](inlining.md) §§3–4) | as Core; an inlined call's copy has fresh binders and labels. The self-hosted compiler's alone: the bootstrap goes from Core to Specialized |
 | **Specialized** | §8.1 | as Core; every specialized call refers to an existing clone |
 | **Closed** | §8.2 | no `funs` statement remains; every closure is of one of the unit's functions; those functions use only their parameters, their environment, and globals (the variables the unit's top levels bind outside loops). `type_app` remains, an operation on closures |
 | **Represented** | §8.3 | every value is used in the representation its use requires (a let's copy, an assignment, a return, a jump's argument, and a call's arguments and result have the C representations of what they bind, assign, return, or pass to; a boxed value's is its slot representation); conversions only through `convert`; slots (components of tuples, records, and arrays being made, stores, cells) take records and variants boxed, but for those embedded; only variables of record or variant types are boxed |

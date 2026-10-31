@@ -1,61 +1,40 @@
 import arrayOp = "arrayOp" : ArrayOp
 import string = "string" : StringOp
-static descriptor(String)
-static descriptor(Int)
-fun argmax [E::TYPE K::TYPE](descriptor_E: descriptor, descriptor_K: descriptor, a: Array(E), key: Fun(e: E): K, isGreater: Fun(x: K y: K): Bool): E {
-  let n: Int = prim extent(a)
-  let %5: Bool = prim is(n, 0)
-  if %5 {
-    raise empty
-  }
-  var best: Int = 0
-  let %6: E = index(a, 0)
-  let %7: K = call key(%6)
-  var bestKey: K = %7
-  let %8: Int = prim -(n, 1)
-  var i: Int = 1
-  loop L1 {
-    let %9: Bool = prim <=(i, %8)
-    if %9 {
-      let i.1: Int = i
-      let %10: E = index(a, i.1)
-      let k: K = call key(%10)
-      let %11: Bool = call isGreater(k, bestKey)
-      if %11 {
-        best := i.1
-        bestKey := k
-      }
-      let %12: Int = prim +(i, 1)
-      i := %12
-    } else {
-      break L1
-    }
-  }
-  let %13: E = index(a, best)
-  return %13
-}
-fun qa_adapt {orig}(e: E): K {
-  let e.1: String = convert(e, unbox)
-  let r: Int = call orig(e.1)
-  let r.1: K = convert(r, box)
-  return r.1
-}
-fun qa_adapt.1 {orig.1}(x: K, y: K): Bool {
-  let x.1: Int = convert(x, unbox)
-  let y.1: Int = convert(y, unbox)
-  let r.2: Bool = call orig.1(x.1, y.1)
-  return r.2
-}
 main {
   let empty: Exception = exception empty
-  let argmax.1: All(E :: TYPE K :: TYPE) Fun(a: Array(E) key: Fun(e: E): K isGreater: Fun(x: K y: K): Bool): E = closure argmax {}
   let words: Array(String) = array("pear", "fig", "banana", "kiwi")
   let %1: Fun(string: String): Int = member string.length
   let %2: Fun(a: Int b: Int): Bool = builtin >
-  let %3: Fun(e: E): K = convert(%1, adapt by qa_adapt)
-  let %4: Fun(x: K y: K): Bool = convert(%2, adapt by qa_adapt.1)
-  let longest: E = call argmax.1 [descriptor(String), descriptor(Int)](words, %3, %4)
-  let longest.1: String = convert(longest, unbox)
-  let longest.2: String = longest.1
+  let key: Fun(e: String): Int = %1
+  let isGreater: Fun(x: Int y: Int): Bool = %2
+  let n: Int = prim extent(words)
+  let %3: Bool = prim is(n, 0)
+  if %3 {
+    raise empty
+  }
+  var best: Int = 0
+  let %4: String = index(words, 0)
+  let %5: Int = call key(%4)
+  var bestKey: Int = %5
+  let %6: Int = prim -(n, 1)
+  var i: Int = 1
+  loop L1_1 {
+    let %7: Bool = prim <=(i, %6)
+    if %7 {
+      let i.1: Int = i
+      let %8: String = index(words, i.1)
+      let k: Int = call key(%8)
+      let %9: Bool = call isGreater(k, bestKey)
+      if %9 {
+        best := i.1
+        bestKey := k
+      }
+      let %10: Int = prim +(i, 1)
+      i := %10
+    } else {
+      break L1_1
+    }
+  }
+  let %11: String = index(words, best)
 }
 

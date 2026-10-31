@@ -5,60 +5,44 @@ static descriptor(Record x: Int y: Int end)
 static descriptor(Record b: Int a: Int end)
 static offsets(Record x: Int y: Int z: Int end <- Record x: Int y: Int z: Int end) registered
 static offsets(Record b: Int a: Int end <- Record b: Int a: Int end) registered
-fun printInt(x.1: Int): Ok {
-  let %5: String = call conv.int(x.1)
-  do call writer.putString(wOut, %5)
-  let %6: Ok = call writer.putString(wOut, "\n")
-  return %6
-}
-fun getFirstTwo(t: SmallTuple): Int {
-  let %7: Int = tuple_field(t, 0)
-  let %8: Int = tuple_field(t, 1)
-  let %9: Int = prim +(%7, %8)
-  return %9
-}
-fun sumXY(r: SmallRec): Int {
-  let %10: Int = record_field(r, x)
-  let %11: Int = record_field(r, y)
-  let %12: Int = prim +(%10, %11)
-  return %12
-}
-fun getA(r.1: OrderedRec): Int {
-  let %13: Int = record_field(r.1, a)
-  let %14: Int = record_field(r.1, b)
-  let %15: Int = prim +(10, %14)
-  let %16: Int = prim *(%13, %15)
-  return %16
-}
-fun applyRec(f: Fun(r: SmallRec): Int, r.2: BigRec): Int {
-  let r.3: Record x: Int y: Int end = convert(r.2, record_view(descriptor(Record x: Int y: Int end)))
-  let %17: Int = call f(r.3)
-  return %17
-}
 main {
   let wOut: writer.T = member writer.output
-  let printInt.1: Fun(x: Int): Ok = closure printInt {}
-  let getFirstTwo.1: Fun(t: SmallTuple): Int = closure getFirstTwo {}
-  let x: Int = 10
-  let y: Int = 20
-  let z: Int = 30
-  let bt: BigTuple = tuple(x, y, z)
-  let bt.1: Tuple x: Int y: Int end = convert(bt, cast)
-  let %1: Int = call getFirstTwo.1(bt.1)
-  do call printInt.1(%1)
-  let sumXY.1: Fun(r: SmallRec): Int = closure sumXY {}
+  let bt: BigTuple = tuple(10, 20, 30)
+  let bt.1: SmallTuple = convert(bt, cast)
+  let t: SmallTuple = bt.1
+  let %1: Int = tuple_field(t, 0)
+  let %2: Int = tuple_field(t, 1)
+  let %3: Int = prim +(%1, %2)
+  let %4: String = call conv.int(%3)
+  do call writer.putString(wOut, %4)
+  let %5: Ok = call writer.putString(wOut, "\n")
   let br_box: box(BigRec) = record(x = 100, y = 200, z = 300) with offsets(Record x: Int y: Int z: Int end <- Record x: Int y: Int z: Int end) of descriptor(Record x: Int y: Int z: Int end)
   let br: BigRec = convert(br_box, slot_unbox)
-  let br.1: Record x: Int y: Int end = convert(br, record_view(descriptor(Record x: Int y: Int end)))
-  let %2: Int = call sumXY.1(br.1)
-  do call printInt.1(%2)
-  let getA.1: Fun(r: OrderedRec): Int = closure getA {}
+  let br.1: SmallRec = convert(br, record_view(descriptor(Record x: Int y: Int end)))
+  let r: SmallRec = br.1
+  let %6: Int = record_field(r, x)
+  let %7: Int = record_field(r, y)
+  let %8: Int = prim +(%6, %7)
+  let %9: String = call conv.int(%8)
+  do call writer.putString(wOut, %9)
+  let %10: Ok = call writer.putString(wOut, "\n")
   let permuted_box: box(Record b: Int a: Int end) = record(b = 4, a = 7) with offsets(Record b: Int a: Int end <- Record b: Int a: Int end) of descriptor(Record b: Int a: Int end)
   let permuted: Record b: Int a: Int end = convert(permuted_box, slot_unbox)
-  let %3: Int = call getA.1(permuted)
-  do call printInt.1(%3)
-  let applyRec.1: Fun(f: Fun(r: SmallRec): Int r: BigRec): Int = closure applyRec {}
-  let %4: Int = call applyRec.1(sumXY.1, br)
-  do call printInt.1(%4)
+  let r.1: OrderedRec = permuted
+  let %11: Int = record_field(r.1, a)
+  let %12: Int = record_field(r.1, b)
+  let %13: Int = prim +(10, %12)
+  let %14: Int = prim *(%11, %13)
+  let %15: String = call conv.int(%14)
+  do call writer.putString(wOut, %15)
+  let %16: Ok = call writer.putString(wOut, "\n")
+  let br.2: SmallRec = convert(br, record_view(descriptor(Record x: Int y: Int end)))
+  let r.2: SmallRec = br.2
+  let %17: Int = record_field(r.2, x)
+  let %18: Int = record_field(r.2, y)
+  let %19: Int = prim +(%17, %18)
+  let %20: String = call conv.int(%19)
+  do call writer.putString(wOut, %20)
+  let %21: Ok = call writer.putString(wOut, "\n")
 }
 

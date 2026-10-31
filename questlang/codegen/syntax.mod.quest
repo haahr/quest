@@ -15,7 +15,12 @@ export
 
     let cInt(n: Int): String = if n < 0 then raise negative with n end else conv.int(n) end
 
-    let cIntLiteral(n: Int): String = if n >= 0 then cInt(n) <> "LL" else "(-" <> cInt(~1 * n) <> "LL)" end
+    (* An Int as C spells it: the least Int has no literal, since its
+     * negation does not fit *)
+    let cIntLiteral(n: Int): String =
+        if n >= 0 then cInt(n) <> "LL"
+        elsif {0 - n} < 0 then "(-" <> cInt({0 - n} - 1) <> "LL - 1)"
+        else "(-" <> cInt(0 - n) <> "LL)" end
 
     let cReal(r: Real): String =
         begin

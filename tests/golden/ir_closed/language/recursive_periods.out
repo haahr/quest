@@ -1,166 +1,155 @@
 import writer = "writer" : Writer
 import conv = "conv" : Conv
 import dynamic = "dynamic" : Dynamic
-fun printInt(x: Int): Ok {
-  let %33: String = call conv.int(x)
-  do call writer.putString(wOut, %33)
-  let %34: Ok = call writer.putString(wOut, "\n")
-  return %34
-}
 fun sum(x.1: IntList): Int {
-  join k1(r: Int) {
-    return r
-  } in {
-    switch tag(x.1) {
-      case cons (c: Tuple head: Int tail: IntList end): {
-        let %35: Int = tuple_field(c, 0)
-        let %36: IntList = tuple_field(c, 1)
-        let %37: Int = call sum.1(%36)
-        let %38: Int = prim +(%35, %37)
-        jump k1(%38)
-      }
-      else: {
-        jump k1(0)
-      }
+  switch tag(x.1) {
+    case cons (c: Tuple head: Int tail: IntList end): {
+      let %57: Int = tuple_field(c, 0)
+      let %58: IntList = tuple_field(c, 1)
+      let %59: Int = call sum.1(%58)
+      let %60: Int = prim +(%57, %59)
+      return %60
+    }
+    else: {
+      return 0
     }
   }
 }
 fun sum2(x.2: L2): Int {
-  join k2(r.1: Int) {
-    return r.1
-  } in {
-    switch tag(x.2) {
-      case cons (c.1: Tuple head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end): {
-        let %39: Int = tuple_field(c.1, 0)
-        let %40: Option nil cons with Tuple head: Int tail: L2 end end = tuple_field(c.1, 1)
-        let %41: Int = call sum2.1(%40)
-        let %42: Int = prim +(%39, %41)
-        jump k2(%42)
-      }
-      else: {
-        jump k2(0)
-      }
+  switch tag(x.2) {
+    case cons (c.1: Tuple head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end): {
+      let %61: Int = tuple_field(c.1, 0)
+      let %62: Option nil cons with Tuple head: Int tail: L2 end end = tuple_field(c.1, 1)
+      let %63: Int = call sum2.1(%62)
+      let %64: Int = prim +(%61, %63)
+      return %64
+    }
+    else: {
+      return 0
     }
   }
-}
-fun f(x.3: L3): Int {
-  let %43: Int = call sum.1(x.3)
-  return %43
 }
 fun next {env}(): Stream {
   let n: Int = env_field(env, 0)
-  let %44: Int = prim -(n, 1)
-  let %45: Stream = call count.1(%44)
-  return %45
+  let %65: Int = prim -(n, 1)
+  let %66: Stream = call count.1(%65)
+  return %66
 }
 fun count(n.1: Int): Stream {
-  join k3(r.2: Stream) {
-    return r.2
-  } in {
-    let %46: Bool = prim is(n.1, 0)
-    if %46 {
-      let %47: Stream = option(done)
-      jump k3(%47)
-    } else {
-      let value: Int = n.1
-      let next.1: Fun(): Stream = closure next {n.1}
-      let %48: Tuple value: Int next: Fun(): Stream end = tuple(value, next.1)
-      let %49: Stream = option(more, %48)
-      jump k3(%49)
-    }
+  let %67: Bool = prim is(n.1, 0)
+  if %67 {
+    let %68: Stream = option(done)
+    return %68
+  } else {
+    let next.1: Fun(): Stream = closure next {n.1}
+    let %69: Tuple value: Int next: Fun(): Stream end = tuple(n.1, next.1)
+    let %70: Stream = option(more, %69)
+    return %70
   }
 }
 fun total(s: Stream2): Int {
-  join k4(r.3: Int) {
-    return r.3
-  } in {
-    switch tag(s) {
-      case more (c.2: Tuple value: Int next: Fun(): Option done more with Tuple value: Int next: Fun(...) end end end): {
-        let %50: Int = tuple_field(c.2, 0)
-        let %51: Fun(): Option done more with Tuple value: Int next: Fun(): Stream2 end end = tuple_field(c.2, 1)
-        let %52: Option done more with Tuple value: Int next: Fun(): Stream2 end end = call %51()
-        let %53: Int = call total.1(%52)
-        let %54: Int = prim +(%50, %53)
-        jump k4(%54)
-      }
-      else: {
-        jump k4(0)
-      }
+  switch tag(s) {
+    case more (c.2: Tuple value: Int next: Fun(): Option done more with Tuple value: Int next: Fun(...) end end end): {
+      let %71: Int = tuple_field(c.2, 0)
+      let %72: Fun(): Option done more with Tuple value: Int next: Fun(): Stream2 end end = tuple_field(c.2, 1)
+      let %73: Option done more with Tuple value: Int next: Fun(): Stream2 end end = call %72()
+      let %74: Int = call total.1(%73)
+      let %75: Int = prim +(%71, %74)
+      return %75
+    }
+    else: {
+      return 0
     }
   }
 }
 main {
   let wOut: writer.T = member writer.output
-  let printInt.1: Fun(x: Int): Ok = closure printInt {}
   let sum.1: Fun(x: IntList): Int = closure sum {}
-  let head: Int = 1
-  let head.1: Int = 2
   let tail: IntList = option(nil)
-  let %1: Tuple head: Int tail: IntList end = tuple(head.1, tail)
+  let %1: Tuple head: Int tail: IntList end = tuple(2, tail)
   let tail.1: IntList = option(cons, %1)
-  let %2: Tuple head: Int tail: IntList end = tuple(head, tail.1)
+  let %2: Tuple head: Int tail: IntList end = tuple(1, tail.1)
   let l: IntList = option(cons, %2)
   let m: L2 = l
   let %3: Tuple Int head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end = payload(m, cons) #1
   let %4: Int = tuple_field(%3, 1)
-  do call printInt.1(%4)
-  let %5: Tuple Int head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end = payload(m, cons) #1
-  let %6: Option nil cons with Tuple head: Int tail: L2 end end = tuple_field(%5, 2)
-  let %7: Tuple Int head: Int tail: L2 end = payload(%6, cons) #1
-  let %8: Int = tuple_field(%7, 1)
-  do call printInt.1(%8)
+  let %5: String = call conv.int(%4)
+  do call writer.putString(wOut, %5)
+  let %6: Ok = call writer.putString(wOut, "\n")
+  let %7: Tuple Int head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end = payload(m, cons) #1
+  let %8: Option nil cons with Tuple head: Int tail: L2 end end = tuple_field(%7, 2)
+  let %9: Tuple Int head: Int tail: L2 end = payload(%8, cons) #1
+  let %10: Int = tuple_field(%9, 1)
+  let %11: String = call conv.int(%10)
+  do call writer.putString(wOut, %11)
+  let %12: Ok = call writer.putString(wOut, "\n")
   let m3: L3 = m
   var back: IntList = m3
-  let %9: Int = call sum.1(back)
-  do call printInt.1(%9)
+  let %13: Int = call sum.1(back)
+  let %14: String = call conv.int(%13)
+  do call writer.putString(wOut, %14)
+  let %15: Ok = call writer.putString(wOut, "\n")
   back := m
-  let %10: Int = call sum.1(back)
-  do call printInt.1(%10)
-  let head.2: Int = 4
-  let head.3: Int = 5
+  let %16: Int = call sum.1(back)
+  let %17: String = call conv.int(%16)
+  do call writer.putString(wOut, %17)
+  let %18: Ok = call writer.putString(wOut, "\n")
   let tail.2: L2 = option(nil)
-  let %11: Tuple head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end = tuple(head.3, tail.2)
-  let tail.3: L2 = option(cons, %11)
-  let %12: Tuple head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end = tuple(head.2, tail.3)
-  let built: L2 = option(cons, %12)
-  let %13: Int = call sum.1(built)
-  do call printInt.1(%13)
+  let %19: Tuple head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end = tuple(5, tail.2)
+  let tail.3: L2 = option(cons, %19)
+  let %20: Tuple head: Int tail: Option nil cons with Tuple head: Int tail: L2 end end end = tuple(4, tail.3)
+  let built: L2 = option(cons, %20)
+  let %21: Int = call sum.1(built)
+  let %22: String = call conv.int(%21)
+  do call writer.putString(wOut, %22)
+  let %23: Ok = call writer.putString(wOut, "\n")
   let sum2.1: Fun(x: L2): Int = closure sum2 {}
-  let %14: Int = call sum2.1(l)
-  do call printInt.1(%14)
-  let a: IntList = l
-  let b: IntList = l
-  let pair: Tuple a: L2 b: L3 end = tuple(a, b)
+  let %24: Int = call sum2.1(l)
+  let %25: String = call conv.int(%24)
+  do call writer.putString(wOut, %25)
+  let %26: Ok = call writer.putString(wOut, "\n")
+  let pair: Tuple a: L2 b: L3 end = tuple(l, l)
   let pair2: Tuple a: IntList b: IntList end = pair
-  let %15: IntList = tuple_field(pair2, 0)
-  let %16: Int = call sum.1(%15)
-  let %17: IntList = tuple_field(pair2, 1)
-  let %18: Int = call sum.1(%17)
-  let %19: Int = prim +(%16, %18)
-  do call printInt.1(%19)
+  let %27: IntList = tuple_field(pair2, 0)
+  let %28: Int = call sum.1(%27)
+  let %29: IntList = tuple_field(pair2, 1)
+  let %30: Int = call sum.1(%29)
+  let %31: Int = prim +(%28, %30)
+  let %32: String = call conv.int(%31)
+  do call writer.putString(wOut, %32)
+  let %33: Ok = call writer.putString(wOut, "\n")
   let lists: Array(L3) = array(l, m, built)
-  let %20: L3 = index(lists, 0)
-  let %21: Int = call sum.1(%20)
-  let %22: L3 = index(lists, 2)
-  let %23: Int = call sum.1(%22)
-  let %24: Int = prim +(%21, %23)
-  do call printInt.1(%24)
-  let f.1: Fun(x: L3): Int = closure f {}
-  let g: Fun(x: L2): Int = f.1
-  let %25: Int = call g(l)
-  do call printInt.1(%25)
+  let %34: L3 = index(lists, 0)
+  let %35: Int = call sum.1(%34)
+  let %36: L3 = index(lists, 2)
+  let %37: Int = call sum.1(%36)
+  let %38: Int = prim +(%35, %37)
+  let %39: String = call conv.int(%38)
+  do call writer.putString(wOut, %39)
+  let %40: Ok = call writer.putString(wOut, "\n")
+  let x: L3 = l
+  let %41: Int = call sum.1(x)
+  let %42: String = call conv.int(%41)
+  do call writer.putString(wOut, %42)
+  let %43: Ok = call writer.putString(wOut, "\n")
   let count.1: Fun(n: Int): Stream = closure count {}
   let s2: Stream2 = call count.1(3)
   let total.1: Fun(s: Stream2): Int = closure total {}
-  let %26: Int = call total.1(s2)
-  do call printInt.1(%26)
-  let %27: T = call dynamic.new [L3](l)
-  let %28: IntList = call dynamic.be [IntList](%27)
-  let %29: Int = call sum.1(%28)
-  do call printInt.1(%29)
-  let %30: T = call dynamic.new [IntList](built)
-  let %31: L2 = call dynamic.be [L2](%30)
-  let %32: Int = call sum2.1(%31)
-  do call printInt.1(%32)
+  let %44: Int = call total.1(s2)
+  let %45: String = call conv.int(%44)
+  do call writer.putString(wOut, %45)
+  let %46: Ok = call writer.putString(wOut, "\n")
+  let %47: T = call dynamic.new [L3](l)
+  let %48: IntList = call dynamic.be [IntList](%47)
+  let %49: Int = call sum.1(%48)
+  let %50: String = call conv.int(%49)
+  do call writer.putString(wOut, %50)
+  let %51: Ok = call writer.putString(wOut, "\n")
+  let %52: T = call dynamic.new [IntList](built)
+  let %53: L2 = call dynamic.be [L2](%52)
+  let %54: Int = call sum2.1(%53)
+  let %55: String = call conv.int(%54)
+  do call writer.putString(wOut, %55)
+  let %56: Ok = call writer.putString(wOut, "\n")
 }
 

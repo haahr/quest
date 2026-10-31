@@ -1,0 +1,265 @@
+(* Quest Self-Hosted Compiler: The Inliner Implementation *)
+
+module inline : Inline
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/ir/clone : questlang/ir/Clone
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    conv : Conv
+export
+    Let Variable = nodes.Variable
+    Let Atom = nodes.Atom
+    Let Body = nodes.Body
+    Let Stmt = nodes.Stmt
+
+    let intEqual(a: Int b: Int): Bool = a is b
+    let okAtom(): Atom =
+        nodes.atomOfConst(tuple
+            let value = option constOk of nodes.ConstValue end
+            let shape = shapes.shape(model.okType)
+        end)
+
+    Def Analysis = Tuple
+        functions: hashMap.T(Int nodes.Function)
+        components: hashMap.T(Int Int)
+        recursive: hashMap.T(Int Bool)
+        sizes: hashMap.T(Int Int)
+        size: Int
+    end
+
+    let isCall(s: Stmt): Bool =
+        case s
+            when sLet with x then case x.value when opCall then true else false end
+            when sDo with x then case x.value when opCall then true else false end
+            else false
+        end
+
+    let size(b: Body): Int =
+        begin
+            let stmts = walk.walkStatements(b true)
+            let var n = 0
+            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                n := n + if isCall(vector.get(:Stmt stmts i)) then 2 else 1 end
+            end
+            n
+        end
+
+    (* ======================================================================
+     * Analysis
+     * ====================================================================== *)
+
+    (* The functions the unit's funs statements bind, in the order met *)
+    let collect(all: Array(Body)): vector.T(nodes.Function) =
+        begin
+            let found = vector.new(:nodes.Function)
+            for b = 0 upto {extent all - 1} do
+                let stmts = walk.walkStatements(all[b] true)
+                for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                    case vector.get(:Stmt stmts i)
+                        when sFuns with x then
+                            for j = 0 upto {extent x.functions - 1} do
+                                vector.append(:nodes.Function found x.functions[j])
+                            end
+                        else ok
+                    end
+                end
+            end
+            found
+        end
+
+    (* The functions a function's body names (not those its own functions'
+     * bodies do), by their variables' ids *)
+    let named(f: nodes.Function functions: hashMap.T(Int nodes.Function)): Array(Int) =
+        begin
+            let found = vector.new(:Int)
+            let stmts = walk.walkStatements(f.body false)
+            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                let used = walk.statementUses(vector.get(:Stmt stmts i))
+                for j = 0 upto {extent used - 1} do
+                    case used[j]
+                        when atomVar with x then
+                            if hashMap.contains(:Int :nodes.Function functions x.v.id) then
+                                vector.append(:Int found x.v.id)
+                            end
+                        when atomConst then ok
+                    end
+                end
+            end
+            vector.toArray(:Int found)
+        end
+
+    (* Tarjan's strongly connected components of the graph of which functions
+     * name which, numbered in the order they are completed *)
+    let components(order: vector.T(nodes.Function) functions: hashMap.T(Int nodes.Function)): hashMap.T(Int Int) =
+        begin
+            let result = hashMap.new(:Int :Int intEqual hash.int)
+            let index = hashMap.new(:Int :Int intEqual hash.int)
+            let low = hashMap.new(:Int :Int intEqual hash.int)
+            let onStack = hashMap.new(:Int :Bool intEqual hash.int)
+            let stack = vector.new(:Int)
+            let numbers = tuple let var next = 0 let var count = 0 end
+            let rec visit(id: Int): Ok =
+                begin
+                    hashMap.insert(:Int :Int index id numbers.next)
+                    hashMap.insert(:Int :Int low id numbers.next)
+                    numbers.next := numbers.next + 1
+                    vector.append(:Int stack id)
+                    hashMap.insert(:Int :Bool onStack id true)
+                    let targets = named(hashMap.find(:Int :nodes.Function functions id) functions)
+                    for k = 0 upto {extent targets - 1} do
+                        let t = targets[k]
+                        if not(hashMap.contains(:Int :Int index t)) then
+                            visit(t)
+                            if hashMap.find(:Int :Int low t) < hashMap.find(:Int :Int low id) then
+                                hashMap.insert(:Int :Int low id hashMap.find(:Int :Int low t))
+                            end
+                        elsif hashMap.contains(:Int :Bool onStack t) then
+                            if hashMap.find(:Int :Int index t) < hashMap.find(:Int :Int low id) then
+                                hashMap.insert(:Int :Int low id hashMap.find(:Int :Int index t))
+                            end
+                        end
+                    end
+                    if hashMap.find(:Int :Int low id) is hashMap.find(:Int :Int index id) then
+                        let var more = true
+                        while more do
+                            let member = vector.pop(:Int stack)
+                            hashMap.delete(:Int :Bool onStack member)
+                            hashMap.insert(:Int :Int result member numbers.count)
+                            more := member isnot id
+                        end
+                        numbers.count := numbers.count + 1
+                    end
+                end
+            for i = 0 upto {vector.length(:nodes.Function order) - 1} do
+                let id = vector.get(:nodes.Function order i).v.id
+                if not(hashMap.contains(:Int :Int index id)) then visit(id) end
+            end
+            result
+        end
+
+    let analyze(all: Array(Body)): Analysis =
+        begin
+            let order = collect(all)
+            let functions = hashMap.new(:Int :nodes.Function intEqual hash.int)
+            let sizes = hashMap.new(:Int :Int intEqual hash.int)
+            for i = 0 upto {vector.length(:nodes.Function order) - 1} do
+                let f = vector.get(:nodes.Function order i)
+                hashMap.insert(:Int :nodes.Function functions f.v.id f)
+                hashMap.insert(:Int :Int sizes f.v.id size(f.body))
+            end
+            let var total = 0
+            for b = 0 upto {extent all - 1} do total := total + size(all[b]) end
+            let numbers = components(order functions)
+            (* A function is recursive if it names itself, or another of its
+             * component *)
+            let members = hashMap.new(:Int :Int intEqual hash.int)
+            for i = 0 upto {vector.length(:nodes.Function order) - 1} do
+                let c = hashMap.find(:Int :Int numbers vector.get(:nodes.Function order i).v.id)
+                hashMap.insert(:Int :Int members c 1 + maybe.unwrapOr(:Int hashMap.get(:Int :Int members c) 0))
+            end
+            let recursive = hashMap.new(:Int :Bool intEqual hash.int)
+            for i = 0 upto {vector.length(:nodes.Function order) - 1} do
+                let f = vector.get(:nodes.Function order i)
+                let targets = named(f functions)
+                let var self = hashMap.find(:Int :Int members hashMap.find(:Int :Int numbers f.v.id)) > 1
+                for k = 0 upto {extent targets - 1} do if targets[k] is f.v.id then self := true end end
+                hashMap.insert(:Int :Bool recursive f.v.id self)
+            end
+            tuple
+                let functions = functions
+                let components = numbers
+                let recursive = recursive
+                let sizes = sizes
+                let size = total
+            end
+        end
+
+    (* ======================================================================
+     * Expansion
+     * ====================================================================== *)
+
+    (* The returns of a function's body (not those of the functions it binds),
+     * each replaced, in place, by what replaced makes of its value *)
+    let rec returns(b: Body replaced: All(a: Atom) Stmt): Ok =
+        for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
+            let s = vector.get(:Stmt b.statements i)
+            case s
+                when sReturn with x then vector.set(:Stmt b.statements i replaced(x.value))
+                else
+                    let inner = walk.statementBodies(s)
+                    for k = 0 upto {extent inner - 1} do returns(inner[k] replaced) end
+            end
+        end
+
+    let countReturns(b: Body): Int =
+        begin
+            let counted = tuple let var n = 0 end
+            returns(b fun(a: Atom): Stmt
+                begin
+                    counted.n := counted.n + 1
+                    option sReturn of Stmt with let var value = a end
+                end)
+            counted.n
+        end
+
+    let expand(f: nodes.Function typeArgs: Array(model.Type) args: Array(Atom) byRef: Array(maybe.T(Variable))
+        into: maybe.T(Variable) rest: Array(Stmt) labels: clone.Labels): Array(Stmt) =
+        begin
+            let subst = model.newSubst()
+            for i = 0 upto {extent f.typeParams - 1} do
+                if i < extent typeArgs then
+                    hashMap.insert(:Int :model.Type subst f.typeParams[i].symbolId typeArgs[i])
+                end
+            end
+            let c = clone.newRelabelingCloner(subst labels)
+            let result = maybe.unwrapOr(:Variable into nodes.newVar("r" clone.ty(c f.resultType) false))
+            let bound = vector.new(:Stmt)
+            for i = 0 upto {extent f.params - 1} do
+                let p = f.params[i].v
+                if {i < extent byRef} andif maybe.isSome(:Variable byRef[i]) then
+                    clone.bindVar(c p maybe.unwrap(:Variable byRef[i]))
+                else
+                    vector.append(:Stmt bound nodes.letStmt(clone.fresh(c p) nodes.opOfAtom(args[i])))
+                end
+            end
+            clone.bindAll(c f.body)
+            let body = clone.copyBody(c f.body)
+            let n = vector.length(:Stmt body.statements)
+            let last = if n > 0 then case vector.get(:Stmt body.statements n - 1) when sReturn then true else false end
+                else false end
+            if last andif {countReturns(body) is 1} then
+                (* Its one return is its end: its value is the call's *)
+                let value = case vector.pop(:Stmt body.statements) when sReturn with x then x.value else okAtom() end
+                let all = vector.copy(:Stmt bound)
+                for i = 0 upto {vector.length(:Stmt body.statements) - 1} do
+                    vector.append(:Stmt all vector.get(:Stmt body.statements i))
+                end
+                vector.append(:Stmt all nodes.letStmt(result nodes.opOfAtom(value)))
+                for i = 0 upto {extent rest - 1} do vector.append(:Stmt all rest[i]) end
+                vector.toArray(:Stmt all)
+            else
+                labels.count := labels.count + 1
+                let label = "inlined" <> conv.int(labels.count)
+                returns(body fun(a: Atom): Stmt
+                    option sJump of Stmt with let label = label let var args = array of a end end)
+                let inner = vector.copy(:Stmt bound)
+                for i = 0 upto {vector.length(:Stmt body.statements) - 1} do
+                    vector.append(:Stmt inner vector.get(:Stmt body.statements i))
+                end
+                array of
+                    option sJoin of Stmt with
+                        let label = label
+                        let var params = array of result end
+                        let var continuation = nodes.bodyOf(rest)
+                        let var body = nodes.bodyOf(vector.toArray(:Stmt inner))
+                    end
+                end
+            end
+        end
+end

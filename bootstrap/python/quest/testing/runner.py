@@ -63,12 +63,23 @@ DRIVER_SCRIPT = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
 # expected to pass, and where the errors it reports after the bootstrap's one
 # are recorded (docs/testing.md §2.3)
 SELF_HOSTED_DRIVER = ROOT_DIR / "questlang" / "driver" / "main.quest"
+# The IR stages only the self-hosted compiler has, after Core: the simplified
+# stage (docs/inlining.md), dumped and run as the other stages are
+SELF_HOSTED_IR_DUMP_PHASES = ("ir_simplified",)
+SELF_HOSTED_IR_RUN_PHASES = ("run_ir_simplified",)
+# The bootstrap's phases whose pipeline stands for theirs, to find the phases an
+# error test runs before them
+SELF_HOSTED_IR_STAND_INS = {"ir_simplified": "ir_core", "run_ir_simplified": "run_ir_core"}
 SELF_HOSTED_PHASES = (
-    "tokenize", "parse", "typecheck", *IR_DUMP_PHASES, *IR_RUN_PHASES, "ssa", "interpret", "run_c_compiled", "repl",
+    "tokenize", "parse", "typecheck",
+    IR_DUMP_PHASES[0], *SELF_HOSTED_IR_DUMP_PHASES, *IR_DUMP_PHASES[1:],
+    IR_RUN_PHASES[0], *SELF_HOSTED_IR_RUN_PHASES, *IR_RUN_PHASES[1:],
+    "ssa", "interpret", "run_c_compiled", "repl",
 )
-# The phases only the self-hosted compiler has: the SSA of its native backends
-# (docs/ssa.md), dumped for every program that has an ir_core dump
-SELF_HOSTED_ONLY_PHASES = ("ssa",)
+# The phases only the self-hosted compiler has: its own IR stages, and the SSA
+# of its native backends (docs/ssa.md), dumped for every program that has an
+# ir_core dump
+SELF_HOSTED_ONLY_PHASES = (*SELF_HOSTED_IR_DUMP_PHASES, *SELF_HOSTED_IR_RUN_PHASES, "ssa")
 # Where the self-hosted driver builds the units of the programs it compiles to
 # C, under each worker's build directory: apart from the bootstrap's artifacts,
 # which it would otherwise find fresh and reuse
@@ -248,17 +259,17 @@ def golden_test_id(source_file: Path) -> Path:
 # stage's directory. (Every program runs through every stage, verified, in the
 # run_ir phases.) To add a program to a stage's subset, create its golden file
 # empty and update goldens.
-SUBSET_PHASES = IR_DUMP_PHASES[1:]
+SUBSET_PHASES = (*SELF_HOSTED_IR_DUMP_PHASES, *IR_DUMP_PHASES[1:])
 
 # The phases that run programs, whose output is compared with the run goldens
-RUN_PHASES = ("interpret", "run_c_compiled", *IR_RUN_PHASES)
+RUN_PHASES = ("interpret", "run_c_compiled", *IR_RUN_PHASES, *SELF_HOSTED_IR_RUN_PHASES)
 
 # The goldens of how a compiler compiles, rather than of what programs do, are
 # the self-hosted compiler's own (docs/testing.md section 2.8): the IR dumps.
 # The other phases' goldens are shared: both compilers must match them, and the
 # bootstrap writes them, since what programs do changes in both. The C itself
 # has no goldens; tools/c-diff shows how a change alters it.
-SELF_HOSTED_OWN_PHASES = (*IR_DUMP_PHASES, *SELF_HOSTED_ONLY_PHASES)
+SELF_HOSTED_OWN_PHASES = (*IR_DUMP_PHASES, *SELF_HOSTED_IR_DUMP_PHASES, "ssa")
 
 
 def writes_golden(phase_name: str, self_hosted: bool) -> bool:
@@ -274,7 +285,7 @@ def writes_golden(phase_name: str, self_hosted: bool) -> bool:
 # Their modules are compiled once per run, into a build directory the tests
 # share (build_questlang_tests).
 QUESTLANG_TESTS_DIR = TESTS_SOURCE_DIR / "questlang"
-QUESTLANG_INTERPRETED_PHASES = ("interpret", *IR_RUN_PHASES)
+QUESTLANG_INTERPRETED_PHASES = ("interpret", *IR_RUN_PHASES, *SELF_HOSTED_IR_RUN_PHASES)
 QUESTLANG_BUILD_SUBDIR = "questlang-tests"
 QUESTLANG_SELF_HOSTED_BUILD_SUBDIR = "self-hosted-questlang-tests"
 
@@ -344,6 +355,7 @@ def golden_error_file_for_test(source_file: Path, phase_name: str) -> Path:
 
 
 def pipeline_for_phase(phase_name: str) -> PhasePipeline:
+    phase_name = SELF_HOSTED_IR_STAND_INS.get(phase_name, phase_name)
     if phase_name in ("codegen_c", "run_c_compiled"):
         return full_pipeline()
     if phase_name in IR_RUN_PHASES:
@@ -910,9 +922,13 @@ def main() -> int:
         "tokenize",
         "parse",
         "typecheck",
-        *IR_DUMP_PHASES,
-        *IR_RUN_PHASES,
-        *SELF_HOSTED_ONLY_PHASES,
+        IR_DUMP_PHASES[0],
+        *SELF_HOSTED_IR_DUMP_PHASES,
+        *IR_DUMP_PHASES[1:],
+        IR_RUN_PHASES[0],
+        *SELF_HOSTED_IR_RUN_PHASES,
+        *IR_RUN_PHASES[1:],
+        "ssa",
         "interpret",
         "run_c_compiled",
         "repl",
@@ -1178,7 +1194,7 @@ def run_all_tests(
                         test_id = str(rel_source.with_suffix(""))
                         if driver_command is None and is_questlang_test(source_file):
                             skipped_phases = skipped_phases | set(QUESTLANG_INTERPRETED_PHASES)
-                        if phase in SELF_HOSTED_ONLY_PHASES and "ir_core" in skipped_phases:
+                        if phase in ("ssa", *SELF_HOSTED_IR_DUMP_PHASES) and "ir_core" in skipped_phases:
                             # The SSA is dumped for the programs whose IR is
                             skipped_phases = skipped_phases | {phase}
                         if phase.lower() in skipped_phases:
@@ -1276,7 +1292,7 @@ def run_all_tests(
 
                 print(f"--- Phase: {phase} ---")
                 pipeline = pipeline_for_phase(phase)
-                precursors = pipeline.precursors_of(phase)
+                precursors = pipeline.precursors_of(SELF_HOSTED_IR_STAND_INS.get(phase, phase))
                 error_tasks: list[PhaseTask] = []
                 for error_file in error_files:
                     skipped_phases = parse_skipped_phases(error_file)

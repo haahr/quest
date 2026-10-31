@@ -1,285 +1,219 @@
 import writer = "writer" : Writer
 import conv = "conv" : Conv
 import arrayOp = "arrayOp" : ArrayOp
-fun printInt(x.3: Int): Ok {
-  let %41: String = call conv.int(x.3)
-  do call writer.putString(wOut, %41)
-  let %42: Ok = call writer.putString(wOut, "\n")
-  return %42
+fun fact(n.2: Int): Int {
+  let %41: Bool = prim <=(n.2, 1)
+  if %41 {
+    return 1
+  } else {
+    let %42: Int = prim -(n.2, 1)
+    let %43: Int = call fact.1(%42)
+    let %44: Int = prim *(n.2, %43)
+    return %44
+  }
 }
-fun printBool(b.1: Bool): Ok {
-  join k1(r: Int) {
-    let %43: Ok = call printInt.1(r)
-    return %43
-  } in {
-    if b.1 {
-      jump k1(1)
-    } else {
-      jump k1(0)
+fun even(n.3: Int): Bool {
+  let %45: Bool = prim is(n.3, 0)
+  if %45 {
+    return true
+  } else {
+    let %46: Int = prim -(n.3, 1)
+    let %47: Bool = call odd.1(%46)
+    return %47
+  }
+}
+fun odd(n.4: Int): Bool {
+  let %48: Bool = prim is(n.4, 0)
+  if %48 {
+    return false
+  } else {
+    let %49: Int = prim -(n.4, 1)
+    let %50: Bool = call even.1(%49)
+    return %50
+  }
+}
+fun down(n.5: Int): Int {
+  let %51: Bool = prim <=(n.5, 0)
+  if %51 {
+    return 100
+  } else {
+    let %52: Int = prim -(n.5, 1)
+    join contified6(%53: Int) {
+      let %54: Int = prim +(%53, 1)
+      return %54
+    } in {
+      var n.6: Int = %52
+      loop contified5 {
+        let n.7: Int = n.6
+        let %55: Bool = prim <=(n.7, 0)
+        if %55 {
+          jump contified6(100)
+        } else {
+          let %56: Int = prim -(n.7, 1)
+          let %57: Int = call down.1(%56)
+          let %58: Int = prim +(%57, 10)
+          jump contified6(%58)
+        }
+      }
     }
   }
-}
-fun addX(n.2: Int): Int {
-  let %44: Int = prim +(n.2, x)
-  return %44
-}
-fun fact(n.3: Int): Int {
-  join k2(r.1: Int) {
-    return r.1
-  } in {
-    let %45: Bool = prim <=(n.3, 1)
-    if %45 {
-      jump k2(1)
-    } else {
-      let %46: Int = prim -(n.3, 1)
-      let %47: Int = call fact.1(%46)
-      let %48: Int = prim *(n.3, %47)
-      jump k2(%48)
-    }
-  }
-}
-fun even(n.4: Int): Bool {
-  join k3(r.2: Bool) {
-    return r.2
-  } in {
-    let %49: Bool = prim is(n.4, 0)
-    if %49 {
-      jump k3(true)
-    } else {
-      let %50: Int = prim -(n.4, 1)
-      let %51: Bool = call odd.1(%50)
-      jump k3(%51)
-    }
-  }
-}
-fun odd(n.5: Int): Bool {
-  join k4(r.3: Bool) {
-    return r.3
-  } in {
-    let %52: Bool = prim is(n.5, 0)
-    if %52 {
-      jump k4(false)
-    } else {
-      let %53: Int = prim -(n.5, 1)
-      let %54: Bool = call even.1(%53)
-      jump k4(%54)
-    }
-  }
-}
-fun down {env}(n.6: Int): Int {
-  let k: Int = env_field(env, 0)
-  let up.1: Fun(n: Int): Int = env_field(env, 1)
-  join k5(r.4: Int) {
-    return r.4
-  } in {
-    let %55: Bool = prim <=(n.6, 0)
-    if %55 {
-      jump k5(k)
-    } else {
-      let %56: Int = prim -(n.6, 1)
-      let %57: Int = call up.1(%56)
-      let %58: Int = prim +(%57, 1)
-      jump k5(%58)
-    }
-  }
-}
-fun up {env.1}(n.7: Int): Int {
-  let k.1: Int = env_field(env.1, 0)
-  let down.1: Fun(n: Int): Int = env_field(env.1, 1)
-  join k6(r.5: Int) {
-    return r.5
-  } in {
-    let %59: Bool = prim <=(n.7, 0)
-    if %59 {
-      jump k6(k.1)
-    } else {
-      let %60: Int = prim -(n.7, 1)
-      let %61: Int = call down.1(%60)
-      let %62: Int = prim +(%61, 10)
-      jump k6(%62)
-    }
-  }
-}
-fun countDown(k.2: Int): Int {
-  let rec (down.2: Fun(n: Int): Int, up.2: Fun(n: Int): Int) {
-    let down.2: Fun(n: Int): Int = closure down {k.2, up.2}
-    let up.2: Fun(n: Int): Int = closure up {k.2, down.2}
-  }
-  let t: Tuple down: Fun(n: Int): Int up: Fun(n: Int): Int end = tuple(down.2, up.2)
-  let %63: Fun(n: Int): Int = tuple_field(t, 0)
-  let %64: Int = call %63(4)
-  return %64
-}
-fun getX(): Int {
-  return x.1
 }
 fun sum(xs: L): Int {
-  join k7(r.6: Int) {
-    return r.6
-  } in {
-    switch tag(xs) {
-      case cons (c: Tuple head: Int tail: L end): {
-        let %65: Int = tuple_field(c, 0)
-        let %66: L = tuple_field(c, 1)
-        let %67: Int = call sum.1(%66)
-        let %68: Int = prim +(%65, %67)
-        jump k7(%68)
-      }
-      else: {
-        jump k7(0)
-      }
+  switch tag(xs) {
+    case cons (c: Tuple head: Int tail: L end): {
+      let %59: Int = tuple_field(c, 0)
+      let %60: L = tuple_field(c, 1)
+      let %61: Int = call sum.1(%60)
+      let %62: Int = prim +(%59, %61)
+      return %62
+    }
+    else: {
+      return 0
     }
   }
 }
-fun size(t.1: Tree): Int {
-  join k8(r.7: Int) {
-    return r.7
-  } in {
-    switch tag(t.1) {
-      case leaf (n.8: Int): {
-        jump k8(n.8)
-      }
-      case node (f: Forest): {
-        let %69: Int = call sizeForest.1(f)
-        jump k8(%69)
-      }
-      else: {
-        jump k8(0)
-      }
-    }
-  }
-}
-fun sizeForest(f.1: Forest): Int {
+fun sizeForest(f: Forest): Int {
   var s: Int = 0
-  let %70: Array(Tree) = record_field(f.1, trees)
-  let %71: Int = prim extent(%70)
-  let %72: Int = prim -(%71, 1)
+  let %63: Array(Tree) = record_field(f, trees)
+  let %64: Int = prim extent(%63)
+  let %65: Int = prim -(%64, 1)
   var i: Int = 0
   loop L1 {
-    let %73: Bool = prim <=(i, %72)
-    if %73 {
+    let %66: Bool = prim <=(i, %65)
+    if %66 {
       let i.1: Int = i
-      let %74: Array(Tree) = record_field(f.1, trees)
-      let %75: Tree = index(%74, i.1)
-      let %76: Int = call size.1(%75)
-      let %77: Int = prim +(s, %76)
-      s := %77
-      let %78: Int = prim +(i, 1)
-      i := %78
+      let %67: Array(Tree) = record_field(f, trees)
+      let %68: Tree = index(%67, i.1)
+      join contified8(%69: Int) {
+        let %70: Int = prim +(s, %69)
+        s := %70
+        let %71: Int = prim +(i, 1)
+        i := %71
+      } in {
+        var t: Tree = %68
+        loop contified7 {
+          let t.1: Tree = t
+          switch tag(t.1) {
+            case leaf (n.8: Int): {
+              jump contified8(n.8)
+            }
+            case node (f.1: Forest): {
+              let %72: Int = call sizeForest.1(f.1)
+              jump contified8(%72)
+            }
+            else: {
+              jump contified8(0)
+            }
+          }
+        }
+      }
     } else {
       break L1
     }
   }
   return s
 }
-fun leaf(n.9: Int): Rec(Tree :: TYPE) Variant leaf: Int node: Forest end {
-  let %79: Rec(Tree :: TYPE) Variant leaf: Int node: Forest end = variant(leaf, n.9)
-  return %79
-}
-fun toInt(n.10: Nat): Int {
-  join k9(r.8: Int) {
-    return r.8
-  } in {
-    switch tag(n.10) {
-      case succ (p: Tuple n: Nat end): {
-        let %80: Nat = tuple_field(p, 0)
-        let %81: Int = call toInt.1(%80)
-        let %82: Int = prim +(1, %81)
-        jump k9(%82)
-      }
-      else: {
-        jump k9(0)
-      }
+fun toInt(n.9: Nat): Int {
+  switch tag(n.9) {
+    case succ (p: Tuple n: Nat end): {
+      let %73: Nat = tuple_field(p, 0)
+      let %74: Int = call toInt.1(%73)
+      let %75: Int = prim +(1, %74)
+      return %75
+    }
+    else: {
+      return 0
     }
   }
 }
 main {
   let wOut: writer.T = member writer.output
-  let printInt.1: Fun(x: Int): Ok = closure printInt {}
-  let printBool.1: Fun(b: Bool): Ok = closure printBool {}
-  let x: Int = 1
-  let y: Int = prim +(x, 1)
-  let addX.1: Fun(n: Int): Int = closure addX {}
-  let basics: Tuple x: Int y: Int addX: Fun(n: Int): Int end = tuple(x, y, addX.1)
-  let %1: Int = tuple_field(basics, 1)
-  let %2: Int = prim *(%1, 10)
-  let %3: Fun(n: Int): Int = tuple_field(basics, 2)
-  let %4: Int = call %3(5)
-  let %5: Int = prim +(%2, %4)
-  do call printInt.1(%5)
+  let %1: String = call conv.int(26)
+  do call writer.putString(wOut, %1)
+  let %2: Ok = call writer.putString(wOut, "\n")
   let fact.1: Fun(n: Int): Int = closure fact {}
   let even.1: Fun(n: Int): Bool = closure even {}
   let odd.1: Fun(n: Int): Bool = closure odd {}
-  let numbers: Tuple fact: Fun(n: Int): Int even: Fun(n: Int): Bool odd: Fun(n: Int): Bool end = tuple(fact.1, even.1, odd.1)
-  let %6: Fun(n: Int): Int = tuple_field(numbers, 0)
-  let %7: Int = call %6(5)
-  do call printInt.1(%7)
-  let %8: Fun(n: Int): Bool = tuple_field(numbers, 1)
-  let %9: Bool = call %8(10)
-  do call printBool.1(%9)
-  let %10: Fun(n: Int): Bool = tuple_field(numbers, 2)
-  let %11: Bool = call %10(10)
-  do call printBool.1(%11)
-  let countDown.1: Fun(k: Int): Int = closure countDown {}
-  let %12: Int = call countDown.1(100)
-  do call printInt.1(%12)
-  let x.1: Int = 7
-  let x.2: Int = 2
-  let y.1: Int = x.1
-  let getX.1: Fun(): Int = closure getX {}
-  let shadowing: Tuple x: Int y: Int getX: Fun(): Int end = tuple(x.2, y.1, getX.1)
-  let %13: Int = tuple_field(shadowing, 0)
-  let %14: Int = prim *(%13, 100)
-  let %15: Int = tuple_field(shadowing, 1)
-  let %16: Int = prim *(%15, 10)
-  let %17: Fun(): Int = tuple_field(shadowing, 2)
-  let %18: Int = call %17()
-  let %19: Int = prim +(%16, %18)
-  let %20: Int = prim +(%14, %19)
-  do call printInt.1(%20)
-  let head: Int = 3
-  let head.1: Int = 4
-  let tail: L = option(nil)
-  let %21: Tuple head: Int tail: L end = tuple(head.1, tail)
-  let tail.1: L = option(cons, %21)
-  let %22: Tuple head: Int tail: L end = tuple(head, tail.1)
-  let l: L = option(cons, %22)
-  let sum.1: Fun(xs: L): Int = closure sum {}
-  let lists: Tuple Let L = Rec(L :: TYPE) Option nil cons with Tuple head: Int tail: L end end l: L sum: Fun(xs: L): Int end = tuple(Let L = Rec(L :: TYPE) Option nil cons with Tuple head: Int tail: L end end l, sum.1)
-  let %23: Fun(xs: Rec(L :: TYPE) Option nil cons with Tuple head: Int tail: L end end): Int = tuple_field(lists, 1)
-  let %24: Rec(L :: TYPE) Option nil cons with Tuple head: Int tail: L end end = tuple_field(lists, 0)
-  let %25: Int = call %23(%24)
-  do call printInt.1(%25)
-  let size.1: Fun(t: Tree): Int = closure size {}
-  let sizeForest.1: Fun(f: Forest): Int = closure sizeForest {}
-  let trees: Tuple Let Forest = Rec(Forest :: TYPE) Record trees: Array(Tree) end Let Tree = Rec(Tree :: TYPE) Variant leaf: Int node: Forest end size: Fun(t: Tree): Int sizeForest: Fun(f: Forest): Int end = tuple(Let Forest = Rec(Forest :: TYPE) Record trees: Array(Tree) end Let Tree = Rec(Tree :: TYPE) Variant leaf: Int node: Forest end size.1, sizeForest.1)
-  let leaf.1: Fun(n: Int): Rec(Tree :: TYPE) Variant leaf: Int node: Forest end = closure leaf {}
-  let %26: Fun(f: Rec(Forest :: TYPE) Record trees: Array(Tree) end): Int = tuple_field(trees, 1)
-  let %27: Rec(Tree :: TYPE) Variant leaf: Int node: Forest end = call leaf.1(5)
-  let %28: Rec(Tree :: TYPE) Variant leaf: Int node: Forest end = call leaf.1(6)
-  let %29: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) = array(%27, %28)
-  let %30: Record trees: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) end = record(trees = %29)
-  let %31: Int = call %26(%30)
-  do call printInt.1(%31)
-  let toInt.1: Fun(n: Nat): Int = closure toInt {}
-  let n: Nat = option(zero)
-  let %32: Tuple n: Nat end = tuple(n)
-  let n.1: Nat = option(succ, %32)
-  let %33: Tuple n: Nat end = tuple(n.1)
-  let two: Nat = option(succ, %33)
-  let impl: Sig = tuple(Let Nat = Rec(Nat :: TYPE) Option zero succ with Tuple n: Nat end end toInt.1, two)
-  let %34: Fun(n: Rec(Nat :: TYPE) Option zero succ with Tuple n: Nat end end): Int = tuple_field(impl, 0)
-  let %35: Rec(Nat :: TYPE) Option zero succ with Tuple n: Nat end end = tuple_field(impl, 1)
-  let %36: Int = call %34(%35)
-  do call printInt.1(%36)
-  let a: Int = 30
-  let a.1: Int = 1
-  let b: Int = a
-  let pair: Pair = tuple(a.1, b)
-  let %37: Int = tuple_field(pair, 0)
-  let %38: Int = prim *(%37, 100)
-  let %39: Int = tuple_field(pair, 1)
-  let %40: Int = prim +(%38, %39)
-  do call printInt.1(%40)
+  let %3: Int = call fact.1(5)
+  let %4: String = call conv.int(%3)
+  do call writer.putString(wOut, %4)
+  let %5: Ok = call writer.putString(wOut, "\n")
+  let %6: Bool = call even.1(10)
+  join inlined2(r: Ok) {
+    let %7: Bool = call odd.1(10)
+    join inlined4(r.1: Ok) {
+      let down.1: Fun(n: Int): Int = closure down {}
+      let %8: Int = call down.1(4)
+      let %9: String = call conv.int(%8)
+      do call writer.putString(wOut, %9)
+      let %10: Ok = call writer.putString(wOut, "\n")
+      let %11: String = call conv.int(277)
+      do call writer.putString(wOut, %11)
+      let %12: Ok = call writer.putString(wOut, "\n")
+      let tail: L = option(nil)
+      let %13: Tuple head: Int tail: L end = tuple(4, tail)
+      let tail.1: L = option(cons, %13)
+      let %14: Tuple head: Int tail: L end = tuple(3, tail.1)
+      let l: L = option(cons, %14)
+      let sum.1: Fun(xs: L): Int = closure sum {}
+      let %15: Fun(xs: Rec(L :: TYPE) Option nil cons with Tuple head: Int tail: L end end): Int = sum.1
+      let %16: Rec(L :: TYPE) Option nil cons with Tuple head: Int tail: L end end = l
+      let %17: Int = call %15(%16)
+      let %18: String = call conv.int(%17)
+      do call writer.putString(wOut, %18)
+      let %19: Ok = call writer.putString(wOut, "\n")
+      let sizeForest.1: Fun(f: Forest): Int = closure sizeForest {}
+      let %20: Fun(f: Rec(Forest :: TYPE) Record trees: Array(Tree) end): Int = sizeForest.1
+      let %21: Rec(Tree :: TYPE) Variant leaf: Int node: Forest end = variant(leaf, 5)
+      let %22: Rec(Tree :: TYPE) Variant leaf: Int node: Forest end = variant(leaf, 6)
+      let %23: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) = array(%21, %22)
+      let %24: Record trees: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) end = record(trees = %23)
+      let %25: Int = call %20(%24)
+      let %26: String = call conv.int(%25)
+      do call writer.putString(wOut, %26)
+      let %27: Ok = call writer.putString(wOut, "\n")
+      let toInt.1: Fun(n: Nat): Int = closure toInt {}
+      let n: Nat = option(zero)
+      let %28: Tuple n: Nat end = tuple(n)
+      let n.1: Nat = option(succ, %28)
+      let %29: Tuple n: Nat end = tuple(n.1)
+      let two: Nat = option(succ, %29)
+      let %30: Fun(n: Rec(Nat :: TYPE) Option zero succ with Tuple n: Nat end end): Int = toInt.1
+      let %31: Rec(Nat :: TYPE) Option zero succ with Tuple n: Nat end end = two
+      let %32: Int = call %30(%31)
+      let %33: String = call conv.int(%32)
+      do call writer.putString(wOut, %33)
+      let %34: Ok = call writer.putString(wOut, "\n")
+      let %35: String = call conv.int(130)
+      do call writer.putString(wOut, %35)
+      let %36: Ok = call writer.putString(wOut, "\n")
+    } in {
+      join k1_3(r.2: Int) {
+        let %37: String = call conv.int(r.2)
+        do call writer.putString(wOut, %37)
+        let %38: Ok = call writer.putString(wOut, "\n")
+        jump inlined4(%38)
+      } in {
+        if %7 {
+          jump k1_3(1)
+        } else {
+          jump k1_3(0)
+        }
+      }
+    }
+  } in {
+    join k1_1(r.3: Int) {
+      let %39: String = call conv.int(r.3)
+      do call writer.putString(wOut, %39)
+      let %40: Ok = call writer.putString(wOut, "\n")
+      jump inlined2(%40)
+    } in {
+      if %6 {
+        jump k1_1(1)
+      } else {
+        jump k1_1(0)
+      }
+    }
+  }
 }
 

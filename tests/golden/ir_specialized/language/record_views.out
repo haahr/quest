@@ -2,53 +2,57 @@ import writer = "writer" : Writer
 import conv = "conv" : Conv
 import dynamic = "dynamic" : Dynamic
 main {
-  funs {
-    fun p(n: Int): Ok {
-      let %1: writer.T = member writer.output
-      let %2: String = call conv.int(n)
-      let %3: String = prim <>(%2, "\n")
-      let %4: Ok = call writer.putString(%1, %3)
-      return %4
-    }
-  }
   let huge: Huge = record(a = 1, b = 2, c = 3, d = 4)
   let big: Big = huge
   let mid: Mid = big
   let small: Small = mid
-  let %5: Int = record_field(mid, c)
-  do call p(%5)
+  let %1: Int = record_field(mid, c)
+  let %2: writer.T = member writer.output
+  let %3: String = call conv.int(%1)
+  let %4: String = prim <>(%3, "\n")
+  let %5: Ok = call writer.putString(%2, %4)
   let %6: Int = record_field(small, d)
-  do call p(%6)
-  funs {
-    fun sumMid(m: Mid): Int {
-      let %7: Int = record_field(m, c)
-      let %8: Int = record_field(m, d)
-      let %9: Int = prim +(%7, %8)
-      return %9
-    }
-  }
-  let %10: Int = call sumMid(big)
-  do call p(%10)
+  let %7: writer.T = member writer.output
+  let %8: String = call conv.int(%6)
+  let %9: String = prim <>(%8, "\n")
+  let %10: Ok = call writer.putString(%7, %9)
+  let m: Mid = big
+  let %11: Int = record_field(m, c)
+  let %12: Int = record_field(m, d)
+  let %13: Int = prim +(%11, %12)
+  let %14: writer.T = member writer.output
+  let %15: String = call conv.int(%13)
+  let %16: String = prim <>(%15, "\n")
+  let %17: Ok = call writer.putString(%14, %16)
   let d: T = call dynamic.new [Mid](mid)
   let viaDynamic: Small = call dynamic.be [Small](d)
-  let %11: Int = record_field(viaDynamic, d)
-  do call p(%11)
+  let %18: Int = record_field(viaDynamic, d)
+  let %19: writer.T = member writer.output
+  let %20: String = call conv.int(%18)
+  let %21: String = prim <>(%20, "\n")
+  let %22: Ok = call writer.putString(%19, %21)
   join k1(r: Int) {
-    do call p(r)
-    let a: Big = big
-    let %12: Tuple a: Big end = tuple(a)
-    let anyMid: AnyMid = auto[Big](%12)
+    let %23: writer.T = member writer.output
+    let %24: String = call conv.int(r)
+    let %25: String = prim <>(%24, "\n")
+    let %26: Ok = call writer.putString(%23, %25)
+    let %27: Tuple a: Big end = tuple(big)
+    let anyMid: AnyMid = auto[Big](%27)
     join k2(r.1: Int) {
-      do call p(r.1)
-      let r.2: Big = big
-      let n.1: Int = 5
-      let bigTuple: Tuple r: Big n: Int end = tuple(r.2, n.1)
+      let %28: writer.T = member writer.output
+      let %29: String = call conv.int(r.1)
+      let %30: String = prim <>(%29, "\n")
+      let %31: Ok = call writer.putString(%28, %30)
+      let bigTuple: Tuple r: Big n: Int end = tuple(big, 5)
       let midTuple: Tuple r: Mid n: Int end = bigTuple
-      let %13: Mid = tuple_field(midTuple, 0)
-      let %14: Int = record_field(%13, c)
-      let %15: Int = tuple_field(midTuple, 1)
-      let %16: Int = prim +(%14, %15)
-      do call p(%16)
+      let %32: Mid = tuple_field(midTuple, 0)
+      let %33: Int = record_field(%32, c)
+      let %34: Int = tuple_field(midTuple, 1)
+      let %35: Int = prim +(%33, %34)
+      let %36: writer.T = member writer.output
+      let %37: String = call conv.int(%35)
+      let %38: String = prim <>(%37, "\n")
+      let %39: Ok = call writer.putString(%36, %38)
       funs {
         fun same [A::<: Mid](x: A): A {
           return x
@@ -58,22 +62,25 @@ main {
         }
       }
       let bigAgain: Big = call same_spec(big)
-      let %17: Int = record_field(bigAgain, b)
-      do call p(%17)
-      let %18: writer.T = member writer.output
-      do call dynamic.extern(%18, d)
-      let %19: writer.T = member writer.output
-      do call writer.putString(%19, "\n")
+      let %40: Int = record_field(bigAgain, b)
+      let %41: writer.T = member writer.output
+      let %42: String = call conv.int(%40)
+      let %43: String = prim <>(%42, "\n")
+      let %44: Ok = call writer.putString(%41, %43)
+      let %45: writer.T = member writer.output
+      do call dynamic.extern(%45, d)
+      let %46: writer.T = member writer.output
+      do call writer.putString(%46, "\n")
     } in {
       inspect anyMid {
         case Mid (x.2: Tuple a: Mid end): {
-          let %20: Mid = tuple_field(x.2, 0)
-          let %21: Int = record_field(%20, c)
-          let %22: Mid = tuple_field(x.2, 0)
-          let %23: Int = record_field(%22, d)
-          let %24: Int = prim +(10, %23)
-          let %25: Int = prim *(%21, %24)
-          jump k2(%25)
+          let %47: Mid = tuple_field(x.2, 0)
+          let %48: Int = record_field(%47, c)
+          let %49: Mid = tuple_field(x.2, 0)
+          let %50: Int = record_field(%49, d)
+          let %51: Int = prim +(10, %50)
+          let %52: Int = prim *(%48, %51)
+          jump k2(%52)
         }
         else: {
           jump k2(0)
@@ -83,9 +90,9 @@ main {
   } in {
     inspect d {
       case Small (s: Tuple a: Small end): {
-        let %26: Small = tuple_field(s, 0)
-        let %27: Int = record_field(%26, d)
-        jump k1(%27)
+        let %53: Small = tuple_field(s, 0)
+        let %54: Int = record_field(%53, d)
+        jump k1(%54)
       }
       else: {
         jump k1(0)

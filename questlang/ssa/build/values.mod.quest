@@ -149,6 +149,8 @@ export
         (* How each variable is held, by variable id *)
         bindings: hashMap.T(Int Binding)
         joins: hashMap.T(String Int)
+        (* The parts of each join point's parameters, by its label *)
+        joinParts: hashMap.T(String Array(Int))
         loops: hashMap.T(String LoopTargets)
         (* The function's IR closure (its environment's layout), if it is a
          * lifted function's *)
@@ -393,9 +395,11 @@ export
         if layout.isBoxedInSlots(shapes.shape(t)) then array of wordPart(tPtr) end else parts(t) end
     let readLocation(fn: Fn address: Int t: Type): Array(Int) = readParts(fn address locationParts(t))
 
+    (* A location of no words (an Ok's) holds nothing, whatever is stored: a
+     * call at Ok of a function whose result is generic returns a word *)
     let writeParts(fn: Fn address: Int ps: Array(Part) values: Array(Int)): Ok =
         begin
-            if extent ps isnot extent values then
+            if {extent ps isnot extent values} andif {extent ps > 0} then
                 raise unsupported with "a store of " <> conv.int(extent values) <> " values to a location of "
                     <> conv.int(extent ps) end
             end
@@ -764,6 +768,7 @@ export
             let u = u let f = f let var cur = 0
             let bindings = hashMap.new(:Int :Binding intEqual hash.int)
             let joins = hashMap.new(:String :Int eq hash.string)
+            let joinParts = hashMap.new(:String :Array(Int) eq hash.string)
             let loops = hashMap.new(:String :LoopTargets eq hash.string)
             let closure = closure
             let var deferred = maybe.none(:Deferred)

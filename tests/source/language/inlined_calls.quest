@@ -1,0 +1,35 @@
+(* Calls the self-hosted compiler's simplifier inlines (docs/inlining.md section
+ * 3), whose results are those of the calls: a function called once, small
+ * ones, a polymorphic one at closed type arguments (after which its caller
+ * holds no polymorphic call, so no conversion or descriptor: the
+ * ir_described golden shows it), a higher-order one with the function it
+ * calls, one with a var parameter, one with several returns (a join point),
+ * and one that raises; and what it leaves: a recursive function. *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+let once(n: Int): Int = {n * n} + 1;
+print("once: " <> conv.int(once(6)));
+
+let first(A::TYPE B::TYPE pair: Tuple a: A b: B end): A = pair.a;
+let swap(A::TYPE B::TYPE pair: Tuple a: A b: B end): Tuple a: B b: A end = tuple let a = pair.b let b = pair.a end;
+let p = swap(:Int :String tuple let a = 1 let b = "two" end);
+print("polymorphic: " <> first(:String :Int p) <> " " <> conv.int(p.b));
+
+let apply(f: All(n: Int) Int n: Int): Int = f(f(n));
+print("higher-order: " <> conv.int(apply(fun(n: Int): Int n + 3 4)));
+
+let bump(var n: Int by: Int): Ok = n := n + by;
+let bumped(): Int = begin let var k = 1 bump(@k 41) k end;
+print("var parameter: " <> conv.int(bumped()));
+
+let sign(n: Int): String = if n < 0 then "negative" elsif n is 0 then "zero" else "positive" end;
+print("returns: " <> sign(~3) <> " " <> sign(0) <> " " <> sign(3));
+
+let negative: Exception = exception negative end;
+let checked(n: Int): Int = if n < 0 then raise negative end else n end;
+print("raises: " <> try conv.int(checked(~1)) when negative then "negative" end);
+
+let rec fact(n: Int): Int = if n <= 1 then 1 else n * fact(n - 1) end;
+print("recursive: " <> conv.int(fact(10)));

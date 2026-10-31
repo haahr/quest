@@ -150,13 +150,52 @@ benchmarks.md §3.3, independent of the inliner, and the first step.
 ## 8. Steps
 
 1. **Exported functions called directly** (§6). *Done when* no unit calls another's exported function through its
-   closure, and benchmarks.md records the change.
+   closure, and benchmarks.md records the change. *Done* (2026-10-31, 2938a449): calls of imported members already
+   called `qv_<mod>_<fn>`, and that function already called a member's code directly when the member was bound to a
+   closure without captures; but where the interface's type differs from the module's own (an abstract type), the
+   export is the member converted by an adapter, a closure whose environment was the member's closure, so each call
+   made two indirect calls. The thunks pass now makes a known function's conversion the static closure of an
+   adapter of its own that calls the function directly ([ir.md](ir.md) §8.4.1), and both backends follow copies of
+   closures' variables: of the compiler's own exported functions, 211 called through closures before, and none
+   after.
 2. **The simplifier** (§4, without contification), with its dump and goldens. *Done when* it runs on every unit and
-   the suite passes.
+   the suite passes. *Done* (2026-10-31): `questlang/ir/simplify`, whose stage is `simplified` (dumped as
+   `ir_simplified`, run as `run_ir_simplified`, the self-hosted compiler's own phases), between Core and
+   Specialized. A case of a known option that binds its payload is left, since the binder shares the option's
+   payload, a copy of the tuple it was made of in compiled code; a variant's is the value itself. Besides §4's
+   list, it propagates constants (not Strings, whose identity `is` compares) and removes
+   unused `funs`; Int arithmetic wraps, so only division can raise, and is not folded by zero. Copies are propagated
+   only between variables of one type, so that no later pass sees a variable's type change. `language/simplified_code`
+   shows what it does and what it leaves.
 3. **Inlining of functions called once,** then of small ones and those §3's bonuses favor, polymorphism's first,
    through specialize's cloning. *Done when* imp-for's `forLoop` is inlined and its argument's call with it, and a
    polymorphic call at closed type arguments that §3 inlines leaves no conversion or descriptor in its caller.
-4. **Contification** (§4). *Done when* imp-for's and tailfib's loops are loops in the IR.
+   *Done* (2026-10-31): `questlang/ir/inline` (the functions, their components, and sizes; a call's expansion),
+   used by the simplifier in its rounds, and `questlang/ir/clone`, specialize's cloner moved out of it, which can
+   give a copy's loops and join points fresh labels. A call is inlined when its callee is a function a `funs`
+   statement binds (or a copy of one), is not recursive, and is called once or small enough (§3's size less its
+   bonuses, at most 30: 30 for type arguments, 10 for an argument that is a known function, 5 for a constant), and
+   each `var` or `out` argument is the address of a variable in scope, which stands for the parameter. A function
+   with a bounded type parameter is not inlined: its code sees values at the bound (an option's ordinal counts the
+   bound's cases), which a type argument substituted for the parameter would change. The growth
+   bound is the unit's: half its size, or 1000, whichever is more; the caller's bound and the depth bound are left
+   to the rounds' bound (six), and recursive functions are not inlined at all, rather than only into their own
+   components, so that none is unrolled once per round. A body whose one return is its end is spliced in place;
+   any other is a join point's body, whose continuation is the rest of the caller's body, and the simplifier
+   straightens a join point jumped to only at its body's end. `language/inlined_calls` shows calls inlined and its
+   `ir_described` golden the polymorphic calls gone; imp-for's `forLoop` and all seven of its arguments are inlined,
+   leaving its `repeat` loops for contification.
+4. **Contification** (§4). *Done when* imp-for's and tailfib's loops are loops in the IR. *Done* (2026-10-31):
+   `questlang/ir/contify`, run after each of the simplifier's rounds. A function of value parameters and no type
+   parameters, every use of which is a call, one outside its body and the rest tail calls of itself in its body
+   (not in a `try`'s region, which holds them; an `Ok` call is one in tail position when control falls from it
+   to `return ok`), becomes a loop at the outside call, which need not be in tail position: the call's result is
+   a join point's parameter, whose continuation is the rest of the caller's body, the function's returns jump to
+   it, its tail calls assign mutable variables for its parameters and continue, and each iteration binds the
+   parameters to them, so that its own functions capture values as before. The simplifier also turns jumps to a
+   join point whose continuation only returns into returns, which is what makes a call before a jump to the
+   function's end a tail call. imp-for is eight loops and tailfib two, with no call left but `bench.count`;
+   `language/contified_loops` shows what is contified and what is not.
 5. **Workers** (§5), and signatures rewritten in place for functions that do not escape. *Done when* a function
    returning a fresh tuple to callers that only read it allocates no tuple.
 6. **Whole-program builds** inline across modules. *Done when* `--whole-program` builds inline the library's small

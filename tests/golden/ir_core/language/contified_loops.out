@@ -1,0 +1,176 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs {
+    fun sum(n: Int): Int {
+      funs rec {
+        fun go(i: Int, total: Int): Int {
+          join k1(r: Int) {
+            return r
+          } in {
+            let %4: Bool = prim >(i, n)
+            if %4 {
+              jump k1(total)
+            } else {
+              let %5: Int = prim +(i, 1)
+              let %6: Int = prim +(total, i)
+              let %7: Int = call go(%5, %6)
+              jump k1(%7)
+            }
+          }
+        }
+      }
+      let %8: Int = call go(1, 0)
+      let %9: Int = prim *(%8, 2)
+      return %9
+    }
+  }
+  let %10: Int = call sum(100)
+  let %11: String = call conv.int(%10)
+  let %12: String = prim <>("sum: ", %11)
+  do call print(%12)
+  funs {
+    fun count(n.1: Int): Int {
+      let k: Int = 0
+      let cell: Tuple var k: Int end = tuple(k)
+      funs rec {
+        fun step(i.1: Int): Ok {
+          let %13: Bool = prim <(i.1, n.1)
+          if %13 {
+            let %14: Int = tuple_field(cell, 0)
+            let %15: Int = prim +(%14, i.1)
+            store cell.#0 := %15
+            let %16: Int = prim +(i.1, 1)
+            do call step(%16)
+          }
+          return ok
+        }
+      }
+      do call step(0)
+      let %17: Int = tuple_field(cell, 0)
+      return %17
+    }
+  }
+  let %18: Int = call count(10)
+  let %19: String = call conv.int(%18)
+  let %20: String = prim <>("count: ", %19)
+  do call print(%20)
+  funs {
+    fun captured(n.2: Int): Int {
+      funs {
+        fun f(): Int {
+          return 0
+        }
+      }
+      let fs: Array(Fun(): Int) = array_rep(n.2, f)
+      funs rec {
+        fun fill(i.2: Int): Ok {
+          let %21: Bool = prim <(i.2, n.2)
+          if %21 {
+            funs {
+              fun f.1(): Int {
+                let %22: Int = prim *(i.2, i.2)
+                return %22
+              }
+            }
+            store fs[i.2] := f.1
+            let %23: Int = prim +(i.2, 1)
+            do call fill(%23)
+          }
+          return ok
+        }
+      }
+      do call fill(0)
+      let %24: Fun(): Int = index(fs, 3)
+      let %25: Int = call %24()
+      let %26: Int = prim -(n.2, 1)
+      let %27: Fun(): Int = index(fs, %26)
+      let %28: Int = call %27()
+      let %29: Int = prim +(%25, %28)
+      return %29
+    }
+  }
+  let %30: Int = call captured(5)
+  let %31: String = call conv.int(%30)
+  let %32: String = prim <>("captured: ", %31)
+  do call print(%32)
+  funs {
+    fun twice(n.3: Int): Int {
+      funs rec {
+        fun down(i.3: Int): Int {
+          join k2(r.1: Int) {
+            return r.1
+          } in {
+            let %33: Bool = prim is(i.3, 0)
+            if %33 {
+              jump k2(0)
+            } else {
+              let %34: Int = prim -(i.3, 1)
+              let %35: Int = call down(%34)
+              jump k2(%35)
+            }
+          }
+        }
+      }
+      let %36: Int = call down(n.3)
+      let %37: Int = prim +(n.3, 1)
+      let %38: Int = call down(%37)
+      let %39: Int = prim +(%36, %38)
+      return %39
+    }
+  }
+  let %40: Int = call twice(4)
+  let %41: String = call conv.int(%40)
+  let %42: String = prim <>("twice: ", %41)
+  do call print(%42)
+  let stop: Exception = exception stop
+  let stop.1: Exception = stop
+  funs {
+    fun caught(n.4: Int): Int {
+      funs rec {
+        fun tries(i.4: Int): Int {
+          join k3(r.2: Int) {
+            return r.2
+          } in {
+            let %43: Bool = prim >=(i.4, n.4)
+            if %43 {
+              raise stop.1
+            } else {
+              join k4(r.3: Int) {
+                jump k3(r.3)
+              } in {
+                try catching (stop.1) {
+                  let %44: Int = prim +(i.4, 1)
+                  let %45: Int = call tries(%44)
+                  jump k4(%45)
+                } handle (e: Exception) {
+                  let %46: Bool = prim is(e, stop.1)
+                  if %46 {
+                    jump k4(i.4)
+                  } else {
+                    reraise e
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      let %47: Int = call tries(0)
+      return %47
+    }
+  }
+  let %48: Int = call caught(3)
+  let %49: String = call conv.int(%48)
+  let %50: String = prim <>("caught: ", %49)
+  do call print(%50)
+}
+

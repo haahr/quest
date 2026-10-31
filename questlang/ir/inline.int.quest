@@ -1,0 +1,49 @@
+(* Quest Self-Hosted Compiler: The Inliner Interface
+ *
+ * What the simplifier needs to inline calls (docs/inlining.md sections 3 and
+ * 4): the functions funs statements bind, their strongly connected components
+ * in the graph of which functions name which, and their sizes; and a call's
+ * expansion, the callee's body copied in its place, with fresh variables and
+ * labels. Which calls to inline is the simplifier's decision. *)
+
+interface Inline
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/clone : questlang/ir/Clone
+    collections/hashMap : collections/HashMap
+    util/maybe : util/Maybe
+export
+    Def Analysis = Tuple
+        (* The functions funs statements bind, by their variables' ids *)
+        functions: hashMap.T(Int nodes.Function)
+        (* Each function's strongly connected component, by its variable's id:
+         * functions that name one another, directly or not, share one *)
+        components: hashMap.T(Int Int)
+        (* Whether each function names itself, directly or not *)
+        recursive: hashMap.T(Int Bool)
+        (* Each function's size *)
+        sizes: hashMap.T(Int Int)
+        (* The size of the unit's bodies and functions *)
+        size: Int
+    end
+
+    (* The functions of a unit's bodies, as they are *)
+    analyze(bodies: Array(nodes.Body)): Analysis
+
+    (* A body's size: its statements, with those in the bodies and functions it
+     * holds, a call counting twice *)
+    size(b: nodes.Body): Int
+
+    (* The statements that do what a call of f does and then what rest does:
+     * the call's result bound to into (or to a fresh variable), f's body
+     * copied with its type parameters substituted by typeArgs, fresh variables
+     * and labels, each value parameter bound to its argument, and each var or
+     * out parameter replaced by the variable whose address is passed for it
+     * (byRef). A body whose only return is its last statement is followed by
+     * rest; any other is a join point's body, whose returns jump to it, and
+     * whose continuation is rest. *)
+    expand(f: nodes.Function typeArgs: Array(model.Type) args: Array(nodes.Atom)
+        byRef: Array(maybe.T(nodes.Variable)) into: maybe.T(nodes.Variable) rest: Array(nodes.Stmt)
+        labels: clone.Labels): Array(nodes.Stmt)
+end

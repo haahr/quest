@@ -56,6 +56,7 @@ import
     questlang/ir/whole : questlang/ir/Whole
     questlang/ir/printer : questlang/ir/Printer
     questlang/ir/verify : questlang/ir/Verify
+    questlang/ir/simplify : questlang/ir/Simplify
     questlang/ir/specialize : questlang/ir/Specialize
     questlang/ir/closure : questlang/ir/Closure
     questlang/ir/represent : questlang/ir/Represent
@@ -88,11 +89,13 @@ import
 
 (* The IR's stages (docs/ir.md section 9) the driver dumps (ir_STAGE) and runs
  * (run_ir_STAGE) *)
-let irStages = array of "core" "specialized" "closed" "represented" "described" end;
+let irStages = array of "core" "simplified" "specialized" "closed" "represented" "described" end;
 
 let phases = array of
-    "tokenize" "parse" "desugar" "typecheck" "ir_core" "ir_specialized" "ir_closed" "ir_represented" "ir_described"
-    "run_ir_core" "run_ir_specialized" "run_ir_closed" "run_ir_represented" "run_ir_described" "interpret"
+    "tokenize" "parse" "desugar" "typecheck"
+    "ir_core" "ir_simplified" "ir_specialized" "ir_closed" "ir_represented" "ir_described"
+    "run_ir_core" "run_ir_simplified" "run_ir_specialized" "run_ir_closed" "run_ir_represented" "run_ir_described"
+    "interpret"
     "codegen_c" "run_c_compiled" "ssa_built" "ssa_promote" "ssa_tailCalls" "ssa"
 end;
 
@@ -515,6 +518,7 @@ let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResul
             end
         check(unit irStages[0])
         let passes = array of
+            fun(u: nodes.Unit): nodes.Unit simplify.simplifyUnit(u)
             fun(u: nodes.Unit): nodes.Unit specialize.specializeUnit(u)
             fun(u: nodes.Unit): nodes.Unit closure.closureConvertUnit(u)
             fun(u: nodes.Unit): nodes.Unit represent.representUnit(u)

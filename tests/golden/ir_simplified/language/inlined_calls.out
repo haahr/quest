@@ -1,0 +1,80 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  let %1: String = call conv.int(37)
+  let %2: String = prim <>("once: ", %1)
+  let %3: writer.T = member writer.output
+  let %4: String = prim <>(%2, "\n")
+  let %5: Ok = call writer.putString(%3, %4)
+  let b: String = "two"
+  let %6: String = call conv.int(1)
+  let %7: String = prim <>(" ", %6)
+  let %8: String = prim <>(b, %7)
+  let %9: String = prim <>("polymorphic: ", %8)
+  let %10: writer.T = member writer.output
+  let %11: String = prim <>(%9, "\n")
+  let %12: Ok = call writer.putString(%10, %11)
+  let %13: String = call conv.int(10)
+  let %14: String = prim <>("higher-order: ", %13)
+  let %15: writer.T = member writer.output
+  let %16: String = prim <>(%14, "\n")
+  let %17: Ok = call writer.putString(%15, %16)
+  var k: Int = 1
+  let %18: Int = prim +(k, 41)
+  k := %18
+  let %19: Int = k
+  let %20: String = call conv.int(%19)
+  let %21: String = prim <>("var parameter: ", %20)
+  let %22: writer.T = member writer.output
+  let %23: String = prim <>(%21, "\n")
+  let %24: Ok = call writer.putString(%22, %23)
+  let %25: String = "negative"
+  let %26: String = "zero"
+  let %27: String = "positive"
+  let %28: String = prim <>(" ", %27)
+  let %29: String = prim <>(%26, %28)
+  let %30: String = prim <>(" ", %29)
+  let %31: String = prim <>(%25, %30)
+  let %32: String = prim <>("returns: ", %31)
+  let %33: writer.T = member writer.output
+  let %34: String = prim <>(%32, "\n")
+  let %35: Ok = call writer.putString(%33, %34)
+  let negative: Exception = exception negative
+  join k4(r: String) {
+    let %36: String = prim <>("raises: ", r)
+    let %37: writer.T = member writer.output
+    let %38: String = prim <>(%36, "\n")
+    let %39: Ok = call writer.putString(%37, %38)
+    funs rec {
+      fun fact(n: Int): Int {
+        let %40: Bool = prim <=(n, 1)
+        if %40 {
+          return 1
+        } else {
+          let %41: Int = prim -(n, 1)
+          let %42: Int = call fact(%41)
+          let %43: Int = prim *(n, %42)
+          return %43
+        }
+      }
+    }
+    let %44: Int = call fact(10)
+    let %45: String = call conv.int(%44)
+    let %46: String = prim <>("recursive: ", %45)
+    let %47: writer.T = member writer.output
+    let %48: String = prim <>(%46, "\n")
+    let %49: Ok = call writer.putString(%47, %48)
+  } in {
+    try catching (negative) {
+      raise negative
+    } handle (e: Exception) {
+      let %50: Bool = prim is(e, negative)
+      if %50 {
+        jump k4("negative")
+      } else {
+        reraise e
+      }
+    }
+  }
+}
+

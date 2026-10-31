@@ -1,0 +1,839 @@
+(* Quest Self-Hosted Compiler: The Simplifier Implementation *)
+
+module simplify : Simplify
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    questlang/ir/clone : questlang/ir/Clone
+    questlang/ir/inline : questlang/ir/Inline
+    questlang/ir/contify : questlang/ir/Contify
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+    intOp = int : IntOp
+export
+    Let Variable = nodes.Variable
+    Let Atom = nodes.Atom
+    Let Body = nodes.Body
+    Let Stmt = nodes.Stmt
+    Let Op = nodes.Op
+
+    let intEqual(a: Int b: Int): Bool = a is b
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+
+    (* The most rounds the simplifier makes over a unit: each round simplifies
+     * what the last one made simpler, and inlines into what it inlined *)
+    let maxRounds = 6
+
+    (* Inlining (docs/inlining.md section 3): a function no larger than
+     * inlineSize, less its bonuses for the call, is inlined; one called once,
+     * whatever its size. Calls are inlined until the unit has grown by half
+     * its size before the first round, or by minimumBudget, if more. *)
+    let inlineSize = 30
+    let minimumBudget = 1000
+    (* The call supplies type arguments: the caller no longer calls a
+     * polymorphic function *)
+    let polymorphicBonus = 30
+    (* An argument that is a known function, whose calls then are known *)
+    let functionBonus = 10
+    (* An argument that is a constant, which the callee may branch on *)
+    let constantBonus = 5
+
+    Let Simplifier = Tuple
+        (* How many times each variable is used, by id, counted at the start of
+         * the round *)
+        uses: hashMap.T(Int Int)
+        (* The variables a let binds that nothing outside the unit's bodies
+         * may name: modules' members and exports, and let rec's variables *)
+        pinned: hashMap.T(Int Bool)
+        (* The operation each immutable variable is bound to by a let, by id,
+         * for those met so far *)
+        defs: hashMap.T(Int Op)
+        (* The variable each copy removed stands for, by id, and the constant
+         * each constant's let removed does *)
+        renames: hashMap.T(Int Variable)
+        consts: hashMap.T(Int Atom)
+        var changed: Bool
+        (* The unit's functions, as the round began *)
+        var analysis: inline.Analysis
+        (* The labels inlining made, and how much it has grown the unit, of
+         * how much it may *)
+        labels: clone.Labels
+        var grown: Int
+        var budget: Int
+    end
+
+    (* ======================================================================
+     * What the round knows
+     * ====================================================================== *)
+
+    let pinId(s: Simplifier id: Int): Ok = begin hashMap.insert(:Int :Bool s.pinned id true) ok end
+    let setUses(s: Simplifier id: Int n: Int): Ok = begin hashMap.insert(:Int :Int s.uses id n) ok end
+    let setRename(s: Simplifier id: Int v: Variable): Ok = begin hashMap.insert(:Int :Variable s.renames id v) ok end
+    let setDef(s: Simplifier id: Int o: Op): Ok = begin hashMap.insert(:Int :Op s.defs id o) ok end
+    let setConst(s: Simplifier id: Int a: Atom): Ok = begin hashMap.insert(:Int :Atom s.consts id a) ok end
+
+    let rec bodies(unit: nodes.Unit): Array(Body) =
+        begin
+            let found = vector.new(:Body)
+            vector.append(:Body found unit.main)
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                vector.append(:Body found vector.get(:nodes.Module unit.modules i).init)
+            end
+            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                vector.append(:Body found vector.get(:nodes.Function unit.functions i).body)
+            end
+            vector.toArray(:Body found)
+        end
+
+    let pin(s: Simplifier m: nodes.Members): Ok =
+        for i = 0 upto {vector.length(:String m.names) - 1} do
+            let v = nodes.member(m vector.get(:String m.names i))
+            if maybe.isSome(:Variable v) then pinId(s maybe.unwrap(:Variable v).id) end
+        end
+
+    (* Counts the uses of variables in a body, and pins let rec's variables *)
+    let countBody(s: Simplifier b: Body): Ok =
+        begin
+            let stmts = walk.walkStatements(b true)
+            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                let st = vector.get(:Stmt stmts i)
+                let used = walk.statementUses(st)
+                for j = 0 upto {extent used - 1} do
+                    case used[j]
+                        when atomVar with x then
+                            setUses(s x.v.id 1 + maybe.unwrapOr(:Int hashMap.get(:Int :Int s.uses x.v.id) 0))
+                        when atomConst then ok
+                    end
+                end
+                case st
+                    when sLetRec with x then
+                        for j = 0 upto {extent x.vars - 1} do pinId(s x.vars[j].id) end
+                    else ok
+                end
+            end
+        end
+
+    (* Counts every use of each variable in the unit, and pins the variables
+     * named from outside its bodies *)
+    let count(s: Simplifier unit: nodes.Unit): Ok =
+        begin
+            hashMap.clear(:Int :Int s.uses)
+            hashMap.clear(:Int :Bool s.pinned)
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                let m = vector.get(:nodes.Module unit.modules i)
+                pin(s m.members)
+                if maybe.isSome(:nodes.Members m.exports) then pin(s maybe.unwrap(:nodes.Members m.exports)) end
+                if maybe.isSome(:Variable m.recordVar) then
+                    pinId(s maybe.unwrap(:Variable m.recordVar).id)
+                end
+            end
+            let all = bodies(unit)
+            for b = 0 upto {extent all - 1} do countBody(s all[b]) end
+        end
+
+    let usesOf(s: Simplifier v: Variable): Int = maybe.unwrapOr(:Int hashMap.get(:Int :Int s.uses v.id) 0)
+    let pinned(s: Simplifier v: Variable): Bool = hashMap.contains(:Int :Bool s.pinned v.id)
+
+    (* The operation an atom's variable is bound to, if it is an immutable
+     * one bound by a let met so far *)
+    let defOf(s: Simplifier a: Atom): maybe.T(Op) =
+        case a
+            when atomVar with x then hashMap.get(:Int :Op s.defs x.v.id)
+            when atomConst then maybe.none(:Op)
+        end
+
+    (* The constant an atom is, or its variable is bound to *)
+    let constOf(s: Simplifier a: Atom): maybe.T(nodes.ConstValue) =
+        case a
+            when atomConst with x then maybe.some(:nodes.ConstValue x.c.value)
+            when atomVar then
+                let d = defOf(s a)
+                if maybe.isSome(:Op d) then
+                    case maybe.unwrap(:Op d)
+                        when opAtom with x then
+                            case x.atom
+                                when atomConst with c then maybe.some(:nodes.ConstValue c.c.value)
+                                when atomVar then maybe.none(:nodes.ConstValue)
+                            end
+                        else maybe.none(:nodes.ConstValue)
+                    end
+                else
+                    maybe.none(:nodes.ConstValue)
+                end
+        end
+
+    let boolOf(s: Simplifier a: Atom): maybe.T(Bool) =
+        begin
+            let c = constOf(s a)
+            if maybe.isSome(:nodes.ConstValue c) then
+                case maybe.unwrap(:nodes.ConstValue c)
+                    when constBool with x then maybe.some(:Bool x.b)
+                    else maybe.none(:Bool)
+                end
+            else
+                maybe.none(:Bool)
+            end
+        end
+
+    let intOf(s: Simplifier a: Atom): maybe.T(Int) =
+        begin
+            let c = constOf(s a)
+            if maybe.isSome(:nodes.ConstValue c) then
+                case maybe.unwrap(:nodes.ConstValue c)
+                    when constInt with x then maybe.some(:Int x.n)
+                    else maybe.none(:Int)
+                end
+            else
+                maybe.none(:Int)
+            end
+        end
+
+    (* An option's or variant's tag and payload, made by the operation an atom's
+     * variable is bound to, and whether it is a variant's *)
+    Let Made = Tuple tag: String payload: maybe.T(Atom) isVariant: Bool end
+    let madeOf(s: Simplifier a: Atom): maybe.T(Made) =
+        begin
+            let d = defOf(s a)
+            if maybe.isSome(:Op d) then
+                case maybe.unwrap(:Op d)
+                    when opMakeVariant with x then
+                        maybe.some(:Made tuple let tag = x.tag let payload = x.payload let isVariant = true end)
+                    when opMakeOption with x then
+                        if maybe.isSome(:String x.tag) then
+                            maybe.some(:Made tuple
+                                let tag = maybe.unwrap(:String x.tag) let payload = x.payload let isVariant = false
+                            end)
+                        else
+                            maybe.none(:Made)
+                        end
+                    else maybe.none(:Made)
+                end
+            else
+                maybe.none(:Made)
+            end
+        end
+
+    (* ======================================================================
+     * Operations
+     * ====================================================================== *)
+
+    let boolConst(b: Bool): Op =
+        nodes.opOfAtom(nodes.atomOfConst(tuple
+            let value = option constBool of nodes.ConstValue with let b = b end
+            let shape = shapes.shape(model.boolType)
+        end))
+    let intConst(n: Int): Op =
+        nodes.opOfAtom(nodes.atomOfConst(tuple
+            let value = option constInt of nodes.ConstValue with let n = n end
+            let shape = shapes.shape(model.intType)
+        end))
+
+    (* Whether evaluating an operation can do nothing but compute its value:
+     * no effect, no exception *)
+    let pure(o: Op): Bool =
+        case o
+            when opPrim with x then
+                case x.op
+                    (* Int division by zero raises int.error, and Real
+                     * arithmetic with an infinite or NaN result real.error;
+                     * Int arithmetic otherwise wraps *)
+                    when primDiv, primRem, primMod, primRealAdd, primRealSub, primRealMul, primRealDiv,
+                        primRealPow then false
+                    when primAdd, primSub, primMul, primLt, primLe, primGt, primGe, primRealLt, primRealLe, primRealGt,
+                        primRealGe, primConcat, primAnd, primOr, primIs, primIsnot, primNot, primExtent then true
+                end
+            when opAtom, opExternal, opMakeClosure, opEnvField, opMakeTuple, opTupleField, opMakeRecord, opRecordField,
+                opMakeVariant, opMakeOption, opIsTag, opOrdinal, opMakeArray, opMakeAuto, opMakeException,
+                opExceptionPayload, opAddrVar, opAddrCell, opAddrField, opAddrComponent, opLoad then true
+            when opCall, opTypeApp, opModuleMember, opBuiltin, opCallExternal, opConvert, opPayload, opArrayRep,
+                opIndex, opCaughtException, opAddrElement then false
+        end
+
+    (* An Int primitive's result on constants, unless it raises (division by
+     * zero) *)
+    let foldInt(op: nodes.Prim a: Int b: Int): maybe.T(Op) =
+        try
+            case op
+                when primAdd then maybe.some(:Op intConst(a + b))
+                when primSub then maybe.some(:Op intConst(a - b))
+                when primMul then maybe.some(:Op intConst(a * b))
+                when primDiv then maybe.some(:Op intConst(a / b))
+                when primRem, primMod then maybe.some(:Op intConst(a % b))
+                when primLt then maybe.some(:Op boolConst(a < b))
+                when primLe then maybe.some(:Op boolConst(a <= b))
+                when primGt then maybe.some(:Op boolConst(a > b))
+                when primGe then maybe.some(:Op boolConst(a >= b))
+                when primIs then maybe.some(:Op boolConst(a is b))
+                when primIsnot then maybe.some(:Op boolConst(a isnot b))
+                else maybe.none(:Op)
+            end
+        when intOp.error then
+            maybe.none(:Op)
+        end
+
+    let foldPrim(s: Simplifier x: nodes.OpPrim): maybe.T(Op) =
+        if {extent x.args is 1} andif {case x.op when primNot then true else false end} then
+            let b = boolOf(s x.args[0])
+            if maybe.isSome(:Bool b) then maybe.some(:Op boolConst(not(maybe.unwrap(:Bool b)))) else maybe.none(:Op) end
+        elsif extent x.args is 2 then
+            let i = intOf(s x.args[0])
+            let j = intOf(s x.args[1])
+            let p = boolOf(s x.args[0])
+            let q = boolOf(s x.args[1])
+            if maybe.isSome(:Int i) andif maybe.isSome(:Int j) then
+                foldInt(x.op maybe.unwrap(:Int i) maybe.unwrap(:Int j))
+            elsif maybe.isSome(:Bool p) andif maybe.isSome(:Bool q) then
+                let a = maybe.unwrap(:Bool p)
+                let b = maybe.unwrap(:Bool q)
+                case x.op
+                    when primAnd then maybe.some(:Op boolConst(a andif b))
+                    when primOr then maybe.some(:Op boolConst(a orif b))
+                    when primIs then maybe.some(:Op boolConst(a is b))
+                    when primIsnot then maybe.some(:Op boolConst(a isnot b))
+                    else maybe.none(:Op)
+                end
+            else
+                maybe.none(:Op)
+            end
+        else
+            maybe.none(:Op)
+        end
+
+    (* Whether an atom has one value wherever it is in scope: a constant, or an
+     * immutable variable (not a mutable one, which a later read may find
+     * changed since the value was made of it) *)
+    let stable(a: Atom): Bool =
+        case a
+            when atomVar with x then not(x.v.isMutable)
+            when atomConst then true
+        end
+
+    (* Whether a tuple type's component is a var one (or unknown) *)
+    let varComponent(t: model.Type index: Int): Bool =
+        begin
+            let sh = shapes.shape(t)
+            {index >= extent sh.components} orif sh.components[index].isVar
+        end
+
+    (* The operation that replaces another, if it is simpler *)
+    let simpler(s: Simplifier o: Op): maybe.T(Op) =
+        case o
+            when opPrim with x then foldPrim(s x)
+            when opTupleField with x then
+                let d = defOf(s x.tup)
+                if maybe.isSome(:Op d) then
+                    case maybe.unwrap(:Op d)
+                        when opMakeTuple with t then
+                            if {x.index < extent t.args} andif not(varComponent(nodes.atomType(x.tup) x.index))
+                                andif stable(t.args[x.index]) then
+                                maybe.some(:Op nodes.opOfAtom(t.args[x.index]))
+                            else
+                                maybe.none(:Op)
+                            end
+                        else maybe.none(:Op)
+                    end
+                else
+                    maybe.none(:Op)
+                end
+            when opIsTag with x then
+                let m = madeOf(s x.value)
+                if maybe.isSome(:Made m) then maybe.some(:Op boolConst(eq(maybe.unwrap(:Made m).tag x.tag)))
+                else maybe.none(:Op) end
+            when opPayload with x then
+                (* A variant's payload is the value it was made of; an
+                 * option's is a new tuple (of its ordinal and its
+                 * components) *)
+                let m = madeOf(s x.value)
+                let known = maybe.isSome(:Made m) andif maybe.unwrap(:Made m).isVariant
+                    andif eq(maybe.unwrap(:Made m).tag x.tag)
+                if known andif maybe.isSome(:Atom maybe.unwrap(:Made m).payload)
+                    andif stable(maybe.unwrap(:Atom maybe.unwrap(:Made m).payload)) then
+                    maybe.some(:Op nodes.opOfAtom(maybe.unwrap(:Atom maybe.unwrap(:Made m).payload)))
+                else
+                    maybe.none(:Op)
+                end
+            else maybe.none(:Op)
+        end
+
+    let simplified(s: Simplifier o: Op): Op =
+        begin
+            let r = simpler(s o)
+            if maybe.isSome(:Op r) then begin s.changed := true maybe.unwrap(:Op r) end else o end
+        end
+
+    (* ======================================================================
+     * Statements
+     * ====================================================================== *)
+
+    let rename(s: Simplifier): All(v: Variable) Variable =
+        fun(v: Variable): Variable maybe.unwrapOr(:Variable hashMap.get(:Int :Variable s.renames v.id) v)
+    let constant(s: Simplifier): All(a: Atom) Atom =
+        fun(a: Atom): Atom
+            case a
+                when atomVar with x then maybe.unwrapOr(:Atom hashMap.get(:Int :Atom s.consts x.v.id) a)
+                when atomConst then a
+            end
+
+    (* The constant a let of one binds its variable to, where every use of the
+     * variable can be the constant: one of the variable's shape, and not a
+     * String, whose identity is that of the variable's one value *)
+    let propagated(s: Simplifier x: nodes.StmtLet): maybe.T(Atom) =
+        case x.value
+            when opAtom with a then
+                case a.atom
+                    when atomConst with c then
+                        let isString = case c.c.value when constString then true else false end
+                        if not(isString) andif not(pinned(s x.v)) andif not(x.v.isMutable)
+                            andif {c.c.shape.id is shapes.shape(x.v.type).id} then
+                            maybe.some(:Atom a.atom)
+                        else
+                            maybe.none(:Atom)
+                        end
+                    when atomVar then maybe.none(:Atom)
+                end
+            else maybe.none(:Atom)
+        end
+
+    (* The case of a switch on a known tag: its body and binder, or the else
+     * body, if any *)
+    Let Chosen = Tuple body: Body binder: maybe.T(Variable) end
+    let chosen(x: nodes.StmtSwitch tag: String): maybe.T(Chosen) =
+        begin
+            let var found = maybe.none(:Chosen)
+            for i = 0 upto {extent x.cases - 1} do
+                if maybe.isNone(:Chosen found) then
+                    let c = x.cases[i]
+                    for j = 0 upto {extent c.tags - 1} do
+                        if eq(c.tags[j] tag) then
+                            found := maybe.some(:Chosen tuple let body = c.body let binder = c.binder end)
+                        end
+                    end
+                end
+            end
+            if maybe.isNone(:Chosen found) andif maybe.isSome(:Body x.elseBody) then
+                found := maybe.some(:Chosen tuple
+                    let body = maybe.unwrap(:Body x.elseBody)
+                    let binder = maybe.none(:Variable)
+                end)
+            end
+            found
+        end
+
+    (* ======================================================================
+     * Inlining
+     * ====================================================================== *)
+
+    (* The variable a variable's copies lead back to, and whether each of
+     * them, and it, is used once *)
+    Let Resolved = Tuple v: Variable once: Bool end
+    let resolve(s: Simplifier v0: Variable): Resolved =
+        begin
+            let var v = v0
+            let var once = {usesOf(s v0) is 1} andif not(pinned(s v0))
+            let var more = true
+            while more do
+                more := false
+                let d = hashMap.get(:Int :Op s.defs v.id)
+                if maybe.isSome(:Op d) then
+                    case maybe.unwrap(:Op d)
+                        when opAtom with a then
+                            case a.atom
+                                when atomVar with y then
+                                    if not(y.v.isMutable) then
+                                        v := y.v
+                                        once := once andif {usesOf(s y.v) is 1} andif not(pinned(s y.v))
+                                        more := true
+                                    end
+                                when atomConst then ok
+                            end
+                        else ok
+                    end
+                end
+            end
+            tuple let v = v let once = once end
+        end
+
+    (* The bonus for an argument: a constant, or a known function *)
+    let argumentBonus(s: Simplifier a: Atom): Int =
+        case a
+            when atomConst then constantBonus
+            when atomVar with x then
+                if maybe.isSome(:nodes.ConstValue constOf(s a)) then constantBonus
+                elsif hashMap.contains(:Int :nodes.Function s.analysis.functions resolve(s x.v).v.id) then functionBonus
+                else 0 end
+        end
+
+    (* The variable whose address an argument is, if it is one taken in scope *)
+    let addressed(s: Simplifier a: Atom): maybe.T(Variable) =
+        begin
+            let d = defOf(s a)
+            if maybe.isSome(:Op d) then
+                case maybe.unwrap(:Op d)
+                    when opAddrVar with x then maybe.some(:Variable x.v)
+                    else maybe.none(:Variable)
+                end
+            else
+                maybe.none(:Variable)
+            end
+        end
+
+    (* A call to inline: its function, the variables passed by address for its
+     * var and out parameters, and the function's size *)
+    Let Choice = Tuple function: nodes.Function byRef: Array(maybe.T(Variable)) size: Int end
+
+    (* Whether to inline a call, made in a function of the component within
+     * (none, outside functions): one of a function the round knows, not
+     * recursive, with type arguments for all its type parameters, and a
+     * variable in scope for each var or out parameter, called once or small
+     * enough *)
+    let inlining(s: Simplifier x: nodes.OpCall within: maybe.T(Int)): maybe.T(Choice) =
+        begin
+            let callee = if maybe.isSome(:Variable x.callee) then
+                maybe.some(:Resolved resolve(s maybe.unwrap(:Variable x.callee)))
+            else
+                maybe.none(:Resolved)
+            end
+            let found = if maybe.isSome(:Resolved callee) then
+                hashMap.get(:Int :nodes.Function s.analysis.functions maybe.unwrap(:Resolved callee).v.id)
+            else
+                maybe.none(:nodes.Function)
+            end
+            if maybe.isSome(:nodes.Function found) then
+                let f = maybe.unwrap(:nodes.Function found)
+                let component = hashMap.find(:Int :Int s.analysis.components f.v.id)
+                let within1 = maybe.isSome(:Int within) andif {maybe.unwrap(:Int within) is component}
+                let size = hashMap.find(:Int :Int s.analysis.sizes f.v.id)
+                let byRef = array of(extent f.params maybe.none(:Variable))
+                let var fits = not(within1) andif not(hashMap.find(:Int :Bool s.analysis.recursive f.v.id))
+                    andif {extent x.typeArgs is extent f.typeParams} andif {extent x.args is extent f.params}
+                (* A bounded type parameter's values are seen at its bound (an
+                 * option's ordinal counts the bound's cases), which a type
+                 * argument substituted for it would change *)
+                for i = 0 upto {extent f.typeParams - 1} do
+                    if maybe.isSome(:shapes.Shape f.typeParams[i].bound) then fits := false end
+                end
+                let var bonus = if extent x.typeArgs > 0 then polymorphicBonus else 0 end
+                for i = 0 upto {extent f.params - 1} do
+                    if fits then
+                        if eq(f.params[i].mode "value") then
+                            bonus := bonus + argumentBonus(s x.args[i])
+                        else
+                            byRef[i] := addressed(s x.args[i])
+                            if maybe.isNone(:Variable byRef[i]) then fits := false end
+                        end
+                    end
+                end
+                let once = maybe.unwrap(:Resolved callee).once andif not(pinned(s f.v))
+                let small = {{size - bonus} <= inlineSize} andif {{s.grown + size} <= s.budget}
+                if fits andif {once orif small} then
+                    maybe.some(:Choice tuple let function = f let byRef = byRef let size = size end)
+                else
+                    maybe.none(:Choice)
+                end
+            else
+                maybe.none(:Choice)
+            end
+        end
+
+    (* A statement's call, and the variable a let binds its result to *)
+    let opCallOf(o: Op): maybe.T(nodes.OpCall) =
+        case o when opCall with c then maybe.some(:nodes.OpCall c) else maybe.none(:nodes.OpCall) end
+    let callOf(st: Stmt): maybe.T(nodes.OpCall) =
+        case st
+            when sLet with x then opCallOf(x.value)
+            when sDo with x then opCallOf(x.value)
+            else maybe.none(:nodes.OpCall)
+        end
+    let intoOf(st: Stmt): maybe.T(Variable) =
+        case st
+            when sLet with x then maybe.some(:Variable x.v)
+            else maybe.none(:Variable)
+        end
+
+    (* The component of a function the round knows *)
+    let componentOf(s: Simplifier f: nodes.Function): maybe.T(Int) = hashMap.get(:Int :Int s.analysis.components f.v.id)
+
+    (* The jumps to a join point's label in its body *)
+    let jumpsTo(b: Body label: String): Int =
+        begin
+            let stmts = walk.walkStatements(b false)
+            let var n = 0
+            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                case vector.get(:Stmt stmts i)
+                    when sJump with x then if eq(x.label label) then n := n + 1 end
+                    else ok
+                end
+            end
+            n
+        end
+
+    (* The value a join point's continuation returns, if it only returns one *)
+    let returned(x: nodes.StmtJoin): maybe.T(Atom) =
+        if vector.length(:Stmt x.continuation.statements) is 1 then
+            case vector.get(:Stmt x.continuation.statements 0)
+                when sReturn with r then maybe.some(:Atom r.value)
+                else maybe.none(:Atom)
+            end
+        else
+            maybe.none(:Atom)
+        end
+
+    (* Replaces, in place, the jumps to label in a body (not in the functions
+     * it binds) by returns of what returnOf makes of the jump's arguments *)
+    let rec jumpsReturn(b: Body label: String returnOf: All(args: Array(Atom)) Atom): Ok =
+        for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
+            let st = vector.get(:Stmt b.statements i)
+            case st
+                when sJump with x then
+                    if eq(x.label label) then
+                        vector.set(:Stmt b.statements i option sReturn of Stmt with let var value = returnOf(x.args) end)
+                    end
+                else
+                    let inner = walk.statementBodies(st)
+                    for k = 0 upto {extent inner - 1} do jumpsReturn(inner[k] label returnOf) end
+            end
+        end
+
+    (* What a join point's statement does, as straight-line statements, if its
+     * body never jumps to it (its body), or only by its last statement (its
+     * body, its parameters bound to the jump's arguments, and its
+     * continuation), or its continuation only returns (its body, whose jumps
+     * return what the continuation would) *)
+    let straightened(x: nodes.StmtJoin): maybe.T(vector.T(Stmt)) =
+        begin
+            let n = jumpsTo(x.body x.label)
+            let stmts = x.body.statements
+            let last = vector.length(:Stmt stmts) - 1
+            let tail = if last >= 0 then
+                case vector.get(:Stmt stmts last)
+                    when sJump with j then
+                        if eq(j.label x.label) then maybe.some(:nodes.StmtJump j) else maybe.none(:nodes.StmtJump) end
+                    else maybe.none(:nodes.StmtJump)
+                end
+            else
+                maybe.none(:nodes.StmtJump)
+            end
+            let value = returned(x)
+            if n is 0 then
+                maybe.some(:vector.T(Stmt) vector.copy(:Stmt stmts))
+            elsif maybe.isSome(:Atom value) then
+                (* A jump returns the argument for the parameter returned, or
+                 * the value returned, if not a parameter *)
+                let v = maybe.unwrap(:Atom value)
+                let var index = ~1
+                for k = 0 upto {extent x.params - 1} do
+                    case v when atomVar with y then if nodes.same(x.params[k] y.v) then index := k end else ok end
+                end
+                let param = index
+                jumpsReturn(x.body x.label fun(args: Array(Atom)): Atom if param >= 0 then args[param] else v end)
+                maybe.some(:vector.T(Stmt) vector.copy(:Stmt stmts))
+            elsif {n is 1} andif maybe.isSome(:nodes.StmtJump tail) then
+                let j = maybe.unwrap(:nodes.StmtJump tail)
+                let result = vector.new(:Stmt)
+                for i = 0 upto {last - 1} do vector.append(:Stmt result vector.get(:Stmt stmts i)) end
+                for i = 0 upto {extent x.params - 1} do
+                    vector.append(:Stmt result nodes.letStmt(x.params[i] nodes.opOfAtom(j.args[i])))
+                end
+                for i = 0 upto {vector.length(:Stmt x.continuation.statements) - 1} do
+                    vector.append(:Stmt result vector.get(:Stmt x.continuation.statements i))
+                end
+                maybe.some(:vector.T(Stmt) result)
+            else
+                maybe.none(:vector.T(Stmt))
+            end
+        end
+
+    (* Simplifies a body's statements, in place, inlining the calls to inline
+     * in it; within is the component of the function it is the body of *)
+    let rec body(s: Simplifier b: Body within: maybe.T(Int)): Ok =
+        begin
+            let kept = vector.new(:Stmt)
+            let var live = true
+            (* Adds a body's statements in place of the statement that held it;
+             * the statements after a terminated one are never reached *)
+            let splice = fun(inner: Body): Ok
+                begin
+                    for k = 0 upto {vector.length(:Stmt inner.statements) - 1} do
+                        vector.append(:Stmt kept vector.get(:Stmt inner.statements k))
+                    end
+                    if nodes.terminated(inner) then live := false end
+                end
+            let var ss = b.statements
+            let var i = 0
+            while live andif {i < vector.length(:Stmt ss)} do
+                let st = vector.get(:Stmt ss i)
+                walk.replaceVarsInStmt(st rename(s))
+                walk.replaceAtomsInStmt(st constant(s))
+                let call = callOf(st)
+                let choice = if maybe.isSome(:nodes.OpCall call) then
+                    inlining(s maybe.unwrap(:nodes.OpCall call) within)
+                else
+                    maybe.none(:Choice)
+                end
+                if maybe.isSome(:Choice choice) then
+                    (* The call's expansion, and the statements after it, are
+                     * what is left to simplify *)
+                    let ch = maybe.unwrap(:Choice choice)
+                    let c = maybe.unwrap(:nodes.OpCall call)
+                    let rest = vector.new(:Stmt)
+                    for k = i + 1 upto {vector.length(:Stmt ss) - 1} do
+                        vector.append(:Stmt rest vector.get(:Stmt ss k))
+                    end
+                    ss := vector.fromArray(:Stmt inline.expand(ch.function c.typeArgs c.args ch.byRef intoOf(st)
+                        vector.toArray(:Stmt rest) s.labels))
+                    (* The copy's variables are used where it uses them (and
+                     * those of the rest, counted again, no less) *)
+                    countBody(s nodes.bodyOf(vector.toArray(:Stmt ss)))
+                    i := 0
+                    s.grown := s.grown + ch.size
+                    s.changed := true
+                else
+                case st
+                    when sLet with x then
+                        x.value := simplified(s x.value)
+                        let copied = case x.value
+                            when opAtom with a then
+                                case a.atom
+                                    when atomVar with y then
+                                        if not(y.v.isMutable) andif not(pinned(s x.v))
+                                            andif {y.v.type.id is x.v.type.id} then
+                                            maybe.some(:Variable y.v)
+                                        else
+                                            maybe.none(:Variable)
+                                        end
+                                    when atomConst then maybe.none(:Variable)
+                                end
+                            else maybe.none(:Variable)
+                        end
+                        let known = propagated(s x)
+                        if maybe.isSome(:Variable copied) then
+                            setRename(s x.v.id maybe.unwrap(:Variable copied))
+                            s.changed := true
+                        elsif maybe.isSome(:Atom known) then
+                            setConst(s x.v.id maybe.unwrap(:Atom known))
+                            s.changed := true
+                        elsif {usesOf(s x.v) is 0} andif not(pinned(s x.v)) andif pure(x.value) then
+                            s.changed := true
+                        else
+                            (* A let rec's variable is in scope after the body that
+                             * binds it, where what made its value may not be *)
+                            if not(x.v.isMutable) andif not(pinned(s x.v)) then setDef(s x.v.id x.value) end
+                            vector.append(:Stmt kept st)
+                        end
+                    when sDo with x then
+                        x.value := simplified(s x.value)
+                        if pure(x.value) then s.changed := true else vector.append(:Stmt kept st) end
+                    when sIf with x then
+                        let c = boolOf(s x.cond)
+                        if maybe.isSome(:Bool c) then
+                            let taken = if maybe.unwrap(:Bool c) then x.thenBody else x.elseBody end
+                            body(s taken within)
+                            splice(taken)
+                            s.changed := true
+                        else
+                            body(s x.thenBody within)
+                            body(s x.elseBody within)
+                            vector.append(:Stmt kept st)
+                        end
+                    when sSwitch with x then
+                        let m = madeOf(s x.value)
+                        let c = if maybe.isSome(:Made m) then chosen(x maybe.unwrap(:Made m).tag)
+                            else maybe.none(:Chosen) end
+                        (* A binder is bound to the payload, which a case that
+                         * binds one has: a variant's, which is the value it
+                         * was made of, but not an option's, whose payload is
+                         * a copy of the tuple it was made of, in its own
+                         * allocation, that the binder shares *)
+                        if maybe.isSome(:Chosen c) andif {maybe.isNone(:Variable maybe.unwrap(:Chosen c).binder)
+                            orif {maybe.unwrap(:Made m).isVariant
+                                andif maybe.isSome(:Atom maybe.unwrap(:Made m).payload)
+                                andif stable(maybe.unwrap(:Atom maybe.unwrap(:Made m).payload))}} then
+                            let ch = maybe.unwrap(:Chosen c)
+                            let payload = maybe.unwrap(:Made m).payload
+                            if maybe.isSome(:Variable ch.binder) andif maybe.isSome(:Atom payload) then
+                                let binder = maybe.unwrap(:Variable ch.binder)
+                                let bound = nodes.letStmt(binder nodes.opOfAtom(maybe.unwrap(:Atom payload)))
+                                vector.append(:Stmt kept bound)
+                                setDef(s binder.id nodes.opOfAtom(maybe.unwrap(:Atom payload)))
+                            end
+                            body(s ch.body within)
+                            splice(ch.body)
+                            s.changed := true
+                        else
+                            let inner = walk.statementBodies(st)
+                            for k = 0 upto {extent inner - 1} do body(s inner[k] within) end
+                            vector.append(:Stmt kept st)
+                        end
+                    when sJoin with x then
+                        (* Straightened, its statements and the rest are what
+                         * is left to simplify *)
+                        let straight = straightened(x)
+                        if maybe.isSome(:vector.T(Stmt) straight) then
+                            let more = maybe.unwrap(:vector.T(Stmt) straight)
+                            for k = i + 1 upto {vector.length(:Stmt ss) - 1} do
+                                vector.append(:Stmt more vector.get(:Stmt ss k))
+                            end
+                            ss := more
+                            i := ~1
+                            s.changed := true
+                        else
+                            body(s x.continuation within)
+                            body(s x.body within)
+                            vector.append(:Stmt kept st)
+                        end
+                    when sFuns with x then
+                        for k = 0 upto {extent x.functions - 1} do
+                            body(s x.functions[k].body componentOf(s x.functions[k]))
+                        end
+                        let var used = false
+                        for k = 0 upto {extent x.functions - 1} do
+                            if {usesOf(s x.functions[k].v) > 0} orif pinned(s x.functions[k].v) then used := true end
+                        end
+                        if used then vector.append(:Stmt kept st) else s.changed := true end
+                    else
+                        let inner = walk.statementBodies(st)
+                        for k = 0 upto {extent inner - 1} do body(s inner[k] within) end
+                        vector.append(:Stmt kept st)
+                        if nodes.isTerminator(st) then live := false end
+                end
+                i := i + 1
+                end
+            end
+            b.statements := kept
+        end
+
+    let simplifyUnit(unit: nodes.Unit): nodes.Unit =
+        begin
+            let s = tuple
+                let uses = hashMap.new(:Int :Int intEqual hash.int)
+                let pinned = hashMap.new(:Int :Bool intEqual hash.int)
+                let defs = hashMap.new(:Int :Op intEqual hash.int)
+                let renames = hashMap.new(:Int :Variable intEqual hash.int)
+                let consts = hashMap.new(:Int :Atom intEqual hash.int)
+                let var changed = true
+                let var analysis = inline.analyze(bodies(unit))
+                let labels = clone.newLabels()
+                let var grown = 0
+                let var budget = 0
+            end
+            s.budget := if {s.analysis.size / 2} > minimumBudget then s.analysis.size / 2 else minimumBudget end
+            let var round = 0
+            while s.changed andif {round < maxRounds} do
+                s.changed := false
+                count(s unit)
+                hashMap.clear(:Int :Op s.defs)
+                let all = bodies(unit)
+                if round > 0 then s.analysis := inline.analyze(all) end
+                for b = 0 upto {extent all - 1} do body(s all[b] maybe.none(:Int)) end
+                if contify.contify(all s.pinned s.labels) then s.changed := true end
+                round := round + 1
+            end
+            unit.stage := "simplified"
+            unit
+        end
+end

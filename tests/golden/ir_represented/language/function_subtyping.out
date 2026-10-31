@@ -1,112 +1,110 @@
 import writer = "writer" : Writer
 import conv = "conv" : Conv
 import dynamic = "dynamic" : Dynamic
-fun p(n: Int): Ok {
-  let %24: writer.T = member writer.output
-  let %25: String = call conv.int(n)
-  let %26: String = prim <>(%25, "\n")
-  let %27: Ok = call writer.putString(%24, %26)
-  return %27
+fun narrow(x.3: Small): Big {
+  let %63: Int = record_field(x.3, c)
+  let box.2: box(Record a: Int b: Int c: Int end) = record(a = 10, b = 20, c = %63)
+  let %64: Record a: Int b: Int c: Int end = convert(box.2, slot_unbox)
+  return %64
 }
-fun small(x: Small): Int {
-  let %28: Int = record_field(x, c)
-  return %28
-}
-fun useBig(h: Fun(x: Big): Int): Int {
-  let %29: Int = call h(big)
-  return %29
-}
-fun makeBig(): Big {
-  return big
-}
-fun useSmall(h.1: Fun(): Small): Int {
-  let %30: Small = call h.1()
-  let %31: Int = record_field(%30, c)
-  return %31
-}
-fun narrow(x.1: Small): Big {
-  let %32: Int = record_field(x.1, c)
-  let box.1: box(Record a: Int b: Int c: Int end) = record(a = 10, b = 20, c = %32)
-  let %33: Record a: Int b: Int c: Int end = convert(box.1, slot_unbox)
-  return %33
-}
-fun applyBig(h.2: Fun(x: Big): Int): Int {
-  let %34: Int = call h.2(big)
-  return %34
-}
-fun f(x.2: Big): Int {
-  let %35: Int = record_field(x.2, a)
-  return %35
+fun f(x.4: Big): Int {
+  let %65: Int = record_field(x.4, a)
+  return %65
 }
 main {
-  let p.1: Fun(n: Int): Ok = closure p {}
   let big_box: box(Big) = record(a = 1, b = 2, c = 3)
   let big: Big = convert(big_box, slot_unbox)
-  let small.1: Fun(x: Small): Int = closure small {}
-  let useBig.1: Fun(h: Fun(x: Big): Int): Int = closure useBig {}
-  let small.2: Fun(x: Record a: Int b: Int c: Int end): Int = convert(small.1, adapt)
-  let %1: Int = call useBig.1(small.2)
-  do call p.1(%1)
-  let makeBig.1: Fun(): Big = closure makeBig {}
-  let useSmall.1: Fun(h: Fun(): Small): Int = closure useSmall {}
-  let makeBig.2: Fun(): Record c: Int end = convert(makeBig.1, adapt)
-  let %2: Int = call useSmall.1(makeBig.2)
-  do call p.1(%2)
+  let big.1: Small = convert(big, record_view)
+  let x: Small = big.1
+  let %1: Int = record_field(x, c)
+  let %2: writer.T = member writer.output
+  let %3: String = call conv.int(%1)
+  let %4: String = prim <>(%3, "\n")
+  let %5: Ok = call writer.putString(%2, %4)
+  let big.2: Small = convert(big, record_view)
+  let %6: Small = big.2
+  let %7: Int = record_field(%6, c)
+  let %8: writer.T = member writer.output
+  let %9: String = call conv.int(%7)
+  let %10: String = prim <>(%9, "\n")
+  let %11: Ok = call writer.putString(%8, %10)
   let narrow.1: Fun(x: Small): Big = closure narrow {}
-  let narrow.2: Fun(x: Big): Small = convert(narrow.1, adapt)
-  let wide: Fun(x: Big): Small = narrow.2
-  let %3: Small = call wide(big)
-  let %4: Int = record_field(%3, c)
-  do call p.1(%4)
-  let applyBig.1: Fun(h: Fun(x: Big): Int): Int = closure applyBig {}
-  let applyBig.2: Fun(h: Fun(x: Small): Int): Int = convert(applyBig.1, adapt)
-  let applySmall: Fun(h: Fun(x: Small): Int): Int = applyBig.2
-  let %5: Int = call applySmall(small.1)
-  do call p.1(%5)
+  let big.3: Small = convert(big, record_view)
+  let x.1: Small = big.3
+  let %12: Int = record_field(x.1, c)
+  let box: box(Record a: Int b: Int c: Int end) = record(a = 10, b = 20, c = %12)
+  let %13: Record a: Int b: Int c: Int end = convert(box, slot_unbox)
+  let %14: Small = convert(%13, record_view)
+  let %15: Small = %14
+  let %16: Int = record_field(%15, c)
+  let %17: writer.T = member writer.output
+  let %18: String = call conv.int(%16)
+  let %19: String = prim <>(%18, "\n")
+  let %20: Ok = call writer.putString(%17, %19)
+  let big.4: Small = convert(big, record_view)
+  let x.2: Small = big.4
+  let %21: Int = record_field(x.2, c)
+  let %22: writer.T = member writer.output
+  let %23: String = call conv.int(%21)
+  let %24: String = prim <>(%23, "\n")
+  let %25: Ok = call writer.putString(%22, %24)
   let hasNarrow_box: box(HasNarrow) = record(f = narrow.1)
   let hasNarrow: HasNarrow = convert(hasNarrow_box, slot_unbox)
   let hasNarrow.1: HasWide = convert(hasNarrow, record_view)
   let hasWide: HasWide = hasNarrow.1
-  let %6: Fun(x: Big): Small = record_field(hasWide, f) via stored types
-  let %7: Small = call %6(big)
-  let %8: Int = record_field(%7, c)
-  do call p.1(%8)
-  let narrow.3: A = convert(narrow.1, box)
-  let d: T = call dynamic.new [Fun(x: Small): Big](narrow.3)
+  let %26: Fun(x: Big): Small = record_field(hasWide, f) via stored types
+  let %27: Small = call %26(big)
+  let %28: Int = record_field(%27, c)
+  let %29: writer.T = member writer.output
+  let %30: String = call conv.int(%28)
+  let %31: String = prim <>(%30, "\n")
+  let %32: Ok = call writer.putString(%29, %31)
+  let narrow.2: A = convert(narrow.1, box)
+  let d: T = call dynamic.new [Fun(x: Small): Big](narrow.2)
   let fromDynamic: A = call dynamic.be [Fun(x: Big): Small](d)
   let fromDynamic.1: Fun(x: Big): Small = convert(fromDynamic, unbox)
   let fromDynamic.2: Fun(x: Big): Small = fromDynamic.1
-  let %9: Small = call fromDynamic.2(big)
-  let %10: Int = record_field(%9, c)
-  do call p.1(%10)
+  let %33: Small = call fromDynamic.2(big)
+  let %34: Int = record_field(%33, c)
+  let %35: writer.T = member writer.output
+  let %36: String = call conv.int(%34)
+  let %37: String = prim <>(%36, "\n")
+  let %38: Ok = call writer.putString(%35, %37)
   join k1(r: Int) {
-    do call p.1(r)
-    let a: Fun(x: Small): Big = narrow.1
-    let %11: Tuple a: Fun(x: Small): Big end = tuple(a)
-    let payload: Tuple a: A end = convert(%11, cast)
+    let %39: writer.T = member writer.output
+    let %40: String = call conv.int(r)
+    let %41: String = prim <>(%40, "\n")
+    let %42: Ok = call writer.putString(%39, %41)
+    let %43: Tuple a: Fun(x: Small): Big end = tuple(narrow.1)
+    let payload: Tuple a: A end = convert(%43, cast)
     let boxedNarrow: Boxed = auto[Fun(x: Small): Big](payload)
     join k2(r.1: Int) {
-      do call p.1(r.1)
+      let %44: writer.T = member writer.output
+      let %45: String = call conv.int(r.1)
+      let %46: String = prim <>(%45, "\n")
+      let %47: Ok = call writer.putString(%44, %46)
       join k3(wrong: Int) {
-        do call p.1(wrong)
+        let %48: writer.T = member writer.output
+        let %49: String = call conv.int(wrong)
+        let %50: String = prim <>(%49, "\n")
+        let %51: Ok = call writer.putString(%48, %50)
       } in {
-        let %12: Exception = member dynamic.error
-        try catching (%12) {
+        let %52: Exception = member dynamic.error
+        try catching (%52) {
           let f.1: Fun(x: Big): Int = closure f {}
           let f.2: A = convert(f.1, box)
-          let %13: T = call dynamic.new [Fun(x: Big): Int](f.2)
-          let g: A = call dynamic.be [Fun(x: Small): Int](%13)
+          let %53: T = call dynamic.new [Fun(x: Big): Int](f.2)
+          let g: A = call dynamic.be [Fun(x: Small): Int](%53)
           let g.1: Fun(x: Small): Int = convert(g, unbox)
           let g.2: Fun(x: Small): Int = g.1
-          let box: box(Record c: Int end) = record(c = 0)
-          let %14: Record c: Int end = convert(box, slot_unbox)
-          let %15: Int = call g.2(%14)
-          jump k3(%15)
+          let box.1: box(Record c: Int end) = record(c = 0)
+          let %54: Record c: Int end = convert(box.1, slot_unbox)
+          let %55: Int = call g.2(%54)
+          jump k3(%55)
         } handle (e: Exception) {
-          let %16: Bool = prim is(e, %12)
-          if %16 {
-            let %17: Int = prim -(0, 1)
-            jump k3(%17)
+          let %56: Bool = prim is(e, %52)
+          if %56 {
+            jump k3(-1)
           } else {
             reraise e
           }
@@ -115,10 +113,10 @@ main {
     } in {
       inspect boxedNarrow {
         case Fun(x: Big): Small (g.3: Tuple a: Fun(x: Big): Small end) converting (component): {
-          let %18: Fun(x: Big): Small = tuple_field(g.3, 0) via proxy
-          let %19: Small = call %18(big)
-          let %20: Int = record_field(%19, c)
-          jump k2(%20)
+          let %57: Fun(x: Big): Small = tuple_field(g.3, 0) via proxy
+          let %58: Small = call %57(big)
+          let %59: Int = record_field(%58, c)
+          jump k2(%59)
         }
         else: {
           jump k2(0)
@@ -128,10 +126,10 @@ main {
   } in {
     inspect d {
       case Fun(x: Big): Small (g.4: Tuple a: Fun(x: Big): Small end) converting (component): {
-        let %21: Fun(x: Big): Small = tuple_field(g.4, 0) via proxy
-        let %22: Small = call %21(big)
-        let %23: Int = record_field(%22, c)
-        jump k1(%23)
+        let %60: Fun(x: Big): Small = tuple_field(g.4, 0) via proxy
+        let %61: Small = call %60(big)
+        let %62: Int = record_field(%61, c)
+        jump k1(%62)
       }
       else: {
         jump k1(0)

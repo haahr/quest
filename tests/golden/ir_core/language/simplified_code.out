@@ -1,0 +1,218 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import int = "int" : IntOp
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs {
+    fun copies(n: Int): Int {
+      let a: Int = n
+      let b: Int = a
+      let %4: Int = prim +(b, 1)
+      return %4
+    }
+  }
+  let %5: Int = call copies(41)
+  let %6: String = call conv.int(%5)
+  let %7: String = prim <>("copies: ", %6)
+  do call print(%7)
+  funs {
+    fun folded(): String {
+      join k1(r: String) {
+        return r
+      } in {
+        let %8: Int = prim +(2, 3)
+        let %9: Int = prim *(%8, 4)
+        let %10: Bool = prim >(%9, 19)
+        if %10 {
+          jump k1("taken")
+        } else {
+          jump k1("not taken")
+        }
+      }
+    }
+  }
+  let %11: String = call folded()
+  let %12: String = prim <>("folded: ", %11)
+  do call print(%12)
+  funs {
+    fun unused(n.1: Int): Int {
+      let x: Int = n.1
+      let y: Int = n.1
+      let pair: Tuple x: Int y: Int end = tuple(x, y)
+      let flag: Bool = prim <(n.1, 3)
+      return n.1
+    }
+  }
+  let %13: Int = call unused(7)
+  let %14: String = call conv.int(%13)
+  let %15: String = prim <>("unused: ", %14)
+  do call print(%15)
+  funs {
+    fun knownOption(): Int {
+      let k: Int = 1
+      let x.1: Int = 2
+      let %16: Tuple k: Int var x: Int end = tuple(k, x.1)
+      let o: O = option(some, %16)
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        switch tag(o) {
+          case some (p: Tuple k: Int var x: Int end): {
+            let %17: Int = tuple_field(p, 1)
+            let %18: Int = tuple_field(p, 0)
+            let %19: Int = prim +(%17, %18)
+            store p.#1 := %19
+            let %20: Int = tuple_field(p, 1)
+            jump k2(%20)
+          }
+          else: {
+            jump k2(0)
+          }
+        }
+      }
+    }
+  }
+  let %21: Int = call knownOption()
+  let %22: String = call conv.int(%21)
+  let %23: String = prim <>("known option: ", %22)
+  do call print(%23)
+  funs {
+    fun knownTag(): Bool {
+      let o.1: O = option(none)
+      let %24: Bool = is_tag(o.1, none)
+      return %24
+    }
+  }
+  let %25: Bool = call knownTag()
+  let %26: String = call conv.bool(%25)
+  let %27: String = prim <>("known tag: ", %26)
+  do call print(%27)
+  funs {
+    fun knownVariant(): Int {
+      let v: Num = variant(int, 123)
+      join k3(w: Int) {
+        let %28: Int = payload(v, int)
+        let %29: Int = prim +(w, %28)
+        return %29
+      } in {
+        switch tag(v) {
+          case int (i: Int): {
+            let %30: Int = prim +(i, 1)
+            jump k3(%30)
+          }
+          case real: {
+            jump k3(0)
+          }
+        }
+      }
+    }
+  }
+  let %31: Int = call knownVariant()
+  let %32: String = call conv.int(%31)
+  let %33: String = prim <>("known variant: ", %32)
+  do call print(%33)
+  funs {
+    fun projections(n.2: Int): Int {
+      let a.1: Int = n.2
+      let b.1: Int = prim +(n.2, 1)
+      let t: Tuple a: Int b: Int end = tuple(a.1, b.1)
+      let c: Int = n.2
+      let u: Tuple var c: Int end = tuple(c)
+      store u.#0 := 10
+      let %34: Int = tuple_field(t, 0)
+      let %35: Int = tuple_field(t, 1)
+      let %36: Int = tuple_field(u, 0)
+      let %37: Int = prim +(%35, %36)
+      let %38: Int = prim +(%34, %37)
+      return %38
+    }
+  }
+  let %39: Int = call projections(1)
+  let %40: String = call conv.int(%39)
+  let %41: String = prim <>("projections: ", %40)
+  do call print(%41)
+  funs {
+    fun payloadCopy(): Int {
+      let k.1: Int = 1
+      let x.2: Int = 2
+      let %42: Tuple k: Int var x: Int end = tuple(k.1, x.2)
+      let o.2: O = option(some, %42)
+      let q: Tuple Int k: Int var x: Int end = payload(o.2, some) #1
+      store q.#2 := 5
+      join k4(r.2: Int) {
+        return r.2
+      } in {
+        switch tag(o.2) {
+          case some (p.1: Tuple k: Int var x: Int end): {
+            let %43: Int = tuple_field(p.1, 1)
+            jump k4(%43)
+          }
+          else: {
+            jump k4(0)
+          }
+        }
+      }
+    }
+  }
+  let %44: Int = call payloadCopy()
+  let %45: String = call conv.int(%44)
+  let %46: String = prim <>("payload copy: ", %45)
+  do call print(%46)
+  funs {
+    fun wraps(): Int {
+      let big: Int = 9223372036854775807
+      let %47: Int = prim +(big, 1)
+      return %47
+    }
+  }
+  let %48: Int = call wraps()
+  let %49: String = call conv.int(%48)
+  let %50: String = prim <>("wraps: ", %49)
+  do call print(%50)
+  funs {
+    fun divides(): String {
+      join k5(r.3: String) {
+        return r.3
+      } in {
+        let %51: Exception = member int.error
+        try catching (%51) {
+          let %52: Int = prim /(7, 0)
+          let %53: String = call conv.int(%52)
+          jump k5(%53)
+        } handle (e: Exception) {
+          let %54: Bool = prim is(e, %51)
+          if %54 {
+            jump k5("int.error")
+          } else {
+            reraise e
+          }
+        }
+      }
+    }
+  }
+  let %55: String = call divides()
+  let %56: String = prim <>("division: ", %55)
+  do call print(%56)
+  funs {
+    fun stale(): Int {
+      var v.1: Int = 1
+      let a.2: Int = v.1
+      let t.1: Tuple a: Int end = tuple(a.2)
+      v.1 := 2
+      let %57: Int = tuple_field(t.1, 0)
+      return %57
+    }
+  }
+  let %58: Int = call stale()
+  let %59: String = call conv.int(%58)
+  let %60: String = prim <>("stale: ", %59)
+  do call print(%60)
+}
+

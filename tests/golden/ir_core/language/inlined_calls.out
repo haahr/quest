@@ -1,0 +1,171 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs {
+    fun once(n: Int): Int {
+      let %4: Int = prim *(n, n)
+      let %5: Int = prim +(%4, 1)
+      return %5
+    }
+  }
+  let %6: Int = call once(6)
+  let %7: String = call conv.int(%6)
+  let %8: String = prim <>("once: ", %7)
+  do call print(%8)
+  funs {
+    fun first [A::TYPE B::TYPE](pair: Tuple a: A b: B end): A {
+      let %9: A = tuple_field(pair, 0)
+      return %9
+    }
+  }
+  funs {
+    fun swap [A::TYPE B::TYPE](pair.1: Tuple a: A b: B end): Tuple a: B b: A end {
+      let a: B = tuple_field(pair.1, 1)
+      let b: A = tuple_field(pair.1, 0)
+      let %10: Tuple a: B b: A end = tuple(a, b)
+      return %10
+    }
+  }
+  let a.1: Int = 1
+  let b.1: String = "two"
+  let %11: Tuple a: Int b: String end = tuple(a.1, b.1)
+  let p: Tuple a: String b: Int end = call swap [Int String](%11)
+  let %12: String = call first [String Int](p)
+  let %13: Int = tuple_field(p, 1)
+  let %14: String = call conv.int(%13)
+  let %15: String = prim <>(" ", %14)
+  let %16: String = prim <>(%12, %15)
+  let %17: String = prim <>("polymorphic: ", %16)
+  do call print(%17)
+  funs {
+    fun apply(f: Fun(n: Int): Int, n.1: Int): Int {
+      let %18: Int = call f(n.1)
+      let %19: Int = call f(%18)
+      return %19
+    }
+  }
+  funs {
+    fun f.1(n.2: Int): Int {
+      let %20: Int = prim +(n.2, 3)
+      return %20
+    }
+  }
+  let %21: Int = call apply(f.1, 4)
+  let %22: String = call conv.int(%21)
+  let %23: String = prim <>("higher-order: ", %22)
+  do call print(%23)
+  funs {
+    fun bump(var n.3: Int, by: Int): Ok {
+      let %24: Int = prim +(n.3, by)
+      n.3 := %24
+      return ok
+    }
+  }
+  funs {
+    fun bumped(): Int {
+      var k: Int = 1
+      let %25: Var(Int) = addr k
+      do call bump(%25, 41)
+      return k
+    }
+  }
+  let %26: Int = call bumped()
+  let %27: String = call conv.int(%26)
+  let %28: String = prim <>("var parameter: ", %27)
+  do call print(%28)
+  funs {
+    fun sign(n.4: Int): String {
+      join k1(r: String) {
+        return r
+      } in {
+        let %29: Bool = prim <(n.4, 0)
+        if %29 {
+          jump k1("negative")
+        } else {
+          join k2(r.1: String) {
+            jump k1(r.1)
+          } in {
+            let %30: Bool = prim is(n.4, 0)
+            if %30 {
+              jump k2("zero")
+            } else {
+              jump k2("positive")
+            }
+          }
+        }
+      }
+    }
+  }
+  let %31: String = call sign(-3)
+  let %32: String = call sign(0)
+  let %33: String = call sign(3)
+  let %34: String = prim <>(" ", %33)
+  let %35: String = prim <>(%32, %34)
+  let %36: String = prim <>(" ", %35)
+  let %37: String = prim <>(%31, %36)
+  let %38: String = prim <>("returns: ", %37)
+  do call print(%38)
+  let negative: Exception = exception negative
+  let negative.1: Exception = negative
+  funs {
+    fun checked(n.5: Int): Int {
+      join k3(r.2: Int) {
+        return r.2
+      } in {
+        let %39: Bool = prim <(n.5, 0)
+        if %39 {
+          raise negative.1
+        } else {
+          jump k3(n.5)
+        }
+      }
+    }
+  }
+  join k4(r.3: String) {
+    let %40: String = prim <>("raises: ", r.3)
+    do call print(%40)
+    funs rec {
+      fun fact(n.6: Int): Int {
+        join k5(r.4: Int) {
+          return r.4
+        } in {
+          let %41: Bool = prim <=(n.6, 1)
+          if %41 {
+            jump k5(1)
+          } else {
+            let %42: Int = prim -(n.6, 1)
+            let %43: Int = call fact(%42)
+            let %44: Int = prim *(n.6, %43)
+            jump k5(%44)
+          }
+        }
+      }
+    }
+    let %45: Int = call fact(10)
+    let %46: String = call conv.int(%45)
+    let %47: String = prim <>("recursive: ", %46)
+    do call print(%47)
+  } in {
+    try catching (negative.1) {
+      let %48: Int = call checked(-1)
+      let %49: String = call conv.int(%48)
+      jump k4(%49)
+    } handle (e: Exception) {
+      let %50: Bool = prim is(e, negative.1)
+      if %50 {
+        jump k4("negative")
+      } else {
+        reraise e
+      }
+    }
+  }
+}
+

@@ -1,67 +1,21 @@
-fun apply(op: Fun(x: Int y: Int): Int, x: Int, y: Int): Int {
-  let %15: Int = call op(x, y)
-  return %15
-}
-fun <+>(x.1: Int, y.1: Int): Int {
-  let %16: Int = prim +(y.1, 100)
-  let %17: Int = prim +(x.1, %16)
-  return %17
-}
-fun f(o: Int): Ok {
-  return ok
-}
-fun g(x.2: Int, out y.2: Int): Ok {
-  return ok
-}
-fun f.1 {env}(x.3: Int): Int {
-  let fn: Fun(x: Int): Int = env_field(env, 0)
-  let %18: Int = call fn(x.3)
-  let %19: Int = call fn(%18)
-  return %19
-}
-fun double(fn.1: Fun(x: Int): Int): Fun(x: Int): Int {
-  let f.3: Fun(x: Int): Int = closure f.1 {fn.1}
-  return f.3
-}
-fun inc(x.4: Int): Int {
-  let %20: Int = prim +(x.4, 1)
-  return %20
-}
 main {
-  let a: Int = prim +(10, 20)
-  let prefixMul: Int = prim *(a, 3)
   let plus: Fun(a: Int b: Int): Int = builtin +
   let b: Int = call plus(1, 2)
-  let apply.1: Fun(op: Fun(x: Int y: Int): Int x: Int y: Int): Int = closure apply {}
-  let applyPlus: Int = call apply.1(plus, 15, 25)
+  let op: Fun(x: Int y: Int): Int = plus
+  let %1: Int = call op(15, 25)
   let less: Fun(a: Int b: Int): Bool = builtin <
   let lessRes: Bool = call less(10, 20)
-  let <+>.1: Fun(x: Int y: Int): Int = closure <+> {}
-  let customRes: Int = call <+>.1(10, 20)
-  let fst: Int = 42
-  let snd: String = "hello"
-  let p: PairIntStr = tuple(fst, snd)
-  let pFst: Int = tuple_field(p, 0)
-  let pAnon: Tuple Int String end = tuple(42, "hello")
-  let f.2: Fun(o: Out(Int)): Ok = closure f {}
-  let g.1: Fun(x: Int out y: Int): Ok = closure g {}
-  let double.1: Fun(fn: Fun(x: Int): Int): Fun(x: Int): Int = closure double {}
-  let inc.1: Fun(x: Int): Int = closure inc {}
-  let %1: Fun(x: Int): Int = call double.1(inc.1)
-  let curriedRes: Int = call %1(5)
-  let %2: Bool = prim is(a, 30)
-  let %3: Bool = prim is(prefixMul, 90)
-  let %4: Bool = prim is(b, 3)
-  let %5: Bool = prim is(applyPlus, 40)
-  let %6: Bool = prim is(customRes, 130)
-  let %7: Bool = prim is(pFst, 42)
-  let %8: Bool = prim is(curriedRes, 7)
-  let %9: Bool = prim /\(%7, %8)
-  let %10: Bool = prim /\(%6, %9)
-  let %11: Bool = prim /\(lessRes, %10)
-  let %12: Bool = prim /\(%5, %11)
-  let %13: Bool = prim /\(%4, %12)
-  let %14: Bool = prim /\(%3, %13)
-  let allPassed: Bool = prim /\(%2, %14)
+  join contified2(curriedRes: Int) {
+    let %2: Bool = prim is(curriedRes, 7)
+    let %3: Bool = prim /\(true, %2)
+  } in {
+    var x: Int = 5
+    loop contified1 {
+      let x.1: Int = x
+      let %4: Int = prim +(x.1, 1)
+      let %5: Int = prim +(%4, 1)
+      jump contified2(%5)
+    }
+  }
 }
 

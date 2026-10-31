@@ -221,18 +221,31 @@ export
             vector.toArray(:Variable mapped)
         end
 
-    let replaceVarsInOp(o: Op f: Rename): Ok =
+    (* A map of atoms, for the atoms a node holds *)
+    Let AtomMap = All(a: Atom) Atom
+
+    let mapAtoms(items: Array(Atom) g: AtomMap): Array(Atom) =
+        begin
+            let mapped = vector.new(:Atom)
+            for i = 0 upto {extent items - 1} do vector.append(:Atom mapped g(items[i])) end
+            vector.toArray(:Atom mapped)
+        end
+
+    let mapOptAtom(a: maybe.T(Atom) g: AtomMap): maybe.T(Atom) =
+        if maybe.isSome(:Atom a) then maybe.some(:Atom g(maybe.unwrap(:Atom a))) else a end
+
+    let mapInOp(o: Op f: Rename g: AtomMap): Ok =
         case o
-            when opAtom with x then x.atom := atom(x.atom f)
+            when opAtom with x then x.atom := g(x.atom)
             when opPrim with x then
                 begin
-                    x.args := atoms(x.args f)
+                    x.args := mapAtoms(x.args g)
                     x.descriptor := optDescriptor(x.descriptor f)
                 end
             when opCall with x then
                 begin
                     x.callee := optVar(x.callee f)
-                    x.args := atoms(x.args f)
+                    x.args := mapAtoms(x.args g)
                     x.descriptors := descriptors(x.descriptors f)
                 end
             when opTypeApp with x then
@@ -242,20 +255,20 @@ export
                 end
             when opCallExternal with x then
                 begin
-                    x.args := atoms(x.args f)
+                    x.args := mapAtoms(x.args g)
                     x.descriptors := descriptors(x.descriptors f)
                 end
             when opMakeClosure with x then
                 begin
-                    x.captures := atoms(x.captures f)
+                    x.captures := mapAtoms(x.captures g)
                     x.descriptors := descriptors(x.descriptors f)
                 end
-            when opEnvField with x then x.env := atom(x.env f)
-            when opConvert with x then x.value := atom(x.value f)
-            when opMakeTuple with x then x.args := atoms(x.args f)
+            when opEnvField with x then x.env := g(x.env)
+            when opConvert with x then x.value := g(x.value)
+            when opMakeTuple with x then x.args := mapAtoms(x.args g)
             when opTupleField with x then
                 begin
-                    x.tup := atom(x.tup f)
+                    x.tup := g(x.tup)
                     x.viewMap := optVar(x.viewMap f)
                 end
             when opMakeRecord with x then
@@ -263,7 +276,8 @@ export
                     let fields = vector.new(:nodes.FieldAtom)
                     for i = 0 upto {extent x.fields - 1} do
                         let fa = x.fields[i]
-                        vector.append(:nodes.FieldAtom fields tuple let name = fa.name let atom = atom(fa.atom f) let isVar = fa.isVar end)
+                        vector.append(:nodes.FieldAtom fields
+                            tuple let name = fa.name let atom = g(fa.atom) let isVar = fa.isVar end)
                     end
                     x.fields := vector.toArray(:nodes.FieldAtom fields)
                     x.descriptor := optDescriptor(x.descriptor f)
@@ -271,140 +285,145 @@ export
                 end
             when opRecordField with x then
                 begin
-                    x.recordAtom := atom(x.recordAtom f)
+                    x.recordAtom := g(x.recordAtom)
                     x.descriptor := optDescriptor(x.descriptor f)
                     x.viewMap := optVar(x.viewMap f)
                 end
-            when opMakeVariant with x then x.payload := optAtom(x.payload f)
+            when opMakeVariant with x then x.payload := mapOptAtom(x.payload g)
             when opMakeOption with x then
                 begin
-                    x.payload := optAtom(x.payload f)
-                    x.ordinalAtom := optAtom(x.ordinalAtom f)
+                    x.payload := mapOptAtom(x.payload g)
+                    x.ordinalAtom := mapOptAtom(x.ordinalAtom g)
                 end
             when opIsTag with x then
                 begin
-                    x.value := atom(x.value f)
+                    x.value := g(x.value)
                     x.viewMap := optVar(x.viewMap f)
                 end
             when opPayload with x then
                 begin
-                    x.value := atom(x.value f)
+                    x.value := g(x.value)
                     x.viewMap := optVar(x.viewMap f)
                 end
             when opOrdinal with x then
                 begin
-                    x.value := atom(x.value f)
+                    x.value := g(x.value)
                     x.viewMap := optVar(x.viewMap f)
                 end
-            when opMakeArray with x then x.args := atoms(x.args f)
+            when opMakeArray with x then x.args := mapAtoms(x.args g)
             when opArrayRep with x then
                 begin
-                    x.count := atom(x.count f)
-                    x.init := atom(x.init f)
+                    x.count := g(x.count)
+                    x.init := g(x.init)
                 end
             when opIndex with x then
                 begin
-                    x.arr := atom(x.arr f)
-                    x.index := atom(x.index f)
+                    x.arr := g(x.arr)
+                    x.index := g(x.index)
                 end
             when opMakeAuto with x then
                 begin
-                    x.payload := atom(x.payload f)
+                    x.payload := g(x.payload)
                     x.descriptor := optDescriptor(x.descriptor f)
                 end
-            when opExceptionPayload with x then x.exc := atom(x.exc f)
-            when opCaughtException with x then x.exc := atom(x.exc f)
+            when opExceptionPayload with x then x.exc := g(x.exc)
+            when opCaughtException with x then x.exc := g(x.exc)
             when opAddrVar with x then x.v := f(x.v)
-            when opAddrCell with x then x.init := atom(x.init f)
+            when opAddrCell with x then x.init := g(x.init)
             when opAddrField with x then
                 begin
-                    x.base := atom(x.base f)
+                    x.base := g(x.base)
                     x.viewMap := optVar(x.viewMap f)
                 end
             when opAddrComponent with x then
                 begin
-                    x.base := atom(x.base f)
+                    x.base := g(x.base)
                     x.viewMap := optVar(x.viewMap f)
                 end
             when opAddrElement with x then
                 begin
-                    x.base := atom(x.base f)
-                    x.index := atom(x.index f)
+                    x.base := g(x.base)
+                    x.index := g(x.index)
                 end
-            when opLoad with x then x.address := atom(x.address f)
+            when opLoad with x then x.address := g(x.address)
             else ok
         end
 
-    let replaceVarsInStmt(s: Stmt f: Rename): Ok =
+    let mapInStmt(s: Stmt f: Rename g: AtomMap): Ok =
         case s
             when sLet with x then
                 begin
                     x.v := f(x.v)
-                    replaceVarsInOp(x.value f)
+                    mapInOp(x.value f g)
                 end
             when sVarDecl with x then
                 begin
                     x.v := f(x.v)
-                    x.init := optAtom(x.init f)
+                    x.init := mapOptAtom(x.init g)
                 end
             when sAssign with x then
                 begin
                     x.v := f(x.v)
-                    x.value := atom(x.value f)
+                    x.value := g(x.value)
                 end
             when sStoreAt with x then
                 begin
-                    x.value := atom(x.value f)
-                    x.address := atom(x.address f)
+                    x.value := g(x.value)
+                    x.address := g(x.address)
                 end
             when sStoreField with x then
                 begin
-                    x.value := atom(x.value f)
-                    x.base := atom(x.base f)
+                    x.value := g(x.value)
+                    x.base := g(x.base)
                     x.viewMap := optVar(x.viewMap f)
                 end
             when sStoreComponent with x then
                 begin
-                    x.value := atom(x.value f)
-                    x.base := atom(x.base f)
+                    x.value := g(x.value)
+                    x.base := g(x.base)
                     x.viewMap := optVar(x.viewMap f)
                 end
             when sStoreElement with x then
                 begin
-                    x.value := atom(x.value f)
-                    x.base := atom(x.base f)
-                    x.index := atom(x.index f)
+                    x.value := g(x.value)
+                    x.base := g(x.base)
+                    x.index := g(x.index)
                 end
-            when sDo with x then replaceVarsInOp(x.value f)
+            when sDo with x then mapInOp(x.value f g)
             when sLetRec with x then x.vars := vars(x.vars f)
-            when sIf with x then x.cond := atom(x.cond f)
+            when sIf with x then x.cond := g(x.cond)
             when sSwitch with x then
                 begin
-                    x.value := atom(x.value f)
+                    x.value := g(x.value)
                     x.viewMap := optVar(x.viewMap f)
                 end
-            when sInspect with x then x.value := atom(x.value f)
+            when sInspect with x then x.value := g(x.value)
             when sTry with x then
                 begin
                     x.exc := f(x.exc)
-                    x.catches := atoms(x.catches f)
+                    x.catches := mapAtoms(x.catches g)
                 end
             when sJoin with x then x.params := vars(x.params f)
             when sEcho with x then
                 begin
-                    x.value := atom(x.value f)
+                    x.value := g(x.value)
                     x.descriptor := optDescriptor(x.descriptor f)
                 end
-            when sReturn with x then x.value := atom(x.value f)
-            when sJump with x then x.args := atoms(x.args f)
+            when sReturn with x then x.value := g(x.value)
+            when sJump with x then x.args := mapAtoms(x.args g)
             when sRaise with x then
                 begin
-                    x.exc := atom(x.exc f)
-                    x.payload := optAtom(x.payload f)
+                    x.exc := g(x.exc)
+                    x.payload := mapOptAtom(x.payload g)
                 end
             when sReraise with x then x.exc := f(x.exc)
             else ok
         end
+
+    let replaceVarsInOp(o: Op f: Rename): Ok = mapInOp(o f fun(a: Atom): Atom atom(a f))
+    let replaceVarsInStmt(s: Stmt f: Rename): Ok = mapInStmt(s f fun(a: Atom): Atom atom(a f))
+    let replaceAtomsInOp(o: Op g: AtomMap): Ok = mapInOp(o fun(v: Variable): Variable v g)
+    let replaceAtomsInStmt(s: Stmt g: AtomMap): Ok = mapInStmt(s fun(v: Variable): Variable v g)
 
     let opViewMap(o: Op): maybe.T(Variable) =
         case o

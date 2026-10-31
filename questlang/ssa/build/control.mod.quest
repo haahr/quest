@@ -337,13 +337,16 @@ export
                 when sJoin with x then
                     let k = newBlock(fn)
                     let received = array of(extent x.params vals.noValues)
+                    let counts = array of(extent x.params 0)
                     for i = 0 upto {extent x.params - 1} do
                         let ps = vals.varParts(x.params[i])
+                        counts[i] := extent ps
                         let vs = array of(extent ps 0)
                         for j = 0 upto {extent ps - 1} do vs[j] := ssa.addParam(fn.f k ps[j].type) end
                         received[i] := vs
                     end
                     vals.put(:String :Int fn.joins x.label k)
+                    vals.put(:String :Array(Int) fn.joinParts x.label counts)
                     vals.put(:String :Int fn.labelDepth x.label vector.length(:Int fn.handlers))
                     let after = newBlock(fn)
                     body(fn x.body)
@@ -356,7 +359,18 @@ export
                     if not(vals.terminated(fn)) then vals.jump(fn after vals.noValues) end
                     fn.cur := after
                 when sJump with x then
-                    let args = vals.atoms(fn x.args)
+                    (* A parameter of no parts (an Ok) takes nothing, whatever
+                     * its argument: a call at Ok of a function whose result is
+                     * generic returns a word *)
+                    let counts = hashMap.find(:String :Array(Int) fn.joinParts x.label)
+                    let passed = vector.new(:Int)
+                    for i = 0 upto {extent x.args - 1} do
+                        if {i >= extent counts} orif {counts[i] > 0} then
+                            let vs = vals.atom(fn x.args[i])
+                            for k = 0 upto {extent vs - 1} do vector.append(:Int passed vs[k]) end
+                        end
+                    end
+                    let args = vector.toArray(:Int passed)
                     leaveTo(fn labelDepth(fn x.label))
                     vals.jump(fn hashMap.find(:String :Int fn.joins x.label) args)
                 when sReturn with x then

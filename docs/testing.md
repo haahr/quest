@@ -130,6 +130,9 @@ The test runner executes each test source file across active compiler phases via
 - `typecheck`: Runs `quest_driver.py --stop-after typecheck <source_file>`.
 - `ir_core`: Runs `quest_driver.py --stop-after ir_core <source_file>`, which lowers the typed program to Core IR
   ([ir.md](ir.md)) and prints it (compared against `tests/golden/ir_core/`). Generated tests skip it.
+- `ir_simplified` (the self-hosted driver only): the Core IR simplified ([inlining.md](inlining.md) §4), compared
+  against `tests/golden/ir_simplified/` for a subset of the programs, as the later stages are; `run_ir_simplified`
+  runs it, as the `run_ir_<stage>` phases below run theirs.
 - `ir_specialized` (and each later IR stage, `ir_<stage>`): the IR after that stage's pass, compared against
   `tests/golden/ir_<stage>/` for a subset of the programs only, those with a golden there, chosen to exercise the
   pass (every program runs through every stage, verified, in the `run_ir_<stage>` phases). To add a program to a

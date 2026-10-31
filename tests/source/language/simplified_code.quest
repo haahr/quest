@@ -1,0 +1,85 @@
+(* Code the self-hosted compiler's simplifier makes simpler (docs/inlining.md
+ * section 4), whose results are those of the program as written: copies,
+ * constants folded and their ifs, cases and tag tests of options and variants
+ * made in scope, and projections of tuples made in scope; and what it leaves,
+ * since it would change what the program does: division that raises,
+ * projections of a tuple's var components, and an option's payload, a new
+ * tuple. Its ir_simplified golden shows what the simplifier did. *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+let copies(n: Int): Int =
+    begin
+        let a = n
+        let b = a
+        b + 1
+    end;
+print("copies: " <> conv.int(copies(41)));
+
+let folded(): String = if {{2 + 3} * 4} > 19 then "taken" else "not taken" end;
+print("folded: " <> folded());
+
+let unused(n: Int): Int =
+    begin
+        let pair = tuple let x = n let y = n end
+        let flag = n < 3
+        n
+    end;
+print("unused: " <> conv.int(unused(7)));
+
+Let O = Option none some with k: Int var x: Int end end;
+let knownOption(): Int =
+    begin
+        let o = option some of O with let k = 1 let var x = 2 end
+        case o when some with p then begin p.x := p.x + p.k p.x end else 0 end
+    end;
+print("known option: " <> conv.int(knownOption()));
+
+let knownTag(): Bool = begin let o = option none of O end o?none end;
+print("known tag: " <> conv.bool(knownTag()));
+
+Let Num = Variant int: Int real: Real end;
+let knownVariant(): Int =
+    begin
+        let v = variant int of Num with 123 end
+        let w = case v when int with i then i + 1 when real then 0 end
+        w + v!int
+    end;
+print("known variant: " <> conv.int(knownVariant()));
+
+let projections(n: Int): Int =
+    begin
+        let t = tuple let a = n let b = n + 1 end
+        let u = tuple let var c = n end
+        u.c := 10
+        t.a + t.b + u.c
+    end;
+print("projections: " <> conv.int(projections(1)));
+
+(* An option's payload is a new tuple: assigning it leaves the option as it was *)
+let payloadCopy(): Int =
+    begin
+        let o = option some of O with let k = 1 let var x = 2 end
+        let q = o!some
+        q.x := 5
+        case o when some with p then p.x else 0 end
+    end;
+print("payload copy: " <> conv.int(payloadCopy()));
+
+(* Arithmetic on constants is folded as it computes, wrapping, but not division
+ * by zero, which raises *)
+let wraps(): Int = begin let big = 9223372036854775807 big + 1 end;
+print("wraps: " <> conv.int(wraps()));
+let divides(): String = try conv.int(7 / 0) when int.error then "int.error" end;
+print("division: " <> divides());
+
+(* A tuple made of a mutable variable holds its value then *)
+let stale(): Int =
+    begin
+        let var v = 1
+        let t = tuple let a = v end
+        v := 2
+        t.a
+    end;
+print("stale: " <> conv.int(stale()));
