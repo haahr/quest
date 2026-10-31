@@ -5,6 +5,7 @@ import
     targets = questlang/codegen/target : questlang/codegen/Target
     conv : Conv
 export
+    (* The registers' numbers: x0-x30 0-30, xzr 31, d0-d31 32-63, sp 64 *)
     let x(n: Int): Int = n
     let d(n: Int): Int = 32 + n
     let xzr = 31
@@ -53,6 +54,11 @@ export
             r
         end
 
+    (* The caller-saved registers in order of preference: first those no call
+     * passes arguments in, then the argument registers from the highest,
+     * which calls fix least often. Not allocated: x9-x11, x16, x17, d30, and
+     * d31 (the backend's scratch registers), x18 (Darwin's own), and fp, lr,
+     * xzr, and sp *)
     let description: targets.Target = tuple
         let registers = registers
         let callerSaved = array of concat(range(x(12) x(15)) downFrom(x(8) x(0)))

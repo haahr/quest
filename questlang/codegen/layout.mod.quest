@@ -44,6 +44,9 @@ export
      * once per shape.
      * ====================================================================== *)
 
+    (* What has been computed of a shape's layout, each part when it is first
+     * asked for: its tag, representation, and slot representation (C
+     * spellings), and whether its values may be proxies *)
     Let Layout = Tuple
         shape: Shape
         var tag: maybe.T(String)
@@ -72,6 +75,8 @@ export
             end
         end
 
+    (* Follows bounds until a shape that is not a bounded type variable or
+     * abstract type; seen stops a cycle of bounds *)
     let resolvedShape(s0: Shape): Shape =
         begin
             let seen = hashMap.new(:Int :Bool intEqual hash.int)
@@ -100,6 +105,9 @@ export
 
     let isWordType(t: Type): Bool = shapes.kindIs(shapes.shape(t) shapes.shapeWord)
 
+    (* The slot representation of a value of a representation: a record or
+     * variant (16 bytes) as a pointer to a box, a Bool or Char widened to a
+     * word, and Ok, which has no value, as a QVal word *)
     let slotOf(representation: String): String =
         if eq(representation "QRecordVal") then "QRecordVal *"
         elsif eq(representation "QVariantVal") then "QVariantVal *"
@@ -255,6 +263,8 @@ export
                         end
                     else "QVal"
                 end
+            (* The writer and reader libraries' abstract types, which the
+             * runtime implements as structs of its own *)
             when shapeTypevar then
                 if isOneOf(s.name array of "Writer.T" "writer.T" end) then "QWriter"
                 elsif isOneOf(s.name array of "Reader.T" "reader.T" end) then "QReader"
@@ -494,6 +504,18 @@ export
 
     (* ======================================================================
      * Proxies
+     *
+     * Upcasting a tuple or an option to a supertype can change how one of its
+     * components is represented (a record seen with fewer fields has another
+     * offset table; an option or variant's cases are numbered anew). The value
+     * is not copied, since it must stay the same object and share its var
+     * components; instead the upcast value is a proxy, which converts each
+     * component as it is read (docs/c-representation.md section 5.8). Code
+     * that reads a component of a value that may be a proxy must check for
+     * one, so this section decides which types' values may be.
+     *
+     * The walks below keep a seen set of shapes visited, so that a recursive
+     * type ends; a shape met again adds nothing, and counts as false.
      * ====================================================================== *)
 
     Let Seen = hashMap.T(Int Bool)
@@ -520,6 +542,9 @@ export
                 false
         end
 
+    (* Whether a component of shape s makes its tuple or option a possible
+     * proxy: it may change view itself, or may hold a proxy that an upcast of
+     * the container would have to convert *)
     let rec componentChangesView(s: Shape seen: Seen): Bool = holdsProxies(s) orif viewSensitive(s seen)
 
     (* Whether values of subtypes of s may be represented differently at s:
@@ -549,6 +574,10 @@ export
                 shapeCell, shapeOut, shapeException, shapeExternal, shapePending then false
         end
 
+    (* Whether a value of shape s, a tuple or option, may be a proxy: a tuple
+     * with a component that changes view, an option with two or more cases
+     * (whose numbering an upcast may change), or an option whose one case's
+     * payload is a tuple with such a component *)
     and proxiedIn(s: Shape seen: Seen): Bool =
         if hashMap.contains(:Int :Bool seen s.id) then
             false
@@ -837,6 +866,11 @@ export
 
     let printedMemo = hashMap.new(:Int :Printed intEqual hash.int)
 
+    (* The length of a node's text, the sum of its pieces' lengths, and the
+     * digest of either its text or, if that is too long, its pieces with each
+     * part's digest in place of the part. In the latter a NUL comes before
+     * each part's digest and a byte 1 starts the whole, so that it is never
+     * also some type's text *)
     let rec printedUncached(node: Printable): Printed =
         begin
             let var length = 0
@@ -861,7 +895,9 @@ export
             tuple let length = length let digest = digest end
         end
 
-    (* The length of a node's text and a digest of that text *)
+    (* The length of a node's text and a digest of that text, kept by the
+     * node's id. A type or kind with a metavariable (an unknown the type
+     * checker may yet solve) is not kept, since its text may change *)
     and printed(node0: Printable): Printed =
         begin
             let node = case node0 when pType with x then option pType of Printable with let t = model.pruned(x.t) end else node0 end
@@ -895,10 +931,27 @@ export
 
     (* ======================================================================
      * Generic layouts
+     *
+     * Generic code (a polymorphic function's body, or code outside a module
+     * that uses its abstract types) holds a value of a type parameter T in a
+     * QVal word. So it lays out a type that mentions T with a word wherever T
+     * appears: an Array(T) has QVal slots. Native code with T = Int lays out
+     * Array(Int) with QInt slots, which agree, since a slot is a word either
+     * way; with T = a record type, the native slots hold boxes the generic
+     * code expects too. But a function value of type All(x: T) T, called with
+     * a QVal in generic code and with a QReal in native code at T = Real,
+     * disagrees, and must be converted where the value passes between them.
+     *
+     * Whether the layouts agree depends on where a T is held: in a slot of an
+     * aggregate (a word), in a register (a parameter or result, where C's
+     * types must match), or in a cell a var or out parameter points to.
      * ====================================================================== *)
 
     (* The C types of scalar values, which a slot holds in a word of its own *)
     let wordScalars = array of "QInt" "QReal" "QBool" "QChar" "QVal" "void" end
+    (* The C types of native values passed and returned as a QVal is, in a
+     * 64-bit integer register: not a Real, in a floating-point register, nor a
+     * Bool or Char, a byte *)
     let registerWords = array of "QInt" "QVal" end
     (* The C types of native values that a QVal cell holds in the same eight
      * bytes *)
@@ -953,6 +1006,12 @@ export
             else maybe.none(:Int)
         end
 
+    (* Whether a value of shape s, laid out natively with subst's arguments for
+     * its type parameters, is laid out as generic code lays out s, held in the
+     * place. A type that mentions no parameter agrees; a parameter agrees as
+     * storedValueAgrees says; an aggregate agrees when each component does, in
+     * a slot. A recursive shape met again agrees, as far as this walk can
+     * tell *)
     let rec agrees(s: Shape subst: model.Subst place: String seen: Seen): Bool =
         begin
             let symbol = typeParameter(s)
@@ -1014,6 +1073,11 @@ export
         begin
             let seen = newSeen()
             let disagrees = fun(component: Shape place: String): Bool not(agrees(component subst place newSeen()))
+            (* Whether a value of s holds mutable data, reachable without
+             * passing through a closure, whose layouts disagree: an array's
+             * or cell's elements, or a var field or case. Converting such a
+             * value would copy it, and writes to the copy would not reach the
+             * original *)
             let rec visit(s: Shape): Bool =
                 if not(mentions(s subst)) then
                     false
@@ -1118,6 +1182,10 @@ export
                     false
                 else
                     hashMap.insert(:Int :Bool seen s.id true)
+                    (* An abstract application with a known representation
+                     * differs when that representation's generic layout
+                     * disagrees with its native one; any other shape when one
+                     * of its parts does *)
                     let any = fun(shapes0: Array(maybe.T(Shape))): Bool
                         begin
                             let var found = false
@@ -1167,6 +1235,8 @@ export
                 key.char('|')
                 if not(eq(p.mode "value")) then
                     key.str(shapeLocationRepresentation(p.shape) <> " *")
+                (* An Ok parameter is passed as a QVal word, since C has no
+                 * void parameter *)
                 elsif shapes.kindIs(p.shape shapes.shapeOk) then
                     key.str("QVal")
                 else

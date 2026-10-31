@@ -1340,6 +1340,8 @@ export
      * made by ir/thunks) *)
     let typeApp(p: P o: nodes.OpTypeApp result: Variable): String =
         begin
+            (* The polymorphic value: a variable, a member of a module of this
+             * unit, or an imported module's member *)
             let var origType = model.okType
             let var clos = ""
             if maybe.isSome(:Variable o.callee) then
@@ -1356,6 +1358,9 @@ export
                     clos := moduleMember(p r o.member)
                 end
             end
+            (* Called with the type arguments' descriptors: an imported member
+             * directly by its symbol, any other through its closure, its
+             * environment first *)
             let descs = descriptors(p o.descriptors)
             if maybe.isNone(:Array(nodes.DescriptorParam) o.thunkParams) then
                 let isImport = maybe.isNone(:Variable o.callee)
@@ -1614,6 +1619,8 @@ export
             let var n = extent arm.descriptors
             if extent storedFields < n then n := extent storedFields end
             if extent armFields < n then n := extent armFields end
+            (* A component the arm has no descriptor pair for is laid out alike
+             * in both, and copied; any other converted through a QVal word *)
             for i = 0 upto {n - 1} do
                 let src = stored <> "->_" <> cInt(i)
                 let pair = arm.descriptors[i]

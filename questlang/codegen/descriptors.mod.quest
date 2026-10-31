@@ -44,6 +44,7 @@ export
     let holeUse = option hole of model.ReservedSymbolUse end
     let canonicalQuantifierUse = option canonicalQuantifier of model.ReservedSymbolUse end
 
+    (* The index a reserved symbol id encodes, if it is one for the use *)
     let reservedIndex(symbolId: Int use: model.ReservedSymbolUse): maybe.T(Int) =
         begin
             let decoded = model.reservedSymbolUse(symbolId)
@@ -107,6 +108,7 @@ export
             found
         end
 
+    (* The substitution raising each of the placeholders present by by *)
     let shiftSubst(present: vector.T(Type) by: Int): model.Subst =
         begin
             let subst = model.newSubst()
@@ -150,6 +152,15 @@ export
                         params[i] := tuple let name = "" let type = p.type let isVar = p.isVar let isOut = p.isOut end
                     end
                     model.funType(params x.result)
+                (* Each type parameter becomes a placeholder numbered by its
+                 * de Bruijn index: how many binders out from the use it is,
+                 * the nearest 0. In the body, under all n, the k'th of them
+                 * is n - 1 - k; in the k'th's own bound, under the k before
+                 * it, the j'th is k - 1 - j. A placeholder already in the type
+                 * (for a parameter of an enclosing function type) now sits
+                 * under more binders, so its index is shifted up by as many.
+                 * The quantifiers are renamed $k with reserved ids, so that
+                 * their names do not matter either *)
                 when typeAll with x then
                     let quants = x.quantifiers
                     let n = extent quants

@@ -132,6 +132,8 @@ export
             let code = vector.new(:minst.Inst)
             let d = if extent rs > 0 then rs[0] else ~1 end
             case op
+                (* Each nonzero halfword, the first by movz, which zeroes the
+                 * rest, and the others by movk *)
                 when opMovConst with x then
                     if x.imm is 0 then vector.append(:minst.Inst code minst.movImm(d 0))
                     else
@@ -165,6 +167,9 @@ export
                         vector.append(:minst.Inst code minst.movImm(target.x(17) x.offset))
                         vector.append(:minst.Inst code minst.arith(minst.arithAdd d d target.x(17)))
                     end
+                (* Darwin's thread-local access: the variable's descriptor's
+                 * address into x0, then a call of the accessor in its first
+                 * word, which returns the variable's address in x0 *)
                 when opTlvAddress with x then
                     vector.append(:minst.Inst code minst.adrp(d x.symbol minst.relocTlv))
                     vector.append(:minst.Inst code minst.load(minst.load64 d d minst.pageOff(x.symbol minst.relocTlv)))

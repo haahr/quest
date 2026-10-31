@@ -22,6 +22,7 @@ export
     end
     Def Live = Tuple liveIn: Array(bitset.T) liveOut: Array(bitset.T) end
 
+    (* Adds v to s, ignoring whether it was there already *)
     let add(s: bitset.T v: Int): Ok = if bitset.insert(s v) then ok else ok end
 
     let newFunction(physical: Int): Function =
@@ -75,9 +76,12 @@ export
             when kindBranch then "branch" when kindCall then "call" when kindReturn then "return"
         end
 
-    (* Each virtual register's uses counted, then each pure instruction whose
-     * results have none removed, its operands' counts lowered, until no
-     * more is *)
+    (* Counts each virtual register's uses, then removes each pure ordinary
+     * instruction or move all of whose results are virtual and unused, and
+     * takes its operands' uses off their counts. Removing one can leave
+     * another's results unused, so the passes repeat until one removes
+     * nothing. A result in a physical register is never counted (shared code
+     * does not track who reads it), so it keeps its instruction *)
     let removeDead(f: Function pure: All(i: Inst) Bool): Ok =
         begin
             let nBlocks = vector.length(:Block f.blocks)
@@ -144,8 +148,12 @@ export
             cfg.reversePostorder(succs)
         end
 
-    (* Each block's definitions and the uses before them, then what flows
-     * backward to a fixed point, the blocks taken in postorder *)
+    (* Standard backward liveness. First each block's defs (its parameters
+     * and results) and uses (the registers it reads before defining them).
+     * Then, until nothing changes, a block's live out is the union of its
+     * successors' live in, and its live in is its uses and whatever is live
+     * out that it does not define. Taking the blocks in postorder (each after
+     * its successors, except around a loop) makes this take few passes *)
     let live(f: Function): Live =
         begin
             let n = virtuals(f)

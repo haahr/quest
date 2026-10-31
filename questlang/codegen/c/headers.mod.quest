@@ -57,6 +57,12 @@ export
 
     let cType(t: Type): String = types.qtypeToCType(t)
 
+    (* The header, in order: the ABI stamp and include guard; an include of
+     * each imported interface's header; the structs of the aggregate types
+     * the interface's types and values mention; a typedef of each type's C
+     * representation (quest_type_<interface>_<name>); and a typedef of each
+     * value's (quest_sig_<interface>_<name>), a function pointer for a
+     * function, its type parameters' descriptors first *)
     let compileInterfaceToHeader(decl: ast.InterfaceDecl scope: symbols.Scope canonicalName: String): String =
         begin
             let cName = strutil.replace(canonicalName "/" "__")
@@ -221,6 +227,8 @@ export
                                         for j = 0 upto {extent f.params - 1} do
                                             let p = f.params[j]
                                             let pName0 = if stringOp.length(p.name) > 0 then p.name else "arg" end
+                                            (* A parameter named as a C keyword
+                                             * is renamed *)
                                             let pName = if isCKeyword(pName0) then "q_" <> pName0 else pName0 end
                                             if p.isVar orif p.isOut then
                                                 add(params layout.locationRepresentation(p.type) <> " *" <> pName)

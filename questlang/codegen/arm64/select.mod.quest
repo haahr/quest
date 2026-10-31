@@ -54,6 +54,10 @@ export
      * int in 4 aligned bytes, the others in 8 *)
     let placeArguments(types: Array(ssa.Type) passed: Array(ssa.Passed) first: Int): Placed =
         begin
+            (* AAPCS64's counters: the next general register (x), the next
+             * floating-point register (d), and the next stack offset. A pair
+             * that does not fit in the x registers left goes wholly on the
+             * stack, and then no later integer takes a register *)
             let places = array of(extent types tuple let reg = memory let offset = 0 let bytes = 8 end)
             let var ngrn = 0
             let var nsrn = 0
@@ -366,8 +370,10 @@ export
         elsif extent results is 2 then array of x0 x1 end
         else none end
 
-    (* A call's arguments to their places: the stack's first, then the
-     * registers'; the registers they are in *)
+    (* A call's arguments to their places, returning the registers they are
+     * in. The stack's go first, so that each argument register is written
+     * just before the call: the allocator can give nothing else a fixed
+     * register from its write to the call, so this keeps that span short *)
     let arguments(s: S i: ssa.Inst placed: Placed first: Int): Array(Int) =
         begin
             for k = first upto {extent i.args - 1} do
@@ -434,6 +440,7 @@ export
                 when opShl then shift(s minst.arithLsl d i.args[0] i.args[1])
                 when opLshr then shift(s minst.arithLsr d i.args[0] i.args[1])
                 when opAshr then shift(s minst.arithAsr d i.args[0] i.args[1])
+                (* x - (x / y) * y, which msub computes from the quotient *)
                 when opRem then
                     let q = temp(s ssa.typeInt)
                     emit(s minst.arith(minst.arithSdiv q a(0) a(1)))
@@ -506,6 +513,9 @@ export
         case t
             when termNone then raise unsupported with "arm64: a block without a terminator" end
             when termJump with x then jump(s x.target)
+            (* The true target is reached through a block of its own (edge),
+             * since a machine branch's target may have no other predecessor
+             * (codegen/machine); the false one by a jump *)
             when termBranch with x then
                 let e = edge(s x.ifTrue)
                 if s.fused[x.cond] then
@@ -524,6 +534,7 @@ export
                     emitFull(s machine.kindBranch minst.cbnz(r(s x.cond) labelOf(s e)) none none e)
                 end
                 jump(s x.ifFalse)
+            (* A comparison and a branch for each case, in order *)
             when termSwitch with x then
                 let v = r(s x.value)
                 for k = 0 upto {extent x.cases - 1} do
@@ -591,6 +602,8 @@ export
                 if p.reg isnot memory then
                     if isInt32 then emit(s minst.sxtw(t p.reg)) else emitMove(s t p.reg) end
                 else
+                    (* The caller's outgoing area, just above the saved fp and
+                     * lr (16 bytes) that fp points to *)
                     let width = if p.bytes is 1 then minst.loadU8 elsif p.bytes is 4 then minst.loadS32
                         else minst.load64 end
                     emit(s minst.load(width t fp minst.offset(16 + p.offset)))
@@ -660,6 +673,9 @@ export
                 slotAt[k] := at
                 at := at + alignUp(if slot.bytes > 0 then slot.bytes else 8 end 8)
             end
+            (* SSA value v is virtual register v (its index); the entry is a
+             * machine block of its own, before every SSA block's; an SSA
+             * block not reached has no machine block *)
             let m = machine.newFunction(extent target.description.registers)
             let s = tuple
                 let f = f let m = m let ops = vector.new(:minst.Op) let types = vector.new(:ssa.Type)
@@ -715,6 +731,9 @@ export
 
     let rematerializable(s: Selection i: machine.Inst): Bool =
         begin
+            (* An add of an immediate is rematerializable only as an address
+             * in the frame, reading sp, which does not move after the
+             * prologue *)
             let var readsSp = true
             for k = 0 upto {extent i.operands - 1} do
                 if not(i.operands[k].defines) andif {i.operands[k].reg isnot sp} then readsSp := false end

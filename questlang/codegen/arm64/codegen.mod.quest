@@ -1,4 +1,5 @@
-(* Quest Self-Hosted Compiler: The arm64 Backend's Code Generator Implementation *)
+(* Quest Self-Hosted Compiler: The arm64 Backend's Code Generator
+ * Implementation *)
 
 module codegen : Codegen
 import
@@ -73,7 +74,8 @@ export
         target.d(11) target.d(13) target.d(15) end
 
     (* The frame's memory at sp plus off, by a load or store through x16 when
-     * off is too far for an immediate *)
+     * off is too far for an immediate (an 8-byte access's reaches 8 * 4095,
+     * scaled) *)
     let frameAccess(s: select.Selection off: Int access: All(base: Int m: minst.Mode) minst.Inst):
             Array(machine.Inst) =
         if off <= 32760 then array of select.make(s machine.kindOrdinary access(sp minst.offset(off))) end
@@ -85,6 +87,10 @@ export
             end
         end
 
+    (* A function that enters a try saves every callee-saved pair. A raise
+     * resumes in it with the registers as the function that raised left
+     * them, not as the functions in between restored them, so it must restore
+     * all of its caller's from its own frame *)
     let compile(f: Function index: Int defined: hashMap.T(String Bool)): Compiled =
         begin
             let s = select.select(f "Lf" <> conv.int(index) defined)
@@ -278,6 +284,9 @@ export
      * unconditional one, which reaches 128 MB; repeated until none is *)
     let relaxBranches(code: Code prefix: String reach: Int): Code =
         begin
+            (* Each pass finds each label's position, in instructions, then
+             * relaxes each far branch. Relaxing adds instructions, which may
+             * put another branch out of reach, so the passes repeat *)
             let var current = code
             let var changed = true
             let var count = 0
@@ -302,7 +311,8 @@ export
                     let i = vector.get(:minst.Inst current k)
                     let c = conditional(i.op)
                     let var far = false
-                    (* A branch around a relaxed one jumps two instructions *)
+                    (* The inverse branch relaxing makes, to an _r label,
+                     * only jumps over the b after it, so is never far *)
                     if maybe.isSome(:Conditional c) then
                         let target = maybe.unwrap(:Conditional c).target
                         let t = hashMap.get(:String :Int at target)

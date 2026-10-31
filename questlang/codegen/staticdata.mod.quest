@@ -60,6 +60,11 @@ export
 
     (* =========================================================================
      * Python's repr, for the texts some names digest
+     *
+     * Some names end with a digest of a key, such as a record's fields. The
+     * bootstrap compiler digests Python's repr of the key, a tuple of strings,
+     * so this compiler writes the key's text as repr would, and gives every
+     * type the bootstrap's name for it.
      * ====================================================================== *)
 
     (* A string as Python's repr writes it: in single quotes, or in double
@@ -227,6 +232,14 @@ export
     let boundIsPower(b: maybe.T(model.Kind)): Bool =
         maybe.isSome(:model.Kind b) andif model.isPower(maybe.unwrap(:model.Kind b))
 
+    (* Decided in order: a descriptor template's hole; a scalar, a Word, the
+     * empty tuple, or a bound variable (an element of quest_type_bound_vars),
+     * whose descriptors the runtime defines (base); a module's bounded
+     * abstract type (stored); a tuple, or a record, variant, or option,
+     * including a type variable bounded by one, named by tag and digest; then
+     * the rest by the form of the type: arrays, exceptions, functions, and
+     * auto types described by structure, and everything else compared by name
+     * (opaque) *)
     let rec descriptorForm(t0: Type ctx: maybe.T(RecordNaming)): DescriptorForm =
         begin
             let s = shapes.shape(t0)
@@ -535,6 +548,9 @@ export
                 end
             let typeOf(f: DescriptorForm): Type = maybe.unwrap(:Type f.type)
 
+            (* Collects t's descriptor and its parts', each once. A base
+             * descriptor is the runtime's, not the unit's, and a type with
+             * none is left out *)
             let rec visit(t: Type): Ok =
                 begin
                     let form = try maybe.some(:DescriptorForm descriptorForm(t ctx))
@@ -701,6 +717,8 @@ export
                     let form = f let tag = f.tag let kindConstant = kindConstant let name = name let size = sz
                     let payload = payload
                 end
+            (* A descriptor's size is a value's as a variable holds it, a word
+             * for most kinds; its payload is its parts' descriptors *)
             let kind = f.kind
             if eq(kind "opaque") then
                 let var payload = option payloadNone of Payload end
@@ -887,6 +905,7 @@ export
             let targetCases = variantsOf(target)
             let sourceCases = variantsOf(source)
             let entries = array of(extent sourceCases 0)
+            (* ~1 for a case target lacks, which no subtype has *)
             for j = 0 upto {extent sourceCases - 1} do
                 let var index = ~1
                 for k = 0 upto {extent targetCases - 1} do

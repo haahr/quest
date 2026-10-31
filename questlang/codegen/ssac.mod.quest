@@ -73,8 +73,11 @@ export
     Let Printer = Tuple
         f: Function
         buf: Builder
-        (* Whether the function enters a try: its values are volatile, and
-         * so is its memory *)
+        (* Whether the function enters a try. A raise returns to the try's
+         * _setjmp a second time, and C leaves a local that is not volatile,
+         * and changed since the first return, indeterminate then; so in such
+         * a function every local is volatile, and so is every access to
+         * memory *)
         hasTry: Bool
     end
 
@@ -280,6 +283,10 @@ export
             when termTailCall with x then
                 let e = callExpr(p x.call)
                 line(p if extent x.call.results is 0 then e <> "; return;" else "return " <> e <> ";" end)
+            (* The try's handler record is in its stack slot. _setjmp saves
+             * the registers in it and returns 0, and the body runs; a raise
+             * jumps back to it with longjmp, it returns again, nonzero, and
+             * control goes to the handler *)
             when termTry with x then
                 line(p "if (_setjmp((int *)(void *)(s" <> conv.int(x.slot) <> " + "
                     <> conv.int(runtimeLayout.offset("QExceptionHandler" "env_jmp")) <> ")) == 0) " <> jumpText(p x.body))
@@ -360,6 +367,9 @@ export
     let prototype(f: Function named: Bool): String =
         linkage(f) <> resultType(f) <> " " <> f.symbol <> "(" <> paramsText(f named) <> ")"
 
+    (* A function's C: its parameters unpacked, every other value declared as
+     * a local and every stack slot as a byte array, then each block, a label
+     * and its instructions *)
     let function(buf: Builder f: Function): Ok =
         begin
             let var hasTry = false
@@ -444,6 +454,10 @@ export
                 dataDeclaration(d) <> " = { " <> syntax.comma(ws) <> " };"
         end
 
+    (* The unit's symbols referred to but not defined are found first. Then
+     * the C is, in order: the types and helpers it uses; those symbols,
+     * declared; the unit's data and functions declared, so that each may
+     * refer to any; the data defined; the functions defined *)
     let printUnit(u: ssa.Unit): String =
         begin
             let buf = stringBuilder.new()
@@ -511,6 +525,8 @@ export
             buf.str("static inline double ssac_real(uint64_t b) { double d; __builtin_memcpy(&d, &b, 8); return d; }\n")
             buf.str("static inline uint64_t ssac_bits(double d) { uint64_t b; __builtin_memcpy(&b, &d, 8); return b; }\n")
             buf.str("extern int _setjmp(int *) __attribute__((returns_twice));\n\n")
+            (* Only an extern's address is used, so its declared size is
+             * arbitrary *)
             for k = 0 upto {vector.length(:String externs) - 1} do
                 let symbol = vector.get(:String externs k)
                 buf.str(if hashMap.contains(:String :Bool threadLocals symbol) then "extern __thread uint64_t " <> symbol <> "[8];\n"
