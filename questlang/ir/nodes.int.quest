@@ -33,17 +33,20 @@ export
 
     (* How an operation reads (or writes) a component of a tuple or option, as
      * the represent pass decides *)
-    direct: String
-    original: String
-    proxy: String
+    Def Access = Option direct original proxy end
+    direct: Access
+    original: Access
+    proxy: Access
+    accessName(a: Access): String
 
     (* What a try's handler catches: listed exceptions, all, all with their
      * frames captured (its else branch names the exception, docs/raised.md
      * section 5), or unknown until it runs *)
-    catchListed: String
-    catchAll: String
-    catchAllTraced: String
-    catchUnknown: String
+    Def Catching = Option catchListed catchAll catchAllTraced catchUnknown end
+    catchListed: Catching
+    catchAll: Catching
+    catchAllTraced: Catching
+    catchUnknown: Catching
 
     (* The IR's stages, in order: each pass produces the next *)
     stages: Array(String)
@@ -110,7 +113,7 @@ export
         target: Type
         var fields: Array(maybe.T(Plan))
         var layout: maybe.T(PlanLayout)
-        var access: Array(String)
+        var access: Array(Access)
         var thunkSymbols: Array(Array(Int))
         var descriptors: Array(Descriptor)
         var thunkParams: Array(DescriptorParam)
@@ -131,7 +134,7 @@ export
             op: String
             var args: Array(Atom)
             offset: maybe.T(Int)
-            var access: String
+            var access: Access
             var descriptor: maybe.T(Descriptor)
         end
         opCall with
@@ -172,7 +175,7 @@ export
         opEnvField with var env: Atom index: Int end
         opConvert with var value: Atom var plan: Plan end
         opMakeTuple with var args: Array(Atom) typeComponents: Array(TypeComponent) var embedded: Array(Int) end
-        opTupleField with var tup: Atom var index: Int var access: String var viewMap: maybe.T(Variable) end
+        opTupleField with var tup: Atom var index: Int var access: Access var viewMap: maybe.T(Variable) end
         opMakeRecord with
             var fields: Array(FieldAtom)
             var embedded: Array(Int)
@@ -195,19 +198,19 @@ export
             var ordinalAtom: maybe.T(Atom)
             offset: maybe.T(Int)
             cases: Array(String)
-            var access: Array(String)
+            var access: Array(Access)
         end
-        opIsTag with var value: Atom tag: String var access: String var viewMap: maybe.T(Variable) end
+        opIsTag with var value: Atom tag: String var access: Access var viewMap: maybe.T(Variable) end
         opPayload with
             var value: Atom
             tag: String
             offset: maybe.T(Int)
-            var access: String
-            var components: Array(String)
+            var access: Access
+            var components: Array(Access)
             ordinalIndex: maybe.T(Int)
             var viewMap: maybe.T(Variable)
         end
-        opOrdinal with var value: Atom cases: Array(String) var access: String var viewMap: maybe.T(Variable) end
+        opOrdinal with var value: Atom cases: Array(String) var access: Access var viewMap: maybe.T(Variable) end
         opMakeArray with var args: Array(Atom) end
         opArrayRep with var count: Atom var init: Atom offset: maybe.T(Int) end
         opIndex with var arr: Atom var index: Atom offset: maybe.T(Int) end
@@ -219,7 +222,7 @@ export
         opAddrVar with var v: Variable end
         opAddrCell with var init: Atom end
         opAddrField with var base: Atom name: String var viewMap: maybe.T(Variable) end
-        opAddrComponent with var base: Atom index: Int var access: String var viewMap: maybe.T(Variable) end
+        opAddrComponent with var base: Atom index: Int var access: Access var viewMap: maybe.T(Variable) end
         opAddrElement with var base: Atom var index: Atom offset: maybe.T(Int) end
         opLoad with var address: Atom end
     end
@@ -239,7 +242,7 @@ export
         var descriptorParams: Array(DescriptorParam)
         var viewMaps: Array(ViewMapParam)
     end
-    and Case = Tuple tags: Array(String) var body: Body var binder: maybe.T(Variable) var components: Array(String) end
+    and Case = Tuple tags: Array(String) var body: Body var binder: maybe.T(Variable) var components: Array(Access) end
     and DescriptorPair = Tuple source: Descriptor target: Descriptor end
     (* How an inspect case of an auto value obtains its components from the
      * payload *)
@@ -270,7 +273,7 @@ export
             var value: Atom
             var base: Atom
             index: Int
-            var access: String
+            var access: Access
             var viewMap: maybe.T(Variable)
         end
         sStoreElement with var value: Atom var base: Atom var index: Atom offset: maybe.T(Int) end
@@ -282,7 +285,7 @@ export
             var value: Atom
             var cases: Array(Case)
             var elseBody: maybe.T(Body)
-            var access: String
+            var access: Access
             var viewMap: maybe.T(Variable)
         end
         sInspect with
@@ -294,7 +297,7 @@ export
             var witness: maybe.T(DescriptorParam)
         end
         sLoop with label: String var body: Body end
-        sTry with var body: Body var exc: Variable var handler: Body catching: String var catches: Array(Atom) end
+        sTry with var body: Body var exc: Variable var handler: Body catching: Catching var catches: Array(Atom) end
         sJoin with label: String var params: Array(Variable) var continuation: Body var body: Body end
         sEcho with var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
         sEchoText with text: String end
@@ -313,7 +316,7 @@ export
         op: String
         var args: Array(Atom)
         offset: maybe.T(Int)
-        var access: String
+        var access: Access
         var descriptor: maybe.T(Descriptor)
     end
     and OpCall = Tuple
@@ -354,7 +357,7 @@ export
     and OpEnvField = Tuple var env: Atom index: Int end
     and OpConvert = Tuple var value: Atom var plan: Plan end
     and OpMakeTuple = Tuple var args: Array(Atom) typeComponents: Array(TypeComponent) var embedded: Array(Int) end
-    and OpTupleField = Tuple var tup: Atom var index: Int var access: String var viewMap: maybe.T(Variable) end
+    and OpTupleField = Tuple var tup: Atom var index: Int var access: Access var viewMap: maybe.T(Variable) end
     and OpMakeRecord = Tuple
         var fields: Array(FieldAtom)
         var embedded: Array(Int)
@@ -377,19 +380,19 @@ export
         var ordinalAtom: maybe.T(Atom)
         offset: maybe.T(Int)
         cases: Array(String)
-        var access: Array(String)
+        var access: Array(Access)
     end
-    and OpIsTag = Tuple var value: Atom tag: String var access: String var viewMap: maybe.T(Variable) end
+    and OpIsTag = Tuple var value: Atom tag: String var access: Access var viewMap: maybe.T(Variable) end
     and OpPayload = Tuple
         var value: Atom
         tag: String
         offset: maybe.T(Int)
-        var access: String
-        var components: Array(String)
+        var access: Access
+        var components: Array(Access)
         ordinalIndex: maybe.T(Int)
         var viewMap: maybe.T(Variable)
     end
-    and OpOrdinal = Tuple var value: Atom cases: Array(String) var access: String var viewMap: maybe.T(Variable) end
+    and OpOrdinal = Tuple var value: Atom cases: Array(String) var access: Access var viewMap: maybe.T(Variable) end
     and OpMakeArray = Tuple var args: Array(Atom) end
     and OpArrayRep = Tuple var count: Atom var init: Atom offset: maybe.T(Int) end
     and OpIndex = Tuple var arr: Atom var index: Atom offset: maybe.T(Int) end
@@ -400,7 +403,7 @@ export
     and OpAddrVar = Tuple var v: Variable end
     and OpAddrCell = Tuple var init: Atom end
     and OpAddrField = Tuple var base: Atom name: String var viewMap: maybe.T(Variable) end
-    and OpAddrComponent = Tuple var base: Atom index: Int var access: String var viewMap: maybe.T(Variable) end
+    and OpAddrComponent = Tuple var base: Atom index: Int var access: Access var viewMap: maybe.T(Variable) end
     and OpAddrElement = Tuple var base: Atom var index: Atom offset: maybe.T(Int) end
     and OpLoad = Tuple var address: Atom end
     and StmtLet = Tuple var v: Variable var value: Op end
@@ -412,7 +415,7 @@ export
         var value: Atom
         var base: Atom
         index: Int
-        var access: String
+        var access: Access
         var viewMap: maybe.T(Variable)
     end
     and StmtStoreElement = Tuple var value: Atom var base: Atom var index: Atom offset: maybe.T(Int) end
@@ -424,7 +427,7 @@ export
         var value: Atom
         var cases: Array(Case)
         var elseBody: maybe.T(Body)
-        var access: String
+        var access: Access
         var viewMap: maybe.T(Variable)
     end
     and StmtInspect = Tuple
@@ -436,7 +439,7 @@ export
         var witness: maybe.T(DescriptorParam)
     end
     and StmtLoop = Tuple label: String var body: Body end
-    and StmtTry = Tuple var body: Body var exc: Variable var handler: Body catching: String var catches: Array(Atom) end
+    and StmtTry = Tuple var body: Body var exc: Variable var handler: Body catching: Catching var catches: Array(Atom) end
     and StmtJoin = Tuple label: String var params: Array(Variable) var continuation: Body var body: Body end
     and StmtEcho = Tuple var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
     and StmtEchoText = Tuple text: String end

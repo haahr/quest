@@ -160,15 +160,20 @@ export
 
     (* How a component of a tuple or option is read, after the represent pass:
      * nothing for direct *)
-    let access(a: String): String = if eq(a nodes.direct) then "" else " via " <> a end
+    let access(a: nodes.Access): String =
+        case a when direct then "" when original, proxy then " via " <> nodes.accessName(a) end
 
     (* How the components of a tuple or option are read: nothing if all are
      * direct *)
-    let accesses(items: Array(String)): String =
+    let accesses(items: Array(nodes.Access)): String =
         begin
             let var allDirect = true
-            for i = 0 upto {extent items - 1} do if not(eq(items[i] nodes.direct)) then allDirect := false end end
-            if allDirect then "" else " via (" <> strutil.joinArray(", " items) <> ")" end
+            for i = 0 upto {extent items - 1} do
+                case items[i] when direct then ok when original, proxy then allDirect := false end
+            end
+            let names = array of(extent items "")
+            for i = 0 upto {extent items - 1} do names[i] := nodes.accessName(items[i]) end
+            if allDirect then "" else " via (" <> strutil.joinArray(", " names) <> ")" end
         end
 
     let isEmbedded(embedded: Array(Int) i: Int): Bool =
@@ -506,14 +511,11 @@ export
             when sLoop with x then block(p "loop " <> x.label x.body depth)
             when sTry with x then
                 begin
-                    if eq(x.catching nodes.catchUnknown) then
-                        emit(p depth "try {")
-                    elsif eq(x.catching nodes.catchAll) then
-                        emit(p depth "try catching all {")
-                    elsif eq(x.catching nodes.catchAllTraced) then
-                        emit(p depth "try catching all traced {")
-                    else
-                        emit(p depth "try catching (" <> atoms(p x.catches) <> ") {")
+                    case x.catching
+                        when catchUnknown then emit(p depth "try {")
+                        when catchAll then emit(p depth "try catching all {")
+                        when catchAllTraced then emit(p depth "try catching all traced {")
+                        when catchListed then emit(p depth "try catching (" <> atoms(p x.catches) <> ") {")
                     end
                     body(p x.body depth + 1)
                     emit(p depth "} handle (" <> decl(p x.exc) <> ") {")

@@ -419,30 +419,30 @@ export
 
     (* The slot form of component i of the tuple t of shape ts, read as access
      * says *)
-    let tupleComponent(p: P t: String ts: Shape i: Int access: String): String =
-        if eq(access nodes.direct) then
-            "(" <> t <> ")->_" <> cInt(i)
-        elsif eq(access nodes.original) then
+    let tupleComponent(p: P t: String ts: Shape i: Int access: nodes.Access): String =
+        case access
+            when direct then "(" <> t <> ")->_" <> cInt(i)
             (* Read from the original as it is (its slot at the same offset) *)
-            "((" <> cType(ts.type) <> ")quest_unproxy(" <> t <> "))->_" <> cInt(i)
-        else
-            let comp = componentShape(ts i)
-            let tmp = temp(p slotCType(comp))
-            let through = types.shapeQvalToSlot("quest_proxy_element(" <> t <> ", " <> cInt(i) <> ")" comp)
-            emit(p tmp <> " = quest_is_proxy(" <> t <> ") ? " <> through <> " : (" <> t <> ")->_" <> cInt(i) <> ";")
-            tmp
+            when original then "((" <> cType(ts.type) <> ")quest_unproxy(" <> t <> "))->_" <> cInt(i)
+            when proxy then
+                let comp = componentShape(ts i)
+                let tmp = temp(p slotCType(comp))
+                let through = types.shapeQvalToSlot("quest_proxy_element(" <> t <> ", " <> cInt(i) <> ")" comp)
+                emit(p tmp <> " = quest_is_proxy(" <> t <> ") ? " <> through <> " : (" <> t <> ")->_" <> cInt(i) <> ";")
+                tmp
         end
 
     (* The tag of the option v, in its type's numbering, read as access says *)
-    let optionTag(v: String access: String): String =
-        if eq(access nodes.direct) then "((" <> v <> ")->tag)"
-        else "(quest_is_proxy(" <> v <> ") ? quest_proxy_tag(" <> v <> ") : (" <> v <> ")->tag)"
+    let optionTag(v: String access: nodes.Access): String =
+        case access
+            when direct then "((" <> v <> ")->tag)"
+            when original, proxy then "(quest_is_proxy(" <> v <> ") ? quest_proxy_tag(" <> v <> ") : (" <> v <> ")->tag)"
         end
 
     (* The tag of the variant or option v, of shape ts, in its numbering: read
      * as access says, or for a bounded type parameter's value, through the
      * view map of its type argument at the bound ts *)
-    let tagOf(p: P v: String ts: Shape access: String viewMap: maybe.T(Variable)): String =
+    let tagOf(p: P v: String ts: Shape access: nodes.Access viewMap: maybe.T(Variable)): String =
         if maybe.isSome(:Variable viewMap) then
             let vm = name(p maybe.unwrap(:Variable viewMap))
             if eq(ts.kind "variant") then "(" <> vm <> "->index[" <> v <> ".tag])"
@@ -457,22 +457,22 @@ export
     (* The slot form of component i (none: the payload, when it is not a tuple)
      * of the payload of case tag of the option v of shape os, read as access
      * says *)
-    let optionComponent(p: P v: String os: Shape tag: String i: maybe.T(Int) access: String): String =
+    let optionComponent(p: P v: String os: Shape tag: String i: maybe.T(Int) access: nodes.Access): String =
         begin
             let part = if maybe.isNone(:Int i) then ".val" else "._" <> cInt(maybe.unwrap(:Int i)) end
             let raw = v <> "->u.qo_" <> tag <> part
-            if eq(access nodes.direct) then
-                raw
-            elsif eq(access nodes.original) then
-                "((" <> layout.shapeRepresentation(os) <> ")quest_unproxy(" <> v <> "))->u.qo_" <> tag <> part
-            else
-                let cs = maybe.unwrap(:Shape caseShape(os tag))
-                let comp = if maybe.isNone(:Int i) then cs else componentShape(cs maybe.unwrap(:Int i)) end
-                let tmp = temp(p slotCType(comp))
-                let through = types.shapeQvalToSlot("quest_proxy_option_element(" <> v <> ", "
-                    <> cInt(maybe.unwrapOr(:Int i 0)) <> ")" comp)
-                emit(p tmp <> " = quest_is_proxy(" <> v <> ") ? " <> through <> " : " <> raw <> ";")
-                tmp
+            case access
+                when direct then raw
+                when original then
+                    "((" <> layout.shapeRepresentation(os) <> ")quest_unproxy(" <> v <> "))->u.qo_" <> tag <> part
+                when proxy then
+                    let cs = maybe.unwrap(:Shape caseShape(os tag))
+                    let comp = if maybe.isNone(:Int i) then cs else componentShape(cs maybe.unwrap(:Int i)) end
+                    let tmp = temp(p slotCType(comp))
+                    let through = types.shapeQvalToSlot("quest_proxy_option_element(" <> v <> ", "
+                        <> cInt(maybe.unwrapOr(:Int i 0)) <> ")" comp)
+                    emit(p tmp <> " = quest_is_proxy(" <> v <> ") ? " <> through <> " : " <> raw <> ";")
+                    tmp
             end
         end
 
@@ -976,7 +976,7 @@ export
 
     (* A new tuple of an option's case components (after offset components of
      * tupleType: the case's ordinal), read as access says *)
-    let optionCaseTuple(p: P opt: String os: Shape tag: String tupleType: Type offset: Int access: Array(String)
+    let optionCaseTuple(p: P opt: String os: Shape tag: String tupleType: Type offset: Int access: Array(nodes.Access)
         ordinalValue: Int): String =
         begin
             let ts = shapeOf(tupleType)
@@ -1006,14 +1006,17 @@ export
      * (var components included): the option's own, which follows its tag (a
      * tuple's struct), or through a proxy, the original's, viewed at the
      * proxy's payload type (proxied where a component changes view) *)
-    let optionCasePayload(opt: String tupleType: Type tagAccess: String access: Array(String)): String =
+    let optionCasePayload(opt: String tupleType: Type tagAccess: nodes.Access access: Array(nodes.Access)): String =
         begin
             cType(tupleType)
             let struct = layout.shapeTag(shapeOf(tupleType))
             let own(o: String): String = "((" <> struct <> " *)((const char *)(" <> o <> ") + sizeof(int64_t)))"
             let var proxied = false
-            for i = 0 upto {extent access - 1} do if eq(access[i] nodes.proxy) then proxied := true end end
-            if eq(tagAccess nodes.direct) then own(opt)
+            for i = 0 upto {extent access - 1} do
+                case access[i] when proxy then proxied := true when direct, original then ok end
+            end
+            let tagDirect = case tagAccess when direct then true when original, proxy then false end
+            if tagDirect then own(opt)
             elsif not(proxied) then own("quest_unproxy(" <> opt <> ")")
             else "(quest_is_proxy(" <> opt <> ") ? (" <> struct <> " *)quest_proxy_option_payload(" <> opt <> ") : "
                 <> own(opt) <> ")"
@@ -1135,7 +1138,8 @@ export
                     else
                         let t2 = if maybe.isSome(:Type t) then
                             maybe.some(:Type atomType(o.args[1])) else maybe.none(:Type) end
-                        if eq(o.access nodes.original) then
+                        let viaOriginal = case o.access when original then true when direct, proxy then false end
+                        if viaOriginal then
                             (* A proxy is the object it views *)
                             left := "quest_unproxy(" <> left <> ")"
                             right := "quest_unproxy(" <> right <> ")"
@@ -1452,16 +1456,16 @@ export
                     let component = componentShape(ts x.index)
                     let b = atom(p x.base)
                     let address = slotAddress("(&(" <> b <> "->_" <> cInt(x.index) <> "))" component)
-                    if eq(x.access nodes.direct) then
-                        address
-                    elsif eq(x.access nodes.original) then
-                        let unproxied = "((" <> cType(ts.type) <> ")quest_unproxy(" <> b <> "))"
-                        slotAddress("(&(" <> unproxied <> "->_" <> cInt(x.index) <> "))" component)
-                    else
-                        let through = "((" <> layout.shapeLocationRepresentation(component) <> " *)quest_proxy_slot("
-                            <> b <> ", "
-                            <> cInt(x.index) <> "))"
-                        "(quest_is_proxy(" <> b <> ") ? " <> through <> " : " <> address <> ")"
+                    case x.access
+                        when direct then address
+                        when original then
+                            let unproxied = "((" <> cType(ts.type) <> ")quest_unproxy(" <> b <> "))"
+                            slotAddress("(&(" <> unproxied <> "->_" <> cInt(x.index) <> "))" component)
+                        when proxy then
+                            let through = "((" <> layout.shapeLocationRepresentation(component) <> " *)quest_proxy_slot("
+                                <> b <> ", "
+                                <> cInt(x.index) <> "))"
+                            "(quest_is_proxy(" <> b <> ") ? " <> through <> " : " <> address <> ")"
                     end
                 end
             when opAddrElement with x then arraySlot(p atom(p x.base) atom(p x.index) elementShape(x.base) x.offset)
@@ -1546,21 +1550,22 @@ export
 
     (* Records in a try's handler what it catches (docs/exceptions.md section
      * 5.1) *)
-    let emitCatches(p: P handler: String catching: String catches: Array(Atom)): Ok =
-        if eq(catching nodes.catchAll) then
-            emit(p handler <> ".catches = NULL;")
-            emit(p handler <> ".n_catches = Q_CATCH_ALL;")
-        elsif eq(catching nodes.catchAllTraced) then
-            emit(p handler <> ".catches = NULL;")
-            emit(p handler <> ".n_catches = Q_CATCH_ALL_TRACED;")
-        elsif eq(catching nodes.catchUnknown) then
-            emit(p handler <> ".catches = NULL;")
-            emit(p handler <> ".n_catches = Q_CATCH_UNKNOWN;")
-        else
-            let catchArray = freshName(p "_qc")
-            emit(p "const QException *" <> catchArray <> "[] = { " <> syntax.comma(atoms(p catches)) <> " };")
-            emit(p handler <> ".catches = " <> catchArray <> ";")
-            emit(p handler <> ".n_catches = " <> cInt(extent catches) <> ";")
+    let emitCatches(p: P handler: String catching: nodes.Catching catches: Array(Atom)): Ok =
+        case catching
+            when catchAll then
+                emit(p handler <> ".catches = NULL;")
+                emit(p handler <> ".n_catches = Q_CATCH_ALL;")
+            when catchAllTraced then
+                emit(p handler <> ".catches = NULL;")
+                emit(p handler <> ".n_catches = Q_CATCH_ALL_TRACED;")
+            when catchUnknown then
+                emit(p handler <> ".catches = NULL;")
+                emit(p handler <> ".n_catches = Q_CATCH_UNKNOWN;")
+            when catchListed then
+                let catchArray = freshName(p "_qc")
+                emit(p "const QException *" <> catchArray <> "[] = { " <> syntax.comma(atoms(p catches)) <> " };")
+                emit(p handler <> ".catches = " <> catchArray <> ";")
+                emit(p handler <> ".n_catches = " <> cInt(extent catches) <> ";")
         end
 
     (* Prints a top-level phrase's value as the interpreter does: by its type's
@@ -1647,18 +1652,18 @@ export
                     let component = componentShape(ts x.index)
                     let b = atom(p x.base)
                     let v = atom(p x.value)
-                    if eq(x.access nodes.original) then
+                    case x.access
                         (* Stored into the original as it is *)
-                        emit(p "((" <> cType(ts.type) <> ")quest_unproxy(" <> b <> "))->_" <> cInt(x.index) <> " = "
-                            <> v <> ";")
-                    elsif eq(x.access nodes.proxy) then
+                        when original then
+                            emit(p "((" <> cType(ts.type) <> ")quest_unproxy(" <> b <> "))->_" <> cInt(x.index) <> " = "
+                                <> v <> ";")
                         (* A var component of a proxy is the original's *)
-                        emit(p "if (quest_is_proxy(" <> b <> ")) quest_proxy_store(" <> b <> ", " <> cInt(x.index)
-                            <> ", "
-                            <> types.shapeSlotToQval(v component) <> ");")
-                        emit(p "else " <> b <> "->_" <> cInt(x.index) <> " = " <> v <> ";")
-                    else
-                        emit(p b <> "->_" <> cInt(x.index) <> " = " <> v <> ";")
+                        when proxy then
+                            emit(p "if (quest_is_proxy(" <> b <> ")) quest_proxy_store(" <> b <> ", " <> cInt(x.index)
+                                <> ", "
+                                <> types.shapeSlotToQval(v component) <> ");")
+                            emit(p "else " <> b <> "->_" <> cInt(x.index) <> " = " <> v <> ";")
+                        when direct then emit(p b <> "->_" <> cInt(x.index) <> " = " <> v <> ";")
                     end
                 end
             when sStoreElement with x then

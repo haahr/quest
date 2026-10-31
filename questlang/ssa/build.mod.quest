@@ -625,10 +625,9 @@ export
                     if extent a isnot 1 then raise unsupported with "is of a value of " <> r end end
                     case ssa.typeOf(fn.f a[0])
                         when typePtr then
-                            if eq(o.access ir.original) then
-                                binary(fn ssa.opPeq unproxy(fn a[0]) unproxy(fn b[0]))
-                            else
-                                binary(fn ssa.opPeq a[0] b[0])
+                            case o.access
+                                when original then binary(fn ssa.opPeq unproxy(fn a[0]) unproxy(fn b[0]))
+                                when direct, proxy then binary(fn ssa.opPeq a[0] b[0])
                             end
                         when typeReal then binary(fn ssa.opFeq a[0] b[0])
                         when typeInt then binary(fn ssa.opEq a[0] b[0])
@@ -818,30 +817,31 @@ export
     (* Component i of the tuple at t (shape ts), in its slot form, read as
      * access says: directly, from the original of what may be a proxy, or
      * through the proxy if it is one *)
-    let tupleComponent(fn: Fn t: Int ts: shapes.Shape i: Int access: String): Array(Int) =
+    let tupleComponent(fn: Fn t: Int ts: shapes.Shape i: Int access: ir.Access): Array(Int) =
         begin
             let comp = componentShape(ts i)
             let offset = 8 * i
-            if eq(access ir.direct) then
-                readSlot(fn offsetPtr(fn t offset) comp.type)
-            elsif eq(access ir.original) then
-                readSlot(fn offsetPtr(fn unproxy(fn t) offset) comp.type)
-            else
-                choose(fn isProxy(fn t) typesOf(slotParts(comp.type))
-                    fun(): Array(Int) slotFromWord(fn call1(fn "quest_proxy_element" array of t constant(fn i) end tInt) comp.type)
-                    fun(): Array(Int) readSlot(fn offsetPtr(fn t offset) comp.type))
+            case access
+                when direct then readSlot(fn offsetPtr(fn t offset) comp.type)
+                when original then readSlot(fn offsetPtr(fn unproxy(fn t) offset) comp.type)
+                when proxy then
+                    choose(fn isProxy(fn t) typesOf(slotParts(comp.type))
+                        fun(): Array(Int)
+                            slotFromWord(fn call1(fn "quest_proxy_element" array of t constant(fn i) end tInt) comp.type)
+                        fun(): Array(Int) readSlot(fn offsetPtr(fn t offset) comp.type))
             end
         end
 
     (* The tag of the option at o, read as access says *)
-    let optionTag(fn: Fn o: Int access: String): Int =
-        if eq(access ir.direct) then loadWord(fn o runtimeLayout.offset("QOptionHeader" "tag") tInt)
-        else call1(fn "quest_option_tag" array of o end tInt)
+    let optionTag(fn: Fn o: Int access: ir.Access): Int =
+        case access
+            when direct then loadWord(fn o runtimeLayout.offset("QOptionHeader" "tag") tInt)
+            when original, proxy then call1(fn "quest_option_tag" array of o end tInt)
         end
 
     (* The tag of a variant or option value vs of shape ts, in its numbering,
      * or through the view map of a bounded type parameter's value *)
-    let tagOf(fn: Fn vs: Array(Int) ts: shapes.Shape access: String viewMap: maybe.T(Variable)): Int =
+    let tagOf(fn: Fn vs: Array(Int) ts: shapes.Shape access: ir.Access viewMap: maybe.T(Variable)): Int =
         if maybe.isSome(:Variable viewMap) then
             let vm = atom1(fn ir.atomOfVar(maybe.unwrap(:Variable viewMap)))
             if eq(ts.kind "variant") then
@@ -859,20 +859,20 @@ export
 
     (* Component i (~1: the payload, when it is not a tuple) of case tag's
      * payload of the option at o, in its slot form, read as access says *)
-    let optionComponent(fn: Fn o: Int os: shapes.Shape tag: String i: Int access: String): Array(Int) =
+    let optionComponent(fn: Fn o: Int os: shapes.Shape tag: String i: Int access: ir.Access): Array(Int) =
         begin
             let cs = maybe.unwrap(:shapes.Shape maybe.unwrap(:shapes.Component shapes.caseOf(os tag)).shape)
             let comp = if i < 0 then cs else componentShape(cs i) end
             let offset = 8 + 8 * {if i < 0 then 0 else i end}
-            if eq(access ir.direct) then
-                readSlot(fn offsetPtr(fn o offset) comp.type)
-            elsif eq(access ir.original) then
-                readSlot(fn offsetPtr(fn unproxy(fn o) offset) comp.type)
-            else
-                choose(fn isProxy(fn o) typesOf(slotParts(comp.type))
-                    fun(): Array(Int) slotFromWord(fn
-                        call1(fn "quest_proxy_option_element" array of o constant(fn {if i < 0 then 0 else i end}) end tInt) comp.type)
-                    fun(): Array(Int) readSlot(fn offsetPtr(fn o offset) comp.type))
+            case access
+                when direct then readSlot(fn offsetPtr(fn o offset) comp.type)
+                when original then readSlot(fn offsetPtr(fn unproxy(fn o) offset) comp.type)
+                when proxy then
+                    choose(fn isProxy(fn o) typesOf(slotParts(comp.type))
+                        fun(): Array(Int) slotFromWord(fn
+                            call1(fn "quest_proxy_option_element" array of o constant(fn {if i < 0 then 0 else i end}) end tInt)
+                            comp.type)
+                        fun(): Array(Int) readSlot(fn offsetPtr(fn o offset) comp.type))
             end
         end
 
@@ -1264,7 +1264,7 @@ export
 
     (* A new tuple of an option's case components (after offset components of
      * tupleType: the case's ordinal), read as access says *)
-    let optionCaseTuple(fn: Fn opt: Int os: shapes.Shape tag: String tupleType: Type offset: Int access: Array(String)
+    let optionCaseTuple(fn: Fn opt: Int os: shapes.Shape tag: String tupleType: Type offset: Int access: Array(ir.Access)
         ordinalValue: Int): Int =
         begin
             let ts = shapes.shape(tupleType)
@@ -1293,11 +1293,14 @@ export
 
     (* The payload of an option's case, a tuple, which a case's binder shares:
      * the option's own, after its tag, or through a proxy, the original's *)
-    let optionCasePayload(fn: Fn opt: Int tagAccess: String access: Array(String)): Int =
+    let optionCasePayload(fn: Fn opt: Int tagAccess: ir.Access access: Array(ir.Access)): Int =
         begin
             let var proxied = false
-            for i = 0 upto {extent access - 1} do if eq(access[i] ir.proxy) then proxied := true end end
-            if eq(tagAccess ir.direct) then offsetPtr(fn opt 8)
+            for i = 0 upto {extent access - 1} do
+                case access[i] when proxy then proxied := true when direct, original then ok end
+            end
+            let tagDirect = case tagAccess when direct then true when original, proxy then false end
+            if tagDirect then offsetPtr(fn opt 8)
             elsif not(proxied) then offsetPtr(fn unproxy(fn opt) 8)
             else
                 choose(fn isProxy(fn opt) array of tPtr end
@@ -1589,12 +1592,13 @@ export
                     array of call1(fn "quest_view_tuple_slot" array of atom1(fn x.base) vm constant(fn x.index) end tPtr) end
                 else
                     let b = atom1(fn x.base)
-                    if eq(x.access ir.direct) then array of offsetPtr(fn b 8 * x.index) end
-                    elsif eq(x.access ir.original) then array of offsetPtr(fn unproxy(fn b) 8 * x.index) end
-                    else
-                        choose(fn isProxy(fn b) array of tPtr end
-                            fun(): Array(Int) array of call1(fn "quest_proxy_slot" array of b constant(fn x.index) end tPtr) end
-                            fun(): Array(Int) array of offsetPtr(fn b 8 * x.index) end)
+                    case x.access
+                        when direct then array of offsetPtr(fn b 8 * x.index) end
+                        when original then array of offsetPtr(fn unproxy(fn b) 8 * x.index) end
+                        when proxy then
+                            choose(fn isProxy(fn b) array of tPtr end
+                                fun(): Array(Int) array of call1(fn "quest_proxy_slot" array of b constant(fn x.index) end tPtr) end
+                                fun(): Array(Int) array of offsetPtr(fn b 8 * x.index) end)
                     end
                 end
             when opAddrElement with x then array of elementAddress(fn atom1(fn x.base) atom1(fn x.index) x.offset) end
@@ -1787,20 +1791,20 @@ export
                         let comp = componentShape(ts x.index)
                         let b = atom1(fn x.base)
                         let v = atom(fn x.value)
-                        if eq(x.access ir.original) then
-                            writeSlot(fn offsetPtr(fn unproxy(fn b) 8 * x.index) comp.type v)
-                        elsif eq(x.access ir.proxy) then
+                        case x.access
+                            when original then writeSlot(fn offsetPtr(fn unproxy(fn b) 8 * x.index) comp.type v)
                             (* A var component of a proxy is the original's *)
-                            choose(fn isProxy(fn b) noValuesTypes
-                                fun(): Array(Int)
-                                    begin
-                                        callVoid(fn "quest_proxy_store" array of b constant(fn x.index) slotToWord(fn v comp.type) end)
-                                        noValues
-                                    end
-                                fun(): Array(Int) begin writeSlot(fn offsetPtr(fn b 8 * x.index) comp.type v) noValues end)
-                            ok
-                        else
-                            writeSlot(fn offsetPtr(fn b 8 * x.index) comp.type v)
+                            when proxy then
+                                choose(fn isProxy(fn b) noValuesTypes
+                                    fun(): Array(Int)
+                                        begin
+                                            callVoid(fn "quest_proxy_store"
+                                                array of b constant(fn x.index) slotToWord(fn v comp.type) end)
+                                            noValues
+                                        end
+                                    fun(): Array(Int) begin writeSlot(fn offsetPtr(fn b 8 * x.index) comp.type v) noValues end)
+                                ok
+                            when direct then writeSlot(fn offsetPtr(fn b 8 * x.index) comp.type v)
                         end
                     end
                 when sStoreElement with x then
@@ -1928,18 +1932,19 @@ export
             store(fn h runtimeLayout.offset("QExceptionHandler" "resume") 8 null(fn))
             let catchesAt = runtimeLayout.offset("QExceptionHandler" "catches")
             let countAt = runtimeLayout.offset("QExceptionHandler" "n_catches")
-            if eq(x.catching ir.catchAll) then
-                store(fn h catchesAt 8 null(fn))
-                store(fn h countAt 8 constant(fn runtimeLayout.constant("Q_CATCH_ALL")))
-            elsif eq(x.catching ir.catchAllTraced) then
-                store(fn h catchesAt 8 null(fn))
-                store(fn h countAt 8 constant(fn runtimeLayout.constant("Q_CATCH_ALL_TRACED")))
-            elsif eq(x.catching ir.catchUnknown) then
-                store(fn h catchesAt 8 null(fn))
-                store(fn h countAt 8 constant(fn runtimeLayout.constant("Q_CATCH_UNKNOWN")))
-            else
-                store(fn h catchesAt 8 slotArray(fn atoms(fn x.catches)))
-                store(fn h countAt 8 constant(fn extent x.catches))
+            case x.catching
+                when catchAll then
+                    store(fn h catchesAt 8 null(fn))
+                    store(fn h countAt 8 constant(fn runtimeLayout.constant("Q_CATCH_ALL")))
+                when catchAllTraced then
+                    store(fn h catchesAt 8 null(fn))
+                    store(fn h countAt 8 constant(fn runtimeLayout.constant("Q_CATCH_ALL_TRACED")))
+                when catchUnknown then
+                    store(fn h catchesAt 8 null(fn))
+                    store(fn h countAt 8 constant(fn runtimeLayout.constant("Q_CATCH_UNKNOWN")))
+                when catchListed then
+                    store(fn h catchesAt 8 slotArray(fn atoms(fn x.catches)))
+                    store(fn h countAt 8 constant(fn extent x.catches))
             end
             store(fn chain 0 8 h)
             let bodyB = newBlock(fn)

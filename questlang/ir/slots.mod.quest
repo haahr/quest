@@ -54,18 +54,18 @@ export
             if eq(s.kind "exception") then s.elementShape else maybe.none(:Shape) end
         end
 
-    let tupleAccess(ts: Shape index: Int fresh: Bool): String =
+    let tupleAccess(ts: Shape index: Int fresh: Bool): nodes.Access =
         if fresh orif not(layout.mayBeProxied(ts)) then nodes.direct
         elsif layout.changesView(shapes.componentShape(ts.components[index])) then nodes.proxy
         else nodes.original end
 
-    let optionTagAccess(os: Shape): String = if layout.mayBeProxied(os) then nodes.proxy else nodes.direct end
+    let optionTagAccess(os: Shape): nodes.Access = if layout.mayBeProxied(os) then nodes.proxy else nodes.direct end
 
-    let optionComponentAccesses(os: Shape tag: maybe.T(String)): Array(String) =
+    let optionComponentAccesses(os: Shape tag: maybe.T(String)): Array(nodes.Access) =
         begin
             let c = if maybe.isSome(:String tag) then shapes.caseOf(os maybe.unwrap(:String tag)) else maybe.none(:shapes.Component) end
             if maybe.isNone(:shapes.Component c) orif maybe.isNone(:Shape maybe.unwrap(:shapes.Component c).shape) then
-                array of :String end
+                array of :nodes.Access end
             else
                 let payload = maybe.unwrap(:Shape maybe.unwrap(:shapes.Component c).shape)
                 let comps = vector.new(:Shape)
