@@ -14,7 +14,7 @@ once. Each has a type:
 
 | Type | What it holds |
 |---|---|
-| `int` | a 64-bit integer: `Int`, `Word`, `Bool` and `Char` (extended to 64 bits: `Bool` 0 or 1, `Char` signed), a tag, a size, an offset |
+| `int` | a 64-bit integer: `Int`, `Word`, `Bool` and `Char` (extended to 64 bits: `Bool` 0 or 1, `Char` 0 to 255), a tag, a size, an offset |
 | `ptr` | a pointer the collector must see: a heap object, a closure, a descriptor, a static object, a stack slot's address |
 | `real` | a 64-bit IEEE double |
 
@@ -45,7 +45,7 @@ register allocation) walk the arrays; only the passes that care what an instruct
 | `isNaN` | `real` → `int` | whether the double is a NaN |
 | `intToPtr`, `ptrToInt` | → | a pointer's bits as an integer, and back (a proxy's tag bit, a `QVal` word) |
 | `realBits`, `bitsReal` | → | a double's 64 bits as an integer, and back |
-| `sext8`, `zext8` | `int` → `int` | the low byte, sign- or zero-extended (a C `char` or `bool` received) |
+| `sext8`, `zext8` | `int` → `int` | the low byte, sign- or zero-extended (a C `bool` or a `QChar`, an unsigned byte, received: `zext8`) |
 | `load` | `ptr` → value | the immediate is the byte offset; the width and the result's type are the instruction's (§2.1) |
 | `store` | `ptr value` → | likewise |
 | `call` | args → results | a direct call of the symbol |
@@ -55,7 +55,8 @@ register allocation) walk the arrays; only the passes that care what an instruct
 ### 2.1. Loads and Stores
 
 A load or store names its width: 8 bytes (an `int`, `ptr`, or `real`), 4 (a C `int`, read sign-extended), or 1 (a C
-`bool` or `char`: read zero- or sign-extended, as the instruction says). Its address is its pointer argument plus the
+`bool` or a `QChar`: read zero- or sign-extended, as the instruction says; both are zero-extended now, since a `Char` is
+an unsigned byte, arm64.md §10.4). Its address is its pointer argument plus the
 immediate.
 
 ### 2.2. Calls
@@ -69,7 +70,7 @@ the call records the argument among its `memory` arguments: AAPCS64 passes such 
 and `ssac` passes the copy's contents. A call also records which arguments C passes as one byte (`narrow`: a `bool` or a
 `char`, from a `Bool` or a `Char`), which Darwin's AAPCS64 packs on the stack, a byte each, where it passes others in 8
 aligned bytes; a function records its own (`paramNarrow`), and extends them on entry, since a C caller leaves their
-upper bits unspecified. A C `bool` or `char` result is extended by a `zext8` or `sext8` after the call, since AAPCS64
+upper bits unspecified. A C `bool` or `QChar` result is extended by a `zext8` after the call, since AAPCS64
 leaves a narrow result's upper bits unspecified; a function that returns such an extension of a call's result can make
 the call in tail position, since its own caller extends it again. A call of a function that does not return (a raise)
 ends its block with `unreachable`.

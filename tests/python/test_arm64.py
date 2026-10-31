@@ -54,8 +54,12 @@ class TestArm64(unittest.TestCase):
 
     def test_conventions(self) -> None:
         text = GOLDEN.read_text()
-        # Every function has a frame record, and unwind information
-        self.assertEqual(text.count("stp x29, x30, [sp, #-16]!"), text.count(".cfi_startproc"))
+        # Every function has a frame record, and unwind information; a function
+        # that saves pairs stores the lowest first, moving sp once (arm64.md
+        # section 3.10)
+        self.assertEqual(text.count("stp x29, x30, [sp, #"), text.count(".cfi_startproc"))
+        self.assertEqual(len(re.findall(r"\]!\n", text)), text.count(".cfi_startproc"))
+        self.assertIn("stp x27, x28, [sp, #-96]!\n\tstp x25, x26, [sp, #16]", text)
         self.assertEqual(text.count(".cfi_startproc"), text.count(".cfi_endproc"))
         # A thread-local through its descriptor, an undefined symbol through the GOT
         self.assertIn("_quest_current_exception_handler@TLVPPAGE", text)
@@ -76,12 +80,12 @@ class TestArm64(unittest.TestCase):
         entered = text[text.index("_qf_try:"):]
         entered = entered[:entered.index(".cfi_endproc")]
         for pair in ("x19, x20", "x27, x28", "d8, d9", "d14, d15"):
-            self.assertEqual(entered.count(f"stp {pair}, [sp, #-16]!"), 1, pair)
+            self.assertEqual(len(re.findall(rf"stp {pair}, \[sp, #-?\d+\]", entered)), 1, pair)
             self.assertEqual(entered.count(f"ldp {pair}, [sp], #16"), 2, pair)  # at its two returns
         # Elsewhere, only the pairs a function's values use (section 3.8)
         memory = text[text.index("_qf_memory:"):]
         memory = memory[:memory.index(".cfi_endproc")]
-        self.assertEqual(re.findall(r"stp (\S+, \S+), \[sp, #-16\]!", memory), ["x29, x30", "x19, x20"])
+        self.assertEqual(re.findall(r"stp (\S+, \S+), \[sp, #-?\d+\]", memory), ["x19, x20", "x29, x30"])
         self.assertIn(".cfi_offset b15, -152", text)
 
     def test_a_malformed_unit_fails(self) -> None:

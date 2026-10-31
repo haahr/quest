@@ -292,8 +292,8 @@ Native code must do what the C helpers do, including the cases where arm64 and C
 - Shift counts are taken modulo 64 by arm64 and are undefined in C past 63; the word helpers handle the counts.
 - `fcvtzs` saturates; C's conversion of an out-of-range `double` is undefined.
 - `Real` arithmetic raises `real.error` on a NaN result, and division on a zero divisor (`quest_real_result_at`).
-- `Char` is C's `char`, which is signed on Darwin arm64, so a `Char` widened to a slot is sign-extended. This ties the
-  language to a platform's choice; the preference is `uint8_t` (§10.4).
+- `Char` is a `uint8_t` (`QChar`), so a `Char` widened to a slot or a register is zero-extended, on every platform
+  (§10.4).
 
 The inventory (§7.2) lists every helper, and the arm64 tests (§4) cover each edge case against the C backend.
 
@@ -301,7 +301,13 @@ The inventory (§7.2) lists every helper, and the arm64 tests (§4) cover each e
 
 Every function has a frame record (`stp x29, x30`) and sets `x29`, which Darwin requires and the traceback walk
 uses. The prologue and epilogue save the callee-saved registers the function uses, with `.cfi` directives from which
-the assembler and linker make compact unwind entries. Each function has a symbol (local unless exported), so that
+the assembler and linker make compact unwind entries. The prologue stores the lowest of the pairs it saves
+first, moving `sp` once (`stp x27, x28, [sp, #-96]!`), then the others and the frame record above it, as clang does.
+A compact unwind entry assumes the whole prologue has run, and the stack-overflow handler's backtrace reads it, so a
+prologue that pushed the record and then each pair downward could fault on a pair just below a record that fit, and
+the backtrace then read that pair from the guard page and crashed in the handler (found 2026-10-30, once in many
+runs, after step 11 made frames small). Stored lowest first, the prologue faults on its first store or not at all.
+Each function has a symbol (local unless exported), so that
 `dladdr` attributes frames as exceptions.md §5.3 describes, and the unit emits `.subsections_via_symbols`. The
 stack-overflow handler (exceptions.md §6) works unchanged.
 
@@ -658,7 +664,7 @@ alignment beyond 8.
 
 | Decision | In the C backend | SSA backends |
 |---|---|---|
-| Scalars: `Int` `int64_t`, `Real` `double`, `Word` `uint64_t`, `Bool` C `bool` (1 byte), `Char` C `char` (signed on Darwin arm64), `Ok` nothing (a `void` result; `QVal` 0 where stored) | `layout.representation` | layout; a narrow value in a register is always extended to 64 bits (`Char` signed, `Bool` zero), and one received is extended again, never trusted (Apple's ABI extends only to 32 bits) |
+| Scalars: `Int` `int64_t`, `Real` `double`, `Word` `uint64_t`, `Bool` C `bool` (1 byte), `Char` `uint8_t` (`QChar`, §10.4), `Ok` nothing (a `void` result; `QVal` 0 where stored) | `layout.representation` | layout; a narrow value in a register is always extended to 64 bits (zero-extended, both), and one received is extended again, never trusted (Apple's ABI extends only to 32 bits) |
 | 16-byte values: a record is `QRecordVal { val, dict }`, a variant `QVariantVal { tag, payload }` | runtime structs | layout; two SSA values each (§3.2) |
 | Slots: a record or variant in a slot is a pointer to an immutable 16-byte box; `Bool` and `Char` are widened to a word (`QBoolSlot`, `QCharSlot`); every other value is its own word | `layout.slotRepresentation` | layout |
 | Slot conversions, value to slot and back: `Real` by its bits, `Bool`, `Char`, and `Int` as `.i`, a record or variant boxed or dereferenced | `codegen/c/types` (`shapeSlotToQval`, `qvalWrap`, ...), as C text | build, by rules moved into layout (§7.5) |
@@ -800,7 +806,9 @@ with what would address it.
    test recurses through a function with a large frame and checks that the stack overflow is reported.
    *Addressed* (2026-10-29): a frame of more than 4 KB is moved through `___chkstk_darwin` (`x9` holding its size in
    bytes), as clang does; `tests/self-hosted/backends.py` recurses without end through a function with a 24 KB
-   frame and checks that each backend reports `stack.overflow`.
+   frame and checks that each backend reports `stack.overflow`. Once step 11 put values in registers, that frame
+   was 32 bytes, so the test keeps its values live across the recursive call, where they are spilled, and the frame
+   is 24 KB again.
 3. **Apple's stack arguments.** Darwin's arm64 ABI places arguments past the registers at their natural size and
    alignment, not in 8-byte slots as standard AAPCS64 does. Step 6 handles the case that arises today, a C `bool` or
    `char` taking one byte (`narrow`, ssa.md §2.2), but any other C type narrower than a word that a signature gains
@@ -812,7 +820,14 @@ with what would address it.
    leaks into conversions, comparisons, and slots. *Solution (preferred):* `Char` is `uint8_t` everywhere, in the
    runtime's types, `layout.representation`, both compilers' C printers, the SSA (a `Char` loaded, received, or
    returned is zero-extended, as `Bool` is), and both interpreters, which must agree; an ABI bump, with run tests of
-   characters above 127. Doing it while there is one platform keeps the change small.
+   characters above 127. Doing it while there is one platform keeps the change small. *Addressed* (2026-10-30, ABI
+   57): `QChar` is `uint8_t`; a C character literal above 127 is cast to `QChar` (a C character literal is an `int`
+   of the platform's `char`, so `'\310'` alone is -56 on Darwin); the SSA's `Char` constants are 0 to 255 and its
+   loads and received values zero-extended. The runtime and both interpreters already read a `Char` as unsigned
+   (`ascii.val`, `dynamic.intern`). `stdlib/high_chars` runs characters above 127 through constants, strings, slots,
+   generic words, a hash map, parameters, results, and a dynamic round trip, in every phase and backend. Before the
+   change it passed too: every path narrowed a `Char` through the same signed type, so the hazard was portability
+   and a future path that did not.
 5. **Pointers through integers.** §3.13 keeps `ptr` apart from `int` so that a precise or moving collector stays
    possible, but `QVal` words and proxies already cross between them (`intToPtr`, `ptrToInt`, ssa.md §1), so the
    distinction alone does not give stack maps. *Solution:* state the requirement precisely: the register allocator

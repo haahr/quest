@@ -76,7 +76,7 @@ Quest scalar types map to native C99 types defined in `runtime/quest_runtime.h`:
 | `Int` | `QInt` (`int64_t`) | 64-bit signed integer |
 | `Real` | `QReal` (`double`) | 64-bit IEEE-754 double precision float |
 | `Bool` | `QBool` (`bool`) | C99 boolean (`true` / `false`) |
-| `Char` | `QChar` (`char`) | 8-bit character (extended in 64-bit word when in `QVal`) |
+| `Char` | `QChar` (`uint8_t`) | 8-bit character, unsigned (zero-extended in a 64-bit word when in `QVal`); a C character literal above 127 is cast to `QChar` |
 | `String` | `QString *` | Pointer to heap-allocated string descriptor |
 | `Ok` | `void` / `QVal` | Statement completion indicator (`Q_OK_VAL`) |
 | Polymorphic / Generic | `QVal` | Uniform 64-bit value word union |

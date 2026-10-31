@@ -56,7 +56,7 @@
 typedef int64_t  QInt;
 typedef double   QReal;
 typedef bool     QBool;
-typedef char     QChar;
+typedef uint8_t  QChar;   /* A byte, unsigned on every platform (docs/arm64.md section 10, hazard 4) */
 typedef uint64_t QWord;
 
 /* A Bool or Char in an aggregate slot (a tuple component, option payload, record field, or auto payload): a word of

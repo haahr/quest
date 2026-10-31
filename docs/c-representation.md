@@ -78,7 +78,7 @@ All Quest values stored in registers, local variable slots, arrays, and tuple/re
 typedef int64_t QInt;
 typedef double  QReal;
 typedef bool    QBool;
-typedef char    QChar;
+typedef uint8_t QChar;   /* unsigned on every platform */
 
 typedef union QVal {
     void    *p;   /* Heap pointers: records, tuples, arrays, strings, closures */

@@ -64,8 +64,11 @@ def c_string(s: str) -> str:
 
 
 def c_char(ch: str) -> str:
-    """A C character literal of ch."""
-    return "'" + _c_char_text(ch, "'") + "'"
+    """A C character literal of ch, cast to QChar above 127, since a C
+    character literal is an int of the platform's char, which may be signed:
+    without the cast, '\\310' would compare unequal to a QChar of 200."""
+    literal = "'" + _c_char_text(ch, "'") + "'"
+    return literal if ord(ch) < 128 else "((QChar)" + literal + ")"
 
 
 def index_table(entries: Iterable[int]) -> str:

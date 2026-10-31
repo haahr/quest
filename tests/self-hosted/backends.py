@@ -117,15 +117,19 @@ OVERFLOW_LETS = 3000
 
 
 def overflow_program(lets: int) -> str:
-    """A recursion through a function whose frame, with the arm64 backend's
-    trivial allocator, is far larger than the stack's guard page: first a
-    hundred deep, which prints the sum of 1 to lets - 1, then without end."""
+    """A recursion through a function whose frame is far larger than the
+    stack's guard page, its values all live across the recursive call, so that
+    they are spilled: first a hundred deep, which prints the sum of 1 to lets -
+    1, then without end."""
     body = "\n".join(f"        let a{i} = a{i - 1} + {i}" for i in range(1, lets))
+    others = " + ".join(f"a{i}" for i in range(lets - 1))
     return (f"import writer : Writer conv : Conv ;\n"
             f"let rec deep(n: Int limit: Int): Int =\n    begin\n        let a0 = n\n{body}\n"
-            # (Not a + deep(n + 1), which clang makes a loop with an accumulator)
+            # (Not a + deep(n + 1), which clang makes a loop with an accumulator;
+            # the others added on both sides are used after the call)
             f"        if n is limit then a{lets - 1}\n"
-            f"        elsif deep({{n + 1}} limit) > a{lets - 1} then a{lets - 1} else 0 end\n    end;\n"
+            f"        elsif {{deep({{n + 1}} limit) + {others}}} > {{a{lets - 1} + {others}}} then a{lets - 1} else 0 end\n"
+            f"    end;\n"
             f"writer.putString(writer.output conv.int(deep(0 100)) <> \"\\n\");\n"
             f"writer.putString(writer.output conv.int(deep(0 ~1)));\n")
 

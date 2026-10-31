@@ -1,0 +1,122 @@
+import ascii = "ascii" : Ascii
+import dynamic = "dynamic" : Dynamic
+import reader = "reader" : Reader
+import string = "string" : StringOp
+import writer = "writer" : Writer
+import vector = "collections/vector" : collections/Vector
+import hashMap = "collections/hashMap" : collections/HashMap
+import maybe = "util/maybe" : util/Maybe
+main {
+  let hi: Char = 'È'
+  let %1: Int = call ascii.val(hi)
+  let %2: Int = call ascii.val('ÿ')
+  let %3: Char = call ascii.char(200)
+  let %4: Bool = prim is(hi, %3)
+  let %5: Char = call ascii.char(255)
+  let %6: Bool = prim is('ÿ', %5)
+  let %7: Char = call ascii.char(128)
+  let %8: Bool = prim is('\x80', %7)
+  let %9: Char = call ascii.char(127)
+  let %10: Bool = prim is(%9, '\x7f')
+  let s: String = "a\u00c8\u00ff"
+  let %11: Char = call string.getChar(s, 1)
+  let %12: Bool = prim is(%11, hi)
+  let %13: Char = call string.getChar(s, 2)
+  let %14: Bool = prim is(%13, 'ÿ')
+  let %15: Char = call string.getChar(s, 2)
+  let %16: Int = call ascii.val(%15)
+  let t: String = call string.new(2, hi)
+  do call string.setChar(t, 1, 'ÿ')
+  let %17: Bool = call string.equal(t, "\u00c8\u00ff")
+  let c: Char = hi
+  let d: Char = 'x'
+  let tup: Tuple c: Char var d: Char end = tuple(c, d)
+  let %18: Char = tuple_field(tup, 0)
+  let %19: Char = call ascii.char(200)
+  let %20: Bool = prim is(%18, %19)
+  store tup.#1 := 'ÿ'
+  let %21: Char = tuple_field(tup, 1)
+  let %22: Int = call ascii.val(%21)
+  let opt: maybe.T(Char) = call maybe.some [Char](hi)
+  let %23: Char = call maybe.unwrap [Char](opt)
+  let %24: Char = call ascii.char(200)
+  let %25: Bool = prim is(%23, %24)
+  let arr: Array(Char) = array('\x80', hi, 'ÿ')
+  let %26: Char = index(arr, 1)
+  let %27: Char = call ascii.char(200)
+  let %28: Bool = prim is(%26, %27)
+  let %29: Char = index(arr, 0)
+  let %30: Int = call ascii.val(%29)
+  let %31: Char = index(arr, 2)
+  let %32: Int = call ascii.val(%31)
+  let %33: Int = prim +(%30, %32)
+  funs {
+    fun captured(): Char {
+      return hi
+    }
+  }
+  let %34: Char = call captured()
+  let %35: Char = call ascii.char(200)
+  let %36: Bool = prim is(%34, %35)
+  let v: vector.T(Char) = type_app vector.new [Char]
+  do call vector.append [Char](v, hi)
+  let %37: Char = call ascii.char(255)
+  do call vector.append [Char](v, %37)
+  let %38: Char = call vector.get [Char](v, 0)
+  let %39: Char = call ascii.char(200)
+  let %40: Bool = prim is(%38, %39)
+  let %41: Char = call vector.get [Char](v, 1)
+  let %42: Bool = prim is(%41, 'ÿ')
+  let m: hashMap.T(Char Int) = type_app hashMap.newIdentityMap [Char Int]
+  let %43: Bool = call hashMap.insert [Char Int](m, hi, 1)
+  let %44: Bool = call hashMap.insert [Char Int](m, 'ÿ', 2)
+  let %45: Char = call ascii.char(200)
+  let %46: Bool = call hashMap.contains [Char Int](m, %45)
+  let %47: Char = call ascii.char(255)
+  let %48: Int = call hashMap.find [Char Int](m, %47)
+  funs {
+    fun pick(first: Bool, a: Char, b: Char): Char {
+      join k1(r: Char) {
+        return r
+      } in {
+        if first {
+          jump k1(a)
+        } else {
+          jump k1(b)
+        }
+      }
+    }
+  }
+  let %49: Char = call pick(true, hi, 'a')
+  let %50: Char = call ascii.char(200)
+  let %51: Bool = prim is(%49, %50)
+  let %52: Char = call pick(false, 'a', 'ÿ')
+  let %53: Int = call ascii.val(%52)
+  var c.1: Char = 'a'
+  let %54: Char = call ascii.char(233)
+  c.1 := %54
+  let %55: Bool = prim is(c.1, 'é')
+  let %56: T = call dynamic.new [Char](hi)
+  let %57: Char = call dynamic.be [Char](%56)
+  let %58: Char = call ascii.char(200)
+  let %59: Bool = prim is(%57, %58)
+  let w: writer.T = call writer.file("high_chars.json")
+  let c.2: Char = hi
+  let d.1: Char = 'ÿ'
+  let %60: Tuple c: Char d: Char end = tuple(c.2, d.1)
+  let %61: T = call dynamic.new [Tuple c: Char d: Char end](%60)
+  do call dynamic.extern(w, %61)
+  do call writer.close(w)
+  let r.1: reader.T = call reader.file("high_chars.json")
+  let %62: T = call dynamic.intern(r.1)
+  let back: Tuple c: Char d: Char end = call dynamic.be [Tuple c: Char d: Char end](%62)
+  do call reader.close(r.1)
+  let %63: Char = tuple_field(back, 0)
+  let %64: Bool = prim is(%63, hi)
+  let %65: Char = tuple_field(back, 1)
+  let %66: Char = call ascii.char(255)
+  let %67: Bool = prim is(%65, %66)
+  let %68: Char = tuple_field(back, 0)
+  let %69: Bool = call hashMap.contains [Char Int](m, %68)
+}
+

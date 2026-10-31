@@ -67,7 +67,7 @@ export
             if eq(r "void") then array of :Part end
             elsif eq(r "QInt") orif eq(r "uint64_t") orif eq(r "QVal") then array of wordPart(tInt) end
             elsif eq(r "QBool") then array of part(tInt 1 false) end
-            elsif eq(r "QChar") then array of part(tInt 1 true) end
+            elsif eq(r "QChar") then array of part(tInt 1 false) end
             elsif eq(r "QReal") then array of wordPart(tReal) end
             elsif eq(r "QRecordVal") then array of wordPart(tPtr) wordPart(tPtr) end
             elsif eq(r "QVariantVal") then array of wordPart(tInt) wordPart(tInt) end
@@ -357,10 +357,8 @@ export
             when constOk then noValues
             when constBool with x then array of constant(fn {if x.b then 1 else 0 end}) end
             when constInt with x then array of constant(fn x.n) end
-            when constChar with x then
-                let code = ascii.val(x.c)
-                (* A C char, signed on Darwin arm64 *)
-                array of constant(fn {if code >= 128 then code - 256 else code end}) end
+            (* A QChar, unsigned (arm64.md section 10, hazard 4) *)
+            when constChar with x then array of constant(fn ascii.val(x.c)) end
             when constReal with x then
                 let i = ssa.inst(option opRealConst of ssa.Opcode end noValues array of ssa.newValue(fn.f tReal) end)
                 ssa.append(fn.f fn.cur tuple

@@ -874,13 +874,28 @@ export
             for k = 0 upto {extent asm.functionStart(f.symbol f.exported) - 1} do
                 vector.append(:String fr.lines asm.functionStart(f.symbol f.exported)[k])
             end
-            (* The frame record, then the frame *)
-            emit(fr "stp x29, x30, [sp, #-16]!")
-            emit(fr "mov x29, sp")
+            (* The frame record, with the pairs saved below it, then the
+             * frame. The lowest pair is stored first, moving sp once, as clang
+             * does: a stack overflow then faults on the prologue's first
+             * store or not at all. Stored downward one at a time, a pair could
+             * fault below a record stored just above the guard page, and the
+             * fault's backtrace, by the compact unwind information, which
+             * assumes a whole prologue, read the pair from the guard page *)
+            let n = extent saved
+            if n is 0 then
+                emit(fr "stp x29, x30, [sp, #-16]!")
+                emit(fr "mov x29, sp")
+            else
+                emit(fr "stp " <> savedPairs[saved[n - 1]] <> ", [sp, #-" <> conv.int(16 * {n + 1}) <> "]!")
+                for k = {n - 2} downto 0 do
+                    emit(fr "stp " <> savedPairs[saved[k]] <> ", [sp, #" <> conv.int(16 * {{n - 1} - k}) <> "]")
+                end
+                emit(fr "stp x29, x30, [sp, #" <> conv.int(16 * n) <> "]")
+                emit(fr "add x29, sp, #" <> conv.int(16 * n))
+            end
             emit(fr ".cfi_def_cfa w29, 16")
             emit(fr ".cfi_offset w30, -8")
             emit(fr ".cfi_offset w29, -16")
-            for k = 0 upto {extent saved - 1} do emit(fr "stp " <> savedPairs[saved[k]] <> ", [sp, #-16]!") end
             emitAll(fr savedOffsets(saved))
             (* A frame of more than a page is probed a page at a time, as clang
              * does, so that a stack overflow faults in the guard page rather

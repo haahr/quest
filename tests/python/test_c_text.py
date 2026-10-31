@@ -46,7 +46,7 @@ class TestLiterals(unittest.TestCase):
         self.assertEqual(c_char("\\"), "'\\\\'")
         self.assertEqual(c_char("\n"), "'\\n'")
         self.assertEqual(c_char("\x01"), "'\\001'")
-        self.assertEqual(c_char("\xff"), "'\\377'")
+        self.assertEqual(c_char("\xff"), "((QChar)'\\377')")
 
     def test_numbers(self):
         self.assertEqual(c_int(0), "0")

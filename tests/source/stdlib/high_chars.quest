@@ -1,0 +1,77 @@
+(* Characters above 127 are the same unsigned bytes everywhere (docs/arm64.md section 10, hazard 4): a constant, a
+   string's character, ascii.char, a slot of a tuple, an option, an array, or a closure, a generic (QVal) word, a
+   parameter and a result, a var, a dynamic value, and one read back by dynamic.intern all compare equal, hash alike,
+   and have the same ascii.val. A Char was once C's char, signed on Darwin arm64 and unsigned on Linux, so its word
+   in a slot was negative on one and not on the other; every path narrowed it alike, so nothing here differed, but a
+   path that did not (an interned word, a native unit's) would have. *)
+(* @echo *)
+import ascii: Ascii
+import dynamic: Dynamic
+import reader: Reader
+import string: StringOp
+import writer: Writer
+import collections/vector : collections/Vector
+import collections/hashMap : collections/HashMap
+import util/maybe : util/Maybe
+
+let hi = '\200'
+ascii.val(hi)
+ascii.val('\255')
+hi is ascii.char(200)
+'\255' is ascii.char(255)
+'\128' is ascii.char(128)
+ascii.char(127) is '\127'
+
+(* A string's characters *)
+let s = "a\200\255"
+string.getChar(s 1) is hi
+string.getChar(s 2) is '\255'
+ascii.val(string.getChar(s 2))
+let t = string.new(2 hi)
+string.setChar(t 1 '\255')
+string.equal(t "\200\255")
+
+(* Slots: a tuple's component, an option's payload, an array's element, a closure's capture *)
+let tup = tuple let c = hi let var d = 'x' end
+tup.c is ascii.char(200)
+tup.d := '\255'
+ascii.val(tup.d)
+let opt = maybe.some(:Char hi)
+maybe.unwrap(:Char opt) is ascii.char(200)
+let arr = array of '\128' hi '\255' end
+arr[1] is ascii.char(200)
+ascii.val(arr[0]) + ascii.val(arr[2])
+let captured = fun(): Char hi
+captured() is ascii.char(200)
+
+(* Generic code's words: a vector, and an identity map, which hashes the word *)
+let v = vector.new(:Char)
+vector.append(:Char v hi)
+vector.append(:Char v ascii.char(255))
+vector.get(:Char v 0) is ascii.char(200)
+vector.get(:Char v 1) is '\255'
+let m = hashMap.newIdentityMap(:Char :Int)
+hashMap.insert(:Char :Int m hi 1)
+hashMap.insert(:Char :Int m '\255' 2)
+hashMap.contains(:Char :Int m ascii.char(200))
+hashMap.find(:Char :Int m ascii.char(255))
+
+(* Parameters, results, and a var *)
+let pick(first: Bool a: Char b: Char): Char = if first then a else b end
+pick(true hi 'a') is ascii.char(200)
+ascii.val(pick(false 'a' '\255'))
+let var c = 'a'
+c := ascii.char(233)
+c is '\233'
+
+(* Dynamic values, and one written out and read back *)
+dynamic.be(:Char dynamic.new(:Char hi)) is ascii.char(200)
+let w = writer.file("high_chars.json")
+dynamic.extern(w dynamic.new(:Tuple c: Char d: Char end tuple let c = hi let d = '\255' end))
+writer.close(w)
+let r = reader.file("high_chars.json")
+let back = dynamic.be(:Tuple c: Char d: Char end dynamic.intern(r))
+reader.close(r)
+back.c is hi
+back.d is ascii.char(255)
+hashMap.contains(:Char :Int m back.c)

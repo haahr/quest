@@ -66,7 +66,14 @@ export
             b.toString()
         end
 
-    let cChar(c: Char): String = "'" <> charText(c '\'') <> "'"
+    (* A C character literal of c, cast to QChar above 127, since a C
+     * character literal is an int of the platform's char, which may be signed:
+     * without the cast, '\310' would compare unequal to a QChar of 200 *)
+    let cChar(c: Char): String =
+        begin
+            let literal = "'" <> charText(c '\'') <> "'"
+            if ascii.val(c) < 128 then literal else "((QChar)" <> literal <> ")" end
+        end
 
     let joined(separator: String items: vector.T(String)): String = strutil.join(separator items)
 
