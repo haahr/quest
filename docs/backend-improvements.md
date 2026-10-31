@@ -261,21 +261,35 @@ the same modules, so each step starts from a fresh rebase.
 1. **Cleanups** (§3.1): the stale header, `nodes`' constructors and opcode constants, no `else` on the SSA's options,
    one `Place`, offsets through `runtimeLayout`, `statics` by field offsets, iterative renaming. *Done when* no module
    but `nodes` writes an `Inst` tuple, no case on `Opcode` or `Terminator` has `else`, and the SSA's goldens are
-   unchanged.
+   unchanged. *Done* (2026-10-30, d34627bc): passes that single out one opcode test it with `isOp`, where a default is
+   conservative; every case on `Opcode` and `Terminator` names each.
 2. **Options for kinds** (§3.2): `layout`'s representations, the IR's plan, shape, access, and catch kinds and
    primitive operators. *Done when* the SSA's builder compares no kind as a string, and the IR's and SSA's goldens are
-   unchanged.
+   unchanged. *Done* (2026-10-30, b8f5d9fc): `Access`, `Catching`, `Prim`, `PlanKind`, `shapes.ShapeKind`, and
+   `layout.Representation`. Two kinds stay strings, outside §3.2's list: `codegen/staticdata`'s descriptor forms
+   (`base`, `bound_var`, `fun`, ...), codegen's own and shared with the C printer, and functions' parameter modes
+   (`value`, `var`, `out`).
 3. **The builder split** (§3.1), with variables' bindings as one option. *Done when* `ssa/build` is the modules of
-   §3.1, none over about 800 lines, and the goldens are unchanged.
+   §3.1, none over about 800 lines, and the goldens are unchanged. *Done* (2026-10-30, 4aaf6e9a): seven modules in
+   `questlang/ssa/build/` (imported as `vals` and `units` where locals are named `values` and `unit`), the largest
+   790 lines; tuples went to `aggregates` and modules' members to `calls`.
 4. **Analyses and the pipeline** (§3.3), with `promote`, `tailCalls`, and `regalloc` using them, and the verifier's
    gaps closed. *Done when* no pass computes dominance, liveness, or a terminator's targets itself, `--dump-after
-   promote` works, and `QUEST_CHECK_IR=1` verifies after each pass.
+   promote` works, and `QUEST_CHECK_IR=1` verifies after each pass. *Done* (2026-10-30, f68cedd8): `ssa/cfg`, `ssa/liveness`,
+   and `ssa/pipeline`; the dump phases are `ssa_built`, `ssa_promote`, and `ssa_tailCalls`, as the IR's are `ir_NAME`,
+   and `QUEST_SKIP_PASSES` leaves passes out. `ssa/uses` waits for the first pass that needs it: the verifier finds
+   bad definitions itself.
 5. **The SSA reader and per-pass goldens** (§3.4). *Done when* every SSA golden round-trips, and `promote` and
-   `tailCalls` have goldens of their own.
+   `tailCalls` have goldens of their own. *Done* (2026-10-30, 7da9edda): the reader is `ssa/parser`, since the standard
+   library has an interface `Reader`; with `QUEST_CHECK_IR=1` the driver reads back every SSA it prints. The goldens
+   of `promote` and `tailCalls` are the questlang tests `ssa_promote` and `ssa_tailcalls`, SSA written as text.
 6. **Signatures and the runtime functions' table** (§3.5). *Done when* calls and functions carry signatures, no
-   backend recognizes `main` by name, and the builder names no runtime function's signature itself.
+   backend recognizes `main` by name, and the builder names no runtime function's signature itself. *Done*
+   (2026-10-30, a6db41fb): `ssac` still recognizes `main`, only to spell its argument array `char **`, as C requires; the
+   table found that `quest_record_box`'s and `quest_variant_box`'s struct had not been marked a pair.
 7. **`ptrAdd`, `threadLocal`, and `try` by control flow** (§3.6). *Done when* no derived pointer passes through
-   `int`, no backend keeps a list of thread-locals' names, and ssa.md defines `try` without `_setjmp`.
+   `int`, no backend keeps a list of thread-locals' names, and ssa.md defines `try` without `_setjmp`. *Done*
+   (2026-10-30, 8130949e).
 8. **The target description and machine instructions** (§3.7, §3.8): `codegen/target`, `codegen/machine`,
    `codegen/arm64/minst`, selection, the allocator on machine functions with constraints and hints, relaxation on
    instructions, and the printer. *Done when* the arm64 backend emits text only in its printer, `regalloc` reads no
