@@ -1,4 +1,5 @@
 import writer = "writer" : Writer
+import word = "word" : Word
 import conv = "conv" : Conv
 main {
   let %1: String = call conv.int(37)
@@ -64,12 +65,40 @@ main {
     let %47: writer.T = member writer.output
     let %48: String = prim <>(%46, "\n")
     let %49: Ok = call writer.putString(%47, %48)
+    funs {
+      fun identity [A::TYPE](x: A): word.T {
+        let %50: word.T = call external "quest_identity_hash" [A](x)
+        return %50
+      }
+    }
+    let numbers: Array(Int) = array_rep(3, 1)
+    let b.1: String = "two"
+    let pair: Tuple a: Int b: String end = tuple(1, b.1)
+    join k6(r.1: Bool) {
+      let %51: String = call conv.bool(r.1)
+      let %52: String = prim <>("external: ", %51)
+      let %53: writer.T = member writer.output
+      let %54: String = prim <>(%52, "\n")
+      let %55: Ok = call writer.putString(%53, %54)
+    } in {
+      let %56: word.T = call identity [Array(Int)](numbers)
+      let %57: word.T = call identity [Array(Int)](numbers)
+      let %58: Bool = prim is(%56, %57)
+      if %58 {
+        let %59: word.T = call identity [Tuple a: Int b: String end](pair)
+        let %60: word.T = call identity [Tuple a: Int b: String end](pair)
+        let %61: Bool = prim is(%59, %60)
+        jump k6(%61)
+      } else {
+        jump k6(false)
+      }
+    }
   } in {
     try catching (negative) {
       raise negative
     } handle (e: Exception) {
-      let %50: Bool = prim is(e, negative)
-      if %50 {
+      let %62: Bool = prim is(e, negative)
+      if %62 {
         jump k4("negative")
       } else {
         reraise e

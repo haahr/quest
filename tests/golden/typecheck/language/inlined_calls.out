@@ -6,6 +6,10 @@
       ))
     (TypedImport
       :items (
+        (TypedImportItem ('word') : 'Word')
+      ))
+    (TypedImport
+      :items (
         (TypedImportItem ('conv') : 'Conv')
       ))
     (TypedLetValue 'print' :type Fun(s: String): Ok
@@ -268,6 +272,59 @@
                   :args (
                     (TypedInt 10 :type Int)
                   ))
+              )))
+        )))
+    (TypedLetValue 'identity' :type All(A :: TYPE) Fun(x: A): word.T
+      :value (TypedFun :params (('x' : A)) :type All(A :: TYPE) Fun(x: A): word.T
+        :body (TypedExternal 'quest_identity_hash' :type word.T)))
+    (TypedLetValue 'numbers' :type Array(Int)
+      :value (TypedArrayRep :type Array(Int)
+        :count (TypedInt 3 :type Int)
+        :init (TypedInt 1 :type Int)))
+    (TypedLetValue 'pair' :type Tuple a: Int b: String end
+      :value (TypedTuple :type Tuple a: Int b: String end
+        :elements (
+          (TypedInt 1 :type Int)
+          (TypedString 'two' :type String)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'external: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'bool' :type Fun(b: Bool): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedIf :type Bool
+                  :cond (TypedInfix 'is' :type Bool
+                    :left (TypedApp :type word.T
+                      :func (TypedTypeApp [Array(Int)] :type Fun(x: Array(Int)): word.T
+                        :func (TypedVar 'identity' :type All(A :: TYPE) Fun(x: A): word.T))
+                      :args (
+                        (TypedVar 'numbers' :type Array(Int))
+                      ))
+                    :right (TypedApp :type word.T
+                      :func (TypedTypeApp [Array(Int)] :type Fun(x: Array(Int)): word.T
+                        :func (TypedVar 'identity' :type All(A :: TYPE) Fun(x: A): word.T))
+                      :args (
+                        (TypedVar 'numbers' :type Array(Int))
+                      )))
+                  :then (TypedInfix 'is' :type Bool
+                    :left (TypedApp :type word.T
+                      :func (TypedTypeApp [Tuple a: Int b: String end] :type Fun(x: Tuple a: Int b: String end): word.T
+                        :func (TypedVar 'identity' :type All(A :: TYPE) Fun(x: A): word.T))
+                      :args (
+                        (TypedVar 'pair' :type Tuple a: Int b: String end)
+                      ))
+                    :right (TypedApp :type word.T
+                      :func (TypedTypeApp [Tuple a: Int b: String end] :type Fun(x: Tuple a: Int b: String end): word.T
+                        :func (TypedVar 'identity' :type All(A :: TYPE) Fun(x: A): word.T))
+                      :args (
+                        (TypedVar 'pair' :type Tuple a: Int b: String end)
+                      )))
+                  :else (TypedBool false))
               )))
         )))
   ))

@@ -109,7 +109,10 @@ canonical type (`shape(t)`, cached by the hash-consed type):
 | `rec` | a reference into a recursive group: the canonical recursive graph of `types/canonical.py` |
 
 Aliases are stripped and operator applications reduced before a shape is built; recursion is explicit through
-`rec` references into the canonical graph, so that equal recursive types, however written, share one shape.
+`rec` references into the canonical graph, so that equal recursive types, however written, share one shape. In a
+whole program ([inlining.md](inlining.md) §6), the self-hosted compiler's shapes see through a module's abstract
+types without a bound to their representations, while its opaque shapes (`shapes.opaqueShape`), which descriptors
+and echo use, keep them opaque.
 Variant and option types are equal whatever order they list their cases in, so their shapes (and canonical forms)
 order cases by name: equal types have one layout and one numbering of tags. An option's ordinal counts instead in
 the order of its static type as written, which lowering records on the operations that read or make one. Each

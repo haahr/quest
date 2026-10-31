@@ -336,6 +336,12 @@ export
     let rec plan(source: Type target: Type lay: Layout): maybe.T(Plan) =
         if model.same(source target) then
             none
+        (* Types of one shape have one representation (a transparent abstract
+         * type's and its representation's, in a whole program), but at an
+         * instantiation, whose generic and native layouts may differ *)
+        elsif shapes.transparentAbstractTypes() andif not(hasInstantiation(lay))
+            andif {shapes.shape(source).id is shapes.shape(target).id} then
+            none
         else
             let key = conv.int(shapes.shape(source).id) <> "," <> conv.int(shapes.shape(target).id) <> "," <> layoutKey(lay)
             if hashMap.contains(:String :Bool planning key) then

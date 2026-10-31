@@ -70,8 +70,38 @@ export
     let registerExportedAbstractType(globalName: String typeVar: model.Type): Ok =
         begin recordType(globalName typeVar true) ok end
 
+    let represented = tuple let var count = 0 let var apart = false end
+    let apartNames = hashMap.new(:String :Bool stringOp.equal hash.string)
+    let setRegisteringApart(on: Bool): Ok = represented.apart := on
+
     let registerAbstractTypeRepresentation(globalName: String typeVar: model.Type rep: model.Type): Ok =
-        recordType(globalName typeVar true).rep := maybe.some(:model.Type rep)
+        begin
+            represented.count := represented.count + 1
+            if represented.apart then begin hashMap.insert(:String :Bool apartNames globalName true) ok end end
+            recordType(globalName typeVar true).rep := maybe.some(:model.Type rep)
+        end
+
+    let representationCount(): Int = represented.count
+
+    (* A type with a bound is seen at its bound outside its module, which
+     * numbers its cases and fields otherwise *)
+    let unbounded(e: ModuleAbstractType): Bool =
+        case e.typeVar.form
+            when typeVariable with v then
+                not(maybe.isSome(:model.Kind v.bound) andif model.isPower(maybe.unwrap(:model.Kind v.bound)))
+            else true
+        end
+
+    let representations(): model.Subst =
+        begin
+            let s = model.newSubst()
+            hashMap.forEach(:Int :ModuleAbstractType bySymbol fun(k: Int e: ModuleAbstractType): Ok
+                if maybe.isSome(:model.Type e.rep) andif unbounded(e)
+                    andif not(hashMap.contains(:String :Bool apartNames e.globalName)) then
+                    begin hashMap.insert(:Int :model.Type s k maybe.unwrap(:model.Type e.rep)) ok end
+                end)
+            s
+        end
 
     let registerUnlinkedAbstractType(globalName: String typeVar: model.Type): ModuleAbstractType =
         recordType(globalName typeVar false)

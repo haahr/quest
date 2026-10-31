@@ -6,6 +6,7 @@ import
     questlang/ir/shapes : questlang/ir/Shapes
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/walk : questlang/ir/Walk
+    questlang/codegen/layout : questlang/codegen/Layout
     questlang/ir/clone : questlang/ir/Clone
     questlang/ir/inline : questlang/ir/Inline
     questlang/ir/contify : questlang/ir/Contify
@@ -77,13 +78,16 @@ export
     let setDef(s: Simplifier id: Int o: Op): Ok = begin hashMap.insert(:Int :Op s.defs id o) ok end
     let setConst(s: Simplifier id: Int a: Atom): Ok = begin hashMap.insert(:Int :Atom s.consts id a) ok end
 
+    (* The unit's bodies: its modules' initializations first, in order (each
+     * runs before the main body, and what it binds its members to is known when
+     * the main body calls them), then its main body and its functions *)
     let rec bodies(unit: nodes.Unit): Array(Body) =
         begin
             let found = vector.new(:Body)
-            vector.append(:Body found unit.main)
             for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
                 vector.append(:Body found vector.get(:nodes.Module unit.modules i).init)
             end
+            vector.append(:Body found unit.main)
             for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
                 vector.append(:Body found vector.get(:nodes.Function unit.functions i).body)
             end
@@ -523,9 +527,14 @@ export
              * variables of its module's, out of the caller's scope: such a call
              * is inlined only at the function's own type, and of a closed
              * function *)
+            (* In a whole program, where abstract types are transparent, at a type
+             * whose calls are represented as the function's own are *)
             let sameShape = fun(f: nodes.Function): Bool
                 maybe.isNone(:model.Type x.calleeType)
                     orif {shapes.shape(maybe.unwrap(:model.Type x.calleeType)).id is shapes.shape(f.v.type).id}
+                    orif {shapes.transparentAbstractTypes()
+                        andif eq(layout.signatureRepresentation(maybe.unwrap(:model.Type x.calleeType))
+                            layout.signatureRepresentation(f.v.type))}
             let atItsType = maybe.isSome(:Variable x.callee) orif {maybe.isSome(:nodes.Function found)
                 andif hashMap.find(:Int :Bool s.analysis.closed maybe.unwrap(:nodes.Function found).v.id)
                 andif sameShape(maybe.unwrap(:nodes.Function found))}
@@ -543,6 +552,12 @@ export
                  * argument substituted for it would change *)
                 for i = 0 upto {extent f.typeParams - 1} do
                     if maybe.isSome(:shapes.Shape f.typeParams[i].bound) then fits := false end
+                end
+                (* An external function called at a type parameter takes and
+                 * returns its values as QVal words, which the parameter's are
+                 * and a type argument's may not be *)
+                if {extent f.typeParams > 0} andif hashMap.find(:Int :Bool s.analysis.callsExternalAtTypes f.v.id) then
+                    fits := false
                 end
                 let var bonus = if extent x.typeArgs > 0 then polymorphicBonus else 0 end
                 for i = 0 upto {extent f.params - 1} do

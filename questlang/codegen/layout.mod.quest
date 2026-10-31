@@ -1151,7 +1151,12 @@ export
                     let entry = if abstractTypes.isAbstractTypeSymbol(symbol) then
                         abstractTypes.abstractTypeBySymbol(symbol)
                     else maybe.none(:abstractTypes.ModuleAbstractType) end
-                    let written = if maybe.isSome(:abstractTypes.ModuleAbstractType entry) then
+                    (* A transparent one (in a whole program) is laid out as its
+                     * representation is, everywhere *)
+                    let transparent = shapes.transparentAbstractTypes()
+                        andif maybe.isSome(:abstractTypes.ModuleAbstractType entry)
+                        andif abstractTypes.unbounded(maybe.unwrap(:abstractTypes.ModuleAbstractType entry))
+                    let written = if maybe.isSome(:abstractTypes.ModuleAbstractType entry) andif not(transparent) then
                         maybe.unwrap(:abstractTypes.ModuleAbstractType entry).rep
                     else maybe.none(:Type) end
                     if maybe.isNone(:Type written) then

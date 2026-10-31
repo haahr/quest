@@ -5,6 +5,7 @@ import
     questlang/types/model : questlang/types/Model
     questlang/types/canonical : questlang/types/Canonical
     questlang/types/dump : questlang/types/Dump
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
@@ -373,6 +374,35 @@ export
      * t again at the tail, the lookup finds the placeholder, and the tail
      * points to it. The placeholder is then filled in from the unfolding's
      * shape (fillFrom), keeping t as its type. *)
+    let transparency = tuple let var on = false end
+    let setTransparentAbstractTypes(on: Bool): Ok = transparency.on := on
+    let transparentAbstractTypes(): Bool = transparency.on
+
+    (* The representations of the abstract types whose representations are
+     * known, as a substitution, made again when more are known *)
+    let representations = tuple let var count = ~1 let var subst = model.newSubst() end
+
+    (* A type with the transparent abstract types in it replaced by their
+     * representations (an application of one by its operator's, which the
+     * shape then reduces), until none is left *)
+    let transparent(t0: Type): Type =
+        begin
+            if representations.count isnot abstractTypes.representationCount() then
+                representations.subst := abstractTypes.representations()
+                representations.count := abstractTypes.representationCount()
+            end
+            let var t = t0
+            let var more = true
+            let var rounds = 0
+            while more andif {rounds < 8} do
+                let u = model.substitute(t representations.subst)
+                more := not(model.same(u t))
+                t := u
+                rounds := rounds + 1
+            end
+            t
+        end
+
     let rec shapeOf(t: Type): Shape =
         begin
             let cached = hashMap.get(:Int :Shape built t.id)
@@ -588,10 +618,16 @@ export
             end
         end
 
-    let rec shape(t0: Type): Shape =
+    (* The shapes asked for, by type: with transparent abstract types, and
+     * without, each kept apart, so that a module compiled on its own in a
+     * whole program's process (one the program keeps importing) sees none of
+     * the program's transparent shapes *)
+    let opaquelyAsked = hashMap.new(:Int :Shape intEqual hash.int)
+
+    let rec shapeIn(cache: hashMap.T(Int Shape) open: Bool t0: Type): Shape =
         begin
             let t = model.pruned(t0)
-            let cached = hashMap.get(:Int :Shape asked t.id)
+            let cached = hashMap.get(:Int :Shape cache t.id)
             if maybe.isSome(:Shape cached) then
                 maybe.unwrap(:Shape cached)
             elsif t.hasMeta then
@@ -601,12 +637,15 @@ export
                 if resolved.hasMeta then
                     raise noShape with "the type " <> model.show(t) <> " has unsolved metavariables and no shape" end
                 end
-                shape(resolved)
+                shapeIn(cache open resolved)
             else
-                let stripped = model.stripAliases(t)
+                let stripped = model.stripAliases(if open then transparent(t) else t end)
                 let s = shapeOf(maybe.unwrapOr(:Type canonical.canonicalType(stripped) stripped))
-                hashMap.insert(:Int :Shape asked t.id s)
+                hashMap.insert(:Int :Shape cache t.id s)
                 s
             end
         end
+
+    let shape(t: Type): Shape = if transparency.on then shapeIn(asked true t) else shapeIn(opaquelyAsked false t) end
+    let opaqueShape(t: Type): Shape = shapeIn(opaquelyAsked false t)
 end

@@ -141,7 +141,9 @@ export
      * same C representations), as Python's repr writes them *)
     let shapeKey(t: Type): String =
         begin
-            let s = shapes.shape(t)
+            (* In a whole program, by its fields as described, abstract types
+             * opaque *)
+            let s = shapes.opaqueShape(t)
             let unsorted = if shapes.kindIs(s shapes.shapeRecord) then recordFields(s.structure)
                 else recordFields(t) end
             let fields = sort.sorted(:model.RecordField unsorted compareFields)
@@ -152,6 +154,12 @@ export
                 vector.append(:String parts pyRepr(f.name))
                 vector.append(:String parts pyRepr(layout.typeTag(f.type)))
                 vector.append(:String parts pyRepr(layout.typeDigest(f.type)))
+                (* In a whole program, a field of a transparent abstract type
+                 * and one of its representation are laid out alike but
+                 * described apart *)
+                if shapes.transparentAbstractTypes() then
+                    vector.append(:String parts syntax.cInt(shapes.opaqueShape(f.type).id))
+                end
                 vector.append(:String items pyTuple(parts))
             end
             pyTuple(items)
@@ -242,7 +250,7 @@ export
      * (opaque) *)
     let rec descriptorForm(t0: Type ctx: maybe.T(RecordNaming)): DescriptorForm =
         begin
-            let s = shapes.shape(t0)
+            let s = shapes.opaqueShape(t0)
             let hole = descriptors.holeIndex(s.type)
             if maybe.isSome(:Int hole) then
                 (* A template's hole (described as such, not by the bound a

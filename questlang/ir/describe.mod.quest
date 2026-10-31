@@ -64,7 +64,7 @@ export
 
     let echoValueKind(t: Type): String =
         begin
-            let s = shapes.shape(t)
+            let s = shapes.opaqueShape(t)
             if shapes.kindIs(s shapes.shapeWord) then "Word"
             elsif shapes.kindIs(s shapes.shapeFun) orif shapes.kindIs(s shapes.shapeAll) then "fun"
             elsif shapes.kindIs(s shapes.shapeTypevar) orif {shapes.kindIs(s shapes.shapeAbstract)
@@ -141,7 +141,7 @@ export
      * parameter's placeholder *)
     let isConstant(template: Type): Bool =
         begin
-            let s = shapes.shape(template)
+            let s = shapes.opaqueShape(template)
             if isConstantKind(s.kind) orif maybe.isSome(:Int descriptors.boundVarIndex(s.structure)) then
                 true
             else
@@ -188,7 +188,7 @@ export
      * unit's static data *)
     let static(d: Describer t: Type echo: Bool): nodes.StaticDescriptor =
         begin
-            let key = if echo then "e" <> conv.int(t.id) else "s" <> conv.int(shapes.shape(t).id) end
+            let key = if echo then "e" <> conv.int(t.id) else "s" <> conv.int(shapes.opaqueShape(t).id) end
             if not(hashMap.contains(:String :nodes.StaticDescriptor d.staticKeys key)) then
                 let listed = nodes.newStaticDescriptor(t echo)
                 hashMap.insert(:String :nodes.StaticDescriptor d.staticKeys key listed)
@@ -242,7 +242,7 @@ export
      * in scope, instantiated with their descriptors *)
     let rec describeType(d: Describer t: Type): Descriptor =
         begin
-            let v = shapes.shape(t).type
+            let v = shapes.opaqueShape(t).type
             let scoped = case v.form
                 when typeVariable with x then hashMap.get(:Int :Variable d.scope x.symbolId)
                 when typeAbstract with x then hashMap.get(:Int :Variable d.scope x.symbolId)
@@ -624,7 +624,7 @@ export
             let entries = abstractTypes.moduleAbstractTypes(canon)
             for i = 0 upto {extent entries - 1} do
                 let entry = entries[i]
-                let var rep = shapes.shape(maybe.unwrap(:Type entry.rep)).type
+                let var rep = shapes.opaqueShape(maybe.unwrap(:Type entry.rep)).type
                 let var arity = 0
                 let var kind = case entry.typeVar.form when typeVariable with x then x.bound else maybe.none(:model.Kind) end
                 let var more = true

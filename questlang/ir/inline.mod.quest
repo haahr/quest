@@ -30,6 +30,7 @@ export
         components: hashMap.T(Int Int)
         recursive: hashMap.T(Int Bool)
         closed: hashMap.T(Int Bool)
+        callsExternalAtTypes: hashMap.T(Int Bool)
         sizes: hashMap.T(Int Int)
         size: Int
     end
@@ -181,6 +182,28 @@ export
             closed
         end
 
+    (* Whether a function's body, or a function it binds, calls an external
+     * function at type arguments *)
+    let callsExternalAtTypes(f: nodes.Function): Bool =
+        begin
+            let stmts = walk.walkStatements(f.body true)
+            let var found = false
+            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                let o = case vector.get(:Stmt stmts i)
+                    when sLet with x then maybe.some(:nodes.Op x.value)
+                    when sDo with x then maybe.some(:nodes.Op x.value)
+                    else maybe.none(:nodes.Op)
+                end
+                if maybe.isSome(:nodes.Op o) then
+                    case maybe.unwrap(:nodes.Op o)
+                        when opCallExternal with x then if extent x.typeArgs > 0 then found := true end
+                        else ok
+                    end
+                end
+            end
+            found
+        end
+
     let analyze(all: Array(Body)): Analysis =
         begin
             let order = collect(all)
@@ -214,11 +237,17 @@ export
                 let f = vector.get(:nodes.Function order i)
                 hashMap.insert(:Int :Bool closed f.v.id isClosed(f))
             end
+            let externals = hashMap.new(:Int :Bool intEqual hash.int)
+            for i = 0 upto {vector.length(:nodes.Function order) - 1} do
+                let f = vector.get(:nodes.Function order i)
+                hashMap.insert(:Int :Bool externals f.v.id callsExternalAtTypes(f))
+            end
             tuple
                 let functions = functions
                 let components = numbers
                 let recursive = recursive
                 let closed = closed
+                let callsExternalAtTypes = externals
                 let sizes = sizes
                 let size = total
             end

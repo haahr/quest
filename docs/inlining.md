@@ -177,7 +177,9 @@ benchmarks.md §3.3, independent of the inliner, and the first step.
    bonuses, at most 30: 30 for type arguments, 10 for an argument that is a known function, 5 for a constant), and
    each `var` or `out` argument is the address of a variable in scope, which stands for the parameter. A function
    with a bounded type parameter is not inlined: its code sees values at the bound (an option's ordinal counts the
-   bound's cases), which a type argument substituted for the parameter would change. The growth
+   bound's cases), which a type argument substituted for the parameter would change. Nor is a polymorphic function
+   that calls an external function at type arguments (`hash.identityHash`, say): the external takes and returns
+   the parameter's values as `QVal` words, as a type argument's need not be, and nothing would box them. The growth
    bound is the unit's: half its size, or 1000, whichever is more; the caller's bound and the depth bound are left
    to the rounds' bound (six), and recursive functions are not inlined at all, rather than only into their own
    components, so that none is unrolled once per round. A body whose one return is its end is spliced in place;
@@ -215,9 +217,22 @@ benchmarks.md §3.3, independent of the inliner, and the first step.
    (2026-10-31): a whole program's modules are one unit since arm64.md step 13, and a call of one of a unit's
    modules' members (`call m.x`) is now inlined as a call of the member's function is, when the function names no
    variable of its module's (none is in the caller's scope) and the interface's type for the member has the
-   function's own shape. The second rules out most of the library: `maybe`, `vector`, `hashMap`, and the like
-   export functions of their abstract types, whose values are laid out generically outside the module
-   (c-representation.md §5.1) and natively inside it, so an inlined body would need conversions at its edges.
-   `run.py --whole-program` builds the suite whole.
+   function's own shape. `run.py --whole-program` builds the suite whole. *And* (2026-10-31): in a whole
+   program, the user's choice, a module's abstract types without a bound are transparent: `shapes` has two
+   shapes for a type, its shape, whose transparent abstract types are their representations (substituted before
+   the type is canonicalized), and its opaque shape, as before, which descriptors, echo, static descriptors'
+   identity, records' names, and the representations registered for dynamic values use, so that what a program
+   does is the same whole or not. With them, `layout.abstractInstance` gives no generic layout outside the module,
+   a plan between types of one shape is none, a call of a member is inlined when the interface's type is
+   represented as the function's own (`layout.signatureRepresentation`), and the simplifier visits the modules'
+   initializations before the main body. A bounded abstract type (`T::POWER(B)`) stays opaque, since outside its
+   module it is seen at its bound, which numbers its cases and fields otherwise. So does every abstract type of a
+   module compiled apart rather than merged: the library's prelinked modules (`conv`, `int`, `ascii`, `string`,
+   `arrayOp`, `real`, and `list`, usable without an import), which a whole program keeps importing, and which the
+   build compiles from source in the same process when their objects are not yet built. `moduleCompiler.
+   compileModule` turns transparency off while it runs (each setting's shapes are cached apart), and the
+   representations registered meanwhile are marked as a module compiled apart's (`abstractTypes.
+   setRegisteringApart`), which transparent shapes leave out, whenever the module is compiled.
+   `maybe.isSome(maybe.some(3))` in a whole program folds to `true`; every test passes whole through C.
 7. **Tuning:** the threshold, bonuses, and growth bounds set from the measurements. *Done when* benchmarks.md
    records the settings and why.

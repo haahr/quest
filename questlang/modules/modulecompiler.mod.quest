@@ -3,6 +3,8 @@
 module moduleCompiler : ModuleCompiler
 import
     questlang/common/location : questlang/common/Location
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/syntax/ast : questlang/syntax/Ast
     questlang/types/env : questlang/types/Env
@@ -94,6 +96,14 @@ export
         compiler: maybe.T(String) nogc: Bool extraFlags: Array(String) sourceMap: location.SourceMap stem: String
         canonicalName: String sourceFile: String buildDir: maybe.T(String) backends: choice.T): ModuleCompileResult =
         begin
+            (* A module file is compiled for other units, which see its abstract
+             * types opaquely, even in a whole program's process (one of the
+             * library's prelinked modules, which the program keeps importing):
+             * its shapes are opaque, and its representations, registered as a
+             * module compiled apart's, are never transparent *)
+            let wasTransparent = shapes.transparentAbstractTypes()
+            shapes.setTransparentAbstractTypes(false)
+            abstractTypes.setRegisteringApart(true)
             system.makeDirectory(outputDir)
             (* Compiled to C: modules are known through their interfaces *)
             e.compilingC := true
@@ -203,6 +213,8 @@ export
                 paths.absolute(oFile) vector.toArray(:manifest.ImportedModuleRef modules)
                 vector.toArray(:manifest.ImportedInterfaceRef vector.concat(:manifest.ImportedInterfaceRef interfaces
                     vector.fromArray(:manifest.ImportedInterfaceRef indirect))) backend) qmFile)
+            abstractTypes.setRegisteringApart(false)
+            shapes.setTransparentAbstractTypes(wasTransparent)
             tuple let c = cFile let o = oFile let qm = qmFile end
         end
 

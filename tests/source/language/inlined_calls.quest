@@ -4,8 +4,11 @@
  * holds no polymorphic call, so no conversion or descriptor: the
  * ir_described golden shows it), a higher-order one with the function it
  * calls, one with a var parameter, one with several returns (a join point),
- * and one that raises; and what it leaves: a recursive function. *)
+ * and one that raises; and what it leaves: a recursive function, and a
+ * polymorphic one calling an external function at its type parameter (whose
+ * values the external takes as QVal words, as an argument's need not be). *)
 import writer: Writer;
+import word: Word;
 import conv: Conv;
 let print(s: String): Ok = writer.putString(writer.output s <> "\n");
 
@@ -33,3 +36,9 @@ print("raises: " <> try conv.int(checked(~1)) when negative then "negative" end)
 
 let rec fact(n: Int): Int = if n <= 1 then 1 else n * fact(n - 1) end;
 print("recursive: " <> conv.int(fact(10)));
+
+let identity(A::TYPE x: A): word.T = external "quest_identity_hash";
+let numbers = array of(3 1);
+let pair = tuple let a = 1 let b = "two" end;
+print("external: " <> conv.bool({identity(:Array(Int) numbers) is identity(:Array(Int) numbers)}
+    andif {identity(:Tuple a: Int b: String end pair) is identity(:Tuple a: Int b: String end pair)}));

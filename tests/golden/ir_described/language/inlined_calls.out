@@ -1,15 +1,22 @@
 import writer = "writer" : Writer
+import word = "word" : Word
 import conv = "conv" : Conv
+static descriptor(Array(Int))
+static descriptor(Tuple a: Int b: String end)
 fun fact(n: Int): Int {
-  let %47: Bool = prim <=(n, 1)
-  if %47 {
+  let %58: Bool = prim <=(n, 1)
+  if %58 {
     return 1
   } else {
-    let %48: Int = prim -(n, 1)
-    let %49: Int = call fact.1(%48)
-    let %50: Int = prim *(n, %49)
-    return %50
+    let %59: Int = prim -(n, 1)
+    let %60: Int = call fact.1(%59)
+    let %61: Int = prim *(n, %60)
+    return %61
   }
+}
+fun identity [A::TYPE](descriptor_A: descriptor, x: A): word.T {
+  let %62: word.T = call external "quest_identity_hash" [descriptor_A](x)
+  return %62
 }
 main {
   let %1: String = call conv.int(37)
@@ -63,12 +70,39 @@ main {
     let %43: writer.T = member writer.output
     let %44: String = prim <>(%42, "\n")
     let %45: Ok = call writer.putString(%43, %44)
+    let identity.1: All(A :: TYPE) Fun(x: A): word.T = closure identity {}
+    let numbers: Array(Int) = array_rep(3, 1)
+    let b.1: String = "two"
+    let pair: Tuple a: Int b: String end = tuple(1, b.1)
+    join k6(r.1: Bool) {
+      let %46: String = call conv.bool(r.1)
+      let %47: String = prim <>("external: ", %46)
+      let %48: writer.T = member writer.output
+      let %49: String = prim <>(%47, "\n")
+      let %50: Ok = call writer.putString(%48, %49)
+    } in {
+      let numbers.1: A = convert(numbers, box)
+      let %51: word.T = call identity.1 [descriptor(Array(Int))](numbers.1)
+      let numbers.2: A = convert(numbers, box)
+      let %52: word.T = call identity.1 [descriptor(Array(Int))](numbers.2)
+      let %53: Bool = prim is(%51, %52)
+      if %53 {
+        let pair.1: A = convert(pair, box)
+        let %54: word.T = call identity.1 [descriptor(Tuple a: Int b: String end)](pair.1)
+        let pair.2: A = convert(pair, box)
+        let %55: word.T = call identity.1 [descriptor(Tuple a: Int b: String end)](pair.2)
+        let %56: Bool = prim is(%54, %55)
+        jump k6(%56)
+      } else {
+        jump k6(false)
+      }
+    }
   } in {
     try catching (negative) {
       raise negative
     } handle (e: Exception) {
-      let %46: Bool = prim is(e, negative)
-      if %46 {
+      let %57: Bool = prim is(e, negative)
+      if %57 {
         jump k4("negative")
       } else {
         reraise e
