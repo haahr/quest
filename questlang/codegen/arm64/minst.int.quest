@@ -1,0 +1,189 @@
+(* Quest Self-Hosted Compiler: arm64 Machine Instructions Interface
+ *
+ * arm64's instructions as data (docs/backend-improvements.md section 3.8):
+ * Op, an option of the target's operations with their immediates, conditions,
+ * addressing modes, and labels, and an instruction, an Op with its registers
+ * (codegen/arm64/target's numbers), in an order each Op's comment gives. Only
+ * the arm64 backend's code generator, which makes them, and its printer, which
+ * spells them (codegen/arm64/printer), case on an Op. A label, and the unwind
+ * information's directives, are instructions too, so that a function's code is
+ * one sequence. *)
+
+interface Minst
+export
+    (* A condition, after a comparison: for integers, signed (lt, ge, gt, le)
+     * or unsigned (lo, hs, hi, ls); after fcmp, mi, ls, gt, and ge are false
+     * when either is a NaN, and vs is true when one is *)
+    Def Cond = Option
+        condEq condNe condLt condGe condGt condLe condLo condHs condHi condLs condMi condPl condVs condVc
+    end
+    (* The operations of three registers: integers', and reals' *)
+    Def Arith = Option
+        arithAdd arithSub arithMul arithSdiv arithAnd arithOrr arithEor arithLsl arithLsr arithAsr
+        arithFadd arithFsub arithFmul arithFdiv
+    end
+    (* How a symbol's address is found: its page and its offset in it, the
+     * page and offset of its GOT entry, or of its thread-local descriptor *)
+    Def Reloc = Option relocPage relocGot relocTlv end
+    (* How a load or store addresses memory from its base register: plus an
+     * immediate, the base alone, plus an immediate with the base moved there
+     * first (pre-index) or after (post-index), or plus a symbol's offset in
+     * its page *)
+    Def Mode = Option
+        modeOffset with imm: Int end
+        modeBase
+        modePre with imm: Int end
+        modePost with imm: Int end
+        modePageOff with symbol: String reloc: Reloc end
+    end
+    (* A load's width and extension: 8 bytes (into an x or d register), 4
+     * sign-extended, 1 sign-extended, or 1 zero-extended; a store's width *)
+    Def Load = Option load64 loadS32 loadS8 loadU8 end
+    Def Store = Option store64 store32 store8 end
+
+    (* Each Op's registers, in order, follow it *)
+    Def Op = Option
+        (* d := an immediate: mov (any, written in one instruction), movz (a
+         * halfword shifted), movk (d's halfword replaced; d is read too) *)
+        opMovImm with imm: Int end
+        opMovz with imm: Int shift: Int end
+        opMovk with imm: Int shift: Int end
+        (* d, s: a register's copy, of either class *)
+        opMov
+        (* d, x, y *)
+        opArith with arith: Arith end
+        (* d, s: d := s plus, less, or and an immediate; add's shifted left
+         * by shift (0 or 12) *)
+        opAddImm with imm: Int shift: Int end
+        opSubImm with imm: Int end
+        opAndImm with imm: Int end
+        (* d, x, y, z: d := z - x * y *)
+        opMsub
+        (* d, s: s's low byte, or its low 4 bytes, sign-extended *)
+        opSxtb
+        opSxtw
+        (* x, y: the flags set by their comparison *)
+        opCmp
+        opFcmp
+        (* d: 1 if the condition holds, else 0 *)
+        opCset with cond: Cond end
+        (* t, base: t loaded from, or stored to, memory *)
+        opLoad with load: Load mode: Mode end
+        opStore with store: Store mode: Mode end
+        (* a, b, base: a pair of registers loaded or stored *)
+        opLdp with mode: Mode end
+        opStp with mode: Mode end
+        (* d: a symbol's page, as reloc says; d, s: d := s plus the symbol's
+         * offset in its page; d: a label's address *)
+        opAdrp with symbol: String reloc: Reloc end
+        opAddPageOff with symbol: String end
+        opAdr with label: String end
+        (* Branches: to a label, or to a symbol (a tail call); a call of a
+         * symbol, or (r) of a register; (r) a branch to a register; a return *)
+        opB with label: String end
+        opBSymbol with symbol: String end
+        opBl with symbol: String end
+        opBlr
+        opBr
+        opRet
+        (* r: a branch if r is zero, or not *)
+        opCbz with label: String end
+        opCbnz with label: String end
+        (* A branch if the condition holds *)
+        opBCond with cond: Cond label: String end
+        opBrk with imm: Int end
+        (* A label, before the instruction that follows *)
+        opLabel with label: String end
+        (* r: the unwind information's frame address is r plus offset, or a
+         * register's saved value is at the frame address plus offset *)
+        opCfiDefCfa with offset: Int end
+        opCfiOffset with offset: Int end
+    end
+    Def Inst = Tuple op: Op regs: Array(Int) end
+
+    condEq: Cond
+    condNe: Cond
+    condLt: Cond
+    condGe: Cond
+    condGt: Cond
+    condLe: Cond
+    condLo: Cond
+    condHs: Cond
+    condHi: Cond
+    condLs: Cond
+    condMi: Cond
+    condPl: Cond
+    condVs: Cond
+    condVc: Cond
+    (* The condition that holds where c does not *)
+    inverse(c: Cond): Cond
+
+    arithAdd: Arith
+    arithSub: Arith
+    arithMul: Arith
+    arithSdiv: Arith
+    arithAnd: Arith
+    arithOrr: Arith
+    arithEor: Arith
+    arithLsl: Arith
+    arithLsr: Arith
+    arithAsr: Arith
+    arithFadd: Arith
+    arithFsub: Arith
+    arithFmul: Arith
+    arithFdiv: Arith
+
+    relocPage: Reloc
+    relocGot: Reloc
+    relocTlv: Reloc
+
+    offset(imm: Int): Mode
+    modeBase: Mode
+    pre(imm: Int): Mode
+    post(imm: Int): Mode
+    pageOff(symbol: String reloc: Reloc): Mode
+
+    load64: Load
+    loadS32: Load
+    loadS8: Load
+    loadU8: Load
+    store64: Store
+    store32: Store
+    store8: Store
+
+    (* The instructions, by their operations *)
+    movImm(d: Int imm: Int): Inst
+    movz(d: Int imm: Int shift: Int): Inst
+    movk(d: Int imm: Int shift: Int): Inst
+    mov(d: Int s: Int): Inst
+    arith(a: Arith d: Int x: Int y: Int): Inst
+    addImm(d: Int s: Int imm: Int shift: Int): Inst
+    subImm(d: Int s: Int imm: Int): Inst
+    andImm(d: Int s: Int imm: Int): Inst
+    msub(d: Int x: Int y: Int z: Int): Inst
+    sxtb(d: Int s: Int): Inst
+    sxtw(d: Int s: Int): Inst
+    cmp(x: Int y: Int): Inst
+    fcmp(x: Int y: Int): Inst
+    cset(c: Cond d: Int): Inst
+    load(l: Load t: Int base: Int m: Mode): Inst
+    store(s: Store t: Int base: Int m: Mode): Inst
+    ldp(a: Int b: Int base: Int m: Mode): Inst
+    stp(a: Int b: Int base: Int m: Mode): Inst
+    adrp(d: Int symbol: String reloc: Reloc): Inst
+    addPageOff(d: Int s: Int symbol: String): Inst
+    adr(d: Int label: String): Inst
+    b(label: String): Inst
+    bSymbol(symbol: String): Inst
+    bl(symbol: String): Inst
+    blr(r: Int): Inst
+    br(r: Int): Inst
+    ret: Inst
+    cbz(r: Int label: String): Inst
+    cbnz(r: Int label: String): Inst
+    bCond(c: Cond label: String): Inst
+    brk(imm: Int): Inst
+    label(l: String): Inst
+    cfiDefCfa(r: Int offset: Int): Inst
+    cfiOffset(r: Int offset: Int): Inst
+end

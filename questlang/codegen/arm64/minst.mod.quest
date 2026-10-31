@@ -1,0 +1,165 @@
+(* Quest Self-Hosted Compiler: arm64 Machine Instructions Implementation *)
+
+module minst : Minst
+export
+    Def Cond = Option
+        condEq condNe condLt condGe condGt condLe condLo condHs condHi condLs condMi condPl condVs condVc
+    end
+    Def Arith = Option
+        arithAdd arithSub arithMul arithSdiv arithAnd arithOrr arithEor arithLsl arithLsr arithAsr
+        arithFadd arithFsub arithFmul arithFdiv
+    end
+    Def Reloc = Option relocPage relocGot relocTlv end
+    Def Mode = Option
+        modeOffset with imm: Int end
+        modeBase
+        modePre with imm: Int end
+        modePost with imm: Int end
+        modePageOff with symbol: String reloc: Reloc end
+    end
+    Def Load = Option load64 loadS32 loadS8 loadU8 end
+    Def Store = Option store64 store32 store8 end
+    Def Op = Option
+        opMovImm with imm: Int end
+        opMovz with imm: Int shift: Int end
+        opMovk with imm: Int shift: Int end
+        opMov
+        opArith with arith: Arith end
+        opAddImm with imm: Int shift: Int end
+        opSubImm with imm: Int end
+        opAndImm with imm: Int end
+        opMsub
+        opSxtb
+        opSxtw
+        opCmp
+        opFcmp
+        opCset with cond: Cond end
+        opLoad with load: Load mode: Mode end
+        opStore with store: Store mode: Mode end
+        opLdp with mode: Mode end
+        opStp with mode: Mode end
+        opAdrp with symbol: String reloc: Reloc end
+        opAddPageOff with symbol: String end
+        opAdr with label: String end
+        opB with label: String end
+        opBSymbol with symbol: String end
+        opBl with symbol: String end
+        opBlr
+        opBr
+        opRet
+        opCbz with label: String end
+        opCbnz with label: String end
+        opBCond with cond: Cond label: String end
+        opBrk with imm: Int end
+        opLabel with label: String end
+        opCfiDefCfa with offset: Int end
+        opCfiOffset with offset: Int end
+    end
+    Def Inst = Tuple op: Op regs: Array(Int) end
+
+    let condEq: Cond = option condEq of Cond end
+    let condNe: Cond = option condNe of Cond end
+    let condLt: Cond = option condLt of Cond end
+    let condGe: Cond = option condGe of Cond end
+    let condGt: Cond = option condGt of Cond end
+    let condLe: Cond = option condLe of Cond end
+    let condLo: Cond = option condLo of Cond end
+    let condHs: Cond = option condHs of Cond end
+    let condHi: Cond = option condHi of Cond end
+    let condLs: Cond = option condLs of Cond end
+    let condMi: Cond = option condMi of Cond end
+    let condPl: Cond = option condPl of Cond end
+    let condVs: Cond = option condVs of Cond end
+    let condVc: Cond = option condVc of Cond end
+    let inverse(c: Cond): Cond =
+        case c
+            when condEq then condNe when condNe then condEq
+            when condLt then condGe when condGe then condLt
+            when condGt then condLe when condLe then condGt
+            when condLo then condHs when condHs then condLo
+            when condHi then condLs when condLs then condHi
+            when condMi then condPl when condPl then condMi
+            when condVs then condVc when condVc then condVs
+        end
+
+    let arithAdd: Arith = option arithAdd of Arith end
+    let arithSub: Arith = option arithSub of Arith end
+    let arithMul: Arith = option arithMul of Arith end
+    let arithSdiv: Arith = option arithSdiv of Arith end
+    let arithAnd: Arith = option arithAnd of Arith end
+    let arithOrr: Arith = option arithOrr of Arith end
+    let arithEor: Arith = option arithEor of Arith end
+    let arithLsl: Arith = option arithLsl of Arith end
+    let arithLsr: Arith = option arithLsr of Arith end
+    let arithAsr: Arith = option arithAsr of Arith end
+    let arithFadd: Arith = option arithFadd of Arith end
+    let arithFsub: Arith = option arithFsub of Arith end
+    let arithFmul: Arith = option arithFmul of Arith end
+    let arithFdiv: Arith = option arithFdiv of Arith end
+
+    let relocPage: Reloc = option relocPage of Reloc end
+    let relocGot: Reloc = option relocGot of Reloc end
+    let relocTlv: Reloc = option relocTlv of Reloc end
+
+    let offset(imm: Int): Mode = option modeOffset of Mode with let imm = imm end
+    let modeBase: Mode = option modeBase of Mode end
+    let pre(imm: Int): Mode = option modePre of Mode with let imm = imm end
+    let post(imm: Int): Mode = option modePost of Mode with let imm = imm end
+    let pageOff(symbol: String reloc: Reloc): Mode =
+        option modePageOff of Mode with let symbol = symbol let reloc = reloc end
+
+    let load64: Load = option load64 of Load end
+    let loadS32: Load = option loadS32 of Load end
+    let loadS8: Load = option loadS8 of Load end
+    let loadU8: Load = option loadU8 of Load end
+    let store64: Store = option store64 of Store end
+    let store32: Store = option store32 of Store end
+    let store8: Store = option store8 of Store end
+
+    let inst(op: Op regs: Array(Int)): Inst = tuple let op = op let regs = regs end
+    let none = array of :Int end
+    let movImm(d: Int imm: Int): Inst = inst(option opMovImm of Op with let imm = imm end array of d end)
+    let movz(d: Int imm: Int shift: Int): Inst =
+        inst(option opMovz of Op with let imm = imm let shift = shift end array of d end)
+    let movk(d: Int imm: Int shift: Int): Inst =
+        inst(option opMovk of Op with let imm = imm let shift = shift end array of d end)
+    let mov(d: Int s: Int): Inst = inst(option opMov of Op end array of d s end)
+    let arith(a: Arith d: Int x: Int y: Int): Inst =
+        inst(option opArith of Op with let arith = a end array of d x y end)
+    let addImm(d: Int s: Int imm: Int shift: Int): Inst =
+        inst(option opAddImm of Op with let imm = imm let shift = shift end array of d s end)
+    let subImm(d: Int s: Int imm: Int): Inst = inst(option opSubImm of Op with let imm = imm end array of d s end)
+    let andImm(d: Int s: Int imm: Int): Inst = inst(option opAndImm of Op with let imm = imm end array of d s end)
+    let msub(d: Int x: Int y: Int z: Int): Inst = inst(option opMsub of Op end array of d x y z end)
+    let sxtb(d: Int s: Int): Inst = inst(option opSxtb of Op end array of d s end)
+    let sxtw(d: Int s: Int): Inst = inst(option opSxtw of Op end array of d s end)
+    let cmp(x: Int y: Int): Inst = inst(option opCmp of Op end array of x y end)
+    let fcmp(x: Int y: Int): Inst = inst(option opFcmp of Op end array of x y end)
+    let cset(c: Cond d: Int): Inst = inst(option opCset of Op with let cond = c end array of d end)
+    let load(l: Load t: Int base: Int m: Mode): Inst =
+        inst(option opLoad of Op with let load = l let mode = m end array of t base end)
+    let store(s: Store t: Int base: Int m: Mode): Inst =
+        inst(option opStore of Op with let store = s let mode = m end array of t base end)
+    let ldp(a: Int b: Int base: Int m: Mode): Inst =
+        inst(option opLdp of Op with let mode = m end array of a b base end)
+    let stp(a: Int b: Int base: Int m: Mode): Inst =
+        inst(option opStp of Op with let mode = m end array of a b base end)
+    let adrp(d: Int symbol: String reloc: Reloc): Inst =
+        inst(option opAdrp of Op with let symbol = symbol let reloc = reloc end array of d end)
+    let addPageOff(d: Int s: Int symbol: String): Inst =
+        inst(option opAddPageOff of Op with let symbol = symbol end array of d s end)
+    let adr(d: Int label: String): Inst = inst(option opAdr of Op with let label = label end array of d end)
+    let b(label: String): Inst = inst(option opB of Op with let label = label end none)
+    let bSymbol(symbol: String): Inst = inst(option opBSymbol of Op with let symbol = symbol end none)
+    let bl(symbol: String): Inst = inst(option opBl of Op with let symbol = symbol end none)
+    let blr(r: Int): Inst = inst(option opBlr of Op end array of r end)
+    let br(r: Int): Inst = inst(option opBr of Op end array of r end)
+    let ret: Inst = inst(option opRet of Op end none)
+    let cbz(r: Int label: String): Inst = inst(option opCbz of Op with let label = label end array of r end)
+    let cbnz(r: Int label: String): Inst = inst(option opCbnz of Op with let label = label end array of r end)
+    let bCond(c: Cond label: String): Inst = inst(option opBCond of Op with let cond = c let label = label end none)
+    let brk(imm: Int): Inst = inst(option opBrk of Op with let imm = imm end none)
+    let label(l: String): Inst = inst(option opLabel of Op with let label = l end none)
+    let cfiDefCfa(r: Int offset: Int): Inst = inst(option opCfiDefCfa of Op with let offset = offset end array of r end)
+    let cfiOffset(r: Int offset: Int): Inst = inst(option opCfiOffset of Op with let offset = offset end array of r end)
+end

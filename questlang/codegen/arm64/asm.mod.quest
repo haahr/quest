@@ -3,6 +3,7 @@
 module asm : Asm
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
     collections/vector : collections/Vector
     util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
@@ -16,36 +17,10 @@ export
         elsif n is {~9223372036854775807 - 1} then "-9223372036854775808"
         else "-" <> conv.int(0 - n) end
 
-    let addressOf(reg: String name: String offset: Int local: Bool threadLocal: Bool): Array(String) =
-        begin
-            let s = symbol(name)
-            let lines = vector.new(:String)
-            if threadLocal then
-                vector.append(:String lines "adrp x0, " <> s <> "@TLVPPAGE")
-                vector.append(:String lines "ldr x0, [x0, " <> s <> "@TLVPPAGEOFF]")
-                vector.append(:String lines "ldr x16, [x0]")
-                vector.append(:String lines "blr x16")
-                if not(stringOp.equal(reg "x0")) then vector.append(:String lines "mov " <> reg <> ", x0") end
-            elsif local then
-                vector.append(:String lines "adrp " <> reg <> ", " <> s <> "@PAGE")
-                vector.append(:String lines "add " <> reg <> ", " <> reg <> ", " <> s <> "@PAGEOFF")
-            else
-                vector.append(:String lines "adrp " <> reg <> ", " <> s <> "@GOTPAGE")
-                vector.append(:String lines "ldr " <> reg <> ", [" <> reg <> ", " <> s <> "@GOTPAGEOFF]")
-            end
-            (* An offset past the symbol (small, as the SSA's are) *)
-            if offset isnot 0 then
-                if {offset > 0} andif {offset < 4096} then
-                    vector.append(:String lines "add " <> reg <> ", " <> reg <> ", #" <> conv.int(offset))
-                elsif {offset < 0} andif {offset > ~4096} then
-                    vector.append(:String lines "sub " <> reg <> ", " <> reg <> ", #" <> conv.int(0 - offset))
-                else
-                    vector.append(:String lines "mov x17, #" <> decimal(offset))
-                    vector.append(:String lines "add " <> reg <> ", " <> reg <> ", x17")
-                end
-            end
-            vector.toArray(:String lines)
-        end
+    let reference(name: String reloc: minst.Reloc pageOffset: Bool): String =
+        symbol(name) <> case reloc
+            when relocPage then "@PAGE" when relocGot then "@GOTPAGE" when relocTlv then "@TLVPPAGE"
+        end <> if pageOffset then "OFF" else "" end
 
     let functionStart(name: String exported: Bool): Array(String) =
         begin

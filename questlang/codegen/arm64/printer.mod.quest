@@ -1,0 +1,125 @@
+(* Quest Self-Hosted Compiler: The arm64 Printer Implementation *)
+
+module printer : Printer
+import
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+    questlang/codegen/arm64/asm : questlang/codegen/arm64/Asm
+    questlang/codegen/arm64/target : questlang/codegen/arm64/Target
+    util/strutil : util/Strutil
+    conv : Conv
+    word : Word
+export
+    let name(r: Int): String = target.name(r)
+    let immediate(n: Int): String = "#" <> asm.decimal(n)
+    let operands(rs: Array(String)): String = strutil.joinArray(", " rs)
+
+    let condition(c: minst.Cond): String =
+        case c
+            when condEq then "eq" when condNe then "ne" when condLt then "lt" when condGe then "ge"
+            when condGt then "gt" when condLe then "le" when condLo then "lo" when condHs then "hs"
+            when condHi then "hi" when condLs then "ls" when condMi then "mi" when condPl then "pl"
+            when condVs then "vs" when condVc then "vc"
+        end
+
+    let mnemonic(a: minst.Arith): String =
+        case a
+            when arithAdd then "add" when arithSub then "sub" when arithMul then "mul" when arithSdiv then "sdiv"
+            when arithAnd then "and" when arithOrr then "orr" when arithEor then "eor" when arithLsl then "lsl"
+            when arithLsr then "lsr" when arithAsr then "asr" when arithFadd then "fadd" when arithFsub then "fsub"
+            when arithFmul then "fmul" when arithFdiv then "fdiv"
+        end
+
+    (* The memory a mode addresses from a base register *)
+    let address(base: Int m: minst.Mode): String =
+        case m
+            when modeOffset with x then "[" <> name(base) <> ", " <> immediate(x.imm) <> "]"
+            when modeBase then "[" <> name(base) <> "]"
+            when modePre with x then "[" <> name(base) <> ", " <> immediate(x.imm) <> "]!"
+            when modePost with x then "[" <> name(base) <> "], " <> immediate(x.imm)
+            when modePageOff with x then "[" <> name(base) <> ", " <> asm.reference(x.symbol x.reloc true) <> "]"
+        end
+
+    (* Whether a mode needs a load's or store's unscaled form, for width
+     * bytes: an offset not a multiple of the width, negative, or too far *)
+    let unscaled(m: minst.Mode width: Int): Bool =
+        case m
+            when modeOffset with x then
+                {x.imm < 0} orif {x.imm isnot {{x.imm / width} * width}} orif {{x.imm / width} >= 4096}
+            when modeBase, modePre, modePost, modePageOff then false
+        end
+
+    (* A load or store: its scaled mnemonic, its unscaled one, the register
+     * as the width names it, and its address *)
+    let access(scaled: String unscaledForm: String t: String base: Int m: minst.Mode width: Int): String =
+        {if unscaled(m width) then unscaledForm else scaled end} <> " " <> t <> ", " <> address(base m)
+
+    (* A register as the unwind information names it *)
+    let cfiName(r: Int): String =
+        if target.isReal(r) then "b" <> conv.int(r - target.d(0)) else "w" <> conv.int(r) end
+
+    let instruction(op: minst.Op rs: Array(Int)): String =
+        case op
+            when opMovImm with x then "mov " <> name(rs[0]) <> ", " <> immediate(x.imm)
+            when opMovz with x then "movz " <> name(rs[0]) <> ", #" <> conv.int(x.imm) <> ", lsl #" <> conv.int(x.shift)
+            when opMovk with x then "movk " <> name(rs[0]) <> ", #" <> conv.int(x.imm) <> ", lsl #" <> conv.int(x.shift)
+            when opMov then
+                {if target.isReal(rs[0]) orif target.isReal(rs[1]) then "fmov " else "mov " end}
+                    <> operands(array of name(rs[0]) name(rs[1]) end)
+            when opArith with x then
+                mnemonic(x.arith) <> " " <> operands(array of name(rs[0]) name(rs[1]) name(rs[2]) end)
+            when opAddImm with x then
+                "add " <> operands(array of name(rs[0]) name(rs[1]) immediate(x.imm) end)
+                    <> if x.shift > 0 then ", lsl #" <> conv.int(x.shift) else "" end
+            when opSubImm with x then "sub " <> operands(array of name(rs[0]) name(rs[1]) immediate(x.imm) end)
+            when opAndImm with x then
+                "and " <> operands(array of name(rs[0]) name(rs[1]) "#0x" <> strutil.formatWord(word.fromInt(x.imm) 16)
+                    end)
+            when opMsub then "msub " <> operands(array of name(rs[0]) name(rs[1]) name(rs[2]) name(rs[3]) end)
+            when opSxtb then "sxtb " <> name(rs[0]) <> ", " <> target.half(rs[1])
+            when opSxtw then "sxtw " <> name(rs[0]) <> ", " <> target.half(rs[1])
+            when opCmp then "cmp " <> name(rs[0]) <> ", " <> name(rs[1])
+            when opFcmp then "fcmp " <> name(rs[0]) <> ", " <> name(rs[1])
+            when opCset with x then "cset " <> name(rs[0]) <> ", " <> condition(x.cond)
+            when opLoad with x then
+                case x.load
+                    when load64 then access("ldr" "ldur" name(rs[0]) rs[1] x.mode 8)
+                    when loadS32 then access("ldrsw" "ldursw" name(rs[0]) rs[1] x.mode 4)
+                    when loadS8 then access("ldrsb" "ldursb" name(rs[0]) rs[1] x.mode 1)
+                    when loadU8 then access("ldrb" "ldurb" target.half(rs[0]) rs[1] x.mode 1)
+                end
+            when opStore with x then
+                case x.store
+                    when store64 then access("str" "stur" name(rs[0]) rs[1] x.mode 8)
+                    when store32 then access("str" "stur" target.half(rs[0]) rs[1] x.mode 4)
+                    when store8 then access("strb" "sturb" target.half(rs[0]) rs[1] x.mode 1)
+                end
+            when opLdp with x then "ldp " <> name(rs[0]) <> ", " <> name(rs[1]) <> ", " <> address(rs[2] x.mode)
+            when opStp with x then "stp " <> name(rs[0]) <> ", " <> name(rs[1]) <> ", " <> address(rs[2] x.mode)
+            when opAdrp with x then "adrp " <> name(rs[0]) <> ", " <> asm.reference(x.symbol x.reloc false)
+            when opAddPageOff with x then
+                "add " <> operands(array of name(rs[0]) name(rs[1]) asm.reference(x.symbol minst.relocPage true) end)
+            when opAdr with x then "adr " <> name(rs[0]) <> ", " <> x.label
+            when opB with x then "b " <> x.label
+            when opBSymbol with x then "b " <> asm.symbol(x.symbol)
+            when opBl with x then "bl " <> asm.symbol(x.symbol)
+            when opBlr then "blr " <> name(rs[0])
+            when opBr then "br " <> name(rs[0])
+            when opRet then "ret"
+            when opCbz with x then "cbz " <> name(rs[0]) <> ", " <> x.label
+            when opCbnz with x then "cbnz " <> name(rs[0]) <> ", " <> x.label
+            when opBCond with x then "b." <> condition(x.cond) <> " " <> x.label
+            when opBrk with x then "brk " <> immediate(x.imm)
+            when opLabel with x then x.label
+            when opCfiDefCfa with x then ".cfi_def_cfa " <> cfiName(rs[0]) <> ", " <> asm.decimal(x.offset)
+            when opCfiOffset with x then ".cfi_offset " <> cfiName(rs[0]) <> ", " <> asm.decimal(x.offset)
+        end
+
+    let line(i: minst.Inst): String =
+        case i.op
+            when opLabel with x then x.label <> ":"
+            when opMovImm, opMovz, opMovk, opMov, opArith, opAddImm, opSubImm, opAndImm, opMsub, opSxtb, opSxtw, opCmp,
+                opFcmp, opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
+                opBr, opRet, opCbz, opCbnz, opBCond, opBrk, opCfiDefCfa, opCfiOffset then
+                "\t" <> instruction(i.op i.regs)
+        end
+end

@@ -4,6 +4,8 @@ module codegen : Codegen
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/codegen/arm64/asm : questlang/codegen/arm64/Asm
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+    questlang/codegen/arm64/printer : questlang/codegen/arm64/Printer
     questlang/codegen/arm64/target : questlang/codegen/arm64/Target
     questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
     questlang/codegen/regalloc : questlang/codegen/Regalloc
@@ -19,6 +21,7 @@ import
 export
     Let Function = ssa.Function
     Let Lines = vector.T(String)
+    Let Code = vector.T(minst.Inst)
 
     let unsupported: Exception(String) = exception unsupported: String end
     let eq(a: String b: String): Bool = stringOp.equal(a b)
@@ -32,13 +35,33 @@ export
     let alignUp(n: Int a: Int): Int = {{{n + a} - 1} / a} * a
     let isReal(t: ssa.Type): Bool = case t when typeInt, typePtr then false when typeReal then true end
 
+    (* The registers the code names: the arguments' and results' first, the
+     * scratch registers (x9, x10, and x11 within an instruction's code; x16
+     * and x17 within a sequence that addresses memory, as the linker's
+     * veneers may use them), and the frame's *)
+    let x0 = target.x(0)
+    let x1 = target.x(1)
+    let x9 = target.x(9)
+    let x10 = target.x(10)
+    let x11 = target.x(11)
+    let x16 = target.x(16)
+    let x17 = target.x(17)
+    let d0 = target.d(0)
+    let d1 = target.d(1)
+    let sp = target.sp
+    let fp = target.fp
+    let lr = target.lr
+    let xzr = target.xzr
+    (* Not a register: a value's memory *)
+    let memory = regalloc.memory
+
     (* =========================================================================
      * Where arguments go (AAPCS64, docs/arm64.md section 3.3)
      * ====================================================================== *)
 
-    (* A register (x0-x7 or d0-d7), or with reg "", the stack at offset, of
-     * bytes 8 or 1 *)
-    Let ArgumentPlace = Tuple reg: String offset: Int bytes: Int end
+    (* A register (x0-x7 or d0-d7), or with reg memory, the stack at offset,
+     * of bytes 8, 4, or 1 *)
+    Let ArgumentPlace = Tuple reg: Int offset: Int bytes: Int end
     Let Placed = Tuple places: Array(ArgumentPlace) stackBytes: Int end
 
     let isPair(p: ssa.Passed): Bool =
@@ -55,11 +78,11 @@ export
      * char) in a byte, a C int in 4 aligned bytes, the others in 8 *)
     let placeArguments(types: Array(ssa.Type) passed: Array(ssa.Passed) first: Int): Placed =
         begin
-            let places = array of(extent types tuple let reg = "" let offset = 0 let bytes = 8 end)
+            let places = array of(extent types tuple let reg = memory let offset = 0 let bytes = 8 end)
             let var ngrn = 0
             let var nsrn = 0
             let var nsaa = 0
-            let x(n: Int): ArgumentPlace = tuple let reg = "x" <> conv.int(n) let offset = 0 let bytes = 8 end
+            let x(n: Int): ArgumentPlace = tuple let reg = target.x(n) let offset = 0 let bytes = 8 end
             (* The stack place of the argument at k, after at bytes: at its C
              * type's size and alignment, as Darwin places them (a C bool or
              * char a byte, a C int 4 bytes, the rest 8; the runtime's
@@ -73,7 +96,7 @@ export
                         when passInt32 then 4
                         when passWord, passReal, passPair, passPairRest, passMemory then 8
                     end
-                    tuple let reg = "" let offset = alignUp(at bytes) let bytes = bytes end
+                    tuple let reg = memory let offset = alignUp(at bytes) let bytes = bytes end
                 end
             let var k = first
             while k < extent types do
@@ -92,7 +115,7 @@ export
                 else
                     if isReal(types[k]) then
                         if nsrn < 8 then
-                            places[k] := tuple let reg = "d" <> conv.int(nsrn) let offset = 0 let bytes = 8 end
+                            places[k] := tuple let reg = target.d(nsrn) let offset = 0 let bytes = 8 end
                             nsrn := nsrn + 1
                         else
                             places[k] := stackAfter(nsaa k)
@@ -120,7 +143,7 @@ export
 
     Let Frame = Tuple
         f: Function
-        lines: Lines
+        code: Code
         valueAt: Array(Int)
         slotAt: Array(Int)
         size: Int
@@ -134,8 +157,8 @@ export
          * its slot: a constant, the null, a symbol's address, or a slot's *)
         remat: Array(maybe.T(ssa.Inst))
         (* The pairs of callee-saved registers it saves (indices in
-         * savedPairs): every pair if it enters a try, else those its values
-         * use *)
+         * savedFirsts and savedSeconds): every pair if it enters a try, else
+         * those its values use *)
         saved: Array(Int)
         var edges: Int
         (* The position of the instruction or terminator being compiled, the
@@ -143,9 +166,8 @@ export
         var pos: Int
     end
 
-    let emit(fr: Frame s: String): Ok = vector.append(:String fr.lines "\t" <> s)
-    let emitAll(fr: Frame ss: Array(String)): Ok = for i = 0 upto {extent ss - 1} do emit(fr ss[i]) end
-    let label(fr: Frame l: String): Ok = vector.append(:String fr.lines l <> ":")
+    let emit(fr: Frame i: minst.Inst): Ok = vector.append(:minst.Inst fr.code i)
+    let label(fr: Frame l: String): Ok = emit(fr minst.label(l))
     let blockLabel(fr: Frame b: Int): String = fr.prefix <> "_b" <> conv.int(b)
     let newLabel(fr: Frame): String =
         begin
@@ -154,123 +176,152 @@ export
         end
 
     (* An Int into an x register: movz, then movk for each other halfword *)
-    let movImm(fr: Frame reg: String n: Int): Ok =
+    let movImm(fr: Frame reg: Int n: Int): Ok =
         if n is 0 then
-            emit(fr "mov " <> reg <> ", #0")
+            emit(fr minst.movImm(reg 0))
         else
             let w = word.fromInt(n)
             let var first = true
             for k = 0 upto 3 do
                 let h = word.toInt(word.extract(w 16 * k 16))
                 if h isnot 0 then
-                    emit(fr if first then "movz " else "movk " end <> reg <> ", #" <> conv.int(h) <> ", lsl #"
-                        <> conv.int(16 * k))
+                    emit(fr if first then minst.movz(reg h 16 * k) else minst.movk(reg h 16 * k) end)
                     first := false
                 end
             end
         end
 
     (* dst := src + n, for n at least 0 *)
-    let addImm(fr: Frame dst: String src: String n: Int): Ok =
+    let addImm(fr: Frame dst: Int src: Int n: Int): Ok =
         if n < 4096 then
-            emit(fr "add " <> dst <> ", " <> src <> ", #" <> conv.int(n))
+            emit(fr minst.addImm(dst src n 0))
         elsif n < 16777216 then
-            emit(fr "add " <> dst <> ", " <> src <> ", #" <> conv.int(n / 4096) <> ", lsl #12")
+            emit(fr minst.addImm(dst src n / 4096 12))
             let low = n - {4096 * {n / 4096}}
-            if low > 0 then emit(fr "add " <> dst <> ", " <> dst <> ", #" <> conv.int(low)) end
+            if low > 0 then emit(fr minst.addImm(dst dst low 0)) end
         else
-            movImm(fr "x17" n)
-            emit(fr "add " <> dst <> ", " <> src <> ", x17")
+            movImm(fr x17 n)
+            emit(fr minst.arith(minst.arithAdd dst src x17))
         end
 
-    (* The operand of the frame's memory at sp plus off (x16 set first when
-     * off is too far for an immediate) *)
-    let frameAt(fr: Frame off: Int): String =
-        if off <= 32760 then "[sp, #" <> conv.int(off) <> "]"
-        else begin addImm(fr "x16" "sp" off) "[x16]" end end
+    (* Memory a load or store addresses: a base register and a mode *)
+    Let Address = Tuple base: Int mode: minst.Mode end
+    let address(base: Int mode: minst.Mode): Address = tuple let base = base let mode = mode end
+
+    (* The frame's memory at sp plus off (x16 set first when off is too far
+     * for an immediate) *)
+    let frameAt(fr: Frame off: Int): Address =
+        if off <= 32760 then address(sp minst.offset(off))
+        else begin addImm(fr x16 sp off) address(x16 minst.modeBase) end end
 
     (* A register's copy into another, of either class *)
-    let move(fr: Frame dst: String src: String): Ok =
-        if not(eq(dst src)) then
-            emit(fr if strutil.startsWith(dst "d") orif strutil.startsWith(src "d") then "fmov " else "mov " end
-                <> dst <> ", " <> src)
-        end
+    let move(fr: Frame dst: Int src: Int): Ok = if dst isnot src then emit(fr minst.mov(dst src)) end
 
-    (* A symbol's address plus an offset; a thread-local's, through its
-     * accessor *)
-    let symbolAddress(fr: Frame reg: String symbol: String offset: Int threadLocal: Bool): Ok =
-        emitAll(fr asm.addressOf(reg symbol offset hashMap.contains(:String :Bool fr.defined symbol) threadLocal))
-
-    (* Whether two registers are of a class: x (or w) and d *)
-    let isD(reg: String): Bool = strutil.startsWith(reg "d")
-    let sameClass(a: String b: String): Bool = isD(a) is isD(b)
-
-    (* Where a value is at a position: its register, "" for memory *)
-    let homeAt(fr: Frame v: Int p: Int): String =
+    (* A symbol's address plus an offset into reg (an x register): local is
+     * whether the unit defines name; a thread-local's address is its
+     * accessor's result, which clobbers x0, x16, and lr *)
+    let symbolAddress(fr: Frame reg: Int symbol: String offset: Int threadLocal: Bool): Ok =
         begin
-            let r = regalloc.home(fr.allocation v p)
-            if r is regalloc.memory then "" else target.name(r) end
+            if threadLocal then
+                emit(fr minst.adrp(x0 symbol minst.relocTlv))
+                emit(fr minst.load(minst.load64 x0 x0 minst.pageOff(symbol minst.relocTlv)))
+                emit(fr minst.load(minst.load64 x16 x0 minst.modeBase))
+                emit(fr minst.blr(x16))
+                move(fr reg x0)
+            elsif hashMap.contains(:String :Bool fr.defined symbol) then
+                emit(fr minst.adrp(reg symbol minst.relocPage))
+                emit(fr minst.addPageOff(reg reg symbol))
+            else
+                emit(fr minst.adrp(reg symbol minst.relocGot))
+                emit(fr minst.load(minst.load64 reg reg minst.pageOff(symbol minst.relocGot)))
+            end
+            (* An offset past the symbol (small, as the SSA's are) *)
+            if offset isnot 0 then
+                if {offset > 0} andif {offset < 4096} then emit(fr minst.addImm(reg reg offset 0))
+                elsif {offset < 0} andif {offset > ~4096} then emit(fr minst.subImm(reg reg 0 - offset))
+                else
+                    emit(fr minst.movImm(x17 offset))
+                    emit(fr minst.arith(minst.arithAdd reg reg x17))
+                end
+            end
         end
+
+    (* Whether two registers are of a class: x and d *)
+    let sameClass(a: Int b: Int): Bool = target.isReal(a) is target.isReal(b)
+
+    (* Where a value is at a position: its register, or memory *)
+    let homeAt(fr: Frame v: Int p: Int): Int = regalloc.home(fr.allocation v p)
     let isRemat(fr: Frame v: Int): Bool = maybe.isSome(:ssa.Inst fr.remat[v])
     (* Whether a value is stored in its slot when it is defined *)
     let needsSlot(fr: Frame v: Int): Bool = fr.allocation.spilled[v] andif not(isRemat(fr v))
 
     (* A rematerialized value computed again, into a register of either class
      * (through x16 for a d register) *)
-    let rematerialize(fr: Frame reg: String v: Int): Ok =
+    let rematerialize(fr: Frame reg: Int v: Int): Ok =
         begin
             let i = maybe.unwrap(:ssa.Inst fr.remat[v])
-            let x = if isD(reg) then "x16" else reg end
+            let x = if target.isReal(reg) then x16 else reg end
             case i.op
                 when opConst, opRealConst then movImm(fr x i.imm)
                 when opNull then movImm(fr x 0)
                 when opSymbol then symbolAddress(fr x i.symbol i.imm false)
-                when opSlot then addImm(fr x "sp" fr.slotAt[i.imm])
+                when opSlot then addImm(fr x sp fr.slotAt[i.imm])
                 when opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt,
                     opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt,
                     opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opLoad, opStore,
                     opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal then
                     raise unsupported with "arm64: rematerializing " <> ssa.opcodeName(i.op) end
             end
-            if isD(reg) then move(fr reg x) end
+            if target.isReal(reg) then move(fr reg x) end
+        end
+
+    (* A word of the frame's memory into a register, or a register into it *)
+    let loadFrame(fr: Frame reg: Int off: Int): Ok =
+        begin
+            let at = frameAt(fr off)
+            emit(fr minst.load(minst.load64 reg at.base at.mode))
+        end
+    let storeFrame(fr: Frame reg: Int off: Int): Ok =
+        begin
+            let at = frameAt(fr off)
+            emit(fr minst.store(minst.store64 reg at.base at.mode))
         end
 
     (* A value in memory into a register: from its slot, or computed again *)
-    let loadMemory(fr: Frame reg: String v: Int): Ok =
-        if isRemat(fr v) then rematerialize(fr reg v)
-        else emit(fr "ldr " <> reg <> ", " <> frameAt(fr fr.valueAt[v])) end
+    let loadMemory(fr: Frame reg: Int v: Int): Ok =
+        if isRemat(fr v) then rematerialize(fr reg v) else loadFrame(fr reg fr.valueAt[v]) end
 
     (* A value into a register, where it is at the current position; and a
      * result from a register, where it is just after (and to its slot if it
      * has one) *)
-    let loadValue(fr: Frame reg: String v: Int): Ok =
+    let loadValue(fr: Frame reg: Int v: Int): Ok =
         begin
             let r = homeAt(fr v fr.pos)
-            if stringOp.length(r) > 0 then move(fr reg r) else loadMemory(fr reg v) end
+            if r isnot memory then move(fr reg r) else loadMemory(fr reg v) end
         end
-    let storeValue(fr: Frame reg: String v: Int): Ok =
+    let storeValue(fr: Frame reg: Int v: Int): Ok =
         begin
             let r = homeAt(fr v fr.pos + 1)
-            if stringOp.length(r) > 0 then move(fr r reg) end
-            if needsSlot(fr v) then emit(fr "str " <> reg <> ", " <> frameAt(fr fr.valueAt[v])) end
+            if r isnot memory then move(fr r reg) end
+            if needsSlot(fr v) then storeFrame(fr reg fr.valueAt[v]) end
         end
 
     (* The register a value is read from: its own, if of the class of the
      * scratch register given, else that register, loaded *)
-    let inReg(fr: Frame v: Int scratch: String): String =
+    let inReg(fr: Frame v: Int scratch: Int): Int =
         begin
             let r = homeAt(fr v fr.pos)
-            if {stringOp.length(r) > 0} andif sameClass(r scratch) then r
+            if {r isnot memory} andif sameClass(r scratch) then r
             else begin loadValue(fr scratch v) scratch end end
         end
 
     (* The register a result is computed in: its own, if of the class of the
      * scratch register given, else that register, which storeValue then
      * stores *)
-    let outReg(fr: Frame v: Int scratch: String): String =
+    let outReg(fr: Frame v: Int scratch: Int): Int =
         begin
             let r = homeAt(fr v fr.pos + 1)
-            if {stringOp.length(r) > 0} andif sameClass(r scratch) then r else scratch end
+            if {r isnot memory} andif sameClass(r scratch) then r else scratch end
         end
 
     (* =========================================================================
@@ -278,29 +329,29 @@ export
      * at once, as if in parallel
      * ====================================================================== *)
 
-    (* A place a move reads or writes: a register; or else a value's memory,
-     * its slot, or for a value rematerialized (only read), its instruction
-     * again *)
-    Let Place = Tuple reg: String value: Int end
+    (* A place a move reads or writes: a register; or else (reg memory) a
+     * value's memory, its slot, or for a value rematerialized (only read), its
+     * instruction again *)
+    Let Place = Tuple reg: Int value: Int end
     Let Transfer = Tuple dst: Place src: Place end
 
-    let inRegister(r: String): Place = tuple let reg = r let value = ~1 end
-    let inMemory(v: Int): Place = tuple let reg = "" let value = v end
+    let inRegister(r: Int): Place = tuple let reg = r let value = ~1 end
+    let inMemory(v: Int): Place = tuple let reg = memory let value = v end
     let transfer(dst: Place src: Place): Transfer = tuple let dst = dst let src = src end
     let samePlace(a: Place b: Place): Bool =
-        if stringOp.length(a.reg) > 0 then eq(a.reg b.reg)
-        else {stringOp.length(b.reg) is 0} andif {a.value is b.value} end
+        if a.reg isnot memory then a.reg is b.reg
+        else {b.reg is memory} andif {a.value is b.value} end
 
     (* A place's word into a register *)
-    let readInto(fr: Frame reg: String src: Place): Ok =
-        if stringOp.length(src.reg) > 0 then move(fr reg src.reg) else loadMemory(fr reg src.value) end
+    let readInto(fr: Frame reg: Int src: Place): Ok =
+        if src.reg isnot memory then move(fr reg src.reg) else loadMemory(fr reg src.value) end
 
     (* One move, memory to memory through x9 *)
     let place(fr: Frame dst: Place src: Place): Ok =
-        if stringOp.length(dst.reg) > 0 then readInto(fr dst.reg src)
+        if dst.reg isnot memory then readInto(fr dst.reg src)
         else
-            let r = if stringOp.length(src.reg) > 0 then src.reg else begin readInto(fr "x9" src) "x9" end end
-            emit(fr "str " <> r <> ", " <> frameAt(fr fr.valueAt[dst.value]))
+            let r = if src.reg isnot memory then src.reg else begin readInto(fr x9 src) x9 end end
+            storeFrame(fr r fr.valueAt[dst.value])
         end
 
     (* Moves made at once: each in turn whose destination no other reads. When
@@ -323,15 +374,17 @@ export
                         let t = vector.get(:Transfer pending k)
                         let var read = false
                         for j = 0 upto {n - 1} do
-                            if {j isnot k} andif samePlace(vector.get(:Transfer pending j).src t.dst) then read := true end
+                            if {j isnot k} andif samePlace(vector.get(:Transfer pending j).src t.dst) then
+                                read := true
+                            end
                         end
                         if not(read) then chosen := k end
                     end
                 end
                 if chosen < 0 then
                     let t = vector.get(:Transfer pending 0)
-                    readInto(fr "x10" t.src)
-                    vector.set(:Transfer pending 0 transfer(t.dst inRegister("x10")))
+                    readInto(fr x10 t.src)
+                    vector.set(:Transfer pending 0 transfer(t.dst inRegister(x10)))
                 else
                     let t = vector.get(:Transfer pending chosen)
                     place(fr t.dst t.src)
@@ -349,28 +402,24 @@ export
             let var k = sort.bisectLeft(:Int fr.moveAts fr.pos sort.intCompare)
             while {k < extent ms} andif {ms[k].at is fr.pos} do
                 let m = ms[k]
-                let src = if m.from is regalloc.memory then inMemory(m.value) else inRegister(target.name(m.from)) end
-                vector.append(:Transfer transfers transfer(inRegister(target.name(m.to)) src))
+                let src = if m.from is memory then inMemory(m.value) else inRegister(m.from) end
+                vector.append(:Transfer transfers transfer(inRegister(m.to) src))
                 k := k + 1
             end
             if vector.length(:Transfer transfers) > 0 then parallel(fr transfers) end
         end
 
-    (* An x register's low half, a w register *)
-    let half(x: String): String = "w" <> stringOp.getSub(x 1 {stringOp.length(x) - 1})
-
-    (* A load or store of width bytes at base plus imm: op is the scaled form
-     * (ldr, ldrsw, ldrsb, ldrb, str, strb), unscaled the form for a small or
-     * unaligned offset (ldur, ...) *)
-    let access(fr: Frame op: String unscaled: String reg: String base: String imm: Int width: Int): Ok =
-        if {imm >= 0} andif {imm is {{imm / width} * width}} andif {{imm / width} < 4096} then
-            emit(fr op <> " " <> reg <> ", [" <> base <> ", #" <> conv.int(imm) <> "]")
-        elsif {imm >= ~256} andif {imm < 256} then
-            emit(fr unscaled <> " " <> reg <> ", [" <> base <> ", #" <> asm.decimal(imm) <> "]")
+    (* The memory at base plus imm, for a load or store of width bytes: an
+     * immediate offset, scaled (a multiple of the width, up to 4095 of them)
+     * or unscaled (from -256 to 255), else x17 := base plus imm *)
+    let access(fr: Frame base: Int imm: Int width: Int): Address =
+        if {{imm >= 0} andif {imm is {{imm / width} * width}} andif {{imm / width} < 4096}}
+                orif {{imm >= ~256} andif {imm < 256}} then
+            address(base minst.offset(imm))
         else
-            movImm(fr "x17" imm)
-            emit(fr "add x17, " <> base <> ", x17")
-            emit(fr op <> " " <> reg <> ", [x17]")
+            movImm(fr x17 imm)
+            emit(fr minst.arith(minst.arithAdd x17 base x17))
+            address(x17 minst.modeBase)
         end
 
     (* =========================================================================
@@ -389,27 +438,28 @@ export
             (* The stack's first, which may use x16 and x17 *)
             for k = 0 upto {extent i.args - 1} do
                 let p = placed.places[k]
-                if {k >= {if direct then 0 else 1 end}} andif {stringOp.length(p.reg) is 0} then
-                    loadValue(fr "x9" i.args[k])
-                    emit(fr if p.bytes is 1 then "strb w9, [sp, #" elsif p.bytes is 4 then "str w9, [sp, #"
-                        else "str x9, [sp, #" end <> conv.int(p.offset) <> "]")
+                if {k >= {if direct then 0 else 1 end}} andif {p.reg is memory} then
+                    loadValue(fr x9 i.args[k])
+                    let width = if p.bytes is 1 then minst.store8 elsif p.bytes is 4 then minst.store32
+                        else minst.store64 end
+                    emit(fr minst.store(width x9 sp minst.offset(p.offset)))
                 end
             end
             for k = {if direct then 0 else 1 end} upto {extent i.args - 1} do
                 let p = placed.places[k]
-                if stringOp.length(p.reg) > 0 then loadValue(fr p.reg i.args[k]) end
+                if p.reg isnot memory then loadValue(fr p.reg i.args[k]) end
             end
             if direct then
-                emit(fr "bl " <> asm.symbol(i.symbol))
+                emit(fr minst.bl(i.symbol))
             else
-                loadValue(fr "x9" i.args[0])
-                emit(fr "blr x9")
+                loadValue(fr x9 i.args[0])
+                emit(fr minst.blr(x9))
             end
             if extent i.results is 1 then
-                storeValue(fr if isReal(ssa.typeOf(f i.results[0])) then "d0" else "x0" end i.results[0])
+                storeValue(fr if isReal(ssa.typeOf(f i.results[0])) then d0 else x0 end i.results[0])
             elsif extent i.results is 2 then
-                storeValue(fr "x0" i.results[0])
-                storeValue(fr "x1" i.results[1])
+                storeValue(fr x0 i.results[0])
+                storeValue(fr x1 i.results[1])
             end
         end
 
@@ -417,134 +467,135 @@ export
         begin
             let a(k: Int): Int = i.args[k]
             let result = if extent i.results > 0 then i.results[0] else ~1 end
-            let arith(mnemonic: String): Ok =
+            let arith(op: minst.Arith): Ok =
                 begin
-                    let x = inReg(fr a(0) "x9")
-                    let y = inReg(fr a(1) "x10")
-                    let d = outReg(fr result "x9")
-                    emit(fr mnemonic <> " " <> d <> ", " <> x <> ", " <> y)
+                    let x = inReg(fr a(0) x9)
+                    let y = inReg(fr a(1) x10)
+                    let d = outReg(fr result x9)
+                    emit(fr minst.arith(op d x y))
                     storeValue(fr d result)
                 end
-            let compare(condition: String): Ok =
+            let compare(c: minst.Cond): Ok =
                 begin
-                    let x = inReg(fr a(0) "x9")
-                    let y = inReg(fr a(1) "x10")
-                    let d = outReg(fr result "x9")
-                    emit(fr "cmp " <> x <> ", " <> y)
-                    emit(fr "cset " <> d <> ", " <> condition)
+                    let x = inReg(fr a(0) x9)
+                    let y = inReg(fr a(1) x10)
+                    let d = outReg(fr result x9)
+                    emit(fr minst.cmp(x y))
+                    emit(fr minst.cset(c d))
                     storeValue(fr d result)
                 end
-            let realArith(mnemonic: String): Ok =
+            let realArith(op: minst.Arith): Ok =
                 begin
-                    let x = inReg(fr a(0) "d0")
-                    let y = inReg(fr a(1) "d1")
-                    let d = outReg(fr result "d0")
-                    emit(fr mnemonic <> " " <> d <> ", " <> x <> ", " <> y)
+                    let x = inReg(fr a(0) d0)
+                    let y = inReg(fr a(1) d1)
+                    let d = outReg(fr result d0)
+                    emit(fr minst.arith(op d x y))
                     storeValue(fr d result)
                 end
             (* After fcmp, the conditions false when either is a NaN *)
-            let realCompare(condition: String): Ok =
+            let realCompare(c: minst.Cond): Ok =
                 begin
-                    let x = inReg(fr a(0) "d0")
-                    let y = inReg(fr a(1) "d1")
-                    let d = outReg(fr result "x9")
-                    emit(fr "fcmp " <> x <> ", " <> y)
-                    emit(fr "cset " <> d <> ", " <> condition)
+                    let x = inReg(fr a(0) d0)
+                    let y = inReg(fr a(1) d1)
+                    let d = outReg(fr result x9)
+                    emit(fr minst.fcmp(x y))
+                    emit(fr minst.cset(c d))
                     storeValue(fr d result)
                 end
             case i.op
-                when opAdd then arith("add")
-                when opSub then arith("sub")
-                when opMul then arith("mul")
-                when opDiv then arith("sdiv")
-                when opAnd then arith("and")
-                when opOr then arith("orr")
-                when opXor then arith("eor")
-                when opShl then arith("lsl")
-                when opLshr then arith("lsr")
-                when opAshr then arith("asr")
-                when opEq, opPeq then compare("eq")
-                when opNe, opPne then compare("ne")
-                when opLt then compare("lt")
-                when opLe then compare("le")
-                when opGt then compare("gt")
-                when opGe then compare("ge")
-                when opUlt then compare("lo")
-                when opFadd then realArith("fadd")
-                when opFsub then realArith("fsub")
-                when opFmul then realArith("fmul")
-                when opFdiv then realArith("fdiv")
-                when opFeq then realCompare("eq")
-                when opFlt then realCompare("mi")
-                when opFle then realCompare("ls")
-                when opFgt then realCompare("gt")
-                when opFge then realCompare("ge")
+                when opAdd then arith(minst.arithAdd)
+                when opSub then arith(minst.arithSub)
+                when opMul then arith(minst.arithMul)
+                when opDiv then arith(minst.arithSdiv)
+                when opAnd then arith(minst.arithAnd)
+                when opOr then arith(minst.arithOrr)
+                when opXor then arith(minst.arithEor)
+                when opShl then arith(minst.arithLsl)
+                when opLshr then arith(minst.arithLsr)
+                when opAshr then arith(minst.arithAsr)
+                when opEq, opPeq then compare(minst.condEq)
+                when opNe, opPne then compare(minst.condNe)
+                when opLt then compare(minst.condLt)
+                when opLe then compare(minst.condLe)
+                when opGt then compare(minst.condGt)
+                when opGe then compare(minst.condGe)
+                when opUlt then compare(minst.condLo)
+                when opFadd then realArith(minst.arithFadd)
+                when opFsub then realArith(minst.arithFsub)
+                when opFmul then realArith(minst.arithFmul)
+                when opFdiv then realArith(minst.arithFdiv)
+                when opFeq then realCompare(minst.condEq)
+                when opFlt then realCompare(minst.condMi)
+                when opFle then realCompare(minst.condLs)
+                when opFgt then realCompare(minst.condGt)
+                when opFge then realCompare(minst.condGe)
                 when opConst then
-                    let d = outReg(fr result "x9")
+                    let d = outReg(fr result x9)
                     movImm(fr d i.imm)
                     storeValue(fr d result)
                 (* A Real constant's bits are its word *)
                 when opRealConst then
-                    movImm(fr "x9" i.imm)
-                    storeValue(fr "x9" result)
+                    movImm(fr x9 i.imm)
+                    storeValue(fr x9 result)
                 when opSymbol then
-                    let d = outReg(fr result "x9")
+                    let d = outReg(fr result x9)
                     symbolAddress(fr d i.symbol i.imm false)
                     storeValue(fr d result)
                 (* A thread-local's address is a call of its accessor, which
                  * the allocator counts as one *)
                 when opThreadLocal then
-                    let d = outReg(fr result "x9")
+                    let d = outReg(fr result x9)
                     symbolAddress(fr d i.symbol 0 true)
                     storeValue(fr d result)
-                when opPtrAdd then arith("add")
-                when opNull then storeValue(fr "xzr" result)
+                when opPtrAdd then arith(minst.arithAdd)
+                when opNull then storeValue(fr xzr result)
                 when opSlot then
-                    let d = outReg(fr result "x9")
-                    addImm(fr d "sp" fr.slotAt[i.imm])
+                    let d = outReg(fr result x9)
+                    addImm(fr d sp fr.slotAt[i.imm])
                     storeValue(fr d result)
                 when opRem then
-                    let x = inReg(fr a(0) "x9")
-                    let y = inReg(fr a(1) "x10")
-                    let d = outReg(fr result "x9")
-                    emit(fr "sdiv x11, " <> x <> ", " <> y)
-                    emit(fr "msub " <> d <> ", x11, " <> y <> ", " <> x)
+                    let x = inReg(fr a(0) x9)
+                    let y = inReg(fr a(1) x10)
+                    let d = outReg(fr result x9)
+                    emit(fr minst.arith(minst.arithSdiv x11 x y))
+                    emit(fr minst.msub(d x11 y x))
                     storeValue(fr d result)
                 when opIsNaN then
-                    let x = inReg(fr a(0) "d0")
-                    let d = outReg(fr result "x9")
-                    emit(fr "fcmp " <> x <> ", " <> x)
-                    emit(fr "cset " <> d <> ", vs")
+                    let x = inReg(fr a(0) d0)
+                    let d = outReg(fr result x9)
+                    emit(fr minst.fcmp(x x))
+                    emit(fr minst.cset(minst.condVs d))
                     storeValue(fr d result)
                 when opSext8 then
-                    let x = inReg(fr a(0) "x9")
-                    let d = outReg(fr result "x9")
-                    emit(fr "sxtb " <> d <> ", " <> half(x))
+                    let x = inReg(fr a(0) x9)
+                    let d = outReg(fr result x9)
+                    emit(fr minst.sxtb(d x))
                     storeValue(fr d result)
                 when opZext8 then
-                    let x = inReg(fr a(0) "x9")
-                    let d = outReg(fr result "x9")
-                    emit(fr "and " <> d <> ", " <> x <> ", #0xff")
+                    let x = inReg(fr a(0) x9)
+                    let d = outReg(fr result x9)
+                    emit(fr minst.andImm(d x 255))
                     storeValue(fr d result)
                 when opLoad then
-                    let base = inReg(fr a(0) "x10")
-                    let d = outReg(fr result "x9")
-                    if i.width is 8 then access(fr "ldr" "ldur" d base i.imm 8)
-                    elsif i.width is 4 then access(fr "ldrsw" "ldursw" d base i.imm 4)
-                    elsif i.signed then access(fr "ldrsb" "ldursb" d base i.imm 1)
-                    else access(fr "ldrb" "ldurb" half(d) base i.imm 1) end
+                    let base = inReg(fr a(0) x10)
+                    let d = outReg(fr result x9)
+                    let width = if i.width is 8 then minst.load64 elsif i.width is 4 then minst.loadS32
+                        elsif i.signed then minst.loadS8 else minst.loadU8 end
+                    let at = access(fr base i.imm if i.width >= 4 then i.width else 1 end)
+                    emit(fr minst.load(width d at.base at.mode))
                     storeValue(fr d result)
                 when opStore then
-                    let base = inReg(fr a(0) "x10")
-                    let x = inReg(fr a(1) "x9")
-                    if i.width is 8 then access(fr "str" "stur" x base i.imm 8)
-                    elsif i.width is 4 then access(fr "str" "stur" half(x) base i.imm 4)
-                    else access(fr "strb" "sturb" half(x) base i.imm 1) end
+                    let base = inReg(fr a(0) x10)
+                    let x = inReg(fr a(1) x9)
+                    let width = if i.width is 8 then minst.store64 elsif i.width is 4 then minst.store32
+                        else minst.store8 end
+                    let at = access(fr base i.imm if i.width >= 4 then i.width else 1 end)
+                    emit(fr minst.store(width x at.base at.mode))
                 when opCall, opCallIndirect then call(fr i)
                 (* Copies of a word: conversions between ints, pointers, and a
                  * Real's bits *)
                 when opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opCopy then
-                    storeValue(fr inReg(fr a(0) "x9") result)
+                    storeValue(fr inReg(fr a(0) x9) result)
             end
         end
 
@@ -552,7 +603,7 @@ export
      * is in memory *)
     let instruction(fr: Frame i: ssa.Inst): Ok =
         if {extent i.results is 1} andif isRemat(fr i.results[0])
-                andif {stringOp.length(homeAt(fr i.results[0] fr.pos + 1)) is 0} then ok
+                andif {homeAt(fr i.results[0] fr.pos + 1) is memory} then ok
         else compute(fr i) end
 
     (* =========================================================================
@@ -570,45 +621,40 @@ export
             let from(v: Int): Place =
                 begin
                     let r = homeAt(fr v fr.pos)
-                    if stringOp.length(r) > 0 then inRegister(r) else inMemory(v) end
+                    if r isnot memory then inRegister(r) else inMemory(v) end
                 end
             let transfers = vector.new(:Transfer)
             let params = ssa.block(fr.f t.block).params
             for k = 0 upto {extent t.args - 1} do
                 let param = vector.get(:Int params k)
                 let r = homeAt(fr param bs)
-                if stringOp.length(r) > 0 then vector.append(:Transfer transfers transfer(inRegister(r) from(t.args[k]))) end
-                if needsSlot(fr param) then vector.append(:Transfer transfers transfer(inMemory(param) from(t.args[k]))) end
+                if r isnot memory then vector.append(:Transfer transfers transfer(inRegister(r) from(t.args[k]))) end
+                if needsSlot(fr param) then
+                    vector.append(:Transfer transfers transfer(inMemory(param) from(t.args[k])))
+                end
             end
             let ins = a.liveIn[t.block]
             for k = 0 upto {extent ins - 1} do
                 let r = homeAt(fr ins[k] bs)
-                if stringOp.length(r) > 0 then vector.append(:Transfer transfers transfer(inRegister(r) from(ins[k]))) end
+                if r isnot memory then vector.append(:Transfer transfers transfer(inRegister(r) from(ins[k]))) end
             end
             parallel(fr transfers)
         end
-    let jump(fr: Frame t: ssa.Target): Ok = begin copies(fr t) emit(fr "b " <> blockLabel(fr t.block)) end
+    let jump(fr: Frame t: ssa.Target): Ok = begin copies(fr t) emit(fr minst.b(blockLabel(fr t.block))) end
 
     (* The callee-saved registers a function that enters a try saves, in pairs,
      * in the order it pushes them below its frame record *)
-    let savedPairs = array of "x19, x20" "x21, x22" "x23, x24" "x25, x26" "x27, x28" "d8, d9" "d10, d11" "d12, d13"
-        "d14, d15" end
-
-    let savedFirsts = array of "x19" "x21" "x23" "x25" "x27" "d8" "d10" "d12" "d14" end
-    let savedSeconds = array of "x20" "x22" "x24" "x26" "x28" "d9" "d11" "d13" "d15" end
+    let savedFirsts = array of target.x(19) target.x(21) target.x(23) target.x(25) target.x(27) target.d(8)
+        target.d(10) target.d(12) target.d(14) end
+    let savedSeconds = array of target.x(20) target.x(22) target.x(24) target.x(26) target.x(28) target.d(9)
+        target.d(11) target.d(13) target.d(15) end
 
     (* The unwind information of the pairs saved: the first of the kth at the
      * CFA less 16 * (k + 2), the second 8 above it *)
-    let savedOffsets(saved: Array(Int)): Array(String) =
-        begin
-            let firsts = array of "w19" "w21" "w23" "w25" "w27" "b8" "b10" "b12" "b14" end
-            let seconds = array of "w20" "w22" "w24" "w26" "w28" "b9" "b11" "b13" "b15" end
-            let lines = array of({2 * extent saved} "")
-            for k = 0 upto {extent saved - 1} do
-                lines[2 * k] := ".cfi_offset " <> firsts[saved[k]] <> ", -" <> conv.int(16 * {k + 2})
-                lines[{2 * k} + 1] := ".cfi_offset " <> seconds[saved[k]] <> ", -" <> conv.int({16 * {k + 2}} - 8)
-            end
-            lines
+    let savedOffsets(fr: Frame): Ok =
+        for k = 0 upto {extent fr.saved - 1} do
+            emit(fr minst.cfiOffset(savedFirsts[fr.saved[k]] 0 - {16 * {k + 2}}))
+            emit(fr minst.cfiOffset(savedSeconds[fr.saved[k]] {0 - {16 * {k + 2}}} + 8))
         end
 
     (* The frame popped and the caller's registers restored, short of
@@ -616,21 +662,21 @@ export
     let restore(fr: Frame): Ok =
         begin
             if extent fr.saved > 0 then
-                emit(fr "sub sp, x29, #" <> conv.int(16 * extent fr.saved))
+                emit(fr minst.subImm(sp fp 16 * extent fr.saved))
                 for k = {extent fr.saved - 1} downto 0 do
-                    emit(fr "ldp " <> savedPairs[fr.saved[k]] <> ", [sp], #16")
+                    emit(fr minst.ldp(savedFirsts[fr.saved[k]] savedSeconds[fr.saved[k]] sp minst.post(16)))
                 end
             else
-                emit(fr "mov sp, x29")
+                emit(fr minst.mov(sp fp))
             end
-            emit(fr "ldp x29, x30, [sp], #16")
+            emit(fr minst.ldp(fp lr sp minst.post(16)))
         end
-    let epilogue(fr: Frame): Ok = begin restore(fr) emit(fr "ret") end
+    let epilogue(fr: Frame): Ok = begin restore(fr) emit(fr minst.ret) end
 
     let returnValues(fr: Frame vs: Array(Int)): Ok =
         begin
-            if extent vs is 1 then loadValue(fr if isReal(ssa.typeOf(fr.f vs[0])) then "d0" else "x0" end vs[0])
-            elsif extent vs is 2 then begin loadValue(fr "x0" vs[0]) loadValue(fr "x1" vs[1]) end end
+            if extent vs is 1 then loadValue(fr if isReal(ssa.typeOf(fr.f vs[0])) then d0 else x0 end vs[0])
+            elsif extent vs is 2 then begin loadValue(fr x0 vs[0]) loadValue(fr x1 vs[1]) end end
             epilogue(fr)
         end
 
@@ -654,9 +700,9 @@ export
                 returnValues(fr i.results)
             else
                 for k = first upto {extent i.args - 1} do loadValue(fr placed.places[k].reg i.args[k]) end
-                if not(direct) then loadValue(fr "x9" i.args[0]) end
+                if not(direct) then loadValue(fr x9 i.args[0]) end
                 restore(fr)
-                emit(fr if direct then "b " <> asm.symbol(i.symbol) else "br x9" end)
+                emit(fr if direct then minst.bSymbol(i.symbol) else minst.br(x9) end)
             end
         end
 
@@ -666,21 +712,21 @@ export
             when termJump with x then jump(fr x.target)
             when termBranch with x then
                 let other = newLabel(fr)
-                emit(fr "cbz " <> inReg(fr x.cond "x9") <> ", " <> other)
+                emit(fr minst.cbz(inReg(fr x.cond x9) other))
                 jump(fr x.ifTrue)
                 label(fr other)
                 jump(fr x.ifFalse)
             when termSwitch with x then
-                loadValue(fr "x9" x.value)
+                loadValue(fr x9 x.value)
                 for k = 0 upto {extent x.cases - 1} do
                     let next = newLabel(fr)
-                    movImm(fr "x10" x.cases[k])
-                    emit(fr "cmp x9, x10")
-                    emit(fr "b.ne " <> next)
+                    movImm(fr x10 x.cases[k])
+                    emit(fr minst.cmp(x9 x10))
+                    emit(fr minst.bCond(minst.condNe next))
                     jump(fr x.targets[k])
                     label(fr next)
                     (* The copies may have used x9 on the other path *)
-                    loadValue(fr "x9" x.value)
+                    loadValue(fr x9 x.value)
                 end
                 jump(fr x.default)
             when termReturn with x then returnValues(fr x.values)
@@ -693,16 +739,17 @@ export
                 (* adr reaches 1 MB: the resume address is a branch beside the
                  * try, which reaches 128 MB, to the handler *)
                 let resume = newLabel(fr)
-                addImm(fr "x10" "sp" fr.slotAt[x.slot])
-                emit(fr "adr x9, " <> resume)
-                emit(fr "str x9, [x10, #" <> conv.int(runtimeLayout.offset("QExceptionHandler" "resume")) <> "]")
-                emit(fr "mov x9, sp")
-                emit(fr "str x9, [x10, #" <> conv.int(runtimeLayout.offset("QExceptionHandler" "sp")) <> "]")
-                emit(fr "str x29, [x10, #" <> conv.int(runtimeLayout.offset("QExceptionHandler" "fp")) <> "]")
+                let field(name: String): minst.Mode = minst.offset(runtimeLayout.offset("QExceptionHandler" name))
+                addImm(fr x10 sp fr.slotAt[x.slot])
+                emit(fr minst.adr(x9 resume))
+                emit(fr minst.store(minst.store64 x9 x10 field("resume")))
+                emit(fr minst.mov(x9 sp))
+                emit(fr minst.store(minst.store64 x9 x10 field("sp")))
+                emit(fr minst.store(minst.store64 fp x10 field("fp")))
                 jump(fr x.body)
                 label(fr resume)
-                emit(fr "b " <> blockLabel(fr x.handler))
-            when termUnreachable then emit(fr "brk #1")
+                emit(fr minst.b(blockLabel(fr x.handler)))
+            when termUnreachable then emit(fr minst.brk(1))
         end
 
     (* =========================================================================
@@ -905,6 +952,7 @@ export
 
     let frameSlots(f: Function): Array(FrameSlot) = layOut(f).slots
 
+
     let function(f: Function index: Int defined: hashMap.T(String Bool)): Lines =
         begin
             let layout = layOut(f)
@@ -912,23 +960,17 @@ export
             let savesAll = layout.savesAll
             let size = layout.size
             let savedList = vector.new(:Int)
-            for k = 0 upto {extent savedPairs - 1} do
-                let var any = savesAll
-                for j = 0 upto {extent allocation.calleeUsed - 1} do
-                    let r = target.name(allocation.calleeUsed[j])
-                    if eq(r savedFirsts[k]) orif eq(r savedSeconds[k]) then any := true end
-                end
+            for k = 0 upto {extent savedFirsts - 1} do
+                let any = savesAll orif contains(allocation.calleeUsed savedFirsts[k])
+                    orif contains(allocation.calleeUsed savedSeconds[k])
                 if any then vector.append(:Int savedList k) end
             end
             let saved = vector.toArray(:Int savedList)
             let fr = tuple
-                let f = f let lines = vector.new(:String) let valueAt = layout.valueAt let slotAt = layout.slotAt
+                let f = f let code = vector.new(:minst.Inst) let valueAt = layout.valueAt let slotAt = layout.slotAt
                 let size = size let prefix = "Lf" <> conv.int(index) let defined = defined
                 let allocation = allocation let moveAts = layout.moveAts let remat = layout.remat let saved = saved
                 let var edges = 0 let var pos = ~1
-            end
-            for k = 0 upto {extent asm.functionStart(f.symbol f.exported) - 1} do
-                vector.append(:String fr.lines asm.functionStart(f.symbol f.exported)[k])
             end
             (* The frame record, with the pairs saved below it, then the
              * frame. The lowest pair is stored first, moving sp once, as clang
@@ -939,31 +981,32 @@ export
              * assumes a whole prologue, read the pair from the guard page *)
             let n = extent saved
             if n is 0 then
-                emit(fr "stp x29, x30, [sp, #-16]!")
-                emit(fr "mov x29, sp")
+                emit(fr minst.stp(fp lr sp minst.pre(~16)))
+                emit(fr minst.mov(fp sp))
             else
-                emit(fr "stp " <> savedPairs[saved[n - 1]] <> ", [sp, #-" <> conv.int(16 * {n + 1}) <> "]!")
+                let last = saved[n - 1]
+                emit(fr minst.stp(savedFirsts[last] savedSeconds[last] sp minst.pre(0 - {16 * {n + 1}})))
                 for k = {n - 2} downto 0 do
-                    emit(fr "stp " <> savedPairs[saved[k]] <> ", [sp, #" <> conv.int(16 * {{n - 1} - k}) <> "]")
+                    emit(fr minst.stp(savedFirsts[saved[k]] savedSeconds[saved[k]] sp minst.offset(16 * {{n - 1} - k})))
                 end
-                emit(fr "stp x29, x30, [sp, #" <> conv.int(16 * n) <> "]")
-                emit(fr "add x29, sp, #" <> conv.int(16 * n))
+                emit(fr minst.stp(fp lr sp minst.offset(16 * n)))
+                emit(fr minst.addImm(fp sp 16 * n 0))
             end
-            emit(fr ".cfi_def_cfa w29, 16")
-            emit(fr ".cfi_offset w30, -8")
-            emit(fr ".cfi_offset w29, -16")
-            emitAll(fr savedOffsets(saved))
+            emit(fr minst.cfiDefCfa(fp 16))
+            emit(fr minst.cfiOffset(lr ~8))
+            emit(fr minst.cfiOffset(fp ~16))
+            savedOffsets(fr)
             (* A frame of more than a page is probed a page at a time, as clang
              * does, so that a stack overflow faults in the guard page rather
              * than past it (docs/arm64.md section 10.2) *)
             if size is 0 then ok
             elsif size <= 4096 then
-                emit(fr "sub sp, sp, #" <> conv.int(size))
+                emit(fr minst.subImm(sp sp size))
             else
-                movImm(fr "x9" size)
-                emit(fr "bl " <> asm.symbol("__chkstk_darwin"))
-                movImm(fr "x9" size)
-                emit(fr "sub sp, sp, x9")
+                movImm(fr x9 size)
+                emit(fr minst.bl("__chkstk_darwin"))
+                movImm(fr x9 size)
+                emit(fr minst.arith(minst.arithSub sp sp x9))
             end
             (* The parameters, to where they are at the start (position 0,
              * just after the prologue's); a C int's upper bits unspecified,
@@ -978,13 +1021,14 @@ export
                     when passInt32 then true
                     when passWord, passReal, passPair, passPairRest, passByte, passMemory then false
                 end
-                if stringOp.length(p.reg) > 0 then
-                    if isInt32 then emit(fr "sxtw " <> p.reg <> ", " <> half(p.reg)) end
+                if p.reg isnot memory then
+                    if isInt32 then emit(fr minst.sxtw(p.reg p.reg)) end
                     storeValue(fr p.reg params[k])
                 else
-                    emit(fr if p.bytes is 1 then "ldrb w9, [x29, #" elsif p.bytes is 4 then "ldrsw x9, [x29, #"
-                        else "ldr x9, [x29, #" end <> conv.int(16 + p.offset) <> "]")
-                    storeValue(fr "x9" params[k])
+                    let width = if p.bytes is 1 then minst.loadU8 elsif p.bytes is 4 then minst.loadS32
+                        else minst.load64 end
+                    emit(fr minst.load(width x9 fp minst.offset(16 + p.offset)))
+                    storeValue(fr x9 params[k])
                 end
             end
             for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
@@ -1000,8 +1044,14 @@ export
                 movesBefore(fr)
                 terminator(fr blk.term)
             end
-            for k = 0 upto {extent asm.functionEnd - 1} do vector.append(:String fr.lines asm.functionEnd[k]) end
-            relaxBranches(fr.lines fr.prefix branchReach)
+            let lines = vector.new(:String)
+            let start = asm.functionStart(f.symbol f.exported)
+            for k = 0 upto {extent start - 1} do vector.append(:String lines start[k]) end
+            for k = 0 upto {vector.length(:minst.Inst fr.code) - 1} do
+                vector.append(:String lines printer.line(vector.get(:minst.Inst fr.code k)))
+            end
+            for k = 0 upto {extent asm.functionEnd - 1} do vector.append(:String lines asm.functionEnd[k]) end
+            relaxBranches(lines fr.prefix branchReach)
         end
 
     let assembleUnit(u: ssa.Unit): String =
@@ -1010,12 +1060,16 @@ export
             for k = 0 upto {vector.length(:Function u.functions) - 1} do
                 put(:String :Bool defined vector.get(:Function u.functions k).symbol true)
             end
-            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do put(:String :Bool defined vector.get(:ssa.Data u.data k).symbol true) end
+            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
+                put(:String :Bool defined vector.get(:ssa.Data u.data k).symbol true)
+            end
             let lines = vector.new(:String)
             for k = 0 upto {extent asm.unitStart - 1} do vector.append(:String lines asm.unitStart[k]) end
             for k = 0 upto {vector.length(:Function u.functions) - 1} do
                 let fl = function(vector.get(:Function u.functions k) k defined)
-                for j = 0 upto {vector.length(:String fl) - 1} do vector.append(:String lines vector.get(:String fl j)) end
+                for j = 0 upto {vector.length(:String fl) - 1} do
+                    vector.append(:String lines vector.get(:String fl j))
+                end
             end
             for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
                 let dl = asm.data(vector.get(:ssa.Data u.data k))
