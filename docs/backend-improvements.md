@@ -308,7 +308,12 @@ the same modules, so each step starts from a fresh rebase.
    and compile times before and after wait, at the user's word, to run with the other benchmarks once this plan is
    finished.
 9. **The compiler's performance** (§3.9). *Done when* each change's compile time is recorded in benchmarks.md, and the
-   ones that do not pay are reverted.
+   ones that do not pay are reverted. *Made* (2026-10-31, 0e8ca0cd, 20f0d4ed), its times to be recorded
+   with the other benchmarks once this plan is finished: the allocator searches its handlers by position and marks
+   the callee-saved registers given in one pass, and the SSA printer joins its lists of values. The rest of §3.9 was
+   done already or does not apply: opcodes are constants (step 1), `dominates` uses tree numbers (step 4), registers
+   are numbers (step 8), and assembly is joined through a string builder; the builder's bindings stay hash maps,
+   since IR variables' ids are numbered across a unit, not densely within a function.
 10. **A `val` type for `QVal` words** (arm64.md §10, hazard 5, deferred here by the user on 2026-10-30): an `int` in
     registers and arithmetic, but a word whose pointer-ness its type descriptor says, so that the frame's slots
     (`codegen.frameSlots`, which classes each by the SSA type of what it holds) tell a precise collector which words
