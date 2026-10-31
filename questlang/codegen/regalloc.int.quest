@@ -28,20 +28,20 @@
 interface Regalloc
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    targets = questlang/codegen/target : questlang/codegen/Target
 export
-    (* A target's allocatable registers by class: 0 for integers and pointers,
-     * 1 for reals. A call preserves the callee-saved ones and no others. *)
-    Def Registers = Tuple callerSaved: Array(Array(String)) calleeSaved: Array(Array(String)) end
+    (* Where a value is when it is in memory rather than a register *)
+    memory: Int
 
-    (* At a position, a value's move from a register ("" for its memory) to
-     * the register its next piece is in *)
-    Def Move = Tuple at: Int value: Int from: String to: String end
+    (* At a position, a value's move from a register (memory for its memory)
+     * to the register its next piece is in *)
+    Def Move = Tuple at: Int value: Int from: Int to: Int end
 
     Def Allocation = Tuple
         (* Each value's pieces: where each starts, in order, and its register,
-         * "" for memory *)
+         * or memory *)
         starts: Array(Array(Int))
-        homes: Array(Array(String))
+        homes: Array(Array(Int))
         (* Whether a value has a piece in memory (or no pieces), and so is
          * stored there when it is defined *)
         spilled: Array(Bool)
@@ -53,14 +53,16 @@ export
         (* What each block's edges in must move: the values live into it *)
         liveIn: Array(Array(Int))
         (* The callee-saved registers given to any value *)
-        calleeUsed: Array(String)
+        calleeUsed: Array(Int)
     end
 
-    (* The allocation of a function's values; clobbers says which
-     * instructions are calls, or otherwise use the registers a call may *)
-    allocate(f: ssa.Function regs: Registers clobbers: All(i: ssa.Inst) Bool): Allocation
+    (* The allocation of a function's values to the target's allocatable
+     * registers (a call preserves the callee-saved ones and no others);
+     * clobbers says which instructions are calls, or otherwise use the
+     * registers a call may *)
+    allocate(f: ssa.Function t: targets.Target clobbers: All(i: ssa.Inst) Bool): Allocation
     (* None: every value in memory throughout *)
     spillAll(f: ssa.Function): Allocation
-    (* Where a value is at a position: its register, "" for memory *)
-    home(a: Allocation v: Int p: Int): String
+    (* Where a value is at a position: its register, or memory *)
+    home(a: Allocation v: Int p: Int): Int
 end

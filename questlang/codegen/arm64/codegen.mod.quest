@@ -4,6 +4,7 @@ module codegen : Codegen
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/codegen/arm64/asm : questlang/codegen/arm64/Asm
+    questlang/codegen/arm64/target : questlang/codegen/arm64/Target
     questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
     questlang/codegen/regalloc : questlang/codegen/Regalloc
     collections/hashMap : collections/HashMap
@@ -205,7 +206,11 @@ export
     let sameClass(a: String b: String): Bool = isD(a) is isD(b)
 
     (* Where a value is at a position: its register, "" for memory *)
-    let homeAt(fr: Frame v: Int p: Int): String = regalloc.home(fr.allocation v p)
+    let homeAt(fr: Frame v: Int p: Int): String =
+        begin
+            let r = regalloc.home(fr.allocation v p)
+            if r is regalloc.memory then "" else target.name(r) end
+        end
     let isRemat(fr: Frame v: Int): Bool = maybe.isSome(:ssa.Inst fr.remat[v])
     (* Whether a value is stored in its slot when it is defined *)
     let needsSlot(fr: Frame v: Int): Bool = fr.allocation.spilled[v] andif not(isRemat(fr v))
@@ -344,8 +349,8 @@ export
             let var k = sort.bisectLeft(:Int fr.moveAts fr.pos sort.intCompare)
             while {k < extent ms} andif {ms[k].at is fr.pos} do
                 let m = ms[k]
-                let src = if stringOp.length(m.from) > 0 then inRegister(m.from) else inMemory(m.value) end
-                vector.append(:Transfer transfers transfer(inRegister(m.to) src))
+                let src = if m.from is regalloc.memory then inMemory(m.value) else inRegister(target.name(m.from)) end
+                vector.append(:Transfer transfers transfer(inRegister(target.name(m.to)) src))
                 k := k + 1
             end
             if vector.length(:Transfer transfers) > 0 then parallel(fr transfers) end
@@ -606,21 +611,6 @@ export
             lines
         end
 
-    (* The registers the allocator gives values (docs/arm64.md section 3.8):
-     * none an argument, a result, or a scratch register *)
-    let allocatable: regalloc.Registers =
-        begin
-            let callerInts = array of "x12" "x13" "x14" "x15" end
-            let callerReals = array of "d16" "d17" "d18" "d19" "d20" "d21" "d22" "d23" "d24" "d25" "d26" "d27" "d28"
-                "d29" "d30" "d31" end
-            let calleeInts = array of "x19" "x20" "x21" "x22" "x23" "x24" "x25" "x26" "x27" "x28" end
-            let calleeReals = array of "d8" "d9" "d10" "d11" "d12" "d13" "d14" "d15" end
-            tuple
-                let callerSaved = array of callerInts callerReals end
-                let calleeSaved = array of calleeInts calleeReals end
-            end
-        end
-
     (* The frame popped and the caller's registers restored, short of
      * returning *)
     let restore(fr: Frame): Ok =
@@ -855,7 +845,7 @@ export
             (* A function that enters a try is allocated as any other: the
              * allocator keeps what its handlers use in memory at their starts
              * (section 3.6) *)
-            let allocation = regalloc.allocate(f allocatable fun(i: ssa.Inst): Bool
+            let allocation = regalloc.allocate(f target.description fun(i: ssa.Inst): Bool
                 (* A thread-local's address is a call of its accessor *)
                 ssa.isCall(i) orif ssa.isOp(i ssa.opThreadLocal))
             (* The values computed again rather than kept in memory *)
@@ -925,7 +915,7 @@ export
             for k = 0 upto {extent savedPairs - 1} do
                 let var any = savesAll
                 for j = 0 upto {extent allocation.calleeUsed - 1} do
-                    let r = allocation.calleeUsed[j]
+                    let r = target.name(allocation.calleeUsed[j])
                     if eq(r savedFirsts[k]) orif eq(r savedSeconds[k]) then any := true end
                 end
                 if any then vector.append(:Int savedList k) end

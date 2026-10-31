@@ -5,17 +5,17 @@ import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/cfg : questlang/ssa/Cfg
     questlang/ssa/liveness : questlang/ssa/Liveness
+    targets = questlang/codegen/target : questlang/codegen/Target
     collections/vector : collections/Vector
     collections/bitset : collections/Bitset
     util/sort : util/Sort
-    stringOp = string : StringOp
 export
-    Def Registers = Tuple callerSaved: Array(Array(String)) calleeSaved: Array(Array(String)) end
-    Def Move = Tuple at: Int value: Int from: String to: String end
+    Def Move = Tuple at: Int value: Int from: Int to: Int end
     Def Allocation = Tuple
-        starts: Array(Array(Int)) homes: Array(Array(String)) spilled: Array(Bool) moves: Array(Move)
-        blockStart: Array(Int) liveIn: Array(Array(Int)) calleeUsed: Array(String)
+        starts: Array(Array(Int)) homes: Array(Array(Int)) spilled: Array(Bool) moves: Array(Move)
+        blockStart: Array(Int) liveIn: Array(Array(Int)) calleeUsed: Array(Int)
     end
+    let memory = ~1
     Let Function = ssa.Function
 
     (* A lifetime interval, or a piece split from one: its value, its ranges
@@ -34,9 +34,9 @@ export
     let never = 4611686018427387903
 
     let add(s: bitset.T v: Int): Ok = if bitset.insert(s v) then ok else ok end
-    let strings(a: Array(String) b: Array(String)): Array(String) =
+    let concat(a: Array(Int) b: Array(Int)): Array(Int) =
         begin
-            let r = array of({extent a + extent b} "")
+            let r = array of({extent a + extent b} 0)
             for i = 0 upto {extent a - 1} do r[i] := a[i] end
             for i = 0 upto {extent b - 1} do r[extent a + i] := b[i] end
             r
@@ -49,12 +49,12 @@ export
             r
         end
 
-    let classOf(f: Function v: Int): Int = case ssa.typeOf(f v) when typeInt, typePtr then 0 when typeReal then 1 end
+    let classOf(f: Function v: Int): Int = targets.index(targets.classOfType(ssa.typeOf(f v)))
 
-    let home(a: Allocation v: Int p: Int): String =
+    let home(a: Allocation v: Int p: Int): Int =
         begin
             let k = sort.bisectRight(:Int a.starts[v] p sort.intCompare) - 1
-            if k < 0 then "" else a.homes[v][k] end
+            if k < 0 then memory else a.homes[v][k] end
         end
 
     let spillAll(f: Function): Allocation =
@@ -63,12 +63,12 @@ export
             let nBlocks = vector.length(:ssa.Block f.blocks)
             tuple
                 let starts = array of(nValues array of 0 end)
-                let homes = array of(nValues array of "" end)
+                let homes = array of(nValues array of :Int end)
                 let spilled = array of(nValues true)
                 let moves = array of :Move end
                 let blockStart = array of(nBlocks 0)
                 let liveIn = array of(nBlocks array of :Int end)
-                let calleeUsed = array of(0 "")
+                let calleeUsed = array of :Int end
             end
         end
 
@@ -207,7 +207,7 @@ export
          * those in a hole there *)
         var active: vector.T(Interval)
         var inactive: vector.T(Interval)
-        pools: Array(Array(String))
+        pools: Array(Array(Int))
         firstCallee: Array(Int)
         (* The positions of calls, and of handlers' starts *)
         calls: Array(Int)
@@ -359,7 +359,7 @@ export
             end
         end
 
-    let allocate(f: Function regs: Registers clobbers: All(i: ssa.Inst) Bool): Allocation =
+    let allocate(f: Function t: targets.Target clobbers: All(i: ssa.Inst) Bool): Allocation =
         begin
             let nValues = vector.length(:ssa.Type f.types)
             let nBlocks = vector.length(:ssa.Block f.blocks)
@@ -448,11 +448,11 @@ export
             let handlerAt = array of(vector.length(:Int handlers) 0)
             for k = 0 upto {extent handlerAt - 1} do handlerAt[k] := blockStart[vector.get(:Int handlers k)] end
             (* Each class's registers, the caller-saved first *)
-            let pools = array of(2 array of(0 ""))
-            let firstCallee = array of(2 0)
-            for c = 0 upto 1 do
-                pools[c] := strings(regs.callerSaved[c] regs.calleeSaved[c])
-                firstCallee[c] := extent regs.callerSaved[c]
+            let pools = array of(targets.classes array of :Int end)
+            let firstCallee = array of(targets.classes 0)
+            for c = 0 upto {targets.classes - 1} do
+                pools[c] := concat(t.callerSaved[c] t.calleeSaved[c])
+                firstCallee[c] := extent t.callerSaved[c]
             end
             let sc = tuple
                 let f = f let intervals = vector.new(:Interval) let heap = vector.new(:Interval)
@@ -494,7 +494,7 @@ export
                 vector.append(:Interval pieces[it.value] it)
             end
             let starts = array of(nValues array of(0 0))
-            let homes = array of(nValues array of(0 ""))
+            let homes = array of(nValues array of :Int end)
             let spilled = array of(nValues true)
             let moves = vector.new(:Move)
             for v = 0 upto {nValues - 1} do
@@ -502,14 +502,14 @@ export
                 sort.sort(:Interval ps fun(a: Interval b: Interval): Int sort.intCompare(firstPos(a) firstPos(b)))
                 let c = classOf(f v)
                 starts[v] := array of(extent ps 0)
-                homes[v] := array of(extent ps "")
+                homes[v] := array of(extent ps memory)
                 spilled[v] := {extent ps is 0}
                 for k = 0 upto {extent ps - 1} do
                     starts[v][k] := firstPos(ps[k])
                     if ps[k].reg >= 0 then homes[v][k] := pools[c][ps[k].reg] else spilled[v] := true end
                     (* A piece in a register inside a block is moved to *)
                     let inside = {k > 0} andif {ps[k].reg >= 0} andif not(bitset.contains(isStart starts[v][k]))
-                    if inside andif not(stringOp.equal(homes[v][k] homes[v][k - 1])) then
+                    if inside andif {homes[v][k] isnot homes[v][k - 1]} then
                         vector.append(:Move moves tuple
                             let at = starts[v][k] let value = v let from = homes[v][k - 1] let to = homes[v][k]
                         end)
@@ -520,23 +520,23 @@ export
             sort.sort(:Move moved fun(a: Move b: Move): Int
                 if a.at isnot b.at then sort.intCompare(a.at b.at) else sort.intCompare(a.value b.value) end)
             (* The callee-saved registers in use, in the order of the pool *)
-            let used = vector.new(:String)
-            for c = 0 upto 1 do
+            let used = vector.new(:Int)
+            for c = 0 upto {targets.classes - 1} do
                 for r = firstCallee[c] upto {extent pools[c] - 1} do
                     let var any = false
                     for v = 0 upto {nValues - 1} do
                         for k = 0 upto {extent homes[v] - 1} do
-                            if stringOp.equal(homes[v][k] pools[c][r]) then any := true end
+                            if homes[v][k] is pools[c][r] then any := true end
                         end
                     end
-                    if any then vector.append(:String used pools[c][r]) end
+                    if any then vector.append(:Int used pools[c][r]) end
                 end
             end
             let ins = array of(nBlocks array of(0 0))
             for b = 0 upto {nBlocks - 1} do ins[b] := bitset.elements(liveIn[b]) end
             tuple
                 let starts = starts let homes = homes let spilled = spilled let moves = moved
-                let blockStart = blockStart let liveIn = ins let calleeUsed = vector.toArray(:String used)
+                let blockStart = blockStart let liveIn = ins let calleeUsed = vector.toArray(:Int used)
             end
         end
 end

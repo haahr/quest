@@ -1,0 +1,44 @@
+(* Quest Self-Hosted Compiler: A Target Description Interface
+ *
+ * What the shared machine-level code (the register allocator, and
+ * docs/backend-improvements.md section 3.8's machine functions) knows of a
+ * target (section 3.7): its registers, as numbers, each with a class and a
+ * name; which are allocatable, and of those which a call preserves; where
+ * arguments and results are passed; the registers kept for the target's own
+ * code; its stack's alignment; and its word's size. A register's name is for
+ * the target's printer and for tests: shared code compares numbers. *)
+
+interface Target
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* A register's class: integers and pointers, or reals *)
+    Def Class = Option classInt classReal end
+    Def Register = Tuple name: String class: Class end
+
+    Def Target = Tuple
+        (* Each register, by its number *)
+        registers: Array(Register)
+        (* The allocatable registers, by class (index): those a call
+         * clobbers, and those it preserves, in order of preference *)
+        callerSaved: Array(Array(Int))
+        calleeSaved: Array(Array(Int))
+        (* The registers arguments and results are passed in, by class, in
+         * order *)
+        arguments: Array(Array(Int))
+        results: Array(Array(Int))
+        (* Registers no value is given, for the target's own code *)
+        scratch: Array(Int)
+        stackAlign: Int
+        wordBytes: Int
+    end
+
+    (* The classes, and each one's index into a target's arrays by class *)
+    classes: Int
+    index(c: Class): Int
+    (* The class of the registers that hold a value of an SSA type *)
+    classOfType(t: ssa.Type): Class
+    (* A register's name and class *)
+    name(t: Target r: Int): String
+    classOf(t: Target r: Int): Class
+end

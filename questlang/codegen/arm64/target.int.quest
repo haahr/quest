@@ -1,0 +1,27 @@
+(* Quest Self-Hosted Compiler: The arm64 Target Description Interface
+ *
+ * arm64's registers as codegen/target numbers them: x0 to x30 are 0 to 30,
+ * xzr 31, d0 to d31 32 to 63, and sp 64. The allocatable ones are none an
+ * argument, a result, or a scratch register (docs/arm64.md section 3.8): x12
+ * to x15 and d16 to d31, which a call clobbers, and x19 to x28 and d8 to d15,
+ * which it preserves. The scratch registers are x9, x10, x11, x16, and x17. *)
+
+interface Target
+import
+    targets = questlang/codegen/target : questlang/codegen/Target
+export
+    description: targets.Target
+    (* The numbers of x0 to x30 and of d0 to d31 *)
+    x(n: Int): Int
+    d(n: Int): Int
+    xzr: Int
+    sp: Int
+    (* The frame pointer and the link register, x29 and x30 *)
+    fp: Int
+    lr: Int
+    (* A register's name, and its 32-bit half's (w for an x register, s for a
+     * d register) *)
+    name(r: Int): String
+    half(r: Int): String
+    isReal(r: Int): Bool
+end

@@ -1,0 +1,52 @@
+(* Quest Self-Hosted Compiler: The arm64 Target Description Implementation *)
+
+module target : Target
+import
+    targets = questlang/codegen/target : questlang/codegen/Target
+    conv : Conv
+export
+    let x(n: Int): Int = n
+    let d(n: Int): Int = 32 + n
+    let xzr = 31
+    let sp = 64
+    let fp = 29
+    let lr = 30
+
+    let isReal(r: Int): Bool = {r >= 32} andif {r < 64}
+
+    let registers: Array(targets.Register) =
+        begin
+            let int = option classInt of targets.Class end
+            let real = option classReal of targets.Class end
+            let rs = array of(65 tuple let name = "" let class = int end)
+            for n = 0 upto 30 do rs[n] := tuple let name = "x" <> conv.int(n) let class = int end end
+            rs[xzr] := tuple let name = "xzr" let class = int end
+            for n = 0 upto 31 do rs[d(n)] := tuple let name = "d" <> conv.int(n) let class = real end end
+            rs[sp] := tuple let name = "sp" let class = int end
+            rs
+        end
+
+    let name(r: Int): String = registers[r].name
+    let half(r: Int): String =
+        if r is xzr then "wzr"
+        elsif isReal(r) then "s" <> conv.int(r - 32)
+        else "w" <> conv.int(r) end
+
+    let range(first: Int last: Int): Array(Int) =
+        begin
+            let r = array of({last - first} + 1 0)
+            for k = 0 upto {extent r - 1} do r[k] := first + k end
+            r
+        end
+
+    let description: targets.Target = tuple
+        let registers = registers
+        let callerSaved = array of range(x(12) x(15)) range(d(16) d(31)) end
+        let calleeSaved = array of range(x(19) x(28)) range(d(8) d(15)) end
+        let arguments = array of range(x(0) x(7)) range(d(0) d(7)) end
+        let results = array of range(x(0) x(1)) range(d(0) d(0)) end
+        let scratch = array of x(9) x(10) x(11) x(16) x(17) end
+        let stackAlign = 16
+        let wordBytes = 8
+    end
+end

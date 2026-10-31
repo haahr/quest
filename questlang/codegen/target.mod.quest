@@ -1,0 +1,23 @@
+(* Quest Self-Hosted Compiler: A Target Description Implementation *)
+
+module target : Target
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    Def Class = Option classInt classReal end
+    Def Register = Tuple name: String class: Class end
+    Def Target = Tuple
+        registers: Array(Register) callerSaved: Array(Array(Int)) calleeSaved: Array(Array(Int))
+        arguments: Array(Array(Int)) results: Array(Array(Int)) scratch: Array(Int) stackAlign: Int wordBytes: Int
+    end
+
+    let classes = 2
+    let index(c: Class): Int = case c when classInt then 0 when classReal then 1 end
+    let classOfType(t: ssa.Type): Class =
+        case t
+            when typeInt, typePtr then option classInt of Class end
+            when typeReal then option classReal of Class end
+        end
+    let name(t: Target r: Int): String = t.registers[r].name
+    let classOf(t: Target r: Int): Class = t.registers[r].class
+end

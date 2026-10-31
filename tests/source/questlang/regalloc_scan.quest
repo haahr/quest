@@ -16,10 +16,10 @@ import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/printer : questlang/ssa/Printer
     questlang/codegen/regalloc : questlang/codegen/Regalloc
+    targets = questlang/codegen/target : questlang/codegen/Target
     collections/vector : collections/Vector
     writer : Writer
     conv : Conv
-    stringOp = string : StringOp
 ;
 
 let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
@@ -35,11 +35,28 @@ let pairsAt(f: ssa.Function pairs: Array(Int)): Ok =
         array of :Int end);
 let noTypes = array of :ssa.Type end;
 
-(* Two caller-saved and one callee-saved integer register, one of each real *)
-let registers = tuple
-    let callerSaved = array of array of "r1" "r2" end array of "f1" end end
-    let calleeSaved = array of array of "s1" end array of "g1" end end
-end;
+(* Two caller-saved and one callee-saved integer register, one of each real:
+ * r1, r2, s1, f1, and g1 *)
+let toy: targets.Target =
+    begin
+        let int = option classInt of targets.Class end
+        let real = option classReal of targets.Class end
+        tuple
+            let registers = array of
+                tuple let name = "r1" let class = int end tuple let name = "r2" let class = int end
+                tuple let name = "s1" let class = int end tuple let name = "f1" let class = real end
+                tuple let name = "g1" let class = real end
+            end
+            let callerSaved = array of array of 0 1 end array of 3 end end
+            let calleeSaved = array of array of 2 end array of 4 end end
+            let arguments = array of array of 0 1 end array of 3 end end
+            let results = array of array of 0 end array of 3 end end
+            let scratch = array of :Int end
+            let stackAlign = 16
+            let wordBytes = 8
+        end
+    end;
+let where(r: Int): String = if r is regalloc.memory then "memory" else targets.name(toy r) end;
 
 let isCall(i: ssa.Inst): Bool = case i.op when opCall then true else false end;
 
@@ -47,22 +64,22 @@ let show(title: String f: ssa.Function): Ok =
     begin
         emit("== " <> title)
         writer.putString(writer.output printer.formatFunction(f))
-        let a = regalloc.allocate(f registers isCall)
+        let a = regalloc.allocate(f toy isCall)
         for v = 0 upto {extent a.starts - 1} do
             let var line = "%" <> conv.int(v) <> ":"
             for k = 0 upto {extent a.starts[v] - 1} do
-                let r = if stringOp.length(a.homes[v][k]) is 0 then "memory" else a.homes[v][k] end
+                let r = where(a.homes[v][k])
                 line := line <> {if k > 0 then ", " else " " end} <> r <> " at " <> conv.int(a.starts[v][k])
             end
             emit(line)
         end
         for k = 0 upto {extent a.moves - 1} do
             let m = a.moves[k]
-            let from = if stringOp.length(m.from) is 0 then "memory" else m.from end
-            emit("move at " <> conv.int(m.at) <> ": %" <> conv.int(m.value) <> " " <> from <> " -> " <> m.to)
+            emit("move at " <> conv.int(m.at) <> ": %" <> conv.int(m.value) <> " " <> where(m.from) <> " -> "
+                <> where(m.to))
         end
         let var used = ""
-        for k = 0 upto {extent a.calleeUsed - 1} do used := used <> " " <> a.calleeUsed[k] end
+        for k = 0 upto {extent a.calleeUsed - 1} do used := used <> " " <> where(a.calleeUsed[k]) end
         emit("callee-saved used:" <> used)
     end;
 
