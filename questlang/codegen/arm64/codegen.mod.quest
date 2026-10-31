@@ -40,12 +40,16 @@ export
     Let ArgumentPlace = Tuple reg: String offset: Int bytes: Int end
     Let Placed = Tuple places: Array(ArgumentPlace) stackBytes: Int end
 
-    (* The places of values of types from first on: an integer or a pointer in
-     * the next x register, a double in the next d register, a 16-byte
-     * composite (where pairs says one starts) in two consecutive x registers or
-     * wholly on the stack, and the rest on the stack, as Darwin packs them: a
-     * narrow one (a C bool or char) in a byte, the others in 8 aligned bytes *)
-    let placeArguments(types: Array(ssa.Type) pairs: Array(Int) narrow: Array(Int) first: Int): Placed =
+    let isPair(p: ssa.Passed): Bool =
+        case p when passPair then true when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false end
+
+    (* The places of values of types from first on, passed as the signature's
+     * parameters say: an integer or a pointer (and a composite's copy's
+     * address) in the next x register, a double in the next d register, a
+     * 16-byte composite in two consecutive x registers or wholly on the stack,
+     * and the rest on the stack, as Darwin packs them: a byte (a C bool or
+     * char) in a byte, a C int in 4 aligned bytes, the others in 8 *)
+    let placeArguments(types: Array(ssa.Type) passed: Array(ssa.Passed) first: Int): Placed =
         begin
             let places = array of(extent types tuple let reg = "" let offset = 0 let bytes = 8 end)
             let var ngrn = 0
@@ -54,17 +58,22 @@ export
             let x(n: Int): ArgumentPlace = tuple let reg = "x" <> conv.int(n) let offset = 0 let bytes = 8 end
             (* The stack place of the argument at k, after at bytes: at its C
              * type's size and alignment, as Darwin places them (a C bool or
-             * char a byte, the rest 8 bytes; the runtime's functions take no
-             * other narrow type, which tests/python/test_runtime_signatures.py
-             * checks, docs/arm64.md section 10, hazard 3) *)
+             * char a byte, a C int 4 bytes, the rest 8; the runtime's
+             * functions take no other narrow type, which
+             * tests/python/test_runtime_signatures.py checks, docs/arm64.md
+             * section 10, hazard 3) *)
             let stackAfter(at: Int k: Int): ArgumentPlace =
                 begin
-                    let bytes = if contains(narrow k) then 1 else 8 end
+                    let bytes = case passed[k]
+                        when passByte then 1
+                        when passInt32 then 4
+                        when passWord, passReal, passPair, passPairRest, passMemory then 8
+                    end
                     tuple let reg = "" let offset = alignUp(at bytes) let bytes = bytes end
                 end
             let var k = first
             while k < extent types do
-                if contains(pairs k) then
+                if isPair(passed[k]) then
                     if ngrn <= 6 then
                         places[k] := x(ngrn)
                         places[k + 1] := x(ngrn + 1)
@@ -368,13 +377,14 @@ export
             let direct = stringOp.length(i.symbol) > 0
             let types = array of(extent i.args ssa.typeInt)
             for k = 0 upto {extent i.args - 1} do types[k] := ssa.typeOf(f i.args[k]) end
-            let placed = placeArguments(types i.pairs i.narrow if direct then 0 else 1 end)
+            let placed = placeArguments(types i.signature.params if direct then 0 else 1 end)
             (* The stack's first, which may use x16 and x17 *)
             for k = 0 upto {extent i.args - 1} do
                 let p = placed.places[k]
                 if {k >= {if direct then 0 else 1 end}} andif {stringOp.length(p.reg) is 0} then
                     loadValue(fr "x9" i.args[k])
-                    emit(fr if p.bytes is 1 then "strb w9, [sp, #" else "str x9, [sp, #" end <> conv.int(p.offset) <> "]")
+                    emit(fr if p.bytes is 1 then "strb w9, [sp, #" elsif p.bytes is 4 then "str w9, [sp, #"
+                        else "str x9, [sp, #" end <> conv.int(p.offset) <> "]")
                 end
             end
             for k = {if direct then 0 else 1 end} upto {extent i.args - 1} do
@@ -636,7 +646,7 @@ export
             let first = if direct then 0 else 1 end
             let types = array of(extent i.args ssa.typeInt)
             for k = 0 upto {extent i.args - 1} do types[k] := ssa.typeOf(f i.args[k]) end
-            let placed = placeArguments(types i.pairs i.narrow first)
+            let placed = placeArguments(types i.signature.params first)
             if direct andif eq(i.symbol f.symbol) then
                 jump(fr ssa.target(0 i.args))
             elsif placed.stackBytes > 0 then
@@ -801,7 +811,7 @@ export
                     begin
                         let types = array of(extent i.args ssa.typeInt)
                         for k = 0 upto {extent i.args - 1} do types[k] := ssa.typeOf(f i.args[k]) end
-                        let placed = placeArguments(types i.pairs i.narrow if stringOp.length(i.symbol) > 0 then 0 else 1 end)
+                        let placed = placeArguments(types i.signature.params if stringOp.length(i.symbol) > 0 then 0 else 1 end)
                         if placed.stackBytes > outgoing then outgoing := placed.stackBytes end
                     end
                 for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
@@ -916,18 +926,24 @@ export
                 emit(fr "sub sp, sp, x9")
             end
             (* The parameters, to where they are at the start (position 0,
-             * just after the prologue's); main's argc is a C int *)
+             * just after the prologue's); a C int's upper bits unspecified,
+             * extended *)
             let params = vector.toArray(:Int ssa.block(f 0).params)
-            if eq(f.symbol "main") then emit(fr "sxtw x0, w0") end
             let types = array of(extent params ssa.typeInt)
             for k = 0 upto {extent params - 1} do types[k] := ssa.typeOf(f params[k]) end
-            let placed = placeArguments(types f.paramPairs f.paramNarrow 0)
+            let placed = placeArguments(types f.signature.params 0)
             for k = 0 upto {extent params - 1} do
                 let p = placed.places[k]
+                let isInt32 = case f.signature.params[k]
+                    when passInt32 then true
+                    when passWord, passReal, passPair, passPairRest, passByte, passMemory then false
+                end
                 if stringOp.length(p.reg) > 0 then
+                    if isInt32 then emit(fr "sxtw " <> p.reg <> ", " <> half(p.reg)) end
                     storeValue(fr p.reg params[k])
                 else
-                    emit(fr if p.bytes is 1 then "ldrb w9, [x29, #" else "ldr x9, [x29, #" end <> conv.int(16 + p.offset) <> "]")
+                    emit(fr if p.bytes is 1 then "ldrb w9, [x29, #" elsif p.bytes is 4 then "ldrsw x9, [x29, #"
+                        else "ldr x9, [x29, #" end <> conv.int(16 + p.offset) <> "]")
                     storeValue(fr "x9" params[k])
                 end
             end

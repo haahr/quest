@@ -1,0 +1,36 @@
+(* Quest Self-Hosted Compiler: The Runtime's Functions Interface
+ *
+ * The functions of runtime/quest_runtime.h that the SSA's builder calls
+ * (docs/backend-improvements.md section 3.5): each one's C prototype, from
+ * which its signature and the SSA types of its parameters and results follow,
+ * and its effects, for optimizations to read. The table is checked against
+ * the header: the questlang test codegen_runtime_functions prints each
+ * prototype as a C assertion that the function has that type, which
+ * tests/python/test_runtime_layout.py compiles against quest_runtime.h. *)
+
+interface RuntimeFunctions
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* What a function does to memory: nothing, reads it, or writes it (and
+     * reads it) *)
+    Def Memory = Option memoryNone memoryReads memoryWrites end
+    (* A function's effects: what it does to memory, whether it may raise,
+     * whether it allocates, and whether it never returns. One that does
+     * nothing to memory, cannot raise, and does not allocate is pure. *)
+    Def Effects = Tuple memory: Memory raises: Bool allocates: Bool noReturn: Bool end
+    (* A function: its name, its C result type and parameter types, and its
+     * effects *)
+    Def Function = Tuple name: String result: String params: Array(String) effects: Effects end
+    functions: Array(Function)
+    (* The function of a name; raises unknown if the table has none *)
+    unknown: Exception(String)
+    function(name: String): Function
+    isPure(f: Function): Bool
+    (* How C passes the function's parameters and results, and their SSA
+     * types: a 16-byte struct (QRecordVal, QVariantVal) two words, a larger
+     * one (QExceptionState) its copy's address *)
+    signature(f: Function): ssa.Signature
+    paramTypes(f: Function): Array(ssa.Type)
+    resultTypes(f: Function): Array(ssa.Type)
+end

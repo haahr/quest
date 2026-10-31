@@ -66,9 +66,10 @@ export
                     for k = 0 upto {extent ps - 1} do vector.append(:ssa.Type paramTypes ps[k].type) end
                 end
             end
-            let sf = ssa.newFunction(vals.codeName(u f) false vector.toArray(:ssa.Type paramTypes) vals.typesOf(vals.parts(f.resultType)))
-            sf.paramPairs := vector.toArray(:Int paramPairs)
-            sf.paramNarrow := vector.toArray(:Int paramNarrow)
+            let params = vector.toArray(:ssa.Type paramTypes)
+            let resultParts = vals.parts(f.resultType)
+            let sf = ssa.newFunction(vals.codeName(u f) false params vals.typesOf(resultParts))
+            sf.signature := vals.signatureOf(params vector.toArray(:Int paramPairs) vector.toArray(:Int paramNarrow) resultParts)
             let fn = vals.newFn(u sf hashMap.get(:Int :ir.OpMakeClosure u.closuresOf f.id))
             let params = ssa.block(sf 0).params
             let var at = 0
@@ -108,7 +109,7 @@ export
                 let m = f.viewMaps[i]
                 let d = vals.atom1(fn ir.atomOfVar(m.descriptor))
                 vals.bindToValues(fn m.v
-                    array of vals.call1(fn "quest_view_map" array of d descriptors.descriptor(fn m.bound) end vals.tPtr) end)
+                    array of vals.call1(fn "quest_view_map" array of d descriptors.descriptor(fn m.bound) end) end)
             end
             control.body(fn f.body)
             vals.finish(fn)
@@ -220,7 +221,7 @@ export
                 entry("qv_mod_" <> symbols.mangleModuleName(m.name) <> "_init" diagnostics.initFrame(m.name))
             end
             if not(isModuleFile(unit)) then entry("main" diagnostics.mainFrame) end
-            let fn = adapters.newFunction(u "qr_register_dicts" false adapters.pointers(0) vals.noValuesTypes)
+            let fn = adapters.newFunction(u "qr_register_dicts" false adapters.pointers(0) array of :vals.Part end)
             if not(vector.empty(:ssa.Word entries)) then
                 addData(u ssa.words("qr_funcs" false false vector.toArray(:ssa.Word entries)))
                 vals.callVoid(fn "quest_register_funcs"
@@ -243,6 +244,13 @@ export
             end
             adapters.returnValues(fn vals.noValues)
             adapters.finished(fn)
+        end
+
+    (* main, called by C: its argc and its result C ints *)
+    let mainOf(f: Function): Function =
+        begin
+            f.signature := ssa.withResult(ssa.withParam(f.signature 0 ssa.passInt32) ssa.passInt32)
+            f
         end
 
     let buildUnit(unit: ir.Unit): ssa.Unit =
@@ -334,11 +342,10 @@ export
                             (* A module file's initializes the modules it
                              * imports, as a program's main does *)
                             if exported then
-                                vals.callVoid(fn "qr_register_dicts" vals.noValues)
+                                vals.callOwn(fn "qr_register_dicts")
                                 for j = 0 upto {extent unit.imports - 1} do
-                                    vals.callVoid(fn "qv_mod_"
-                                        <> symbols.mangleModuleName(unit.imports[j].canonicalPath) <> "_init"
-                                        vals.noValues)
+                                    vals.callOwn(fn "qv_mod_"
+                                        <> symbols.mangleModuleName(unit.imports[j].canonicalPath) <> "_init")
                                 end
                             end
                         end
@@ -369,25 +376,25 @@ export
             end
             descriptorData(u)
             vector.append(:Function u.built.functions registration(u))
-            if not(isModuleFile(unit)) then vector.append(:Function u.built.functions topLevel(u "main" unit.main
+            if not(isModuleFile(unit)) then vector.append(:Function u.built.functions mainOf(topLevel(u "main" unit.main
                 fun(fn: vals.Fn): Ok
                     begin
                         let params = ssa.block(fn.f 0).params
                         vals.callVoid(fn "quest_gc_init" vals.noValues)
                         vals.callVoid(fn "quest_builtins_init" array of vector.get(:Int params 0) vector.get(:Int params 1) end)
-                        vals.callVoid(fn "qr_register_dicts" vals.noValues)
+                        vals.callOwn(fn "qr_register_dicts")
                         for j = 0 upto {extent unit.imports - 1} do
-                            vals.callVoid(fn "qv_mod_" <> symbols.mangleModuleName(unit.imports[j].canonicalPath)
-                                <> "_init" vals.noValues)
+                            vals.callOwn(fn "qv_mod_" <> symbols.mangleModuleName(unit.imports[j].canonicalPath)
+                                <> "_init")
                         end
                         for j = 0 upto {vector.length(:ir.Module unit.modules) - 1} do
-                            vals.callVoid(fn "qv_mod_"
+                            vals.callOwn(fn "qv_mod_"
                                 <> symbols.mangleModuleName(vector.get(:ir.Module unit.modules j).name)
-                                <> "_init" vals.noValues)
+                                <> "_init")
                         end
                     end
                 fun(fn: vals.Fn): Ok vals.terminate(fn option termReturn of ssa.Terminator with let values = array of vals.constant(fn 0) end end)
-                array of vals.tInt end array of vals.tInt vals.tPtr end true)) end
+                array of vals.tInt end array of vals.tInt vals.tPtr end true))) end
             u.built
         end
 end

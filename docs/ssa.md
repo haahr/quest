@@ -62,18 +62,26 @@ immediate.
 ### 2.2. Calls
 
 A call's arguments and results are values in the order of the C function's parameters; an `Ok` argument, which has no
-values, is a zero word, since C passes `Q_OK_VAL` to the `QVal` parameter a function declares for it. The call records,
-for the native backend's ABI lowering, where a 16-byte composite (a `QRecordVal`, a `QVariantVal`) starts: AAPCS64
-passes one in two consecutive registers or wholly on the stack, never split. A composite larger than 16 bytes, which C
-passes through memory (a `QExceptionState`, to `quest_reraise`), is a stack slot whose address the builder passes, and
-the call records the argument among its `memory` arguments: AAPCS64 passes such a composite as the address of a copy,
-and `ssac` passes the copy's contents. A call also records which arguments C passes as one byte (`narrow`: a `bool` or a
-`char`, from a `Bool` or a `Char`), which Darwin's AAPCS64 packs on the stack, a byte each, where it passes others in 8
-aligned bytes; a function records its own (`paramNarrow`), and extends them on entry, since a C caller leaves their
-upper bits unspecified. A C `bool` or `QChar` result is extended by a `zext8` after the call, since AAPCS64
-leaves a narrow result's upper bits unspecified; a function that returns such an extension of a call's result can make
-the call in tail position, since its own caller extends it again. A call of a function that does not return (a raise)
-ends its block with `unreachable`.
+values, is a zero word, since C passes `Q_OK_VAL` to the `QVal` parameter a function declares for it. A call and a
+function have a **signature** (`nodes.Signature`): how C passes each parameter and result, which the backends lower
+the ABI by and `ssac` writes C's types from (`nodes.Passed`):
+
+- a word (an integer or a pointer) or a real (a double);
+- a **pair**, the two words of a 16-byte composite (a `QRecordVal`, a `QVariantVal`), which AAPCS64 passes in two
+  consecutive registers or wholly on the stack, never split; two results are a pair;
+- a **byte** (`narrow`: a `bool` or a `char`, from a `Bool` or a `Char`), which Darwin's AAPCS64 packs on the stack,
+  a byte each, where it passes others in 8 aligned bytes, and leaves the upper bits of in a register;
+- a **C `int`** (`int32`: `main`'s `argc` and result), which a function extends on entry;
+- a composite of more than 16 bytes, passed through **memory** (a `QExceptionState`, to `quest_reraise`): a stack slot
+  whose address the builder passes, as AAPCS64 passes the address of a copy, and whose contents `ssac` passes.
+
+The runtime's functions' signatures, with their effects (what each does to memory, whether it may raise, allocates, or
+never returns), come from the table `codegen/runtimeFunctions`, which holds each one's C prototype and is checked
+against `quest_runtime.h`; a Quest function's come from its parameters' and results' representations. A function extends
+its byte parameters on entry, since a C caller leaves their upper bits unspecified. A C `bool` or `QChar` result is
+extended by a `zext8` after the call, since AAPCS64 leaves a narrow result's upper bits unspecified; a function that
+returns such an extension of a call's result can make the call in tail position, since its own caller extends it again.
+A call of a function that does not return (a raise) ends its block with `unreachable`.
 
 ## 3. Blocks and Control
 
@@ -160,13 +168,12 @@ names, leaves passes out, for a test or a bisection.
 
 ## 5. Functions and Units
 
-A **function** has a symbol (its C name), whether other units call it, its parameters (the entry block's) with where
-its 16-byte composites start (`paramPairs`, as a call's `pairs`: a function of two results returns one), its result
-types, its blocks, and its stack slots (each a size and an alignment in bytes). A **unit** has its functions and its
-**data**: each datum a symbol, whether other units refer to it, whether it is written at run time, and its contents,
-8-byte aligned: zeros (a global, a module's record and its initialized flag), a C string's text and its NUL (a
-literal, a name in a descriptor or the function table), or words, each an integer or a symbol's address plus a byte
-offset (a descriptor and what its extra field points at, an offset table, a tag map, a static closure, the function
+A **function** has a symbol (its C name), whether other units call it, its parameters (the entry block's), its result
+types, its signature (§2.2), its blocks, and its stack slots (each a size and an alignment in bytes). A **unit** has its
+functions and its **data**: each datum a symbol, whether other units refer to it, whether it is written at run time, and
+its contents, 8-byte aligned: zeros (a global, a module's record and its initialized flag), a C string's text and its
+NUL (a literal, a name in a descriptor or the function table), or words, each an integer or a symbol's address plus a
+byte offset (a descriptor and what its extra field points at, an offset table, a tag map, a static closure, the function
 table). Words lay out the runtime's structs on a little-endian target, a narrow field in the low bytes of its word.
 
 The builder makes, besides the IR's functions and the module initializers and `main`:
@@ -187,8 +194,9 @@ What a unit refers to and does not define is another unit's or the runtime's; th
 
 `--stop-after ssa` prints a program unit's SSA; its goldens (`tests/golden/ssa`) are the self-hosted compiler's own,
 one for every run test that has an `ir_core` dump (arm64.md §3.2). Values print as `%n`, blocks as `bN`, a
-function's stack slots as `bytes:alignment`, a load or store with its width (`load1s` sign-extends a byte), a call
-with its `pairs` and `memory` arguments, and a function with its `pairs`; the unit's data follows its functions, a
+function's stack slots as `bytes:alignment`, a load or store with its width (`load1s` sign-extends a byte), and a call
+or a function with its signature where it is not words and reals (`pairs [0]`, `narrow [2]`, `memory [0:32]`,
+`int32 [0]`, `result narrow`, `result int32`); the unit's data follows its functions, a
 datum per line (`data qs_1 text "add1"`, `data g_res writable zero 8`, `data qf_f_closure words [qf_f, 0]`):
 
 ```
@@ -211,7 +219,7 @@ before and after; and a program's SSA can be cut down to the functions that show
 After the pipeline, and when `QUEST_CHECK_IR=1` after the builder and after every pass too, the verifier checks that
 each value is defined once and its definition dominates its uses; that every instruction has the number and types of
 arguments and results its opcode takes, a narrow load's result and a narrow store's value being ints; that a call's
-`pairs`, `memory`, and `narrow` arguments are among its arguments, and a call of the unit's own function matches its
+and a function's signatures fit their arguments and results, and a call of the unit's own function matches its
 parameters and results; that jumps pass their blocks' parameters' number and types; that a switch's cases are
 distinct; that returns and tail calls give the function's results; that each block ends in one terminator; that a
 `try`'s handler has the `try`'s block as its only predecessor and no parameters; and that slots and blocks referred

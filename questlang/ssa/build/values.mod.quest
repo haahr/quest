@@ -12,6 +12,7 @@ import
     questlang/codegen/symbols : questlang/codegen/Symbols
     questlang/codegen/staticdata : questlang/codegen/StaticData
     questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
+    questlang/codegen/runtimeFunctions : questlang/codegen/RuntimeFunctions
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
@@ -38,10 +39,6 @@ export
     let tPtr = ssa.typePtr
     let tReal = ssa.typeReal
     let noValues = array of :Int end
-    (* How a call passes its arguments: with 16-byte composites starting at
-     * pairs and narrow arguments at narrow; with one starting at the first *)
-    let passing(pairs: Array(Int) narrow: Array(Int)): ssa.Passing = ssa.passing(pairs noValues narrow)
-    let firstPair = passing(array of 0 end noValues)
     let noValuesTypes = array of :ssa.Type end
 
     (* =========================================================================
@@ -225,10 +222,39 @@ export
     let load(fn: Fn address: Int offset: Int p: Part): Int = ssa.load(fn.f fn.cur address offset p.width p.signed p.type)
     let loadWord(fn: Fn address: Int offset: Int t: ssa.Type): Int = ssa.load(fn.f fn.cur address offset 8 false t)
     let store(fn: Fn address: Int offset: Int width: Int value: Int): Ok = ssa.store(fn.f fn.cur address offset width value)
-    let callSymbol(fn: Fn symbol: String args: Array(Int) results: Array(ssa.Type)): Array(Int) =
-        ssa.call(fn.f fn.cur symbol args ssa.plain results)
-    let call1(fn: Fn symbol: String args: Array(Int) t: ssa.Type): Int = callSymbol(fn symbol args array of t end)[0]
-    let callVoid(fn: Fn symbol: String args: Array(Int)): Ok = begin callSymbol(fn symbol args array of :ssa.Type end) ok end
+    (* A call of the runtime's function name (codegen/runtimeFunctions), at
+     * its signature: its results; its one result; none *)
+    let runtime(fn: Fn name: String args: Array(Int)): Array(Int) =
+        begin
+            let r = runtimeFunctions.function(name)
+            ssa.call(fn.f fn.cur name args runtimeFunctions.signature(r) runtimeFunctions.resultTypes(r))
+        end
+    let call1(fn: Fn name: String args: Array(Int)): Int = runtime(fn name args)[0]
+    let callVoid(fn: Fn name: String args: Array(Int)): Ok = begin runtime(fn name args) ok end
+    (* A call of a function of the unit, or another unit's, of no parameters
+     * and no results *)
+    let callOwn(fn: Fn symbol: String): Ok =
+        begin ssa.call(fn.f fn.cur symbol noValues ssa.emptySignature noValuesTypes) ok end
+    let typesOfValues(fn: Fn vs: Array(Int)): Array(ssa.Type) =
+        begin
+            let ts = array of(extent vs tInt)
+            for k = 0 upto {extent vs - 1} do ts[k] := ssa.typeOf(fn.f vs[k]) end
+            ts
+        end
+    (* The signature of a Quest function's call or its definition: words and
+     * reals of its parameters' types, but 16-byte composites starting at
+     * pairs and bytes (Bools and Chars) at narrow; and its results' parts, a
+     * byte for a Bool or a Char *)
+    let signatureOf(params: Array(ssa.Type) pairs: Array(Int) narrow: Array(Int) results: Array(Part)): ssa.Signature =
+        begin
+            let s = ssa.signature(params typesOf(results) pairs narrow)
+            if {extent results is 1} andif {results[0].width is 1} then ssa.withResult(s ssa.passByte) else s end
+        end
+    (* A call of a Quest function: of the unit's or another unit's (or with
+     * symbol "", of the code pointer args[0]), its results *)
+    let callQuest(fn: Fn symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int) results: Array(Part))
+        : Array(Int) =
+        ssa.call(fn.f fn.cur symbol args signatureOf(typesOfValues(fn args) pairs narrow results) typesOf(results))
     let terminate(fn: Fn t: ssa.Terminator): Ok = ssa.terminate(fn.f fn.cur t)
     let terminated(fn: Fn): Bool = ssa.isTerminated(fn.f fn.cur)
     let jump(fn: Fn b: Int args: Array(Int)): Ok =
@@ -422,7 +448,7 @@ export
                 array of ssa.realConstant(fn.f fn.cur realBitsOf(x.r)) end
             when constString with x then
                 let literal = symbolAt(fn stringSymbol(fn.u x.s))
-                array of call1(fn "quest_string_new" array of literal constant(fn stringOp.length(x.s)) end tPtr) end
+                array of call1(fn "quest_string_new" array of literal constant(fn stringOp.length(x.s)) end) end
         end
 
     (* An atom's values. A boxed mutable variable (or var parameter) holds its
@@ -474,8 +500,8 @@ export
         case layout.wordForm(shapes.shape(t))
             when wordItself then vs[0]
             when wordOk then constant(fn 0)
-            when wordRecordBox then toInt(fn call1(fn "quest_record_box" vs tPtr))
-            when wordVariantBox then toInt(fn call1(fn "quest_variant_box" vs tPtr))
+            when wordRecordBox then toInt(fn call1(fn "quest_record_box" vs))
+            when wordVariantBox then toInt(fn call1(fn "quest_variant_box" vs))
             when wordBits then vs[0]
             when wordInteger then vs[0]
             when wordReal then emit(fn ssa.opRealBits array of vs[0] end tInt)
@@ -577,7 +603,7 @@ export
      * original (quest_unproxy) *)
     let unproxy(fn: Fn p: Int): Int =
         begin
-            let original = call1(fn "quest_unproxy" array of p end tPtr)
+            let original = call1(fn "quest_unproxy" array of p end)
             original
         end
 
@@ -606,7 +632,7 @@ export
                 when repVariant, repVoid, repInt, repWord, repBool, repChar, repReal, repPointer, repQVal then
                     "quest_variant_box"
             end
-            array of call1(fn helper vs tPtr) end
+            array of call1(fn helper vs) end
         end
     let unboxed(fn: Fn vs: Array(Int) t: Type): Array(Int) = readValue(fn vs[0] t)
 
@@ -664,7 +690,7 @@ export
                 when proxy then
                     choose(fn isProxy(fn t) typesOf(slotParts(comp.type))
                         fun(): Array(Int)
-                            slotFromWord(fn call1(fn "quest_proxy_element" array of t constant(fn i) end tInt) comp.type)
+                            slotFromWord(fn call1(fn "quest_proxy_element" array of t constant(fn i) end) comp.type)
                         fun(): Array(Int) readSlot(fn offsetPtr(fn t offset) comp.type))
             end
         end
@@ -673,7 +699,7 @@ export
     let optionTag(fn: Fn o: Int access: ir.Access): Int =
         case access
             when direct then loadWord(fn o runtimeLayout.offset("QOptionHeader" "tag") tInt)
-            when original, proxy then call1(fn "quest_option_tag" array of o end tInt)
+            when original, proxy then call1(fn "quest_option_tag" array of o end)
         end
 
     (* The tag of a variant or option value vs of shape ts, in its numbering,
@@ -689,7 +715,7 @@ export
                 when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
                     shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
                     shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then
-                    call1(fn "quest_view_option_tag" array of vs[0] vm end tInt)
+                    call1(fn "quest_view_option_tag" array of vs[0] vm end)
             end
         elsif shapes.kindIs(ts shapes.shapeVariant) then
             vs[0]
@@ -710,14 +736,14 @@ export
                 when proxy then
                     choose(fn isProxy(fn o) typesOf(slotParts(comp.type))
                         fun(): Array(Int) slotFromWord(fn
-                            call1(fn "quest_proxy_option_element" array of o constant(fn {if i < 0 then 0 else i end}) end tInt)
+                            call1(fn "quest_proxy_option_element" array of o constant(fn {if i < 0 then 0 else i end}) end)
                             comp.type)
                         fun(): Array(Int) readSlot(fn offsetPtr(fn o offset) comp.type))
             end
         end
 
     (* A new object of n bytes, zeroed by the collector *)
-    let alloc(fn: Fn bytes: Int): Int = call1(fn "quest_alloc" array of constant(fn bytes) end tPtr)
+    let alloc(fn: Fn bytes: Int): Int = call1(fn "quest_alloc" array of constant(fn bytes) end)
 
     (* =========================================================================
      * Functions being built

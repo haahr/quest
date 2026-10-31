@@ -23,6 +23,12 @@ let tInt = ssa.typeInt;
 let tPtr = ssa.typePtr;
 let tReal = ssa.typeReal;
 let none = array of :Int end;
+let call(f: ssa.Function b: Int symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int)
+    results: Array(ssa.Type)): Array(Int) =
+    ssa.call(f b symbol args ssa.signature(ssa.valueTypes(f args) results pairs narrow) results);
+let pairsAt(f: ssa.Function pairs: Array(Int)): Ok =
+    f.signature := ssa.signature(vector.toArray(:ssa.Type f.paramTypes) vector.toArray(:ssa.Type f.resultTypes) pairs
+        array of :Int end);
 let params(f: ssa.Function): Array(Int) = vector.toArray(:Int ssa.block(f 0).params);
 let ret(f: ssa.Function b: Int vs: Array(Int)): Ok = ssa.terminate(f b option termReturn of ssa.Terminator with let values = vs end);
 let jumpTo(f: ssa.Function b: Int to: Int args: Array(Int)): Ok =
@@ -38,7 +44,7 @@ let add(f: ssa.Function): Ok =
 (* 1. An exported function of a record (a pair) and an Int, returning a pair:
  * its halves swapped, the second scaled *)
 let swap = ssa.newFunction("qv_test_swap" true array of tPtr tPtr tInt end array of tPtr tPtr end);
-swap.paramPairs := array of 0 end;
+pairsAt(swap array of 0 end);
 let sp = params(swap);
 let scaled = ssa.binary(swap 0 ssa.opMul ssa.emit(swap 0 ssa.opPtrToInt
     array of sp[0] end tInt) sp[2]);
@@ -82,11 +88,14 @@ let calls = ssa.newFunction("qf_calls" false array of tInt tPtr end array of tIn
 let cp = params(calls);
 let state = ssa.newSlot(calls 32 8);
 let at = ssa.slotAddress(calls 0 state);
-let pair = ssa.call(calls 0 "qv_test_swap" array of cp[1] cp[1] cp[0] end ssa.passing(array of 0 end none none)
+let pair = call(calls 0 "qv_test_swap" array of cp[1] cp[1] cp[0] end array of 0 end none
     array of tPtr tPtr end);
-ssa.call(calls 0 "quest_reraise" array of at end ssa.passing(none array of 0 end none) array of :ssa.Type end);
+ssa.call(calls 0 "quest_reraise" array of at end
+    ssa.withParam(ssa.signature(array of tPtr end array of :ssa.Type end none none) 0 option passMemory of ssa.Passed with
+        let bytes = 32
+    end) array of :ssa.Type end);
 let fnPtr = ssa.load(calls 0 pair[0] 0 8 false tPtr);
-let indirect = ssa.call(calls 0 "" array of fnPtr pair[1] end ssa.plain array of tInt end);
+let indirect = call(calls 0 "" array of fnPtr pair[1] end none none array of tInt end);
 let one = ssa.newBlock(calls);
 let other = ssa.newBlock(calls);
 let joined = ssa.newBlock(calls);
@@ -98,8 +107,8 @@ ssa.terminate(calls 0 option termSwitch of ssa.Terminator with
 end);
 jumpTo(calls one joined array of ssa.constant(calls one 10) end);
 jumpTo(calls other joined array of ssa.constant(calls other ~20) end);
-ssa.tailCall(calls joined "qf_tail" array of ssa.symbolAddress(calls joined "qs_text") result end ssa.plain
-    array of tInt end);
+ssa.tailCall(calls joined "qf_tail" array of ssa.symbolAddress(calls joined "qs_text") result end
+    ssa.signature(array of tPtr tInt end array of tInt end none none) array of tInt end);
 add(calls);
 
 let tailF = ssa.newFunction("qf_tail" false array of tPtr tInt end array of tInt end);
@@ -120,7 +129,7 @@ ssa.terminate(tries 0 option termTry of ssa.Terminator with
 end);
 ssa.store(tries body cellAt 0 8 params(tries)[0]);
 ssa.store(tries body ssa.symbolAddress(tries body "quest_current_exception_handler") 0 8 cellAt);
-ssa.call(tries body "quest_pop_handler" none ssa.plain array of :ssa.Type end);
+call(tries body "quest_pop_handler" none none none array of :ssa.Type end);
 ret(tries body array of ssa.load(tries body cellAt 0 8 false tInt) end);
 ret(tries handler array of ssa.binary(tries handler ssa.opAdd before
     ssa.load(tries handler cellAt 0 8 false tInt)) end);
@@ -128,8 +137,9 @@ add(tries);
 
 (* 5. A main *)
 let mainF = ssa.newFunction("main" true array of tInt tPtr end array of tInt end);
-ssa.call(mainF 0 "quest_gc_init" none ssa.plain array of :ssa.Type end);
-ret(mainF 0 array of ssa.call(mainF 0 "qf_try" array of params(mainF)[0] end ssa.plain array of tInt end)[0] end);
+mainF.signature := ssa.withResult(ssa.withParam(mainF.signature 0 ssa.passInt32) ssa.passInt32);
+call(mainF 0 "quest_gc_init" none none none array of :ssa.Type end);
+ret(mainF 0 array of call(mainF 0 "qf_try" array of params(mainF)[0] end none none array of tInt end)[0] end);
 add(mainF);
 
 (* 6. Data *)

@@ -97,22 +97,55 @@ export
                 end
             let one(t: Type): Array(Type) = array of t end
             let noTypes = array of :Type end
-            (* A call's arguments and results: its pairs, memory, and narrow
-             * arguments among its own (after the function pointer of an
-             * indirect call), and for a call of the unit's own function, its
-             * parameters and results *)
-            let callIsValid(inst: nodes.Inst what: String): Ok =
+            (* A signature of parameters and results of the types given: one
+             * for each, a pair's first word followed by its second, a real a
+             * double, and others not *)
+            let signatureIsValid(sig: nodes.Signature params: Array(Type) results: Array(Type) what: String): Ok =
                 begin
-                    let first = if nodes.isOp(inst nodes.opCall) then 0 else 1 end
-                    let inRange(indices: Array(Int) span: Int name: String): Ok =
-                        for k = 0 upto {extent indices - 1} do
-                            if {indices[k] < first} orif {{indices[k] + span} > extent inst.args} then
-                                problem(what <> "'s " <> name <> " argument " <> conv.int(indices[k]) <> " does not exist")
+                    let classes(ps: Array(nodes.Passed) types: Array(Type) name: String): Ok =
+                        if extent ps isnot extent types then
+                            problem(what <> "'s signature has " <> conv.int(extent ps) <> " " <> name <> ", not "
+                                <> conv.int(extent types))
+                        else
+                            for k = 0 upto {extent ps - 1} do
+                                let isReal = sameType(types[k] tReal)
+                                let rest = {k > 0} andif case ps[k - 1]
+                                    when passPair then true
+                                    when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false
+                                end
+                                let fits = case ps[k]
+                                    when passReal then isReal
+                                    when passPairRest then rest
+                                    when passWord, passPair, passByte, passInt32, passMemory then not(isReal)
+                                end
+                                let missing = rest andif case ps[k]
+                                    when passPairRest then false
+                                    when passWord, passReal, passPair, passByte, passInt32, passMemory then true
+                                end
+                                (* A pair's first word last, its second missing *)
+                                let unfinished = {k is {extent ps - 1}} andif case ps[k]
+                                    when passPair then true
+                                    when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false
+                                end
+                                if not(fits) orif missing orif unfinished then
+                                    problem(what <> "'s signature does not fit its " <> name <> " " <> conv.int(k))
+                                end
                             end
                         end
-                    inRange(inst.pairs 2 "pair")
-                    inRange(inst.memory 1 "memory")
-                    inRange(inst.narrow 1 "narrow")
+                    classes(sig.params params "parameters")
+                    classes(sig.results results "results")
+                end
+            let valueTypes(vs: Array(Int)): Array(Type) =
+                begin
+                    let ts = array of(extent vs tInt)
+                    for k = 0 upto {extent vs - 1} do if {vs[k] >= 0} andif {vs[k] < nValues} then ts[k] := nodes.typeOf(f vs[k]) end end
+                    ts
+                end
+            (* A call's arguments and results: its signature, and for a call of
+             * the unit's own function, its parameters and results *)
+            let callIsValid(inst: nodes.Inst what: String): Ok =
+                begin
+                    signatureIsValid(inst.signature valueTypes(inst.args) valueTypes(inst.results) what)
                     if extent inst.results > 2 then problem(what <> " has " <> conv.int(extent inst.results) <> " results") end
                     if nodes.isOp(inst nodes.opCall) then
                         let target = callee(inst.symbol)
@@ -138,6 +171,7 @@ export
                         end
                     end
                 end
+            signatureIsValid(f.signature vector.toArray(:Type f.paramTypes) vector.toArray(:Type f.resultTypes) "the function")
             for b = 0 upto {n - 1} do
                 let blk = nodes.block(f b)
                 let count = vector.length(:nodes.Inst blk.insts)

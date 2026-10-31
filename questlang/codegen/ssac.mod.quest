@@ -76,9 +76,6 @@ export
         (* Whether the function enters a try: its values are volatile, and
          * so is its memory *)
         hasTry: Bool
-        (* The bytes of the slot each value that is a slot's address
-         * addresses, for a composite passed through memory *)
-        slotOf: hashMap.T(Int Int)
         threadLocals: hashMap.T(String Bool)
     end
 
@@ -97,41 +94,61 @@ export
     (* A composite passed through memory: a struct of its bytes *)
     let memoryType(bytes: Int): String = "QSsaMem" <> conv.int(bytes)
 
+    (* The C type of the results of a signature, of the values results *)
+    let resultOf(results: Array(ssa.Passed) vs: Array(Int) f: Function): String =
+        if extent results is 0 then "void"
+        elsif extent results is 2 then "QSsaPair"
+        else
+            case results[0]
+                when passByte then "uint8_t"
+                when passInt32 then "int"
+                when passWord, passReal, passPair, passPairRest, passMemory then cType(typeOf(f vs[0]))
+            end
+        end
+
     (* A call's C function type and arguments, of its arguments from first on,
      * and its result type *)
     Let Call = Tuple fnType: String args: String results: Array(Int) end
     let callOf(p: Printer i: ssa.Inst first: Int): Call =
         begin
             let f = p.f
+            let ps = i.signature.params
             let types = vector.new(:String)
             let exprs = vector.new(:String)
             let var k = first
             while k < extent i.args do
-                if contains(i.pairs k) then
-                    vector.append(:String types "QSsaPair")
-                    vector.append(:String exprs "(QSsaPair){ " <> asWord(f i.args[k]) <> ", " <> asWord(f i.args[k + 1]) <> " }")
-                    k := k + 2
-                elsif contains(i.memory k) then
-                    let bytes = maybe.unwrapOr(:Int hashMap.get(:Int :Int p.slotOf i.args[k]) 0)
-                    if bytes is 0 then raise unsupported with "ssac: a composite through memory not in a slot" end end
-                    vector.append(:String types memoryType(bytes))
-                    vector.append(:String exprs "*(" <> memoryType(bytes) <> " *)" <> v(i.args[k]))
-                    k := k + 1
-                elsif contains(i.narrow k) then
+                let a = i.args[k]
+                (* What C passes for the argument, and whether it takes the
+                 * next one too *)
+                let var t = cType(typeOf(f a))
+                let var e = v(a)
+                let var pair = false
+                case ps[k]
+                    when passPair then
+                        t := "QSsaPair"
+                        e := "(QSsaPair){ " <> asWord(f a) <> ", " <> asWord(f i.args[k + 1]) <> " }"
+                        pair := true
+                    when passMemory with x then
+                        t := memoryType(x.bytes)
+                        e := "*(" <> memoryType(x.bytes) <> " *)" <> v(a)
                     (* A bool or a char, which C passes as one byte *)
-                    vector.append(:String types "uint8_t")
-                    vector.append(:String exprs "(uint8_t)" <> v(i.args[k]))
-                    k := k + 1
-                else
-                    vector.append(:String types cType(typeOf(f i.args[k])))
-                    vector.append(:String exprs v(i.args[k]))
-                    k := k + 1
+                    when passByte then
+                        t := "uint8_t"
+                        e := "(uint8_t)" <> v(a)
+                    when passInt32 then
+                        t := "int"
+                        e := "(int)" <> v(a)
+                    when passWord, passReal, passPairRest then ok
                 end
+                vector.append(:String types t)
+                vector.append(:String exprs e)
+                k := k + {if pair then 2 else 1 end}
             end
-            let result = if extent i.results is 0 then "void" elsif extent i.results is 1 then cType(typeOf(f i.results[0]))
-                else "QSsaPair" end
             let params = if vector.empty(:String types) then "void" else syntax.comma(types) end
-            tuple let fnType = result <> " (*)(" <> params <> ")" let args = syntax.comma(exprs) let results = i.results end
+            tuple
+                let fnType = resultOf(i.signature.results i.results f) <> " (*)(" <> params <> ")"
+                let args = syntax.comma(exprs) let results = i.results
+            end
         end
 
     (* A call's expression *)
@@ -226,12 +243,16 @@ export
             text <> "goto " <> blockLabel(t.block) <> ";"
         end
 
-    let isMain(f: Function): Bool = eq(f.symbol "main")
-
+    (* A return: of one result, cast to the C type the signature says *)
     let returnText(p: Printer vs: Array(Int)): String =
         if extent vs is 0 then "return;"
-        elsif isMain(p.f) then "return (int)" <> v(vs[0]) <> ";"
-        elsif extent vs is 1 then "return " <> v(vs[0]) <> ";"
+        elsif extent vs is 1 then
+            let cast = case p.f.signature.results[0]
+                when passByte then "(uint8_t)"
+                when passInt32 then "(int)"
+                when passWord, passReal, passPair, passPairRest, passMemory then ""
+            end
+            "return " <> cast <> v(vs[0]) <> ";"
         else "return (QSsaPair){ " <> asWord(p.f vs[0]) <> ", " <> asWord(p.f vs[1]) <> " };"
         end
 
@@ -261,31 +282,66 @@ export
 
     (* The C type a function returns, and its parameters' declarations *)
     let resultType(f: Function): String =
-        if isMain(f) then "int"
-        elsif vector.length(:ssa.Type f.resultTypes) is 0 then "void"
-        elsif vector.length(:ssa.Type f.resultTypes) is 1 then cType(vector.get(:ssa.Type f.resultTypes 0))
-        else "QSsaPair"
+        begin
+            let rs = vector.toArray(:ssa.Type f.resultTypes)
+            if extent rs is 1 then
+                case f.signature.results[0]
+                    when passByte then "uint8_t"
+                    when passInt32 then "int"
+                    when passWord, passReal, passPair, passPairRest, passMemory then cType(rs[0])
+                end
+            elsif extent rs is 0 then "void"
+            else "QSsaPair" end
         end
 
-    (* The parameters, named when named: a composite's halves as the pair's
-     * words, assigned to their values on entry *)
-    let paramsText(f: Function named: Bool): String =
-        if isMain(f) then
-            if named then "int ssac_argc, char **ssac_argv" else "int, char **" end
-        else
+    (* How a parameter is declared, and its value assigned on entry if it is
+     * not the parameter itself: a composite's halves from the pair's words,
+     * a C int extended. C requires main's argument array to be a char ** *)
+    Let Param = Tuple decl: String entry: Array(String) words: Int end
+    let param(f: Function k: Int named: Bool): Param =
+        begin
             let params = ssa.block(f 0).params
+            let n = vector.get(:Int params k)
+            let pk = "p" <> conv.int(k)
+            let declared(t: String name: String): String = t <> if named then " " <> name else "" end
+            let direct = fun(t: String): Param
+                tuple let decl = declared(t v(n)) let entry = array of :String end let words = 1 end
+            case f.signature.params[k]
+                when passPair then
+                    let second = vector.get(:Int params k + 1)
+                    tuple
+                        let decl = declared("QSsaPair" pk)
+                        let entry = array of
+                            cType(typeOf(f n)) <> " " <> v(n) <> " = " <> fromWord(pk <> ".w0" typeOf(f n)) <> ";"
+                            cType(typeOf(f second)) <> " " <> v(second) <> " = " <> fromWord(pk <> ".w1" typeOf(f second)) <> ";"
+                        end
+                        let words = 2
+                    end
+                when passByte then direct("uint8_t")
+                when passInt32 then
+                    tuple let decl = declared("int" pk) let entry = array of "int64_t " <> v(n) <> " = " <> pk <> ";" end let words = 1 end
+                when passMemory with x then
+                    tuple
+                        let decl = declared(memoryType(x.bytes) pk)
+                        let entry = array of "char *" <> v(n) <> " = (char *)&" <> pk <> ";" end
+                        let words = 1
+                    end
+                when passWord, passReal, passPairRest then
+                    if eq(f.symbol "main") andif {k is 1} then
+                        tuple let decl = declared("char **" pk) let entry = array of "char *" <> v(n) <> " = (char *)" <> pk <> ";" end
+                            let words = 1 end
+                    else direct(cType(typeOf(f n))) end
+            end
+        end
+
+    let paramsText(f: Function named: Bool): String =
+        begin
             let decls = vector.new(:String)
             let var k = 0
-            while k < vector.length(:Int params) do
-                if contains(f.paramPairs k) then
-                    vector.append(:String decls "QSsaPair" <> if named then " p" <> conv.int(k) else "" end)
-                    k := k + 2
-                else
-                    let n = vector.get(:Int params k)
-                    let t = if contains(f.paramNarrow k) then "uint8_t" else cType(typeOf(f n)) end
-                    vector.append(:String decls t <> if named then " " <> v(n) else "" end)
-                    k := k + 1
-                end
+            while k < vector.length(:Int ssa.block(f 0).params) do
+                let pm = param(f k named)
+                vector.append(:String decls pm.decl)
+                k := k + pm.words
             end
             if vector.empty(:String decls) then "void" else syntax.comma(decls) end
         end
@@ -297,37 +353,22 @@ export
     let function(buf: Builder f: Function threadLocals: hashMap.T(String Bool)): Ok =
         begin
             let var hasTry = false
-            let slotOf = hashMap.new(:Int :Int intEqual hash.int)
             for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
-                let blk = ssa.block(f b)
-                case blk.term
+                case ssa.block(f b).term
                     when termTry then hasTry := true
                     when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then ok
                 end
-                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                    let i = vector.get(:ssa.Inst blk.insts k)
-                    if ssa.isOp(i ssa.opSlot) then
-                        put(:Int :Int slotOf i.results[0] vector.get(:ssa.Slot f.slots i.imm).bytes)
-                    end
-                end
             end
-            let p = tuple let f = f let buf = buf let hasTry = hasTry let slotOf = slotOf let threadLocals = threadLocals end
+            let p = tuple let f = f let buf = buf let hasTry = hasTry let threadLocals = threadLocals end
             text(buf prototype(f true) <> " {\n")
             let params = ssa.block(f 0).params
             let isParam = array of(vector.length(:ssa.Type f.types) false)
-            if isMain(f) then
-                line(p "int64_t " <> v(vector.get(:Int params 0)) <> " = ssac_argc;")
-                line(p "char *" <> v(vector.get(:Int params 1)) <> " = (char *)ssac_argv;")
-            end
             for k = 0 upto {vector.length(:Int params) - 1} do isParam[vector.get(:Int params k)] := true end
-            (* A composite parameter's halves *)
-            for k = 0 upto {extent f.paramPairs - 1} do
-                let at = f.paramPairs[k]
-                let first = vector.get(:Int params at)
-                let second = vector.get(:Int params at + 1)
-                let pair = "p" <> conv.int(at)
-                line(p cType(typeOf(f first)) <> " " <> v(first) <> " = " <> fromWord(pair <> ".w0" typeOf(f first)) <> ";")
-                line(p cType(typeOf(f second)) <> " " <> v(second) <> " = " <> fromWord(pair <> ".w1" typeOf(f second)) <> ";")
+            let var k = 0
+            while k < vector.length(:Int params) do
+                let pm = param(f k true)
+                for j = 0 upto {extent pm.entry - 1} do line(p pm.entry[j]) end
+                k := k + pm.words
             end
             for n = 0 upto {vector.length(:ssa.Type f.types) - 1} do
                 if not(isParam[n]) then
@@ -417,17 +458,10 @@ export
             let referInst(f: Function i: ssa.Inst): Ok =
                 begin
                     if ssa.isOp(i ssa.opSymbol) orif ssa.isOp(i ssa.opCall) then refer(i.symbol) end
-                    for k = 0 upto {extent i.memory - 1} do
-                        (* Found by the slot the argument addresses *)
-                        let a = i.args[i.memory[k]]
-                        for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
-                            let blk = ssa.block(f b)
-                            for j = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                                let def = vector.get(:ssa.Inst blk.insts j)
-                                if ssa.isOp(def ssa.opSlot) andif {def.results[0] is a} then
-                                    put(:Int :Bool memorySizes vector.get(:ssa.Slot f.slots def.imm).bytes true)
-                                end
-                            end
+                    for k = 0 upto {extent i.signature.params - 1} do
+                        case i.signature.params[k]
+                            when passMemory with x then put(:Int :Bool memorySizes x.bytes true)
+                            when passWord, passReal, passPair, passPairRest, passByte, passInt32 then ok
                         end
                     end
                 end

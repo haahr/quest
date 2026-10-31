@@ -24,6 +24,12 @@ let tInt = ssa.typeInt;
 let tPtr = ssa.typePtr;
 let tReal = ssa.typeReal;
 let none = array of :Int end;
+let call(f: ssa.Function b: Int symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int)
+    results: Array(ssa.Type)): Array(Int) =
+    ssa.call(f b symbol args ssa.signature(ssa.valueTypes(f args) results pairs narrow) results);
+let pairsAt(f: ssa.Function pairs: Array(Int)): Ok =
+    f.signature := ssa.signature(vector.toArray(:ssa.Type f.paramTypes) vector.toArray(:ssa.Type f.resultTypes) pairs
+        array of :Int end);
 
 let show(title: String f: ssa.Function): Ok =
     begin
@@ -135,7 +141,7 @@ ssa.terminate(switches 0 option termSwitch of ssa.Terminator with
     let value = sp[0] let cases = array of 0 2 end let targets = array of ssa.target(one none) ssa.target(one none) end
     let default = ssa.target(other none)
 end);
-let pair = ssa.call(switches one "quest_record_view" array of sp[1] sp[2] sp[1] end ssa.passing(array of 0 end none none)
+let pair = call(switches one "quest_record_view" array of sp[1] sp[2] sp[1] end array of 0 end none
     array of tPtr tPtr end);
 ret(switches one pair);
 ssa.terminate(switches other ssa.termUnreachable);
@@ -148,13 +154,14 @@ let rp = vector.toArray(:Int ssa.block(repeats 0).params);
 let first = ssa.newBlock(repeats);
 let last = ssa.newBlock(repeats);
 ssa.store(repeats 0 rp[1] 0 1 rp[1]);
-ssa.call(repeats 0 "callee" array of rp[0] end ssa.passing(array of 0 end none none) array of :ssa.Type end);
+call(repeats 0 "callee" array of rp[0] end array of 0 end none array of :ssa.Type end);
 ssa.terminate(repeats 0 option termSwitch of ssa.Terminator with
     let value = rp[0] let cases = array of 1 1 end let targets = array of ssa.target(first none) ssa.target(last none) end
     let default = ssa.target(last none)
 end);
 ret(repeats first array of rp[0] end);
-ssa.tailCall(repeats last "callee" array of rp[0] end ssa.plain array of tInt tInt end);
+ssa.tailCall(repeats last "callee" array of rp[0] end ssa.signature(array of tInt end array of tInt tInt end none none)
+    array of tInt tInt end);
 show("a repeated case, a narrow pointer, a pair past the arguments, a tail call's results" repeats);
 
 (* 10. Calls of the unit's own function checked against it *)
@@ -162,7 +169,7 @@ let unit = ssa.newUnit();
 let callee = ssa.newFunction("callee" false array of tInt end array of tInt end);
 ret(callee 0 array of vector.get(:Int ssa.block(callee 0).params 0) end);
 let caller = ssa.newFunction("caller" false array of tPtr end array of tInt end);
-let r = ssa.call(caller 0 "callee" array of vector.get(:Int ssa.block(caller 0).params 0) end ssa.plain array of tPtr end);
+let r = call(caller 0 "callee" array of vector.get(:Int ssa.block(caller 0).params 0) end none none array of tPtr end);
 ret(caller 0 array of ssa.constant(caller 0 0) end);
 vector.append(:ssa.Function unit.functions callee);
 vector.append(:ssa.Function unit.functions caller);

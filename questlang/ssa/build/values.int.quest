@@ -32,10 +32,6 @@ export
     tPtr: ssa.Type
     tReal: ssa.Type
     noValues: Array(Int)
-    (* How a call passes its arguments: with 16-byte composites starting at
-     * pairs and narrow arguments at narrow; with one starting at the first *)
-    passing(pairs: Array(Int) narrow: Array(Int)): ssa.Passing
-    firstPair: ssa.Passing
     noValuesTypes: Array(ssa.Type)
 
     (* Representations as SSA values *)
@@ -117,8 +113,23 @@ export
     load(fn: Fn address: Int offset: Int p: Part): Int
     loadWord(fn: Fn address: Int offset: Int t: ssa.Type): Int
     store(fn: Fn address: Int offset: Int width: Int value: Int): Ok
-    call1(fn: Fn symbol: String args: Array(Int) t: ssa.Type): Int
-    callVoid(fn: Fn symbol: String args: Array(Int)): Ok
+    (* A call of the runtime's function name (codegen/runtimeFunctions), at
+     * its signature: its results; its one result; none *)
+    runtime(fn: Fn name: String args: Array(Int)): Array(Int)
+    call1(fn: Fn name: String args: Array(Int)): Int
+    callVoid(fn: Fn name: String args: Array(Int)): Ok
+    (* A call of a function of the unit, or another unit's, of no parameters
+     * and no results *)
+    callOwn(fn: Fn symbol: String): Ok
+    (* The signature of a Quest function's call or its definition: words and
+     * reals of its parameters' types, but 16-byte composites starting at
+     * pairs and bytes (Bools and Chars) at narrow; and its results' parts, a
+     * byte for a Bool or a Char *)
+    signatureOf(params: Array(ssa.Type) pairs: Array(Int) narrow: Array(Int) results: Array(Part)): ssa.Signature
+    (* A call of a Quest function: of the unit's or another unit's (or with
+     * symbol "", of the code pointer args[0]), its results *)
+    callQuest(fn: Fn symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int) results: Array(Part))
+        : Array(Int)
     terminate(fn: Fn t: ssa.Terminator): Ok
     terminated(fn: Fn): Bool
     jump(fn: Fn b: Int args: Array(Int)): Ok

@@ -27,7 +27,7 @@ b0(%0: ptr, %1: int):
   tail call qv_writer_putString(%7, %10)
 }
 
-function qf_isMon(%0: ptr, %1: int, %2: int) pairs [1]: int {
+function qf_isMon(%0: ptr, %1: int, %2: int) pairs [1]: int result narrow {
 b0(%0: ptr, %1: int, %2: int):
   %3: int = const 1
   %4: int = eq %1, %3
@@ -61,10 +61,10 @@ b0():
   tail call quest_register_funcs(%0, %1)
 }
 
-function main exported(%0: int, %1: ptr): int {
+function main exported(%0: int, %1: ptr) int32 [0]: int result int32 {
 b0(%0: int, %1: ptr):
   call quest_gc_init()
-  call quest_builtins_init(%0, %1)
+  call quest_builtins_init(%0, %1) int32 [0]
   call qr_register_dicts()
   call qv_mod_writer_init()
   call qv_mod_conv_init()
@@ -109,7 +109,7 @@ b0(%0: int, %1: ptr):
   %32: ptr = symbol g_w_2
   %33: int = load8 %32 + 0
   %34: int = load8 %32 + 8
-  %35: int = call qf_isMon(%31, %33, %34) pairs [1]
+  %35: int = call qf_isMon(%31, %33, %34) pairs [1] result narrow
   %36: int = zext8 %35
   %37: ptr = symbol g_global
   store1 %37 + 0, %36

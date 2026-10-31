@@ -1,0 +1,181 @@
+(* Quest Self-Hosted Compiler: The Runtime's Functions Implementation *)
+
+module runtimeFunctions : RuntimeFunctions
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+export
+    Def Memory = Option memoryNone memoryReads memoryWrites end
+    Def Effects = Tuple memory: Memory raises: Bool allocates: Bool noReturn: Bool end
+    Def Function = Tuple name: String result: String params: Array(String) effects: Effects end
+
+    let memoryNone: Memory = option memoryNone of Memory end
+    let memoryReads: Memory = option memoryReads of Memory end
+    let memoryWrites: Memory = option memoryWrites of Memory end
+    let effects(memory: Memory raises: Bool allocates: Bool noReturn: Bool): Effects =
+        tuple let memory = memory let raises = raises let allocates = allocates let noReturn = noReturn end
+    let fn(name: String result: String params: Array(String) e: Effects): Function =
+        tuple let name = name let result = result let params = params let effects = e end
+
+    (* In order of name *)
+    let functions = array of
+        fn("puts" "int" array of "const char *" end effects(memoryWrites false false false))
+        fn("quest_alloc" "void *" array of "size_t" end effects(memoryNone false true false))
+        fn("quest_alloc_exception" "const QException *"
+            array of "const char *" end effects(memoryReads false true false))
+        fn("quest_array_new" "QArray *" array of "int64_t" "QVal" end effects(memoryNone false true false))
+        fn("quest_auto_new" "QAuto *"
+            array of "const QTypeDescriptor *" "QVal" end effects(memoryNone false true false))
+        fn("quest_builtins_init" "void" array of "int" "char **" end effects(memoryWrites false false false))
+        fn("quest_check_array_bounds_at" "void"
+            array of "const void *" "int64_t" "const char *" end effects(memoryReads true false false))
+        fn("quest_check_array_count_at" "int64_t"
+            array of "int64_t" "const char *" end effects(memoryNone true false false))
+        fn("quest_check_option_ordinal_at" "int64_t"
+            array of "int64_t" "int64_t" "const char *" end effects(memoryNone true false false))
+        fn("quest_convert" "QVal"
+            array of "QVal" "const QTypeDescriptor *" "const QTypeDescriptor *" end effects(memoryReads true true false))
+        fn("quest_fun_signature_equivalent" "bool"
+            array of "const QTypeDescriptor *" "const QTypeDescriptor *" end effects(memoryReads false false false))
+        fn("quest_gc_init" "void" array of :String end effects(memoryWrites false false false))
+        fn("quest_instantiate_descriptor" "const QTypeDescriptor *"
+            array of "const QTypeDescriptor *" "size_t" "const QTypeDescriptor *const *" end effects(memoryReads false true false))
+        fn("quest_int_div_at" "QInt" array of "QInt" "QInt" "const char *" end effects(memoryNone true false false))
+        fn("quest_int_mod_at" "QInt" array of "QInt" "QInt" "const char *" end effects(memoryNone true false false))
+        fn("quest_is_subtype" "bool"
+            array of "const QTypeDescriptor *" "const QTypeDescriptor *" end effects(memoryReads false false false))
+        fn("quest_layout_conversion_error" "void"
+            array of "const QTypeDescriptor *" "const QTypeDescriptor *" end effects(memoryReads true false false))
+        fn("quest_layout_equivalent" "bool"
+            array of "const QTypeDescriptor *" "const QTypeDescriptor *" end effects(memoryReads false false false))
+        fn("quest_option_tag" "int64_t" array of "const void *" end effects(memoryReads false false false))
+        fn("quest_print_typed" "void"
+            array of "const char *" "QVal" "const QTypeDescriptor *" "const char *" end effects(memoryWrites false false false))
+        fn("quest_print_value" "void"
+            array of "const char *" "QVal" "const char *" "const char *" end effects(memoryWrites false false false))
+        fn("quest_proxy_element" "QVal" array of "const void *" "size_t" end effects(memoryReads true true false))
+        fn("quest_proxy_option_element" "QVal"
+            array of "const void *" "size_t" end effects(memoryReads true true false))
+        fn("quest_proxy_option_payload" "void *" array of "const void *" end effects(memoryReads false true false))
+        fn("quest_proxy_slot" "void *" array of "const void *" "size_t" end effects(memoryReads true false false))
+        fn("quest_proxy_store" "void"
+            array of "const void *" "size_t" "QVal" end effects(memoryWrites true false false))
+        fn("quest_raise_at" "void"
+            array of "const QException *" "QVal" "const char *" end effects(memoryWrites true false true))
+        fn("quest_raise_dynamic_error_at" "void" array of "const char *" end effects(memoryWrites true false true))
+        fn("quest_raise_variant_error" "void" array of :String end effects(memoryWrites true false true))
+        fn("quest_raise_variant_error_at" "void" array of "const char *" end effects(memoryWrites true false true))
+        fn("quest_raised_capture" "QRaised *"
+            array of "const QExceptionState *" end effects(memoryReads false true false))
+        fn("quest_real_add_at" "double"
+            array of "double" "double" "const char *" end effects(memoryNone true false false))
+        fn("quest_real_divide_at" "double"
+            array of "double" "double" "const char *" end effects(memoryNone true false false))
+        fn("quest_real_mul_at" "double"
+            array of "double" "double" "const char *" end effects(memoryNone true false false))
+        fn("quest_real_pow_at" "double"
+            array of "double" "double" "const char *" end effects(memoryNone true false false))
+        fn("quest_real_sub_at" "double"
+            array of "double" "double" "const char *" end effects(memoryNone true false false))
+        fn("quest_record_box" "QRecordVal *" array of "QRecordVal" end effects(memoryNone false true false))
+        fn("quest_record_dict" "const void *"
+            array of "const QTypeDescriptor *" "const QTypeDescriptor *" end effects(memoryReads false true false))
+        fn("quest_record_view" "QRecordVal"
+            array of "QRecordVal" "const QTypeDescriptor *" end effects(memoryReads false true false))
+        fn("quest_register_abstract_type" "void"
+            array of "const char *" "size_t" "const QTypeDescriptor *" end effects(memoryWrites false false false))
+        fn("quest_register_funcs" "void"
+            array of "const QFuncEntry *" "size_t" end effects(memoryWrites false false false))
+        fn("quest_register_record_dict" "void"
+            array of "const QTypeDescriptor *" "const QTypeDescriptor *" "const void *" end effects(memoryWrites false false false))
+        fn("quest_reraise" "void" array of "QExceptionState" end effects(memoryWrites true false true))
+        fn("quest_string_concat" "QString *"
+            array of "const QString *" "const QString *" end effects(memoryReads false true false))
+        fn("quest_string_new" "QString *" array of "const char *" "int64_t" end effects(memoryReads false true false))
+        fn("quest_unproxy" "void *" array of "const void *" end effects(memoryNone false false false))
+        fn("quest_val_is" "bool"
+            array of "const QTypeDescriptor *" "QVal" "QVal" end effects(memoryReads false false false))
+        fn("quest_variant_box" "QVariantVal *" array of "QVariantVal" end effects(memoryNone false true false))
+        fn("quest_view_map" "const QViewMap *"
+            array of "const QTypeDescriptor *" "const QTypeDescriptor *" end effects(memoryReads false true false))
+        fn("quest_view_option_component" "QVal"
+            array of "const void *" "const QViewMap *" "size_t" "size_t" end effects(memoryReads true true false))
+        fn("quest_view_option_payload" "void *"
+            array of "const void *" "const QViewMap *" end effects(memoryReads false true false))
+        fn("quest_view_option_tag" "int64_t"
+            array of "const void *" "const QViewMap *" end effects(memoryReads false false false))
+        fn("quest_view_part" "QVal"
+            array of "const QViewMap *" "size_t" "QVal" end effects(memoryReads true true false))
+        fn("quest_view_record_field" "QVal"
+            array of "QRecordVal" "const QViewMap *" "size_t" end effects(memoryReads true true false))
+        fn("quest_view_record_slot" "void *"
+            array of "QRecordVal" "const QViewMap *" "size_t" end effects(memoryReads false false false))
+        fn("quest_view_tuple_element" "QVal"
+            array of "const void *" "const QViewMap *" "size_t" end effects(memoryReads true true false))
+        fn("quest_view_tuple_slot" "void *"
+            array of "const void *" "const QViewMap *" "size_t" end effects(memoryReads false false false))
+    end
+
+    let unknown: Exception(String) = exception unknown: String end
+
+    let function(name: String): Function =
+        begin
+            let var found = maybe.none(:Function)
+            for i = 0 upto {extent functions - 1} do
+                if stringOp.equal(functions[i].name name) then found := maybe.some(:Function functions[i]) end
+            end
+            if maybe.isNone(:Function found) then raise unknown with name end end
+            maybe.unwrap(:Function found)
+        end
+
+    let isPure(f: Function): Bool =
+        case f.effects.memory
+            when memoryNone then not(f.effects.raises) andif not(f.effects.allocates)
+            when memoryReads, memoryWrites then false
+        end
+
+    (* How C passes a value of a C type, and its words' SSA types *)
+    Let Passing = Tuple passed: Array(ssa.Passed) types: Array(ssa.Type) end
+    let passing(c: String): Passing =
+        begin
+            let one = fun(p: ssa.Passed t: ssa.Type): Passing tuple let passed = array of p end let types = array of t end end
+            let pair = fun(first: ssa.Type second: ssa.Type): Passing
+                tuple let passed = array of ssa.passPair ssa.passPairRest end let types = array of first second end end
+            if stringOp.equal(c "void") then tuple let passed = array of :ssa.Passed end let types = array of :ssa.Type end end
+            elsif strutil.endsWith(c "*") then one(ssa.passWord ssa.typePtr)
+            elsif stringOp.equal(c "double") then one(ssa.passReal ssa.typeReal)
+            elsif stringOp.equal(c "bool") orif stringOp.equal(c "char") then one(ssa.passByte ssa.typeInt)
+            elsif stringOp.equal(c "int") then one(ssa.passInt32 ssa.typeInt)
+            (* A record is its payload's and its offset table's pointers, a
+             * variant its tag and its payload's word *)
+            elsif stringOp.equal(c "QRecordVal") then pair(ssa.typePtr ssa.typePtr)
+            elsif stringOp.equal(c "QVariantVal") then pair(ssa.typeInt ssa.typeInt)
+            elsif maybe.isSome(:runtimeLayout.Struct runtimeLayout.struct(c)) then
+                let bytes = maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct(c)).bytes
+                one(option passMemory of ssa.Passed with let bytes = bytes end ssa.typePtr)
+            else one(ssa.passWord ssa.typeInt) end
+        end
+
+    let all(cs: Array(String)): Passing =
+        begin
+            let passed = vector.new(:ssa.Passed)
+            let types = vector.new(:ssa.Type)
+            for i = 0 upto {extent cs - 1} do
+                let p = passing(cs[i])
+                for k = 0 upto {extent p.passed - 1} do
+                    vector.append(:ssa.Passed passed p.passed[k])
+                    vector.append(:ssa.Type types p.types[k])
+                end
+            end
+            tuple let passed = vector.toArray(:ssa.Passed passed) let types = vector.toArray(:ssa.Type types) end
+        end
+
+    let signature(f: Function): ssa.Signature =
+        tuple let params = all(f.params).passed let results = passing(f.result).passed end
+    let paramTypes(f: Function): Array(ssa.Type) = all(f.params).types
+    let resultTypes(f: Function): Array(ssa.Type) = passing(f.result).types
+end

@@ -34,8 +34,8 @@ export
      * signature, after lead pointers: its type parameters' descriptors, then
      * its parameters (a var or out parameter's location, an Ok as a word);
      * and where its 16-byte composites start *)
-    Def Signature = Tuple types: vector.T(ssa.Type) pairs: vector.T(Int) narrow: vector.T(Int) end
-    let signature(lead: Int sig: staticdata.ShapeSignature): Signature =
+    Def Params = Tuple types: vector.T(ssa.Type) pairs: vector.T(Int) narrow: vector.T(Int) end
+    let paramsOf(lead: Int sig: staticdata.ShapeSignature): Params =
         begin
             let types = vector.new(:ssa.Type)
             let pairs = vector.new(:Int)
@@ -56,7 +56,7 @@ export
             end
             tuple let types = types let pairs = pairs let narrow = narrow end
         end
-    let pointers(n: Int): Signature =
+    let pointers(n: Int): Params =
         begin
             let types = vector.new(:ssa.Type)
             for i = 0 upto {n - 1} do vector.append(:ssa.Type types vals.tPtr) end
@@ -72,11 +72,11 @@ export
             r
         end
 
-    let newFunction(u: vals.UnitBuilder symbol: String exported: Bool s: Signature results: Array(ssa.Type)): vals.Fn =
+    let newFunction(u: vals.UnitBuilder symbol: String exported: Bool s: Params results: Array(vals.Part)): vals.Fn =
         begin
-            let sf = ssa.newFunction(symbol exported vector.toArray(:ssa.Type s.types) results)
-            sf.paramPairs := vector.toArray(:Int s.pairs)
-            sf.paramNarrow := vector.toArray(:Int s.narrow)
+            let params = vector.toArray(:ssa.Type s.types)
+            let sf = ssa.newFunction(symbol exported params vals.typesOf(results))
+            sf.signature := vals.signatureOf(params vector.toArray(:Int s.pairs) vector.toArray(:Int s.narrow) results)
             vals.newFn(u sf maybe.none(:ir.OpMakeClosure))
         end
 
@@ -93,9 +93,9 @@ export
                 maybe.none(:Function)
             else
                 let sig = staticdata.funShapeSignature(v.type)
-                let s = signature(0 sig)
+                let s = paramsOf(0 sig)
                 let ps = vals.parts(sig.result)
-                let fn = newFunction(u symbols.mangleModuleIdent(clean name) true s vals.typesOf(ps))
+                let fn = newFunction(u symbols.mangleModuleIdent(clean name) true s ps)
                 let args = array of(vector.length(:ssa.Type s.types) 0)
                 for i = 0 upto {extent args - 1} do args[i] := param(fn.f i) end
                 let known = hashMap.get(:Int :ir.OpMakeClosure u.closureVars v.id)
@@ -103,14 +103,13 @@ export
                     andif {extent maybe.unwrap(:ir.OpMakeClosure known).typeArgs is 0}
                     andif {extent maybe.unwrap(:ir.OpMakeClosure known).captures is 0}
                 let results = if direct then
-                    ssa.call(fn.f fn.cur vals.codeName(u maybe.unwrap(:ir.OpMakeClosure known).code)
-                        vals.concat(array of vals.null(fn) end args) vals.passing(shifted(s.pairs 1) shifted(s.narrow 1)) vals.typesOf(ps))
+                    vals.callQuest(fn vals.codeName(u maybe.unwrap(:ir.OpMakeClosure known).code)
+                        vals.concat(array of vals.null(fn) end args) shifted(s.pairs 1) shifted(s.narrow 1) ps)
                 else
                     let clos = vals.read(fn v)[0]
                     let fnPtr = vals.loadWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
                     let env = vals.loadWord(fn clos runtimeLayout.offset("QClosure" "env") vals.tPtr)
-                    ssa.call(fn.f fn.cur "" vals.concat(array of fnPtr env end args)
-                        vals.passing(shifted(s.pairs 2) shifted(s.narrow 2)) vals.typesOf(ps))
+                    vals.callQuest(fn "" vals.concat(array of fnPtr env end args) shifted(s.pairs 2) shifted(s.narrow 2) ps)
                 end
                 returnValues(fn calls.resultsOf(fn ps results))
                 maybe.some(:Function finished(fn))
@@ -129,19 +128,19 @@ export
             let retParts = vals.parts(ret)
             let isOk(t: Type): Bool = shapes.kindIs(shapes.shape(t) shapes.shapeOk)
             let byLocation(p: model.Param): Bool = p.isVar orif p.isOut
-            let s = signature(1 sig)
+            let s = paramsOf(1 sig)
             let thunkName = "quest_thunk_" <> tag
             let bytes(name: String): Int = maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct(name)).bytes
             let extraAt = runtimeLayout.offset("QTypeDescriptor" "extra")
             let resultAt = runtimeLayout.offset("QFunTypeDescriptor" "result_type")
             let paramType(fn: vals.Fn d: Int j: Int): Int =
                 vals.loadWord(fn d bytes("QFunTypeDescriptor") + {bytes("QFunParamDescriptor") * j} vals.tPtr)
-            let convertWord(fn: vals.Fn w: Int from: Int to: Int): Int = vals.call1(fn "quest_convert" array of w from to end vals.tInt)
+            let convertWord(fn: vals.Fn w: Int from: Int to: Int): Int = vals.call1(fn "quest_convert" array of w from to end)
             let closureFn(fn: vals.Fn c: Int): Int = vals.loadWord(fn c runtimeLayout.offset("QClosure" "fn") vals.tPtr)
             let closureEnv(fn: vals.Fn c: Int): Int = vals.loadWord(fn c runtimeLayout.offset("QClosure" "env") vals.tPtr)
 
             (* The thunk, whose environment is a QFunAdapterEnv *)
-            let thunk = newFunction(u thunkName false s vals.typesOf(retParts))
+            let thunk = newFunction(u thunkName false s retParts)
             let tf = thunk.f
             let e = param(tf 0)
             let orig = vals.loadWord(thunk e runtimeLayout.offset("QFunAdapterEnv" "orig") vals.tPtr)
@@ -179,9 +178,8 @@ export
                         p.type)
                 else vs end)
             end
-            let directResults = calls.resultsOf(thunk retParts ssa.call(tf thunk.cur ""
-                vals.concat(array of closureFn(thunk orig) end directArgs) vals.passing(shifted(s.pairs 1) shifted(s.narrow 1))
-                vals.typesOf(retParts)))
+            let directResults = calls.resultsOf(thunk retParts vals.callQuest(thunk ""
+                vals.concat(array of closureFn(thunk orig) end directArgs) shifted(s.pairs 1) shifted(s.narrow 1) retParts))
             returnValues(thunk if not(isOk(ret)) andif slots.mayBeStoredAsSubtype(shapes.shape(ret)) then
                 vals.fromWord(thunk convertWord(thunk vals.toWord(thunk directResults ret) vals.loadWord(thunk from resultAt vals.tPtr)
                     vals.loadWord(thunk to resultAt vals.tPtr)) ret)
@@ -201,20 +199,21 @@ export
             end
             let argsArray = descriptors.slotArray(thunk words)
             let invoker = vals.loadWord(thunk from runtimeLayout.offset("QFunTypeDescriptor" "invoke") vals.tPtr)
-            let invoked = ssa.call(tf thunk.cur "" array of invoker orig argsArray end ssa.plain array of vals.tInt end)[0]
+            let invoked = vals.callQuest(thunk "" array of invoker orig argsArray end vals.noValues vals.noValues
+                array of vals.part(vals.tInt 8 false) end)[0]
             returnValues(thunk if isOk(ret) then vals.noValues
                 else vals.fromWord(thunk convertWord(thunk invoked vals.loadWord(thunk from resultAt vals.tPtr) vals.loadWord(thunk to resultAt vals.tPtr))
                     ret)
                 end)
 
             (* The adapter: a closure of the thunk *)
-            let adapt = newFunction(u "quest_adapt_" <> tag false pointers(3) array of vals.tPtr end)
+            let adapt = newFunction(u "quest_adapt_" <> tag false pointers(3) array of vals.part(vals.tPtr 8 false) end)
             let af = adapt.f
             let env = vals.alloc(adapt bytes("QFunAdapterEnv"))
             vals.store(adapt env runtimeLayout.offset("QFunAdapterEnv" "orig") 8 param(af 0))
             vals.store(adapt env runtimeLayout.offset("QFunAdapterEnv" "from") 8 param(af 1))
             vals.store(adapt env runtimeLayout.offset("QFunAdapterEnv" "to") 8 param(af 2))
-            let same = vals.narrowed(adapt vals.call1(adapt "quest_fun_signature_equivalent" array of param(af 1) param(af 2) end vals.tInt)
+            let same = vals.narrowed(adapt vals.call1(adapt "quest_fun_signature_equivalent" array of param(af 1) param(af 2) end)
                 vals.part(vals.tInt 1 false))
             vals.store(adapt env runtimeLayout.offset("QFunAdapterEnv" "direct") 1 same)
             let adapted = vals.alloc(adapt bytes("QClosure"))
@@ -223,7 +222,7 @@ export
             returnValues(adapt array of adapted end)
 
             (* The invoker: a call of a closure of this type with words *)
-            let invoke = newFunction(u "quest_invoke_" <> tag false pointers(2) array of vals.tInt end)
+            let invoke = newFunction(u "quest_invoke_" <> tag false pointers(2) array of vals.part(vals.tInt 8 false) end)
             let vf = invoke.f
             let c = param(vf 0)
             let argv = param(vf 1)
@@ -235,9 +234,8 @@ export
                 invokeArgs := vals.concat(invokeArgs if byLocation(p) orif isOk(p.type) then array of w end
                     else vals.fromWord(invoke w p.type) end)
             end
-            let invokeResults = calls.resultsOf(invoke retParts ssa.call(vf invoke.cur ""
-                vals.concat(array of closureFn(invoke c) end invokeArgs) vals.passing(shifted(s.pairs 1) shifted(s.narrow 1))
-                vals.typesOf(retParts)))
+            let invokeResults = calls.resultsOf(invoke retParts vals.callQuest(invoke ""
+                vals.concat(array of closureFn(invoke c) end invokeArgs) shifted(s.pairs 1) shifted(s.narrow 1) retParts))
             returnValues(invoke array of if isOk(ret) then vals.constant(invoke 0) else vals.toWord(invoke invokeResults ret) end end)
             array of finished(thunk) finished(adapt) finished(invoke) end
         end

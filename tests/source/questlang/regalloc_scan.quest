@@ -27,6 +27,12 @@ let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putStri
 let tInt = ssa.typeInt;
 let tReal = ssa.typeReal;
 let none = array of :Int end;
+let call(f: ssa.Function b: Int symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int)
+    results: Array(ssa.Type)): Array(Int) =
+    ssa.call(f b symbol args ssa.signature(ssa.valueTypes(f args) results pairs narrow) results);
+let pairsAt(f: ssa.Function pairs: Array(Int)): Ok =
+    f.signature := ssa.signature(vector.toArray(:ssa.Type f.paramTypes) vector.toArray(:ssa.Type f.resultTypes) pairs
+        array of :Int end);
 let noTypes = array of :ssa.Type end;
 
 (* Two caller-saved and one callee-saved integer register, one of each real *)
@@ -83,7 +89,7 @@ show("a chain" chain);
 let across = ssa.newFunction("across" false array of tInt tInt end array of tInt end);
 let a0 = vector.get(:Int ssa.block(across 0).params 0);
 let a1 = vector.get(:Int ssa.block(across 0).params 1);
-let ignored = ssa.call(across 0 "g" none ssa.plain noTypes);
+let ignored = call(across 0 "g" none none none noTypes);
 ret(across 0 array of add(across 0 a0 a1) end);
 show("two values across a call" across);
 
@@ -117,7 +123,7 @@ let reals = ssa.newFunction("reals" false array of tReal tReal end array of tRea
 let r0 = vector.get(:Int ssa.block(reals 0).params 0);
 let r1 = vector.get(:Int ssa.block(reals 0).params 1);
 let r2 = ssa.binary(reals 0 ssa.opFadd r0 r1);
-let ignored2 = ssa.call(reals 0 "g" none ssa.plain noTypes);
+let ignored2 = call(reals 0 "g" none none none noTypes);
 ret(reals 0 array of ssa.binary(reals 0 ssa.opFmul r2 r0) end);
 show("reals across a call" reals);
 
@@ -128,9 +134,9 @@ let calls = ssa.newFunction("calls" false array of tInt tInt tInt end array of t
 let q0 = vector.get(:Int ssa.block(calls 0).params 0);
 let q1 = vector.get(:Int ssa.block(calls 0).params 1);
 let q2 = vector.get(:Int ssa.block(calls 0).params 2);
-let ignored3 = ssa.call(calls 0 "g" none ssa.plain noTypes);
+let ignored3 = call(calls 0 "g" none none none noTypes);
 let q3 = add(calls 0 q0 q1);
-let ignored4 = ssa.call(calls 0 "h" none ssa.plain noTypes);
+let ignored4 = call(calls 0 "h" none none none noTypes);
 ret(calls 0 array of add(calls 0 q3 q2) end);
 show("three values across two calls" calls);
 

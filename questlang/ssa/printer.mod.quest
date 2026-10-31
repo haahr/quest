@@ -31,10 +31,39 @@ export
             text
         end
 
-    let pairsText(pairs: Array(Int)): String =
-        if extent pairs is 0 then "" else " pairs [" <> values2(pairs) <> "]" end
-    let narrowText(narrow: Array(Int)): String =
-        if extent narrow is 0 then "" else " narrow [" <> values2(narrow) <> "]" end
+    let listed(name: String xs: Array(Int)): String = if extent xs is 0 then "" else " " <> name <> " [" <> values2(xs) <> "]" end
+
+    (* How a signature's parameters are passed, where not in words: pairs,
+     * narrow (bytes), memory (index:bytes), and int32 *)
+    let paramsText(s: nodes.Signature): String =
+        begin
+            let memory = nodes.memoryOf(s.params)
+            let var text = listed("pairs" nodes.pairsOf(s.params)) <> listed("narrow" nodes.narrowOf(s.params))
+            if extent memory > 0 then
+                text := text <> " memory ["
+                for k = 0 upto {extent memory - 1} do
+                    let bytes = case s.params[memory[k]]
+                        when passMemory with x then x.bytes
+                        when passWord, passReal, passPair, passPairRest, passByte, passInt32 then 0
+                    end
+                    text := text <> if k > 0 then " " else "" end <> conv.int(memory[k]) <> ":" <> conv.int(bytes)
+                end
+                text := text <> "]"
+            end
+            text <> listed("int32" nodes.int32Of(s.params))
+        end
+
+    (* How a signature's one result is passed, where not in a word: as a
+     * byte (narrow) or an int32 *)
+    let resultText(s: nodes.Signature): String =
+        if extent s.results isnot 1 then ""
+        else
+            case s.results[0]
+                when passByte then " result narrow"
+                when passInt32 then " result int32"
+                when passWord, passReal, passPair, passPairRest, passMemory then ""
+            end
+        end
 
     let instText(f: Function i: nodes.Inst): String =
         begin
@@ -55,9 +84,8 @@ export
                 when opStore then
                     name <> conv.int(i.width) <> " " <> value(i.args[0]) <> " + " <> conv.int(i.imm) <> ", " <> value(i.args[1])
                 when opCall then
-                    name <> " " <> i.symbol <> "(" <> values(i.args) <> ")" <> pairsText(i.pairs) <> narrowText(i.narrow)
-                        <> if extent i.memory is 0 then "" else " memory [" <> values2(i.memory) <> "]" end
-                when opCallIndirect then name <> " " <> values(i.args) <> pairsText(i.pairs) <> narrowText(i.narrow)
+                    name <> " " <> i.symbol <> "(" <> values(i.args) <> ")" <> paramsText(i.signature) <> resultText(i.signature)
+                when opCallIndirect then name <> " " <> values(i.args) <> paramsText(i.signature) <> resultText(i.signature)
                 when opNull, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe,
                     opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle,
                     opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opCopy then
@@ -93,14 +121,14 @@ export
                 b.str(if i > 0 then ", " else "" end <> typed(f vector.get(:Int params i)))
             end
             b.str(")")
-            if extent f.paramPairs > 0 then b.str(" pairs [" <> values2(f.paramPairs) <> "]") end
-            b.str(narrowText(f.paramNarrow))
+            b.str(paramsText(f.signature))
             if not(vector.empty(:nodes.Type f.resultTypes)) then
                 b.str(": ")
                 for i = 0 upto {vector.length(:nodes.Type f.resultTypes) - 1} do
                     b.str(if i > 0 then ", " else "" end <> nodes.typeName(vector.get(:nodes.Type f.resultTypes i)))
                 end
             end
+            b.str(resultText(f.signature))
             if not(vector.empty(:nodes.Slot f.slots)) then
                 b.str(" slots [")
                 for i = 0 upto {vector.length(:nodes.Slot f.slots) - 1} do

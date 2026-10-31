@@ -29,15 +29,15 @@ export
             let x(): Int = vals.atom1(fn o.args[0])
             let y(): Int = vals.atom1(fn o.args[1])
             let arith(op: ssa.Opcode): Array(Int) = array of vals.binary(fn op x() y()) end
-            let checked(helper: String t: ssa.Type): Array(Int) =
-                array of vals.call1(fn helper array of x() y() vals.site(fn o.offset) end t) end
+            let checked(helper: String): Array(Int) =
+                array of vals.call1(fn helper array of x() y() vals.site(fn o.offset) end) end
             (* is, or with isIs false, isnot *)
             let identity(isIs: Bool): Array(Int) =
                 begin
                     let first = o.args[0]
                     let same = if layout.isQVal(shapes.shape(ir.atomType(first))) then
                         let args = array of descriptors.maybeDescriptor(fn o.descriptor) vals.atom1(fn o.args[0]) vals.atom1(fn o.args[1]) end
-                        vals.narrowed(fn vals.call1(fn "quest_val_is" args vals.tInt) vals.part(vals.tInt 1 false))
+                        vals.narrowed(fn vals.call1(fn "quest_val_is" args) vals.part(vals.tInt 1 false))
                     else
                         let a = vals.atom(fn o.args[0])
                         let b = vals.atom(fn o.args[1])
@@ -60,14 +60,14 @@ export
             case o.op
                 when primNot then array of vals.binary(fn ssa.opXor x() vals.constant(fn 1)) end
                 when primExtent then array of vals.loadWord(fn x() runtimeLayout.offset("QArray" "length") vals.tInt) end
-                when primDiv then checked("quest_int_div_at" vals.tInt)
-                when primRem, primMod then checked("quest_int_mod_at" vals.tInt)
-                when primRealAdd then checked("quest_real_add_at" vals.tReal)
-                when primRealSub then checked("quest_real_sub_at" vals.tReal)
-                when primRealMul then checked("quest_real_mul_at" vals.tReal)
-                when primRealDiv then checked("quest_real_divide_at" vals.tReal)
-                when primRealPow then checked("quest_real_pow_at" vals.tReal)
-                when primConcat then array of vals.call1(fn "quest_string_concat" array of x() y() end vals.tPtr) end
+                when primDiv then checked("quest_int_div_at")
+                when primRem, primMod then checked("quest_int_mod_at")
+                when primRealAdd then checked("quest_real_add_at")
+                when primRealSub then checked("quest_real_sub_at")
+                when primRealMul then checked("quest_real_mul_at")
+                when primRealDiv then checked("quest_real_divide_at")
+                when primRealPow then checked("quest_real_pow_at")
+                when primConcat then array of vals.call1(fn "quest_string_concat" array of x() y() end) end
                 when primIs then identity(true)
                 when primIsnot then identity(false)
                 when primAdd then arith(ssa.opAdd)
@@ -136,8 +136,8 @@ export
     let directCall(fn: vals.Fn symbol: String lead: Array(Int) args: Array(Atom) resultType: Type): Array(Int) =
         begin
             let ps = resultParts(resultType)
-            let vs = ssa.call(fn.f fn.cur symbol vals.concat(lead vals.callAtoms(fn args))
-                vals.passing(pairsOf(extent lead args) narrowOf(extent lead args)) vals.typesOf(ps))
+            let vs = vals.callQuest(fn symbol vals.concat(lead vals.callAtoms(fn args)) pairsOf(extent lead args)
+                narrowOf(extent lead args) ps)
             resultsOf(fn ps vs)
         end
 
@@ -168,8 +168,7 @@ export
             let env = vals.loadWord(fn clos runtimeLayout.offset("QClosure" "env") vals.tPtr)
             let ps = resultParts(callee.type)
             let all = vals.concat(vals.concat(array of fnPtr env end descs) vals.callAtoms(fn args))
-            let p = vals.passing(pairsOf({2 + extent descs} args) narrowOf({2 + extent descs} args))
-            let vs = ssa.call(fn.f fn.cur "" all p vals.typesOf(ps))
+            let vs = vals.callQuest(fn "" all pairsOf({2 + extent descs} args) narrowOf({2 + extent descs} args) ps)
             resultsOf(fn ps vs)
         end
 

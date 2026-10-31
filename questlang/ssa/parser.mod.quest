@@ -141,28 +141,85 @@ export
             nodes.target(b args)
         end
 
+    (* How a signature's parameters are written where not in words, and its
+     * one result: pairs [..], narrow [..], memory [index:bytes ..], int32
+     * [..]; result narrow or int32 *)
+    Let Written = Tuple
+        pairs: Array(Int) narrow: Array(Int) memory: Array(Int) bytes: Array(Int) int32: Array(Int)
+        result: maybe.T(nodes.Passed)
+    end
+    let written(l: Line): Written =
+        begin
+            let none = array of :Int end
+            let var pairs = none
+            let var narrow = none
+            let memory = vector.new(:Int)
+            let bytes = vector.new(:Int)
+            let var int32 = none
+            let var more = true
+            while more do
+                if lit(l "pairs") then pairs := intList(l)
+                elsif lit(l "narrow") then narrow := intList(l)
+                elsif lit(l "int32") then int32 := intList(l)
+                elsif lit(l "memory") then
+                    expect(l "[")
+                    while not(lit(l "]")) do
+                        vector.append(:Int memory integer(l))
+                        expect(l ":")
+                        vector.append(:Int bytes integer(l))
+                    end
+                else more := false end
+            end
+            let result = if lit(l "result") then
+                if lit(l "narrow") then maybe.some(:nodes.Passed nodes.passByte)
+                elsif lit(l "int32") then maybe.some(:nodes.Passed nodes.passInt32)
+                else fail(:maybe.T(nodes.Passed) l "expected narrow or int32") end
+            else maybe.none(:nodes.Passed) end
+            tuple
+                let pairs = pairs let narrow = narrow let memory = vector.toArray(:Int memory)
+                let bytes = vector.toArray(:Int bytes) let int32 = int32 let result = result
+            end
+        end
+
+    (* The signature of parameters and results of types params and results
+     * written as w says *)
+    let signatureOf(params: Array(Type) results: Array(Type) w: Written): nodes.Signature =
+        begin
+            let var s = nodes.signature(params results w.pairs w.narrow)
+            for k = 0 upto {extent w.memory - 1} do
+                s := nodes.withParam(s w.memory[k] option passMemory of nodes.Passed with let bytes = w.bytes[k] end)
+            end
+            for k = 0 upto {extent w.int32 - 1} do s := nodes.withParam(s w.int32[k] nodes.passInt32) end
+            if maybe.isSome(:nodes.Passed w.result) then s := nodes.withResult(s maybe.unwrap(:nodes.Passed w.result)) end
+            s
+        end
+
+    (* A call whose signature is made once its function is read, its values'
+     * types known *)
+    Let Pending = Tuple inst: nodes.Inst written: Written end
+
+    let typesOf(f: Function vs: Array(Int)): Array(Type) =
+        begin
+            let ts = array of(extent vs nodes.typeInt)
+            for k = 0 upto {extent vs - 1} do
+                if vs[k] < vector.length(:Type f.types) then ts[k] := nodes.typeOf(f vs[k]) end
+            end
+            ts
+        end
+
     (* An instruction's text after its results: its opcode and operands *)
-    let instructionBody(l: Line results: Array(Int)): nodes.Inst =
+    let instructionBody(l: Line results: Array(Int) pending: vector.T(Pending)): nodes.Inst =
         begin
             let name = word(l)
             let none = array of :Int end
-            let make(op: nodes.Opcode args: Array(Int) imm: Int symbol: String width: Int signed: Bool p: nodes.Passing)
-                : nodes.Inst =
-                nodes.instruction(op args results imm symbol width signed p)
-            (* A call's pairs, narrow, and memory arguments *)
-            let passing(): nodes.Passing =
+            let make(op: nodes.Opcode args: Array(Int) imm: Int symbol: String width: Int signed: Bool): nodes.Inst =
+                nodes.instruction(op args results imm symbol width signed nodes.emptySignature)
+            (* A call, its signature pending *)
+            let call(op: nodes.Opcode args: Array(Int) symbol: String): nodes.Inst =
                 begin
-                    let var pairs = none
-                    let var narrow = none
-                    let var memory = none
-                    let var more = true
-                    while more do
-                        if lit(l "pairs") then pairs := intList(l)
-                        elsif lit(l "narrow") then narrow := intList(l)
-                        elsif lit(l "memory") then memory := intList(l)
-                        else more := false end
-                    end
-                    nodes.passing(pairs memory narrow)
+                    let i = make(op args 0 symbol 0 false)
+                    vector.append(:Pending pending tuple let inst = i let written = written(l) end)
+                    i
                 end
             (* load8, load1s, store4: the width, and for a load whether it
              * sign-extends *)
@@ -176,44 +233,44 @@ export
                 let w = width("load")
                 let address = value(l)
                 expect(l "+")
-                make(nodes.opLoad array of address end integer(l) "" w strutil.endsWith(name "s") nodes.plain)
+                make(nodes.opLoad array of address end integer(l) "" w strutil.endsWith(name "s"))
             elsif strutil.startsWith(name "store") andif {stringOp.length(name) > 5} andif isDigit(stringOp.getChar(name 5)) then
                 let w = width("store")
                 let address = value(l)
                 expect(l "+")
                 let offset = integer(l)
                 expect(l ",")
-                make(nodes.opStore array of address value(l) end offset "" w false nodes.plain)
+                make(nodes.opStore array of address value(l) end offset "" w false)
             else
                 let op = nodes.opcodeNamed(name)
                 if maybe.isNone(:nodes.Opcode op) then fail(:Ok l "unknown opcode " <> name) end
                 let o = maybe.unwrap(:nodes.Opcode op)
                 case o
-                    when opConst, opRealConst, opSlot then make(o none integer(l) "" 0 false nodes.plain)
+                    when opConst, opRealConst, opSlot then make(o none integer(l) "" 0 false)
                     when opSymbol then
                         let symbol = word(l)
                         let addend = if lit(l "+") then integer(l) else 0 end
-                        make(o none addend symbol 0 false nodes.plain)
+                        make(o none addend symbol 0 false)
                     when opCall then
                         let symbol = word(l)
                         expect(l "(")
                         let args = values(l ")")
                         expect(l ")")
-                        make(o args 0 symbol 0 false passing())
+                        call(o args symbol)
                     when opCallIndirect then
                         let args = values(l "")
-                        make(o args 0 "" 0 false passing())
+                        call(o args "")
                     when opNull, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe,
                         opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle,
                         opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opCopy,
                         opLoad, opStore then
-                        make(o values(l "") 0 "" 0 false nodes.plain)
+                        make(o values(l "") 0 "" 0 false)
                 end
             end
         end
 
     (* An instruction with its results, %n: type, ... = *)
-    let instruction(f: Function l: Line): nodes.Inst =
+    let instruction(f: Function l: Line pending: vector.T(Pending)): nodes.Inst =
         begin
             let results = vector.new(:Int)
             skip(l)
@@ -222,11 +279,11 @@ export
                 while lit(l ",") do vector.append(:Int results typedValue(f l)) end
                 expect(l "=")
             end
-            instructionBody(l vector.toArray(:Int results))
+            instructionBody(l vector.toArray(:Int results) pending)
         end
 
     (* A terminator, if the line is one *)
-    let terminator(f: Function l: Line): maybe.T(nodes.Terminator) =
+    let terminator(f: Function l: Line pending: vector.T(Pending)): maybe.T(nodes.Terminator) =
         begin
             let some = fun(t: nodes.Terminator): maybe.T(nodes.Terminator) maybe.some(:nodes.Terminator t)
             let start = l.at
@@ -261,7 +318,7 @@ export
                 elsif stringOp.equal(name "return") then
                     some(option termReturn of nodes.Terminator with let values = values(l "") end)
                 elsif stringOp.equal(name "tail") then
-                    some(option termTailCall of nodes.Terminator with let call = instruction(f l) end)
+                    some(option termTailCall of nodes.Terminator with let call = instruction(f l pending) end)
                 elsif stringOp.equal(name "try") then
                     expect(l "slot")
                     let slot = integer(l)
@@ -292,12 +349,17 @@ export
                 while lit(l ",") do vector.append(:Type f.paramTypes nodes.typeOf(f typedValue(f l))) end
                 expect(l ")")
             end
-            if lit(l "pairs") then f.paramPairs := intList(l) end
-            if lit(l "narrow") then f.paramNarrow := intList(l) end
+            let params = written(l)
             if lit(l ":") then
                 vector.append(:Type f.resultTypes typeNamed(l))
                 while lit(l ",") do vector.append(:Type f.resultTypes typeNamed(l)) end
             end
+            let result = written(l)
+            let w = tuple
+                let pairs = params.pairs let narrow = params.narrow let memory = params.memory let bytes = params.bytes
+                let int32 = params.int32 let result = result.result
+            end
+            f.signature := signatureOf(vector.toArray(:Type f.paramTypes) vector.toArray(:Type f.resultTypes) w)
             if lit(l "slots") then
                 expect(l "[")
                 while not(lit(l "]")) do
@@ -384,6 +446,7 @@ export
     let readUnit(text: String): nodes.Unit =
         begin
             let u = nodes.newUnit()
+            let pending = vector.new(:Pending)
             let lines = strutil.splitlines(text)
             let var current = maybe.none(:Function)
             let var b = ~1
@@ -399,7 +462,13 @@ export
                     finished()
                 elsif strutil.startsWith(l.text "}") then
                     if maybe.isNone(:Function current) then fail(:Ok l "a } outside a function") end
-                    vector.append(:Function u.functions maybe.unwrap(:Function current))
+                    let f = maybe.unwrap(:Function current)
+                    for k = 0 upto {vector.length(:Pending pending) - 1} do
+                        let p = vector.get(:Pending pending k)
+                        p.inst.signature := signatureOf(typesOf(f p.inst.args) typesOf(f p.inst.results) p.written)
+                    end
+                    vector.clear(:Pending pending)
+                    vector.append(:Function u.functions f)
                     current := maybe.none(:Function)
                 elsif strutil.startsWith(l.text "data ") then
                     vector.append(:nodes.Data u.data datum(l))
@@ -411,9 +480,9 @@ export
                     if l.at is 0 then b := blockHeader(f l)
                     elsif b < 0 then fail(:Ok l "an instruction outside a block")
                     else
-                        let t = terminator(f l)
+                        let t = terminator(f l pending)
                         if maybe.isSome(:nodes.Terminator t) then nodes.terminate(f b maybe.unwrap(:nodes.Terminator t))
-                        else nodes.append(f b instruction(f l)) end
+                        else nodes.append(f b instruction(f l pending)) end
                     end
                     finished()
                 end

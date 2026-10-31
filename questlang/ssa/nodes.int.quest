@@ -26,13 +26,24 @@ export
         opLoad opStore opCall opCallIndirect opCopy
     end
 
+    (* How C passes a parameter or a result (docs/ssa.md section 2.2): an
+     * integer or a pointer in a word; a double; the first or the second word
+     * of a 16-byte composite (a pair), in two registers or on the stack; a
+     * byte, a C bool or char, which Darwin's AAPCS64 packs on the stack and
+     * leaves the upper bits of in a register; a C int (main's argc), whose
+     * upper bits are unspecified; or a composite of more than 16 bytes, which
+     * the SSA passes as the address of a copy, as AAPCS64 does *)
+    Def Passed = Option
+        passWord passReal passPair passPairRest passByte passInt32
+        passMemory with bytes: Int end
+    end
+    (* A function's or a call's: how C passes each parameter (each argument of
+     * a call, an indirect call's function a word) and each result *)
+    Def Signature = Tuple params: Array(Passed) results: Array(Passed) end
+
     (* An instruction. For a load or a store, width is 8, 4, or 1 bytes and
-     * signed says how a narrow load extends; for a call, pairs lists the
-     * argument indices where a 16-byte composite starts, and memory those of
-     * composites larger than 16 bytes that C passes by value: the SSA passes
-     * the address of a copy, as AAPCS64 does (docs/ssa.md section 2.2); and
-     * narrow those of arguments C passes as one byte (a bool or a char),
-     * which Darwin's AAPCS64 packs on the stack. *)
+     * signed says how a narrow load extends; a call has its signature (others
+     * an empty one). *)
     Def Inst = Tuple
         op: Opcode
         var args: Array(Int)
@@ -41,9 +52,7 @@ export
         symbol: String
         width: Int
         signed: Bool
-        pairs: Array(Int)
-        memory: Array(Int)
-        narrow: Array(Int)
+        var signature: Signature
     end
 
     (* A jump's destination: a block, and the values bound to its
@@ -76,13 +85,10 @@ export
         symbol: String
         exported: Bool
         (* The types of its parameters (the entry block's) and results, and
-         * the indices of the parameters where a 16-byte composite starts, as a
-         * call's pairs (a function of two results returns one) *)
+         * how C passes them (a function of two results returns a pair) *)
         paramTypes: vector.T(Type)
         resultTypes: vector.T(Type)
-        var paramPairs: Array(Int)
-        (* The parameters C passes as one byte, as a call's narrow *)
-        var paramNarrow: Array(Int)
+        var signature: Signature
         (* The type of each value, by number *)
         types: vector.T(Type)
         blocks: vector.T(Block)
@@ -112,11 +118,28 @@ export
         data: vector.T(Data)
     end
 
-    (* How a call passes its arguments, as an instruction's pairs, memory,
-     * and narrow say; plain passes each in a word *)
-    Def Passing = Tuple pairs: Array(Int) memory: Array(Int) narrow: Array(Int) end
-    plain: Passing
-    passing(pairs: Array(Int) memory: Array(Int) narrow: Array(Int)): Passing
+    (* The signature of parameters and results of types params and results:
+     * each a word or a real, but 16-byte composites starting at the indices
+     * pairs, bytes at narrow, and two results a pair; empty has neither
+     * parameters nor results *)
+    signature(params: Array(Type) results: Array(Type) pairs: Array(Int) narrow: Array(Int)): Signature
+    emptySignature: Signature
+    passWord: Passed
+    passReal: Passed
+    passPair: Passed
+    passPairRest: Passed
+    passByte: Passed
+    passInt32: Passed
+    (* s with its parameter k passed as passed; with its one result passed as
+     * passed *)
+    withParam(s: Signature k: Int passed: Passed): Signature
+    withResult(s: Signature passed: Passed): Signature
+    (* The indices of the parameters (or results) passed as a pair's first
+     * word, a byte, a C int, or through memory *)
+    pairsOf(ps: Array(Passed)): Array(Int)
+    narrowOf(ps: Array(Passed)): Array(Int)
+    int32Of(ps: Array(Passed)): Array(Int)
+    memoryOf(ps: Array(Passed)): Array(Int)
 
     (* The types, opcodes, and terminators without payloads, each made once
      * (docs/arm64.md section 3.15) *)
@@ -185,6 +208,8 @@ export
     newSlot(f: Function bytes: Int align: Int): Int
     block(f: Function b: Int): Block
     typeOf(f: Function v: Int): Type
+    (* The types of values *)
+    valueTypes(f: Function vs: Array(Int)): Array(Type)
 
     (* Appends an instruction to block b (which has no terminator yet) *)
     append(f: Function b: Int inst: Inst): Ok
@@ -192,8 +217,8 @@ export
      * appended *)
     inst(op: Opcode args: Array(Int) results: Array(Int)): Inst
     (* An instruction of every field, not appended *)
-    instruction(op: Opcode args: Array(Int) results: Array(Int) imm: Int symbol: String width: Int signed: Bool p: Passing)
-        : Inst
+    instruction(op: Opcode args: Array(Int) results: Array(Int) imm: Int symbol: String width: Int signed: Bool
+        s: Signature): Inst
 
     (* The rest append an instruction to block b and return its results; emit
      * appends one of one result, of type t *)
@@ -211,10 +236,11 @@ export
     load(f: Function b: Int address: Int offset: Int width: Int signed: Bool t: Type): Int
     store(f: Function b: Int address: Int offset: Int width: Int value: Int): Ok
     (* A call of symbol (or, with symbol "", of the function pointer that is
-     * the first argument): its results, of the types results *)
-    call(f: Function b: Int symbol: String args: Array(Int) p: Passing results: Array(Type)): Array(Int)
+     * the first argument) of signature s: its results, of the types
+     * results *)
+    call(f: Function b: Int symbol: String args: Array(Int) s: Signature results: Array(Type)): Array(Int)
     (* Terminates block b with a call in tail position *)
-    tailCall(f: Function b: Int symbol: String args: Array(Int) p: Passing results: Array(Type)): Ok
+    tailCall(f: Function b: Int symbol: String args: Array(Int) s: Signature results: Array(Type)): Ok
     terminate(f: Function b: Int t: Terminator): Ok
     target(block: Int args: Array(Int)): Target
     isTerminated(f: Function b: Int): Bool

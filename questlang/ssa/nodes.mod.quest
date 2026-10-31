@@ -18,6 +18,12 @@ export
         opLoad opStore opCall opCallIndirect opCopy
     end
 
+    Def Passed = Option
+        passWord passReal passPair passPairRest passByte passInt32
+        passMemory with bytes: Int end
+    end
+    Def Signature = Tuple params: Array(Passed) results: Array(Passed) end
+
     Def Inst = Tuple
         op: Opcode
         var args: Array(Int)
@@ -26,9 +32,7 @@ export
         symbol: String
         width: Int
         signed: Bool
-        pairs: Array(Int)
-        memory: Array(Int)
-        narrow: Array(Int)
+        var signature: Signature
     end
 
     Def Target = Tuple block: Int var args: Array(Int) end
@@ -57,8 +61,7 @@ export
         exported: Bool
         paramTypes: vector.T(Type)
         resultTypes: vector.T(Type)
-        var paramPairs: Array(Int)
-        var paramNarrow: Array(Int)
+        var signature: Signature
         types: vector.T(Type)
         blocks: vector.T(Block)
         slots: vector.T(Slot)
@@ -82,10 +85,67 @@ export
 
     let none: Array(Int) = array of :Int end
 
-    Def Passing = Tuple pairs: Array(Int) memory: Array(Int) narrow: Array(Int) end
-    let passing(pairs: Array(Int) memory: Array(Int) narrow: Array(Int)): Passing =
-        tuple let pairs = pairs let memory = memory let narrow = narrow end
-    let plain: Passing = passing(none none none)
+    let passWord: Passed = option passWord of Passed end
+    let passReal: Passed = option passReal of Passed end
+    let passPair: Passed = option passPair of Passed end
+    let passPairRest: Passed = option passPairRest of Passed end
+    let passByte: Passed = option passByte of Passed end
+    let passInt32: Passed = option passInt32 of Passed end
+
+    let emptySignature: Signature = tuple let params = array of :Passed end let results = array of :Passed end end
+
+    let contains(xs: Array(Int) x: Int): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent xs - 1} do if xs[i] is x then found := true end end
+            found
+        end
+
+    let wordOf(t: Type): Passed = case t when typeInt, typePtr then passWord when typeReal then passReal end
+
+    let signature(params: Array(Type) results: Array(Type) pairs: Array(Int) narrow: Array(Int)): Signature =
+        begin
+            let ps = array of(extent params passWord)
+            for k = 0 upto {extent params - 1} do
+                ps[k] := if contains(pairs k) then passPair
+                    elsif contains(pairs k - 1) then passPairRest
+                    elsif contains(narrow k) then passByte
+                    else wordOf(params[k]) end
+            end
+            let rs = array of(extent results passWord)
+            if extent results is 2 then begin rs[0] := passPair rs[1] := passPairRest end
+            else for k = 0 upto {extent results - 1} do rs[k] := wordOf(results[k]) end end
+            tuple let params = ps let results = rs end
+        end
+
+    let withParam(s: Signature k: Int passed: Passed): Signature =
+        begin
+            let ps = array of(extent s.params passWord)
+            for i = 0 upto {extent s.params - 1} do ps[i] := if i is k then passed else s.params[i] end end
+            tuple let params = ps let results = s.results end
+        end
+
+    let withResult(s: Signature passed: Passed): Signature = tuple let params = s.params let results = array of passed end end
+
+    (* The indices of the members of ps that pick picks *)
+    let indicesWhere(ps: Array(Passed) pick: All(p: Passed) Bool): Array(Int) =
+        begin
+            let found = vector.new(:Int)
+            for k = 0 upto {extent ps - 1} do if pick(ps[k]) then vector.append(:Int found k) end end
+            vector.toArray(:Int found)
+        end
+    let pairsOf(ps: Array(Passed)): Array(Int) =
+        indicesWhere(ps fun(p: Passed): Bool
+            case p when passPair then true when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false end)
+    let narrowOf(ps: Array(Passed)): Array(Int) =
+        indicesWhere(ps fun(p: Passed): Bool
+            case p when passByte then true when passWord, passReal, passPair, passPairRest, passInt32, passMemory then false end)
+    let int32Of(ps: Array(Passed)): Array(Int) =
+        indicesWhere(ps fun(p: Passed): Bool
+            case p when passInt32 then true when passWord, passReal, passPair, passPairRest, passByte, passMemory then false end)
+    let memoryOf(ps: Array(Passed)): Array(Int) =
+        indicesWhere(ps fun(p: Passed): Bool
+            case p when passMemory then true when passWord, passReal, passPair, passPairRest, passByte, passInt32 then false end)
 
     let typeInt: Type = option typeInt of Type end
     let typePtr: Type = option typePtr of Type end
@@ -172,6 +232,12 @@ export
 
     let block(f: Function b: Int): Block = vector.get(:Block f.blocks b)
     let typeOf(f: Function v: Int): Type = vector.get(:Type f.types v)
+    let valueTypes(f: Function vs: Array(Int)): Array(Type) =
+        begin
+            let ts = array of(extent vs typeInt)
+            for k = 0 upto {extent vs - 1} do ts[k] := typeOf(f vs[k]) end
+            ts
+        end
 
     let addParam(f: Function b: Int t: Type): Int =
         begin
@@ -193,8 +259,7 @@ export
                 let exported = exported
                 let paramTypes = vector.fromArray(:Type params)
                 let resultTypes = vector.fromArray(:Type results)
-                let var paramPairs = array of :Int end
-                let var paramNarrow = array of :Int end
+                let var signature = signature(params results none none)
                 let types = vector.new(:Type)
                 let blocks = vector.new(:Block)
                 let slots = vector.new(:Slot)
@@ -212,21 +277,21 @@ export
 
     let append(f: Function b: Int i: Inst): Ok = vector.append(:Inst block(f b).insts i)
 
-    let instruction(op: Opcode args: Array(Int) results: Array(Int) imm: Int symbol: String width: Int signed: Bool p: Passing)
-        : Inst =
+    let instruction(op: Opcode args: Array(Int) results: Array(Int) imm: Int symbol: String width: Int signed: Bool
+        s: Signature): Inst =
         tuple
             let op = op let var args = args let results = results let var imm = imm let symbol = symbol
-            let width = width let signed = signed let pairs = p.pairs let memory = p.memory let narrow = p.narrow
+            let width = width let signed = signed let var signature = s
         end
 
-    let inst(op: Opcode args: Array(Int) results: Array(Int)): Inst = instruction(op args results 0 "" 0 false plain)
+    let inst(op: Opcode args: Array(Int) results: Array(Int)): Inst = instruction(op args results 0 "" 0 false emptySignature)
 
     (* Appends an instruction of no arguments and one result of type t, with
      * an immediate and a symbol *)
     let nullary(f: Function b: Int op: Opcode t: Type imm: Int symbol: String): Int =
         begin
             let v = newValue(f t)
-            append(f b instruction(op none array of v end imm symbol 0 false plain))
+            append(f b instruction(op none array of v end imm symbol 0 false emptySignature))
             v
         end
 
@@ -259,33 +324,33 @@ export
     let load(f: Function b: Int address: Int offset: Int width: Int signed: Bool t: Type): Int =
         begin
             let v = newValue(f t)
-            append(f b instruction(opLoad array of address end array of v end offset "" width signed plain))
+            append(f b instruction(opLoad array of address end array of v end offset "" width signed emptySignature))
             v
         end
 
     let store(f: Function b: Int address: Int offset: Int width: Int value: Int): Ok =
-        append(f b instruction(opStore array of address value end none offset "" width false plain))
+        append(f b instruction(opStore array of address value end none offset "" width false emptySignature))
 
     (* A call's instruction, its results new values *)
-    let callInst(f: Function symbol: String args: Array(Int) p: Passing results: Array(Type)): Inst =
+    let callInst(f: Function symbol: String args: Array(Int) s: Signature results: Array(Type)): Inst =
         begin
             let vs = array of(extent results 0)
             for i = 0 upto {extent results - 1} do vs[i] := newValue(f results[i]) end
             let op = if stringOp.length(symbol) > 0 then opCall else opCallIndirect end
-            instruction(op args vs 0 symbol 0 false p)
+            instruction(op args vs 0 symbol 0 false s)
         end
 
-    let call(f: Function b: Int symbol: String args: Array(Int) p: Passing results: Array(Type)): Array(Int) =
+    let call(f: Function b: Int symbol: String args: Array(Int) s: Signature results: Array(Type)): Array(Int) =
         begin
-            let i = callInst(f symbol args p results)
+            let i = callInst(f symbol args s results)
             append(f b i)
             i.results
         end
 
     let terminate(f: Function b: Int t: Terminator): Ok = block(f b).term := t
 
-    let tailCall(f: Function b: Int symbol: String args: Array(Int) p: Passing results: Array(Type)): Ok =
-        terminate(f b option termTailCall of Terminator with let call = callInst(f symbol args p results) end)
+    let tailCall(f: Function b: Int symbol: String args: Array(Int) s: Signature results: Array(Type)): Ok =
+        terminate(f b option termTailCall of Terminator with let call = callInst(f symbol args s results) end)
 
     let target(b: Int args: Array(Int)): Target = tuple let block = b let var args = args end
 
