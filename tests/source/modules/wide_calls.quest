@@ -1,0 +1,29 @@
+(* Calls between units whose arguments outrun the registers (docs/arm64.md
+ * section 10, hazard 3): seven Ints, a 16-byte record when one x register is
+ * left (so on the stack), an Int, nine Reals (one past the d registers), and
+ * then Bools and Chars (a byte each on the stack, as Darwin packs them), a
+ * String, a 16-byte variant, and a Char. The program calls the module's
+ * functions directly and through a value, and the module calls back a function
+ * of the program's; the backends' mixed modes compile one unit natively and the
+ * other through C, both ways. *)
+
+import wideCalls: WideCalls;
+import writer : Writer;
+
+let describe = wideCalls.describe;
+writer.putString(writer.output wideCalls.describe(10 20 30 40 50 60 70 record x = 80 y = 90 end 100
+    0.25 0.5 0.75 1.0 1.25 1.5 1.75 2.0 2.25 false 'q' true "direct" variant dot of wideCalls.Shape with 5 end '\255')
+    <> "\n");
+writer.putString(writer.output describe(~1 ~2 ~3 ~4 ~5 ~6 ~7 record x = ~8 y = ~9 end ~10
+    ~0.5 ~1.5 ~2.5 ~3.5 ~4.5 ~5.5 ~6.5 ~7.5 ~8.5 true 'A' false "through a value"
+    variant box of wideCalls.Shape with record x = 1 y = 2 end end 'B') <> "\n");
+
+let p = wideCalls.point(1 2 3 4 5 6 7 8 9 1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0 9.0 10.0);
+writer.putString(writer.output conv.int(p.x) <> " " <> conv.int(p.y) <> "\n");
+
+(* The module calls back: the program's function receives the arguments *)
+let echo(a: Int b: Int c: Int d: Int e: Int f: Int g: Int p: wideCalls.Point h: Int
+    r1: Real r2: Real r3: Real r4: Real r5: Real r6: Real r7: Real r8: Real r9: Real
+    yes: Bool letter: Char no: Bool name: String shape: wideCalls.Shape last: Char): String =
+    "echo: " <> wideCalls.describe(a b c d e f g p h r1 r2 r3 r4 r5 r6 r7 r8 r9 yes letter no name shape last);
+writer.putString(writer.output wideCalls.callBack(echo) <> "\n");

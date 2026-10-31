@@ -826,6 +826,17 @@ with what would address it.
    (a 4-byte `int`, say) would be packed the same way. *Solution:* the ABI lowering places stack arguments by their
    C types' sizes and alignments rather than by a list of narrow ones, and §4's tests of calls between C and native
    code cover narrow types, `double`s, and 16-byte composites past the eighth argument, in both directions.
+   *Addressed* (2026-10-30), by showing that no other narrow type arises and checking that none does:
+   `placeArguments` places a stack argument at its size and alignment (a byte for a C `bool` or `QChar`, 8 bytes
+   otherwise, a 16-byte composite as two), and `tests/python/test_runtime_signatures.py` reads every function the
+   runtime's headers declare (their inline ones too, whose out-of-line copies native code calls) and fails if one
+   takes or returns any other C type narrower than a word. The only ones are `quest_system_init`'s and
+   `quest_builtins_init`'s `int argc`, the first argument, in a register, where the callee reads the 32 bits it is
+   given. Quest's own types are all words, `bool`, `QChar`, or 16-byte composites, so a narrower type would come
+   only from a new runtime signature. `modules/wide_calls` calls between units with seven `Int`s, a record on the
+   stack (one register left), an `Int`, nine `Real`s (one past the `d` registers), and then `Bool`s and `Char`s (a
+   byte each), a `String`, a variant, and a `Char`, directly, through a value, and back through a closure, which the
+   backends' mixed modes compile natively on one side and through C on the other, both ways.
 4. **`Char` is C's `char`** (§3.9, §7.1), whose signedness is the platform's: signed on Darwin arm64, unsigned on
    Linux arm64. A `Char` above 127 is then a negative integer on one and not on the other, and the representation
    leaks into conversions, comparisons, and slots. *Solution (preferred):* `Char` is `uint8_t` everywhere, in the

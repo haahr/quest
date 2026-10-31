@@ -1,0 +1,36 @@
+module wideCalls : WideCalls
+import conv : Conv real : RealOp
+export
+    Let Point = Record x: Int y: Int end
+    Let Shape = Variant dot: Int box: Point end
+    Let Wide = All(a: Int b: Int c: Int d: Int e: Int f: Int g: Int p: Point h: Int
+        r1: Real r2: Real r3: Real r4: Real r5: Real r6: Real r7: Real r8: Real r9: Real
+        yes: Bool letter: Char no: Bool name: String shape: Shape last: Char) String
+
+    let describe(a: Int b: Int c: Int d: Int e: Int f: Int g: Int p: Point h: Int
+        r1: Real r2: Real r3: Real r4: Real r5: Real r6: Real r7: Real r8: Real r9: Real
+        yes: Bool letter: Char no: Bool name: String shape: Shape last: Char): String =
+        begin
+            let shown = case shape
+                when dot with n then "dot " <> conv.int(n)
+                when box with q then "box " <> conv.int(q.x) <> "," <> conv.int(q.y)
+            end
+            conv.int(a) <> " " <> conv.int(b) <> " " <> conv.int(c) <> " " <> conv.int(d) <> " " <> conv.int(e)
+                <> " " <> conv.int(f) <> " " <> conv.int(g) <> " (" <> conv.int(p.x) <> "," <> conv.int(p.y) <> ") "
+                <> conv.int(h) <> " | " <> conv.real(r1) <> " " <> conv.real(r2) <> " " <> conv.real(r3) <> " "
+                <> conv.real(r4) <> " " <> conv.real(r5) <> " " <> conv.real(r6) <> " " <> conv.real(r7) <> " "
+                <> conv.real(r8) <> " " <> conv.real(r9) <> " | " <> conv.bool(yes) <> " " <> conv.char(letter) <> " "
+                <> conv.bool(no) <> " " <> name <> " " <> shown <> " " <> conv.char(last)
+        end
+
+    let point(a: Int b: Int c: Int d: Int e: Int f: Int g: Int h: Int i: Int
+        r1: Real r2: Real r3: Real r4: Real r5: Real r6: Real r7: Real r8: Real r9: Real r10: Real): Point =
+        record
+            x = {a + {b + {c + {d + {e + {f + {g + {h + i}}}}}}}}
+            y = real.floor(r1 ++ {r2 ++ {r3 ++ {r4 ++ {r5 ++ {r6 ++ {r7 ++ {r8 ++ {r9 ++ r10}}}}}}}})
+        end
+
+    let callBack(f: Wide): String =
+        f(1 2 3 4 5 6 7 record x = 8 y = 9 end 10 1.5 2.5 3.5 4.5 5.5 6.5 7.5 8.5 9.5
+            true '\200' false "from callBack" variant box of Shape with record x = 11 y = 12 end end 'z')
+end;

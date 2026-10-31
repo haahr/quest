@@ -52,10 +52,15 @@ export
             let var nsrn = 0
             let var nsaa = 0
             let x(n: Int): ArgumentPlace = tuple let reg = "x" <> conv.int(n) let offset = 0 let bytes = 8 end
-            (* The stack place of the argument at k, after at bytes *)
+            (* The stack place of the argument at k, after at bytes: at its C
+             * type's size and alignment, as Darwin places them (a C bool or
+             * char a byte, the rest 8 bytes; the runtime's functions take no
+             * other narrow type, which tests/python/test_runtime_signatures.py
+             * checks, docs/arm64.md section 10, hazard 3) *)
             let stackAfter(at: Int k: Int): ArgumentPlace =
-                if contains(narrow k) then tuple let reg = "" let offset = at let bytes = 1 end
-                else tuple let reg = "" let offset = alignUp(at 8) let bytes = 8 end
+                begin
+                    let bytes = if contains(narrow k) then 1 else 8 end
+                    tuple let reg = "" let offset = alignUp(at bytes) let bytes = bytes end
                 end
             let var k = first
             while k < extent types do
