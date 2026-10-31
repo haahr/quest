@@ -1,0 +1,68 @@
+(* Quest Self-Hosted Compiler: The SSA Builder's Descriptors Implementation *)
+
+module descriptors : Descriptors
+import
+    questlang/types/model : questlang/types/Model
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/staticdata : questlang/codegen/StaticData
+    questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
+    util/maybe : util/Maybe
+    vals = questlang/ssa/build/values : questlang/ssa/build/Values
+export
+
+    (* The address of a static descriptor, of a form *)
+    let formAddress(fn: vals.Fn f: staticdata.DescriptorForm): Int =
+        begin
+            ssa.symbolPlus(fn.f fn.cur f.symbol
+                f.index * maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct("QTypeDescriptor")).bytes)
+        end
+
+    (* The static descriptor of a static descriptor operand: its echo form,
+     * if it has one *)
+    let staticFormOf(u: vals.UnitBuilder d: ir.StaticDescriptor): staticdata.DescriptorForm =
+        begin
+            let ctx = maybe.some(:staticdata.RecordNaming u.naming)
+            let echo = if d.echo then staticdata.echoDescriptorForm(d.type ctx) else maybe.none(:staticdata.DescriptorForm) end
+            if maybe.isSome(:staticdata.DescriptorForm echo) then maybe.unwrap(:staticdata.DescriptorForm echo)
+            else staticdata.descriptorForm(d.type ctx) end
+        end
+
+    let rec descriptor(fn: vals.Fn d: ir.Descriptor): Int =
+        case d
+            when descVar with x then vals.atom1(fn ir.atomOfVar(x.v))
+            when descStatic with x then formAddress(fn staticFormOf(fn.u x.d))
+            when descInstantiate with x then
+                let form = staticdata.descriptorForm(x.template maybe.some(:staticdata.RecordNaming fn.u.naming))
+                if vals.eq(form.kind "base") orif vals.eq(form.kind "bound_var") then
+                    formAddress(fn form)
+                else
+                    let args = array of(extent x.args 0)
+                    for i = 0 upto {extent x.args - 1} do args[i] := descriptor(fn x.args[i]) end
+                    let array0 = slotArray(fn args)
+                    vals.call1(fn "quest_instantiate_descriptor" array of formAddress(fn form) vals.constant(fn extent x.args) array0 end
+                        vals.tPtr)
+                end
+        end
+
+    (* A stack array of the pointers, its address *)
+    and slotArray(fn: vals.Fn ptrs: Array(Int)): Int =
+        begin
+            let s = ssa.newSlot(fn.f 8 * {if extent ptrs is 0 then 1 else extent ptrs end} 8)
+            let addr = ssa.slotAddress(fn.f fn.cur s)
+            for i = 0 upto {extent ptrs - 1} do vals.store(fn addr 8 * i 8 ptrs[i]) end
+            addr
+        end
+
+    let descriptors(fn: vals.Fn ds: Array(ir.Descriptor)): Array(Int) =
+        begin
+            let r = array of(extent ds 0)
+            for i = 0 upto {extent ds - 1} do r[i] := descriptor(fn ds[i]) end
+            r
+        end
+
+    let maybeDescriptor(fn: vals.Fn d: maybe.T(ir.Descriptor)): Int =
+        if maybe.isSome(:ir.Descriptor d) then descriptor(fn maybe.unwrap(:ir.Descriptor d))
+        else raise vals.unsupported with "a run-time use of a type without its descriptor" end
+        end
+end

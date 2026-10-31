@@ -1,0 +1,397 @@
+(* Quest Self-Hosted Compiler: The SSA Builder's Unit Implementation *)
+
+module unit : Unit
+import
+    questlang/types/model : questlang/types/Model
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/ir/walk : questlang/ir/Walk
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/statics : questlang/ssa/Statics
+    questlang/ssa/promote : questlang/ssa/Promote
+    questlang/ssa/tailCalls : questlang/ssa/TailCalls
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/codegen/symbols : questlang/codegen/Symbols
+    questlang/codegen/staticdata : questlang/codegen/StaticData
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    vals = questlang/ssa/build/values : questlang/ssa/build/Values
+    descriptors = questlang/ssa/build/descriptors : questlang/ssa/build/Descriptors
+    control = questlang/ssa/build/control : questlang/ssa/build/Control
+    adapters = questlang/ssa/build/adapters : questlang/ssa/build/Adapters
+export
+    Let Type = model.Type
+    Let Variable = ir.Variable
+    Let Function = ssa.Function
+
+    (* =========================================================================
+     * Functions
+     * ====================================================================== *)
+
+    let countTypeParams(t: Type): Int =
+        begin
+            let var s = shapes.shape(t)
+            let var n = 0
+            while shapes.kindIs(s shapes.shapeAll) do
+                n := n + extent s.typeParams
+                s := shapes.body(s)
+            end
+            n
+        end
+
+    (* A function of the unit: its environment, then its own type parameters'
+     * descriptors (those its closure supplies it reads from its environment),
+     * then its parameters *)
+    let function(u: vals.UnitBuilder f: ir.Function): Function =
+        begin
+            let own = countTypeParams(f.v.type)
+            let nCaptured = extent f.typeParams - own
+            let paramTypes = vector.new(:ssa.Type)
+            let paramPairs = vector.new(:Int)
+            let paramNarrow = vector.new(:Int)
+            vector.append(:ssa.Type paramTypes vals.tPtr)
+            for i = 0 upto {own - 1} do vector.append(:ssa.Type paramTypes vals.tPtr) end
+            for i = 0 upto {extent f.params - 1} do
+                let entry = f.params[i]
+                if not(vals.eq(entry.mode "value")) then
+                    vector.append(:ssa.Type paramTypes vals.tPtr)
+                else
+                    let ps = vals.varParts(entry.v)
+                    (* An Ok parameter is a QVal word in C *)
+                    if extent ps is 0 then vector.append(:ssa.Type paramTypes vals.tInt) end
+                    if extent ps is 2 then vector.append(:Int paramPairs vector.length(:ssa.Type paramTypes)) end
+                    if {extent ps is 1} andif {ps[0].width is 1} then
+                        vector.append(:Int paramNarrow vector.length(:ssa.Type paramTypes))
+                    end
+                    for k = 0 upto {extent ps - 1} do vector.append(:ssa.Type paramTypes ps[k].type) end
+                end
+            end
+            let sf = ssa.newFunction(vals.codeName(u f) false vector.toArray(:ssa.Type paramTypes) vals.typesOf(vals.parts(f.resultType)))
+            sf.paramPairs := vector.toArray(:Int paramPairs)
+            sf.paramNarrow := vector.toArray(:Int paramNarrow)
+            let fn = vals.newFn(u sf hashMap.get(:Int :ir.OpMakeClosure u.closuresOf f.id))
+            let params = ssa.block(sf 0).params
+            let var at = 0
+            let next(): Int = begin let v = vector.get(:Int params at) at := at + 1 v end
+            let envValue = next()
+            if maybe.isSome(:Variable f.env) then
+                vals.put(:Int :Array(Int) fn.values maybe.unwrap(:Variable f.env).id array of envValue end)
+            end
+            (* The descriptors its closure supplies, from its environment *)
+            for i = 0 upto {nCaptured - 1} do
+                let d = vals.loadWord(fn envValue 8 * i vals.tPtr)
+                vals.put(:Int :Array(Int) fn.values f.descriptorParams[i].v.id array of d end)
+            end
+            for i = nCaptured upto {extent f.descriptorParams - 1} do
+                vals.put(:Int :Array(Int) fn.values f.descriptorParams[i].v.id array of next() end)
+            end
+            for i = 0 upto {extent f.params - 1} do
+                let entry = f.params[i]
+                if not(vals.eq(entry.mode "value")) then
+                    vals.put(:Int :Int fn.pointers entry.v.id next())
+                else
+                    let ps = vals.varParts(entry.v)
+                    if extent ps is 0 then
+                        let ignored = next()
+                        vals.put(:Int :Array(Int) fn.values entry.v.id vals.noValues)
+                    else
+                        let vs = array of(extent ps 0)
+                        (* A Bool or a Char from C, its upper bits unspecified
+                         * (AAPCS64), extended *)
+                        for k = 0 upto {extent ps - 1} do vs[k] := vals.narrowed(fn next() ps[k]) end
+                        if entry.v.isMutable then vals.write(fn entry.v vs)
+                        else vals.put(:Int :Array(Int) fn.values entry.v.id vs) end
+                    end
+                end
+            end
+            for i = 0 upto {extent f.viewMaps - 1} do
+                let m = f.viewMaps[i]
+                let d = vals.atom1(fn ir.atomOfVar(m.descriptor))
+                vals.put(:Int :Array(Int) fn.values m.v.id
+                    array of vals.call1(fn "quest_view_map" array of d descriptors.descriptor(fn m.bound) end vals.tPtr) end)
+            end
+            control.body(fn f.body)
+            vals.finish(fn)
+            sf
+        end
+
+    (* A top level (the main routine's, or a module's initializer's): its
+     * statements, the variables it binds outside loops the unit's globals *)
+    let topLevel(u: vals.UnitBuilder symbol: String b: ir.Body before: All(fn: vals.Fn) Ok after: All(fn: vals.Fn) Ok
+        results: Array(ssa.Type) params: Array(ssa.Type) exported: Bool): Function =
+        begin
+            let sf = ssa.newFunction(symbol exported params results)
+            let fn = vals.newFn(u sf maybe.none(:ir.OpMakeClosure))
+            before(fn)
+            control.body(fn b)
+            if not(vals.terminated(fn)) then after(fn) end
+            vals.finish(fn)
+            sf
+        end
+
+    (* =========================================================================
+     * Static data, registration, and the unit
+     * ====================================================================== *)
+
+    let wordOf(n: Int): ssa.Word = option wordInt of ssa.Word with let n = n end
+    let addressWord(symbol: String): ssa.Word = option wordSymbol of ssa.Word with let symbol = symbol let addend = 0 end
+    let addData(u: vals.UnitBuilder d: ssa.Data): Ok = vector.append(:ssa.Data u.built.data d)
+
+    (* The unit's static descriptors, offset tables, and tag maps, as the C
+     * printer's declarations define them, and the adapters of its function
+     * types *)
+    let descriptorData(u: vals.UnitBuilder): Ok =
+        if maybe.isSome(:ir.StaticData u.unit.staticData) then
+            let data = maybe.unwrap(:ir.StaticData u.unit.staticData)
+            let ctx = maybe.some(:staticdata.RecordNaming u.naming)
+            let plain = vector.new(:Type)
+            let echoed = vector.new(:Type)
+            for i = 0 upto {vector.length(:ir.StaticDescriptor data.descriptors) - 1} do
+                let d = vector.get(:ir.StaticDescriptor data.descriptors i)
+                vector.append(:Type if d.echo then echoed else plain end d.type)
+            end
+            let collected = staticdata.collectDescriptors(plain echoed ctx hashMap.new(:String :Bool vals.eq hash.string))
+            let formOf(t: Type): staticdata.DescriptorForm = staticdata.descriptorForm(t ctx)
+            let text(s: String): String = vals.stringSymbol(u s)
+            for k = 0 upto {extent staticdata.descriptorKinds - 1} do
+                let forms = staticdata.formsOf(collected staticdata.descriptorKinds[k])
+                for i = 0 upto {vector.length(:staticdata.DescriptorForm forms) - 1} do
+                    let f = vector.get(:staticdata.DescriptorForm forms i)
+                    let ds = statics.descriptorData(staticdata.describeDescriptor(f ctx formOf) text)
+                    for j = 0 upto {extent ds - 1} do addData(u ds[j]) end
+                    if vals.eq(f.kind "fun") then
+                        let fs = adapters.funTypeAdapters(u f.tag maybe.unwrap(:Type f.type))
+                        for j = 0 upto {extent fs - 1} do vector.append(:Function u.built.functions fs[j]) end
+                    end
+                end
+            end
+            let seen = hashMap.new(:String :Bool vals.eq hash.string)
+            for i = 0 upto {vector.length(:ir.OffsetTable data.offsetTables) - 1} do
+                let t = vector.get(:ir.OffsetTable data.offsetTables i)
+                let table = staticdata.describeOffsetTable(u.naming t.view t.layout)
+                if not(hashMap.contains(:String :Bool seen table.symbol)) then
+                    vals.put(:String :Bool seen table.symbol true)
+                    (* Each field's offset, then stored_types *)
+                    let ws = array of({extent table.offsets + 1} wordOf(0))
+                    for j = 0 upto {extent table.offsets - 1} do ws[j] := wordOf(table.offsets[j].bytes) end
+                    addData(u ssa.words(table.symbol false false ws))
+                end
+            end
+            for i = 0 upto {vector.length(:ir.TagMap data.tagMaps) - 1} do
+                let t = vector.get(:ir.TagMap data.tagMaps i)
+                let map = staticdata.describeTagMap(t.target t.source)
+                if not(hashMap.contains(:String :Bool seen map.symbol)) then
+                    vals.put(:String :Bool seen map.symbol true)
+                    let ws = array of({if extent map.entries > 0 then extent map.entries else 1 end} wordOf(0))
+                    for j = 0 upto {extent map.entries - 1} do ws[j] := wordOf(map.entries[j]) end
+                    addData(u ssa.words(map.symbol false false ws))
+                end
+            end
+        end
+
+    let isModuleFile(unit: ir.Unit): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {vector.length(:ir.Module unit.modules) - 1} do
+                if maybe.isSome(:ir.Members vector.get(:ir.Module unit.modules i).exports) then found := true end
+            end
+            found
+        end
+
+    (* The function table (docs/exceptions.md section 5.2) of the unit's
+     * functions with frames in tracebacks, and qr_register_dicts, which
+     * registers it and the offset tables of records the unit views at
+     * supertypes *)
+    let registration(u: vals.UnitBuilder): Function =
+        begin
+            let unit = u.unit
+            let entries = vector.new(:ssa.Word)
+            let entry(symbol: String frame: String): Ok =
+                begin
+                    vector.append(:ssa.Word entries addressWord(symbol))
+                    vector.append(:ssa.Word entries addressWord(vals.stringSymbol(u frame)))
+                end
+            for i = 0 upto {vector.length(:ir.Function unit.functions) - 1} do
+                let f = vector.get(:ir.Function unit.functions i)
+                if maybe.isSome(:String f.traceName) then entry(vals.codeName(u f) maybe.unwrap(:String f.traceName)) end
+            end
+            for i = 0 upto {vector.length(:ir.Module unit.modules) - 1} do
+                let m = vector.get(:ir.Module unit.modules i)
+                entry("qv_mod_" <> symbols.mangleModuleName(m.name) <> "_init" diagnostics.initFrame(m.name))
+            end
+            if not(isModuleFile(unit)) then entry("main" diagnostics.mainFrame) end
+            let fn = adapters.newFunction(u "qr_register_dicts" false adapters.pointers(0) vals.noValuesTypes)
+            if not(vector.empty(:ssa.Word entries)) then
+                addData(u ssa.words("qr_funcs" false false vector.toArray(:ssa.Word entries)))
+                vals.callVoid(fn "quest_register_funcs"
+                    array of vals.symbolAt(fn "qr_funcs") vals.constant(fn vector.length(:ssa.Word entries) / 2) end)
+            end
+            if maybe.isSome(:ir.StaticData unit.staticData) then
+                let tables = maybe.unwrap(:ir.StaticData unit.staticData).offsetTables
+                let registered = hashMap.new(:String :Bool vals.eq hash.string)
+                for i = 0 upto {vector.length(:ir.OffsetTable tables) - 1} do
+                    let table = vector.get(:ir.OffsetTable tables i)
+                    let dict = staticdata.describeOffsetTable(u.naming table.view table.layout).symbol
+                    if maybe.isSome(:ir.Registered table.registered)
+                        andif not(hashMap.contains(:String :Bool registered dict)) then
+                        vals.put(:String :Bool registered dict true)
+                        let r = maybe.unwrap(:ir.Registered table.registered)
+                        vals.callVoid(fn "quest_register_record_dict" array of descriptors.formAddress(fn descriptors.staticFormOf(u r.view))
+                            descriptors.formAddress(fn descriptors.staticFormOf(u r.layout)) vals.symbolAt(fn dict) end)
+                    end
+                end
+            end
+            adapters.returnValues(fn vals.noValues)
+            adapters.finished(fn)
+        end
+
+    let buildUnit(unit: ir.Unit): ssa.Unit =
+        begin
+            let u = tuple
+                let unit = unit
+                let built = ssa.newUnit()
+                let globals = walk.globalVariables(unit)
+                let globalSymbols = hashMap.new(:Int :String vals.intEqual hash.int)
+                let codeNames = hashMap.new(:Int :String vals.intEqual hash.int)
+                let usedNames = hashMap.new(:String :Bool vals.eq hash.string)
+                let closuresOf = hashMap.new(:Int :ir.OpMakeClosure vals.intEqual hash.int)
+                let closureVars = hashMap.new(:Int :ir.OpMakeClosure vals.intEqual hash.int)
+                let strings = hashMap.new(:String :String vals.eq hash.string)
+                let var stringCount = 0
+                let naming = staticdata.newRecordNaming()
+            end
+            (* The closure of each lifted function, for its environment's
+             * layout *)
+            let bodies = vector.new(:ir.Body)
+            vector.append(:ir.Body bodies unit.main)
+            for i = 0 upto {vector.length(:ir.Module unit.modules) - 1} do
+                vector.append(:ir.Body bodies vector.get(:ir.Module unit.modules i).init)
+            end
+            for i = 0 upto {vector.length(:ir.Function unit.functions) - 1} do
+                vector.append(:ir.Body bodies vector.get(:ir.Function unit.functions i).body)
+            end
+            for b = 0 upto {vector.length(:ir.Body bodies) - 1} do
+                let stmts = walk.walkStatements(vector.get(:ir.Body bodies b) false)
+                for i = 0 upto {vector.length(:ir.Stmt stmts) - 1} do
+                    case vector.get(:ir.Stmt stmts i)
+                        when sLet with x then
+                            case x.value
+                                when opMakeClosure with c then
+                                    if not(hashMap.contains(:Int :ir.OpMakeClosure u.closuresOf c.code.id)) then
+                                        vals.put(:Int :ir.OpMakeClosure u.closuresOf c.code.id c)
+                                    end
+                                    vals.put(:Int :ir.OpMakeClosure u.closureVars x.v.id c)
+                                else ok
+                            end
+                        else ok
+                    end
+                end
+            end
+            for i = 0 upto {vector.length(:ir.Function unit.functions) - 1} do
+                vector.append(:Function u.built.functions function(u vector.get(:ir.Function unit.functions i)))
+            end
+            for i = 0 upto {vector.length(:ir.Module unit.modules) - 1} do
+                let m = vector.get(:ir.Module unit.modules i)
+                let clean = symbols.mangleModuleName(m.name)
+                let initialized = "qv_mod_" <> clean <> "_initialized"
+                let exported = maybe.isSome(:ir.Members m.exports)
+                addData(u tuple
+                    let symbol = symbols.moduleRecordIdent(clean) let exported = exported let writable = true
+                    let contents = option contentsZero of ssa.Contents with let bytes = 16 end
+                end)
+                addData(u tuple
+                    let symbol = initialized let exported = false let writable = true
+                    let contents = option contentsZero of ssa.Contents with let bytes = 8 end
+                end)
+                vector.append(:Function u.built.functions topLevel(u "qv_mod_" <> clean <> "_init" m.init
+                    fun(fn: vals.Fn): Ok
+                        begin
+                            (* Its guard: initialized once *)
+                            let flag = vals.symbolAt(fn initialized)
+                            let done = vals.load(fn flag 0 vals.part(vals.tInt 1 false))
+                            let ret = control.newBlock(fn)
+                            let go = control.newBlock(fn)
+                            vals.terminate(fn option termBranch of ssa.Terminator with
+                                let cond = done let ifTrue = ssa.target(ret vals.noValues) let ifFalse = ssa.target(go vals.noValues)
+                            end)
+                            fn.cur := ret
+                            vals.terminate(fn option termReturn of ssa.Terminator with let values = vals.noValues end)
+                            fn.cur := go
+                            vals.store(fn vals.symbolAt(fn initialized) 0 1 vals.constant(fn 1))
+                            (* Its abstract types, registered for dynamic
+                             * values; a representation without a descriptor is
+                             * not *)
+                            for j = 0 upto {extent m.abstractTypes - 1} do
+                                let entry = m.abstractTypes[j]
+                                let form = try maybe.some(:staticdata.DescriptorForm descriptors.staticFormOf(u entry.descriptor))
+                                    when staticdata.missingDescriptor then maybe.none(:staticdata.DescriptorForm)
+                                end
+                                if maybe.isSome(:staticdata.DescriptorForm form) then
+                                    vals.callVoid(fn "quest_register_abstract_type" array of vals.symbolAt(fn vals.stringSymbol(u entry.name))
+                                        vals.constant(fn entry.arity) descriptors.formAddress(fn maybe.unwrap(:staticdata.DescriptorForm form)) end)
+                                end
+                            end
+                            (* A module file's initializes the modules it
+                             * imports, as a program's main does *)
+                            if exported then
+                                vals.callVoid(fn "qr_register_dicts" vals.noValues)
+                                for j = 0 upto {extent unit.imports - 1} do
+                                    vals.callVoid(fn "qv_mod_"
+                                        <> symbols.mangleModuleName(unit.imports[j].canonicalPath) <> "_init"
+                                        vals.noValues)
+                                end
+                            end
+                        end
+                    fun(fn: vals.Fn): Ok
+                        begin
+                            if maybe.isSome(:Variable m.recordVar) then
+                                let recordValues = vals.read(fn maybe.unwrap(:Variable m.recordVar))
+                                vals.writeValue(fn vals.symbolAt(fn symbols.moduleRecordIdent(clean))
+                                    maybe.unwrap(:Variable m.recordVar).type recordValues)
+                            end
+                            vals.terminate(fn option termReturn of ssa.Terminator with let values = vals.noValues end)
+                        end
+                    array of :ssa.Type end array of :ssa.Type end exported))
+                if exported then
+                    let exports = maybe.unwrap(:ir.Members m.exports)
+                    for j = 0 upto {vector.length(:String exports.names) - 1} do
+                        let name = vector.get(:String exports.names j)
+                        let f = adapters.exportedFunction(u clean name maybe.unwrap(:Variable ir.member(exports name)))
+                        if maybe.isSome(:Function f) then vector.append(:Function u.built.functions maybe.unwrap(:Function f)) end
+                    end
+                end
+            end
+            (* A static closure of each function, for closures without
+             * captures *)
+            for i = 0 upto {vector.length(:ir.Function unit.functions) - 1} do
+                let code = vals.codeName(u vector.get(:ir.Function unit.functions i))
+                addData(u ssa.words(code <> "_closure" false false array of addressWord(code) wordOf(0) end))
+            end
+            descriptorData(u)
+            vector.append(:Function u.built.functions registration(u))
+            if not(isModuleFile(unit)) then vector.append(:Function u.built.functions topLevel(u "main" unit.main
+                fun(fn: vals.Fn): Ok
+                    begin
+                        let params = ssa.block(fn.f 0).params
+                        vals.callVoid(fn "quest_gc_init" vals.noValues)
+                        vals.callVoid(fn "quest_builtins_init" array of vector.get(:Int params 0) vector.get(:Int params 1) end)
+                        vals.callVoid(fn "qr_register_dicts" vals.noValues)
+                        for j = 0 upto {extent unit.imports - 1} do
+                            vals.callVoid(fn "qv_mod_" <> symbols.mangleModuleName(unit.imports[j].canonicalPath)
+                                <> "_init" vals.noValues)
+                        end
+                        for j = 0 upto {vector.length(:ir.Module unit.modules) - 1} do
+                            vals.callVoid(fn "qv_mod_"
+                                <> symbols.mangleModuleName(vector.get(:ir.Module unit.modules j).name)
+                                <> "_init" vals.noValues)
+                        end
+                    end
+                fun(fn: vals.Fn): Ok vals.terminate(fn option termReturn of ssa.Terminator with let values = array of vals.constant(fn 0) end end)
+                array of vals.tInt end array of vals.tInt vals.tPtr end true)) end
+            let promoted = promote.promoteUnit(u.built)
+            tailCalls.markUnit(u.built)
+            u.built
+        end
+end

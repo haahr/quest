@@ -1,0 +1,831 @@
+(* Quest Self-Hosted Compiler: The SSA Builder's Values Implementation *)
+
+module values : Values
+import
+    questlang/common/location : questlang/common/Location
+    questlang/types/model : questlang/types/Model
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/shapes : questlang/ir/Shapes
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/layout : questlang/codegen/Layout
+    questlang/codegen/symbols : questlang/codegen/Symbols
+    questlang/codegen/staticdata : questlang/codegen/StaticData
+    questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+    word : Word
+    ascii : Ascii
+export
+    Let Type = model.Type
+    Let Variable = ir.Variable
+    Let Atom = ir.Atom
+    Let Function = ssa.Function
+
+    let unsupported: Exception(String) = exception unsupported: String end
+
+    let intEqual(a: Int b: Int): Bool = a is b
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+    let fail(A::TYPE what: String): A = raise unsupported with what end
+    let put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok = begin hashMap.insert(:K :V m k v) ok end
+
+    let tInt = ssa.typeInt
+    let tPtr = ssa.typePtr
+    let tReal = ssa.typeReal
+    let noValues = array of :Int end
+    (* How a call passes its arguments: with 16-byte composites starting at
+     * pairs and narrow arguments at narrow; with one starting at the first *)
+    let passing(pairs: Array(Int) narrow: Array(Int)): ssa.Passing = ssa.passing(pairs noValues narrow)
+    let firstPair = passing(array of 0 end noValues)
+    let noValuesTypes = array of :ssa.Type end
+
+    (* =========================================================================
+     * Representations as SSA values
+     * ====================================================================== *)
+
+    (* A word of a value's representation: its SSA type, and how it is stored
+     * (its width in bytes, and for a narrow one, whether it is signed) *)
+    Def Part = Tuple type: ssa.Type width: Int signed: Bool end
+    let part(t: ssa.Type width: Int signed: Bool): Part = tuple let type = t let width = width let signed = signed end
+    let wordPart(t: ssa.Type): Part = part(t 8 false)
+
+    (* The parts of a value of t, as a variable holds it (layout.representation):
+     * none for Ok, two for a record or a variant, a byte for a Bool or a Char
+     * stored, and otherwise a word *)
+    let parts(t: Type): Array(Part) =
+        case layout.representationKind(t)
+            when repVoid then array of :Part end
+            when repInt, repWord, repQVal then array of wordPart(tInt) end
+            when repBool, repChar then array of part(tInt 1 false) end
+            when repReal then array of wordPart(tReal) end
+            when repRecord then array of wordPart(tPtr) wordPart(tPtr) end
+            when repVariant then array of wordPart(tInt) wordPart(tInt) end
+            when repPointer then array of wordPart(tPtr) end
+        end
+
+    (* Whether a value of shape s is a QVal in a slot (an Ok's is too) *)
+    let slotIsQVal(s: shapes.Shape): Bool =
+        case layout.shapeRepresentationKind(s)
+            when repQVal, repVoid then true
+            when repInt, repWord, repBool, repChar, repReal, repRecord, repVariant, repPointer then false
+        end
+
+    (* The parts of a value of t in an aggregate's slot or a QVal word: one
+     * word, a record or variant as a pointer to its box (layout.isBoxedInSlots),
+     * a Bool or Char widened to the word *)
+    let slotParts(t: Type): Array(Part) =
+        if layout.isBoxedInSlots(shapes.shape(t)) then array of wordPart(tPtr) end
+        else
+            let ps = parts(t)
+            let r = array of(extent ps wordPart(tInt))
+            for i = 0 upto {extent ps - 1} do r[i] := wordPart(ps[i].type) end
+            r
+        end
+
+    (* The parts of a variable's value: a boxed variable (a record or a variant
+     * the represent pass holds in its box) holds the box's pointer *)
+    let varParts(v: Variable): Array(Part) = if v.boxed then slotParts(v.type) else parts(v.type) end
+
+    let typesOf(ps: Array(Part)): Array(ssa.Type) =
+        begin
+            let r = array of(extent ps tInt)
+            for i = 0 upto {extent ps - 1} do r[i] := ps[i].type end
+            r
+        end
+
+    (* The word offsets of a location's parts: each part of a value in its own
+     * word, as a slot or a C location of the value lays them out *)
+    let partOffset(k: Int): Int = 8 * k
+
+    (* =========================================================================
+     * The unit's builder and each function's
+     * ====================================================================== *)
+
+    Def UnitBuilder = Tuple
+        unit: ir.Unit
+        built: ssa.Unit
+        globals: hashMap.T(Int Bool)
+        (* The symbols of the unit's global variables and functions, by id *)
+        globalSymbols: hashMap.T(Int String)
+        codeNames: hashMap.T(Int String)
+        usedNames: hashMap.T(String Bool)
+        (* The closure each lifted function is made by, by function id, and
+         * the closures variables are bound to, by variable id *)
+        closuresOf: hashMap.T(Int ir.OpMakeClosure)
+        closureVars: hashMap.T(Int ir.OpMakeClosure)
+        (* String literals, as symbols *)
+        strings: hashMap.T(String String)
+        var stringCount: Int
+        (* Names records and their offset tables as the unit's static data
+         * does *)
+        naming: staticdata.RecordNaming
+    end
+
+    Def LoopTargets = Tuple head: Int after: Int end
+    (* A capture of a variable a let rec binds, stored once the let rec's body
+     * has run: the environment, the capture's offset in it, and the atom *)
+    Def DeferredCapture = Tuple env: Int offset: Int a: Atom end
+    Def Deferred = Tuple vars: hashMap.T(Int Bool) captures: vector.T(DeferredCapture) end
+
+    Def Fn = Tuple
+        u: UnitBuilder
+        f: Function
+        var cur: Int
+        values: hashMap.T(Int Array(Int))
+        slots: hashMap.T(Int Int)
+        (* A var or out parameter's location *)
+        pointers: hashMap.T(Int Int)
+        joins: hashMap.T(String Int)
+        loops: hashMap.T(String LoopTargets)
+        (* The function's IR closure (its environment's layout), if it is a
+         * lifted function's *)
+        closure: maybe.T(ir.OpMakeClosure)
+        var deferred: maybe.T(Deferred)
+        (* The handler records of the trys entered, innermost last, and for
+         * each loop and join point the number entered where it is defined *)
+        handlers: vector.T(Int)
+        labelDepth: hashMap.T(String Int)
+        (* The copy of the exception state each handler's variable is, by
+         * variable id *)
+        handlerVars: hashMap.T(Int Int)
+    end
+
+    let freshName(u: UnitBuilder base: String): String =
+        begin
+            let var n = 1
+            let var name = base
+            while hashMap.contains(:String :Bool u.usedNames name) do
+                n := n + 1
+                name := base <> "_" <> conv.int(n)
+            end
+            put(:String :Bool u.usedNames name true)
+            name
+        end
+
+    let codeName(u: UnitBuilder f: ir.Function): String =
+        begin
+            if not(hashMap.contains(:Int :String u.codeNames f.id)) then
+                let base = symbols.mangleIdent(if stringOp.length(f.v.hint) > 0 then f.v.hint else "fun" end)
+                let bare = if strutil.startsWith(base "qv_") then stringOp.getSub(base 3 {stringOp.length(base) - 3}) else base end
+                put(:Int :String u.codeNames f.id freshName(u "qf_" <> bare))
+            end
+            hashMap.find(:Int :String u.codeNames f.id)
+        end
+
+    let globalSymbol(u: UnitBuilder v: Variable): String =
+        begin
+            if not(hashMap.contains(:Int :String u.globalSymbols v.id)) then
+                let base = symbols.mangleIdent(if stringOp.length(v.hint) > 0 then v.hint else "global" end)
+                let bare = if strutil.startsWith(base "qv_") then stringOp.getSub(base 3 {stringOp.length(base) - 3}) else base end
+                let symbol = freshName(u "g_" <> bare)
+                put(:Int :String u.globalSymbols v.id symbol)
+                let n = extent varParts(v)
+                vector.append(:ssa.Data u.built.data tuple
+                    let symbol = symbol let exported = false let writable = true
+                    let contents = option contentsZero of ssa.Contents with let bytes = 8 * {if n > 0 then n else 1 end} end
+                end)
+            end
+            hashMap.find(:Int :String u.globalSymbols v.id)
+        end
+
+    let stringSymbol(u: UnitBuilder s: String): String =
+        begin
+            if not(hashMap.contains(:String :String u.strings s)) then
+                u.stringCount := u.stringCount + 1
+                let symbol = "qs_" <> conv.int(u.stringCount)
+                put(:String :String u.strings s symbol)
+                vector.append(:ssa.Data u.built.data tuple
+                    let symbol = symbol let exported = false let writable = false
+                    let contents = option contentsText of ssa.Contents with let text = s end
+                end)
+            end
+            hashMap.find(:String :String u.strings s)
+        end
+
+    (* =========================================================================
+     * Emitting
+     * ====================================================================== *)
+
+    let emit(fn: Fn op: ssa.Opcode args: Array(Int) t: ssa.Type): Int = ssa.emit(fn.f fn.cur op args t)
+    let constant(fn: Fn n: Int): Int = ssa.constant(fn.f fn.cur n)
+    let binary(fn: Fn op: ssa.Opcode x: Int y: Int): Int = ssa.binary(fn.f fn.cur op x y)
+    let symbolAt(fn: Fn symbol: String): Int = ssa.symbolAddress(fn.f fn.cur symbol)
+    let load(fn: Fn address: Int offset: Int p: Part): Int = ssa.load(fn.f fn.cur address offset p.width p.signed p.type)
+    let loadWord(fn: Fn address: Int offset: Int t: ssa.Type): Int = ssa.load(fn.f fn.cur address offset 8 false t)
+    let store(fn: Fn address: Int offset: Int width: Int value: Int): Ok = ssa.store(fn.f fn.cur address offset width value)
+    let callSymbol(fn: Fn symbol: String args: Array(Int) results: Array(ssa.Type)): Array(Int) =
+        ssa.call(fn.f fn.cur symbol args ssa.plain results)
+    let call1(fn: Fn symbol: String args: Array(Int) t: ssa.Type): Int = callSymbol(fn symbol args array of t end)[0]
+    let callVoid(fn: Fn symbol: String args: Array(Int)): Ok = begin callSymbol(fn symbol args array of :ssa.Type end) ok end
+    let terminate(fn: Fn t: ssa.Terminator): Ok = ssa.terminate(fn.f fn.cur t)
+    let terminated(fn: Fn): Bool = ssa.isTerminated(fn.f fn.cur)
+    let jump(fn: Fn b: Int args: Array(Int)): Ok =
+        terminate(fn option termJump of ssa.Terminator with let target = ssa.target(b args) end)
+    let null(fn: Fn): Int = emit(fn ssa.opNull noValues tPtr)
+    let toPtr(fn: Fn v: Int): Int = emit(fn ssa.opIntToPtr array of v end tPtr)
+    let toInt(fn: Fn v: Int): Int = emit(fn ssa.opPtrToInt array of v end tInt)
+
+    (* A pointer n bytes past p *)
+    let offsetPtr(fn: Fn p: Int n: Int): Int =
+        if n is 0 then p else toPtr(fn binary(fn ssa.opAdd toInt(fn p) constant(fn n))) end
+
+    (* A pointer plus a byte count held in a value *)
+    let indexPtr(fn: Fn p: Int n: Int): Int = toPtr(fn binary(fn ssa.opAdd toInt(fn p) n))
+
+    (* Whether a tuple's or an option's pointer is a proxy's: its tag bit set
+     * (docs/c-representation.md section 5.8) *)
+    let isProxy(fn: Fn p: Int): Int =
+        binary(fn ssa.opAnd toInt(fn p) constant(fn runtimeLayout.constant("QUEST_PROXY_TAG")))
+
+    let concat(a: Array(Int) b: Array(Int)): Array(Int) =
+        begin
+            let r = array of({extent a + extent b} 0)
+            for i = 0 upto {extent a - 1} do r[i] := a[i] end
+            for i = 0 upto {extent b - 1} do r[extent a + i] := b[i] end
+            r
+        end
+
+    (* The opcode extending a narrow part's byte *)
+    let extension(p: Part): ssa.Opcode =
+        if p.signed then ssa.opSext8 else ssa.opZext8 end
+
+    (* A C bool or char a callee returns, which AAPCS64 does not extend:
+     * extended *)
+    let narrowed(fn: Fn v: Int p: Part): Int = if p.width is 1 then emit(fn extension(p) array of v end tInt) else v end
+
+    (* The source site of a raise or a check, a C string, or NULL *)
+    let site(fn: Fn offset: maybe.T(Int)): Int =
+        if maybe.isNone(:Int offset) orif maybe.isNone(:location.SourceMap fn.u.unit.sourceMap) then
+            null(fn)
+        else
+            let sm = maybe.unwrap(:location.SourceMap fn.u.unit.sourceMap)
+            let pos = location.locate(sm maybe.unwrap(:Int offset))
+            symbolAt(fn stringSymbol(fn.u location.file(sm) <> ":" <> conv.int(pos.line) <> ":" <> conv.int(pos.col)))
+        end
+
+    (* =========================================================================
+     * Variables
+     * ====================================================================== *)
+
+    let isGlobal(fn: Fn v: Variable): Bool = hashMap.contains(:Int :Bool fn.u.globals v.id)
+
+    (* The address of a mutable variable's slot (made the first time) *)
+    let slotOf(fn: Fn v: Variable): Int =
+        begin
+            if not(hashMap.contains(:Int :Int fn.slots v.id)) then
+                let n = extent varParts(v)
+                put(:Int :Int fn.slots v.id ssa.newSlot(fn.f 8 * {if n is 0 then 1 else n end} 8))
+            end
+            let s = hashMap.find(:Int :Int fn.slots v.id)
+            ssa.slotAddress(fn.f fn.cur s)
+        end
+
+    let readParts(fn: Fn address: Int ps: Array(Part)): Array(Int) =
+        begin
+            let vs = array of(extent ps 0)
+            for k = 0 upto {extent ps - 1} do vs[k] := load(fn address partOffset(k) ps[k]) end
+            vs
+        end
+
+    (* A value in memory (a record's or variant's box, a global record), and a
+     * location (a cell, or what a var or out parameter points to): a record or
+     * variant as its box's pointer (layout.shapeLocationRepresentation) *)
+    let readValue(fn: Fn address: Int t: Type): Array(Int) = readParts(fn address parts(t))
+    let locationParts(t: Type): Array(Part) =
+        if layout.isBoxedInSlots(shapes.shape(t)) then array of wordPart(tPtr) end else parts(t) end
+    let readLocation(fn: Fn address: Int t: Type): Array(Int) = readParts(fn address locationParts(t))
+
+    let writeParts(fn: Fn address: Int ps: Array(Part) values: Array(Int)): Ok =
+        begin
+            if extent ps isnot extent values then
+                raise unsupported with "a store of " <> conv.int(extent values) <> " values to a location of "
+                    <> conv.int(extent ps) end
+            end
+            for k = 0 upto {extent ps - 1} do store(fn address partOffset(k) ps[k].width values[k]) end
+        end
+
+    let writeValue(fn: Fn address: Int t: Type values: Array(Int)): Ok = writeParts(fn address parts(t) values)
+    let writeLocation(fn: Fn address: Int t: Type values: Array(Int)): Ok = writeParts(fn address locationParts(t) values)
+
+    (* The values a variable holds now *)
+    let read(fn: Fn v: Variable): Array(Int) =
+        if hashMap.contains(:Int :Int fn.handlerVars v.id) then
+            array of loadWord(fn hashMap.find(:Int :Int fn.handlerVars v.id) runtimeLayout.offset("QExceptionState" "exc") tPtr) end
+        elsif hashMap.contains(:Int :Array(Int) fn.values v.id) then
+            hashMap.find(:Int :Array(Int) fn.values v.id)
+        elsif hashMap.contains(:Int :Int fn.pointers v.id) then
+            readParts(fn hashMap.find(:Int :Int fn.pointers v.id) locationParts(v.type))
+        elsif isGlobal(fn v) then
+            readParts(fn symbolAt(fn globalSymbol(fn.u v)) varParts(v))
+        elsif hashMap.contains(:Int :Int fn.slots v.id) then
+            readParts(fn slotOf(fn v) varParts(v))
+        else
+            raise unsupported with "a use of variable " <> v.hint <> " (" <> conv.int(v.id)
+                <> "), which nothing binds" end
+        end
+
+    (* Binds or assigns a variable *)
+    let write(fn: Fn v: Variable values: Array(Int)): Ok =
+        if hashMap.contains(:Int :Int fn.pointers v.id) then
+            writeParts(fn hashMap.find(:Int :Int fn.pointers v.id) locationParts(v.type) values)
+        elsif isGlobal(fn v) then
+            writeParts(fn symbolAt(fn globalSymbol(fn.u v)) varParts(v) values)
+        elsif v.isMutable orif hashMap.contains(:Int :Int fn.slots v.id) then
+            writeParts(fn slotOf(fn v) varParts(v) values)
+        else
+            put(:Int :Array(Int) fn.values v.id values)
+        end
+
+    (* =========================================================================
+     * Atoms
+     * ====================================================================== *)
+
+    let realBitsOf(r: Real): Int = word.toInt(word.fromReal(r))
+
+    let constValues(fn: Fn c: ir.Const): Array(Int) =
+        case c.value
+            when constOk then noValues
+            when constBool with x then array of constant(fn {if x.b then 1 else 0 end}) end
+            when constInt with x then array of constant(fn x.n) end
+            (* A QChar, unsigned (arm64.md section 10, hazard 4) *)
+            when constChar with x then array of constant(fn ascii.val(x.c)) end
+            when constReal with x then
+                array of ssa.realConstant(fn.f fn.cur realBitsOf(x.r)) end
+            when constString with x then
+                let literal = symbolAt(fn stringSymbol(fn.u x.s))
+                array of call1(fn "quest_string_new" array of literal constant(fn stringOp.length(x.s)) end tPtr) end
+        end
+
+    (* An atom's values. A boxed mutable variable (or var parameter) holds its
+     * location's box, and its value is the box's record or variant. *)
+    let atom(fn: Fn a: Atom): Array(Int) =
+        case a
+            when atomConst with x then constValues(fn x.c)
+            when atomVar with x then
+                let vs = read(fn x.v)
+                if x.v.boxed andif {x.v.isMutable orif hashMap.contains(:Int :Int fn.pointers x.v.id)} then
+                    readValue(fn vs[0] x.v.type)
+                else
+                    vs
+                end
+        end
+
+    (* An atom of one value *)
+    let atom1(fn: Fn a: Atom): Int =
+        begin
+            let vs = atom(fn a)
+            if extent vs isnot 1 then raise unsupported with "an atom of " <> conv.int(extent vs) <> " values" end end
+            vs[0]
+        end
+
+    let atoms(fn: Fn xs: Array(Atom)): Array(Int) =
+        begin
+            let var r = noValues
+            for i = 0 upto {extent xs - 1} do r := concat(r atom(fn xs[i])) end
+            r
+        end
+
+    (* A call's arguments: an Ok, which has no values, is a QVal word in C,
+     * and the function's parameter is one (function, below) *)
+    let callAtoms(fn: Fn xs: Array(Atom)): Array(Int) =
+        begin
+            let var r = noValues
+            for i = 0 upto {extent xs - 1} do
+                let vs = atom(fn xs[i])
+                r := concat(r if extent vs is 0 then array of constant(fn 0) end else vs end)
+            end
+            r
+        end
+
+    (* =========================================================================
+     * Values as QVal words (layout.wordForm)
+     * ====================================================================== *)
+
+    let toWord(fn: Fn vs: Array(Int) t: Type): Int =
+        case layout.wordForm(shapes.shape(t))
+            when wordItself then vs[0]
+            when wordOk then constant(fn 0)
+            when wordRecordBox then toInt(fn call1(fn "quest_record_box" vs tPtr))
+            when wordVariantBox then toInt(fn call1(fn "quest_variant_box" vs tPtr))
+            when wordBits then vs[0]
+            when wordInteger then vs[0]
+            when wordReal then emit(fn ssa.opRealBits array of vs[0] end tInt)
+            when wordPointer then toInt(fn vs[0])
+        end
+
+    let fromWord(fn: Fn w: Int t: Type): Array(Int) =
+        case layout.wordForm(shapes.shape(t))
+            when wordItself then array of w end
+            when wordOk then noValues
+            when wordRecordBox then readValue(fn toPtr(fn w) t)
+            when wordVariantBox then readValue(fn toPtr(fn w) t)
+            when wordBits then array of w end
+            when wordInteger then
+                let ps = parts(t)
+                (* A Bool or a Char from a word's low byte, as C converts *)
+                if ps[0].width is 1 then
+                    array of emit(fn extension(ps[0]) array of w end tInt) end
+                else
+                    array of w end
+                end
+            when wordReal then array of emit(fn ssa.opBitsReal array of w end tReal) end
+            when wordPointer then array of toPtr(fn w) end
+        end
+
+    (* The names of IR operations and statements, for what the builder does
+     * not build yet *)
+    let opName(o: ir.Op): String =
+        case o
+            when opAtom then "atom"
+            when opPrim then "prim"
+            when opCall then "call"
+            when opTypeApp then "typeApp"
+            when opModuleMember then "moduleMember"
+            when opBuiltin then "builtin"
+            when opExternal then "external"
+            when opCallExternal then "callExternal"
+            when opMakeClosure then "makeClosure"
+            when opEnvField then "envField"
+            when opConvert then "convert"
+            when opMakeTuple then "makeTuple"
+            when opTupleField then "tupleField"
+            when opMakeRecord then "makeRecord"
+            when opRecordField then "recordField"
+            when opMakeVariant then "makeVariant"
+            when opMakeOption then "makeOption"
+            when opIsTag then "isTag"
+            when opPayload then "payload"
+            when opOrdinal then "ordinal"
+            when opMakeArray then "makeArray"
+            when opArrayRep then "arrayRep"
+            when opIndex then "index"
+            when opMakeAuto then "makeAuto"
+            when opMakeException then "makeException"
+            when opExceptionPayload then "exceptionPayload"
+            when opCaughtException then "caughtException"
+            when opAddrVar then "addrVar"
+            when opAddrCell then "addrCell"
+            when opAddrField then "addrField"
+            when opAddrComponent then "addrComponent"
+            when opAddrElement then "addrElement"
+            when opLoad then "load"
+        end
+
+    let statementName(s: ir.Stmt): String =
+        case s
+            when sLet then "let"
+            when sVarDecl then "varDecl"
+            when sAssign then "assign"
+            when sStoreAt then "storeAt"
+            when sStoreField then "storeField"
+            when sStoreComponent then "storeComponent"
+            when sStoreElement then "storeElement"
+            when sDo then "do"
+            when sFuns then "funs"
+            when sLetRec then "letRec"
+            when sIf then "if"
+            when sSwitch then "switch"
+            when sInspect then "inspect"
+            when sLoop then "loop"
+            when sTry then "try"
+            when sJoin then "join"
+            when sEcho then "echo"
+            when sEchoText then "echoText"
+            when sReturn then "return"
+            when sJump then "jump"
+            when sBreak then "break"
+            when sContinue then "continue"
+            when sRaise then "raise"
+            when sReraise then "reraise"
+            when sUnreachable then "unreachable"
+        end
+
+    (* =========================================================================
+     * Proxies
+     * ====================================================================== *)
+
+    (* A pointer with a proxy's tag bit cleared: the object it views is its
+     * original (quest_unproxy) *)
+    let unproxy(fn: Fn p: Int): Int =
+        begin
+            let original = call1(fn "quest_unproxy" array of p end tPtr)
+            original
+        end
+
+    (* =========================================================================
+     * Slots, and aggregates' components (docs/arm64.md section 7.2)
+     * ====================================================================== *)
+
+    (* The values of a slot at an address (its slot form: a record or variant
+     * as its box's pointer) *)
+    let readSlot(fn: Fn address: Int t: Type): Array(Int) = readParts(fn address slotParts(t))
+    let writeSlot(fn: Fn address: Int t: Type values: Array(Int)): Ok = writeParts(fn address slotParts(t) values)
+
+    (* A slot's contents as a QVal word, and back (shapeSlotToQval and
+     * shapeQvalToSlot): a box is its pointer's word *)
+    let slotToWord(fn: Fn vs: Array(Int) t: Type): Int =
+        if layout.isBoxedInSlots(shapes.shape(t)) then toInt(fn vs[0]) else toWord(fn vs t) end
+    let slotFromWord(fn: Fn w: Int t: Type): Array(Int) =
+        if layout.isBoxedInSlots(shapes.shape(t)) then array of toPtr(fn w) end else fromWord(fn w t) end
+
+    (* A record or variant into a new box, and out of its box *)
+    let boxed(fn: Fn vs: Array(Int) t: Type): Array(Int) =
+        begin
+            let helper = case layout.representationKind(t)
+                when repRecord then "quest_record_box"
+                (* Records and variants alone are boxed (isBoxedInSlots) *)
+                when repVariant, repVoid, repInt, repWord, repBool, repChar, repReal, repPointer, repQVal then
+                    "quest_variant_box"
+            end
+            array of call1(fn helper vs tPtr) end
+        end
+    let unboxed(fn: Fn vs: Array(Int) t: Type): Array(Int) = readValue(fn vs[0] t)
+
+    (* The index of a case of a variant or option shape (0 if it has none of
+     * that name), as tags number them *)
+    let tagIndex(s: shapes.Shape tag: String): Int =
+        begin
+            let var index = 0
+            for i = 0 upto {extent s.cases - 1} do
+                if eq(maybe.unwrapOr(:String s.cases[i].name "") tag) then index := i end
+            end
+            index
+        end
+
+    let heldShape(t: Type kind: shapes.ShapeKind): shapes.Shape =
+        begin
+            let h = layout.resolvedShape(shapes.shape(t))
+            if not(shapes.sameKind(h.kind kind)) then
+                raise unsupported with "a " <> shapes.kindName(kind) <> " operation on " <> model.show(t) end
+            end
+            h
+        end
+    let componentShape(s: shapes.Shape i: Int): shapes.Shape = maybe.unwrap(:shapes.Shape s.components[i].shape)
+
+    (* A value chosen by a branch: then's in one block, otherwise's in another,
+     * merged into a block of parameters of the types *)
+    let choose(fn: Fn cond: Int types: Array(ssa.Type) yes: All() Array(Int) no: All() Array(Int)): Array(Int) =
+        begin
+            let thenB = ssa.newBlock(fn.f)
+            let elseB = ssa.newBlock(fn.f)
+            let merged = ssa.newBlock(fn.f)
+            let results = array of(extent types 0)
+            for i = 0 upto {extent types - 1} do results[i] := ssa.addParam(fn.f merged types[i]) end
+            terminate(fn option termBranch of ssa.Terminator with
+                let cond = cond let ifTrue = ssa.target(thenB noValues) let ifFalse = ssa.target(elseB noValues)
+            end)
+            fn.cur := thenB
+            jump(fn merged yes())
+            fn.cur := elseB
+            jump(fn merged no())
+            fn.cur := merged
+            results
+        end
+
+    (* Component i of the tuple at t (shape ts), in its slot form, read as
+     * access says: directly, from the original of what may be a proxy, or
+     * through the proxy if it is one *)
+    let tupleComponent(fn: Fn t: Int ts: shapes.Shape i: Int access: ir.Access): Array(Int) =
+        begin
+            let comp = componentShape(ts i)
+            let offset = 8 * i
+            case access
+                when direct then readSlot(fn offsetPtr(fn t offset) comp.type)
+                when original then readSlot(fn offsetPtr(fn unproxy(fn t) offset) comp.type)
+                when proxy then
+                    choose(fn isProxy(fn t) typesOf(slotParts(comp.type))
+                        fun(): Array(Int)
+                            slotFromWord(fn call1(fn "quest_proxy_element" array of t constant(fn i) end tInt) comp.type)
+                        fun(): Array(Int) readSlot(fn offsetPtr(fn t offset) comp.type))
+            end
+        end
+
+    (* The tag of the option at o, read as access says *)
+    let optionTag(fn: Fn o: Int access: ir.Access): Int =
+        case access
+            when direct then loadWord(fn o runtimeLayout.offset("QOptionHeader" "tag") tInt)
+            when original, proxy then call1(fn "quest_option_tag" array of o end tInt)
+        end
+
+    (* The tag of a variant or option value vs of shape ts, in its numbering,
+     * or through the view map of a bounded type parameter's value *)
+    let tagOf(fn: Fn vs: Array(Int) ts: shapes.Shape access: ir.Access viewMap: maybe.T(Variable)): Int =
+        if maybe.isSome(:Variable viewMap) then
+            let vm = atom1(fn ir.atomOfVar(maybe.unwrap(:Variable viewMap)))
+            case ts.kind
+                when shapeVariant then
+                    let index = loadWord(fn vm runtimeLayout.offset("QViewMap" "index") tPtr)
+                    let scaled = binary(fn ssa.opMul vs[0] constant(fn 8))
+                    loadWord(fn indexPtr(fn index scaled) 0 tInt)
+                when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
+                    shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
+                    shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then
+                    call1(fn "quest_view_option_tag" array of vs[0] vm end tInt)
+            end
+        elsif shapes.kindIs(ts shapes.shapeVariant) then
+            vs[0]
+        else
+            optionTag(fn vs[0] access)
+        end
+
+    (* Component i (~1: the payload, when it is not a tuple) of case tag's
+     * payload of the option at o, in its slot form, read as access says *)
+    let optionComponent(fn: Fn o: Int os: shapes.Shape tag: String i: Int access: ir.Access): Array(Int) =
+        begin
+            let cs = maybe.unwrap(:shapes.Shape maybe.unwrap(:shapes.Component shapes.caseOf(os tag)).shape)
+            let comp = if i < 0 then cs else componentShape(cs i) end
+            let offset = 8 + 8 * {if i < 0 then 0 else i end}
+            case access
+                when direct then readSlot(fn offsetPtr(fn o offset) comp.type)
+                when original then readSlot(fn offsetPtr(fn unproxy(fn o) offset) comp.type)
+                when proxy then
+                    choose(fn isProxy(fn o) typesOf(slotParts(comp.type))
+                        fun(): Array(Int) slotFromWord(fn
+                            call1(fn "quest_proxy_option_element" array of o constant(fn {if i < 0 then 0 else i end}) end tInt)
+                            comp.type)
+                        fun(): Array(Int) readSlot(fn offsetPtr(fn o offset) comp.type))
+            end
+        end
+
+    (* A new object of n bytes, zeroed by the collector *)
+    let alloc(fn: Fn bytes: Int): Int = call1(fn "quest_alloc" array of constant(fn bytes) end tPtr)
+
+    (* Stores an aggregate's fields: each its atom's slot form, or for one the
+     * represent pass embedded, a fresh box in the aggregate's allocation after
+     * its struct (at boxes, 16 bytes each), holding the record or variant *)
+    let storeFields(fn: Fn base: Int offsets: Array(Int) args: Array(Atom) types: Array(Type) embedded: Array(Int)
+        boxes: Int): Ok =
+        begin
+            let var k = 0
+            for i = 0 upto {extent args - 1} do
+                let var isEmbedded = false
+                for j = 0 upto {extent embedded - 1} do if embedded[j] is i then isEmbedded := true end end
+                let vs = atom(fn args[i])
+                if isEmbedded then
+                    let box = offsetPtr(fn base boxes + 16 * k)
+                    writeValue(fn box types[i] vs)
+                    store(fn base offsets[i] 8 box)
+                    k := k + 1
+                else
+                    writeSlot(fn offsetPtr(fn base offsets[i]) types[i] vs)
+                end
+            end
+        end
+
+    let embeddedCount(args: Array(Atom) embedded: Array(Int)): Int =
+        begin
+            let var n = 0
+            for i = 0 upto {extent args - 1} do
+                for j = 0 upto {extent embedded - 1} do if embedded[j] is i then n := n + 1 end end
+            end
+            n
+        end
+
+    let makeTuple(fn: Fn x: ir.OpMakeTuple t: Type): Array(Int) =
+        begin
+            let rs = shapes.shape(t)
+            let n = extent rs.components
+            let structBytes = 8 * {if n is 0 then 1 else n end}
+            let tup = alloc(fn structBytes + 16 * embeddedCount(x.args x.embedded))
+            let offsets = array of(extent x.args 0)
+            let types = array of(extent x.args model.okType)
+            for i = 0 upto {extent x.args - 1} do
+                offsets[i] := 8 * i
+                types[i] := if i < n then componentShape(rs i).type else ir.atomType(x.args[i]) end
+            end
+            storeFields(fn tup offsets x.args types x.embedded structBytes)
+            array of tup end
+        end
+
+    (* An imported module's member, from its record: the field's offset in the
+     * record's payload is in the record's offset table, at the field's index in
+     * name order *)
+    let sortBefore(a: String b: String): Bool = sort.stringCompare(a b) < 0
+
+    let importedMember(fn: Fn imp: ir.Import member: String): Array(Int) =
+        begin
+            let clean = symbols.mangleModuleName(imp.canonicalPath)
+            let recordAt = symbolAt(fn symbols.moduleRecordIdent(clean))
+            if maybe.isNone(:Type imp.recordType) then raise unsupported with "module " <> imp.name
+                <> ": its interface is unknown" end end
+            let recType = maybe.unwrap(:Type imp.recordType)
+            let fields = case recType.form
+                when typeRecord with rt then rt.fields
+                else vector.toArray(:model.RecordField vector.new(:model.RecordField))
+            end
+            let var fieldType = model.okType
+            let var index = 0
+            for i = 0 upto {extent fields - 1} do
+                if eq(fields[i].name member) then fieldType := fields[i].type end
+                if sortBefore(fields[i].name member) then index := index + 1 end
+            end
+            let val = loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") tPtr)
+            let dict = loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") tPtr)
+            let offset = loadWord(fn dict 8 * index tInt)
+            readSlot(fn indexPtr(fn val offset) fieldType)
+        end
+
+    let moduleMember(fn: Fn r: ir.ModuleRef member: maybe.T(String)): Array(Int) =
+        case r
+            when refModule with x then
+                if maybe.isNone(:String member) then
+                    let recordAt = symbolAt(fn symbols.moduleRecordIdent(symbols.mangleModuleName(x.m.name)))
+                    array of
+                        loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") tPtr)
+                        loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") tPtr)
+                    end
+                else
+                    read(fn maybe.unwrap(:Variable ir.member(x.m.members maybe.unwrap(:String member))))
+                end
+            when refImport with x then
+                if maybe.isNone(:String member) then
+                    let recordAt = symbolAt(fn symbols.moduleRecordIdent(symbols.mangleModuleName(x.i.canonicalPath)))
+                    array of
+                        loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "val") tPtr)
+                        loadWord(fn recordAt runtimeLayout.offset("QRecordVal" "dict") tPtr)
+                    end
+                else
+                    importedMember(fn x.i maybe.unwrap(:String member))
+                end
+        end
+
+    (* =========================================================================
+     * Functions being built
+     * ====================================================================== *)
+
+    let newFn(u: UnitBuilder f: Function closure: maybe.T(ir.OpMakeClosure)): Fn =
+        tuple
+            let u = u let f = f let var cur = 0
+            let values = hashMap.new(:Int :Array(Int) intEqual hash.int)
+            let slots = hashMap.new(:Int :Int intEqual hash.int)
+            let pointers = hashMap.new(:Int :Int intEqual hash.int)
+            let joins = hashMap.new(:String :Int eq hash.string)
+            let loops = hashMap.new(:String :LoopTargets eq hash.string)
+            let closure = closure
+            let var deferred = maybe.none(:Deferred)
+            let handlers = vector.new(:Int)
+            let labelDepth = hashMap.new(:String :Int eq hash.string)
+            let handlerVars = hashMap.new(:Int :Int intEqual hash.int)
+        end
+
+    (* Finishes a function: blocks nothing reaches the end of end in
+     * unreachable, and blocks the entry does not reach are dropped, the rest
+     * renumbered in order *)
+    let finish(fn: Fn): Ok =
+        begin
+            let f = fn.f
+            let n = vector.length(:ssa.Block f.blocks)
+            for b = 0 upto {n - 1} do
+                if not(ssa.isTerminated(f b)) then ssa.terminate(f b ssa.termUnreachable) end
+            end
+            let reached = array of(n false)
+            let work = vector.new(:Int)
+            reached[0] := true
+            vector.append(:Int work 0)
+            while not(vector.empty(:Int work)) do
+                let b = vector.pop(:Int work)
+                let succs = ssa.successors(ssa.block(f b).term)
+                for k = 0 upto {extent succs - 1} do
+                    if not(reached[succs[k]]) then
+                        reached[succs[k]] := true
+                        vector.append(:Int work succs[k])
+                    end
+                end
+            end
+            let number = array of(n ~1)
+            let kept = vector.new(:ssa.Block)
+            for b = 0 upto {n - 1} do
+                if reached[b] then
+                    number[b] := vector.length(:ssa.Block kept)
+                    vector.append(:ssa.Block kept ssa.block(f b))
+                end
+            end
+            let renumber(t: ssa.Target): ssa.Target = ssa.target(number[t.block] t.args)
+            for b = 0 upto {vector.length(:ssa.Block kept) - 1} do
+                let blk = vector.get(:ssa.Block kept b)
+                blk.term := case blk.term
+                    when termJump with x then option termJump of ssa.Terminator with let target = renumber(x.target) end
+                    when termBranch with x then option termBranch of ssa.Terminator with
+                        let cond = x.cond let ifTrue = renumber(x.ifTrue) let ifFalse = renumber(x.ifFalse)
+                    end
+                    when termSwitch with x then
+                        let targets = array of(extent x.targets ssa.target(0 noValues))
+                        for k = 0 upto {extent x.targets - 1} do targets[k] := renumber(x.targets[k]) end
+                        option termSwitch of ssa.Terminator with
+                            let value = x.value let cases = x.cases let targets = targets let default = renumber(x.default)
+                        end
+                    when termTry with x then option termTry of ssa.Terminator with
+                        let slot = x.slot let body = renumber(x.body) let handler = number[x.handler]
+                    end
+                    when termNone, termReturn, termTailCall, termUnreachable then blk.term
+                end
+            end
+            vector.clear(:ssa.Block f.blocks)
+            for b = 0 upto {vector.length(:ssa.Block kept) - 1} do vector.append(:ssa.Block f.blocks vector.get(:ssa.Block kept b)) end
+        end
+end

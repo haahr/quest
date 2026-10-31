@@ -1,0 +1,198 @@
+(* Quest Self-Hosted Compiler: The SSA Builder's Calls Implementation *)
+
+module calls : Calls
+import
+    questlang/types/model : questlang/types/Model
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/shapes : questlang/ir/Shapes
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/layout : questlang/codegen/Layout
+    questlang/codegen/symbols : questlang/codegen/Symbols
+    questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    vals = questlang/ssa/build/values : questlang/ssa/build/Values
+    descriptors = questlang/ssa/build/descriptors : questlang/ssa/build/Descriptors
+export
+    Let Type = model.Type
+    Let Variable = ir.Variable
+    Let Atom = ir.Atom
+
+    (* =========================================================================
+     * Primitives
+     * ====================================================================== *)
+
+    let prim(fn: vals.Fn o: ir.OpPrim): Array(Int) =
+        begin
+            let x(): Int = vals.atom1(fn o.args[0])
+            let y(): Int = vals.atom1(fn o.args[1])
+            let arith(op: ssa.Opcode): Array(Int) = array of vals.binary(fn op x() y()) end
+            let checked(helper: String t: ssa.Type): Array(Int) =
+                array of vals.call1(fn helper array of x() y() vals.site(fn o.offset) end t) end
+            (* is, or with isIs false, isnot *)
+            let identity(isIs: Bool): Array(Int) =
+                begin
+                    let first = o.args[0]
+                    let same = if layout.isQVal(shapes.shape(ir.atomType(first))) then
+                        let args = array of descriptors.maybeDescriptor(fn o.descriptor) vals.atom1(fn o.args[0]) vals.atom1(fn o.args[1]) end
+                        vals.narrowed(fn vals.call1(fn "quest_val_is" args vals.tInt) vals.part(vals.tInt 1 false))
+                    else
+                        let a = vals.atom(fn o.args[0])
+                        let b = vals.atom(fn o.args[1])
+                        if extent a isnot 1 then
+                            raise vals.unsupported with "is of a value of "
+                                <> layout.representation(ir.atomType(first)) end
+                        end
+                        case ssa.typeOf(fn.f a[0])
+                            when typePtr then
+                                case o.access
+                                    when original then vals.binary(fn ssa.opPeq vals.unproxy(fn a[0]) vals.unproxy(fn b[0]))
+                                    when direct, proxy then vals.binary(fn ssa.opPeq a[0] b[0])
+                                end
+                            when typeReal then vals.binary(fn ssa.opFeq a[0] b[0])
+                            when typeInt then vals.binary(fn ssa.opEq a[0] b[0])
+                        end
+                    end
+                    array of if isIs then same else vals.binary(fn ssa.opXor same vals.constant(fn 1)) end end
+                end
+            case o.op
+                when primNot then array of vals.binary(fn ssa.opXor x() vals.constant(fn 1)) end
+                when primExtent then array of vals.loadWord(fn x() runtimeLayout.offset("QArray" "length") vals.tInt) end
+                when primDiv then checked("quest_int_div_at" vals.tInt)
+                when primRem, primMod then checked("quest_int_mod_at" vals.tInt)
+                when primRealAdd then checked("quest_real_add_at" vals.tReal)
+                when primRealSub then checked("quest_real_sub_at" vals.tReal)
+                when primRealMul then checked("quest_real_mul_at" vals.tReal)
+                when primRealDiv then checked("quest_real_divide_at" vals.tReal)
+                when primRealPow then checked("quest_real_pow_at" vals.tReal)
+                when primConcat then array of vals.call1(fn "quest_string_concat" array of x() y() end vals.tPtr) end
+                when primIs then identity(true)
+                when primIsnot then identity(false)
+                when primAdd then arith(ssa.opAdd)
+                when primSub then arith(ssa.opSub)
+                when primMul then arith(ssa.opMul)
+                when primLt then arith(ssa.opLt)
+                when primLe then arith(ssa.opLe)
+                when primGt then arith(ssa.opGt)
+                when primGe then arith(ssa.opGe)
+                when primRealLt then arith(ssa.opFlt)
+                when primRealLe then arith(ssa.opFle)
+                when primRealGt then arith(ssa.opFgt)
+                when primRealGe then arith(ssa.opFge)
+                when primAnd then arith(ssa.opAnd)
+                when primOr then arith(ssa.opOr)
+            end
+        end
+
+    (* =========================================================================
+     * Calls
+     * ====================================================================== *)
+
+    (* The C signature's results of a function type's result *)
+    let resultParts(t: Type): Array(vals.Part) =
+        begin
+            let var s = shapes.shape(t)
+            while shapes.kindIs(s shapes.shapeAll) do s := shapes.body(s) end
+            if shapes.kindIs(s shapes.shapeFun) then vals.parts(shapes.result(s).type) else vals.parts(s.type) end
+        end
+
+    let resultsOf(fn: vals.Fn ps: Array(vals.Part) results: Array(Int)): Array(Int) =
+        begin
+            let r = array of(extent results 0)
+            for i = 0 upto {extent results - 1} do r[i] := vals.narrowed(fn results[i] ps[i]) end
+            r
+        end
+
+    (* Where each 16-byte composite starts among a call's arguments, from the
+     * IR atoms that make them (after leading words) *)
+    let pairsOf(lead: Int args: Array(Atom)): Array(Int) =
+        begin
+            let starts = vector.new(:Int)
+            let var at = lead
+            for i = 0 upto {extent args - 1} do
+                let n = extent vals.parts(ir.atomType(args[i]))
+                if n is 2 then vector.append(:Int starts at) end
+                at := at + {if n is 0 then 1 else n end}
+            end
+            vector.toArray(:Int starts)
+        end
+
+    (* Which of a call's arguments C passes as one byte, from the IR atoms
+     * that make them (after leading words) *)
+    let narrowOf(lead: Int args: Array(Atom)): Array(Int) =
+        begin
+            let found = vector.new(:Int)
+            let var at = lead
+            for i = 0 upto {extent args - 1} do
+                let ps = vals.parts(ir.atomType(args[i]))
+                if {extent ps is 1} andif {ps[0].width is 1} then vector.append(:Int found at) end
+                at := at + {if extent ps is 0 then 1 else extent ps end}
+            end
+            vector.toArray(:Int found)
+        end
+
+    let directCall(fn: vals.Fn symbol: String lead: Array(Int) args: Array(Atom) resultType: Type): Array(Int) =
+        begin
+            let ps = resultParts(resultType)
+            let vs = ssa.call(fn.f fn.cur symbol vals.concat(lead vals.callAtoms(fn args))
+                vals.passing(pairsOf(extent lead args) narrowOf(extent lead args)) vals.typesOf(ps))
+            resultsOf(fn ps vs)
+        end
+
+    let calleeResultType(t: Type): Type = t
+
+    (* A call of the closure the variable holds: its function directly, when
+     * the variable is bound to a closure of one of the unit's functions, or
+     * through its function pointer *)
+    let rec callClosure(fn: vals.Fn callee: Variable descs: Array(Int) args: Array(Atom)): Array(Int) =
+        begin
+            let known = hashMap.get(:Int :ir.OpMakeClosure fn.u.closureVars callee.id)
+            if maybe.isSome(:ir.OpMakeClosure known)
+                andif {extent maybe.unwrap(:ir.OpMakeClosure known).typeArgs is 0} then
+                let k = maybe.unwrap(:ir.OpMakeClosure known)
+                let env = if extent k.captures is 0 then vals.null(fn)
+                    else vals.loadWord(fn vals.atom1(fn ir.atomOfVar(callee)) runtimeLayout.offset("QClosure" "env") vals.tPtr)
+                end
+                directCall(fn vals.codeName(fn.u k.code) vals.concat(array of env end descs) args callee.type)
+            else
+                indirectCall(fn callee descs args)
+            end
+        end
+
+    and indirectCall(fn: vals.Fn callee: Variable descs: Array(Int) args: Array(Atom)): Array(Int) =
+        begin
+            let clos = vals.atom1(fn ir.atomOfVar(callee))
+            let fnPtr = vals.loadWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
+            let env = vals.loadWord(fn clos runtimeLayout.offset("QClosure" "env") vals.tPtr)
+            let ps = resultParts(callee.type)
+            let all = vals.concat(vals.concat(array of fnPtr env end descs) vals.callAtoms(fn args))
+            let p = vals.passing(pairsOf({2 + extent descs} args) narrowOf({2 + extent descs} args))
+            let vs = ssa.call(fn.f fn.cur "" all p vals.typesOf(ps))
+            resultsOf(fn ps vs)
+        end
+
+    let moduleOf(r: ir.ModuleRef): maybe.T(ir.Module) =
+        case r when refModule with x then maybe.some(:ir.Module x.m) else maybe.none(:ir.Module) end
+    let importOf(r: ir.ModuleRef): maybe.T(ir.Import) =
+        case r when refImport with x then maybe.some(:ir.Import x.i) else maybe.none(:ir.Import) end
+
+    let callOp(fn: vals.Fn o: ir.OpCall): Array(Int) =
+        begin
+            let descs = descriptors.descriptors(fn o.descriptors)
+            if maybe.isNone(:Variable o.callee) then
+                let r = maybe.unwrap(:ir.ModuleRef o.moduleRef)
+                let member = maybe.unwrap(:String o.member)
+                if maybe.isSome(:ir.Module moduleOf(r)) then
+                    let v = maybe.unwrap(:Variable ir.member(maybe.unwrap(:ir.Module moduleOf(r)).members member))
+                    callClosure(fn v descs o.args)
+                else
+                    let clean = symbols.mangleModuleName(maybe.unwrap(:ir.Import importOf(r)).canonicalPath)
+                    let calleeType = maybe.unwrapOr(:Type o.calleeType model.okType)
+                    directCall(fn symbols.mangleModuleIdent(clean member) descs o.args calleeType)
+                end
+            else
+                callClosure(fn maybe.unwrap(:Variable o.callee) descs o.args)
+            end
+        end
+end

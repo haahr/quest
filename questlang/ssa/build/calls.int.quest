@@ -1,0 +1,26 @@
+(* Quest Self-Hosted Compiler: The SSA Builder's Calls Interface
+ *
+ * Primitive operations, and calls: of a unit's own function or an imported
+ * one directly, and of a closure, with its environment and the callee's
+ * descriptors, passing arguments as C does. *)
+
+interface Calls
+import
+    questlang/types/model : questlang/types/Model
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    vals = questlang/ssa/build/values : questlang/ssa/build/Values
+export
+    Def Type = model.Type
+    Def Atom = ir.Atom
+
+    prim(fn: vals.Fn o: ir.OpPrim): Array(Int)
+
+    (* The C signature's results of a function type's result *)
+    resultParts(t: Type): Array(vals.Part)
+    resultsOf(fn: vals.Fn ps: Array(vals.Part) results: Array(Int)): Array(Int)
+    (* Where each 16-byte composite starts among a call's arguments, from the
+     * IR atoms that make them (after leading words) *)
+    pairsOf(lead: Int args: Array(Atom)): Array(Int)
+    callOp(fn: vals.Fn o: ir.OpCall): Array(Int)
+end

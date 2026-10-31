@@ -1,0 +1,54 @@
+(* Quest Self-Hosted Compiler: The SSA Builder's Aggregates Interface
+ *
+ * Conversions between representations (the represent pass's plans), records,
+ * variants and options, arrays, and type applications that are not thunks. *)
+
+interface Aggregates
+import
+    questlang/types/model : questlang/types/Model
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/shapes : questlang/ir/Shapes
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    util/maybe : util/Maybe
+    vals = questlang/ssa/build/values : questlang/ssa/build/Values
+export
+    Def Type = model.Type
+    Def Variable = ir.Variable
+    Def Atom = ir.Atom
+
+    (* Conversions (the represent pass's plans, nodes.Plan) *)
+    convert(fn: vals.Fn vs: Array(Int) plan: ir.Plan): Array(Int)
+    (* The address of a record's field's slot (the record vs, of shape rs):
+     * through its offset table, or for a bounded type parameter's value, the
+     * view map of its type argument at the bound *)
+    recordSlot(fn: vals.Fn vs: Array(Int) rs: shapes.Shape field: String viewMap: maybe.T(Variable)): Int
+    fieldShape(rs: shapes.Shape field: String): shapes.Shape
+    recordField(fn: vals.Fn vs: Array(Int) rs: shapes.Shape o: ir.OpRecordField): Array(Int)
+    makeRecord(fn: vals.Fn o: ir.OpMakeRecord result: Variable): Array(Int)
+
+    (* Variants and options *)
+    caseShape(s: shapes.Shape tag: String): maybe.T(shapes.Shape)
+    tagShape(t: Type): shapes.Shape
+    (* A value mapped through a small table, as a switch: table[v], or v when
+     * the table is the identity *)
+    mapped(fn: vals.Fn v: Int table: Array(Int)): Int
+    makeOption(fn: vals.Fn o: ir.OpMakeOption t: Type): Array(Int)
+    (* The payload of an option's case, a tuple, which a case's binder shares:
+     * the option's own, after its tag, or through a proxy, the original's *)
+    optionCasePayload(fn: vals.Fn opt: Int tagAccess: ir.Access access: Array(ir.Access)): Int
+    (* The payload of case tag of a variant or option vs held at its own view,
+     * read through the view map vm of its type argument at the bound ts and
+     * converted to the bound's type for it, as a value of type t: a variant's
+     * payload, an option's one component, or a new tuple of an option's case
+     * components (after its ordinal, when t has one more component than the
+     * case) *)
+    viewPayload(fn: vals.Fn vs: Array(Int) ts: shapes.Shape tag: String vm: Int t: Type): Array(Int)
+    payload(fn: vals.Fn o: ir.OpPayload t: Type): Array(Int)
+
+    (* Arrays *)
+    elementShape(a: Atom): shapes.Shape
+    (* The address of an array's element, after its bounds check *)
+    elementAddress(fn: vals.Fn arr: Int idx: Int offset: maybe.T(Int)): Int
+    makeArray(fn: vals.Fn args: Array(Atom) t: Type): Array(Int)
+    typeApp(fn: vals.Fn o: ir.OpTypeApp result: Variable): Array(Int)
+end

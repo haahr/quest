@@ -1,0 +1,216 @@
+(* Quest Self-Hosted Compiler: The SSA Builder's Values Interface
+ *
+ * The builder's foundation (docs/ssa.md, docs/arm64.md section 3.2): how a
+ * value's representation is SSA values (its parts), the unit's and each
+ * function's builder state, emitting instructions, variables (bound to
+ * values, slots, locations, globals, or handlers' state), atoms, values as
+ * QVal words and slots, aggregates' components read as the represent pass
+ * says, and starting and finishing a function. *)
+
+interface Values
+import
+    questlang/types/model : questlang/types/Model
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/shapes : questlang/ir/Shapes
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/layout : questlang/codegen/Layout
+    questlang/codegen/staticdata : questlang/codegen/StaticData
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    Def Type = model.Type
+    Def Variable = ir.Variable
+    Def Atom = ir.Atom
+    Def Function = ssa.Function
+
+    unsupported: Exception(String)
+    intEqual(a: Int b: Int): Bool
+    eq(a: String b: String): Bool
+    put(K::TYPE V::TYPE m: hashMap.T(K V) k: K v: V): Ok
+    tInt: ssa.Type
+    tPtr: ssa.Type
+    tReal: ssa.Type
+    noValues: Array(Int)
+    (* How a call passes its arguments: with 16-byte composites starting at
+     * pairs and narrow arguments at narrow; with one starting at the first *)
+    passing(pairs: Array(Int) narrow: Array(Int)): ssa.Passing
+    firstPair: ssa.Passing
+    noValuesTypes: Array(ssa.Type)
+
+    (* Representations as SSA values *)
+    (* A word of a value's representation: its SSA type, and how it is stored
+     * (its width in bytes, and for a narrow one, whether it is signed) *)
+    Def Part = Tuple type: ssa.Type width: Int signed: Bool end
+    part(t: ssa.Type width: Int signed: Bool): Part
+    (* The parts of a value of t, as a variable holds it (layout.representation):
+     * none for Ok, two for a record or a variant, a byte for a Bool or a Char
+     * stored, and otherwise a word *)
+    parts(t: Type): Array(Part)
+    (* Whether a value of shape s is a QVal in a slot (an Ok's is too) *)
+    slotIsQVal(s: shapes.Shape): Bool
+    (* The parts of a variable's value: a boxed variable (a record or a variant
+     * the represent pass holds in its box) holds the box's pointer *)
+    varParts(v: Variable): Array(Part)
+    typesOf(ps: Array(Part)): Array(ssa.Type)
+
+    (* The unit's builder and each function's *)
+    Def UnitBuilder = Tuple
+        unit: ir.Unit
+        built: ssa.Unit
+        globals: hashMap.T(Int Bool)
+        (* The symbols of the unit's global variables and functions, by id *)
+        globalSymbols: hashMap.T(Int String)
+        codeNames: hashMap.T(Int String)
+        usedNames: hashMap.T(String Bool)
+        (* The closure each lifted function is made by, by function id, and
+         * the closures variables are bound to, by variable id *)
+        closuresOf: hashMap.T(Int ir.OpMakeClosure)
+        closureVars: hashMap.T(Int ir.OpMakeClosure)
+        (* String literals, as symbols *)
+        strings: hashMap.T(String String)
+        var stringCount: Int
+        (* Names records and their offset tables as the unit's static data
+         * does *)
+        naming: staticdata.RecordNaming
+    end
+    Def LoopTargets = Tuple head: Int after: Int end
+    (* A capture of a variable a let rec binds, stored once the let rec's body
+     * has run: the environment, the capture's offset in it, and the atom *)
+    Def DeferredCapture = Tuple env: Int offset: Int a: Atom end
+    Def Deferred = Tuple vars: hashMap.T(Int Bool) captures: vector.T(DeferredCapture) end
+    Def Fn = Tuple
+        u: UnitBuilder
+        f: Function
+        var cur: Int
+        values: hashMap.T(Int Array(Int))
+        slots: hashMap.T(Int Int)
+        (* A var or out parameter's location *)
+        pointers: hashMap.T(Int Int)
+        joins: hashMap.T(String Int)
+        loops: hashMap.T(String LoopTargets)
+        (* The function's IR closure (its environment's layout), if it is a
+         * lifted function's *)
+        closure: maybe.T(ir.OpMakeClosure)
+        var deferred: maybe.T(Deferred)
+        (* The handler records of the trys entered, innermost last, and for
+         * each loop and join point the number entered where it is defined *)
+        handlers: vector.T(Int)
+        labelDepth: hashMap.T(String Int)
+        (* The copy of the exception state each handler's variable is, by
+         * variable id *)
+        handlerVars: hashMap.T(Int Int)
+    end
+    codeName(u: UnitBuilder f: ir.Function): String
+    globalSymbol(u: UnitBuilder v: Variable): String
+    stringSymbol(u: UnitBuilder s: String): String
+    constant(fn: Fn n: Int): Int
+    binary(fn: Fn op: ssa.Opcode x: Int y: Int): Int
+    symbolAt(fn: Fn symbol: String): Int
+    load(fn: Fn address: Int offset: Int p: Part): Int
+    loadWord(fn: Fn address: Int offset: Int t: ssa.Type): Int
+    store(fn: Fn address: Int offset: Int width: Int value: Int): Ok
+    call1(fn: Fn symbol: String args: Array(Int) t: ssa.Type): Int
+    callVoid(fn: Fn symbol: String args: Array(Int)): Ok
+    terminate(fn: Fn t: ssa.Terminator): Ok
+    terminated(fn: Fn): Bool
+    jump(fn: Fn b: Int args: Array(Int)): Ok
+    null(fn: Fn): Int
+    toInt(fn: Fn v: Int): Int
+    (* A pointer n bytes past p *)
+    offsetPtr(fn: Fn p: Int n: Int): Int
+    (* A pointer plus a byte count held in a value *)
+    indexPtr(fn: Fn p: Int n: Int): Int
+    (* Whether a tuple's or an option's pointer is a proxy's: its tag bit set
+     * (docs/c-representation.md section 5.8) *)
+    isProxy(fn: Fn p: Int): Int
+    concat(a: Array(Int) b: Array(Int)): Array(Int)
+    (* A C bool or char a callee returns, which AAPCS64 does not extend:
+     * extended *)
+    narrowed(fn: Fn v: Int p: Part): Int
+    (* The source site of a raise or a check, a C string, or NULL *)
+    site(fn: Fn offset: maybe.T(Int)): Int
+
+    (* Variables *)
+    isGlobal(fn: Fn v: Variable): Bool
+    (* The address of a mutable variable's slot (made the first time) *)
+    slotOf(fn: Fn v: Variable): Int
+    readLocation(fn: Fn address: Int t: Type): Array(Int)
+    writeValue(fn: Fn address: Int t: Type values: Array(Int)): Ok
+    writeLocation(fn: Fn address: Int t: Type values: Array(Int)): Ok
+    (* The values a variable holds now *)
+    read(fn: Fn v: Variable): Array(Int)
+    (* Binds or assigns a variable *)
+    write(fn: Fn v: Variable values: Array(Int)): Ok
+
+    (* Atoms *)
+    realBitsOf(r: Real): Int
+    (* An atom's values. A boxed mutable variable (or var parameter) holds its
+     * location's box, and its value is the box's record or variant. *)
+    atom(fn: Fn a: Atom): Array(Int)
+    (* An atom of one value *)
+    atom1(fn: Fn a: Atom): Int
+    atoms(fn: Fn xs: Array(Atom)): Array(Int)
+    (* A call's arguments: an Ok, which has no values, is a QVal word in C,
+     * and the function's parameter is one (function, below) *)
+    callAtoms(fn: Fn xs: Array(Atom)): Array(Int)
+
+    (* Values as QVal words (layout.wordForm) *)
+    toWord(fn: Fn vs: Array(Int) t: Type): Int
+    fromWord(fn: Fn w: Int t: Type): Array(Int)
+    (* The names of IR operations and statements, for what the builder does
+     * not build yet *)
+    opName(o: ir.Op): String
+    statementName(s: ir.Stmt): String
+
+    (* Proxies *)
+    (* A pointer with a proxy's tag bit cleared: the object it views is its
+     * original (quest_unproxy) *)
+    unproxy(fn: Fn p: Int): Int
+
+    (* Slots, and aggregates' components (docs/arm64.md section 7.2) *)
+    (* The values of a slot at an address (its slot form: a record or variant
+     * as its box's pointer) *)
+    readSlot(fn: Fn address: Int t: Type): Array(Int)
+    writeSlot(fn: Fn address: Int t: Type values: Array(Int)): Ok
+    (* A slot's contents as a QVal word, and back (shapeSlotToQval and
+     * shapeQvalToSlot): a box is its pointer's word *)
+    slotToWord(fn: Fn vs: Array(Int) t: Type): Int
+    slotFromWord(fn: Fn w: Int t: Type): Array(Int)
+    (* A record or variant into a new box, and out of its box *)
+    boxed(fn: Fn vs: Array(Int) t: Type): Array(Int)
+    unboxed(fn: Fn vs: Array(Int) t: Type): Array(Int)
+    (* The index of a case of a variant or option shape (0 if it has none of
+     * that name), as tags number them *)
+    tagIndex(s: shapes.Shape tag: String): Int
+    heldShape(t: Type kind: shapes.ShapeKind): shapes.Shape
+    componentShape(s: shapes.Shape i: Int): shapes.Shape
+    (* A value chosen by a branch: then's in one block, otherwise's in another,
+     * merged into a block of parameters of the types *)
+    choose(fn: Fn cond: Int types: Array(ssa.Type) yes: All() Array(Int) no: All() Array(Int)): Array(Int)
+    (* Component i of the tuple at t (shape ts), in its slot form, read as
+     * access says: directly, from the original of what may be a proxy, or
+     * through the proxy if it is one *)
+    tupleComponent(fn: Fn t: Int ts: shapes.Shape i: Int access: ir.Access): Array(Int)
+    (* The tag of a variant or option value vs of shape ts, in its numbering,
+     * or through the view map of a bounded type parameter's value *)
+    tagOf(fn: Fn vs: Array(Int) ts: shapes.Shape access: ir.Access viewMap: maybe.T(Variable)): Int
+    (* Component i (~1: the payload, when it is not a tuple) of case tag's
+     * payload of the option at o, in its slot form, read as access says *)
+    optionComponent(fn: Fn o: Int os: shapes.Shape tag: String i: Int access: ir.Access): Array(Int)
+    (* A new object of n bytes, zeroed by the collector *)
+    alloc(fn: Fn bytes: Int): Int
+    (* Stores an aggregate's fields: each its atom's slot form, or for one the
+     * represent pass embedded, a fresh box in the aggregate's allocation after
+     * its struct (at boxes, 16 bytes each), holding the record or variant *)
+    storeFields(fn: Fn base: Int offsets: Array(Int) args: Array(Atom) types: Array(Type) embedded: Array(Int) boxes: Int): Ok
+    makeTuple(fn: Fn x: ir.OpMakeTuple t: Type): Array(Int)
+    moduleMember(fn: Fn r: ir.ModuleRef member: maybe.T(String)): Array(Int)
+
+    (* Functions being built *)
+    newFn(u: UnitBuilder f: Function closure: maybe.T(ir.OpMakeClosure)): Fn
+    (* Finishes a function: blocks nothing reaches the end of end in
+     * unreachable, and blocks the entry does not reach are dropped, the rest
+     * renumbered in order *)
+    finish(fn: Fn): Ok
+end

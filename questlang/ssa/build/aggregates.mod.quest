@@ -1,0 +1,512 @@
+(* Quest Self-Hosted Compiler: The SSA Builder's Aggregates Implementation *)
+
+module aggregates : Aggregates
+import
+    questlang/types/model : questlang/types/Model
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/shapes : questlang/ir/Shapes
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/layout : questlang/codegen/Layout
+    questlang/codegen/symbols : questlang/codegen/Symbols
+    questlang/codegen/staticdata : questlang/codegen/StaticData
+    questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    vals = questlang/ssa/build/values : questlang/ssa/build/Values
+    descriptors = questlang/ssa/build/descriptors : questlang/ssa/build/Descriptors
+    calls = questlang/ssa/build/calls : questlang/ssa/build/Calls
+export
+    Let Type = model.Type
+    Let Variable = ir.Variable
+    Let Atom = ir.Atom
+
+    (* =========================================================================
+     * Conversions (the represent pass's plans, nodes.Plan)
+     * ====================================================================== *)
+
+    let rec convert(fn: vals.Fn vs: Array(Int) plan: ir.Plan): Array(Int) =
+        begin
+            let kind = plan.kind
+            case kind
+                when planBox then
+                    array of vals.toWord(fn vs plan.source) end
+                when planUnbox then
+                    vals.fromWord(fn vs[0] plan.target)
+                when planRecordView then
+                    ssa.call(fn.f fn.cur "quest_record_view" array of vs[0] vs[1] descriptors.descriptor(fn plan.descriptors[0]) end
+                        vals.firstPair array of vals.tPtr vals.tPtr end)
+                when planVariantTags then
+                    let table = maybe.unwrap(:ir.TagMap plan.tagMap)
+                    let map = staticdata.describeTagMap(table.target table.source)
+                    let scaled = vals.binary(fn ssa.opMul vs[0] vals.constant(fn 8))
+                    array of vals.loadWord(fn vals.indexPtr(fn vals.symbolAt(fn map.symbol) scaled) 0 vals.tInt) vs[1] end
+                when planCast then
+                    vs
+                when planUnproxy then
+                    array of vals.unproxy(fn vs[0]) end
+                when planSlotBox then
+                    if layout.isBoxedInSlots(shapes.shape(plan.source)) then vals.boxed(fn vs plan.source) else vs end
+                when planSlotUnbox then
+                    vals.unboxed(fn vs plan.target)
+                when planView then
+                    let word = vals.toWord(fn vs plan.source)
+                    let converted = vals.call1(fn "quest_convert"
+                        array of word descriptors.descriptor(fn plan.descriptors[0]) descriptors.descriptor(fn plan.descriptors[1]) end vals.tInt)
+                    vals.fromWord(fn converted plan.target)
+                when planRuntime then
+                    let l = maybe.unwrap(:ir.PlanLayout plan.layout)
+                    let genericType = if l.toGeneric then plan.target else plan.source end
+                    let nativeType = model.substitute(genericType l.subst)
+                    let fromType = if l.toGeneric then nativeType else genericType end
+                    let toType = if l.toGeneric then genericType else nativeType end
+                    let word = vals.toWord(fn vs fromType)
+                    let converted = vals.call1(fn "quest_convert"
+                        array of word descriptors.descriptor(fn plan.descriptors[0]) descriptors.descriptor(fn plan.descriptors[1]) end vals.tInt)
+                    vals.fromWord(fn converted toType)
+                when planAdapt then
+                    if maybe.isNone(:ir.Function plan.thunk) then
+                        raise vals.unsupported with "an adapt plan without its adapter" end
+                    end
+                    let clos = vals.alloc(fn 16)
+                    let code = vals.symbolAt(fn vals.codeName(fn.u maybe.unwrap(:ir.Function plan.thunk)))
+                    vals.store(fn clos runtimeLayout.offset("QClosure" "fn") 8 code)
+                    vals.store(fn clos runtimeLayout.offset("QClosure" "env") 8 vs[0])
+                    array of clos end
+                when planCopy then
+                    let source = vs[0]
+                    let sourceS = shapes.shape(plan.source)
+                    let targetS = shapes.shape(plan.target)
+                    let n = if extent targetS.components < extent plan.fields then extent targetS.components
+                        else extent plan.fields end
+                    let tup = vals.alloc(fn 8 * {if n is 0 then 1 else n end})
+                    for i = 0 upto {n - 1} do
+                        let tc = vals.componentShape(targetS i)
+                        let sc = vals.componentShape(sourceS i)
+                        let fc = vals.tupleComponent(fn source sourceS i plan.access[i])
+                        let fp = plan.fields[i]
+                        let byDescriptor =
+                            maybe.isSome(:ir.Plan fp) andif ir.planIs(maybe.unwrap(:ir.Plan fp) ir.planView)
+                        let converted = if byDescriptor then
+                            (* Converted by descriptor, from the slot's QVal
+                             * form to the target slot's *)
+                            let f = maybe.unwrap(:ir.Plan fp)
+                            let word = vals.slotToWord(fn fc sc.type)
+                            let w = vals.call1(fn "quest_convert"
+                                array of word descriptors.descriptor(fn f.descriptors[0]) descriptors.descriptor(fn f.descriptors[1]) end vals.tInt)
+                            vals.slotFromWord(fn w tc.type)
+                        elsif maybe.isSome(:ir.Plan fp) then
+                            slotStore(fn convert(fn slotLoad(fn fc sc.type) maybe.unwrap(:ir.Plan fp)) tc.type)
+                        else
+                            vals.slotFromWord(fn vals.slotToWord(fn fc sc.type) tc.type)
+                        end
+                        vals.writeSlot(fn vals.offsetPtr(fn tup 8 * i) tc.type converted)
+                    end
+                    array of tup end
+            end
+        end
+
+    (* A value in a slot as its value, and a value as a slot holds it *)
+    and slotLoad(fn: vals.Fn vs: Array(Int) t: Type): Array(Int) =
+        if layout.isBoxedInSlots(shapes.shape(t)) then vals.unboxed(fn vs t) else vs end
+    and slotStore(fn: vals.Fn vs: Array(Int) t: Type): Array(Int) =
+        if layout.isBoxedInSlots(shapes.shape(t)) then vals.boxed(fn vs t) else vs end
+
+    (* =========================================================================
+     * Records
+     * ====================================================================== *)
+
+    let fieldIndex(rs: shapes.Shape field: String): Int =
+        begin
+            let fields = shapes.sortedComponents(rs)
+            let var index = 0
+            for i = 0 upto {extent fields - 1} do if vals.eq(maybe.unwrapOr(:String fields[i].name "") field) then index := i end end
+            index
+        end
+
+    (* The address of a record's field's slot (the record vs, of shape rs):
+     * through its offset table, or for a bounded type parameter's value, the
+     * view map of its type argument at the bound *)
+    let recordSlot(fn: vals.Fn vs: Array(Int) rs: shapes.Shape field: String viewMap: maybe.T(Variable)): Int =
+        begin
+            let k = fieldIndex(rs field)
+            if maybe.isSome(:Variable viewMap) then
+                let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable viewMap)))
+                ssa.call(fn.f fn.cur "quest_view_record_slot" array of vs[0] vs[1] vm vals.constant(fn k) end vals.firstPair
+                    array of vals.tPtr end)[0]
+            else
+                vals.indexPtr(fn vs[0] vals.loadWord(fn vs[1] 8 * k vals.tInt))
+            end
+        end
+
+    let fieldShape(rs: shapes.Shape field: String): shapes.Shape =
+        maybe.unwrap(:shapes.Shape shapes.sortedComponents(rs)[fieldIndex(rs field)].shape)
+
+    let recordField(fn: vals.Fn vs: Array(Int) rs: shapes.Shape o: ir.OpRecordField): Array(Int) =
+        begin
+            let fs = fieldShape(rs o.name)
+            if not(o.stored) then
+                vals.readSlot(fn recordSlot(fn vs rs o.name o.viewMap) fs.type)
+            elsif maybe.isSome(:Variable o.viewMap) then
+                let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable o.viewMap)))
+                let w = ssa.call(fn.f fn.cur "quest_view_record_field" array of vs[0] vs[1] vm vals.constant(fn fieldIndex(rs o.name)) end
+                    vals.firstPair array of vals.tInt end)[0]
+                vals.fromWord(fn w fs.type)
+            else
+                (* Read as stored, and converted to the field's type, when the
+                 * offset table says the payload stores it at another type *)
+                let k = fieldIndex(rs o.name)
+                let slot = recordSlot(fn vs rs o.name maybe.none(:Variable))
+                let stored = vals.loadWord(fn vs[1] 8 * extent rs.components vals.tPtr)
+                let t = fs.type
+                let types = vals.typesOf(vals.parts(t))
+                let plainRead = fun(): Array(Int) slotLoad(fn vals.readSlot(fn slot t) t)
+                vals.choose(fn vals.binary(fn ssa.opPne stored vals.null(fn)) types
+                    fun(): Array(Int)
+                        begin
+                            let storedType = vals.loadWord(fn stored 8 * k vals.tPtr)
+                            vals.choose(fn vals.binary(fn ssa.opPne storedType vals.null(fn)) types
+                                fun(): Array(Int) vals.fromWord(fn
+                                    vals.call1(fn "quest_convert" array of vals.loadWord(fn slot 0 vals.tInt) storedType descriptors.maybeDescriptor(fn o.descriptor) end
+                                        vals.tInt) t)
+                                plainRead)
+                        end
+                    plainRead)
+            end
+        end
+
+    let makeRecord(fn: vals.Fn o: ir.OpMakeRecord result: Variable): Array(Int) =
+        begin
+            let fields = vector.new(:model.RecordField)
+            for i = 0 upto {extent o.fields - 1} do
+                let f = o.fields[i]
+                vector.append(:model.RecordField fields tuple let name = f.name let type = ir.atomType(f.atom) let isVar = f.isVar end)
+            end
+            let concrete = model.recordType(vector.toArray(:model.RecordField fields) maybe.none(:String))
+            let structBytes = layout.recordBytes(concrete)
+            (* The box, then the payload, then the embedded boxes *)
+            let stored = vector.new(:Int)
+            for i = 0 upto {extent o.fields - 1} do
+                if not(shapes.kindIs(shapes.shape(ir.atomType(o.fields[i].atom)) shapes.shapeOk)) then
+                    vector.append(:Int stored i)
+                end
+            end
+            let argList = vector.new(:Atom)
+            let typeList = vector.new(:Type)
+            let offsetList = vector.new(:Int)
+            let embedded = vector.new(:Int)
+            for j = 0 upto {vector.length(:Int stored) - 1} do
+                let i = vector.get(:Int stored j)
+                vector.append(:Atom argList o.fields[i].atom)
+                vector.append(:Type typeList ir.atomType(o.fields[i].atom))
+                vector.append(:Int offsetList layout.recordFieldOffset(concrete o.fields[i].name))
+                for k = 0 upto {extent o.embedded - 1} do if o.embedded[k] is i then vector.append(:Int embedded j) end end
+            end
+            let args = vector.toArray(:Atom argList)
+            let types = vector.toArray(:Type typeList)
+            let offsets = vector.toArray(:Int offsetList)
+            let embeddedArray = vector.toArray(:Int embedded)
+            let box = vals.alloc(fn 16 + structBytes + 16 * extent embeddedArray)
+            let payload = vals.offsetPtr(fn box 16)
+            vals.store(fn payload runtimeLayout.offset("QRecordHeader" "descriptor") 8 descriptors.maybeDescriptor(fn o.descriptor))
+            vals.storeFields(fn payload offsets args types embeddedArray structBytes)
+            let dict = if o.runtimeOffsets then
+                vals.call1(fn "quest_record_dict" array of descriptors.maybeDescriptor(fn o.viewDescriptor) descriptors.maybeDescriptor(fn o.descriptor) end vals.tPtr)
+            else
+                let table = maybe.unwrap(:ir.OffsetTable o.offsets)
+                vals.symbolAt(fn staticdata.describeOffsetTable(fn.u.naming table.view table.layout).symbol)
+            end
+            vals.store(fn box runtimeLayout.offset("QRecordVal" "val") 8 payload)
+            vals.store(fn box runtimeLayout.offset("QRecordVal" "dict") 8 dict)
+            if result.boxed then array of box end else array of payload dict end end
+        end
+
+    (* =========================================================================
+     * Variants and options
+     * ====================================================================== *)
+
+    let caseShape(s: shapes.Shape tag: String): maybe.T(shapes.Shape) =
+        begin
+            let c = shapes.caseOf(s tag)
+            if maybe.isSome(:shapes.Component c) then maybe.unwrap(:shapes.Component c).shape else maybe.none(:shapes.Shape) end
+        end
+
+    let tagShape(t: Type): shapes.Shape =
+        begin
+            let h = layout.resolvedShape(shapes.shape(t))
+            if not(shapes.kindIs(h shapes.shapeVariant) orif shapes.kindIs(h shapes.shapeOption)) then
+                raise vals.unsupported with "a tag test on a value of type " <> model.show(t) end
+            end
+            h
+        end
+
+    (* A value mapped through a small table, as a switch: table[v], or v when
+     * the table is the identity *)
+    let mapped(fn: vals.Fn v: Int table: Array(Int)): Int =
+        begin
+            let var identity = true
+            for i = 0 upto {extent table - 1} do if table[i] isnot i then identity := false end end
+            if identity then
+                v
+            else
+                let merged = ssa.newBlock(fn.f)
+                let r = ssa.addParam(fn.f merged vals.tInt)
+                let blocks = array of(extent table ssa.target(0 vals.noValues))
+                let cases = array of(extent table 0)
+                let start = fn.cur
+                let otherwise = ssa.newBlock(fn.f)
+                for i = 0 upto {extent table - 1} do
+                    let b = ssa.newBlock(fn.f)
+                    fn.cur := b
+                    vals.jump(fn merged array of vals.constant(fn table[i]) end)
+                    blocks[i] := ssa.target(b vals.noValues)
+                    cases[i] := i
+                end
+                fn.cur := otherwise
+                vals.terminate(fn ssa.termUnreachable)
+                fn.cur := start
+                vals.terminate(fn option termSwitch of ssa.Terminator with
+                    let value = v let cases = cases let targets = blocks let default = ssa.target(otherwise vals.noValues)
+                end)
+                fn.cur := merged
+                r
+            end
+        end
+
+    let makeOption(fn: vals.Fn o: ir.OpMakeOption t: Type): Array(Int) =
+        begin
+            let os = layout.resolvedShape(shapes.shape(t))
+            let opt = vals.alloc(fn layout.optionBytes(os.structure))
+            let var tag = o.tag
+            if maybe.isSome(:Atom o.ordinalAtom) then
+                (* The ordinal counts in the type's cases as written; the tag
+                 * numbers the shape's, ordered by name *)
+                let ordinalAtom = maybe.unwrap(:Atom o.ordinalAtom)
+                let checked = vals.call1(fn "quest_check_option_ordinal_at"
+                    array of vals.atom1(fn ordinalAtom) vals.constant(fn extent os.cases) vals.site(fn o.offset) end vals.tInt)
+                let tags = array of(extent o.cases 0)
+                for i = 0 upto {extent o.cases - 1} do tags[i] := vals.tagIndex(os o.cases[i]) end
+                vals.store(fn opt runtimeLayout.offset("QOptionHeader" "tag") 8 mapped(fn checked tags))
+                let n = case ordinalAtom
+                    when atomConst with x then case x.c.value when constInt with y then y.n else ~1 end
+                    else ~1
+                end
+                tag := if {n >= 0}
+                    andif {n < extent o.cases} then maybe.some(:String o.cases[n]) else os.cases[0].name end
+            else
+                vals.store(fn opt runtimeLayout.offset("QOptionHeader" "tag") 8
+                    vals.constant(fn vals.tagIndex(os maybe.unwrapOr(:String tag ""))))
+            end
+            if maybe.isSome(:Atom o.payload) andif maybe.isSome(:String tag) then
+                let tagName = maybe.unwrap(:String tag)
+                let pt = caseShape(os tagName)
+                let payloadAtom = maybe.unwrap(:Atom o.payload)
+                let pv = vals.atom(fn payloadAtom)
+                if maybe.isSome(:shapes.Shape pt)
+                    andif shapes.kindIs(maybe.unwrap(:shapes.Shape pt) shapes.shapeTuple) then
+                    let pts = maybe.unwrap(:shapes.Shape pt)
+                    let ps = shapes.shape(ir.atomType(payloadAtom))
+                    for i = 0 upto {extent pts.components - 1} do
+                        let comp = vals.componentShape(pts i)
+                        vals.writeSlot(fn vals.offsetPtr(fn opt 8 + 8 * i) comp.type vals.tupleComponent(fn pv[0] ps i o.access[i]))
+                    end
+                else
+                    let st = if maybe.isSome(:shapes.Shape pt) then maybe.unwrap(:shapes.Shape pt).type else ir.atomType(payloadAtom) end
+                    vals.writeSlot(fn vals.offsetPtr(fn opt 8) st pv)
+                end
+            end
+            array of opt end
+        end
+
+    (* A new tuple of an option's case components (after offset components of
+     * tupleType: the case's ordinal), read as access says *)
+    let optionCaseTuple(fn: vals.Fn opt: Int os: shapes.Shape tag: String tupleType: Type offset: Int access: Array(ir.Access)
+        ordinalValue: Int): Int =
+        begin
+            let ts = shapes.shape(tupleType)
+            let n = extent ts.components
+            let tup = vals.alloc(fn 8 * {if n is 0 then 1 else n end})
+            let pt = caseShape(os tag)
+            if offset > 0 then vals.store(fn tup 0 8 vals.constant(fn ordinalValue)) end
+            if maybe.isSome(:shapes.Shape pt) andif shapes.kindIs(maybe.unwrap(:shapes.Shape pt) shapes.shapeTuple) then
+                let pts = maybe.unwrap(:shapes.Shape pt)
+                for i = 0 upto {extent pts.components - 1} do
+                    if {i + offset} < n then
+                        let src = vals.optionComponent(fn opt os tag i access[i])
+                        let wanted = vals.componentShape(ts i + offset)
+                        let have = vals.componentShape(pts i)
+                        let value = if vals.slotIsQVal(have) andif not(vals.slotIsQVal(wanted)) then
+                            vals.slotFromWord(fn src[0] wanted.type)
+                        else src end
+                        vals.writeSlot(fn vals.offsetPtr(fn tup 8 * {i + offset}) wanted.type value)
+                    end
+                end
+            elsif maybe.isSome(:shapes.Shape pt) then
+                let comp = vals.componentShape(ts offset)
+                vals.writeSlot(fn vals.offsetPtr(fn tup 8 * offset) comp.type vals.optionComponent(fn opt os tag ~1 access[0]))
+            end
+            tup
+        end
+
+    (* The payload of an option's case, a tuple, which a case's binder shares:
+     * the option's own, after its tag, or through a proxy, the original's *)
+    let optionCasePayload(fn: vals.Fn opt: Int tagAccess: ir.Access access: Array(ir.Access)): Int =
+        begin
+            let var proxied = false
+            for i = 0 upto {extent access - 1} do
+                case access[i] when proxy then proxied := true when direct, original then ok end
+            end
+            let tagDirect = case tagAccess when direct then true when original, proxy then false end
+            if tagDirect then vals.offsetPtr(fn opt 8)
+            elsif not(proxied) then vals.offsetPtr(fn vals.unproxy(fn opt) 8)
+            else
+                vals.choose(fn vals.isProxy(fn opt) array of vals.tPtr end
+                    fun(): Array(Int) array of vals.call1(fn "quest_proxy_option_payload" array of opt end vals.tPtr) end
+                    fun(): Array(Int) array of vals.offsetPtr(fn opt 8) end)[0]
+            end
+        end
+
+    (* The payload of case tag of a variant or option vs held at its own view,
+     * read through the view map vm of its type argument at the bound ts and
+     * converted to the bound's type for it, as a value of type t: a variant's
+     * payload, an option's one component, or a new tuple of an option's case
+     * components (after its ordinal, when t has one more component than the
+     * case) *)
+    let viewPayload(fn: vals.Fn vs: Array(Int) ts: shapes.Shape tag: String vm: Int t: Type): Array(Int) =
+        begin
+            let b = vals.tagIndex(ts tag)
+            let cs = caseShape(ts tag)
+            case ts.kind
+                when shapeVariant then
+                    let caseT = if maybe.isSome(:shapes.Shape cs) then maybe.unwrap(:shapes.Shape cs).type else t end
+                    vals.fromWord(fn vals.call1(fn "quest_view_part" array of vm vals.constant(fn b) vs[1] end vals.tInt) caseT)
+                when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
+                    shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
+                    shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then
+                    let tupleS = shapes.shape(t)
+                    if not(shapes.kindIs(tupleS shapes.shapeTuple)) then
+                        vals.fromWord(fn vals.call1(fn "quest_view_option_component"
+                            array of vs[0] vm vals.constant(fn b) vals.constant(fn 0) end vals.tInt) t)
+                    else
+                        let n = extent tupleS.components
+                        let tup = vals.alloc(fn 8 * {if n is 0 then 1 else n end})
+                        let var count = 0
+                        if maybe.isSome(:shapes.Shape cs) then
+                            let pt = maybe.unwrap(:shapes.Shape cs)
+                            count := if shapes.kindIs(pt shapes.shapeTuple) then extent pt.components else 1 end
+                        end
+                        let offset = n - count
+                        if offset > 0 then vals.store(fn tup 0 8 vals.constant(fn 0)) end
+                        for j = 0 upto {count - 1} do
+                            let w = vals.call1(fn "quest_view_option_component"
+                                array of vs[0] vm vals.constant(fn b) vals.constant(fn j) end vals.tInt)
+                            let comp = vals.componentShape(tupleS j + offset)
+                            vals.writeSlot(fn vals.offsetPtr(fn tup 8 * {j + offset}) comp.type vals.slotFromWord(fn w comp.type))
+                        end
+                        array of tup end
+                    end
+            end
+        end
+
+    let payload(fn: vals.Fn o: ir.OpPayload t: Type): Array(Int) =
+        begin
+            let ts = tagShape(ir.atomType(o.value))
+            let vs = vals.atom(fn o.value)
+            let index = vals.tagIndex(ts o.tag)
+            let tag = vals.tagOf(fn vs ts o.access o.viewMap)
+            let good = ssa.newBlock(fn.f)
+            let bad = ssa.newBlock(fn.f)
+            vals.terminate(fn option termBranch of ssa.Terminator with
+                let cond = vals.binary(fn ssa.opEq tag vals.constant(fn index))
+                let ifTrue = ssa.target(good vals.noValues) let ifFalse = ssa.target(bad vals.noValues)
+            end)
+            fn.cur := bad
+            vals.callVoid(fn "quest_raise_variant_error_at" array of vals.site(fn o.offset) end)
+            vals.terminate(fn ssa.termUnreachable)
+            fn.cur := good
+            if maybe.isSome(:Variable o.viewMap) then
+                let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable o.viewMap)))
+                let result = viewPayload(fn vs ts o.tag vm t)
+                if shapes.kindIs(ts shapes.shapeOption) then
+                    vals.store(fn result[0] 0 8 vals.constant(fn maybe.unwrapOr(:Int o.ordinalIndex 0)))
+                end
+                result
+            elsif shapes.kindIs(ts shapes.shapeVariant) then
+                let cs = caseShape(ts o.tag)
+                let caseT = if maybe.isSome(:shapes.Shape cs) then maybe.unwrap(:shapes.Shape cs).type else t end
+                vals.slotFromWord(fn vs[1] caseT)
+            else
+                array of optionCaseTuple(fn vs[0] ts o.tag t 1 o.components maybe.unwrapOr(:Int o.ordinalIndex 0)) end
+            end
+        end
+
+    (* =========================================================================
+     * Arrays
+     * ====================================================================== *)
+
+    let elementShape(a: Atom): shapes.Shape = shapes.element(shapes.shape(ir.atomType(a)))
+
+    (* The address of an array's element, after its bounds check *)
+    let elementAddress(fn: vals.Fn arr: Int idx: Int offset: maybe.T(Int)): Int =
+        begin
+            vals.callVoid(fn "quest_check_array_bounds_at" array of arr idx vals.site(fn offset) end)
+            let scaled = vals.binary(fn ssa.opMul idx vals.constant(fn 8))
+            vals.indexPtr(fn vals.offsetPtr(fn arr runtimeLayout.offset("QArray" "data")) scaled)
+        end
+
+    let makeArray(fn: vals.Fn args: Array(Atom) t: Type): Array(Int) =
+        begin
+            let elem = shapes.element(shapes.shape(t))
+            let n = extent args
+            let arr = vals.alloc(fn runtimeLayout.offset("QArray" "data") + 8 * n)
+            vals.store(fn arr runtimeLayout.offset("QArray" "length") 8 vals.constant(fn n))
+            for i = 0 upto {n - 1} do
+                vals.store(fn arr runtimeLayout.offset("QArray" "data") + 8 * i 8 vals.slotToWord(fn vals.atom(fn args[i]) elem.type))
+            end
+            array of arr end
+        end
+
+    (* =========================================================================
+     * Type applications that are not thunks: a polymorphic value of no
+     * parameters, at the type arguments
+     * ====================================================================== *)
+
+    (* A call of the closure at clos, with its environment and args *)
+    let callClosureWith(fn: vals.Fn clos: Int args: Array(Int) results: Array(ssa.Type)): Array(Int) =
+        begin
+            let code = vals.loadWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
+            let env = vals.loadWord(fn clos runtimeLayout.offset("QClosure" "env") vals.tPtr)
+            ssa.call(fn.f fn.cur "" vals.concat(array of code env end args) ssa.plain results)
+        end
+
+    let typeApp(fn: vals.Fn o: ir.OpTypeApp result: Variable): Array(Int) =
+        begin
+            if maybe.isSome(:Array(ir.DescriptorParam) o.thunkParams) then
+                raise vals.unsupported with "a type application whose instance is a function, not its thunk's closure" end
+            end
+            let descs = descriptors.descriptors(fn o.descriptors)
+            let var origType = model.okType
+            let called = if maybe.isSome(:Variable o.callee) then
+                let callee = maybe.unwrap(:Variable o.callee)
+                origType := callee.type
+                let clos = vals.atom1(fn ir.atomOfVar(callee))
+                callClosureWith(fn clos descs vals.typesOf(calls.resultParts(callee.type)))
+            else
+                let r = maybe.unwrap(:ir.ModuleRef o.moduleRef)
+                case r
+                    when refImport with x then
+                        origType := maybe.unwrapOr(:Type o.calleeType model.okType)
+                        let symbol = symbols.mangleModuleIdent(symbols.mangleModuleName(x.i.canonicalPath)
+                            maybe.unwrap(:String o.member))
+                        ssa.call(fn.f fn.cur symbol descs ssa.plain vals.typesOf(calls.resultParts(origType)))
+                    when refModule with x then
+                        let member = maybe.unwrap(:Variable ir.member(x.m.members maybe.unwrap(:String o.member)))
+                        origType := member.type
+                        let clos = vals.atom1(fn ir.atomOfVar(member))
+                        callClosureWith(fn clos descs vals.typesOf(calls.resultParts(member.type)))
+                end
+            end
+            let values = calls.resultsOf(fn calls.resultParts(origType) called)
+            let pl = o.plans[0]
+            if maybe.isNone(:ir.Plan pl) then values else convert(fn values maybe.unwrap(:ir.Plan pl)) end
+        end
+end

@@ -1,0 +1,36 @@
+(* Quest Self-Hosted Compiler: The SSA Builder's Adapters Interface
+ *
+ * The unit's functions that are not its IR functions: a module file's
+ * exported functions, and function types' adapters, thunks, and
+ * invokers. *)
+
+interface Adapters
+import
+    questlang/types/model : questlang/types/Model
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    vals = questlang/ssa/build/values : questlang/ssa/build/Values
+export
+    Def Type = model.Type
+    Def Variable = ir.Variable
+    Def Function = ssa.Function
+
+    returnValues(fn: vals.Fn vs: Array(Int)): Ok
+    (* The SSA types of the parameters of a C function of a function type's
+     * signature, after lead pointers, and where its 16-byte composites start *)
+    Def Signature = Tuple types: vector.T(ssa.Type) pairs: vector.T(Int) narrow: vector.T(Int) end
+    pointers(n: Int): Signature
+    newFunction(u: vals.UnitBuilder symbol: String exported: Bool s: Signature results: Array(ssa.Type)): vals.Fn
+    finished(fn: vals.Fn): Function
+    (* A module file's exported function for a member of its interface that is
+     * a function or a polymorphic value (qv_<module>_<member>): it calls the
+     * member's closure, at the interface's C signature
+     * (codegen/c/declarations' moduleFunctionSignature) *)
+    exportedFunction(u: vals.UnitBuilder clean: String name: String v: Variable): maybe.T(Function)
+    (* The adapter of a function type (quest_adapt_<tag>), the thunk its
+     * closures call (quest_thunk_<tag>), and its invoker (quest_invoke_<tag>),
+     * as codegen/c/declarations' emitFunTypeAdapters writes them in C *)
+    funTypeAdapters(u: vals.UnitBuilder tag: String funType: Type): Array(Function)
+end
