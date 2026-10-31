@@ -280,7 +280,26 @@ So a value lives in pieces, each in a register or in memory:
   memory at the handler's start, so the handler's code reloads it. The function still saves every callee-saved
   pair, which it must restore for its caller after a raise has passed through frames that clobbered them.
 
-`regalloc.spillAll`, every value in memory, remains as the baseline.
+**On machine functions (2026-10-30, backend-improvements.md step 8).** The allocator now works on a machine
+function's virtual registers (`codegen/machine`), which `codegen/arm64/select` selects from the SSA, rather than on
+the SSA's values, and it reads no register's name: a target (`codegen/target`) gives it register numbers.
+
+- **Fixed registers.** The calling convention is moves to and from physical registers: arguments before a call,
+  its results after, the parameters at the entry, and returned values before a return. A register is unavailable
+  where such an operand fixes it, from the instruction that writes it to the last that reads it, so `x0`–`x8` and
+  `d0`–`d7` are allocatable too (after `x12`–`x15` and `d16`–`d29`); the scratch registers are `x9`–`x11`, `x16`,
+  `x17`, `d30`, and `d31`.
+- **Hints.** A move's two registers, and a jump's argument and its target's parameter, are hints: an interval
+  takes the register of what it is hinted to when that one is free for all of it, so the move costs nothing.
+- **Rewriting.** `regalloc.rewrite` puts the registers allocated in the instructions: an operand in memory is
+  loaded into a scratch register (`x9`, `x10`, `x11`, or `d30`, `d31`), a result in memory is written to one and
+  stored, and the moves between pieces and on edges are made in parallel, as above. An edge's moves are made
+  before its jump, or at the start of a branch's target, which selection makes a block of its own.
+- **Rematerialization** is of an instruction that reads no virtual register: a constant, a symbol's address, or an
+  address in the frame.
+- **The frame** is the outgoing arguments' area, the stack slots, then a slot for each register stored in memory.
+- **A block a raise enters,** beside its `try`, which jumps to the handler, has every register dead at its start;
+  the handler may then have what it uses in registers, loaded by that jump's moves.
 
 ### 3.9. Primitive semantics
 
@@ -602,7 +621,9 @@ Changes to how the backend is written, rather than to the code it generates, are
   `ldp`/`stp` for adjacent spills.
 - **Better register allocation** than linear scan, if measurements show spilling costs.
 - **What step 11's code still does badly** (seen in tailfib, imp-for, and `arm64_assemble`, 2026-10-30), mostly the
-  instruction selection §3.5 describes but the backend does not yet do:
+  instruction selection §3.5 describes but the backend did not yet do. backend-improvements.md step 8 did all but
+  the last (2026-10-30): immediates, comparisons fused into branches, blocks that only jump passed over, a jump to the
+  next block falling through, and a rematerialized constant computed into its parameter's register.
   - **Constants in registers rather than immediates.** `n - 1` is `movz x12, #1` then `sub`, and `x == 0` is
     `mov x12, #0` then `cmp`, where `sub x12, x13, #1` and `cmp x13, #0` (or `cbz`) would do. The constant is a value
     the allocator must place, so it takes a register for its range, a callee-saved one when the caller-saved are

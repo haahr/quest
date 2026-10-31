@@ -1,173 +1,272 @@
 (* Self-Hosted Quest Compiler: Test the Register Allocator
  *
- * questlang/codegen/regalloc (docs/arm64.md section 3.8) on small functions of
- * the SSA built by hand, with a target of few registers, so that its choices
- * show: a result takes the register its operand's interval ends in; a value
- * live across a call gets a callee-saved register, or is split, in memory
- * across the call and back in a register at its next use; when the registers
- * run out, the interval used furthest away is spilled until its next use; a
- * loop's values stay in their registers through it; reals take registers of
- * their own class; and what a try's handler uses is in memory at its start.
- * Each value's pieces are shown with the positions they start at, then the
- * moves to pieces that start inside blocks. *)
+ * questlang/codegen/regalloc (docs/arm64.md section 3.8) on small machine
+ * functions (questlang/codegen/machine) built by hand, of a toy target of
+ * few registers, so that its choices show: a result takes the register its
+ * operand's interval ends in; a move's registers, and a jump's arguments and
+ * its target's parameters, share one when they can; an argument's or a
+ * result's fixed register is taken only where it is free; a value live across
+ * a call gets a callee-saved register, or is split, in memory across the
+ * call and back in a register at its next use; when the registers run out,
+ * the interval used furthest away is spilled until its next use; a loop's
+ * values stay in their registers through it; reals take registers of their
+ * own class; a constant is made again rather than stored; and what a block a
+ * raise enters uses is in memory at its start. Each virtual register's pieces
+ * are shown with the positions they start at, then the moves to pieces that
+ * start inside blocks, then the function rewritten in the registers
+ * allocated. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/codegen/machine : questlang/codegen/Machine
     questlang/codegen/regalloc : questlang/codegen/Regalloc
     targets = questlang/codegen/target : questlang/codegen/Target
     collections/vector : collections/Vector
+    util/strutil : util/Strutil
     writer : Writer
     conv : Conv
 ;
 
 let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
 
-let tInt = ssa.typeInt;
-let tReal = ssa.typeReal;
-let none = array of :Int end;
-let call(f: ssa.Function b: Int symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int)
-    results: Array(ssa.Type)): Array(Int) =
-    ssa.call(f b symbol args ssa.signature(ssa.valueTypes(f args) results pairs narrow) results);
-let pairsAt(f: ssa.Function pairs: Array(Int)): Ok =
-    f.signature := ssa.signature(vector.toArray(:ssa.Type f.paramTypes) vector.toArray(:ssa.Type f.resultTypes) pairs
-        array of :Int end);
-let noTypes = array of :ssa.Type end;
+(* The toy target: a0, the argument and result register, and r1, which a
+ * call clobbers, and s1, which it preserves; f1 and g1 likewise for reals; and
+ * the scratch registers t1, t2, t3, u1, and u2 *)
+let intClass = option classInt of targets.Class end;
+let realClass = option classReal of targets.Class end;
+let register(name: String c: targets.Class): targets.Register = tuple let name = name let class = c end;
+let toy: targets.Target = tuple
+    let registers = array of
+        register("a0" intClass) register("r1" intClass) register("s1" intClass)
+        register("f1" realClass) register("g1" realClass)
+        register("t1" intClass) register("t2" intClass) register("t3" intClass)
+        register("u1" realClass) register("u2" realClass)
+    end
+    let callerSaved = array of array of 1 0 end array of 3 end end
+    let calleeSaved = array of array of 2 end array of 4 end end
+    let arguments = array of array of 0 end array of 3 end end
+    let results = array of array of 0 end array of 3 end end
+    let scratch = array of 5 6 7 8 9 end
+    let stackAlign = 16
+    let wordBytes = 8
+end;
+let a0 = 0;
+let f1 = 3;
 
-(* Two caller-saved and one callee-saved integer register, one of each real:
- * r1, r2, s1, f1, and g1 *)
-let toy: targets.Target =
+(* Each instruction's operation is its text *)
+let ops = vector.new(:String);
+let name(f: machine.Function r: Int): String =
+    if r is regalloc.memory then "memory"
+    elsif machine.isVirtual(f r) then "%" <> conv.int(machine.index(f r))
+    else targets.name(toy r) end;
+let make(kind: machine.Kind text: String operands: Array(machine.Operand) target: Int): machine.Inst =
     begin
-        let int = option classInt of targets.Class end
-        let real = option classReal of targets.Class end
-        tuple
-            let registers = array of
-                tuple let name = "r1" let class = int end tuple let name = "r2" let class = int end
-                tuple let name = "s1" let class = int end tuple let name = "f1" let class = real end
-                tuple let name = "g1" let class = real end
-            end
-            let callerSaved = array of array of 0 1 end array of 3 end end
-            let calleeSaved = array of array of 2 end array of 4 end end
-            let arguments = array of array of 0 1 end array of 3 end end
-            let results = array of array of 0 end array of 3 end end
-            let scratch = array of :Int end
-            let stackAlign = 16
-            let wordBytes = 8
-        end
+        vector.append(:String ops text)
+        machine.inst(kind operands vector.length(:String ops) - 1 target)
     end;
-let where(r: Int): String = if r is regalloc.memory then "memory" else targets.name(toy r) end;
+let put(f: machine.Function b: Int kind: machine.Kind text: String operands: Array(machine.Operand)): Ok =
+    machine.append(f b make(kind text operands ~1));
+let rd(r: Int): machine.Operand = machine.reads(r);
+let wr(r: Int): machine.Operand = machine.writes(r);
+let none = array of :machine.Operand end;
+let noArgs = array of :Int end;
+let ordinary = machine.kindOrdinary;
 
-let isCall(i: ssa.Inst): Bool = case i.op when opCall then true else false end;
+let op(f: machine.Function b: Int text: String d: Int x: Int y: Int): Ok =
+    put(f b ordinary text array of wr(d) rd(x) rd(y) end);
+let add(f: machine.Function b: Int d: Int x: Int y: Int): Ok = op(f b "add" d x y);
+let constant(f: machine.Function b: Int d: Int n: Int): Ok =
+    put(f b ordinary "const " <> conv.int(n) array of wr(d) end);
+let move(f: machine.Function b: Int d: Int s: Int): Ok = put(f b machine.kindMove "mov" array of wr(d) rd(s) end);
+(* A call of no arguments and no results; one of an argument and a result in
+ * a0 *)
+let call(f: machine.Function b: Int): Ok = put(f b machine.kindCall "call g" none);
+let callOne(f: machine.Function b: Int): Ok = put(f b machine.kindCall "call h" array of rd(a0) wr(a0) end);
+let ret(f: machine.Function b: Int v: Int): Ok =
+    begin
+        move(f b a0 v)
+        put(f b machine.kindReturn "ret" array of rd(a0) end)
+    end;
+let jump(f: machine.Function b: Int to: Int args: Array(Int)): Ok =
+    begin
+        let operands = array of(extent args rd(0))
+        for k = 0 upto {extent args - 1} do operands[k] := rd(args[k]) end
+        machine.append(f b make(machine.kindJump "b" operands to))
+    end;
+let branch(f: machine.Function b: Int c: Int to: Int): Ok =
+    machine.append(f b make(machine.kindBranch "cbnz" array of rd(c) end to));
+let fresh(f: machine.Function): Int = machine.newVirtual(f intClass);
+(* A function whose entry takes an Int argument in a0 *)
+let entry(f: machine.Function): Int =
+    begin
+        let b = machine.newBlock(f)
+        let v = fresh(f)
+        move(f b v a0)
+        v
+    end;
 
-let show(title: String f: ssa.Function): Ok =
+let line(f: machine.Function i: machine.Inst): String =
+    begin
+        let texts = vector.new(:String)
+        vector.append(:String texts vector.get(:String ops i.op))
+        for k = 0 upto {extent i.operands - 1} do
+            vector.append(:String texts {if i.operands[k].defines then "=" else "" end} <> name(f i.operands[k].reg))
+        end
+        strutil.join(" " texts)
+    end;
+
+let rematerializable(i: machine.Inst): Bool = strutil.startsWith(vector.get(:String ops i.op) "const");
+
+let show(title: String f: machine.Function): Ok =
     begin
         emit("== " <> title)
-        writer.putString(writer.output printer.formatFunction(f))
-        let a = regalloc.allocate(f toy isCall)
+        writer.putString(writer.output machine.format(f fun(r: Int): String name(f r) fun(i: machine.Inst): String
+            line(f i)))
+        let a = regalloc.allocate(f toy rematerializable)
         for v = 0 upto {extent a.starts - 1} do
-            let var line = "%" <> conv.int(v) <> ":"
+            let var text = "%" <> conv.int(v) <> ":"
             for k = 0 upto {extent a.starts[v] - 1} do
-                let r = where(a.homes[v][k])
-                line := line <> {if k > 0 then ", " else " " end} <> r <> " at " <> conv.int(a.starts[v][k])
+                text := text <> {if k > 0 then ", " else " " end} <> name(f a.homes[v][k]) <> " at "
+                    <> conv.int(a.starts[v][k])
             end
-            emit(line)
+            emit(text <> if a.remat[v] then " (made again)" elsif regalloc.needsSlot(a v) then " (stored)" else "" end)
         end
         for k = 0 upto {extent a.moves - 1} do
             let m = a.moves[k]
-            emit("move at " <> conv.int(m.at) <> ": %" <> conv.int(m.value) <> " " <> where(m.from) <> " -> "
-                <> where(m.to))
+            emit("move at " <> conv.int(m.at) <> ": %" <> conv.int(m.value) <> " " <> name(f m.from) <> " -> "
+                <> name(f m.to))
         end
         let var used = ""
-        for k = 0 upto {extent a.calleeUsed - 1} do used := used <> " " <> where(a.calleeUsed[k]) end
+        for k = 0 upto {extent a.calleeUsed - 1} do used := used <> " " <> name(f a.calleeUsed[k]) end
         emit("callee-saved used:" <> used)
+        let lowering = tuple
+            let move = fun(dst: Int src: Int): machine.Inst make(machine.kindMove "mov" array of wr(dst) rd(src) end ~1)
+            let load = fun(dst: Int v: Int): Array(machine.Inst)
+                array of make(ordinary "load [" <> name(f v) <> "]" array of wr(dst) end ~1) end
+            let store = fun(src: Int v: Int): Array(machine.Inst)
+                array of make(ordinary "store [" <> name(f v) <> "]" array of rd(src) end ~1) end
+            let scratch = array of array of 5 6 7 end array of 8 9 end end
+        end
+        regalloc.rewrite(f a lowering)
+        emit("rewritten:")
+        writer.putString(writer.output machine.format(f fun(r: Int): String name(f r) fun(i: machine.Inst): String
+            line(f i)))
     end;
 
-let ret(f: ssa.Function b: Int vs: Array(Int)): Ok =
-    ssa.terminate(f b option termReturn of ssa.Terminator with let values = vs end);
-let jumpTo(f: ssa.Function b: Int to: Int args: Array(Int)): Ok =
-    ssa.terminate(f b option termJump of ssa.Terminator with let target = ssa.target(to args) end);
-let branch(f: ssa.Function b: Int c: Int t: Int e: Int): Ok =
-    ssa.terminate(f b option termBranch of ssa.Terminator with
-        let cond = c let ifTrue = ssa.target(t none) let ifFalse = ssa.target(e none)
-    end);
-let add(f: ssa.Function b: Int x: Int y: Int): Int = ssa.binary(f b ssa.opAdd x y);
-
-(* 1. A chain: each result can take its operand's register *)
-let chain = ssa.newFunction("chain" false array of tInt end array of tInt end);
-let c0 = vector.get(:Int ssa.block(chain 0).params 0);
-let c1 = add(chain 0 c0 c0);
-let c2 = add(chain 0 c1 c1);
-ret(chain 0 array of add(chain 0 c2 c2) end);
+(* 1. A chain: each result can take its operand's register, and the first and
+ * the last the argument's and the result's *)
+let chain = machine.newFunction(extent toy.registers);
+let c0 = entry(chain);
+let c1 = fresh(chain);
+let c2 = fresh(chain);
+let c3 = fresh(chain);
+add(chain 0 c1 c0 c0);
+add(chain 0 c2 c1 c1);
+add(chain 0 c3 c2 c2);
+ret(chain 0 c3);
 show("a chain" chain);
 
 (* 2. Across a call: what lives across it needs the callee-saved register; the
  * second such value is in memory across the call, and loaded at its use *)
-let across = ssa.newFunction("across" false array of tInt tInt end array of tInt end);
-let a0 = vector.get(:Int ssa.block(across 0).params 0);
-let a1 = vector.get(:Int ssa.block(across 0).params 1);
-let ignored = call(across 0 "g" none none none noTypes);
-ret(across 0 array of add(across 0 a0 a1) end);
+let across = machine.newFunction(extent toy.registers);
+let x0 = entry(across);
+let x1 = fresh(across);
+let x2 = fresh(across);
+add(across 0 x1 x0 x0);
+call(across 0);
+add(across 0 x2 x0 x1);
+ret(across 0 x2);
 show("two values across a call" across);
 
 (* 3. Too many at once: four live together, three registers; the one used
  * furthest away is spilled until it is used *)
-let crowd = ssa.newFunction("crowd" false array of tInt end array of tInt end);
-let k0 = vector.get(:Int ssa.block(crowd 0).params 0);
-let k1 = add(crowd 0 k0 k0);
-let k2 = add(crowd 0 k1 k0);
-let k3 = add(crowd 0 k2 k1);
-let k4 = add(crowd 0 k3 k2);
-let k5 = add(crowd 0 k4 k1);
-ret(crowd 0 array of add(crowd 0 k5 k0) end);
+let crowd = machine.newFunction(extent toy.registers);
+let k = array of(6 0);
+k[0] := entry(crowd);
+for j = 1 upto 5 do k[j] := fresh(crowd) end;
+add(crowd 0 k[1] k[0] k[0]);
+add(crowd 0 k[2] k[1] k[0]);
+add(crowd 0 k[3] k[2] k[1]);
+add(crowd 0 k[4] k[3] k[2]);
+add(crowd 0 k[5] k[4] k[1]);
+let k6 = fresh(crowd);
+add(crowd 0 k6 k[5] k[0]);
+ret(crowd 0 k6);
 show("more live values than registers" crowd);
 
-(* 4. A loop: its values stay in their registers through it *)
-let loopF = ssa.newFunction("loop" false array of tInt end array of tInt end);
-let n = vector.get(:Int ssa.block(loopF 0).params 0);
-let head = ssa.newBlock(loopF);
-let i = ssa.addParam(loopF head tInt);
-let bodyB = ssa.newBlock(loopF);
-let exitB = ssa.newBlock(loopF);
-jumpTo(loopF 0 head array of ssa.constant(loopF 0 0) end);
-branch(loopF head ssa.binary(loopF head ssa.opLt i n) bodyB exitB);
-jumpTo(loopF bodyB head array of add(loopF bodyB i ssa.constant(loopF bodyB 1)) end);
-ret(loopF exitB array of i end);
+(* 4. A loop: its values stay in their registers through it, the jumps'
+ * arguments sharing their parameters' *)
+let loopF = machine.newFunction(extent toy.registers);
+let n = entry(loopF);
+let head = machine.newBlock(loopF);
+let i = machine.addParam(loopF head intClass);
+let body = machine.newBlock(loopF);
+let edgeB = machine.newBlock(loopF);
+let exitB = machine.newBlock(loopF);
+let zero = fresh(loopF);
+constant(loopF 0 zero 0);
+jump(loopF 0 head array of zero end);
+let cond = fresh(loopF);
+op(loopF head "lt" cond i n);
+branch(loopF head cond edgeB);
+jump(loopF head exitB noArgs);
+jump(loopF edgeB body noArgs);
+let one = fresh(loopF);
+let next = fresh(loopF);
+constant(loopF body one 1);
+add(loopF body next i one);
+jump(loopF body head array of next end);
+ret(loopF exitB i);
 show("a loop" loopF);
 
 (* 5. Reals: registers of their own class, a callee-saved one across a call *)
-let reals = ssa.newFunction("reals" false array of tReal tReal end array of tReal end);
-let r0 = vector.get(:Int ssa.block(reals 0).params 0);
-let r1 = vector.get(:Int ssa.block(reals 0).params 1);
-let r2 = ssa.binary(reals 0 ssa.opFadd r0 r1);
-let ignored2 = call(reals 0 "g" none none none noTypes);
-ret(reals 0 array of ssa.binary(reals 0 ssa.opFmul r2 r0) end);
+let reals = machine.newFunction(extent toy.registers);
+let rb = machine.newBlock(reals);
+let r0 = machine.newVirtual(reals realClass);
+let r1 = machine.newVirtual(reals realClass);
+let r2 = machine.newVirtual(reals realClass);
+let r3 = machine.newVirtual(reals realClass);
+move(reals rb r0 f1);
+constant(reals rb r1 2);
+op(reals rb "fadd" r2 r0 r1);
+call(reals rb);
+op(reals rb "fmul" r3 r2 r0);
+move(reals rb f1 r3);
+put(reals rb machine.kindReturn "ret" array of rd(f1) end);
 show("reals across a call" reals);
 
-(* 6. Two calls: of the three values live across them, one has the
- * callee-saved register, and each other is in a caller-saved one until a call,
- * then in memory until it is used *)
-let calls = ssa.newFunction("calls" false array of tInt tInt tInt end array of tInt end);
-let q0 = vector.get(:Int ssa.block(calls 0).params 0);
-let q1 = vector.get(:Int ssa.block(calls 0).params 1);
-let q2 = vector.get(:Int ssa.block(calls 0).params 2);
-let ignored3 = call(calls 0 "g" none none none noTypes);
-let q3 = add(calls 0 q0 q1);
-let ignored4 = call(calls 0 "h" none none none noTypes);
-ret(calls 0 array of add(calls 0 q3 q2) end);
-show("three values across two calls" calls);
+(* 6. A call's argument and result in a0: what is live across the argument's
+ * move is not in a0, and the result's register is taken from a0 *)
+let fixed = machine.newFunction(extent toy.registers);
+let p0 = entry(fixed);
+let p1 = fresh(fixed);
+let p2 = fresh(fixed);
+add(fixed 0 p1 p0 p0);
+move(fixed 0 a0 p1);
+callOne(fixed 0);
+move(fixed 0 p2 a0);
+let p3 = fresh(fixed);
+add(fixed 0 p3 p2 p0);
+ret(fixed 0 p3);
+show("an argument and a result in a fixed register" fixed);
 
-(* 7. A try: its handler is entered with every register dead, so what it uses
- * is in memory at its start, while the body has it in a register *)
-let tried = ssa.newFunction("tried" false array of tInt end array of tInt end);
-let t0 = vector.get(:Int ssa.block(tried 0).params 0);
-let handlerRecord = ssa.newSlot(tried 64 8);
-let t1 = add(tried 0 t0 t0);
-let tryBody = ssa.newBlock(tried);
-let handler = ssa.newBlock(tried);
-ssa.terminate(tried 0 option termTry of ssa.Terminator with
-    let slot = handlerRecord let body = ssa.target(tryBody none) let handler = handler
-end);
-ret(tried tryBody array of add(tried tryBody t1 t1) end);
-ret(tried handler array of add(tried handler t1 t0) end);
-show("a try" tried);
+(* 7. A raise enters a block: what it uses is in memory at its start, while
+ * the block before it has it in a register *)
+let tried = machine.newFunction(extent toy.registers);
+let t0 = entry(tried);
+let t1 = fresh(tried);
+add(tried 0 t1 t0 t0);
+let tryBody = machine.newBlock(tried);
+let resume = machine.newBlock(tried);
+let handler = machine.newBlock(tried);
+machine.block(tried resume).raised := true;
+machine.append(tried 0 make(machine.kindBranch "adr" none resume));
+jump(tried 0 tryBody noArgs);
+let t2 = fresh(tried);
+add(tried tryBody t2 t1 t1);
+ret(tried tryBody t2);
+jump(tried resume handler noArgs);
+let t3 = fresh(tried);
+add(tried handler t3 t1 t0);
+ret(tried handler t3);
+show("a block a raise enters" tried);

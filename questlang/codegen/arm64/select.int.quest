@@ -58,10 +58,12 @@ export
     (* A function's selection; defined says which symbols the unit defines *)
     select(f: ssa.Function prefix: String defined: hashMap.T(String Bool)): Selection
     label(s: Selection b: Int): String
-    (* The instructions shared code makes, their operations added to s's *)
-    lowering(s: Selection): machine.Lowering
-    (* Whether an instruction only computes its results *)
-    pure(s: Selection i: machine.Inst): Bool
+    (* An instruction of a kind, its operation added to s's: its first
+     * registers written, as minst.results says, the rest read *)
+    make(s: Selection kind: machine.Kind i: minst.Inst): machine.Inst
+    (* Whether an instruction may be made again wherever its result is
+     * needed: a constant, a symbol's address, or an address in the frame *)
+    rematerializable(s: Selection i: machine.Inst): Bool
     (* The selection as text, a virtual register %N *)
     format(s: Selection): String
 

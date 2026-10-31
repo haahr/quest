@@ -2,26 +2,24 @@
 
 module regalloc : Regalloc
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
-    questlang/ssa/cfg : questlang/ssa/Cfg
-    questlang/ssa/liveness : questlang/ssa/Liveness
     targets = questlang/codegen/target : questlang/codegen/Target
+    questlang/codegen/machine : questlang/codegen/Machine
     collections/vector : collections/Vector
     collections/bitset : collections/Bitset
     util/sort : util/Sort
 export
     Def Move = Tuple at: Int value: Int from: Int to: Int end
     Def Allocation = Tuple
-        starts: Array(Array(Int)) homes: Array(Array(Int)) spilled: Array(Bool) moves: Array(Move)
+        starts: Array(Array(Int)) homes: Array(Array(Int)) spilled: Array(Bool) remat: Array(Bool) moves: Array(Move)
         blockStart: Array(Int) liveIn: Array(Array(Int)) calleeUsed: Array(Int)
     end
     let memory = ~1
-    Let Function = ssa.Function
+    Let Function = machine.Function
 
-    (* A lifetime interval, or a piece split from one: its value, its ranges
-     * of positions (each inclusive, in order, apart), the positions where
-     * its value is read, and its register's index in its class's pool, ~1 for
-     * memory and ~2 for none chosen yet *)
+    (* A lifetime interval, or a piece split from one: its virtual register's
+     * index, its ranges of positions (each inclusive, in order, apart), the
+     * positions where it is read, and its register's index in its class's
+     * pool, ~1 for memory and ~2 for none chosen yet *)
     Let Interval = Tuple
         value: Int
         var froms: Array(Int)
@@ -49,28 +47,12 @@ export
             r
         end
 
-    let classOf(f: Function v: Int): Int = targets.index(targets.classOfType(ssa.typeOf(f v)))
-
     let home(a: Allocation v: Int p: Int): Int =
         begin
             let k = sort.bisectRight(:Int a.starts[v] p sort.intCompare) - 1
             if k < 0 then memory else a.homes[v][k] end
         end
-
-    let spillAll(f: Function): Allocation =
-        begin
-            let nValues = vector.length(:ssa.Type f.types)
-            let nBlocks = vector.length(:ssa.Block f.blocks)
-            tuple
-                let starts = array of(nValues array of 0 end)
-                let homes = array of(nValues array of :Int end)
-                let spilled = array of(nValues true)
-                let moves = array of :Move end
-                let blockStart = array of(nBlocks 0)
-                let liveIn = array of(nBlocks array of :Int end)
-                let calleeUsed = array of :Int end
-            end
-        end
+    let needsSlot(a: Allocation v: Int): Bool = a.spilled[v] andif not(a.remat[v])
 
     (* =========================================================================
      * Intervals
@@ -199,7 +181,8 @@ export
      * ====================================================================== *)
 
     Let Scan = Tuple
-        f: Function
+        (* Each virtual register's class, by its index *)
+        classes: Array(Int)
         (* Every interval and piece, for the allocation's pieces *)
         intervals: vector.T(Interval)
         heap: vector.T(Interval)
@@ -209,16 +192,26 @@ export
         var inactive: vector.T(Interval)
         pools: Array(Array(Int))
         firstCallee: Array(Int)
-        (* The positions of calls, and of handlers' starts *)
+        (* The positions of calls, and of the starts of blocks a raise
+         * enters *)
         calls: Array(Int)
         handlers: Array(Int)
+        (* Where each register of each class's pool is fixed, as an interval
+         * (of no ranges for one never fixed) *)
+        fixed: Array(Array(Interval))
+        (* Each virtual register's hints, registers physical or virtual, and
+         * the register it was last given (~1 for none) *)
+        firstVirtual: Int
+        hints: Array(vector.T(Int))
+        given: Array(Int)
     end
 
     let made(sc: Scan it: Interval): Ok = vector.append(:Interval sc.intervals it)
 
     (* Each register's first position, from where cur starts, at which cur
      * cannot be in it: just after a call cur is live across, for a
-     * caller-saved one, and a handler's start that cur covers, for any *)
+     * caller-saved one, the start of a block a raise enters that cur covers,
+     * for any, and where an operand fixes it *)
     let blocked(sc: Scan cur: Interval c: Int): Array(Int) =
         begin
             let s = firstPos(cur)
@@ -236,6 +229,10 @@ export
             end
             let r = array of(extent sc.pools[c] handler)
             if call < handler then for j = 0 upto {sc.firstCallee[c] - 1} do r[j] := call end end
+            for j = 0 upto {extent r - 1} do
+                let x = intersection(sc.fixed[c][j] cur)
+                if {x >= 0} andif {x < r[j]} then r[j] := x end
+            end
             r
         end
 
@@ -269,20 +266,21 @@ export
             end
         end
 
-    (* A register free for all of cur, the caller-saved first, or for a part,
-     * the rest split off; false if none is free at its start *)
+    (* A register free for all of cur, one it is hinted to first, then the
+     * caller-saved, or for a part, the rest split off; false if none is free
+     * at its start *)
     let tryFree(sc: Scan cur: Interval): Bool =
         begin
-            let c = classOf(sc.f cur.value)
+            let c = sc.classes[cur.value]
             let n = extent sc.pools[c]
             let free = blocked(sc cur c)
             for k = 0 upto {vector.length(:Interval sc.active) - 1} do
                 let it = vector.get(:Interval sc.active k)
-                if classOf(sc.f it.value) is c then free[it.reg] := 0 end
+                if sc.classes[it.value] is c then free[it.reg] := 0 end
             end
             for k = 0 upto {vector.length(:Interval sc.inactive) - 1} do
                 let it = vector.get(:Interval sc.inactive k)
-                if classOf(sc.f it.value) is c then
+                if sc.classes[it.value] is c then
                     let x = intersection(it cur)
                     if {x >= 0} andif {x < free[it.reg]} then free[it.reg] := x end
                 end
@@ -290,6 +288,14 @@ export
             let s = firstPos(cur)
             let e = lastPos(cur)
             let var chosen = ~1
+            let hints = sc.hints[cur.value]
+            for k = 0 upto {vector.length(:Int hints) - 1} do
+                let h = vector.get(:Int hints k)
+                let reg = if h >= sc.firstVirtual then sc.given[h - sc.firstVirtual] else h end
+                for r = 0 upto {n - 1} do
+                    if {chosen < 0} andif {sc.pools[c][r] is reg} andif {free[r] > e} then chosen := r end
+                end
+            end
             for r = 0 upto {n - 1} do if {chosen < 0} andif {free[r] > e} then chosen := r end end
             if chosen >= 0 then
                 cur.reg := chosen
@@ -313,14 +319,14 @@ export
      * there, so its register is not taken. *)
     let allocateBlocked(sc: Scan cur: Interval): Ok =
         begin
-            let c = classOf(sc.f cur.value)
+            let c = sc.classes[cur.value]
             let n = extent sc.pools[c]
             let s = firstPos(cur)
             let block = blocked(sc cur c)
             let use = array of(n never)
             for k = 0 upto {vector.length(:Interval sc.active) - 1} do
                 let it = vector.get(:Interval sc.active k)
-                if classOf(sc.f it.value) is c then
+                if sc.classes[it.value] is c then
                     if firstPos(it) is s then use[it.reg] := ~1
                     else
                         let u = nextUse(it s)
@@ -330,7 +336,7 @@ export
             end
             for k = 0 upto {vector.length(:Interval sc.inactive) - 1} do
                 let it = vector.get(:Interval sc.inactive k)
-                if {classOf(sc.f it.value) is c} andif {intersection(it cur) >= 0} then
+                if {sc.classes[it.value] is c} andif {intersection(it cur) >= 0} then
                     let u = nextUse(it s)
                     if u < use[it.reg] then use[it.reg] := u end
                 end
@@ -345,12 +351,12 @@ export
                 let holders = vector.toArray(:Interval sc.active)
                 for k = 0 upto {extent holders - 1} do
                     let it = holders[k]
-                    if {classOf(sc.f it.value) is c} andif {it.reg is best} then splitSpill(sc it s) end
+                    if {sc.classes[it.value] is c} andif {it.reg is best} then splitSpill(sc it s) end
                 end
                 let sleepers = vector.toArray(:Interval sc.inactive)
                 for k = 0 upto {extent sleepers - 1} do
                     let it = sleepers[k]
-                    if {classOf(sc.f it.value) is c} andif {it.reg is best} then
+                    if {sc.classes[it.value] is c} andif {it.reg is best} then
                         let x = intersection(it cur)
                         if x >= 0 then splitSpill(sc it x) end
                     end
@@ -359,29 +365,95 @@ export
             end
         end
 
-    let allocate(f: Function t: targets.Target clobbers: All(i: ssa.Inst) Bool): Allocation =
+    let allocate(f: Function t: targets.Target rematerializable: All(i: machine.Inst) Bool): Allocation =
         begin
-            let nValues = vector.length(:ssa.Type f.types)
-            let nBlocks = vector.length(:ssa.Block f.blocks)
-            let g = cfg.graph(f)
-            let order = g.order
-            let live = liveness.live(f g)
+            let nValues = machine.virtuals(f)
+            let nBlocks = vector.length(:machine.Block f.blocks)
+            let nRegisters = extent t.registers
+            let order = machine.order(f)
+            let live = machine.live(f)
             let liveIn = live.liveIn
             let liveOut = live.liveOut
-            (* The layout: two positions for each block's start, instruction,
-             * and terminator *)
+            let virtual(r: Int): Bool = machine.isVirtual(f r)
+            let classes = array of(nValues 0)
+            for v = 0 upto {nValues - 1} do classes[v] := targets.index(machine.virtualClass(f f.firstVirtual + v)) end
+            (* The layout: two positions for each block's start and
+             * instruction *)
             let blockStart = array of(nBlocks 0 - never)
             let var pos = 0
             for k = 0 upto {extent order - 1} do
-                let blk = ssa.block(f order[k])
+                let blk = machine.block(f order[k])
                 blockStart[order[k]] := pos
-                pos := pos + {2 * {vector.length(:ssa.Inst blk.insts) + 2}}
+                pos := pos + {2 * {vector.length(:machine.Inst blk.insts) + 1}}
             end
             let positions = pos
             let isStart = bitset.new(positions + 1)
             for k = 0 upto {extent order - 1} do add(isStart blockStart[order[k]]) end
+            (* Each class's registers, the caller-saved first *)
+            let pools = array of(targets.classes array of :Int end)
+            let firstCallee = array of(targets.classes 0)
+            for c = 0 upto {targets.classes - 1} do
+                pools[c] := concat(t.callerSaved[c] t.calleeSaved[c])
+                firstCallee[c] := extent t.callerSaved[c]
+            end
+            let allocatable = array of(nRegisters false)
+            for c = 0 upto {targets.classes - 1} do
+                for j = 0 upto {extent pools[c] - 1} do allocatable[pools[c][j]] := true end
+            end
+            (* Where operands fix registers: from an instruction that writes
+             * one to the last that reads it, or from its block's start *)
+            let fixedFroms = array of(nRegisters vector.new(:Int))
+            let fixedTos = array of(nRegisters vector.new(:Int))
+            for r = 0 upto {nRegisters - 1} do
+                fixedFroms[r] := vector.new(:Int)
+                fixedTos[r] := vector.new(:Int)
+            end
+            for k = 0 upto {extent order - 1} do
+                let b = order[k]
+                let bs = blockStart[b]
+                let insts = machine.block(f b).insts
+                for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
+                    let i = vector.get(:machine.Inst insts j)
+                    let p = bs + {2 * {j + 1}}
+                    for a = 0 upto {extent i.operands - 1} do
+                        let o = i.operands[a]
+                        if not(virtual(o.reg)) andif allocatable[o.reg] andif not(o.defines) then
+                            let n = vector.length(:Int fixedFroms[o.reg])
+                            if {n > 0} andif {vector.get(:Int fixedFroms[o.reg] n - 1) >= bs} then
+                                vector.set(:Int fixedTos[o.reg] n - 1 p)
+                            else
+                                vector.append(:Int fixedFroms[o.reg] bs)
+                                vector.append(:Int fixedTos[o.reg] p)
+                            end
+                        end
+                    end
+                    for a = 0 upto {extent i.operands - 1} do
+                        let o = i.operands[a]
+                        if not(virtual(o.reg)) andif allocatable[o.reg] andif o.defines then
+                            vector.append(:Int fixedFroms[o.reg] p + 1)
+                            vector.append(:Int fixedTos[o.reg] p + 1)
+                        end
+                    end
+                end
+            end
+            let fixed = array of(targets.classes array of :Interval end)
+            for c = 0 upto {targets.classes - 1} do
+                fixed[c] := array of(extent pools[c] tuple
+                    let value = ~1 let var froms = array of :Int end let var tos = array of :Int end
+                    let var uses = array of :Int end let var reg = ~1
+                end)
+                for j = 0 upto {extent pools[c] - 1} do
+                    let r = pools[c][j]
+                    (* In order of their starts, as the blocks are *)
+                    fixed[c][j] := tuple
+                        let value = ~1 let var froms = vector.toArray(:Int fixedFroms[r])
+                        let var tos = vector.toArray(:Int fixedTos[r]) let var uses = array of :Int end let var reg = ~1
+                    end
+                end
+            end
             (* The intervals, built backwards (Wimmer and Franz's
-             * BuildIntervals): each value's ranges and uses, latest first *)
+             * BuildIntervals): each register's ranges and uses, latest
+             * first *)
             let rangeFroms = array of(nValues vector.new(:Int))
             let rangeTos = array of(nValues vector.new(:Int))
             let usesAt = array of(nValues vector.new(:Int))
@@ -396,7 +468,9 @@ export
                 begin
                     let n = vector.length(:Int rangeFroms[v])
                     if {n > 0} andif {{to + 1} >= vector.get(:Int rangeFroms[v] n - 1)} then
-                        if from < vector.get(:Int rangeFroms[v] n - 1) then vector.set(:Int rangeFroms[v] n - 1 from) end
+                        if from < vector.get(:Int rangeFroms[v] n - 1) then
+                            vector.set(:Int rangeFroms[v] n - 1 from)
+                        end
                         if to > vector.get(:Int rangeTos[v] n - 1) then vector.set(:Int rangeTos[v] n - 1 to) end
                     else
                         vector.append(:Int rangeFroms[v] from)
@@ -417,47 +491,79 @@ export
             let handlers = vector.new(:Int)
             for k = {extent order - 1} downto 0 do
                 let b = order[k]
-                let blk = ssa.block(f b)
+                let blk = machine.block(f b)
                 let bs = blockStart[b]
-                let n = vector.length(:ssa.Inst blk.insts)
-                let tpos = bs + {2 * {n + 1}}
+                let n = vector.length(:machine.Inst blk.insts)
                 let outs = bitset.elements(liveOut[b])
-                for j = 0 upto {extent outs - 1} do addRange(outs[j] bs tpos + 1) end
-                let tu = ssa.terminatorUses(blk.term)
-                for a = 0 upto {extent tu - 1} do
-                    addRange(tu[a] bs tpos)
-                    vector.append(:Int usesAt[tu[a]] tpos)
-                end
-                case blk.term
-                    when termTry with x then vector.append(:Int handlers x.handler)
-                    when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then ok
-                end
+                for j = 0 upto {extent outs - 1} do addRange(outs[j] bs bs + {{2 * n} + 1}) end
                 for j = {n - 1} downto 0 do
-                    let i = vector.get(:ssa.Inst blk.insts j)
+                    let i = vector.get(:machine.Inst blk.insts j)
                     let p = bs + {2 * {j + 1}}
-                    for r = 0 upto {extent i.results - 1} do setFrom(i.results[r] p + 1) end
-                    for a = 0 upto {extent i.args - 1} do
-                        addRange(i.args[a] bs p)
-                        vector.append(:Int usesAt[i.args[a]] p)
+                    for a = 0 upto {extent i.operands - 1} do
+                        let o = i.operands[a]
+                        if virtual(o.reg) andif o.defines then setFrom(machine.index(f o.reg) p + 1) end
                     end
-                    if clobbers(i) then vector.append(:Int calls p) end
+                    for a = 0 upto {extent i.operands - 1} do
+                        let o = i.operands[a]
+                        if virtual(o.reg) andif not(o.defines) then
+                            addRange(machine.index(f o.reg) bs p)
+                            vector.append(:Int usesAt[machine.index(f o.reg)] p)
+                        end
+                    end
+                    if machine.isKind(i machine.kindCall) then vector.append(:Int calls p) end
                 end
-                for p = 0 upto {vector.length(:Int blk.params) - 1} do setFrom(vector.get(:Int blk.params p) bs) end
+                for p = 0 upto {vector.length(:Int blk.params) - 1} do
+                    setFrom(machine.index(f vector.get(:Int blk.params p)) bs)
+                end
+                if blk.raised then vector.append(:Int handlers bs) end
             end
             let callAt = reversed(calls)
-            let handlerAt = array of(vector.length(:Int handlers) 0)
-            for k = 0 upto {extent handlerAt - 1} do handlerAt[k] := blockStart[vector.get(:Int handlers k)] end
-            (* Each class's registers, the caller-saved first *)
-            let pools = array of(targets.classes array of :Int end)
-            let firstCallee = array of(targets.classes 0)
-            for c = 0 upto {targets.classes - 1} do
-                pools[c] := concat(t.callerSaved[c] t.calleeSaved[c])
-                firstCallee[c] := extent t.callerSaved[c]
+            let handlerAt = vector.toArray(:Int handlers)
+            sort.sort(:Int handlerAt sort.intCompare)
+            (* The hints: a move's registers, and a jump's arguments and its
+             * target's parameters, each other's; and what is rematerialized *)
+            let hints = array of(nValues vector.new(:Int))
+            for v = 0 upto {nValues - 1} do hints[v] := vector.new(:Int) end
+            let hint(a: Int b: Int): Ok =
+                if virtual(a) andif {virtual(b) orif allocatable[b]} then
+                    vector.append(:Int hints[machine.index(f a)] b)
+                end
+            let remat = array of(nValues false)
+            for b = 0 upto {nBlocks - 1} do
+                let insts = machine.block(f b).insts
+                for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
+                    let i = vector.get(:machine.Inst insts j)
+                    if machine.isKind(i machine.kindMove) then
+                        hint(i.operands[0].reg i.operands[1].reg)
+                        hint(i.operands[1].reg i.operands[0].reg)
+                    elsif machine.isKind(i machine.kindJump) then
+                        let params = machine.block(f i.target).params
+                        for a = 0 upto {extent i.operands - 1} do
+                            hint(vector.get(:Int params a) i.operands[a].reg)
+                            hint(i.operands[a].reg vector.get(:Int params a))
+                        end
+                    end
+                    (* One result, computed from no virtual register *)
+                    let var results = 0
+                    let var reads = 0
+                    for a = 0 upto {extent i.operands - 1} do
+                        if virtual(i.operands[a].reg) then
+                            if i.operands[a].defines then results := results + 1 else reads := reads + 1 end
+                        end
+                    end
+                    if {results is 1} andif {reads is 0} andif rematerializable(i) then
+                        for a = 0 upto {extent i.operands - 1} do
+                            if virtual(i.operands[a].reg) then remat[machine.index(f i.operands[a].reg)] := true end
+                        end
+                    end
+                end
             end
             let sc = tuple
-                let f = f let intervals = vector.new(:Interval) let heap = vector.new(:Interval)
+                let classes = classes let intervals = vector.new(:Interval) let heap = vector.new(:Interval)
                 let var active = vector.new(:Interval) let var inactive = vector.new(:Interval)
                 let pools = pools let firstCallee = firstCallee let calls = callAt let handlers = handlerAt
+                let fixed = fixed let firstVirtual = f.firstVirtual let hints = hints
+                let given = array of(nValues ~1)
             end
             for v = 0 upto {nValues - 1} do
                 if vector.length(:Int rangeFroms[v]) > 0 then
@@ -479,14 +585,21 @@ export
                         if covers(it s) then vector.append(:Interval stillActive it)
                         else vector.append(:Interval stillInactive it) end
                     end
-                for k = 0 upto {vector.length(:Interval sc.active) - 1} do classify(vector.get(:Interval sc.active k)) end
-                for k = 0 upto {vector.length(:Interval sc.inactive) - 1} do classify(vector.get(:Interval sc.inactive k)) end
+                for k = 0 upto {vector.length(:Interval sc.active) - 1} do
+                    classify(vector.get(:Interval sc.active k))
+                end
+                for k = 0 upto {vector.length(:Interval sc.inactive) - 1} do
+                    classify(vector.get(:Interval sc.inactive k))
+                end
                 sc.active := stillActive
                 sc.inactive := stillInactive
                 if not(tryFree(sc cur)) then allocateBlocked(sc cur) end
-                if cur.reg >= 0 then vector.append(:Interval sc.active cur) end
+                if cur.reg >= 0 then
+                    vector.append(:Interval sc.active cur)
+                    sc.given[cur.value] := pools[classes[cur.value]][cur.reg]
+                end
             end
-            (* Each value's pieces, in order *)
+            (* Each register's pieces, in order *)
             let pieces = array of(nValues vector.new(:Interval))
             for v = 0 upto {nValues - 1} do pieces[v] := vector.new(:Interval) end
             for k = 0 upto {vector.length(:Interval sc.intervals) - 1} do
@@ -495,15 +608,14 @@ export
             end
             let starts = array of(nValues array of(0 0))
             let homes = array of(nValues array of :Int end)
-            let spilled = array of(nValues true)
+            let spilled = array of(nValues false)
             let moves = vector.new(:Move)
             for v = 0 upto {nValues - 1} do
                 let ps = vector.toArray(:Interval pieces[v])
                 sort.sort(:Interval ps fun(a: Interval b: Interval): Int sort.intCompare(firstPos(a) firstPos(b)))
-                let c = classOf(f v)
+                let c = classes[v]
                 starts[v] := array of(extent ps 0)
                 homes[v] := array of(extent ps memory)
-                spilled[v] := {extent ps is 0}
                 for k = 0 upto {extent ps - 1} do
                     starts[v][k] := firstPos(ps[k])
                     if ps[k].reg >= 0 then homes[v][k] := pools[c][ps[k].reg] else spilled[v] := true end
@@ -535,8 +647,272 @@ export
             let ins = array of(nBlocks array of(0 0))
             for b = 0 upto {nBlocks - 1} do ins[b] := bitset.elements(liveIn[b]) end
             tuple
-                let starts = starts let homes = homes let spilled = spilled let moves = moved
+                let starts = starts let homes = homes let spilled = spilled let remat = remat let moves = moved
                 let blockStart = blockStart let liveIn = ins let calleeUsed = vector.toArray(:Int used)
+            end
+        end
+
+    (* =========================================================================
+     * Rewriting the function in the registers allocated
+     * ====================================================================== *)
+
+    (* A place a move reads or writes: a register; or else (reg memory) a
+     * virtual register's memory (by its index), its slot, or for one
+     * rematerialized (only read), its instruction again *)
+    Let Place = Tuple reg: Int value: Int end
+    Let Transfer = Tuple dst: Place src: Place end
+
+    let inRegister(r: Int): Place = tuple let reg = r let value = ~1 end
+    let inMemory(v: Int): Place = tuple let reg = memory let value = v end
+    let transfer(dst: Place src: Place): Transfer = tuple let dst = dst let src = src end
+    let samePlace(a: Place b: Place): Bool =
+        if a.reg isnot memory then a.reg is b.reg
+        else {b.reg is memory} andif {a.value is b.value} end
+
+    Let Rewriter = Tuple
+        f: Function
+        a: Allocation
+        lowering: machine.Lowering
+        (* Each virtual register's defining instruction, for those
+         * rematerialized *)
+        defs: Array(machine.Inst)
+        code: vector.T(machine.Inst)
+    end
+
+    let emit(w: Rewriter i: machine.Inst): Ok = vector.append(:machine.Inst w.code i)
+    let emitAll(w: Rewriter insts: Array(machine.Inst)): Ok = for k = 0 upto {extent insts - 1} do emit(w insts[k]) end
+
+    (* A virtual register's memory into a register: loaded from its slot, or
+     * its instruction made again *)
+    let reload(w: Rewriter reg: Int v: Int): Ok =
+        if w.a.remat[v] then
+            let i = w.defs[v]
+            let operands = array of(extent i.operands machine.reads(0))
+            for k = 0 upto {extent operands - 1} do
+                operands[k] := if i.operands[k].defines then machine.writes(reg) else i.operands[k] end
+            end
+            emit(w machine.inst(i.kind operands i.op i.target))
+        else emitAll(w w.lowering.load(reg w.f.firstVirtual + v)) end
+
+    (* A place's word into a register *)
+    let readInto(w: Rewriter reg: Int src: Place): Ok =
+        if src.reg is memory then reload(w reg src.value)
+        elsif src.reg isnot reg then emit(w w.lowering.move(reg src.reg)) end
+
+    (* One move, memory to memory through the first integer scratch
+     * register *)
+    let place(w: Rewriter dst: Place src: Place): Ok =
+        if dst.reg isnot memory then readInto(w dst.reg src)
+        else
+            let scratch = w.lowering.scratch[0][0]
+            let r = if src.reg isnot memory then src.reg else begin readInto(w scratch src) scratch end end
+            emitAll(w w.lowering.store(r w.f.firstVirtual + dst.value))
+        end
+
+    (* Moves made at once: each in turn whose destination no other reads. When
+     * only cycles are left, each place in them is read by one move, so one
+     * move's source is copied to the second integer scratch register (of
+     * either class), which that move then reads, and its cycle unwinds; the
+     * next is broken only once it has, so the register holds one value at a
+     * time *)
+    let parallel(w: Rewriter transfers: vector.T(Transfer)): Ok =
+        begin
+            let pending = vector.new(:Transfer)
+            for k = 0 upto {vector.length(:Transfer transfers) - 1} do
+                let t = vector.get(:Transfer transfers k)
+                if not(samePlace(t.dst t.src)) then vector.append(:Transfer pending t) end
+            end
+            while vector.length(:Transfer pending) > 0 do
+                let n = vector.length(:Transfer pending)
+                let var chosen = ~1
+                for k = 0 upto {n - 1} do
+                    if chosen < 0 then
+                        let t = vector.get(:Transfer pending k)
+                        let var read = false
+                        for j = 0 upto {n - 1} do
+                            if {j isnot k} andif samePlace(vector.get(:Transfer pending j).src t.dst) then
+                                read := true
+                            end
+                        end
+                        if not(read) then chosen := k end
+                    end
+                end
+                if chosen < 0 then
+                    let t = vector.get(:Transfer pending 0)
+                    let breaker = w.lowering.scratch[0][1]
+                    readInto(w breaker t.src)
+                    vector.set(:Transfer pending 0 transfer(t.dst inRegister(breaker)))
+                else
+                    let t = vector.get(:Transfer pending chosen)
+                    place(w t.dst t.src)
+                    vector.delete(:Transfer pending chosen)
+                end
+            end
+        end
+
+    (* Where a register is at a position: a physical one is in itself *)
+    let at(w: Rewriter r: Int p: Int): Place =
+        if not(machine.isVirtual(w.f r)) then inRegister(r)
+        else
+            let v = machine.index(w.f r)
+            let h = home(w.a v p)
+            if h isnot memory then inRegister(h) else inMemory(v) end
+        end
+
+    (* An edge's moves, from a jump or a branch at p: each of its target's
+     * parameters, to its register and its slot, from its argument, and each
+     * register live into the target from where it is at p to its register at
+     * the target's start (in memory there, it is already) *)
+    let edge(w: Rewriter p: Int target: Int args: Array(Int)): Ok =
+        begin
+            let bs = w.a.blockStart[target]
+            let transfers = vector.new(:Transfer)
+            let params = machine.block(w.f target).params
+            for k = 0 upto {extent args - 1} do
+                let param = machine.index(w.f vector.get(:Int params k))
+                let h = home(w.a param bs)
+                if h isnot memory then vector.append(:Transfer transfers transfer(inRegister(h) at(w args[k] p))) end
+                if needsSlot(w.a param) then
+                    vector.append(:Transfer transfers transfer(inMemory(param) at(w args[k] p)))
+                end
+            end
+            let ins = w.a.liveIn[target]
+            for k = 0 upto {extent ins - 1} do
+                let h = home(w.a ins[k] bs)
+                if h isnot memory then
+                    vector.append(:Transfer transfers transfer(inRegister(h) at(w w.f.firstVirtual + ins[k] p)))
+                end
+            end
+            parallel(w transfers)
+        end
+
+    (* An instruction in the registers allocated: an operand in memory loaded
+     * into a scratch register first, a result in memory written to one, and a
+     * result stored if it has a slot; or, for a result rematerialized whose
+     * first piece is in memory, none *)
+    let ordinary(w: Rewriter i: machine.Inst p: Int): Ok =
+        begin
+            let f = w.f
+            let used = array of(targets.classes 0)
+            let operands = array of(extent i.operands machine.reads(0))
+            let stores = vector.new(:Int)
+            let stored = vector.new(:Int)
+            let var skip = false
+            for k = 0 upto {extent operands - 1} do
+                let o = i.operands[k]
+                operands[k] := o
+                if machine.isVirtual(f o.reg) andif not(o.defines) then
+                    let v = machine.index(f o.reg)
+                    let h = home(w.a v p)
+                    if h isnot memory then operands[k] := machine.reads(h)
+                    else
+                        let c = targets.index(machine.virtualClass(f o.reg))
+                        let scratch = w.lowering.scratch[c][used[c]]
+                        used[c] := used[c] + 1
+                        reload(w scratch v)
+                        operands[k] := machine.reads(scratch)
+                    end
+                end
+            end
+            for k = 0 upto {extent operands - 1} do
+                let o = i.operands[k]
+                if machine.isVirtual(f o.reg) andif o.defines then
+                    let v = machine.index(f o.reg)
+                    let h = home(w.a v p + 1)
+                    if {h is memory} andif w.a.remat[v] then skip := true end
+                    let c = targets.index(machine.virtualClass(f o.reg))
+                    let r = if h isnot memory then h else w.lowering.scratch[c][0] end
+                    operands[k] := machine.writes(r)
+                    if needsSlot(w.a v) then
+                        vector.append(:Int stores r)
+                        vector.append(:Int stored v)
+                    end
+                end
+            end
+            if not(skip) then
+                emit(w machine.inst(i.kind operands i.op i.target))
+                for k = 0 upto {vector.length(:Int stores) - 1} do
+                    emitAll(w w.lowering.store(vector.get(:Int stores k) f.firstVirtual + vector.get(:Int stored k)))
+                end
+            end
+        end
+
+    (* A move: its source into its destination's register, or stored to its
+     * slot *)
+    let move(w: Rewriter i: machine.Inst p: Int): Ok =
+        begin
+            let f = w.f
+            let dst = i.operands[0].reg
+            let src = at(w i.operands[1].reg p)
+            if not(machine.isVirtual(f dst)) then readInto(w dst src)
+            else
+                let v = machine.index(f dst)
+                let h = home(w.a v p + 1)
+                if h isnot memory then
+                    readInto(w h src)
+                    if needsSlot(w.a v) then emitAll(w w.lowering.store(h dst)) end
+                else place(w inMemory(v) src) end
+            end
+        end
+
+    let rewrite(f: Function a: Allocation lowering: machine.Lowering): Ok =
+        begin
+            let nBlocks = vector.length(:machine.Block f.blocks)
+            let nothing = machine.inst(machine.kindOrdinary array of :machine.Operand end ~1 ~1)
+            let defs = array of(machine.virtuals(f) nothing)
+            (* Where each branch target's one branch is *)
+            let branchAt = array of(nBlocks ~1)
+            for b = 0 upto {nBlocks - 1} do
+                let insts = machine.block(f b).insts
+                for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
+                    let i = vector.get(:machine.Inst insts j)
+                    for k = 0 upto {extent i.operands - 1} do
+                        let o = i.operands[k]
+                        if machine.isVirtual(f o.reg) andif o.defines then defs[machine.index(f o.reg)] := i end
+                    end
+                    if machine.isKind(i machine.kindBranch) then
+                        branchAt[i.target] := a.blockStart[b] + {2 * {j + 1}}
+                    end
+                end
+            end
+            let moveAts = array of(extent a.moves 0)
+            for k = 0 upto {extent moveAts - 1} do moveAts[k] := a.moves[k].at end
+            for b = 0 upto {nBlocks - 1} do
+                let blk = machine.block(f b)
+                let bs = a.blockStart[b]
+                let w = tuple
+                    let f = f let a = a let lowering = lowering let defs = defs let code = vector.new(:machine.Inst)
+                end
+                if bs >= 0 then
+                    if branchAt[b] >= 0 then edge(w branchAt[b] b array of :Int end) end
+                    for j = 0 upto {vector.length(:machine.Inst blk.insts) - 1} do
+                        let i = vector.get(:machine.Inst blk.insts j)
+                        let p = bs + {2 * {j + 1}}
+                        (* The moves to pieces starting here *)
+                        let transfers = vector.new(:Transfer)
+                        let var next = sort.bisectLeft(:Int moveAts p sort.intCompare)
+                        while {next < extent a.moves} andif {a.moves[next].at is p} do
+                            let m = a.moves[next]
+                            let src = if m.from is memory then inMemory(m.value) else inRegister(m.from) end
+                            vector.append(:Transfer transfers transfer(inRegister(m.to) src))
+                            next := next + 1
+                        end
+                        if vector.length(:Transfer transfers) > 0 then parallel(w transfers) end
+                        case i.kind
+                            when kindJump then
+                                let args = array of(extent i.operands 0)
+                                for k = 0 upto {extent args - 1} do args[k] := i.operands[k].reg end
+                                edge(w p i.target args)
+                                emit(w machine.inst(i.kind array of :machine.Operand end i.op i.target))
+                            when kindMove then move(w i p)
+                            when kindOrdinary, kindBranch, kindCall, kindReturn then ordinary(w i p)
+                        end
+                    end
+                end
+                vector.clear(:machine.Inst blk.insts)
+                for j = 0 upto {vector.length(:machine.Inst w.code) - 1} do
+                    vector.append(:machine.Inst blk.insts vector.get(:machine.Inst w.code j))
+                end
             end
         end
 end

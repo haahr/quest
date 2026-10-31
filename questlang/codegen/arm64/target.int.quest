@@ -1,10 +1,14 @@
 (* Quest Self-Hosted Compiler: The arm64 Target Description Interface
  *
  * arm64's registers as codegen/target numbers them: x0 to x30 are 0 to 30,
- * xzr 31, d0 to d31 32 to 63, and sp 64. The allocatable ones are none an
- * argument, a result, or a scratch register (docs/arm64.md section 3.8): x12
- * to x15 and d16 to d31, which a call clobbers, and x19 to x28 and d8 to d15,
- * which it preserves. The scratch registers are x9, x10, x11, x16, and x17. *)
+ * xzr 31, d0 to d31 32 to 63, and sp 64. The allocatable ones are all but
+ * the scratch registers, the platform's x18, and the frame's: x12 to x15,
+ * then x8 down to x0, and d16 to d29, then d7 down to d0, which a call
+ * clobbers (the arguments' last, so that a value no move hints to one takes
+ * one of the others first), and x19 to x28 and d8 to d15, which it preserves.
+ * The scratch registers are x9, x10, and x11 for an instruction's operands
+ * in memory, x16 and x17 within a sequence that addresses memory (the
+ * linker's veneers may use them between instructions), and d30 and d31. *)
 
 interface Target
 import

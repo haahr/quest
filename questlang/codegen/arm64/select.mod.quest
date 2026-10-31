@@ -702,14 +702,32 @@ export
             selection
         end
 
-    let lowering(s: Selection): machine.Lowering =
-        tuple
-            let move = fun(dst: Int src: Int): machine.Inst
-                begin
-                    vector.append(:minst.Op s.ops minst.mov(dst src).op)
-                    machine.inst(machine.kindMove array of machine.writes(dst) machine.reads(src) end
-                        vector.length(:minst.Op s.ops) - 1 ~1)
-                end
+    let make(s: Selection kind: machine.Kind i: minst.Inst): machine.Inst =
+        begin
+            vector.append(:minst.Op s.ops i.op)
+            let n = minst.results(i.op)
+            let operands = array of(extent i.regs machine.reads(0))
+            for k = 0 upto {extent i.regs - 1} do
+                operands[k] := if k < n then machine.writes(i.regs[k]) else machine.reads(i.regs[k]) end
+            end
+            machine.inst(kind operands vector.length(:minst.Op s.ops) - 1 ~1)
+        end
+
+    let rematerializable(s: Selection i: machine.Inst): Bool =
+        begin
+            let var readsSp = true
+            for k = 0 upto {extent i.operands - 1} do
+                if not(i.operands[k].defines) andif {i.operands[k].reg isnot sp} then readsSp := false end
+            end
+            machine.isKind(i machine.kindOrdinary) andif case vector.get(:minst.Op s.ops i.op)
+                when opMovConst, opSymbolAddress then true
+                when opAddImm then readsSp
+                when opMovImm, opMovz, opMovk, opTlvAddress, opMov, opArith, opSubImm, opAndImm, opShiftImm, opMsub,
+                    opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCset, opLoad, opStore, opLdp, opStp, opAdrp,
+                    opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opBCond, opBrk,
+                    opLabel, opCfiDefCfa, opCfiOffset then
+                    false
+            end
         end
 
     let format(s: Selection): String =

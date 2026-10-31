@@ -1,68 +1,95 @@
 (* Quest Self-Hosted Compiler: The Register Allocator's Interface
  *
- * Linear scan with interval splitting over a function's SSA (docs/arm64.md
- * section 3.8, after Wimmer and Mossenbock), parameterized by a target's
- * registers so that it can be tested on its own. The blocks are laid out in
- * reverse postorder, two positions for each block's start, instruction, and
- * terminator: an instruction's operands are read at its position and its
- * results written at the next, so that a result may take a register an
- * operand's interval ends in. Each value's lifetime interval is the ranges of
- * positions where it is live, with holes where it is not, from liveness over
- * the blocks. The intervals are taken in order of their starts; each gets a
+ * Linear scan with interval splitting over a machine function's virtual
+ * registers (codegen/machine; docs/arm64.md section 3.8, after Wimmer and
+ * Mossenbock), parameterized by a target's registers (codegen/target), so
+ * that it can be tested on its own. The blocks are laid out in reverse
+ * postorder, two positions for each block's start and each instruction: an
+ * instruction's operands are read at its position and its results written at
+ * the next, so that a result may take a register an operand's interval ends
+ * in. Each virtual register's lifetime interval is the ranges of positions
+ * where it is live, with holes where it is not, from liveness over the
+ * blocks. The intervals are taken in order of their starts; each gets a
  * register free for all of it, or for a part, the rest split off; when none is
  * free, the interval whose next use is furthest is spilled until its next use.
  *
- * So a value lives in pieces, each in a register or in memory. A value with a
- * piece in memory is stored there when it is defined, and since an SSA value
- * never changes, its memory is valid wherever it is live: going from a
- * register to memory costs nothing, and going back is a load (or, for a
- * constant, an address, or the null, which codegen rematerializes, the
- * instruction again) where the piece starts, before an instruction that uses
- * it. A piece starting at a block's start is reached on each edge into the
- * block, whose code moves each value live there from where it is at the edge's
- * source. A call clobbers the caller-saved registers, so a value live across
- * one is in a callee-saved register or in memory there; a try's handler is
- * entered with every register dead, so a value live into one is in memory at
- * its start. *)
+ * A register is not free where a physical operand fixes it: from an
+ * instruction that writes it to the last that reads it (an argument's register
+ * from its move to the call, a result's from the call to its move). A move
+ * between two registers is a hint, as is a jump's argument for its target's
+ * parameter: an interval takes the register of what it is hinted to, if that
+ * one is free for all of it, so that the move costs nothing.
+ *
+ * So a virtual register lives in pieces, each in a register or in memory. One
+ * with a piece in memory is stored there when it is defined, and since it is
+ * defined once, its memory is valid wherever it is live: going from a register
+ * to memory costs nothing, and going back is a load (or, for one an
+ * instruction that reads no virtual register computes, that instruction again,
+ * rematerialized) where the piece starts, before an instruction that uses it.
+ * A piece starting at a block's start is reached on each edge into the block,
+ * whose code moves each value live there from where it is at the edge's
+ * source: before a jump, or at the start of a branch's target, which has no
+ * other predecessor. A call clobbers the caller-saved registers, so a value
+ * live across one is in a callee-saved register or in memory there; a block a
+ * raise enters has every register dead, so a value live into one is in memory
+ * at its start.
+ *
+ * rewrite then makes the function's instructions read and write the
+ * registers allocated: an operand in memory where an instruction reads it is
+ * loaded into a scratch register first, a result in memory is written to one
+ * and stored, and the moves between pieces, and on edges, are made, as if in
+ * parallel, through the target's Lowering. *)
 
 interface Regalloc
 import
-    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     targets = questlang/codegen/target : questlang/codegen/Target
+    questlang/codegen/machine : questlang/codegen/Machine
 export
     (* Where a value is when it is in memory rather than a register *)
     memory: Int
 
-    (* At a position, a value's move from a register (memory for its memory)
-     * to the register its next piece is in *)
+    (* At a position, a virtual register's (by its index) move from a
+     * register (memory for its memory) to the register its next piece is
+     * in *)
     Def Move = Tuple at: Int value: Int from: Int to: Int end
 
     Def Allocation = Tuple
-        (* Each value's pieces: where each starts, in order, and its register,
-         * or memory *)
+        (* Each virtual register's pieces, by its index: where each starts, in
+         * order, and its register, or memory *)
         starts: Array(Array(Int))
         homes: Array(Array(Int))
-        (* Whether a value has a piece in memory (or no pieces), and so is
-         * stored there when it is defined *)
+        (* Whether one has a piece in memory, and so is stored there when it
+         * is defined, unless it is rematerialized (one with no pieces, never
+         * live, is in memory everywhere but never stored) *)
         spilled: Array(Bool)
+        (* Whether one is rematerialized rather than stored *)
+        remat: Array(Bool)
         (* The moves to pieces in registers that start inside blocks, in order
          * of their positions, each made just before the instruction there *)
         moves: Array(Move)
         (* Each block's first position, negative for one not reached *)
         blockStart: Array(Int)
-        (* What each block's edges in must move: the values live into it *)
+        (* What each block's edges in must move: the virtual registers (by
+         * index) live into it *)
         liveIn: Array(Array(Int))
-        (* The callee-saved registers given to any value *)
+        (* The callee-saved registers given to any *)
         calleeUsed: Array(Int)
     end
 
-    (* The allocation of a function's values to the target's allocatable
-     * registers (a call preserves the callee-saved ones and no others);
-     * clobbers says which instructions are calls, or otherwise use the
-     * registers a call may *)
-    allocate(f: ssa.Function t: targets.Target clobbers: All(i: ssa.Inst) Bool): Allocation
-    (* None: every value in memory throughout *)
-    spillAll(f: ssa.Function): Allocation
-    (* Where a value is at a position: its register, or memory *)
+    (* The allocation of a function's virtual registers to the target's
+     * allocatable registers (a call preserves the callee-saved ones and no
+     * others); rematerializable says which instructions may be made again
+     * wherever their result is needed, rather than it stored, if they read
+     * no virtual register *)
+    allocate(f: machine.Function t: targets.Target rematerializable: All(i: machine.Inst) Bool): Allocation
+    (* Where a virtual register (by its index) is at a position: its register,
+     * or memory *)
     home(a: Allocation v: Int p: Int): Int
+    (* Whether a virtual register (by index) is stored in its memory when it
+     * is defined *)
+    needsSlot(a: Allocation v: Int): Bool
+
+    (* The function, its virtual registers replaced by those allocated, the
+     * loads, stores, and moves added *)
+    rewrite(f: machine.Function a: Allocation lowering: machine.Lowering): Ok
 end

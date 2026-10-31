@@ -39,13 +39,28 @@ export
             r
         end
 
+    let downFrom(last: Int first: Int): Array(Int) =
+        begin
+            let r = array of({last - first} + 1 0)
+            for k = 0 upto {extent r - 1} do r[k] := last - k end
+            r
+        end
+    let concat(a: Array(Int) b: Array(Int)): Array(Int) =
+        begin
+            let r = array of({extent a + extent b} 0)
+            for i = 0 upto {extent a - 1} do r[i] := a[i] end
+            for i = 0 upto {extent b - 1} do r[extent a + i] := b[i] end
+            r
+        end
+
     let description: targets.Target = tuple
         let registers = registers
-        let callerSaved = array of range(x(12) x(15)) range(d(16) d(31)) end
+        let callerSaved = array of concat(range(x(12) x(15)) downFrom(x(8) x(0)))
+            concat(range(d(16) d(29)) downFrom(d(7) d(0))) end
         let calleeSaved = array of range(x(19) x(28)) range(d(8) d(15)) end
         let arguments = array of range(x(0) x(7)) range(d(0) d(7)) end
         let results = array of range(x(0) x(1)) range(d(0) d(0)) end
-        let scratch = array of x(9) x(10) x(11) x(16) x(17) end
+        let scratch = array of x(9) x(10) x(11) x(16) x(17) d(30) d(31) end
         let stackAlign = 16
         let wordBytes = 8
     end

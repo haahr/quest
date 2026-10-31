@@ -1,12 +1,15 @@
 (* Quest Self-Hosted Compiler: The arm64 Backend's Code Generator Interface
  *
  * Compiles a unit's SSA (questlang/ssa) to Darwin arm64 assembly
- * (docs/arm64.md section 3). Values are in the registers codegen/regalloc's
- * linear scan gives them, or in their slots in the frame (section 3.8). Calls
- * pass arguments and results as AAPCS64 does (section 3.3); a try pushes a
- * native handler's record, and a raise resumes at its handler with every
- * register dead (section 3.6). The code is codegen/arm64/minst's
- * instructions, which codegen/arm64/printer spells; the directives are
+ * (docs/arm64.md section 3): each function selected as a machine function of
+ * codegen/arm64/minst's instructions (codegen/arm64/select), its virtual
+ * registers given registers or slots in the frame by codegen/regalloc's linear
+ * scan and rewritten in them (section 3.8), then the frame's prologue and
+ * epilogues added, blocks that only jump passed over, and a jump to the next
+ * block left to fall through. Calls pass arguments and results as AAPCS64
+ * does (section 3.3); a try pushes a native handler's record, and a raise
+ * resumes beside it with every register dead (section 3.6).
+ * codegen/arm64/printer spells the instructions; the directives are
  * codegen/arm64/asm's. *)
 
 interface Codegen
@@ -26,12 +29,13 @@ export
     relaxBranches(lines: vector.T(String) prefix: String reach: Int): vector.T(String)
 
     (* A slot of a function's frame, at offset from sp after the prologue, of
-     * bytes (docs/arm64.md section 10, hazard 5): a value in memory, of its
-     * SSA type (a ptr is a pointer and an int is not, though an int may be a
-     * QVal word, whose pointer-ness its type descriptor says), id being the
-     * value; or with no type, a stack slot's memory, whose words have no class
-     * here, id being the slot. What a precise collector's stack maps would be
-     * made from; nothing emits them yet. *)
+     * bytes (docs/arm64.md section 10, hazard 5): a virtual register in
+     * memory, of its SSA type (a ptr is a pointer and an int is not, though an
+     * int may be a QVal word, whose pointer-ness its type descriptor says), id
+     * being its index (an SSA value's own number); or with no type, a stack
+     * slot's memory, whose words have no class here, id being the slot. What a
+     * precise collector's stack maps would be made from; nothing emits them
+     * yet. *)
     Def FrameSlot = Tuple offset: Int bytes: Int type: maybe.T(ssa.Type) id: Int end
     (* The slots of the frame f is compiled with, in order of their offsets *)
     frameSlots(f: ssa.Function): Array(FrameSlot)

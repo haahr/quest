@@ -59,33 +59,34 @@ class TestArm64(unittest.TestCase):
         # section 3.10)
         self.assertEqual(text.count("stp x29, x30, [sp, #"), text.count(".cfi_startproc"))
         self.assertEqual(len(re.findall(r"\]!\n", text)), text.count(".cfi_startproc"))
-        self.assertIn("stp x27, x28, [sp, #-96]!\n\tstp x25, x26, [sp, #16]", text)
+        self.assertIn("stp d14, d15, [sp, #-160]!\n\tstp d12, d13, [sp, #16]", text)
         self.assertEqual(text.count(".cfi_startproc"), text.count(".cfi_endproc"))
         # A thread-local through its descriptor, an undefined symbol through the GOT
         self.assertIn("_quest_current_exception_handler@TLVPPAGE", text)
         self.assertIn("_quest_type_Int+48", text)
         self.assertTrue(re.search(r"ldr (x\d+), \[\1, _quest_type_Int@GOTPAGEOFF\]", text), text)
         # The narrow arguments are packed on the stack, a byte each
-        self.assertTrue(re.search(r"strb w9, \[sp, #40\]\n.*\n\tstrb w9, \[sp, #41\]", text), text)
-        self.assertIn("ldrb w9, [x29, #57]", text)
+        self.assertTrue(re.search(r"strb w\d+, \[sp, #40\]\n\tstrb w\d+, \[sp, #41\]", text), text)
+        self.assertTrue(re.search(r"ldrb w\d+, \[x29, #57\]", text), text)
         # A native try records where to resume, with sp and fp, and its
         # function saves and restores every callee-saved register, once each
-        self.assertIn("adr x9, Lf4_e1", text)
-        self.assertIn("Lf4_e1:\n\tb Lf4_b2", text)
+        resume = re.search(r"adr x\d+, (Lf4_b\d+)\n", text)
+        self.assertTrue(resume, text)
+        self.assertTrue(re.search(resume.group(1) + r":\n\tb Lf4_b\d+\n", text), text)
         # A frame of more than a page is probed (docs/arm64.md section 10.2)
         probe = re.search(r"\tmovz x9, #(\d+), lsl #0\n\tbl ___chkstk_darwin\n\tmovz x9, #\1, lsl #0\n\tsub sp, sp, x9",
                           text)
         self.assertTrue(probe and int(probe.group(1)) > 4096, text)
-        self.assertIn("str x29, [x10, #40]", text)
+        self.assertTrue(re.search(r"str x29, \[x\d+, #40\]", text), text)
         entered = text[text.index("_qf_try:"):]
         entered = entered[:entered.index(".cfi_endproc")]
         for pair in ("x19, x20", "x27, x28", "d8, d9", "d14, d15"):
             self.assertEqual(len(re.findall(rf"stp {pair}, \[sp, #-?\d+\]", entered)), 1, pair)
             self.assertEqual(entered.count(f"ldp {pair}, [sp], #16"), 2, pair)  # at its two returns
         # Elsewhere, only the pairs a function's values use (section 3.8)
-        memory = text[text.index("_qf_memory:"):]
-        memory = memory[:memory.index(".cfi_endproc")]
-        self.assertEqual(re.findall(r"stp (\S+, \S+), \[sp, #-?\d+\]", memory), ["x19, x20", "x29, x30"])
+        main = text[text.index("_main:"):]
+        main = main[:main.index(".cfi_endproc")]
+        self.assertEqual(re.findall(r"stp (\S+, \S+), \[sp, #-?\d+\]", main), ["x19, x20", "x29, x30"])
         self.assertIn(".cfi_offset b15, -152", text)
 
     def test_a_malformed_unit_fails(self) -> None:
