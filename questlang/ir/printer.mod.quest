@@ -152,11 +152,11 @@ export
         "offsets(" <> typeText(table.view) <> " <- " <> typeText(table.layout) <> ")"
 
     (* A boxed variable (after the represent pass) holds its record or variant
-     * boxed *)
+     * boxed, and an unboxed one its tuple's components *)
     let decl(p: Printer v: Variable): String =
         begin
             let t = typeText(v.type)
-            bind(p v) <> ": " <> if v.boxed then "box(" <> t <> ")" else t end
+            bind(p v) <> ": " <> if v.boxed then "box(" <> t <> ")" elsif v.unboxed then "unboxed(" <> t <> ")" else t end
         end
 
     (* How a component of a tuple or option is read, after the represent pass:
@@ -413,7 +413,8 @@ export
             end
             (* A lifted function's environment, which has no Quest type *)
             let env = if maybe.isSome(:Variable f.env) then " {" <> bind(p maybe.unwrap(:Variable f.env)) <> "}" else "" end
-            emit(p depth "fun " <> name(p f.v) <> env <> tps <> "(" <> joinWith(", " params) <> "): " <> typeText(f.resultType) <> " {")
+            emit(p depth "fun " <> name(p f.v) <> env <> tps <> "(" <> joinWith(", " params) <> "): "
+                <> if f.unboxedResult then "unboxed(" <> typeText(f.resultType) <> ")" else typeText(f.resultType) end <> " {")
             (* The view maps it reads its type parameters' values through their
              * bounds by (after the describe pass) *)
             for i = 0 upto {extent f.viewMaps - 1} do

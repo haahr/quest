@@ -85,9 +85,23 @@ export
             r
         end
 
+    (* The parts of an unboxed tuple of type t (questlang/ir/unbox): its
+     * components in their slot forms, a word each *)
+    let unboxedParts(t: Type): Array(Part) =
+        begin
+            let rs = shapes.shape(t)
+            let all = vector.new(:Part)
+            for i = 0 upto {extent rs.components - 1} do
+                let ps = slotParts(shapes.componentShape(rs.components[i]).type)
+                for k = 0 upto {extent ps - 1} do vector.append(:Part all ps[k]) end
+            end
+            vector.toArray(:Part all)
+        end
+
     (* The parts of a variable's value: a boxed variable (a record or a variant
      * the represent pass holds in its box) holds the box's pointer *)
-    let varParts(v: Variable): Array(Part) = if v.boxed then slotParts(v.type) else parts(v.type) end
+    let varParts(v: Variable): Array(Part) =
+        if v.boxed then slotParts(v.type) elsif v.unboxed then unboxedParts(v.type) else parts(v.type) end
 
     let typesOf(ps: Array(Part)): Array(ssa.Type) =
         begin

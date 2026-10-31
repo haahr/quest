@@ -33,6 +33,9 @@ export
         (* Set by the represent pass for a variable of a record or variant type
          * held boxed *)
         var boxed: Bool
+        (* Set by questlang/ir/unbox for a variable of a tuple type held as its
+         * components, never allocated *)
+        var unboxed: Bool
     end
     (* A constant: an Int, Real, Bool, Char, or String, or ok *)
     and Const = Tuple value: ConstValue shape: Shape end
@@ -207,6 +210,9 @@ export
         var traceName: maybe.T(String)
         var descriptorParams: Array(DescriptorParam)
         var viewMaps: Array(ViewMapParam)
+        (* Set by questlang/ir/unbox: the function returns its tuple result's
+         * components *)
+        var unboxedResult: Bool
     end
     and Case = Tuple tags: Array(String) var body: Body var binder: maybe.T(Variable) var components: Array(Access) end
     and DescriptorPair = Tuple source: Descriptor target: Descriptor end
@@ -487,7 +493,8 @@ export
      * ====================================================================== *)
 
     let newVar(hint: String t: Type isMutable: Bool): Variable =
-        tuple let id = nextId() let hint = hint let type = t let isMutable = isMutable let var boxed = false end
+        tuple let id = nextId() let hint = hint let type = t let isMutable = isMutable let var boxed = false
+            let var unboxed = false end
 
     let newBody(): Body = tuple let id = nextId() let var statements = vector.new(:Stmt) end
     let bodyOf(statements: Array(Stmt)): Body =
@@ -571,6 +578,7 @@ export
             let var traceName = traceName
             let var descriptorParams = array of :DescriptorParam end
             let var viewMaps = array of :ViewMapParam end
+            let var unboxedResult = false
         end
 
     let newMembers(): Members =

@@ -1,0 +1,37 @@
+(* Functions whose tuple results the self-hosted compiler returns as their
+ * components (docs/inlining.md section 5, workers), never allocating them,
+ * whose results are those of the program as written: a pair of Ints, a String
+ * and a Bool, a tuple of one component, and a function with several returns;
+ * and what it leaves allocated: a result kept whole, and a tuple returned that
+ * was not made for the return. Each is recursive, so that the simplifier does
+ * not inline it first. The ir_represented golden shows the unboxed results,
+ * and the ssa golden their functions allocating nothing. *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+let rec fibPair(n: Int): Tuple a: Int b: Int end =
+    if n is 0 then tuple let a = 0 let b = 1 end
+    else begin let p = fibPair(n - 1) tuple let a = p.b let b = p.a + p.b end end end;
+let f = fibPair(30);
+print("pair: " <> conv.int(f.a) <> " " <> conv.int(f.b));
+
+let rec named(n: Int): Tuple name: String even: Bool end =
+    if n <= 1 then tuple let name = "x" let even = n is 0 end
+    else begin let r = named(n - 2) tuple let name = r.name <> "x" let even = r.even end end end;
+let r = named(5);
+print("named: " <> r.name <> " " <> conv.bool(r.even));
+
+let rec one(n: Int): Tuple total: Int end =
+    if n is 0 then tuple let total = 0 end else begin let t = one(n - 1) tuple let total = t.total + n end end end;
+print("one: " <> conv.int(one(10).total));
+
+let rec kept(n: Int): Tuple a: Int b: Int end =
+    if n is 0 then tuple let a = 1 let b = 2 end else kept(n - 1) end;
+let whole = kept(3);
+let same = whole;
+print("kept: " <> conv.int(same.a + same.b));
+
+let shared = tuple let a = 5 let b = 6 end;
+let rec given(n: Int): Tuple a: Int b: Int end = if n is 0 then shared else given(n - 1) end;
+print("given: " <> conv.bool(given(2) is shared));

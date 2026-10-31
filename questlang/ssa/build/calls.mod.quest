@@ -136,13 +136,16 @@ export
             vector.toArray(:Int found)
         end
 
-    let directCall(fn: vals.Fn symbol: String lead: Array(Int) args: Array(Atom) resultType: Type): Array(Int) =
+    (* A direct call whose results are ps *)
+    let directCallOf(fn: vals.Fn symbol: String lead: Array(Int) args: Array(Atom) ps: Array(vals.Part)): Array(Int) =
         begin
-            let ps = resultParts(resultType)
             let vs = vals.callQuest(fn symbol vals.concat(lead vals.callAtoms(fn args)) pairsOf(extent lead args)
                 narrowOf(extent lead args) ps)
             resultsOf(fn ps vs)
         end
+
+    let directCall(fn: vals.Fn symbol: String lead: Array(Int) args: Array(Atom) resultType: Type): Array(Int) =
+        directCallOf(fn symbol lead args resultParts(resultType))
 
     let calleeResultType(t: Type): Type = t
 
@@ -158,7 +161,10 @@ export
                 let env = if extent k.captures is 0 then vals.null(fn)
                     else vals.loadWord(fn vals.atom1(fn ir.atomOfVar(callee)) runtimeLayout.offset("QClosure" "env") vals.tPtr)
                 end
-                directCall(fn vals.codeName(fn.u k.code) vals.concat(array of env end descs) args callee.type)
+                (* A function returning an unboxed tuple returns its
+                 * components (questlang/ir/unbox) *)
+                let ps = if k.code.unboxedResult then vals.unboxedParts(k.code.resultType) else resultParts(callee.type) end
+                directCallOf(fn vals.codeName(fn.u k.code) vals.concat(array of env end descs) args ps)
             else
                 indirectCall(fn callee descs args)
             end

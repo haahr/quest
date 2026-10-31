@@ -1,0 +1,594 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (LetValueBinding
+      :name 'print'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (LetValueBinding
+      :name 'fibPair'
+      :value (ExprIf
+        :cond (ExprInfix
+          :left (ExprId 'n')
+          :op 'is'
+          :right (ExprInt 0 '0')
+        )
+        :then_branch (ExprTuple
+          :fields (
+            (TupleBinding
+              :name 'a'
+              :value (ExprInt 0 '0')
+            )
+            (TupleBinding
+              :name 'b'
+              :value (ExprInt 1 '1')
+            )
+          )
+        )
+        :else_branch (ExprBlock
+          :bindings (
+            (LetValueBinding
+              :name 'p'
+              :value (ExprApp
+                :func (ExprId 'fibPair')
+                :args (
+                  (ExprInfix
+                    :left (ExprId 'n')
+                    :op '-'
+                    :right (ExprInt 1 '1')
+                  )
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprTuple
+                :fields (
+                  (TupleBinding
+                    :name 'a'
+                    :value (ExprSelect
+                      :target (ExprId 'p')
+                      :field 'b'
+                    )
+                  )
+                  (TupleBinding
+                    :name 'b'
+                    :value (ExprInfix
+                      :left (ExprSelect
+                        :target (ExprId 'p')
+                        :field 'a'
+                      )
+                      :op '+'
+                      :right (ExprSelect
+                        :target (ExprId 'p')
+                        :field 'b'
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'n'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypeTuple
+        :fields (
+          (FieldSig
+            :name 'a'
+            :type_sig (TypePath ('Int'))
+            :mode VALUE
+          )
+          (FieldSig
+            :name 'b'
+            :type_sig (TypePath ('Int'))
+            :mode VALUE
+          )
+        )
+      )
+      :is_rec True
+    )
+    (LetValueBinding
+      :name 'f'
+      :value (ExprApp
+        :func (ExprId 'fibPair')
+        :args (
+          (ExprInt 30 '30')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'pair: ' '"pair: "')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'int'
+                )
+                :args (
+                  (ExprSelect
+                    :target (ExprId 'f')
+                    :field 'a'
+                  )
+                )
+              )
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprString ' ' '" "')
+                :op '<>'
+                :right (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'int'
+                  )
+                  :args (
+                    (ExprSelect
+                      :target (ExprId 'f')
+                      :field 'b'
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'named'
+      :value (ExprIf
+        :cond (ExprInfix
+          :left (ExprId 'n')
+          :op '<='
+          :right (ExprInt 1 '1')
+        )
+        :then_branch (ExprTuple
+          :fields (
+            (TupleBinding
+              :name 'name'
+              :value (ExprString 'x' '"x"')
+            )
+            (TupleBinding
+              :name 'even'
+              :value (ExprInfix
+                :left (ExprId 'n')
+                :op 'is'
+                :right (ExprInt 0 '0')
+              )
+            )
+          )
+        )
+        :else_branch (ExprBlock
+          :bindings (
+            (LetValueBinding
+              :name 'r'
+              :value (ExprApp
+                :func (ExprId 'named')
+                :args (
+                  (ExprInfix
+                    :left (ExprId 'n')
+                    :op '-'
+                    :right (ExprInt 2 '2')
+                  )
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprTuple
+                :fields (
+                  (TupleBinding
+                    :name 'name'
+                    :value (ExprInfix
+                      :left (ExprSelect
+                        :target (ExprId 'r')
+                        :field 'name'
+                      )
+                      :op '<>'
+                      :right (ExprString 'x' '"x"')
+                    )
+                  )
+                  (TupleBinding
+                    :name 'even'
+                    :value (ExprSelect
+                      :target (ExprId 'r')
+                      :field 'even'
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'n'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypeTuple
+        :fields (
+          (FieldSig
+            :name 'name'
+            :type_sig (TypePath ('String'))
+            :mode VALUE
+          )
+          (FieldSig
+            :name 'even'
+            :type_sig (TypePath ('Bool'))
+            :mode VALUE
+          )
+        )
+      )
+      :is_rec True
+    )
+    (LetValueBinding
+      :name 'r'
+      :value (ExprApp
+        :func (ExprId 'named')
+        :args (
+          (ExprInt 5 '5')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'named: ' '"named: "')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprSelect
+                :target (ExprId 'r')
+                :field 'name'
+              )
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprString ' ' '" "')
+                :op '<>'
+                :right (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'bool'
+                  )
+                  :args (
+                    (ExprSelect
+                      :target (ExprId 'r')
+                      :field 'even'
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'one'
+      :value (ExprIf
+        :cond (ExprInfix
+          :left (ExprId 'n')
+          :op 'is'
+          :right (ExprInt 0 '0')
+        )
+        :then_branch (ExprTuple
+          :fields (
+            (TupleBinding
+              :name 'total'
+              :value (ExprInt 0 '0')
+            )
+          )
+        )
+        :else_branch (ExprBlock
+          :bindings (
+            (LetValueBinding
+              :name 't'
+              :value (ExprApp
+                :func (ExprId 'one')
+                :args (
+                  (ExprInfix
+                    :left (ExprId 'n')
+                    :op '-'
+                    :right (ExprInt 1 '1')
+                  )
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprTuple
+                :fields (
+                  (TupleBinding
+                    :name 'total'
+                    :value (ExprInfix
+                      :left (ExprSelect
+                        :target (ExprId 't')
+                        :field 'total'
+                      )
+                      :op '+'
+                      :right (ExprId 'n')
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'n'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypeTuple
+        :fields (
+          (FieldSig
+            :name 'total'
+            :type_sig (TypePath ('Int'))
+            :mode VALUE
+          )
+        )
+      )
+      :is_rec True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'one: ' '"one: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprApp
+                    :func (ExprId 'one')
+                    :args (
+                      (ExprInt 10 '10')
+                    )
+                  )
+                  :field 'total'
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'kept'
+      :value (ExprIf
+        :cond (ExprInfix
+          :left (ExprId 'n')
+          :op 'is'
+          :right (ExprInt 0 '0')
+        )
+        :then_branch (ExprTuple
+          :fields (
+            (TupleBinding
+              :name 'a'
+              :value (ExprInt 1 '1')
+            )
+            (TupleBinding
+              :name 'b'
+              :value (ExprInt 2 '2')
+            )
+          )
+        )
+        :else_branch (ExprApp
+          :func (ExprId 'kept')
+          :args (
+            (ExprInfix
+              :left (ExprId 'n')
+              :op '-'
+              :right (ExprInt 1 '1')
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'n'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypeTuple
+        :fields (
+          (FieldSig
+            :name 'a'
+            :type_sig (TypePath ('Int'))
+            :mode VALUE
+          )
+          (FieldSig
+            :name 'b'
+            :type_sig (TypePath ('Int'))
+            :mode VALUE
+          )
+        )
+      )
+      :is_rec True
+    )
+    (LetValueBinding
+      :name 'whole'
+      :value (ExprApp
+        :func (ExprId 'kept')
+        :args (
+          (ExprInt 3 '3')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'same'
+      :value (ExprId 'whole')
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'kept: ' '"kept: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprInfix
+                  :left (ExprSelect
+                    :target (ExprId 'same')
+                    :field 'a'
+                  )
+                  :op '+'
+                  :right (ExprSelect
+                    :target (ExprId 'same')
+                    :field 'b'
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'shared'
+      :value (ExprTuple
+        :fields (
+          (TupleBinding
+            :name 'a'
+            :value (ExprInt 5 '5')
+          )
+          (TupleBinding
+            :name 'b'
+            :value (ExprInt 6 '6')
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'given'
+      :value (ExprIf
+        :cond (ExprInfix
+          :left (ExprId 'n')
+          :op 'is'
+          :right (ExprInt 0 '0')
+        )
+        :then_branch (ExprId 'shared')
+        :else_branch (ExprApp
+          :func (ExprId 'given')
+          :args (
+            (ExprInfix
+              :left (ExprId 'n')
+              :op '-'
+              :right (ExprInt 1 '1')
+            )
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 'n'
+          :type_annot (TypePath ('Int'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypeTuple
+        :fields (
+          (FieldSig
+            :name 'a'
+            :type_sig (TypePath ('Int'))
+            :mode VALUE
+          )
+          (FieldSig
+            :name 'b'
+            :type_sig (TypePath ('Int'))
+            :mode VALUE
+          )
+        )
+      )
+      :is_rec True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString 'given: ' '"given: "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'bool'
+              )
+              :args (
+                (ExprInfix
+                  :left (ExprApp
+                    :func (ExprId 'given')
+                    :args (
+                      (ExprInt 2 '2')
+                    )
+                  )
+                  :op 'is'
+                  :right (ExprId 'shared')
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

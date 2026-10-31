@@ -1,0 +1,219 @@
+(* Quest Self-Hosted Compiler: Unboxed Tuples Implementation *)
+
+module unbox : Unbox
+import
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/walk : questlang/ir/Walk
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+export
+    Let Variable = nodes.Variable
+    Let Atom = nodes.Atom
+    Let Body = nodes.Body
+    Let Stmt = nodes.Stmt
+    Let Op = nodes.Op
+
+    let intEqual(a: Int b: Int): Bool = a is b
+
+    (* The most components an unboxed tuple has: two words of results *)
+    let maxComponents = 2
+
+    (* What the unit holds: each variable's uses; the uses as a call's callee,
+     * and as the tuple a component is read from; what each let binds; the
+     * closures of each function, by its id; and the variables nothing outside
+     * the bodies may name (modules' members and exports, let rec's
+     * variables) *)
+    Let Facts = Tuple
+        uses: hashMap.T(Int Int)
+        callees: hashMap.T(Int Int)
+        reads: hashMap.T(Int Int)
+        defs: hashMap.T(Int Op)
+        closures: hashMap.T(Int vector.T(Variable))
+        calls: vector.T(Stmt)
+        pinned: hashMap.T(Int Bool)
+    end
+
+    let bump(m: hashMap.T(Int Int) id: Int): Ok =
+        begin hashMap.insert(:Int :Int m id 1 + maybe.unwrapOr(:Int hashMap.get(:Int :Int m id) 0)) ok end
+    let countOf(m: hashMap.T(Int Int) v: Variable): Int = maybe.unwrapOr(:Int hashMap.get(:Int :Int m v.id) 0)
+
+    let pin(f: Facts m: nodes.Members): Ok =
+        for i = 0 upto {vector.length(:String m.names) - 1} do
+            let v = nodes.member(m vector.get(:String m.names i))
+            if maybe.isSome(:Variable v) then begin hashMap.insert(:Int :Bool f.pinned maybe.unwrap(:Variable v).id true) ok end end
+        end
+
+    let gather(f: Facts b: Body): Ok =
+        begin
+            let stmts = walk.walkStatements(b true)
+            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                let st = vector.get(:Stmt stmts i)
+                let used = walk.statementUses(st)
+                for j = 0 upto {extent used - 1} do
+                    case used[j] when atomVar with x then bump(f.uses x.v.id) when atomConst then ok end
+                end
+                let op = case st
+                    when sLet with x then
+                        begin
+                            hashMap.insert(:Int :Op f.defs x.v.id x.value)
+                            maybe.some(:Op x.value)
+                        end
+                    when sDo with x then maybe.some(:Op x.value)
+                    when sLetRec with x then
+                        begin
+                            for k = 0 upto {extent x.vars - 1} do hashMap.insert(:Int :Bool f.pinned x.vars[k].id true) end
+                            maybe.none(:Op)
+                        end
+                    else maybe.none(:Op)
+                end
+                if maybe.isSome(:Op op) then
+                    case maybe.unwrap(:Op op)
+                        when opCall with c then
+                            if maybe.isSome(:Variable c.callee) then
+                                bump(f.callees maybe.unwrap(:Variable c.callee).id)
+                                vector.append(:Stmt f.calls st)
+                            end
+                        when opTupleField with t then
+                            case t.tup when atomVar with x then bump(f.reads x.v.id) when atomConst then ok end
+                        when opMakeClosure with c then
+                            case st
+                                when sLet with x then
+                                    if not(hashMap.contains(:Int :vector.T(Variable) f.closures c.code.id)) then
+                                        hashMap.insert(:Int :vector.T(Variable) f.closures c.code.id vector.new(:Variable))
+                                    end
+                                    vector.append(:Variable hashMap.find(:Int :vector.T(Variable) f.closures c.code.id) x.v)
+                                else ok
+                            end
+                        else ok
+                    end
+                end
+            end
+        end
+
+    (* Whether a tuple type's values can be held as their components: one or
+     * two, each an Int, Bool, Char, or String, none var *)
+    let unboxable(s: shapes.Shape): Bool =
+        if not(shapes.kindIs(s shapes.shapeTuple)) orif {extent s.components is 0}
+            orif {extent s.components > maxComponents} then
+            false
+        else
+            let var all = true
+            for i = 0 upto {extent s.components - 1} do
+                let c = s.components[i]
+                let k = shapes.componentShape(c)
+                if c.isVar orif not(shapes.kindIs(k shapes.shapeInt) orif shapes.kindIs(k shapes.shapeBool)
+                    orif shapes.kindIs(k shapes.shapeChar) orif shapes.kindIs(k shapes.shapeString)) then
+                    all := false
+                end
+            end
+            all
+        end
+
+    (* The tuples a function's returns return, if each is a variable bound in
+     * it to a tuple made for the return alone, of its result type *)
+    let returned(f: Facts fun1: nodes.Function): maybe.T(vector.T(Variable)) =
+        begin
+            let found = vector.new(:Variable)
+            let var all = true
+            let stmts = walk.walkStatements(fun1.body false)
+            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                case vector.get(:Stmt stmts i)
+                    when sReturn with r then
+                        case r.value
+                            when atomVar with x then
+                                let d = hashMap.get(:Int :Op f.defs x.v.id)
+                                let made = maybe.isSome(:Op d) andif
+                                    {case maybe.unwrap(:Op d) when opMakeTuple with t then extent t.embedded is 0 else false end}
+                                if made andif {countOf(f.uses x.v) is 1} andif not(x.v.isMutable)
+                                    andif {x.v.type.id is fun1.resultType.id} then
+                                    vector.append(:Variable found x.v)
+                                else
+                                    all := false
+                                end
+                            when atomConst then all := false
+                        end
+                    else ok
+                end
+            end
+            if all andif not(vector.empty(:Variable found)) then maybe.some(:vector.T(Variable) found) else maybe.none(:vector.T(Variable)) end
+        end
+
+    let unboxUnit(unit: nodes.Unit): nodes.Unit =
+        begin
+            let f = tuple
+                let uses = hashMap.new(:Int :Int intEqual hash.int)
+                let callees = hashMap.new(:Int :Int intEqual hash.int)
+                let reads = hashMap.new(:Int :Int intEqual hash.int)
+                let defs = hashMap.new(:Int :Op intEqual hash.int)
+                let closures = hashMap.new(:Int :vector.T(Variable) intEqual hash.int)
+                let calls = vector.new(:Stmt)
+                let pinned = hashMap.new(:Int :Bool intEqual hash.int)
+            end
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                let m = vector.get(:nodes.Module unit.modules i)
+                pin(f m.members)
+                if maybe.isSome(:nodes.Members m.exports) then pin(f maybe.unwrap(:nodes.Members m.exports)) end
+            end
+            gather(f unit.main)
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do gather(f vector.get(:nodes.Module unit.modules i).init) end
+            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                gather(f vector.get(:nodes.Function unit.functions i).body)
+            end
+            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                let fun1 = vector.get(:nodes.Function unit.functions i)
+                let closures = maybe.unwrapOr(:vector.T(Variable) hashMap.get(:Int :vector.T(Variable) f.closures fun1.id)
+                    vector.new(:Variable))
+                (* Every closure of it is only called *)
+                let var known = {extent fun1.typeParams is 0} andif not(vector.empty(:Variable closures))
+                    andif unboxable(shapes.shape(fun1.resultType))
+                for k = 0 upto {vector.length(:Variable closures) - 1} do
+                    let c = vector.get(:Variable closures k)
+                    if hashMap.contains(:Int :Bool f.pinned c.id) orif {countOf(f.uses c) isnot countOf(f.callees c)} then
+                        known := false
+                    end
+                end
+                (* Every call's result, if bound, is of its result type and only
+                 * read from *)
+                let results = vector.new(:Variable)
+                if known then
+                    for k = 0 upto {vector.length(:Stmt f.calls) - 1} do
+                        let st = vector.get(:Stmt f.calls k)
+                        let callee = case st
+                            when sLet with x then case x.value when opCall with c then c.callee else maybe.none(:Variable) end
+                            when sDo with x then case x.value when opCall with c then c.callee else maybe.none(:Variable) end
+                            else maybe.none(:Variable)
+                        end
+                        let var mine = false
+                        for j = 0 upto {vector.length(:Variable closures) - 1} do
+                            if maybe.isSome(:Variable callee)
+                                andif nodes.same(maybe.unwrap(:Variable callee) vector.get(:Variable closures j)) then mine := true end
+                        end
+                        if mine then
+                            case st
+                                when sLet with x then
+                                    if {x.v.type.id is fun1.resultType.id} andif not(x.v.isMutable)
+                                        andif not(hashMap.contains(:Int :Bool f.pinned x.v.id))
+                                        andif {countOf(f.uses x.v) is countOf(f.reads x.v)} then
+                                        vector.append(:Variable results x.v)
+                                    else
+                                        known := false
+                                    end
+                                else ok
+                            end
+                        end
+                    end
+                end
+                let tuples = if known then returned(f fun1) else maybe.none(:vector.T(Variable)) end
+                if maybe.isSome(:vector.T(Variable) tuples) then
+                    fun1.unboxedResult := true
+                    let made = maybe.unwrap(:vector.T(Variable) tuples)
+                    for k = 0 upto {vector.length(:Variable made) - 1} do vector.get(:Variable made k).unboxed := true end
+                    for k = 0 upto {vector.length(:Variable results) - 1} do vector.get(:Variable results k).unboxed := true end
+                end
+            end
+            unit
+        end
+end

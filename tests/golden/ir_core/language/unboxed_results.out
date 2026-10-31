@@ -1,0 +1,154 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output
+      let %2: String = prim <>(s, "\n")
+      let %3: Ok = call writer.putString(%1, %2)
+      return %3
+    }
+  }
+  funs rec {
+    fun fibPair(n: Int): Tuple a: Int b: Int end {
+      join k1(r: Tuple a: Int b: Int end) {
+        return r
+      } in {
+        let %4: Bool = prim is(n, 0)
+        if %4 {
+          let a: Int = 0
+          let b: Int = 1
+          let %5: Tuple a: Int b: Int end = tuple(a, b)
+          jump k1(%5)
+        } else {
+          let %6: Int = prim -(n, 1)
+          let p: Tuple a: Int b: Int end = call fibPair(%6)
+          let a.1: Int = tuple_field(p, 1)
+          let %7: Int = tuple_field(p, 0)
+          let %8: Int = tuple_field(p, 1)
+          let b.1: Int = prim +(%7, %8)
+          let %9: Tuple a: Int b: Int end = tuple(a.1, b.1)
+          jump k1(%9)
+        }
+      }
+    }
+  }
+  let f: Tuple a: Int b: Int end = call fibPair(30)
+  let %10: Int = tuple_field(f, 0)
+  let %11: String = call conv.int(%10)
+  let %12: Int = tuple_field(f, 1)
+  let %13: String = call conv.int(%12)
+  let %14: String = prim <>(" ", %13)
+  let %15: String = prim <>(%11, %14)
+  let %16: String = prim <>("pair: ", %15)
+  do call print(%16)
+  funs rec {
+    fun named(n.1: Int): Tuple name: String even: Bool end {
+      join k2(r.1: Tuple name: String even: Bool end) {
+        return r.1
+      } in {
+        let %17: Bool = prim <=(n.1, 1)
+        if %17 {
+          let name: String = "x"
+          let even: Bool = prim is(n.1, 0)
+          let %18: Tuple name: String even: Bool end = tuple(name, even)
+          jump k2(%18)
+        } else {
+          let %19: Int = prim -(n.1, 2)
+          let r.2: Tuple name: String even: Bool end = call named(%19)
+          let %20: String = tuple_field(r.2, 0)
+          let name.1: String = prim <>(%20, "x")
+          let even.1: Bool = tuple_field(r.2, 1)
+          let %21: Tuple name: String even: Bool end = tuple(name.1, even.1)
+          jump k2(%21)
+        }
+      }
+    }
+  }
+  let r.3: Tuple name: String even: Bool end = call named(5)
+  let %22: String = tuple_field(r.3, 0)
+  let %23: Bool = tuple_field(r.3, 1)
+  let %24: String = call conv.bool(%23)
+  let %25: String = prim <>(" ", %24)
+  let %26: String = prim <>(%22, %25)
+  let %27: String = prim <>("named: ", %26)
+  do call print(%27)
+  funs rec {
+    fun one(n.2: Int): Tuple total: Int end {
+      join k3(r.4: Tuple total: Int end) {
+        return r.4
+      } in {
+        let %28: Bool = prim is(n.2, 0)
+        if %28 {
+          let total: Int = 0
+          let %29: Tuple total: Int end = tuple(total)
+          jump k3(%29)
+        } else {
+          let %30: Int = prim -(n.2, 1)
+          let t: Tuple total: Int end = call one(%30)
+          let %31: Int = tuple_field(t, 0)
+          let total.1: Int = prim +(%31, n.2)
+          let %32: Tuple total: Int end = tuple(total.1)
+          jump k3(%32)
+        }
+      }
+    }
+  }
+  let %33: Tuple total: Int end = call one(10)
+  let %34: Int = tuple_field(%33, 0)
+  let %35: String = call conv.int(%34)
+  let %36: String = prim <>("one: ", %35)
+  do call print(%36)
+  funs rec {
+    fun kept(n.3: Int): Tuple a: Int b: Int end {
+      join k4(r.5: Tuple a: Int b: Int end) {
+        return r.5
+      } in {
+        let %37: Bool = prim is(n.3, 0)
+        if %37 {
+          let a.2: Int = 1
+          let b.2: Int = 2
+          let %38: Tuple a: Int b: Int end = tuple(a.2, b.2)
+          jump k4(%38)
+        } else {
+          let %39: Int = prim -(n.3, 1)
+          let %40: Tuple a: Int b: Int end = call kept(%39)
+          jump k4(%40)
+        }
+      }
+    }
+  }
+  let whole: Tuple a: Int b: Int end = call kept(3)
+  let same: Tuple a: Int b: Int end = whole
+  let %41: Int = tuple_field(same, 0)
+  let %42: Int = tuple_field(same, 1)
+  let %43: Int = prim +(%41, %42)
+  let %44: String = call conv.int(%43)
+  let %45: String = prim <>("kept: ", %44)
+  do call print(%45)
+  let a.3: Int = 5
+  let b.3: Int = 6
+  let shared: Tuple a: Int b: Int end = tuple(a.3, b.3)
+  funs rec {
+    fun given(n.4: Int): Tuple a: Int b: Int end {
+      join k5(r.6: Tuple a: Int b: Int end) {
+        return r.6
+      } in {
+        let %46: Bool = prim is(n.4, 0)
+        if %46 {
+          jump k5(shared)
+        } else {
+          let %47: Int = prim -(n.4, 1)
+          let %48: Tuple a: Int b: Int end = call given(%47)
+          jump k5(%48)
+        }
+      }
+    }
+  }
+  let %49: Tuple a: Int b: Int end = call given(2)
+  let %50: Bool = prim is(%49, shared)
+  let %51: String = call conv.bool(%50)
+  let %52: String = prim <>("given: ", %51)
+  do call print(%52)
+}
+

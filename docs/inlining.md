@@ -150,7 +150,7 @@ benchmarks.md §3.3, independent of the inliner, and the first step.
 ## 8. Steps
 
 1. **Exported functions called directly** (§6). *Done when* no unit calls another's exported function through its
-   closure, and benchmarks.md records the change. *Done* (2026-10-31, 2938a449): calls of imported members already
+   closure, and benchmarks.md records the change. *Done* (2026-10-31, 13fa6398): calls of imported members already
    called `qv_<mod>_<fn>`, and that function already called a member's code directly when the member was bound to a
    closure without captures; but where the interface's type differs from the module's own (an abstract type), the
    export is the member converted by an adapter, a closure whose environment was the member's closure, so each call
@@ -159,7 +159,7 @@ benchmarks.md §3.3, independent of the inliner, and the first step.
    closures' variables: of the compiler's own exported functions, 211 called through closures before, and none
    after.
 2. **The simplifier** (§4, without contification), with its dump and goldens. *Done when* it runs on every unit and
-   the suite passes. *Done* (2026-10-31): `questlang/ir/simplify`, whose stage is `simplified` (dumped as
+   the suite passes. *Done* (2026-10-31, 5286b217, one commit with steps 3 and 4): `questlang/ir/simplify`, whose stage is `simplified` (dumped as
    `ir_simplified`, run as `run_ir_simplified`, the self-hosted compiler's own phases), between Core and
    Specialized. A case of a known option that binds its payload is left, since the binder shares the option's
    payload, a copy of the tuple it was made of in compiled code; a variant's is the value itself. Besides §4's
@@ -170,7 +170,7 @@ benchmarks.md §3.3, independent of the inliner, and the first step.
 3. **Inlining of functions called once,** then of small ones and those §3's bonuses favor, polymorphism's first,
    through specialize's cloning. *Done when* imp-for's `forLoop` is inlined and its argument's call with it, and a
    polymorphic call at closed type arguments that §3 inlines leaves no conversion or descriptor in its caller.
-   *Done* (2026-10-31): `questlang/ir/inline` (the functions, their components, and sizes; a call's expansion),
+   *Done* (2026-10-31, 5286b217): `questlang/ir/inline` (the functions, their components, and sizes; a call's expansion),
    used by the simplifier in its rounds, and `questlang/ir/clone`, specialize's cloner moved out of it, which can
    give a copy's loops and join points fresh labels. A call is inlined when its callee is a function a `funs`
    statement binds (or a copy of one), is not recursive, and is called once or small enough (§3's size less its
@@ -185,7 +185,8 @@ benchmarks.md §3.3, independent of the inliner, and the first step.
    straightens a join point jumped to only at its body's end. `language/inlined_calls` shows calls inlined and its
    `ir_described` golden the polymorphic calls gone; imp-for's `forLoop` and all seven of its arguments are inlined,
    leaving its `repeat` loops for contification.
-4. **Contification** (§4). *Done when* imp-for's and tailfib's loops are loops in the IR. *Done* (2026-10-31):
+4. **Contification** (§4). *Done when* imp-for's and tailfib's loops are loops in the IR. *Done* (2026-10-31,
+   5286b217):
    `questlang/ir/contify`, run after each of the simplifier's rounds. A function of value parameters and no type
    parameters, every use of which is a call, one outside its body and the rest tail calls of itself in its body
    (not in a `try`'s region, which holds them; an `Ok` call is one in tail position when control falls from it
@@ -197,7 +198,18 @@ benchmarks.md §3.3, independent of the inliner, and the first step.
    function's end a tail call. imp-for is eight loops and tailfib two, with no call left but `bench.count`;
    `language/contified_loops` shows what is contified and what is not.
 5. **Workers** (§5), and signatures rewritten in place for functions that do not escape. *Done when* a function
-   returning a fresh tuple to callers that only read it allocates no tuple.
+   returning a fresh tuple to callers that only read it allocates no tuple. *Done in part* (2026-10-31): unboxed
+   tuple results, the user's choice of design (rather than several results in the IR). `questlang/ir/unbox`, after
+   closure conversion and before represent, marks a function whose every call is known (its closures only
+   called, directly) and whose every return is of a tuple made for the return alone, to calls whose results are
+   only read from, as returning its result unboxed (`Function.unboxedResult`), and those tuples and results as
+   unboxed variables (`Variable.unboxed`, printed `unboxed(T)`): the C printer holds one as its struct by value,
+   and the SSA as its components' values, a function returning one returning them as its results. The tuple has
+   one or two components, each an Int, Bool, Char, or String and none `var`, so that no conversion, box, or proxy
+   applies, and two words of results fit every backend's convention. `language/unboxed_results` shows it: its
+   `fibPair` allocates nothing. No other test's function qualifies, so the rest of §5 (environments and
+   descriptors dropped, tuple parameters flattened, `var` parameters as values, more components and kinds) is
+   what would make it matter.
 6. **Whole-program builds** inline across modules. *Done when* `--whole-program` builds inline the library's small
    functions into their callers, and benchmarks.md compares them with separate compilation.
 7. **Tuning:** the threshold, bonuses, and growth bounds set from the measurements. *Done when* benchmarks.md

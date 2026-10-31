@@ -299,9 +299,13 @@ export
             found
         end
 
+    (* An unboxed tuple's C type: its struct, by value *)
+    let unboxedCType(t: Type): String = begin cType(t) layout.shapeTag(shapeOf(t)) end
+
     let varCType(p: P v: Variable): String =
         if hashMap.contains(:Int :Bool p.handlerVars v.id) then "QExceptionState"
         elsif v.boxed then slotCType(shapeOf(v.type))
+        elsif v.unboxed then unboxedCType(v.type)
         else cType(v.type)
         end
 
@@ -1487,7 +1491,22 @@ export
                 let rs = shapeOf(maybe.unwrap(:Variable result).type)
                 let shapesOf = array of(extent rs.components rs)
                 for i = 0 upto {extent rs.components - 1} do shapesOf[i] := componentShape(rs i) end
-                makeTuple(p maybe.unwrap(:Variable result).type slotFields(p x.args shapesOf x.embedded))
+                let fields = slotFields(p x.args shapesOf x.embedded)
+                if maybe.unwrap(:Variable result).unboxed then
+                    (* Its struct's value, of its components (none boxed) *)
+                    let values = vector.new(:String)
+                    for i = 0 upto {vector.length(:Field fields) - 1} do
+                        case vector.get(:Field fields i)
+                            when fieldText with f then add(values f.s)
+                            when fieldFresh with f then add(values f.value)
+                            when fieldBox with f then add(values f.box)
+                        end
+                    end
+                    "((" <> unboxedCType(maybe.unwrap(:Variable result).type) <> "){ "
+                        <> strutil.join(", " values) <> " })"
+                else
+                    makeTuple(p maybe.unwrap(:Variable result).type fields)
+                end
             when opTupleField with x then
                 if maybe.isSome(:Variable x.viewMap) then
                     (* A tuple-bounded type parameter's value: through the view
@@ -1496,6 +1515,8 @@ export
                     let element = syntax.call("quest_view_tuple_element"
                         strings(array of atom(p x.tup) name(p maybe.unwrap(:Variable x.viewMap)) cInt(x.index) end))
                     types.shapeQvalUnwrap(element comp)
+                elsif maybe.isSome(:Variable nodes.atomVarOf(x.tup)) andif maybe.unwrap(:Variable nodes.atomVarOf(x.tup)).unboxed then
+                    atom(p x.tup) <> "._" <> cInt(x.index)
                 else
                     tupleComponent(p atom(p x.tup) shapeOf(atomType(x.tup)) x.index x.access)
                 end
@@ -2097,7 +2118,8 @@ export
                     add(params c <> " " <> name(p entry.v))
                 end
             end
-            let ret = if isOk(f.resultType) then "void" else cType(f.resultType) end
+            let ret = if isOk(f.resultType) then "void" elsif f.unboxedResult then unboxedCType(f.resultType)
+                else cType(f.resultType) end
             "static Q_UNUSED " <> ret <> " " <> syntax.call(codeName(p f) params)
         end
 

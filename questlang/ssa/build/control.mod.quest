@@ -85,7 +85,14 @@ export
             when opEnvField with x then envField(fn x maybe.unwrap(:Variable result).type)
             when opBuiltin with x then array of vals.symbolAt(fn symbols.mangleIdent(x.name) <> "_closure") end
             when opModuleMember with x then calls.moduleMember(fn x.moduleRef x.member)
-            when opMakeTuple with x then aggregates.makeTuple(fn x maybe.unwrap(:Variable result).type)
+            when opMakeTuple with x then
+                if maybe.unwrap(:Variable result).unboxed then
+                    (* Its components, unallocated: in slot form, which for
+                     * those of an unboxed tuple is their value's *)
+                    vals.callAtoms(fn x.args)
+                else
+                    aggregates.makeTuple(fn x maybe.unwrap(:Variable result).type)
+                end
             when opTupleField with x then
                 if maybe.isSome(:Variable x.viewMap) then
                     let comp = vals.componentShape(layout.resolvedShape(shapes.shape(ir.atomType(x.tup))) x.index)
@@ -93,6 +100,8 @@ export
                     vals.fromWord(fn vals.call1(fn "quest_view_tuple_element" array of vals.atom1(fn x.tup) vm
                         vals.constant(fn x.index) end)
                         comp.type)
+                elsif maybe.isSome(:Variable ir.atomVarOf(x.tup)) andif maybe.unwrap(:Variable ir.atomVarOf(x.tup)).unboxed then
+                    array of vals.atom(fn x.tup)[x.index] end
                 else
                     vals.tupleComponent(fn vals.atom1(fn x.tup) shapes.shape(ir.atomType(x.tup)) x.index x.access)
                 end
