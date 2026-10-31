@@ -610,6 +610,10 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
     and `tools/check` runs all three (testing.md §4.1).
 14. **Line tables** (§1). *Done when* native code has `.file` and `.loc` directives for its source lines, and lldb
     shows a breakpoint's Quest line and a backtrace's lines in a test program.
+
+    *Deferred* (2026-10-31, by the user) until the backend improvements, which rewrite the SSA's and the machine
+    instructions this step would extend, are done: a task in tasklist.md, which also records that positions must come
+    from every statement, not only from the operations that can raise.
 15. **`ssac` as the C backend** (§1). Measure `ssac`'s code and compile times against the C printer's, with the
     SSA's promotion of stack slots (§6) and whatever else the comparison needs. If `ssac` is close enough, it becomes
     the self-hosted compiler's C backend: `--backend c` selects it, the C printer and its goldens are retired, and
