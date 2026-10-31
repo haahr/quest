@@ -23,7 +23,7 @@ export
         opEq opNe opLt opLe opGt opGe opUlt opPeq opPne
         opFadd opFsub opFmul opFdiv opFeq opFlt opFle opFgt opFge opIsNaN
         opIntToPtr opPtrToInt opRealBits opBitsReal opSext8 opZext8
-        opLoad opStore opCall opCallIndirect opCopy
+        opLoad opStore opCall opCallIndirect opCopy opPtrAdd opThreadLocal
     end
 
     (* How C passes a parameter or a result (docs/ssa.md section 2.2): an
@@ -192,6 +192,8 @@ export
     opCall: Opcode
     opCallIndirect: Opcode
     opCopy: Opcode
+    opPtrAdd: Opcode
+    opThreadLocal: Opcode
     termNone: Terminator
     termUnreachable: Terminator
 
@@ -230,6 +232,10 @@ export
     symbolAddress(f: Function b: Int symbol: String): Int
     (* A symbol's address plus a byte offset *)
     symbolPlus(f: Function b: Int symbol: String addend: Int): Int
+    (* The address of the thread-local variable symbol, in this thread *)
+    threadLocal(f: Function b: Int symbol: String): Int
+    (* A pointer n bytes past p (n a value) *)
+    ptrAdd(f: Function b: Int p: Int n: Int): Int
     (* The address of stack slot s *)
     slotAddress(f: Function b: Int s: Int): Int
     binary(f: Function b: Int op: Opcode x: Int y: Int): Int

@@ -15,7 +15,7 @@ export
         opEq opNe opLt opLe opGt opGe opUlt opPeq opPne
         opFadd opFsub opFmul opFdiv opFeq opFlt opFle opFgt opFge opIsNaN
         opIntToPtr opPtrToInt opRealBits opBitsReal opSext8 opZext8
-        opLoad opStore opCall opCallIndirect opCopy
+        opLoad opStore opCall opCallIndirect opCopy opPtrAdd opThreadLocal
     end
 
     Def Passed = Option
@@ -125,7 +125,8 @@ export
             tuple let params = ps let results = s.results end
         end
 
-    let withResult(s: Signature passed: Passed): Signature = tuple let params = s.params let results = array of passed end end
+    let withResult(s: Signature passed: Passed): Signature =
+        tuple let params = s.params let results = array of passed end end
 
     (* The indices of the members of ps that pick picks *)
     let indicesWhere(ps: Array(Passed) pick: All(p: Passed) Bool): Array(Int) =
@@ -136,16 +137,28 @@ export
         end
     let pairsOf(ps: Array(Passed)): Array(Int) =
         indicesWhere(ps fun(p: Passed): Bool
-            case p when passPair then true when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false end)
+            case p
+                when passPair then true
+                when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false
+            end)
     let narrowOf(ps: Array(Passed)): Array(Int) =
         indicesWhere(ps fun(p: Passed): Bool
-            case p when passByte then true when passWord, passReal, passPair, passPairRest, passInt32, passMemory then false end)
+            case p
+                when passByte then true
+                when passWord, passReal, passPair, passPairRest, passInt32, passMemory then false
+            end)
     let int32Of(ps: Array(Passed)): Array(Int) =
         indicesWhere(ps fun(p: Passed): Bool
-            case p when passInt32 then true when passWord, passReal, passPair, passPairRest, passByte, passMemory then false end)
+            case p
+                when passInt32 then true
+                when passWord, passReal, passPair, passPairRest, passByte, passMemory then false
+            end)
     let memoryOf(ps: Array(Passed)): Array(Int) =
         indicesWhere(ps fun(p: Passed): Bool
-            case p when passMemory then true when passWord, passReal, passPair, passPairRest, passByte, passInt32 then false end)
+            case p
+                when passMemory then true
+                when passWord, passReal, passPair, passPairRest, passByte, passInt32 then false
+            end)
 
     let typeInt: Type = option typeInt of Type end
     let typePtr: Type = option typePtr of Type end
@@ -196,6 +209,8 @@ export
     let opCall: Opcode = option opCall of Opcode end
     let opCallIndirect: Opcode = option opCallIndirect of Opcode end
     let opCopy: Opcode = option opCopy of Opcode end
+    let opPtrAdd: Opcode = option opPtrAdd of Opcode end
+    let opThreadLocal: Opcode = option opThreadLocal of Opcode end
     let termNone: Terminator = option termNone of Terminator end
     let termUnreachable: Terminator = option termUnreachable of Terminator end
 
@@ -284,7 +299,8 @@ export
             let width = width let signed = signed let var signature = s
         end
 
-    let inst(op: Opcode args: Array(Int) results: Array(Int)): Inst = instruction(op args results 0 "" 0 false emptySignature)
+    let inst(op: Opcode args: Array(Int) results: Array(Int)): Inst =
+        instruction(op args results 0 "" 0 false emptySignature)
 
     (* Appends an instruction of no arguments and one result of type t, with
      * an immediate and a symbol *)
@@ -308,6 +324,8 @@ export
     let symbolPlus(f: Function b: Int symbol: String addend: Int): Int = nullary(f b opSymbol typePtr addend symbol)
     let symbolAddress(f: Function b: Int symbol: String): Int = symbolPlus(f b symbol 0)
     let slotAddress(f: Function b: Int s: Int): Int = nullary(f b opSlot typePtr s "")
+    let threadLocal(f: Function b: Int symbol: String): Int = nullary(f b opThreadLocal typePtr 0 symbol)
+    let ptrAdd(f: Function b: Int p: Int n: Int): Int = emit(f b opPtrAdd array of p n end typePtr)
 
     (* The type of a binary operation's result *)
     let resultType(op: Opcode x: Type): Type =
@@ -315,11 +333,13 @@ export
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge then typeInt
             when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor,
                 opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
-                opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy then
+                opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
+                opThreadLocal then
                 x
         end
 
-    let binary(f: Function b: Int op: Opcode x: Int y: Int): Int = emit(f b op array of x y end resultType(op typeOf(f x)))
+    let binary(f: Function b: Int op: Opcode x: Int y: Int): Int =
+        emit(f b op array of x y end resultType(op typeOf(f x)))
 
     let load(f: Function b: Int address: Int offset: Int width: Int signed: Bool t: Type): Int =
         begin
@@ -408,7 +428,9 @@ export
         case t
             when termJump with x then option termJump of Terminator with let target = map(x.target) end
             when termBranch with x then
-                option termBranch of Terminator with let cond = x.cond let ifTrue = map(x.ifTrue) let ifFalse = map(x.ifFalse) end
+                option termBranch of Terminator with
+                    let cond = x.cond let ifTrue = map(x.ifTrue) let ifFalse = map(x.ifFalse)
+                end
             when termSwitch with x then
                 let ts = array of(extent x.targets x.default)
                 for k = 0 upto {extent x.targets - 1} do ts[k] := map(x.targets[k]) end
@@ -425,7 +447,9 @@ export
             let mapped = mapTargets(t fun(x: Target): Target target(map(x.block) x.args))
             case mapped
                 when termTry with x then
-                    option termTry of Terminator with let slot = x.slot let body = x.body let handler = map(x.handler) end
+                    option termTry of Terminator with
+                        let slot = x.slot let body = x.body let handler = map(x.handler)
+                    end
                 when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then mapped
             end
         end
@@ -445,7 +469,8 @@ export
                         end
                     when termSwitch with x then
                         blk.term := option termSwitch of Terminator with
-                            let value = replace(x.value) let cases = x.cases let targets = x.targets let default = x.default
+                            let value = replace(x.value) let cases = x.cases let targets = x.targets
+                            let default = x.default
                         end
                     when termReturn with x then all(x.values)
                     when termTailCall with x then all(x.call.args)
@@ -503,6 +528,8 @@ export
             when opCall then 43
             when opCallIndirect then 44
             when opCopy then 45
+            when opPtrAdd then 46
+            when opThreadLocal then 47
         end
 
     let isOp(i: Inst op: Opcode): Bool = opcodeIndex(i.op) is opcodeIndex(op)
@@ -514,24 +541,28 @@ export
         case op
             when opConst then "const" when opRealConst then "realConst" when opSymbol then "symbol"
             when opNull then "null" when opSlot then "slot"
-            when opAdd then "add" when opSub then "sub" when opMul then "mul" when opDiv then "div" when opRem then "rem"
+            when opAdd then "add" when opSub then "sub" when opMul then "mul" when opDiv then "div"
+            when opRem then "rem"
             when opAnd then "and" when opOr then "or" when opXor then "xor" when opShl then "shl"
             when opLshr then "lshr" when opAshr then "ashr"
             when opEq then "eq" when opNe then "ne" when opLt then "lt" when opLe then "le" when opGt then "gt"
             when opGe then "ge" when opUlt then "ult" when opPeq then "peq" when opPne then "pne"
             when opFadd then "fadd" when opFsub then "fsub" when opFmul then "fmul" when opFdiv then "fdiv"
-            when opFeq then "feq" when opFlt then "flt" when opFle then "fle" when opFgt then "fgt" when opFge then "fge"
+            when opFeq then "feq" when opFlt then "flt" when opFle then "fle" when opFgt then "fgt"
+            when opFge then "fge"
             when opIsNaN then "isNaN"
             when opIntToPtr then "intToPtr" when opPtrToInt then "ptrToInt" when opRealBits then "realBits"
             when opBitsReal then "bitsReal" when opSext8 then "sext8" when opZext8 then "zext8"
             when opLoad then "load" when opStore then "store" when opCall then "call"
-            when opCallIndirect then "callIndirect" when opCopy then "copy"
+            when opCallIndirect then "callIndirect" when opCopy then "copy" when opPtrAdd then "ptrAdd"
+            when opThreadLocal then "threadLocal"
         end
 
     let opcodes: Array(Opcode) = array of
         opConst opRealConst opSymbol opNull opSlot opAdd opSub opMul opDiv opRem opAnd opOr opXor opShl opLshr opAshr
         opEq opNe opLt opLe opGt opGe opUlt opPeq opPne opFadd opFsub opFmul opFdiv opFeq opFlt opFle opFgt opFge
         opIsNaN opIntToPtr opPtrToInt opRealBits opBitsReal opSext8 opZext8 opLoad opStore opCall opCallIndirect opCopy
+        opPtrAdd opThreadLocal
     end
 
     let opcodeNamed(name: String): maybe.T(Opcode) =

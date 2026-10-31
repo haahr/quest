@@ -4,15 +4,13 @@ b0(%0: ptr, %1: ptr):
   %3: ptr = load8 %2 + 0
   %4: ptr = load8 %2 + 8
   %5: int = load8 %4 + 40
-  %6: int = ptrToInt %3
-  %7: int = add %6, %5
-  %8: ptr = intToPtr %7
-  %9: ptr = load8 %8 + 0
-  %10: ptr = symbol qs_1
-  %11: int = const 1
-  %12: ptr = call quest_string_new(%10, %11)
-  %13: ptr = call quest_string_concat(%1, %12)
-  tail call qv_writer_putString(%9, %13)
+  %6: ptr = ptrAdd %3, %5
+  %7: ptr = load8 %6 + 0
+  %8: ptr = symbol qs_1
+  %9: int = const 1
+  %10: ptr = call quest_string_new(%8, %9)
+  %11: ptr = call quest_string_concat(%1, %10)
+  tail call qv_writer_putString(%7, %11)
 }
 
 function qf_down(%0: ptr, %1: int): int {
@@ -29,7 +27,7 @@ b0(%0: ptr, %1: int):
 function qf_guarded(%0: ptr): int slots [240:16 32:8] {
 b0(%0: ptr):
   %2: ptr = slot 0
-  %3: ptr = symbol quest_current_exception_handler
+  %3: ptr = threadLocal quest_current_exception_handler
   %4: ptr = load8 %3 + 0
   store8 %2 + 0, %4
   %5: ptr = null
@@ -46,16 +44,16 @@ b2():
   %8: ptr = null
   %9: int = const 0
   %10: int = call qf_down(%8, %9)
-  %11: ptr = symbol quest_current_exception_handler
+  %11: ptr = threadLocal quest_current_exception_handler
   %12: ptr = load8 %2 + 0
   store8 %11 + 0, %12
   jump b1(%10)
 b3():
-  %13: ptr = symbol quest_current_exception_handler
+  %13: ptr = threadLocal quest_current_exception_handler
   %14: ptr = load8 %2 + 0
   store8 %13 + 0, %14
   %15: ptr = slot 1
-  %16: ptr = symbol quest_current_exception
+  %16: ptr = threadLocal quest_current_exception
   %17: int = load8 %16 + 0
   store8 %15 + 0, %17
   %18: int = load8 %16 + 8
@@ -116,7 +114,7 @@ b0(%0: int, %1: ptr):
   %14: ptr = symbol g_guarded
   store8 %14 + 0, %13
   %16: ptr = slot 0
-  %17: ptr = symbol quest_current_exception_handler
+  %17: ptr = threadLocal quest_current_exception_handler
   %18: ptr = load8 %17 + 0
   store8 %16 + 0, %18
   %19: ptr = null
@@ -172,16 +170,16 @@ b3():
   store8 %28 + 0, %27
   %29: ptr = symbol g_global_2
   %30: ptr = load8 %29 + 0
-  %31: ptr = symbol quest_current_exception_handler
+  %31: ptr = threadLocal quest_current_exception_handler
   %32: ptr = load8 %16 + 0
   store8 %31 + 0, %32
   jump b1(%30)
 b4():
-  %33: ptr = symbol quest_current_exception_handler
+  %33: ptr = threadLocal quest_current_exception_handler
   %34: ptr = load8 %16 + 0
   store8 %33 + 0, %34
   %35: ptr = slot 1
-  %36: ptr = symbol quest_current_exception
+  %36: ptr = threadLocal quest_current_exception
   %37: int = load8 %36 + 0
   store8 %35 + 0, %37
   %38: int = load8 %36 + 8

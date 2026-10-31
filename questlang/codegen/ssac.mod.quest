@@ -76,7 +76,6 @@ export
         (* Whether the function enters a try: its values are volatile, and
          * so is its memory *)
         hasTry: Bool
-        threadLocals: hashMap.T(String Bool)
     end
 
     let line(p: Printer s: String): Ok = begin p.buf.str("    " <> s <> "\n") ok end
@@ -87,9 +86,7 @@ export
     let memory(p: Printer t: String address: Int offset: Int): String =
         "*(" <> t <> volatile(p) <> " *)(" <> v(address) <> " + " <> decimal(offset) <> ")"
 
-    let symbolAddress(p: Printer symbol: String): String =
-        if hashMap.contains(:String :Bool p.threadLocals symbol) then "(char *)&" <> symbol
-        else "(char *)(void *)" <> symbol end
+    let symbolAddress(p: Printer symbol: String): String = "(char *)(void *)" <> symbol
 
     (* A composite passed through memory: a struct of its bytes *)
     let memoryType(bytes: Int): String = "QSsaMem" <> conv.int(bytes)
@@ -211,6 +208,8 @@ export
                         elsif i.width is 4 then memory(p "int32_t" i.args[0] i.imm) <> " = (int32_t)" <> a(1) <> ";"
                         else memory(p "uint8_t" i.args[0] i.imm) <> " = (uint8_t)" <> a(1) <> ";" end)
                 when opCall, opCallIndirect then call(p i)
+                when opThreadLocal then set("(char *)&" <> i.symbol)
+                when opPtrAdd then set(a(0) <> " + " <> a(1))
             end
         end
 
@@ -313,13 +312,15 @@ export
                         let decl = declared("QSsaPair" pk)
                         let entry = array of
                             cType(typeOf(f n)) <> " " <> v(n) <> " = " <> fromWord(pk <> ".w0" typeOf(f n)) <> ";"
-                            cType(typeOf(f second)) <> " " <> v(second) <> " = " <> fromWord(pk <> ".w1" typeOf(f second)) <> ";"
+                            cType(typeOf(f second)) <> " " <> v(second) <> " = " <> fromWord(pk
+                                <> ".w1" typeOf(f second)) <> ";"
                         end
                         let words = 2
                     end
                 when passByte then direct("uint8_t")
                 when passInt32 then
-                    tuple let decl = declared("int" pk) let entry = array of "int64_t " <> v(n) <> " = " <> pk <> ";" end let words = 1 end
+                    tuple let decl = declared("int" pk) let entry = array of "int64_t " <> v(n) <> " = " <> pk
+                        <> ";" end let words = 1 end
                 when passMemory with x then
                     tuple
                         let decl = declared(memoryType(x.bytes) pk)
@@ -328,7 +329,8 @@ export
                     end
                 when passWord, passReal, passPairRest then
                     if eq(f.symbol "main") andif {k is 1} then
-                        tuple let decl = declared("char **" pk) let entry = array of "char *" <> v(n) <> " = (char *)" <> pk <> ";" end
+                        tuple let decl = declared("char **" pk) let entry = array of "char *" <> v(n) <> " = (char *)"
+                            <> pk <> ";" end
                             let words = 1 end
                     else direct(cType(typeOf(f n))) end
             end
@@ -350,7 +352,7 @@ export
     let prototype(f: Function named: Bool): String =
         linkage(f) <> resultType(f) <> " " <> f.symbol <> "(" <> paramsText(f named) <> ")"
 
-    let function(buf: Builder f: Function threadLocals: hashMap.T(String Bool)): Ok =
+    let function(buf: Builder f: Function): Ok =
         begin
             let var hasTry = false
             for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
@@ -359,7 +361,7 @@ export
                     when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then ok
                 end
             end
-            let p = tuple let f = f let buf = buf let hasTry = hasTry let threadLocals = threadLocals end
+            let p = tuple let f = f let buf = buf let hasTry = hasTry end
             text(buf prototype(f true) <> " {\n")
             let params = ssa.block(f 0).params
             let isParam = array of(vector.length(:ssa.Type f.types) false)
@@ -438,8 +440,8 @@ export
         begin
             let buf = stringBuilder.new()
             let defined = hashMap.new(:String :Bool eq hash.string)
+            (* The thread-locals the unit's code takes the addresses of *)
             let threadLocals = hashMap.new(:String :Bool eq hash.string)
-            for k = 0 upto {extent runtimeLayout.threadLocals - 1} do put(:String :Bool threadLocals runtimeLayout.threadLocals[k] true) end
             for k = 0 upto {vector.length(:Function u.functions) - 1} do
                 put(:String :Bool defined vector.get(:Function u.functions k).symbol true)
             end
@@ -458,6 +460,10 @@ export
             let referInst(f: Function i: ssa.Inst): Ok =
                 begin
                     if ssa.isOp(i ssa.opSymbol) orif ssa.isOp(i ssa.opCall) then refer(i.symbol) end
+                    if ssa.isOp(i ssa.opThreadLocal) then
+                        put(:String :Bool threadLocals i.symbol true)
+                        refer(i.symbol)
+                    end
                     for k = 0 upto {extent i.signature.params - 1} do
                         case i.signature.params[k]
                             when passMemory with x then put(:Int :Bool memorySizes x.bytes true)
@@ -514,7 +520,8 @@ export
                 buf.str(dataDefinition(vector.get(:ssa.Data u.data k) threadLocals) <> "\n")
             end
             buf.str("\n")
-            for k = 0 upto {vector.length(:Function u.functions) - 1} do function(buf vector.get(:Function u.functions k) threadLocals) end
+            for k = 0 upto {vector.length(:Function u.functions) - 1} do function(buf vector.get(:Function u.functions
+                k)) end
             buf.toString()
         end
 end

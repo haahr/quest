@@ -36,11 +36,14 @@ for i = 0 upto {extent fs - 1} do
     let params = if extent f.params is 0 then "void" else strutil.joinArray(", " f.params) end
     let s = runtimeFunctions.signature(f)
     let e = f.effects
-    let memory = case e.memory when memoryNone then "none" when memoryReads then "reads" when memoryWrites then "writes" end
+    let memory = case e.memory
+        when memoryNone then "none" when memoryReads then "reads" when memoryWrites then "writes"
+    end
     emit("/* " <> f.name <> ": (" <> all(s.params) <> ") -> (" <> all(s.results) <> "); memory " <> memory
         <> if e.raises then ", raises" else "" end <> if e.allocates then ", allocates" else "" end
         <> if e.noReturn then ", no return" else "" end <> if runtimeFunctions.isPure(f) then ", pure" else "" end
         <> " */")
-    emit("static_assert(__builtin_types_compatible_p(__typeof__(" <> f.name <> "), " <> f.result <> " (" <> params <> ")), "
+    emit("static_assert(__builtin_types_compatible_p(__typeof__(" <> f.name <> "), " <> f.result <> " (" <> params
+        <> ")), "
         <> "runtime_function_" <> f.name <> ");")
 end;

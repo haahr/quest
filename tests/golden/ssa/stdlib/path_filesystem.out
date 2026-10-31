@@ -4,15 +4,13 @@ b0(%0: ptr, %1: ptr):
   %3: ptr = load8 %2 + 0
   %4: ptr = load8 %2 + 8
   %5: int = load8 %4 + 40
-  %6: int = ptrToInt %3
-  %7: int = add %6, %5
-  %8: ptr = intToPtr %7
-  %9: ptr = load8 %8 + 0
-  %10: ptr = symbol qs_1
-  %11: int = const 1
-  %12: ptr = call quest_string_new(%10, %11)
-  %13: ptr = call quest_string_concat(%1, %12)
-  tail call qv_writer_putString(%9, %13)
+  %6: ptr = ptrAdd %3, %5
+  %7: ptr = load8 %6 + 0
+  %8: ptr = symbol qs_1
+  %9: int = const 1
+  %10: ptr = call quest_string_new(%8, %9)
+  %11: ptr = call quest_string_concat(%1, %10)
+  tail call qv_writer_putString(%7, %11)
 }
 
 function qf_at(%0: ptr, %1: ptr): int {
@@ -26,69 +24,67 @@ b0(%0: ptr, %1: ptr, %2: ptr):
   %5: ptr = load8 %4 + 0
   %6: ptr = load8 %4 + 8
   %7: int = load8 %6 + 24
-  %8: int = ptrToInt %5
-  %9: int = add %8, %7
-  %10: ptr = intToPtr %9
-  %11: ptr = load8 %10 + 0
-  %12: ptr = slot 0
-  %13: ptr = symbol quest_current_exception_handler
-  %14: ptr = load8 %13 + 0
-  store8 %12 + 0, %14
-  %15: ptr = null
-  store8 %12 + 24, %15
-  %16: ptr = slot 1
-  store8 %16 + 0, %11
-  store8 %12 + 8, %16
-  %17: int = const 1
-  store8 %12 + 16, %17
-  store8 %13 + 0, %12
+  %8: ptr = ptrAdd %5, %7
+  %9: ptr = load8 %8 + 0
+  %10: ptr = slot 0
+  %11: ptr = threadLocal quest_current_exception_handler
+  %12: ptr = load8 %11 + 0
+  store8 %10 + 0, %12
+  %13: ptr = null
+  store8 %10 + 24, %13
+  %14: ptr = slot 1
+  store8 %14 + 0, %9
+  store8 %10 + 8, %14
+  %15: int = const 1
+  store8 %10 + 16, %15
+  store8 %11 + 0, %10
   try slot 0, b2(), handler b3
 b1(%3: ptr):
-  %39: ptr = symbol qs_4
-  %40: int = const 2
-  %41: ptr = call quest_string_new(%39, %40)
-  %42: ptr = call quest_string_concat(%41, %3)
-  %43: ptr = call quest_string_concat(%1, %42)
-  %44: ptr = null
-  call qf_print(%44, %43)
+  %37: ptr = symbol qs_4
+  %38: int = const 2
+  %39: ptr = call quest_string_new(%37, %38)
+  %40: ptr = call quest_string_concat(%39, %3)
+  %41: ptr = call quest_string_concat(%1, %40)
+  %42: ptr = null
+  call qf_print(%42, %41)
   return
 b2():
-  %18: ptr = load8 %2 + 0
-  %19: ptr = load8 %2 + 8
-  callIndirect %18, %19
-  %20: ptr = symbol qs_2
-  %21: int = const 2
-  %22: ptr = call quest_string_new(%20, %21)
-  %23: ptr = symbol quest_current_exception_handler
-  %24: ptr = load8 %12 + 0
-  store8 %23 + 0, %24
-  jump b1(%22)
+  %16: ptr = load8 %2 + 0
+  %17: ptr = load8 %2 + 8
+  callIndirect %16, %17
+  %18: ptr = symbol qs_2
+  %19: int = const 2
+  %20: ptr = call quest_string_new(%18, %19)
+  %21: ptr = threadLocal quest_current_exception_handler
+  %22: ptr = load8 %10 + 0
+  store8 %21 + 0, %22
+  jump b1(%20)
 b3():
-  %25: ptr = symbol quest_current_exception_handler
-  %26: ptr = load8 %12 + 0
-  store8 %25 + 0, %26
-  %27: ptr = slot 2
-  %28: ptr = symbol quest_current_exception
-  %29: int = load8 %28 + 0
-  store8 %27 + 0, %29
-  %30: int = load8 %28 + 8
-  store8 %27 + 8, %30
-  %31: int = load8 %28 + 16
-  store8 %27 + 16, %31
-  %32: int = load8 %28 + 24
-  store8 %27 + 24, %32
-  %33: int = load8 %28 + 32
-  store8 %27 + 32, %33
-  %34: ptr = load8 %27 + 0
-  %35: int = peq %34, %11
-  branch %35, b4(), b5()
+  %23: ptr = threadLocal quest_current_exception_handler
+  %24: ptr = load8 %10 + 0
+  store8 %23 + 0, %24
+  %25: ptr = slot 2
+  %26: ptr = threadLocal quest_current_exception
+  %27: int = load8 %26 + 0
+  store8 %25 + 0, %27
+  %28: int = load8 %26 + 8
+  store8 %25 + 8, %28
+  %29: int = load8 %26 + 16
+  store8 %25 + 16, %29
+  %30: int = load8 %26 + 24
+  store8 %25 + 24, %30
+  %31: int = load8 %26 + 32
+  store8 %25 + 32, %31
+  %32: ptr = load8 %25 + 0
+  %33: int = peq %32, %9
+  branch %33, b4(), b5()
 b4():
-  %36: ptr = symbol qs_3
-  %37: int = const 12
-  %38: ptr = call quest_string_new(%36, %37)
-  jump b1(%38)
+  %34: ptr = symbol qs_3
+  %35: int = const 12
+  %36: ptr = call quest_string_new(%34, %35)
+  jump b1(%36)
 b5():
-  call quest_reraise(%27) memory [0:32]
+  call quest_reraise(%25) memory [0:32]
   unreachable
 }
 
@@ -132,42 +128,38 @@ b0(%0: ptr, %1: ptr):
   %9: int = sub %7, %8
   %11: int = const 0
   jump b1(%5, %11)
-b1(%50: ptr, %51: int):
-  %15: int = le %51, %9
+b1(%46: ptr, %47: int):
+  %15: int = le %47, %9
   branch %15, b3(), b4()
 b2():
-  %43: ptr = symbol qs_9
-  %44: int = const 8
-  %45: ptr = call quest_string_new(%43, %44)
-  %48: ptr = call quest_string_concat(%45, %50)
-  %49: ptr = null
-  tail call qf_print(%49, %48)
+  %39: ptr = symbol qs_9
+  %40: int = const 8
+  %41: ptr = call quest_string_new(%39, %40)
+  %44: ptr = call quest_string_concat(%41, %46)
+  %45: ptr = null
+  tail call qf_print(%45, %44)
 b3():
   %18: ptr = symbol qs_7
-  call quest_check_array_bounds_at(%1, %51, %18)
+  call quest_check_array_bounds_at(%1, %47, %18)
   %19: int = const 8
-  %20: int = mul %51, %19
-  %21: int = ptrToInt %1
-  %22: int = const 8
-  %23: int = add %21, %22
-  %24: ptr = intToPtr %23
-  %25: int = ptrToInt %24
-  %26: int = add %25, %20
-  %27: ptr = intToPtr %26
-  %28: int = load8 %27 + 0
-  %29: ptr = call qv_util__path_toString(%28)
-  %30: ptr = symbol qs_8
-  %31: int = const 1
-  %32: ptr = call quest_string_new(%30, %31)
-  %33: ptr = call quest_string_concat(%32, %29)
-  %36: ptr = call quest_string_concat(%50, %33)
-  %40: int = const 1
-  %41: int = add %51, %40
+  %20: int = mul %47, %19
+  %21: int = const 8
+  %22: ptr = ptrAdd %1, %21
+  %23: ptr = ptrAdd %22, %20
+  %24: int = load8 %23 + 0
+  %25: ptr = call qv_util__path_toString(%24)
+  %26: ptr = symbol qs_8
+  %27: int = const 1
+  %28: ptr = call quest_string_new(%26, %27)
+  %29: ptr = call quest_string_concat(%28, %25)
+  %32: ptr = call quest_string_concat(%46, %29)
+  %36: int = const 1
+  %37: int = add %47, %36
   jump b5()
 b4():
   jump b2()
 b5():
-  jump b1(%36, %41)
+  jump b1(%32, %37)
 }
 
 function qf_f_4(%0: ptr) {

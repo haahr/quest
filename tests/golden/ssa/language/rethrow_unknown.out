@@ -4,21 +4,19 @@ b0(%0: ptr, %1: ptr):
   %3: ptr = load8 %2 + 0
   %4: ptr = load8 %2 + 8
   %5: int = load8 %4 + 40
-  %6: int = ptrToInt %3
-  %7: int = add %6, %5
-  %8: ptr = intToPtr %7
-  %9: ptr = load8 %8 + 0
-  %10: ptr = symbol qs_1
-  %11: int = const 1
-  %12: ptr = call quest_string_new(%10, %11)
-  %13: ptr = call quest_string_concat(%1, %12)
-  tail call qv_writer_putString(%9, %13)
+  %6: ptr = ptrAdd %3, %5
+  %7: ptr = load8 %6 + 0
+  %8: ptr = symbol qs_1
+  %9: int = const 1
+  %10: ptr = call quest_string_new(%8, %9)
+  %11: ptr = call quest_string_concat(%1, %10)
+  tail call qv_writer_putString(%7, %11)
 }
 
 function qf_protect(%0: ptr, %1: ptr, %2: ptr): int slots [240:16 32:8] {
 b0(%0: ptr, %1: ptr, %2: ptr):
   %4: ptr = slot 0
-  %5: ptr = symbol quest_current_exception_handler
+  %5: ptr = threadLocal quest_current_exception_handler
   %6: ptr = load8 %5 + 0
   store8 %4 + 0, %6
   %7: ptr = null
@@ -43,16 +41,16 @@ b2():
   %10: ptr = load8 %2 + 0
   %11: ptr = load8 %2 + 8
   %12: int = callIndirect %10, %11
-  %13: ptr = symbol quest_current_exception_handler
+  %13: ptr = threadLocal quest_current_exception_handler
   %14: ptr = load8 %4 + 0
   store8 %13 + 0, %14
   jump b1(%12)
 b3():
-  %15: ptr = symbol quest_current_exception_handler
+  %15: ptr = threadLocal quest_current_exception_handler
   %16: ptr = load8 %4 + 0
   store8 %15 + 0, %16
   %17: ptr = slot 1
-  %18: ptr = symbol quest_current_exception
+  %18: ptr = threadLocal quest_current_exception
   %19: int = load8 %18 + 0
   store8 %17 + 0, %19
   %20: int = load8 %18 + 8
@@ -86,7 +84,7 @@ b0(%0: ptr):
 function qf_classify(%0: ptr, %1: ptr): ptr slots [240:16 8:8 240:16 32:8 32:8] {
 b0(%0: ptr, %1: ptr):
   %3: ptr = slot 0
-  %4: ptr = symbol quest_current_exception_handler
+  %4: ptr = threadLocal quest_current_exception_handler
   %5: ptr = load8 %4 + 0
   store8 %3 + 0, %5
   %6: ptr = null
@@ -104,7 +102,7 @@ b1(%2: ptr):
   return %2
 b2():
   %12: ptr = slot 2
-  %13: ptr = symbol quest_current_exception_handler
+  %13: ptr = threadLocal quest_current_exception_handler
   %14: ptr = load8 %13 + 0
   store8 %12 + 0, %14
   %15: ptr = null
@@ -116,11 +114,11 @@ b2():
   store8 %13 + 0, %12
   try slot 2, b5(), handler b6
 b3():
-  %49: ptr = symbol quest_current_exception_handler
+  %49: ptr = threadLocal quest_current_exception_handler
   %50: ptr = load8 %3 + 0
   store8 %49 + 0, %50
   %51: ptr = slot 4
-  %52: ptr = symbol quest_current_exception
+  %52: ptr = threadLocal quest_current_exception
   %53: int = load8 %52 + 0
   store8 %51 + 0, %53
   %54: int = load8 %52 + 8
@@ -137,7 +135,7 @@ b3():
   %61: int = peq %58, %60
   branch %61, b9(), b10()
 b4(%11: ptr):
-  %45: ptr = symbol quest_current_exception_handler
+  %45: ptr = threadLocal quest_current_exception_handler
   %46: ptr = load8 %3 + 0
   store8 %45 + 0, %46
   jump b1(%11)
@@ -146,16 +144,16 @@ b5():
   %19: ptr = load8 %1 + 8
   %20: int = callIndirect %18, %19
   %21: ptr = call qv_conv_int(%20)
-  %22: ptr = symbol quest_current_exception_handler
+  %22: ptr = threadLocal quest_current_exception_handler
   %23: ptr = load8 %12 + 0
   store8 %22 + 0, %23
   jump b4(%21)
 b6():
-  %24: ptr = symbol quest_current_exception_handler
+  %24: ptr = threadLocal quest_current_exception_handler
   %25: ptr = load8 %12 + 0
   store8 %24 + 0, %25
   %26: ptr = slot 3
-  %27: ptr = symbol quest_current_exception
+  %27: ptr = threadLocal quest_current_exception
   %28: int = load8 %27 + 0
   store8 %26 + 0, %28
   %29: int = load8 %27 + 8
@@ -228,7 +226,7 @@ b0(%0: ptr):
 function qf_catch(%0: ptr, %1: ptr): ptr slots [240:16 32:8] {
 b0(%0: ptr, %1: ptr):
   %3: ptr = slot 0
-  %4: ptr = symbol quest_current_exception_handler
+  %4: ptr = threadLocal quest_current_exception_handler
   %5: ptr = load8 %4 + 0
   store8 %3 + 0, %5
   %6: ptr = null
@@ -252,11 +250,11 @@ b2():
   call quest_raise_at(%13, %11, %14)
   unreachable
 b3():
-  %15: ptr = symbol quest_current_exception_handler
+  %15: ptr = threadLocal quest_current_exception_handler
   %16: ptr = load8 %3 + 0
   store8 %15 + 0, %16
   %17: ptr = slot 1
-  %18: ptr = symbol quest_current_exception
+  %18: ptr = threadLocal quest_current_exception
   %19: int = load8 %18 + 0
   store8 %17 + 0, %19
   %20: int = load8 %18 + 8
@@ -316,7 +314,7 @@ b0(%0: ptr):
 function qf_nested(%0: ptr): ptr slots [240:16 32:8 240:16 32:8] {
 b0(%0: ptr):
   %2: ptr = slot 0
-  %3: ptr = symbol quest_current_exception_handler
+  %3: ptr = threadLocal quest_current_exception_handler
   %4: ptr = load8 %3 + 0
   store8 %2 + 0, %4
   %5: ptr = null
@@ -340,11 +338,11 @@ b2():
   call quest_raise_at(%13, %11, %14)
   unreachable
 b3():
-  %15: ptr = symbol quest_current_exception_handler
+  %15: ptr = threadLocal quest_current_exception_handler
   %16: ptr = load8 %2 + 0
   store8 %15 + 0, %16
   %17: ptr = slot 1
-  %18: ptr = symbol quest_current_exception
+  %18: ptr = threadLocal quest_current_exception
   %19: int = load8 %18 + 0
   store8 %17 + 0, %19
   %20: int = load8 %18 + 8
@@ -357,7 +355,7 @@ b3():
   store8 %17 + 32, %23
   %24: ptr = call quest_raised_capture(%17)
   %26: ptr = slot 2
-  %27: ptr = symbol quest_current_exception_handler
+  %27: ptr = threadLocal quest_current_exception_handler
   %28: ptr = load8 %27 + 0
   store8 %26 + 0, %28
   %29: ptr = null
@@ -387,11 +385,11 @@ b5():
   call quest_raise_at(%37, %35, %38)
   unreachable
 b6():
-  %39: ptr = symbol quest_current_exception_handler
+  %39: ptr = threadLocal quest_current_exception_handler
   %40: ptr = load8 %26 + 0
   store8 %39 + 0, %40
   %41: ptr = slot 3
-  %42: ptr = symbol quest_current_exception
+  %42: ptr = threadLocal quest_current_exception
   %43: int = load8 %42 + 0
   store8 %41 + 0, %43
   %44: int = load8 %42 + 8
@@ -435,15 +433,11 @@ b0(%0: ptr):
   call quest_check_array_bounds_at(%2, %6, %7)
   %8: int = const 8
   %9: int = mul %6, %8
-  %10: int = ptrToInt %2
-  %11: int = const 8
-  %12: int = add %10, %11
-  %13: ptr = intToPtr %12
-  %14: int = ptrToInt %13
-  %15: int = add %14, %9
-  %16: ptr = intToPtr %15
-  %17: int = load8 %16 + 0
-  return %17
+  %10: int = const 8
+  %11: ptr = ptrAdd %2, %10
+  %12: ptr = ptrAdd %11, %9
+  %13: int = load8 %12 + 0
+  return %13
 }
 
 function qf_f_9(%0: ptr): int {
@@ -559,7 +553,7 @@ b0(%0: int, %1: ptr):
   %45: ptr = load8 %44 + 0
   call qf_print(%43, %45)
   %47: ptr = slot 0
-  %48: ptr = symbol quest_current_exception_handler
+  %48: ptr = threadLocal quest_current_exception_handler
   %49: ptr = load8 %48 + 0
   store8 %47 + 0, %49
   %50: ptr = null
@@ -581,7 +575,7 @@ b1(%46: ptr):
   %111: ptr = load8 %110 + 0
   call qf_print(%109, %111)
   %113: ptr = slot 3
-  %114: ptr = symbol quest_current_exception_handler
+  %114: ptr = threadLocal quest_current_exception_handler
   %115: ptr = load8 %114 + 0
   store8 %113 + 0, %115
   %116: ptr = null
@@ -593,8 +587,8 @@ b1(%46: ptr):
   store8 %114 + 0, %113
   try slot 3, b9(), handler b10
 b2():
-  %499: int = const 0
-  return %499
+  %495: int = const 0
+  return %495
 b3():
   %55: ptr = symbol qf_f_10_closure
   %56: ptr = symbol g_f_3
@@ -626,16 +620,16 @@ b3():
   store8 %75 + 0, %74
   %76: ptr = symbol g_global_7
   %77: ptr = load8 %76 + 0
-  %78: ptr = symbol quest_current_exception_handler
+  %78: ptr = threadLocal quest_current_exception_handler
   %79: ptr = load8 %47 + 0
   store8 %78 + 0, %79
   jump b1(%77)
 b4():
-  %80: ptr = symbol quest_current_exception_handler
+  %80: ptr = threadLocal quest_current_exception_handler
   %81: ptr = load8 %47 + 0
   store8 %80 + 0, %81
   %82: ptr = slot 2
-  %83: ptr = symbol quest_current_exception
+  %83: ptr = threadLocal quest_current_exception
   %84: int = load8 %83 + 0
   store8 %82 + 0, %84
   %85: int = load8 %83 + 8
@@ -682,7 +676,7 @@ b7(%112: ptr):
   %162: ptr = load8 %161 + 0
   call qf_print(%160, %162)
   %164: ptr = slot 5
-  %165: ptr = symbol quest_current_exception_handler
+  %165: ptr = threadLocal quest_current_exception_handler
   %166: ptr = load8 %165 + 0
   store8 %164 + 0, %166
   %167: ptr = null
@@ -730,16 +724,16 @@ b9():
   store8 %142 + 0, %141
   %143: ptr = symbol g_global_13
   %144: ptr = load8 %143 + 0
-  %145: ptr = symbol quest_current_exception_handler
+  %145: ptr = threadLocal quest_current_exception_handler
   %146: ptr = load8 %113 + 0
   store8 %145 + 0, %146
   jump b7(%144)
 b10():
-  %147: ptr = symbol quest_current_exception_handler
+  %147: ptr = threadLocal quest_current_exception_handler
   %148: ptr = load8 %113 + 0
   store8 %147 + 0, %148
   %149: ptr = slot 4
-  %150: ptr = symbol quest_current_exception
+  %150: ptr = threadLocal quest_current_exception
   %151: int = load8 %150 + 0
   store8 %149 + 0, %151
   %152: int = load8 %150 + 8
@@ -841,7 +835,7 @@ b11(%163: ptr):
   %274: ptr = symbol g_again
   store8 %274 + 0, %273
   %276: ptr = slot 7
-  %277: ptr = symbol quest_current_exception_handler
+  %277: ptr = threadLocal quest_current_exception_handler
   %278: ptr = load8 %277 + 0
   store8 %276 + 0, %278
   %279: ptr = null
@@ -892,16 +886,16 @@ b13():
   store8 %193 + 0, %192
   %194: ptr = symbol g_global_17
   %195: ptr = load8 %194 + 0
-  %196: ptr = symbol quest_current_exception_handler
+  %196: ptr = threadLocal quest_current_exception_handler
   %197: ptr = load8 %164 + 0
   store8 %196 + 0, %197
   jump b11(%195)
 b14():
-  %198: ptr = symbol quest_current_exception_handler
+  %198: ptr = threadLocal quest_current_exception_handler
   %199: ptr = load8 %164 + 0
   store8 %198 + 0, %199
   %200: ptr = slot 6
-  %201: ptr = symbol quest_current_exception
+  %201: ptr = threadLocal quest_current_exception
   %202: int = load8 %201 + 0
   store8 %200 + 0, %202
   %203: int = load8 %201 + 8
@@ -924,7 +918,7 @@ b15(%275: ptr):
   %322: ptr = load8 %321 + 0
   call qf_print(%320, %322)
   %324: ptr = slot 10
-  %325: ptr = symbol quest_current_exception_handler
+  %325: ptr = threadLocal quest_current_exception_handler
   %326: ptr = load8 %325 + 0
   store8 %324 + 0, %326
   %327: ptr = null
@@ -947,16 +941,16 @@ b17():
   store8 %286 + 0, %285
   %287: ptr = symbol g_global_24
   %288: ptr = load8 %287 + 0
-  %289: ptr = symbol quest_current_exception_handler
+  %289: ptr = threadLocal quest_current_exception_handler
   %290: ptr = load8 %276 + 0
   store8 %289 + 0, %290
   jump b15(%288)
 b18():
-  %291: ptr = symbol quest_current_exception_handler
+  %291: ptr = threadLocal quest_current_exception_handler
   %292: ptr = load8 %276 + 0
   store8 %291 + 0, %292
   %293: ptr = slot 9
-  %294: ptr = symbol quest_current_exception
+  %294: ptr = threadLocal quest_current_exception
   %295: int = load8 %294 + 0
   store8 %293 + 0, %295
   %296: int = load8 %294 + 8
@@ -1026,7 +1020,7 @@ b21(%323: ptr):
   %387: ptr = symbol g_kept
   store8 %387 + 0, %379
   %389: ptr = slot 13
-  %390: ptr = symbol quest_current_exception_handler
+  %390: ptr = threadLocal quest_current_exception_handler
   %391: ptr = load8 %390 + 0
   store8 %389 + 0, %391
   %392: ptr = null
@@ -1049,16 +1043,16 @@ b23():
   store8 %334 + 0, %333
   %335: ptr = symbol g_global_27
   %336: ptr = load8 %335 + 0
-  %337: ptr = symbol quest_current_exception_handler
+  %337: ptr = threadLocal quest_current_exception_handler
   %338: ptr = load8 %324 + 0
   store8 %337 + 0, %338
   jump b21(%336)
 b24():
-  %339: ptr = symbol quest_current_exception_handler
+  %339: ptr = threadLocal quest_current_exception_handler
   %340: ptr = load8 %324 + 0
   store8 %339 + 0, %340
   %341: ptr = slot 12
-  %342: ptr = symbol quest_current_exception
+  %342: ptr = threadLocal quest_current_exception
   %343: int = load8 %342 + 0
   store8 %341 + 0, %343
   %344: int = load8 %342 + 8
@@ -1098,29 +1092,29 @@ b26():
   call quest_reraise(%341) memory [0:32]
   unreachable
 b27(%388: ptr):
-  %452: ptr = symbol g_r_6
-  store8 %452 + 0, %388
-  %453: ptr = null
-  %454: ptr = symbol g_r_6
-  %455: ptr = load8 %454 + 0
-  call qf_print(%453, %455)
-  %456: ptr = symbol qf_nested_closure
-  %457: ptr = symbol g_nested
-  store8 %457 + 0, %456
-  %459: ptr = slot 16
-  %460: ptr = symbol quest_current_exception_handler
-  %461: ptr = load8 %460 + 0
-  store8 %459 + 0, %461
-  %462: ptr = null
-  store8 %459 + 24, %462
-  %463: ptr = symbol g_Fail
-  %464: ptr = load8 %463 + 0
-  %465: ptr = slot 17
-  store8 %465 + 0, %464
-  store8 %459 + 8, %465
-  %466: int = const 1
-  store8 %459 + 16, %466
-  store8 %460 + 0, %459
+  %448: ptr = symbol g_r_6
+  store8 %448 + 0, %388
+  %449: ptr = null
+  %450: ptr = symbol g_r_6
+  %451: ptr = load8 %450 + 0
+  call qf_print(%449, %451)
+  %452: ptr = symbol qf_nested_closure
+  %453: ptr = symbol g_nested
+  store8 %453 + 0, %452
+  %455: ptr = slot 16
+  %456: ptr = threadLocal quest_current_exception_handler
+  %457: ptr = load8 %456 + 0
+  store8 %455 + 0, %457
+  %458: ptr = null
+  store8 %455 + 24, %458
+  %459: ptr = symbol g_Fail
+  %460: ptr = load8 %459 + 0
+  %461: ptr = slot 17
+  store8 %461 + 0, %460
+  store8 %455 + 8, %461
+  %462: int = const 1
+  store8 %455 + 16, %462
+  store8 %456 + 0, %455
   try slot 16, b35(), handler b36
 b28():
   jump b22()
@@ -1132,132 +1126,128 @@ b29():
   call quest_check_array_bounds_at(%398, %399, %400)
   %401: int = const 8
   %402: int = mul %399, %401
-  %403: int = ptrToInt %398
-  %404: int = const 8
-  %405: int = add %403, %404
-  %406: ptr = intToPtr %405
-  %407: int = ptrToInt %406
-  %408: int = add %407, %402
-  %409: ptr = intToPtr %408
-  %410: int = load8 %409 + 0
-  %411: ptr = intToPtr %410
-  %412: ptr = symbol g_global_31
+  %403: int = const 8
+  %404: ptr = ptrAdd %398, %403
+  %405: ptr = ptrAdd %404, %402
+  %406: int = load8 %405 + 0
+  %407: ptr = intToPtr %406
+  %408: ptr = symbol g_global_31
+  store8 %408 + 0, %407
+  %409: ptr = symbol g_global_31
+  %410: ptr = load8 %409 + 0
+  %411: int = ptrToInt %410
+  %412: ptr = symbol g_global_32
   store8 %412 + 0, %411
-  %413: ptr = symbol g_global_31
-  %414: ptr = load8 %413 + 0
-  %415: int = ptrToInt %414
-  %416: ptr = symbol g_global_32
-  store8 %416 + 0, %415
-  %417: ptr = symbol quest_type_String
-  %418: ptr = symbol g_global_32
+  %413: ptr = symbol quest_type_String
+  %414: ptr = symbol g_global_32
+  %415: int = load8 %414 + 0
+  %416: int = call qv_raised_reraise(%413, %415)
+  %417: ptr = symbol g_global_33
+  store8 %417 + 0, %416
+  %418: ptr = symbol g_global_33
   %419: int = load8 %418 + 0
-  %420: int = call qv_raised_reraise(%417, %419)
-  %421: ptr = symbol g_global_33
+  %420: ptr = intToPtr %419
+  %421: ptr = symbol g_global_34
   store8 %421 + 0, %420
-  %422: ptr = symbol g_global_33
-  %423: int = load8 %422 + 0
-  %424: ptr = intToPtr %423
-  %425: ptr = symbol g_global_34
-  store8 %425 + 0, %424
-  %426: ptr = symbol g_global_34
-  %427: ptr = load8 %426 + 0
-  %428: ptr = symbol g_global_35
-  store8 %428 + 0, %427
-  %429: ptr = symbol g_global_35
-  %430: ptr = load8 %429 + 0
-  %431: ptr = symbol quest_current_exception_handler
-  %432: ptr = load8 %389 + 0
-  store8 %431 + 0, %432
-  jump b27(%430)
+  %422: ptr = symbol g_global_34
+  %423: ptr = load8 %422 + 0
+  %424: ptr = symbol g_global_35
+  store8 %424 + 0, %423
+  %425: ptr = symbol g_global_35
+  %426: ptr = load8 %425 + 0
+  %427: ptr = threadLocal quest_current_exception_handler
+  %428: ptr = load8 %389 + 0
+  store8 %427 + 0, %428
+  jump b27(%426)
 b30():
-  %433: ptr = symbol quest_current_exception_handler
-  %434: ptr = load8 %389 + 0
-  store8 %433 + 0, %434
-  %435: ptr = slot 15
-  %436: ptr = symbol quest_current_exception
-  %437: int = load8 %436 + 0
-  store8 %435 + 0, %437
-  %438: int = load8 %436 + 8
-  store8 %435 + 8, %438
-  %439: int = load8 %436 + 16
-  store8 %435 + 16, %439
-  %440: int = load8 %436 + 24
-  store8 %435 + 24, %440
-  %441: int = load8 %436 + 32
-  store8 %435 + 32, %441
-  %442: ptr = load8 %435 + 0
-  %443: ptr = symbol g_Other
-  %444: ptr = load8 %443 + 0
-  %445: int = peq %442, %444
-  %446: ptr = symbol g_global_36
-  store1 %446 + 0, %445
-  %447: ptr = symbol g_global_36
-  %448: int = load1 %447 + 0
-  branch %448, b31(), b32()
+  %429: ptr = threadLocal quest_current_exception_handler
+  %430: ptr = load8 %389 + 0
+  store8 %429 + 0, %430
+  %431: ptr = slot 15
+  %432: ptr = threadLocal quest_current_exception
+  %433: int = load8 %432 + 0
+  store8 %431 + 0, %433
+  %434: int = load8 %432 + 8
+  store8 %431 + 8, %434
+  %435: int = load8 %432 + 16
+  store8 %431 + 16, %435
+  %436: int = load8 %432 + 24
+  store8 %431 + 24, %436
+  %437: int = load8 %432 + 32
+  store8 %431 + 32, %437
+  %438: ptr = load8 %431 + 0
+  %439: ptr = symbol g_Other
+  %440: ptr = load8 %439 + 0
+  %441: int = peq %438, %440
+  %442: ptr = symbol g_global_36
+  store1 %442 + 0, %441
+  %443: ptr = symbol g_global_36
+  %444: int = load1 %443 + 0
+  branch %444, b31(), b32()
 b31():
-  %449: ptr = symbol qs_38
-  %450: int = const 20
-  %451: ptr = call quest_string_new(%449, %450)
-  jump b27(%451)
+  %445: ptr = symbol qs_38
+  %446: int = const 20
+  %447: ptr = call quest_string_new(%445, %446)
+  jump b27(%447)
 b32():
-  call quest_reraise(%435) memory [0:32]
+  call quest_reraise(%431) memory [0:32]
   unreachable
-b33(%458: ptr):
-  %495: ptr = symbol g_r_7
-  store8 %495 + 0, %458
-  %496: ptr = null
-  %497: ptr = symbol g_r_7
-  %498: ptr = load8 %497 + 0
-  call qf_print(%496, %498)
+b33(%454: ptr):
+  %491: ptr = symbol g_r_7
+  store8 %491 + 0, %454
+  %492: ptr = null
+  %493: ptr = symbol g_r_7
+  %494: ptr = load8 %493 + 0
+  call qf_print(%492, %494)
   jump b34()
 b34():
   jump b28()
 b35():
-  %467: ptr = null
-  %468: ptr = call qf_nested(%467)
-  %469: ptr = symbol g_global_37
-  store8 %469 + 0, %468
-  %470: ptr = symbol g_global_37
-  %471: ptr = load8 %470 + 0
-  %472: ptr = symbol quest_current_exception_handler
-  %473: ptr = load8 %459 + 0
-  store8 %472 + 0, %473
-  jump b33(%471)
+  %463: ptr = null
+  %464: ptr = call qf_nested(%463)
+  %465: ptr = symbol g_global_37
+  store8 %465 + 0, %464
+  %466: ptr = symbol g_global_37
+  %467: ptr = load8 %466 + 0
+  %468: ptr = threadLocal quest_current_exception_handler
+  %469: ptr = load8 %455 + 0
+  store8 %468 + 0, %469
+  jump b33(%467)
 b36():
-  %474: ptr = symbol quest_current_exception_handler
-  %475: ptr = load8 %459 + 0
-  store8 %474 + 0, %475
-  %476: ptr = slot 18
-  %477: ptr = symbol quest_current_exception
-  %478: int = load8 %477 + 0
-  store8 %476 + 0, %478
-  %479: int = load8 %477 + 8
-  store8 %476 + 8, %479
-  %480: int = load8 %477 + 16
-  store8 %476 + 16, %480
-  %481: int = load8 %477 + 24
-  store8 %476 + 24, %481
-  %482: int = load8 %477 + 32
-  store8 %476 + 32, %482
-  %483: ptr = load8 %476 + 0
-  %484: ptr = symbol g_Fail
-  %485: ptr = load8 %484 + 0
-  %486: int = peq %483, %485
-  %487: ptr = symbol g_global_38
-  store1 %487 + 0, %486
-  %488: ptr = symbol g_global_38
-  %489: int = load1 %488 + 0
-  branch %489, b37(), b38()
+  %470: ptr = threadLocal quest_current_exception_handler
+  %471: ptr = load8 %455 + 0
+  store8 %470 + 0, %471
+  %472: ptr = slot 18
+  %473: ptr = threadLocal quest_current_exception
+  %474: int = load8 %473 + 0
+  store8 %472 + 0, %474
+  %475: int = load8 %473 + 8
+  store8 %472 + 8, %475
+  %476: int = load8 %473 + 16
+  store8 %472 + 16, %476
+  %477: int = load8 %473 + 24
+  store8 %472 + 24, %477
+  %478: int = load8 %473 + 32
+  store8 %472 + 32, %478
+  %479: ptr = load8 %472 + 0
+  %480: ptr = symbol g_Fail
+  %481: ptr = load8 %480 + 0
+  %482: int = peq %479, %481
+  %483: ptr = symbol g_global_38
+  store1 %483 + 0, %482
+  %484: ptr = symbol g_global_38
+  %485: int = load1 %484 + 0
+  branch %485, b37(), b38()
 b37():
-  %490: int = load8 %476 + 8
-  %491: ptr = intToPtr %490
-  %492: ptr = symbol g_m_4
-  store8 %492 + 0, %491
-  %493: ptr = symbol g_m_4
-  %494: ptr = load8 %493 + 0
-  jump b33(%494)
+  %486: int = load8 %472 + 8
+  %487: ptr = intToPtr %486
+  %488: ptr = symbol g_m_4
+  store8 %488 + 0, %487
+  %489: ptr = symbol g_m_4
+  %490: ptr = load8 %489 + 0
+  jump b33(%490)
 b38():
-  call quest_reraise(%476) memory [0:32]
+  call quest_reraise(%472) memory [0:32]
   unreachable
 }
 

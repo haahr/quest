@@ -33,8 +33,10 @@ register allocation) walk the arrays; only the passes that care what an instruct
 | `const` | → `int` | the immediate |
 | `realConst` | → `real` | the double whose bits are the immediate |
 | `symbol` | → `ptr` | the address of the symbol (static data, a function, a runtime global), plus the immediate in bytes |
+| `threadLocal` | → `ptr` | the address of the runtime's thread-local variable the symbol names, in this thread |
 | `null` | → `ptr` | the null pointer |
 | `slot` | → `ptr` | the address of the stack slot numbered by the immediate |
+| `ptrAdd` | `ptr int` → `ptr` | the pointer plus a byte offset: every field's, element's, and slot's address |
 | `add`, `sub`, `mul` | `int int` → `int` | wrapping arithmetic ([type-system.md](type-system.md) §6.3.1) |
 | `div`, `rem` | `int int` → `int` | signed, truncating; the divisor is neither 0 nor -1 (the SSA's builder tests both first) |
 | `and`, `or`, `xor`, `shl`, `lshr`, `ashr` | `int int` → `int` | bitwise; shift counts are 0 to 63 |
@@ -43,7 +45,7 @@ register allocation) walk the arrays; only the passes that care what an instruct
 | `fadd`, `fsub`, `fmul`, `fdiv` | `real real` → `real` | IEEE arithmetic |
 | `feq`, `flt`, `fle`, `fgt`, `fge` | `real real` → `int` | IEEE comparisons |
 | `isNaN` | `real` → `int` | whether the double is a NaN |
-| `intToPtr`, `ptrToInt` | → | a pointer's bits as an integer, and back (a proxy's tag bit, a `QVal` word) |
+| `intToPtr`, `ptrToInt` | → | a pointer's bits as an integer, and back, for what is truly an integer (a proxy's tag bit, a `QVal` word); a derived pointer is a `ptrAdd`, so that it stays a `ptr` |
 | `realBits`, `bitsReal` | → | a double's 64 bits as an integer, and back |
 | `sext8`, `zext8` | `int` → `int` | the low byte, sign- or zero-extended (a C `bool` or a `QChar`, an unsigned byte, received: `zext8`) |
 | `load` | `ptr` → value | the immediate is the byte offset; the width and the result's type are the instruction's (§2.1) |
@@ -98,14 +100,16 @@ terminator:
 | `try slot, body(args), handler()` | enter a `try` (below) |
 | `unreachable` | control does not reach the end of the block |
 
-**`try`.** A `try` enters an exception handler (its record a stack slot, the immediate, which the builder has pushed on
-the runtime's chain, `quest_current_exception_handler`, with what it catches) and goes on to its body block;
-when an exception is raised in the body, or in anything the body calls, control resumes at the handler block, as
-`_setjmp` returns a second time. The handler block's one predecessor is the `try`'s block, so dominance gives the
-rule the handler's resumption needs (arm64.md §3.6): the values a handler uses were defined before the `try`. A mutable
-variable assigned in a `try`'s body lives in a stack slot, not in values, as C makes it `volatile`. Every way out of
-the body (falling off its end, a jump, a return) first leaves the handler (`call` of the runtime, or the native
-handler's pop), as the C printer pops it.
+**`try`.** A `try` is defined by its control flow: it enters an exception handler (its record a stack slot, the
+immediate, which the builder has pushed on the runtime's chain, `quest_current_exception_handler`, with what it
+catches), and control goes on to its body block; when an exception is raised in the body, or in anything the body calls,
+control transfers to the handler block, with the values that dominate the `try`. How a backend implements the transfer
+is its own: `ssac` calls `_setjmp`, which returns a second time, and the arm64 backend records a native handler's resume
+address, stack pointer, and frame pointer; a WASM backend would use its exception handling. The handler block's one
+predecessor is the `try`'s block, so dominance gives the rule the handler's resumption needs (arm64.md §3.6): the values
+a handler uses were defined before the `try`. A mutable variable assigned in a `try`'s body lives in a stack slot, not
+in values, as C makes it `volatile`. Every way out of the body (falling off its end, a jump, a return) first leaves the
+handler (`call` of the runtime, or the native handler's pop), as the C printer pops it.
 
 ## 4. Building the SSA
 
@@ -134,8 +138,9 @@ registration, and the unit).
 - **Closures.** A closure's environment is the descriptors of its type arguments then its captures, a word for each
   of their values: private to the unit, which alone reads it ([arm64.md](arm64.md) §7.1). A call of a variable bound
   to a closure of one of the unit's functions calls the function directly, as the C printer does.
-- **Thread-locals.** The handler chain and the current exception are the runtime's thread-local variables, which the
-  SSA names as symbols; the native backend reaches them through their accessor (arm64.md §3.6).
+- **Thread-locals.** The handler chain and the current exception are the runtime's thread-local variables, whose
+  addresses `threadLocal` takes: the native backend calls their accessor (arm64.md §3.6), which clobbers what a call
+  does and is not rematerialized, and `ssac` takes the address with `&`; neither keeps a list of their names.
 - **Blocks the entry does not reach are dropped** when a function is finished, and the rest renumbered.
 
 What the builder does not yet build raises `unsupported`, naming the construct; `--stop-after ssa` reports it as an

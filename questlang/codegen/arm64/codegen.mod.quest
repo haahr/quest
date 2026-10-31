@@ -41,7 +41,10 @@ export
     Let Placed = Tuple places: Array(ArgumentPlace) stackBytes: Int end
 
     let isPair(p: ssa.Passed): Bool =
-        case p when passPair then true when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false end
+        case p
+            when passPair then true
+            when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false
+        end
 
     (* The places of values of types from first on, passed as the signature's
      * parameters say: an integer or a pointer (and a composite's copy's
@@ -122,7 +125,6 @@ export
         size: Int
         prefix: String
         defined: hashMap.T(String Bool)
-        threadLocals: hashMap.T(String Bool)
         (* Where each value is at each position (docs/arm64.md section 3.8),
          * and the positions of the moves inside blocks *)
         allocation: regalloc.Allocation
@@ -193,9 +195,10 @@ export
                 <> dst <> ", " <> src)
         end
 
-    let symbolAddress(fr: Frame reg: String symbol: String offset: Int): Ok =
-        emitAll(fr asm.addressOf(reg symbol offset hashMap.contains(:String :Bool fr.defined symbol)
-            hashMap.contains(:String :Bool fr.threadLocals symbol)))
+    (* A symbol's address plus an offset; a thread-local's, through its
+     * accessor *)
+    let symbolAddress(fr: Frame reg: String symbol: String offset: Int threadLocal: Bool): Ok =
+        emitAll(fr asm.addressOf(reg symbol offset hashMap.contains(:String :Bool fr.defined symbol) threadLocal))
 
     (* Whether two registers are of a class: x (or w) and d *)
     let isD(reg: String): Bool = strutil.startsWith(reg "d")
@@ -216,12 +219,12 @@ export
             case i.op
                 when opConst, opRealConst then movImm(fr x i.imm)
                 when opNull then movImm(fr x 0)
-                when opSymbol then symbolAddress(fr x i.symbol i.imm)
+                when opSymbol then symbolAddress(fr x i.symbol i.imm false)
                 when opSlot then addImm(fr x "sp" fr.slotAt[i.imm])
                 when opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt,
                     opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt,
                     opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opLoad, opStore,
-                    opCall, opCallIndirect, opCopy then
+                    opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal then
                     raise unsupported with "arm64: rematerializing " <> ssa.opcodeName(i.op) end
             end
             if isD(reg) then move(fr reg x) end
@@ -481,8 +484,15 @@ export
                     storeValue(fr "x9" result)
                 when opSymbol then
                     let d = outReg(fr result "x9")
-                    symbolAddress(fr d i.symbol i.imm)
+                    symbolAddress(fr d i.symbol i.imm false)
                     storeValue(fr d result)
+                (* A thread-local's address is a call of its accessor, which
+                 * the allocator counts as one *)
+                when opThreadLocal then
+                    let d = outReg(fr result "x9")
+                    symbolAddress(fr d i.symbol 0 true)
+                    storeValue(fr d result)
+                when opPtrAdd then arith("add")
                 when opNull then storeValue(fr "xzr" result)
                 when opSlot then
                     let d = outReg(fr result "x9")
@@ -800,7 +810,7 @@ export
      * Functions and the unit
      * ====================================================================== *)
 
-    let function(f: Function index: Int defined: hashMap.T(String Bool) threadLocals: hashMap.T(String Bool)): Lines =
+    let function(f: Function index: Int defined: hashMap.T(String Bool)): Lines =
         begin
             (* The outgoing arguments' area *)
             let var savesAll = false
@@ -811,7 +821,8 @@ export
                     begin
                         let types = array of(extent i.args ssa.typeInt)
                         for k = 0 upto {extent i.args - 1} do types[k] := ssa.typeOf(f i.args[k]) end
-                        let placed = placeArguments(types i.signature.params if stringOp.length(i.symbol) > 0 then 0 else 1 end)
+                        let placed = placeArguments(types i.signature.params if stringOp.length(i.symbol) > 0 then 0
+                            else 1 end)
                         if placed.stackBytes > outgoing then outgoing := placed.stackBytes end
                     end
                 for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
@@ -829,8 +840,7 @@ export
              * (section 3.6) *)
             let allocation = regalloc.allocate(f allocatable fun(i: ssa.Inst): Bool
                 (* A thread-local's address is a call of its accessor *)
-                ssa.isCall(i)
-                    orif {ssa.isOp(i ssa.opSymbol) andif hashMap.contains(:String :Bool threadLocals i.symbol)})
+                ssa.isCall(i) orif ssa.isOp(i ssa.opThreadLocal))
             (* The values computed again rather than kept in memory *)
             let nValues = vector.length(:ssa.Type f.types)
             let remat = array of(nValues maybe.none(:ssa.Inst))
@@ -840,11 +850,11 @@ export
                     let i = vector.get(:ssa.Inst blk.insts k)
                     let again = case i.op
                         when opConst, opRealConst, opNull, opSlot then true
-                        when opSymbol then not(hashMap.contains(:String :Bool threadLocals i.symbol))
+                        when opSymbol then true
                         when opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe,
                             opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt,
                             opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8,
-                            opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy then
+                            opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal then
                             false
                     end
                     if again andif {extent i.results is 1} then remat[i.results[0]] := maybe.some(:ssa.Inst i) end
@@ -883,7 +893,7 @@ export
             let saved = vector.toArray(:Int savedList)
             let fr = tuple
                 let f = f let lines = vector.new(:String) let valueAt = valueAt let slotAt = slotAt
-                let size = size let prefix = "Lf" <> conv.int(index) let defined = defined let threadLocals = threadLocals
+                let size = size let prefix = "Lf" <> conv.int(index) let defined = defined
                 let allocation = allocation let moveAts = moveAts let remat = remat let saved = saved
                 let var edges = 0 let var pos = ~1
             end
@@ -971,14 +981,10 @@ export
                 put(:String :Bool defined vector.get(:Function u.functions k).symbol true)
             end
             for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do put(:String :Bool defined vector.get(:ssa.Data u.data k).symbol true) end
-            let threadLocals = hashMap.new(:String :Bool eq hash.string)
-            for k = 0 upto {extent runtimeLayout.threadLocals - 1} do
-                put(:String :Bool threadLocals runtimeLayout.threadLocals[k] true)
-            end
             let lines = vector.new(:String)
             for k = 0 upto {extent asm.unitStart - 1} do vector.append(:String lines asm.unitStart[k]) end
             for k = 0 upto {vector.length(:Function u.functions) - 1} do
-                let fl = function(vector.get(:Function u.functions k) k defined threadLocals)
+                let fl = function(vector.get(:Function u.functions k) k defined)
                 for j = 0 upto {vector.length(:String fl) - 1} do vector.append(:String lines vector.get(:String fl j)) end
             end
             for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do

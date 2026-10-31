@@ -42,7 +42,8 @@ export
     let isWordChar(c: Char): Bool =
         begin
             let n = ascii.val(c)
-            {{n >= 48} andif {n <= 57}} orif {{n >= 65} andif {n <= 90}} orif {{n >= 97} andif {n <= 122}} orif {c is '_'}
+            {{n >= 48} andif {n <= 57}} orif {{n >= 65} andif {n <= 90}} orif {{n >= 97} andif {n <= 122}}
+                orif {c is '_'}
                 orif {c is '.'} orif {c is '$'}
         end
     let isDigit(c: Char): Bool = {ascii.val(c) >= 48} andif {ascii.val(c) <= 57}
@@ -128,7 +129,8 @@ export
             if {stringOp.length(name) < 2} orif not({stringOp.getChar(name 0) is 'b'}) then
                 fail(:Ok l "expected a block, not " <> name)
             end
-            let digits = tuple let text = stringOp.getSub(name 1 stringOp.length(name) - 1) let number = l.number let var at = 0 end
+            let digits = tuple let text = stringOp.getSub(name 1
+                stringOp.length(name) - 1) let number = l.number let var at = 0 end
             integer(digits)
         end
 
@@ -190,7 +192,8 @@ export
                 s := nodes.withParam(s w.memory[k] option passMemory of nodes.Passed with let bytes = w.bytes[k] end)
             end
             for k = 0 upto {extent w.int32 - 1} do s := nodes.withParam(s w.int32[k] nodes.passInt32) end
-            if maybe.isSome(:nodes.Passed w.result) then s := nodes.withResult(s maybe.unwrap(:nodes.Passed w.result)) end
+            if maybe.isSome(:nodes.Passed w.result) then s := nodes.withResult(s maybe.unwrap(:nodes.Passed
+                w.result)) end
             s
         end
 
@@ -225,16 +228,20 @@ export
              * sign-extends *)
             let width(prefix: String): Int =
                 begin
-                    let rest = stringOp.getSub(name stringOp.length(prefix) stringOp.length(name) - stringOp.length(prefix))
-                    let digits = if strutil.endsWith(rest "s") then stringOp.getSub(rest 0 stringOp.length(rest) - 1) else rest end
+                    let rest = stringOp.getSub(name stringOp.length(prefix)
+                        stringOp.length(name) - stringOp.length(prefix))
+                    let digits = if strutil.endsWith(rest "s") then stringOp.getSub(rest 0
+                        stringOp.length(rest) - 1) else rest end
                     integer(tuple let text = digits let number = l.number let var at = 0 end)
                 end
-            if strutil.startsWith(name "load") andif {stringOp.length(name) > 4} andif isDigit(stringOp.getChar(name 4)) then
+            if strutil.startsWith(name "load") andif {stringOp.length(name) > 4}
+                andif isDigit(stringOp.getChar(name 4)) then
                 let w = width("load")
                 let address = value(l)
                 expect(l "+")
                 make(nodes.opLoad array of address end integer(l) "" w strutil.endsWith(name "s"))
-            elsif strutil.startsWith(name "store") andif {stringOp.length(name) > 5} andif isDigit(stringOp.getChar(name 5)) then
+            elsif strutil.startsWith(name "store") andif {stringOp.length(name) > 5}
+                andif isDigit(stringOp.getChar(name 5)) then
                 let w = width("store")
                 let address = value(l)
                 expect(l "+")
@@ -247,6 +254,7 @@ export
                 let o = maybe.unwrap(:nodes.Opcode op)
                 case o
                     when opConst, opRealConst, opSlot then make(o none integer(l) "" 0 false)
+                    when opThreadLocal then make(o none 0 word(l) 0 false)
                     when opSymbol then
                         let symbol = word(l)
                         let addend = if lit(l "+") then integer(l) else 0 end
@@ -260,10 +268,10 @@ export
                     when opCallIndirect then
                         let args = values(l "")
                         call(o args "")
-                    when opNull, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe,
-                        opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle,
-                        opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opCopy,
-                        opLoad, opStore then
+                    when opNull, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq,
+                        opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt,
+                        opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8,
+                        opCopy, opLoad, opStore, opPtrAdd then
                         make(o values(l "") 0 "" 0 false)
                 end
             end
@@ -292,13 +300,15 @@ export
             elsif not(isWordChar(peek(l))) then maybe.none(:nodes.Terminator)
             else
                 let name = word(l)
-                if stringOp.equal(name "jump") then some(option termJump of nodes.Terminator with let target = target(l) end)
+                if stringOp.equal(name "jump") then some(option termJump of nodes.Terminator with let target = target(l)
+                    end)
                 elsif stringOp.equal(name "branch") then
                     let cond = value(l)
                     expect(l ",")
                     let ifTrue = target(l)
                     expect(l ",")
-                    some(option termBranch of nodes.Terminator with let cond = cond let ifTrue = ifTrue let ifFalse = target(l) end)
+                    some(option termBranch of nodes.Terminator with let cond = cond let ifTrue = ifTrue
+                        let ifFalse = target(l) end)
                 elsif stringOp.equal(name "switch") then
                     let v = value(l)
                     expect(l "[")
@@ -312,7 +322,8 @@ export
                     end
                     expect(l "default")
                     some(option termSwitch of nodes.Terminator with
-                        let value = v let cases = vector.toArray(:Int cases) let targets = vector.toArray(:nodes.Target targets)
+                        let value = v let cases = vector.toArray(:Int cases) let targets = vector.toArray(:nodes.Target
+                            targets)
                         let default = target(l)
                     end)
                 elsif stringOp.equal(name "return") then
@@ -326,7 +337,8 @@ export
                     let body = target(l)
                     expect(l ",")
                     expect(l "handler")
-                    some(option termTry of nodes.Terminator with let slot = slot let body = body let handler = blockNumber(l) end)
+                    some(option termTry of nodes.Terminator with let slot = slot let body = body
+                        let handler = blockNumber(l) end)
                 elsif stringOp.equal(name "unreachable") then some(nodes.termUnreachable)
                 else
                     l.at := start
@@ -335,7 +347,8 @@ export
             end
         end
 
-    (* function SYMBOL [exported](params) [pairs [..]] [narrow [..]][: results] [slots [..]] { *)
+    (* function SYMBOL [exported](params) signature[: results] [result ..]
+     * [slots [..]] { *)
     let header(l: Line): Function =
         begin
             expect(l "function")
@@ -435,7 +448,8 @@ export
                         else
                             let s = word(l)
                             let addend = if lit(l "+") then integer(l) else 0 end
-                            vector.append(:nodes.Word ws option wordSymbol of nodes.Word with let symbol = s let addend = addend end)
+                            vector.append(:nodes.Word ws option wordSymbol of nodes.Word with let symbol = s
+                                let addend = addend end)
                         end
                     end
                     option contentsWords of nodes.Contents with let words = vector.toArray(:nodes.Word ws) end

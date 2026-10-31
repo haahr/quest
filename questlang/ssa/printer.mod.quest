@@ -31,7 +31,8 @@ export
             text
         end
 
-    let listed(name: String xs: Array(Int)): String = if extent xs is 0 then "" else " " <> name <> " [" <> values2(xs) <> "]" end
+    let listed(name: String xs: Array(Int)): String = if extent xs is 0 then "" else " " <> name <> " [" <> values2(xs)
+        <> "]" end
 
     (* How a signature's parameters are passed, where not in words: pairs,
      * narrow (bytes), memory (index:bytes), and int32 *)
@@ -77,6 +78,7 @@ export
                 when opConst then name <> " " <> conv.int(i.imm)
                 when opRealConst then name <> " " <> conv.int(i.imm)
                 when opSymbol then name <> " " <> i.symbol <> if i.imm is 0 then "" else " + " <> conv.int(i.imm) end
+                when opThreadLocal then name <> " " <> i.symbol
                 when opSlot then name <> " " <> conv.int(i.imm)
                 when opLoad then
                     name <> conv.int(i.width) <> if {i.width < 8} andif i.signed then "s" else "" end <> " "
@@ -84,11 +86,14 @@ export
                 when opStore then
                     name <> conv.int(i.width) <> " " <> value(i.args[0]) <> " + " <> conv.int(i.imm) <> ", " <> value(i.args[1])
                 when opCall then
-                    name <> " " <> i.symbol <> "(" <> values(i.args) <> ")" <> paramsText(i.signature) <> resultText(i.signature)
-                when opCallIndirect then name <> " " <> values(i.args) <> paramsText(i.signature) <> resultText(i.signature)
+                    name <> " " <> i.symbol <> "(" <> values(i.args) <> ")" <> paramsText(i.signature)
+                        <> resultText(i.signature)
+                when opCallIndirect then name <> " " <> values(i.args) <> paramsText(i.signature)
+                    <> resultText(i.signature)
                 when opNull, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe,
                     opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle,
-                    opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opCopy then
+                    opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opCopy,
+                    opPtrAdd then
                     if extent i.args > 0 then name <> " " <> values(i.args) else name end
             end
             head <> body

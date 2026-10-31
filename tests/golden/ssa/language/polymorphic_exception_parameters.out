@@ -3,7 +3,7 @@ b0(%0: ptr, %1: ptr, %2: ptr, %3: int):
   %4: ptr = symbol qs_1
   %5: ptr = call quest_alloc_exception(%4)
   %7: ptr = slot 0
-  %8: ptr = symbol quest_current_exception_handler
+  %8: ptr = threadLocal quest_current_exception_handler
   %9: ptr = load8 %8 + 0
   store8 %7 + 0, %9
   %10: ptr = null
@@ -21,16 +21,16 @@ b2():
   %13: ptr = load8 %2 + 0
   %14: ptr = load8 %2 + 8
   %15: int = callIndirect %13, %14, %3, %5
-  %16: ptr = symbol quest_current_exception_handler
+  %16: ptr = threadLocal quest_current_exception_handler
   %17: ptr = load8 %7 + 0
   store8 %16 + 0, %17
   jump b1(%15)
 b3():
-  %18: ptr = symbol quest_current_exception_handler
+  %18: ptr = threadLocal quest_current_exception_handler
   %19: ptr = load8 %7 + 0
   store8 %18 + 0, %19
   %20: ptr = slot 2
-  %21: ptr = symbol quest_current_exception
+  %21: ptr = threadLocal quest_current_exception
   %22: int = load8 %21 + 0
   store8 %20 + 0, %22
   %23: int = load8 %21 + 8
@@ -79,7 +79,7 @@ b0(%0: ptr, %1: ptr, %2: ptr, %3: int):
   %4: ptr = symbol qs_1
   %5: ptr = call quest_alloc_exception(%4)
   %7: ptr = slot 0
-  %8: ptr = symbol quest_current_exception_handler
+  %8: ptr = threadLocal quest_current_exception_handler
   %9: ptr = load8 %8 + 0
   store8 %7 + 0, %9
   %10: ptr = null
@@ -98,16 +98,16 @@ b2():
   %14: ptr = load8 %2 + 8
   %15: int = callIndirect %13, %14, %5
   %16: int = const 0
-  %17: ptr = symbol quest_current_exception_handler
+  %17: ptr = threadLocal quest_current_exception_handler
   %18: ptr = load8 %7 + 0
   store8 %17 + 0, %18
   jump b1(%16)
 b3():
-  %19: ptr = symbol quest_current_exception_handler
+  %19: ptr = threadLocal quest_current_exception_handler
   %20: ptr = load8 %7 + 0
   store8 %19 + 0, %20
   %21: ptr = slot 2
-  %22: ptr = symbol quest_current_exception
+  %22: ptr = threadLocal quest_current_exception
   %23: int = load8 %22 + 0
   store8 %21 + 0, %23
   %24: int = load8 %22 + 8
@@ -125,12 +125,10 @@ b4():
   %30: int = load8 %21 + 8
   %31: ptr = intToPtr %30
   %32: ptr = call quest_unproxy(%31)
-  %33: int = ptrToInt %32
-  %34: int = const 8
-  %35: int = add %33, %34
-  %36: ptr = intToPtr %35
-  %37: int = load8 %36 + 0
-  jump b1(%37)
+  %33: int = const 8
+  %34: ptr = ptrAdd %32, %33
+  %35: int = load8 %34 + 0
+  jump b1(%35)
 b5():
   call quest_reraise(%21) memory [0:32]
   unreachable
@@ -141,7 +139,7 @@ b0(%0: ptr, %1: ptr, %2: ptr, %3: ptr):
   %4: ptr = symbol qs_1
   %5: ptr = call quest_alloc_exception(%4)
   %7: ptr = slot 0
-  %8: ptr = symbol quest_current_exception_handler
+  %8: ptr = threadLocal quest_current_exception_handler
   %9: ptr = load8 %8 + 0
   store8 %7 + 0, %9
   %10: ptr = null
@@ -160,16 +158,16 @@ b2():
   %14: ptr = load8 %1 + 8
   %15: ptr, %16: ptr = callIndirect %13, %14, %5
   %17: int = const 0
-  %18: ptr = symbol quest_current_exception_handler
+  %18: ptr = threadLocal quest_current_exception_handler
   %19: ptr = load8 %7 + 0
   store8 %18 + 0, %19
   jump b1(%17)
 b3():
-  %20: ptr = symbol quest_current_exception_handler
+  %20: ptr = threadLocal quest_current_exception_handler
   %21: ptr = load8 %7 + 0
   store8 %20 + 0, %21
   %22: ptr = slot 2
-  %23: ptr = symbol quest_current_exception
+  %23: ptr = threadLocal quest_current_exception
   %24: int = load8 %23 + 0
   store8 %22 + 0, %24
   %25: int = load8 %23 + 8
@@ -187,12 +185,10 @@ b4():
   %31: int = load8 %22 + 8
   %32: ptr = intToPtr %31
   %33: ptr = call quest_unproxy(%32)
-  %34: int = ptrToInt %33
-  %35: int = const 8
-  %36: int = add %34, %35
-  %37: ptr = intToPtr %36
-  %38: int = load8 %37 + 0
-  jump b1(%38)
+  %34: int = const 8
+  %35: ptr = ptrAdd %33, %34
+  %36: int = load8 %35 + 0
+  jump b1(%36)
 b5():
   call quest_reraise(%22) memory [0:32]
   unreachable
@@ -206,14 +202,12 @@ b0(%0: ptr, %1: ptr):
   %5: int = const 16
   %6: ptr = call quest_alloc(%5)
   store8 %6 + 0, %3
-  %7: int = ptrToInt %6
-  %8: int = const 8
-  %9: int = add %7, %8
-  %10: ptr = intToPtr %9
-  store8 %10 + 0, %4
-  %11: int = ptrToInt %6
-  %12: ptr = symbol qs_3
-  call quest_raise_at(%1, %11, %12)
+  %7: int = const 8
+  %8: ptr = ptrAdd %6, %7
+  store8 %8 + 0, %4
+  %9: int = ptrToInt %6
+  %10: ptr = symbol qs_3
+  call quest_raise_at(%1, %9, %10)
   unreachable
 }
 
@@ -239,21 +233,17 @@ b0(%0: ptr, %1: ptr):
   %4: int = const 7
   %5: int = const 32
   %6: ptr = call quest_alloc(%5)
-  %7: int = ptrToInt %6
-  %8: int = const 16
-  %9: int = add %7, %8
-  %10: ptr = intToPtr %9
-  store8 %10 + 0, %2
-  store8 %10 + 8, %3
-  store8 %6 + 0, %10
+  %7: int = const 16
+  %8: ptr = ptrAdd %6, %7
+  store8 %8 + 0, %2
+  store8 %8 + 8, %3
+  store8 %6 + 0, %8
+  %9: int = const 8
+  %10: ptr = ptrAdd %6, %9
+  store8 %10 + 0, %4
   %11: int = ptrToInt %6
-  %12: int = const 8
-  %13: int = add %11, %12
-  %14: ptr = intToPtr %13
-  store8 %14 + 0, %4
-  %15: int = ptrToInt %6
-  %16: ptr = symbol qs_3
-  call quest_raise_at(%1, %15, %16)
+  %12: ptr = symbol qs_3
+  call quest_raise_at(%1, %11, %12)
   unreachable
 }
 
@@ -348,39 +338,35 @@ b0(%0: int, %1: ptr):
   store8 %45 + 0, %44
   %46: int = const 32
   %47: ptr = call quest_alloc(%46)
-  %48: int = ptrToInt %47
-  %49: int = const 16
-  %50: int = add %48, %49
-  %51: ptr = intToPtr %50
-  %52: ptr = symbol quest_type_QT_record_9d26cc157112690b
-  store8 %51 + 0, %52
-  %53: int = const 1
-  %54: int = ptrToInt %51
-  %55: int = const 8
-  %56: int = add %54, %55
-  %57: ptr = intToPtr %56
-  store8 %57 + 0, %53
-  %58: ptr = symbol offsetdict_record_9d26cc157112690b_record_9d26cc157112690b
-  store8 %47 + 0, %51
-  store8 %47 + 8, %58
-  %59: ptr = symbol g_box
-  store8 %59 + 0, %47
-  %60: ptr = symbol g_box
-  %61: ptr = load8 %60 + 0
-  %62: ptr = load8 %61 + 0
-  %63: ptr = load8 %61 + 8
-  %64: ptr = symbol g_global_3
-  store8 %64 + 0, %62
-  store8 %64 + 8, %63
-  %65: ptr = null
-  %66: ptr = symbol g_global_3
-  %67: ptr = load8 %66 + 0
-  %68: ptr = load8 %66 + 8
-  %69: int = call qf_k_spec(%65, %67, %68) pairs [1]
-  %70: ptr = symbol g_r
-  store8 %70 + 0, %69
-  %71: int = const 0
-  return %71
+  %48: int = const 16
+  %49: ptr = ptrAdd %47, %48
+  %50: ptr = symbol quest_type_QT_record_9d26cc157112690b
+  store8 %49 + 0, %50
+  %51: int = const 1
+  %52: int = const 8
+  %53: ptr = ptrAdd %49, %52
+  store8 %53 + 0, %51
+  %54: ptr = symbol offsetdict_record_9d26cc157112690b_record_9d26cc157112690b
+  store8 %47 + 0, %49
+  store8 %47 + 8, %54
+  %55: ptr = symbol g_box
+  store8 %55 + 0, %47
+  %56: ptr = symbol g_box
+  %57: ptr = load8 %56 + 0
+  %58: ptr = load8 %57 + 0
+  %59: ptr = load8 %57 + 8
+  %60: ptr = symbol g_global_3
+  store8 %60 + 0, %58
+  store8 %60 + 8, %59
+  %61: ptr = null
+  %62: ptr = symbol g_global_3
+  %63: ptr = load8 %62 + 0
+  %64: ptr = load8 %62 + 8
+  %65: int = call qf_k_spec(%61, %63, %64) pairs [1]
+  %66: ptr = symbol g_r
+  store8 %66 + 0, %65
+  %67: int = const 0
+  return %67
 }
 
 data qs_1 text "e"

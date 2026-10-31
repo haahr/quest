@@ -91,7 +91,8 @@ export
                 end
             let resultsAre(inst: nodes.Inst types: Array(Type) what: String): Ok =
                 if extent inst.results isnot extent types then
-                    problem(what <> " has " <> conv.int(extent inst.results) <> " results, not " <> conv.int(extent types))
+                    problem(what <> " has " <> conv.int(extent inst.results) <> " results, not "
+                        <> conv.int(extent types))
                 else
                     for k = 0 upto {extent types - 1} do typeIs(inst.results[k] types[k] what <> "'s result") end
                 end
@@ -122,7 +123,8 @@ export
                                     when passPairRest then false
                                     when passWord, passReal, passPair, passByte, passInt32, passMemory then true
                                 end
-                                (* A pair's first word last, its second missing *)
+                                (* A pair's first word last, its second
+                                 * missing *)
                                 let unfinished = {k is {extent ps - 1}} andif case ps[k]
                                     when passPair then true
                                     when passWord, passReal, passPairRest, passByte, passInt32, passMemory then false
@@ -138,7 +140,8 @@ export
             let valueTypes(vs: Array(Int)): Array(Type) =
                 begin
                     let ts = array of(extent vs tInt)
-                    for k = 0 upto {extent vs - 1} do if {vs[k] >= 0} andif {vs[k] < nValues} then ts[k] := nodes.typeOf(f vs[k]) end end
+                    for k = 0 upto {extent vs - 1} do if {vs[k] >= 0}
+                        andif {vs[k] < nValues} then ts[k] := nodes.typeOf(f vs[k]) end end
                     ts
                 end
             (* A call's arguments and results: its signature, and for a call of
@@ -146,7 +149,8 @@ export
             let callIsValid(inst: nodes.Inst what: String): Ok =
                 begin
                     signatureIsValid(inst.signature valueTypes(inst.args) valueTypes(inst.results) what)
-                    if extent inst.results > 2 then problem(what <> " has " <> conv.int(extent inst.results) <> " results") end
+                    if extent inst.results > 2 then problem(what <> " has " <> conv.int(extent inst.results)
+                        <> " results") end
                     if nodes.isOp(inst nodes.opCall) then
                         let target = callee(inst.symbol)
                         if maybe.isSome(:Function target) then
@@ -171,7 +175,8 @@ export
                         end
                     end
                 end
-            signatureIsValid(f.signature vector.toArray(:Type f.paramTypes) vector.toArray(:Type f.resultTypes) "the function")
+            signatureIsValid(f.signature vector.toArray(:Type f.paramTypes) vector.toArray(:Type f.resultTypes)
+                "the function")
             for b = 0 upto {n - 1} do
                 let blk = nodes.block(f b)
                 let count = vector.length(:nodes.Inst blk.insts)
@@ -251,6 +256,12 @@ export
                             if {inst.imm < 0} orif {inst.imm >= nSlots} then
                                 problem("slot " <> conv.int(inst.imm) <> " does not exist")
                             end
+                        when opPtrAdd then
+                            argsAre(inst array of tPtr tInt end what)
+                            resultsAre(inst one(tPtr) what)
+                        when opThreadLocal then
+                            argsAre(inst noTypes what)
+                            resultsAre(inst one(tPtr) what)
                         when opCopy then
                             if extent inst.args isnot 1 then
                                 problem("a copy has " <> conv.int(extent inst.args) <> " arguments")
@@ -274,7 +285,8 @@ export
                         if extent x.cases isnot extent x.targets then problem("a switch's cases are not its targets") end
                         for k = 0 upto {extent x.cases - 1} do
                             for j = 0 upto {k - 1} do
-                                if x.cases[j] is x.cases[k] then problem("a switch's case " <> conv.int(x.cases[k]) <> " repeats") end
+                                if x.cases[j] is x.cases[k] then problem("a switch's case " <> conv.int(x.cases[k])
+                                    <> " repeats") end
                             end
                         end
                         for k = 0 upto {extent x.targets - 1} do checkTarget(x.targets[k] b "a switch") end
@@ -319,7 +331,8 @@ export
             vector.toArray(:String problems)
         end
 
-    let functionProblems(f: Function): Array(String) = problemsIn(f fun(symbol: String): maybe.T(Function) maybe.none(:Function))
+    let functionProblems(f: Function): Array(String) = problemsIn(f fun(symbol: String): maybe.T(Function)
+        maybe.none(:Function))
 
     let checkUnit(u: nodes.Unit): Ok =
         begin

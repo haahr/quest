@@ -4,15 +4,13 @@ b0(%0: ptr, %1: ptr):
   %3: ptr = load8 %2 + 0
   %4: ptr = load8 %2 + 8
   %5: int = load8 %4 + 40
-  %6: int = ptrToInt %3
-  %7: int = add %6, %5
-  %8: ptr = intToPtr %7
-  %9: ptr = load8 %8 + 0
-  %10: ptr = symbol qs_1
-  %11: int = const 1
-  %12: ptr = call quest_string_new(%10, %11)
-  %13: ptr = call quest_string_concat(%1, %12)
-  tail call qv_writer_putString(%9, %13)
+  %6: ptr = ptrAdd %3, %5
+  %7: ptr = load8 %6 + 0
+  %8: ptr = symbol qs_1
+  %9: int = const 1
+  %10: ptr = call quest_string_new(%8, %9)
+  %11: ptr = call quest_string_concat(%1, %10)
+  tail call qv_writer_putString(%7, %11)
 }
 
 function qf_evensAndOdds(%0: ptr, %1: int): ptr {
@@ -95,40 +93,36 @@ b0(%0: ptr, %1: ptr):
   %7: int = sub %5, %6
   %9: int = const 0
   jump b1(%3, %9)
-b1(%38: int, %40: int):
-  %13: int = le %40, %7
+b1(%34: int, %36: int):
+  %13: int = le %36, %7
   branch %13, b3(), b4()
 b2():
-  %37: int = zext8 %38
-  return %37
+  %33: int = zext8 %34
+  return %33
 b3():
   %16: ptr = symbol qs_7
-  call quest_check_array_bounds_at(%1, %40, %16)
+  call quest_check_array_bounds_at(%1, %36, %16)
   %17: int = const 8
-  %18: int = mul %40, %17
-  %19: int = ptrToInt %1
-  %20: int = const 8
-  %21: int = add %19, %20
-  %22: ptr = intToPtr %21
-  %23: int = ptrToInt %22
-  %24: int = add %23, %18
-  %25: ptr = intToPtr %24
-  %26: int = load8 %25 + 0
-  %27: int = const 0
-  %28: int = lt %26, %27
-  branch %28, b6(), b7()
+  %18: int = mul %36, %17
+  %19: int = const 8
+  %20: ptr = ptrAdd %1, %19
+  %21: ptr = ptrAdd %20, %18
+  %22: int = load8 %21 + 0
+  %23: int = const 0
+  %24: int = lt %22, %23
+  branch %24, b6(), b7()
 b4():
   jump b2()
 b5():
-  jump b1(%39, %34)
+  jump b1(%35, %30)
 b6():
-  %29: int = const 1
-  jump b8(%29)
+  %25: int = const 1
+  jump b8(%25)
 b7():
-  jump b8(%38)
-b8(%39: int):
-  %33: int = const 1
-  %34: int = add %40, %33
+  jump b8(%34)
+b8(%35: int):
+  %29: int = const 1
+  %30: int = add %36, %29
   jump b5()
 }
 
@@ -184,95 +178,75 @@ function qf_walk(%0: ptr, %1: int): ptr {
 b0(%0: ptr, %1: int):
   %2: int = const 40
   %3: ptr = call quest_alloc(%2)
-  %4: int = ptrToInt %3
-  %5: int = const 16
-  %6: int = add %4, %5
-  %7: ptr = intToPtr %6
-  %8: ptr = symbol quest_type_QT_record_4c2b32032208f9d9
-  store8 %7 + 0, %8
-  %9: int = const 0
-  %10: int = ptrToInt %7
-  %11: int = const 8
-  %12: int = add %10, %11
-  %13: ptr = intToPtr %12
-  store8 %13 + 0, %9
-  %14: int = const 0
-  %15: int = ptrToInt %7
-  %16: int = const 16
-  %17: int = add %15, %16
-  %18: ptr = intToPtr %17
-  store8 %18 + 0, %14
-  %19: ptr = symbol offsetdict_record_4c2b32032208f9d9_record_4c2b32032208f9d9
-  store8 %3 + 0, %7
-  store8 %3 + 8, %19
-  %20: ptr = load8 %3 + 0
-  %21: ptr = load8 %3 + 8
-  %25: int = const 1
-  jump b1(%20, %21, %25)
-b1(%97: ptr, %98: ptr, %99: int):
-  %29: int = le %99, %1
-  branch %29, b3(), b4()
+  %4: int = const 16
+  %5: ptr = ptrAdd %3, %4
+  %6: ptr = symbol quest_type_QT_record_4c2b32032208f9d9
+  store8 %5 + 0, %6
+  %7: int = const 0
+  %8: int = const 8
+  %9: ptr = ptrAdd %5, %8
+  store8 %9 + 0, %7
+  %10: int = const 0
+  %11: int = const 16
+  %12: ptr = ptrAdd %5, %11
+  store8 %12 + 0, %10
+  %13: ptr = symbol offsetdict_record_4c2b32032208f9d9_record_4c2b32032208f9d9
+  store8 %3 + 0, %5
+  store8 %3 + 8, %13
+  %14: ptr = load8 %3 + 0
+  %15: ptr = load8 %3 + 8
+  %19: int = const 1
+  jump b1(%14, %15, %19)
+b1(%77: ptr, %78: ptr, %79: int):
+  %23: int = le %79, %1
+  branch %23, b3(), b4()
 b2():
-  %77: int = load8 %98 + 0
-  %78: int = ptrToInt %97
-  %79: int = add %78, %77
-  %80: ptr = intToPtr %79
-  %81: int = load8 %80 + 0
-  %82: ptr = call qv_conv_int(%81)
-  %86: int = load8 %98 + 8
-  %87: int = ptrToInt %97
-  %88: int = add %87, %86
-  %89: ptr = intToPtr %88
-  %90: int = load8 %89 + 0
-  %91: ptr = call qv_conv_int(%90)
-  %92: ptr = symbol qs_3
-  %93: int = const 1
-  %94: ptr = call quest_string_new(%92, %93)
-  %95: ptr = call quest_string_concat(%94, %91)
-  tail %96: ptr = call quest_string_concat(%82, %95)
+  %61: int = load8 %78 + 0
+  %62: ptr = ptrAdd %77, %61
+  %63: int = load8 %62 + 0
+  %64: ptr = call qv_conv_int(%63)
+  %68: int = load8 %78 + 8
+  %69: ptr = ptrAdd %77, %68
+  %70: int = load8 %69 + 0
+  %71: ptr = call qv_conv_int(%70)
+  %72: ptr = symbol qs_3
+  %73: int = const 1
+  %74: ptr = call quest_string_new(%72, %73)
+  %75: ptr = call quest_string_concat(%74, %71)
+  tail %76: ptr = call quest_string_concat(%64, %75)
 b3():
-  %35: int = load8 %98 + 0
-  %36: int = ptrToInt %97
-  %37: int = add %36, %35
-  %38: ptr = intToPtr %37
-  %39: int = load8 %38 + 0
-  %40: int = add %39, %99
-  %44: int = load8 %98 + 8
-  %45: int = ptrToInt %97
-  %46: int = add %45, %44
-  %47: ptr = intToPtr %46
-  %48: int = load8 %47 + 0
-  %49: int = sub %48, %99
-  %50: int = const 40
-  %51: ptr = call quest_alloc(%50)
-  %52: int = ptrToInt %51
-  %53: int = const 16
-  %54: int = add %52, %53
-  %55: ptr = intToPtr %54
-  %56: ptr = symbol quest_type_QT_record_4c2b32032208f9d9
-  store8 %55 + 0, %56
-  %57: int = ptrToInt %55
-  %58: int = const 8
-  %59: int = add %57, %58
-  %60: ptr = intToPtr %59
-  store8 %60 + 0, %40
-  %61: int = ptrToInt %55
-  %62: int = const 16
-  %63: int = add %61, %62
-  %64: ptr = intToPtr %63
-  store8 %64 + 0, %49
-  %65: ptr = symbol offsetdict_record_4c2b32032208f9d9_record_4c2b32032208f9d9
-  store8 %51 + 0, %55
-  store8 %51 + 8, %65
-  %66: ptr = load8 %51 + 0
-  %67: ptr = load8 %51 + 8
-  %71: int = const 1
-  %72: int = add %99, %71
+  %29: int = load8 %78 + 0
+  %30: ptr = ptrAdd %77, %29
+  %31: int = load8 %30 + 0
+  %32: int = add %31, %79
+  %36: int = load8 %78 + 8
+  %37: ptr = ptrAdd %77, %36
+  %38: int = load8 %37 + 0
+  %39: int = sub %38, %79
+  %40: int = const 40
+  %41: ptr = call quest_alloc(%40)
+  %42: int = const 16
+  %43: ptr = ptrAdd %41, %42
+  %44: ptr = symbol quest_type_QT_record_4c2b32032208f9d9
+  store8 %43 + 0, %44
+  %45: int = const 8
+  %46: ptr = ptrAdd %43, %45
+  store8 %46 + 0, %32
+  %47: int = const 16
+  %48: ptr = ptrAdd %43, %47
+  store8 %48 + 0, %39
+  %49: ptr = symbol offsetdict_record_4c2b32032208f9d9_record_4c2b32032208f9d9
+  store8 %41 + 0, %43
+  store8 %41 + 8, %49
+  %50: ptr = load8 %41 + 0
+  %51: ptr = load8 %41 + 8
+  %55: int = const 1
+  %56: int = add %79, %55
   jump b5()
 b4():
   jump b2()
 b5():
-  jump b1(%66, %67, %72)
+  jump b1(%50, %51, %56)
 }
 
 function qf_bump(%0: ptr) {
@@ -351,7 +325,7 @@ b0(%0: ptr, %1: int):
   %4: ptr = slot 0
   store8 %4 + 0, %3
   %5: ptr = slot 1
-  %6: ptr = symbol quest_current_exception_handler
+  %6: ptr = threadLocal quest_current_exception_handler
   %7: ptr = load8 %6 + 0
   store8 %5 + 0, %7
   %8: ptr = null
@@ -372,11 +346,11 @@ b1():
   store8 %15 + 0, %14
   jump b4()
 b2():
-  %39: ptr = symbol quest_current_exception_handler
+  %39: ptr = threadLocal quest_current_exception_handler
   %40: ptr = load8 %5 + 0
   store8 %39 + 0, %40
   %41: ptr = slot 4
-  %42: ptr = symbol quest_current_exception
+  %42: ptr = threadLocal quest_current_exception
   %43: int = load8 %42 + 0
   store8 %41 + 0, %43
   %44: int = load8 %42 + 8
@@ -402,7 +376,7 @@ b4():
   %18: int = le %17, %1
   branch %18, b6(), b7()
 b5():
-  %37: ptr = symbol quest_current_exception_handler
+  %37: ptr = threadLocal quest_current_exception_handler
   %38: ptr = load8 %5 + 0
   store8 %37 + 0, %38
   jump b3()

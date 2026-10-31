@@ -33,7 +33,8 @@ export
                 when planUnbox then
                     vals.fromWord(fn vs[0] plan.target)
                 when planRecordView then
-                    vals.runtime(fn "quest_record_view" array of vs[0] vs[1] descriptors.descriptor(fn plan.descriptors[0]) end)
+                    vals.runtime(fn "quest_record_view" array of vs[0] vs[1] descriptors.descriptor(fn
+                        plan.descriptors[0]) end)
                 when planVariantTags then
                     let table = maybe.unwrap(:ir.TagMap plan.tagMap)
                     let map = staticdata.describeTagMap(table.target table.source)
@@ -50,7 +51,8 @@ export
                 when planView then
                     let word = vals.toWord(fn vs plan.source)
                     let converted = vals.call1(fn "quest_convert"
-                        array of word descriptors.descriptor(fn plan.descriptors[0]) descriptors.descriptor(fn plan.descriptors[1]) end)
+                        array of word descriptors.descriptor(fn plan.descriptors[0]) descriptors.descriptor(fn
+                            plan.descriptors[1]) end)
                     vals.fromWord(fn converted plan.target)
                 when planRuntime then
                     let l = maybe.unwrap(:ir.PlanLayout plan.layout)
@@ -60,7 +62,8 @@ export
                     let toType = if l.toGeneric then genericType else nativeType end
                     let word = vals.toWord(fn vs fromType)
                     let converted = vals.call1(fn "quest_convert"
-                        array of word descriptors.descriptor(fn plan.descriptors[0]) descriptors.descriptor(fn plan.descriptors[1]) end)
+                        array of word descriptors.descriptor(fn plan.descriptors[0]) descriptors.descriptor(fn
+                            plan.descriptors[1]) end)
                     vals.fromWord(fn converted toType)
                 when planAdapt then
                     if maybe.isNone(:ir.Function plan.thunk) then
@@ -91,7 +94,8 @@ export
                             let f = maybe.unwrap(:ir.Plan fp)
                             let word = vals.slotToWord(fn fc sc.type)
                             let w = vals.call1(fn "quest_convert"
-                                array of word descriptors.descriptor(fn f.descriptors[0]) descriptors.descriptor(fn f.descriptors[1]) end)
+                                array of word descriptors.descriptor(fn f.descriptors[0]) descriptors.descriptor(fn
+                                    f.descriptors[1]) end)
                             vals.slotFromWord(fn w tc.type)
                         elsif maybe.isSome(:ir.Plan fp) then
                             slotStore(fn convert(fn slotLoad(fn fc sc.type) maybe.unwrap(:ir.Plan fp)) tc.type)
@@ -215,7 +219,8 @@ export
                             let storedType = vals.loadWord(fn stored 8 * k vals.tPtr)
                             vals.choose(fn vals.binary(fn ssa.opPne storedType vals.null(fn)) types
                                 fun(): Array(Int) vals.fromWord(fn
-                                    vals.call1(fn "quest_convert" array of vals.loadWord(fn slot 0 vals.tInt) storedType descriptors.maybeDescriptor(fn o.descriptor) end) t)
+                                    vals.call1(fn "quest_convert" array of vals.loadWord(fn slot 0 vals.tInt) storedType
+                                        descriptors.maybeDescriptor(fn o.descriptor) end) t)
                                 plainRead)
                         end
                     plainRead)
@@ -258,7 +263,8 @@ export
             vals.store(fn payload runtimeLayout.offset("QRecordHeader" "descriptor") 8 descriptors.maybeDescriptor(fn o.descriptor))
             storeFields(fn payload offsets args types embeddedArray structBytes)
             let dict = if o.runtimeOffsets then
-                vals.call1(fn "quest_record_dict" array of descriptors.maybeDescriptor(fn o.viewDescriptor) descriptors.maybeDescriptor(fn o.descriptor) end)
+                vals.call1(fn "quest_record_dict" array of descriptors.maybeDescriptor(fn o.viewDescriptor)
+                    descriptors.maybeDescriptor(fn o.descriptor) end)
             else
                 let table = maybe.unwrap(:ir.OffsetTable o.offsets)
                 vals.symbolAt(fn staticdata.describeOffsetTable(fn.u.naming table.view table.layout).symbol)

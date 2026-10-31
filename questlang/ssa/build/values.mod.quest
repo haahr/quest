@@ -219,6 +219,7 @@ export
     let constant(fn: Fn n: Int): Int = ssa.constant(fn.f fn.cur n)
     let binary(fn: Fn op: ssa.Opcode x: Int y: Int): Int = ssa.binary(fn.f fn.cur op x y)
     let symbolAt(fn: Fn symbol: String): Int = ssa.symbolAddress(fn.f fn.cur symbol)
+    let threadLocal(fn: Fn symbol: String): Int = ssa.threadLocal(fn.f fn.cur symbol)
     let load(fn: Fn address: Int offset: Int p: Part): Int = ssa.load(fn.f fn.cur address offset p.width p.signed p.type)
     let loadWord(fn: Fn address: Int offset: Int t: ssa.Type): Int = ssa.load(fn.f fn.cur address offset 8 false t)
     let store(fn: Fn address: Int offset: Int width: Int value: Int): Ok = ssa.store(fn.f fn.cur address offset width value)
@@ -264,11 +265,10 @@ export
     let toInt(fn: Fn v: Int): Int = emit(fn ssa.opPtrToInt array of v end tInt)
 
     (* A pointer n bytes past p *)
-    let offsetPtr(fn: Fn p: Int n: Int): Int =
-        if n is 0 then p else toPtr(fn binary(fn ssa.opAdd toInt(fn p) constant(fn n))) end
+    let offsetPtr(fn: Fn p: Int n: Int): Int = if n is 0 then p else ssa.ptrAdd(fn.f fn.cur p constant(fn n)) end
 
     (* A pointer plus a byte count held in a value *)
-    let indexPtr(fn: Fn p: Int n: Int): Int = toPtr(fn binary(fn ssa.opAdd toInt(fn p) n))
+    let indexPtr(fn: Fn p: Int n: Int): Int = ssa.ptrAdd(fn.f fn.cur p n)
 
     (* Whether a tuple's or an option's pointer is a proxy's: its tag bit set
      * (docs/c-representation.md section 5.8) *)
@@ -736,7 +736,8 @@ export
                 when proxy then
                     choose(fn isProxy(fn o) typesOf(slotParts(comp.type))
                         fun(): Array(Int) slotFromWord(fn
-                            call1(fn "quest_proxy_option_element" array of o constant(fn {if i < 0 then 0 else i end}) end)
+                            call1(fn "quest_proxy_option_element" array of o constant(fn {if i < 0 then 0 else i end})
+                                end)
                             comp.type)
                         fun(): Array(Int) readSlot(fn offsetPtr(fn o offset) comp.type))
             end

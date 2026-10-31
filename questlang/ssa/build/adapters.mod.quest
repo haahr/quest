@@ -109,7 +109,8 @@ export
                     let clos = vals.read(fn v)[0]
                     let fnPtr = vals.loadWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
                     let env = vals.loadWord(fn clos runtimeLayout.offset("QClosure" "env") vals.tPtr)
-                    vals.callQuest(fn "" vals.concat(array of fnPtr env end args) shifted(s.pairs 2) shifted(s.narrow 2) ps)
+                    vals.callQuest(fn "" vals.concat(array of fnPtr env end args) shifted(s.pairs 2) shifted(s.narrow 2)
+                        ps)
                 end
                 returnValues(fn calls.resultsOf(fn ps results))
                 maybe.some(:Function finished(fn))
@@ -135,7 +136,8 @@ export
             let resultAt = runtimeLayout.offset("QFunTypeDescriptor" "result_type")
             let paramType(fn: vals.Fn d: Int j: Int): Int =
                 vals.loadWord(fn d bytes("QFunTypeDescriptor") + {bytes("QFunParamDescriptor") * j} vals.tPtr)
-            let convertWord(fn: vals.Fn w: Int from: Int to: Int): Int = vals.call1(fn "quest_convert" array of w from to end)
+            let convertWord(fn: vals.Fn w: Int from: Int to: Int): Int = vals.call1(fn "quest_convert" array of w from
+                to end)
             let closureFn(fn: vals.Fn c: Int): Int = vals.loadWord(fn c runtimeLayout.offset("QClosure" "fn") vals.tPtr)
             let closureEnv(fn: vals.Fn c: Int): Int = vals.loadWord(fn c runtimeLayout.offset("QClosure" "env") vals.tPtr)
 
@@ -179,7 +181,8 @@ export
                 else vs end)
             end
             let directResults = calls.resultsOf(thunk retParts vals.callQuest(thunk ""
-                vals.concat(array of closureFn(thunk orig) end directArgs) shifted(s.pairs 1) shifted(s.narrow 1) retParts))
+                vals.concat(array of closureFn(thunk orig) end directArgs) shifted(s.pairs 1) shifted(s.narrow
+                    1) retParts))
             returnValues(thunk if not(isOk(ret)) andif slots.mayBeStoredAsSubtype(shapes.shape(ret)) then
                 vals.fromWord(thunk convertWord(thunk vals.toWord(thunk directResults ret) vals.loadWord(thunk from resultAt vals.tPtr)
                     vals.loadWord(thunk to resultAt vals.tPtr)) ret)
@@ -213,7 +216,8 @@ export
             vals.store(adapt env runtimeLayout.offset("QFunAdapterEnv" "orig") 8 param(af 0))
             vals.store(adapt env runtimeLayout.offset("QFunAdapterEnv" "from") 8 param(af 1))
             vals.store(adapt env runtimeLayout.offset("QFunAdapterEnv" "to") 8 param(af 2))
-            let same = vals.narrowed(adapt vals.call1(adapt "quest_fun_signature_equivalent" array of param(af 1) param(af 2) end)
+            let same = vals.narrowed(adapt vals.call1(adapt "quest_fun_signature_equivalent" array of param(af 1)
+                param(af 2) end)
                 vals.part(vals.tInt 1 false))
             vals.store(adapt env runtimeLayout.offset("QFunAdapterEnv" "direct") 1 same)
             let adapted = vals.alloc(adapt bytes("QClosure"))
@@ -222,7 +226,8 @@ export
             returnValues(adapt array of adapted end)
 
             (* The invoker: a call of a closure of this type with words *)
-            let invoke = newFunction(u "quest_invoke_" <> tag false pointers(2) array of vals.part(vals.tInt 8 false) end)
+            let invoke = newFunction(u "quest_invoke_"
+                <> tag false pointers(2) array of vals.part(vals.tInt 8 false) end)
             let vf = invoke.f
             let c = param(vf 0)
             let argv = param(vf 1)
@@ -235,7 +240,8 @@ export
                     else vals.fromWord(invoke w p.type) end)
             end
             let invokeResults = calls.resultsOf(invoke retParts vals.callQuest(invoke ""
-                vals.concat(array of closureFn(invoke c) end invokeArgs) shifted(s.pairs 1) shifted(s.narrow 1) retParts))
+                vals.concat(array of closureFn(invoke c) end invokeArgs) shifted(s.pairs 1) shifted(s.narrow
+                    1) retParts))
             returnValues(invoke array of if isOk(ret) then vals.constant(invoke 0) else vals.toWord(invoke invokeResults ret) end end)
             array of finished(thunk) finished(adapt) finished(invoke) end
         end
