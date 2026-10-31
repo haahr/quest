@@ -305,12 +305,13 @@ the same modules, so each step starts from a fresh rebase.
    and results' registers are allocatable now; the frame puts the stack slots before the spill slots, which exposed
    the builder's copying five words of a handler's four-word state (c08fea94, a fix of its own). Blocks that only
    jump are passed over when the code is emitted. Still left from arm64.md §6: eager loads at a block's start. Its run
-   and compile times before and after wait, at the user's word, to run with the other benchmarks once this plan is
-   finished.
+   and compile times are [benchmarks.md](benchmarks.md) §6: the driver's build through arm64 from about 26 s to about
+   24 s, and steps 8 to 10 together made arm64's programs 0.90 times as long.
 9. **The compiler's performance** (§3.9). *Done when* each change's compile time is recorded in benchmarks.md, and the
-   ones that do not pay are reverted. *Made* (2026-10-31, 0e8ca0cd, 20f0d4ed), its times to be recorded
-   with the other benchmarks once this plan is finished: the allocator searches its handlers by position and marks
-   the callee-saved registers given in one pass, and the SSA printer joins its lists of values. The rest of §3.9 was
+   ones that do not pay are reverted. *Done* (2026-10-31, 0e8ca0cd, 20f0d4ed): the allocator searches its handlers
+   by position and marks the callee-saved registers given in one pass, and the SSA printer joins its lists of
+   values. The first saves about 1 s of the driver's build through arm64 and 1.7 s of printing its SSA
+   ([benchmarks.md](benchmarks.md) §6.2); the second is within noise, and stays as the clearer code. The rest of §3.9 was
    done already or does not apply: opcodes are constants (step 1), `dominates` uses tree numbers (step 4), registers
    are numbers (step 8), and assembly is joined through a string builder; the builder's bindings stay hash maps,
    since IR variables' ids are numbered across a unit, not densely within a function.

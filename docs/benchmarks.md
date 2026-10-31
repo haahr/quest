@@ -534,3 +534,66 @@ The gap is the instruction selection, jump threading, and inlining that clang do
 [backend-improvements.md](backend-improvements.md) list. Revisit when arm64's code is within about 1.2 times C's on
 both measures, or when building time matters more than running time (the REPL, the test suite's many small
 programs), where arm64's builds skip clang's compile of the C: an assembly unit needs only the assembler.
+
+## 6. The backend improvements (2026-10-31)
+
+[backend-improvements.md](backend-improvements.md)'s steps 8 to 10 (the arm64 backend's instructions as data, the
+allocator on machine functions, the compiler's speed, and the `val` type) and the arm64 backend before register
+allocation, measured as one batch at the plan's end.
+
+### 6.1. How they were taken
+
+Each version was built in a detached worktree of its own: step 8's base `c08fea94`, after step 8 `373ecce3`, after
+each of step 9's two changes `0e8ca0cd` and `20f0d4ed`, the plan's end `88d7970b`, and the arm64 backend before
+register allocation, `2aad8279` and `73e7aaf9` (arm64.md steps 10 and 11's first commit), each with the builder's
+part of `59743032` (the Ok-argument fix) applied. Each job waited until no test suite, check, or other benchmark ran
+and the load average had been under 6 for two minutes. The suite's runs are `run.py time --clean --scale 0.25
+--timeout 1800`, one run each, against the 2026-10-28 baseline's MLton times; this session was editing and testing
+meanwhile, at two jobs, during the last three suites, and `tools/check` (the whole machine) overlapped `73e7aaf9`'s
+from tsp on, so its times are high. The times are in `benchmarks/mlton/baselines/2026-10-31/`.
+
+### 6.2. Compile times
+
+The C-built stage 2 of each version building the driver through arm64 from an empty build directory (`-j 8`, three
+runs), and printing the driver's SSA (`--stop-after ssa --dump-after ssa`, one unit at a time):
+
+| Version | Driver through arm64 (s) | The driver's SSA printed (s) |
+|---|--:|--:|
+| step 8's base, `c08fea94` | 25.5, 26.5, 26.0 | 11.1, 10.8, 10.5 |
+| after step 8, `373ecce3` | 23.7, 23.8, 29.2 | 12.1, 11.8, 11.8 |
+| step 9: the allocator's search by position, `0e8ca0cd` | 22.4, 23.1, 22.8 | 10.4, 10.1, 10.2 |
+| step 9: the printer's lists joined, `20f0d4ed` | 23.9, 22.5, 22.6 | 10.2, 10.4, 10.4 |
+| the plan's end, `88d7970b` | 22.0, 22.0, 22.2 | 10.2, 10.2, 10.0 |
+
+- **Step 8** saved about 2.5 s of the build (its 29.2 s run aside), but printing the SSA got about 1 s slower.
+- **Step 9's allocator change** pays: about 1 s of the build and 1.7 s of printing, which more than takes back step
+  8's. **Its printer change** is within noise either way, and stays as the clearer code.
+- **The compiler as arm64 compiles it** (`QUEST_BACKEND=arm64`, building the driver through C, `-j 8`) took 56.1,
+  56.1, and 56.0 s at step 8's base and 52.9, 53.5, and 53.3 s at the end: its code is about 5 percent faster.
+
+### 6.3. Programs
+
+| System | Geometric mean of time / MLton's | Over the 42 all finished | Run time |
+|---|--:|--:|--:|
+| arm64 before register allocation, `2aad8279` | 21.26 (40) | 21.95 | 118.9 min (41) |
+| arm64 before register allocation, `73e7aaf9` (loaded, §6.1) | | 25.11 | 136.6 min (42) |
+| arm64 at step 8's base, `c08fea94` | 11.33 | 10.33 | 79.5 min |
+| arm64 at the plan's end, `88d7970b` | **10.22** | 9.28 | 75.6 min |
+| ssac at the plan's end, `88d7970b` (first timed) | **7.42** | 6.58 | 65.2 min |
+| C, `074bc251` (§4.2), for comparison | 5.24 | | 44.0 min |
+
+Before register allocation, lexgen, model-elimination, and zebra do not compile (their `else with` handlers came
+later) and smith-normal-form timed out.
+
+- **Steps 8 to 10 made arm64's programs 0.90 times as long** (geometric mean of the ratios, all 46): tailfib 0.63,
+  even-odd 0.67, tsp 0.74, flat-array and life 0.77, fib 0.84, and most of the rest 0.85 to 0.95. Four got slower:
+  string-concat 1.38, md5 1.11, checksum 1.06, and imp-for 1.00, the word-arithmetic and string loops, where
+  selection now folds immediates and offsets the old code did not but the allocator spills differently.
+- **Register allocation** (arm64.md step 11, with steps 8 to 10 after it) made them 0.42 times as long as at
+  `2aad8279`, over the 40 both finished.
+- **ssac**, the SSA printed as C for clang, takes 0.73 times arm64's time at the end and 1.42 times C's: clang
+  inlines and turns into loops what neither the SSA nor arm64 does (fib 12.6 times ssac's in arm64, tailfib 18.4,
+  tak 8.6, even-odd 3.5), while arm64 is ahead on flat-array (0.46 of ssac's time, its try without `_setjmp`).
+- **Against C**, arm64 is furthest behind on md5 (6.7), checksum and psdes-random (3.6), vector32-concat (3.4), and
+  the small recursive functions; the inliner ([inlining.md](inlining.md)) is to close most of the gap that is not
+  instruction selection.
