@@ -299,13 +299,15 @@ fun getter_spec(b.10: Box(Bool)): Bool {
   let %277: Bool = tuple_field(b.10, 0)
   return %277
 }
-fun qa_adapt {orig}(v.16: A): Fun(A :: TYPE) Tuple x: A end(A) {
+fun qa_adapt(v.16: A): Fun(A :: TYPE) Tuple x: A end(A) {
+  let orig: Fun(v: Bool): Box(Bool) = closure boxed {}
   let v.17: Bool = convert(v.16, unbox)
   let r.7: Fun(A :: TYPE) Tuple x: A end(Bool) = call orig(v.17)
   let r.8: Fun(A :: TYPE) Tuple x: A end(A) = convert(r.7, cast)
   return r.8
 }
-fun qa_adapt.1 {orig.1}(m.5: Fun(A :: TYPE) Option none some with Tuple value: A end end(A)): A {
+fun qa_adapt.1(m.5: Fun(A :: TYPE) Option none some with Tuple value: A end end(A)): A {
+  let orig.1: Fun(m: Maybe(Bool)): Bool = closure orFalse {}
   let m.6: Fun(A :: TYPE) Option none some with Tuple value: A end end(Bool) = convert(m.5, cast)
   let r.9: Bool = call orig.1(m.6)
   let r.10: A = convert(r.9, box)
@@ -631,7 +633,7 @@ main {
     do call print.1(%176)
     let make.1: All(A :: TYPE) Fun(f: Fun(v: A): Box(A) v: A): A = closure make {}
     let boxed.1: Fun(v: Bool): Box(Bool) = closure boxed {}
-    let boxed.2: Fun(v: A): Fun(A :: TYPE) Tuple x: A end(A) = convert(boxed.1, adapt by qa_adapt)
+    let boxed.2: Fun(v: A): Fun(A :: TYPE) Tuple x: A end(A) = closure qa_adapt {}
     let %177: A = convert(false, box)
     let %178: A = call make.1 [descriptor(Bool)](boxed.2, %177)
     let %179: Bool = convert(%178, unbox)
@@ -640,7 +642,7 @@ main {
     do call print.1(%181)
     let applyOpt.1: All(A :: TYPE) Fun(f: Fun(m: Maybe(A)): A m: Maybe(A)): A = closure applyOpt {}
     let orFalse.1: Fun(m: Maybe(Bool)): Bool = closure orFalse {}
-    let orFalse.2: Fun(m: Fun(A :: TYPE) Option none some with Tuple value: A end end(A)): A = convert(orFalse.1, adapt by qa_adapt.1)
+    let orFalse.2: Fun(m: Fun(A :: TYPE) Option none some with Tuple value: A end end(A)): A = closure qa_adapt.1 {}
     let maybe.4: Fun(A :: TYPE) Option none some with Tuple value: A end end(A) = convert(maybe.2, cast)
     let %182: A = call applyOpt.1 [descriptor(Bool)](orFalse.2, maybe.4)
     let %183: Bool = convert(%182, unbox)

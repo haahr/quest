@@ -283,6 +283,17 @@ export
                                         vals.put(:Int :ir.OpMakeClosure u.closuresOf c.code.id c)
                                     end
                                     vals.put(:Int :ir.OpMakeClosure u.closureVars x.v.id c)
+                                (* A copy of a closure's variable is bound to
+                                 * the closure too *)
+                                when opAtom with a then
+                                    case a.atom
+                                        when atomVar with y then
+                                            if hashMap.contains(:Int :ir.OpMakeClosure u.closureVars y.v.id) then
+                                                vals.put(:Int :ir.OpMakeClosure u.closureVars x.v.id
+                                                    hashMap.find(:Int :ir.OpMakeClosure u.closureVars y.v.id))
+                                            end
+                                        when atomConst then ok
+                                    end
                                 else ok
                             end
                         else ok

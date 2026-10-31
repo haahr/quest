@@ -2364,7 +2364,9 @@ export
 
     (* A module file's exported functions (qv_<module>_<member>), one for each
      * of its interface's functions and polymorphic values, which call its
-     * export's closure *)
+     * export's function directly when the export is known to be a closure
+     * without captures (an adapter's, the thunks pass makes it so, when the
+     * interface's type differs), and its closure otherwise *)
     let exportedFunctions(p: P m: nodes.Module): Lines =
         begin
             let clean = symbols.mangleModuleName(m.name)
@@ -2460,6 +2462,17 @@ export
                                         put(:Int :nodes.OpMakeClosure closuresOf c.code.id c)
                                     end
                                     put(:Int :nodes.OpMakeClosure p.closures x.v.id c)
+                                (* A copy of a closure's variable is bound to
+                                 * the closure too *)
+                                when opAtom with a then
+                                    case a.atom
+                                        when atomVar with y then
+                                            if hashMap.contains(:Int :nodes.OpMakeClosure p.closures y.v.id) then
+                                                put(:Int :nodes.OpMakeClosure p.closures x.v.id
+                                                    hashMap.find(:Int :nodes.OpMakeClosure p.closures y.v.id))
+                                            end
+                                        when atomConst then ok
+                                    end
                                 else ok
                             end
                         else ok

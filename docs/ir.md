@@ -531,7 +531,10 @@ printer makes its thunks itself.
   argument by the plan's fields and the result by the last (a call returning `Ok` returns `ok`, which is `Ok`'s
   value where the result is a type parameter's). The plan names its adapter (`Plan.thunk`, printed `adapt by
   qa_adapt`) and keeps neither thunk parameters nor fields, which are the adapter's; a conversion by it is a new
-  closure of the adapter whose environment is the converted closure.
+  closure of the adapter whose environment is the converted closure. A conversion of a known function (a variable
+  bound to a closure without captures or type arguments, or a copy of one) is instead the static closure of an
+  adapter of its own, without an environment, which calls the function directly: so a module's exported function
+  (§8.5) whose interface's type differs from its own calls the adapter directly, and the adapter the function.
 - **A type application whose instance is a function** is a closure of its thunk (`qa_type_app`), capturing the function
   applied and taking the type arguments, as closure conversion's lifted functions take their enclosing functions' type
   parameters: the thunk's type parameters are the applied function's first ones, supplied by the closure, then the
