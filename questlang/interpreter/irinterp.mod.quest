@@ -55,10 +55,6 @@ export
             found
         end
 
-    let intArithmeticOps = array of "+" "-" "*" "/" "mod" "%" end
-    let intRelationalOps = array of "<" "<=" ">" ">=" end
-    let realArithmeticOps = array of "++" "--" "**" "//" "^^" end
-    let realRelationalOps = array of "<<" "<<=" ">>" ">>=" end
 
     (* ======================================================================
      * Frames
@@ -654,34 +650,30 @@ export
             else fail(:Value "not an address")
         end
 
-    and prim(it: Interpreter op: String args: Array(Value)): Value =
-        if eq(op "is") orif eq(op "isnot") then
-            model.boolValue(model.same(args[0] args[1]) is eq(op "is"))
-        elsif eq(op "not") then
-            case args[0] when vBool with x then model.boolValue(not(x.b)) else model.trueValue end
-        elsif eq(op "extent") then
-            case args[0] when vArray with x then model.intValue(extent x.a) else model.intValue(0) end
-        else
+    and prim(it: Interpreter op: nodes.Prim args: Array(Value)): Value =
+        begin
             let intOf = fun(v: Value): Int case v when vInt with x then x.n else model.internalError(:Int "not an Int" none) end
             let realOf = fun(v: Value): Real case v when vReal with x then x.r else model.internalError(:Real "not a Real" none) end
             let boolOf = fun(v: Value): Bool case v when vBool with x then x.b else model.internalError(:Bool "not a Bool" none) end
             let stringOf = fun(v: Value): String case v when vString with x then x.s else model.internalError(:String "not a String" none) end
-            if isOneOf(op intArithmeticOps) then
-                model.intValue(primitives.intArithmetic(op intOf(args[0]) intOf(args[1]) none))
-            elsif isOneOf(op intRelationalOps) then
-                model.boolValue(primitives.intRelational(op intOf(args[0]) intOf(args[1]) none))
-            elsif isOneOf(op realArithmeticOps) then
-                model.realValue(primitives.realArithmetic(op realOf(args[0]) realOf(args[1]) none))
-            elsif isOneOf(op realRelationalOps) then
-                model.boolValue(primitives.realRelational(op realOf(args[0]) realOf(args[1]) none))
-            elsif eq(op "<>") then
-                model.stringValue(stringOf(args[0]) <> stringOf(args[1]))
-            elsif eq(op "/\\") then
-                model.boolValue(boolOf(args[0]) andif boolOf(args[1]))
-            elsif eq(op "\\/") then
-                model.boolValue(boolOf(args[0]) orif boolOf(args[1]))
-            else
-                fail(:Value "primitive '" <> op <> "'")
+            (* The interpreters' primitives are named by their spellings *)
+            let name = nodes.primName(op)
+            case op
+                when primIs then model.boolValue(model.same(args[0] args[1]))
+                when primIsnot then model.boolValue(not(model.same(args[0] args[1])))
+                when primNot then case args[0] when vBool with x then model.boolValue(not(x.b)) else model.trueValue end
+                when primExtent then case args[0] when vArray with x then model.intValue(extent x.a) else model.intValue(0) end
+                when primAdd, primSub, primMul, primDiv, primMod, primRem then
+                    model.intValue(primitives.intArithmetic(name intOf(args[0]) intOf(args[1]) none))
+                when primLt, primLe, primGt, primGe then
+                    model.boolValue(primitives.intRelational(name intOf(args[0]) intOf(args[1]) none))
+                when primRealAdd, primRealSub, primRealMul, primRealDiv, primRealPow then
+                    model.realValue(primitives.realArithmetic(name realOf(args[0]) realOf(args[1]) none))
+                when primRealLt, primRealLe, primRealGt, primRealGe then
+                    model.boolValue(primitives.realRelational(name realOf(args[0]) realOf(args[1]) none))
+                when primConcat then model.stringValue(stringOf(args[0]) <> stringOf(args[1]))
+                when primAnd then model.boolValue(boolOf(args[0]) andif boolOf(args[1]))
+                when primOr then model.boolValue(boolOf(args[0]) orif boolOf(args[1]))
             end
         end
 

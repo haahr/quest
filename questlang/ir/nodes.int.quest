@@ -33,6 +33,43 @@ export
 
     (* How an operation reads (or writes) a component of a tuple or option, as
      * the represent pass decides *)
+    (* The primitive operations (docs/ir.md section 5): Quest's infix operators
+     * on Ints, Reals, Strings, and Bools, is and isnot, not, and extent *)
+    Def Prim = Option primAdd primSub primMul primDiv primRem primMod primLt primLe primGt primGe primRealAdd
+        primRealSub primRealMul primRealDiv primRealPow primRealLt primRealLe primRealGt primRealGe primConcat primAnd
+        primOr primIs primIsnot primNot primExtent end
+    primAdd: Prim
+    primSub: Prim
+    primMul: Prim
+    primDiv: Prim
+    primRem: Prim
+    primMod: Prim
+    primLt: Prim
+    primLe: Prim
+    primGt: Prim
+    primGe: Prim
+    primRealAdd: Prim
+    primRealSub: Prim
+    primRealMul: Prim
+    primRealDiv: Prim
+    primRealPow: Prim
+    primRealLt: Prim
+    primRealLe: Prim
+    primRealGt: Prim
+    primRealGe: Prim
+    primConcat: Prim
+    primAnd: Prim
+    primOr: Prim
+    primIs: Prim
+    primIsnot: Prim
+    primNot: Prim
+    primExtent: Prim
+    (* A primitive's spelling in Quest; the primitive spelled name *)
+    primName(p: Prim): String
+    primNamed(name: String): Prim
+    (* Whether a primitive is is or isnot *)
+    comparesIdentity(p: Prim): Bool
+
     Def Access = Option direct original proxy end
     direct: Access
     original: Access
@@ -131,7 +168,7 @@ export
     and Op = Option
         opAtom with var atom: Atom end
         opPrim with
-            op: String
+            op: Prim
             var args: Array(Atom)
             offset: maybe.T(Int)
             var access: Access
@@ -313,7 +350,7 @@ export
      * of its case's binder, so each lists its case's fields *)
     and OpAtom = Tuple var atom: Atom end
     and OpPrim = Tuple
-        op: String
+        op: Prim
         var args: Array(Atom)
         offset: maybe.T(Int)
         var access: Access
@@ -523,7 +560,7 @@ export
     letStmt(v: Variable value: Op): Stmt
 
     (* Operations with their other fields at their defaults *)
-    prim(op: String args: Array(Atom) offset: maybe.T(Int)): Op
+    prim(op: Prim args: Array(Atom) offset: maybe.T(Int)): Op
     call(callee: maybe.T(Variable) typeArgs: Array(Type) args: Array(Atom) moduleRef: maybe.T(ModuleRef)
         member: maybe.T(String) calleeType: maybe.T(Type)): Op
     typeApp(callee: maybe.T(Variable) typeArgs: Array(Type) moduleRef: maybe.T(ModuleRef) member: maybe.T(String)

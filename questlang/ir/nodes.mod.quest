@@ -14,6 +14,9 @@ export
     Let Type = model.Type
     Let Shape = shapes.Shape
 
+    Def Prim = Option primAdd primSub primMul primDiv primRem primMod primLt primLe primGt primGe primRealAdd
+        primRealSub primRealMul primRealDiv primRealPow primRealLt primRealLe primRealGt primRealGe primConcat primAnd
+        primOr primIs primIsnot primNot primExtent end
     Def Access = Option direct original proxy end
     Def Catching = Option catchListed catchAll catchAllTraced catchUnknown end
 
@@ -90,7 +93,7 @@ export
     and Op = Option
         opAtom with var atom: Atom end
         opPrim with
-            op: String
+            op: Prim
             var args: Array(Atom)
             offset: maybe.T(Int)
             var access: Access
@@ -271,7 +274,7 @@ export
      * of its case's binder, so each lists its case's fields *)
     and OpAtom = Tuple var atom: Atom end
     and OpPrim = Tuple
-        op: String
+        op: Prim
         var args: Array(Atom)
         offset: maybe.T(Int)
         var access: Access
@@ -569,7 +572,90 @@ export
     let opOfVar(v: Variable): Op = opOfAtom(atomOfVar(v))
     let letStmt(v: Variable value: Op): Stmt = option sLet of Stmt with let var v = v let var value = value end
 
-    let prim(op: String args: Array(Atom) offset: maybe.T(Int)): Op =
+    let primName(p: Prim): String =
+        case p
+            when primAdd then "+"
+            when primSub then "-"
+            when primMul then "*"
+            when primDiv then "/"
+            when primRem then "%"
+            when primMod then "mod"
+            when primLt then "<"
+            when primLe then "<="
+            when primGt then ">"
+            when primGe then ">="
+            when primRealAdd then "++"
+            when primRealSub then "--"
+            when primRealMul then "**"
+            when primRealDiv then "//"
+            when primRealPow then "^^"
+            when primRealLt then "<<"
+            when primRealLe then "<<="
+            when primRealGt then ">>"
+            when primRealGe then ">>="
+            when primConcat then "<>"
+            when primAnd then "/\\"
+            when primOr then "\\/"
+            when primIs then "is"
+            when primIsnot then "isnot"
+            when primNot then "not"
+            when primExtent then "extent"
+        end
+
+    let primAdd: Prim = option primAdd of Prim end
+    let primSub: Prim = option primSub of Prim end
+    let primMul: Prim = option primMul of Prim end
+    let primDiv: Prim = option primDiv of Prim end
+    let primRem: Prim = option primRem of Prim end
+    let primMod: Prim = option primMod of Prim end
+    let primLt: Prim = option primLt of Prim end
+    let primLe: Prim = option primLe of Prim end
+    let primGt: Prim = option primGt of Prim end
+    let primGe: Prim = option primGe of Prim end
+    let primRealAdd: Prim = option primRealAdd of Prim end
+    let primRealSub: Prim = option primRealSub of Prim end
+    let primRealMul: Prim = option primRealMul of Prim end
+    let primRealDiv: Prim = option primRealDiv of Prim end
+    let primRealPow: Prim = option primRealPow of Prim end
+    let primRealLt: Prim = option primRealLt of Prim end
+    let primRealLe: Prim = option primRealLe of Prim end
+    let primRealGt: Prim = option primRealGt of Prim end
+    let primRealGe: Prim = option primRealGe of Prim end
+    let primConcat: Prim = option primConcat of Prim end
+    let primAnd: Prim = option primAnd of Prim end
+    let primOr: Prim = option primOr of Prim end
+    let primIs: Prim = option primIs of Prim end
+    let primIsnot: Prim = option primIsnot of Prim end
+    let primNot: Prim = option primNot of Prim end
+    let primExtent: Prim = option primExtent of Prim end
+    let prims: Array(Prim) = array of
+        primAdd primSub primMul primDiv primRem primMod primLt primLe primGt primGe primRealAdd primRealSub primRealMul
+        primRealDiv primRealPow primRealLt primRealLe primRealGt primRealGe primConcat primAnd primOr primIs primIsnot
+        primNot primExtent
+    end
+
+    let noSuchPrim: Exception(String) = exception noSuchPrim: String end
+
+    let primNamed(name: String): Prim =
+        begin
+            let var found = maybe.none(:Prim)
+            for i = 0 upto {extent prims - 1} do
+                if stringOp.equal(primName(prims[i]) name) then found := maybe.some(:Prim prims[i]) end
+            end
+            if maybe.isNone(:Prim found) then raise noSuchPrim with name end end
+            maybe.unwrap(:Prim found)
+        end
+
+    let comparesIdentity(p: Prim): Bool =
+        case p
+            when primIs, primIsnot then true
+            when primAdd, primSub, primMul, primDiv, primRem, primMod, primLt, primLe, primGt, primGe, primRealAdd,
+                primRealSub, primRealMul, primRealDiv, primRealPow, primRealLt, primRealLe, primRealGt, primRealGe,
+                primConcat, primAnd, primOr, primNot, primExtent then
+                false
+        end
+
+    let prim(op: Prim args: Array(Atom) offset: maybe.T(Int)): Op =
         option opPrim of Op with
             let op = op
             let var args = args

@@ -566,30 +566,6 @@ export
      * Primitives
      * ====================================================================== *)
 
-    let intOpcode(op: String): maybe.T(ssa.Opcode) =
-        if eq(op "+") then maybe.some(:ssa.Opcode ssa.opAdd)
-        elsif eq(op "-") then maybe.some(:ssa.Opcode ssa.opSub)
-        elsif eq(op "*") then maybe.some(:ssa.Opcode ssa.opMul)
-        elsif eq(op "<") then maybe.some(:ssa.Opcode ssa.opLt)
-        elsif eq(op "<=") then maybe.some(:ssa.Opcode ssa.opLe)
-        elsif eq(op ">") then maybe.some(:ssa.Opcode ssa.opGt)
-        elsif eq(op ">=") then maybe.some(:ssa.Opcode ssa.opGe)
-        elsif eq(op "<<") then maybe.some(:ssa.Opcode ssa.opFlt)
-        elsif eq(op "<<=") then maybe.some(:ssa.Opcode ssa.opFle)
-        elsif eq(op ">>") then maybe.some(:ssa.Opcode ssa.opFgt)
-        elsif eq(op ">>=") then maybe.some(:ssa.Opcode ssa.opFge)
-        elsif eq(op "/\\") then maybe.some(:ssa.Opcode ssa.opAnd)
-        elsif eq(op "\\/") then maybe.some(:ssa.Opcode ssa.opOr)
-        else maybe.none(:ssa.Opcode)
-        end
-
-    let realHelper(op: String): maybe.T(String) =
-        if eq(op "++") then maybe.some(:String "quest_real_add_at") elsif eq(op "--") then maybe.some(:String "quest_real_sub_at")
-        elsif eq(op "**") then maybe.some(:String "quest_real_mul_at") elsif eq(op "//") then maybe.some(:String "quest_real_divide_at")
-        elsif eq(op "^^") then maybe.some(:String "quest_real_pow_at")
-        else maybe.none(:String)
-        end
-
     (* A pointer with a proxy's tag bit cleared: the object it views is its
      * original (quest_unproxy) *)
     let unproxy(fn: Fn p: Int): Int =
@@ -600,44 +576,61 @@ export
 
     let prim(fn: Fn o: ir.OpPrim): Array(Int) =
         begin
-            let op = o.op
-            if eq(op "not") then
-                array of binary(fn ssa.opXor atom1(fn o.args[0]) constant(fn 1)) end
-            elsif eq(op "extent") then
-                array of loadWord(fn atom1(fn o.args[0]) runtimeLayout.offset("QArray" "length") tInt) end
-            elsif eq(op "/") orif eq(op "%") orif eq(op "mod") then
-                let helper = if eq(op "/") then "quest_int_div_at" else "quest_int_mod_at" end
-                array of call1(fn helper array of atom1(fn o.args[0]) atom1(fn o.args[1]) site(fn o.offset) end tInt) end
-            elsif maybe.isSome(:String realHelper(op)) then
-                array of call1(fn maybe.unwrap(:String realHelper(op))
-                    array of atom1(fn o.args[0]) atom1(fn o.args[1]) site(fn o.offset) end tReal) end
-            elsif eq(op "<>") then
-                array of call1(fn "quest_string_concat" array of atom1(fn o.args[0]) atom1(fn o.args[1]) end tPtr) end
-            elsif eq(op "is") orif eq(op "isnot") then
-                let first = o.args[0]
-                let r = layout.representation(ir.atomType(first))
-                let same = if eq(r "QVal") then
-                    narrowed(fn call1(fn "quest_val_is"
-                        array of maybeDescriptor(fn o.descriptor) atom1(fn o.args[0]) atom1(fn o.args[1]) end tInt) part(tInt 1 false))
-                else
-                    let a = atom(fn o.args[0])
-                    let b = atom(fn o.args[1])
-                    if extent a isnot 1 then raise unsupported with "is of a value of " <> r end end
-                    case ssa.typeOf(fn.f a[0])
-                        when typePtr then
-                            case o.access
-                                when original then binary(fn ssa.opPeq unproxy(fn a[0]) unproxy(fn b[0]))
-                                when direct, proxy then binary(fn ssa.opPeq a[0] b[0])
-                            end
-                        when typeReal then binary(fn ssa.opFeq a[0] b[0])
-                        when typeInt then binary(fn ssa.opEq a[0] b[0])
+            let x(): Int = atom1(fn o.args[0])
+            let y(): Int = atom1(fn o.args[1])
+            let arith(op: ssa.Opcode): Array(Int) = array of binary(fn op x() y()) end
+            let checked(helper: String t: ssa.Type): Array(Int) =
+                array of call1(fn helper array of x() y() site(fn o.offset) end t) end
+            (* is, or with isIs false, isnot *)
+            let identity(isIs: Bool): Array(Int) =
+                begin
+                    let first = o.args[0]
+                    let r = layout.representation(ir.atomType(first))
+                    let same = if eq(r "QVal") then
+                        let args = array of maybeDescriptor(fn o.descriptor) atom1(fn o.args[0]) atom1(fn o.args[1]) end
+                        narrowed(fn call1(fn "quest_val_is" args tInt) part(tInt 1 false))
+                    else
+                        let a = atom(fn o.args[0])
+                        let b = atom(fn o.args[1])
+                        if extent a isnot 1 then raise unsupported with "is of a value of " <> r end end
+                        case ssa.typeOf(fn.f a[0])
+                            when typePtr then
+                                case o.access
+                                    when original then binary(fn ssa.opPeq unproxy(fn a[0]) unproxy(fn b[0]))
+                                    when direct, proxy then binary(fn ssa.opPeq a[0] b[0])
+                                end
+                            when typeReal then binary(fn ssa.opFeq a[0] b[0])
+                            when typeInt then binary(fn ssa.opEq a[0] b[0])
+                        end
                     end
+                    array of if isIs then same else binary(fn ssa.opXor same constant(fn 1)) end end
                 end
-                array of if eq(op "is") then same else binary(fn ssa.opXor same constant(fn 1)) end end
-            elsif maybe.isSome(:ssa.Opcode intOpcode(op)) then
-                array of binary(fn maybe.unwrap(:ssa.Opcode intOpcode(op)) atom1(fn o.args[0]) atom1(fn o.args[1])) end
-            else
-                raise unsupported with "primitive " <> op end
+            case o.op
+                when primNot then array of binary(fn ssa.opXor x() constant(fn 1)) end
+                when primExtent then array of loadWord(fn x() runtimeLayout.offset("QArray" "length") tInt) end
+                when primDiv then checked("quest_int_div_at" tInt)
+                when primRem, primMod then checked("quest_int_mod_at" tInt)
+                when primRealAdd then checked("quest_real_add_at" tReal)
+                when primRealSub then checked("quest_real_sub_at" tReal)
+                when primRealMul then checked("quest_real_mul_at" tReal)
+                when primRealDiv then checked("quest_real_divide_at" tReal)
+                when primRealPow then checked("quest_real_pow_at" tReal)
+                when primConcat then array of call1(fn "quest_string_concat" array of x() y() end tPtr) end
+                when primIs then identity(true)
+                when primIsnot then identity(false)
+                when primAdd then arith(ssa.opAdd)
+                when primSub then arith(ssa.opSub)
+                when primMul then arith(ssa.opMul)
+                when primLt then arith(ssa.opLt)
+                when primLe then arith(ssa.opLe)
+                when primGt then arith(ssa.opGt)
+                when primGe then arith(ssa.opGe)
+                when primRealLt then arith(ssa.opFlt)
+                when primRealLe then arith(ssa.opFle)
+                when primRealGt then arith(ssa.opFgt)
+                when primRealGe then arith(ssa.opFge)
+                when primAnd then arith(ssa.opAnd)
+                when primOr then arith(ssa.opOr)
             end
         end
 

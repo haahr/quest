@@ -1085,45 +1085,17 @@ export
      * Primitives and calls
      * ====================================================================== *)
 
-    let intOp(op: String): maybe.T(String) =
-        if eq(op "+") orif eq(op "-") orif eq(op "*") orif eq(op "<") orif eq(op "<=") orif eq(op ">") orif eq(op ">=")
-            then some(op)
-        else maybe.none(:String)
-        end
-    let realOp(op: String): maybe.T(String) =
-        if eq(op "++") then some("quest_real_add") elsif eq(op "--") then some("quest_real_sub")
-        elsif eq(op "**") then some("quest_real_mul") elsif eq(op "//") then some("quest_real_divide")
-        else maybe.none(:String)
-        end
-    let realRelation(op: String): maybe.T(String) =
-        if eq(op "<<") then some("<") elsif eq(op "<<=") then some("<=") elsif eq(op ">>") then some(">")
-        elsif eq(op ">>=") then some(">=")
-        else maybe.none(:String)
-        end
-
     let prim(p: P o: nodes.OpPrim): String =
         begin
-            let op = o.op
             let cs = atoms(p o.args)
-            if eq(op "not") then
-                "(!(" <> vector.get(:String cs 0) <> "))"
-            elsif eq(op "extent") then
-                "((" <> vector.get(:String cs 0) <> ")->length)"
-            else
-                let var left = vector.get(:String cs 0)
-                let var right = vector.get(:String cs 1)
-                let st(): String = site(p o.offset)
-                if eq(op "/") then
-                    "quest_int_div_at(" <> left <> ", " <> right <> ", " <> st() <> ")"
-                elsif eq(op "%") orif eq(op "mod") then
-                    "quest_int_mod_at(" <> left <> ", " <> right <> ", " <> st() <> ")"
-                elsif maybe.isSome(:String realOp(op)) then
-                    maybe.unwrap(:String realOp(op)) <> "_at(" <> left <> ", " <> right <> ", " <> st() <> ")"
-                elsif eq(op "^^") then
-                    "quest_real_pow_at(" <> left <> ", " <> right <> ", " <> st() <> ")"
-                elsif eq(op "<>") then
-                    "quest_string_concat(" <> left <> ", " <> right <> ")"
-                elsif eq(op "is") orif eq(op "isnot") then
+            let left = vector.get(:String cs 0)
+            let right(): String = vector.get(:String cs 1)
+            let infix(c: String): String = "((" <> left <> ") " <> c <> " (" <> right() <> "))"
+            let checked(helper: String): String =
+                helper <> "(" <> left <> ", " <> right() <> ", " <> site(p o.offset) <> ")"
+            (* is, or with isIs false, isnot *)
+            let identity(isIs: Bool): String =
+                begin
                     let first = o.args[0]
                     let var t = maybe.some(:Type atomType(first))
                     case first
@@ -1132,38 +1104,50 @@ export
                         else ok
                     end
                     if maybe.isSome(:Type t) andif eq(cType(maybe.unwrap(:Type t)) "QVal") then
-                        let negate = if eq(op "is") then "" else "!" end
+                        let negate = if isIs then "" else "!" end
                         "(" <> negate <> "quest_val_is(" <> maybeDescriptor(p o.descriptor) <> ", " <> left <> ", "
-                            <> right <> "))"
+                            <> right() <> "))"
                     else
+                        let var l = left
+                        let var r = right()
                         let t2 = if maybe.isSome(:Type t) then
                             maybe.some(:Type atomType(o.args[1])) else maybe.none(:Type) end
                         let viaOriginal = case o.access when original then true when direct, proxy then false end
                         if viaOriginal then
                             (* A proxy is the object it views *)
-                            left := "quest_unproxy(" <> left <> ")"
-                            right := "quest_unproxy(" <> right <> ")"
+                            l := "quest_unproxy(" <> l <> ")"
+                            r := "quest_unproxy(" <> r <> ")"
                         elsif maybe.isSome(:Type t2)
                             andif not(eq(cType(maybe.unwrap(:Type t)) cType(maybe.unwrap(:Type t2))))
                             andif strutil.endsWith(cType(maybe.unwrap(:Type t)) "*") then
                             (* Pointers to aggregates of different (subtype-
                              * related) types: compared as addresses *)
-                            left := "(const void *)(" <> left <> ")"
-                            right := "(const void *)(" <> right <> ")"
+                            l := "(const void *)(" <> l <> ")"
+                            r := "(const void *)(" <> r <> ")"
                         end
-                        "((" <> left <> ") " <> if eq(op "is") then "==" else "!=" end <> " (" <> right <> "))"
+                        "((" <> l <> ") " <> if isIs then "==" else "!=" end <> " (" <> r <> "))"
                     end
-                elsif maybe.isSome(:String intOp(op)) then
-                    "((" <> left <> ") " <> maybe.unwrap(:String intOp(op)) <> " (" <> right <> "))"
-                elsif maybe.isSome(:String realRelation(op)) then
-                    "((" <> left <> ") " <> maybe.unwrap(:String realRelation(op)) <> " (" <> right <> "))"
-                elsif eq(op "/\\") then
-                    "((" <> left <> ") && (" <> right <> "))"
-                elsif eq(op "\\/") then
-                    "((" <> left <> ") || (" <> right <> "))"
-                else
-                    raise unsupported with "primitive '" <> op <> "'" end
                 end
+            case o.op
+                when primNot then "(!(" <> left <> "))"
+                when primExtent then "((" <> left <> ")->length)"
+                when primDiv then checked("quest_int_div_at")
+                when primRem, primMod then checked("quest_int_mod_at")
+                when primRealAdd then checked("quest_real_add_at")
+                when primRealSub then checked("quest_real_sub_at")
+                when primRealMul then checked("quest_real_mul_at")
+                when primRealDiv then checked("quest_real_divide_at")
+                when primRealPow then checked("quest_real_pow_at")
+                when primConcat then "quest_string_concat(" <> left <> ", " <> right() <> ")"
+                when primIs then identity(true)
+                when primIsnot then identity(false)
+                when primAdd, primSub, primMul, primLt, primLe, primGt, primGe then infix(nodes.primName(o.op))
+                when primRealLt then infix("<")
+                when primRealLe then infix("<=")
+                when primRealGt then infix(">")
+                when primRealGe then infix(">=")
+                when primAnd then infix("&&")
+                when primOr then infix("||")
             end
         end
 

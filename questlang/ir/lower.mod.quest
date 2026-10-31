@@ -461,7 +461,7 @@ export
             when exprInfix with x then
                 let left = value(l x.left none)
                 let right = value(l x.right none)
-                letOp(l nodes.prim(x.op array of left right end offsetOf(e)) e.type into)
+                letOp(l nodes.prim(nodes.primNamed(x.op) array of left right end offsetOf(e)) e.type into)
             when exprRecord with x then
                 let fields = vector.new(:nodes.FieldAtom)
                 for i = 0 upto {extent x.fields - 1} do
@@ -769,7 +769,7 @@ export
                     let o = if eq(name "ordinal") then
                         nodes.ordinalOf(atoms[0] canonical.optionCaseNames(app.args[0].type))
                     else
-                        nodes.prim(name atoms offsetOf(e))
+                        nodes.prim(nodes.primNamed(name) atoms offsetOf(e))
                     end
                     letOp(l o e.type into)
                 else
@@ -802,7 +802,7 @@ export
         if eq(member "new") then
             letOp(l option opArrayRep of Op with let var count = args[0] let var init = args[1] let offset = offset end t into)
         elsif eq(member "size") then
-            letOp(l nodes.prim("extent" array of args[0] end maybe.none(:Int)) t into)
+            letOp(l nodes.prim(nodes.primExtent array of args[0] end maybe.none(:Int)) t into)
         elsif eq(member "get") then
             letOp(l option opIndex of Op with let var arr = args[0] let var index = args[1] let offset = offset end t into)
         else
@@ -1092,7 +1092,7 @@ export
                 vector.append(:String l.loops lbl)
                 inBody(l loopBody fun(): Ok
                     begin
-                        let more = letOp(l nodes.prim(if x.isDownto then ">=" else "<=" end array of va(counter) stop end
+                        let more = letOp(l nodes.prim(if x.isDownto then nodes.primGe else nodes.primLe end array of va(counter) stop end
                             maybe.none(:Int)) model.boolType none)
                         let thenBody = nodes.newBody()
                         emit(l option sIf of Stmt with
@@ -1106,7 +1106,7 @@ export
                                 emit(l nodes.letStmt(i nodes.opOfVar(counter)))
                                 effect(l x.body)
                                 if not(nodes.terminated(l.body)) then
-                                    let step = letOp(l nodes.prim(if x.isDownto then "-" else "+" end
+                                    let step = letOp(l nodes.prim(if x.isDownto then nodes.primSub else nodes.primAdd end
                                         array of va(counter) intConst(1) end maybe.none(:Int)) model.intType none)
                                     emit(l option sAssign of Stmt with let var v = counter let var value = step end)
                                 end
@@ -1237,7 +1237,7 @@ export
             let br = branches[first]
             let pattern = if maybe.isSome(:Array(Atom) patterns) then maybe.unwrap(:Array(Atom) patterns)[first]
                 else value(l br.excPattern none) end
-            let matches = letOp(l nodes.prim("is" array of va(exc) pattern end maybe.none(:Int)) model.boolType none)
+            let matches = letOp(l nodes.prim(nodes.primIs array of va(exc) pattern end maybe.none(:Int)) model.boolType none)
             let thenBody = nodes.newBody()
             let elseBody = nodes.newBody()
             emit(l option sIf of Stmt with let var cond = matches let var thenBody = thenBody let var elseBody = elseBody end)
