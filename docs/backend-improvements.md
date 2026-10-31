@@ -295,7 +295,18 @@ the same modules, so each step starts from a fresh rebase.
    instructions, and the printer. *Done when* the arm64 backend emits text only in its printer, `regalloc` reads no
    register names, the suite passes in every mode, and benchmarks.md records run and compile times before and after.
    This step subsumes most of arm64.md §6's list of what step 11's code does badly (immediates, fused branches,
-   rematerialized arguments, blocks that only jump).
+   rematerialized arguments, blocks that only jump). *Done* (2026-10-30, 56a1a0fa, 8cbc25c7, ccd8c8ab, ba4150c3,
+   373ecce3), as five commits: registers as numbers; `minst` and its printer; `machine` and selection; the allocator
+   on machine functions; relaxation on instructions. An operand has no fixed-register or hint field: a physical
+   operand is fixed, and moves (and a jump's arguments with its target's parameters) are the hints. `Lowering` is a
+   move, a load and a store of a virtual register's slot, and the scratch registers. Selection gives each conditional
+   branch's target a block of its own, where its edge's moves go, and a `try` a block beside it that a raise enters;
+   the printer expands three pseudo-instructions (a constant, a symbol's address, a thread-local's). The arguments'
+   and results' registers are allocatable now; the frame puts the stack slots before the spill slots, which exposed
+   the builder's copying five words of a handler's four-word state (c08fea94, a fix of its own). Blocks that only
+   jump are passed over when the code is emitted. Still left from arm64.md §6: eager loads at a block's start. Its run
+   and compile times before and after wait, at the user's word, to run with the other benchmarks once this plan is
+   finished.
 9. **The compiler's performance** (§3.9). *Done when* each change's compile time is recorded in benchmarks.md, and the
    ones that do not pay are reverted.
 10. **A `val` type for `QVal` words** (arm64.md §10, hazard 5, deferred here by the user on 2026-10-30): an `int` in
