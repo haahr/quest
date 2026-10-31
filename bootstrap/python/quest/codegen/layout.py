@@ -873,30 +873,3 @@ def is_record_subtype(s: QType, t: QType) -> bool:
         if s_f_type is not f.type_val and not is_type_equal(s_f_type, f.type_val):
             return False
     return True
-
-
-def is_tuple_subtype(s: QType, t: QType) -> bool:
-    if not isinstance(s, QTupleType) or not isinstance(t, QTupleType):
-        return False
-    if len(s.value_fields) < len(t.value_fields):
-        return False
-    for i in range(len(t.value_fields)):
-        s_c = representation(s.value_fields[i].type_val)
-        t_c = representation(t.value_fields[i].type_val)
-        if s_c != t_c:
-            return False
-    return True
-
-
-def is_variant_subtype(s: QType, t: QType) -> bool:
-    if not isinstance(s, QVariantType) or not isinstance(t, QVariantType):
-        return False
-    t_map = {v.name: v.type_val for v in t.variants}
-    for v in s.variants:
-        if v.name not in t_map:
-            return False
-        t_v_type = t_map[v.name]
-        if v.type_val is not t_v_type and not is_type_equal(v.type_val, t_v_type):
-            return False
-    return True
-
