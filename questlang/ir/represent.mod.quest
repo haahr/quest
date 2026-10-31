@@ -429,7 +429,10 @@ export
             else
                 let cs = layout.shapeRepresentation(ss)
                 let ct = layout.shapeRepresentation(ts)
-                if not(eq(cs "QVal")) andif not(eq(ct "QVal")) andif isFunctionKind(ss) andif isFunctionKind(ts) then
+                let abstract = abstractPlan(source target ss ts cs ct)
+                if maybe.isSome(:maybe.T(Plan) abstract) then
+                    maybe.unwrap(:maybe.T(Plan) abstract)
+                elsif not(eq(cs "QVal")) andif not(eq(ct "QVal")) andif isFunctionKind(ss) andif isFunctionKind(ts) then
                     adaptPlan(source target lay)
                 else
                     let laid = if hasInstantiation(lay) andif not(eq(cs "QVal")) andif not(eq(ct "QVal")) then
@@ -446,6 +449,45 @@ export
                     else
                         viewPlan(source target ss ts cs ct)
                     end
+                end
+            end
+        end
+
+    (* A value of an application of a module's abstract type operator, laid out
+     * outside the module as the module's generic code lays it out, used at its
+     * representation at the same arguments (inside the module), or back: a
+     * view converting it at run time between the generic layout and the
+     * native one, where they differ (docs/c-representation.md section 5.1).
+     * None, the tests going on, where they agree or the other side is not the
+     * native representation (a generic function's, which agrees) *)
+    and abstractPlan(source: Type target: Type ss: Shape ts: Shape cs: String ct: String): maybe.T(maybe.T(Plan)) =
+        begin
+            let toGeneric = shapes.kindIs(ts shapes.shapeAbstract)
+            let abstractT = if toGeneric then target else source end
+            let nativeT = if toGeneric then source else target end
+            let nativeC = if toGeneric then cs else ct end
+            let instance = if {shapes.kindIs(ss shapes.shapeAbstract) is toGeneric} orif eq(nativeC "QVal") then
+                maybe.none(:layout.AbstractInstance)
+            else layout.abstractInstance(abstractT) end
+            if maybe.isNone(:layout.AbstractInstance instance) then
+                maybe.none(:maybe.T(Plan))
+            else
+                let i = maybe.unwrap(:layout.AbstractInstance instance)
+                if layout.genericLayoutAgrees(i.generic i.subst)
+                    orif not(equal(model.substitute(i.generic i.subst) nativeT)) then
+                    maybe.none(:maybe.T(Plan))
+                elsif layout.genericLayoutCopiesMutableData(i.generic i.subst) then
+                    raise rejectedConversion with
+                        "C code generation cannot convert a value of type '" <> model.show(abstractT)
+                            <> "' between its module's layout of it and its own: the layouts differ, and converting "
+                            <> "the value would copy mutable data, which would then not share its updates"
+                    end
+                else
+                    let inst = newInstantiation()
+                    hashMap.forEach(:Int :Type i.subst fun(k: Int t: Type): Ok bind(inst k t))
+                    let p = nodes.newPlan(nodes.planView source target)
+                    p.layout := layoutOf(inst toGeneric)
+                    maybe.some(:maybe.T(Plan) some(p))
                 end
             end
         end
@@ -923,7 +965,12 @@ export
                     if p.isOut orif p.isVar then
                         a := refArgument(a p instantiation before after)
                     else
-                        if instantiated then a := convert(a model.substitute(p.type instantiation.subst) before noLayout) end
+                        (* A value of an abstract type's application is laid out
+                         * generically already *)
+                        let abstract = layout.abstractInstance(typeOf(a))
+                        if instantiated andif maybe.isNone(:layout.AbstractInstance abstract) then
+                            a := convert(a model.substitute(p.type instantiation.subst) before noLayout)
+                        end
                         a := convert(a p.type before layoutOf(instantiation true))
                     end
                 end
@@ -1130,7 +1177,11 @@ export
                                  * let's *)
                                 let g = vector.get(:GenericResult r.genericResults 0)
                                 let step = plan(g.generic g.instantiated layoutOf(g.instantiation false))
-                                if maybe.isSome(:Plan step) then
+                                if maybe.isSome(:layout.AbstractInstance layout.abstractInstance(x.v.type)) then
+                                    (* A value of an abstract type's
+                                     * application, laid out generically *)
+                                    result(x g.generic after)
+                                elsif maybe.isSome(:Plan step) then
                                     let v = x.v
                                     let instantiated = nodes.newVar(v.hint g.instantiated false)
                                     let generic = nodes.newVar(v.hint g.generic false)

@@ -39,6 +39,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from quest.codegen.layout import (
+    abstract_instance,
     generic_layout_agrees,
     held_at_bound,
     own_view,
@@ -346,6 +347,9 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
     if ss.kind == "ok" or ts.kind == "ok":
         return None
     cs, ct = shape_representation(ss), shape_representation(ts)
+    abstract = _abstract_plan(source, target, ss, ts, cs, ct)
+    if abstract is not None:
+        return abstract[0]
     if cs != "QVal" and ct != "QVal" and ss.kind in ("fun", "all") and ts.kind in ("fun", "all"):
         return adapt_plan(source, target, layout)
     if layout is not None and layout[0] and cs != "QVal" and ct != "QVal":
@@ -423,6 +427,33 @@ def _plan(source: QType, target: QType, layout: Optional[tuple[dict[int, QType],
         if all(p is None or p.kind in ("box", "unbox") for p in both_ways):
             return None
     raise UnsupportedConversion(f"converting a value of type {source} ({cs}) to {target} ({ct})")
+
+
+def _abstract_plan(source: QType, target: QType, ss: Shape, ts: Shape, cs: str, ct: str) -> Optional[tuple]:
+    """A value of an application of a module's abstract type operator, laid out
+    outside the module as the module's generic code lays it out, used at its
+    representation at the same arguments (inside the module), or back: a view
+    converting it at run time between the generic layout and the native one,
+    where they differ (docs/c-representation.md §5.1), as a 1-tuple. None, the
+    tests going on, where they agree or the other side is not the native
+    representation (a generic function's, which agrees)."""
+    to_generic = ts.kind == "abstract"
+    if (ss.kind == "abstract") == to_generic or (cs if to_generic else ct) == "QVal":
+        return None
+    abstract_t, native_t = (target, source) if to_generic else (source, target)
+    instance = abstract_instance(abstract_t)
+    if instance is None:
+        return None
+    generic_t, subst = instance
+    if generic_layout_agrees(generic_t, subst) or not _equal(generic_t.substitute(subst), native_t):
+        return None
+    if generic_layout_copies_mutable_data(generic_t, subst):
+        raise RejectedConversion(
+            f"C code generation cannot convert a value of type '{abstract_t}' between its module's layout of it and "
+            f"its own: the layouts differ, and converting the value would copy mutable data, which would then not "
+            f"share its updates"
+        )
+    return (ir.Plan("view", source, target, layout=(subst, to_generic)),)
 
 
 def _variant_payloads_change(s: Shape, t: Shape) -> bool:
@@ -626,7 +657,11 @@ class _Representer:
                     # type arguments, then to the let's
                     generic_t, instantiated_t, instantiation = self.generic_results[0]
                     step = plan(generic_t, instantiated_t, (instantiation, False))
-                    if step is not None:
+                    if abstract_instance(var.type) is not None:
+                        # A value of an abstract type's application, laid out
+                        # generically
+                        self.result(s, generic_t, after)
+                    elif step is not None:
                         instantiated = ir.Var(var.hint, instantiated_t)
                         generic = ir.Var(var.hint, generic_t)
                         after.append(ir.Let(instantiated, ir.Convert(generic, step)))
@@ -799,7 +834,9 @@ class _Representer:
             if i < len(params) and (params[i].is_out or params[i].is_var):
                 a = self.ref_argument(a, params[i], instantiation, before, after)
             elif i < len(params):
-                if instantiation:
+                # A value of an abstract type's application is laid out
+                # generically already
+                if instantiation and abstract_instance(_type_of(a)) is None:
                     a = self.convert(a, params[i].type_val.substitute(instantiation), before)
                 a = self.convert(a, params[i].type_val, before, (instantiation, True))
             args.append(a)

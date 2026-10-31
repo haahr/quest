@@ -1,0 +1,64 @@
+import handler = "layouts/handler" : layouts/Handler
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun line(s: String): Ok {
+      let %1: writer.T = member writer.output
+      do call writer.putString(%1, s)
+      let %2: writer.T = member writer.output
+      let %3: Ok = call writer.putString(%2, "\n")
+      return %3
+    }
+  }
+  funs {
+    fun real(r: Real): Ok {
+      let %4: String = call conv.real(r)
+      let %5: Ok = call line(%4)
+      return %5
+    }
+  }
+  funs {
+    fun point(p: handler.Point): Ok {
+      let %6: Int = record_field(p, x)
+      let %7: String = call conv.int(%6)
+      let %8: Int = record_field(p, y)
+      let %9: String = call conv.int(%8)
+      let %10: String = prim <>(" ", %9)
+      let %11: String = prim <>(%7, %10)
+      let %12: Ok = call line(%11)
+      return %12
+    }
+  }
+  let p.1: Record x: Int y: Int end = record(x = 1, y = 2)
+  let %13: handler.T(Real) = type_app handler.echo [Real]
+  let %14: Real = call handler.run [Real](%13, 1.5)
+  do call real(%14)
+  let %15: handler.T(Real) = type_app handler.echo [Real]
+  let %16: Real = call handler.runReal(%15, 2.5)
+  do call real(%16)
+  let %17: handler.T(Real) = call handler.shifted(10.0)
+  let %18: Real = call handler.run [Real](%17, 1.5)
+  do call real(%18)
+  let %19: handler.T(Real) = call handler.shifted(10.0)
+  let %20: Real = call handler.runReal(%19, 2.5)
+  do call real(%20)
+  let %21: handler.T(handler.Point) = type_app handler.echo [handler.Point]
+  let %22: handler.Point = call handler.run [handler.Point](%21, p.1)
+  do call point(%22)
+  let %23: handler.T(handler.Point) = type_app handler.echo [handler.Point]
+  let %24: Point = call handler.runPoint(%23, p.1)
+  do call point(%24)
+  let %25: handler.T(Point) = call handler.swapped()
+  let %26: handler.Point = call handler.run [handler.Point](%25, p.1)
+  do call point(%26)
+  let %27: handler.T(Point) = call handler.swapped()
+  let %28: Point = call handler.runPoint(%27, p.1)
+  do call point(%28)
+  let h: handler.T(Real) = call handler.shifted(0.5)
+  let %29: Real = call handler.run [Real](h, 1.0)
+  do call real(%29)
+  let %30: Real = call handler.runReal(h, 2.0)
+  do call real(%30)
+}
+

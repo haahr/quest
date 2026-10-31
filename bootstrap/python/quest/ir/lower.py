@@ -24,7 +24,7 @@ from quest.modules.stdlib import STANDARD_LIBRARY_MODULE_NAMES, STANDARD_LIBRARY
 from quest.config import CompilerOptions
 from quest.types.env import Environment, ValueSymbol
 from quest.ir import nodes as ir
-from quest.codegen.layout import resolved_shape
+from quest.codegen.layout import abstract_layouts_differ, resolved_shape
 from quest.ir.shapes import shape
 from quest.types.canonical import collect_fun_quantifiers, option_case_names
 from quest.typechecker.typed_ast import (
@@ -1186,7 +1186,10 @@ def lower_module_file(mod: TypedModule, env: Environment) -> ir.Unit:
         member = module.members.get(name)
         if member is None:
             raise LoweringError(f"module {mod.name} does not define its interface's member '{name}'")
-        if is_type_equal(member.type, symbol.type_val):
+        # An export converts to its interface's type where it differs, or holds
+        # an abstract type's application at a layout of the module's own
+        # (docs/c-representation.md §5.1)
+        if is_type_equal(member.type, symbol.type_val) and not abstract_layouts_differ(symbol.type_val):
             exports[name] = member
         else:
             export = ir.Var(name, symbol.type_val)

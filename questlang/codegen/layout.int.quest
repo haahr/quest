@@ -15,6 +15,7 @@ interface Layout
 import
     questlang/types/model : questlang/types/Model
     questlang/ir/shapes : questlang/ir/Shapes
+    util/maybe : util/Maybe
 export
     (* s, or for a type variable or abstract type bounded by POWER(T), the shape
      * its bounds resolve to *)
@@ -130,6 +131,19 @@ export
     (* Whether converting a value of t between the generic layout and the native
      * one at subst would copy mutable data whose layouts differ *)
     genericLayoutCopiesMutableData(t: model.Type subst: model.Subst): Bool
+    (* An application of a module's abstract type operator whose representation
+     * is known (the module was elaborated from its source): the
+     * representation's body, generic in the operator's parameters, and the
+     * arguments substituted for them. Outside the module, its values are laid
+     * out as the body is by generic code (docs/c-representation.md section
+     * 5.1) *)
+    Def AbstractInstance = Tuple generic: model.Type subst: model.Subst end
+    abstractInstance(t: model.Type): maybe.T(AbstractInstance)
+    (* Whether a value of type t is or holds an application of an abstract type
+     * operator laid out at its arguments otherwise than generically: the
+     * module's code at those arguments and the code outside it lay it out
+     * differently, as a closure whose C signature changes with them *)
+    abstractLayoutsDiffer(t: model.Type): Bool
     (* The representation of a function type's calls (its result's and
      * parameters' representations and its number of type parameters), as a key:
      * closures of types with the same key are called alike *)

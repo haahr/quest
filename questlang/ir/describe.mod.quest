@@ -348,7 +348,19 @@ export
                 when planRecordView then
                     p.descriptors := array of describeType(d heldStructure(p.target shapes.shapeRecord)) end
                 when planView then
-                    p.descriptors := array of describeType(d p.source) describeType(d p.target) end
+                    p.descriptors := if maybe.isNone(:nodes.PlanLayout p.layout) then
+                        array of describeType(d p.source) describeType(d p.target) end
+                    else
+                        (* A value of an abstract type's application, laid out
+                         * as its module's generic code lays out the
+                         * representation (represent's abstractPlan) *)
+                        let lay = maybe.unwrap(:nodes.PlanLayout p.layout)
+                        let abstractT = if lay.toGeneric then p.target else p.source end
+                        let generic = maybe.unwrap(:layout.AbstractInstance layout.abstractInstance(abstractT)).generic
+                        let genericD = layoutDescriptor(d generic lay)
+                        if lay.toGeneric then array of describeType(d p.source) genericD end
+                        else array of genericD describeType(d p.target) end end
+                    end
                 when planRuntime then
                     let lay = maybe.unwrap(:nodes.PlanLayout p.layout)
                     let genericType = if lay.toGeneric then p.target else p.source end

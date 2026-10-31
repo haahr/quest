@@ -350,6 +350,20 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
     converted, since the copy would not share its updates; the compiler rejects the call
     (`generic_layout_copies_mutable_data`). An array's C type is the same whatever its elements, so its layout is
     judged from its type, not its C type.
+  - **Abstract Types (Generic Layout Outside the Module):** a value of an application of a module's abstract type
+    operator (`handler.T(Real)`, for `Let T = Fun(K::TYPE) Tuple f: All(k: K) K end`) is opaque outside the module,
+    which cannot convert it, so it has one layout there whoever made it: the module's generic code's, its
+    representation laid out with each of the operator's parameters a `QVal` (`abstract_instance` in
+    `codegen/layout.py`). The module's code at concrete arguments lays the representation out natively, which
+    differs where a closure's C signature changes with them (a `QReal` or a record's register pair for a `QVal`), and
+    converts at the module's boundary: where a member of one of the unit's modules is called from outside it, an
+    argument or result of the abstract type at the representation's native type converts by a `view` plan between
+    the generic layout's descriptor (the representation's template) and the native one (`_abstract_plan` in
+    `ir/represent.py`); a module file's export whose interface type holds such a value is bound converted to that
+    type (`abstract_layouts_differ`), so its adapter converts for other units. A generic function of the module
+    takes and returns such values as they are, its own layout being the generic one. A call from outside the module
+    that would be specialized to such a native layout is not (ir.md §8.1), so that the generic code serves it
+    without converting (`modules/abstract_closure_layouts`).
 
 ### 5.2. Records and Subtyping (Evidence Passing)
 Under Cardelli's structural subtyping with multiple inheritance, field offsets cannot be assigned globally.

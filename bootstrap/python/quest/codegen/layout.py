@@ -61,7 +61,7 @@ from quest.types import (
     is_type_equal,
     pruned,
 )
-from quest.modules.abstract_types import is_abstract_type_symbol
+from quest.modules.abstract_types import abstract_type_by_symbol, is_abstract_type_symbol
 
 
 # ============================================================================
@@ -771,6 +771,48 @@ def generic_layout_copies_mutable_data(t: QType, subst: dict[int, QType]) -> boo
             return any(c.shape is not None and visit(c.shape) for c in s.cases)
         # Closures are adapted rather than copied
         return False
+
+    return visit(shape(t))
+
+
+def abstract_instance(t: QType) -> Optional[tuple[QType, dict[int, QType]]]:
+    """For an application of a module's abstract type operator whose
+    representation is known (the module was elaborated from its source): the
+    representation's body, generic in the operator's parameters, and the
+    arguments substituted for them. Outside the module, its values are laid out
+    as the body is by generic code (docs/c-representation.md §5.1)."""
+    t = pruned(t)
+    if not isinstance(t, QTypeApp):
+        return None
+    symbol_id = getattr(pruned(t.constructor), "symbol_id", None)
+    if symbol_id is None or not is_abstract_type_symbol(symbol_id):
+        return None
+    entry = abstract_type_by_symbol(symbol_id)
+    if entry is None or entry.rep is None:
+        return None
+    rep = shape(entry.rep).type
+    if not isinstance(rep, QTypeFun) or len(rep.params) != len(t.arguments):
+        return None
+    return rep.body, {p.symbol_id: a for p, a in zip(rep.params, t.arguments)}
+
+
+def abstract_layouts_differ(t: QType) -> bool:
+    """Whether a value of type t is or holds an application of an abstract type
+    operator laid out at its arguments otherwise than generically: the module's
+    code at those arguments and the code outside it lay it out differently, as a
+    closure whose C signature changes with them."""
+    seen: set[int] = set()
+
+    def visit(s: Optional[Shape]) -> bool:
+        if s is None or id(s) in seen:
+            return False
+        seen.add(id(s))
+        if s.kind == "abstract":
+            instance = abstract_instance(s.type)
+            if instance is not None:
+                return not generic_layout_agrees(*instance)
+        inner = [c.shape for c in s.components] + [c.shape for c in s.cases] + [p.shape for p in s.params]
+        return any(visit(x) for x in inner + [s.element, s.result, s.body])
 
     return visit(shape(t))
 

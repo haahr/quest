@@ -1,0 +1,31 @@
+(* A module's abstract type whose representation holds a closure over its parameter, made and used by the module's
+   generic code and by its code at Real and at a record: outside the module, a value is laid out as the generic code
+   lays it out, and the module's code at other layouts converts it (docs/c-representation.md section 5.1), so every
+   maker's value serves every user. *)
+
+import handler: Handler = layouts/handler : layouts/Handler;
+import writer: Writer;
+import conv: Conv;
+
+let line(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+let real(r: Real): Ok = line(conv.real(r));
+let point(p: handler.Point): Ok = line(conv.int(p.x) <> " " <> conv.int(p.y));
+
+let p = record x = 1 y = 2 end;
+
+(* Real: generic and concrete makers, generic and concrete users *)
+real(handler.run(:Real handler.echo(:Real) 1.5));
+real(handler.runReal(handler.echo(:Real) 2.5));
+real(handler.run(:Real handler.shifted(10.0) 1.5));
+real(handler.runReal(handler.shifted(10.0) 2.5));
+
+(* A record, passed as a pair of registers *)
+point(handler.run(:handler.Point handler.echo(:handler.Point) p));
+point(handler.runPoint(handler.echo(:handler.Point) p));
+point(handler.run(:handler.Point handler.swapped() p));
+point(handler.runPoint(handler.swapped() p));
+
+(* Held by the program, then used by each *)
+let h = handler.shifted(0.5);
+real(handler.run(:Real h 1.0));
+real(handler.runReal(h 2.0))

@@ -1745,7 +1745,13 @@ export
                                     fail(:Ok "module " <> x.name <> " does not define its interface's member '" <> sym.name <> "'")
                                 end
                                 let mv = maybe.unwrap(:Variable member)
-                                if subtyping.isTypeEqual(mv.type sym.type maybe.none(:model.Lookup)) then
+                                (* An export converts to its interface's
+                                 * type where it differs, or holds an
+                                 * abstract type's application at a layout
+                                 * of the module's own
+                                 * (docs/c-representation.md section 5.1) *)
+                                if subtyping.isTypeEqual(mv.type sym.type maybe.none(:model.Lookup))
+                                    andif not(layout.abstractLayoutsDiffer(sym.type)) then
                                     nodes.addMember(exports sym.name mv)
                                 else
                                     let exported = fresh(sym.name sym.type false)

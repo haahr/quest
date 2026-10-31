@@ -46,7 +46,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from quest.codegen.descriptors import bound_var_index, hole_var
-from quest.codegen.layout import own_view, representation, resolved_shape
+from quest.codegen.layout import abstract_instance, own_view, representation, resolved_shape
 from quest.ir import nodes as ir
 from quest.ir.represent import held_shape
 from quest.ir.shapes import shape
@@ -249,6 +249,15 @@ class _Describer:
         match p.kind:
             case "record_view":
                 p.descriptors = (self.describe(held_shape(p.target, "record").structure),)
+            case "view" if p.layout is not None:
+                # A value of an abstract type's application, laid out as its
+                # module's generic code lays out the representation
+                # (represent's _abstract_plan)
+                subst, to_generic = p.layout
+                generic_t, _ = abstract_instance(p.target if to_generic else p.source)
+                generic_d = self.layout_descriptor(generic_t, subst)
+                p.descriptors = ((self.describe(p.source), generic_d) if to_generic
+                                 else (generic_d, self.describe(p.target)))
             case "view":
                 p.descriptors = (self.describe(p.source), self.describe(p.target))
             case "runtime":

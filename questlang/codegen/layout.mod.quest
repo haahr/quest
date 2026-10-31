@@ -1071,6 +1071,85 @@ export
             visit(shapes.shape(t))
         end
 
+    Def AbstractInstance = Tuple generic: Type subst: model.Subst end
+
+    let abstractInstance(t0: Type): maybe.T(AbstractInstance) =
+        begin
+            let none = maybe.none(:AbstractInstance)
+            let t = model.pruned(t0)
+            case t.form
+                when typeApp with x then
+                    let symbol = case model.pruned(x.constructor).form
+                        when typeVariable with v then v.symbolId
+                        when typeAbstract with v then v.symbolId
+                        else ~1
+                    end
+                    let entry = if abstractTypes.isAbstractTypeSymbol(symbol) then
+                        abstractTypes.abstractTypeBySymbol(symbol)
+                    else maybe.none(:abstractTypes.ModuleAbstractType) end
+                    let written = if maybe.isSome(:abstractTypes.ModuleAbstractType entry) then
+                        maybe.unwrap(:abstractTypes.ModuleAbstractType entry).rep
+                    else maybe.none(:Type) end
+                    if maybe.isNone(:Type written) then
+                        none
+                    else
+                        let rep = shapes.shape(maybe.unwrap(:Type written)).type
+                        case rep.form
+                            when typeOperator with op then
+                                if extent op.params is extent x.arguments then
+                                    let subst = model.newSubst()
+                                    for i = 0 upto {extent op.params - 1} do
+                                        hashMap.insert(:Int :Type subst op.params[i].symbolId x.arguments[i])
+                                    end
+                                    maybe.some(:AbstractInstance tuple let generic = op.body let subst = subst end)
+                                else none end
+                            else none
+                        end
+                    end
+                else none
+            end
+        end
+
+    let abstractLayoutsDiffer(t: Type): Bool =
+        begin
+            let seen = newSeen()
+            let rec visit(s: Shape): Bool =
+                if hashMap.contains(:Int :Bool seen s.id) then
+                    false
+                else
+                    hashMap.insert(:Int :Bool seen s.id true)
+                    let any = fun(shapes0: Array(maybe.T(Shape))): Bool
+                        begin
+                            let var found = false
+                            for i = 0 upto {extent shapes0 - 1} do
+                                if not(found) andif maybe.isSome(:Shape shapes0[i])
+                                    andif visit(maybe.unwrap(:Shape shapes0[i])) then found := true end
+                            end
+                            found
+                        end
+                    let inner = vector.new(:maybe.T(Shape))
+                    for i = 0 upto {extent s.components - 1} do
+                        vector.append(:maybe.T(Shape) inner maybe.some(:Shape shapes.componentShape(s.components[i])))
+                    end
+                    for i = 0 upto {extent s.cases - 1} do vector.append(:maybe.T(Shape) inner s.cases[i].shape) end
+                    for i = 0 upto {extent s.params - 1} do
+                        vector.append(:maybe.T(Shape) inner maybe.some(:Shape s.params[i].shape))
+                    end
+                    vector.append(:maybe.T(Shape) inner s.elementShape)
+                    vector.append(:maybe.T(Shape) inner s.resultShape)
+                    vector.append(:maybe.T(Shape) inner s.bodyShape)
+                    let instance = if shapes.kindIs(s shapes.shapeAbstract) then abstractInstance(s.type)
+                        else maybe.none(:AbstractInstance) end
+                    if maybe.isSome(:AbstractInstance instance) then
+                        let i = maybe.unwrap(:AbstractInstance instance)
+                        not(genericLayoutAgrees(i.generic i.subst))
+                    else
+                        any(vector.toArray(:maybe.T(Shape) inner))
+                    end
+                end
+            visit(shapes.shape(t))
+        end
+
     let signatureRepresentation(t: Type): String =
         begin
             let var s = shapes.shape(t)

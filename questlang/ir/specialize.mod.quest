@@ -721,6 +721,24 @@ export
             {extent typeArgs is extent f.typeParams} andif not(open) andif shouldSpecialize(f typeArgs)
         end
 
+    (* Whether a call of a module's member from outside the module, at
+     * typeArgs, would give its clone values of the module's abstract types
+     * that the clone lays out otherwise than code outside the module does
+     * (generically, docs/c-representation.md section 5.1): such a call stays
+     * generic, rather than convert them at every call *)
+    let crossesAbstractLayouts(moduleRef: maybe.T(nodes.ModuleRef) calleeType: maybe.T(Type) typeArgs: Array(Type)):
+            Bool =
+        if maybe.isNone(:nodes.ModuleRef moduleRef) orif maybe.isNone(:Type calleeType) then
+            false
+        else
+            let q = written.quantified(maybe.unwrap(:Type calleeType))
+            let subst = model.newSubst()
+            for i = 0 upto {extent q.quantifiers - 1} do
+                if i < extent typeArgs then hashMap.insert(:Int :Type subst q.quantifiers[i].symbolId typeArgs[i]) end
+            end
+            layout.abstractLayoutsDiffer(model.substitute(q.body subst))
+        end
+
     let specializeCall(sp: Specializer o: Op enclosing: Ids): Ok =
         case o
             when opCall with call then
@@ -728,7 +746,8 @@ export
                     let definition = definitionOf(sp call.callee call.moduleRef call.member)
                     if maybe.isSome(:Definition definition) then
                         let d = maybe.unwrap(:Definition definition)
-                        if specializes(d.function call.typeArgs enclosing) then
+                        if specializes(d.function call.typeArgs enclosing)
+                            andif not(crossesAbstractLayouts(call.moduleRef call.calleeType call.typeArgs)) then
                             let cloned = clone(sp d call.typeArgs)
                             if maybe.isSome(:nodes.Function cloned) then
                                 let c = maybe.unwrap(:nodes.Function cloned)
@@ -757,7 +776,8 @@ export
                 let definition = definitionOf(sp app.callee app.moduleRef app.member)
                 if maybe.isSome(:Definition definition) andif not(isFunction(result.type)) then
                     let d = maybe.unwrap(:Definition definition)
-                    if {extent d.function.params is 0} andif specializes(d.function app.typeArgs enclosing) then
+                    if {extent d.function.params is 0} andif specializes(d.function app.typeArgs enclosing)
+                        andif not(crossesAbstractLayouts(app.moduleRef app.calleeType app.typeArgs)) then
                         let cloned = clone(sp d app.typeArgs)
                         if maybe.isSome(:nodes.Function cloned) then
                             let c = maybe.unwrap(:nodes.Function cloned)

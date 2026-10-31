@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from quest.codegen.layout import type_identity_key
+from quest.codegen.layout import abstract_layouts_differ, type_identity_key
 from quest.ir import nodes as ir
 from quest.ir.shapes import Shape, shape
 from quest.ir.walk import fields_of, rebuild, statement_bodies
@@ -183,6 +183,8 @@ class _Specializer:
             return
         if any(t._fv & enclosing for t in call.type_args) or not should_specialize(f, call.type_args):
             return
+        if isinstance(call.module, ir.Module) and _crosses_abstract_layouts(call):
+            return
         clone = self.clone(definition, call.type_args)
         if clone is None:
             return
@@ -224,6 +226,18 @@ class _Specializer:
         while self.pending:
             clone, enclosing, self.depth = self.pending.pop()
             self.body(clone.body, enclosing)
+
+
+def _crosses_abstract_layouts(call: ir.Call) -> bool:
+    """Whether a call of a module's member from outside the module would give
+    its clone values of the module's abstract types that the clone lays out
+    otherwise than code outside the module does (generically,
+    docs/c-representation.md §5.1): such a call stays generic, rather than
+    convert them at every call."""
+    if call.callee_type is None:
+        return False
+    quants, body = quantified(call.callee_type)
+    return abstract_layouts_differ(body.substitute({q.symbol_id: t for q, t in zip(quants, call.type_args)}))
 
 
 def _member_name(module: ir.Module, var: ir.Var) -> str:

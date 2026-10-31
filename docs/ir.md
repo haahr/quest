@@ -355,9 +355,12 @@ function's clone calls itself; clones made for calls in clones are bounded in de
 generic, since polymorphic recursion (a function of `A` calling itself at `List(A)`) would otherwise specialize without
 end. A `type_app` whose instance is not a function (a polymorphic value, such as `hashMap.newIdentityMap`) runs the
 function applied, so it is specialized as a call without arguments would be, and becomes a `call` of the clone, which
-takes no parameters: otherwise its result would be laid out generically while the specialized calls given it read it
-natively. Specialization runs *before* closure conversion: a clone's local functions are part of the clone, and are
-lifted with it.
+takes no parameters, so that its result is laid out natively, as the specialized calls given it take it, rather than
+converted from the generic layout. A call of a module's member from outside the module is not specialized when, at its
+type arguments, the member's type as the interface gives it holds an application of one of the module's abstract types
+whose native layout differs from the generic one, as outside the module values of it have
+([c-representation.md](c-representation.md) §5.1): the clone would convert them at every call. Specialization runs
+*before* closure conversion: a clone's local functions are part of the clone, and are lifted with it.
 
 ### 8.2. Closure-convert
 
