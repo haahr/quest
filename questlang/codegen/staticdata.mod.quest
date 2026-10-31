@@ -137,7 +137,8 @@ export
     let shapeKey(t: Type): String =
         begin
             let s = shapes.shape(t)
-            let unsorted = if eq(s.kind "record") then recordFields(s.structure) else recordFields(t) end
+            let unsorted = if shapes.kindIs(s shapes.shapeRecord) then recordFields(s.structure)
+                else recordFields(t) end
             let fields = sort.sorted(:model.RecordField unsorted compareFields)
             let items = vector.new(:String)
             for i = 0 upto {extent fields - 1} do
@@ -206,13 +207,20 @@ export
             end
         end
 
-    let baseExpr(kind: String): maybe.T(String) =
+    (* A scalar's descriptor, the runtime's own *)
+    let baseExpr(kind: shapes.ShapeKind): maybe.T(String) =
         begin
             let some(s: String): maybe.T(String) = maybe.some(:String s)
-            if eq(kind "int") then some("&quest_type_Int") elsif eq(kind "real") then some("&quest_type_Real")
-            elsif eq(kind "bool") then some("&quest_type_Bool") elsif eq(kind "char") then some("&quest_type_Char")
-            elsif eq(kind "string") then some("&quest_type_String") elsif eq(kind "ok") then some("&quest_type_Ok")
-            else maybe.none(:String)
+            case kind
+                when shapeInt then some("&quest_type_Int")
+                when shapeReal then some("&quest_type_Real")
+                when shapeBool then some("&quest_type_Bool")
+                when shapeChar then some("&quest_type_Char")
+                when shapeString then some("&quest_type_String")
+                when shapeOk then some("&quest_type_Ok")
+                when shapeWord, shapeBottom, shapeTuple, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell,
+                    shapeOut, shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal,
+                    shapeOperator, shapePending then maybe.none(:String)
             end
         end
 
@@ -246,7 +254,7 @@ export
                 if maybe.isSome(:String baseExpr(s.kind)) then
                     let expr = maybe.unwrap(:String baseExpr(s.kind))
                     base(expr stringOp.getSub(expr 1 stringOp.length(expr) - 1) 0)
-                elsif eq(s.kind "word") then
+                elsif shapes.kindIs(s shapes.shapeWord) then
                     base("&quest_type_Word" "quest_type_Word" 0)
                 elsif maybe.isSome(:Int boundVar) then
                     let index = maybe.unwrap(:Int boundVar)
@@ -259,16 +267,16 @@ export
                      * viewed at the bound (a stored descriptor) *)
                     let g = maybe.unwrap(:String abstractName)
                     described("stored" "stored_" <> layout.textDigest(g) maybe.some(:Type t) g)
-                elsif eq(held.kind "record") then
+                elsif shapes.kindIs(held shapes.shapeRecord) then
                     (* A type variable bounded by a record, variant, or option
                      * type is described by its bound *)
                     ofType("record" recordStructName(held.structure ctx) held.structure)
-                elsif eq(s.kind "tuple") then
+                elsif shapes.kindIs(s shapes.shapeTuple) then
                     ofType("tuple" layout.tupleStructName(t) <> "_" <> layout.typeDigest(t) t)
-                elsif eq(held.kind "variant") then
+                elsif shapes.kindIs(held shapes.shapeVariant) then
                     let v = held.structure
                     ofType("variant" layout.typeTag(v) <> "_" <> layout.typeDigest(v) v)
-                elsif eq(held.kind "option") then
+                elsif shapes.kindIs(held shapes.shapeOption) then
                     let o = held.structure
                     let f = ofType("option" layout.optionStructName(o) <> "_" <> layout.typeDigest(o) o)
                     tuple
@@ -466,7 +474,7 @@ export
         begin
             let var s = shapes.shape(t)
             let bounds = vector.new(:maybe.T(Type))
-            while eq(s.kind "all") do
+            while shapes.kindIs(s shapes.shapeAll) do
                 for i = 0 upto {extent s.typeParams - 1} do
                     let b = s.typeParams[i].bound
                     vector.append(:maybe.T(Type) bounds
@@ -477,7 +485,7 @@ export
                 s := shapes.body(s)
             end
             let params = vector.new(:model.Param)
-            if not(eq(s.kind "fun")) then
+            if not(shapes.kindIs(s shapes.shapeFun)) then
                 tuple let bounds = bounds let params = params let result = s.type end
             else
                 for i = 0 upto {extent s.params - 1} do

@@ -16,8 +16,37 @@ import
     questlang/types/model : questlang/types/Model
     util/maybe : util/Maybe
 export
-    (* The kinds of shapes: the scalars, and the rest *)
-    scalarKinds: Array(String)
+    (* The kinds of shapes: the scalars (int to bottom), and the rest; pending
+     * is a placeholder's while it is built *)
+    Def ShapeKind = Option shapeInt shapeReal shapeBool shapeChar shapeString shapeOk shapeWord shapeBottom shapeTuple
+        shapeRecord shapeVariant shapeOption shapeArray shapeCell shapeOut shapeException shapeFun shapeAll shapeAuto
+        shapeTypevar shapeAbstract shapeExternal shapeOperator shapePending end
+    shapeInt: ShapeKind
+    shapeReal: ShapeKind
+    shapeBool: ShapeKind
+    shapeChar: ShapeKind
+    shapeString: ShapeKind
+    shapeOk: ShapeKind
+    shapeWord: ShapeKind
+    shapeBottom: ShapeKind
+    shapeTuple: ShapeKind
+    shapeRecord: ShapeKind
+    shapeVariant: ShapeKind
+    shapeOption: ShapeKind
+    shapeArray: ShapeKind
+    shapeCell: ShapeKind
+    shapeOut: ShapeKind
+    shapeException: ShapeKind
+    shapeFun: ShapeKind
+    shapeAll: ShapeKind
+    shapeAuto: ShapeKind
+    shapeTypevar: ShapeKind
+    shapeAbstract: ShapeKind
+    shapeExternal: ShapeKind
+    shapeOperator: ShapeKind
+    shapePending: ShapeKind
+    (* A kind's name, as the bootstrap spells it *)
+    kindName(k: ShapeKind): String
 
     (* The backend's view of a type, whose fields are set as its kind is:
      * - components: tuple (value components), record (fields), auto
@@ -37,7 +66,7 @@ export
      * unfolding of a recursive type). *)
     Def Rec Shape = Tuple
         id: Int
-        var kind: String
+        var kind: ShapeKind
         type: model.Type
         var structure: model.Type
         var components: Array(Component)
@@ -72,6 +101,9 @@ export
 
     same(a: Shape b: Shape): Bool
     isScalar(s: Shape): Bool
+    (* Whether s is of kind k; whether two kinds are the same *)
+    kindIs(s: Shape k: ShapeKind): Bool
+    sameKind(a: ShapeKind b: ShapeKind): Bool
     (* Whether s is the shape of a recursive type (whose structure is its
      * unfolding's) *)
     isRecursive(s: Shape): Bool

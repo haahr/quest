@@ -35,30 +35,40 @@ export
 
     let typeOf(a: Atom): Type = nodes.atomType(a)
 
-    let heldShape(t: Type kind: String): maybe.T(Shape) =
+    let heldShape(t: Type kind: shapes.ShapeKind): maybe.T(Shape) =
         begin
             let h = layout.resolvedShape(shapes.shape(t))
-            if eq(h.kind kind) then maybe.some(:Shape h) else maybe.none(:Shape) end
+            if shapes.sameKind(h.kind kind) then maybe.some(:Shape h) else maybe.none(:Shape) end
         end
 
-    let heldStructure(t: Type kind: String): Type =
+    let heldStructure(t: Type kind: shapes.ShapeKind): Type =
         begin
             let h = heldShape(t kind)
-            if maybe.isNone(:Shape h) then raise unsupportedDescriptor with "not a " <> kind <> ": " <> model.show(t) end end
+            if maybe.isNone(:Shape h) then raise unsupportedDescriptor with "not a " <> shapes.kindName(kind) <> ": "
+                <> model.show(t) end end
             maybe.unwrap(:Shape h).structure
         end
 
-    let baseValueKind(kind: String): String =
-        if eq(kind "int") then "Int" elsif eq(kind "real") then "Real" elsif eq(kind "bool") then "Bool"
-        elsif eq(kind "char") then "Char" elsif eq(kind "string") then "String" elsif eq(kind "ok") then "Ok"
-        else "" end
+    let baseValueKind(kind: shapes.ShapeKind): String =
+        case kind
+            when shapeInt then "Int"
+            when shapeReal then "Real"
+            when shapeBool then "Bool"
+            when shapeChar then "Char"
+            when shapeString then "String"
+            when shapeOk then "Ok"
+            when shapeWord, shapeBottom, shapeTuple, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell,
+                shapeOut, shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal,
+                shapeOperator, shapePending then ""
+        end
 
     let echoValueKind(t: Type): String =
         begin
             let s = shapes.shape(t)
-            if eq(s.kind "word") then "Word"
-            elsif eq(s.kind "fun") orif eq(s.kind "all") then "fun"
-            elsif eq(s.kind "typevar") orif {eq(s.kind "abstract") andif not(s.structure.form?typeApp)} then "hidden"
+            if shapes.kindIs(s shapes.shapeWord) then "Word"
+            elsif shapes.kindIs(s shapes.shapeFun) orif shapes.kindIs(s shapes.shapeAll) then "fun"
+            elsif shapes.kindIs(s shapes.shapeTypevar) orif {shapes.kindIs(s shapes.shapeAbstract)
+                andif not(s.structure.form?typeApp)} then "hidden"
             else baseValueKind(s.kind) end
         end
 
@@ -118,9 +128,13 @@ export
             else maybe.none(:model.Kind)
         end
 
-    let isConstantKind(kind: String): Bool =
-        eq(kind "int") orif eq(kind "real") orif eq(kind "bool") orif eq(kind "char") orif eq(kind "string")
-            orif eq(kind "ok") orif eq(kind "word")
+    let isConstantKind(kind: shapes.ShapeKind): Bool =
+        case kind
+            when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord then true
+            when shapeBottom, shapeTuple, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut,
+                shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal,
+                shapeOperator, shapePending then false
+        end
 
     (* Whether a template's descriptor is one of the runtime's own, whatever its
      * holes: a scalar's, a word's, the empty tuple's, or a bound type
@@ -141,8 +155,8 @@ export
     let isFunction(t: Type): Bool =
         begin
             let var s = shapes.shape(t)
-            while eq(s.kind "all") do s := shapes.body(s) end
-            eq(s.kind "fun")
+            while shapes.kindIs(s shapes.shapeAll) do s := shapes.body(s) end
+            shapes.kindIs(s shapes.shapeFun)
         end
 
     let descVar(v: Variable): Descriptor = option descVar of Descriptor with let v = v end
@@ -332,7 +346,7 @@ export
             let p = maybe.unwrap(:Plan p0)
             case p.kind
                 when planRecordView then
-                    p.descriptors := array of describeType(d heldStructure(p.target "record")) end
+                    p.descriptors := array of describeType(d heldStructure(p.target shapes.shapeRecord)) end
                 when planView then
                     p.descriptors := array of describeType(d p.source) describeType(d p.target) end
                 when planRuntime then
@@ -343,7 +357,8 @@ export
                     p.descriptors := if lay.toGeneric then array of nativeD genericD end
                         else array of genericD nativeD end end
                 when planVariantTags then
-                    let map = tagMap(d heldStructure(p.target "variant") heldStructure(p.source "variant"))
+                    let map = tagMap(d heldStructure(p.target shapes.shapeVariant)
+                        heldStructure(p.source shapes.shapeVariant))
                     p.tagMap := maybe.some(:nodes.TagMap map)
                 when planCopy then
                     for i = 0 upto {extent p.fields - 1} do describePlan(d p.fields[i]) end
@@ -366,7 +381,8 @@ export
         begin
             let s = shapes.shape(typeOf(a))
             let held = layout.resolvedShape(s)
-            let heldKind = eq(held.kind "record") orif eq(held.kind "variant") orif eq(held.kind "option") orif eq(held.kind "tuple")
+            let heldKind = shapes.kindIs(held shapes.shapeRecord) orif shapes.kindIs(held shapes.shapeVariant)
+                orif shapes.kindIs(held shapes.shapeOption) orif shapes.kindIs(held shapes.shapeTuple)
             if not(layout.ownView(s)) orif not(heldKind) orif not(hashMap.contains(:Int :Variable d.scope s.symbolId)) then
                 maybe.none(:Variable)
             else
@@ -454,7 +470,7 @@ export
                         fields[i] := tuple let name = x.fields[i].name let type = typeOf(x.fields[i].atom) let isVar = x.fields[i].isVar end
                     end
                     let concrete = model.recordType(fields maybe.none(:String))
-                    let held = heldShape(maybe.unwrap(:Variable result).type "record")
+                    let held = heldShape(maybe.unwrap(:Variable result).type shapes.shapeRecord)
                     let target = if maybe.isSome(:Shape held) then maybe.unwrap(:Shape held).structure else concrete end
                     x.descriptor := maybe.some(:Descriptor describeType(d concrete))
                     if x.runtimeOffsets then
@@ -466,7 +482,7 @@ export
                     end
                 when opRecordField with x then
                     if x.stored then
-                        let rs = maybe.unwrap(:Shape heldShape(typeOf(x.recordAtom) "record"))
+                        let rs = maybe.unwrap(:Shape heldShape(typeOf(x.recordAtom) shapes.shapeRecord))
                         let fields = shapes.sortedComponents(rs)
                         let var field = fields[0]
                         for i = {extent fields - 1} downto 0 do

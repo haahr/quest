@@ -57,27 +57,31 @@ export
                 else
                     hashMap.insert(:Int :Bool seen s.id true)
                     let kind = s.kind
-                    if eq(kind "record") orif eq(kind "variant") then
-                        true
-                    elsif eq(kind "typevar") then
-                        maybe.isSome(:Shape s.bound) andif holds(maybe.unwrap(:Shape s.bound))
-                    elsif eq(kind "tuple") then
-                        let var found = false
-                        for i = 0 upto {extent s.components - 1} do
-                            if not(found) andif holds(shapes.componentShape(s.components[i])) then found := true end
-                        end
-                        found
-                    elsif eq(kind "option") then
-                        let var found = false
-                        for i = 0 upto {extent s.cases - 1} do
-                            let c = s.cases[i].shape
-                            if not(found) andif maybe.isSome(:Shape c) andif holds(maybe.unwrap(:Shape c)) then found := true end
-                        end
-                        found
-                    elsif eq(kind "array") orif eq(kind "cell") orif eq(kind "out") then
-                        holds(shapes.element(s))
-                    else
-                        false
+                    case kind
+                        when shapeRecord, shapeVariant then
+                            true
+                        when shapeTypevar then
+                            maybe.isSome(:Shape s.bound) andif holds(maybe.unwrap(:Shape s.bound))
+                        when shapeTuple then
+                            let var found = false
+                            for i = 0 upto {extent s.components - 1} do
+                                if not(found) andif holds(shapes.componentShape(s.components[i])) then found := true end
+                            end
+                            found
+                        when shapeOption then
+                            let var found = false
+                            for i = 0 upto {extent s.cases - 1} do
+                                let c = s.cases[i].shape
+                                if not(found) andif maybe.isSome(:Shape c)
+                                    andif holds(maybe.unwrap(:Shape c)) then found := true end
+                            end
+                            found
+                        when shapeArray, shapeCell, shapeOut then
+                            holds(shapes.element(s))
+                        when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
+                            shapeException, shapeFun, shapeAll, shapeAuto, shapeAbstract, shapeExternal, shapeOperator,
+                            shapePending then
+                            false
                     end
                 end
             holds(s0)
@@ -98,10 +102,11 @@ export
                 let p = f.params[i]
                 if not(found) then
                     if not(eq(p.mode "value")) andif mentionsAny(p.v.type ids) then found := true end
-                    if eq(shapes.shape(p.v.type).kind "tuple") andif mentionsAny(p.v.type ids) then found := true end
+                    if shapes.kindIs(shapes.shape(p.v.type) shapes.shapeTuple)
+                        andif mentionsAny(p.v.type ids) then found := true end
                 end
             end
-            found orif {eq(shapes.shape(f.resultType).kind "tuple") andif mentionsAny(f.resultType ids)}
+            found orif {shapes.kindIs(shapes.shape(f.resultType) shapes.shapeTuple) andif mentionsAny(f.resultType ids)}
         end
 
     (* ======================================================================

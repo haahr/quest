@@ -76,7 +76,8 @@ export
         begin
             let seen = hashMap.new(:Int :Bool intEqual hash.int)
             let var s = s0
-            while isOneOf(s.kind array of "typevar" "abstract" end) andif maybe.isSome(:Shape s.bound)
+            while {shapes.kindIs(s shapes.shapeTypevar) orif shapes.kindIs(s shapes.shapeAbstract)}
+                andif maybe.isSome(:Shape s.bound)
                 andif not(hashMap.contains(:Int :Bool seen s.id)) do
                 hashMap.insert(:Int :Bool seen s.id true)
                 s := maybe.unwrap(:Shape s.bound)
@@ -85,17 +86,19 @@ export
         end
 
     let heldAtBound(s: Shape): Bool =
-        if maybe.isNone(:Shape s.bound) orif not(isOneOf(s.kind array of "typevar" "abstract" end)) then
+        if maybe.isNone(:Shape s.bound) orif not({shapes.kindIs(s shapes.shapeTypevar)
+            orif shapes.kindIs(s shapes.shapeAbstract)}) then
             false
-        elsif eq(s.kind "abstract") then
+        elsif shapes.kindIs(s shapes.shapeAbstract) then
             true
         else
             abstractTypes.isAbstractTypeSymbol(s.symbolId)
         end
 
-    let ownView(s: Shape): Bool = eq(s.kind "typevar") andif maybe.isSome(:Shape s.bound) andif not(heldAtBound(s))
+    let ownView(s: Shape): Bool = shapes.kindIs(s shapes.shapeTypevar) andif maybe.isSome(:Shape s.bound)
+        andif not(heldAtBound(s))
 
-    let isWordType(t: Type): Bool = eq(shapes.shape(t).kind "word")
+    let isWordType(t: Type): Bool = shapes.kindIs(shapes.shape(t) shapes.shapeWord)
 
     let slotOf(representation: String): String =
         if eq(representation "QRecordVal") then "QRecordVal *"
@@ -106,27 +109,15 @@ export
         else representation
         end
 
-    let scalarTag(kind: String): maybe.T(String) =
-        if eq(kind "int") then maybe.some(:String "Int")
-        elsif eq(kind "real") then maybe.some(:String "Real")
-        elsif eq(kind "bool") then maybe.some(:String "Bool")
-        elsif eq(kind "char") then maybe.some(:String "Char")
-        elsif eq(kind "string") then maybe.some(:String "String")
-        elsif eq(kind "ok") then maybe.some(:String "Ok")
-        else maybe.none(:String)
+    (* The kinds of shapes a recursive type of which is named by recursiveTag *)
+    let isSelfNamed(s: Shape): Bool =
+        case s.kind
+            when shapeTuple, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut, shapeAuto then
+                true
+            when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
+                shapeException, shapeFun, shapeAll, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
+                shapePending then false
         end
-
-    let scalarRepresentation(kind: String): maybe.T(String) =
-        if eq(kind "int") then maybe.some(:String "QInt")
-        elsif eq(kind "real") then maybe.some(:String "QReal")
-        elsif eq(kind "bool") then maybe.some(:String "QBool")
-        elsif eq(kind "char") then maybe.some(:String "QChar")
-        elsif eq(kind "string") then maybe.some(:String "QString *")
-        elsif eq(kind "ok") then maybe.some(:String "void")
-        else maybe.none(:String)
-        end
-
-    let selfNamedKinds = array of "tuple" "record" "variant" "option" "array" "cell" "out" "auto" end
     let aggregateTagPrefixes = array of "QTuple_" "QRecord_" "QVariant_" "QOption_" "Auto_" end
 
     let withEmpty(prefix: String tags: vector.T(String)): String =
@@ -229,7 +220,8 @@ export
     and rawTag(s0: Shape): String =
         begin
             let s = resolvedShape(s0)
-            let selfLevel = if eq(s.kind "typevar") then canonical.recSelfLevel(s.type) else maybe.none(:Int) end
+            let selfLevel = if shapes.kindIs(s shapes.shapeTypevar) then canonical.recSelfLevel(s.type)
+                else maybe.none(:Int) end
             let canonicalShape = shapes.shape(s.type)
             if maybe.isSome(:Int selfLevel) then
                 "Self" <> syntax.cInt(maybe.unwrap(:Int selfLevel))
@@ -237,7 +229,7 @@ export
                 (* Equal types share a tag: a type containing recursion is named
                  * by its canonical form *)
                 shapeTag(canonicalShape)
-            elsif shapes.isRecursive(s) andif isOneOf(s.kind selfNamedKinds) then
+            elsif shapes.isRecursive(s) andif isSelfNamed(s) then
                 recursiveTag(s)
             else
                 rawTagOf(s)
@@ -245,14 +237,15 @@ export
         end
 
     and rawTagOf(s: Shape): String =
-        begin
-            let kind = s.kind
-            let scalar = scalarTag(kind)
-            if eq(kind "word") then
-                "Word"
-            elsif maybe.isSome(:String scalar) then
-                maybe.unwrap(:String scalar)
-            elsif eq(kind "external") then
+        case s.kind
+            when shapeWord then "Word"
+            when shapeInt then "Int"
+            when shapeReal then "Real"
+            when shapeBool then "Bool"
+            when shapeChar then "Char"
+            when shapeString then "String"
+            when shapeOk then "Ok"
+            when shapeExternal then
                 case s.type.form
                     when typeExternal with x then
                         if stringOp.isEmpty(x.name) then
@@ -262,17 +255,17 @@ export
                         end
                     else "QVal"
                 end
-            elsif eq(kind "typevar") andif isOneOf(s.name array of "Writer.T" "writer.T" end) then
-                "QWriter"
-            elsif eq(kind "typevar") andif isOneOf(s.name array of "Reader.T" "reader.T" end) then
-                "QReader"
-            elsif eq(kind "tuple") then
+            when shapeTypevar then
+                if isOneOf(s.name array of "Writer.T" "writer.T" end) then "QWriter"
+                elsif isOneOf(s.name array of "Reader.T" "reader.T" end) then "QReader"
+                else "QVal" end
+            when shapeTuple then
                 let tags = vector.new(:String)
                 for i = 0 upto {extent s.components - 1} do
                     vector.append(:String tags elementTag(shapes.componentShape(s.components[i])))
                 end
                 withEmpty("QTuple_" tags)
-            elsif eq(kind "record") then
+            when shapeRecord then
                 let sorted = shapes.sortedComponents(s)
                 let tags = vector.new(:String)
                 for i = 0 upto {extent sorted - 1} do
@@ -280,13 +273,10 @@ export
                         <> elementTag(shapes.componentShape(sorted[i])))
                 end
                 withEmpty("QRecord_" tags)
-            elsif isOneOf(kind array of "fun" "all" end) then
-                "QClosure"
-            elsif isOneOf(kind array of "cell" "out" end) then
-                "Ref_" <> elementTag(shapes.element(s))
-            elsif eq(kind "array") then
-                "QArray_" <> elementTag(shapes.element(s))
-            elsif isOneOf(kind array of "variant" "option" end) then
+            when shapeFun, shapeAll then "QClosure"
+            when shapeCell, shapeOut then "Ref_" <> elementTag(shapes.element(s))
+            when shapeArray then "QArray_" <> elementTag(shapes.element(s))
+            when shapeVariant, shapeOption then
                 let tags = vector.new(:String)
                 for i = 0 upto {extent s.cases - 1} do
                     let c = s.cases[i]
@@ -294,14 +284,10 @@ export
                     vector.append(:String tags
                         if maybe.isSome(:Shape c.shape) then name <> "_" <> elementTag(maybe.unwrap(:Shape c.shape)) else name end)
                 end
-                withEmpty(if eq(kind "variant") then "QVariant_" else "QOption_" end tags)
-            elsif eq(kind "exception") then
-                "QException"
-            elsif eq(kind "auto") then
-                "Auto_" <> typeTag(model.autoPayloadType(s.structure maybe.none(:Type)))
-            else
-                "QVal"
-            end
+                withEmpty(if shapes.kindIs(s shapes.shapeVariant) then "QVariant_" else "QOption_" end tags)
+            when shapeException then "QException"
+            when shapeAuto then "Auto_" <> typeTag(model.autoPayloadType(s.structure maybe.none(:Type)))
+            when shapeBottom, shapeAbstract, shapeOperator, shapePending then "QVal"
         end
 
     let rec shapeRepresentation(s: Shape): String =
@@ -336,38 +322,30 @@ export
     and rawRepresentation(s0: Shape): String =
         begin
             let s = resolvedShape(s0)
-            let kind = s.kind
-            let scalar = scalarRepresentation(kind)
-            if eq(kind "word") then
-                "uint64_t"
-            elsif maybe.isSome(:String scalar) then
-                maybe.unwrap(:String scalar)
-            elsif eq(kind "auto") then
+            case s.kind
+                when shapeWord then "uint64_t"
+                when shapeInt then "QInt"
+                when shapeReal then "QReal"
+                when shapeBool then "QBool"
+                when shapeChar then "QChar"
+                when shapeString then "QString *"
+                when shapeOk then "void"
                 (* An auto value (including a dynamic value): its type
                  * component's descriptor and its payload *)
-                "QAuto *"
-            elsif eq(kind "external") then
-                s.name
-            elsif eq(kind "typevar") andif isOneOf(s.name array of "Writer.T" "writer.T" end) then
-                "QWriter *"
-            elsif eq(kind "typevar") andif isOneOf(s.name array of "Reader.T" "reader.T" end) then
-                "QReader *"
-            elsif isOneOf(kind array of "tuple" "option" end) then
-                shapeTag(s) <> " *"
-            elsif eq(kind "record") then
-                "QRecordVal"
-            elsif isOneOf(kind array of "fun" "all" end) then
-                "QClosure *"
-            elsif eq(kind "array") then
-                "QArray *"
-            elsif eq(kind "variant") then
-                "QVariantVal"
-            elsif eq(kind "exception") then
-                "const QException *"
-            elsif isOneOf(kind array of "cell" "out" end) then
-                shapeLocationRepresentation(shapes.element(s)) <> " *"
-            else
-                "QVal"
+                when shapeAuto then "QAuto *"
+                when shapeExternal then s.name
+                when shapeTypevar then
+                    if isOneOf(s.name array of "Writer.T" "writer.T" end) then "QWriter *"
+                    elsif isOneOf(s.name array of "Reader.T" "reader.T" end) then "QReader *"
+                    else "QVal" end
+                when shapeTuple, shapeOption then shapeTag(s) <> " *"
+                when shapeRecord then "QRecordVal"
+                when shapeFun, shapeAll then "QClosure *"
+                when shapeArray then "QArray *"
+                when shapeVariant then "QVariantVal"
+                when shapeException then "const QException *"
+                when shapeCell, shapeOut then shapeLocationRepresentation(shapes.element(s)) <> " *"
+                when shapeBottom, shapeAbstract, shapeOperator, shapePending then "QVal"
             end
         end
 
@@ -385,15 +363,21 @@ export
     let wordForm(s0: Shape): WordForm =
         begin
             let s = resolvedShape(s0)
-            let kind = s.kind
             if eq(shapeRepresentation(s) "QVal") then option wordItself of WordForm end
-            elsif eq(kind "ok") then option wordOk of WordForm end
-            elsif eq(kind "record") then option wordRecordBox of WordForm end
-            elsif eq(kind "variant") then option wordVariantBox of WordForm end
-            elsif eq(kind "word") then option wordBits of WordForm end
-            elsif isOneOf(kind array of "int" "bool" "char" end) then option wordInteger of WordForm end
-            elsif eq(kind "real") then option wordReal of WordForm end
-            else option wordPointer of WordForm end
+            else
+                case s.kind
+                    when shapeOk then option wordOk of WordForm end
+                    when shapeRecord then option wordRecordBox of WordForm end
+                    when shapeVariant then option wordVariantBox of WordForm end
+                    when shapeWord then option wordBits of WordForm end
+                    when shapeInt, shapeBool, shapeChar then option wordInteger of WordForm end
+                    when shapeReal then option wordReal of WordForm end
+                    when shapeString, shapeBottom, shapeTuple, shapeOption, shapeArray, shapeCell, shapeOut,
+                    shapeException,
+                        shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
+                        shapePending then
+                        option wordPointer of WordForm end
+                end
             end
         end
 
@@ -429,7 +413,8 @@ export
     let caseSlots(payload: Type): Int =
         begin
             let s = shapes.shape(payload)
-            if eq(s.kind "tuple") orif eq(s.kind "record") then extent s.components else 1 end
+            if shapes.kindIs(s shapes.shapeTuple)
+                orif shapes.kindIs(s shapes.shapeRecord) then extent s.components else 1 end
         end
 
     let optionBytes(t: Type): Int =
@@ -472,16 +457,21 @@ export
      * though a value of s itself may not be a proxy: a tuple, or an option with
      * a payload *)
     let holdsProxies(s: Shape): Bool =
-        if eq(s.kind "tuple") then
-            true
-        elsif eq(s.kind "option") then
-            begin
-                let var found = false
-                for i = 0 upto {extent s.cases - 1} do if maybe.isSome(:Shape s.cases[i].shape) then found := true end end
-                found
-            end
-        else
-            false
+        case s.kind
+            when shapeTuple then
+                true
+            when shapeOption then
+                begin
+                    let var found = false
+                    for i = 0 upto {extent s.cases - 1} do
+                        if maybe.isSome(:Shape s.cases[i].shape) then found := true end
+                    end
+                    found
+                end
+            when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom, shapeRecord,
+                shapeVariant, shapeArray, shapeCell, shapeOut, shapeException, shapeFun, shapeAll, shapeAuto,
+                shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then
+                false
         end
 
     let rec componentChangesView(s: Shape seen: Seen): Bool = holdsProxies(s) orif viewSensitive(s seen)
@@ -491,18 +481,15 @@ export
      * may be proxies, type variables, and functions whose signatures mention
      * any of these *)
     and viewSensitive(s: Shape seen: Seen): Bool =
-        begin
-            let kind = s.kind
-            if isOneOf(kind array of "record" "variant" "typevar" "abstract" "auto" "operator" end) then
-                true
-            elsif isOneOf(kind array of "tuple" "option" end) then
-                proxiedIn(s seen)
-            elsif isOneOf(kind array of "fun" "all" end) then
+        case s.kind
+            when shapeRecord, shapeVariant, shapeTypevar, shapeAbstract, shapeAuto, shapeOperator then true
+            when shapeTuple, shapeOption then proxiedIn(s seen)
+            when shapeFun, shapeAll then
                 if hashMap.contains(:Int :Bool seen s.id) then
                     false
                 else
                     hashMap.insert(:Int :Bool seen s.id true)
-                    if eq(kind "all") then
+                    if shapes.kindIs(s shapes.shapeAll) then
                         true
                     else
                         let var found = viewSensitive(shapes.result(s) seen)
@@ -512,9 +499,8 @@ export
                         found
                     end
                 end
-            else
-                false
-            end
+            when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom, shapeArray,
+                shapeCell, shapeOut, shapeException, shapeExternal, shapePending then false
         end
 
     and proxiedIn(s: Shape seen: Seen): Bool =
@@ -522,39 +508,44 @@ export
             false
         else
             hashMap.insert(:Int :Bool seen s.id true)
-            if eq(s.kind "tuple") then
-                let var found = false
-                for i = 0 upto {extent s.components - 1} do
-                    if not(found) andif componentChangesView(shapes.componentShape(s.components[i]) seen) then
-                        found := true
-                    end
-                end
-                found
-            elsif eq(s.kind "option") then
-                if extent s.cases >= 2 then
-                    true
-                else
+            case s.kind
+                when shapeTuple then
                     let var found = false
-                    for i = 0 upto {extent s.cases - 1} do
-                        let c = s.cases[i]
-                        if maybe.isSome(:Shape c.shape) andif eq(maybe.unwrap(:Shape c.shape).kind "tuple") then
-                            let payload = maybe.unwrap(:Shape c.shape)
-                            for j = 0 upto {extent payload.components - 1} do
-                                if not(found) andif componentChangesView(shapes.componentShape(payload.components[j]) seen) then
-                                    found := true
-                                end
-                            end
+                    for i = 0 upto {extent s.components - 1} do
+                        if not(found) andif componentChangesView(shapes.componentShape(s.components[i]) seen) then
+                            found := true
                         end
                     end
                     found
-                end
-            else
-                false
+                when shapeOption then
+                    if extent s.cases >= 2 then
+                        true
+                    else
+                        let var found = false
+                        for i = 0 upto {extent s.cases - 1} do
+                            let c = s.cases[i]
+                            if maybe.isSome(:Shape c.shape)
+                                andif shapes.kindIs(maybe.unwrap(:Shape c.shape) shapes.shapeTuple) then
+                                let payload = maybe.unwrap(:Shape c.shape)
+                                for j = 0 upto {extent payload.components - 1} do
+                                    if not(found) andif
+                                        componentChangesView(shapes.componentShape(payload.components[j]) seen) then
+                                        found := true
+                                    end
+                                end
+                            end
+                        end
+                        found
+                    end
+                when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
+                    shapeRecord, shapeVariant, shapeArray, shapeCell, shapeOut, shapeException, shapeFun, shapeAll,
+                    shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then
+                    false
             end
         end
 
     let mayBeProxied(s: Shape): Bool =
-        if not(isOneOf(s.kind array of "tuple" "option" end)) then
+        if not({shapes.kindIs(s shapes.shapeTuple) orif shapes.kindIs(s shapes.shapeOption)}) then
             false
         else
             let l = layoutOf(s)
@@ -929,45 +920,43 @@ export
             else
                 if shapes.isRecursive(s) then hashMap.insert(:Int :Bool seen s.id true) end
                 let slot = fun(component: Shape): Bool agrees(component subst slotPlace seen)
-                let kind = s.kind
-                if eq(kind "abstract") andif s.type.form?typeApp then
+                case s.kind
                     (* An application of an abstract operator, whose values are
                      * opaque pointers *)
-                    true
-                elsif isOneOf(kind array of "tuple" "record" end) then
-                    let var all = true
-                    for i = 0 upto {extent s.components - 1} do
-                        if all andif not(slot(shapes.componentShape(s.components[i]))) then all := false end
-                    end
-                    all
-                elsif isOneOf(kind array of "variant" "option" end) then
-                    let var all = true
-                    for i = 0 upto {extent s.cases - 1} do
-                        let c = s.cases[i].shape
-                        if all andif maybe.isSome(:Shape c) andif not(slot(maybe.unwrap(:Shape c))) then all := false end
-                    end
-                    all
-                elsif isOneOf(kind array of "array" "exception" end) then
-                    (* An exception's payload is raised in a QVal word, read
-                     * as a slot *)
-                    slot(shapes.element(s))
-                elsif isOneOf(kind array of "cell" "out" end) then
-                    agrees(shapes.element(s) subst cellPlace seen)
-                elsif eq(kind "fun") then
-                    let var all = true
-                    for i = 0 upto {extent s.params - 1} do
-                        let p = s.params[i]
-                        if all andif not(agrees(p.shape subst if eq(p.mode "value") then registerPlace else cellPlace end seen)) then
-                            all := false
+                    when shapeAbstract then s.type.form?typeApp
+                    when shapeTuple, shapeRecord then
+                        let var all = true
+                        for i = 0 upto {extent s.components - 1} do
+                            if all andif not(slot(shapes.componentShape(s.components[i]))) then all := false end
                         end
-                    end
-                    all andif agrees(shapes.result(s) subst registerPlace seen)
-                elsif eq(kind "all") then
-                    agrees(shapes.body(s) subst place seen)
-                else
+                        all
+                    when shapeVariant, shapeOption then
+                        let var all = true
+                        for i = 0 upto {extent s.cases - 1} do
+                            let c = s.cases[i].shape
+                            if all andif maybe.isSome(:Shape c)
+                                andif not(slot(maybe.unwrap(:Shape c))) then all := false end
+                        end
+                        all
+                    (* An exception's payload is raised in a QVal word, read as
+                     * a slot *)
+                    when shapeArray, shapeException then slot(shapes.element(s))
+                    when shapeCell, shapeOut then agrees(shapes.element(s) subst cellPlace seen)
+                    when shapeFun then
+                        let var all = true
+                        for i = 0 upto {extent s.params - 1} do
+                            let p = s.params[i]
+                            if all andif not(agrees(p.shape subst
+                                    if eq(p.mode "value") then registerPlace else cellPlace end seen)) then
+                                all := false
+                            end
+                        end
+                        all andif agrees(shapes.result(s) subst registerPlace seen)
+                    when shapeAll then agrees(shapes.body(s) subst place seen)
                     (* Anything else that mentions a type parameter (auto types,
                      * path types) may differ *)
-                    false
+                    when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
+                        shapeAuto, shapeTypevar, shapeExternal, shapeOperator, shapePending then false
                 end
             end
         end
@@ -986,49 +975,51 @@ export
                     false
                 else
                     if shapes.isRecursive(s) then hashMap.insert(:Int :Bool seen s.id true) end
-                    let kind = s.kind
-                    if eq(kind "array") then
-                        disagrees(shapes.element(s) slotPlace) orif visit(shapes.element(s))
-                    elsif isOneOf(kind array of "cell" "out" end) then
-                        disagrees(shapes.element(s) cellPlace) orif visit(shapes.element(s))
-                    elsif eq(kind "tuple") then
+                    case s.kind
+                        when shapeArray then disagrees(shapes.element(s) slotPlace) orif visit(shapes.element(s))
+                        when shapeCell, shapeOut then disagrees(shapes.element(s) cellPlace)
+                            orif visit(shapes.element(s))
                         (* A tuple is converted through a proxy, which reads and
                          * writes its original's components *)
-                        let var any = false
-                        for i = 0 upto {extent s.components - 1} do
-                            if not(any) andif visit(shapes.componentShape(s.components[i])) then any := true end
-                        end
-                        any
-                    elsif eq(kind "record") then
-                        let var any = false
-                        for i = 0 upto {extent s.components - 1} do
-                            let c = s.components[i]
-                            let cs = shapes.componentShape(c)
-                            if not(any) andif {{c.isVar andif disagrees(cs slotPlace)} orif visit(cs)} then any := true end
-                        end
-                        any
-                    elsif eq(kind "variant") then
-                        let var any = false
-                        for i = 0 upto {extent s.cases - 1} do
-                            let c = s.cases[i]
-                            if not(any) andif maybe.isSome(:Shape c.shape) then
-                                let cs = maybe.unwrap(:Shape c.shape)
-                                if {c.isVar andif disagrees(cs slotPlace)} orif visit(cs) then any := true end
+                        when shapeTuple then
+                            let var any = false
+                            for i = 0 upto {extent s.components - 1} do
+                                if not(any) andif visit(shapes.componentShape(s.components[i])) then any := true end
                             end
-                        end
-                        any
-                    elsif eq(kind "option") then
-                        let var any = false
-                        for i = 0 upto {extent s.cases - 1} do
-                            let c = s.cases[i]
-                            if not(any) andif maybe.isSome(:Shape c.shape) andif visit(maybe.unwrap(:Shape c.shape)) then
-                                any := true
+                            any
+                        when shapeRecord then
+                            let var any = false
+                            for i = 0 upto {extent s.components - 1} do
+                                let c = s.components[i]
+                                let cs = shapes.componentShape(c)
+                                if not(any) andif {{c.isVar andif disagrees(cs slotPlace)}
+                                    orif visit(cs)} then any := true end
                             end
-                        end
-                        any
-                    else
+                            any
+                        when shapeVariant then
+                            let var any = false
+                            for i = 0 upto {extent s.cases - 1} do
+                                let c = s.cases[i]
+                                if not(any) andif maybe.isSome(:Shape c.shape) then
+                                    let cs = maybe.unwrap(:Shape c.shape)
+                                    if {c.isVar andif disagrees(cs slotPlace)} orif visit(cs) then any := true end
+                                end
+                            end
+                            any
+                        when shapeOption then
+                            let var any = false
+                            for i = 0 upto {extent s.cases - 1} do
+                                let c = s.cases[i]
+                                if not(any) andif maybe.isSome(:Shape c.shape)
+                                    andif visit(maybe.unwrap(:Shape c.shape)) then
+                                    any := true
+                                end
+                            end
+                            any
                         (* Closures are adapted rather than copied *)
-                        false
+                        when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
+                            shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal,
+                            shapeOperator, shapePending then false
                     end
                 end
             visit(shapes.shape(t))
@@ -1038,12 +1029,12 @@ export
         begin
             let var s = shapes.shape(t)
             let var count = 0
-            while eq(s.kind "all") do
+            while shapes.kindIs(s shapes.shapeAll) do
                 count := count + extent s.typeParams
                 s := shapes.body(s)
             end
-            let params = if eq(s.kind "fun") then s.params else array of :shapes.Param end end
-            let result = if eq(s.kind "fun") then shapes.result(s) else s end
+            let params = if shapes.kindIs(s shapes.shapeFun) then s.params else array of :shapes.Param end end
+            let result = if shapes.kindIs(s shapes.shapeFun) then shapes.result(s) else s end
             let key = stringBuilder.new()
             key.str(shapeRepresentation(result)).char('|').str(syntax.cInt(count))
             for i = 0 upto {extent params - 1} do
@@ -1051,7 +1042,7 @@ export
                 key.char('|')
                 if not(eq(p.mode "value")) then
                     key.str(shapeLocationRepresentation(p.shape) <> " *")
-                elsif eq(p.shape.kind "ok") then
+                elsif shapes.kindIs(p.shape shapes.shapeOk) then
                     key.str("QVal")
                 else
                     key.str(shapeRepresentation(p.shape))

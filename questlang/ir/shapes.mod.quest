@@ -17,11 +17,93 @@ export
     (* An internal error: a type with no shape (the bootstrap's ValueError) *)
     let noShape: Exception(String) = exception noShape: String end
 
-    let scalarKinds = array of "int" "real" "bool" "char" "string" "ok" "word" "bottom" end
+    Def ShapeKind = Option shapeInt shapeReal shapeBool shapeChar shapeString shapeOk shapeWord shapeBottom shapeTuple
+        shapeRecord shapeVariant shapeOption shapeArray shapeCell shapeOut shapeException shapeFun shapeAll shapeAuto
+        shapeTypevar shapeAbstract shapeExternal shapeOperator shapePending end
+    let shapeInt: ShapeKind = option shapeInt of ShapeKind end
+    let shapeReal: ShapeKind = option shapeReal of ShapeKind end
+    let shapeBool: ShapeKind = option shapeBool of ShapeKind end
+    let shapeChar: ShapeKind = option shapeChar of ShapeKind end
+    let shapeString: ShapeKind = option shapeString of ShapeKind end
+    let shapeOk: ShapeKind = option shapeOk of ShapeKind end
+    let shapeWord: ShapeKind = option shapeWord of ShapeKind end
+    let shapeBottom: ShapeKind = option shapeBottom of ShapeKind end
+    let shapeTuple: ShapeKind = option shapeTuple of ShapeKind end
+    let shapeRecord: ShapeKind = option shapeRecord of ShapeKind end
+    let shapeVariant: ShapeKind = option shapeVariant of ShapeKind end
+    let shapeOption: ShapeKind = option shapeOption of ShapeKind end
+    let shapeArray: ShapeKind = option shapeArray of ShapeKind end
+    let shapeCell: ShapeKind = option shapeCell of ShapeKind end
+    let shapeOut: ShapeKind = option shapeOut of ShapeKind end
+    let shapeException: ShapeKind = option shapeException of ShapeKind end
+    let shapeFun: ShapeKind = option shapeFun of ShapeKind end
+    let shapeAll: ShapeKind = option shapeAll of ShapeKind end
+    let shapeAuto: ShapeKind = option shapeAuto of ShapeKind end
+    let shapeTypevar: ShapeKind = option shapeTypevar of ShapeKind end
+    let shapeAbstract: ShapeKind = option shapeAbstract of ShapeKind end
+    let shapeExternal: ShapeKind = option shapeExternal of ShapeKind end
+    let shapeOperator: ShapeKind = option shapeOperator of ShapeKind end
+    let shapePending: ShapeKind = option shapePending of ShapeKind end
+
+    let kindName(k: ShapeKind): String =
+        case k
+            when shapeInt then "int"
+            when shapeReal then "real"
+            when shapeBool then "bool"
+            when shapeChar then "char"
+            when shapeString then "string"
+            when shapeOk then "ok"
+            when shapeWord then "word"
+            when shapeBottom then "bottom"
+            when shapeTuple then "tuple"
+            when shapeRecord then "record"
+            when shapeVariant then "variant"
+            when shapeOption then "option"
+            when shapeArray then "array"
+            when shapeCell then "cell"
+            when shapeOut then "out"
+            when shapeException then "exception"
+            when shapeFun then "fun"
+            when shapeAll then "all"
+            when shapeAuto then "auto"
+            when shapeTypevar then "typevar"
+            when shapeAbstract then "abstract"
+            when shapeExternal then "external"
+            when shapeOperator then "operator"
+            when shapePending then "pending"
+        end
+
+    let kindIndex(k: ShapeKind): Int =
+        case k
+            when shapeInt then 0
+            when shapeReal then 1
+            when shapeBool then 2
+            when shapeChar then 3
+            when shapeString then 4
+            when shapeOk then 5
+            when shapeWord then 6
+            when shapeBottom then 7
+            when shapeTuple then 8
+            when shapeRecord then 9
+            when shapeVariant then 10
+            when shapeOption then 11
+            when shapeArray then 12
+            when shapeCell then 13
+            when shapeOut then 14
+            when shapeException then 15
+            when shapeFun then 16
+            when shapeAll then 17
+            when shapeAuto then 18
+            when shapeTypevar then 19
+            when shapeAbstract then 20
+            when shapeExternal then 21
+            when shapeOperator then 22
+            when shapePending then 23
+        end
 
     Def Rec Shape = Tuple
         id: Int
-        var kind: String
+        var kind: ShapeKind
         type: model.Type
         var structure: model.Type
         var components: Array(Component)
@@ -42,7 +124,7 @@ export
     let intEqual(a: Int b: Int): Bool = a is b
     let counter = tuple let var id = 0 end
 
-    let newShape(kind: String t: Type): Shape =
+    let newShape(kind: ShapeKind t: Type): Shape =
         begin
             counter.id := counter.id + 1
             tuple
@@ -67,7 +149,7 @@ export
         if maybe.isSome(:Shape what) then
             maybe.unwrap(:Shape what)
         else
-            raise noShape with "a " <> s.kind <> " shape has no " <> field end
+            raise noShape with "a " <> kindName(s.kind) <> " shape has no " <> field end
         end
 
     let element(s: Shape): Shape = unwrapped(s s.elementShape "element")
@@ -89,7 +171,17 @@ export
             found
         end
 
-    let isScalar(s: Shape): Bool = isOneOf(s.kind scalarKinds)
+    let sameKind(a: ShapeKind b: ShapeKind): Bool = kindIndex(a) is kindIndex(b)
+    let kindIs(s: Shape k: ShapeKind): Bool = sameKind(s.kind k)
+
+    let isScalar(s: Shape): Bool =
+        case s.kind
+            when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom then true
+            when shapeTuple, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut, shapeException,
+                shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending
+                then
+                false
+        end
 
     let isRecursive(s: Shape): Bool = s.type.form?typeRec orif s.type.form?typeRecGroup
 
@@ -241,13 +333,13 @@ export
             s.name := other.name
         end
 
-    let scalarKind(t: Type): maybe.T(String) =
-        if model.same(t model.intType) then maybe.some(:String "int")
-        elsif model.same(t model.realType) then maybe.some(:String "real")
-        elsif model.same(t model.boolType) then maybe.some(:String "bool")
-        elsif model.same(t model.charType) then maybe.some(:String "char")
-        elsif model.same(t model.stringType) then maybe.some(:String "string")
-        else maybe.none(:String)
+    let scalarKind(t: Type): maybe.T(ShapeKind) =
+        if model.same(t model.intType) then maybe.some(:ShapeKind shapeInt)
+        elsif model.same(t model.realType) then maybe.some(:ShapeKind shapeReal)
+        elsif model.same(t model.boolType) then maybe.some(:ShapeKind shapeBool)
+        elsif model.same(t model.charType) then maybe.some(:ShapeKind shapeChar)
+        elsif model.same(t model.stringType) then maybe.some(:ShapeKind shapeString)
+        else maybe.none(:ShapeKind)
         end
 
     (* The shape of t, made once for each type node and cached by its id
@@ -291,7 +383,7 @@ export
                  * recursive occurrences are this node: enter the shape before
                  * building the unfolding's, so that they refer to it, and fill
                  * it in from the unfolding's *)
-                let s = newShape("pending" t)
+                let s = newShape(shapePending t)
                 hashMap.insert(:Int :Shape built t.id s)
                 fillFrom(s shapeOf(model.unfoldLazily(t)))
                 s
@@ -343,16 +435,16 @@ export
         begin
             (* Scalars are singletons, recognized by identity *)
             let scalar = scalarKind(t)
-            if maybe.isSome(:String scalar) then
-                newShape(maybe.unwrap(:String scalar) t)
+            if maybe.isSome(:ShapeKind scalar) then
+                newShape(maybe.unwrap(:ShapeKind scalar) t)
             elsif isWordType(t) then
-                newShape("word" t)
+                newShape(shapeWord t)
             else
                 case t.form
-                    when typeOk then newShape("ok" t)
-                    when typeBottom then newShape("bottom" t)
+                    when typeOk then newShape(shapeOk t)
+                    when typeBottom then newShape(shapeBottom t)
                     when typeTuple with x then
-                        let s = newShape("tuple" t)
+                        let s = newShape(shapeTuple t)
                         let values = model.tupleValueFields(x.fields)
                         let components = array of(extent values
                             tuple let name = maybe.none(:String) let shape = maybe.none(:Shape) let isVar = false end)
@@ -366,11 +458,11 @@ export
                         s.components := components
                         s
                     when typeRecord with x then
-                        let s = newShape("record" t)
+                        let s = newShape(shapeRecord t)
                         s.components := fieldComponents(x.fields)
                         s
                     when typeVariant with x then
-                        let s = newShape("variant" t)
+                        let s = newShape(shapeVariant t)
                         let cases = array of(extent x.variants
                             tuple let name = maybe.none(:String) let shape = maybe.none(:Shape) let isVar = false end)
                         for i = 0 upto {extent x.variants - 1} do
@@ -388,7 +480,7 @@ export
                         s.cases := cases
                         s
                     when typeOption with x then
-                        let s = newShape("option" t)
+                        let s = newShape(shapeOption t)
                         let cases = array of(extent x.options
                             tuple let name = maybe.none(:String) let shape = maybe.none(:Shape) let isVar = false end)
                         for i = 0 upto {extent x.options - 1} do
@@ -406,23 +498,23 @@ export
                         s.cases := cases
                         s
                     when typeArray with x then
-                        let s = newShape("array" t)
+                        let s = newShape(shapeArray t)
                         s.elementShape := maybe.some(:Shape shapeOf(x.element))
                         s
                     when typeVar with x then
-                        let s = newShape("cell" t)
+                        let s = newShape(shapeCell t)
                         s.elementShape := maybe.some(:Shape shapeOf(x.element))
                         s
                     when typeOut with x then
-                        let s = newShape("out" t)
+                        let s = newShape(shapeOut t)
                         s.elementShape := maybe.some(:Shape shapeOf(x.element))
                         s
                     when typeException with x then
-                        let s = newShape("exception" t)
+                        let s = newShape(shapeException t)
                         s.elementShape := maybe.some(:Shape shapeOf(x.payload))
                         s
                     when typeFun with x then
-                        let s = newShape("fun" t)
+                        let s = newShape(shapeFun t)
                         let params = array of(extent x.params tuple let name = "" let shape = s let mode = "value" end)
                         for i = 0 upto {extent x.params - 1} do
                             let p = x.params[i]
@@ -436,7 +528,7 @@ export
                         s.resultShape := maybe.some(:Shape shapeOf(x.result))
                         s
                     when typeAll with x then
-                        let s = newShape("all" t)
+                        let s = newShape(shapeAll t)
                         let typeParams = array of(extent x.quantifiers
                             tuple let name = "" let symbolId = 0 let kind = model.typeKind let bound = maybe.none(:Shape) end)
                         for i = 0 upto {extent x.quantifiers - 1} do
@@ -452,7 +544,7 @@ export
                         s.bodyShape := maybe.some(:Shape shapeOf(x.body))
                         s
                     when typeAuto with x then
-                        let s = newShape("auto" t)
+                        let s = newShape(shapeAuto t)
                         s.typeParams := array of tuple
                             let name = x.typeParam
                             let symbolId = x.symbolId
@@ -462,7 +554,7 @@ export
                         s.components := fieldComponents(x.signature)
                         s
                     when typeVariable with x then
-                        let s = newShape("typevar" t)
+                        let s = newShape(shapeTypevar t)
                         s.symbolId := x.symbolId
                         s.name := x.name
                         s.bound := if maybe.isSome(:model.Kind x.bound) then kindBound(maybe.unwrap(:model.Kind x.bound))
@@ -471,26 +563,26 @@ export
                     (* An abstract type elaborated as such, or a path type
                      * (x.T): opaque, with its bound *)
                     when typeAbstract with x then
-                        let s = newShape("abstract" t)
+                        let s = newShape(shapeAbstract t)
                         s.name := dump.shortTypeName(t)
                         s.bound := kindBound(x.bound)
                         s
                     when typePath with x then
-                        let s = newShape("abstract" t)
+                        let s = newShape(shapeAbstract t)
                         s.name := dump.shortTypeName(t)
                         s.bound := kindBound(x.bound)
                         s
                     (* An application of an abstract type operator
                      * (normalizeType reduced every other): opaque *)
                     when typeApp then
-                        let s = newShape("abstract" t)
+                        let s = newShape(shapeAbstract t)
                         s.name := dump.shortTypeName(t)
                         s
                     when typeExternal with x then
-                        let s = newShape("external" t)
+                        let s = newShape(shapeExternal t)
                         s.name := x.cType
                         s
-                    when typeOperator then newShape("operator" t)
+                    when typeOperator then newShape(shapeOperator t)
                     else raise noShape with "the type " <> model.show(t) <> " has no shape" end
                 end
             end

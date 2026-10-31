@@ -406,7 +406,8 @@ export
             (* A type parameter bounded by a tuple type is indexed as its
              * bound *)
             let s = layout.resolvedShape(shapes.shape(tupleType))
-            if not(eq(s.kind "tuple")) then fail(:Ok "tuple component of a " <> s.kind) end
+            if not(shapes.kindIs(s shapes.shapeTuple)) then fail(:Ok "tuple component of a "
+                <> shapes.kindName(s.kind)) end
             let var found = ~1
             if maybe.isSome(:String field) then
                 for i = 0 upto {extent s.components - 1} do
@@ -826,10 +827,14 @@ export
             else
                 let base = value(l target none)
                 let s = layout.resolvedShape(shapes.shape(target.type))
-                if eq(s.kind "tuple") then
-                    letOp(l nodes.tupleField(base tupleIndex(target.type ~1 maybe.some(:String field))) e.type into)
-                else
-                    letOp(l nodes.recordField(base field) e.type into)
+                case s.kind
+                    when shapeTuple then
+                        letOp(l nodes.tupleField(base tupleIndex(target.type ~1 maybe.some(:String field))) e.type into)
+                    when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
+                        shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut, shapeException,
+                        shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator,
+                        shapePending then
+                        letOp(l nodes.recordField(base field) e.type into)
                 end
             end
         end
@@ -1055,21 +1060,25 @@ export
                         let base = value(l x.target none)
                         let a = value(l v none)
                         let s = layout.resolvedShape(shapes.shape(x.target.type))
-                        if eq(s.kind "tuple") then
-                            emit(l option sStoreComponent of Stmt with
-                                let var value = a
-                                let var base = base
-                                let index = tupleIndex(x.target.type ~1 maybe.some(:String x.field))
-                                let var access = nodes.direct
-                                let var viewMap = maybe.none(:Variable)
-                            end)
-                        else
-                            emit(l option sStoreField of Stmt with
-                                let var value = a
-                                let var base = base
-                                let name = x.field
-                                let var viewMap = maybe.none(:Variable)
-                            end)
+                        case s.kind
+                            when shapeTuple then
+                                emit(l option sStoreComponent of Stmt with
+                                    let var value = a
+                                    let var base = base
+                                    let index = tupleIndex(x.target.type ~1 maybe.some(:String x.field))
+                                    let var access = nodes.direct
+                                    let var viewMap = maybe.none(:Variable)
+                                end)
+                            when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord,
+                                shapeBottom, shapeRecord, shapeVariant, shapeOption, shapeArray, shapeCell, shapeOut,
+                                shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract,
+                                shapeExternal, shapeOperator, shapePending then
+                                emit(l option sStoreField of Stmt with
+                                    let var value = a
+                                    let var base = base
+                                    let name = x.field
+                                    let var viewMap = maybe.none(:Variable)
+                                end)
                         end
                     else
                         let address = value(l target none)

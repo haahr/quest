@@ -18,13 +18,19 @@ export
 
     (* The kinds of shapes in whose representation a type parameter bounded by
      * one holds its values *)
-    let isViewedKind(kind: String): Bool = eq(kind "record") orif eq(kind "variant") orif eq(kind "option")
+    let isViewedKind(kind: shapes.ShapeKind): Bool =
+        case kind
+            when shapeRecord, shapeVariant, shapeOption then true
+            when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom, shapeTuple,
+                shapeArray, shapeCell, shapeOut, shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar,
+                shapeAbstract, shapeExternal, shapeOperator, shapePending then false
+        end
 
-    let writtenStructure(t: Type kind: String): maybe.T(Type) =
+    let writtenStructure(t: Type kind: shapes.ShapeKind): maybe.T(Type) =
         begin
             let s = shapes.shape(t)
             let held = if isViewedKind(kind) then layout.resolvedShape(s) else s end
-            if not(eq(held.kind kind)) then
+            if not(shapes.sameKind(held.kind kind)) then
                 maybe.none(:Type)
             else
                 maybe.some(:Type canonical.normalizeType(if shapes.same(held s) then t else canonical.resolveTypeBound(t) end))
@@ -33,7 +39,7 @@ export
 
     let arrayElement(t: Type): maybe.T(Type) =
         begin
-            let w = writtenStructure(t "array")
+            let w = writtenStructure(t shapes.shapeArray)
             if maybe.isSome(:Type w) then
                 case maybe.unwrap(:Type w).form
                     when typeArray with x then maybe.some(:Type x.element)

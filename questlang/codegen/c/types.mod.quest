@@ -91,19 +91,19 @@ export
             let var s = shapes.shape(t)
             let params = vector.new(:String)
             vector.append(:String params "void *")
-            while eq(s.kind "all") do
+            while shapes.kindIs(s shapes.shapeAll) do
                 (* Quantifier descriptors appear immediately after env *)
                 for i = 0 upto {extent s.typeParams - 1} do vector.append(:String params "const QTypeDescriptor *") end
                 s := shapes.body(s)
             end
-            if not(eq(s.kind "fun")) then
+            if not(shapes.kindIs(s shapes.shapeFun)) then
                 layout.shapeRepresentation(s) <> " (*)(" <> syntax.comma(params) <> ")"
             else
                 for i = 0 upto {extent s.params - 1} do
                     let p = s.params[i]
                     if not(eq(p.mode "value")) then
                         vector.append(:String params layout.shapeLocationRepresentation(p.shape) <> " *")
-                    elsif eq(p.shape.kind "ok") then
+                    elsif shapes.kindIs(p.shape shapes.shapeOk) then
                         vector.append(:String params "QVal")
                     else
                         vector.append(:String params layout.shapeRepresentation(p.shape))

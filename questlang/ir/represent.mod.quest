@@ -67,9 +67,15 @@ export
     let hasInstantiation(layout: Layout): Bool =
         maybe.isSome(:nodes.PlanLayout layout) andif not(hashMap.empty(:Int :Type maybe.unwrap(:nodes.PlanLayout layout).subst))
 
-    let isViewedKind(kind: String): Bool = eq(kind "record") orif eq(kind "variant") orif eq(kind "option")
+    let isViewedKind(kind: shapes.ShapeKind): Bool =
+        case kind
+            when shapeRecord, shapeVariant, shapeOption then true
+            when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom, shapeTuple,
+                shapeArray, shapeCell, shapeOut, shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar,
+                shapeAbstract, shapeExternal, shapeOperator, shapePending then false
+        end
 
-    let isFunctionKind(s: Shape): Bool = eq(s.kind "fun") orif eq(s.kind "all")
+    let isFunctionKind(s: Shape): Bool = shapes.kindIs(s shapes.shapeFun) orif shapes.kindIs(s shapes.shapeAll)
 
     let typeOf(a: Atom): Type = nodes.atomType(a)
 
@@ -87,7 +93,8 @@ export
     (* Whether s is a type parameter's bounded by a record, variant, option, or
      * tuple type, whose values are held at their own view *)
     let ownViewed(s: Shape): Bool =
-        layout.ownView(s) andif {isViewedKind(layout.resolvedShape(s).kind) orif eq(layout.resolvedShape(s).kind "tuple")}
+        layout.ownView(s) andif {isViewedKind(layout.resolvedShape(s).kind)
+            orif shapes.kindIs(layout.resolvedShape(s) shapes.shapeTuple)}
 
     let equal(a: Type b: Type): Bool = model.same(a b) orif subtyping.isTypeEqual(a b lookupNone)
 
@@ -352,7 +359,8 @@ export
             let x = maybe.unwrap(:Plan p)
             let ss = shapes.shape(x.source)
             let ts = shapes.shape(x.target)
-            if {eq(ts.kind "tuple") orif eq(ts.kind "option")} andif layout.mayBeProxied(ss) andif not(layout.mayBeProxied(ts)) then
+            if {shapes.kindIs(ts shapes.shapeTuple) orif shapes.kindIs(ts shapes.shapeOption)}
+                andif layout.mayBeProxied(ss) andif not(layout.mayBeProxied(ts)) then
                 newPlan(nodes.planUnproxy x.source x.target)
             else
                 p
@@ -416,7 +424,7 @@ export
         begin
             let ss = shapes.shape(source)
             let ts = shapes.shape(target)
-            if eq(ss.kind "ok") orif eq(ts.kind "ok") then
+            if shapes.kindIs(ss shapes.shapeOk) orif shapes.kindIs(ts shapes.shapeOk) then
                 none
             else
                 let cs = layout.shapeRepresentation(ss)
@@ -463,9 +471,9 @@ export
         else
             let sHeld = layout.resolvedShape(ss)
             let tHeld = layout.resolvedShape(ts)
-            if eq(sHeld.kind "record") andif eq(tHeld.kind "record") then
+            if shapes.kindIs(sHeld shapes.shapeRecord) andif shapes.kindIs(tHeld shapes.shapeRecord) then
                 if equal(sHeld.type tHeld.type) then none else newPlan(nodes.planRecordView source target) end
-            elsif eq(sHeld.kind "variant") andif eq(tHeld.kind "variant") then
+            elsif shapes.kindIs(sHeld shapes.shapeVariant) andif shapes.kindIs(tHeld shapes.shapeVariant) then
                 let var sameIndices = true
                 for i = 0 upto {extent sHeld.cases - 1} do
                     let name = maybe.unwrapOr(:String sHeld.cases[i].name "")
@@ -487,7 +495,8 @@ export
                      * the type the caller holds it at *)
                     newPlan(nodes.planView sHeld.structure tHeld.structure)
                 end
-            elsif eq(sHeld.kind "option") andif eq(tHeld.kind "option") andif not(equal(sHeld.type tHeld.type)) then
+            elsif shapes.kindIs(sHeld shapes.shapeOption) andif shapes.kindIs(tHeld shapes.shapeOption)
+                andif not(equal(sHeld.type tHeld.type)) then
                 if not(boundedView(ss) orif boundedView(ts)) andif optionCasesAgree(sHeld tHeld) then
                     if eq(cs ct) then none else newPlan(nodes.planCast source target) end
                 else
@@ -495,7 +504,7 @@ export
                      * descriptors) *)
                     newPlan(nodes.planView sHeld.structure tHeld.structure)
                 end
-            elsif eq(ss.kind "tuple") andif eq(ts.kind "tuple") then
+            elsif shapes.kindIs(ss shapes.shapeTuple) andif shapes.kindIs(ts shapes.shapeTuple) then
                 if extent ss.components < extent ts.components then
                     unsupported(:maybe.T(Plan) "converting a tuple of type " <> model.show(source) <> " to " <> model.show(target))
                 else
@@ -516,10 +525,12 @@ export
                         newPlan(nodes.planView source target)
                     end
                 end
-            elsif eq(cs ct) andif not(isFunctionKind(ts) orif eq(ts.kind "option") orif eq(ts.kind "array")) then
+            elsif eq(cs ct) andif not(isFunctionKind(ts) orif shapes.kindIs(ts shapes.shapeOption)
+                orif shapes.kindIs(ts shapes.shapeArray)) then
                 none
             else
-                let arrayServes = if eq(ss.kind "array") andif eq(ts.kind "array") andif eq(cs ct) then
+                let arrayServes = if shapes.kindIs(ss shapes.shapeArray) andif shapes.kindIs(ts shapes.shapeArray)
+                    andif eq(cs ct) then
                     (* An array is shared and assigned through, so its elements
                      * cannot change view: it serves as it is when they need no
                      * conversion either way, or only a box or unbox *)
@@ -929,7 +940,7 @@ export
             signature.result
         end
 
-    let writtenField(t: Type kind: String name: String): maybe.T(Type) =
+    let writtenField(t: Type kind: shapes.ShapeKind name: String): maybe.T(Type) =
         begin
             let w = written.writtenStructure(t kind)
             if maybe.isNone(:Type w) then
@@ -946,7 +957,7 @@ export
 
     let writtenComponent(t: Type index: Int): maybe.T(Type) =
         begin
-            let w = written.writtenStructure(t "tuple")
+            let w = written.writtenStructure(t shapes.shapeTuple)
             if maybe.isNone(:Type w) then
                 maybe.none(:Type)
             else
@@ -961,7 +972,7 @@ export
 
     let writtenVariantCase(t: Type tag: String): maybe.T(Type) =
         begin
-            let w = written.writtenStructure(t "variant")
+            let w = written.writtenStructure(t shapes.shapeVariant)
             if maybe.isNone(:Type w) then
                 maybe.none(:Type)
             else
@@ -980,7 +991,7 @@ export
     let operation(r: Representer o: Op resultType: Type before: vector.T(Stmt)): maybe.T(Type) =
         case o
             when opMakeTuple with x then
-                let w = written.writtenStructure(resultType "tuple")
+                let w = written.writtenStructure(resultType shapes.shapeTuple)
                 if maybe.isSome(:Type w) then
                     case maybe.unwrap(:Type w).form
                         when typeTuple with t then
@@ -1002,7 +1013,7 @@ export
                 maybe.none(:Type)
             when opMakeOption with x then
                 if maybe.isSome(:Atom x.payload) andif maybe.isSome(:String x.tag) then
-                    let w = written.writtenStructure(resultType "option")
+                    let w = written.writtenStructure(resultType shapes.shapeOption)
                     if maybe.isSome(:Type w) then
                         case maybe.unwrap(:Type w).form
                             when typeOption with t then
@@ -1035,7 +1046,7 @@ export
                 end
                 maybe.none(:Type)
             when opTupleField with x then writtenComponent(typeOf(x.tup) x.index)
-            when opRecordField with x then writtenField(typeOf(x.recordAtom) "record" x.name)
+            when opRecordField with x then writtenField(typeOf(x.recordAtom) shapes.shapeRecord x.name)
             when opIndex with x then maybe.some(:Type arrayElement(typeOf(x.arr)))
             when opModuleMember with x then
                 case x.moduleRef
@@ -1070,7 +1081,7 @@ export
      * address) *)
     let storedType(s: Stmt): maybe.T(Type) =
         case s
-            when sStoreField with x then writtenField(typeOf(x.base) "record" x.name)
+            when sStoreField with x then writtenField(typeOf(x.base) shapes.shapeRecord x.name)
             when sStoreComponent with x then writtenComponent(typeOf(x.base) x.index)
             when sStoreElement with x then maybe.some(:Type arrayElement(typeOf(x.base)))
             else maybe.none(:Type)
@@ -1177,7 +1188,7 @@ export
                     x.args := vector.toArray(:Atom args)
                 when sRaise with x then
                     if maybe.isSome(:Atom x.payload) then
-                        let w = written.writtenStructure(typeOf(x.exc) "exception")
+                        let w = written.writtenStructure(typeOf(x.exc) shapes.shapeException)
                         if maybe.isSome(:Type w) then
                             case maybe.unwrap(:Type w).form
                                 when typeException with e then

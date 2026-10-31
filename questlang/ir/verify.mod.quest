@@ -197,7 +197,8 @@ export
             let optionShape = fun(t: model.Type): maybe.T(shapes.Shape)
                 begin
                     let s = layout.resolvedShape(shapes.shape(t))
-                    if eq(s.kind "option") then maybe.some(:shapes.Shape s) else maybe.none(:shapes.Shape) end
+                    if shapes.kindIs(s shapes.shapeOption) then maybe.some(:shapes.Shape s)
+                        else maybe.none(:shapes.Shape) end
                 end
             let check = fun(cases: Array(String) t: model.Type): Ok
                 begin
@@ -486,7 +487,8 @@ export
         begin
             let problems = vector.new(:String)
             let rep = fun(t: model.Type): maybe.T(String)
-                if eq(shapes.shape(t).kind "ok") then maybe.none(:String) else maybe.some(:String layout.representation(t)) end
+                if shapes.kindIs(shapes.shape(t) shapes.shapeOk) then maybe.none(:String)
+                    else maybe.some(:String layout.representation(t)) end
             let isBox = fun(a: Atom): Bool case a when atomVar with x then x.v.boxed andif not(x.v.isMutable) else false end
             let have = fun(a: Atom): maybe.T(String)
                 if isBox(a) then maybe.some(:String layout.slotRepresentation(nodes.atomType(a))) else rep(nodes.atomType(a)) end
@@ -503,7 +505,8 @@ export
             (* a, stored into a slot of shape s (embedded: boxed in the
              * aggregate's allocation) *)
             let slot = fun(a: Atom s: maybe.T(shapes.Shape) where: String embedded: Bool): Ok
-                if maybe.isSome(:shapes.Shape s) andif not(eq(maybe.unwrap(:shapes.Shape s).kind "ok")) then
+                if maybe.isSome(:shapes.Shape s)
+                    andif not(shapes.kindIs(maybe.unwrap(:shapes.Shape s) shapes.shapeOk)) then
                     let boxedIn = layout.isBoxedInSlots(maybe.unwrap(:shapes.Shape s))
                     if boxedIn andif not(embedded) andif not(isBox(a)) then
                         vector.append(:String problems where <> ": a record or variant stored into a slot unboxed")
@@ -514,7 +517,8 @@ export
             let located = fun(a: Atom): shapes.Shape
                 begin
                     let s = shapes.shape(nodes.atomType(a))
-                    if eq(s.kind "cell") orif eq(s.kind "out") then shapes.element(s) else s end
+                    if shapes.kindIs(s shapes.shapeCell)
+                        orif shapes.kindIs(s shapes.shapeOut) then shapes.element(s) else s end
                 end
             let calleeType = fun(c: nodes.OpCall): maybe.T(model.Type)
                 if maybe.isSome(:Variable c.callee) then
@@ -609,7 +613,8 @@ export
                                 when opMakeVariant with y then
                                     if maybe.isSome(:Atom y.payload) then
                                         let vs = layout.resolvedShape(shapes.shape(v.type))
-                                        let c = if eq(vs.kind "variant") then shapes.caseOf(vs y.tag) else maybe.none(:shapes.Component) end
+                                        let c = if shapes.kindIs(vs shapes.shapeVariant) then shapes.caseOf(vs y.tag)
+                                            else maybe.none(:shapes.Component) end
                                         slot(maybe.unwrap(:Atom y.payload)
                                             if maybe.isSome(:shapes.Component c) then maybe.unwrap(:shapes.Component c).shape else maybe.none(:shapes.Shape) end
                                             where <> ": the payload of " <> v.hint false)
@@ -624,8 +629,9 @@ export
                         when sRaise with x then
                             if maybe.isSome(:Atom x.payload) then
                                 let es = shapes.shape(nodes.atomType(x.exc))
-                                slot(maybe.unwrap(:Atom x.payload) if eq(es.kind "exception") then es.elementShape else maybe.none(:shapes.Shape) end
-                                    where <> ": a raised payload" false)
+                                let payloadShape = if shapes.kindIs(es shapes.shapeException) then es.elementShape
+                                    else maybe.none(:shapes.Shape) end
+                                slot(maybe.unwrap(:Atom x.payload) payloadShape where <> ": a raised payload" false)
                             end
                         when sEcho with x then
                             slot(x.value maybe.some(:shapes.Shape shapes.shape(x.type)) where <> ": an echoed value" false)

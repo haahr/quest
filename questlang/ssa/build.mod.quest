@@ -642,8 +642,8 @@ export
     let resultParts(t: Type): Array(Part) =
         begin
             let var s = shapes.shape(t)
-            while eq(s.kind "all") do s := shapes.body(s) end
-            if eq(s.kind "fun") then parts(shapes.result(s).type) else parts(s.type) end
+            while shapes.kindIs(s shapes.shapeAll) do s := shapes.body(s) end
+            if shapes.kindIs(s shapes.shapeFun) then parts(shapes.result(s).type) else parts(s.type) end
         end
 
     let resultsOf(fn: Fn ps: Array(Part) results: Array(Int)): Array(Int) =
@@ -779,10 +779,12 @@ export
             index
         end
 
-    let heldShape(t: Type kind: String): shapes.Shape =
+    let heldShape(t: Type kind: shapes.ShapeKind): shapes.Shape =
         begin
             let h = layout.resolvedShape(shapes.shape(t))
-            if not(eq(h.kind kind)) then raise unsupported with "a " <> kind <> " operation on " <> model.show(t) end end
+            if not(shapes.sameKind(h.kind kind)) then
+                raise unsupported with "a " <> shapes.kindName(kind) <> " operation on " <> model.show(t) end
+            end
             h
         end
     let componentShape(s: shapes.Shape i: Int): shapes.Shape = maybe.unwrap(:shapes.Shape s.components[i].shape)
@@ -837,14 +839,17 @@ export
     let tagOf(fn: Fn vs: Array(Int) ts: shapes.Shape access: ir.Access viewMap: maybe.T(Variable)): Int =
         if maybe.isSome(:Variable viewMap) then
             let vm = atom1(fn ir.atomOfVar(maybe.unwrap(:Variable viewMap)))
-            if eq(ts.kind "variant") then
-                let index = loadWord(fn vm runtimeLayout.offset("QViewMap" "index") tPtr)
-                let scaled = binary(fn ssa.opMul vs[0] constant(fn 8))
-                loadWord(fn indexPtr(fn index scaled) 0 tInt)
-            else
-                call1(fn "quest_view_option_tag" array of vs[0] vm end tInt)
+            case ts.kind
+                when shapeVariant then
+                    let index = loadWord(fn vm runtimeLayout.offset("QViewMap" "index") tPtr)
+                    let scaled = binary(fn ssa.opMul vs[0] constant(fn 8))
+                    loadWord(fn indexPtr(fn index scaled) 0 tInt)
+                when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
+                    shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
+                    shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then
+                    call1(fn "quest_view_option_tag" array of vs[0] vm end tInt)
             end
-        elsif eq(ts.kind "variant") then
+        elsif shapes.kindIs(ts shapes.shapeVariant) then
             vs[0]
         else
             optionTag(fn vs[0] access)
@@ -1136,7 +1141,9 @@ export
             (* The box, then the payload, then the embedded boxes *)
             let stored = vector.new(:Int)
             for i = 0 upto {extent o.fields - 1} do
-                if not(eq(shapes.shape(ir.atomType(o.fields[i].atom)).kind "ok")) then vector.append(:Int stored i) end
+                if not(shapes.kindIs(shapes.shape(ir.atomType(o.fields[i].atom)) shapes.shapeOk)) then
+                    vector.append(:Int stored i)
+                end
             end
             let argList = vector.new(:Atom)
             let typeList = vector.new(:Type)
@@ -1181,7 +1188,7 @@ export
     let tagShape(t: Type): shapes.Shape =
         begin
             let h = layout.resolvedShape(shapes.shape(t))
-            if not(eq(h.kind "variant") orif eq(h.kind "option")) then
+            if not(shapes.kindIs(h shapes.shapeVariant) orif shapes.kindIs(h shapes.shapeOption)) then
                 raise unsupported with "a tag test on a value of type " <> model.show(t) end
             end
             h
@@ -1248,7 +1255,8 @@ export
                 let pt = caseShape(os tagName)
                 let payloadAtom = maybe.unwrap(:Atom o.payload)
                 let pv = atom(fn payloadAtom)
-                if maybe.isSome(:shapes.Shape pt) andif eq(maybe.unwrap(:shapes.Shape pt).kind "tuple") then
+                if maybe.isSome(:shapes.Shape pt)
+                    andif shapes.kindIs(maybe.unwrap(:shapes.Shape pt) shapes.shapeTuple) then
                     let pts = maybe.unwrap(:shapes.Shape pt)
                     let ps = shapes.shape(ir.atomType(payloadAtom))
                     for i = 0 upto {extent pts.components - 1} do
@@ -1273,7 +1281,7 @@ export
             let tup = alloc(fn 8 * {if n is 0 then 1 else n end})
             let pt = caseShape(os tag)
             if offset > 0 then store(fn tup 0 8 constant(fn ordinalValue)) end
-            if maybe.isSome(:shapes.Shape pt) andif eq(maybe.unwrap(:shapes.Shape pt).kind "tuple") then
+            if maybe.isSome(:shapes.Shape pt) andif shapes.kindIs(maybe.unwrap(:shapes.Shape pt) shapes.shapeTuple) then
                 let pts = maybe.unwrap(:shapes.Shape pt)
                 for i = 0 upto {extent pts.components - 1} do
                     if {i + offset} < n then
@@ -1320,30 +1328,35 @@ export
         begin
             let b = tagIndex(ts tag)
             let cs = caseShape(ts tag)
-            if eq(ts.kind "variant") then
-                let caseT = if maybe.isSome(:shapes.Shape cs) then maybe.unwrap(:shapes.Shape cs).type else t end
-                fromWord(fn call1(fn "quest_view_part" array of vm constant(fn b) vs[1] end tInt) caseT)
-            else
-                let tupleS = shapes.shape(t)
-                if not(eq(tupleS.kind "tuple")) then
-                    fromWord(fn call1(fn "quest_view_option_component" array of vs[0] vm constant(fn b) constant(fn 0) end tInt) t)
-                else
-                    let n = extent tupleS.components
-                    let tup = alloc(fn 8 * {if n is 0 then 1 else n end})
-                    let var count = 0
-                    if maybe.isSome(:shapes.Shape cs) then
-                        let pt = maybe.unwrap(:shapes.Shape cs)
-                        count := if eq(pt.kind "tuple") then extent pt.components else 1 end
+            case ts.kind
+                when shapeVariant then
+                    let caseT = if maybe.isSome(:shapes.Shape cs) then maybe.unwrap(:shapes.Shape cs).type else t end
+                    fromWord(fn call1(fn "quest_view_part" array of vm constant(fn b) vs[1] end tInt) caseT)
+                when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
+                    shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
+                    shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then
+                    let tupleS = shapes.shape(t)
+                    if not(shapes.kindIs(tupleS shapes.shapeTuple)) then
+                        fromWord(fn call1(fn "quest_view_option_component"
+                            array of vs[0] vm constant(fn b) constant(fn 0) end tInt) t)
+                    else
+                        let n = extent tupleS.components
+                        let tup = alloc(fn 8 * {if n is 0 then 1 else n end})
+                        let var count = 0
+                        if maybe.isSome(:shapes.Shape cs) then
+                            let pt = maybe.unwrap(:shapes.Shape cs)
+                            count := if shapes.kindIs(pt shapes.shapeTuple) then extent pt.components else 1 end
+                        end
+                        let offset = n - count
+                        if offset > 0 then store(fn tup 0 8 constant(fn 0)) end
+                        for j = 0 upto {count - 1} do
+                            let w = call1(fn "quest_view_option_component"
+                                array of vs[0] vm constant(fn b) constant(fn j) end tInt)
+                            let comp = componentShape(tupleS j + offset)
+                            writeSlot(fn offsetPtr(fn tup 8 * {j + offset}) comp.type slotFromWord(fn w comp.type))
+                        end
+                        array of tup end
                     end
-                    let offset = n - count
-                    if offset > 0 then store(fn tup 0 8 constant(fn 0)) end
-                    for j = 0 upto {count - 1} do
-                        let w = call1(fn "quest_view_option_component" array of vs[0] vm constant(fn b) constant(fn j) end tInt)
-                        let comp = componentShape(tupleS j + offset)
-                        writeSlot(fn offsetPtr(fn tup 8 * {j + offset}) comp.type slotFromWord(fn w comp.type))
-                    end
-                    array of tup end
-                end
             end
         end
 
@@ -1366,9 +1379,11 @@ export
             if maybe.isSome(:Variable o.viewMap) then
                 let vm = atom1(fn ir.atomOfVar(maybe.unwrap(:Variable o.viewMap)))
                 let result = viewPayload(fn vs ts o.tag vm t)
-                if eq(ts.kind "option") then store(fn result[0] 0 8 constant(fn maybe.unwrapOr(:Int o.ordinalIndex 0))) end
+                if shapes.kindIs(ts shapes.shapeOption) then
+                    store(fn result[0] 0 8 constant(fn maybe.unwrapOr(:Int o.ordinalIndex 0)))
+                end
                 result
-            elsif eq(ts.kind "variant") then
+            elsif shapes.kindIs(ts shapes.shapeVariant) then
                 let cs = caseShape(ts o.tag)
                 let caseT = if maybe.isSome(:shapes.Shape cs) then maybe.unwrap(:shapes.Shape cs).type else t end
                 slotFromWord(fn vs[1] caseT)
@@ -1534,9 +1549,10 @@ export
                     convert(fn atom(fn x.value) x.plan)
                 end
             when opMakeRecord with x then makeRecord(fn x maybe.unwrap(:Variable result))
-            when opRecordField with x then recordField(fn atom(fn x.recordAtom) heldShape(ir.atomType(x.recordAtom) "record") x)
+            when opRecordField with x then recordField(fn atom(fn x.recordAtom)
+                heldShape(ir.atomType(x.recordAtom) shapes.shapeRecord) x)
             when opMakeVariant with x then
-                let vs = heldShape(maybe.unwrap(:Variable result).type "variant")
+                let vs = heldShape(maybe.unwrap(:Variable result).type shapes.shapeVariant)
                 let index = constant(fn tagIndex(vs x.tag))
                 if maybe.isNone(:Atom x.payload) then
                     array of index constant(fn 0) end
@@ -1587,7 +1603,8 @@ export
                 array of addr end
             when opLoad with x then readLocation(fn atom1(fn x.address) maybe.unwrap(:Variable result).type)
             when opAddrField with x then
-                array of recordSlot(fn atom(fn x.base) heldShape(ir.atomType(x.base) "record") x.name x.viewMap) end
+                array of recordSlot(fn atom(fn x.base) heldShape(ir.atomType(x.base) shapes.shapeRecord)
+                    x.name x.viewMap) end
             when opAddrComponent with x then
                 if maybe.isSome(:Variable x.viewMap) then
                     let vm = atom1(fn ir.atomOfVar(maybe.unwrap(:Variable x.viewMap)))
@@ -1780,7 +1797,7 @@ export
                 when sUnreachable then terminate(fn ssa.termUnreachable)
                 when sStoreAt with x then writeLocation(fn atom1(fn x.address) ir.atomType(x.value) atom(fn x.value))
                 when sStoreField with x then
-                    let rs = heldShape(ir.atomType(x.base) "record")
+                    let rs = heldShape(ir.atomType(x.base) shapes.shapeRecord)
                     writeSlot(fn recordSlot(fn atom(fn x.base) rs x.name x.viewMap) fieldShape(rs x.name).type atom(fn x.value))
                 when sStoreComponent with x then
                     if maybe.isSome(:Variable x.viewMap) then
@@ -1861,7 +1878,7 @@ export
         begin
             let v = atom(fn x.value)
             let t = tagShape(ir.atomType(x.value))
-            let isVariant = eq(t.kind "variant")
+            let isVariant = shapes.kindIs(t shapes.shapeVariant)
             let tag = tagOf(fn v t x.access x.viewMap)
             let after = ssa.newBlock(fn.f)
             let cases = vector.new(:Int)
@@ -1883,10 +1900,12 @@ export
             for ci = 0 upto {extent x.cases - 1} do
                 let c = x.cases[ci]
                 fn.cur := blocks[ci]
-                if maybe.isSome(:Variable c.binder) andif not(eq(shapes.shape(maybe.unwrap(:Variable c.binder).type).kind "ok")) then
+                if maybe.isSome(:Variable c.binder)
+                    andif not(shapes.kindIs(shapes.shape(maybe.unwrap(:Variable c.binder).type) shapes.shapeOk)) then
                     let binder = maybe.unwrap(:Variable c.binder)
                     let binderKind = shapes.shape(binder.type).kind
-                    let values = if maybe.isSome(:Variable x.viewMap) andif not(isVariant) andif eq(binderKind "tuple") then
+                    let values = if maybe.isSome(:Variable x.viewMap) andif not(isVariant)
+                        andif shapes.sameKind(binderKind shapes.shapeTuple) then
                         (* A bounded type parameter's value: its payload, viewed
                          * at the bound's payload type *)
                         let vm = atom1(fn ir.atomOfVar(maybe.unwrap(:Variable x.viewMap)))
@@ -1897,7 +1916,7 @@ export
                         viewPayload(fn v t c.tags[0] atom1(fn ir.atomOfVar(maybe.unwrap(:Variable x.viewMap))) binder.type)
                     elsif isVariant then
                         slotFromWord(fn v[1] binder.type)
-                    elsif eq(binderKind "tuple") then
+                    elsif shapes.sameKind(binderKind shapes.shapeTuple) then
                         array of optionCasePayload(fn v[0] x.access c.components) end
                     else
                         optionComponent(fn v[0] t c.tags[0] ~1 c.components[0])
@@ -2155,7 +2174,7 @@ export
         begin
             let var s = shapes.shape(t)
             let var n = 0
-            while eq(s.kind "all") do
+            while shapes.kindIs(s shapes.shapeAll) do
                 n := n + extent s.typeParams
                 s := shapes.body(s)
             end
@@ -2318,7 +2337,7 @@ export
     let exportedFunction(u: UnitBuilder clean: String name: String v: Variable): maybe.T(Function) =
         begin
             let shape = shapes.shape(v.type)
-            if not(eq(shape.kind "fun")) andif not(eq(shape.kind "all")) then
+            if not(shapes.kindIs(shape shapes.shapeFun)) andif not(shapes.kindIs(shape shapes.shapeAll)) then
                 maybe.none(:Function)
             else
                 let sig = staticdata.funShapeSignature(v.type)
@@ -2356,7 +2375,7 @@ export
             let np = vector.length(:model.Param sig.params)
             let ret = sig.result
             let retParts = parts(ret)
-            let isOk(t: Type): Bool = eq(shapes.shape(t).kind "ok")
+            let isOk(t: Type): Bool = shapes.kindIs(shapes.shape(t) shapes.shapeOk)
             let byLocation(p: model.Param): Bool = p.isVar orif p.isOut
             let s = signature(1 sig)
             let thunkName = "quest_thunk_" <> tag
