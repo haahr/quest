@@ -38,15 +38,26 @@
  *     longest; the interval is split where that register stops being free,
  *     and the rest is spilled (below);
  *   - otherwise, a register taken from the intervals holding it: the register
- *     whose holders are next read furthest away, which are split where they
- *     meet the interval and spilled from there; unless the interval's own
- *     next read is further away still, when it is the one spilled.
+ *     whose holders cost least to spill (below), which are split where they
+ *     meet the interval and spilled from there; unless the interval itself
+ *     costs less, when it is the one spilled (at equal costs, the one next
+ *     read furthest away is).
+ *
+ * The second case also takes a register if its holders cost less to spill
+ * than the part of the interval it would spill.
  *
  * A spilled interval, or part of one, is in memory only until its next read;
  * there the rest is split off and allocated again, as if it were a new
- * interval. "Furthest next read" takes the place of a coloring allocator's
- * spill costs.
+ * interval.
  *
+ * Costs: Spilling an interval from a position costs the load at its next
+ * read, so the frequency of that read's block, which is estimated: 1000,
+ * times 8 for each loop it is in (up to four), or 1 for a block the target
+ * says is cold (one from which every path raises). Where frequencies are
+ * equal, as in code without loops, the choices are "furthest next read"; a
+ * value read next in a loop keeps a register over one read next outside it,
+ * however near.
+
  * Unavailable registers: A register is not free for an interval where:
  *
  *   - a physical operand fixes it: the calling convention's moves to argument
@@ -119,6 +130,8 @@ export
         (* The callee-saved registers given to any, which the function must
          * save and restore for its caller *)
         calleeUsed: Array(Int)
+        (* Each block's estimated frequency *)
+        frequency: Array(Int)
         (* Each virtual register's first and last positions, by its index,
          * over all its pieces: where its slot, if it has one, holds it *)
         first: Array(Int)
@@ -129,8 +142,10 @@ export
      * allocatable registers (a call preserves the callee-saved ones and no
      * others). rematerializable says which instructions can be made again
      * wherever their result is needed, rather than the result stored; only
-     * those that read no virtual register and write one are asked. *)
-    allocate(f: machine.Function t: targets.Target rematerializable: All(i: machine.Inst) Bool): Allocation
+     * those that read no virtual register and write one are asked. cold says
+     * which blocks are cold. *)
+    allocate(f: machine.Function t: targets.Target rematerializable: All(i: machine.Inst) Bool cold: All(b: Int) Bool):
+        Allocation
     (* Where a virtual register (by its index) is at a position: its register,
      * or memory *)
     home(a: Allocation v: Int p: Int): Int

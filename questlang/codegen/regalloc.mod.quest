@@ -17,7 +17,8 @@ export
     Def Move = Tuple at: Int value: Int from: Int to: Int end
     Def Allocation = Tuple
         starts: Array(Array(Int)) homes: Array(Array(Int)) spilled: Array(Bool) remat: Array(Bool) moves: Array(Move)
-        blockStart: Array(Int) liveIn: Array(Array(Int)) calleeUsed: Array(Int) first: Array(Int) last: Array(Int)
+        blockStart: Array(Int) liveIn: Array(Array(Int)) calleeUsed: Array(Int) frequency: Array(Int)
+        first: Array(Int) last: Array(Int)
     end
     let memory = ~1
     Let Function = machine.Function
@@ -250,11 +251,21 @@ export
         firstVirtual: Int
         hints: Array(vector.T(Int))
         given: Array(Int)
+        (* Each position's block's frequency *)
+        freqAt: Array(Int)
     end
 
     (* Records a new interval or piece, so that the allocation can list every
      * piece at the end *)
     let made(sc: Scan it: Interval): Ok = vector.append(:Interval sc.intervals it)
+
+    (* What spilling an interval from p costs: it is loaded again at its
+     * next read, so that read's block's frequency, or 0 for none *)
+    let cost(sc: Scan it: Interval p: Int): Int =
+        begin
+            let u = nextUse(it p)
+            if u is never then 0 else sc.freqAt[u] end
+        end
 
     (* For each register of class c's pool, the first position from where cur
      * starts at which cur cannot be in it, or never: for a caller-saved one,
@@ -327,6 +338,79 @@ export
             end
         end
 
+    (* A register to take from the intervals holding it while cur would be
+     * in it: of those available to cur past position beyond, the one whose
+     * holders cost least to spill, and at equal costs the one whose holders
+     * are next read furthest away; ~1 for none. A holder that starts where
+     * cur does cannot be split there, so its register is not taken. *)
+    Let Choice = Tuple reg: Int cost: Int use: Int end
+
+    let choose(sc: Scan cur: Interval beyond: Int): Choice =
+        begin
+            let c = sc.classes[cur.value]
+            let n = extent sc.pools[c]
+            let s = firstPos(cur)
+            let block = blocked(sc cur c)
+            (* use[r]: the first read, from cur's start, of an interval
+             * holding register r while cur would, ~1 for a register that
+             * cannot be taken; costs[r], the most that spilling such an
+             * interval costs *)
+            let use = array of(n never)
+            let costs = array of(n 0)
+            let hold(it: Interval): Ok =
+                if firstPos(it) is s then use[it.reg] := ~1
+                elsif use[it.reg] >= 0 then
+                    let u = nextUse(it s)
+                    if u < use[it.reg] then use[it.reg] := u end
+                    let x = cost(sc it s)
+                    if x > costs[it.reg] then costs[it.reg] := x end
+                end
+            for k = 0 upto {vector.length(:Interval sc.active) - 1} do
+                let it = vector.get(:Interval sc.active k)
+                if sc.classes[it.value] is c then hold(it) end
+            end
+            for k = 0 upto {vector.length(:Interval sc.inactive) - 1} do
+                let it = vector.get(:Interval sc.inactive k)
+                if {sc.classes[it.value] is c} andif {intersection(it cur) >= 0} then hold(it) end
+            end
+            let var best = ~1
+            for r = 0 upto {n - 1} do
+                if {block[r] > beyond} andif {use[r] >= 0} then
+                    let better = {best < 0} orif {costs[r] < costs[best]}
+                        orif {{costs[r] is costs[best]} andif {use[r] > use[best]}}
+                    if better then best := r end
+                end
+            end
+            if best < 0 then tuple let reg = ~1 let cost = 0 let use = never end
+            else tuple let reg = best let cost = costs[best] let use = use[best] end end
+        end
+
+    (* Takes register r for cur: spills each holder from where it meets cur
+     * (an active one, at cur's start; an inactive one, where it first
+     * overlaps cur), and cur itself from where the register becomes
+     * unavailable, if that is before cur ends *)
+    let take(sc: Scan cur: Interval r: Int): Ok =
+        begin
+            let c = sc.classes[cur.value]
+            let s = firstPos(cur)
+            let block = blocked(sc cur c)
+            cur.reg := r
+            let holders = vector.toArray(:Interval sc.active)
+            for k = 0 upto {extent holders - 1} do
+                let it = holders[k]
+                if {sc.classes[it.value] is c} andif {it.reg is r} then splitSpill(sc it s) end
+            end
+            let sleepers = vector.toArray(:Interval sc.inactive)
+            for k = 0 upto {extent sleepers - 1} do
+                let it = sleepers[k]
+                if {sc.classes[it.value] is c} andif {it.reg is r} then
+                    let x = intersection(it cur)
+                    if x >= 0 then splitSpill(sc it x) end
+                end
+            end
+            if block[r] <= lastPos(cur) then splitSpill(sc cur block[r]) end
+        end
+
     (* Gives cur a register free for all of it: first one it is hinted to, then
      * the first in the pool, so a caller-saved one before a callee-saved one,
      * which the function would have to save and restore. Failing that, the
@@ -375,75 +459,38 @@ export
                 for r = 1 upto {n - 1} do if free[r] > free[best] then best := r end end
                 if free[best] <= s then false
                 else
-                    cur.reg := best
-                    splitSpill(sc cur free[best])
+                    (* A register taken from holders that cost less to spill
+                     * than the part of cur the free one would, if it keeps
+                     * more of cur *)
+                    let taken = choose(sc cur free[best])
+                    if {taken.reg >= 0} andif {taken.cost < cost(sc cur free[best])} then take(sc cur taken.reg)
+                    else
+                        cur.reg := best
+                        splitSpill(sc cur free[best])
+                    end
                     true
                 end
             end
         end
 
-    (* No register free: the one whose holders are next used furthest away is
-     * taken from them, unless cur's own next use is further, when cur is
-     * spilled instead. A holder that starts where cur does cannot be split
-     * there, so its register is not taken. *)
+    (* No register free: one is taken from its holders (choose), unless cur
+     * costs less to spill than they do, or as much and is next read further
+     * away, when cur is spilled instead *)
     let allocateBlocked(sc: Scan cur: Interval): Ok =
         begin
-            let c = sc.classes[cur.value]
-            let n = extent sc.pools[c]
             let s = firstPos(cur)
-            let block = blocked(sc cur c)
-            (* use[r]: the first use, from cur's start, of an interval holding
-             * register r while cur would; ~1 for a register that cannot be
-             * taken *)
-            let use = array of(n never)
-            for k = 0 upto {vector.length(:Interval sc.active) - 1} do
-                let it = vector.get(:Interval sc.active k)
-                if sc.classes[it.value] is c then
-                    if firstPos(it) is s then use[it.reg] := ~1
-                    else
-                        let u = nextUse(it s)
-                        if u < use[it.reg] then use[it.reg] := u end
-                    end
-                end
-            end
-            for k = 0 upto {vector.length(:Interval sc.inactive) - 1} do
-                let it = vector.get(:Interval sc.inactive k)
-                if {sc.classes[it.value] is c} andif {intersection(it cur) >= 0} then
-                    let u = nextUse(it s)
-                    if u < use[it.reg] then use[it.reg] := u end
-                end
-            end
-            (* Of the registers available at cur's start, the one whose
-             * holders' next use is furthest *)
-            let var best = ~1
-            for r = 0 upto {n - 1} do
-                if {block[r] > s} andif {use[r] >= 0} andif {{best < 0} orif {use[r] > use[best]}} then best := r end
-            end
-            if {best < 0} orif {nextUse(cur s) > use[best]} then spillCurrent(sc cur)
+            let taken = choose(sc cur s)
+            if taken.reg < 0 then spillCurrent(sc cur)
             else
-                (* Take it: spill each holder from where it meets cur (an
-                 * active one, at cur's start; an inactive one, where it first
-                 * overlaps cur), and cur itself from where the register
-                 * becomes unavailable, if that is before cur ends *)
-                cur.reg := best
-                let holders = vector.toArray(:Interval sc.active)
-                for k = 0 upto {extent holders - 1} do
-                    let it = holders[k]
-                    if {sc.classes[it.value] is c} andif {it.reg is best} then splitSpill(sc it s) end
-                end
-                let sleepers = vector.toArray(:Interval sc.inactive)
-                for k = 0 upto {extent sleepers - 1} do
-                    let it = sleepers[k]
-                    if {sc.classes[it.value] is c} andif {it.reg is best} then
-                        let x = intersection(it cur)
-                        if x >= 0 then splitSpill(sc it x) end
-                    end
-                end
-                if block[best] <= lastPos(cur) then splitSpill(sc cur block[best]) end
+                let x = cost(sc cur s)
+                if {x < taken.cost} orif {{x is taken.cost} andif {nextUse(cur s) > taken.use}} then
+                    spillCurrent(sc cur)
+                else take(sc cur taken.reg) end
             end
         end
 
-    let allocate(f: Function t: targets.Target rematerializable: All(i: machine.Inst) Bool): Allocation =
+    let allocate(f: Function t: targets.Target rematerializable: All(i: machine.Inst) Bool cold: All(b: Int) Bool):
+        Allocation =
         begin
             let nValues = machine.virtuals(f)
             let nBlocks = vector.length(:machine.Block f.blocks)
@@ -468,6 +515,18 @@ export
                 pos := pos + {2 * {vector.length(:machine.Inst blk.insts) + 1}}
             end
             let positions = pos
+            (* Each block's estimated frequency, and each position's *)
+            let depths = machine.loopDepths(f)
+            let frequency = array of(nBlocks 0)
+            let freqAt = array of(positions + 1 0)
+            for k = 0 upto {extent order - 1} do
+                let b = order[k]
+                let var x = 1000
+                for d = 1 upto if depths[b] < 4 then depths[b] else 4 end do x := x * 8 end
+                frequency[b] := if cold(b) then 1 else x end
+                let n = vector.length(:machine.Inst machine.block(f b).insts)
+                for p = blockStart[b] upto {blockStart[b] + {2 * {n + 1}}} - 1 do freqAt[p] := frequency[b] end
+            end
             let isStart = bitset.new(positions + 1)
             for k = 0 upto {extent order - 1} do add(isStart blockStart[order[k]]) end
             (* Each class's registers, the caller-saved first *)
@@ -665,7 +724,7 @@ export
                 let var active = vector.new(:Interval) let var inactive = vector.new(:Interval)
                 let pools = pools let firstCallee = firstCallee let calls = callAt let handlers = handlerAt
                 let fixed = fixed let firstVirtual = f.firstVirtual let hints = hints
-                let given = array of(nValues ~1)
+                let given = array of(nValues ~1) let freqAt = freqAt
             end
             (* Every value defined or used has an interval; the lists were
              * built latest first, so each is reversed. Its first and last
@@ -771,7 +830,7 @@ export
             tuple
                 let starts = starts let homes = homes let spilled = spilled let remat = remat let moves = moved
                 let blockStart = blockStart let liveIn = ins let calleeUsed = vector.toArray(:Int used)
-                let first = first let last = last
+                let frequency = frequency let first = first let last = last
             end
         end
 

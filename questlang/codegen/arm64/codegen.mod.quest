@@ -94,6 +94,54 @@ export
             end
         end
 
+    let isBrk(op: minst.Op): Bool =
+        case op
+            when opBrk then true
+            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
+                opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
+                opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr,
+                opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                false
+        end
+
+    (* The blocks from which every path raises: one that ends in brk
+     * (termUnreachable), or every block it can go to is cold and it does not
+     * return *)
+    let coldBlocks(s: select.Selection): Array(Bool) =
+        begin
+            let m = s.f
+            let n = vector.length(:machine.Block m.blocks)
+            let cold = array of(n false)
+            let var changed = true
+            while changed do
+                changed := false
+                for b = 0 upto {n - 1} do
+                    if not(cold[b]) then
+                        let insts = machine.block(m b).insts
+                        let var raises = false
+                        let var leaves = false
+                        let var exits = 0
+                        let var hot = false
+                        for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
+                            let i = vector.get(:machine.Inst insts j)
+                            if machine.isKind(i machine.kindReturn) then
+                                if isBrk(vector.get(:minst.Op s.ops i.op)) then raises := true else leaves := true end
+                            end
+                            if i.target >= 0 then
+                                exits := exits + 1
+                                if not(cold[i.target]) then hot := true end
+                            end
+                        end
+                        if raises orif {not(leaves) andif {exits > 0} andif not(hot)} then
+                            cold[b] := true
+                            changed := true
+                        end
+                    end
+                end
+            end
+            cold
+        end
+
     (* A function that enters a try saves every callee-saved pair. A raise
      * resumes in it with the registers as the function that raised left
      * them, not as the functions in between restored them, so it must restore
@@ -102,7 +150,9 @@ export
         begin
             let s = select.select(f "Lf" <> conv.int(index) defined)
             let m = s.f
-            let a = regalloc.allocate(m target.description fun(i: machine.Inst): Bool select.rematerializable(s i))
+            let cold = coldBlocks(s)
+            let a = regalloc.allocate(m target.description fun(i: machine.Inst): Bool select.rematerializable(s i)
+                fun(b: Int): Bool cold[b])
             (* The stack slots, then (below) the slots of registers stored in
              * memory *)
             let slots = vector.new(:FrameSlot)
@@ -287,15 +337,6 @@ export
                 opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                 op
         end
-    let isBrk(op: minst.Op): Bool =
-        case op
-            when opBrk then true
-            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
-                opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
-                opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr,
-                opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
-                false
-        end
 
     (* =========================================================================
      * Branch relaxation (docs/arm64.md section 10.1)
@@ -415,38 +456,7 @@ export
      * section 3.3) *)
     let coldLast(s: select.Selection): Array(Int) =
         begin
-            let m = s.f
-            let n = vector.length(:machine.Block m.blocks)
-            (* A block is cold when it ends in brk (termUnreachable), or every
-             * block it can go to is cold and it does not return *)
-            let cold = array of(n false)
-            let var changed = true
-            while changed do
-                changed := false
-                for b = 0 upto {n - 1} do
-                    if not(cold[b]) then
-                        let insts = machine.block(m b).insts
-                        let var raises = false
-                        let var leaves = false
-                        let var exits = 0
-                        let var hot = false
-                        for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
-                            let i = vector.get(:machine.Inst insts j)
-                            if machine.isKind(i machine.kindReturn) then
-                                if isBrk(vector.get(:minst.Op s.ops i.op)) then raises := true else leaves := true end
-                            end
-                            if i.target >= 0 then
-                                exits := exits + 1
-                                if not(cold[i.target]) then hot := true end
-                            end
-                        end
-                        if raises orif {not(leaves) andif {exits > 0} andif not(hot)} then
-                            cold[b] := true
-                            changed := true
-                        end
-                    end
-                end
-            end
+            let cold = coldBlocks(s)
             let order = vector.new(:Int)
             let count = vector.length(:Int s.layout)
             for k = 0 upto {count - 1} do

@@ -56,11 +56,9 @@ export
             order
         end
 
-    let graph(f: ssa.Function): Graph =
+    let graphOf(succs: Array(Array(Int))): Graph =
         begin
-            let n = vector.length(:ssa.Block f.blocks)
-            let succs = array of(n none)
-            for b = 0 upto {n - 1} do succs[b] := ssa.successors(ssa.block(f b).term) end
+            let n = extent succs
             let predLists = array of(n vector.new(:Int))
             for b = 0 upto {n - 1} do predLists[b] := vector.new(:Int) end
             for b = 0 upto {n - 1} do
@@ -152,6 +150,14 @@ export
             end
         end
 
+    let graph(f: ssa.Function): Graph =
+        begin
+            let n = vector.length(:ssa.Block f.blocks)
+            let succs = array of(n none)
+            for b = 0 upto {n - 1} do succs[b] := ssa.successors(ssa.block(f b).term) end
+            graphOf(succs)
+        end
+
     let reached(g: Graph b: Int): Bool = {b >= 0} andif {b < extent g.rank} andif {g.rank[b] >= 0}
 
     let dominates(g: Graph a: Int b: Int): Bool =
@@ -184,34 +190,33 @@ export
         begin
             let n = extent g.preds
             let depth = array of(n 0)
+            (* Which blocks are in the loop being walked: a block is in h's when
+             * mark[b] is h, so that no array is cleared between loops, and
+             * the walk costs only the loop's blocks *)
+            let mark = array of(n ~1)
             for h = 0 upto {n - 1} do
                 if reached(g h) then
                     (* The loop of h: the blocks that reach a back edge's source
                      * without passing h *)
-                    let inLoop = array of(n false)
                     let work = vector.new(:Int)
                     for k = 0 upto {extent g.preds[h] - 1} do
                         let p = g.preds[h][k]
-                        if dominates(g h p) andif not(inLoop[p]) then
-                            inLoop[p] := true
-                            vector.append(:Int work p)
-                        end
+                        if dominates(g h p) then vector.append(:Int work p) end
                     end
                     if not(vector.empty(:Int work)) then
-                        inLoop[h] := true
+                        mark[h] := h
+                        depth[h] := depth[h] + 1
                         while not(vector.empty(:Int work)) do
                             let b = vector.pop(:Int work)
-                            if b isnot h then
+                            if mark[b] isnot h then
+                                mark[b] := h
+                                depth[b] := depth[b] + 1
                                 for k = 0 upto {extent g.preds[b] - 1} do
                                     let p = g.preds[b][k]
-                                    if reached(g p) andif not(inLoop[p]) then
-                                        inLoop[p] := true
-                                        vector.append(:Int work p)
-                                    end
+                                    if reached(g p) andif {mark[p] isnot h} then vector.append(:Int work p) end
                                 end
                             end
                         end
-                        for b = 0 upto {n - 1} do if inLoop[b] then depth[b] := depth[b] + 1 end end
                     end
                 end
             end

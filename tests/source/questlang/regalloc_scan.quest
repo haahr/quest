@@ -12,10 +12,12 @@
  * values stay in their registers through it; reals take registers of their
  * own class; a constant is made again rather than stored; what a block a
  * raise enters uses is in memory at its start; a dead value's slot is
- * cleared where a call may follow; and values whose lifetimes do not overlap
- * share a slot. Each virtual register's pieces
+ * cleared where a call may follow; values whose lifetimes do not overlap
+ * share a slot; and a value read in a loop keeps a register over one read
+ * only after it. Each virtual register's pieces
  * are shown with the positions they start at, then the moves to pieces that
- * start inside blocks, the slots of those stored, then the function rewritten in the registers
+ * start inside blocks, the blocks' frequencies (where some are in loops), the
+ * slots of those stored, then the function rewritten in the registers
  * allocated. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
@@ -124,7 +126,7 @@ let show(title: String f: machine.Function): Ok =
         emit("== " <> title)
         writer.putString(writer.output machine.format(f fun(r: Int): String name(f r) fun(i: machine.Inst): String
             line(f i)))
-        let a = regalloc.allocate(f toy rematerializable)
+        let a = regalloc.allocate(f toy rematerializable fun(b: Int): Bool false)
         for v = 0 upto {extent a.starts - 1} do
             let var text = "%" <> conv.int(v) <> ":"
             for k = 0 upto {extent a.starts[v] - 1} do
@@ -138,6 +140,13 @@ let show(title: String f: machine.Function): Ok =
             emit("move at " <> conv.int(m.at) <> ": %" <> conv.int(m.value) <> " " <> name(f m.from) <> " -> "
                 <> name(f m.to))
         end
+        let var freqs = ""
+        let var loops = false
+        for b = 0 upto {extent a.frequency - 1} do
+            freqs := freqs <> " b" <> conv.int(b) <> " " <> conv.int(a.frequency[b])
+            if a.frequency[b] isnot 1000 then loops := true end
+        end
+        if loops then emit("frequencies:" <> freqs) end
         let var used = ""
         for k = 0 upto {extent a.calleeUsed - 1} do used := used <> " " <> name(f a.calleeUsed[k]) end
         emit("callee-saved used:" <> used)
@@ -380,3 +389,33 @@ call(unread uBody);
 jump(unread uBody uHead array of uf ub uc ug end);
 ret(unread uExit ua);
 show("a value never read, in memory but never stored" unread);
+(* 12. Spill weights: in a loop, a value live across the call in its body
+ * needs the callee-saved register, which a value read only after the loop
+ * holds. The loop's reads weigh more, so the loop's value takes the register,
+ * and the other is in memory from there. It is in the register again at the
+ * loop's header, so the jump back loads it: one load an iteration, rather
+ * than a store and a load of the loop's value around the call. Splitting it
+ * before the loop instead would take that load out of the loop too. *)
+let weighed = machine.newFunction(extent toy.registers);
+let w0 = entry(weighed);
+let wHead = machine.newBlock(weighed);
+let wi = machine.addParam(weighed wHead intClass);
+let wBody = machine.newBlock(weighed);
+let wEdge = machine.newBlock(weighed);
+let wExit = machine.newBlock(weighed);
+let wOuter = fresh(weighed);
+add(weighed 0 wOuter w0 w0);
+jump(weighed 0 wHead array of w0 end);
+branch(weighed wHead wi wEdge);
+jump(weighed wHead wExit noArgs);
+jump(weighed wEdge wBody noArgs);
+let wx = fresh(weighed);
+let wy = fresh(weighed);
+add(weighed wBody wx wi wi);
+call(weighed wBody);
+add(weighed wBody wy wx wx);
+jump(weighed wBody wHead array of wy end);
+let wr = fresh(weighed);
+add(weighed wExit wr wOuter wi);
+ret(weighed wExit wr);
+show("a loop's value kept in a register over one read after the loop" weighed);

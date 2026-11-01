@@ -259,6 +259,15 @@ use its register in a hole. Intervals are taken in order of their starts:
   again.
 - **Calls and handlers.** A caller-saved register is unavailable from just after a call the interval is live
   across. Every register is unavailable at the start of a `try`'s handler that the interval covers.
+- **Costs** (2026-11-01, arm64-performance-review.md §3.1, item 4a). Spilling an interval costs the load at its
+  next use, so that use's block's frequency: 1000, times 8 for each loop the block is in (up to four, from
+  `cfg.loopDepths` over the machine function), or 1 for a cold block (from which every path raises, which the
+  target tells the allocator). The choice above takes the register whose holders cost least, and spills the
+  interval instead if it costs less; the nearest next use decides only at equal costs, as in code without loops.
+  A register is also taken, where one is free for only part of the interval, if its holders cost less than the
+  part the free one would spill: so a value used in a loop and live across a call in it gets a callee-saved
+  register held by one used next only after the loop. That one is then in memory from the loop's body, and is
+  loaded again on the back edge if it is in its register at the header; splitting it before the loop is item 4b.
 
 So a value lives in pieces, each in a register or in memory:
 
