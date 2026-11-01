@@ -1245,6 +1245,12 @@ def eval_program(program: TypedProgram, env: Optional[RuntimeEnvironment] = None
     return results[-1][1] if results else OK_VALUE
 
 
+# The library's modules that neither interpreter runs: the JIT's unsound
+# primitives, which read and write native memory (docs/jit.md §3.11). They are
+# refused by name, since the self-hosted interpreter has no builtins for them.
+UNINTERPRETED_MODULES = frozenset({"os/value", "os/code"})
+
+
 def load_module_for_interpreter(
     name: str,
     expected_interface: str,
@@ -1276,6 +1282,8 @@ def load_module_for_interpreter(
     canon_name = resolved.canonical_name
     if canon_name in r_env.module_values:
         return r_env.module_values[canon_name]
+    if canon_name in UNINTERPRETED_MODULES:
+        raise QuestRuntimeError(f"'{canon_name}' cannot be interpreted: compile the program instead")
 
     typed_mod = graph.typed_module(canon_name)
     if typed_mod is None:

@@ -1,0 +1,38 @@
+unsound module code : Code
+import
+    os/value : os/Value
+    raised : Raised
+    util/maybe : util/Maybe
+export
+    (* The native region (see quest_code_* in runtime/quest_code.c) *)
+    Let Region = external "QCodeRegion *"
+
+    let reserve(size: Int executable: Bool): Region = external "quest_code_reserve"
+    let base(r: Region): value.T = external "quest_code_base"
+    let size(r: Region): Int = external "quest_code_size"
+    let write32(r: Region offset: Int words: Array(Int)): Ok = external "quest_code_write32"
+    let write64(r: Region offset: Int words: Array(Int)): Ok = external "quest_code_write64"
+
+    let address(name: String): value.T = external "quest_code_symbol"
+    let isNull(v: value.T): Bool = external "quest_code_is_null"
+    let symbol(name: String): maybe.T(value.T) =
+        begin
+            let a = address(name)
+            if isNull(a) then maybe.none(:value.T) else maybe.some(:value.T a) end
+        end
+
+    let threadLocalGetter(): value.T = external "quest_code_tlv_getter"
+
+    let run(entry: value.T): Bool = external "quest_code_call"
+    let lastRaised(): raised.T = external "quest_code_last_raised"
+    let call(entry: value.T): maybe.T(raised.T) =
+        if run(entry) then maybe.some(:raised.T lastRaised()) else maybe.none(:raised.T) end
+
+    let exceptionName(r: raised.T): String = external "quest_code_exception_name"
+    let raiseSite(r: raised.T): String = external "quest_code_raise_site"
+    let frames(r: raised.T): String = external "quest_code_frames"
+
+    let addRoots(low: value.T high: value.T): Ok = external "quest_code_add_roots"
+    let addFunction(start: value.T limit: value.T): Ok = external "quest_code_add_function"
+    let setArgs(args: Array(String)): Ok = external "quest_code_set_args"
+end

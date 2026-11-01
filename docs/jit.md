@@ -6,7 +6,7 @@ backend's pipeline ([arm64.md](arm64.md)) unchanged up to machine instructions, 
 with an in-memory encoder and loader. It is written in Quest, in `questlang/`, and the bootstrap does not get it
 ([testing.md](testing.md) §2.8), though it gets the language change the JIT needs (§3.11).
 
-**Status: steps 1 and 2 of 8 done** (§7). Section 1 records the decisions, section 7 the steps.
+**Status: steps 1 to 3 of 8 done** (§7). Section 1 records the decisions, section 7 the steps.
 
 ---
 
@@ -400,6 +400,11 @@ the runtime for every program, and come first so that the JIT is built on them.
    step.** Tests: an unsound module that reads a tuple's and a record's
    words through `os/value`; one that writes a hand-encoded function into a code region and calls it, and one whose
    function raises and gets the exception back.
+   *Done* (2026-11-01, ABI 60). The natives are in `runtime/quest_code.c`; new-libraries.md §4.3 documents both
+   interfaces. Both interpreters refuse the modules `os/value` and `os/code` by name. Tests:
+   `tests/source/stdlib/os_value` and `os_code` (compiled only) and `tests/errors/run/os_value_interpreted`. Fixed
+   alongside: the self-hosted loader gave a separately compiled hierarchical module no external types, so `os/code`'s
+   `value.T` differed from `os/value`'s.
 4. **Hosts** (§3.3, §3.10): the fingerprint (§3.3.1) and each module unit's `qh_` symbol, in both self-hosted
    backends; the driver imports `list` and `dynamic`. Tests: a program finds its units' fingerprints with `os/code`;
    the fingerprint is unchanged by an interface's comments, declaration order, and location, and changed by a change

@@ -301,16 +301,18 @@ static const char *quest_frame_name(const void *start) {
     return e != NULL ? e->name : NULL;
 }
 
-/* Prints frames, most recent first, collapsing a run of the same frame name */
+/* Prints frames to out, most recent first, collapsing a run of the same frame
+   name */
 typedef struct QFramePrinter {
+    FILE       *out;
     const char *name;
     int64_t     count;
 } QFramePrinter;
 
 static void quest_frames_flush(QFramePrinter *p) {
     if (p->name == NULL) return;
-    fprintf(stderr, "  in %s\n", p->name);
-    if (p->count > 1) fprintf(stderr, "  ... %s repeated %lld more times\n", p->name, (long long)(p->count - 1));
+    fprintf(p->out, "  in %s\n", p->name);
+    if (p->count > 1) fprintf(p->out, "  ... %s repeated %lld more times\n", p->name, (long long)(p->count - 1));
     p->name = NULL;
     p->count = 0;
 }
@@ -354,16 +356,64 @@ typedef struct QFunctionStart {
 
 static Q_THREAD_LOCAL QFunctionStart quest_function_starts[Q_FUNCTION_START_CACHE];
 
+/* The functions whose code no image describes, registered by os/code
+   (quest_code_add_function) for the JIT's code (docs/jit.md §3.6), each from
+   its start up to its limit, kept in order of their starts */
+typedef struct QFunctionRange {
+    const void *start;
+    const void *limit;
+} QFunctionRange;
+
+static QFunctionRange *quest_function_ranges = NULL;
+static size_t          quest_function_ranges_count = 0;
+static size_t          quest_function_ranges_capacity = 0;
+
+static const void *quest_registered_function_start(const void *pc) {
+    size_t low = 0, high = quest_function_ranges_count;
+    while (low < high) {
+        size_t mid = low + (high - low) / 2;
+        if ((uintptr_t)pc < (uintptr_t)quest_function_ranges[mid].start) {
+            high = mid;
+        } else if ((uintptr_t)pc >= (uintptr_t)quest_function_ranges[mid].limit) {
+            low = mid + 1;
+        } else {
+            return quest_function_ranges[mid].start;
+        }
+    }
+    return NULL;
+}
+
+/* Registers a function from start up to limit; the JIT fills its arena from
+   its start, so a function's start is usually above every earlier one's */
+void quest_code_add_function(void *start, void *limit) {
+    if (quest_function_ranges_count == quest_function_ranges_capacity) {
+        size_t          capacity = quest_function_ranges_capacity > 0 ? 2 * quest_function_ranges_capacity : 64;
+        QFunctionRange *ranges = (QFunctionRange *)realloc(quest_function_ranges, capacity * sizeof(QFunctionRange));
+        if (ranges == NULL) return;
+        quest_function_ranges = ranges;
+        quest_function_ranges_capacity = capacity;
+    }
+    size_t i = quest_function_ranges_count++;
+    while (i > 0 && (uintptr_t)quest_function_ranges[i - 1].start > (uintptr_t)start) {
+        quest_function_ranges[i] = quest_function_ranges[i - 1];
+        --i;
+    }
+    quest_function_ranges[i] = (QFunctionRange){ start, limit };
+}
+
 static const void *quest_function_start(void *pc) {
     uintptr_t       h = (uintptr_t)pc;
     QFunctionStart *cached = &quest_function_starts[((h >> 2) ^ (h >> 12)) % Q_FUNCTION_START_CACHE];
     if (cached->pc == pc) return cached->start;
+    const void *start = quest_registered_function_start(pc);
+    if (start == NULL) {
 #ifdef Q_FRAME_POINTER_WALK
-    Dl_info     info;
-    const void *start = dladdr(pc, &info) != 0 ? info.dli_saddr : NULL;
+        Dl_info info;
+        start = dladdr(pc, &info) != 0 ? info.dli_saddr : NULL;
 #else
-    const void *start = _Unwind_FindEnclosingFunction(pc);
+        start = _Unwind_FindEnclosingFunction(pc);
 #endif
+    }
     cached->pc = pc;
     cached->start = start;
     return start;
@@ -436,13 +486,18 @@ static void quest_capture_frame(const void *start, void *arg) {
         trace->truncated = true;
     }
 }
+#else
+void quest_code_add_function(void *start, void *limit) {
+    (void)start;
+    (void)limit;
+}
 #endif
 
 /* Prints the frames of the live stack, where an uncaught error is being
  * reported */
 static void quest_print_live_frames(void) {
 #ifdef Q_HAVE_UNWIND
-    QFramePrinter printer = { NULL, 0 };
+    QFramePrinter printer = { stderr, NULL, 0 };
     quest_walk_stack(quest_print_live_frame, &printer);
     quest_frames_flush(&printer);
 #endif
@@ -462,11 +517,25 @@ static const QTrace *quest_capture_trace(void) {
 #endif
 }
 
-static void quest_print_trace(const QTrace *trace) {
-    QFramePrinter printer = { NULL, 0 };
+static void quest_print_trace(const QTrace *trace, FILE *out) {
+    QFramePrinter printer = { out, NULL, 0 };
     for (int i = 0; i < trace->n_runs; ++i) quest_frames_add(&printer, trace->starts[i], trace->counts[i]);
     quest_frames_flush(&printer);
-    if (trace->truncated) fprintf(stderr, "  ... (traceback truncated)\n");
+    if (trace->truncated) fprintf(out, "  ... (traceback truncated)\n");
+}
+
+/* os/code's frames of a raised exception (quest_code.c): the lines the
+   runtime prints for one uncaught */
+QString *quest_code_frames(QRaised *r) {
+    char  *text = NULL;
+    size_t length = 0;
+    FILE  *out = open_memstream(&text, &length);
+    if (out == NULL) return quest_string_new("", 0);
+    if (r->state.trace != NULL) quest_print_trace(r->state.trace, out);
+    fclose(out);
+    QString *s = quest_string_new(text, (int64_t)length);
+    free(text);
+    return s;
 }
 
 /* Ends the program after an error's message has been printed, printing the site
@@ -476,7 +545,7 @@ static void quest_print_trace(const QTrace *trace) {
 static Q_NORETURN void quest_fail_with(const char *loc, const QTrace *trace) {
     if (loc != NULL) fprintf(stderr, "  at %s\n", loc);
     if (trace != NULL) {
-        quest_print_trace(trace);
+        quest_print_trace(trace, stderr);
     } else {
         quest_print_live_frames();
     }
@@ -4245,7 +4314,7 @@ static void quest_on_fault(int sig, siginfo_t *info, void *context) {
         /* The handler runs on a stack of its own, so the frames are walked
          * from the faulting function's: its pc, then its x29's chain */
         const ucontext_t *uc = (const ucontext_t *)context;
-        QFramePrinter     printer = { NULL, 0 };
+        QFramePrinter     printer = { stderr, NULL, 0 };
         quest_frames_add(&printer, quest_function_start((void *)uc->uc_mcontext->__ss.__pc), 1);
         quest_walk_frames_from((uintptr_t)uc->uc_mcontext->__ss.__fp, quest_print_live_frame, &printer);
         quest_frames_flush(&printer);

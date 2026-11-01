@@ -1,0 +1,69 @@
+unsound interface Code
+import
+    os/value : os/Value
+    raised : Raised
+    util/maybe : util/Maybe
+export
+    (* =========================================================================
+     * Running Code (Code)
+     *
+     * What the JIT needs beyond os/value (docs/jit.md section 3.11): regions
+     * of memory to write code and data into, the addresses of the running
+     * binary's symbols, calling code under an exception handler, and the
+     * runtime's registries. Code regions are Darwin arm64's (MAP_JIT). Only an
+     * unsound module may import it, and neither interpreter runs a program
+     * that does:
+     *
+     *     let r = code.reserve(4096 true);
+     *     code.write32(r 0 array of 3596551104 end);        (* ret *)
+     *     code.call(code.base(r))                          (* none: returned *)
+     * ====================================================================== *)
+
+    (* Memory reserved for code (executable, written through write32 and
+     * write64, which keep the instruction cache coherent) or data (readable
+     * and writable), never freed *)
+    Region::TYPE
+
+    (* A region of size bytes, zeroed; raises value.error if it cannot be
+     * mapped, or if executable regions are not supported here *)
+    reserve(size: Int executable: Bool): Region
+    base(r: Region): value.T
+    size(r: Region): Int
+
+    (* Write each of words, as 32 or 64 bits, from offset bytes into r, which
+     * must be aligned to the word's size and leave them inside r; raises
+     * value.error if they would not *)
+    write32(r: Region offset: Int words: Array(Int)): Ok
+    write64(r: Region offset: Int words: Array(Int)): Ok
+
+    (* The address of the running binary's symbol name (a C name, without
+     * the leading underscore), if it has one; a thread-local's is its address
+     * on the calling thread *)
+    symbol(name: String): maybe.T(value.T)
+
+    (* A function for a thread-local variable's descriptor, as compiled code
+     * calls it, that returns the descriptor's second word: a descriptor whose
+     * second word is the variable's address on the main thread *)
+    threadLocalGetter(): value.T
+
+    (* Call entry, a function of no arguments and no result, under a handler
+     * that catches every exception: none if it returned, else the exception
+     * it raised, with the frames active when it was raised *)
+    call(entry: value.T): maybe.T(raised.T)
+
+    (* A raised exception's name (stack.overflow aside, as the runtime
+     * reports it), the site it was raised at ("" if unknown), and its frames,
+     * as the runtime prints them for an uncaught exception *)
+    exceptionName(r: raised.T): String
+    raiseSite(r: raised.T): String
+    frames(r: raised.T): String
+
+    (* Register the words from low up to high as roots of the collector, and
+     * a function's code from start up to limit, so that frames in it are
+     * attributed by the start's entry in the registered function tables *)
+    addRoots(low: value.T high: value.T): Ok
+    addFunction(start: value.T limit: value.T): Ok
+
+    (* Make args the program's arguments, system.args, from now on *)
+    setArgs(args: Array(String)): Ok
+end

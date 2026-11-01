@@ -1,0 +1,64 @@
+(* os/value, Cardelli's Value: any value as a word, and the words of memory. Only an unsound module may import it, and
+   neither interpreter runs it (docs/jit.md section 3.11), so the program's module reads a tuple's and a record's words
+   for it. *)
+(* @skip-phase: interpret, run_ir_core, run_ir_simplified, run_ir_specialized, run_ir_closed, run_ir_represented, run_ir_described *)
+
+import writer: Writer;
+import conv: Conv;
+
+interface Words
+export
+    tupleWords(t: Tuple a: Int b: Bool c: String end): String
+    recordFields(r: Record x: Int y: Real end): String
+    roundTrip(n: Int s: String): String
+    stored(): Int
+    nullFetch(): String
+    misaligned(): String
+end;
+
+unsound module words: Words
+import
+    os/value : os/Value
+    conv : Conv
+export
+    (* A tuple is a box of its components' words *)
+    let tupleWords(t: Tuple a: Int b: Bool c: String end): String =
+        begin
+            let w = value.new(:Tuple a: Int b: Bool c: String end t)
+            conv.int(value.be(:Int value.fetch(w 0))) <> " " <> conv.bool(value.be(:Bool value.fetch(w 8))) <> " " <>
+                value.be(:String value.fetch(w 16))
+        end
+    (* A record in a slot is a box of its payload and the offset table of its
+     * view, which gives each field's offset in the payload, as reflection
+     * reads it (docs/c-representation.md section 5.2) *)
+    let recordFields(r: Record x: Int y: Real end): String =
+        begin
+            let w = value.new(:Record x: Int y: Real end r)
+            let payload = value.fetch(w 0)
+            let table = value.fetch(w 8)
+            let field(i: Int): value.T = value.fetch(payload value.be(:Int value.fetch(table 8 * i)))
+            conv.int(value.be(:Int field(0))) <> " " <> conv.real(value.be(:Real field(1)))
+        end
+    let roundTrip(n: Int s: String): String =
+        conv.int(value.be(:Int value.new(:Int n))) <> " " <> value.be(:String value.new(:String s))
+    let stored(): Int =
+        begin
+            let cell = tuple let var n = 1 end
+            value.store(value.new(:Tuple var n: Int end cell) 0 value.new(:Int 42))
+            cell.n
+        end
+    let nullFetch(): String =
+        try begin value.fetch(value.new(:Int 0) 0) "fetched" end when value.error then "value.error" end
+    let misaligned(): String =
+        try begin value.fetch(value.new(:Tuple a: Int end tuple let a = 1 end) 4) "fetched" end
+        when value.error then "value.error" end
+end;
+
+let print(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+print(words.tupleWords(tuple let a = 7 let b = true let c = "seven" end));
+print(words.recordFields(record x = 3 y = 2.5 end));
+print(words.roundTrip(~5 "same"));
+print(conv.int(words.stored()));
+print(words.nullFetch());
+print(words.misaligned());
+print(conv.int(4 + 4))

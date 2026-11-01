@@ -1,0 +1,109 @@
+(* os/code: hand-encoded arm64 functions written into a code region and called, one storing a word into a data region,
+   one raising, and one calling a thread-local descriptor's getter; and the running binary's symbols. Only an unsound
+   module may import it, and neither interpreter runs it (docs/jit.md section 3.11). *)
+(* @skip-phase: interpret, run_ir_core, run_ir_simplified, run_ir_specialized, run_ir_closed, run_ir_represented, run_ir_described *)
+
+import writer: Writer;
+
+interface Run
+export
+    returns(): String
+    stores(): String
+    raises(): String
+    getter(): String
+    symbols(): String
+    outOfRange(): String
+end;
+
+unsound module run: Run
+import
+    os/value : os/Value
+    os/code : os/Code
+    raised : Raised
+    util/maybe : util/Maybe
+    conv : Conv
+export
+    (* Instructions, as clang assembles them *)
+    let ret = 3596551104                (* ret *)
+    let ldrX16At16 = 1476395152         (* ldr x16, #16 *)
+    let movX17Is42 = 3531605329         (* mov x17, #42 *)
+    let strX17AtX16 = 4177527313        (* str x17, [x16] *)
+    let ldrX16At8 = 1476395088          (* ldr x16, #8 *)
+    let brX16 = 3592356352              (* br x16 *)
+    let pushFrame = 2847898621          (* stp x29, x30, [sp, #-16]! *)
+    let setFrame = 2432697341           (* mov x29, sp *)
+    let ldrX0At32 = 1476395264          (* ldr x0, #32 *)
+    let ldrX8AtX0 = 4181721096          (* ldr x8, [x0] *)
+    let blrX8 = 3594453248              (* blr x8 *)
+    let ldrX16At28 = 1476395248         (* ldr x16, #28 *)
+    let strX0AtX16 = 4177527296         (* str x0, [x16] *)
+    let popFrame = 2831252477           (* ldp x29, x30, [sp], #16 *)
+
+    let word(v: value.T): Int = value.be(:Int v)
+    let outcome(r: maybe.T(raised.T)): String =
+        if maybe.isNone(:raised.T r) then "returned" else "raised " <> code.exceptionName(maybe.unwrap(:raised.T r)) end
+
+    let returns(): String =
+        begin
+            let r = code.reserve(4096 true)
+            code.write32(r 0 array of ret end)
+            outcome(code.call(code.base(r)))
+        end
+
+    (* A function that stores 42 at the address in its literal pool *)
+    let stores(): String =
+        begin
+            let data = code.reserve(4096 false)
+            let r = code.reserve(4096 true)
+            code.write32(r 0 array of ldrX16At16 movX17Is42 strX17AtX16 ret end)
+            code.write64(r 16 array of word(code.base(data)) end)
+            let result = outcome(code.call(code.base(r)))
+            result <> " " <> conv.int(value.be(:Int value.fetch(code.base(data) 0)))
+        end
+
+    (* A function that branches to the runtime's raise of dynamic.error *)
+    let raises(): String =
+        begin
+            let r = code.reserve(4096 true)
+            let raiser = maybe.unwrap(:value.T code.symbol("quest_raise_dynamic_error"))
+            code.write32(r 0 array of ldrX16At8 brX16 end)
+            code.write64(r 8 array of word(raiser) end)
+            let raised = code.call(code.base(r))
+            let e = maybe.unwrap(:raised.T raised)
+            outcome(raised) <> ", site \"" <> code.raiseSite(e) <> "\""
+        end
+
+    (* A function that reads a thread-local through a descriptor whose getter
+     * is threadLocalGetter's, as compiled code does, and stores the address it
+     * gets *)
+    let getter(): String =
+        begin
+            let data = code.reserve(4096 false)
+            let d = code.base(data)
+            code.write64(data 0 array of word(code.threadLocalGetter()) 12345 0 end)
+            let r = code.reserve(4096 true)
+            code.write32(r 0
+                array of pushFrame setFrame ldrX0At32 ldrX8AtX0 blrX8 ldrX16At28 strX0AtX16 popFrame ret end)
+            code.write64(r 40 array of word(d) {word(d) + 24} end)
+            let result = outcome(code.call(code.base(r)))
+            result <> " " <> conv.int(value.be(:Int value.fetch(d 24)))
+        end
+
+    let symbols(): String =
+        conv.bool(maybe.isSome(:value.T code.symbol("quest_raise_dynamic_error"))) <> " " <>
+            conv.bool(maybe.isSome(:value.T code.symbol("quest_no_such_symbol")))
+
+    let outOfRange(): String =
+        begin
+            let r = code.reserve(16 false)
+            try begin code.write64(r 8 array of 1 2 end) "written" end when value.error then "value.error" end
+        end
+end;
+
+let print(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+print(run.returns());
+print(run.stores());
+print(run.raises());
+print(run.getter());
+print(run.symbols());
+print(run.outOfRange())

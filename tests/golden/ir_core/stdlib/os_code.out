@@ -1,0 +1,188 @@
+import writer = "writer" : Writer
+import value = "os/value" : os/Value
+import code = "os/code" : os/Code
+import raised = "raised" : Raised
+import maybe = "util/maybe" : util/Maybe
+import conv = "conv" : Conv
+module run : Run {
+  let ret: Int = 3596551104 @27:15
+  let ldrX16At16: Int = 1476395152 @28:22
+  let movX17Is42: Int = 3531605329 @29:22
+  let strX17AtX16: Int = 4177527313 @30:23
+  let ldrX16At8: Int = 1476395088 @31:21
+  let brX16: Int = 3592356352 @32:17
+  let pushFrame: Int = 2847898621 @33:21
+  let setFrame: Int = 2432697341 @34:20
+  let ldrX0At32: Int = 1476395264 @35:21
+  let ldrX8AtX0: Int = 4181721096 @36:21
+  let blrX8: Int = 3594453248 @37:17
+  let ldrX16At28: Int = 1476395248 @38:22
+  let strX0AtX16: Int = 4177527296 @39:22
+  let popFrame: Int = 2831252477 @40:20
+  funs {
+    fun word(v: value.T): Int {
+      let %1: Int = call value.be [Int](v) @42:33
+      return %1
+    }
+  }
+  funs {
+    fun outcome(r: maybe.T(raised.T)): String {
+      join k1(r.1: String) {
+        return r.1
+      } in {
+        let %2: Bool = call maybe.isNone [raised.T](r) @44:12
+        if %2 { @44:9
+          jump k1("returned") @44:9
+        } else {
+          let %3: raised.T = call maybe.unwrap [raised.T](r) @44:91
+          let %4: String = call code.exceptionName(%3) @44:72
+          let %5: String = prim <>("raised ", %4) @44:59
+          jump k1(%5) @44:9
+        }
+      }
+    }
+  }
+  funs {
+    fun returns(): String {
+      let r.2: code.Region = call code.reserve(4096, true) @48:21
+      let %6: Array(Int) = array(ret) @49:30
+      do call code.write32(r.2, 0, %6) @49:13
+      let %7: value.T = call code.base(r.2) @50:31
+      let %8: maybe.T(raised.T) = call code.call(%7) @50:21
+      let %9: String = call outcome(%8) @50:13
+      return %9
+    }
+  }
+  funs {
+    fun stores(): String {
+      let data: code.Region = call code.reserve(4096, false) @56:24
+      let r.3: code.Region = call code.reserve(4096, true) @57:21
+      let %10: Array(Int) = array(ldrX16At16, movX17Is42, strX17AtX16, ret) @58:30
+      do call code.write32(r.3, 0, %10) @58:13
+      let %11: value.T = call code.base(data) @59:45
+      let %12: Int = call word(%11) @59:40
+      let %13: Array(Int) = array(%12) @59:31
+      do call code.write64(r.3, 16, %13) @59:13
+      let %14: value.T = call code.base(r.3) @60:44
+      let %15: maybe.T(raised.T) = call code.call(%14) @60:34
+      let result: String = call outcome(%15) @60:26
+      let %16: value.T = call code.base(data) @61:65
+      let %17: value.T = call value.fetch(%16, 0) @61:53
+      let %18: Int = call value.be [Int](%17) @61:39
+      let %19: String = call conv.int(%18) @61:30
+      let %20: String = prim <>(" ", %19) @61:23
+      let %21: String = prim <>(result, %20) @61:13
+      return %21
+    }
+  }
+  funs {
+    fun raises(): String {
+      let r.4: code.Region = call code.reserve(4096, true) @67:21
+      let %22: maybe.T(value.T) = call code.symbol("quest_raise_dynamic_error") @68:48
+      let raiser: value.T = call maybe.unwrap [value.T](%22) @68:26
+      let %23: Array(Int) = array(ldrX16At8, brX16) @69:30
+      do call code.write32(r.4, 0, %23) @69:13
+      let %24: Int = call word(raiser) @70:39
+      let %25: Array(Int) = array(%24) @70:30
+      do call code.write64(r.4, 8, %25) @70:13
+      let %26: value.T = call code.base(r.4) @71:36
+      let raised: maybe.T(raised.T) = call code.call(%26) @71:26
+      let e: raised.T = call maybe.unwrap [raised.T](raised) @72:21
+      let %27: String = call outcome(raised) @73:13
+      let %28: String = call code.raiseSite(e) @73:47
+      let %29: String = prim <>(%28, "\"") @73:47
+      let %30: String = prim <>(", site \"", %29) @73:32
+      let %31: String = prim <>(%27, %30) @73:13
+      return %31
+    }
+  }
+  funs {
+    fun getter(): String {
+      let data.1: code.Region = call code.reserve(4096, false) @81:24
+      let d: value.T = call code.base(data.1) @82:21
+      let %32: value.T = call code.threadLocalGetter() @83:47
+      let %33: Int = call word(%32) @83:42
+      let %34: Array(Int) = array(%33, 12345, 0) @83:33
+      do call code.write64(data.1, 0, %34) @83:13
+      let r.5: code.Region = call code.reserve(4096, true) @84:21
+      let %35: Array(Int) = array(pushFrame, setFrame, ldrX0At32, ldrX8AtX0, blrX8, ldrX16At28, strX0AtX16, popFrame, ret) @86:17
+      do call code.write32(r.5, 0, %35) @85:13
+      let %36: Int = call word(d) @87:40
+      let %37: Int = call word(d) @87:49
+      let %38: Int = prim +(%37, 24) @87:49
+      let %39: Array(Int) = array(%36, %38) @87:31
+      do call code.write64(r.5, 40, %39) @87:13
+      let %40: value.T = call code.base(r.5) @88:44
+      let %41: maybe.T(raised.T) = call code.call(%40) @88:34
+      let result.1: String = call outcome(%41) @88:26
+      let %42: value.T = call value.fetch(d, 24) @89:53
+      let %43: Int = call value.be [Int](%42) @89:39
+      let %44: String = call conv.int(%43) @89:30
+      let %45: String = prim <>(" ", %44) @89:23
+      let %46: String = prim <>(result.1, %45) @89:13
+      return %46
+    }
+  }
+  funs {
+    fun symbols(): String {
+      let %47: maybe.T(value.T) = call code.symbol("quest_raise_dynamic_error") @93:41
+      let %48: Bool = call maybe.isSome [value.T](%47) @93:19
+      let %49: String = call conv.bool(%48) @93:9
+      let %50: maybe.T(value.T) = call code.symbol("quest_no_such_symbol") @94:45
+      let %51: Bool = call maybe.isSome [value.T](%50) @94:23
+      let %52: String = call conv.bool(%51) @94:13
+      let %53: String = prim <>(" ", %52) @93:87
+      let %54: String = prim <>(%49, %53) @93:9
+      return %54
+    }
+  }
+  funs {
+    fun outOfRange(): String {
+      let r.6: code.Region = call code.reserve(16, false) @98:21
+      join k2(r.7: String) {
+        return r.7
+      } in {
+        let %55: Exception = member value.error @99:77
+        try catching (%55) {
+          let %56: Array(Int) = array(1, 2) @99:40
+          do call code.write64(r.6, 8, %56) @99:23
+          jump k2("written") @99:13
+        } handle (e.1: Exception) {
+          let %57: Bool = prim is(e.1, %55) @99:13
+          if %57 { @99:13
+            jump k2("value.error") @99:13
+          } else {
+            reraise e.1 @99:13
+          }
+        }
+      }
+    }
+  }
+  let run_record: Record ret: Int ldrX16At16: Int movX17Is42: Int strX17AtX16: Int ldrX16At8: Int brX16: Int pushFrame: Int setFrame: Int ldrX0At32: Int ldrX8AtX0: Int blrX8: Int ldrX16At28: Int strX0AtX16: Int popFrame: Int word: Fun(v: value.T): Int outcome: Fun(r: maybe.T(raised.T)): String returns: Fun(): String stores: Fun(): String raises: Fun(): String getter: Fun(): String symbols: Fun(): String outOfRange: Fun(): String end = record(ret = ret, ldrX16At16 = ldrX16At16, movX17Is42 = movX17Is42, strX17AtX16 = strX17AtX16, ldrX16At8 = ldrX16At8, brX16 = brX16, pushFrame = pushFrame, setFrame = setFrame, ldrX0At32 = ldrX0At32, ldrX8AtX0 = ldrX8AtX0, blrX8 = blrX8, ldrX16At28 = ldrX16At28, strX0AtX16 = strX0AtX16, popFrame = popFrame, word = word, outcome = outcome, returns = returns, stores = stores, raises = raises, getter = getter, symbols = symbols, outOfRange = outOfRange)
+  export ret = ret, ldrX16At16 = ldrX16At16, movX17Is42 = movX17Is42, strX17AtX16 = strX17AtX16, ldrX16At8 = ldrX16At8, brX16 = brX16, pushFrame = pushFrame, setFrame = setFrame, ldrX0At32 = ldrX0At32, ldrX8AtX0 = ldrX8AtX0, blrX8 = blrX8, ldrX16At28 = ldrX16At28, strX0AtX16 = strX0AtX16, popFrame = popFrame, word = word, outcome = outcome, returns = returns, stores = stores, raises = raises, getter = getter, symbols = symbols, outOfRange = outOfRange
+  record run_record
+}
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %58: writer.T = member writer.output @103:51
+      do call writer.putString(%58, s) @103:34
+      let %59: writer.T = member writer.output @103:85
+      let %60: Ok = call writer.putString(%59, "\n") @103:68
+      return %60
+    }
+  }
+  let %61: String = call run.returns() @104:7
+  do call print(%61) @104:1
+  let %62: String = call run.stores() @105:7
+  do call print(%62) @105:1
+  let %63: String = call run.raises() @106:7
+  do call print(%63) @106:1
+  let %64: String = call run.getter() @107:7
+  do call print(%64) @107:1
+  let %65: String = call run.symbols() @108:7
+  do call print(%65) @108:1
+  let %66: String = call run.outOfRange() @109:7
+  do call print(%66) @109:1
+}
+

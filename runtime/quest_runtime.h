@@ -405,6 +405,7 @@ extern const QException quest_exc_arrayOp_error;
 extern const QException quest_exc_string_error;
 extern const QException quest_exc_variant_error;
 extern const QException quest_exc_dynamic_error;
+extern const QException quest_exc_value_error;
 
 /* Pre-allocated static type descriptors for base types */
 extern const QTypeDescriptor quest_type_Int;
@@ -1251,6 +1252,29 @@ extern QClosure qv_sym_gt_gt_equals_closure;
 extern QClosure qv_sym_lt_gt_closure;
 extern QClosure qv_sym_slash_backslash_closure;
 extern QClosure qv_sym_backslash_slash_closure;
+
+/* The JIT's unsound primitives, lib/os/value and lib/os/code (quest_code.c; docs/jit.md §3.11) */
+typedef struct QCodeRegion QCodeRegion;
+void        *quest_value_new(const QTypeDescriptor *a, QVal x);
+QVal         quest_value_be(const QTypeDescriptor *a, void *v);
+void        *quest_value_fetch(void *addr, int64_t displ);
+void         quest_value_store(void *addr, int64_t displ, void *w);
+QCodeRegion *quest_code_reserve(int64_t size, bool executable);
+void        *quest_code_base(QCodeRegion *r);
+int64_t      quest_code_size(QCodeRegion *r);
+void         quest_code_write32(QCodeRegion *r, int64_t offset, QArray *words);
+void         quest_code_write64(QCodeRegion *r, int64_t offset, QArray *words);
+void        *quest_code_symbol(const QString *name);
+bool         quest_code_is_null(void *v);
+void        *quest_code_tlv_getter(void);
+bool         quest_code_call(void *entry);
+QRaised     *quest_code_last_raised(void);
+QString     *quest_code_exception_name(QRaised *r);
+QString     *quest_code_raise_site(QRaised *r);
+QString     *quest_code_frames(QRaised *r);
+void         quest_code_add_roots(void *low, void *high);
+void         quest_code_add_function(void *start, void *limit);
+void         quest_code_set_args(QArray *args);
 
 #include "quest_serialization.h"
 

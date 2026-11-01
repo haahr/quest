@@ -1,0 +1,152 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import value = "os/value" : os/Value
+import conv = "conv" : Conv
+module words : Words {
+  funs {
+    fun tupleWords(t: Tuple a: Int b: Bool c: String end): String {
+      let w: value.T = call value.new [Tuple a: Int b: Bool c: String end](t) @27:21
+      let %1: value.T = call value.fetch(w, 0) @28:36
+      let %2: Int = call value.be [Int](%1) @28:22
+      let %3: String = call conv.int(%2) @28:13
+      let %4: value.T = call value.fetch(w, 8) @28:90
+      let %5: Bool = call value.be [Bool](%4) @28:75
+      let %6: String = call conv.bool(%5) @28:65
+      let %7: value.T = call value.fetch(w, 16) @29:34
+      let %8: String = call value.be [String](%7) @29:17
+      let %9: String = prim <>(" ", %8) @28:112
+      let %10: String = prim <>(%6, %9) @28:65
+      let %11: String = prim <>(" ", %10) @28:58
+      let %12: String = prim <>(%3, %11) @28:13
+      return %12
+    }
+  }
+  funs {
+    fun recordFields(r: Record x: Int y: Real end): String {
+      let w.1: value.T = call value.new [Record x: Int y: Real end](r) @36:21
+      let payload: value.T = call value.fetch(w.1, 0) @37:27
+      let table: value.T = call value.fetch(w.1, 8) @38:25
+      funs {
+        fun field(i: Int): value.T {
+          let %13: Int = prim *(8, i) @39:94
+          let %14: value.T = call value.fetch(table, %13) @39:76
+          let %15: Int = call value.be [Int](%14) @39:62
+          let %16: value.T = call value.fetch(payload, %15) @39:42
+          return %16
+        }
+      }
+      let %17: value.T = call field(0) @40:36
+      let %18: Int = call value.be [Int](%17) @40:22
+      let %19: String = call conv.int(%18) @40:13
+      let %20: value.T = call field(1) @40:82
+      let %21: Real = call value.be [Real](%20) @40:67
+      let %22: String = call conv.real(%21) @40:57
+      let %23: String = prim <>(" ", %22) @40:50
+      let %24: String = prim <>(%19, %23) @40:13
+      return %24
+    }
+  }
+  funs {
+    fun roundTrip(n: Int, s: String): String {
+      let %25: value.T = call value.new [Int](n) @43:32
+      let %26: Int = call value.be [Int](%25) @43:18
+      let %27: String = call conv.int(%26) @43:9
+      let %28: value.T = call value.new [String](s) @43:79
+      let %29: String = call value.be [String](%28) @43:62
+      let %30: String = prim <>(" ", %29) @43:55
+      let %31: String = prim <>(%27, %30) @43:9
+      return %31
+    }
+  }
+  funs {
+    fun stored(): Int {
+      let n.1: Int = 1 @46:42
+      let cell: Tuple var n: Int end = tuple(n.1) @46:24
+      let %32: value.T = call value.new [Tuple var n: Int end](cell) @47:25
+      let %33: value.T = call value.new [Int](42) @47:65
+      do call value.store(%32, 0, %33) @47:13
+      let %34: Int = tuple_field(cell, 0) @48:13
+      return %34
+    }
+  }
+  funs {
+    fun nullFetch(): String {
+      join k1(r.1: String) {
+        return r.1
+      } in {
+        let %35: Exception = member value.error @51:71
+        try catching (%35) {
+          let %36: value.T = call value.new [Int](0) @51:31
+          let %37: value.T = call value.fetch(%36, 0) @51:19
+          jump k1("fetched") @51:9
+        } handle (e: Exception) {
+          let %38: Bool = prim is(e, %35) @51:9
+          if %38 { @51:9
+            jump k1("value.error") @51:9
+          } else {
+            reraise e @51:9
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun misaligned(): String {
+      join k2(r.2: String) {
+        return r.2
+      } in {
+        let %39: Exception = member value.error @54:14
+        try catching (%39) {
+          let a: Int = 1 @53:73
+          let %40: Tuple a: Int end = tuple(a) @53:59
+          let %41: value.T = call value.new [Tuple a: Int end](%40) @53:31
+          let %42: value.T = call value.fetch(%41, 4) @53:19
+          jump k2("fetched") @53:9
+        } handle (e.1: Exception) {
+          let %43: Bool = prim is(e.1, %39) @53:9
+          if %43 { @53:9
+            jump k2("value.error") @53:9
+          } else {
+            reraise e.1 @53:9
+          }
+        }
+      }
+    }
+  }
+  let words_record: Record tupleWords: Fun(t: Tuple a: Int b: Bool c: String end): String recordFields: Fun(r: Record x: Int y: Real end): String roundTrip: Fun(n: Int s: String): String stored: Fun(): Int nullFetch: Fun(): String misaligned: Fun(): String end = record(tupleWords = tupleWords, recordFields = recordFields, roundTrip = roundTrip, stored = stored, nullFetch = nullFetch, misaligned = misaligned)
+  export tupleWords = tupleWords, recordFields = recordFields, roundTrip = roundTrip, stored = stored, nullFetch = nullFetch, misaligned = misaligned
+  record words_record
+}
+main {
+  funs {
+    fun print(s.1: String): Ok {
+      let %44: writer.T = member writer.output @57:51
+      do call writer.putString(%44, s.1) @57:34
+      let %45: writer.T = member writer.output @57:85
+      let %46: Ok = call writer.putString(%45, "\n") @57:68
+      return %46
+    }
+  }
+  let a.1: Int = 7 @58:38
+  let b: Bool = true @58:48
+  let c: String = "seven" @58:61
+  let %47: Tuple a: Int b: Bool c: String end = tuple(a.1, b, c) @58:24
+  let %48: String = call words.tupleWords(%47) @58:7
+  do call print(%48) @58:1
+  let %49: Record x: Int y: Real end = record(x = 3, y = 2.5) @59:26
+  let %50: String = call words.recordFields(%49) @59:7
+  do call print(%50) @59:1
+  let %51: String = call words.roundTrip(-5, "same") @60:7
+  do call print(%51) @60:1
+  let %52: Int = call words.stored() @61:16
+  let %53: String = call conv.int(%52) @61:7
+  do call print(%53) @61:1
+  let %54: String = call words.nullFetch() @62:7
+  do call print(%54) @62:1
+  let %55: String = call words.misaligned() @63:7
+  do call print(%55) @63:1
+  let %56: Int = prim +(4, 4) @64:16
+  let %57: String = call conv.int(%56) @64:7
+  do call print(%57) @64:1
+}
+

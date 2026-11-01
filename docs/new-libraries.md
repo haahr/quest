@@ -842,3 +842,65 @@ its parent is busy elsewhere, and `wait` reads them back once the child has fini
 environment are the parent's. `waitAny` reaps whichever child finishes first (`waitpid(-1)`), so the runtime keeps a
 list of the children not yet reaped and records each status on its handle; a child that is not `os/process`'s is
 reaped and ignored. A child killed by a signal has that signal's number, negated, as its code, as with `system.run`.
+
+### 4.3. `os/value : os/Value` and `os/code : os/Code`
+
+The JIT's primitives ([jit.md](jit.md) §3.11), behind unsound interfaces, so that only an unsound module may import
+them ([modules.md](modules.md) §4.4). Their externals, `quest_value_*` and `quest_code_*`, are in
+`runtime/quest_code.c`. Neither interpreter runs them: loading either module is an error, by its name, since the
+interpreters have no builtins for them.
+
+`os/value` is Cardelli's `Value` (*Typeful Programming*, appendix), with its signature unchanged:
+
+```quest
+unsound interface Value
+export
+    T::TYPE                              (* an arbitrary value: one word *)
+    error: Exception(Ok)                 (* a null address, or one not a multiple of length *)
+    length: Int                          (* the size of a T, in bytes: 8 *)
+    new(A::TYPE a: A): T                 (* any value as a T *)
+    be(A::TYPE v: T): A                  (* a T as a value of any type. Unsound! *)
+    fetch(addr: T displ: Int): T         (* the word at addr + displ bytes *)
+    store(addr: T displ: Int w: T): Ok   (* store a word at addr + displ bytes. Unsound! *)
+end
+```
+
+Every slot holds one word, the value's slot representation ([c-representation.md](c-representation.md), "Slots"), so
+`new` gives that word and `be` takes it back: a tuple's is a pointer to its components' words, and a record's a
+pointer to a box of its payload and its view's offset table (§5.2 there).
+
+`os/code` holds the rest:
+
+```quest
+unsound interface Code
+import os/value : os/Value  raised : Raised  util/maybe : util/Maybe
+export
+    Region::TYPE
+    (* Zeroed memory for code (executable, MAP_JIT) or data, never freed; raises value.error if it cannot be had *)
+    reserve(size: Int executable: Bool): Region
+    base(r: Region): value.T
+    size(r: Region): Int
+    (* Words as 32 or 64 bits from offset bytes, aligned and inside r; the instruction cache is kept coherent *)
+    write32(r: Region offset: Int words: Array(Int)): Ok
+    write64(r: Region offset: Int words: Array(Int)): Ok
+    (* A symbol of the running binary, by its C name (dlsym) *)
+    symbol(name: String): maybe.T(value.T)
+    (* A function for a thread-local's descriptor that returns the descriptor's second word *)
+    threadLocalGetter(): value.T
+    (* Call a function of no arguments under a handler that catches everything: none if it returned *)
+    call(entry: value.T): maybe.T(raised.T)
+    exceptionName(r: raised.T): String
+    raiseSite(r: raised.T): String       (* "" if unknown *)
+    frames(r: raised.T): String          (* as the runtime prints them for an uncaught exception *)
+    addRoots(low: value.T high: value.T): Ok
+    addFunction(start: value.T limit: value.T): Ok
+    setArgs(args: Array(String)): Ok
+end
+```
+
+Executable regions are Darwin arm64's: writing toggles `pthread_jit_write_protect_np` for the thread and ends with
+`sys_icache_invalidate`. Compiled code reads a thread-local by calling its descriptor's first word with the
+descriptor in `x0`, and expects only `x0`, `x16`, and `x17` to change, so `threadLocalGetter` is two instructions of
+assembly (`ldr x0, [x0, #8]; ret`). `call` sets a handler record whose resume address is null, so a raise from code
+built by either backend jumps to it with `longjmp`. `addFunction` registers code no image describes, which the frame
+walk ([exceptions.md](exceptions.md) §5.3) consults before `dladdr`.

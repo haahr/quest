@@ -262,12 +262,20 @@ export
                         else
                             loadInterface(expectedInterface e)
                         end
-                        (* All importers share one export scope *)
+                        (* All importers share one export scope. Its opaque
+                         * types are named after the module's declared name,
+                         * as elaborating its source does, and those the module
+                         * defines as external types are those types, as
+                         * separately compiled modules have them (raised.T must
+                         * be the type of an else binder, docs/raised.md
+                         * section 3.2), else os/code's value.T would differ
+                         * from os/value's *)
                         let exportScope = if maybe.isSome(:Scope u.exportScope) then
                             maybe.unwrap(:Scope u.exportScope)
                         else
-                            let s = elaboration.createModuleExportScope(paths.declaredModuleName(filePath canon) canon target e
-                                maybe.none(:hashMap.T(String model.Type)))
+                            let externalTypes = elaboration.extractModuleExternalTypes(filePath)
+                            let s = elaboration.createModuleExportScope(paths.declaredModuleName(filePath canon) canon
+                                target e maybe.some(:hashMap.T(String model.Type) externalTypes))
                             u.exportScope := maybe.some(:Scope s)
                             s
                         end

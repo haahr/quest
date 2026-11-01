@@ -1151,6 +1151,12 @@ export
      * elaborated here in an environment of its own (a module the program uses
      * without importing it). Its value is kept by canonical name, so each
      * module is run once. *)
+    (* Whether a module is one of the library's that neither interpreter runs:
+     * the JIT's unsound primitives, which read and write native memory
+     * (docs/jit.md section 3.11), refused by name since there are no builtins
+     * for them *)
+    let uninterpreted(canon: String): Bool = stringOp.equal(canon "os/value") orif stringOp.equal(canon "os/code")
+
     let loadModuleForInterpreter(name: String expectedInterface: String f: Frame canonicalName: maybe.T(String)): Value =
         begin
             let root = f.root
@@ -1168,6 +1174,9 @@ export
                 let loaded = hashMap.get(:String :Value root.moduleValues canon)
                 if maybe.isSome(:Value loaded) then
                     maybe.unwrap(:Value loaded)
+                elsif uninterpreted(canon) then
+                    model.internalError(:Value "'" <> canon <> "' cannot be interpreted: compile the program instead"
+                        maybe.none(:Int))
                 else
                     let var typedMod = graph.typedModule(g canon)
                     if maybe.isNone(:Binding typedMod) then
