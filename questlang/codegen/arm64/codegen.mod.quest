@@ -135,6 +135,20 @@ export
                     frameAccess(s spillAt[machine.index(m v)] fun(base: Int mode: minst.Mode): minst.Inst
                         minst.store(minst.store64 src base mode))
                 let scratch = array of array of x9 x10 x11 end array of target.d(30) target.d(31) end end
+                (* A dead value's slot is cleared if it may hold a pointer: an
+                 * integer's, since a pointer may be converted to one, but not
+                 * a Real's. Not in a function that enters a try: its handler
+                 * reloads what it uses from slots, after a raise from anywhere
+                 * in the try's body, where liveness does not see the
+                 * handler's uses *)
+                let clears = fun(v: Int): Bool
+                    not(s.entersTry) andif case vector.get(:ssa.Type s.types machine.index(m v))
+                        when typeInt, typePtr, typeVal then true
+                        when typeReal then false
+                    end
+                let clear = fun(v: Int): Array(machine.Inst)
+                    frameAccess(s spillAt[machine.index(m v)] fun(base: Int mode: minst.Mode): minst.Inst
+                        minst.store(minst.store64 target.xzr base mode))
             end
             regalloc.rewrite(m a lowering)
             let savedList = vector.new(:Int)

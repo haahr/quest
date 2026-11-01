@@ -298,6 +298,13 @@ the SSA's values, and it reads no register's name: a target (`codegen/target`) g
 - **Rematerialization** is of an instruction that reads no virtual register: a constant, a symbol's address, or an
   address in the frame.
 - **The frame** is the outgoing arguments' area, the stack slots, then a slot for each register stored in memory.
+- **Dead values' slots cleared** (2026-11-01, arm64-performance-review.md §3.2). The collector scans frames
+  conservatively, so a slot that still holds a dead value's pointer keeps what it points to alive: in mlyacc, whose
+  whole program is `main`, hundreds of them did. Where a value with a slot dies (after the instruction that last reads
+  it, or at the start of a branch's target it is not live into), `rewrite` stores zero to its slot, if a call, where a
+  collection can happen, may follow before the function returns, and if the target's `Lowering` says the value may
+  be a pointer: arm64 clears integers' and pointers' slots, not Reals', and none in a function that enters a `try`,
+  whose handler reloads from slots what liveness in the try's body does not see it use.
 - **A block a raise enters,** beside its `try`, which jumps to the handler, has every register dead at its start;
   the handler may then have what it uses in registers, loaded by that jump's moves.
 

@@ -10,8 +10,9 @@
  * call and back in a register at its next use; when the registers run out,
  * the interval used furthest away is spilled until its next use; a loop's
  * values stay in their registers through it; reals take registers of their
- * own class; a constant is made again rather than stored; and what a block a
- * raise enters uses is in memory at its start. Each virtual register's pieces
+ * own class; a constant is made again rather than stored; what a block a
+ * raise enters uses is in memory at its start; and a dead value's slot is
+ * cleared where a call may follow. Each virtual register's pieces
  * are shown with the positions they start at, then the moves to pieces that
  * start inside blocks, then the function rewritten in the registers
  * allocated. *)
@@ -146,6 +147,9 @@ let show(title: String f: machine.Function): Ok =
             let store = fun(src: Int v: Int): Array(machine.Inst)
                 array of make(ordinary "store [" <> name(f v) <> "]" array of rd(src) end ~1) end
             let scratch = array of array of 5 6 7 end array of 8 9 end end
+            let clears = fun(v: Int): Bool true
+            let clear = fun(v: Int): Array(machine.Inst)
+                array of make(ordinary "clear [" <> name(f v) <> "]" array of :machine.Operand end ~1) end
         end
         regalloc.rewrite(f a lowering)
         emit("rewritten:")
@@ -270,3 +274,20 @@ let t3 = fresh(tried);
 add(tried handler t3 t1 t0);
 ret(tried handler t3);
 show("a block a raise enters" tried);
+
+(* 8. A dead value's slot is cleared: two values live across a call, one in
+ * memory; it dies at its next use, and since another call follows, its slot
+ * is cleared there, so that a collection in that call does not see it. The
+ * value live to the end, after the last call, is not *)
+let dead = machine.newFunction(extent toy.registers);
+let d0 = entry(dead);
+let d1 = fresh(dead);
+let d2 = fresh(dead);
+let d3 = fresh(dead);
+add(dead 0 d1 d0 d0);
+call(dead 0);
+add(dead 0 d2 d0 d1);
+call(dead 0);
+add(dead 0 d3 d2 d2);
+ret(dead 0 d3);
+show("a dead value's slot cleared before a later call" dead);

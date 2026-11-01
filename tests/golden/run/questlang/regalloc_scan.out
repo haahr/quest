@@ -200,3 +200,31 @@ b3:
 	load [%1] =r1
 	add =a0 r1 a0
 	ret a0
+== a dead value's slot cleared before a later call
+b0:
+	mov =%0 a0
+	add =%1 %0 %0
+	call g
+	add =%2 %0 %1
+	call g
+	add =%3 %2 %2
+	mov =a0 %3
+	ret a0
+%0: s1 at 3
+%1: r1 at 5, memory at 7, r1 at 8 (stored)
+%2: s1 at 9
+%3: a0 at 13
+move at 8: %1 memory -> r1
+callee-saved used: s1
+rewritten:
+b0:
+	mov =s1 a0
+	add =r1 s1 s1
+	store [%1] r1
+	call g
+	load [%1] =r1
+	add =s1 s1 r1
+	clear [%1]
+	call g
+	add =a0 s1 s1
+	ret a0
