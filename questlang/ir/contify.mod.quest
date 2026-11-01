@@ -280,7 +280,8 @@ export
         end
 
     (* Contifies one function, if one can be: whether it did *)
-    let contifyOne(all: Array(Body) pinned: hashMap.T(Int Bool) labels: clone.Labels): Bool =
+    let contifyOne(all: Array(Body) recursive: hashMap.T(Int Bool) pinned: hashMap.T(Int Bool) labels: clone.Labels)
+        : Bool =
         begin
             let u = tuple
                 let functions = vector.new(:nodes.Function)
@@ -309,8 +310,15 @@ export
                         let s = vector.get(:Site sites k)
                         if not(hashMap.contains(:Int :Bool inside s.body.id)) then vector.append(:Site outside s) end
                     end
+                    (* A function that never calls itself and is not
+                     * recursive through others is left to the inliner: as a
+                     * loop at a module's top level, its bindings would be the
+                     * loop's, not the module's, and its functions would
+                     * capture them *)
+                    let loops = {sc.calls > 0}
+                        orif maybe.unwrapOr(:Bool hashMap.get(:Int :Bool recursive f.v.id) false)
                     if {vector.length(:Site outside) is 1} andif {vector.length(:Tail sc.tails) is sc.calls}
-                        andif {{sc.calls + 1} is uses} then
+                        andif loops andif {{sc.calls + 1} is uses} then
                         transform(f hashMap.find(:Int :nodes.StmtFuns u.funs f.v.id) vector.get(:Site outside 0) sc.tails labels)
                         done := true
                     end
@@ -319,13 +327,14 @@ export
             done
         end
 
-    let contify(all: Array(Body) pinned: hashMap.T(Int Bool) labels: clone.Labels): Bool =
+    let contify(all: Array(Body) recursive: hashMap.T(Int Bool) pinned: hashMap.T(Int Bool) labels: clone.Labels)
+        : Bool =
         begin
             let var any = false
             let var more = true
             let var n = 0
             while more andif {n < maxContified} do
-                more := contifyOne(all pinned labels)
+                more := contifyOne(all recursive pinned labels)
                 if more then any := true end
                 n := n + 1
             end

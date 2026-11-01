@@ -636,10 +636,14 @@ meanwhile. The times are in `benchmarks/mlton/baselines/2026-10-31/`: `quest-c-3
 - **The whole-program build** takes 0.99 times as long as separate compilation, which is within noise for all but
   two. even-odd takes 0.61 of the separate time, its mutually recursive functions in one unit with the library's.
   ratio-regions takes **1.68 times as long** (12.1 s against 20.3 s, and 12.4 and 12.2 against 19.2 and 19.5 in two
-  reruns), the time it took before the inliner: something the whole program inlines or does not inline, or clang
-  does differently in one large file, loses what separate compilation gains. It is yet to be found. These
-  whole-program times predate `49452427`, which makes a whole program's abstract types transparent so that the
-  library's members inline across them; they are to be retaken.
+  reruns), the time it took before the inliner. It allocated 46.6 million objects against 29.3 million: built whole,
+  contification made `raoRatioRegion`, called once and never calling itself, a loop at the top level before the
+  inliner could splice it in, so its matrices were the loop's variables rather than the module's globals, and the
+  closures `preflowPush`'s inner loop passes to `lists.app` captured them, allocating an environment, a closure, and
+  an adapter each per iteration rather than using static closures. Contification now leaves a function that never
+  calls itself and is not recursive to the inliner ([inlining.md](inlining.md) step 4); `49452427` had already hidden
+  it here. These whole-program times predate `49452427`, which makes a whole program's abstract types transparent so
+  that the library's members inline across them; they are to be retaken.
 - **Building** the 46 took 42.1 s through C (median 0.4 s), 72.1 s whole (median 0.9 s: each build compiles the
   library with the program), and 34.4 s through arm64.
 

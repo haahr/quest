@@ -200,7 +200,12 @@ benchmarks.md §3.3, independent of the inliner, and the first step.
    parameters to them, so that its own functions capture values as before. The simplifier also turns jumps to a
    join point whose continuation only returns into returns, which is what makes a call before a jump to the
    function's end a tail call. imp-for is eight loops and tailfib two, with no call left but `bench.count`;
-   `language/contified_loops` shows what is contified and what is not.
+   `language/contified_loops` shows what is contified and what is not. A function that never calls itself and is
+   not recursive through others is left to the inliner (2026-10-31): as a loop at a module's top level, its
+   bindings were the loop's rather than the module's globals, and its functions captured them, which made
+   ratio-regions allocate 1.6 times as much built whole (benchmarks.md §7.2). One recursive through others, which
+   the inliner never inlines, is still contified, so that `language/tail_calls`' mutually recursive pair is one
+   loop.
 5. **Workers** (§5), and signatures rewritten in place for functions that do not escape. *Done when* a function
    returning a fresh tuple to callers that only read it allocates no tuple. *Done in part* (2026-10-31): unboxed
    tuple results, the user's choice of design (rather than several results in the IR). `questlang/ir/unbox`, after
@@ -237,6 +242,6 @@ benchmarks.md §3.3, independent of the inliner, and the first step.
    setRegisteringApart`), which transparent shapes leave out, whenever the module is compiled.
    `maybe.isSome(maybe.some(3))` in a whole program folds to `true`; every test passes whole through C.
    benchmarks.md §7 compares whole-program builds with separate ones at `36244e7b`, before transparent types:
-   0.99 times as long, even-odd 0.61 and ratio-regions 1.68 (not yet explained).
+   0.99 times as long, even-odd 0.61 and ratio-regions 1.68 (contification's, step 4).
 7. **Tuning:** the threshold, bonuses, and growth bounds set from the measurements. *Done when* benchmarks.md
    records the settings and why.

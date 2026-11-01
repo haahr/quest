@@ -110,7 +110,9 @@ The printer writes a unit's C in this order (`CPrinter.print_unit`):
 4. A prototype of each of the unit's functions (every function, lifted by closure conversion), with a static closure
    of it for when it captures nothing (`static QClosure qf_<name>_closure = { (void *)qf_<name>, NULL };`).
 5. Globals: the variables the top levels bind outside loops, at file scope (`static QInt g_x;`), and the records of
-   the unit's modules.
+   the unit's modules. The self-hosted compiler's are only those that a function or another top level names, or
+   that are a module's members, exports, or record ([ir.md](ir.md) §8.2); its other top-level variables are locals
+   of `main` or the module's initializer.
 6. Thunks (adapters, type applications, external C functions as closures), and `qr_register_dicts`, which registers
    the offset tables of the records the unit views at supertypes, for dynamic values.
 7. The functions, the thunks, and the modules' initializers.

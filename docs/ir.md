@@ -231,7 +231,8 @@ Operations that can raise (calls, array indexing, `payload` of the wrong tag, di
 - `var x: τ = a` declares a mutable variable, and `x := a` assigns it. Only source-level `let var` locals and
   `var`/`out` parameters are mutable; a use of one reads it, and how a `var` parameter is passed (by pointer) is the
   printer's business. `addr x` takes the address of one for a `var` or `out` argument (`@x`). Mutable variables of a
-  unit's or module's top level are globals.
+  unit's or module's top level are globals (in the self-hosted compiler, those that a function or another top level
+  names, §8.2).
 - `let rec (x: τ ...) { body }` binds recursive values: `body` computes each variable's value (a constructor or a
   function), and closures made in it may refer to all of them.
 - `store r.name := a`, `store t.#i := a`, `store a[i] := v`, and `store *p := a` store into a `var` component, an
@@ -376,13 +377,16 @@ whose native layout differs from the generic one, as outside the module values o
 ### 8.2. Closure-convert
 
 `ir/closure.py`. Lifts every function, top-level and nested alike, to the unit's functions, and replaces each `funs`
-statement with lets of `closure f {captures...}`. A function's captures are its free variables (by identity) other
-than globals, in the order of their first use; globals are the variables the unit's top levels (its main body and
-its modules' initializers) bind outside loops, each bound at most once in a run, which lifted functions use
-directly. Since closures do not capture mutable locals (the lowering boxes those they would), captures are values, copied into the closure; the lifted
-function reads them from its environment (`fun f {env} ...`) at its start, `let x = env_field(env, i)`, and uses
-those variables in their place. Nested functions are converted first, so a function's captures include what the
-closures it makes capture.
+statement with lets of `closure f {captures...}`. A function's captures are its free variables (by identity) other than
+globals, in the order of their first use; globals are the variables the unit's top levels (its main body and its
+modules' initializers) bind outside loops, each bound at most once in a run, which lifted functions use directly. The
+self-hosted compiler's globals are fewer (`walk.globalVariables`, 2026-10-31): of those variables, the ones a function
+names, another top level names, or that are a module's members, exports, or record; the rest are locals of the top level
+that binds them, kept in registers rather than memory, as a called-once function's loop variables are once it is inlined
+there (`02_expressions_control_flow`'s `testLoop`). Since closures do not capture mutable locals (the lowering boxes
+those they would), captures are values, copied into the closure; the lifted function reads them from its environment
+(`fun f {env} ...`) at its start, `let x = env_field(env, i)`, and uses those variables in their place. Nested functions
+are converted first, so a function's captures include what the closures it makes capture.
 
 A function nested in a polymorphic one takes the enclosing functions' type parameters as its leading type
 parameters (same symbols, so its types need no rewriting), which its closure supplies: `closure g {x} [A]` inside

@@ -84,3 +84,20 @@ let valued(n: Int): Int =
         r + x
     end;
 print(conv.int(valued(3)));
+
+(* 7. A component of an object the function made, set in a try before a raise:
+ * the object's address never escapes, so clang may hold the component in a
+ * register, which longjmp restores to its value at the try (the C printer
+ * declares the variable stored through volatile) *)
+let rec component(n: Int): Int =
+    begin
+        let t = tuple let var n = 0 end
+        try
+            begin t.n := t.n + 1 if n > 0 then raise Stop end end t.n := t.n + 10 end
+        when Stop then
+            t.n := t.n + 100
+        end
+        if n > 5 then component(n - 1) + t.n else t.n end
+    end;
+print(conv.int(component(1)));
+print(conv.int(component(0)));

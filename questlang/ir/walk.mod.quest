@@ -157,24 +157,6 @@ export
             found
         end
 
-    let globalVariables(unit: nodes.Unit): hashMap.T(Int Bool) =
-        begin
-            let found = hashMap.new(:Int :Bool intEqual hash.int)
-            let rec visit(b: Body): Ok =
-                for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
-                    let s = vector.get(:Stmt b.statements i)
-                    let binders = statementBinders(s)
-                    for j = 0 upto {extent binders - 1} do hashMap.insert(:Int :Bool found binders[j].id true) end
-                    if not(s?sLoop) then
-                        let bodies = statementBodies(s)
-                        for j = 0 upto {extent bodies - 1} do visit(bodies[j]) end
-                    end
-                end
-            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do visit(vector.get(:nodes.Module unit.modules i).init) end
-            visit(unit.main)
-            found
-        end
-
     Let Rename = All(v: Variable) Variable
 
     let atom(a: Atom f: Rename): Atom =
@@ -422,6 +404,70 @@ export
 
     let replaceVarsInOp(o: Op f: Rename): Ok = mapInOp(o f fun(a: Atom): Atom atom(a f))
     let replaceVarsInStmt(s: Stmt f: Rename): Ok = mapInStmt(s f fun(a: Atom): Atom atom(a f))
+
+    let globalVariables(unit: nodes.Unit): hashMap.T(Int Bool) =
+        begin
+            (* The variables each top level binds outside loops and functions,
+             * by the index of the top level (a module's initializer, or the
+             * main body after them) *)
+            let bound = hashMap.new(:Int :Int intEqual hash.int)
+            let rec visit(b: Body where: Int): Ok =
+                for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
+                    let s = vector.get(:Stmt b.statements i)
+                    let binders = statementBinders(s)
+                    for j = 0 upto {extent binders - 1} do hashMap.insert(:Int :Int bound binders[j].id where) end
+                    if not(s?sLoop) then
+                        let bodies = statementBodies(s)
+                        for j = 0 upto {extent bodies - 1} do visit(bodies[j] where) end
+                    end
+                end
+            let n = vector.length(:nodes.Module unit.modules)
+            for i = 0 upto {n - 1} do visit(vector.get(:nodes.Module unit.modules i).init i) end
+            visit(unit.main n)
+            (* Of those, the ones named where they are not bound: by a function
+             * (where is ~1), or by another top level *)
+            let found = hashMap.new(:Int :Bool intEqual hash.int)
+            let note(v: Variable where: Int): Ok =
+                begin
+                    let b = hashMap.get(:Int :Int bound v.id)
+                    if maybe.isSome(:Int b) andif {{where < 0} orif {maybe.unwrap(:Int b) isnot where}} then
+                        hashMap.insert(:Int :Bool found v.id true)
+                    end
+                end
+            let rec names(b: Body where: Int): Ok =
+                begin
+                    let stmts = walkStatements(b false)
+                    for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                        let s = vector.get(:Stmt stmts i)
+                        replaceVarsInStmt(s fun(v: Variable): Variable begin note(v where) v end)
+                        case s
+                            when sFuns with x then
+                                for j = 0 upto {extent x.functions - 1} do names(x.functions[j].body ~1) end
+                            else ok
+                        end
+                    end
+                end
+            for i = 0 upto {n - 1} do names(vector.get(:nodes.Module unit.modules i).init i) end
+            names(unit.main n)
+            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                names(vector.get(:nodes.Function unit.functions i).body ~1)
+            end
+            (* And a module's members, exports, and record, which other units
+             * and the module's exported functions read *)
+            let member(v: Variable): Ok =
+                if hashMap.contains(:Int :Int bound v.id) then hashMap.insert(:Int :Bool found v.id true) end
+            let members(ms: nodes.Members): Ok =
+                for j = 0 upto {vector.length(:String ms.names) - 1} do
+                    member(hashMap.find(:String :Variable ms.vars vector.get(:String ms.names j)))
+                end
+            for i = 0 upto {n - 1} do
+                let m = vector.get(:nodes.Module unit.modules i)
+                members(m.members)
+                if maybe.isSome(:nodes.Members m.exports) then members(maybe.unwrap(:nodes.Members m.exports)) end
+                if maybe.isSome(:Variable m.recordVar) then member(maybe.unwrap(:Variable m.recordVar)) end
+            end
+            found
+        end
     let replaceAtomsInOp(o: Op g: AtomMap): Ok = mapInOp(o fun(v: Variable): Variable v g)
     let replaceAtomsInStmt(s: Stmt g: AtomMap): Ok = mapInStmt(s fun(v: Variable): Variable v g)
 

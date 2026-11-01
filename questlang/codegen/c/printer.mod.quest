@@ -2077,10 +2077,17 @@ export
         end
 
     (* The variables a try body assigns, which C must declare volatile for the
-     * handler to read them after longjmp *)
+     * handler to read them after longjmp; and those it stores through, since
+     * clang may keep the fields of an object allocated in the function, whose
+     * address does not escape, in registers that longjmp restores *)
     let volatileVars(b: nodes.Body): hashMap.T(Int Bool) =
         begin
             let found = hashMap.new(:Int :Bool intEqual hash.int)
+            let through = fun(a: nodes.Atom): Ok
+                case a
+                    when atomVar with v then put(:Int :Bool found v.v.id true)
+                    else ok
+                end
             let statements = walk.walkStatements(b false)
             for i = 0 upto {vector.length(:nodes.Stmt statements) - 1} do
                 case vector.get(:nodes.Stmt statements i)
@@ -2089,6 +2096,10 @@ export
                         for j = 0 upto {vector.length(:nodes.Stmt inner) - 1} do
                             case vector.get(:nodes.Stmt inner j)
                                 when sAssign with y then put(:Int :Bool found y.v.id true)
+                                when sStoreField with y then through(y.base)
+                                when sStoreComponent with y then through(y.base)
+                                when sStoreElement with y then through(y.base)
+                                when sStoreAt with y then through(y.address)
                                 else ok
                             end
                         end

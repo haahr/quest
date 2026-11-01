@@ -1692,13 +1692,21 @@ class CPrinter:
 
     def volatile_vars(self, body: ir.Body) -> set[int]:
         """The variables a try body assigns, which C must declare volatile for
-        the handler to read them after longjmp."""
+        the handler to read them after longjmp; and those it stores through,
+        since clang may keep the fields of an object allocated in the
+        function, whose address does not escape, in registers that longjmp
+        restores."""
         found: set[int] = set()
         for s in walk_statements(body, into_functions=False):
             if isinstance(s, ir.Try):
                 for t in walk_statements(s.body, into_functions=False):
                     if isinstance(t, ir.Assign):
                         found.add(id(t.var))
+                    elif isinstance(t, (ir.StoreField, ir.StoreComponent, ir.StoreElement)) \
+                            and isinstance(t.base, ir.Var):
+                        found.add(id(t.base))
+                    elif isinstance(t, ir.StoreAt) and isinstance(t.address, ir.Var):
+                        found.add(id(t.address))
         return found
 
     def function_signature(self, f: ir.Function) -> str:
