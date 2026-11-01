@@ -56,13 +56,18 @@ def holds_record_or_variant(s: Shape, seen: Optional[set[int]] = None) -> bool:
 
 
 def should_specialize(f: ir.Function, type_args: tuple[QType, ...]) -> bool:
-    """The selective trigger (docs/c-representation.md §6.4.3): a type argument
+    """The selective trigger (docs/c-representation.md §6.4.3), for a function
+    not defined as an external C function: a type argument
     that is or holds a record or variant, which generic code would box; or a var
     or out parameter, or a tuple parameter or result (however its type is
     written: through an alias or a type operator's application too), over the
     function's type parameters, whose generic layout may differ from the
     caller's (a closure among its components whose C signature changes, a
     location of another representation), and so convert at every call."""
+    # A function defined as an external C function stays generic: the C
+    # function takes its type parameters' values in their slot form, a word
+    if any(isinstance(s, ir.Let) and isinstance(s.value, ir.CallExternal) for s in f.body.statements):
+        return False
     # A type operator (the argument of a higher-kinded type parameter) is not
     # the type of values, and has no shape
     if any(not is_type_operator(t) and holds_record_or_variant(shape(t)) for t in type_args):

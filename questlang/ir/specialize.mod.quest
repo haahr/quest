@@ -90,6 +90,16 @@ export
 
     let shouldSpecialize(f: nodes.Function typeArgs: Array(Type)): Bool =
         begin
+            (* A function defined as an external C function stays generic: the
+             * C function takes its type parameters' values in their slot
+             * form, a word *)
+            let var isExternal = false
+            for i = 0 upto {vector.length(:nodes.Stmt f.body.statements) - 1} do
+                case vector.get(:nodes.Stmt f.body.statements i)
+                    when sLet with s then case s.value when opCallExternal then isExternal := true else ok end
+                    else ok
+                end
+            end
             (* A type operator (the argument of a higher-kinded type parameter)
              * is not the type of values, and has no shape *)
             let var found = false
@@ -107,7 +117,8 @@ export
                         andif mentionsAny(p.v.type ids) then found := true end
                 end
             end
-            found orif {shapes.kindIs(shapes.shape(f.resultType) shapes.shapeTuple) andif mentionsAny(f.resultType ids)}
+            not(isExternal) andif {found orif
+                {shapes.kindIs(shapes.shape(f.resultType) shapes.shapeTuple) andif mentionsAny(f.resultType ids)}}
         end
 
     (* Whether values of type t are functions, polymorphic or not *)
