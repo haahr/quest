@@ -12,6 +12,7 @@ conversions' output against MLton's and times both.
 | `expected/` | The originals' output, as MLton-compiled programs produce it: standard output and exit status (`NAME.out`), and the path, size, and SHA-256 of each file written (`NAME.files`) |
 | `tools/` | Scripts that transliterated the originals' large data sections and generated tables into Quest |
 | `run.py` | The runner |
+| `allocations.py`, `allocations.c` | A counter of the conversions' allocations, by function: an interposer of the collector's allocators and its driver |
 | `baselines/` | Times recorded by `run.py time --results`, for `run.py report` ([docs/benchmarks.md](../../docs/benchmarks.md)) |
 
 The originals keep their authors' copyrights, noted in each file; MLton's license is in `sml/MLton-LICENSE`.

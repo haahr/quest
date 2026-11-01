@@ -77,7 +77,9 @@ because none of its pointers is a block argument (§2), so no pointer from one i
 
 1. **The allocation counter as a tool:** `benchmarks/mlton/allocations.py NAME... [--backend b] [--whole-program]`,
    building each benchmark and reporting its allocations by function. *Done when* it reproduces benchmarks.md
-   §7.2's ratio-regions counts.
+   §7.2's ratio-regions counts. *Done* (2026-11-01): at `--count 96` it counts the 22,355,456 allocations of
+   benchmarks.md §8.2 through C (§7.2's 29.3 million predate options as values), and through `ssac` and `arm64`,
+   whose allocations go through the runtime's `quest_alloc`, 187 more, by the same functions.
 2. **The analysis and its dump** (§2): `ssa_escape` marks candidates as kept or removable, without changing them.
    *Done when* the per-pass goldens show each case of §4 classified as intended.
 3. **The transformation** (§3), with the folds. *Done when* the suite passes in every SSA mode, the fixed points
