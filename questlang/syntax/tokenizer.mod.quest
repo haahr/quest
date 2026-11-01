@@ -13,6 +13,7 @@ import
     strutil = util/strutil : util/Strutil
     stringBuilder = util/stringbuilder : util/StringBuilder
     stringOp = string : StringOp
+    intOp = int : IntOp
     ascii : Ascii
     conv : Conv
 export
@@ -292,14 +293,50 @@ export
      *     1e5       INT_LIT 1, IDENT e5 (an exponent needs a fraction)
      *     3..5      INT_LIT 3, DOT, DOT, INT_LIT 5
      *     2.0e      error: Malformed real exponent
+     *     0xFF      INT_LIT 0xFF, the value 255; ~0x10 is -16
+     *     0x        error: Malformed hexadecimal literal
      *
-     * An integer must fit in 64 bits, so 9223372036854775808 is out of range
-     * but ~9223372036854775808 is the least Int. The token's lexeme is the
-     * source text, and its value the number. *)
-    let lexNumber(tok: T): tokens.Token =
+     * An integer written in hexadecimal is 0x or 0X and its digits, of either
+     * case. An integer must fit in 64 bits, so 9223372036854775808 (and
+     * 0x8000000000000000) is out of range but ~9223372036854775808 is the
+     * least Int. The token's lexeme is the source text, and its value the
+     * number. *)
+    let rec lexNumber(tok: T): tokens.Token =
         begin
             let start = tok.cursor
             if currentChar(tok) is '~' then tok.cursor := tok.cursor + 1 end
+            if {currentChar(tok) is '0'} andif {{peekChar(tok 1) is 'x'} orif {peekChar(tok 1) is 'X'}} then
+                lexHex(tok start)
+            else
+                lexDecimal(tok start)
+            end
+        end
+
+    (* A hexadecimal integer, its digits accumulated negated, so that the least
+     * Int, ~0x8000000000000000, does not overflow *)
+    and lexHex(tok: T start: Int): tokens.Token =
+        begin
+            let negative = stringOp.getChar(tok.text start) is '~'
+            tok.cursor := tok.cursor + 2
+            let var n = 0
+            let var digits = 0
+            let var inRange = true
+            while hexVal(currentChar(tok)) >= 0 do
+                let d = hexVal(currentChar(tok))
+                (* n * 16 - d must not pass the least Int *)
+                if n < {intOp.minInt + d} / 16 then inRange := false else n := {n * 16} - d end
+                digits := digits + 1
+                tok.cursor := tok.cursor + 1
+            end
+            let lexeme = stringOp.getSub(tok.text start {tok.cursor - start})
+            if digits is 0 then error(tok start "Malformed hexadecimal literal") end
+            if not(negative) andif {n is intOp.minInt} then inRange := false end
+            if not(inRange) then error(tok start "Integer literal '" <> lexeme <> "' out of range") end
+            finish(tok option intLit of K end start tokens.valInt(if negative then n else 0 - n end))
+        end
+
+    and lexDecimal(tok: T start: Int): tokens.Token =
+        begin
             skipWhile(tok strutil.isDigit)
             (* A real has a decimal point followed by a digit, and an optional
              * exponent *)

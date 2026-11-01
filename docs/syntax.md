@@ -68,8 +68,11 @@ coordinates on demand:
    - Operators can be applied in prefix notation with argument tuples: `+(1 2)`.
 
 ### 2.3. Literals and Escape Sequences
-- **Integers (`INT_LIT`):** Decimal sequences (`0`, `42`, `1000`). Negative integers are prefixed with a tilde `~`
-  (e.g. `~1`, `~42`).
+- **Integers (`INT_LIT`):** Decimal sequences (`0`, `42`, `1000`), or hexadecimal ones, `0x` or `0X` followed by
+  digits of either case (`0xFF`, `0X2a`), an extension ([extensions.md](extensions.md), "Hexadecimal Integers").
+  Negative integers are prefixed with a tilde `~` (e.g. `~1`, `~42`, `~0x10`). Either way an integer must fit in 64
+  bits: `0x7FFFFFFFFFFFFFFF` is the greatest, and `~0x8000000000000000` the least; `0xFFFFFFFFFFFFFFFF` is out of
+  range, not ~1.
 - **Reals (`REAL_LIT`):** Decimal floats with fractional and/or exponential parts (`3.14`, `2.0e-5`, `1.0E+3`).
   Negative reals are prefixed with a tilde `~` (e.g. `~3.14`, `~2.0e-5`).
 - **Strings (`STRING_LIT`):** Delimited by double quotes `"..."`. Supports escapes `\n`, `\t`, `\"`, `\\`, and

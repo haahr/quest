@@ -209,6 +209,16 @@ Single underscores (`_`) continue to separate module prefixes from member names,
 
 ---
 
+## Hexadecimal Integers
+
+*Typeful Programming* writes integers in decimal only. Quest also reads `0x` or `0X` followed by hexadecimal digits,
+of either case, as an integer (`0xFF` is 255, `~0x10` is -16), for code that works with bit patterns, such as the arm64
+encoder's opcodes (`codegen/arm64/encode`). The range is decimal's: a hexadecimal integer must fit in 64 bits as a
+signed number, so `0xFFFFFFFFFFFFFFFF` is out of range rather than ~1, and `0x` without digits is an error. Before
+this extension, `0xab` was the integer 0 followed by the identifier `xab`.
+
+---
+
 ## Semicolons
 
 *Typeful Programming* uses semicolons only to end top-level phrases (§3.3, and the syntax in §11.1): the sole rule

@@ -123,13 +123,27 @@ class Tokenizer:
             1e5       INT_LIT 1, IDENT e5 (an exponent needs a fraction)
             3..5      INT_LIT 3, DOT, DOT, INT_LIT 5
             2.0e      error: Malformed real exponent
+            0xFF      INT_LIT 0xFF, the value 255; ~0x10 is -16
+            0x        error: Malformed hexadecimal literal
 
-        An integer must fit in 64 bits, so 9223372036854775808 is out of range
-        but ~9223372036854775808 is the least Int. The token's lexeme is the
-        source text, and its value the number."""
+        An integer written in hexadecimal is 0x or 0X and its digits, of either
+        case. An integer must fit in 64 bits, so 9223372036854775808 (and
+        0x8000000000000000) is out of range but ~9223372036854775808 is the
+        least Int. The token's lexeme is the source text, and its value the
+        number."""
         start = self.cursor
         if self._peek() == "~":
             self.cursor += 1
+        if self._peek() == "0" and self._peek(1) in ("x", "X"):
+            self.cursor += 2
+            if not self._skip_while(lambda c: c in HEX_DIGITS):
+                raise TokenizerError("Malformed hexadecimal literal", start, self.cursor - start)
+            lexeme = self.source_text[start:self.cursor]
+            negative = lexeme.startswith("~")
+            number_value = int(lexeme.lstrip("~")[2:], 16) * (-1 if negative else 1)
+            if not INT_MIN <= number_value <= INT_MAX:
+                raise TokenizerError(f"Integer literal '{lexeme}' out of range", start, len(lexeme))
+            return Token(TokenKind.INT_LIT, lexeme, number_value, start)
         self._skip_while(str.isdigit)
 
         # Check for decimal point followed by a digit: e.g. 2.0 or ~2.0

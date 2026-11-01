@@ -25,8 +25,13 @@ def c_int(n: int) -> str:
 
 
 def c_int_literal(n: int) -> str:
-    """An int64_t constant: `5LL`, or `(-5LL)` for a negative one."""
-    return f"{c_int(n)}LL" if n >= 0 else f"(-{c_int(-n)}LL)"
+    """An int64_t constant: `5LL`, or `(-5LL)` for a negative one; the least,
+    whose negation does not fit, is `(-9223372036854775807LL - 1)`."""
+    if n >= 0:
+        return f"{c_int(n)}LL"
+    if n == -2**63:
+        return f"(-{c_int(-n - 1)}LL - 1)"
+    return f"(-{c_int(-n)}LL)"
 
 
 def c_real(r: float) -> str:
