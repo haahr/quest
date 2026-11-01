@@ -321,7 +321,11 @@ The inventory (§7.2) lists every helper, and the arm64 tests (§4) cover each e
 Every function has a frame record (`stp x29, x30`) and sets `x29`, which Darwin requires and the traceback walk
 uses. The prologue and epilogue save the callee-saved registers the function uses, with `.cfi` directives from which
 the assembler and linker make compact unwind entries. The prologue stores the lowest of the pairs it saves
-first, moving `sp` once (`stp x27, x28, [sp, #-96]!`), then the others and the frame record above it, as clang does.
+first, moving `sp` once (`stp x28, x27, [sp, #-96]!`), then the others and the frame record above it, as clang does.
+Each pair's odd register is above its even one, and the `.cfi_offset` directives name `x19` before `x20` and each pair
+in order down from the frame record: the places and order Darwin's compact unwind encoding needs. Stored the other way,
+every function that saved a pair had DWARF CFI instead, which libunwind interprets at each frame a raise walks
+(found 2026-11-01, arm64-performance-review.md §3.6; `tests/python/test_arm64.py` checks every function's entry).
 A compact unwind entry assumes the whole prologue has run, and the stack-overflow handler's backtrace reads it, so a
 prologue that pushed the record and then each pair downward could fault on a pair just below a record that fit, and
 the backtrace then read that pair from the guard page and crashed in the handler (found 2026-10-30, once in many

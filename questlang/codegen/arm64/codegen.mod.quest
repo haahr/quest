@@ -69,11 +69,16 @@ export
     end
 
     (* The callee-saved registers a function saves, in pairs, in the order it
-     * pushes them below its frame record *)
-    let savedFirsts = array of target.x(19) target.x(21) target.x(23) target.x(25) target.x(27) target.d(8)
-        target.d(10) target.d(12) target.d(14) end
-    let savedSeconds = array of target.x(20) target.x(22) target.x(24) target.x(26) target.x(28) target.d(9)
+     * pushes them below its frame record. Each pair's odd register is above
+     * its even one (stp x20, x19), the places Darwin's compact unwind
+     * encoding gives them: in the other order, every function that saves a
+     * pair needed DWARF unwind information, which libunwind interprets at
+     * each frame a raise walks (docs/arm64-performance-review.md section
+     * 3.6) *)
+    let savedFirsts = array of target.x(20) target.x(22) target.x(24) target.x(26) target.x(28) target.d(9)
         target.d(11) target.d(13) target.d(15) end
+    let savedSeconds = array of target.x(19) target.x(21) target.x(23) target.x(25) target.x(27) target.d(8)
+        target.d(10) target.d(12) target.d(14) end
 
     (* The frame's memory at sp plus off, by a load or store through x16 when
      * off is too far for an immediate (an 8-byte access's reaches 8 * 4095,
@@ -158,13 +163,15 @@ export
     let emit(e: Emitter i: minst.Inst): Ok = vector.append(:minst.Inst e.code i)
 
     (* The unwind information of the pairs saved: the first of the kth at the
-     * CFA less 16 * (k + 2), the second 8 above it *)
+     * CFA less 16 * (k + 2), the second 8 above it. The second's comes first,
+     * and the pairs in order down from the frame record, as the assembler
+     * needs them to make a compact unwind entry *)
     let savedOffsets(e: Emitter): Ok =
         begin
             let saved = e.c.saved
             for k = 0 upto {extent saved - 1} do
-                emit(e minst.cfiOffset(savedFirsts[saved[k]] 0 - {16 * {k + 2}}))
                 emit(e minst.cfiOffset(savedSeconds[saved[k]] {0 - {16 * {k + 2}}} + 8))
+                emit(e minst.cfiOffset(savedFirsts[saved[k]] 0 - {16 * {k + 2}}))
             end
         end
 

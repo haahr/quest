@@ -23,6 +23,11 @@ GOLDEN = ROOT / "tests" / "golden" / "run" / "questlang" / "arm64_assemble.out"
 @unittest.skipUnless(sys.platform == "darwin" and platform.machine() == "arm64", "Darwin arm64 assembly")
 class TestArm64(unittest.TestCase):
     def assemble(self, source: str) -> tuple[subprocess.CompletedProcess, dict[str, str]]:
+        result, symbols, _ = self.assemble_with_unwind(source)
+        return result, symbols
+
+    def assemble_with_unwind(self, source: str) -> tuple[subprocess.CompletedProcess, dict[str, str], str]:
+        """The assembler's result, the object's symbols, and its unwind information, as objdump prints it"""
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "unit.s"
             obj = Path(tmp) / "unit.o"
@@ -34,7 +39,11 @@ class TestArm64(unittest.TestCase):
                 for line in subprocess.run(["nm", str(obj)], stdout=subprocess.PIPE, text=True).stdout.splitlines():
                     fields = line.split()
                     symbols[fields[-1]] = fields[-2]
-            return result, symbols
+            unwind = ""
+            if result.returncode == 0:
+                unwind = subprocess.run(["objdump", "--unwind-info", str(obj)], stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, text=True).stdout
+            return result, symbols, unwind
 
     def test_the_golden_assembles(self) -> None:
         result, symbols = self.assemble(GOLDEN.read_text())
@@ -55,11 +64,12 @@ class TestArm64(unittest.TestCase):
     def test_conventions(self) -> None:
         text = GOLDEN.read_text()
         # Every function has a frame record, and unwind information; a function
-        # that saves pairs stores the lowest first, moving sp once (arm64.md
-        # section 3.10)
+        # that saves pairs stores the lowest first, moving sp once, each pair's
+        # odd register above its even one, as compact unwind entries place them
+        # (arm64.md section 3.10)
         self.assertEqual(text.count("stp x29, x30, [sp, #"), text.count(".cfi_startproc"))
         self.assertEqual(len(re.findall(r"\]!\n", text)), text.count(".cfi_startproc"))
-        self.assertIn("stp d14, d15, [sp, #-160]!\n\tstp d12, d13, [sp, #16]", text)
+        self.assertIn("stp d15, d14, [sp, #-160]!\n\tstp d13, d12, [sp, #16]", text)
         self.assertEqual(text.count(".cfi_startproc"), text.count(".cfi_endproc"))
         # A thread-local through its descriptor, an undefined symbol through the GOT
         self.assertIn("_quest_current_exception_handler@TLVPPAGE", text)
@@ -80,14 +90,25 @@ class TestArm64(unittest.TestCase):
         self.assertTrue(re.search(r"str x29, \[x\d+, #40\]", text), text)
         entered = text[text.index("_qf_try:"):]
         entered = entered[:entered.index(".cfi_endproc")]
-        for pair in ("x19, x20", "x27, x28", "d8, d9", "d14, d15"):
+        for pair in ("x20, x19", "x28, x27", "d9, d8", "d15, d14"):
             self.assertEqual(len(re.findall(rf"stp {pair}, \[sp, #-?\d+\]", entered)), 1, pair)
             self.assertEqual(entered.count(f"ldp {pair}, [sp], #16"), 2, pair)  # at its two returns
         # Elsewhere, only the pairs a function's values use (section 3.8)
         main = text[text.index("_main:"):]
         main = main[:main.index(".cfi_endproc")]
-        self.assertEqual(re.findall(r"stp (\S+, \S+), \[sp, #-?\d+\]", main), ["x19, x20", "x29, x30"])
-        self.assertIn(".cfi_offset b15, -152", text)
+        self.assertEqual(re.findall(r"stp (\S+, \S+), \[sp, #-?\d+\]", main), ["x20, x19", "x29, x30"])
+        self.assertIn(".cfi_offset b15, -160", text)
+
+    def test_compact_unwind(self) -> None:
+        # Every function, those that save pairs included, has a compact unwind
+        # entry rather than DWARF CFI, which libunwind interprets at each frame
+        # a raise walks (docs/arm64-performance-review.md section 3.6)
+        result, _, unwind = self.assemble_with_unwind(GOLDEN.read_text())
+        self.assertEqual(result.returncode, 0, result.stdout)
+        encodings = re.findall(r"compact encoding:\s*(0x[0-9a-f]+)", unwind)
+        self.assertEqual(len(encodings), GOLDEN.read_text().count(".cfi_startproc"), unwind)
+        for encoding in encodings:
+            self.assertNotEqual(int(encoding, 16) & 0x0F000000, 0x03000000, unwind)
 
     def test_a_malformed_unit_fails(self) -> None:
         # The check can fail: an unknown instruction does not assemble
