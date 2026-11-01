@@ -435,15 +435,25 @@ and `.out` files) and its runs of `tools/check` here, beside the estimate.
 
 | | Lines, actual | Checks, actual | Commit |
 |---|--:|--:|---|
-| 1 | | | |
-| 2 | | | |
-| 3a | | | |
+| 1 | 19 | 1, with 2 and 3a | `e7b7e44b` |
+| 2 | 59 | 1, with 1 and 3a | `ee258b96` |
+| 3a | 143 | 1, with 1 and 2 | `33b8e719` |
 | 3b | | | |
 | 4a | | | |
 | 4b | | | |
 | 5 | | | |
 | 6 | | | |
 | 7 | | | |
+
+The first batch (items 1, 2, and 3a, 2026-11-01) passed `tools/check` in one run of every suite (40 minutes, since it
+changes tests' goldens, which the self-hosted compiler's suites alone do not cover). Its estimates held: each item
+within its order of magnitude, and one run against the one to five estimated. Two of its results differ from what
+§3 predicted. Item 1's gain on zebra (0.89 of its time, measured before `418db1c2`) is mostly gone, since that
+commit walks a raise's frames by the frame-pointer chain rather than libunwind; it still removes DWARF unwind
+information from every binary. Item 3a cleared `main`'s frame (90 to 126 heap pointers at a collection, against 519
+to 717 before and clang's 78 to 81), but mlyacc's median live data fell only from 2.6 MB to 2.0 MB, against clang's
+0.77: what else keeps the rest alive (slots not yet written, callee-saved registers, or something not yet seen) is
+open. Timings were taken on a machine loaded by other suites and are to be taken again.
 
 Items 1 to 3 are small, independent, and each fixes something measured above; do them first and measure (3a
 before 3b, so that each is measured alone). Item 4 is
