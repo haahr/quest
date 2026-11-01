@@ -624,42 +624,96 @@ The plan is not complete until each hazard of §10 is addressed or shown not to 
 
 ## 6. Possible Future Optimizations
 
-Not part of this plan: what might be done once it is complete, each to be measured (benchmarks.md) before and after.
-The list grows as ideas come up; when the plan is complete, what remains moves to benchmarks.md §3.
-Changes to how the backend is written, rather than to the code it generates, are
+Not part of this plan: what might be done now that it is complete, each to be measured (benchmarks.md) before and
+after. Changes to how the backend is written, rather than to the code it generates, are
 [backend-improvements.md](backend-improvements.md)'s.
 
-- **On the SSA:** promoting mutable variables' stack slots to values (§3.2), copy propagation, constant folding, dead
-  code elimination, value numbering, block merging and jump threading.
-- **Inlining,** on the IR rather than the SSA, so that every backend gains (benchmarks.md §3.3).
-- **Entering fewer handlers:** a `try` whose body cannot raise (no calls and no operations that raise) pushes no
-  handler, and a raise whose handler is in the same function is a jump (benchmarks.md §3.5). On the IR, for every
-  backend.
-- **Runtime helpers expanded inline** by instruction selection, rather than called out of line (§3.1).
-- **A cheaper `try` in C:** the `asm goto` experiment of §3.6.
-- **Allocating spill slots and stack slots better:** sharing slots between values whose lifetimes do not overlap, and
-  `ldp`/`stp` for adjacent spills.
-- **Better register allocation** than linear scan, if measurements show spilling costs.
-- **What step 11's code still does badly** (seen in tailfib, imp-for, and `arm64_assemble`, 2026-10-30), mostly the
-  instruction selection §3.5 describes but the backend did not yet do. backend-improvements.md step 8 did all but
-  the last (2026-10-30): immediates, comparisons fused into branches, blocks that only jump passed over, a jump to the
-  next block falling through, and a rematerialized constant computed into its parameter's register.
-  - **Constants in registers rather than immediates.** `n - 1` is `movz x12, #1` then `sub`, and `x == 0` is
-    `mov x12, #0` then `cmp`, where `sub x12, x13, #1` and `cmp x13, #0` (or `cbz`) would do. The constant is a value
-    the allocator must place, so it takes a register for its range, a callee-saved one when the caller-saved are
-    taken (`qf_rotate` in `arm64_assemble` saves `x19` and `x20` only for the constant 1), costing a save and restore
-    in the prologue and epilogue.
-  - **A switch's constants too:** each case is `movz x10, #k` then `cmp x9, x10`, where `cmp x9, #k` would do.
-  - **Comparisons not fused into branches.** `cmp`, `cset` into a register, then `cbz` on it, where `cmp` and
-    `b.cond` would do.
-  - **Blocks that only jump.** An edge with no moves still gets its own label and `b`, and an empty block is a `b`
-    to the next. `cbz x12, Lf0_e1; b Lf0_b2; Lf0_e1: b Lf0_b3` is three branches where one conditional branch, and
-    falling through to the next block, would do (block merging and jump threading, above).
-  - **A rematerialized constant given a register only to be an edge's argument.** tailfib's self call loads the null
-    closure into `x15` before its edge's moves, which made a cycle that `x10` then breaks. Read where it is used, as
-    its rematerialization, it would be one move to the parameter's register and no cycle.
-  - **Eager loads at a block's start.** `repeat` in imp-for loads all four of its closure's fields at entry, two into
-    callee-saved registers (a save and restore on every call), though two are used only on one path.
+### 6.1. Done since this list began
+
+- **Inlining, on the IR** ([inlining.md](inlining.md) steps 1 to 5): the simplifier, inlining, contification, and
+  unboxed tuple results, so that every backend gains; and **across modules** in whole programs (step 6), where
+  abstract types without bounds are transparent. arm64's programs take 0.76 times as long (benchmarks.md §7).
+- **What step 11's code did badly,** done by backend-improvements.md step 8: immediates for `add`, `sub`, and `cmp`,
+  comparisons fused into branches, blocks that only jump passed over, a jump to the next block falling through, and
+  rematerialized constants computed into their parameters' registers.
+- **Promotion before linear scan:** `ssa/promote` makes mutable variables' slots values before allocation, except in a
+  function that enters a `try` (§6.3).
+- **`try` without `_setjmp`:** a native handler record pushed inline (§3.6, backend-improvements.md step 7).
+
+### 6.2. Where arm64's time goes (2026-10-31)
+
+arm64's programs take 2.08 times C's (geometric mean, benchmarks.md §7.2), but the median ratio is 1.58: tailfib,
+fib, tak, md5, checksum, and psdes-random (5 to 17) pull the mean up. Six benchmarks near the median (life, ray,
+hamlet, mlyacc, zebra, nucleic: 1.4 to 1.8 times C) were rebuilt with each of clang's optimizations off in turn,
+`ssac`'s C through LLVM's `opt` and `llc` in stages, and profiled with `sample` (least user time of three alternating
+runs, on a loaded machine, so differences under about 5 percent are noise). The gap is two factors of about the same
+size:
+
+1. **Runtime helpers called out of line: 1.20 to 1.44** (C against `ssac`, one compiler, `ssac` calling the
+   helpers as arm64 does). 8 to 23 percent of arm64's samples are in helpers that C inlines to a few instructions:
+   `quest_option_tag` (13 percent of life, 8 of zebra), `quest_real_mul_at` and its siblings (14 to 18 percent of ray
+   and nucleic), `quest_unproxy`, `quest_string_get_char` and `quest_string_length`, and `quest_ascii_val`.
+2. **Code generation for the same SSA: 1.13 to 1.48** (arm64 against `ssac` at `-O2`). LLVM's IR optimizations add
+   little to SSA the IR's passes have simplified: `mem2reg` alone and `llc -O2` come within 1.04 to 1.19 of `-O2`
+   (life the most), and `-O2` is no faster than `-O1`. No one machine pass matters either: without machine LICM,
+   machine CSE, branch folding, block placement, or coalescing, 0 to 7 percent each, and fast instruction selection
+   costs nothing. The register allocator does: LLVM's fast allocator costs up to 1.35 against its greedy one, and arm64
+   is 1.17 to 1.32 behind `llc -O2`. In the programs' functions arm64 emits 1.5 times LLVM's instructions: 2.6 to 2.8
+   times the unconditional branches, 1.4 to 1.7 times the register moves, 1.5 to 2 times the constant moves, 1.6 times
+   the stack loads and stores, and hundreds of `and`s and `cset`s where LLVM has a `tbz` or a fused branch. life's
+   inner loop (`qf_f_5`) is 72 instructions to clang's 48.
+
+Neither vectorization nor unrolling changes these programs (0.90 to 1.01), nor does clang's inlining of their own
+functions once Quest's inliner has run. Allocation and collection are 50 to 67 percent of C's time in the same six
+(§6.3, item 4), a cost the two backends share.
+
+### 6.3. Recommendations, in order
+
+1. **Runtime helpers expanded inline, in the SSA's builder** (§3.1), so that `ssac` gains as arm64 does. The
+   common path of each is a few instructions, and the call is left for the rare one:
+   - an option's tag (`values.optionTag` for `original` and `proxy` access): a test of the proxy bit, then the tag's
+     load, calling `quest_proxy_tag` only for a proxy, as the C printer does;
+   - `quest_unproxy` (`values.unproxy`): the same bit test and a load of the original;
+   - real `+`, `-`, `*`, and `/` (`calls.checked`): `fadd` and the rest, then `isNaN` branching to a cold block that
+     calls `quest_raise_real_error_at`; `Int` `div` and `mod` likewise, with the test for zero inline;
+   - a string's length and character (a bounds check, then a load), `ascii.val` and `ascii.char`, and arrays' bounds
+     checks.
+
+   Expected: most of §6.2's first factor, 1.2 to 1.45 on the median programs.
+2. **The instruction selection still missing:**
+   - `and`, `orr`, and `eor` with logical (bitmask) immediates, rather than `movz` then the register form;
+   - `tbz` and `tbnz` for a test of one bit (the proxy bit, a `Bool`), and `cbz` and `cbnz` for a comparison with 0;
+   - a conditional branch inverted so that the next block is its fallthrough, rather than `b.eq` to the next block and
+     `b` to the other;
+   - a conjunction or disjunction of comparisons (`andif`, a record's fields compared one by one) as branches or
+     `ccmp`, rather than `cset`s, an `and`, and `cbnz`.
+
+   Expected: a share of the second factor, in instructions executed and in registers freed.
+3. **Fewer moves and spills in the allocator:** coalescing a copy's source and destination where their ranges do not
+   interfere (a block argument and its parameter, a call's argument and its register), a spill placed at the
+   definition and a reload at the use rather than around every use, and spill slots shared between ranges that do not
+   overlap, with `ldp` and `stp` for adjacent ones. Eager loads at a block's start (`repeat` in imp-for loads all four
+   of its closure's fields at entry, two into callee-saved registers, though two are used only on one path) belong
+   here too. Expected: the rest of the second factor; LLVM's allocators show that it is where the code generator's
+   advantage lies.
+4. **Allocation's fast path inline:** with benchmarks.md §3.1's per-size free-list cache in the runtime, the
+   pop of a free list is a few instructions that the C backend gets from the header and arm64 could select inline.
+   Not part of the arm64/C gap, but the largest cost both share.
+5. **Then, measured before more is done:**
+   - **On the SSA:** copy propagation, constant folding, dead code elimination, value numbering, block merging, and
+     jump threading. LLVM's equivalents gain 3 to 5 percent on SSA the IR's passes have simplified (life 13 to 19),
+     so these come after 1 to 3;
+   - **promotion in functions that enter a `try`** (backend-improvements.md §2.2, item 7), whose mutable variables
+     stay in slots;
+   - **entering fewer handlers:** a `try` whose body cannot raise pushes no handler, and a raise whose handler is in
+     the same function is a jump (benchmarks.md §3.5); on the IR, for every backend, and commoner now that inlining
+     puts a raise beside its handler;
+   - **the small recursive functions** (tailfib 16.8 times C, fib 8.7, tak 7.4), whose recursion clang turns into
+     loops or accumulations and neither the IR's passes nor arm64 do, and **word arithmetic** (md5 7.1, checksum
+     6.7, psdes-random 5.2), which is instruction selection: these make the mean twice the median.
+
+### 6.4. Other ideas
+
 - **Payload-free option cases as shared constants** (benchmarks.md §3.6), so that a case such as `maybe.none` or an
   opcode allocates nothing. `is` compares options by address, so this changes what `is` says of two such values, a
   decision for the language.
@@ -675,10 +729,6 @@ Changes to how the backend is written, rather than to the code it generates, are
   - **everything that reads options by descriptor:** the runtime's readers (`quest_option_tag`,
     `quest_option_element`), `quest_convert`, dynamic values and their serialization, and the interpreters'
     agreement with compiled code.
-- **Cross-module inlining** (benchmarks.md §3.3), which would also let the backend's ids be abstract types (§3.15).
-- **Promotion before linear scan, and before step 12's measurements:** linear scan gains little while every mutable
-  variable is a stack slot, so promoting slots, with copy propagation and dead code elimination, early would make
-  both linear scan's and the default backend's measurements more representative (§1).
 - **A calling convention of Quest's own for calls between native functions.** The SSA's calls now follow C's: values
   in the order of the C function's parameters, 16-byte composites' starts and `memory` arguments recorded, narrow
   results extended after the call (ssa.md §2.2). Making the convention an attribute of each function and call, C's
@@ -695,6 +745,9 @@ Changes to how the backend is written, rather than to the code it generates, are
   - **one-case variants unboxed in aggregates' slots,** so that a `Variant block: Int end` id costs nothing in an
     array or a node, and the type checker tells a block's number from an instruction's;
   - **typed ids even while they allocate,** if the language fixes come later, accepting their cost until they do.
+  Cross-module inlining (§6.1) has made the backend's ids as abstract types affordable in whole programs.
+- **A cheaper `try` in C:** the `asm goto` experiment of §3.6.
+- **Better register allocation than linear scan,** if §6.3's third item leaves spilling costs.
 
 ## 7. Inventory of the C Backend's Decisions
 
