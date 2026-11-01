@@ -101,8 +101,14 @@ values stores a `val` and may load it as a `ptr`. Such slots stay slots, which i
    promotion, and the behavior test `language/escaping_allocations`.
 4. **Measurements:** allocation counts and the suite's times through `ssac` and `arm64`, separate and whole, in
    benchmarks.md, dated. *Done when* benchmarks.md records them against the counts and times before the pass.
-5. **The C printer's fixes** (§6), decided from the measurements.
-6. **Then** option-values.md's step 3, if the allocations that still escape justify it.
+   *Done* (2026-11-01), by allocation counts alone ([benchmarks.md](benchmarks.md) §9): peek 0.42 and zebra 0.41 of
+   their allocations without the pass, ratio-regions 0.96. The suite's times were left to a later retake, since the
+   counts settle the pass's effect.
+5. **The C printer's fixes** (§6), decided from the measurements. *Done* (2026-11-01): the pass allocates no more
+   than the fixes on peek, zebra, and ratio-regions, and less on zebra, so it covers them; they stay while the C
+   printer is the default backend, as §6 says.
+6. **Then** option-values.md's step 3, if the allocations that still escape justify it. What still escapes in peek
+   and zebra is mostly `maybe.some`'s box, which step 3 would remove; it is deferred (option-values.md's status).
 
 ## 6. The C Printer's Fixes
 
@@ -119,7 +125,7 @@ necessary:
 
 - **Through the SSA:** with the pass, `ssac` and `arm64` should allocate no more than the C printer with its fixes on
   peek, zebra, and ratio-regions. If they allocate more, the pass misses a case the fixes catch, and is extended
-  rather than the fixes copied into the SSA builder.
+  rather than the fixes copied into the SSA builder. They do not ([benchmarks.md](benchmarks.md) §9).
 - **Through the C printer:** clang cannot remove a `GC_malloc` it does not know as an allocator, so the C printer
   gains nothing from the SSA's pass. The fixes stay while the C printer is the default backend, and are removed when
   `ssac` replaces it (arm64.md step 15), with that step's comparison including the pass.

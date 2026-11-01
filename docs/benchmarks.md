@@ -740,3 +740,30 @@ as §8.1, with that commit's compiler (A plus the cache and a documentation comm
 The cache alone takes zebra to 0.58 of A's time, more than options as values do (0.72). They are independent (one
 removes allocations, the other the cost of each raise), so with both zebra should take about 0.42 of A's time. The
 time is `quest-c-zebra-3fc7b821.jsonl`.
+
+## 9. Escape analysis (2026-11-01)
+
+[escape-analysis.md](escape-analysis.md)'s pass, which makes the allocations that do not leave their function stack
+slots in the SSA, measured by allocations rather than time: the allocations are what it changes, and its effect on
+them is large and exact, so the suite's times are left to a later retake. Counted by `allocations.py` at `--scale
+0.25` (ratio-regions n=384, peek n=48, zebra n=16), with `eb84b59b`'s compiler, the pass skipped
+(`QUEST_SKIP_PASSES=escape`) and run; C's counts, which the pass does not change, are with the C printer's payload
+fixes (§8).
+
+| Benchmark | ssac and arm64, without the pass | With it | Ratio | C, with the C printer's fixes |
+|---|--:|--:|--:|--:|
+| peek | 23.04 billion | **9.60 billion** | 0.42 | 9.60 billion |
+| zebra | 2.72 billion | **1.12 billion** | 0.41 | 1.38 billion |
+| ratio-regions | 811 million | **782 million** | 0.96 | 811 million |
+
+`ssac` and `arm64` allocate exactly alike, with the pass and without it, as they share the SSA.
+
+- **The payload tuples are gone:** `maybe.unwrap`'s (3.84 billion of peek's, 660 million of zebra's), half of
+  `maybe.some`'s (the tuple it copies into the option), and half of `lists.cons`'s, `append`'s, `fromArray`'s,
+  `relabel`'s, and `enqueue`'s.
+- **Against the C printer's fixes,** the SSA allocates no more on any of the three, and less on zebra (1.12 billion
+  against 1.38), since the pass also removes the payload tuples of `cons` and `append`, which the fixes' patterns do
+  not match ([escape-analysis.md](escape-analysis.md) §6).
+- **What remains** in peek and zebra is mostly `maybe.some`'s box (9.6 billion and 672 million), which escapes by
+  being returned, and which [option-values.md](option-values.md) step 3 (deferred) would remove; in ratio-regions,
+  90 percent is `preflowPush`'s 706 million, which the pass does not touch.
