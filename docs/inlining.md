@@ -146,6 +146,8 @@ benchmarks.md §3.3, independent of the inliner, and the first step.
 - **Determinism:** the self-hosting check's fixed point, with the optimizer running on the compiler itself.
 - **Measurements** in benchmarks.md, dated, before and after each step: imp-for, tailfib, md5, checksum, the
   benchmarks whose polymorphic calls dominate, and the compiler's own build time.
+  Steps 1 to 6 were measured together (benchmarks.md §7, 2026-10-31): the suite's programs take 0.71 times as
+  long through C and 0.76 through arm64, and the compiler's build 3 to 5 percent longer.
 
 ## 8. Steps
 
@@ -234,5 +236,7 @@ benchmarks.md §3.3, independent of the inliner, and the first step.
    representations registered meanwhile are marked as a module compiled apart's (`abstractTypes.
    setRegisteringApart`), which transparent shapes leave out, whenever the module is compiled.
    `maybe.isSome(maybe.some(3))` in a whole program folds to `true`; every test passes whole through C.
+   benchmarks.md §7 compares whole-program builds with separate ones at `36244e7b`, before transparent types:
+   0.99 times as long, even-odd 0.61 and ratio-regions 1.68 (not yet explained).
 7. **Tuning:** the threshold, bonuses, and growth bounds set from the measurements. *Done when* benchmarks.md
    records the settings and why.

@@ -11,7 +11,8 @@ Quest has two sets of benchmarks:
   backend does not slow it or its output (`python tests/perf/measure.py`, compared with `tests/perf/baseline.json`).
 
 This document describes the MLton suite, records the baseline taken on 2026-10-28, lists what profiling the
-slowest benchmarks found and what could be done about it, and compares the C and arm64 backends (§4).
+slowest benchmarks found and what could be done about it, compares the C and arm64 backends (§4 to §6), and
+measures the inliner (§7).
 
 ## 1. The MLton suite
 
@@ -597,3 +598,60 @@ later) and smith-normal-form timed out.
 - **Against C**, arm64 is furthest behind on md5 (6.7), checksum and psdes-random (3.6), vector32-concat (3.4), and
   the small recursive functions; the inliner ([inlining.md](inlining.md)) is to close most of the gap that is not
   instruction selection.
+
+## 7. The inliner (2026-10-31)
+
+[inlining.md](inlining.md)'s steps 1 to 6 (exported functions called directly, the simplifier, inlining,
+contification, and in part unboxed tuple results and inlining across a whole program's modules), measured at `36244e7b` against
+the last measurements before them: C at `074bc251` (§4.2) and arm64 at `88d7970b` (§6.3).
+
+### 7.1. How they were taken
+
+The machine, MLton's times, and the counts are §4.1's: `run.py time --clean --scale 0.25 --timeout 1800`, one run
+each, with `--backend c`, then `--backend c --whole-program`, then `--backend arm64`. Each job waited until no test
+suite, check, or other benchmark ran and the load average had been under 6 for two minutes, and nothing else ran
+meanwhile. The times are in `benchmarks/mlton/baselines/2026-10-31/`: `quest-c-36244e7b.jsonl`,
+`quest-c-whole-36244e7b.jsonl`, `quest-arm64-36244e7b.jsonl`, and `compile-times.jsonl`.
+
+### 7.2. Programs
+
+| System | Geometric mean of time / MLton's | Without fib, tailfib, tak, and tensor | Run time, all 46 |
+|---|--:|--:|--:|
+| C, `074bc251` (§4.2) | 5.24 | 6.12 | 44.0 min |
+| C, `36244e7b` | **3.74** | 4.24 | 35.9 min |
+| C, `36244e7b`, `--whole-program` | **3.71** | 4.21 | 35.5 min |
+| arm64, `88d7970b` (§6.3) | 10.22 | 10.56 | 75.6 min |
+| arm64, `36244e7b` | **7.79** | 7.95 | 60.4 min |
+| ssac, `88d7970b` (§6.3), for comparison | 7.42 | 8.94 | 65.2 min |
+
+- **C's programs take 0.71 times as long** (geometric mean of the ratios, all 46). Most gained where the inliner
+  removes a higher-order or polymorphic call in a loop and contification makes the loop: imp-for 0.09 of its time
+  before, mandelbrot 0.15, mpuz 0.20, matrix-multiply 0.23, checksum 0.32, psdes-random 0.39, life 0.47, and zern,
+  hamlet, ratio-regions, count-graphs, and md5 0.55 to 0.62. Only zebra got slower (1.14).
+- **arm64's take 0.76 times as long,** the same benchmarks gaining most (imp-for 0.17, mpuz and mandelbrot 0.29,
+  matrix-multiply 0.46), DLXSimulator the one slower (1.15). arm64 now runs about as fast as ssac did at `88d7970b`
+  (1.05 times its time, and ahead without the four, 7.95 against 8.94), and still 2.08 times C's: the small recursive
+  functions (tailfib 16.8, fib 8.7, tak 7.4), whose recursion neither inlining nor contification removes and clang
+  does, and the word arithmetic (md5 7.1, checksum 6.7, psdes-random 5.2), which is instruction selection.
+- **The whole-program build** takes 0.99 times as long as separate compilation, which is within noise for all but
+  two. even-odd takes 0.61 of the separate time, its mutually recursive functions in one unit with the library's.
+  ratio-regions takes **1.68 times as long** (12.1 s against 20.3 s, and 12.4 and 12.2 against 19.2 and 19.5 in two
+  reruns), the time it took before the inliner: something the whole program inlines or does not inline, or clang
+  does differently in one large file, loses what separate compilation gains. It is yet to be found. These
+  whole-program times predate `49452427`, which makes a whole program's abstract types transparent so that the
+  library's members inline across them; they are to be retaken.
+- **Building** the 46 took 42.1 s through C (median 0.4 s), 72.1 s whole (median 0.9 s: each build compiles the
+  library with the program), and 34.4 s through arm64.
+
+### 7.3. Compile times
+
+Each commit's C-built stage 2 building its own commit's driver (`questlang/driver/main.quest`) from an empty build
+directory, `-j 8`, three runs, alternating:
+
+| Compiler | Through C (s) | Through arm64 (s) |
+|---|--:|--:|
+| `88d7970b`, before the inliner | 27.0, 25.9, 25.7 | 21.4, 21.4, 21.6 |
+| `36244e7b` | 27.1, 26.9, 26.9 | 22.5, 22.5, 22.5 |
+
+The optimizer costs about 1 s of the build, 3 to 5 percent, which includes compiling its own modules: the later
+driver is larger.
