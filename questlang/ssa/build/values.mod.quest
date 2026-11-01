@@ -623,18 +623,6 @@ export
         end
 
     (* =========================================================================
-     * Proxies
-     * ====================================================================== *)
-
-    (* A pointer with a proxy's tag bit cleared: the object it views is its
-     * original (quest_unproxy) *)
-    let unproxy(fn: Fn p: Int): Int =
-        begin
-            let original = call1(fn "quest_unproxy" array of p end)
-            original
-        end
-
-    (* =========================================================================
      * Slots, and aggregates' components (docs/arm64.md section 7.2)
      * ====================================================================== *)
 
@@ -704,6 +692,34 @@ export
             results
         end
 
+    (* The object a tuple's or an option's pointer is: the original a proxy
+     * views (its first field, the pointer less its tag bit), or the pointer
+     * itself (quest_unproxy, inline) *)
+    let unproxy(fn: Fn p: Int): Int =
+        choose(fn isProxy(fn p) array of tPtr end
+            fun(): Array(Int) array of
+                loadWord(fn p runtimeLayout.offset("QProxy" "orig") - runtimeLayout.constant("QUEST_PROXY_TAG") tPtr)
+            end
+            fun(): Array(Int) array of p end)[0]
+
+    (* Continues where cond is (holds true) or is not (holds false); otherwise
+     * calls the runtime's function name, which raises, with the arguments
+     * args makes there, so that the common path computes none of them *)
+    let check(fn: Fn cond: Int holds: Bool name: String args: All() Array(Int)): Ok =
+        begin
+            let good = ssa.newBlock(fn.f)
+            let bad = ssa.newBlock(fn.f)
+            let ifTrue = ssa.target(if holds then good else bad end noValues)
+            let ifFalse = ssa.target(if holds then bad else good end noValues)
+            terminate(fn option termBranch of ssa.Terminator with
+                let cond = cond let ifTrue = ifTrue let ifFalse = ifFalse
+            end)
+            fn.cur := bad
+            callVoid(fn name args())
+            terminate(fn ssa.termUnreachable)
+            fn.cur := good
+        end
+
     (* Component i of the tuple at t (shape ts), in its slot form, read as
      * access says: directly, from the original of what may be a proxy, or
      * through the proxy if it is one *)
@@ -726,7 +742,11 @@ export
     let optionTag(fn: Fn o: Int access: ir.Access): Int =
         case access
             when direct then loadWord(fn o runtimeLayout.offset("QOptionHeader" "tag") tInt)
-            when original, proxy then call1(fn "quest_option_tag" array of o end)
+            (* A proxy's tag is the view's numbering of the original's *)
+            when original, proxy then
+                choose(fn isProxy(fn o) array of tInt end
+                    fun(): Array(Int) array of call1(fn "quest_proxy_tag" array of o end) end
+                    fun(): Array(Int) array of loadWord(fn o runtimeLayout.offset("QOptionHeader" "tag") tInt) end)[0]
         end
 
     (* The tag of a variant or option value vs of shape ts, in its numbering,

@@ -717,7 +717,12 @@ functions once Quest's inliner has run. Allocation and collection are 50 to 67 p
    - a string's length and character (a bounds check, then a load), `ascii.val` and `ascii.char`, and arrays' bounds
      checks.
 
-   Expected: most of §6.2's first factor, 1.2 to 1.45 on the median programs.
+   Expected: most of §6.2's first factor, 1.2 to 1.45 on the median programs. *Done* (2026-10-31) for the ones C
+   inlines: the tag and unproxying (by `values.choose` on the proxy bit), real arithmetic by `isNaN`, `Int` `div` and
+   `mod`, and the bounds, count, and ordinal checks, each a branch to a block that computes the site and calls the
+   runtime's raise (`values.check`), so that the common path computes no site. The string and `ascii` helpers are
+   calls in C too, and stay calls. arm64's time against C's, before and after: life 1.73 to 1.55, ray 1.53 to 1.25,
+   hamlet 1.46 to 1.38, mlyacc 1.69 to 1.58, zebra 1.61 to 1.47, nucleic 1.64 to 1.20.
 2. **The instruction selection still missing:**
    - `and`, `orr`, and `eor` with logical (bitmask) immediates, rather than `movz` then the register form;
    - `tbz` and `tbnz` for a test of one bit (the proxy bit, a `Bool`), and `cbz` and `cbnz` for a comparison with 0;
@@ -736,7 +741,9 @@ functions once Quest's inliner has run. Allocation and collection are 50 to 67 p
    advantage lies.
 4. **Allocation's fast path inline:** with benchmarks.md §3.1's per-size free-list cache in the runtime, the
    pop of a free list is a few instructions that the C backend gets from the header and arm64 could select inline.
-   Not part of the arm64/C gap, but the largest cost both share.
+   Not part of the arm64/C gap, but the largest cost both share. *Not to be done* (the user's decision,
+   2026-10-31): an allocation path compiled into programs is a deeper dependency on the Boehm collector than Quest
+   should have.
 5. **Then, measured before more is done:**
    - **On the SSA:** copy propagation, constant folding, dead code elimination, value numbering, block merging, and
      jump threading. LLVM's equivalents gain 3 to 5 percent on SSA the IR's passes have simplified (life 13 to 19),

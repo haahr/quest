@@ -31,6 +31,29 @@ export
             let arith(op: ssa.Opcode): Array(Int) = array of vals.binary(fn op x() y()) end
             let checked(helper: String): Array(Int) =
                 array of vals.call1(fn helper array of x() y() vals.site(fn o.offset) end) end
+            let site(): Array(Int) = array of vals.site(fn o.offset) end
+            (* Int division and remainder (quest_int_div_at and quest_int_mod_at,
+             * inline): a zero divisor raises int.error, and a divisor of -1,
+             * whose one quotient outside Int's range wraps, is negation (or a
+             * remainder of 0), which div and rem leave undefined *)
+            let divided(op: ssa.Opcode byMinusOne: All(a: Int) Int): Array(Int) =
+                begin
+                    let a = x()
+                    let b = y()
+                    vals.check(fn vals.binary(fn ssa.opNe b vals.constant(fn 0)) true "quest_raise_int_error_at" site)
+                    vals.choose(fn vals.binary(fn ssa.opEq b vals.constant(fn ~1)) array of vals.tInt end
+                        fun(): Array(Int) array of byMinusOne(a) end
+                        fun(): Array(Int) array of vals.binary(fn op a b) end)
+                end
+            (* Real arithmetic (quest_real_add_at and the rest, inline): a NaN
+             * result raises real.error, and so, for //, does a zero divisor *)
+            let real(op: ssa.Opcode a: Int b: Int): Array(Int) =
+                begin
+                    let r = vals.binary(fn op a b)
+                    let nan = ssa.emit(fn.f fn.cur ssa.opIsNaN array of r end vals.tInt)
+                    vals.check(fn nan false "quest_raise_real_error_at" site)
+                    array of r end
+                end
             (* is, or with isIs false, isnot *)
             let identity(isIs: Bool): Array(Int) =
                 begin
@@ -63,12 +86,19 @@ export
             case o.op
                 when primNot then array of vals.binary(fn ssa.opXor x() vals.constant(fn 1)) end
                 when primExtent then array of vals.loadWord(fn x() runtimeLayout.offset("QArray" "length") vals.tInt) end
-                when primDiv then checked("quest_int_div_at")
-                when primRem, primMod then checked("quest_int_mod_at")
-                when primRealAdd then checked("quest_real_add_at")
-                when primRealSub then checked("quest_real_sub_at")
-                when primRealMul then checked("quest_real_mul_at")
-                when primRealDiv then checked("quest_real_divide_at")
+                when primDiv then divided(ssa.opDiv fun(a: Int): Int vals.binary(fn ssa.opSub vals.constant(fn 0) a))
+                when primRem, primMod then divided(ssa.opRem fun(a: Int): Int vals.constant(fn 0))
+                when primRealAdd then real(ssa.opFadd x() y())
+                when primRealSub then real(ssa.opFsub x() y())
+                when primRealMul then real(ssa.opFmul x() y())
+                when primRealDiv then
+                    begin
+                        let a = x()
+                        let b = y()
+                        let zero = ssa.realConstant(fn.f fn.cur vals.realBitsOf(0.0))
+                        vals.check(fn vals.binary(fn ssa.opFeq b zero) false "quest_raise_real_error_at" site)
+                        real(ssa.opFdiv a b)
+                    end
                 when primRealPow then checked("quest_real_pow_at")
                 when primConcat then array of vals.call1(fn "quest_string_concat" array of x() y() end) end
                 when primIs then identity(true)

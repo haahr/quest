@@ -335,8 +335,12 @@ export
                 (* The ordinal counts in the type's cases as written; the tag
                  * numbers the shape's, ordered by name *)
                 let ordinalAtom = maybe.unwrap(:Atom o.ordinalAtom)
-                let checked = vals.call1(fn "quest_check_option_ordinal_at"
-                    array of vals.atom1(fn ordinalAtom) vals.constant(fn extent os.cases) vals.site(fn o.offset) end)
+                (* One outside the cases raises (quest_check_option_ordinal_at,
+                 * inline): ult takes a negative one for a large one *)
+                let checked = vals.atom1(fn ordinalAtom)
+                let count = vals.constant(fn extent os.cases)
+                vals.check(fn vals.binary(fn ssa.opUlt checked count) true "quest_option_ordinal_error_at"
+                    fun(): Array(Int) array of checked vals.constant(fn extent os.cases) vals.site(fn o.offset) end)
                 let tags = array of(extent o.cases 0)
                 for i = 0 upto {extent o.cases - 1} do tags[i] := vals.tagIndex(os o.cases[i]) end
                 vals.store(fn opt runtimeLayout.offset("QOptionHeader" "tag") 8 mapped(fn checked tags))
@@ -499,10 +503,16 @@ export
 
     let elementShape(a: Atom): shapes.Shape = shapes.element(shapes.shape(ir.atomType(a)))
 
-    (* The address of an array's element, after its bounds check *)
+    (* The address of an array's element, after its bounds check
+     * (quest_check_array_bounds_at, inline): a null array, or an index
+     * outside it, raises array.error; ult takes a negative index for a
+     * large one *)
     let elementAddress(fn: vals.Fn arr: Int idx: Int offset: maybe.T(Int)): Int =
         begin
-            vals.callVoid(fn "quest_check_array_bounds_at" array of arr idx vals.site(fn offset) end)
+            let site = fun(): Array(Int) array of vals.site(fn offset) end
+            vals.check(fn vals.binary(fn ssa.opPeq arr vals.null(fn)) false "quest_raise_array_error_at" site)
+            let length = vals.loadWord(fn arr runtimeLayout.offset("QArray" "length") vals.tInt)
+            vals.check(fn vals.binary(fn ssa.opUlt idx length) true "quest_raise_array_error_at" site)
             let scaled = vals.binary(fn ssa.opMul idx vals.constant(fn 8))
             vals.indexPtr(fn vals.offsetPtr(fn arr runtimeLayout.offset("QArray" "data")) scaled)
         end

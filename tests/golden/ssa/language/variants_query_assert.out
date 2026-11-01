@@ -40,52 +40,90 @@ b0(%0: int, %1: ptr):
   @41:18
   %19: ptr = symbol g_cRed
   %20: ptr = load8 %19 + 0
-  %21: int = call quest_option_tag(%20)
-  %22: int = const 2
-  %23: int = eq %21, %22
+  %21: int = ptrToInt %20
+  %22: int = const 1
+  %23: int = and %21, %22
   branch %23, b1(), b2()
 b1():
   @41:18
-  %25: int = const 8
-  %26: ptr = call quest_alloc(%25)
-  %27: int = const 0
-  store8 %26 + 0, %27
-  %28: ptr = symbol g_redPayload
-  store8 %28 + 0, %26
-  @42:19
-  %29: ptr = symbol g_cBlue
-  %30: ptr = load8 %29 + 0
-  %31: int = call quest_option_tag(%30)
-  %32: int = const 0
-  %33: int = eq %31, %32
-  branch %33, b3(), b4()
+  %25: int = call quest_proxy_tag(%20)
+  jump b3(%25)
 b2():
   @41:18
-  %24: ptr = symbol qs_2
-  call quest_raise_variant_error_at(%24)
-  unreachable
-b3():
-  @42:19
-  %35: int = const 16
-  %36: ptr = call quest_alloc(%35)
-  %37: int = const 2
-  store8 %36 + 0, %37
-  %38: ptr = call quest_unproxy(%30)
-  %39: int = const 8
-  %40: ptr = ptrAdd %38, %39
-  %41: int = load8 %40 + 0
-  %42: int = const 8
-  %43: ptr = ptrAdd %36, %42
-  store8 %43 + 0, %41
-  %44: ptr = symbol g_bluePayload
-  store8 %44 + 0, %36
-  %45: int = const 0
-  return %45
+  %26: int = load8 %20 + 0
+  jump b3(%26)
+b3(%24: int):
+  @41:18
+  %27: int = const 2
+  %28: int = eq %24, %27
+  branch %28, b4(), b5()
 b4():
+  @41:18
+  %30: int = const 8
+  %31: ptr = call quest_alloc(%30)
+  %32: int = const 0
+  store8 %31 + 0, %32
+  %33: ptr = symbol g_redPayload
+  store8 %33 + 0, %31
   @42:19
-  %34: ptr = symbol qs_3
-  call quest_raise_variant_error_at(%34)
+  %34: ptr = symbol g_cBlue
+  %35: ptr = load8 %34 + 0
+  %36: int = ptrToInt %35
+  %37: int = const 1
+  %38: int = and %36, %37
+  branch %38, b6(), b7()
+b5():
+  @41:18
+  %29: ptr = symbol qs_2
+  call quest_raise_variant_error_at(%29)
   unreachable
+b6():
+  @42:19
+  %40: int = call quest_proxy_tag(%35)
+  jump b8(%40)
+b7():
+  @42:19
+  %41: int = load8 %35 + 0
+  jump b8(%41)
+b8(%39: int):
+  @42:19
+  %42: int = const 0
+  %43: int = eq %39, %42
+  branch %43, b9(), b10()
+b9():
+  @42:19
+  %45: int = const 16
+  %46: ptr = call quest_alloc(%45)
+  %47: int = const 2
+  store8 %46 + 0, %47
+  %48: int = ptrToInt %35
+  %49: int = const 1
+  %50: int = and %48, %49
+  branch %50, b11(), b12()
+b10():
+  @42:19
+  %44: ptr = symbol qs_3
+  call quest_raise_variant_error_at(%44)
+  unreachable
+b11():
+  @42:19
+  %52: ptr = load8 %35 + ~1
+  jump b13(%52)
+b12():
+  @42:19
+  jump b13(%35)
+b13(%51: ptr):
+  @42:19
+  %53: int = const 8
+  %54: ptr = ptrAdd %51, %53
+  %55: int = load8 %54 + 0
+  %56: int = const 8
+  %57: ptr = ptrAdd %46, %56
+  store8 %57 + 0, %55
+  %58: ptr = symbol g_bluePayload
+  store8 %58 + 0, %46
+  %59: int = const 0
+  return %59
 }
 
 data qs_1 text "<main>"

@@ -158,8 +158,11 @@ export
             when opMakeArray with x then aggregates.makeArray(fn x.args maybe.unwrap(:Variable result).type)
             when opArrayRep with x then
                 let elem = shapes.element(shapes.shape(maybe.unwrap(:Variable result).type))
-                let n = vals.call1(fn "quest_check_array_count_at" array of vals.atom1(fn x.count) vals.site(fn
-                    x.offset) end)
+                (* A negative count raises array.error (quest_check_array_count_at,
+                 * inline) *)
+                let n = vals.atom1(fn x.count)
+                vals.check(fn vals.binary(fn ssa.opLt n vals.constant(fn 0)) false "quest_raise_array_error_at"
+                    fun(): Array(Int) array of vals.site(fn x.offset) end)
                 array of vals.call1(fn "quest_array_new" array of n vals.slotToWord(fn vals.atom(fn x.init) elem.type)
                     end) end
             when opIndex with x then
