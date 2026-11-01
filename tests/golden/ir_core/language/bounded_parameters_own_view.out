@@ -2,258 +2,258 @@ import writer = "writer" : Writer
 import conv = "conv" : Conv
 import dynamic = "dynamic" : Dynamic
 main {
-  let wOut: writer.T = member writer.output
+  let wOut: writer.T = member writer.output @11:12
   funs {
     fun printInt(n: Int): Ok {
-      let %1: String = call conv.int(n)
-      do call writer.putString(wOut, %1)
-      let %2: Ok = call writer.putString(wOut, "\n")
+      let %1: String = call conv.int(n) @14:31
+      do call writer.putString(wOut, %1) @14:9
+      let %2: Ok = call writer.putString(wOut, "\n") @15:9
       return %2
     }
   }
   funs {
     fun bump0 [A::<: P](x: A): Int {
-      let %3: Int = record_field(x, n)
-      let %4: Int = prim +(%3, 10)
-      store x.n := %4
-      let %5: Small = record_field(x, s)
-      let %6: Int = record_field(%5, a)
-      let %7: Int = record_field(x, n)
-      let %8: Int = prim +(%6, %7)
+      let %3: Int = record_field(x, n) @23:44
+      let %4: Int = prim +(%3, 10) @23:44
+      store x.n := %4 @23:37
+      let %5: Small = record_field(x, s) @23:53
+      let %6: Int = record_field(%5, a) @23:53
+      let %7: Int = record_field(x, n) @23:61
+      let %8: Int = prim +(%6, %7) @23:53
       return %8
     }
   }
-  let bump: All(A <: P) Fun(x: A): Int = bump0
-  let %9: Record a: Int b: Int end = record(a = 5, b = 6)
-  let car: Car = record(fuel = "gas", var n = 1, s = %9)
-  let %10: Int = call bump [Car](car)
-  do call printInt(%10)
-  let %11: Int = record_field(car, n)
-  do call printInt(%11)
+  let bump: All(A <: P) Fun(x: A): Int = bump0 @24:34
+  let %9: Record a: Int b: Int end = record(a = 5, b = 6) @25:50
+  let car: Car = record(fuel = "gas", var n = 1, s = %9) @25:16
+  let %10: Int = call bump [Car](car) @26:10
+  do call printInt(%10) @26:1
+  let %11: Int = record_field(car, n) @27:10
+  do call printInt(%11) @27:1
   funs {
     fun rotate0 [A::<: P](xs: Array(A)): Ok {
-      let first: A = index(xs, 0)
-      let %12: A = index(xs, 1)
-      store xs[0] := %12
-      store xs[1] := first
+      let first: A = index(xs, 0) @32:21
+      let %12: A = index(xs, 1) @33:18
+      store xs[0] := %12 @33:9
+      store xs[1] := first @34:9
       return ok
     }
   }
-  let rotate: All(A <: P) Fun(xs: Array(A)): Ok = rotate0
-  let %13: Record a: Int b: Int end = record(a = 7, b = 8)
-  let %14: Record fuel: String var n: Int s: Big end = record(fuel = "diesel", var n = 2, s = %13)
-  let cars: Array(Car) = array(car, %14)
-  do call rotate [Car](cars)
-  let %15: Car = index(cars, 0)
-  let %16: Int = record_field(%15, n)
-  do call printInt(%16)
-  let %17: Car = index(cars, 0)
-  let %18: Big = record_field(%17, s)
-  let %19: Int = record_field(%18, b)
-  do call printInt(%19)
+  let rotate: All(A <: P) Fun(xs: Array(A)): Ok = rotate0 @36:43
+  let %13: Record a: Int b: Int end = record(a = 7, b = 8) @37:67
+  let %14: Record fuel: String var n: Int s: Big end = record(fuel = "diesel", var n = 2, s = %13) @37:30
+  let cars: Array(Car) = array(car, %14) @37:12
+  do call rotate [Car](cars) @38:1
+  let %15: Car = index(cars, 0) @39:10
+  let %16: Int = record_field(%15, n) @39:10
+  do call printInt(%16) @39:1
+  let %17: Car = index(cars, 0) @40:10
+  let %18: Big = record_field(%17, s) @40:10
+  let %19: Int = record_field(%18, b) @40:10
+  do call printInt(%19) @40:1
   funs {
     fun swapIn0 [A::<: P](var x.1: A, y: A): Int {
-      let old: A = x.1
-      x.1 := y
-      let %20: Int = record_field(old, n)
+      let old: A = x.1 @43:58
+      x.1 := y @43:60
+      let %20: Int = record_field(old, n) @43:67
       return %20
     }
   }
-  let swapIn: All(A <: P) Fun(var x: A y: A): Int = swapIn0
-  var held: Car = car
-  let %21: Var(Car) = addr held
-  let %22: Car = index(cars, 1)
-  let %23: Int = call swapIn [Car](%21, %22)
-  do call printInt(%23)
-  let %24: Int = record_field(held, n)
-  do call printInt(%24)
+  let swapIn: All(A <: P) Fun(var x: A y: A): Int = swapIn0 @44:45
+  var held: Car = car @45:1
+  let %21: Var(Car) = addr held @46:22
+  let %22: Car = index(cars, 1) @46:28
+  let %23: Int = call swapIn [Car](%21, %22) @46:10
+  do call printInt(%23) @46:1
+  let %24: Int = record_field(held, n) @47:10
+  do call printInt(%24) @47:1
   funs {
     fun sizeOf0 [A::<: V](v: A): Int {
       join k1(r: Int) {
         return r
       } in {
-        switch tag(v) {
+        switch tag(v) { @51:33
           case a (s: Small): {
-            let %25: Int = record_field(s, a)
-            jump k1(%25)
+            let %25: Int = record_field(s, a) @51:59
+            jump k1(%25) @51:33
           }
           case b (n.1: Int): {
-            jump k1(n.1)
+            jump k1(n.1) @51:33
           }
           case z: {
-            jump k1(0)
+            jump k1(0) @51:33
           }
         }
       }
     }
   }
-  let sizeOf: All(A <: V) Fun(v: A): Int = sizeOf0
-  let %26: Record a: Int b: Int end = record(a = 3, b = 4)
-  let wa: Variant a: Big b: Int end = variant(a, %26)
-  let %27: Int = call sizeOf [Variant a: Big b: Int end](wa)
-  do call printInt(%27)
-  let %28: Variant b: Int z end = variant(b, 9)
-  let %29: Int = call sizeOf [Variant b: Int z end](%28)
-  do call printInt(%29)
+  let sizeOf: All(A <: V) Fun(v: A): Int = sizeOf0 @52:36
+  let %26: Record a: Int b: Int end = record(a = 3, b = 4) @53:81
+  let wa: Variant a: Big b: Int end = variant(a, %26) @53:37
+  let %27: Int = call sizeOf [Variant a: Big b: Int end](wa) @54:10
+  do call printInt(%27) @54:1
+  let %28: Variant b: Int z end = variant(b, 9) @56:43
+  let %29: Int = call sizeOf [Variant b: Int z end](%28) @56:10
+  do call printInt(%29) @56:1
   funs {
     fun pick0 [A::<: V](vs: Array(A), i: Int): Int {
-      let %30: A = index(vs, i)
-      let %31: Int = call sizeOf [A](%30)
+      let %30: A = index(vs, i) @57:56
+      let %31: Int = call sizeOf [A](%30) @57:46
       return %31
     }
   }
-  let pick: All(A <: V) Fun(vs: Array(A) i: Int): Int = pick0
-  let %32: Variant a: Big b: Int end = variant(b, 11)
-  let %33: Array(Variant a: Big b: Int end) = array(wa, %32)
-  let %34: Int = call pick [Variant a: Big b: Int end](%33, 1)
-  do call printInt(%34)
+  let pick: All(A <: V) Fun(vs: Array(A) i: Int): Int = pick0 @58:49
+  let %32: Variant a: Big b: Int end = variant(b, 11) @59:54
+  let %33: Array(Variant a: Big b: Int end) = array(wa, %32) @59:42
+  let %34: Int = call pick [Variant a: Big b: Int end](%33, 1) @59:10
+  do call printInt(%34) @59:1
   funs {
     fun get0 [A::<: O](o: A): Int {
       join k2(r.1: Int) {
         return r.1
       } in {
-        switch tag(o) {
+        switch tag(o) { @64:30
           case some (p: Tuple x: Small end): {
-            let %35: Small = tuple_field(p, 0)
-            let %36: Int = record_field(%35, a)
-            jump k2(%36)
+            let %35: Small = tuple_field(p, 0) @64:59
+            let %36: Int = record_field(%35, a) @64:59
+            jump k2(%36) @64:30
           }
           case none: {
-            jump k2(0)
+            jump k2(0) @64:30
           }
         }
       }
     }
   }
-  let get: All(A <: O) Fun(o: A): Int = get0
+  let get: All(A <: O) Fun(o: A): Int = get0 @65:33
   funs {
     fun ord0 [A::<: O](o.1: A): Int {
-      let %37: Int = ordinal(o.1) in (none some)
+      let %37: Int = ordinal(o.1) in (none some) @66:30
       return %37
     }
   }
-  let ord: All(A <: O) Fun(o: A): Int = ord0
+  let ord: All(A <: O) Fun(o: A): Int = ord0 @67:33
   funs {
     fun extract0 [A::<: O](o.2: A): Int {
       join k3(r.2: Int) {
         return r.2
       } in {
-        let %38: Bool = is_tag(o.2, some)
-        if %38 {
-          let %39: Tuple Int x: Small end = payload(o.2, some) #1
-          let %40: Small = tuple_field(%39, 1)
-          let %41: Int = record_field(%40, a)
-          jump k3(%41)
+        let %38: Bool = is_tag(o.2, some) @68:37
+        if %38 { @68:34
+          let %39: Tuple Int x: Small end = payload(o.2, some) #1 @68:49
+          let %40: Small = tuple_field(%39, 1) @68:49
+          let %41: Int = record_field(%40, a) @68:49
+          jump k3(%41) @68:34
         } else {
-          jump k3(0)
+          jump k3(0) @68:34
         }
       }
     }
   }
-  let extract: All(A <: O) Fun(o: A): Int = extract0
-  let x.2: Record a: Int b: Int end = record(a = 12, b = 13)
-  let %42: Tuple x: Big end = tuple(x.2)
-  let qs: S = option(some, %42)
-  let %43: Int = call get [S](qs)
-  do call printInt(%43)
-  let %44: Int = call ord [S](qs)
-  do call printInt(%44)
-  let %45: Int = call extract [S](qs)
-  do call printInt(%45)
+  let extract: All(A <: O) Fun(o: A): Int = extract0 @69:37
+  let x.2: Record a: Int b: Int end = record(a = 12, b = 13) @72:35
+  let %42: Tuple x: Big end = tuple(x.2) @72:13
+  let qs: S = option(some, %42) @72:13
+  let %43: Int = call get [S](qs) @73:10
+  do call printInt(%43) @73:1
+  let %44: Int = call ord [S](qs) @74:10
+  do call printInt(%44) @74:1
+  let %45: Int = call extract [S](qs) @75:10
+  do call printInt(%45) @75:1
   funs {
     fun viaBound0 [A::<: P](x.3: A): Int {
-      let p.1: P = x.3
-      let %46: Small = record_field(p.1, s)
-      let %47: Int = record_field(%46, a)
-      let %48: Int = call bump [A](x.3)
-      let %49: Int = prim +(%47, %48)
+      let p.1: P = x.3 @78:52
+      let %46: Small = record_field(p.1, s) @78:54
+      let %47: Int = record_field(%46, a) @78:54
+      let %48: Int = call bump [A](x.3) @78:62
+      let %49: Int = prim +(%47, %48) @78:54
       return %49
     }
   }
-  let viaBound: All(A <: P) Fun(x: A): Int = viaBound0
-  let %50: Int = call viaBound [Car](car)
-  do call printInt(%50)
-  let %51: Int = record_field(car, n)
-  do call printInt(%51)
+  let viaBound: All(A <: P) Fun(x: A): Int = viaBound0 @79:38
+  let %50: Int = call viaBound [Car](car) @80:10
+  do call printInt(%50) @80:1
+  let %51: Int = record_field(car, n) @81:10
+  do call printInt(%51) @81:1
   funs {
     fun pack [B::TYPE](x.4: B): Dynamic {
-      let %52: T = call dynamic.new [B](x.4)
+      let %52: T = call dynamic.new [B](x.4) @87:35
       return %52
     }
   }
   funs {
     fun cars0 [A::<: Small](x.5: A): Dynamic {
-      let v.1: A = x.5
-      let %53: Tuple v: A end = tuple(v.1)
-      let %54: Array(Tuple v: A end) = array_rep(1, %53)
-      let %55: Dynamic = call pack [Array(Tuple v: A end)](%54)
+      let v.1: A = x.5 @88:84
+      let %53: Tuple v: A end = tuple(v.1) @88:78
+      let %54: Array(Tuple v: A end) = array_rep(1, %53) @88:67
+      let %55: Dynamic = call pack [Array(Tuple v: A end)](%54) @88:39
       return %55
     }
   }
-  let carsOf: All(A <: Small) Fun(x: A): Dynamic = cars0
-  let %56: Record a: Int b: Int end = record(a = 20, b = 21)
-  let d: Dynamic = call carsOf [Big](%56)
-  let inDynamic: Array(Tuple v: Big end) = call dynamic.be [Array(Tuple v: Big end)](d)
-  let v.2: Record a: Int b: Int end = record(a = 22, b = 23)
-  let %57: Tuple v: Big end = tuple(v.2)
-  store inDynamic[0] := %57
-  let %58: Array(Tuple v: Big end) = call dynamic.be [Array(Tuple v: Big end)](d)
-  let %59: Tuple v: Big end = index(%58, 0)
-  let %60: Big = tuple_field(%59, 0)
-  let %61: Int = record_field(%60, b)
-  do call printInt(%61)
+  let carsOf: All(A <: Small) Fun(x: A): Dynamic = cars0 @89:44
+  let %56: Record a: Int b: Int end = record(a = 20, b = 21) @90:21
+  let d: Dynamic = call carsOf [Big](%56) @90:9
+  let inDynamic: Array(Tuple v: Big end) = call dynamic.be [Array(Tuple v: Big end)](d) @91:17
+  let v.2: Record a: Int b: Int end = record(a = 22, b = 23) @92:23
+  let %57: Tuple v: Big end = tuple(v.2) @92:17
+  store inDynamic[0] := %57 @92:1
+  let %58: Array(Tuple v: Big end) = call dynamic.be [Array(Tuple v: Big end)](d) @93:10
+  let %59: Tuple v: Big end = index(%58, 0) @93:10
+  let %60: Big = tuple_field(%59, 0) @93:10
+  let %61: Int = record_field(%60, b) @93:10
+  do call printInt(%61) @93:1
   funs {
     fun box0 [A::<: Small](x.6: A): Boxed {
-      let y.1: A = x.6
-      let a: Tuple var y: A end = tuple(y.1)
-      let %62: Tuple a: Tuple var y: A end end = tuple(a)
-      let %63: Boxed = auto[Tuple var y: A end](%62)
+      let y.1: A = x.6 @96:84
+      let a: Tuple var y: A end = tuple(y.1) @96:66
+      let %62: Tuple a: Tuple var y: A end end = tuple(a) @96:61
+      let %63: Boxed = auto[Tuple var y: A end](%62) @96:36
       return %63
     }
   }
-  let box: All(A <: Small) Fun(x: A): Boxed = box0
+  let box: All(A <: Small) Fun(x: A): Boxed = box0 @97:39
   funs {
     fun set0 [A::<: Small](b: Boxed, v.3: A): Bool {
       join k4(r.3: Bool) {
         return r.3
       } in {
-        inspect b {
+        inspect b { @99:5
           case Tuple var y: A end (t: Tuple a: Tuple var y: A end end): {
-            let %64: Tuple var y: A end = tuple_field(t, 0)
-            store %64.#0 := v.3
-            jump k4(true)
+            let %64: Tuple var y: A end = tuple_field(t, 0) @99:57
+            store %64.#0 := v.3 @99:57
+            jump k4(true) @99:5
           }
           else: {
-            jump k4(false)
+            jump k4(false) @99:5
           }
         }
       }
     }
   }
-  let set: All(A <: Small) Fun(b: Boxed v: A): Bool = set0
-  let %65: Record a: Int b: Int end = record(a = 30, b = 31)
-  let boxed: Boxed = call box [Big](%65)
-  let %66: Record a: Int b: Int end = record(a = 32, b = 33)
-  let %67: Bool = call set [Big](boxed, %66)
+  let set: All(A <: Small) Fun(b: Boxed v: A): Bool = set0 @100:47
+  let %65: Record a: Int b: Int end = record(a = 30, b = 31) @101:22
+  let boxed: Boxed = call box [Big](%65) @101:13
+  let %66: Record a: Int b: Int end = record(a = 32, b = 33) @102:16
+  let %67: Bool = call set [Big](boxed, %66) @102:1
   join k5(r.4: Int) {
-    do call printInt(r.4)
+    do call printInt(r.4) @103:1
     funs {
       fun cell0 [A::<: Small](x.7: A): Cell {
-        let y.2: A = x.7
-        let a.1: Tuple y: A end = tuple(y.2)
-        let %68: Tuple var a: Tuple y: A end end = tuple(a.1)
-        let %69: Cell = auto[Tuple y: A end](%68)
+        let y.2: A = x.7 @106:80
+        let a.1: Tuple y: A end = tuple(y.2) @106:74
+        let %68: Tuple var a: Tuple y: A end end = tuple(a.1) @106:57
+        let %69: Cell = auto[Tuple y: A end](%68) @106:36
         return %69
       }
     }
-    let cell: All(A <: Small) Fun(x: A): Cell = cell0
+    let cell: All(A <: Small) Fun(x: A): Cell = cell0 @107:39
     funs {
       fun reset0 [A::<: Small](c: Cell, v.4: A): Ok {
-        inspect c {
+        inspect c { @108:43
           case Tuple y: A end exact (t.1: Tuple var a: Tuple y: A end end): {
-            let y.3: A = v.4
-            let %70: Tuple y: A end = tuple(y.3)
-            store t.1.#0 := %70
+            let y.3: A = v.4 @108:98
+            let %70: Tuple y: A end = tuple(y.3) @108:92
+            store t.1.#0 := %70 @108:85
           }
           else: {
           }
@@ -261,75 +261,75 @@ main {
         return ok
       }
     }
-    let reset: All(A <: Small) Fun(c: Cell v: A): Ok = reset0
-    let %71: Record a: Int b: Int end = record(a = 40, b = 41)
-    let c.1: Cell = call cell [Big](%71)
-    let %72: Record a: Int b: Int end = record(a = 42, b = 43)
-    do call reset [Big](c.1, %72)
+    let reset: All(A <: Small) Fun(c: Cell v: A): Ok = reset0 @109:46
+    let %71: Record a: Int b: Int end = record(a = 40, b = 41) @110:19
+    let c.1: Cell = call cell [Big](%71) @110:9
+    let %72: Record a: Int b: Int end = record(a = 42, b = 43) @111:14
+    do call reset [Big](c.1, %72) @111:1
     join k6(r.5: Int) {
-      do call printInt(r.5)
+      do call printInt(r.5) @112:1
       funs {
         fun tick0 [A::<: T](t.2: A): Int {
-          let %73: Int = tuple_field(t.2, 1)
-          let %74: Int = prim +(%73, 1)
-          store t.2.#1 := %74
-          let %75: Small = tuple_field(t.2, 0)
-          let %76: Int = record_field(%75, a)
-          let %77: Int = tuple_field(t.2, 1)
-          let %78: Int = prim +(%76, %77)
+          let %73: Int = tuple_field(t.2, 1) @116:44
+          let %74: Int = prim +(%73, 1) @116:44
+          store t.2.#1 := %74 @116:37
+          let %75: Small = tuple_field(t.2, 0) @116:52
+          let %76: Int = record_field(%75, a) @116:52
+          let %77: Int = tuple_field(t.2, 1) @116:60
+          let %78: Int = prim +(%76, %77) @116:52
           return %78
         }
       }
-      let tick: All(A <: T) Fun(t: A): Int = tick0
-      let s.1: Record a: Int b: Int end = record(a = 50, b = 51)
-      let n.2: Int = 1
-      let extra: Bool = true
-      let tb: Tuple s: Big var n: Int extra: Bool end = tuple(s.1, n.2, extra)
-      let %79: Int = call tick [Tuple s: Big var n: Int extra: Bool end](tb)
-      do call printInt(%79)
-      let %80: Int = tuple_field(tb, 1)
-      do call printInt(%80)
+      let tick: All(A <: T) Fun(t: A): Int = tick0 @117:34
+      let s.1: Record a: Int b: Int end = record(a = 50, b = 51) @118:65
+      let n.2: Int = 1 @118:102
+      let extra: Bool = true @118:116
+      let tb: Tuple s: Big var n: Int extra: Bool end = tuple(s.1, n.2, extra) @118:51
+      let %79: Int = call tick [Tuple s: Big var n: Int extra: Bool end](tb) @119:10
+      do call printInt(%79) @119:1
+      let %80: Int = tuple_field(tb, 1) @120:10
+      do call printInt(%80) @120:1
       funs {
         fun bumpIn(var n.3: Int): Ok {
-          let %81: Int = prim +(n.3, 100)
-          n.3 := %81
+          let %81: Int = prim +(n.3, 100) @121:35
+          n.3 := %81 @121:30
           return ok
         }
       }
       funs {
         fun tickVar0 [A::<: T](t.3: A): Int {
-          let %82: Var(Int) = addr t.3.#1
-          do call bumpIn(%82)
-          let %83: Int = tuple_field(t.3, 1)
+          let %82: Var(Int) = addr t.3.#1 @122:47
+          do call bumpIn(%82) @122:40
+          let %83: Int = tuple_field(t.3, 1) @122:53
           return %83
         }
       }
-      let tickVar: All(A <: T) Fun(t: A): Int = tickVar0
-      let %84: Int = call tickVar [Tuple s: Big var n: Int extra: Bool end](tb)
-      do call printInt(%84)
+      let tickVar: All(A <: T) Fun(t: A): Int = tickVar0 @123:37
+      let %84: Int = call tickVar [Tuple s: Big var n: Int extra: Bool end](tb) @124:10
+      do call printInt(%84) @124:1
     } in {
-      inspect c.1 {
+      inspect c.1 { @112:10
         case Tuple y: Big end exact (t.4: Tuple var a: Tuple y: Big end end): {
-          let %85: Tuple y: Big end = tuple_field(t.4, 0)
-          let %86: Big = tuple_field(%85, 0)
-          let %87: Int = record_field(%86, b)
-          jump k6(%87)
+          let %85: Tuple y: Big end = tuple_field(t.4, 0) @112:54
+          let %86: Big = tuple_field(%85, 0) @112:54
+          let %87: Int = record_field(%86, b) @112:54
+          jump k6(%87) @112:10
         }
         else: {
-          jump k6(0)
+          jump k6(0) @112:10
         }
       }
     }
   } in {
-    inspect boxed {
+    inspect boxed { @103:10
       case Tuple var y: Big end (t.5: Tuple a: Tuple var y: Big end end): {
-        let %88: Tuple var y: Big end = tuple_field(t.5, 0)
-        let %89: Big = tuple_field(%88, 0)
-        let %90: Int = record_field(%89, b)
-        jump k5(%90)
+        let %88: Tuple var y: Big end = tuple_field(t.5, 0) @103:62
+        let %89: Big = tuple_field(%88, 0) @103:62
+        let %90: Int = record_field(%89, b) @103:62
+        jump k5(%90) @103:10
       }
       else: {
-        jump k5(0)
+        jump k5(0) @103:10
       }
     }
   }

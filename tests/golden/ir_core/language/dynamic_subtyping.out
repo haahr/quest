@@ -2,49 +2,49 @@ import writer = "writer" : Writer
 import conv = "conv" : Conv
 import dynamic = "dynamic" : Dynamic
 main {
-  let wOut: writer.T = member writer.output
+  let wOut: writer.T = member writer.output @7:12
   funs {
     fun printInt(x: Int): Ok {
-      let %1: String = call conv.int(x)
-      do call writer.putString(wOut, %1)
-      let %2: Ok = call writer.putString(wOut, "\n")
+      let %1: String = call conv.int(x) @10:31
+      do call writer.putString(wOut, %1) @10:9
+      let %2: Ok = call writer.putString(wOut, "\n") @11:9
       return %2
     }
   }
-  let br: BigRec = record(x = 10, y = 20, z = 30)
-  let dRec: T = call dynamic.new [BigRec](br)
-  let sr: SmallRec = call dynamic.be [SmallRec](dRec)
-  let %3: Int = record_field(sr, x)
-  let %4: Int = record_field(sr, y)
-  let %5: Int = prim +(%3, %4)
-  do call printInt(%5)
-  let pr: PermRec = record(b = 2, a = 1)
-  let dPerm: T = call dynamic.new [PermRec](pr)
-  let ord: OrderedRec = call dynamic.be [OrderedRec](dPerm)
-  let %6: Int = record_field(ord, a)
-  let %7: Int = record_field(ord, b)
-  let %8: Int = prim +(10, %7)
-  let %9: Int = prim *(%6, %8)
-  do call printInt(%9)
-  let %10: Record x: Int y: Int end = record(x = 42, y = 99)
-  let ob: OuterBig = record(inner = %10, tag = "nested")
-  let dNest: T = call dynamic.new [OuterBig](ob)
-  let os: OuterSmall = call dynamic.be [OuterSmall](dNest)
-  let %11: InnerSmall = record_field(os, inner)
-  let %12: Int = record_field(%11, x)
-  do call printInt(%12)
-  let %13: String = record_field(os, tag)
-  do call writer.putString(wOut, %13)
-  do call writer.putString(wOut, "\n")
-  let va: VarSmall = variant(a, 55)
-  let dVar: T = call dynamic.new [VarSmall](va)
-  let vb: VarBig = call dynamic.be [VarBig](dVar)
-  switch tag(vb) {
+  let br: BigRec = record(x = 10, y = 20, z = 30) @17:18
+  let dRec: T = call dynamic.new [BigRec](br) @18:12
+  let sr: SmallRec = call dynamic.be [SmallRec](dRec) @19:20
+  let %3: Int = record_field(sr, x) @20:10
+  let %4: Int = record_field(sr, y) @20:17
+  let %5: Int = prim +(%3, %4) @20:10
+  do call printInt(%5) @20:1
+  let pr: PermRec = record(b = 2, a = 1) @25:19
+  let dPerm: T = call dynamic.new [PermRec](pr) @26:13
+  let ord: OrderedRec = call dynamic.be [OrderedRec](dPerm) @27:23
+  let %6: Int = record_field(ord, a) @28:10
+  let %7: Int = record_field(ord, b) @28:23
+  let %8: Int = prim +(10, %7) @28:18
+  let %9: Int = prim *(%6, %8) @28:10
+  do call printInt(%9) @28:1
+  let %10: Record x: Int y: Int end = record(x = 42, y = 99) @35:35
+  let ob: OuterBig = record(inner = %10, tag = "nested") @35:20
+  let dNest: T = call dynamic.new [OuterBig](ob) @36:13
+  let os: OuterSmall = call dynamic.be [OuterSmall](dNest) @37:22
+  let %11: InnerSmall = record_field(os, inner) @38:10
+  let %12: Int = record_field(%11, x) @38:10
+  do call printInt(%12) @38:1
+  let %13: String = record_field(os, tag) @39:23
+  do call writer.putString(wOut, %13) @39:1
+  do call writer.putString(wOut, "\n") @40:1
+  let va: VarSmall = variant(a, 55) @45:20
+  let dVar: T = call dynamic.new [VarSmall](va) @46:12
+  let vb: VarBig = call dynamic.be [VarBig](dVar) @47:18
+  switch tag(vb) { @48:1
     case a (n: Int): {
-      do call printInt(n)
+      do call printInt(n) @49:24
     }
     else: {
-      do call printInt(0)
+      do call printInt(0) @50:10
     }
   }
   funs {
@@ -52,56 +52,56 @@ main {
       join k1(r: Int) {
         return r
       } in {
-        inspect d {
+        inspect d { @56:5
           case Int (n.1: Tuple a: Int end): {
-            let %14: Int = tuple_field(n.1, 0)
-            jump k1(%14)
+            let %14: Int = tuple_field(n.1, 0) @58:9
+            jump k1(%14) @56:5
           }
           case SmallRec (r.1: Tuple a: SmallRec end): {
-            let %15: SmallRec = tuple_field(r.1, 0)
-            let %16: Int = record_field(%15, x)
-            let %17: SmallRec = tuple_field(r.1, 0)
-            let %18: Int = record_field(%17, y)
-            let %19: Int = prim +(%16, %18)
-            jump k1(%19)
+            let %15: SmallRec = tuple_field(r.1, 0) @60:9
+            let %16: Int = record_field(%15, x) @60:9
+            let %17: SmallRec = tuple_field(r.1, 0) @60:17
+            let %18: Int = record_field(%17, y) @60:17
+            let %19: Int = prim +(%16, %18) @60:9
+            jump k1(%19) @56:5
           }
           else: {
-            jump k1(999)
+            jump k1(999) @56:5
           }
         }
       }
     }
   }
-  let %20: T = call dynamic.new [Int](7)
-  let %21: Int = call classify(%20)
-  do call printInt(%21)
-  let %22: Int = call classify(dRec)
-  do call printInt(%22)
-  let %23: T = call dynamic.new [String]("hello")
-  let %24: Int = call classify(%23)
-  do call printInt(%24)
+  let %20: T = call dynamic.new [Int](7) @65:19
+  let %21: Int = call classify(%20) @65:10
+  do call printInt(%21) @65:1
+  let %22: Int = call classify(dRec) @66:10
+  do call printInt(%22) @66:1
+  let %23: T = call dynamic.new [String]("hello") @67:19
+  let %24: Int = call classify(%23) @67:10
+  do call printInt(%24) @67:1
   funs {
     fun testMismatch(d.1: Dynamic): Int {
       join k2(r.2: Int) {
         return r.2
       } in {
         try catching all {
-          let ignored: Int = call dynamic.be [Int](d.1)
-          jump k2(1)
+          let ignored: Int = call dynamic.be [Int](d.1) @72:23
+          jump k2(1) @71:5
         } handle (e: Exception) {
-          let %25: Exception = member dynamic.error
-          let %26: Bool = prim is(e, %25)
-          if %26 {
-            jump k2(2)
+          let %25: Exception = member dynamic.error @74:10
+          let %26: Bool = prim is(e, %25) @71:5
+          if %26 { @71:5
+            jump k2(2) @71:5
           } else {
-            jump k2(3)
+            jump k2(3) @71:5
           }
         }
       }
     }
   }
-  let %27: T = call dynamic.new [String]("wrong")
-  let %28: Int = call testMismatch(%27)
-  do call printInt(%28)
+  let %27: T = call dynamic.new [String]("wrong") @80:23
+  let %28: Int = call testMismatch(%27) @80:10
+  do call printInt(%28) @80:1
 }
 

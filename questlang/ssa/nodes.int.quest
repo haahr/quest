@@ -42,9 +42,14 @@ export
      * a call, an indirect call's function a word) and each result *)
     Def Signature = Tuple params: Array(Passed) results: Array(Passed) end
 
+    (* A source position, for the native code's line table: a file, by its
+     * number in the unit (Unit.files, from 1), a line, and a column; or
+     * none, file 0 *)
+    Def Loc = Tuple file: Int line: Int col: Int end
+
     (* An instruction. For a load or a store, width is 8, 4, or 1 bytes and
      * signed says how a narrow load extends; a call has its signature (others
-     * an empty one). *)
+     * an empty one); loc is the source position it is compiled from. *)
     Def Inst = Tuple
         op: Opcode
         var args: Array(Int)
@@ -54,6 +59,7 @@ export
         width: Int
         signed: Bool
         var signature: Signature
+        var loc: Loc
     end
 
     (* A jump's destination: a block, and the values bound to its
@@ -76,6 +82,8 @@ export
         params: vector.T(Int)
         insts: vector.T(Inst)
         var term: Terminator
+        (* The terminator's source position *)
+        var termLoc: Loc
     end
 
     (* A stack slot: its size and alignment in bytes *)
@@ -94,6 +102,9 @@ export
         types: vector.T(Type)
         blocks: vector.T(Block)
         slots: vector.T(Slot)
+        (* The source position of the instructions and terminators being
+         * built, which append and terminate give those that have none *)
+        var at: Loc
     end
 
     (* A word of static data: an integer, or a symbol's address plus a byte
@@ -114,9 +125,12 @@ export
      * aligned to 8 bytes *)
     Def Data = Tuple symbol: String exported: Bool writable: Bool contents: Contents end
 
+    (* A unit, and the names of the source files its positions are in, by
+     * their numbers less 1 *)
     Def Unit = Tuple
         functions: vector.T(Function)
         data: vector.T(Data)
+        files: vector.T(String)
     end
 
     (* The signature of parameters and results of types params and results:
@@ -202,6 +216,11 @@ export
     termUnreachable: Terminator
 
     newUnit(): Unit
+    (* No source position; whether a position is one, and whether two are the
+     * same *)
+    noLoc: Loc
+    hasLoc(l: Loc): Bool
+    sameLoc(a: Loc b: Loc): Bool
     (* A datum of words; the bytes of zero or more words *)
     words(symbol: String exported: Bool writable: Bool ws: Array(Word)): Data
     wordsBytes(c: Contents): Int
@@ -217,7 +236,8 @@ export
     (* The types of values *)
     valueTypes(f: Function vs: Array(Int)): Array(Type)
 
-    (* Appends an instruction to block b (which has no terminator yet) *)
+    (* Appends an instruction to block b (which has no terminator yet), at
+     * f.at if it has no position *)
     append(f: Function b: Int inst: Inst): Ok
     (* An instruction with its other fields at their defaults, not
      * appended *)

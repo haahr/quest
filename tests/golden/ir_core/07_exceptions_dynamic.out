@@ -1,16 +1,16 @@
 main {
-  let DivByZero: Exception = exception DivByZero
+  let DivByZero: Exception = exception DivByZero @4:1
   funs {
     fun safeDiv(a: Int, b: Int): Int {
       join k1(r: Int) {
         return r
       } in {
-        let %1: Bool = prim is(b, 0)
-        if %1 {
-          raise DivByZero
+        let %1: Bool = prim is(b, 0) @7:8
+        if %1 { @7:5
+          raise DivByZero @8:9
         } else {
-          let %2: Int = prim /(a, b)
-          jump k1(%2)
+          let %2: Int = prim /(a, b) @10:9
+          jump k1(%2) @7:5
         }
       }
     }
@@ -21,21 +21,21 @@ main {
         return r.1
       } in {
         try catching all {
-          let %3: Int = call safeDiv(a.1, b.1)
-          jump k2(%3)
+          let %3: Int = call safeDiv(a.1, b.1) @15:9
+          jump k2(%3) @14:5
         } handle (e: Exception) {
-          let %4: Bool = prim is(e, DivByZero)
-          if %4 {
-            jump k2(0)
+          let %4: Bool = prim is(e, DivByZero) @14:5
+          if %4 { @14:5
+            jump k2(0) @14:5
           } else {
-            let %5: Int = prim -(0, 1)
-            jump k2(%5)
+            let %5: Int = prim -(0, 1) @19:9
+            jump k2(%5) @14:5
           }
         }
       }
     }
   }
-  let r1: Int = call compute(10, 2)
-  let r2: Int = call compute(10, 0)
+  let r1: Int = call compute(10, 2) @22:10
+  let r2: Int = call compute(10, 0) @23:10
 }
 

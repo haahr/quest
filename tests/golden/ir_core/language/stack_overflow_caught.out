@@ -3,63 +3,63 @@ import conv = "conv" : Conv
 main {
   funs {
     fun print(s: String): Ok {
-      let %1: writer.T = member writer.output
-      let %2: String = prim <>(s, "\n")
-      let %3: Ok = call writer.putString(%1, %2)
+      let %1: writer.T = member writer.output @7:45
+      let %2: String = prim <>(s, "\n") @7:59
+      let %3: Ok = call writer.putString(%1, %2) @7:28
       return %3
     }
   }
   funs rec {
     fun down(n: Int): Int {
-      let %4: Int = prim +(n, 1)
-      let %5: Int = call down(%4)
-      let %6: Int = prim +(1, %5)
+      let %4: Int = prim +(n, 1) @8:38
+      let %5: Int = call down(%4) @8:33
+      let %6: Int = prim +(1, %5) @8:29
       return %6
     }
   }
   join k1(r: String) {
-    do call print(r)
+    do call print(r) @9:1
     funs rec {
       fun depth(n.1: Int): Int {
         join k2(r.1: Int) {
           return r.1
         } in {
-          let %7: Bool = prim is(n.1, 0)
-          if %7 {
-            jump k2(0)
+          let %7: Bool = prim is(n.1, 0) @12:33
+          if %7 { @12:30
+            jump k2(0) @12:30
           } else {
-            let %8: Int = prim -(n.1, 1)
-            let %9: Int = call depth(%8)
-            let %10: Int = prim +(1, %9)
-            jump k2(%10)
+            let %8: Int = prim -(n.1, 1) @12:62
+            let %9: Int = call depth(%8) @12:56
+            let %10: Int = prim +(1, %9) @12:52
+            jump k2(%10) @12:30
           }
         }
       }
     }
-    let %11: Int = call depth(900)
-    let %12: String = call conv.int(%11)
-    do call print(%12)
-    let %13: Int = call depth(10)
-    let %14: String = call conv.int(%13)
-    do call print(%14)
+    let %11: Int = call depth(900) @13:16
+    let %12: String = call conv.int(%11) @13:7
+    do call print(%12) @13:1
+    let %13: Int = call depth(10) @16:16
+    let %14: String = call conv.int(%13) @16:7
+    do call print(%14) @16:1
     join k3(r.2: String) {
-      do call print(r.2)
+      do call print(r.2) @17:1
     } in {
       try catching all {
-        let %15: Int = call down(0)
-        let %16: String = call conv.int(%15)
-        jump k3(%16)
+        let %15: Int = call down(0) @17:20
+        let %16: String = call conv.int(%15) @17:11
+        jump k3(%16) @17:7
       } handle (e: Exception) {
-        jump k3("again")
+        jump k3("again") @17:7
       }
     }
   } in {
     try catching all {
-      let %17: Int = call down(0)
-      let %18: String = call conv.int(%17)
-      jump k1(%18)
+      let %17: Int = call down(0) @9:20
+      let %18: String = call conv.int(%17) @9:11
+      jump k1(%18) @9:7
     } handle (e.1: Exception) {
-      jump k1("stack overflow")
+      jump k1("stack overflow") @9:7
     }
   }
 }

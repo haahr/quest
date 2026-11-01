@@ -4,161 +4,161 @@ import dynamic = "dynamic" : Dynamic
 main {
   funs {
     fun p(n: Int): Ok {
-      let %1: writer.T = member writer.output
-      let %2: String = call conv.int(n)
-      let %3: String = prim <>(%2, "\n")
-      let %4: Ok = call writer.putString(%1, %3)
+      let %1: writer.T = member writer.output @8:38
+      let %2: String = call conv.int(n) @8:52
+      let %3: String = prim <>(%2, "\n") @8:52
+      let %4: Ok = call writer.putString(%1, %3) @8:21
       return %4
     }
   }
   funs {
     fun s(text: String): Ok {
-      let %5: writer.T = member writer.output
-      let %6: String = prim <>(text, "\n")
-      let %7: Ok = call writer.putString(%5, %6)
+      let %5: writer.T = member writer.output @9:44
+      let %6: String = prim <>(text, "\n") @9:58
+      let %7: Ok = call writer.putString(%5, %6) @9:27
       return %7
     }
   }
-  let myCar: Car = record(age = 3, fuel = "diesel")
+  let myCar: Car = record(age = 3, fuel = "diesel") @14:18
   funs {
     fun box [A::TYPE](x: A): Boxed {
-      let a: A = x
-      let %8: Tuple a: A end = tuple(a)
-      let %9: Boxed = auto[A](%8)
+      let a: A = x @17:45
+      let %8: Tuple a: A end = tuple(a) @17:40
+      let %9: Boxed = auto[A](%8) @17:32
       return %9
     }
   }
-  let boxedInt: Boxed = call box [Int](42)
-  let boxedCar: Boxed = call box [Car](myCar)
+  let boxedInt: Boxed = call box [Int](42) @18:16
+  let boxedCar: Boxed = call box [Car](myCar) @19:16
   join k1(r: Int) {
-    do call p(r)
+    do call p(r) @20:1
     join k2(r.1: String) {
-      do call s(r.1)
+      do call s(r.1) @21:1
       funs {
         fun unbox [A::TYPE](b: Boxed, default: A): A {
           join k3(r.2: A) {
             return r.2
           } in {
-            inspect b {
+            inspect b { @24:45
               case A (x.1: Tuple a: A end): {
-                let %10: A = tuple_field(x.1, 0)
-                jump k3(%10)
+                let %10: A = tuple_field(x.1, 0) @24:74
+                jump k3(%10) @24:45
               }
               else: {
-                jump k3(default)
+                jump k3(default) @24:45
               }
             }
           }
         }
       }
-      let %11: Int = call unbox [Int](boxedInt, 0)
-      do call p(%11)
-      let %12: Int = prim -(0, 1)
-      let %13: Int = call unbox [Int](boxedCar, %12)
-      do call p(%13)
-      let %14: Record age: Int end = record(age = 0)
-      let %15: Object = call unbox [Object](boxedCar, %14)
-      let %16: Int = record_field(%15, age)
-      do call p(%16)
+      let %11: Int = call unbox [Int](boxedInt, 0) @25:3
+      do call p(%11) @25:1
+      let %12: Int = prim -(0, 1) @26:23
+      let %13: Int = call unbox [Int](boxedCar, %12) @26:3
+      do call p(%13) @26:1
+      let %14: Record age: Int end = record(age = 0) @27:26
+      let %15: Object = call unbox [Object](boxedCar, %14) @27:3
+      let %16: Int = record_field(%15, age) @27:3
+      do call p(%16) @27:1
       funs {
         fun boxTwice [B::TYPE](y: B): Tuple first: Boxed second: Boxed end {
-          let first: Boxed = call box [B](y)
-          let second: Boxed = call box [B](y)
-          let %17: Tuple first: Boxed second: Boxed end = tuple(first, second)
+          let first: Boxed = call box [B](y) @30:74
+          let second: Boxed = call box [B](y) @30:84
+          let %17: Tuple first: Boxed second: Boxed end = tuple(first, second) @30:68
           return %17
         }
       }
-      let twice: Tuple first: Boxed second: Boxed end = call boxTwice [String]("twice")
+      let twice: Tuple first: Boxed second: Boxed end = call boxTwice [String]("twice") @31:13
       join k4(r.3: String) {
-        do call s(r.3)
+        do call s(r.3) @32:1
         funs {
           fun pack [A::TYPE](x.2: A): Dynamic {
-            let %18: T = call dynamic.new [A](x.2)
+            let %18: T = call dynamic.new [A](x.2) @35:35
             return %18
           }
         }
-        let %19: Dynamic = call pack [Int](7)
-        let %20: Int = call dynamic.be [Int](%19)
-        do call p(%20)
+        let %19: Dynamic = call pack [Int](7) @36:19
+        let %20: Int = call dynamic.be [Int](%19) @36:3
+        do call p(%20) @36:1
         join k5(r.4: Int) {
-          do call p(r.4)
+          do call p(r.4) @37:1
           funs {
             fun showable [A::TYPE](x.3: A, f: Fun(_: A): String): Showable {
-              let x.4: A = x.3
-              let show: Fun(_: A): String = f
-              let %21: Tuple x: A show: Fun(_: A): String end = tuple(x.4, show)
-              let %22: Showable = auto[A](%21)
+              let x.4: A = x.3 @41:67
+              let show: Fun(_: A): String = f @41:69
+              let %21: Tuple x: A show: Fun(_: A): String end = tuple(x.4, show) @41:62
+              let %22: Showable = auto[A](%21) @41:54
               return %22
             }
           }
           funs {
             fun f.1(n.1: Int): String {
-              let %23: Int = prim *(n.1, 10)
-              let %24: String = call conv.int(%23)
+              let %23: Int = prim *(n.1, 10) @42:70
+              let %24: String = call conv.int(%23) @42:61
               return %24
             }
           }
-          let showInt: Showable = call showable [Int](5, f.1)
+          let showInt: Showable = call showable [Int](5, f.1) @42:25
           join k6(r.5: String) {
-            do call s(r.5)
+            do call s(r.5) @43:1
           } in {
-            inspect showInt {
+            inspect showInt { @43:3
               case Int exact (i: Tuple x: Int show: Fun(_: Int): String end): {
-                let %25: Fun(_: Int): String = tuple_field(i, 1)
-                let %26: Int = tuple_field(i, 0)
-                let %27: String = call %25(%26)
-                jump k6(%27)
+                let %25: Fun(_: Int): String = tuple_field(i, 1) @43:40
+                let %26: Int = tuple_field(i, 0) @43:47
+                let %27: String = call %25(%26) @43:40
+                jump k6(%27) @43:3
               }
               else: {
-                jump k6("?")
+                jump k6("?") @43:3
               }
             }
           }
         } in {
-          let %28: Dynamic = call pack [Car](myCar)
-          inspect %28 {
+          let %28: Dynamic = call pack [Car](myCar) @37:11
+          inspect %28 { @37:3
             case Object (o: Tuple a: Object end): {
-              let %29: Object = tuple_field(o, 0)
-              let %30: Int = record_field(%29, age)
-              jump k5(%30)
+              let %29: Object = tuple_field(o, 0) @37:52
+              let %30: Int = record_field(%29, age) @37:52
+              jump k5(%30) @37:3
             }
             else: {
-              jump k5(0)
+              jump k5(0) @37:3
             }
           }
         }
       } in {
-        let %31: Boxed = tuple_field(twice, 1)
-        inspect %31 {
+        let %31: Boxed = tuple_field(twice, 1) @32:11
+        inspect %31 { @32:3
           case String (t: Tuple a: String end): {
-            let %32: String = tuple_field(t, 0)
-            jump k4(%32)
+            let %32: String = tuple_field(t, 0) @32:48
+            jump k4(%32) @32:3
           }
           else: {
-            jump k4("?")
+            jump k4("?") @32:3
           }
         }
       }
     } in {
-      inspect boxedCar {
+      inspect boxedCar { @21:3
         case Car (c: Tuple a: Car end): {
-          let %33: Car = tuple_field(c, 0)
-          let %34: String = record_field(%33, fuel)
-          jump k2(%34)
+          let %33: Car = tuple_field(c, 0) @21:41
+          let %34: String = record_field(%33, fuel) @21:41
+          jump k2(%34) @21:3
         }
         else: {
-          jump k2("?")
+          jump k2("?") @21:3
         }
       }
     }
   } in {
-    inspect boxedInt {
+    inspect boxedInt { @20:3
       case Int (i.1: Tuple a: Int end): {
-        let %35: Int = tuple_field(i.1, 0)
-        jump k1(%35)
+        let %35: Int = tuple_field(i.1, 0) @20:41
+        jump k1(%35) @20:3
       }
       else: {
-        jump k1(0)
+        jump k1(0) @20:3
       }
     }
   }

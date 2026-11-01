@@ -300,11 +300,24 @@ export
 
     let labelDepth(fn: vals.Fn label: String): Int = maybe.unwrapOr(:Int hashMap.get(:String :Int fn.labelDepth label) 0)
 
+    (* What s compiles to is at its source position, or, if it has none, at
+     * the position of the code before it *)
+    let positioned(fn: vals.Fn s: ir.Stmt): Ok =
+        begin
+            let pos = ir.stmtPos(s)
+            let resolved = if pos >= 0 then ir.sourcePos(fn.u.unit pos) else maybe.none(:ir.SourcePos) end
+            if maybe.isSome(:ir.SourcePos resolved) then
+                let r = maybe.unwrap(:ir.SourcePos resolved)
+                fn.f.at := tuple let file = r.file + 1 let line = r.line let col = r.col end
+            end
+        end
+
     let rec statement(fn: vals.Fn s: ir.Stmt): Ok =
         if vals.terminated(fn) then
             (* Code after a terminator is unreachable *)
             ok
         else
+            positioned(fn s)
             case s
                 when sLet with x then vals.write(fn x.v operation(fn x.value maybe.some(:Variable x.v)))
                 when sDo with x then begin operation(fn x.value maybe.none(:Variable)) ok end

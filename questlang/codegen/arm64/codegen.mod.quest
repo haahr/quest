@@ -235,7 +235,7 @@ export
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                 opSubImm, opAndImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCset, opLoad,
                 opStore, opLdp, opStp, opAdrp, opAddPageOff, opBSymbol, opBl, opBlr, opBr, opRet, opBrk, opNop, opLabel,
-                opCfiDefCfa, opCfiOffset then
+                opCfiDefCfa, opCfiOffset, opLoc then
                 op
         end
     let isBrk(op: minst.Op): Bool =
@@ -244,7 +244,7 @@ export
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                 opSubImm, opAndImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCset, opLoad,
                 opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz,
-                opCbnz, opBCond, opNop, opLabel, opCfiDefCfa, opCfiOffset then
+                opCbnz, opBCond, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                 false
         end
 
@@ -275,7 +275,7 @@ export
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                 opSubImm, opAndImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCset, opLoad,
                 opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opBrk,
-                opNop, opLabel, opCfiDefCfa, opCfiOffset then
+                opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                 maybe.none(:Conditional)
         end
 
@@ -301,7 +301,8 @@ export
                         when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith,
                             opAddImm, opSubImm, opAndImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm,
                             opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl,
-                            opBlr, opBr, opRet, opCbz, opCbnz, opBCond, opBrk, opNop, opCfiDefCfa, opCfiOffset then
+                            opBlr, opBr, opRet, opCbz, opCbnz, opBCond, opBrk, opNop, opCfiDefCfa, opCfiOffset,
+                            opLoc then
                             n := n + printer.count(i.op)
                     end
                 end
@@ -344,6 +345,9 @@ export
      * Functions and the unit
      * ====================================================================== *)
 
+    (* The label just past the code of the unit's function numbered index *)
+    let endLabel(index: Int): String = "Lf" <> conv.int(index) <> "_end"
+
     let function(f: Function index: Int defined: hashMap.T(String Bool)): Lines =
         begin
             let c = compile(f index defined)
@@ -379,6 +383,11 @@ export
                 if final[b] is b then vector.append(:Int printed b) end
             end
             prologue(e)
+            (* The line table: the source position before each instruction
+             * whose position differs from the last one given. A constant or an
+             * address made again where it is used keeps its definition's
+             * position, so it gives none *)
+            let var last = ssa.noLoc
             for k = 0 upto {vector.length(:Int printed) - 1} do
                 let b = vector.get(:Int printed k)
                 let next = if {k + 1} < vector.length(:Int printed) then vector.get(:Int printed k + 1) else ~1 end
@@ -390,9 +399,14 @@ export
                     for r = 0 upto {extent regs - 1} do regs[r] := i.operands[r].reg end
                     let base = vector.get(:minst.Op s.ops i.op)
                     let op = if i.target >= 0 then retarget(base select.label(s final[i.target])) else base end
-                    if machine.isKind(i machine.kindReturn) andif not(isBrk(op)) then restore(e) end
                     (* A jump to the next block falls through *)
                     if not(machine.isKind(i machine.kindJump) andif {final[i.target] is next}) then
+                        let l = vector.get(:ssa.Loc s.locs i.op)
+                        if ssa.hasLoc(l) andif not(ssa.sameLoc(l last)) andif not(select.rematerializable(s i)) then
+                            emit(e minst.loc(l.file l.line l.col))
+                            last := l
+                        end
+                        if machine.isKind(i machine.kindReturn) andif not(isBrk(op)) then restore(e) end
                         emit(e tuple let op = op let regs = regs end)
                     end
                 end
@@ -406,6 +420,7 @@ export
                 let ls = printer.lines(i.op i.regs printer.physical)
                 for j = 0 upto {extent ls - 1} do vector.append(:String lines ls[j]) end
             end
+            vector.append(:String lines endLabel(index) <> ":")
             for k = 0 upto {extent asm.functionEnd - 1} do vector.append(:String lines asm.functionEnd[k]) end
             lines
         end
@@ -420,7 +435,15 @@ export
                 put(:String :Bool defined vector.get(:ssa.Data u.data k).symbol true)
             end
             let lines = vector.new(:String)
-            for k = 0 upto {extent asm.unitStart - 1} do vector.append(:String lines asm.unitStart[k]) end
+            let appendAll(ls: Array(String)): Ok =
+                for k = 0 upto {extent ls - 1} do vector.append(:String lines ls[k]) end
+            appendAll(asm.unitStart)
+            (* The line table's files, and its debugging information if the
+             * unit's own file is known and the unit has code *)
+            let files = vector.toArray(:String u.files)
+            appendAll(asm.files(files))
+            let debugged = {extent files > 0} andif {stringOp.length(files[0]) > 0}
+                andif not(vector.empty(:Function u.functions))
             for k = 0 upto {vector.length(:Function u.functions) - 1} do
                 let fl = function(vector.get(:Function u.functions k) k defined)
                 for j = 0 upto {vector.length(:String fl) - 1} do
@@ -431,7 +454,17 @@ export
                 let dl = asm.data(vector.get(:ssa.Data u.data k))
                 for j = 0 upto {extent dl - 1} do vector.append(:String lines dl[j]) end
             end
-            for k = 0 upto {extent asm.unitEnd - 1} do vector.append(:String lines asm.unitEnd[k]) end
+            if debugged then
+                let functions = array of(vector.length(:Function u.functions)
+                    tuple let symbol = "" let endLabel = "" end)
+                for k = 0 upto {extent functions - 1} do
+                    functions[k] := tuple
+                        let symbol = vector.get(:Function u.functions k).symbol let endLabel = endLabel(k)
+                    end
+                end
+                appendAll(asm.debugInfo(files[0] functions))
+            end
+            appendAll(asm.unitEnd)
             strutil.join("\n" lines) <> "\n"
         end
 end

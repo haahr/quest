@@ -85,6 +85,9 @@ SELF_HOSTED_ONLY_PHASES = (*SELF_HOSTED_IR_DUMP_PHASES, *SELF_HOSTED_IR_RUN_PHAS
 # C, under each worker's build directory: apart from the bootstrap's artifacts,
 # which it would otherwise find fresh and reuse
 SELF_HOSTED_UNITS_SUBDIR = "self-hosted-units"
+# A statement's source position, at the end of a line of the self-hosted
+# compiler's IR dumps (docs/ir.md section 10), which the bootstrap's lack
+IR_POSITION = re.compile(r" @(?:(?:\d+:)?\d+:\d+|\+\d+)$", re.MULTILINE)
 SELF_HOSTED_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending.txt"
 # The self-hosted driver's options for each backend mode, and the tests the
 # mode is not yet expected to pass, besides the self-hosted pending list's
@@ -117,8 +120,8 @@ EVAL_CASES = ROOT_DIR / "tests" / "eval" / "cases.quest"
 # The checks of the self-hosted driver's unit files (-c): interfaces against its
 # ABI corpus (tests/abi/corpus-self-hosted), and that lib/'s modules compile;
 # and of the errors its builds report, against the bootstrap's; that its
-# parallel builds (-j) are its serial ones; and that its compile command does
-# what the bootstrap's does
+# parallel builds (-j) are its serial ones; that its compile command does
+# what the bootstrap's does; and that lldb reads the arm64 backend's line tables
 UNIT_CHECKS = (
     ("self-hosted/abi_corpus", ROOT_DIR / "tests" / "abi" / "corpus.py", ("--compiler",)),
     ("self-hosted/unit_artifacts", ROOT_DIR / "tests" / "self-hosted" / "unit_artifacts.py", ()),
@@ -126,6 +129,7 @@ UNIT_CHECKS = (
     ("self-hosted/parallel_build", ROOT_DIR / "tests" / "self-hosted" / "parallel_build.py", ()),
     ("self-hosted/compile_command", ROOT_DIR / "tests" / "self-hosted" / "compile_command.py", ()),
     ("self-hosted/backends", ROOT_DIR / "tests" / "self-hosted" / "backends.py", ()),
+    ("self-hosted/line_tables", ROOT_DIR / "tests" / "self-hosted" / "line_tables.py", ()),
 )
 EVAL_GOLDEN = TESTS_GOLDEN_DIR / "self-hosted" / "eval.out"
 SELF_HOSTED_ERRORS_DIR = ROOT_DIR / "tests" / "self-hosted" / "errors"
@@ -491,6 +495,9 @@ def run_single_golden_test(
         return False, "[MISSING GOLDEN]", f"  (expected {out_file.relative_to(ROOT_DIR)})"
 
     expected_output = out_file.read_text(encoding=BYTE_ENCODING)
+    if driver_command is None and phase_name in IR_DUMP_PHASES:
+        # The IR goldens are the self-hosted compiler's (§2.8)
+        expected_output = IR_POSITION.sub("", expected_output)
     if output == expected_output:
         return True, "[PASS]", ""
 

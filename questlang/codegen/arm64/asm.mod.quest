@@ -6,6 +6,7 @@ import
     questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
     collections/vector : collections/Vector
     util/stringBuilder : util/StringBuilder
+    util/strutil : util/Strutil
     stringOp = string : StringOp
     conv : Conv
     ascii : Ascii
@@ -91,4 +92,109 @@ export
 
     let unitStart = array of ".section __TEXT,__text,regular,pure_instructions" end
     let unitEnd = array of ".subsections_via_symbols" end
+
+    (* A path's directory and name *)
+    let split(path: String): Tuple dir: String name: String end =
+        begin
+            let slash = strutil.rfind(path "/")
+            let name = stringOp.getSub(path slash + 1 {stringOp.length(path) - slash} - 1)
+            let dir = if slash > 0 then stringOp.getSub(path 0 slash) elsif slash is 0 then "/" else "." end
+            tuple let dir = dir let name = name end
+        end
+
+    let files(paths: Array(String)): Array(String) =
+        begin
+            let lines = vector.new(:String)
+            for k = 0 upto {extent paths - 1} do
+                if stringOp.length(paths[k]) > 0 then
+                    let s = split(paths[k])
+                    vector.append(:String lines
+                        ".file " <> conv.int(k + 1) <> " " <> quoted(s.dir) <> " " <> quoted(s.name))
+                end
+            end
+            vector.toArray(:String lines)
+        end
+
+    Let DebugFunction = Tuple symbol: String endLabel: String end
+
+    (* DWARF 4's codes (DWARF 4, sections 7.5 and 7.12): the tags of a compile
+     * unit and a subprogram; the attributes producer, language, name,
+     * stmt_list, comp_dir, low_pc, and high_pc; the forms string, data2,
+     * sec_offset, addr, and data4; and the language code, from the range
+     * left to users, as DWARF has none for Quest *)
+    let tagCompileUnit = 17
+    let tagSubprogram = 46
+    let atProducer = 37
+    let atLanguage = 19
+    let atName = 3
+    let atStmtList = 16
+    let atCompDir = 27
+    let atLowPc = 17
+    let atHighPc = 18
+    let formString = 8
+    let formData2 = 5
+    let formSecOffset = 23
+    let formAddr = 1
+    let formData4 = 6
+    let languageQuest = 32768
+
+    let debugInfo(file: String functions: Array(DebugFunction)): Array(String) =
+        begin
+            let lines = vector.new(:String)
+            let put(line: String): Ok = vector.append(:String lines line)
+            let bytes(ns: Array(Int)): Ok =
+                begin
+                    let texts = array of(extent ns "")
+                    for k = 0 upto {extent ns - 1} do texts[k] := conv.int(ns[k]) end
+                    put(".byte " <> strutil.joinArray(", " texts))
+                end
+            (* A difference of labels, as a 4-byte field: Mach-O's assembler
+             * writes a difference only through a symbol set to it *)
+            let difference(name: String later: String earlier: String): Ok =
+                begin
+                    put(name <> " = " <> later <> "-" <> earlier)
+                    put(".long " <> name)
+                end
+            (* The abbreviations: 1, the compile unit, which has children,
+             * and 2, a subprogram, which has none *)
+            put(".section __DWARF,__debug_abbrev,regular,debug")
+            put("Ldebug_abbrev:")
+            bytes(array of 1 tagCompileUnit 1 end)
+            bytes(array of atProducer formString atLanguage formData2 atName formString atStmtList formSecOffset end)
+            bytes(array of atCompDir formString atLowPc formAddr atHighPc formData4 0 0 end)
+            bytes(array of 2 tagSubprogram 0 end)
+            bytes(array of atLowPc formAddr atHighPc formData4 atName formString 0 0 end)
+            bytes(array of 0 end)
+            (* The compile unit's header, then the unit and its functions *)
+            put(".section __DWARF,__debug_info,regular,debug")
+            difference("Ldebug_info_length" "Ldebug_info_end" "Ldebug_info_start")
+            put("Ldebug_info_start:")
+            put(".short 4")
+            difference("Ldebug_abbrev_offset" "Ldebug_abbrev" "Ldebug_abbrev")
+            put(".byte 8")
+            let s = split(file)
+            let first = functions[0]
+            let last = functions[extent functions - 1]
+            bytes(array of 1 end)
+            put(".asciz \"questlang\"")
+            put(".short " <> conv.int(languageQuest))
+            put(".asciz " <> quoted(s.name))
+            difference("Ldebug_line_offset" "Ldebug_line" "Ldebug_line")
+            put(".asciz " <> quoted(s.dir))
+            put(".quad " <> symbol(first.symbol))
+            difference("Ldebug_unit_size" last.endLabel symbol(first.symbol))
+            for k = 0 upto {extent functions - 1} do
+                let f = functions[k]
+                bytes(array of 2 end)
+                put(".quad " <> symbol(f.symbol))
+                difference("Ldebug_size" <> conv.int(k) f.endLabel symbol(f.symbol))
+                put(".asciz " <> quoted(f.symbol))
+            end
+            bytes(array of 0 end)
+            put("Ldebug_info_end:")
+            (* The line table, which the assembler writes here *)
+            put(".section __DWARF,__debug_line,regular,debug")
+            put("Ldebug_line:")
+            vector.toArray(:String lines)
+        end
 end

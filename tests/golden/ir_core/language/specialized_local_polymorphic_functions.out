@@ -1,11 +1,11 @@
 import writer = "writer" : Writer
 import conv = "conv" : Conv
 main {
-  let wOut: writer.T = member writer.output
+  let wOut: writer.T = member writer.output @8:12
   funs {
     fun print(s: String): Ok {
-      let %1: String = prim <>(s, "\n")
-      let %2: Ok = call writer.putString(wOut, %1)
+      let %1: String = prim <>(s, "\n") @9:50
+      let %2: Ok = call writer.putString(wOut, %1) @9:28
       return %2
     }
   }
@@ -16,17 +16,17 @@ main {
           return y
         }
       }
-      let %3: Record a: Int end = record(a = n)
-      let %4: Int = prim +(n, 1)
-      let %5: Record a: Int end = record(a = %4)
-      let %6: P = call pick [P](%3, %5)
-      let %7: Int = record_field(%6, a)
+      let %3: Record a: Int end = record(a = n) @18:17
+      let %4: Int = prim +(n, 1) @18:45
+      let %5: Record a: Int end = record(a = %4) @18:34
+      let %6: P = call pick [P](%3, %5) @18:9
+      let %7: Int = record_field(%6, a) @18:9
       return %7
     }
   }
-  let %8: Int = call first(1)
-  let %9: String = call conv.int(%8)
-  do call print(%9)
+  let %8: Int = call first(1) @20:16
+  let %9: String = call conv.int(%8) @20:7
+  do call print(%9) @20:1
   funs {
     fun second(n.1: Int): Int {
       funs {
@@ -34,69 +34,69 @@ main {
           join k1(r: A) {
             return r
           } in {
-            let %10: Bool = prim >(n.1, 0)
-            if %10 {
-              jump k1(x.1)
+            let %10: Bool = prim >(n.1, 0) @25:45
+            if %10 { @25:42
+              jump k1(x.1) @25:42
             } else {
-              jump k1(y.1)
+              jump k1(y.1) @25:42
             }
           }
         }
       }
-      let %11: Record a: Int end = record(a = 10)
-      let %12: Record a: Int end = record(a = 20)
-      let %13: P = call pick.1 [P](%11, %12)
-      let %14: Int = record_field(%13, a)
-      let %15: Int = call pick.1 [Int](1, 2)
-      let %16: Int = prim +(%14, %15)
+      let %11: Record a: Int end = record(a = 10) @26:17
+      let %12: Record a: Int end = record(a = 20) @26:35
+      let %13: P = call pick.1 [P](%11, %12) @26:9
+      let %14: Int = record_field(%13, a) @26:9
+      let %15: Int = call pick.1 [Int](1, 2) @26:58
+      let %16: Int = prim +(%14, %15) @26:9
       return %16
     }
   }
-  let %17: Int = call second(1)
-  let %18: String = call conv.int(%17)
-  do call print(%18)
-  let %19: Int = call second(0)
-  let %20: String = call conv.int(%19)
-  do call print(%20)
+  let %17: Int = call second(1) @28:16
+  let %18: String = call conv.int(%17) @28:7
+  do call print(%18) @28:1
+  let %19: Int = call second(0) @29:16
+  let %20: String = call conv.int(%19) @29:7
+  do call print(%20) @29:1
   funs {
     fun third(): Int {
-      var total: Int = 0
+      var total: Int = 0 @34:9
       funs {
         fun tag [A::TYPE](v: A): A {
           return v
         }
       }
-      var i: Int = 1
+      var i: Int = 1 @36:9
       loop L1 {
-        let %21: Bool = prim <=(i, 3)
-        if %21 {
-          let i.1: Int = i
-          let %22: V = variant(p, i.1)
-          let v.1: V = call tag [V](%22)
+        let %21: Bool = prim <=(i, 3) @36:9
+        if %21 { @36:9
+          let i.1: Int = i @36:9
+          let %22: V = variant(p, i.1) @37:28
+          let v.1: V = call tag [V](%22) @37:21
           join k2(r.1: Int) {
-            let %23: Int = prim +(total, r.1)
-            total := %23
-            let %24: Int = prim +(i, 1)
-            i := %24
+            let %23: Int = prim +(total, r.1) @38:22
+            total := %23 @38:13
+            let %24: Int = prim +(i, 1) @36:9
+            i := %24 @36:9
           } in {
-            let %25: Bool = is_tag(v.1, p)
-            if %25 {
-              let %26: Int = payload(v.1, p)
-              jump k2(%26)
+            let %25: Bool = is_tag(v.1, p) @38:34
+            if %25 { @38:31
+              let %26: Int = payload(v.1, p) @38:43
+              jump k2(%26) @38:31
             } else {
-              jump k2(0)
+              jump k2(0) @38:31
             }
           }
         } else {
-          break L1
+          break L1 @36:9
         }
       }
       return total
     }
   }
-  let %27: Int = call third()
-  let %28: String = call conv.int(%27)
-  do call print(%28)
+  let %27: Int = call third() @42:16
+  let %28: String = call conv.int(%27) @42:7
+  do call print(%28) @42:1
   funs {
     fun fourth(k: Int): Int {
       funs rec {
@@ -104,26 +104,26 @@ main {
           join k3(r.2: A) {
             return r.2
           } in {
-            let %29: Bool = prim is(m, 0)
-            if %29 {
-              jump k3(x.2)
+            let %29: Bool = prim is(m, 0) @47:56
+            if %29 { @47:53
+              jump k3(x.2) @47:53
             } else {
-              let %30: Int = prim -(m, 1)
-              let %31: A = call last [A](y.2, x.2, %30)
-              jump k3(%31)
+              let %30: Int = prim -(m, 1) @47:87
+              let %31: A = call last [A](y.2, x.2, %30) @47:75
+              jump k3(%31) @47:53
             }
           }
         }
       }
-      let %32: Record a: Int end = record(a = 1)
-      let %33: Record a: Int end = record(a = k)
-      let %34: P = call last [P](%32, %33, 3)
-      let %35: Int = record_field(%34, a)
+      let %32: Record a: Int end = record(a = 1) @48:17
+      let %33: Record a: Int end = record(a = k) @48:34
+      let %34: P = call last [P](%32, %33, 3) @48:9
+      let %35: Int = record_field(%34, a) @48:9
       return %35
     }
   }
-  let %36: Int = call fourth(7)
-  let %37: String = call conv.int(%36)
-  do call print(%37)
+  let %36: Int = call fourth(7) @50:16
+  let %37: String = call conv.int(%36) @50:7
+  do call print(%37) @50:1
 }
 

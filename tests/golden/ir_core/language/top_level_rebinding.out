@@ -1,13 +1,13 @@
 import writer = "writer" : Writer
 import conv = "conv" : Conv
 module counter : Counter {
-  let base: Int = 1
+  let base: Int = 1 @54:16
   funs {
     fun first(): Int {
       return base
     }
   }
-  let base.1: Int = 2
+  let base.1: Int = 2 @56:16
   funs {
     fun second(): Int {
       return base.1
@@ -20,25 +20,25 @@ module counter : Counter {
 main {
   funs {
     fun show(n: Int): Ok {
-      let %1: writer.T = member writer.output
-      let %2: String = call conv.int(n)
-      do call writer.putString(%1, %2)
-      let %3: writer.T = member writer.output
-      let %4: Ok = call writer.putString(%3, "\n")
+      let %1: writer.T = member writer.output @8:26
+      let %2: String = call conv.int(n) @8:40
+      do call writer.putString(%1, %2) @8:9
+      let %3: writer.T = member writer.output @9:26
+      let %4: Ok = call writer.putString(%3, "\n") @9:9
       return %4
     }
   }
-  let x: Int = 1
+  let x: Int = 1 @13:9
   funs {
     fun f(): Int {
       return x
     }
   }
-  let x.1: Int = 2
-  let %5: Int = call f()
-  let %6: Int = prim *(%5, 10)
-  let %7: Int = prim +(%6, x.1)
-  do call show(%7)
+  let x.1: Int = 2 @15:9
+  let %5: Int = call f() @16:7
+  let %6: Int = prim *(%5, 10) @16:7
+  let %7: Int = prim +(%6, x.1) @16:7
+  do call show(%7) @16:1
   funs {
     fun g(): Int {
       return 10
@@ -46,7 +46,7 @@ main {
   }
   funs {
     fun callsG(): Int {
-      let %8: Int = call g()
+      let %8: Int = call g() @20:21
       return %8
     }
   }
@@ -55,47 +55,47 @@ main {
       return 20
     }
   }
-  let %9: Int = call callsG()
-  let %10: Int = call g.1()
-  let %11: Int = prim +(%9, %10)
-  do call show(%11)
-  let y: Int = 100
+  let %9: Int = call callsG() @22:6
+  let %10: Int = call g.1() @22:17
+  let %11: Int = prim +(%9, %10) @22:6
+  do call show(%11) @22:1
+  let y: Int = 100 @25:9
   funs {
     fun makeAdder(): Fun(n: Int): Int {
       funs {
         fun f.1(n.1: Int): Int {
-          let %12: Int = prim +(n.1, y)
+          let %12: Int = prim +(n.1, y) @26:53
           return %12
         }
       }
       return f.1
     }
   }
-  let add: Fun(n: Int): Int = call makeAdder()
-  let y.1: Int = 200
-  let %13: Int = call add(1)
-  let %14: Int = prim +(%13, y.1)
-  do call show(%14)
+  let add: Fun(n: Int): Int = call makeAdder() @27:11
+  let y.1: Int = 200 @28:9
+  let %13: Int = call add(1) @29:6
+  let %14: Int = prim +(%13, y.1) @29:6
+  do call show(%14) @29:1
   funs rec {
     fun count(n.2: Int): Int {
       join k1(r: Int) {
         return r
       } in {
-        let %15: Bool = prim is(n.2, 0)
-        if %15 {
-          jump k1(0)
+        let %15: Bool = prim is(n.2, 0) @32:33
+        if %15 { @32:30
+          jump k1(0) @32:30
         } else {
-          let %16: Int = prim -(n.2, 1)
-          let %17: Int = call count(%16)
-          let %18: Int = prim +(1, %17)
-          jump k1(%18)
+          let %16: Int = prim -(n.2, 1) @32:62
+          let %17: Int = call count(%16) @32:56
+          let %18: Int = prim +(1, %17) @32:52
+          jump k1(%18) @32:30
         }
       }
     }
   }
   funs {
     fun countThree(): Int {
-      let %19: Int = call count(3)
+      let %19: Int = call count(3) @33:25
       return %19
     }
   }
@@ -104,57 +104,57 @@ main {
       join k2(r.1: Int) {
         return r.1
       } in {
-        let %20: Bool = prim is(n.3, 0)
-        if %20 {
-          jump k2(0)
+        let %20: Bool = prim is(n.3, 0) @34:33
+        if %20 { @34:30
+          jump k2(0) @34:30
         } else {
-          let %21: Int = prim -(n.3, 1)
-          let %22: Int = call count.1(%21)
-          let %23: Int = prim +(2, %22)
-          jump k2(%23)
+          let %21: Int = prim -(n.3, 1) @34:62
+          let %22: Int = call count.1(%21) @34:56
+          let %23: Int = prim +(2, %22) @34:52
+          jump k2(%23) @34:30
         }
       }
     }
   }
-  let %24: Int = call countThree()
-  let %25: Int = prim *(%24, 10)
-  let %26: Int = call count.1(3)
-  let %27: Int = prim +(%25, %26)
-  do call show(%27)
-  let n.4: Int = 1
-  let v: Tuple var n: Int end = tuple(n.4)
+  let %24: Int = call countThree() @35:7
+  let %25: Int = prim *(%24, 10) @35:7
+  let %26: Int = call count.1(3) @35:28
+  let %27: Int = prim +(%25, %26) @35:7
+  do call show(%27) @35:1
+  let n.4: Int = 1 @38:27
+  let v: Tuple var n: Int end = tuple(n.4) @38:9
   funs {
     fun bump(): Int {
-      let %28: Int = tuple_field(v, 0)
-      let %29: Int = prim +(%28, 1)
-      store v.#0 := %29
-      let %30: Int = tuple_field(v, 0)
+      let %28: Int = tuple_field(v, 0) @41:16
+      let %29: Int = prim +(%28, 1) @41:16
+      store v.#0 := %29 @41:9
+      let %30: Int = tuple_field(v, 0) @42:9
       return %30
     }
   }
-  let v.1: Int = 50
-  let %31: Int = call bump()
-  let %32: Int = prim +(%31, v.1)
-  do call show(%32)
-  let %33: Int = call counter.first()
-  let %34: Int = prim *(%33, 10)
-  let %35: Int = call counter.second()
-  let %36: Int = prim +(%34, %35)
-  do call show(%36)
-  let a: Int = 1
-  let b: Int = 2
+  let v.1: Int = 50 @44:9
+  let %31: Int = call bump() @45:6
+  let %32: Int = prim +(%31, v.1) @45:6
+  do call show(%32) @45:1
+  let %33: Int = call counter.first() @59:7
+  let %34: Int = prim *(%33, 10) @59:7
+  let %35: Int = call counter.second() @59:31
+  let %36: Int = prim +(%34, %35) @59:7
+  do call show(%36) @59:1
+  let a: Int = 1 @62:9
+  let b: Int = 2 @62:19
   funs {
     fun sumAB(): Int {
-      let %37: Int = prim +(a, b)
+      let %37: Int = prim +(a, b) @63:20
       return %37
     }
   }
-  let a.1: Int = 10
-  let b.1: Int = 20
-  let %38: Int = call sumAB()
-  let %39: Int = prim *(%38, 100)
-  let %40: Int = prim +(a.1, b.1)
-  let %41: Int = prim +(%39, %40)
-  do call show(%41)
+  let a.1: Int = 10 @64:9
+  let b.1: Int = 20 @64:20
+  let %38: Int = call sumAB() @65:7
+  let %39: Int = prim *(%38, 100) @65:7
+  let %40: Int = prim +(a.1, b.1) @65:24
+  let %41: Int = prim +(%39, %40) @65:7
+  do call show(%41) @65:1
 }
 

@@ -4,36 +4,36 @@ import list = "list" : List
 main {
   funs {
     fun p(n: Int): Ok {
-      let %1: writer.T = member writer.output
-      let %2: String = call conv.int(n)
-      let %3: String = prim <>(%2, "\n")
-      let %4: Ok = call writer.putString(%1, %3)
+      let %1: writer.T = member writer.output @9:38
+      let %2: String = call conv.int(n) @9:52
+      let %3: String = prim <>(%2, "\n") @9:52
+      let %4: Ok = call writer.putString(%1, %3) @9:21
       return %4
     }
   }
   funs {
     fun s(text: String): Ok {
-      let %5: writer.T = member writer.output
-      let %6: String = prim <>(text, "\n")
-      let %7: Ok = call writer.putString(%5, %6)
+      let %5: writer.T = member writer.output @10:44
+      let %6: String = prim <>(text, "\n") @10:58
+      let %7: Ok = call writer.putString(%5, %6) @10:27
       return %7
     }
   }
-  let big: Big = record(a = 1, b = 2, c = 3)
+  let big: Big = record(a = 1, b = 2, c = 3) @14:16
   funs {
     fun small(x: Small): Int {
-      let %8: Int = record_field(x, c)
+      let %8: Int = record_field(x, c) @17:28
       return %8
     }
   }
   funs {
     fun useBig(h: Fun(x: Big): Int): Int {
-      let %9: Int = call h(big)
+      let %9: Int = call h(big) @18:39
       return %9
     }
   }
-  let %10: Int = call useBig(small)
-  do call p(%10)
+  let %10: Int = call useBig(small) @19:3
+  do call p(%10) @19:1
   funs {
     fun makeBig(): Big {
       return big
@@ -41,104 +41,104 @@ main {
   }
   funs {
     fun useSmall(h.1: Fun(): Small): Int {
-      let %11: Small = call h.1()
-      let %12: Int = record_field(%11, c)
+      let %11: Small = call h.1() @21:37
+      let %12: Int = record_field(%11, c) @21:37
       return %12
     }
   }
-  let %13: Int = call useSmall(makeBig)
-  do call p(%13)
+  let %13: Int = call useSmall(makeBig) @22:3
+  do call p(%13) @22:1
   funs {
     fun small2(x.1: Small): Int {
-      let %14: Int = record_field(x.1, c)
-      let %15: Int = prim *(%14, 10)
+      let %14: Int = record_field(x.1, c) @24:29
+      let %15: Int = prim *(%14, 10) @24:29
       return %15
     }
   }
-  let %16: Int = call useBig(small2)
-  do call p(%16)
+  let %16: Int = call useBig(small2) @25:3
+  do call p(%16) @25:1
   funs {
     fun applyBig(h.2: Fun(x: Big): Int): Int {
-      let %17: Int = call h.2(big)
-      let %18: Int = prim +(%17, 100)
+      let %17: Int = call h.2(big) @28:41
+      let %18: Int = prim +(%17, 100) @28:41
       return %18
     }
   }
-  let applySmall: Fun(h: Fun(x: Small): Int): Int = applyBig
-  let %19: Int = call applySmall(small)
-  do call p(%19)
+  let applySmall: Fun(h: Fun(x: Small): Int): Int = applyBig @29:49
+  let %19: Int = call applySmall(small) @30:3
+  do call p(%19) @30:1
   funs {
     fun first [A::TYPE](x.2: A, y: Small): A {
       return x.2
     }
   }
-  let firstBig: All(A :: TYPE) Fun(x: A y: Big): A = first
-  let %20: Int = call firstBig [Int](7, big)
-  do call p(%20)
-  let %21: String = call firstBig [String]("first", big)
-  do call s(%21)
-  let %22: Big = call firstBig [Big](big, big)
-  let %23: Int = record_field(%22, b)
-  do call p(%23)
+  let firstBig: All(A :: TYPE) Fun(x: A y: Big): A = first @34:44
+  let %20: Int = call firstBig [Int](7, big) @35:3
+  do call p(%20) @35:1
+  let %21: String = call firstBig [String]("first", big) @36:3
+  do call s(%21) @36:1
+  let %22: Big = call firstBig [Big](big, big) @37:3
+  let %23: Int = record_field(%22, b) @37:3
+  do call p(%23) @37:1
   funs {
     fun bump(var n.1: Int, y.1: Small): Ok {
-      let %24: Int = record_field(y.1, c)
-      let %25: Int = prim +(n.1, %24)
-      n.1 := %25
+      let %24: Int = record_field(y.1, c) @40:46
+      let %25: Int = prim +(n.1, %24) @40:42
+      n.1 := %25 @40:37
       return ok
     }
   }
-  let bumpBig: Fun(var n: Int y: Big): Ok = bump
-  var count: Int = 0
-  let %26: Var(Int) = addr count
-  do call bumpBig(%26, big)
-  let %27: Var(Int) = addr count
-  do call bumpBig(%27, big)
-  do call p(count)
+  let bumpBig: Fun(var n: Int y: Big): Ok = bump @41:42
+  var count: Int = 0 @42:1
+  let %26: Var(Int) = addr count @43:9
+  do call bumpBig(%26, big) @43:1
+  let %27: Var(Int) = addr count @44:9
+  do call bumpBig(%27, big) @44:1
+  do call p(count) @45:1
   funs {
     fun run [A::TYPE](f: Fun(): A): A {
-      let %28: A = call f()
+      let %28: A = call f() @48:34
       return %28
     }
   }
   funs {
     fun effect(): Ok {
-      let %29: Ok = call s("effect")
+      let %29: Ok = call s("effect") @49:20
       return %29
     }
   }
-  do call run [Ok](effect)
+  do call run [Ok](effect) @50:1
   funs {
     fun id [A::TYPE](v: A): A {
       return v
     }
   }
-  let idInt: Fun(v: Int): Int = type_app id [Int]
-  let %30: Int = call idInt(5)
-  do call p(%30)
-  let idReal: Fun(v: Real): Real = type_app id [Real]
-  let %31: Real = call idReal(2.5)
-  let %32: String = call conv.real(%31)
-  do call s(%32)
-  let idBool: Fun(v: Bool): Bool = type_app id [Bool]
-  let %33: Bool = call idBool(true)
-  let %34: String = call conv.bool(%33)
-  do call s(%34)
-  let idChar: Fun(v: Char): Char = type_app id [Char]
-  let %35: Char = call idChar('q')
-  let %36: String = call conv.char(%35)
-  do call s(%36)
-  let idBig: Fun(v: Big): Big = type_app id [Big]
-  let %37: Big = call idBig(big)
-  let %38: Int = record_field(%37, c)
-  do call p(%38)
-  let idSmall: Fun(v: Small): Small = type_app id [Small]
-  let %39: Small = call idSmall(big)
-  let %40: Int = record_field(%39, c)
-  do call p(%40)
-  let idInt2: Fun(v: Int): Int = type_app id [Int]
-  let %41: Int = call idInt2(6)
-  do call p(%41)
+  let idInt: Fun(v: Int): Int = type_app id [Int] @55:13
+  let %30: Int = call idInt(5) @56:3
+  do call p(%30) @56:1
+  let idReal: Fun(v: Real): Real = type_app id [Real] @57:14
+  let %31: Real = call idReal(2.5) @58:13
+  let %32: String = call conv.real(%31) @58:3
+  do call s(%32) @58:1
+  let idBool: Fun(v: Bool): Bool = type_app id [Bool] @59:14
+  let %33: Bool = call idBool(true) @60:13
+  let %34: String = call conv.bool(%33) @60:3
+  do call s(%34) @60:1
+  let idChar: Fun(v: Char): Char = type_app id [Char] @61:14
+  let %35: Char = call idChar('q') @62:13
+  let %36: String = call conv.char(%35) @62:3
+  do call s(%36) @62:1
+  let idBig: Fun(v: Big): Big = type_app id [Big] @63:13
+  let %37: Big = call idBig(big) @64:3
+  let %38: Int = record_field(%37, c) @64:3
+  do call p(%38) @64:1
+  let idSmall: Fun(v: Small): Small = type_app id [Small] @65:15
+  let %39: Small = call idSmall(big) @66:3
+  let %40: Int = record_field(%39, c) @66:3
+  do call p(%40) @66:1
+  let idInt2: Fun(v: Int): Int = type_app id [Int] @68:14
+  let %41: Int = call idInt2(6) @69:3
+  do call p(%41) @69:1
   funs {
     fun pick [A::TYPE B::TYPE](x.3: A, y.2: B): A {
       return x.3
@@ -146,55 +146,55 @@ main {
   }
   funs {
     fun pickInt [B::TYPE](x.4: Int, y.3: B): Int {
-      let %42: Int = call pick [Int B](x.4, y.3)
-      return %42
+      let %42: Int = call pick [Int B](x.4, y.3) @73:15
+      return %42 @73:15
     }
   }
-  let %43: Int = call pickInt [String](8, "ignored")
-  do call p(%43)
-  let %44: Int = call pickInt [Big](9, big)
-  do call p(%44)
+  let %43: Int = call pickInt [String](8, "ignored") @74:3
+  do call p(%43) @74:1
+  let %44: Int = call pickInt [Big](9, big) @75:3
+  do call p(%44) @75:1
   funs {
     fun twice [A::TYPE](f.1: Fun(x: A): A, x.5: A): A {
-      let %45: A = call f.1(x.5)
-      let %46: A = call f.1(%45)
+      let %45: A = call f.1(x.5) @78:47
+      let %46: A = call f.1(%45) @78:45
       return %46
     }
   }
-  let %47: Int = call twice [Int](idInt, 11)
-  do call p(%47)
+  let %47: Int = call twice [Int](idInt, 11) @79:3
+  do call p(%47) @79:1
   funs {
     fun inc(n.2: Int): Int {
-      let %48: Int = prim +(n.2, 1)
+      let %48: Int = prim +(n.2, 1) @80:24
       return %48
     }
   }
-  let %49: Int = call twice [Int](inc, 12)
-  do call p(%49)
-  let consInt: Fun(item: Int list: list.T(Int)): list.T(Int) = type_app list.cons [Int]
-  let nilInt: list.T(Int) = type_app list.nil [Int]
-  let %50: list.T(Int) = call consInt(2, nilInt)
-  let %51: list.T(Int) = call consInt(1, %50)
-  let %52: Int = call list.length [Int](%51)
-  do call p(%52)
-  let show: Fun(n: Int): String = external "quest_conv_int"
-  let %53: String = call show(-4)
-  do call s(%53)
+  let %49: Int = call twice [Int](inc, 12) @81:3
+  do call p(%49) @81:1
+  let consInt: Fun(item: Int list: list.T(Int)): list.T(Int) = type_app list.cons [Int] @84:15
+  let nilInt: list.T(Int) = type_app list.nil [Int] @85:14
+  let %50: list.T(Int) = call consInt(2, nilInt) @86:30
+  let %51: list.T(Int) = call consInt(1, %50) @86:20
+  let %52: Int = call list.length [Int](%51) @86:3
+  do call p(%52) @86:1
+  let show: Fun(n: Int): String = external "quest_conv_int" @89:32
+  let %53: String = call show(-4) @90:3
+  do call s(%53) @90:1
   funs {
     fun applyTo(f.2: Fun(n: Int): String, n.3: Int): String {
-      let %54: String = call f.2(n.3)
+      let %54: String = call f.2(n.3) @91:53
       return %54
     }
   }
-  let %55: String = call applyTo(show, 9)
-  do call s(%55)
-  let %56: Fun(n: Int): String = member conv.int
-  let fns: Array(Fun(n: Int): String) = array(show, %56)
-  let %57: Fun(n: Int): String = index(fns, 0)
-  let %58: String = call %57(-13)
-  let %59: Fun(n: Int): String = index(fns, 1)
-  let %60: String = call %59(0)
-  let %61: String = prim <>(%58, %60)
-  do call s(%61)
+  let %55: String = call applyTo(show, 9) @92:3
+  do call s(%55) @92:1
+  let %56: Fun(n: Int): String = member conv.int @93:25
+  let fns: Array(Fun(n: Int): String) = array(show, %56) @93:11
+  let %57: Fun(n: Int): String = index(fns, 0) @94:3
+  let %58: String = call %57(-13) @94:3
+  let %59: Fun(n: Int): String = index(fns, 1) @94:18
+  let %60: String = call %59(0) @94:18
+  let %61: String = prim <>(%58, %60) @94:3
+  do call s(%61) @94:1
 }
 

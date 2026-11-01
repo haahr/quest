@@ -4,88 +4,88 @@ import dynamic = "dynamic" : Dynamic
 main {
   funs {
     fun p(n: Int): Ok {
-      let %1: writer.T = member writer.output
-      let %2: String = call conv.int(n)
-      let %3: String = prim <>(%2, "\n")
-      let %4: Ok = call writer.putString(%1, %3)
+      let %1: writer.T = member writer.output @8:38
+      let %2: String = call conv.int(n) @8:52
+      let %3: String = prim <>(%2, "\n") @8:52
+      let %4: Ok = call writer.putString(%1, %3) @8:21
       return %4
     }
   }
-  let huge: Huge = record(a = 1, b = 2, c = 3, d = 4)
-  let big: Big = huge
-  let mid: Mid = big
-  let small: Small = mid
-  let %5: Int = record_field(mid, c)
-  do call p(%5)
-  let %6: Int = record_field(small, d)
-  do call p(%6)
+  let huge: Huge = record(a = 1, b = 2, c = 3, d = 4) @14:18
+  let big: Big = huge @17:16
+  let mid: Mid = big @18:16
+  let small: Small = mid @19:20
+  let %5: Int = record_field(mid, c) @20:3
+  do call p(%5) @20:1
+  let %6: Int = record_field(small, d) @21:3
+  do call p(%6) @21:1
   funs {
     fun sumMid(m: Mid): Int {
-      let %7: Int = record_field(m, c)
-      let %8: Int = record_field(m, d)
-      let %9: Int = prim +(%7, %8)
+      let %7: Int = record_field(m, c) @24:27
+      let %8: Int = record_field(m, d) @24:33
+      let %9: Int = prim +(%7, %8) @24:27
       return %9
     }
   }
-  let %10: Int = call sumMid(big)
-  do call p(%10)
-  let d: T = call dynamic.new [Mid](mid)
-  let viaDynamic: Small = call dynamic.be [Small](d)
-  let %11: Int = record_field(viaDynamic, d)
-  do call p(%11)
+  let %10: Int = call sumMid(big) @25:3
+  do call p(%10) @25:1
+  let d: T = call dynamic.new [Mid](mid) @28:9
+  let viaDynamic: Small = call dynamic.be [Small](d) @29:25
+  let %11: Int = record_field(viaDynamic, d) @30:3
+  do call p(%11) @30:1
   join k1(r: Int) {
-    do call p(r)
-    let a: Big = big
-    let %12: Tuple a: Big end = tuple(a)
-    let anyMid: AnyMid = auto[Big](%12)
+    do call p(r) @33:1
+    let a: Big = big @35:37
+    let %12: Tuple a: Big end = tuple(a) @35:32
+    let anyMid: AnyMid = auto[Big](%12) @35:22
     join k2(r.1: Int) {
-      do call p(r.1)
-      let r.2: Big = big
-      let n.1: Int = 5
-      let bigTuple: Tuple r: Big n: Int end = tuple(r.2, n.1)
-      let midTuple: Tuple r: Mid n: Int end = bigTuple
-      let %13: Mid = tuple_field(midTuple, 0)
-      let %14: Int = record_field(%13, c)
-      let %15: Int = tuple_field(midTuple, 1)
-      let %16: Int = prim +(%14, %15)
-      do call p(%16)
+      do call p(r.1) @36:1
+      let r.2: Big = big @39:47
+      let n.1: Int = 5 @39:51
+      let bigTuple: Tuple r: Big n: Int end = tuple(r.2, n.1) @39:41
+      let midTuple: Tuple r: Mid n: Int end = bigTuple @40:41
+      let %13: Mid = tuple_field(midTuple, 0) @41:3
+      let %14: Int = record_field(%13, c) @41:3
+      let %15: Int = tuple_field(midTuple, 1) @41:18
+      let %16: Int = prim +(%14, %15) @41:3
+      do call p(%16) @41:1
       funs {
         fun same [A::<: Mid](x: A): A {
           return x
         }
       }
-      let bigAgain: Big = call same [Big](big)
-      let %17: Int = record_field(bigAgain, b)
-      do call p(%17)
-      let %18: writer.T = member writer.output
-      do call dynamic.extern(%18, d)
-      let %19: writer.T = member writer.output
-      do call writer.putString(%19, "\n")
+      let bigAgain: Big = call same [Big](big) @45:21
+      let %17: Int = record_field(bigAgain, b) @46:3
+      do call p(%17) @46:1
+      let %18: writer.T = member writer.output @49:16
+      do call dynamic.extern(%18, d) @49:1
+      let %19: writer.T = member writer.output @50:18
+      do call writer.putString(%19, "\n") @50:1
     } in {
-      inspect anyMid {
+      inspect anyMid { @36:3
         case Mid (x.1: Tuple a: Mid end): {
-          let %20: Mid = tuple_field(x.1, 0)
-          let %21: Int = record_field(%20, c)
-          let %22: Mid = tuple_field(x.1, 0)
-          let %23: Int = record_field(%22, d)
-          let %24: Int = prim +(10, %23)
-          let %25: Int = prim *(%21, %24)
-          jump k2(%25)
+          let %20: Mid = tuple_field(x.1, 0) @36:39
+          let %21: Int = record_field(%20, c) @36:39
+          let %22: Mid = tuple_field(x.1, 0) @36:52
+          let %23: Int = record_field(%22, d) @36:52
+          let %24: Int = prim +(10, %23) @36:47
+          let %25: Int = prim *(%21, %24) @36:39
+          jump k2(%25) @36:3
         }
         else: {
-          jump k2(0)
+          jump k2(0) @36:3
         }
       }
     }
   } in {
-    inspect d {
+    inspect d { @33:3
       case Small (s: Tuple a: Small end): {
-        let %26: Small = tuple_field(s, 0)
-        let %27: Int = record_field(%26, d)
-        jump k1(%27)
+        let %26: Small = tuple_field(s, 0) @33:36
+        let %27: Int = record_field(%26, d) @33:36
+        jump k1(%27) @33:3
       }
       else: {
-        jump k1(0)
+        jump k1(0) @33:3
       }
     }
   }

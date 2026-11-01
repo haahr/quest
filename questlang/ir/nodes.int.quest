@@ -327,24 +327,26 @@ export
     end
 
     and Stmt = Option
-        sLet with var v: Variable var value: Op end
-        sVarDecl with var v: Variable var init: maybe.T(Atom) end
-        sAssign with var v: Variable var value: Atom end
-        sStoreAt with var value: Atom var address: Atom end
-        sStoreField with var value: Atom var base: Atom name: String var viewMap: maybe.T(Variable) end
+        sLet with var pos: Int var v: Variable var value: Op end
+        sVarDecl with var pos: Int var v: Variable var init: maybe.T(Atom) end
+        sAssign with var pos: Int var v: Variable var value: Atom end
+        sStoreAt with var pos: Int var value: Atom var address: Atom end
+        sStoreField with var pos: Int var value: Atom var base: Atom name: String var viewMap: maybe.T(Variable) end
         sStoreComponent with
+            var pos: Int
             var value: Atom
             var base: Atom
             index: Int
             var access: Access
             var viewMap: maybe.T(Variable)
         end
-        sStoreElement with var value: Atom var base: Atom var index: Atom offset: maybe.T(Int) end
-        sDo with var value: Op end
+        sStoreElement with var pos: Int var value: Atom var base: Atom var index: Atom offset: maybe.T(Int) end
+        sDo with var pos: Int var value: Op end
         sFuns with var functions: Array(Function) recursive: Bool end
         sLetRec with var vars: Array(Variable) var body: Body end
-        sIf with var cond: Atom var thenBody: Body var elseBody: Body end
+        sIf with var pos: Int var cond: Atom var thenBody: Body var elseBody: Body end
         sSwitch with
+            var pos: Int
             var value: Atom
             var cases: Array(Case)
             var elseBody: maybe.T(Body)
@@ -352,6 +354,7 @@ export
             var viewMap: maybe.T(Variable)
         end
         sInspect with
+            var pos: Int
             var value: Atom
             var cases: Array(InspectCase)
             var elseBody: maybe.T(Body)
@@ -362,14 +365,14 @@ export
         sLoop with label: String var body: Body end
         sTry with var body: Body var exc: Variable var handler: Body catching: Catching var catches: Array(Atom) end
         sJoin with label: String var params: Array(Variable) var continuation: Body var body: Body end
-        sEcho with var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
+        sEcho with var pos: Int var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
         sEchoText with text: String end
-        sReturn with var value: Atom end
-        sJump with label: String var args: Array(Atom) end
-        sBreak with label: String end
-        sContinue with label: String end
-        sRaise with var exc: Atom var payload: maybe.T(Atom) offset: maybe.T(Int) end
-        sReraise with var exc: Variable end
+        sReturn with var pos: Int var value: Atom end
+        sJump with var pos: Int label: String var args: Array(Atom) end
+        sBreak with var pos: Int label: String end
+        sContinue with var pos: Int label: String end
+        sRaise with var pos: Int var exc: Atom var payload: maybe.T(Atom) offset: maybe.T(Int) end
+        sReraise with var pos: Int var exc: Variable end
         sUnreachable
     end
     (* The fields of each operation and statement, as a tuple type: the type
@@ -469,24 +472,28 @@ export
     and OpAddrComponent = Tuple var base: Atom index: Int var access: Access var viewMap: maybe.T(Variable) end
     and OpAddrElement = Tuple var base: Atom var index: Atom offset: maybe.T(Int) end
     and OpLoad = Tuple var address: Atom end
-    and StmtLet = Tuple var v: Variable var value: Op end
-    and StmtVarDecl = Tuple var v: Variable var init: maybe.T(Atom) end
-    and StmtAssign = Tuple var v: Variable var value: Atom end
-    and StmtStoreAt = Tuple var value: Atom var address: Atom end
-    and StmtStoreField = Tuple var value: Atom var base: Atom name: String var viewMap: maybe.T(Variable) end
+    and StmtLet = Tuple var pos: Int var v: Variable var value: Op end
+    and StmtVarDecl = Tuple var pos: Int var v: Variable var init: maybe.T(Atom) end
+    and StmtAssign = Tuple var pos: Int var v: Variable var value: Atom end
+    and StmtStoreAt = Tuple var pos: Int var value: Atom var address: Atom end
+    and StmtStoreField = Tuple
+        var pos: Int var value: Atom var base: Atom name: String var viewMap: maybe.T(Variable)
+    end
     and StmtStoreComponent = Tuple
+        var pos: Int
         var value: Atom
         var base: Atom
         index: Int
         var access: Access
         var viewMap: maybe.T(Variable)
     end
-    and StmtStoreElement = Tuple var value: Atom var base: Atom var index: Atom offset: maybe.T(Int) end
-    and StmtDo = Tuple var value: Op end
+    and StmtStoreElement = Tuple var pos: Int var value: Atom var base: Atom var index: Atom offset: maybe.T(Int) end
+    and StmtDo = Tuple var pos: Int var value: Op end
     and StmtFuns = Tuple var functions: Array(Function) recursive: Bool end
     and StmtLetRec = Tuple var vars: Array(Variable) var body: Body end
-    and StmtIf = Tuple var cond: Atom var thenBody: Body var elseBody: Body end
+    and StmtIf = Tuple var pos: Int var cond: Atom var thenBody: Body var elseBody: Body end
     and StmtSwitch = Tuple
+        var pos: Int
         var value: Atom
         var cases: Array(Case)
         var elseBody: maybe.T(Body)
@@ -494,6 +501,7 @@ export
         var viewMap: maybe.T(Variable)
     end
     and StmtInspect = Tuple
+        var pos: Int
         var value: Atom
         var cases: Array(InspectCase)
         var elseBody: maybe.T(Body)
@@ -504,14 +512,14 @@ export
     and StmtLoop = Tuple label: String var body: Body end
     and StmtTry = Tuple var body: Body var exc: Variable var handler: Body catching: Catching var catches: Array(Atom) end
     and StmtJoin = Tuple label: String var params: Array(Variable) var continuation: Body var body: Body end
-    and StmtEcho = Tuple var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
+    and StmtEcho = Tuple var pos: Int var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
     and StmtEchoText = Tuple text: String end
-    and StmtReturn = Tuple var value: Atom end
-    and StmtJump = Tuple label: String var args: Array(Atom) end
-    and StmtBreak = Tuple label: String end
-    and StmtContinue = Tuple label: String end
-    and StmtRaise = Tuple var exc: Atom var payload: maybe.T(Atom) offset: maybe.T(Int) end
-    and StmtReraise = Tuple var exc: Variable end
+    and StmtReturn = Tuple var pos: Int var value: Atom end
+    and StmtJump = Tuple var pos: Int label: String var args: Array(Atom) end
+    and StmtBreak = Tuple var pos: Int label: String end
+    and StmtContinue = Tuple var pos: Int label: String end
+    and StmtRaise = Tuple var pos: Int var exc: Atom var payload: maybe.T(Atom) offset: maybe.T(Int) end
+    and StmtReraise = Tuple var pos: Int var exc: Variable end
     (* A sequence of statements; a terminator, if any, is last *)
     and Body = Tuple id: Int var statements: vector.T(Stmt) end
 
@@ -551,6 +559,11 @@ export
 
     (* A compilation unit: a program's, with a main (and with --whole-program,
      * the modules it imports, ir/whole), or a module file's *)
+    (* A source position: the file's number in its unit (0 for the unit's
+     * own source, k + 1 for its kth merged one), and its line and column,
+     * from 1 *)
+    Def SourcePos = Tuple file: Int line: Int col: Int end
+
     Def Unit = Tuple
         var isProgram: Bool
         var main: Body
@@ -592,6 +605,10 @@ export
     (* The site of a raise or a check at offset in unit u, as "file:line:col",
      * if its file is known *)
     site(u: Unit offset: Int): maybe.T(String)
+    (* The position of offset in unit u, and the name of the unit's file
+     * numbered file, if they are known *)
+    sourcePos(u: Unit offset: Int): maybe.T(SourcePos)
+    sourceFile(u: Unit file: Int): maybe.T(String)
 
     atomOfVar(v: Variable): Atom
     atomOfConst(c: Const): Atom
@@ -627,6 +644,13 @@ export
      * ====================================================================== *)
 
     same(a: Variable b: Variable): Bool
+    (* The source position of a statement that makes code where it is (a let,
+     * a store, a branch, a jump, a raise; not a loop, a try, a join point, or
+     * functions, whose bodies have their own): an offset in the unit, as
+     * fileOffset numbers it, or ~1 if unknown or not such a statement *)
+    stmtPos(s: Stmt): Int
+    (* Sets the position of such a statement s to pos if it has none *)
+    positionAt(s: Stmt pos: Int): Ok
     isTerminator(s: Stmt): Bool
     terminated(b: Body): Bool
     (* The variable an atom is, if it is one *)

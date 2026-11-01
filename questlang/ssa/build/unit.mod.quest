@@ -9,6 +9,8 @@ import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/statics : questlang/ssa/Statics
     questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/common/location : questlang/common/Location
+    questlang/modules/paths : questlang/modules/Paths
     questlang/codegen/symbols : questlang/codegen/Symbols
     questlang/codegen/staticdata : questlang/codegen/StaticData
     collections/hashMap : collections/HashMap
@@ -261,6 +263,14 @@ export
                 let strings = hashMap.new(:String :String vals.eq hash.string)
                 let var stringCount = 0
                 let naming = staticdata.newRecordNaming()
+            end
+            (* The source files, by the IR's numbers plus 1: the unit's own,
+             * then those merged into it, as absolute paths, or empty if not
+             * known *)
+            for k = 0 upto vector.length(:maybe.T(location.SourceMap) unit.mergedSources) do
+                let file = ir.sourceFile(unit k)
+                vector.append(:String u.built.files
+                    if maybe.isSome(:String file) then paths.absolute(maybe.unwrap(:String file)) else "" end)
             end
             (* The closure of each lifted function, for its environment's
              * layout *)

@@ -3,72 +3,72 @@ import conv = "conv" : Conv
 main {
   funs {
     fun print(s: String): Ok {
-      let %1: writer.T = member writer.output
-      let %2: String = prim <>(s, "\n")
-      let %3: Ok = call writer.putString(%1, %2)
+      let %1: writer.T = member writer.output @9:45
+      let %2: String = prim <>(s, "\n") @9:59
+      let %3: Ok = call writer.putString(%1, %2) @9:28
       return %3
     }
   }
   funs {
     fun get [A::TYPE](s.1: Holder(A)): A {
-      let %4: A = record_field(s.1, x)
+      let %4: A = record_field(s.1, x) @14:36
       return %4
     }
   }
   funs {
     fun make [A::TYPE](v: A): Holder(A) {
-      let %5: Record x: A end = record(x = v)
+      let %5: Record x: A end = record(x = v) @15:37
       return %5
     }
   }
-  let getF: All(A :: TYPE) Fun(s: Holder(A)): A = get
-  let makeF: All(A :: TYPE) Fun(v: A): Holder(A) = make
-  let %6: Record a: Int end = record(a = 4)
-  let hp: Holder(P) = record(x = %6)
-  let %7: P = call getF [P](hp)
-  let %8: Int = record_field(%7, a)
-  let %9: String = call conv.int(%8)
-  do call print(%9)
-  let %10: Record a: Int end = record(a = 9)
-  let %11: Holder(P) = call makeF [P](%10)
-  let %12: P = record_field(%11, x)
-  let %13: Int = record_field(%12, a)
-  let %14: String = call conv.int(%13)
-  do call print(%14)
-  let %15: V = variant(p, 5)
-  let hv: Holder(V) = record(x = %15)
+  let getF: All(A :: TYPE) Fun(s: Holder(A)): A = get @17:41
+  let makeF: All(A :: TYPE) Fun(v: A): Holder(A) = make @18:42
+  let %6: Record a: Int end = record(a = 4) @20:32
+  let hp: Holder(P) = record(x = %6) @20:21
+  let %7: P = call getF [P](hp) @21:16
+  let %8: Int = record_field(%7, a) @21:16
+  let %9: String = call conv.int(%8) @21:7
+  do call print(%9) @21:1
+  let %10: Record a: Int end = record(a = 9) @22:25
+  let %11: Holder(P) = call makeF [P](%10) @22:16
+  let %12: P = record_field(%11, x) @22:16
+  let %13: Int = record_field(%12, a) @22:16
+  let %14: String = call conv.int(%13) @22:7
+  do call print(%14) @22:1
+  let %15: V = variant(p, 5) @23:32
+  let hv: Holder(V) = record(x = %15) @23:21
   join k1(r: Int) {
-    let %16: String = call conv.int(r)
-    do call print(%16)
+    let %16: String = call conv.int(r) @24:7
+    do call print(%16) @24:1
     join k2(r.1: Int) {
-      let %17: String = call conv.int(r.1)
-      do call print(%17)
-      let getP: Fun(s: Holder(P)): P = type_app get [P]
-      let %18: P = call getP(hp)
-      let %19: Int = record_field(%18, a)
-      let %20: String = call conv.int(%19)
-      do call print(%20)
+      let %17: String = call conv.int(r.1) @25:7
+      do call print(%17) @25:1
+      let getP: Fun(s: Holder(P)): P = type_app get [P] @26:12
+      let %18: P = call getP(hp) @27:16
+      let %19: Int = record_field(%18, a) @27:16
+      let %20: String = call conv.int(%19) @27:7
+      do call print(%20) @27:1
     } in {
-      let %21: V = variant(p, 6)
-      let %22: Holder(V) = call makeF [V](%21)
-      let %23: V = record_field(%22, x)
-      switch tag(%23) {
+      let %21: V = variant(p, 6) @25:30
+      let %22: Holder(V) = call makeF [V](%21) @25:21
+      let %23: V = record_field(%22, x) @25:21
+      switch tag(%23) { @25:16
         case p (k: Int): {
-          jump k2(k)
+          jump k2(k) @25:16
         }
         else: {
-          jump k2(0)
+          jump k2(0) @25:16
         }
       }
     }
   } in {
-    let %24: V = call getF [V](hv)
-    switch tag(%24) {
+    let %24: V = call getF [V](hv) @24:21
+    switch tag(%24) { @24:16
       case p (k.1: Int): {
-        jump k1(k.1)
+        jump k1(k.1) @24:16
       }
       else: {
-        jump k1(0)
+        jump k1(0) @24:16
       }
     }
   }

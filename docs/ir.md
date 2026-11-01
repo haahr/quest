@@ -242,6 +242,13 @@ Operations that can raise (calls, array indexing, `payload` of the wrong tag, di
   is bound to a temporary. Closure conversion (§8.2) tells top-level from local functions by their free variables.
 - `echo x : τ` and `result x : τ` print a top-level phrase's value (§6.6).
 
+**Positions** (the self-hosted compiler's IR only). Each statement that makes code where it is (a `let`, a `var`, an
+assignment, a store, a `do`, an `if`, a `switch`, an `inspect`, an `echo`, a `return`, a jump, a `break`, a
+`continue`, a raise) has the source position of the expression or binding it was lowered from: an offset in the unit,
+whose files are numbered as raise sites' are (`nodes.fileOffset`), or none (`nodes.stmtPos`, ~1). Loops, `try`s,
+join points, and functions have none, as their bodies have their own. Positions are for the native code's line table
+([arm64.md](arm64.md) §3.16) and the dumps (§10); they change nothing a pass does.
+
 ## 6. Control Flow
 
 A **body** is a sequence of statements; a terminator, if any, is last. The terminators are `return a`, `jump
@@ -600,7 +607,10 @@ The verifier runs after every pass when `QUEST_CHECK_IR=1`, which the test runne
 
 ## 10. Textual Form
 
-Every stage can be dumped (`--dump-after ir_core`, `ir_closed`, ... in the driver), for goldens and debugging:
+Every stage can be dumped (`--dump-after ir_core`, `ir_closed`, ... in the driver), for goldens and debugging. The
+self-hosted compiler's dumps end each statement that has a position (§5) with it, `@line:col` in the unit's own file
+(`@k:line:col` in its kth merged one), as in `let %3: Int = call square(n.1) @8:63`; the examples below leave them
+out:
 
 ```
 fun length [A :: TYPE] (l: List(A)): Int {

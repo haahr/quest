@@ -348,6 +348,18 @@ export
             end
         end
 
+    (* The source position after an @, of the instructions that follow:
+     * line:col (in file 1), file:line:col, or - for none *)
+    let loc(l: Line): nodes.Loc =
+        if lit(l "-") then nodes.noLoc
+        else
+            let first = integer(l)
+            expect(l ":")
+            let second = integer(l)
+            if lit(l ":") then tuple let file = first let line = second let col = integer(l) end
+            else tuple let file = 1 let line = first let col = second end end
+        end
+
     (* function SYMBOL [exported](params) signature[: results] [result ..]
      * [slots [..]] { *)
     let header(l: Line): Function =
@@ -492,8 +504,11 @@ export
                     fail(:Ok l "a line outside a function")
                 else
                     let f = maybe.unwrap(:Function current)
-                    if l.at is 0 then b := blockHeader(f l)
+                    if l.at is 0 then
+                        b := blockHeader(f l)
+                        f.at := nodes.noLoc
                     elsif b < 0 then fail(:Ok l "an instruction outside a block")
+                    elsif lit(l "@") then f.at := loc(l)
                     else
                         let t = terminator(f l pending)
                         if maybe.isSome(:nodes.Terminator t) then nodes.terminate(f b maybe.unwrap(:nodes.Terminator t))

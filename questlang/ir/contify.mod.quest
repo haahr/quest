@@ -199,7 +199,9 @@ export
             let s = vector.get(:Stmt b.statements i)
             case s
                 when sReturn with x then
-                    vector.set(:Stmt b.statements i option sJump of Stmt with let label = label let var args = array of x.value end end)
+                    vector.set(:Stmt b.statements i option sJump of Stmt with
+                        let var pos = x.pos let label = label let var args = array of x.value end
+                    end)
                 else
                     let inner = walk.statementBodies(s)
                     for k = 0 upto {extent inner - 1} do jumps(inner[k] label) end
@@ -223,13 +225,18 @@ export
             (* Each tail call assigns the parameters' variables and repeats *)
             for t = 0 upto {vector.length(:Tail tails) - 1} do
                 let tail = vector.get(:Tail tails t)
-                let c = callIn(vector.get(:Stmt tail.body.statements tail.index))
+                let tailCall = vector.get(:Stmt tail.body.statements tail.index)
+                let c = callIn(tailCall)
                 let kept = vector.new(:Stmt)
                 for i = 0 upto {tail.index - 1} do vector.append(:Stmt kept vector.get(:Stmt tail.body.statements i)) end
                 for i = 0 upto {extent vars - 1} do
-                    vector.append(:Stmt kept option sAssign of Stmt with let var v = vars[i] let var value = c.args[i] end)
+                    vector.append(:Stmt kept option sAssign of Stmt with
+                        let var pos = nodes.stmtPos(tailCall) let var v = vars[i] let var value = c.args[i]
+                    end)
                 end
-                vector.append(:Stmt kept option sContinue of Stmt with let label = loopLabel end)
+                vector.append(:Stmt kept option sContinue of Stmt with
+                    let var pos = nodes.stmtPos(tailCall) let label = loopLabel
+                end)
                 tail.body.statements := kept
             end
             jumps(f.body joinLabel)
@@ -242,7 +249,9 @@ export
             end
             let inner = vector.new(:Stmt)
             for i = 0 upto {extent vars - 1} do
-                vector.append(:Stmt inner option sVarDecl of Stmt with let var v = vars[i] let var init = maybe.some(:Atom call.args[i]) end)
+                vector.append(:Stmt inner option sVarDecl of Stmt with
+                    let var pos = nodes.stmtPos(st) let var v = vars[i] let var init = maybe.some(:Atom call.args[i])
+                end)
             end
             vector.append(:Stmt inner option sLoop of Stmt with
                 let label = loopLabel

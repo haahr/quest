@@ -118,6 +118,16 @@ export
             when termUnreachable then "unreachable"
         end
 
+    (* A source position, on a line of its own before the instructions at it:
+     * @line:col in the unit's first file, @file:line:col in another, and @-
+     * for none *)
+    let locText(l: nodes.Loc): String =
+        if not(nodes.hasLoc(l)) then "@-"
+        else
+            "@" <> if l.file is 1 then "" else conv.int(l.file) <> ":" end <> conv.int(l.line) <> ":"
+                <> conv.int(l.col)
+        end
+
     let formatFunction(f: Function): String =
         begin
             let b = stringBuilder.new()
@@ -151,9 +161,19 @@ export
                     b.str(if i > 0 then ", " else "" end <> typed(f vector.get(:Int blk.params i)))
                 end
                 b.str("):\n")
+                (* A block's code starts at no position *)
+                let state = tuple let var last = nodes.noLoc end
+                let at = fun(l: nodes.Loc): Ok
+                    if not(nodes.sameLoc(l state.last)) then
+                        b.str("  " <> locText(l) <> "\n")
+                        state.last := l
+                    end
                 for i = 0 upto {vector.length(:nodes.Inst blk.insts) - 1} do
-                    b.str("  " <> instText(f vector.get(:nodes.Inst blk.insts i)) <> "\n")
+                    let inst = vector.get(:nodes.Inst blk.insts i)
+                    at(inst.loc)
+                    b.str("  " <> instText(f inst) <> "\n")
                 end
+                at(blk.termLoc)
                 b.str("  " <> termText(f blk.term) <> "\n")
             end
             b.str("}\n")

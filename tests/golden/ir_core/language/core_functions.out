@@ -1,83 +1,83 @@
 main {
   funs {
     fun succ(x: Int): Int {
-      let %1: Int = prim +(x, 1)
+      let %1: Int = prim +(x, 1) @7:29
       return %1
     }
   }
   funs {
     fun succInferred(x.1: Int): Int {
-      let %2: Int = prim +(x.1, 1)
+      let %2: Int = prim +(x.1, 1) @8:32
       return %2
     }
   }
-  let %3: Int = call succ(41)
-  let %4: Int = call succInferred(41)
+  let %3: Int = call succ(41) @9:1
+  let %4: Int = call succInferred(41) @10:1
   funs {
     fun scale(a: Int, b: Real): Real {
-      let %5: Real = prim **(b, 2.0)
+      let %5: Real = prim **(b, 2.0) @13:39
       return %5
     }
   }
-  let %6: Real = call scale(10, 2.5)
+  let %6: Real = call scale(10, 2.5) @14:1
   funs {
     fun inc(var count: Int): Ok {
-      let %7: Int = prim +(count, 1)
-      count := %7
+      let %7: Int = prim +(count, 1) @17:40
+      count := %7 @17:31
       return ok
     }
   }
-  var c: Int = 5
-  let %8: Var(Int) = addr c
-  do call inc(%8)
+  var c: Int = 5 @18:1
+  let %8: Var(Int) = addr c @19:5
+  do call inc(%8) @19:1
   funs {
     fun getDog(out d: Dog): Ok {
-      let %9: Record name: String breed: String end = record(name = "Rex", breed = "collie")
-      d := %9
+      let %9: Record name: String breed: String end = record(name = "Rex", breed = "collie") @25:35
+      d := %9 @25:30
       return ok
     }
   }
-  let %10: Record name: String end = record(name = "cat")
-  var pet: Animal = %10
-  let %11: Var(Animal) = addr pet
-  do call getDog(%11)
-  let %12: String = record_field(pet, name)
+  let %10: Record name: String end = record(name = "cat") @26:23
+  var pet: Animal = %10 @26:1
+  let %11: Var(Animal) = addr pet @27:8
+  do call getDog(%11) @27:1
+  let %12: String = record_field(pet, name) @28:1
   funs {
     fun viaClosure(): String {
-      let getter: Fun(out d: Dog): Ok = getDog
-      let %13: Record name: String end = record(name = "cat")
-      var local: Animal = %13
-      let %14: Var(Animal) = addr local
-      do call getter(%14)
-      let %15: String = record_field(local, name)
+      let getter: Fun(out d: Dog): Ok = getDog @30:18
+      let %13: Record name: String end = record(name = "cat") @31:29
+      var local: Animal = %13 @31:5
+      let %14: Var(Animal) = addr local @32:12
+      do call getter(%14) @32:5
+      let %15: String = record_field(local, name) @33:5
       return %15
     }
   }
-  let %16: String = call viaClosure()
+  let %16: String = call viaClosure() @35:1
   funs {
     fun id [X::TYPE](x.2: X): X {
       return x.2
     }
   }
-  let %17: Int = call id [Int](42)
-  let %18: String = call id [String]("hello")
+  let %17: Int = call id [Int](42) @39:1
+  let %18: String = call id [String]("hello") @40:1
   funs rec {
     fun factorial(n: Int): Int {
       join k1(r: Int) {
         return r
       } in {
-        let %19: Bool = prim is(n, 0)
-        if %19 {
-          jump k1(1)
+        let %19: Bool = prim is(n, 0) @44:41
+        if %19 { @44:38
+          jump k1(1) @44:38
         } else {
-          let %20: Int = prim -(n, 1)
-          let %21: Int = call factorial(%20)
-          let %22: Int = prim *(n, %21)
-          jump k1(%22)
+          let %20: Int = prim -(n, 1) @44:74
+          let %21: Int = call factorial(%20) @44:64
+          let %22: Int = prim *(n, %21) @44:60
+          jump k1(%22) @44:38
         }
       }
     }
   }
-  let %23: Int = call factorial(5)
+  let %23: Int = call factorial(5) @45:5
 }
 

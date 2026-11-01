@@ -1,124 +1,124 @@
 import writer = "writer" : Writer
 import conv = "conv" : Conv
 main {
-  let wOut: writer.T = member writer.output
+  let wOut: writer.T = member writer.output @6:12
   funs {
     fun printInt(x: Int): Ok {
-      let %1: String = call conv.int(x)
-      do call writer.putString(wOut, %1)
-      let %2: Ok = call writer.putString(wOut, "\n")
+      let %1: String = call conv.int(x) @9:31
+      do call writer.putString(wOut, %1) @9:9
+      let %2: Ok = call writer.putString(wOut, "\n") @10:9
       return %2
     }
   }
   funs {
     fun square(x.1: Int): Int {
-      let %3: Int = prim *(x.1, x.1)
+      let %3: Int = prim *(x.1, x.1) @14:27
       return %3
     }
   }
-  let %4: Int = call square(7)
-  do call printInt(%4)
+  let %4: Int = call square(7) @15:10
+  do call printInt(%4) @15:1
   funs {
     fun add3(a: Int, b: Int, c: Int): Int {
-      let %5: Int = prim +(b, c)
-      let %6: Int = prim +(a, %5)
+      let %5: Int = prim +(b, c) @17:43
+      let %6: Int = prim +(a, %5) @17:39
       return %6
     }
   }
-  let %7: Int = call add3(10, 20, 30)
-  do call printInt(%7)
+  let %7: Int = call add3(10, 20, 30) @18:10
+  do call printInt(%7) @18:1
   funs {
     fun sub(x.2: Int): Fun(y: Int): Int {
       funs {
         fun f(y: Int): Int {
-          let %8: Int = prim -(x.2, y)
+          let %8: Int = prim -(x.2, y) @21:32
           return %8
         }
       }
       return f
     }
   }
-  let %9: Fun(y: Int): Int = call sub(100)
-  let %10: Int = call %9(42)
-  do call printInt(%10)
+  let %9: Fun(y: Int): Int = call sub(100) @22:10
+  let %10: Int = call %9(42) @22:10
+  do call printInt(%10) @22:1
   funs rec {
     fun fact(n: Int): Int {
       join k1(r: Int) {
         return r
       } in {
-        let %11: Bool = prim <=(n, 1)
-        if %11 {
-          jump k1(1)
+        let %11: Bool = prim <=(n, 1) @26:8
+        if %11 { @26:5
+          jump k1(1) @26:5
         } else {
-          let %12: Int = prim -(n, 1)
-          let %13: Int = call fact(%12)
-          let %14: Int = prim *(n, %13)
-          jump k1(%14)
+          let %12: Int = prim -(n, 1) @26:36
+          let %13: Int = call fact(%12) @26:31
+          let %14: Int = prim *(n, %13) @26:27
+          jump k1(%14) @26:5
         }
       }
     }
   }
-  let %15: Int = call fact(6)
-  do call printInt(%15)
+  let %15: Int = call fact(6) @27:10
+  do call printInt(%15) @27:1
   funs rec {
     fun fib(n.1: Int): Int {
       join k2(r.1: Int) {
         return r.1
       } in {
-        let %16: Bool = prim <=(n.1, 0)
-        if %16 {
-          jump k2(0)
+        let %16: Bool = prim <=(n.1, 0) @30:8
+        if %16 { @30:5
+          jump k2(0) @30:5
         } else {
           join k3(r.2: Int) {
-            jump k2(r.2)
+            jump k2(r.2) @30:5
           } in {
-            let %17: Bool = prim is(n.1, 1)
-            if %17 {
-              jump k3(1)
+            let %17: Bool = prim is(n.1, 1) @31:11
+            if %17 { @31:11
+              jump k3(1) @31:11
             } else {
-              let %18: Int = prim -(n.1, 1)
-              let %19: Int = call fib(%18)
-              let %20: Int = prim -(n.1, 2)
-              let %21: Int = call fib(%20)
-              let %22: Int = prim +(%19, %21)
-              jump k3(%22)
+              let %18: Int = prim -(n.1, 1) @32:14
+              let %19: Int = call fib(%18) @32:10
+              let %20: Int = prim -(n.1, 2) @32:27
+              let %21: Int = call fib(%20) @32:23
+              let %22: Int = prim +(%19, %21) @32:10
+              jump k3(%22) @31:11
             }
           }
         }
       }
     }
   }
-  let %23: Int = call fib(10)
-  do call printInt(%23)
-  let count: Int = 0
-  let counter: Tuple var count: Int end = tuple(count)
+  let %23: Int = call fib(10) @34:10
+  do call printInt(%23) @34:1
+  let count: Int = 0 @37:37
+  let counter: Tuple var count: Int end = tuple(count) @37:15
   funs {
     fun increment(step: Int): Ok {
-      let %24: Int = tuple_field(counter, 0)
-      let %25: Int = prim +(%24, step)
-      store counter.#0 := %25
+      let %24: Int = tuple_field(counter, 0) @40:26
+      let %25: Int = prim +(%24, step) @40:26
+      store counter.#0 := %25 @40:9
       return ok
     }
   }
-  do call increment(5)
-  do call increment(10)
-  let %26: Int = tuple_field(counter, 0)
-  do call printInt(%26)
+  do call increment(5) @44:1
+  do call increment(10) @45:1
+  let %26: Int = tuple_field(counter, 0) @46:10
+  do call printInt(%26) @46:1
   funs {
     fun doubleVal(x.3: Int): Int {
-      let %27: Int = prim +(x.3, x.3)
+      let %27: Int = prim +(x.3, x.3) @49:30
       return %27
     }
   }
   funs {
     fun combine(a.1: Int, b.1: Int): Int {
-      let %28: Int = call square(a.1)
-      let %29: Int = call doubleVal(b.1)
-      let %30: Int = prim +(%28, %29)
+      let %28: Int = call square(a.1) @50:35
+      let %29: Int = call doubleVal(b.1) @50:47
+      let %30: Int = prim +(%28, %29) @50:35
       return %30
     }
   }
-  let %31: Int = call combine(5, 3)
-  do call printInt(%31)
+  let %31: Int = call combine(5, 3) @51:10
+  do call printInt(%31) @51:1
 }
 

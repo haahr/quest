@@ -18,8 +18,8 @@ import
     conv : Conv
 export
     Def Selection = Tuple
-        f: machine.Function ops: vector.T(minst.Op) types: vector.T(ssa.Type) layout: vector.T(Int) prefix: String
-        outgoing: Int slotAt: Array(Int) slotsEnd: Int entersTry: Bool
+        f: machine.Function ops: vector.T(minst.Op) locs: vector.T(ssa.Loc) types: vector.T(ssa.Type)
+        layout: vector.T(Int) prefix: String outgoing: Int slotAt: Array(Int) slotsEnd: Int entersTry: Bool
     end
     Def ArgumentPlace = Tuple reg: Int offset: Int bytes: Int end
     Def Placed = Tuple places: Array(ArgumentPlace) stackBytes: Int end
@@ -130,6 +130,7 @@ export
         f: ssa.Function
         m: machine.Function
         ops: vector.T(minst.Op)
+        locs: vector.T(ssa.Loc)
         types: vector.T(ssa.Type)
         layout: vector.T(Int)
         prefix: String
@@ -143,8 +144,10 @@ export
         (* The comparisons each fused into the branch on it *)
         fused: Array(Bool)
         slotAt: Array(Int)
-        (* The machine block being filled *)
+        (* The machine block being filled, and the source position of what
+         * is being selected *)
         var b: Int
+        var loc: ssa.Loc
     end
 
     let label(s: Selection b: Int): String = s.prefix <> "_b" <> conv.int(b)
@@ -166,6 +169,7 @@ export
     let emitFull(s: S kind: machine.Kind i: minst.Inst reads: Array(Int) writes: Array(Int) target: Int): Ok =
         begin
             vector.append(:minst.Op s.ops i.op)
+            vector.append(:ssa.Loc s.locs s.loc)
             let n = minst.results(i.op)
             let operands = array of({{extent i.regs + extent reads} + extent writes} machine.reads(0))
             for k = 0 upto {extent i.regs - 1} do
@@ -184,6 +188,7 @@ export
     let jumpTo(s: S mb: Int args: Array(Int)): Ok =
         begin
             vector.append(:minst.Op s.ops minst.b(labelOf(s mb)).op)
+            vector.append(:ssa.Loc s.locs s.loc)
             let operands = array of(extent args machine.reads(0))
             for k = 0 upto {extent args - 1} do operands[k] := machine.reads(args[k]) end
             machine.append(s.m s.b machine.inst(machine.kindJump operands vector.length(:minst.Op s.ops) - 1 mb))
@@ -678,10 +683,11 @@ export
              * block not reached has no machine block *)
             let m = machine.newFunction(extent target.description.registers)
             let s = tuple
-                let f = f let m = m let ops = vector.new(:minst.Op) let types = vector.new(:ssa.Type)
+                let f = f let m = m let ops = vector.new(:minst.Op) let locs = vector.new(:ssa.Loc)
+                let types = vector.new(:ssa.Type)
                 let layout = vector.new(:Int) let prefix = prefix let defined = defined
                 let blockOf = array of(nBlocks ~1) let defs = defs let defBlock = defBlock let uses = uses
-                let fused = fused let slotAt = slotAt let var b = 0
+                let fused = fused let slotAt = slotAt let var b = 0 let var loc = ssa.noLoc
             end
             for v = 0 upto {nValues - 1} do
                 vector.append(:ssa.Type s.types ssa.typeOf(f v))
@@ -705,13 +711,17 @@ export
                     s.b := s.blockOf[b]
                     vector.append(:Int s.layout s.b)
                     for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
-                        instruction(s vector.get(:ssa.Inst blk.insts k))
+                        let i = vector.get(:ssa.Inst blk.insts k)
+                        s.loc := i.loc
+                        instruction(s i)
                     end
+                    s.loc := blk.termLoc
                     terminator(s blk.term)
                 end
             end
             let selection = tuple
-                let f = m let ops = s.ops let types = s.types let layout = s.layout let prefix = prefix
+                let f = m let ops = s.ops let locs = s.locs let types = s.types let layout = s.layout
+                let prefix = prefix
                 let outgoing = outgoing let slotAt = slotAt let slotsEnd = at let entersTry = entersTry
             end
             machine.removeDead(m fun(i: machine.Inst): Bool pure(selection i))
@@ -721,6 +731,7 @@ export
     let make(s: Selection kind: machine.Kind i: minst.Inst): machine.Inst =
         begin
             vector.append(:minst.Op s.ops i.op)
+            vector.append(:ssa.Loc s.locs ssa.noLoc)
             let n = minst.results(i.op)
             let operands = array of(extent i.regs machine.reads(0))
             for k = 0 upto {extent i.regs - 1} do
@@ -744,7 +755,7 @@ export
                 when opMovImm, opMovz, opMovk, opTlvAddress, opMov, opArith, opSubImm, opAndImm, opShiftImm, opMsub,
                     opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCset, opLoad, opStore, opLdp, opStp, opAdrp,
                     opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opBCond, opBrk, opNop,
-                    opLabel, opCfiDefCfa, opCfiOffset then
+                    opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                     false
             end
         end

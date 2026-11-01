@@ -236,24 +236,26 @@ export
     end
 
     and Stmt = Option
-        sLet with var v: Variable var value: Op end
-        sVarDecl with var v: Variable var init: maybe.T(Atom) end
-        sAssign with var v: Variable var value: Atom end
-        sStoreAt with var value: Atom var address: Atom end
-        sStoreField with var value: Atom var base: Atom name: String var viewMap: maybe.T(Variable) end
+        sLet with var pos: Int var v: Variable var value: Op end
+        sVarDecl with var pos: Int var v: Variable var init: maybe.T(Atom) end
+        sAssign with var pos: Int var v: Variable var value: Atom end
+        sStoreAt with var pos: Int var value: Atom var address: Atom end
+        sStoreField with var pos: Int var value: Atom var base: Atom name: String var viewMap: maybe.T(Variable) end
         sStoreComponent with
+            var pos: Int
             var value: Atom
             var base: Atom
             index: Int
             var access: Access
             var viewMap: maybe.T(Variable)
         end
-        sStoreElement with var value: Atom var base: Atom var index: Atom offset: maybe.T(Int) end
-        sDo with var value: Op end
+        sStoreElement with var pos: Int var value: Atom var base: Atom var index: Atom offset: maybe.T(Int) end
+        sDo with var pos: Int var value: Op end
         sFuns with var functions: Array(Function) recursive: Bool end
         sLetRec with var vars: Array(Variable) var body: Body end
-        sIf with var cond: Atom var thenBody: Body var elseBody: Body end
+        sIf with var pos: Int var cond: Atom var thenBody: Body var elseBody: Body end
         sSwitch with
+            var pos: Int
             var value: Atom
             var cases: Array(Case)
             var elseBody: maybe.T(Body)
@@ -261,6 +263,7 @@ export
             var viewMap: maybe.T(Variable)
         end
         sInspect with
+            var pos: Int
             var value: Atom
             var cases: Array(InspectCase)
             var elseBody: maybe.T(Body)
@@ -271,14 +274,14 @@ export
         sLoop with label: String var body: Body end
         sTry with var body: Body var exc: Variable var handler: Body catching: Catching var catches: Array(Atom) end
         sJoin with label: String var params: Array(Variable) var continuation: Body var body: Body end
-        sEcho with var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
+        sEcho with var pos: Int var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
         sEchoText with text: String end
-        sReturn with var value: Atom end
-        sJump with label: String var args: Array(Atom) end
-        sBreak with label: String end
-        sContinue with label: String end
-        sRaise with var exc: Atom var payload: maybe.T(Atom) offset: maybe.T(Int) end
-        sReraise with var exc: Variable end
+        sReturn with var pos: Int var value: Atom end
+        sJump with var pos: Int label: String var args: Array(Atom) end
+        sBreak with var pos: Int label: String end
+        sContinue with var pos: Int label: String end
+        sRaise with var pos: Int var exc: Atom var payload: maybe.T(Atom) offset: maybe.T(Int) end
+        sReraise with var pos: Int var exc: Variable end
         sUnreachable
     end
     (* The fields of each operation and statement, as a tuple type: the type
@@ -378,24 +381,28 @@ export
     and OpAddrComponent = Tuple var base: Atom index: Int var access: Access var viewMap: maybe.T(Variable) end
     and OpAddrElement = Tuple var base: Atom var index: Atom offset: maybe.T(Int) end
     and OpLoad = Tuple var address: Atom end
-    and StmtLet = Tuple var v: Variable var value: Op end
-    and StmtVarDecl = Tuple var v: Variable var init: maybe.T(Atom) end
-    and StmtAssign = Tuple var v: Variable var value: Atom end
-    and StmtStoreAt = Tuple var value: Atom var address: Atom end
-    and StmtStoreField = Tuple var value: Atom var base: Atom name: String var viewMap: maybe.T(Variable) end
+    and StmtLet = Tuple var pos: Int var v: Variable var value: Op end
+    and StmtVarDecl = Tuple var pos: Int var v: Variable var init: maybe.T(Atom) end
+    and StmtAssign = Tuple var pos: Int var v: Variable var value: Atom end
+    and StmtStoreAt = Tuple var pos: Int var value: Atom var address: Atom end
+    and StmtStoreField = Tuple
+        var pos: Int var value: Atom var base: Atom name: String var viewMap: maybe.T(Variable)
+    end
     and StmtStoreComponent = Tuple
+        var pos: Int
         var value: Atom
         var base: Atom
         index: Int
         var access: Access
         var viewMap: maybe.T(Variable)
     end
-    and StmtStoreElement = Tuple var value: Atom var base: Atom var index: Atom offset: maybe.T(Int) end
-    and StmtDo = Tuple var value: Op end
+    and StmtStoreElement = Tuple var pos: Int var value: Atom var base: Atom var index: Atom offset: maybe.T(Int) end
+    and StmtDo = Tuple var pos: Int var value: Op end
     and StmtFuns = Tuple var functions: Array(Function) recursive: Bool end
     and StmtLetRec = Tuple var vars: Array(Variable) var body: Body end
-    and StmtIf = Tuple var cond: Atom var thenBody: Body var elseBody: Body end
+    and StmtIf = Tuple var pos: Int var cond: Atom var thenBody: Body var elseBody: Body end
     and StmtSwitch = Tuple
+        var pos: Int
         var value: Atom
         var cases: Array(Case)
         var elseBody: maybe.T(Body)
@@ -403,6 +410,7 @@ export
         var viewMap: maybe.T(Variable)
     end
     and StmtInspect = Tuple
+        var pos: Int
         var value: Atom
         var cases: Array(InspectCase)
         var elseBody: maybe.T(Body)
@@ -413,14 +421,14 @@ export
     and StmtLoop = Tuple label: String var body: Body end
     and StmtTry = Tuple var body: Body var exc: Variable var handler: Body catching: Catching var catches: Array(Atom) end
     and StmtJoin = Tuple label: String var params: Array(Variable) var continuation: Body var body: Body end
-    and StmtEcho = Tuple var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
+    and StmtEcho = Tuple var pos: Int var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
     and StmtEchoText = Tuple text: String end
-    and StmtReturn = Tuple var value: Atom end
-    and StmtJump = Tuple label: String var args: Array(Atom) end
-    and StmtBreak = Tuple label: String end
-    and StmtContinue = Tuple label: String end
-    and StmtRaise = Tuple var exc: Atom var payload: maybe.T(Atom) offset: maybe.T(Int) end
-    and StmtReraise = Tuple var exc: Variable end
+    and StmtReturn = Tuple var pos: Int var value: Atom end
+    and StmtJump = Tuple var pos: Int label: String var args: Array(Atom) end
+    and StmtBreak = Tuple var pos: Int label: String end
+    and StmtContinue = Tuple var pos: Int label: String end
+    and StmtRaise = Tuple var pos: Int var exc: Atom var payload: maybe.T(Atom) offset: maybe.T(Int) end
+    and StmtReraise = Tuple var pos: Int var exc: Variable end
     (* A sequence of statements; a terminator, if any, is last *)
     and Body = Tuple id: Int var statements: vector.T(Stmt) end
 
@@ -454,6 +462,8 @@ export
         refModule with m: Module end
         refImport with i: Import end
     end
+
+    Let SourcePos = Tuple file: Int line: Int col: Int end
 
     (* A compilation unit *)
     Let Unit = Tuple
@@ -636,18 +646,38 @@ export
 
     let fileOffset(file: Int offset: Int): Int = {file * fileSpan} + offset
 
+    let fileMap(u: Unit file: Int): maybe.T(location.SourceMap) =
+        if file is 0 then u.sourceMap
+        elsif {file > 0} andif {file <= vector.length(:maybe.T(location.SourceMap) u.mergedSources)} then
+            vector.get(:maybe.T(location.SourceMap) u.mergedSources {file - 1})
+        else maybe.none(:location.SourceMap) end
+
+    let sourceFile(u: Unit file: Int): maybe.T(String) =
+        begin
+            let sm = fileMap(u file)
+            if maybe.isNone(:location.SourceMap sm) then maybe.none(:String)
+            else maybe.some(:String location.file(maybe.unwrap(:location.SourceMap sm))) end
+        end
+
+    let sourcePos(u: Unit offset: Int): maybe.T(SourcePos) =
+        begin
+            let file = if offset < 0 then ~1 else offset / fileSpan end
+            let sm = fileMap(u file)
+            if maybe.isNone(:location.SourceMap sm) then maybe.none(:SourcePos)
+            else
+                let pos = location.locate(maybe.unwrap(:location.SourceMap sm) offset - {file * fileSpan})
+                maybe.some(:SourcePos tuple let file = file let line = pos.line let col = pos.col end)
+            end
+        end
+
     let site(u: Unit offset: Int): maybe.T(String) =
         begin
-            let file = offset / fileSpan
-            let sm = if file is 0 then u.sourceMap
-                else if file <= vector.length(:maybe.T(location.SourceMap) u.mergedSources) then
-                    vector.get(:maybe.T(location.SourceMap) u.mergedSources {file - 1})
-                else maybe.none(:location.SourceMap) end end
-            if maybe.isNone(:location.SourceMap sm) then maybe.none(:String)
+            let pos = sourcePos(u offset)
+            if maybe.isNone(:SourcePos pos) then maybe.none(:String)
             else
-                let m = maybe.unwrap(:location.SourceMap sm)
-                let pos = location.locate(m offset - {file * fileSpan})
-                maybe.some(:String location.file(m) <> ":" <> conv.int(pos.line) <> ":" <> conv.int(pos.col))
+                let p = maybe.unwrap(:SourcePos pos)
+                maybe.some(:String maybe.unwrap(:String sourceFile(u p.file)) <> ":" <> conv.int(p.line) <> ":"
+                    <> conv.int(p.col))
             end
         end
 
@@ -655,7 +685,9 @@ export
     let atomOfConst(c: Const): Atom = option atomConst of Atom with let c = c end
     let opOfAtom(a: Atom): Op = option opAtom of Op with let var atom = a end
     let opOfVar(v: Variable): Op = opOfAtom(atomOfVar(v))
-    let letStmt(v: Variable value: Op): Stmt = option sLet of Stmt with let var v = v let var value = value end
+    let letStmt(v: Variable value: Op): Stmt = option sLet of Stmt with
+        let var pos = ~1 let var v = v let var value = value
+    end
 
     let primName(p: Prim): String =
         case p
@@ -849,6 +881,7 @@ export
 
     let switchStmt(value: Atom cases: Array(Case) elseBody: maybe.T(Body)): Stmt =
         option sSwitch of Stmt with
+            let var pos = ~1
             let var value = value
             let var cases = cases
             let var elseBody = elseBody
@@ -859,6 +892,7 @@ export
     let inspectStmt(value: Atom cases: Array(InspectCase) elseBody: maybe.T(Body) autoType: maybe.T(Type)
             offset: maybe.T(Int)): Stmt =
         option sInspect of Stmt with
+            let var pos = ~1
             let var value = value
             let var cases = cases
             let var elseBody = elseBody
@@ -885,6 +919,52 @@ export
      * ====================================================================== *)
 
     let same(a: Variable b: Variable): Bool = a.id is b.id
+
+    let stmtPos(s: Stmt): Int =
+        case s
+            when sLet with x then x.pos
+            when sVarDecl with x then x.pos
+            when sAssign with x then x.pos
+            when sStoreAt with x then x.pos
+            when sStoreField with x then x.pos
+            when sStoreComponent with x then x.pos
+            when sStoreElement with x then x.pos
+            when sDo with x then x.pos
+            when sIf with x then x.pos
+            when sSwitch with x then x.pos
+            when sInspect with x then x.pos
+            when sEcho with x then x.pos
+            when sReturn with x then x.pos
+            when sJump with x then x.pos
+            when sBreak with x then x.pos
+            when sContinue with x then x.pos
+            when sRaise with x then x.pos
+            when sReraise with x then x.pos
+            when sFuns, sLetRec, sLoop, sTry, sJoin, sEchoText, sUnreachable then ~1
+        end
+
+    let positionAt(s: Stmt pos: Int): Ok =
+        case s
+            when sLet with x then if x.pos < 0 then x.pos := pos end
+            when sVarDecl with x then if x.pos < 0 then x.pos := pos end
+            when sAssign with x then if x.pos < 0 then x.pos := pos end
+            when sStoreAt with x then if x.pos < 0 then x.pos := pos end
+            when sStoreField with x then if x.pos < 0 then x.pos := pos end
+            when sStoreComponent with x then if x.pos < 0 then x.pos := pos end
+            when sStoreElement with x then if x.pos < 0 then x.pos := pos end
+            when sDo with x then if x.pos < 0 then x.pos := pos end
+            when sIf with x then if x.pos < 0 then x.pos := pos end
+            when sSwitch with x then if x.pos < 0 then x.pos := pos end
+            when sInspect with x then if x.pos < 0 then x.pos := pos end
+            when sEcho with x then if x.pos < 0 then x.pos := pos end
+            when sReturn with x then if x.pos < 0 then x.pos := pos end
+            when sJump with x then if x.pos < 0 then x.pos := pos end
+            when sBreak with x then if x.pos < 0 then x.pos := pos end
+            when sContinue with x then if x.pos < 0 then x.pos := pos end
+            when sRaise with x then if x.pos < 0 then x.pos := pos end
+            when sReraise with x then if x.pos < 0 then x.pos := pos end
+            when sFuns, sLetRec, sLoop, sTry, sJoin, sEchoText, sUnreachable then ok
+        end
 
     let isTerminator(s: Stmt): Bool =
         case s

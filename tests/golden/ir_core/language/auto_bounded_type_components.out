@@ -3,9 +3,9 @@ import conv = "conv" : Conv
 main {
   funs {
     fun s(text: String): Ok {
-      let %1: writer.T = member writer.output
-      let %2: String = prim <>(text, "\n")
-      let %3: Ok = call writer.putString(%1, %2)
+      let %1: writer.T = member writer.output @9:44
+      let %2: String = prim <>(text, "\n") @9:58
+      let %3: Ok = call writer.putString(%1, %2) @9:27
       return %3
     }
   }
@@ -14,208 +14,208 @@ main {
       join k1(r: String) {
         return r
       } in {
-        switch tag(x) {
+        switch tag(x) { @13:5
           case a (n: Int): {
-            let %4: String = call conv.int(n)
-            jump k1(%4)
+            let %4: String = call conv.int(n) @13:31
+            jump k1(%4) @13:5
           }
           case b (t: String): {
-            jump k1(t)
+            jump k1(t) @13:5
           }
           case c (f: Bool): {
-            let %5: String = call conv.bool(f)
-            jump k1(%5)
+            let %5: String = call conv.bool(f) @13:83
+            jump k1(%5) @13:5
           }
         }
       }
     }
   }
-  let small: Small = variant(c, true)
-  let other: Small = variant(b, "other")
+  let small: Small = variant(c, true) @14:20
+  let other: Small = variant(b, "other") @15:20
   funs {
     fun mk0 [A::<: Big](x.1: A): AnyBig {
-      let a: A = x.1
-      let %6: Tuple a: A end = tuple(a)
-      let %7: AnyBig = auto[A](%6)
+      let a: A = x.1 @19:47
+      let %6: Tuple a: A end = tuple(a) @19:42
+      let %7: AnyBig = auto[A](%6) @19:34
       return %7
     }
   }
-  let mk: All(A <: Big) Fun(x: A): AnyBig = mk0
+  let mk: All(A <: Big) Fun(x: A): AnyBig = mk0 @20:37
   join k2(r.1: String) {
-    do call s(r.1)
+    do call s(r.1) @21:1
     join k3(r.2: String) {
-      do call s(r.2)
+      do call s(r.2) @22:1
       funs {
         fun unbox0 [A::<: Big](b: AnyBig, default: A): A {
           join k4(r.3: A) {
             return r.3
           } in {
-            inspect b {
+            inspect b { @25:48
               case A (x.2: Tuple a: A end): {
-                let %8: A = tuple_field(x.2, 0)
-                jump k4(%8)
+                let %8: A = tuple_field(x.2, 0) @25:77
+                jump k4(%8) @25:48
               }
               else: {
-                jump k4(default)
+                jump k4(default) @25:48
               }
             }
           }
         }
       }
-      let unbox: All(A <: Big) Fun(b: AnyBig default: A): A = unbox0
-      let a.1: Small = small
-      let %9: Tuple a: Small end = tuple(a.1)
-      let direct: AnyBig = auto[Small](%9)
-      let %10: Small = call unbox [Small](direct, other)
-      let %11: String = call show(%10)
-      do call s(%11)
-      let %12: Big = variant(a, 0)
-      let %13: Big = call unbox [Big](direct, %12)
-      let %14: String = call show(%13)
-      do call s(%14)
-      let %15: AnyBig = call mk [Small](small)
-      let %16: Small = call unbox [Small](%15, other)
-      let %17: String = call show(%16)
-      do call s(%17)
+      let unbox: All(A <: Big) Fun(b: AnyBig default: A): A = unbox0 @26:51
+      let a.1: Small = small @27:39
+      let %9: Tuple a: Small end = tuple(a.1) @27:34
+      let direct: AnyBig = auto[Small](%9) @27:22
+      let %10: Small = call unbox [Small](direct, other) @28:8
+      let %11: String = call show(%10) @28:3
+      do call s(%11) @28:1
+      let %12: Big = variant(a, 0) @29:26
+      let %13: Big = call unbox [Big](direct, %12) @29:8
+      let %14: String = call show(%13) @29:3
+      do call s(%14) @29:1
+      let %15: AnyBig = call mk [Small](small) @32:21
+      let %16: Small = call unbox [Small](%15, other) @32:8
+      let %17: String = call show(%16) @32:3
+      do call s(%17) @32:1
       funs {
         fun roundTrip0 [A::<: Big](x.3: A): A {
-          let %18: AnyBig = call mk [A](x.3)
-          let %19: A = call unbox [A](%18, x.3)
+          let %18: AnyBig = call mk [A](x.3) @33:45
+          let %19: A = call unbox [A](%18, x.3) @33:36
           return %19
         }
       }
-      let roundTrip: All(A <: Big) Fun(x: A): A = roundTrip0
-      let %20: Small = call roundTrip [Small](small)
-      let %21: String = call show(%20)
-      do call s(%21)
-      let %22: Small = call roundTrip [Small](other)
-      let %23: String = call show(%22)
-      do call s(%23)
+      let roundTrip: All(A <: Big) Fun(x: A): A = roundTrip0 @34:39
+      let %20: Small = call roundTrip [Small](small) @35:8
+      let %21: String = call show(%20) @35:3
+      do call s(%21) @35:1
+      let %22: Small = call roundTrip [Small](other) @36:8
+      let %23: String = call show(%22) @36:3
+      do call s(%23) @36:1
       funs {
         fun mkObj0 [A::<: Object](x.4: A): AnyObject {
-          let a.2: A = x.4
-          let %24: Tuple a: A end = tuple(a.2)
-          let %25: AnyObject = auto[A](%24)
+          let a.2: A = x.4 @42:56
+          let %24: Tuple a: A end = tuple(a.2) @42:51
+          let %25: AnyObject = auto[A](%24) @42:43
           return %25
         }
       }
-      let mkObj: All(A <: Object) Fun(x: A): AnyObject = mkObj0
-      let car: Car = record(age = 3, fuel = "diesel")
+      let mkObj: All(A <: Object) Fun(x: A): AnyObject = mkObj0 @43:46
+      let car: Car = record(age = 3, fuel = "diesel") @44:16
       join k5(r.4: String) {
-        do call s(r.4)
+        do call s(r.4) @45:1
         funs {
           fun unboxObj0 [A::<: Object](b.1: AnyObject, default.1: A): A {
             join k6(r.5: A) {
               return r.5
             } in {
-              inspect b.1 {
+              inspect b.1 { @46:57
                 case A (x.5: Tuple a: A end): {
-                  let %26: A = tuple_field(x.5, 0)
-                  jump k6(%26)
+                  let %26: A = tuple_field(x.5, 0) @46:86
+                  jump k6(%26) @46:57
                 }
                 else: {
-                  jump k6(default.1)
+                  jump k6(default.1) @46:57
                 }
               }
             }
           }
         }
-        let unboxObj: All(A <: Object) Fun(b: AnyObject default: A): A = unboxObj0
-        let %27: AnyObject = call mkObj [Car](car)
-        let %28: Record age: Int fuel: String end = record(age = 0, fuel = "none")
-        let %29: Car = call unboxObj [Car](%27, %28)
-        let %30: String = record_field(%29, fuel)
-        do call s(%30)
-        let %31: AnyObject = call mkObj [Car](car)
-        let %32: Record age: Int end = record(age = 0)
-        let %33: Object = call unboxObj [Object](%31, %32)
-        let %34: Int = record_field(%33, age)
-        let %35: String = call conv.int(%34)
-        do call s(%35)
+        let unboxObj: All(A <: Object) Fun(b: AnyObject default: A): A = unboxObj0 @47:60
+        let %27: AnyObject = call mkObj [Car](car) @48:17
+        let %28: Record age: Int fuel: String end = record(age = 0, fuel = "none") @48:33
+        let %29: Car = call unboxObj [Car](%27, %28) @48:3
+        let %30: String = record_field(%29, fuel) @48:3
+        do call s(%30) @48:1
+        let %31: AnyObject = call mkObj [Car](car) @49:29
+        let %32: Record age: Int end = record(age = 0) @49:45
+        let %33: Object = call unboxObj [Object](%31, %32) @49:12
+        let %34: Int = record_field(%33, age) @49:12
+        let %35: String = call conv.int(%34) @49:3
+        do call s(%35) @49:1
         funs {
           fun id0 [A::<: Big](x.6: A): A {
             return x.6
           }
         }
-        let id: All(A <: Big) Fun(x: A): A = id0
+        let id: All(A <: Big) Fun(x: A): A = id0 @53:32
         funs {
           fun showSmall(x.7: Small): String {
             join k7(r.6: String) {
               return r.6
             } in {
-              switch tag(x.7) {
+              switch tag(x.7) { @54:35
                 case b (t.1: String): {
-                  jump k7(t.1)
+                  jump k7(t.1) @54:35
                 }
                 case c (f.1: Bool): {
-                  let %36: String = call conv.bool(f.1)
-                  jump k7(%36)
+                  let %36: String = call conv.bool(f.1) @54:82
+                  jump k7(%36) @54:35
                 }
               }
             }
           }
         }
-        let %37: Small = call id [Small](small)
-        let %38: String = call showSmall(%37)
-        do call s(%38)
-        let %39: Small = call id [Small](other)
-        let %40: String = call show(%39)
-        do call s(%40)
+        let %37: Small = call id [Small](small) @55:13
+        let %38: String = call showSmall(%37) @55:3
+        do call s(%38) @55:1
+        let %39: Small = call id [Small](other) @56:8
+        let %40: String = call show(%39) @56:3
+        do call s(%40) @56:1
         funs {
           fun same0 [A::<: Object](x.8: A): A {
             return x.8
           }
         }
-        let same: All(A <: Object) Fun(x: A): A = same0
-        let %41: Car = call same [Car](car)
-        let %42: String = record_field(%41, fuel)
-        do call s(%42)
+        let same: All(A <: Object) Fun(x: A): A = same0 @58:37
+        let %41: Car = call same [Car](car) @59:3
+        let %42: String = record_field(%41, fuel) @59:3
+        do call s(%42) @59:1
         funs {
           fun viaGeneric0 [B::<: Small](y: B): B {
-            let %43: B = call id [B](y)
+            let %43: B = call id [B](y) @60:39
             return %43
           }
         }
-        let viaGeneric: All(B <: Small) Fun(y: B): B = viaGeneric0
-        let %44: Small = call viaGeneric [Small](small)
-        let %45: String = call showSmall(%44)
-        do call s(%45)
+        let viaGeneric: All(B <: Small) Fun(y: B): B = viaGeneric0 @61:42
+        let %44: Small = call viaGeneric [Small](small) @62:13
+        let %45: String = call showSmall(%44) @62:3
+        do call s(%45) @62:1
       } in {
-        let %46: AnyObject = call mkObj [Car](car)
-        inspect %46 {
+        let %46: AnyObject = call mkObj [Car](car) @45:11
+        inspect %46 { @45:3
           case Car (t.2: Tuple a: Car end): {
-            let %47: Car = tuple_field(t.2, 0)
-            let %48: String = record_field(%47, fuel)
-            jump k5(%48)
+            let %47: Car = tuple_field(t.2, 0) @45:48
+            let %48: String = record_field(%47, fuel) @45:48
+            jump k5(%48) @45:3
           }
           else: {
-            jump k5("no")
+            jump k5("no") @45:3
           }
         }
       }
     } in {
-      let %49: AnyBig = call mk [Small](small)
-      inspect %49 {
+      let %49: AnyBig = call mk [Small](small) @22:11
+      inspect %49 { @22:3
         case Big (t.3: Tuple a: Big end): {
-          let %50: Big = tuple_field(t.3, 0)
-          let %51: String = call show(%50)
-          jump k3(%51)
+          let %50: Big = tuple_field(t.3, 0) @22:54
+          let %51: String = call show(%50) @22:49
+          jump k3(%51) @22:3
         }
         else: {
-          jump k3("no")
+          jump k3("no") @22:3
         }
       }
     }
   } in {
-    let %52: AnyBig = call mk [Small](small)
-    inspect %52 {
+    let %52: AnyBig = call mk [Small](small) @21:11
+    inspect %52 { @21:3
       case Small (t.4: Tuple a: Small end): {
-        let %53: Small = tuple_field(t.4, 0)
-        let %54: String = call show(%53)
-        jump k2(%54)
+        let %53: Small = tuple_field(t.4, 0) @21:56
+        let %54: String = call show(%53) @21:51
+        jump k2(%54) @21:3
       }
       else: {
-        jump k2("no")
+        jump k2("no") @21:3
       }
     }
   }

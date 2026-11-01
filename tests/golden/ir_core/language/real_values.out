@@ -5,47 +5,47 @@ import word = "word" : Word
 import writer = "writer" : Writer
 import conv = "conv" : Conv
 main {
-  let wOut: writer.T = member writer.output
+  let wOut: writer.T = member writer.output @11:12
   funs {
     fun printLine(s: String): Ok {
-      do call writer.putString(wOut, s)
-      let %1: Ok = call writer.putString(wOut, "\n")
+      do call writer.putString(wOut, s) @14:9
+      let %1: Ok = call writer.putString(wOut, "\n") @15:9
       return %1
     }
   }
   funs {
     fun printReal(r: Real): Ok {
-      let %2: String = call conv.real(r)
-      let %3: Ok = call printLine(%2)
+      let %2: String = call conv.real(r) @17:40
+      let %3: Ok = call printLine(%2) @17:30
       return %3
     }
   }
   funs {
     fun printInt(n: Int): Ok {
-      let %4: String = call conv.int(n)
-      let %5: Ok = call printLine(%4)
+      let %4: String = call conv.int(n) @18:38
+      let %5: Ok = call printLine(%4) @18:28
       return %5
     }
   }
   funs {
     fun printBool(b: Bool): Ok {
-      let %6: String = call conv.bool(b)
-      let %7: Ok = call printLine(%6)
+      let %6: String = call conv.bool(b) @19:40
+      let %7: Ok = call printLine(%6) @19:30
       return %7
     }
   }
   funs {
     fun tryReal(f: Fun(): Real): Ok {
-      let %8: Exception = member real.error
+      let %8: Exception = member real.error @23:29
       try catching (%8) {
-        let %9: Real = call f()
-        do call printReal(%9)
+        let %9: Real = call f() @23:19
+        do call printReal(%9) @23:9
       } handle (e: Exception) {
-        let %10: Bool = prim is(e, %8)
-        if %10 {
-          do call printLine("real.error")
+        let %10: Bool = prim is(e, %8) @23:5
+        if %10 { @23:5
+          do call printLine("real.error") @23:45
         } else {
-          reraise e
+          reraise e @23:5
         }
       }
       return ok
@@ -53,228 +53,228 @@ main {
   }
   funs {
     fun tryInt(f.1: Fun(): Int): Ok {
-      let %11: Exception = member real.error
+      let %11: Exception = member real.error @25:28
       try catching (%11) {
-        let %12: Int = call f.1()
-        do call printInt(%12)
+        let %12: Int = call f.1() @25:18
+        do call printInt(%12) @25:9
       } handle (e.1: Exception) {
-        let %13: Bool = prim is(e.1, %11)
-        if %13 {
-          do call printLine("real.error")
+        let %13: Bool = prim is(e.1, %11) @25:5
+        if %13 { @25:5
+          do call printLine("real.error") @25:44
         } else {
-          reraise e.1
+          reraise e.1 @25:5
         }
       }
       return ok
     }
   }
-  let inf: Real = prim **(1e+300, 1e+300)
-  let negInf: Real = prim --(0.0, inf)
-  do call printReal(inf)
-  do call printReal(negInf)
-  do call printReal(inf)
-  let %14: Bool = prim is(inf, inf)
-  do call printBool(%14)
-  let %15: Bool = prim is(inf, inf)
-  do call printBool(%15)
-  let %16: Real = member real.maxReal
-  let %17: Bool = prim >>(inf, %16)
-  do call printBool(%17)
-  let %18: Real = member real.minReal
-  let %19: Bool = prim <<(negInf, %18)
-  do call printBool(%19)
-  let %20: Real = prim //(1.0, inf)
-  do call printReal(%20)
-  let %21: Real = prim ++(inf, 1.0)
-  do call printReal(%21)
-  let %22: Real = prim ^^(10.0, 400.0)
-  do call printReal(%22)
-  let %23: Real = prim ^^(-10.0, 401.0)
-  do call printReal(%23)
-  let %24: Real = call real.exp(10.0, 400.0)
-  do call printReal(%24)
-  let %25: Real = call real.log(inf)
-  do call printReal(%25)
+  let inf: Real = prim **(1e+300, 1e+300) @28:11
+  let negInf: Real = prim --(0.0, inf) @29:14
+  do call printReal(inf) @30:1
+  do call printReal(negInf) @31:1
+  do call printReal(inf) @32:1
+  let %14: Bool = prim is(inf, inf) @33:11
+  do call printBool(%14) @33:1
+  let %15: Bool = prim is(inf, inf) @34:11
+  do call printBool(%15) @34:1
+  let %16: Real = member real.maxReal @35:18
+  let %17: Bool = prim >>(inf, %16) @35:11
+  do call printBool(%17) @35:1
+  let %18: Real = member real.minReal @36:21
+  let %19: Bool = prim <<(negInf, %18) @36:11
+  do call printBool(%19) @36:1
+  let %20: Real = prim //(1.0, inf) @37:11
+  do call printReal(%20) @37:1
+  let %21: Real = prim ++(inf, 1.0) @38:11
+  do call printReal(%21) @38:1
+  let %22: Real = prim ^^(10.0, 400.0) @39:11
+  do call printReal(%22) @39:1
+  let %23: Real = prim ^^(-10.0, 401.0) @40:11
+  do call printReal(%23) @40:1
+  let %24: Real = call real.exp(10.0, 400.0) @41:11
+  do call printReal(%24) @41:1
+  let %25: Real = call real.log(inf) @42:11
+  do call printReal(%25) @42:1
   funs {
     fun f.2(): Real {
-      let %26: Real = prim --(inf, inf)
+      let %26: Real = prim --(inf, inf) @45:21
       return %26
     }
   }
-  do call tryReal(f.2)
+  do call tryReal(f.2) @45:1
   funs {
     fun f.3(): Real {
-      let %27: Real = prim ++(inf, negInf)
+      let %27: Real = prim ++(inf, negInf) @46:21
       return %27
     }
   }
-  do call tryReal(f.3)
+  do call tryReal(f.3) @46:1
   funs {
     fun f.4(): Real {
-      let %28: Real = prim **(0.0, inf)
+      let %28: Real = prim **(0.0, inf) @47:21
       return %28
     }
   }
-  do call tryReal(f.4)
+  do call tryReal(f.4) @47:1
   funs {
     fun f.5(): Real {
-      let %29: Real = prim //(inf, inf)
+      let %29: Real = prim //(inf, inf) @48:21
       return %29
     }
   }
-  do call tryReal(f.5)
+  do call tryReal(f.5) @48:1
   funs {
     fun f.6(): Real {
-      let %30: Real = prim //(0.0, 0.0)
+      let %30: Real = prim //(0.0, 0.0) @49:21
       return %30
     }
   }
-  do call tryReal(f.6)
+  do call tryReal(f.6) @49:1
   funs {
     fun f.7(): Real {
-      let %31: Real = prim ^^(-8.0, 0.5)
+      let %31: Real = prim ^^(-8.0, 0.5) @50:21
       return %31
     }
   }
-  do call tryReal(f.7)
+  do call tryReal(f.7) @50:1
   funs {
     fun f.8(): Real {
-      let %32: Real = call real.div(inf, negInf)
+      let %32: Real = call real.div(inf, negInf) @51:21
       return %32
     }
   }
-  do call tryReal(f.8)
+  do call tryReal(f.8) @51:1
   funs {
     fun f.9(): Real {
-      let %33: Real = call real.exp(-8.0, 0.5)
+      let %33: Real = call real.exp(-8.0, 0.5) @52:21
       return %33
     }
   }
-  do call tryReal(f.9)
+  do call tryReal(f.9) @52:1
   funs {
     fun f.10(): Real {
-      let %34: Real = prim //(1.0, 0.0)
+      let %34: Real = prim //(1.0, 0.0) @55:21
       return %34
     }
   }
-  do call tryReal(f.10)
+  do call tryReal(f.10) @55:1
   funs {
     fun f.11(): Real {
-      let %35: Real = prim ^^(0.0, -1.0)
+      let %35: Real = prim ^^(0.0, -1.0) @56:21
       return %35
     }
   }
-  do call tryReal(f.11)
+  do call tryReal(f.11) @56:1
   funs {
     fun f.12(): Real {
-      let %36: Real = call real.exp(0.0, -1.0)
+      let %36: Real = call real.exp(0.0, -1.0) @57:21
       return %36
     }
   }
-  do call tryReal(f.12)
+  do call tryReal(f.12) @57:1
   funs {
     fun f.13(): Int {
-      let %37: Int = call real.floor(inf)
+      let %37: Int = call real.floor(inf) @58:19
       return %37
     }
   }
-  do call tryInt(f.13)
+  do call tryInt(f.13) @58:1
   funs {
     fun f.14(): Int {
-      let %38: Int = call real.round(negInf)
+      let %38: Int = call real.round(negInf) @59:19
       return %38
     }
   }
-  do call tryInt(f.14)
+  do call tryInt(f.14) @59:1
   funs {
     fun f.15(): Int {
-      let %39: Int = call real.floor(1e+300)
+      let %39: Int = call real.floor(1e+300) @60:19
       return %39
     }
   }
-  do call tryInt(f.15)
-  let %40: Real = prim ^^(0.0, 0.0)
-  do call printReal(%40)
-  let %41: Int = call real.round(2.5)
-  do call printInt(%41)
-  let %42: Int = call real.round(-2.5)
-  do call printInt(%42)
-  let %43: Int = call real.round(0.49999999999999994)
-  do call printInt(%43)
-  let %44: Int = call real.floor(-0.5)
-  do call printInt(%44)
-  let %45: word.T = call word.fromInt(9218868437227405312)
-  let %46: Real = call word.toReal(%45)
-  do call printReal(%46)
+  do call tryInt(f.15) @60:1
+  let %40: Real = prim ^^(0.0, 0.0) @61:11
+  do call printReal(%40) @61:1
+  let %41: Int = call real.round(2.5) @64:10
+  do call printInt(%41) @64:1
+  let %42: Int = call real.round(-2.5) @65:10
+  do call printInt(%42) @65:1
+  let %43: Int = call real.round(0.49999999999999994) @66:10
+  do call printInt(%43) @66:1
+  let %44: Int = call real.floor(-0.5) @67:10
+  do call printInt(%44) @67:1
+  let %45: word.T = call word.fromInt(9218868437227405312) @70:23
+  let %46: Real = call word.toReal(%45) @70:11
+  do call printReal(%46) @70:1
   join k1(r.1: String) {
-    do call printLine(r.1)
-    let negZero: Real = prim **(0.0, -1.0)
-    do call printReal(negZero)
-    let %47: Real = prim --(0.0, 0.0)
-    do call printReal(%47)
-    let %48: Bool = prim is(0.0, negZero)
-    do call printBool(%48)
-    let %49: Bool = prim isnot(0.0, negZero)
-    do call printBool(%49)
+    do call printLine(r.1) @71:1
+    let negZero: Real = prim **(0.0, -1.0) @75:15
+    do call printReal(negZero) @76:1
+    let %47: Real = prim --(0.0, 0.0) @77:11
+    do call printReal(%47) @77:1
+    let %48: Bool = prim is(0.0, negZero) @78:11
+    do call printBool(%48) @78:1
+    let %49: Bool = prim isnot(0.0, negZero) @79:11
+    do call printBool(%49) @79:1
     funs {
       fun same [A::TYPE](x: A, y: A): Bool {
-        let %50: Bool = prim is(x, y)
+        let %50: Bool = prim is(x, y) @80:37
         return %50
       }
     }
-    let %51: Bool = call same [Real](0.0, negZero)
-    do call printBool(%51)
-    let %52: Bool = call hash.identityEqual [Real](0.0, negZero)
-    do call printBool(%52)
-    let %53: word.T = call hash.identityHash [Real](0.0)
-    let %54: word.T = call hash.identityHash [Real](negZero)
-    let %55: Bool = prim is(%53, %54)
-    do call printBool(%55)
-    let m: hashMap.T(Real Int) = type_app hashMap.newIdentityMap [Real Int]
-    let %56: Bool = call hashMap.insert [Real Int](m, 0.0, 1)
-    let %57: Bool = call hashMap.insert [Real Int](m, negZero, 2)
-    let %58: Int = call hashMap.size [Real Int](m)
-    do call printInt(%58)
-    let %59: Bool = call hashMap.contains [Real Int](m, negZero)
-    do call printBool(%59)
-    let third: Real = prim //(1.0, 3.0)
-    let tenth: Real = prim ++(0.1, 0.2)
-    do call printReal(third)
-    do call printReal(tenth)
-    let %60: Real = prim --(0.0, third)
-    do call printReal(%60)
-    do call printReal(123456789.125)
-    do call printReal(1000000000000000.0)
-    do call printReal(1e+16)
-    do call printReal(1.5e+17)
-    do call printReal(0.0001)
-    do call printReal(1e-05)
-    do call printReal(-1.5e-07)
-    let %61: Real = member real.maxReal
-    do call printReal(%61)
-    let %62: word.T = call word.fromInt(1)
-    let %63: Real = call word.toReal(%62)
-    do call printReal(%63)
-    let %64: word.T = call word.fromInt(4503599627370496)
-    let %65: Real = call word.toReal(%64)
-    do call printReal(%65)
-    let %66: Real = prim ^^(2.0, -1022.0)
-    do call printReal(%66)
-    let %67: Real = prim ^^(2.0, 60.0)
-    do call printReal(%67)
+    let %51: Bool = call same [Real](0.0, negZero) @81:11
+    do call printBool(%51) @81:1
+    let %52: Bool = call hash.identityEqual [Real](0.0, negZero) @82:11
+    do call printBool(%52) @82:1
+    let %53: word.T = call hash.identityHash [Real](0.0) @83:11
+    let %54: word.T = call hash.identityHash [Real](negZero) @83:43
+    let %55: Bool = prim is(%53, %54) @83:11
+    do call printBool(%55) @83:1
+    let m: hashMap.T(Real Int) = type_app hashMap.newIdentityMap [Real Int] @84:9
+    let %56: Bool = call hashMap.insert [Real Int](m, 0.0, 1) @85:1
+    let %57: Bool = call hashMap.insert [Real Int](m, negZero, 2) @86:1
+    let %58: Int = call hashMap.size [Real Int](m) @87:10
+    do call printInt(%58) @87:1
+    let %59: Bool = call hashMap.contains [Real Int](m, negZero) @88:11
+    do call printBool(%59) @88:1
+    let third: Real = prim //(1.0, 3.0) @92:13
+    let tenth: Real = prim ++(0.1, 0.2) @93:13
+    do call printReal(third) @94:1
+    do call printReal(tenth) @95:1
+    let %60: Real = prim --(0.0, third) @96:11
+    do call printReal(%60) @96:1
+    do call printReal(123456789.125) @97:1
+    do call printReal(1000000000000000.0) @98:1
+    do call printReal(1e+16) @99:1
+    do call printReal(1.5e+17) @100:1
+    do call printReal(0.0001) @101:1
+    do call printReal(1e-05) @102:1
+    do call printReal(-1.5e-07) @103:1
+    let %61: Real = member real.maxReal @104:11
+    do call printReal(%61) @104:1
+    let %62: word.T = call word.fromInt(1) @105:23
+    let %63: Real = call word.toReal(%62) @105:11
+    do call printReal(%63) @105:1
+    let %64: word.T = call word.fromInt(4503599627370496) @106:23
+    let %65: Real = call word.toReal(%64) @106:11
+    do call printReal(%65) @106:1
+    let %66: Real = prim ^^(2.0, -1022.0) @107:11
+    do call printReal(%66) @107:1
+    let %67: Real = prim ^^(2.0, 60.0) @108:11
+    do call printReal(%67) @108:1
   } in {
-    let %68: Exception = member word.error
+    let %68: Exception = member word.error @72:72
     try catching (%68) {
-      let %69: word.T = call word.fromInt(9221120237041090560)
-      let %70: Real = call word.toReal(%69)
-      let %71: String = call conv.real(%70)
-      jump k1(%71)
+      let %69: word.T = call word.fromInt(9221120237041090560) @72:31
+      let %70: Real = call word.toReal(%69) @72:19
+      let %71: String = call conv.real(%70) @72:9
+      jump k1(%71) @72:5
     } handle (e.2: Exception) {
-      let %72: Bool = prim is(e.2, %68)
-      if %72 {
-        jump k1("word.error")
+      let %72: Bool = prim is(e.2, %68) @72:5
+      if %72 { @72:5
+        jump k1("word.error") @72:5
       } else {
-        reraise e.2
+        reraise e.2 @72:5
       }
     }
   }

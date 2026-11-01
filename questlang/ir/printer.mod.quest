@@ -31,13 +31,16 @@ export
         names: hashMap.T(Int String)
         used: hashMap.T(String Int)
         lines: vector.T(String)
+        (* The unit whose files statements' positions are in, if known *)
+        unit: maybe.T(nodes.Unit)
     end
 
-    let newPrinter(): Printer =
+    let newPrinter(unit: maybe.T(nodes.Unit)): Printer =
         tuple
             let names = hashMap.new(:Int :String intEqual hash.int)
             let used = hashMap.new(:String :Int stringOp.equal hash.string)
             let lines = vector.new(:String)
+            let unit = unit
         end
 
     (* A number as Python writes it, with - for conv's ~ *)
@@ -382,6 +385,21 @@ export
             vector.append(:String p.lines b <> text)
         end
 
+    (* A statement's position, after its first line: @line:col in the unit's
+     * own file, @file:line:col in a merged one, or @+offset, the offset in
+     * the unit, when its files are not known *)
+    let position(p: Printer pos: Int): String =
+        begin
+            let resolved = if maybe.isNone(:nodes.Unit p.unit) then maybe.none(:nodes.SourcePos)
+                else nodes.sourcePos(maybe.unwrap(:nodes.Unit p.unit) pos) end
+            if maybe.isNone(:nodes.SourcePos resolved) then " @+" <> conv.int(pos)
+            else
+                let r = maybe.unwrap(:nodes.SourcePos resolved)
+                " @" <> if r.file is 0 then "" else conv.int(r.file) <> ":" end <> conv.int(r.line) <> ":"
+                    <> conv.int(r.col)
+            end
+        end
+
     let rec body(p: Printer b: nodes.Body depth: Int): Ok =
         for i = 0 upto {vector.length(:Stmt b.statements) - 1} do statement(p vector.get(:Stmt b.statements i) depth) end
 
@@ -427,6 +445,16 @@ export
         end
 
     and statement(p: Printer s: Stmt depth: Int): Ok =
+        begin
+            let first = vector.length(:String p.lines)
+            statementLines(p s depth)
+            let pos = nodes.stmtPos(s)
+            if {pos >= 0} andif {vector.length(:String p.lines) > first} then
+                vector.set(:String p.lines first vector.get(:String p.lines first) <> position(p pos))
+            end
+        end
+
+    and statementLines(p: Printer s: Stmt depth: Int): Ok =
         case s
             when sLet with x then emit(p depth "let " <> decl(p x.v) <> " = " <> op(p x.value) <> through(p walk.opViewMap(x.value)))
             when sVarDecl with x then
@@ -552,7 +580,7 @@ export
 
     let formatUnit(unit: nodes.Unit): String =
         begin
-            let p = newPrinter()
+            let p = newPrinter(maybe.some(:nodes.Unit unit))
             for i = 0 upto {extent unit.imports - 1} do
                 let imp = unit.imports[i]
                 emit(p 0 "import " <> imp.name <> " = " <> quoted(imp.modulePath) <> " : " <> imp.interfacePath)
@@ -621,7 +649,7 @@ export
 
     let formatBody(b: nodes.Body): String =
         begin
-            let p = newPrinter()
+            let p = newPrinter(maybe.none(:nodes.Unit))
             body(p b 0)
             text(p)
         end

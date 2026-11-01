@@ -259,11 +259,11 @@ export
 
     (* The returns of a function's body (not those of the functions it binds),
      * each replaced, in place, by what replaced makes of its value *)
-    let rec returns(b: Body replaced: All(a: Atom) Stmt): Ok =
+    let rec returns(b: Body replaced: All(a: Atom pos: Int) Stmt): Ok =
         for i = 0 upto {vector.length(:Stmt b.statements) - 1} do
             let s = vector.get(:Stmt b.statements i)
             case s
-                when sReturn with x then vector.set(:Stmt b.statements i replaced(x.value))
+                when sReturn with x then vector.set(:Stmt b.statements i replaced(x.value x.pos))
                 else
                     let inner = walk.statementBodies(s)
                     for k = 0 upto {extent inner - 1} do returns(inner[k] replaced) end
@@ -273,16 +273,16 @@ export
     let countReturns(b: Body): Int =
         begin
             let counted = tuple let var n = 0 end
-            returns(b fun(a: Atom): Stmt
+            returns(b fun(a: Atom pos: Int): Stmt
                 begin
                     counted.n := counted.n + 1
-                    option sReturn of Stmt with let var value = a end
+                    option sReturn of Stmt with let var pos = pos let var value = a end
                 end)
             counted.n
         end
 
     let expand(f: nodes.Function typeArgs: Array(model.Type) args: Array(Atom) byRef: Array(maybe.T(Variable))
-        into: maybe.T(Variable) rest: Array(Stmt) labels: clone.Labels): Array(Stmt) =
+        into: maybe.T(Variable) pos: Int rest: Array(Stmt) labels: clone.Labels): Array(Stmt) =
         begin
             let subst = model.newSubst()
             for i = 0 upto {extent f.typeParams - 1} do
@@ -298,7 +298,9 @@ export
                 if {i < extent byRef} andif maybe.isSome(:Variable byRef[i]) then
                     clone.bindVar(c p maybe.unwrap(:Variable byRef[i]))
                 else
-                    vector.append(:Stmt bound nodes.letStmt(clone.fresh(c p) nodes.opOfAtom(args[i])))
+                    let binding = nodes.letStmt(clone.fresh(c p) nodes.opOfAtom(args[i]))
+                    nodes.positionAt(binding pos)
+                    vector.append(:Stmt bound binding)
                 end
             end
             clone.bindAll(c f.body)
@@ -313,14 +315,16 @@ export
                 for i = 0 upto {vector.length(:Stmt body.statements) - 1} do
                     vector.append(:Stmt all vector.get(:Stmt body.statements i))
                 end
-                vector.append(:Stmt all nodes.letStmt(result nodes.opOfAtom(value)))
+                let resultBinding = nodes.letStmt(result nodes.opOfAtom(value))
+                nodes.positionAt(resultBinding pos)
+                vector.append(:Stmt all resultBinding)
                 for i = 0 upto {extent rest - 1} do vector.append(:Stmt all rest[i]) end
                 vector.toArray(:Stmt all)
             else
                 labels.count := labels.count + 1
                 let label = "inlined" <> conv.int(labels.count)
-                returns(body fun(a: Atom): Stmt
-                    option sJump of Stmt with let label = label let var args = array of a end end)
+                returns(body fun(a: Atom pos: Int): Stmt
+                    option sJump of Stmt with let var pos = pos let label = label let var args = array of a end end)
                 let inner = vector.copy(:Stmt bound)
                 for i = 0 upto {vector.length(:Stmt body.statements) - 1} do
                     vector.append(:Stmt inner vector.get(:Stmt body.statements i))

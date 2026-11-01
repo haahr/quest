@@ -447,6 +447,43 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
 - **A bitset library** (`collections/bitset`) for liveness, which `lib/` lacks. A new library reaches `questlang/`
   only after a release (release-compiler.md §2), so it lands in step 3.
 
+### 3.16. Line tables
+
+Native code carries a DWARF line table, so that lldb can break on a Quest line and show the lines of a backtrace's
+frames (§1: lines only, no variable locations). A position is attached at each level and carried to the next:
+
+- **IR statements.** Every statement that makes code where it is (a let, a store, a branch, a jump, a return, a raise)
+  has the source offset of the expression or binding lowering made it from, in the unit's numbering of files
+  (`nodes.stmtPos`, [ir.md](ir.md) §5), or none. Lowering sets the position as it enters each expression and binding,
+  so a nested call has its own column. Passes keep the positions of the statements they copy; a statement a pass makes
+  in place of another takes that one's (a jump for a return, a return for a jump, the assignments and the `continue`
+  that contification makes of a tail call), and inlining gives the parameters' bindings and the result's the call's
+  position, the inlined body keeping its own. A function's return has none of its own.
+- **The SSA.** The builder resolves a statement's offset to a file, line, and column, and every instruction and
+  terminator it appends from then on has that position (`Inst.loc`, `Block.termLoc`, [ssa.md](ssa.md) §2), until the
+  next statement with a position; the unit lists its files' absolute paths (`Unit.files`).
+- **Machine code.** Selection records each instruction's position beside its operation (`Selection.locs`), so that
+  register allocation, which numbers instructions, sees none of it. When the function's code is laid out, a
+  `.loc file line column` directive (`minst.opLoc`) goes before each instruction whose position differs from the last
+  one given, but for a constant or an address that allocation makes again where it is used, which keeps its
+  definition's position and would move the line back. The directives come after allocation and the choice of blocks to
+  pass over, so the code is the same with or without them.
+- **The unit.** The assembly declares each file (`.file 1 "dir" "name"`), and the assembler writes the line table from
+  the directives. It does not write the debugging information a debugger reaches the table through when the input has
+  its own `.loc` directives, so `codegen/arm64/asm` writes it: a compile unit for the unit's own file, its directory as
+  the compilation directory, with a subprogram for each function, from its symbol to a label past its code, and the
+  language code 0x8000, from the range DWARF leaves to users. dsymutil and lldb place each function's lines at its
+  address through the subprograms.
+
+lldb finds a separately built program's debugging information through the debug map the linker writes, in the
+objects in the build directory, which must stay there. A program assembled and linked in one step (`--whole-program`)
+has its object only as a temporary, so the driver passes `-g` to that step, and clang runs dsymutil, which writes
+`program.dSYM` beside the binary; the tests' temporary binaries are linked without it.
+
+What the table cannot show: code that the inliner copies keeps its source's lines, so stepping into an inlined call
+shows the callee's lines without a frame for it; and a line whose code is gone (a constant propagated, a jump to the
+next block) has no address, so a breakpoint set on it resolves to the next line that has one.
+
 ## 4. Testing
 
 - **The shared goldens** of what programs do run with `--backend ssac` and `--backend arm64` too (runner modes, as
@@ -611,9 +648,10 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
 14. **Line tables** (§1). *Done when* native code has `.file` and `.loc` directives for its source lines, and lldb
     shows a breakpoint's Quest line and a backtrace's lines in a test program.
 
-    *Deferred* (2026-10-31, by the user) until the backend improvements, which rewrite the SSA's and the machine
-    instructions this step would extend, are done: a task in tasklist.md, which also records that positions must come
-    from every statement, not only from the operations that can raise.
+    *Done* (2026-10-31) as §3.16 describes, after the backend improvements: every IR statement that makes code has a
+    position, printed in the IR's and the SSA's dumps (so their goldens changed), carried to the SSA's instructions and
+    to `.loc` directives, with the compile unit's debugging information the assembler leaves out.
+    `self-hosted/line_tables` (testing.md §2.3) debugs a recursive program, built separately and whole, with lldb.
 15. **`ssac` as the C backend** (§1). Measure `ssac`'s code and compile times against the C printer's, with the
     SSA's promotion of stack slots (§6) and whatever else the comparison needs. If `ssac` is close enough, it becomes
     the self-hosted compiler's C backend: `--backend c` selects it, the C printer and its goldens are retired, and

@@ -4,98 +4,98 @@ import dynamic = "dynamic" : Dynamic
 main {
   funs {
     fun p(n: Int): Ok {
-      let %1: writer.T = member writer.output
-      let %2: String = call conv.int(n)
-      let %3: String = prim <>(%2, "\n")
-      let %4: Ok = call writer.putString(%1, %3)
+      let %1: writer.T = member writer.output @8:38
+      let %2: String = call conv.int(n) @8:52
+      let %3: String = prim <>(%2, "\n") @8:52
+      let %4: Ok = call writer.putString(%1, %3) @8:21
       return %4
     }
   }
-  let big: Big = record(a = 1, b = 2, c = 3)
-  let outerBig: OuterBig = record(inner = big, tag = 10)
-  let outerSmall: OuterSmall = outerBig
-  let %5: Small = record_field(outerSmall, inner)
-  let %6: Int = record_field(%5, c)
-  do call p(%6)
+  let big: Big = record(a = 1, b = 2, c = 3) @12:16
+  let outerBig: OuterBig = record(inner = big, tag = 10) @17:26
+  let outerSmall: OuterSmall = outerBig @18:30
+  let %5: Small = record_field(outerSmall, inner) @19:3
+  let %6: Int = record_field(%5, c) @19:3
+  do call p(%6) @19:1
   funs {
     fun innerC(o: OuterSmall): Int {
-      let %7: Small = record_field(o, inner)
-      let %8: Int = record_field(%7, c)
-      let %9: Int = record_field(o, tag)
-      let %10: Int = prim +(%8, %9)
+      let %7: Small = record_field(o, inner) @20:34
+      let %8: Int = record_field(%7, c) @20:34
+      let %9: Int = record_field(o, tag) @20:46
+      let %10: Int = prim +(%8, %9) @20:34
       return %10
     }
   }
-  let %11: Int = call innerC(outerBig)
-  do call p(%11)
-  let deep: DeepSmall = record(outer = outerBig)
-  let %12: OuterSmall = record_field(deep, outer)
-  let %13: Small = record_field(%12, inner)
-  let %14: Int = record_field(%13, c)
-  do call p(%14)
-  let %15: VSmall = variant(two, 7)
-  let hasVBig: HasVBig = record(v = %15)
+  let %11: Int = call innerC(outerBig) @21:3
+  do call p(%11) @21:1
+  let deep: DeepSmall = record(outer = outerBig) @26:23
+  let %12: OuterSmall = record_field(deep, outer) @27:3
+  let %13: Small = record_field(%12, inner) @27:3
+  let %14: Int = record_field(%13, c) @27:3
+  do call p(%14) @27:1
+  let %15: VSmall = variant(two, 7) @34:35
+  let hasVBig: HasVBig = record(v = %15) @34:24
   join k1(r: Int) {
-    do call p(r)
-    let r.1: Big = big
-    let %16: Tuple r: Big end = tuple(r.1)
-    let %17: OSmall = option(some, %16)
-    let hasOBig: HasOBig = record(o = %17)
+    do call p(r) @35:1
+    let r.1: Big = big @42:62
+    let %16: Tuple r: Big end = tuple(r.1) @42:35
+    let %17: OSmall = option(some, %16) @42:35
+    let hasOBig: HasOBig = record(o = %17) @42:24
     join k2(r.2: Int) {
-      do call p(r.2)
-      let r.3: Big = big
-      let n.1: Int = 4
-      let %18: Tuple r: Small n: Int end = tuple(r.3, n.1)
-      let hasPairSmall: HasPairSmall = record(pair = %18)
-      let %19: Tuple r: Small n: Int end = record_field(hasPairSmall, pair)
-      let %20: Small = tuple_field(%19, 0)
-      let %21: Int = record_field(%20, c)
-      let %22: Tuple r: Small n: Int end = record_field(hasPairSmall, pair)
-      let %23: Int = tuple_field(%22, 1)
-      let %24: Int = prim +(%21, %23)
-      do call p(%24)
-      let d: T = call dynamic.new [OuterSmall](outerBig)
-      let fromDynamic: OuterSmall = call dynamic.be [OuterSmall](d)
-      let %25: Small = record_field(fromDynamic, inner)
-      let %26: Int = record_field(%25, c)
-      do call p(%26)
-      let %27: writer.T = member writer.output
-      do call dynamic.extern(%27, d)
-      let %28: writer.T = member writer.output
-      do call writer.putString(%28, "\n")
+      do call p(r.2) @43:1
+      let r.3: Big = big @48:54
+      let n.1: Int = 4 @48:58
+      let %18: Tuple r: Small n: Int end = tuple(r.3, n.1) @48:48
+      let hasPairSmall: HasPairSmall = record(pair = %18) @48:34
+      let %19: Tuple r: Small n: Int end = record_field(hasPairSmall, pair) @49:3
+      let %20: Small = tuple_field(%19, 0) @49:3
+      let %21: Int = record_field(%20, c) @49:3
+      let %22: Tuple r: Small n: Int end = record_field(hasPairSmall, pair) @49:27
+      let %23: Int = tuple_field(%22, 1) @49:27
+      let %24: Int = prim +(%21, %23) @49:3
+      do call p(%24) @49:1
+      let d: T = call dynamic.new [OuterSmall](outerBig) @52:9
+      let fromDynamic: OuterSmall = call dynamic.be [OuterSmall](d) @53:31
+      let %25: Small = record_field(fromDynamic, inner) @54:3
+      let %26: Int = record_field(%25, c) @54:3
+      do call p(%26) @54:1
+      let %27: writer.T = member writer.output @55:16
+      do call dynamic.extern(%27, d) @55:1
+      let %28: writer.T = member writer.output @56:18
+      do call writer.putString(%28, "\n") @56:1
       funs {
         fun first [A::TYPE](x: A, y: A): A {
           return x
         }
       }
-      let firstSmall: OuterSmall = call first [OuterSmall](outerBig, outerSmall)
-      let %29: Small = record_field(firstSmall, inner)
-      let %30: Int = record_field(%29, c)
-      let %31: Int = record_field(firstSmall, tag)
-      let %32: Int = prim +(%30, %31)
-      do call p(%32)
+      let firstSmall: OuterSmall = call first [OuterSmall](outerBig, outerSmall) @60:30
+      let %29: Small = record_field(firstSmall, inner) @61:3
+      let %30: Int = record_field(%29, c) @61:3
+      let %31: Int = record_field(firstSmall, tag) @61:24
+      let %32: Int = prim +(%30, %31) @61:3
+      do call p(%32) @61:1
     } in {
-      let %33: OBig = record_field(hasOBig, o)
-      switch tag(%33) {
+      let %33: OBig = record_field(hasOBig, o) @43:8
+      switch tag(%33) { @43:3
         case some (s: Tuple r: Small end): {
-          let %34: Small = tuple_field(s, 0)
-          let %35: Int = record_field(%34, c)
-          jump k2(%35)
+          let %34: Small = tuple_field(s, 0) @43:40
+          let %35: Int = record_field(%34, c) @43:40
+          jump k2(%35) @43:3
         }
         case none, other: {
-          jump k2(0)
+          jump k2(0) @43:3
         }
       }
     }
   } in {
-    let %36: VBig = record_field(hasVBig, v)
-    switch tag(%36) {
+    let %36: VBig = record_field(hasVBig, v) @35:8
+    switch tag(%36) { @35:3
       case one (n.2: Int): {
-        let %37: Int = prim -(0, n.2)
-        jump k1(%37)
+        let %37: Int = prim -(0, n.2) @35:39
+        jump k1(%37) @35:3
       }
       case two (n.3: Int): {
-        jump k1(n.3)
+        jump k1(n.3) @35:3
       }
     }
   }

@@ -29,4 +29,19 @@ export
     (* The directives that begin and end a unit *)
     unitStart: Array(String)
     unitEnd: Array(String)
+
+    (* The line table's source files (docs/arm64.md section 3.16): a .file
+     * directive for each absolute path, numbered from 1, which minst's loc
+     * instructions name; none for an empty path, a file not known *)
+    files(paths: Array(String)): Array(String)
+    (* A function, for the debugging information: its symbol, and the label
+     * just past its code *)
+    Def DebugFunction = Tuple symbol: String endLabel: String end
+    (* The DWARF sections a debugger reads the line table through, which the
+     * assembler, given .loc directives, does not write itself: a compile unit
+     * for the unit's code, named for its file (an absolute path), with a
+     * subprogram for each function, so that dsymutil and lldb place each
+     * function's lines at its address; and the line table's section, which
+     * the assembler fills from the .loc directives *)
+    debugInfo(file: String functions: Array(DebugFunction)): Array(String)
 end

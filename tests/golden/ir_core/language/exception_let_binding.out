@@ -2,122 +2,122 @@ import writer = "writer" : Writer
 import conv = "conv" : Conv
 import dynamic = "dynamic" : Dynamic
 main {
-  let wOut: writer.T = member writer.output
+  let wOut: writer.T = member writer.output @7:12
   funs {
     fun printInt(x: Int): Ok {
-      let %1: String = call conv.int(x)
-      do call writer.putString(wOut, %1)
-      let %2: Ok = call writer.putString(wOut, "\n")
+      let %1: String = call conv.int(x) @10:31
+      do call writer.putString(wOut, %1) @10:9
+      let %2: Ok = call writer.putString(wOut, "\n") @11:9
       return %2
     }
   }
-  let Boom: Exception(Int) = exception Boom: Int
-  let e: Exception(Int) = Boom
-  let d1: T = call dynamic.new [Exception(Int)](Boom)
-  let d2: T = call dynamic.new [Exception(Int)](e)
+  let Boom: Exception(Int) = exception Boom: Int @15:9
+  let e: Exception(Int) = Boom @15:9
+  let d1: T = call dynamic.new [Exception(Int)](Boom) @16:10
+  let d2: T = call dynamic.new [Exception(Int)](e) @17:10
   join k1(r: Int) {
-    do call printInt(r)
+    do call printInt(r) @19:1
     join k2(r.1: Int) {
-      do call printInt(r.1)
+      do call printInt(r.1) @20:1
       join k3(r.2: Int) {
-        do call printInt(r.2)
-        let Quiet: Exception = exception Quiet
-        let d3: T = call dynamic.new [Exception](Quiet)
+        do call printInt(r.2) @21:1
+        let Quiet: Exception = exception Quiet @24:1
+        let d3: T = call dynamic.new [Exception](Quiet) @24:10
         join k4(r.3: Int) {
-          do call printInt(r.3)
-          let Local: Exception(Int) = exception Local: Int
-          let local: Exception(Int) = Local
+          do call printInt(r.3) @25:1
+          let Local: Exception(Int) = exception Local: Int @30:21
+          let local: Exception(Int) = Local @30:21
           join k5(r4: Int) {
-            do call printInt(r4)
+            do call printInt(r4) @33:1
             funs {
               fun f(x.1: Int): Int {
-                let Inner: Exception(Int) = exception Inner: Int
-                let inner: Exception(Int) = Inner
+                let Inner: Exception(Int) = exception Inner: Int @38:21
+                let inner: Exception(Int) = Inner @38:21
                 join k6(r.4: Int) {
                   return r.4
                 } in {
                   try catching (Inner) {
-                    raise inner with x.1
+                    raise inner with x.1 @39:13
                   } handle (e.1: Exception) {
-                    let %3: Bool = prim is(e.1, Inner)
-                    if %3 {
-                      let n: Int = exception_payload(e.1)
-                      let %4: Int = prim *(n, 100)
-                      jump k6(%4)
+                    let %3: Bool = prim is(e.1, Inner) @39:9
+                    if %3 { @39:9
+                      let n: Int = exception_payload(e.1) @39:9
+                      let %4: Int = prim *(n, 100) @39:66
+                      jump k6(%4) @39:9
                     } else {
-                      reraise e.1
+                      reraise e.1 @39:9
                     }
                   }
                 }
               }
             }
-            let %5: Int = call f(3)
-            do call printInt(%5)
+            let %5: Int = call f(3) @41:10
+            do call printInt(%5) @41:1
           } in {
             try catching (local) {
-              raise Local with 5
+              raise Local with 5 @31:13
             } handle (e.2: Exception) {
-              let %6: Bool = prim is(e.2, local)
-              if %6 {
-                let n.1: Int = exception_payload(e.2)
-                let %7: Int = prim *(n.1, 10)
-                jump k5(%7)
+              let %6: Bool = prim is(e.2, local) @31:9
+              if %6 { @31:9
+                let n.1: Int = exception_payload(e.2) @31:9
+                let %7: Int = prim *(n.1, 10) @31:66
+                jump k5(%7) @31:9
               } else {
-                reraise e.2
+                reraise e.2 @31:9
               }
             }
           }
         } in {
           try catching (Quiet) {
-            raise Quiet
+            raise Quiet @25:14
           } handle (e.3: Exception) {
-            let %8: Bool = prim is(e.3, Quiet)
-            if %8 {
-              jump k4(42)
+            let %8: Bool = prim is(e.3, Quiet) @25:10
+            if %8 { @25:10
+              jump k4(42) @25:10
             } else {
-              reraise e.3
+              reraise e.3 @25:10
             }
           }
         }
       } in {
         try catching (e) {
-          raise Boom with 9
+          raise Boom with 9 @21:14
         } handle (e.4: Exception) {
-          let %9: Bool = prim is(e.4, e)
-          if %9 {
-            let n.2: Int = exception_payload(e.4)
-            let %10: Int = prim +(n.2, 3)
-            jump k3(%10)
+          let %9: Bool = prim is(e.4, e) @21:10
+          if %9 { @21:10
+            let n.2: Int = exception_payload(e.4) @21:10
+            let %10: Int = prim +(n.2, 3) @21:55
+            jump k3(%10) @21:10
           } else {
-            reraise e.4
+            reraise e.4 @21:10
           }
         }
       }
     } in {
       try catching (Boom) {
-        raise e with 8
+        raise e with 8 @20:14
       } handle (e.5: Exception) {
-        let %11: Bool = prim is(e.5, Boom)
-        if %11 {
-          let n.3: Int = exception_payload(e.5)
-          let %12: Int = prim +(n.3, 2)
-          jump k2(%12)
+        let %11: Bool = prim is(e.5, Boom) @20:10
+        if %11 { @20:10
+          let n.3: Int = exception_payload(e.5) @20:10
+          let %12: Int = prim +(n.3, 2) @20:55
+          jump k2(%12) @20:10
         } else {
-          reraise e.5
+          reraise e.5 @20:10
         }
       }
     }
   } in {
     try catching (Boom) {
-      raise Boom with 7
+      raise Boom with 7 @19:14
     } handle (e.6: Exception) {
-      let %13: Bool = prim is(e.6, Boom)
-      if %13 {
-        let n.4: Int = exception_payload(e.6)
-        let %14: Int = prim +(n.4, 1)
-        jump k1(%14)
+      let %13: Bool = prim is(e.6, Boom) @19:10
+      if %13 { @19:10
+        let n.4: Int = exception_payload(e.6) @19:10
+        let %14: Int = prim +(n.4, 1) @19:58
+        jump k1(%14) @19:10
       } else {
-        reraise e.6
+        reraise e.6 @19:10
       }
     }
   }

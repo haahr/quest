@@ -390,43 +390,43 @@ export
 
     and copyStmt(c: Cloner s: Stmt): Stmt =
         case s
-            when sLet with x then option sLet of Stmt with let var v = var1(c x.v) let var value = copyOp(c x.value) end
-            when sVarDecl with x then option sVarDecl of Stmt with let var v = var1(c x.v) let var init = optAtom(c x.init) end
-            when sAssign with x then option sAssign of Stmt with let var v = var1(c x.v) let var value = atom(c x.value) end
-            when sStoreAt with x then option sStoreAt of Stmt with let var value = atom(c x.value) let var address = atom(c x.address) end
+            when sLet with x then option sLet of Stmt with let var pos = x.pos let var v = var1(c x.v) let var value = copyOp(c x.value) end
+            when sVarDecl with x then option sVarDecl of Stmt with let var pos = x.pos let var v = var1(c x.v) let var init = optAtom(c x.init) end
+            when sAssign with x then option sAssign of Stmt with let var pos = x.pos let var v = var1(c x.v) let var value = atom(c x.value) end
+            when sStoreAt with x then option sStoreAt of Stmt with let var pos = x.pos let var value = atom(c x.value) let var address = atom(c x.address) end
             when sStoreField with x then
                 option sStoreField of Stmt with
-                    let var value = atom(c x.value) let var base = atom(c x.base) let name = x.name let var viewMap = optVar(c x.viewMap)
+                    let var pos = x.pos let var value = atom(c x.value) let var base = atom(c x.base) let name = x.name let var viewMap = optVar(c x.viewMap)
                 end
             when sStoreComponent with x then
                 option sStoreComponent of Stmt with
-                    let var value = atom(c x.value) let var base = atom(c x.base) let index = x.index let var access = x.access
+                    let var pos = x.pos let var value = atom(c x.value) let var base = atom(c x.base) let index = x.index let var access = x.access
                     let var viewMap = optVar(c x.viewMap)
                 end
             when sStoreElement with x then
                 option sStoreElement of Stmt with
-                    let var value = atom(c x.value) let var base = atom(c x.base) let var index = atom(c x.index) let offset = x.offset
+                    let var pos = x.pos let var value = atom(c x.value) let var base = atom(c x.base) let var index = atom(c x.index) let offset = x.offset
                 end
-            when sDo with x then option sDo of Stmt with let var value = copyOp(c x.value) end
+            when sDo with x then option sDo of Stmt with let var pos = x.pos let var value = copyOp(c x.value) end
             when sFuns with x then
                 let functions = vector.new(:nodes.Function)
                 for i = 0 upto {extent x.functions - 1} do vector.append(:nodes.Function functions copyFunction(c x.functions[i])) end
                 option sFuns of Stmt with let var functions = vector.toArray(:nodes.Function functions) let recursive = x.recursive end
             when sLetRec with x then option sLetRec of Stmt with let var vars = vars(c x.vars) let var body = copyBody(c x.body) end
             when sIf with x then
-                option sIf of Stmt with let var cond = atom(c x.cond) let var thenBody = copyBody(c x.thenBody) let var elseBody = copyBody(c x.elseBody) end
+                option sIf of Stmt with let var pos = x.pos let var cond = atom(c x.cond) let var thenBody = copyBody(c x.thenBody) let var elseBody = copyBody(c x.elseBody) end
             when sSwitch with x then
                 let cases = vector.new(:nodes.Case)
                 for i = 0 upto {extent x.cases - 1} do vector.append(:nodes.Case cases copyCase(c x.cases[i])) end
                 option sSwitch of Stmt with
-                    let var value = atom(c x.value) let var cases = vector.toArray(:nodes.Case cases) let var elseBody = optBody(c x.elseBody)
+                    let var pos = x.pos let var value = atom(c x.value) let var cases = vector.toArray(:nodes.Case cases) let var elseBody = optBody(c x.elseBody)
                     let var access = x.access let var viewMap = optVar(c x.viewMap)
                 end
             when sInspect with x then
                 let cases = vector.new(:nodes.InspectCase)
                 for i = 0 upto {extent x.cases - 1} do vector.append(:nodes.InspectCase cases copyInspectCase(c x.cases[i])) end
                 option sInspect of Stmt with
-                    let var value = atom(c x.value) let var cases = vector.toArray(:nodes.InspectCase cases)
+                    let var pos = x.pos let var value = atom(c x.value) let var cases = vector.toArray(:nodes.InspectCase cases)
                     let var elseBody = optBody(c x.elseBody) let autoType = optTy(c x.autoType) let offset = x.offset
                     let var witness = if maybe.isSome(:nodes.DescriptorParam x.witness) then
                         let w = maybe.unwrap(:nodes.DescriptorParam x.witness)
@@ -448,16 +448,16 @@ export
                 end
             when sEcho with x then
                 option sEcho of Stmt with
-                    let var value = atom(c x.value) let type = ty(c x.type) let prefix = x.prefix let var descriptor = optDescriptor(c x.descriptor)
+                    let var pos = x.pos let var value = atom(c x.value) let type = ty(c x.type) let prefix = x.prefix let var descriptor = optDescriptor(c x.descriptor)
                 end
             when sEchoText with x then option sEchoText of Stmt with let text = x.text end
-            when sReturn with x then option sReturn of Stmt with let var value = atom(c x.value) end
-            when sJump with x then option sJump of Stmt with let label = label1(c x.label) let var args = atoms(c x.args) end
-            when sBreak with x then option sBreak of Stmt with let label = label1(c x.label) end
-            when sContinue with x then option sContinue of Stmt with let label = label1(c x.label) end
+            when sReturn with x then option sReturn of Stmt with let var pos = x.pos let var value = atom(c x.value) end
+            when sJump with x then option sJump of Stmt with let var pos = x.pos let label = label1(c x.label) let var args = atoms(c x.args) end
+            when sBreak with x then option sBreak of Stmt with let var pos = x.pos let label = label1(c x.label) end
+            when sContinue with x then option sContinue of Stmt with let var pos = x.pos let label = label1(c x.label) end
             when sRaise with x then
-                option sRaise of Stmt with let var exc = atom(c x.exc) let var payload = optAtom(c x.payload) let offset = x.offset end
-            when sReraise with x then option sReraise of Stmt with let var exc = var1(c x.exc) end
+                option sRaise of Stmt with let var pos = x.pos let var exc = atom(c x.exc) let var payload = optAtom(c x.payload) let offset = x.offset end
+            when sReraise with x then option sReraise of Stmt with let var pos = x.pos let var exc = var1(c x.exc) end
             when sUnreachable then s
         end
 

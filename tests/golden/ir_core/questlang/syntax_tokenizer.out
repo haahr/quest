@@ -5,109 +5,109 @@ import tokenizer = "questlang/syntax/tokenizer" : questlang/syntax/Tokenizer
 import writer = "writer" : Writer
 import conv = "conv" : Conv
 main {
-  let wOut: writer.T = member writer.output
+  let wOut: writer.T = member writer.output @12:12
   funs {
     fun printStr(s: String): Ok {
-      do call writer.putString(wOut, s)
-      let %1: Ok = call writer.putString(wOut, "\n")
+      do call writer.putString(wOut, s) @16:9
+      let %1: Ok = call writer.putString(wOut, "\n") @17:9
       return %1
     }
   }
   funs {
     fun printInt(n: Int): Ok {
-      let %2: String = call conv.int(n)
-      let %3: Ok = call printStr(%2)
+      let %2: String = call conv.int(n) @21:14
+      let %3: Ok = call printStr(%2) @21:5
       return %3
     }
   }
   funs {
     fun printBool(b: Bool): Ok {
-      let %4: String = call conv.bool(b)
-      let %5: Ok = call printStr(%4)
+      let %4: String = call conv.bool(b) @24:14
+      let %5: Ok = call printStr(%4) @24:5
       return %5
     }
   }
-  let %6: String = prim <>("    else\n", "        { n * fact(n - 1) };\n")
-  let %7: String = prim <>("        1\n", %6)
-  let %8: String = prim <>("    if n <= 1 then\n", %7)
-  let %9: String = prim <>("let rec fact(n: Int): Int =\n", %8)
-  let code1: String = prim <>("(* Sample Quest program *)\n", %9)
-  let sm1: location.SourceMap = call location.newSourceMap("fact.quest", code1)
-  let bag1: diagbag.T = call diagbag.new()
-  let tk1: tokenizer.T = call tokenizer.new(sm1, bag1)
-  let allTokens: vector.T(tokens.Token) = call tokenizer.tokenizeAll(tk1)
-  let dump1: String = call tokenizer.formatDump(allTokens, sm1, false)
-  do call printStr(dump1)
-  let %10: Bool = call diagbag.hasErrors(bag1)
-  do call printBool(%10)
-  let %11: Int = call diagbag.errorCount(bag1)
-  do call printInt(%11)
-  let code2: String = "let x = 42;"
-  let sm2: location.SourceMap = call location.newSourceMap("peek.quest", code2)
-  let bag2: diagbag.T = call diagbag.new()
-  let tk2: tokenizer.T = call tokenizer.new(sm2, bag2)
-  let p1: tokens.Token = call tokenizer.peekToken(tk2)
-  let %12: TokenKind = tuple_field(p1, 0)
-  let %13: String = call tokens.tokenKindName(%12)
-  do call printStr(%13)
-  let %14: String = tuple_field(p1, 1)
-  do call printStr(%14)
-  let t1: tokens.Token = call tokenizer.nextToken(tk2)
-  let %15: TokenKind = tuple_field(t1, 0)
-  let %16: String = call tokens.tokenKindName(%15)
-  do call printStr(%16)
-  let %17: String = tuple_field(t1, 1)
-  do call printStr(%17)
-  let p2: tokens.Token = call tokenizer.peekToken(tk2)
-  let %18: TokenKind = tuple_field(p2, 0)
-  let %19: String = call tokens.tokenKindName(%18)
-  do call printStr(%19)
-  let %20: String = tuple_field(p2, 1)
-  do call printStr(%20)
-  let t2: tokens.Token = call tokenizer.nextToken(tk2)
-  let %21: TokenKind = tuple_field(t2, 0)
-  let %22: String = call tokens.tokenKindName(%21)
-  do call printStr(%22)
-  let %23: String = tuple_field(t2, 1)
-  do call printStr(%23)
-  let %24: String = prim <>("(* outer (* nested level 2 (* nested 3 *) *) back *)\n", "ident_1 _validIdent == !=\n")
-  let %25: String = prim <>("\"hello\" \"with \\\"quotes\\\" and \\n newline\"\n", %24)
-  let %26: String = prim <>("'a' '\\n' '\\t' '\\'' '\\\\' '\\x41' '\\065'\n", %25)
-  let code3: String = prim <>("0 42 ~100 3.14 1.5e-3 ~2.0E+2\n", %26)
-  let sm3: location.SourceMap = call location.newSourceMap("literals.quest", code3)
-  let bag3: diagbag.T = call diagbag.new()
-  let tk3: tokenizer.T = call tokenizer.new(sm3, bag3)
-  let tokens3: vector.T(tokens.Token) = call tokenizer.tokenizeAll(tk3)
-  let %27: String = call tokenizer.formatDump(tokens3, sm3, false)
-  do call printStr(%27)
-  let %28: Bool = call diagbag.hasErrors(bag3)
-  do call printBool(%28)
-  let %29: String = prim <>("'too long'\n", "let final = 3;\n")
-  let %30: String = prim <>("'\\z' (* invalid char escape *)\n", %29)
-  let %31: String = prim <>("let alsoValid = 2;\n", %30)
-  let %32: String = prim <>("\"unclosed string literal\n", %31)
-  let codeErr: String = prim <>("let valid = 1;\n", %32)
-  let smErr: location.SourceMap = call location.newSourceMap("error_recovery.quest", codeErr)
-  let bagErr: diagbag.T = call diagbag.new()
-  let tkErr: tokenizer.T = call tokenizer.new(smErr, bagErr)
-  let tokensErr: vector.T(tokens.Token) = call tokenizer.tokenizeAll(tkErr)
-  let %33: String = call tokenizer.formatDump(tokensErr, smErr, false)
-  do call printStr(%33)
-  let %34: Bool = call diagbag.hasErrors(bagErr)
-  do call printBool(%34)
-  let %35: Int = call diagbag.errorCount(bagErr)
-  do call printInt(%35)
-  do call printStr("--- Diagnostics Rendered ---")
-  do call diagbag.renderAll(bagErr, smErr, wOut)
-  let codeRange: String = "'\\255' '\\256' \"\\xff\\xc3\\xa9 caf\u00c3\u00a9\"\n"
-  let smRange: location.SourceMap = call location.newSourceMap("byte_range.quest", codeRange)
-  let bagRange: diagbag.T = call diagbag.new()
-  let tkRange: tokenizer.T = call tokenizer.new(smRange, bagRange)
-  let tokensRange: vector.T(tokens.Token) = call tokenizer.tokenizeAll(tkRange)
-  let %36: String = call tokenizer.formatDump(tokensRange, smRange, false)
-  do call printStr(%36)
-  let %37: Int = call diagbag.errorCount(bagRange)
-  do call printInt(%37)
-  do call diagbag.renderAll(bagRange, smRange, wOut)
+  let %6: String = prim <>("    else\n", "        { n * fact(n - 1) };\n") @35:5
+  let %7: String = prim <>("        1\n", %6) @34:5
+  let %8: String = prim <>("    if n <= 1 then\n", %7) @33:5
+  let %9: String = prim <>("let rec fact(n: Int): Int =\n", %8) @32:5
+  let code1: String = prim <>("(* Sample Quest program *)\n", %9) @31:5
+  let sm1: location.SourceMap = call location.newSourceMap("fact.quest", code1) @38:11
+  let bag1: diagbag.T = call diagbag.new() @39:12
+  let tk1: tokenizer.T = call tokenizer.new(sm1, bag1) @40:11
+  let allTokens: vector.T(tokens.Token) = call tokenizer.tokenizeAll(tk1) @42:17
+  let dump1: String = call tokenizer.formatDump(allTokens, sm1, false) @43:13
+  do call printStr(dump1) @44:1
+  let %10: Bool = call diagbag.hasErrors(bag1) @45:11
+  do call printBool(%10) @45:1
+  let %11: Int = call diagbag.errorCount(bag1) @46:10
+  do call printInt(%11) @46:1
+  let code2: String = "let x = 42;" @52:13
+  let sm2: location.SourceMap = call location.newSourceMap("peek.quest", code2) @53:11
+  let bag2: diagbag.T = call diagbag.new() @54:12
+  let tk2: tokenizer.T = call tokenizer.new(sm2, bag2) @55:11
+  let p1: tokens.Token = call tokenizer.peekToken(tk2) @57:10
+  let %12: TokenKind = tuple_field(p1, 0) @58:31
+  let %13: String = call tokens.tokenKindName(%12) @58:10
+  do call printStr(%13) @58:1
+  let %14: String = tuple_field(p1, 1) @59:10
+  do call printStr(%14) @59:1
+  let t1: tokens.Token = call tokenizer.nextToken(tk2) @61:10
+  let %15: TokenKind = tuple_field(t1, 0) @62:31
+  let %16: String = call tokens.tokenKindName(%15) @62:10
+  do call printStr(%16) @62:1
+  let %17: String = tuple_field(t1, 1) @63:10
+  do call printStr(%17) @63:1
+  let p2: tokens.Token = call tokenizer.peekToken(tk2) @65:10
+  let %18: TokenKind = tuple_field(p2, 0) @66:31
+  let %19: String = call tokens.tokenKindName(%18) @66:10
+  do call printStr(%19) @66:1
+  let %20: String = tuple_field(p2, 1) @67:10
+  do call printStr(%20) @67:1
+  let t2: tokens.Token = call tokenizer.nextToken(tk2) @69:10
+  let %21: TokenKind = tuple_field(t2, 0) @70:31
+  let %22: String = call tokens.tokenKindName(%21) @70:10
+  do call printStr(%22) @70:1
+  let %23: String = tuple_field(t2, 1) @71:10
+  do call printStr(%23) @71:1
+  let %24: String = prim <>("(* outer (* nested level 2 (* nested 3 *) *) back *)\n", "ident_1 _validIdent == !=\n") @81:5
+  let %25: String = prim <>("\"hello\" \"with \\\"quotes\\\" and \\n newline\"\n", %24) @80:5
+  let %26: String = prim <>("'a' '\\n' '\\t' '\\'' '\\\\' '\\x41' '\\065'\n", %25) @79:5
+  let code3: String = prim <>("0 42 ~100 3.14 1.5e-3 ~2.0E+2\n", %26) @78:5
+  let sm3: location.SourceMap = call location.newSourceMap("literals.quest", code3) @84:11
+  let bag3: diagbag.T = call diagbag.new() @85:12
+  let tk3: tokenizer.T = call tokenizer.new(sm3, bag3) @86:11
+  let tokens3: vector.T(tokens.Token) = call tokenizer.tokenizeAll(tk3) @88:15
+  let %27: String = call tokenizer.formatDump(tokens3, sm3, false) @89:10
+  do call printStr(%27) @89:1
+  let %28: Bool = call diagbag.hasErrors(bag3) @90:11
+  do call printBool(%28) @90:1
+  let %29: String = prim <>("'too long'\n", "let final = 3;\n") @101:5
+  let %30: String = prim <>("'\\z' (* invalid char escape *)\n", %29) @100:5
+  let %31: String = prim <>("let alsoValid = 2;\n", %30) @99:5
+  let %32: String = prim <>("\"unclosed string literal\n", %31) @98:5
+  let codeErr: String = prim <>("let valid = 1;\n", %32) @97:5
+  let smErr: location.SourceMap = call location.newSourceMap("error_recovery.quest", codeErr) @104:13
+  let bagErr: diagbag.T = call diagbag.new() @105:14
+  let tkErr: tokenizer.T = call tokenizer.new(smErr, bagErr) @106:13
+  let tokensErr: vector.T(tokens.Token) = call tokenizer.tokenizeAll(tkErr) @108:17
+  let %33: String = call tokenizer.formatDump(tokensErr, smErr, false) @109:10
+  do call printStr(%33) @109:1
+  let %34: Bool = call diagbag.hasErrors(bagErr) @110:11
+  do call printBool(%34) @110:1
+  let %35: Int = call diagbag.errorCount(bagErr) @111:10
+  do call printInt(%35) @111:1
+  do call printStr("--- Diagnostics Rendered ---") @113:1
+  do call diagbag.renderAll(bagErr, smErr, wOut) @114:1
+  let codeRange: String = "'\\255' '\\256' \"\\xff\\xc3\\xa9 caf\u00c3\u00a9\"\n" @120:17
+  let smRange: location.SourceMap = call location.newSourceMap("byte_range.quest", codeRange) @122:15
+  let bagRange: diagbag.T = call diagbag.new() @123:16
+  let tkRange: tokenizer.T = call tokenizer.new(smRange, bagRange) @124:15
+  let tokensRange: vector.T(tokens.Token) = call tokenizer.tokenizeAll(tkRange) @126:19
+  let %36: String = call tokenizer.formatDump(tokensRange, smRange, false) @127:10
+  do call printStr(%36) @127:1
+  let %37: Int = call diagbag.errorCount(bagRange) @128:10
+  do call printInt(%37) @128:1
+  do call diagbag.renderAll(bagRange, smRange, wOut) @129:1
 }
 

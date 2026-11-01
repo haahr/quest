@@ -852,9 +852,16 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
                 try
                     let objects = engine.buildModules(newEngine(e) modules importer e.programDir)
                     if writing then
+                        (* An assembled program's line table and debugging
+                         * information (docs/arm64.md section 3.16) are in
+                         * its object, which is temporary: with -g, clang
+                         * copies them into a .dSYM bundle beside the binary,
+                         * by dsymutil, where lldb finds them *)
+                        let assembly = choice.isAssembly(programBackend)
+                        let flags = vector.fromArray(:String cBackend.cFlags(programBackend))
+                        if assembly then vector.append(:String flags "-g") end
                         compilerRunner.compileCSource(t.c paths.absolute(maybe.unwrap(:String compileOutput))
-                            options.nogc maybe.none(:String) objects cBackend.cFlags(programBackend)
-                            choice.isAssembly(programBackend))
+                            options.nogc maybe.none(:String) objects vector.toArray(:String flags) assembly)
                     else
                         let binary = compilerRunner.temporaryBinary()
                         compilerRunner.compileCSource(t.c binary false maybe.none(:String) objects

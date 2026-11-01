@@ -1,27 +1,27 @@
 import forests = "forests" : Forests
 main {
-  let %1: Tree = call forests.leaf(1)
-  let %2: Tree = call forests.leaf(2)
-  let %3: Array(Tree) = array(%1, %2)
-  let t: Tree = call forests.node(%3)
-  let %4: Tree = call forests.leaf(3)
-  let %5: Array(forests.Tree) = array(t, %4)
-  let %6: Record trees: Array(forests.Tree) end = record(trees = %5)
-  let direct: forests.Tree = variant(node, %6)
+  let %1: Tree = call forests.leaf(1) @5:31
+  let %2: Tree = call forests.leaf(2) @5:47
+  let %3: Array(Tree) = array(%1, %2) @5:22
+  let t: Tree = call forests.node(%3) @5:9
+  let %4: Tree = call forests.leaf(3) @6:88
+  let %5: Array(forests.Tree) = array(t, %4) @6:77
+  let %6: Record trees: Array(forests.Tree) end = record(trees = %5) @6:62
+  let direct: forests.Tree = variant(node, %6) @6:28
   join k1(wood: forests.Wood) {
-    let %7: Int = call forests.sum(direct)
-    let %8: Int = call forests.sumWood(wood)
-    let %9: Int = prim *(%8, 10)
-    let %10: Int = prim +(%7, %9)
+    let %7: Int = call forests.sum(direct) @8:1
+    let %8: Int = call forests.sumWood(wood) @8:23
+    let %9: Int = prim *(%8, 10) @8:23
+    let %10: Int = prim +(%7, %9) @8:1
   } in {
-    switch tag(direct) {
+    switch tag(direct) { @7:26
       case node (w: forests.Wood): {
-        jump k1(w)
+        jump k1(w) @7:26
       }
       else: {
-        let %11: Array(forests.Tree) = array()
-        let %12: Record trees: Array(forests.Tree) end = record(trees = %11)
-        jump k1(%12)
+        let %11: Array(forests.Tree) = array() @7:82
+        let %12: Record trees: Array(forests.Tree) end = record(trees = %11) @7:67
+        jump k1(%12) @7:26
       }
     }
   }

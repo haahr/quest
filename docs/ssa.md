@@ -28,7 +28,10 @@ apart so that a later collector could find pointers precisely (arm64.md §3.13);
 ## 2. Instructions
 
 Every instruction has one shape (arm64.md §3.15): an opcode, an array of argument values, an array of result
-values, an immediate integer, and a symbol. Passes that care only about structure (the verifier, liveness, renaming,
+values, an immediate integer, a symbol, and a source position (`loc`: a file, by its number in the unit's `files`, a
+line, and a column, or none), for the native code's line table (arm64.md §3.16). The builder gives each instruction
+the position of the IR statement it builds (ir.md §5), or of the last one that had a position; a block's terminator has
+one too (`termLoc`), and a tail call its call's. Passes that care only about structure (the verifier, liveness, renaming,
 register allocation) walk the arrays; only the passes that care what an instruction means case on its opcode.
 
 | Opcode | Arguments → results | Meaning |
@@ -206,11 +209,14 @@ one for every run test that has an `ir_core` dump (arm64.md §3.2). Values print
 function's stack slots as `bytes:alignment`, a load or store with its width (`load1s` sign-extends a byte), and a call
 or a function with its signature where it is not words and reals (`pairs [0]`, `narrow [2]`, `memory [0:32]`,
 `int32 [0]`, `result narrow`, `result int32`); the unit's data follows its functions, a
-datum per line (`data qs_1 text "add1"`, `data g_res writable zero 8`, `data qf_f_closure words [qf_f, 0]`):
+datum per line (`data qs_1 text "add1"`, `data g_res writable zero 8`, `data qf_f_closure words [qf_f, 0]`). A
+position goes on a line of its own before the instructions at it, where it differs from the one before in its block
+(`@line:col` in the unit's first file, `@file:line:col` in another, `@-` for none; a block starts at none):
 
 ```
 function qf_f(%0: ptr, %1: int): int slots [16:8] {
 b0(%0: ptr, %1: int):
+  @3:29
   %2: int = const 1
   %3: int = add %1, %2
   return %3

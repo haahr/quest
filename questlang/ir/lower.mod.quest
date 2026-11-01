@@ -183,6 +183,9 @@ export
          * makes *)
         var frame: String
         var body: Body
+        (* The offset in the unit of the expression or binding being lowered,
+         * the position of the statements it makes (nodes.stmtPos), or ~1 *)
+        var pos: Int
         var loops: vector.T(String)
         labelCounts: hashMap.T(String Int)
         imports: vector.T(nodes.Import)
@@ -256,6 +259,7 @@ export
                 let file = file
                 let var frame = diagnostics.mainFrame
                 let var body = nodes.newBody()
+                let var pos = ~1
                 let var loops = vector.new(:String)
                 let labelCounts = hashMap.new(:String :Int stringOp.equal hash.string)
                 let imports = vector.new(:nodes.Import)
@@ -270,7 +274,24 @@ export
 
     let va(v: Variable): Atom = nodes.atomOfVar(v)
 
-    let emit(l: Lowerer s: Stmt): Ok = vector.append(:Stmt l.body.statements s)
+    (* Appends s to the current body, at the current position if it has
+     * none *)
+    let emit(l: Lowerer s: Stmt): Ok =
+        begin
+            nodes.positionAt(s l.pos)
+            vector.append(:Stmt l.body.statements s)
+        end
+
+    (* f's result, with the statements it makes at offset, in the file being
+     * lowered (at none for ~1) *)
+    let at(A::TYPE l: Lowerer offset: Int f: All() A): A =
+        begin
+            let saved = l.pos
+            l.pos := if offset < 0 then ~1 else nodes.fileOffset(l.file offset) end
+            let result = f()
+            l.pos := saved
+            result
+        end
 
     (* Emits a terminator; what follows it is unreachable, and goes into a body
      * that is discarded *)
@@ -436,6 +457,8 @@ export
     (* Values *)
 
     let rec value(l: Lowerer e: Expr into: maybe.T(Variable)): Atom =
+        at(:Atom l e.offset fun(): Atom valueForm(l e into))
+    and valueForm(l: Lowerer e: Expr into: maybe.T(Variable)): Atom =
         case e.form
             when exprInt with x then copyInto(l intConst(x.value) into)
             when exprReal with x then copyInto(l const(option constReal of nodes.ConstValue with let r = x.value end model.realType) into)
@@ -732,7 +755,7 @@ export
                                     f.result none)
                             else letOp(l nodes.typeApp(c.callee allTypeArgs c.moduleRef c.member calleeType) rest.body none)
                         end
-                        terminate(l option sReturn of Stmt with let var value = result end)
+                        terminate(l option sReturn of Stmt with let var pos = ~1 let var value = result end)
                     end)
                 emit(l option sFuns of Stmt with
                     let var functions = array of
@@ -812,6 +835,7 @@ export
             letOp(l option opIndex of Op with let var arr = args[0] let var index = args[1] let offset = offset end t into)
         else
             emit(l option sStoreElement of Stmt with
+                let var pos = ~1
                 let var value = args[2]
                 let var base = args[0]
                 let var index = args[1]
@@ -967,13 +991,16 @@ export
         begin
             let a = value(l branch none)
             if not(nodes.terminated(l.body)) then
-                terminate(l option sJump of Stmt with let label = lbl let var args = array of a end end)
+                terminate(l option sJump of Stmt with
+                    let var pos = ~1 let label = lbl let var args = array of a end
+                end)
             end
         end
 
     (* Effects *)
 
-    and effect(l: Lowerer e: Expr): Ok =
+    and effect(l: Lowerer e: Expr): Ok = at(:Ok l e.offset fun(): Ok effectForm(l e))
+    and effectForm(l: Lowerer e: Expr): Ok =
         case e.form
             when exprIf then branches(l e fun(b: Expr): Ok effect(l b))
             when exprCase then branches(l e fun(b: Expr): Ok effect(l b))
@@ -992,9 +1019,12 @@ export
                         let c = value(l x.cond none)
                         let thenBody = nodes.newBody()
                         emit(l option sIf of Stmt with
+                            let var pos = ~1
                             let var cond = c
                             let var thenBody = thenBody
-                            let var elseBody = nodes.bodyOf(array of option sBreak of Stmt with let label = lbl end end)
+                            let var elseBody = nodes.bodyOf(array of option sBreak of Stmt with
+                                let var pos = l.pos let label = lbl
+                            end end)
                         end)
                         inBody(l thenBody fun(): Ok effect(l x.body))
                     end)
@@ -1011,18 +1041,22 @@ export
             when exprFor then forLoop(l e)
             when exprExit then
                 if vector.empty(:String l.loops) then fail(:Ok "exit outside a loop") end
-                terminate(l option sBreak of Stmt with let label = vector.last(:String l.loops) end)
+                terminate(l option sBreak of Stmt with let var pos = ~1 let label = vector.last(:String l.loops) end)
             when exprAssign with x then assign(l x.target x.value)
             when exprIndexAssign with x then
                 let a = value(l x.target none)
                 let i = value(l x.index none)
                 let v = value(l x.value none)
-                emit(l option sStoreElement of Stmt with let var value = v let var base = a let var index = i let offset = offsetOf(l e) end)
+                emit(l option sStoreElement of Stmt with
+                    let var pos = ~1 let var value = v let var base = a let var index = i let offset = offsetOf(l e)
+                end)
             when exprRaise with x then
                 let exc = value(l x.exc none)
                 let p = if maybe.isSome(:Expr x.payload) then maybe.some(:Atom value(l maybe.unwrap(:Expr x.payload) none))
                     else maybe.none(:Atom) end
-                terminate(l option sRaise of Stmt with let var exc = exc let var payload = p let offset = offsetOf(l e) end)
+                terminate(l option sRaise of Stmt with
+                    let var pos = ~1 let var exc = exc let var payload = p let offset = offsetOf(l e)
+                end)
             when exprApp then
                 if isOk(e.type) then
                     let a = call(l e none)
@@ -1034,7 +1068,9 @@ export
                                 let isCall = x.value?opCall
                                 let sameVar = case a when atomVar with y then nodes.same(y.v x.v) else false end
                                 if isCall andif sameVar then
-                                    vector.set(:Stmt stmts {vector.length(:Stmt stmts) - 1} option sDo of Stmt with let var value = x.value end)
+                                    vector.set(:Stmt stmts {vector.length(:Stmt stmts) - 1} option sDo of Stmt with
+                                        let var pos = x.pos let var value = x.value
+                                    end)
                                 end
                             else ok
                         end
@@ -1052,12 +1088,14 @@ export
             if maybe.isSome(:Variable box) then
                 let a = value(l v none)
                 emit(l option sStoreComponent of Stmt with
-                    let var value = a let var base = va(maybe.unwrap(:Variable box)) let index = 0
+                    let var pos = ~1 let var value = a let var base = va(maybe.unwrap(:Variable box)) let index = 0
                     let var access = nodes.direct let var viewMap = maybe.none(:Variable)
                 end)
             elsif maybe.isSome(:Variable bound) andif maybe.unwrap(:Variable bound).isMutable then
                 let a = value(l v none)
-                emit(l option sAssign of Stmt with let var v = maybe.unwrap(:Variable bound) let var value = a end)
+                emit(l option sAssign of Stmt with
+                    let var pos = ~1 let var v = maybe.unwrap(:Variable bound) let var value = a
+                end)
             else
                 case target.form
                     when exprSelect with x then
@@ -1067,6 +1105,7 @@ export
                         case s.kind
                             when shapeTuple then
                                 emit(l option sStoreComponent of Stmt with
+                                    let var pos = ~1
                                     let var value = a
                                     let var base = base
                                     let index = tupleIndex(x.target.type ~1 maybe.some(:String x.field))
@@ -1078,6 +1117,7 @@ export
                                 shapeException, shapeFun, shapeAll, shapeAuto, shapeTypevar, shapeAbstract,
                                 shapeExternal, shapeOperator, shapePending then
                                 emit(l option sStoreField of Stmt with
+                                    let var pos = ~1
                                     let var value = a
                                     let var base = base
                                     let name = x.field
@@ -1087,7 +1127,9 @@ export
                     else
                         let address = value(l target none)
                         let a = value(l v none)
-                        emit(l option sStoreAt of Stmt with let var value = a let var address = address end)
+                        emit(l option sStoreAt of Stmt with
+                            let var pos = ~1 let var value = a let var address = address
+                        end)
                 end
             end
         end
@@ -1098,7 +1140,9 @@ export
                 let start = value(l x.start none)
                 let stop = value(l x.stop none)
                 let counter = fresh(x.varName model.intType true)
-                emit(l option sVarDecl of Stmt with let var v = counter let var init = maybe.some(:Atom start) end)
+                emit(l option sVarDecl of Stmt with
+                    let var pos = ~1 let var v = counter let var init = maybe.some(:Atom start)
+                end)
                 let lbl = label(l "L")
                 let loopBody = nodes.newBody()
                 emit(l option sLoop of Stmt with let label = lbl let var body = loopBody end)
@@ -1109,9 +1153,12 @@ export
                             maybe.none(:Int)) model.boolType none)
                         let thenBody = nodes.newBody()
                         emit(l option sIf of Stmt with
+                            let var pos = ~1
                             let var cond = more
                             let var thenBody = thenBody
-                            let var elseBody = nodes.bodyOf(array of option sBreak of Stmt with let label = lbl end end)
+                            let var elseBody = nodes.bodyOf(array of option sBreak of Stmt with
+                                let var pos = l.pos let label = lbl
+                            end end)
                         end)
                         inBody(l thenBody fun(): Ok
                             begin
@@ -1121,7 +1168,9 @@ export
                                 if not(nodes.terminated(l.body)) then
                                     let step = letOp(l nodes.prim(if x.isDownto then nodes.primSub else nodes.primAdd end
                                         array of va(counter) intConst(1) end maybe.none(:Int)) model.intType none)
-                                    emit(l option sAssign of Stmt with let var v = counter let var value = step end)
+                                    emit(l option sAssign of Stmt with
+                                        let var pos = ~1 let var v = counter let var value = step
+                                    end)
                                 end
                             end)
                     end)
@@ -1138,7 +1187,9 @@ export
                 let c = value(l x.cond none)
                 let thenBody = nodes.newBody()
                 let elseBody = nodes.newBody()
-                emit(l option sIf of Stmt with let var cond = c let var thenBody = thenBody let var elseBody = elseBody end)
+                emit(l option sIf of Stmt with
+                    let var pos = ~1 let var cond = c let var thenBody = thenBody let var elseBody = elseBody
+                end)
                 inBody(l thenBody fun(): Ok lowerBranch(x.thenBranch))
                 inBody(l elseBody fun(): Ok lowerBranch(x.elseBranch))
             when exprCase with x then
@@ -1244,7 +1295,7 @@ export
                 end
                 lowerBranch(maybe.unwrap(:Expr elseBranch))
             else
-                terminate(l option sReraise of Stmt with let var exc = exc end)
+                terminate(l option sReraise of Stmt with let var pos = ~1 let var exc = exc end)
             end
         else
             let br = branches[first]
@@ -1253,7 +1304,9 @@ export
             let matches = letOp(l nodes.prim(nodes.primIs array of va(exc) pattern end maybe.none(:Int)) model.boolType none)
             let thenBody = nodes.newBody()
             let elseBody = nodes.newBody()
-            emit(l option sIf of Stmt with let var cond = matches let var thenBody = thenBody let var elseBody = elseBody end)
+            emit(l option sIf of Stmt with
+                let var pos = ~1 let var cond = matches let var thenBody = thenBody let var elseBody = elseBody
+            end)
             inBody(l thenBody fun(): Ok
                 begin
                     if maybe.isSome(:symbols.ValueSymbol br.binder) then
@@ -1333,8 +1386,11 @@ export
                                 makeScopeExceptions(l typedAst.exprScopeExceptions(x.body))
                                 value(l x.body none)
                         end
+                        (* The return has no position of its own: it is at the
+                         * last of the body's *)
                         if not(nodes.terminated(l.body)) then
-                            terminate(l option sReturn of Stmt with let var value = result end)
+                            at(:Ok l ~1 fun(): Ok
+                                terminate(l option sReturn of Stmt with let var pos = ~1 let var value = result end))
                         end
                     end)
                 l.loops := savedLoops
@@ -1420,7 +1476,9 @@ export
                     elsif symbol.isVar then
                         let init = value(l lv.value none)
                         let mv = bindSymbol(l symbol maybe.none(:Type) true)
-                        emit(l option sVarDecl of Stmt with let var v = mv let var init = maybe.some(:Atom init) end)
+                        emit(l option sVarDecl of Stmt with
+                            let var pos = ~1 let var v = mv let var init = maybe.some(:Atom init)
+                        end)
                         mv
                     else
                         if lv.isRec then fail(:Ok "recursive values other than functions") end
@@ -1472,7 +1530,8 @@ export
      *
      * The named exceptions b makes for its scope are made before it
      * (makeScopeExceptions). *)
-    and binding(l: Lowerer b: Binding show: Bool): Ok =
+    and binding(l: Lowerer b: Binding show: Bool): Ok = at(:Ok l b.offset fun(): Ok bindingForm(l b show))
+    and bindingForm(l: Lowerer b: Binding show: Bool): Ok =
         begin
             makeScopeExceptions(l typedAst.scopeExceptions(b))
             case b.form
@@ -1593,6 +1652,7 @@ export
                 let a = value(l e none)
                 if show then
                     emit(l option sEcho of Stmt with
+                        let var pos = ~1
                         let var value = a
                         let type = e.type
                         let prefix = ""
@@ -1609,6 +1669,7 @@ export
                 emit(l option sEchoText of Stmt with let text = prefix <> "ok" end)
             else
                 emit(l option sEcho of Stmt with
+                    let var pos = ~1
                     let var value = va(v)
                     let type = symbol.type
                     let prefix = prefix

@@ -6,162 +6,162 @@ import word = "word" : Word
 import writer = "writer" : Writer
 import conv = "conv" : Conv
 main {
-  let wOut: writer.T = member writer.output
+  let wOut: writer.T = member writer.output @11:12
   funs {
     fun printInt(n: Int): Ok {
-      let %1: String = call conv.int(n)
-      do call writer.putString(wOut, %1)
-      let %2: Ok = call writer.putString(wOut, " ")
+      let %1: String = call conv.int(n) @15:31
+      do call writer.putString(wOut, %1) @15:9
+      let %2: Ok = call writer.putString(wOut, " ") @16:9
       return %2
     }
   }
   funs {
     fun printBool(b: Bool): Ok {
-      let %3: String = call conv.bool(b)
-      do call writer.putString(wOut, %3)
-      let %4: Ok = call writer.putString(wOut, " ")
+      let %3: String = call conv.bool(b) @21:31
+      do call writer.putString(wOut, %3) @21:9
+      let %4: Ok = call writer.putString(wOut, " ") @22:9
       return %4
     }
   }
   funs {
     fun printString(s: String): Ok {
-      do call writer.putString(wOut, s)
-      let %5: Ok = call writer.putString(wOut, " ")
+      do call writer.putString(wOut, s) @27:9
+      let %5: Ok = call writer.putString(wOut, " ") @28:9
       return %5
     }
   }
   funs {
     fun printNewline(dummy: Int): Ok {
-      let %6: Ok = call writer.putString(wOut, "\n")
+      let %6: Ok = call writer.putString(wOut, "\n") @32:5
       return %6
     }
   }
-  let x: Int = 10
-  let r1: Tuple var x: Int end = tuple(x)
-  let x.1: Int = 10
-  let r2: Tuple var x: Int end = tuple(x.1)
-  let %7: Bool = call hash.identityEqual [Tuple var x: Int end](r1, r1)
-  do call printBool(%7)
-  let %8: Bool = call hash.identityEqual [Tuple var x: Int end](r1, r2)
-  do call printBool(%8)
-  let %9: Bool = prim is(r1, r1)
-  do call printBool(%9)
-  let %10: Bool = prim is(r1, r2)
-  do call printBool(%10)
-  do call printNewline(0)
-  let h1Before: word.T = call hash.identityHash [Tuple var x: Int end](r1)
-  let h1Again: word.T = call hash.identityHash [Tuple var x: Int end](r1)
-  let %11: Bool = prim is(h1Before, h1Again)
-  do call printBool(%11)
-  store r1.#0 := 999
-  let h1After: word.T = call hash.identityHash [Tuple var x: Int end](r1)
-  let %12: Bool = prim is(h1Before, h1After)
-  do call printBool(%12)
-  do call printNewline(0)
-  let hi1: word.T = call hash.int(42)
-  let hi2: word.T = call hash.int(42)
-  let hi3: word.T = call hash.int(43)
-  let %13: Bool = prim is(hi1, hi2)
-  do call printBool(%13)
-  let %14: Bool = prim isnot(hi1, hi3)
-  do call printBool(%14)
-  let hb1: word.T = call hash.bool(true)
-  let hb2: word.T = call hash.bool(false)
-  let %15: Bool = prim isnot(hb1, hb2)
-  do call printBool(%15)
-  let hc1: word.T = call hash.char('a')
-  let hc2: word.T = call hash.char('a')
-  let hc3: word.T = call hash.char('b')
-  let %16: Bool = prim is(hc1, hc2)
-  do call printBool(%16)
-  let %17: Bool = prim isnot(hc1, hc3)
-  do call printBool(%17)
-  let %18: word.T = call word.fromInt(12345)
-  let hw1: word.T = call hash.word(%18)
-  let %19: word.T = call word.fromInt(12345)
-  let hw2: word.T = call hash.word(%19)
-  let %20: Bool = prim is(hw1, hw2)
-  do call printBool(%20)
-  let hs1: word.T = call hash.string("quest")
-  let hs2: word.T = call hash.string("quest")
-  let hs3: word.T = call hash.string("lang")
-  let %21: Bool = prim is(hs1, hs2)
-  do call printBool(%21)
-  let %22: Bool = prim isnot(hs1, hs3)
-  do call printBool(%22)
-  do call printNewline(0)
-  let %23: word.T = call word.fromInt(1)
-  let mixedOne: word.T = call hash.mix(%23)
-  let %24: word.T = call word.fromInt(1)
-  let %25: Bool = prim isnot(mixedOne, %24)
-  do call printBool(%25)
-  let comb1: word.T = call hash.combine(hi1, hs1)
-  let comb2: word.T = call hash.combine(hi1, hs1)
-  let comb3: word.T = call hash.combine(hs1, hi1)
-  let %26: Bool = prim is(comb1, comb2)
-  do call printBool(%26)
-  let %27: Bool = prim isnot(comb1, comb3)
-  do call printBool(%27)
-  do call printNewline(0)
-  let idMap: hashMap.T(Key String) = type_app hashMap.newIdentityMap [Key String]
-  let v: Int = 1
-  let k1: Key = tuple(v)
-  let v.1: Int = 1
-  let k2: Key = tuple(v.1)
-  let v.2: Int = 2
-  let k3: Key = tuple(v.2)
-  let %28: Bool = call hashMap.insert [Tuple var v: Int end String](idMap, k1, "first")
-  do call printBool(%28)
-  let %29: Bool = call hashMap.insert [Tuple var v: Int end String](idMap, k2, "second")
-  do call printBool(%29)
-  let %30: Bool = call hashMap.insert [Tuple var v: Int end String](idMap, k3, "third")
-  do call printBool(%30)
-  let %31: Int = call hashMap.size [Tuple var v: Int end String](idMap)
-  do call printInt(%31)
-  let %32: String = call hashMap.find [Tuple var v: Int end String](idMap, k1)
-  do call printString(%32)
-  let %33: String = call hashMap.find [Tuple var v: Int end String](idMap, k2)
-  do call printString(%33)
-  let %34: String = call hashMap.find [Tuple var v: Int end String](idMap, k3)
-  do call printString(%34)
-  do call printNewline(0)
-  store k1.#0 := 999
-  let %35: Bool = call hashMap.contains [Tuple var v: Int end String](idMap, k1)
-  do call printBool(%35)
-  let %36: String = call hashMap.find [Tuple var v: Int end String](idMap, k1)
-  do call printString(%36)
-  let delK1: maybe.T(String) = call hashMap.delete [Tuple var v: Int end String](idMap, k1)
-  let %37: Bool = call maybe.isSome [String](delK1)
-  do call printBool(%37)
-  let %38: Int = call hashMap.size [Tuple var v: Int end String](idMap)
-  do call printInt(%38)
-  let %39: Bool = call hashMap.contains [Tuple var v: Int end String](idMap, k1)
-  do call printBool(%39)
-  let %40: Bool = call hashMap.contains [Tuple var v: Int end String](idMap, k2)
-  do call printBool(%40)
-  do call printNewline(0)
-  let idSet: hashSet.T(Key) = type_app hashSet.newIdentitySet [Key]
-  let %41: Bool = call hashSet.insert [Tuple var v: Int end](idSet, k1)
-  do call printBool(%41)
-  let %42: Bool = call hashSet.insert [Tuple var v: Int end](idSet, k2)
-  do call printBool(%42)
-  let %43: Bool = call hashSet.insert [Tuple var v: Int end](idSet, k1)
-  do call printBool(%43)
-  let %44: Int = call hashSet.size [Tuple var v: Int end](idSet)
-  do call printInt(%44)
-  let %45: Bool = call hashSet.contains [Tuple var v: Int end](idSet, k1)
-  do call printBool(%45)
-  let %46: Bool = call hashSet.contains [Tuple var v: Int end](idSet, k2)
-  do call printBool(%46)
-  let %47: Bool = call hashSet.delete [Tuple var v: Int end](idSet, k1)
-  do call printBool(%47)
-  let %48: Bool = call hashSet.contains [Tuple var v: Int end](idSet, k1)
-  let %49: Bool = prim not(%48)
-  do call printBool(%49)
-  let %50: Bool = call hashSet.contains [Tuple var v: Int end](idSet, k2)
-  do call printBool(%50)
-  let %51: Int = call hashSet.size [Tuple var v: Int end](idSet)
-  do call printInt(%51)
-  do call printNewline(0)
+  let x: Int = 10 @35:24
+  let r1: Tuple var x: Int end = tuple(x) @35:10
+  let x.1: Int = 10 @36:24
+  let r2: Tuple var x: Int end = tuple(x.1) @36:10
+  let %7: Bool = call hash.identityEqual [Tuple var x: Int end](r1, r1) @37:11
+  do call printBool(%7) @37:1
+  let %8: Bool = call hash.identityEqual [Tuple var x: Int end](r1, r2) @38:11
+  do call printBool(%8) @38:1
+  let %9: Bool = prim is(r1, r1) @39:11
+  do call printBool(%9) @39:1
+  let %10: Bool = prim is(r1, r2) @40:11
+  do call printBool(%10) @40:1
+  do call printNewline(0) @41:1
+  let h1Before: word.T = call hash.identityHash [Tuple var x: Int end](r1) @44:16
+  let h1Again: word.T = call hash.identityHash [Tuple var x: Int end](r1) @45:15
+  let %11: Bool = prim is(h1Before, h1Again) @46:11
+  do call printBool(%11) @46:1
+  store r1.#0 := 999 @47:1
+  let h1After: word.T = call hash.identityHash [Tuple var x: Int end](r1) @48:15
+  let %12: Bool = prim is(h1Before, h1After) @49:11
+  do call printBool(%12) @49:1
+  do call printNewline(0) @50:1
+  let hi1: word.T = call hash.int(42) @53:11
+  let hi2: word.T = call hash.int(42) @54:11
+  let hi3: word.T = call hash.int(43) @55:11
+  let %13: Bool = prim is(hi1, hi2) @56:11
+  do call printBool(%13) @56:1
+  let %14: Bool = prim isnot(hi1, hi3) @57:11
+  do call printBool(%14) @57:1
+  let hb1: word.T = call hash.bool(true) @59:11
+  let hb2: word.T = call hash.bool(false) @60:11
+  let %15: Bool = prim isnot(hb1, hb2) @61:11
+  do call printBool(%15) @61:1
+  let hc1: word.T = call hash.char('a') @63:11
+  let hc2: word.T = call hash.char('a') @64:11
+  let hc3: word.T = call hash.char('b') @65:11
+  let %16: Bool = prim is(hc1, hc2) @66:11
+  do call printBool(%16) @66:1
+  let %17: Bool = prim isnot(hc1, hc3) @67:11
+  do call printBool(%17) @67:1
+  let %18: word.T = call word.fromInt(12345) @69:21
+  let hw1: word.T = call hash.word(%18) @69:11
+  let %19: word.T = call word.fromInt(12345) @70:21
+  let hw2: word.T = call hash.word(%19) @70:11
+  let %20: Bool = prim is(hw1, hw2) @71:11
+  do call printBool(%20) @71:1
+  let hs1: word.T = call hash.string("quest") @73:11
+  let hs2: word.T = call hash.string("quest") @74:11
+  let hs3: word.T = call hash.string("lang") @75:11
+  let %21: Bool = prim is(hs1, hs2) @76:11
+  do call printBool(%21) @76:1
+  let %22: Bool = prim isnot(hs1, hs3) @77:11
+  do call printBool(%22) @77:1
+  do call printNewline(0) @78:1
+  let %23: word.T = call word.fromInt(1) @81:25
+  let mixedOne: word.T = call hash.mix(%23) @81:16
+  let %24: word.T = call word.fromInt(1) @82:26
+  let %25: Bool = prim isnot(mixedOne, %24) @82:11
+  do call printBool(%25) @82:1
+  let comb1: word.T = call hash.combine(hi1, hs1) @84:13
+  let comb2: word.T = call hash.combine(hi1, hs1) @85:13
+  let comb3: word.T = call hash.combine(hs1, hi1) @86:13
+  let %26: Bool = prim is(comb1, comb2) @87:11
+  do call printBool(%26) @87:1
+  let %27: Bool = prim isnot(comb1, comb3) @88:11
+  do call printBool(%27) @88:1
+  do call printNewline(0) @89:1
+  let idMap: hashMap.T(Key String) = type_app hashMap.newIdentityMap [Key String] @96:13
+  let v: Int = 1 @97:29
+  let k1: Key = tuple(v) @97:15
+  let v.1: Int = 1 @98:29
+  let k2: Key = tuple(v.1) @98:15
+  let v.2: Int = 2 @99:29
+  let k3: Key = tuple(v.2) @99:15
+  let %28: Bool = call hashMap.insert [Tuple var v: Int end String](idMap, k1, "first") @101:11
+  do call printBool(%28) @101:1
+  let %29: Bool = call hashMap.insert [Tuple var v: Int end String](idMap, k2, "second") @102:11
+  do call printBool(%29) @102:1
+  let %30: Bool = call hashMap.insert [Tuple var v: Int end String](idMap, k3, "third") @103:11
+  do call printBool(%30) @103:1
+  let %31: Int = call hashMap.size [Tuple var v: Int end String](idMap) @104:10
+  do call printInt(%31) @104:1
+  let %32: String = call hashMap.find [Tuple var v: Int end String](idMap, k1) @106:13
+  do call printString(%32) @106:1
+  let %33: String = call hashMap.find [Tuple var v: Int end String](idMap, k2) @107:13
+  do call printString(%33) @107:1
+  let %34: String = call hashMap.find [Tuple var v: Int end String](idMap, k3) @108:13
+  do call printString(%34) @108:1
+  do call printNewline(0) @109:1
+  store k1.#0 := 999 @112:1
+  let %35: Bool = call hashMap.contains [Tuple var v: Int end String](idMap, k1) @113:11
+  do call printBool(%35) @113:1
+  let %36: String = call hashMap.find [Tuple var v: Int end String](idMap, k1) @114:13
+  do call printString(%36) @114:1
+  let delK1: maybe.T(String) = call hashMap.delete [Tuple var v: Int end String](idMap, k1) @116:13
+  let %37: Bool = call maybe.isSome [String](delK1) @117:11
+  do call printBool(%37) @117:1
+  let %38: Int = call hashMap.size [Tuple var v: Int end String](idMap) @118:10
+  do call printInt(%38) @118:1
+  let %39: Bool = call hashMap.contains [Tuple var v: Int end String](idMap, k1) @119:11
+  do call printBool(%39) @119:1
+  let %40: Bool = call hashMap.contains [Tuple var v: Int end String](idMap, k2) @120:11
+  do call printBool(%40) @120:1
+  do call printNewline(0) @121:1
+  let idSet: hashSet.T(Key) = type_app hashSet.newIdentitySet [Key] @124:13
+  let %41: Bool = call hashSet.insert [Tuple var v: Int end](idSet, k1) @125:11
+  do call printBool(%41) @125:1
+  let %42: Bool = call hashSet.insert [Tuple var v: Int end](idSet, k2) @126:11
+  do call printBool(%42) @126:1
+  let %43: Bool = call hashSet.insert [Tuple var v: Int end](idSet, k1) @127:11
+  do call printBool(%43) @127:1
+  let %44: Int = call hashSet.size [Tuple var v: Int end](idSet) @128:10
+  do call printInt(%44) @128:1
+  let %45: Bool = call hashSet.contains [Tuple var v: Int end](idSet, k1) @130:11
+  do call printBool(%45) @130:1
+  let %46: Bool = call hashSet.contains [Tuple var v: Int end](idSet, k2) @131:11
+  do call printBool(%46) @131:1
+  let %47: Bool = call hashSet.delete [Tuple var v: Int end](idSet, k1) @132:11
+  do call printBool(%47) @132:1
+  let %48: Bool = call hashSet.contains [Tuple var v: Int end](idSet, k1) @133:15
+  let %49: Bool = prim not(%48) @133:11
+  do call printBool(%49) @133:1
+  let %50: Bool = call hashSet.contains [Tuple var v: Int end](idSet, k2) @134:11
+  do call printBool(%50) @134:1
+  let %51: Int = call hashSet.size [Tuple var v: Int end](idSet) @135:10
+  do call printInt(%51) @135:1
+  do call printNewline(0) @136:1
 }
 

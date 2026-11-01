@@ -3,41 +3,41 @@ import conv = "conv" : Conv
 import arrayOp = "arrayOp" : ArrayOp
 import dynamic = "dynamic" : Dynamic
 main {
-  let wOut: writer.T = member writer.output
+  let wOut: writer.T = member writer.output @8:12
   funs {
     fun printInt(x: Int): Ok {
-      let %1: String = call conv.int(x)
-      do call writer.putString(wOut, %1)
-      let %2: Ok = call writer.putString(wOut, "\n")
+      let %1: String = call conv.int(x) @11:31
+      do call writer.putString(wOut, %1) @11:9
+      let %2: Ok = call writer.putString(wOut, "\n") @12:9
       return %2
     }
   }
-  let head: Int = 1
-  let head.1: Int = 2
-  let tail: List(Int) = option(nil)
-  let %3: Tuple head: Int tail: Rec(List :: TYPE) Option nil cons with Tuple head: Int tail: List end end end = tuple(head.1, tail)
-  let tail.1: List(Int) = option(cons, %3)
-  let %4: Tuple head: Int tail: Rec(List :: TYPE) Option nil cons with Tuple head: Int tail: List end end end = tuple(head, tail.1)
-  let ints: List(Int) = option(cons, %4)
-  let head.2: Bool = true
-  let tail.2: List(Bool) = option(nil)
-  let %5: Tuple head: Bool tail: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end end = tuple(head.2, tail.2)
-  let bools: List(Bool) = option(cons, %5)
+  let head: Int = 1 @17:53
+  let head.1: Int = 2 @17:85
+  let tail: List(Int) = option(nil) @17:87
+  let %3: Tuple head: Int tail: Rec(List :: TYPE) Option nil cons with Tuple head: Int tail: List end end end = tuple(head.1, tail) @17:55
+  let tail.1: List(Int) = option(cons, %3) @17:55
+  let %4: Tuple head: Int tail: Rec(List :: TYPE) Option nil cons with Tuple head: Int tail: List end end end = tuple(head, tail.1) @17:23
+  let ints: List(Int) = option(cons, %4) @17:23
+  let head.2: Bool = true @18:56
+  let tail.2: List(Bool) = option(nil) @18:61
+  let %5: Tuple head: Bool tail: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end end = tuple(head.2, tail.2) @18:25
+  let bools: List(Bool) = option(cons, %5) @18:25
   funs rec {
     fun sum(l: List(Int)): Int {
       join k1(r: Int) {
         return r
       } in {
-        switch tag(l) {
+        switch tag(l) { @19:34
           case cons (c: Tuple head: Int tail: Rec(List :: TYPE) Option nil cons with Tuple head: Int tail: List end end end): {
-            let %6: Int = tuple_field(c, 0)
-            let %7: Rec(List :: TYPE) Option nil cons with Tuple head: Int tail: List end end = tuple_field(c, 1)
-            let %8: Int = call sum(%7)
-            let %9: Int = prim +(%6, %8)
-            jump k1(%9)
+            let %6: Int = tuple_field(c, 0) @19:63
+            let %7: Rec(List :: TYPE) Option nil cons with Tuple head: Int tail: List end end = tuple_field(c, 1) @19:76
+            let %8: Int = call sum(%7) @19:72
+            let %9: Int = prim +(%6, %8) @19:63
+            jump k1(%9) @19:34
           }
           else: {
-            jump k1(0)
+            jump k1(0) @19:34
           }
         }
       }
@@ -48,62 +48,62 @@ main {
       join k2(r.1: Int) {
         return r.1
       } in {
-        switch tag(l.1) {
+        switch tag(l.1) { @21:5
           case cons (c.1: Tuple head: Bool tail: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end end): {
             join k3(r.2: Int) {
-              let %10: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end = tuple_field(c.1, 1)
-              let %11: Int = call countTrue(%10)
-              let %12: Int = prim +(r.2, %11)
-              jump k2(%12)
+              let %10: Rec(List :: TYPE) Option nil cons with Tuple head: Bool tail: List end end = tuple_field(c.1, 1) @21:76
+              let %11: Int = call countTrue(%10) @21:66
+              let %12: Int = prim +(r.2, %11) @21:35
+              jump k2(%12) @21:5
             } in {
-              let %13: Bool = tuple_field(c.1, 0)
-              if %13 {
-                jump k3(1)
+              let %13: Bool = tuple_field(c.1, 0) @21:38
+              if %13 { @21:35
+                jump k3(1) @21:35
               } else {
-                jump k3(0)
+                jump k3(0) @21:35
               }
             }
           }
           else: {
-            jump k2(0)
+            jump k2(0) @21:5
           }
         }
       }
     }
   }
-  let %14: Int = call sum(ints)
-  do call printInt(%14)
-  let %15: Int = call countTrue(bools)
-  do call printInt(%15)
-  let viaFun: FunList(Int) = ints
-  let viaRec: IntList = viaFun
-  let %16: Int = call sum(viaRec)
-  do call printInt(%16)
-  let %17: T = call dynamic.new [List(Int)](ints)
-  let %18: IntList = call dynamic.be [IntList](%17)
-  let %19: Int = call sum(%18)
-  do call printInt(%19)
-  let %20: T = call dynamic.new [FunList(Int)](viaFun)
-  let %21: List(Int) = call dynamic.be [List(Int)](%20)
-  let %22: Int = call sum(%21)
-  do call printInt(%22)
-  let head.3: Int = 5
-  let rest: Stream(Int) = option(done)
-  let %23: Tuple head: Int rest: Rec(Stream :: TYPE) Option done more with Tuple head: Int rest: Stream end end end = tuple(head.3, rest)
-  let s: Stream(Int) = option(more, %23)
-  let %24: Tuple Int head: Int rest: Rec(Stream :: TYPE) Option done more with Tuple head: Int rest: Stream end end end = payload(s, more) #1
-  let %25: Int = tuple_field(%24, 1)
-  do call printInt(%25)
-  let value: Int = 6
-  let rest.1: Alt(Int Bool) = option(stop)
-  let %26: Tuple value: Int rest: Rec(Alt :: TYPE) Option stop next with Tuple value: Int rest: Alt end end end = tuple(value, rest.1)
-  let a: Alt(Int Bool) = option(next, %26)
-  let %27: Tuple Int value: Int rest: Rec(Alt :: TYPE) Option stop next with Tuple value: Int rest: Alt end end end = payload(a, next) #1
-  let %28: Int = tuple_field(%27, 1)
-  do call printInt(%28)
+  let %14: Int = call sum(ints) @22:10
+  do call printInt(%14) @22:1
+  let %15: Int = call countTrue(bools) @23:10
+  do call printInt(%15) @23:1
+  let viaFun: FunList(Int) = ints @28:28
+  let viaRec: IntList = viaFun @29:23
+  let %16: Int = call sum(viaRec) @30:10
+  do call printInt(%16) @30:1
+  let %17: T = call dynamic.new [List(Int)](ints) @31:34
+  let %18: IntList = call dynamic.be [IntList](%17) @31:14
+  let %19: Int = call sum(%18) @31:10
+  do call printInt(%19) @31:1
+  let %20: T = call dynamic.new [FunList(Int)](viaFun) @32:36
+  let %21: List(Int) = call dynamic.be [List(Int)](%20) @32:14
+  let %22: Int = call sum(%21) @32:10
+  do call printInt(%22) @32:1
+  let head.3: Int = 5 @36:54
+  let rest: Stream(Int) = option(done) @36:56
+  let %23: Tuple head: Int rest: Rec(Stream :: TYPE) Option done more with Tuple head: Int rest: Stream end end end = tuple(head.3, rest) @36:22
+  let s: Stream(Int) = option(more, %23) @36:22
+  let %24: Tuple Int head: Int rest: Rec(Stream :: TYPE) Option done more with Tuple head: Int rest: Stream end end end = payload(s, more) #1 @37:10
+  let %25: Int = tuple_field(%24, 1) @37:10
+  do call printInt(%25) @37:1
+  let value: Int = 6 @39:58
+  let rest.1: Alt(Int Bool) = option(stop) @39:60
+  let %26: Tuple value: Int rest: Rec(Alt :: TYPE) Option stop next with Tuple value: Int rest: Alt end end end = tuple(value, rest.1) @39:24
+  let a: Alt(Int Bool) = option(next, %26) @39:24
+  let %27: Tuple Int value: Int rest: Rec(Alt :: TYPE) Option stop next with Tuple value: Int rest: Alt end end end = payload(a, next) #1 @40:10
+  let %28: Int = tuple_field(%27, 1) @40:10
+  do call printInt(%28) @40:1
   funs {
     fun leaf(n: Int): Tree(Int) {
-      let %29: Tree(Int) = variant(leaf, n)
+      let %29: Tree(Int) = variant(leaf, n) @45:31
       return %29
     }
   }
@@ -112,65 +112,65 @@ main {
       join k4(r.3: Int) {
         return r.3
       } in {
-        switch tag(t) {
+        switch tag(t) { @47:5
           case leaf (n.1: Int): {
-            jump k4(n.1)
+            jump k4(n.1) @47:5
           }
           case node (f: Rec(Forest :: TYPE) Record trees: Array(Tree) end): {
-            let %30: Int = call sizeForest(f)
-            jump k4(%30)
+            let %30: Int = call sizeForest(f) @49:31
+            jump k4(%30) @47:5
           }
           else: {
-            jump k4(0)
+            jump k4(0) @47:5
           }
         }
       }
     }
     fun sizeForest(f.1: Forest(Int)): Int {
-      var total: Int = 0
-      let %31: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) = record_field(f.1, trees)
-      let %32: Int = prim extent(%31)
-      let %33: Int = prim -(%32, 1)
-      var i: Int = 0
+      var total: Int = 0 @54:9
+      let %31: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) = record_field(f.1, trees) @55:48
+      let %32: Int = prim extent(%31) @55:24
+      let %33: Int = prim -(%32, 1) @55:24
+      var i: Int = 0 @55:9
       loop L1 {
-        let %34: Bool = prim <=(i, %33)
-        if %34 {
-          let i.1: Int = i
-          let %35: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) = record_field(f.1, trees)
-          let %36: Rec(Tree :: TYPE) Variant leaf: Int node: Forest end = index(%35, i.1)
-          let %37: Int = call size(%36)
-          let %38: Int = prim +(total, %37)
-          total := %38
-          let %39: Int = prim +(i, 1)
-          i := %39
+        let %34: Bool = prim <=(i, %33) @55:9
+        if %34 { @55:9
+          let i.1: Int = i @55:9
+          let %35: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) = record_field(f.1, trees) @56:35
+          let %36: Rec(Tree :: TYPE) Variant leaf: Int node: Forest end = index(%35, i.1) @56:35
+          let %37: Int = call size(%36) @56:30
+          let %38: Int = prim +(total, %37) @56:22
+          total := %38 @56:13
+          let %39: Int = prim +(i, 1) @55:9
+          i := %39 @55:9
         } else {
-          break L1
+          break L1 @55:9
         }
       }
       return total
     }
   }
-  let %40: Tree(Int) = call leaf(7)
-  let %41: Tree(Int) = call leaf(8)
-  let %42: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) = array(%40, %41)
-  let forest: Forest(Int) = record(trees = %42)
-  let %43: Tree(Int) = call leaf(1)
-  let %44: Tree(Int) = variant(node, forest)
-  let %45: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) = array(%43, %44)
-  let %46: Record trees: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) end = record(trees = %45)
-  let tree: Tree(Int) = variant(node, %46)
-  let %47: Int = call size(tree)
-  do call printInt(%47)
-  let %48: T = call dynamic.new [Forest(Int)](forest)
-  let %49: Forest(Int) = call dynamic.be [Forest(Int)](%48)
-  let %50: Int = call sizeForest(%49)
-  do call printInt(%50)
-  let value.1: Int = 9
-  let next: Chain(Int) = option(last)
-  let %51: Tuple value: Int next: Rec(Chain :: TYPE) Option last more with Tuple value: Int next: Chain end end end = tuple(value.1, next)
-  let c.2: Chain(Int) = option(more, %51)
-  let %52: Tuple Int value: Int next: Rec(Chain :: TYPE) Option last more with Tuple value: Int next: Chain end end end = payload(c.2, more) #1
-  let local: Int = tuple_field(%52, 1)
-  do call printInt(local)
+  let %40: Tree(Int) = call leaf(7) @60:51
+  let %41: Tree(Int) = call leaf(8) @60:59
+  let %42: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) = array(%40, %41) @60:42
+  let forest: Forest(Int) = record(trees = %42) @60:27
+  let %43: Tree(Int) = call leaf(1) @61:78
+  let %44: Tree(Int) = variant(node, forest) @61:86
+  let %45: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) = array(%43, %44) @61:69
+  let %46: Record trees: Array(Rec(Tree :: TYPE) Variant leaf: Int node: Forest end) end = record(trees = %45) @61:54
+  let tree: Tree(Int) = variant(node, %46) @61:23
+  let %47: Int = call size(tree) @62:10
+  do call printInt(%47) @62:1
+  let %48: T = call dynamic.new [Forest(Int)](forest) @63:45
+  let %49: Forest(Int) = call dynamic.be [Forest(Int)](%48) @63:21
+  let %50: Int = call sizeForest(%49) @63:10
+  do call printInt(%50) @63:1
+  let value.1: Int = 9 @69:60
+  let next: Chain(Int) = option(last) @69:62
+  let %51: Tuple value: Int next: Rec(Chain :: TYPE) Option last more with Tuple value: Int next: Chain end end end = tuple(value.1, next) @69:29
+  let c.2: Chain(Int) = option(more, %51) @69:29
+  let %52: Tuple Int value: Int next: Rec(Chain :: TYPE) Option last more with Tuple value: Int next: Chain end end end = payload(c.2, more) #1 @70:9
+  let local: Int = tuple_field(%52, 1) @70:9
+  do call printInt(local) @72:1
 }
 

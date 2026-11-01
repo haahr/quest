@@ -1,59 +1,59 @@
 import writer = "writer" : Writer
 import conv = "conv" : Conv
 main {
-  let wOut: writer.T = member writer.output
+  let wOut: writer.T = member writer.output @6:12
   funs {
     fun printInt(x: Int): Ok {
-      let %1: String = call conv.int(x)
-      do call writer.putString(wOut, %1)
-      let %2: Ok = call writer.putString(wOut, "\n")
+      let %1: String = call conv.int(x) @9:31
+      do call writer.putString(wOut, %1) @9:9
+      let %2: Ok = call writer.putString(wOut, "\n") @10:9
       return %2
     }
   }
   funs {
     fun apply(fn: Fun(x: Int): Int, x.1: Int): Int {
-      let %3: Int = call fn(x.1)
+      let %3: Int = call fn(x.1) @14:46
       return %3
     }
   }
   funs {
     fun inc(x.2: Int): Int {
-      let %4: Int = prim +(x.2, 1)
+      let %4: Int = prim +(x.2, 1) @15:24
       return %4
     }
   }
-  let %5: Int = call apply(inc, 41)
-  do call printInt(%5)
+  let %5: Int = call apply(inc, 41) @16:10
+  do call printInt(%5) @16:1
   funs {
     fun f(x.3: Int): Int {
-      let %6: Int = prim *(x.3, 3)
+      let %6: Int = prim *(x.3, 3) @19:33
       return %6
     }
   }
-  let %7: Int = call apply(f, 14)
-  do call printInt(%7)
+  let %7: Int = call apply(f, 14) @19:10
+  do call printInt(%7) @19:1
   funs {
     fun makeAdder(base: Int): Fun(x: Int): Int {
       funs {
         fun f.1(x.4: Int): Int {
-          let %8: Int = prim +(base, x.4)
+          let %8: Int = prim +(base, x.4) @23:22
           return %8
         }
       }
       return f.1
     }
   }
-  let add100: Fun(x: Int): Int = call makeAdder(100)
-  let %9: Int = call add100(42)
-  do call printInt(%9)
+  let add100: Fun(x: Int): Int = call makeAdder(100) @24:14
+  let %9: Int = call add100(42) @25:10
+  do call printInt(%9) @25:1
   funs {
     fun f.2(a: Int): Fun(b: Int): Fun(c: Int): Int {
       funs {
         fun f.3(b: Int): Fun(c: Int): Int {
           funs {
             fun f.4(c: Int): Int {
-              let %10: Int = prim +(b, c)
-              let %11: Int = prim +(a, %10)
+              let %10: Int = prim +(b, c) @30:30
+              let %11: Int = prim +(a, %10) @30:26
               return %11
             }
           }
@@ -63,23 +63,23 @@ main {
       return f.3
     }
   }
-  let %12: Fun(b: Int): Fun(c: Int): Int = call f.2(10)
-  let %13: Fun(c: Int): Int = call %12(20)
-  let %14: Int = call %13(12)
-  do call printInt(%14)
-  let count: Int = 10
-  let counter: Tuple var count: Int end = tuple(count)
+  let %12: Fun(b: Int): Fun(c: Int): Int = call f.2(10) @31:10
+  let %13: Fun(c: Int): Int = call %12(20) @31:10
+  let %14: Int = call %13(12) @31:10
+  do call printInt(%14) @31:1
+  let count: Int = 10 @34:37
+  let counter: Tuple var count: Int end = tuple(count) @34:15
   funs {
     fun bump(delta: Int): Ok {
-      let %15: Int = tuple_field(counter, 0)
-      let %16: Int = prim +(%15, delta)
-      store counter.#0 := %16
+      let %15: Int = tuple_field(counter, 0) @37:26
+      let %16: Int = prim +(%15, delta) @37:26
+      store counter.#0 := %16 @37:9
       return ok
     }
   }
-  do call bump(5)
-  do call bump(27)
-  let %17: Int = tuple_field(counter, 0)
-  do call printInt(%17)
+  do call bump(5) @40:1
+  do call bump(27) @41:1
+  let %17: Int = tuple_field(counter, 0) @42:10
+  do call printInt(%17) @42:1
 }
 

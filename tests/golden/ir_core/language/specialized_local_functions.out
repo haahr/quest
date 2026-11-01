@@ -1,11 +1,11 @@
 import writer = "writer" : Writer
 import conv = "conv" : Conv
 main {
-  let wOut: writer.T = member writer.output
+  let wOut: writer.T = member writer.output @8:12
   funs {
     fun print(s: String): Ok {
-      let %1: String = prim <>(s, "\n")
-      let %2: Ok = call writer.putString(wOut, %1)
+      let %1: String = prim <>(s, "\n") @9:50
+      let %2: Ok = call writer.putString(wOut, %1) @9:28
       return %2
     }
   }
@@ -13,19 +13,19 @@ main {
     fun keep [A::TYPE](x: A): A {
       funs {
         fun twice(y: Int): Int {
-          let %3: Int = prim *(y, 2)
+          let %3: Int = prim *(y, 2) @15:60
           return %3
         }
       }
-      let n: Int = call twice(1)
+      let n: Int = call twice(1) @15:74
       return x
     }
   }
-  let %4: Record a: Int end = record(a = 1)
-  let %5: P = call keep [P](%4)
-  let %6: Int = record_field(%5, a)
-  let %7: String = call conv.int(%6)
-  do call print(%7)
+  let %4: Record a: Int end = record(a = 1) @16:24
+  let %5: P = call keep [P](%4) @16:16
+  let %6: Int = record_field(%5, a) @16:16
+  let %7: String = call conv.int(%6) @16:7
+  do call print(%7) @16:1
   funs {
     fun choose [A::TYPE](x.1: A, y.1: A, n.1: Int): A {
       funs {
@@ -33,28 +33,28 @@ main {
           join k1(r: A) {
             return r
           } in {
-            let %8: Bool = prim >(n.1, 0)
-            if %8 {
-              jump k1(z)
+            let %8: Bool = prim >(n.1, 0) @19:72
+            if %8 { @19:69
+              jump k1(z) @19:69
             } else {
-              jump k1(y.1)
+              jump k1(y.1) @19:69
             }
           }
         }
       }
-      let %9: A = call pick(x.1)
+      let %9: A = call pick(x.1) @19:96
       return %9
     }
   }
-  let %10: Record a: Int end = record(a = 2)
-  let %11: Record a: Int end = record(a = 20)
-  let %12: P = call choose [P](%10, %11, 1)
-  let %13: Int = record_field(%12, a)
-  let %14: String = call conv.int(%13)
-  do call print(%14)
+  let %10: Record a: Int end = record(a = 2) @20:26
+  let %11: Record a: Int end = record(a = 20) @20:43
+  let %12: P = call choose [P](%10, %11, 1) @20:16
+  let %13: Int = record_field(%12, a) @20:16
+  let %14: String = call conv.int(%13) @20:7
+  do call print(%14) @20:1
   join k2(r.1: Int) {
-    let %15: String = call conv.int(r.1)
-    do call print(%15)
+    let %15: String = call conv.int(r.1) @21:7
+    do call print(%15) @21:1
     funs {
       fun measure [A::TYPE](x.2: A): Int {
         funs {
@@ -62,17 +62,17 @@ main {
             return 4
           }
         }
-        let %16: Int = call f(x.2)
+        let %16: Int = call f(x.2) @24:65
         return %16
       }
     }
-    let %17: Record a: Int end = record(a = 0)
-    let %18: Int = call measure [P](%17)
-    let %19: V = variant(q, false)
-    let %20: Int = call measure [V](%19)
-    let %21: Int = prim +(%18, %20)
-    let %22: String = call conv.int(%21)
-    do call print(%22)
+    let %17: Record a: Int end = record(a = 0) @25:27
+    let %18: Int = call measure [P](%17) @25:16
+    let %19: V = variant(q, false) @25:58
+    let %20: Int = call measure [V](%19) @25:47
+    let %21: Int = prim +(%18, %20) @25:16
+    let %22: String = call conv.int(%21) @25:7
+    do call print(%22) @25:1
     funs {
       fun wrap [A::TYPE](x.3: A): A {
         funs {
@@ -80,41 +80,41 @@ main {
             return y.3
           }
         }
-        let b: Bool = call same [Bool](true)
+        let b: Bool = call same [Bool](true) @31:17
         join k3(r.2: A) {
           return r.2
         } in {
-          if b {
-            let %23: A = call same [A](x.3)
-            jump k3(%23)
+          if b { @32:9
+            let %23: A = call same [A](x.3) @32:19
+            jump k3(%23) @32:9
           } else {
-            jump k3(x.3)
+            jump k3(x.3) @32:9
           }
         }
       }
     }
-    let %24: Record a: Int end = record(a = 5)
-    let %25: P = call wrap [P](%24)
-    let %26: Int = record_field(%25, a)
-    let %27: String = call conv.int(%26)
-    do call print(%27)
+    let %24: Record a: Int end = record(a = 5) @34:24
+    let %25: P = call wrap [P](%24) @34:16
+    let %26: Int = record_field(%25, a) @34:16
+    let %27: String = call conv.int(%26) @34:7
+    do call print(%27) @34:1
     funs {
       fun outer [A::TYPE](x.4: A): A {
         funs {
           fun id(y.4: A): A {
-            let %28: A = call keep [A](y.4)
+            let %28: A = call keep [A](y.4) @37:54
             return %28
           }
         }
-        let %29: A = call id(x.4)
+        let %29: A = call id(x.4) @37:65
         return %29
       }
     }
-    let %30: Record a: Int end = record(a = 6)
-    let %31: P = call outer [P](%30)
-    let %32: Int = record_field(%31, a)
-    let %33: String = call conv.int(%32)
-    do call print(%33)
+    let %30: Record a: Int end = record(a = 6) @38:25
+    let %31: P = call outer [P](%30) @38:16
+    let %32: Int = record_field(%31, a) @38:16
+    let %33: String = call conv.int(%32) @38:7
+    do call print(%33) @38:1
     funs {
       fun nest [A::TYPE](x.5: A): A {
         funs {
@@ -124,29 +124,29 @@ main {
                 return z.1
               }
             }
-            let %34: A = call g(y.5)
+            let %34: A = call g(y.5) @41:77
             return %34
           }
         }
-        let %35: A = call f.1(x.5)
+        let %35: A = call f.1(x.5) @41:86
         return %35
       }
     }
-    let %36: Record a: Int end = record(a = 7)
-    let %37: P = call nest [P](%36)
-    let %38: Int = record_field(%37, a)
-    let %39: String = call conv.int(%38)
-    do call print(%39)
+    let %36: Record a: Int end = record(a = 7) @42:24
+    let %37: P = call nest [P](%36) @42:16
+    let %38: Int = record_field(%37, a) @42:16
+    let %39: String = call conv.int(%38) @42:7
+    do call print(%39) @42:1
   } in {
-    let %40: V = variant(p, 3)
-    let %41: V = variant(q, true)
-    let %42: V = call choose [V](%40, %41, 0)
-    switch tag(%42) {
+    let %40: V = variant(p, 3) @21:31
+    let %41: V = variant(q, true) @21:57
+    let %42: V = call choose [V](%40, %41, 0) @21:21
+    switch tag(%42) { @21:16
       case p (k: Int): {
-        jump k2(k)
+        jump k2(k) @21:16
       }
       else: {
-        jump k2(30)
+        jump k2(30) @21:16
       }
     }
   }

@@ -220,7 +220,10 @@ drivers: each must exit with the bootstrap's status and errors, leave its files,
 the C. `self-hosted/backends` (`tests/self-hosted/backends.py`) builds the program under `tests/self-hosted/backends`
 into one build directory with one choice of backends after another ([arm64.md](arm64.md) §3.12): each build must
 print the same, each unit's manifest must record its backend, a unit is compiled again exactly when its backend
-changed, and malformed `--backend` and `--unit-backend` options are errors.
+changed, and malformed `--backend` and `--unit-backend` options are errors. `self-hosted/line_tables`
+(`tests/self-hosted/line_tables.py`) compiles a recursive program with `--backend arm64`, separately and whole, and
+runs lldb in batch mode on each binary: it must stop at a breakpoint set on a Quest line and show the Quest lines of the
+backtrace's frames ([arm64.md](arm64.md) §3.16). It passes where there is no lldb.
 
 **The SSA's backends:** `--self-hosted --backend MODE` runs the self-hosted suite's compiled tests (`run_c_compiled`,
 golden and error) with the driver's units compiled by another backend ([arm64.md](arm64.md) §4): `ssac` compiles every
@@ -243,7 +246,8 @@ which takes minutes.
 
 `run_c_compiled` compiles and runs every run program and run-time error test with the self-hosted driver, and runs the
 checks of its unit files, builds, and ABI corpus (`self-hosted/abi_corpus`, `self-hosted/unit_artifacts`,
-`self-hosted/build_errors`, `self-hosted/parallel_build`, `self-hosted/compile_command`). The generated C has no goldens: `tools/c-diff` shows how a
+`self-hosted/build_errors`, `self-hosted/parallel_build`, `self-hosted/compile_command`, `self-hosted/backends`,
+`self-hosted/line_tables`). The generated C has no goldens: `tools/c-diff` shows how a
 change alters it (§2.9). `run_c_compiled` builds into a directory of its own under each worker's (`self-hosted-units`), so that they don't reuse the bootstrap's fresh
 artifacts. The self-hosted driver builds the questlang tests once, one after another, into a shared directory
 (`self-hosted-questlang-tests`).
