@@ -275,6 +275,11 @@ start from the symbol table instead (`dladdr`, which has static functions), when
 and `ip` (`quest_function_start`). A stripped binary has no local symbols, and its frames may be attributed to the
 nearest exported function before them; the driver does not strip binaries.
 
+Both searches are slow, and `dladdr` scans the whole symbol table, the debug map's entries for the line tables too
+([arm64.md](arm64.md) §3.16), so a program that raises often from the same calls spent most of its time in them
+(zebra under arm64 ran at 2.07 times C's time instead of 1.45). The runtime caches each return address's start, in a
+direct-mapped table of 1024 entries per thread; code is never unloaded, so an entry stays right.
+
 Exact matching attributes nothing by proximity. Frames in the runtime, in the C library, below `main`, and in
 compiler-generated functions match no entry and are skipped. An inlined function's code belongs to the function it
 was inlined into, as it should. Code that gcc moves to a separate cold section (`f.cold`, which holds the calls to

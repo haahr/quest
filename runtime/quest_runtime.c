@@ -339,8 +339,24 @@ static void quest_frames_add(QFramePrinter *p, const void *start, int64_t count)
    macOS's compact unwind tables describe a run of adjacent functions whose
    prologues are alike as one, so the unwinder's start may be an earlier
    function's: the symbol table's start (which has static functions, unless the
-   binary is stripped) is the function's own, if it is no earlier. */
+   binary is stripped) is the function's own, if it is no earlier.
+
+   Both searches are slow, and dladdr scans every symbol, the debug map's too,
+   so a program that raises often from the same calls spent most of its time
+   here: the starts found are cached by pc (code is never unloaded). */
+#define Q_FUNCTION_START_CACHE 1024
+
+typedef struct QFunctionStart {
+    const void *pc;
+    const void *start;
+} QFunctionStart;
+
+static Q_THREAD_LOCAL QFunctionStart quest_function_starts[Q_FUNCTION_START_CACHE];
+
 static const void *quest_function_start(void *pc) {
+    uintptr_t       h = (uintptr_t)pc;
+    QFunctionStart *cached = &quest_function_starts[((h >> 2) ^ (h >> 12)) % Q_FUNCTION_START_CACHE];
+    if (cached->pc == pc) return cached->start;
     void *start = _Unwind_FindEnclosingFunction(pc);
 #ifdef __APPLE__
     Dl_info info;
@@ -349,6 +365,8 @@ static const void *quest_function_start(void *pc) {
         start = info.dli_saddr;
     }
 #endif
+    cached->pc = pc;
+    cached->start = start;
     return start;
 }
 
