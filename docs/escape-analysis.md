@@ -3,9 +3,9 @@
 Allocations whose pointers never leave the function that makes them, removed in the SSA, so that both of its backends
 (`ssac` and `arm64`) gain: a tuple made only to be taken apart, the tuple `o!tag` makes to read one component of,
 an option's payload tuple copied into the option, a record's box only read, the box of an option that is tested and
-unwrapped where it was made. It generalizes two fixes made in the C printer during the options-as-values experiment
-(§6), which is not on `main`, and comes before that experiment's step 3 (single-word options as nullable pointers),
-which is to be judged by the allocations that remain.
+unwrapped where it was made. It generalizes two fixes made in the C printer with [option-values.md](option-values.md)
+(§6), and comes before that plan's step 3 (single-word options as nullable pointers, deferred), which is to be judged
+by the allocations that remain.
 
 ---
 
@@ -85,12 +85,12 @@ because none of its pointers is a block argument (§2), so no pointer from one i
 4. **Measurements:** allocation counts and the suite's times through `ssac` and `arm64`, separate and whole, in
    benchmarks.md, dated. *Done when* benchmarks.md records them against the counts and times before the pass.
 5. **The C printer's fixes** (§6), decided from the measurements.
-6. **Then** the options-as-values experiment's step 3, if the allocations that still escape justify it.
+6. **Then** option-values.md's step 3, if the allocations that still escape justify it.
 
 ## 6. The C Printer's Fixes
 
-The options-as-values experiment gave the C printer two specialized forms of this pass, by pattern rather than
-analysis, for the statements that make them adjacent:
+Options as values ([option-values.md](option-values.md)) gave the C printer two specialized forms of this pass, by
+pattern rather than analysis, for the statements that make them adjacent:
 
 - **An option made from its payload tuple** (`let t = tuple(...); let o = option(tag, t)`, `t` used once): the
   option stores the tuple's components, and the tuple is not made.
@@ -106,6 +106,6 @@ necessary:
 - **Through the C printer:** clang cannot remove a `GC_malloc` it does not know as an allocator, so the C printer
   gains nothing from the SSA's pass. The fixes stay while the C printer is the default backend, and are removed when
   `ssac` replaces it (arm64.md step 15), with that step's comparison including the pass.
-- **Their cost:** if they are kept, they move to a commit of their own on `main` (they now depend on
-  the experiment's restructuring of `makeOption`, which is not on `main`), with a C-level test of each
-  pattern, since the C printer's output has no goldens.
+- **Their cost:** they were kept (`193a3f11`; [benchmarks.md](benchmarks.md) §8: peek 0.57 of its time without them,
+  wc-scanStream 0.71, zebra 0.89). The C printer's output has no goldens, so the behavior tests are all that check
+  them.

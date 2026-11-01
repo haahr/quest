@@ -375,7 +375,8 @@ and model-elimination raise and catch constantly. Options:
 
 `option none of T end` allocates an object holding only its tag every time (`maybe.none` in peek and zebra, `nil` in
 every list). A case with no payload could be one shared constant per option type, if nothing observes the identity of
-an option value.
+an option value. *Done* in part (2026-11-01, [option-values.md](option-values.md) steps 1 and 2, §8): such cases are
+constants compared by case; `maybe.some`'s box (step 3) remains.
 
 ### 3.7. Arbitrary-precision integers are slow in the suite's library
 
@@ -659,3 +660,83 @@ directory, `-j 8`, three runs, alternating:
 
 The optimizer costs about 1 s of the build, 3 to 5 percent, which includes compiling its own modules: the later
 driver is larger.
+
+## 8. Options as values (2026-11-01)
+
+[option-values.md](option-values.md)'s steps 1 and 2 (an option of a case without components is compared by its case
+and is a shared constant; a single-word option is compared by its component) and the C printer's two payload fixes
+(an option made from its payload tuple's components, and `o!tag.field` read in place,
+[escape-analysis.md](escape-analysis.md) §6), measured through C against the commit before them. What they buy is
+allocation: §3.6's objects for `nil` and `none`, and the tuples copied into and out of options' payloads.
+
+### 8.1. How they were taken
+
+As §7.1: `run.py time --clean --scale 0.25 --timeout 1800 --backend c`, one run each, each job waiting until no test
+suite, check, or other benchmark ran and the load average had been under 6 for two minutes. Each compiler was its
+commit's stage 2 with its own `lib/` and `runtime/` (`QUEST_HOME`), so that all ran in one tree:
+
+- **A,** `c62476f7`, main before the change (contification and narrowed globals, §7.2).
+- **B,** steps 1 and 2 on A (`1a5f1b55`, pushed rebased as `83dbd27a`).
+- **C,** B with the C printer's fixes (`7ef34e42`, pushed rebased as `193a3f11`).
+
+A, B, and C separately, then A and C with `--whole-program`. The commits were measured before being rebased onto
+`3fc7b821` and later, so none of these include that commit's traceback cache (§8.3). The times are in
+`benchmarks/mlton/baselines/2026-11-01/`, named by the commits measured: `quest-c-c62476f7.jsonl`,
+`quest-c-1a5f1b55.jsonl`, `quest-c-7ef34e42.jsonl`, `quest-c-whole-c62476f7.jsonl`, and
+`quest-c-whole-7ef34e42.jsonl`.
+
+### 8.2. Programs
+
+| System | Geometric mean of time / MLton's | Without fib, tailfib, tak, and tensor | Run time, all 46 |
+|---|--:|--:|--:|
+| C, A | 3.86 | 4.38 | 36.9 min |
+| C, B | 3.64 | 4.12 | 34.2 min |
+| C, C | **3.50** | 3.94 | 31.7 min |
+| C, A, `--whole-program` | 3.65 | 4.12 | 35.3 min |
+| C, C, `--whole-program` | **3.41** | 3.83 | 31.3 min |
+
+Times as a fraction of A's (below 1 is faster), for the benchmarks that moved most:
+
+| Benchmark | B | C | C whole / A whole |
+|---|--:|--:|--:|
+| peek | 0.73 | **0.41** | 0.40 |
+| ratio-regions | 0.67 | 0.66 | 0.70 |
+| wc-scanStream | 0.95 | 0.68 | 0.70 |
+| zebra | 0.81 | 0.72 | 0.72 |
+| boyer | 0.88 | 0.80 | 0.90 |
+| model-elimination | 0.81 | 0.80 | 0.88 |
+| hamlet | 0.89 | 0.82 | 0.85 |
+| mlyacc | 0.84 | 0.82 | 0.95 |
+| knuth-bendix | 0.84 | 0.83 | 0.85 |
+| logic | 0.85 | 0.83 | 0.93 |
+| **geometric mean, all 46** | **0.94** | **0.91** | **0.94** |
+
+- **Steps 1 and 2 take 0.94 times as long.** The gains are in programs built on lists and optional values, where
+  `nil` and `none` no longer allocate: ratio-regions went from 29.3 million allocations to 22.4 million, and
+  knuth-bendix, model-elimination, logic, mlyacc, boyer, and hamlet gained 11 to 19 percent. None got slower
+  outside noise (tailfib, at 0.25 s, 1.10; tailmerge 1.06; tsp 1.04).
+- **The C printer's fixes take a further 0.96,** almost all of it in three programs: peek (0.57 of B's time; 960
+  million allocations to 400 million), wc-scanStream (0.71), and zebra (0.89), which read options' payloads in their
+  inner loops. Nothing got slower outside noise (vector32-concat 1.08 separately, 0.92 whole).
+- **Whole programs** gain about as much (0.94). At A, building whole takes 0.94 times as long as building separately,
+  and ratio-regions is no longer slower whole (§7.2: 11.4 s against 12.8 s).
+- **What remains** is mostly `maybe.some`, which step 3 (deferred) would remove: at B, 800 million of peek's 960
+  million allocations and 168 million of zebra's 341 million were in `maybe.some`.
+
+### 8.3. zebra and the traceback cache
+
+zebra raises and catches exceptions constantly, and is what showed that attributing a traceback's frames had become
+slow: with line tables in the binary (arm64.md step 14), `dladdr` scanned every symbol, the debug map's entries
+included, for each frame of each raise. `3fc7b821` caches each return address's function start. Measured alone,
+as §8.1, with that commit's compiler (A plus the cache and a documentation commit):
+
+| Compiler | zebra (s) | / MLton's |
+|---|--:|--:|
+| A, `c62476f7` | 76.6 | 30.8 |
+| B | 61.8 | 24.8 |
+| C | 54.9 | 22.1 |
+| `3fc7b821` | **44.4** | **17.8** |
+
+The cache alone takes zebra to 0.58 of A's time, more than options as values do (0.72). They are independent (one
+removes allocations, the other the cost of each raise), so with both zebra should take about 0.42 of A's time. The
+time is `quest-c-zebra-3fc7b821.jsonl`.

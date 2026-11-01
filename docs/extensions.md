@@ -254,6 +254,40 @@ use no semicolons at all; the tests use both forms, so that both stay accepted.
 
 ---
 
+## Options as Values
+
+*Typeful Programming* (§3.1, under `Bool`) defines `is` as "ordinary equality for `Ok`, `Bool`, `Char`, `Int`, and
+`Real`, and as 'same memory location' for all the other types", options included, so that two evaluations of
+`option red of Color end` are not `is` each other. This implementation compares some options by value
+([option-values.md](option-values.md) §2):
+
+- **A case without components is its case.** Two options are `is` each other if they are the same object, or of the
+  same case and the case has no components at the type `is` is applied at. A case is its name, so `option thu of
+  WeekDay end`, viewed as a `Day`, is `option thu of Day end`. `{option red of Color end} is {option red of Color
+  end}` is true.
+- **A single-word option is its component.** An option type is single-word if exactly one of its cases has
+  components, exactly one, not `var`, and every other case has none, as `maybe.T(A)` is. Two of its options are `is`
+  each other if they are of the same case and, for the case with a component, their components are `is` each other.
+  `maybe.some(:String)(s) is maybe.some(:String)(s)` is true, as `s is s` is. A `var` component is excluded, since
+  its identity is its location.
+- **The static type decides.** `is` applies the rules of the type it is applied at. Two `some`s of one string are
+  `is` each other as `maybe.T(String)`s, and not after an upcast to `Option none some with val: String end other
+  with x: Int end end`, which is not single-word and at which each is a distinct object. An abstract type's values
+  compare as its representation's do.
+
+`hash.identityHash` agrees with `is`, so that identity maps keep working with such keys.
+
+The reason is cost. These options are what the paper's programs and the suite use as enumerations and optional
+values (`nil`, `none`, `some`), and making a new object for each, only so that `is` can tell them apart, was much of
+the allocation in the MLton benchmarks ([benchmarks.md](benchmarks.md) §3.6 and §8). A case without components is
+now a constant shared by every use.
+
+The single-word rule anticipates representing such options by their component
+([option-values.md](option-values.md) step 3), which is deferred. If that representation is not adopted, the rule
+is to be withdrawn, leaving only the rule for cases without components.
+
+---
+
 ## Extensions to `RealOp`
 
 *Typeful Programming*'s `RealOp` (p. 64) has arithmetic, comparisons, `floor`, `round`, `abs`, `log`, and `exp` (which
