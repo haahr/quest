@@ -1,0 +1,29 @@
+import bounds = "bounds" : Bounds
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+module words : Words {
+  let maxWord: Int = external "QUEST_INT_MAX" @10:24
+  let words_record: Record maxWord: Int end = record(maxWord = maxWord)
+  export maxWord = maxWord
+  record words_record
+}
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @13:51
+      do call writer.putString(%1, s) @13:34
+      let %2: writer.T = member writer.output @13:85
+      let %3: Ok = call writer.putString(%2, "\n") @13:68
+      return %3
+    }
+  }
+  let %4: Int = member words.maxWord @14:34
+  let %5: Bool = call bounds.isLargest(%4) @14:17
+  let %6: String = call conv.bool(%5) @14:7
+  do call print(%6) @14:1
+  let %7: limits.Limit = call bounds.largest() @15:16
+  let %8: Int = tuple_field(%7, 0) @15:16
+  let %9: String = call conv.int(%8) @15:7
+  do call print(%9) @15:1
+}
+

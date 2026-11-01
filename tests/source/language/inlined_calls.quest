@@ -37,7 +37,11 @@ print("raises: " <> try conv.int(checked(~1)) when negative then "negative" end)
 let rec fact(n: Int): Int = if n <= 1 then 1 else n * fact(n - 1) end;
 print("recursive: " <> conv.int(fact(10)));
 
-let identity(A::TYPE x: A): word.T = external "quest_identity_hash";
+interface Identity import word: Word export identity(A::TYPE x: A): word.T end;
+unsound module identities: Identity import word: Word export
+    let identity(A::TYPE x: A): word.T = external "quest_identity_hash"
+end;
+let identity = identities.identity;
 let numbers = array of(3 1);
 let pair = tuple let a = 1 let b = "two" end;
 print("external: " <> conv.bool({identity(:Array(Int) numbers) is identity(:Array(Int) numbers)}

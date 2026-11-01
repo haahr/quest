@@ -1,7 +1,13 @@
-(* An external value binding names a constant of the C runtime, which the interpreter provides too. *)
+(* An external value binding names a constant of the C runtime, which the interpreter provides too. Only an unsound
+   module may bind one. *)
 (* @echo *)
 
-let maxVal: Int = external "QUEST_INT_MAX";
-let minVal: Int = external "QUEST_INT_MIN";
+interface Limits export maxVal, minVal: Int end;
+unsound module limits: Limits export
+    let maxVal: Int = external "QUEST_INT_MAX"
+    let minVal: Int = external "QUEST_INT_MIN"
+end;
+let maxVal = limits.maxVal;
+let minVal = limits.minVal;
 maxVal > 0;
 minVal < 0

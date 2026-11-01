@@ -137,6 +137,11 @@ export
      * 1. Kind Elaboration
      * ====================================================================== *)
 
+    let requireUnsoundModule(e: env.T offset: Int): Ok =
+        if not(e.inUnsoundModule) then
+            diagnostics.fail(:Ok "'external' may be used only in an unsound module" offset)
+        end
+
     let rec elaborateKind(k: ast.KindExpr e: env.T): Kind =
         case k.form
             when kindType then model.typeKind
@@ -357,7 +362,11 @@ export
                         end
                         reference(full full maybe.unwrap(:symbols.TypeSymbol sym))
                     end
-                when typeExternal with x then model.externalType("" x.cType)
+                when typeExternal with x then
+                    begin
+                        requireUnsoundModule(e offset)
+                        model.externalType("" x.cType)
+                    end
                 else diagnostics.fail(:Type "Unsupported AST type node" offset)
             end
         end

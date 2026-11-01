@@ -1,0 +1,15 @@
+(* Unsound interfaces and modules: a program may import the sound interface of an unsound module, and declare an
+   unsound module of its own, but uses 'external' only through one *)
+
+import bounds: Bounds;
+import writer: Writer;
+import conv: Conv;
+
+interface Words export maxWord: Int end;
+unsound module words: Words export
+    let maxWord: Int = external "QUEST_INT_MAX"
+end;
+
+let print(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+print(conv.bool(bounds.isLargest(words.maxWord)));
+print(conv.int(bounds.largest().value))

@@ -107,6 +107,7 @@ QI_SCHEMA_TYPE_STR = (
     "abi: Int "
     "deps: Array(Record dir: String path: String source: String end) "
     "imports: Array(String) "
+    "isUnsound: Bool "
     "name: String "
     "producer: String "
     "source: String "
@@ -452,6 +453,7 @@ def compile_interface_to_qi(
             "source": QString(str(source.resolve()) if source is not None else ""),
             "name": QString(decl.name),
             "imports": imports_arr,
+            "isUnsound": TRUE_VALUE if decl.is_unsound else FALSE_VALUE,
             "types": QArray(type_records),
             "values": QArray(value_records),
         }
@@ -827,6 +829,7 @@ def load_interface_from_qi_file(file_path: Path, env: Environment) -> Scope:
                             env.register_module(own, registered_scope)
 
     iface_scope = Scope(name=f"interface_{name}", parent=imp_scope_frame)
+    iface_scope.is_unsound = bool(rec.fields["isUnsound"].value)
     for t_name, t_sym in imp_scope_frame.types.items():
         iface_scope.declare_type(t_sym)
     for k_name, k_sym in imp_scope_frame.kinds.items():

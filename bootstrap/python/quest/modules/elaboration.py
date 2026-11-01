@@ -113,6 +113,14 @@ def build_record_type_from_scope(scope: Scope, provenance: Optional[str] = None)
     return QRecordType(tuple(fields), provenance=provenance)
 
 
+def require_sound_import(scope: Scope, iface_path: str, importer_is_unsound: bool) -> None:
+    """Refuses an import of an unsound interface by a sound module or by a
+    program, which is implicitly sound (docs/modules.md §4.4). An interface may
+    import one, since only operations, not types, can compromise soundness."""
+    if scope.is_unsound and not importer_is_unsound:
+        raise QuestTypeError(f"The unsound interface '{iface_path}' may be imported only by an unsound module")
+
+
 def import_interface(iface_path: str, local_name: str, env: Environment) -> Scope:
     """Returns the interface an import names by iface_path, binding it to
     local_name (and iface_path) in env.
@@ -134,6 +142,7 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
     import_scope = Scope(name=f"interface_imports_{decl.name}", parent=env.current_scope)
     interface_scope = Scope(name=f"interface_{decl.name}", parent=import_scope)
     interface_scope.module_name = decl.name
+    interface_scope.is_unsound = decl.is_unsound
 
     # 1. Resolve imports into import_scope (available for signatures, not
     #    exported by interface)
@@ -195,9 +204,12 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
                     )
                     import_scope.declare_value(ValueSymbol(name=name, type_val=mod_type))
 
-    # 2. Elaborate signatures in a child scope of the interface
+    # 2. Elaborate signatures in a child scope of the interface, where
+    #    'external' is refused, as it is everywhere but in an unsound module
     saved_scope = env.current_scope
+    saved_unsound = env.in_unsound_module
     env.current_scope = interface_scope
+    env.in_unsound_module = False
     try:
         for sig in decl.signatures:
             match sig:
@@ -231,6 +243,7 @@ def elaborate_interface(decl: ast.InterfaceDecl, env: Environment) -> TypedInter
                     interface_scope.declare_kind(kind_symbol)
     finally:
         env.current_scope = saved_scope
+        env.in_unsound_module = saved_unsound
 
     env.register_interface(decl.name, interface_scope)
     return TypedInterface(name=decl.name, signatures=(), scope=interface_scope, offset=decl.offset)
@@ -409,6 +422,11 @@ def elaborate_module(
     target_interface_scope = env.lookup_interface(decl.interface_name)
     if target_interface_scope is None:
         target_interface_scope = load_interface(decl.interface_name, env)
+    if target_interface_scope.is_unsound and not decl.is_unsound:
+        raise QuestTypeError(
+            f"The unsound interface '{decl.interface_name}' may be implemented only by an unsound module",
+            offset=decl.offset,
+        )
 
     module_internal_scope = Scope(name=f"module_internal_{decl.name}", parent=env.base_scope)
 
@@ -420,6 +438,7 @@ def elaborate_module(
         with at_import(imp.offset, env.source_map):
             iface_path = imp.effective_interface_path
             source_interface_scope = import_interface(iface_path, imp.interface_name, env)
+            require_sound_import(source_interface_scope, iface_path, decl.is_unsound)
 
             if not imp.names:
                 for type_name, type_sym in source_interface_scope.types.items():
@@ -467,7 +486,9 @@ def elaborate_module(
         binding_elaborator = _hooks.elaborate_binding
 
     saved_scope = env.current_scope
+    saved_unsound = env.in_unsound_module
     env.current_scope = module_internal_scope
+    env.in_unsound_module = decl.is_unsound
     typed_bindings: list[TypedBinding] = []
     if decl.imports:
         from quest.typechecker.typed_ast import TypedImportItem
@@ -556,6 +577,7 @@ def elaborate_module(
                 )
     finally:
         env.current_scope = saved_scope
+        env.in_unsound_module = saved_unsound
 
     # 4. Create exported module scope (strictly opaque for abstract interface
     #    types)
@@ -607,6 +629,7 @@ def elaborate_import(phrase: ast.ImportPhrase, env: Environment) -> TypedImport:
             iface_path = item.effective_interface_path
             local_iface_name = item.interface_name
             iface_scope = import_interface(iface_path, local_iface_name, env)
+            require_sound_import(iface_scope, iface_path, False)
 
             if not item.names:
                 # import : Interface

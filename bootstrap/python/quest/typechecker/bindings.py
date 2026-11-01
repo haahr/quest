@@ -39,6 +39,7 @@ from quest.typechecker.elaborate_types import (
     elaborate_type,
     elaborate_type_binding,
     elaborate_type_binding_group,
+    require_unsound_module,
 )
 from quest.typechecker.typed_ast import (
     TypedBinding,
@@ -595,6 +596,7 @@ class BindingMixin(Checker):
             # An external function: its parameters and result annotation declare
             # its type
             case ast.LetValueBinding(params=params, value=ast.ExprExternal()) if params:
+                require_unsound_module(env, binding.value.offset)
                 if binding.type_annot is None:
                     raise TypeError(
                         f"External function '{binding.name}' requires an explicit return type annotation",

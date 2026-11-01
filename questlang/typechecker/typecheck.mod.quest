@@ -93,6 +93,7 @@ import
     questlang/typechecker/exceptions : questlang/typechecker/Exceptions
     questlang/typechecker/autoValues : questlang/typechecker/AutoValues
     questlang/typechecker/scoping : questlang/typechecker/Scoping
+    questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
     questlang/modules/elaboration : questlang/modules/Elaboration
     questlang/modules/loader : questlang/modules/Loader
     collections/vector : collections/Vector
@@ -130,7 +131,11 @@ export
                 when exprAuto then autoValues.elaborateAuto(c x0 exp e loopDepth)
                 (* An external C symbol's binding *)
                 when exprExternal with x then
-                    expr(x0.span.startOffset expected option exprExternal of typedAst.ExprForm with let symbol = x.symbol end)
+                    begin
+                        elaborateTypes.requireUnsoundModule(e x0.span.startOffset)
+                        expr(x0.span.startOffset expected
+                            option exprExternal of typedAst.ExprForm with let symbol = x.symbol end)
+                    end
                 (* An application: the type required by the context can
                  * determine implicit type arguments (Cardelli, The Quest
                  * Language and System section 4: cons(3 nil())) *)

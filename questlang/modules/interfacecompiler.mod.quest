@@ -45,6 +45,7 @@ export
         <> "abi: Int "
         <> "deps: Array(Record dir: String path: String source: String end) "
         <> "imports: Array(String) "
+        <> "isUnsound: Bool "
         <> "name: String "
         <> "producer: String "
         <> "source: String "
@@ -465,6 +466,7 @@ export
                     str(if maybe.isSome(:String source) then paths.absolute(maybe.unwrap(:String source)) else "" end))
                 field("name" str(decl.name))
                 field("imports" arrayOf(imports))
+                field("isUnsound" values.boolValue(decl.isUnsound))
                 field("types" arrayOf(types))
                 field("values" arrayOf(vals))
             end)
@@ -871,6 +873,7 @@ export
             end
 
             let ifaceScope = symbols.newScope(maybe.some(:Scope frame) "interface_" <> name)
+            ifaceScope.isUnsound := boolOf(fieldOf(rec0 "isUnsound"))
             declareTypesAndKinds(ifaceScope frame)
 
             (* 2. Its types, and 3. its values *)

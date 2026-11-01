@@ -1,22 +1,32 @@
 import writer = "writer" : Writer
 import word = "word" : Word
 import conv = "conv" : Conv
+import word = "word" : Word
+static descriptor(Record identity: All(A :: TYPE) Fun(x: A): word.T end)
 static descriptor(Array(Int))
 static descriptor(Tuple a: Int b: String end)
+static offsets(Record identity: All(A :: TYPE) Fun(x: A): word.T end <- Record identity: All(A :: TYPE) Fun(x: A): word.T end) registered
+fun identity [A::TYPE](descriptor_A: descriptor, x: A): word.T {
+  let %1: word.T = call external "quest_identity_hash" [descriptor_A](x) @42:5
+  return %1
+}
 fun fact(n: Int): Int {
-  let %1: Bool = prim <=(n, 1) @37:32
-  if %1 { @37:29
+  let %2: Bool = prim <=(n, 1) @37:32
+  if %2 { @37:29
     return 1 @37:29
   } else {
-    let %2: Int = prim -(n, 1) @37:60
-    let %3: Int = call fact.1(%2) @37:55
-    let %4: Int = prim *(n, %3) @37:51
-    return %4 @37:29
+    let %3: Int = prim -(n, 1) @37:60
+    let %4: Int = call fact.1(%3) @37:55
+    let %5: Int = prim *(n, %4) @37:51
+    return %5 @37:29
   }
 }
-fun identity [A::TYPE](descriptor_A: descriptor, x: A): word.T {
-  let %5: word.T = call external "quest_identity_hash" [descriptor_A](x) @40:1
-  return %5
+module identities : Identity {
+  let identity.1: All(A :: TYPE) Fun(x: A): word.T = closure identity {}
+  let identities_record_box: box(Record identity: All(A :: TYPE) Fun(x: A): word.T end) = record(identity = identity.1) with offsets(Record identity: All(A :: TYPE) Fun(x: A): word.T end <- Record identity: All(A :: TYPE) Fun(x: A): word.T end) of descriptor(Record identity: All(A :: TYPE) Fun(x: A): word.T end)
+  let identities_record: Record identity: All(A :: TYPE) Fun(x: A): word.T end = convert(identities_record_box, slot_unbox)
+  export identity = identity.1
+  record identities_record
 }
 main {
   let %6: String = call conv.int(37) @16:19
@@ -70,31 +80,31 @@ main {
     let %48: writer.T = member writer.output @13:45
     let %49: String = prim <>(%47, "\n") @13:59
     let %50: Ok = call writer.putString(%48, %49) @13:28
-    let identity.1: All(A :: TYPE) Fun(x: A): word.T = closure identity {}
-    let numbers: Array(Int) = array_rep(3, 1) @41:15
-    let b.1: String = "two" @42:36
-    let pair: Tuple a: Int b: String end = tuple(1, b.1) @42:12
+    let identity.2: All(A :: TYPE) Fun(x: A): word.T = member identities.identity @44:16
+    let numbers: Array(Int) = array_rep(3, 1) @45:15
+    let b.1: String = "two" @46:36
+    let pair: Tuple a: Int b: String end = tuple(1, b.1) @46:12
     join k6(r.1: Bool) {
-      let %51: String = call conv.bool(r.1) @43:23
-      let %52: String = prim <>("external: ", %51) @43:7
+      let %51: String = call conv.bool(r.1) @47:23
+      let %52: String = prim <>("external: ", %51) @47:7
       let %53: writer.T = member writer.output @13:45
       let %54: String = prim <>(%52, "\n") @13:59
       let %55: Ok = call writer.putString(%53, %54) @13:28
     } in {
       let numbers.1: A = convert(numbers, box)
-      let %56: word.T = call identity.1 [descriptor(Array(Int))](numbers.1) @43:34
+      let %56: word.T = call identity.2 [descriptor(Array(Int))](numbers.1) @47:34
       let numbers.2: A = convert(numbers, box)
-      let %57: word.T = call identity.1 [descriptor(Array(Int))](numbers.2) @43:67
-      let %58: Bool = prim is(%56, %57) @43:34
-      if %58 { @43:34
+      let %57: word.T = call identity.2 [descriptor(Array(Int))](numbers.2) @47:67
+      let %58: Bool = prim is(%56, %57) @47:34
+      if %58 { @47:34
         let pair.1: A = convert(pair, box)
-        let %59: word.T = call identity.1 [descriptor(Tuple a: Int b: String end)](pair.1) @44:12
+        let %59: word.T = call identity.2 [descriptor(Tuple a: Int b: String end)](pair.1) @48:12
         let pair.2: A = convert(pair, box)
-        let %60: word.T = call identity.1 [descriptor(Tuple a: Int b: String end)](pair.2) @44:58
-        let %61: Bool = prim is(%59, %60) @44:12
-        jump k6(%61) @43:34
+        let %60: word.T = call identity.2 [descriptor(Tuple a: Int b: String end)](pair.2) @48:58
+        let %61: Bool = prim is(%59, %60) @48:12
+        jump k6(%61) @47:34
       } else {
-        jump k6(false) @43:34
+        jump k6(false) @47:34
       }
     }
   } in {

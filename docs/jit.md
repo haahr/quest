@@ -6,7 +6,7 @@ backend's pipeline ([arm64.md](arm64.md)) unchanged up to machine instructions, 
 with an in-memory encoder and loader. It is written in Quest, in `questlang/`, and the bootstrap does not get it
 ([testing.md](testing.md) §2.8), though it gets the language change the JIT needs (§3.11).
 
-**Status: planned.** Section 1 records the decisions, section 7 the steps. Nothing is implemented.
+**Status: step 1 of 8 done** (§7). Section 1 records the decisions, section 7 the steps.
 
 ---
 
@@ -382,8 +382,12 @@ the runtime for every program, and come first so that the JIT is built on them.
 
 1. **`unsound`** (§3.11). Both compilers' type checkers enforce the rules, with `external` an unsound operation;
    `lib/`'s eighteen modules that bind externals become `unsound module`s, and the four test programs' externals
-   move into unsound modules. A test of each rule's error, in both compilers (`tests/source/errors`). Documented in
+   move into unsound modules. A test of each rule's error, in both compilers (`tests/errors`). Documented in
    modules.md and extensions.md; roadmap.md drops hot-swapping.
+   *Done* (2026-11-01). `external` covers types as well as values and functions, so an interface, even an unsound
+   one, may declare no external type, and `tests/elaborate/types`'s external type became a case of the error. A `.qi`
+   records `isUnsound`, an ABI change (59). The tests are `tests/errors/typecheck/unsound` and
+   `tests/source/modules/unsound_modules`; modules.md §4.4 documents the rules.
 2. **Frames by the frame-pointer chain** (§3.9). The runtime's capture and uncaught walk step by `x29`; the
    stack-overflow handler starts from the faulting context. The run goldens that list frames are checked through the
    C, ssac, and arm64 backends, and exceptions.md §5.3 describes the walk.

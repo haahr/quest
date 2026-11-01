@@ -32,6 +32,7 @@ from quest.modules.elaboration import (
     register_binding_elaborator,
 )
 import quest.modules.loader  # noqa: F401  (registers the loader with quest.modules.elaboration)
+from quest.typechecker.elaborate_types import require_unsound_module
 from quest.typechecker.typed_ast import (
     TypedBinding,
     TypedBool,
@@ -255,6 +256,7 @@ class TypeElaborator(BindingMixin, ApplicationMixin, AggregateMixin, ControlMixi
 
             # 12. External C symbol binding
             case ast.ExprExternal(symbol=symbol, offset=off):
+                require_unsound_module(env, off)
                 return TypedExternal(symbol=symbol, type_val=expected_type, offset=off)
 
             # 13. Application: the type required by the context can determine

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Optional, Union
 
 import quest.syntax.ast as ast
+from quest.diagnostics import QuestTypeError
 from quest.types import (
     TYPE_KIND,
     alias_reference,
@@ -56,6 +57,14 @@ from quest.types.env import (
     TypeSymbol,
     ValueSymbol,
 )
+
+
+def require_unsound_module(env: Environment, offset: int) -> None:
+    """Refuses 'external' outside an unsound module: it gives a C entity
+    whatever type it is declared with, which nothing checks (docs/modules.md
+    §4.4)."""
+    if not env.in_unsound_module:
+        raise QuestTypeError("'external' may be used only in an unsound module", offset=offset)
 
 
 # ============================================================================
@@ -549,6 +558,7 @@ def elaborate_type(ast_type: ast.Type, env: Environment) -> QType:
             )
 
         case ast.TypeExternal(c_type=c_type):
+            require_unsound_module(env, ast_type.offset)
             return QExternalType(name="", c_type=c_type)
 
         case _:

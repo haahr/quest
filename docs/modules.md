@@ -210,6 +210,40 @@ Client programs import interfaces and modules using the two-tier `import` syntax
 
 In all contexts, `/` in expressions (e.g. `10 / 2`) remains the standard division operator without syntactic ambiguity.
 
+### 4.4. Unsound Interfaces and Modules
+An interface or a module may be marked `unsound`, after *Typeful Programming* §9.3 (and Cedar-Mesa's and Modula-3's
+unsafe modules). An unsound module may do what the type checker cannot vouch for; the marking keeps it apart from the
+code that relies on the checker. Both compilers enforce the rules:
+
+- **`external` is an unsound operation.** It gives a C entity whatever type it is declared with, and nothing checks the
+  declaration against the C, so a wrong one corrupts memory with no help from the type checker. An external value,
+  function, or type may be bound only in an unsound module: not in a sound module, an interface, or a program.
+- **A sound module, or a program, may not import an unsound interface;** an unsound module may import any.
+- **Only an unsound module may implement an unsound interface.**
+- **An unsound module may implement a sound interface,** its author vouching that it is sound from outside. The
+  standard library's modules that bind externals (`writer`, `system`, `conv`, and the others) are unsound modules
+  behind sound interfaces, so the programs that import them need not change.
+- **A sound interface may import an unsound one,** since soundness can be compromised only by operations, not by types.
+- **The top level is sound:** a program, or the REPL, may declare an unsound module of its own, but uses `external`
+  only through one, and imports no unsound interface.
+
+```quest
+(* limits.int.quest *)
+unsound interface Limits
+export
+    maxInt: Int
+end
+
+(* limits.mod.quest *)
+unsound module limits : Limits
+export
+    let maxInt: Int = external "QUEST_INT_MAX"
+end
+```
+
+A `.qi` records whether its interface is unsound (`isUnsound`), so that the rules hold under separate compilation.
+`grep unsound` lists every module whose correctness rests on hand-checked C.
+
 ---
 
 ## 5. Singleton Evaluation & Diamond Dependencies
@@ -329,7 +363,7 @@ The IR and C backend optimize module member calls while preserving Cardelli's fi
      `QClosure` at the interface's representation and stored alongside exported non-function values in `qm_<clean>`.
 
 ### 8.3. Hybrid Quest/C Modules
-Modules can freely mix Quest definitions and `external` C bindings:
+Unsound modules (§4.4) can freely mix Quest definitions and `external` C bindings:
 ```quest
 (* fileio.int.quest *)
 interface FileIO
@@ -340,7 +374,7 @@ export
 end
 
 (* fileio.mod.quest *)
-module fileio : FileIO
+unsound module fileio : FileIO
 import writer: Writer
 export
     Let Handle = external "QWriter *"

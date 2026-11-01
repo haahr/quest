@@ -137,8 +137,9 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
 - Follows the evidence-passing object model and AAPCS64 register conventions in [runtime-design.md](runtime-design.md).
 
 ### Step 7: Native AArch64 JIT & Interactive Incremental Runtime
-- In-process dynamic code emission and execution for REPL.
-- Dynamic patching and hot-swapping of evaluated phrases.
+- In-process dynamic code emission and execution for the REPL, and later for files and `-e`, with the interpreters'
+  lexical semantics: a rebinding shadows, and code compiled earlier keeps the binding it saw (no hot-swapping).
+- Planned in [jit.md](jit.md); step 1, `unsound` interfaces and modules ([modules.md](modules.md) §4.4), is done.
 
 ---
 

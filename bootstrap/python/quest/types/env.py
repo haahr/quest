@@ -134,6 +134,9 @@ class Environment:
         # The directory of the program being compiled, which names units under
         # no include root (docs/modules.md §2.3)
         self.program_dir: Optional[Path] = None
+        # Whether the bindings being elaborated are an unsound module's, the
+        # only place 'external' may be used (docs/modules.md §4.4)
+        self.in_unsound_module = False
         self._units: Optional[UnitGraph] = None
         self._loading_interfaces: list[str] = []
         self._loading_modules: list[str] = []

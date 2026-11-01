@@ -116,20 +116,33 @@ export
             end
         end
 
-    (* body with the current scope s, which is restored even if body raises an
-     * exception *)
-    let inScope(A::TYPE e: env.T s: Scope body: All() A): A =
+    (* body with the current scope s, in an unsound module or not (where
+     * 'external' may be used), both restored even if body raises an exception *)
+    let inScope(A::TYPE e: env.T s: Scope isUnsound: Bool body: All() A): A =
         begin
             let saved = e.currentScope
+            let savedUnsound = e.inUnsoundModule
             e.currentScope := s
+            e.inUnsoundModule := isUnsound
             let result = try
                 body()
             else with r then
                 e.currentScope := saved
+                e.inUnsoundModule := savedUnsound
                 raised.reraise(:A r)
             end
             e.currentScope := saved
+            e.inUnsoundModule := savedUnsound
             result
+        end
+
+    (* Refuses an import of an unsound interface by a sound module or by a
+     * program, which is implicitly sound (docs/modules.md section 4.4). An
+     * interface may import one, since only operations, not types, can
+     * compromise soundness. *)
+    let requireSoundImport(scope: Scope ifacePath: String importerIsUnsound: Bool): Ok =
+        if scope.isUnsound andif not(importerIsUnsound) then
+            diagnostics.fail(:Ok "The unsound interface '" <> ifacePath <> "' may be imported only by an unsound module" 0)
         end
 
     (* ======================================================================
@@ -305,6 +318,7 @@ export
             let importScope = symbols.newScope(maybe.some(:Scope e.currentScope) "interface_imports_" <> decl.name)
             let interfaceScope = symbols.newScope(maybe.some(:Scope importScope) "interface_" <> decl.name)
             interfaceScope.moduleName := maybe.some(:String decl.name)
+            interfaceScope.isUnsound := decl.isUnsound
 
             (* 1. Imports, into the import scope (available for signatures, not
              *    exported by the interface) *)
@@ -371,8 +385,9 @@ export
                     end)
             end
 
-            (* 2. The signatures, in the interface's scope *)
-            inScope(:Ok e interfaceScope fun(): Ok
+            (* 2. The signatures, in the interface's scope, where 'external' is
+             *    refused, as it is everywhere but in an unsound module *)
+            inScope(:Ok e interfaceScope false fun(): Ok
                 for i = 0 upto {vector.length(:ast.Signature decl.signatures) - 1} do
                     case vector.get(:ast.Signature decl.signatures i)
                         when sigType with x then
@@ -561,6 +576,10 @@ export
             else
                 loadInterface(decl.interfaceName e)
             end
+            if targetInterface.isUnsound andif not(decl.isUnsound) then
+                diagnostics.fail(:Ok "The unsound interface '" <> decl.interfaceName <>
+                    "' may be implemented only by an unsound module" offset)
+            end
             let internalScope = symbols.newScope(maybe.some(:Scope e.baseScope) "module_internal_" <> decl.name)
 
             (* 1. Imports, into the module's internal scope *)
@@ -573,6 +592,7 @@ export
                     begin
                         let ifacePath = effectiveInterfacePath(imp)
                         let source = importInterface(ifacePath imp.interfaceName e)
+                        requireSoundImport(source ifacePath decl.isUnsound)
                         if vector.empty(:String imp.names) then
                             declareTypesAndKinds(source internalScope)
                         else
@@ -641,7 +661,7 @@ export
                     let items = vector.toArray(:typedAst.ImportItem items)
                 end))
             end
-            inScope(:Ok e internalScope fun(): Ok
+            inScope(:Ok e internalScope decl.isUnsound fun(): Ok
                 begin
                     let state = tuple let var failed = false end
                     for i = 0 upto {vector.length(:ast.Decl decl.bindings) - 1} do
@@ -732,6 +752,7 @@ export
                     begin
                         let ifacePath = effectiveInterfacePath(item)
                         let ifaceScope = importInterface(ifacePath item.interfaceName e)
+                        requireSoundImport(ifaceScope ifacePath false)
                         if vector.empty(:String item.names) then
                             (* import : Interface binds the interface's types
                              * and kinds *)

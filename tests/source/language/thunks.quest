@@ -85,8 +85,12 @@ let consInt = list.cons(:Int);
 let nilInt = list.nil(:Int);
 p(list.length(:Int consInt(1 consInt(2 nilInt))));
 
-(* 10. An external C function: called directly, and as a value passed to a function *)
-let show: All(n: Int) String = external "quest_conv_int";
+(* 10. An external C function, bound in an unsound module: called directly, and as a value passed to a function *)
+interface Show export show: All(n: Int) String end;
+unsound module shows: Show export
+    let show: All(n: Int) String = external "quest_conv_int"
+end;
+let show = shows.show;
 s(show(~4));
 let applyTo(f: All(n: Int) String n: Int): String = f(n);
 s(applyTo(show 9));

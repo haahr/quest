@@ -113,10 +113,11 @@ When compiling a Quest program to native code via the C backend:
 ## External Syntax & Opaque C Data Structures
 
 To support native standard library modules and user-defined hybrid Quest/C extensions uniformly,
-this implementation of Quest provides first-class `external` syntax for types and value bindings.
+this implementation of Quest provides first-class `external` syntax for types and value bindings. `external` is an
+unsound operation, allowed only in an `unsound module` ([modules.md](modules.md) §4.4).
 
 ### 1. External Type Definitions
-In module files (`.mod.quest`) or source files, an opaque C data structure is declared using `external`:
+In an unsound module, an opaque C data structure is declared using `external`:
 ```quest
 Let Handle = external "QWriter *"
 ```

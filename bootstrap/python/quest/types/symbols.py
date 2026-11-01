@@ -139,6 +139,8 @@ class Scope:
         self.parent = parent
         self.name = name
         self.module_name: Optional[str] = None
+        # Whether this is an unsound interface's scope
+        self.is_unsound = False
         self._declarations: list[Symbol] = []
         self._values: dict[str, ValueSymbol] = {}
         self._types: dict[str, TypeSymbol] = {}
