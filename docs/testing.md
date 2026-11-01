@@ -332,6 +332,10 @@ and then `python run_tests.py -k conversions/ --update-golden`.
 C it produces over the compiled test programs, and the run times of the benchmarks in `tests/perf`, comparing them
 with `tests/perf/baseline.json` (`--save` rewrites it). It is not part of the test suite.
 
+**Profiling generated code:** `tools/perf/` builds a benchmark with several backends, times the builds against each
+other, profiles them by program counter, compares their instruction mix, and summarizes the collector's work
+([profiling.md](profiling.md)).
+
 **Scope checks:** with `QUEST_CHECK_SCOPES=1`, which `run_tests.py`, the error tests, and the unit tests' helpers set,
 the type checker checks that every typed program is well scoped (`quest/typechecker/scoping.py`): variables are used
 within their binders' scopes, and functions' type parameters within their functions. A failure is an internal
