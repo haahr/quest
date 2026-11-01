@@ -16,6 +16,7 @@ import
     util/strutil : util/Strutil
     stringOp = string : StringOp
     conv : Conv
+    word : Word
 export
     Def Selection = Tuple
         f: machine.Function ops: vector.T(minst.Op) locs: vector.T(ssa.Loc) types: vector.T(ssa.Type)
@@ -223,9 +224,9 @@ export
                 when opNull then maybe.some(:Int 0)
                 when opRealConst, opSymbol, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl,
                     opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul,
-                    opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
-                    opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
-                    opThreadLocal, opToVal, opFromVal then
+                    opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal,
+                    opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal,
+                    opFromVal then
                     maybe.none(:Int)
             end
         end
@@ -304,21 +305,21 @@ export
             when opFlt then minst.condMi
             when opFle then minst.condLs
             when opIsNaN then minst.condVs
-            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr,
-                opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits,
-                opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
-                opThreadLocal, opToVal, opFromVal then
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor,
+                opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal,
+                opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal,
+                opFromVal then
                 minst.condEq
         end
     let isComparison(op: ssa.Opcode): Bool =
         case op
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge,
-                opIsNaN then
+            opIsNaN then
                 true
-            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr,
-                opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits,
-                opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
-                opThreadLocal, opToVal, opFromVal then
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor,
+                opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal,
+                opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal,
+                opFromVal then
                 false
         end
     let isRealComparison(op: ssa.Opcode): Bool =
@@ -330,6 +331,60 @@ export
                 opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal, opFromVal then
                 false
         end
+    (* The bit an and of a constant with one bit set tests, and the value it
+     * tests it in, if v is one *)
+    Let Bit = Tuple value: Int bit: Int end
+    let bitOf(defs: Array(maybe.T(ssa.Inst)) v: Int): maybe.T(Bit) =
+        if maybe.isNone(:ssa.Inst defs[v]) then maybe.none(:Bit)
+        else
+            let i = maybe.unwrap(:ssa.Inst defs[v])
+            let constant(a: Int): maybe.T(Int) =
+                if maybe.isSome(:ssa.Inst defs[a]) andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[a]) ssa.opConst) then
+                    maybe.some(:Int maybe.unwrap(:ssa.Inst defs[a]).imm)
+                else maybe.none(:Int) end
+            let one(n: Int): Bool = word.popCount(word.fromInt(n)) is 1
+            let at(n: Int): Int = word.countTrailingZeros(word.fromInt(n))
+            (* A copy's source, through conversions between words *)
+            let rec source(a: Int): Int =
+                if maybe.isSome(:ssa.Inst defs[a]) then
+                    let d = maybe.unwrap(:ssa.Inst defs[a])
+                    case d.op
+                        when opIntToPtr, opPtrToInt, opCopy, opToVal, opFromVal then source(d.args[0])
+                        when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd,
+                            opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq,
+                            opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN,
+                            opRealBits, opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect,
+                            opPtrAdd, opThreadLocal then
+                            a
+                    end
+                else a end
+            if not(ssa.isOp(i ssa.opAnd)) then maybe.none(:Bit)
+            elsif maybe.isSome(:Int constant(i.args[1])) andif one(maybe.unwrap(:Int constant(i.args[1]))) then
+                maybe.some(:Bit tuple
+                    let value = source(i.args[0]) let bit = at(maybe.unwrap(:Int constant(i.args[1])))
+                end)
+            elsif maybe.isSome(:Int constant(i.args[0])) andif one(maybe.unwrap(:Int constant(i.args[0]))) then
+                maybe.some(:Bit tuple
+                    let value = source(i.args[1]) let bit = at(maybe.unwrap(:Int constant(i.args[0])))
+                end)
+            else maybe.none(:Bit) end
+        end
+
+    (* The two comparisons of integers or pointers an and of v's joins, if it
+     * is one *)
+    let conjunctionOf(defs: Array(maybe.T(ssa.Inst)) v: Int): maybe.T(Array(Int)) =
+        if maybe.isNone(:ssa.Inst defs[v]) orif not(ssa.isOp(maybe.unwrap(:ssa.Inst defs[v]) ssa.opAnd)) then
+            maybe.none(:Array(Int))
+        else
+            let i = maybe.unwrap(:ssa.Inst defs[v])
+            let compares(a: Int): Bool =
+                maybe.isSome(:ssa.Inst defs[a]) andif isComparison(maybe.unwrap(:ssa.Inst defs[a]).op)
+                    andif not(isRealComparison(maybe.unwrap(:ssa.Inst defs[a]).op))
+            if compares(i.args[0]) andif compares(i.args[1]) andif {i.args[0] isnot i.args[1]} then
+                maybe.some(:Array(Int) i.args)
+            else maybe.none(:Array(Int)) end
+        end
+
     let setFlags(s: S i: ssa.Inst): Ok =
         if isRealComparison(i.op) then
             emit(s minst.fcmp(r(s i.args[0]) r(s i.args[if extent i.args > 1 then 1 else 0 end])))
@@ -417,6 +472,16 @@ export
             let a(k: Int): Int = r(s i.args[k])
             let d = if extent i.results > 0 then r(s i.results[0]) else ~1 end
             let arith(op: minst.Arith): Ok = emit(s minst.arith(op d a(0) a(1)))
+            let logical(op: minst.Arith): Ok =
+                begin
+                    let c1 = constOf(s i.args[1])
+                    let c0 = constOf(s i.args[0])
+                    if maybe.isSome(:Int c1) andif minst.isLogical(maybe.unwrap(:Int c1)) then
+                        emit(s minst.logicImm(op d a(0) maybe.unwrap(:Int c1)))
+                    elsif maybe.isSome(:Int c0) andif minst.isLogical(maybe.unwrap(:Int c0)) then
+                        emit(s minst.logicImm(op d a(1) maybe.unwrap(:Int c0)))
+                    else arith(op) end
+                end
             case i.op
                 when opConst then emit(s minst.movConst(d i.imm))
                 (* A Real constant's bits are its word *)
@@ -439,9 +504,11 @@ export
                 when opSub then sub(s d i.args[0] i.args[1])
                 when opMul then arith(minst.arithMul)
                 when opDiv then arith(minst.arithSdiv)
-                when opAnd then arith(minst.arithAnd)
-                when opOr then arith(minst.arithOrr)
-                when opXor then arith(minst.arithEor)
+                (* Fused into the branch on it, as a test of a bit or a
+                 * conjunction of comparisons, or with a logical immediate *)
+                when opAnd then if not(s.fused[i.results[0]]) then logical(minst.arithAnd) end
+                when opOr then logical(minst.arithOrr)
+                when opXor then logical(minst.arithEor)
                 when opShl then shift(s minst.arithLsl d i.args[0] i.args[1])
                 when opLshr then shift(s minst.arithLsr d i.args[0] i.args[1])
                 when opAshr then shift(s minst.arithAsr d i.args[0] i.args[1])
@@ -451,7 +518,7 @@ export
                     emit(s minst.arith(minst.arithSdiv q a(0) a(1)))
                     emit(s minst.msub(d q a(1) a(0)))
                 when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge,
-                    opIsNaN then
+                opIsNaN then
                     if not(s.fused[i.results[0]]) then
                         setFlags(s i)
                         emit(s minst.cset(condition(i.op) d))
@@ -523,13 +590,43 @@ export
              * (codegen/machine); the false one by a jump *)
             when termBranch with x then
                 let e = edge(s x.ifTrue)
-                if s.fused[x.cond] then
+                let l = labelOf(s e)
+                let bit = bitOf(s.defs x.cond)
+                let both = conjunctionOf(s.defs x.cond)
+                (* A test of one bit: tbnz *)
+                if s.fused[x.cond] andif maybe.isSome(:Bit bit) then
+                    let t = maybe.unwrap(:Bit bit)
+                    emitFull(s machine.kindBranch minst.tbnz(r(s t.value) t.bit l) none none e)
+                (* A conjunction of comparisons: the first's flags, then, if
+                 * its condition holds, the second's, and otherwise flags under
+                 * which the second's condition is false *)
+                elsif s.fused[x.cond] andif maybe.isSome(:Array(Int) both) then
+                    let first = maybe.unwrap(:ssa.Inst s.defs[maybe.unwrap(:Array(Int) both)[0]])
+                    let second = maybe.unwrap(:ssa.Inst s.defs[maybe.unwrap(:Array(Int) both)[1]])
+                    setFlags(s first)
+                    let c = constOf(s second.args[1])
+                    let falsified = minst.falsifying(condition(second.op))
+                    if maybe.isSome(:Int c) andif {maybe.unwrap(:Int c) >= 0} andif {maybe.unwrap(:Int c) < 32} then
+                        emit(s minst.ccmpImm(r(s second.args[0]) maybe.unwrap(:Int c) falsified condition(first.op)))
+                    else
+                        emit(s minst.ccmp(r(s second.args[0]) r(s second.args[1]) falsified condition(first.op)))
+                    end
+                    emitFull(s machine.kindBranch minst.bCond(condition(second.op) l) none none e)
+                elsif s.fused[x.cond] then
                     let i = maybe.unwrap(:ssa.Inst s.defs[x.cond])
-                    if not(isRealComparison(i.op)) andif isConst(s i.args[1] 0) andif {ssa.isOp(i ssa.opEq)
-                            orif ssa.isOp(i ssa.opPeq) orif ssa.isOp(i ssa.opNe) orif ssa.isOp(i ssa.opPne)} then
-                        let zero = ssa.isOp(i ssa.opEq) orif ssa.isOp(i ssa.opPeq)
+                    let zeroBit = if {extent i.args > 1} andif isConst(s i.args[1] 0) then bitOf(s.defs i.args[0])
+                        else maybe.none(:Bit) end
+                    let zeroTest = not(isRealComparison(i.op)) andif isConst(s i.args[1] 0) andif {ssa.isOp(i ssa.opEq)
+                            orif ssa.isOp(i ssa.opPeq) orif ssa.isOp(i ssa.opNe) orif ssa.isOp(i ssa.opPne)}
+                    let zero = ssa.isOp(i ssa.opEq) orif ssa.isOp(i ssa.opPeq)
+                    (* A bit compared with 0: tbz or tbnz *)
+                    if zeroTest andif maybe.isSome(:Bit zeroBit) andif s.fused[i.args[0]] then
+                        let t = maybe.unwrap(:Bit zeroBit)
+                        let v = r(s t.value)
+                        emitFull(s machine.kindBranch if zero then minst.tbz(v t.bit l) else minst.tbnz(v t.bit l) end
+                            none none e)
+                    elsif zeroTest then
                         let v = r(s i.args[0])
-                        let l = labelOf(s e)
                         emitFull(s machine.kindBranch if zero then minst.cbz(v l) else minst.cbnz(v l) end none none e)
                     else
                         setFlags(s i)
@@ -539,18 +636,22 @@ export
                     emitFull(s machine.kindBranch minst.cbnz(r(s x.cond) labelOf(s e)) none none e)
                 end
                 jump(s x.ifFalse)
-            (* A comparison and a branch for each case, in order *)
+            (* A comparison and a branch for each case, in order (cbz for 0) *)
             when termSwitch with x then
                 let v = r(s x.value)
                 for k = 0 upto {extent x.cases - 1} do
                     let e = edge(s x.targets[k])
-                    if {x.cases[k] >= 0} andif {x.cases[k] < 4096} then emit(s minst.cmpImm(v x.cases[k]))
+                    if x.cases[k] is 0 then
+                        emitFull(s machine.kindBranch minst.cbz(v labelOf(s e)) none none e)
                     else
-                        let c = temp(s ssa.typeInt)
-                        emit(s minst.movConst(c x.cases[k]))
-                        emit(s minst.cmp(v c))
+                        if {x.cases[k] > 0} andif {x.cases[k] < 4096} then emit(s minst.cmpImm(v x.cases[k]))
+                        else
+                            let c = temp(s ssa.typeInt)
+                            emit(s minst.movConst(c x.cases[k]))
+                            emit(s minst.cmp(v c))
+                        end
+                        emitFull(s machine.kindBranch minst.bCond(minst.condEq labelOf(s e)) none none e)
                     end
-                    emitFull(s machine.kindBranch minst.bCond(minst.condEq labelOf(s e)) none none e)
                 end
                 jump(s x.default)
             when termReturn with x then returnValues(s x.values)
@@ -661,9 +762,26 @@ export
                 case ssa.block(f b).term
                     when termBranch with x then
                         let c = x.cond
+                        let here(v: Int): Bool = {defBlock[v] is b} andif {uses[v] is 1}
                         if maybe.isSome(:ssa.Inst defs[c]) andif isComparison(maybe.unwrap(:ssa.Inst defs[c]).op)
-                                andif {defBlock[c] is b} andif {uses[c] is 1} then
+                                andif here(c) then
                             fused[c] := true
+                            (* A bit compared with 0 *)
+                            let i = maybe.unwrap(:ssa.Inst defs[c])
+                            if {extent i.args > 1} andif maybe.isSome(:Bit bitOf(defs i.args[0])) andif here(i.args[0])
+                                    andif maybe.isSome(:ssa.Inst defs[i.args[1]])
+                                    andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[i.args[1]]) ssa.opConst)
+                                    andif {maybe.unwrap(:ssa.Inst defs[i.args[1]]).imm is 0} then
+                                fused[i.args[0]] := true
+                            end
+                        elsif maybe.isSome(:Bit bitOf(defs c)) andif here(c) then
+                            fused[c] := true
+                        elsif maybe.isSome(:Array(Int) conjunctionOf(defs c)) andif here(c)
+                                andif here(maybe.unwrap(:Array(Int) conjunctionOf(defs c))[0])
+                                andif here(maybe.unwrap(:Array(Int) conjunctionOf(defs c))[1]) then
+                            fused[c] := true
+                            fused[maybe.unwrap(:Array(Int) conjunctionOf(defs c))[0]] := true
+                            fused[maybe.unwrap(:Array(Int) conjunctionOf(defs c))[1]] := true
                         end
                     when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then ok
                 end
@@ -752,10 +870,10 @@ export
             machine.isKind(i machine.kindOrdinary) andif case vector.get(:minst.Op s.ops i.op)
                 when opMovConst, opSymbolAddress then true
                 when opAddImm then readsSp
-                when opMovImm, opMovz, opMovk, opTlvAddress, opMov, opArith, opSubImm, opAndImm, opShiftImm, opMsub,
-                    opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCset, opLoad, opStore, opLdp, opStp, opAdrp,
-                    opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opBCond, opBrk, opNop,
-                    opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                when opMovImm, opMovz, opMovk, opTlvAddress, opMov, opArith, opSubImm, opLogicImm, opShiftImm, opMsub,
+                    opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opLoad, opStore, opLdp, opStp,
+                    opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz,
+                    opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                     false
             end
         end

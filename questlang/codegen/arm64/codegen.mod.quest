@@ -230,21 +230,23 @@ export
             when opB then minst.b(l).op
             when opCbz then option opCbz of minst.Op with let label = l end
             when opCbnz then option opCbnz of minst.Op with let label = l end
+            when opTbz with x then minst.tbz(0 x.bit l).op
+            when opTbnz with x then minst.tbnz(0 x.bit l).op
             when opBCond with x then minst.bCond(x.cond l).op
             when opAdr then option opAdr of minst.Op with let label = l end
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
-                opSubImm, opAndImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCset, opLoad,
-                opStore, opLdp, opStp, opAdrp, opAddPageOff, opBSymbol, opBl, opBlr, opBr, opRet, opBrk, opNop, opLabel,
-                opCfiDefCfa, opCfiOffset, opLoc then
+                opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
+                opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opBSymbol, opBl, opBlr, opBr, opRet, opBrk,
+                opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                 op
         end
     let isBrk(op: minst.Op): Bool =
         case op
             when opBrk then true
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
-                opSubImm, opAndImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCset, opLoad,
-                opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz,
-                opCbnz, opBCond, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
+                opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr,
+                opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                 false
         end
 
@@ -253,29 +255,40 @@ export
      * ====================================================================== *)
 
     (* How far, in instructions, a conditional branch may reach: 1 MB less a
-     * margin *)
+     * margin; a test of a bit's, 32 KB less a margin *)
     let branchReach = 260000
+    let bitBranchReach = 8000
 
-    (* A conditional branch's inverse to a label, and its target, if op is
-     * one: cbz and cbnz of a register, and b.cond *)
-    Let Conditional = Tuple inverse: All(l: String) minst.Op target: String end
+    (* A conditional branch's inverse to a label, its target, and its reach
+     * (in instructions), if op is one: cbz and cbnz of a register, tbz and
+     * tbnz of a bit, and b.cond *)
+    Let Conditional = Tuple inverse: All(l: String) minst.Op target: String reach: Int end
     let conditional(op: minst.Op): maybe.T(Conditional) =
         case op
             when opCbz with x then maybe.some(:Conditional tuple
                 let inverse = fun(l: String): minst.Op option opCbnz of minst.Op with let label = l end
-                let target = x.label
+                let target = x.label let reach = branchReach
             end)
             when opCbnz with x then maybe.some(:Conditional tuple
                 let inverse = fun(l: String): minst.Op option opCbz of minst.Op with let label = l end
-                let target = x.label
+                let target = x.label let reach = branchReach
+            end)
+            when opTbz with x then maybe.some(:Conditional tuple
+                let inverse = fun(l: String): minst.Op minst.tbnz(0 x.bit l).op
+                let target = x.label let reach = bitBranchReach
+            end)
+            when opTbnz with x then maybe.some(:Conditional tuple
+                let inverse = fun(l: String): minst.Op minst.tbz(0 x.bit l).op
+                let target = x.label let reach = bitBranchReach
             end)
             when opBCond with x then maybe.some(:Conditional tuple
                 let inverse = fun(l: String): minst.Op minst.bCond(minst.inverse(x.cond) l).op let target = x.label
+                let reach = branchReach
             end)
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
-                opSubImm, opAndImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCset, opLoad,
-                opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opBrk,
-                opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
+                opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr,
+                opRet, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                 maybe.none(:Conditional)
         end
 
@@ -299,10 +312,10 @@ export
                     case i.op
                         when opLabel with x then put(:String :Int at x.label n)
                         when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith,
-                            opAddImm, opSubImm, opAndImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm,
-                            opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl,
-                            opBlr, opBr, opRet, opCbz, opCbnz, opBCond, opBrk, opNop, opCfiDefCfa, opCfiOffset,
-                            opLoc then
+                            opAddImm, opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm,
+                            opCcmp, opCcmpImm, opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB,
+                            opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop,
+                            opCfiDefCfa, opCfiOffset, opLoc then
                             n := n + printer.count(i.op)
                     end
                 end
@@ -319,7 +332,9 @@ export
                         let t = hashMap.get(:String :Int at target)
                         if not(strutil.startsWith(target prefix <> "_r")) andif maybe.isSome(:Int t) then
                             let d = maybe.unwrap(:Int t) - position
-                            far := {d > reach} orif {{0 - d} > reach}
+                            let within = if maybe.unwrap(:Conditional c).reach < reach then
+                                maybe.unwrap(:Conditional c).reach else reach end
+                            far := {d > within} orif {{0 - d} > within}
                         end
                     end
                     if far then
@@ -393,21 +408,40 @@ export
                 let next = if {k + 1} < vector.length(:Int printed) then vector.get(:Int printed k + 1) else ~1 end
                 emit(e minst.label(select.label(s b)))
                 let insts = machine.block(m b).insts
-                for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
+                let count = vector.length(:machine.Inst insts)
+                let var inverted = false
+                for j = 0 upto {count - 1} do
                     let i = vector.get(:machine.Inst insts j)
                     let regs = array of(extent i.operands 0)
                     for r = 0 upto {extent regs - 1} do regs[r] := i.operands[r].reg end
                     let base = vector.get(:minst.Op s.ops i.op)
                     let op = if i.target >= 0 then retarget(base select.label(s final[i.target])) else base end
-                    (* A jump to the next block falls through *)
-                    if not(machine.isKind(i machine.kindJump) andif {final[i.target] is next}) then
+                    (* A conditional branch to the next block, before the
+                     * block's last jump, is its inverse to the jump's target,
+                     * and the jump falls through, as does a jump to the next
+                     * block *)
+                    let c = conditional(op)
+                    let following = if {j + 1} < count then
+                        maybe.some(:machine.Inst vector.get(:machine.Inst insts j + 1))
+                    else maybe.none(:machine.Inst) end
+                    let invert = maybe.isSome(:Conditional c) andif {final[i.target] is next} andif {{j + 2} is count}
+                        andif machine.isKind(maybe.unwrap(:machine.Inst following) machine.kindJump)
+                        andif {final[maybe.unwrap(:machine.Inst following).target] isnot next}
+                    let falls = inverted orif {machine.isKind(i machine.kindJump) andif {final[i.target] is next}}
+                    if invert orif not(falls) then
                         let l = vector.get(:ssa.Loc s.locs i.op)
                         if ssa.hasLoc(l) andif not(ssa.sameLoc(l last)) andif not(select.rematerializable(s i)) then
                             emit(e minst.loc(l.file l.line l.col))
                             last := l
                         end
                         if machine.isKind(i machine.kindReturn) andif not(isBrk(op)) then restore(e) end
-                        emit(e tuple let op = op let regs = regs end)
+                        if invert then
+                            let to = select.label(s final[maybe.unwrap(:machine.Inst following).target])
+                            emit(e tuple let op = maybe.unwrap(:Conditional c).inverse(to) let regs = regs end)
+                            inverted := true
+                        else
+                            emit(e tuple let op = op let regs = regs end)
+                        end
                     end
                 end
             end

@@ -1,6 +1,8 @@
 (* Quest Self-Hosted Compiler: arm64 Machine Instructions Implementation *)
 
 module minst : Minst
+import
+    word : Word
 export
     Def Cond = Option
         condEq condNe condLt condGe condGt condLe condLo condHs condHi condLs condMi condPl condVs condVc
@@ -30,7 +32,7 @@ export
         opArith with arith: Arith end
         opAddImm with imm: Int shift: Int end
         opSubImm with imm: Int end
-        opAndImm with imm: Int end
+        opLogicImm with arith: Arith imm: Int end
         opShiftImm with arith: Arith imm: Int end
         opMsub
         opSxtb
@@ -38,6 +40,8 @@ export
         opCmp
         opFcmp
         opCmpImm with imm: Int end
+        opCcmp with nzcv: Int cond: Cond end
+        opCcmpImm with imm: Int nzcv: Int cond: Cond end
         opCset with cond: Cond end
         opLoad with load: Load mode: Mode end
         opStore with store: Store mode: Mode end
@@ -54,6 +58,8 @@ export
         opRet
         opCbz with label: String end
         opCbnz with label: String end
+        opTbz with bit: Int label: String end
+        opTbnz with bit: Int label: String end
         opBCond with cond: Cond label: String end
         opBrk with imm: Int end
         opNop
@@ -87,6 +93,30 @@ export
             when condHi then condLs when condLs then condHi
             when condMi then condPl when condPl then condMi
             when condVs then condVc when condVc then condVs
+        end
+
+    let falsifying(c: Cond): Int =
+        case c
+            when condEq, condLt, condLe, condHs, condHi, condMi, condVs then 0
+            when condNe, condGt then 4
+            when condGe, condPl then 8
+            when condLo, condLs then 2
+            when condVc then 1
+        end
+
+    let isLogical(n: Int): Bool =
+        if {n is 0} orif {n is ~1} then false
+        else
+            let w = word.fromInt(n)
+            let same(a: word.T b: word.T): Bool = word.toInt(a) is word.toInt(b)
+            (* The smallest element that repeats to make n *)
+            let var e = 2
+            while {e < 64} andif not(same(word.rotate(w e) w)) do e := e * 2 end
+            let x = word.extract(w 0 e)
+            (* A rotation of a run of ones has two places, around the
+             * element, where a bit differs from the one after it *)
+            let rotated = word.orBits(word.extract(word.shift(x 1) 0 e) word.shift(x 1 - e))
+            word.popCount(word.xorBits(x rotated)) is 2
         end
 
     let arithAdd: Arith = option arithAdd of Arith end
@@ -126,21 +156,22 @@ export
     let results(op: Op): Int =
         case op
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
-                opSubImm, opAndImm, opShiftImm, opMsub, opSxtb, opSxtw, opCset, opLoad, opAdrp, opAddPageOff, opAdr then
+                opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCset, opLoad, opAdrp, opAddPageOff,
+                opAdr then
                 1
             when opLdp then 2
-            when opCmp, opFcmp, opCmpImm, opStore, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz,
-                opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+            when opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opStore, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet,
+                opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                 0
         end
     let pure(op: Op): Bool =
         case op
-            when opMovImm, opMovz, opMovConst, opSymbolAddress, opMov, opArith, opAddImm, opSubImm, opAndImm,
+            when opMovImm, opMovz, opMovConst, opSymbolAddress, opMov, opArith, opAddImm, opSubImm, opLogicImm,
                 opShiftImm, opMsub, opSxtb, opSxtw, opAdrp, opAddPageOff, opAdr then
                 true
-            when opMovk, opTlvAddress, opCmp, opFcmp, opCmpImm, opCset, opLoad, opStore, opLdp, opStp, opB, opBSymbol,
-                opBl, opBlr, opBr, opRet, opCbz, opCbnz, opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset,
-                opLoc then
+            when opMovk, opTlvAddress, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opLoad, opStore, opLdp,
+                opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop,
+                opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                 false
         end
 
@@ -163,10 +194,16 @@ export
     let addImm(d: Int s: Int imm: Int shift: Int): Inst =
         inst(option opAddImm of Op with let imm = imm let shift = shift end array of d s end)
     let subImm(d: Int s: Int imm: Int): Inst = inst(option opSubImm of Op with let imm = imm end array of d s end)
-    let andImm(d: Int s: Int imm: Int): Inst = inst(option opAndImm of Op with let imm = imm end array of d s end)
+    let logicImm(a: Arith d: Int s: Int imm: Int): Inst =
+        inst(option opLogicImm of Op with let arith = a let imm = imm end array of d s end)
+    let andImm(d: Int s: Int imm: Int): Inst = logicImm(arithAnd d s imm)
     let shiftImm(a: Arith d: Int s: Int imm: Int): Inst =
         inst(option opShiftImm of Op with let arith = a let imm = imm end array of d s end)
     let cmpImm(x: Int imm: Int): Inst = inst(option opCmpImm of Op with let imm = imm end array of x end)
+    let ccmp(x: Int y: Int nzcv: Int c: Cond): Inst =
+        inst(option opCcmp of Op with let nzcv = nzcv let cond = c end array of x y end)
+    let ccmpImm(x: Int imm: Int nzcv: Int c: Cond): Inst =
+        inst(option opCcmpImm of Op with let imm = imm let nzcv = nzcv let cond = c end array of x end)
     let msub(d: Int x: Int y: Int z: Int): Inst = inst(option opMsub of Op end array of d x y z end)
     let sxtb(d: Int s: Int): Inst = inst(option opSxtb of Op end array of d s end)
     let sxtw(d: Int s: Int): Inst = inst(option opSxtw of Op end array of d s end)
@@ -194,6 +231,10 @@ export
     let ret: Inst = inst(option opRet of Op end none)
     let cbz(r: Int label: String): Inst = inst(option opCbz of Op with let label = label end array of r end)
     let cbnz(r: Int label: String): Inst = inst(option opCbnz of Op with let label = label end array of r end)
+    let tbz(r: Int bit: Int label: String): Inst =
+        inst(option opTbz of Op with let bit = bit let label = label end array of r end)
+    let tbnz(r: Int bit: Int label: String): Inst =
+        inst(option opTbnz of Op with let bit = bit let label = label end array of r end)
     let bCond(c: Cond label: String): Inst = inst(option opBCond of Op with let cond = c let label = label end none)
     let brk(imm: Int): Inst = inst(option opBrk of Op with let imm = imm end none)
     let nop: Inst = inst(option opNop of Op end none)

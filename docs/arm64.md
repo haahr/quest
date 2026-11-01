@@ -731,7 +731,13 @@ functions once Quest's inliner has run. Allocation and collection are 50 to 67 p
    - a conjunction or disjunction of comparisons (`andif`, a record's fields compared one by one) as branches or
      `ccmp`, rather than `cset`s, an `and`, and `cbnz`.
 
-   Expected: a share of the second factor, in instructions executed and in registers freed.
+   Expected: a share of the second factor, in instructions executed and in registers freed. *Done* (2026-10-31):
+   `minst` gains `opLogicImm` (and, orr, eor), `opTbz` and `opTbnz` (relaxed at their 32 KB reach), and `opCcmp`;
+   selection fuses an and of one bit, seen through conversions between words, or one compared with 0, into its
+   branch, and an and of two integer comparisons into `cmp`, `ccmp`, and `b.cond`; a switch's case 0 is `cbz`; and
+   emission inverts a conditional branch to the next block before the block's last jump. arm64's time against C's,
+   after item 1 and after this: life 1.56 to 1.50, ray 1.24 to 1.25, hamlet 1.45 to 1.38, mlyacc 1.54 to 1.54, zebra
+   1.47 to 1.44, nucleic 1.22 to 1.20: what remains of the second factor is the allocator's (item 3).
 3. **Fewer moves and spills in the allocator:** coalescing a copy's source and destination where their ranges do not
    interfere (a block argument and its parameter, a call's argument and its register), a spill placed at the
    definition and a reload at the use rather than around every use, and spill slots shared between ranges that do not

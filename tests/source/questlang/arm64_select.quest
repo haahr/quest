@@ -10,14 +10,19 @@
  * the offset folded in; a call's arguments and results moved to and from
  * fixed registers, on the stack past them, and a call through a pointer; a
  * return; tail calls of the function itself, of another, and through a
- * pointer; a switch; and a try, its handler entered through a block beside
- * it. *)
+ * pointer; a switch (cbz for its case 0); a try, its handler entered through
+ * a block beside it; logical immediates, a constant that is not one kept in a
+ * register; a branch on one bit, or on a bit compared with 0, as tbnz or tbz;
+ * a branch on a conjunction of comparisons as cmp, ccmp, and b.cond; and which
+ * constants are logical immediates, and the flags that falsify a condition. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/verify : questlang/ssa/Verify
     questlang/codegen/arm64/select : questlang/codegen/arm64/Select
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+    conv : Conv
     collections/vector : collections/Vector
     collections/hashMap : collections/HashMap
     util/hash : util/Hash
@@ -161,3 +166,53 @@ call(tries tryBody "quest_pop_handler" none noTypes);
 ret(tries tryBody array of params(tries)[0] end);
 ret(tries handler array of before end);
 show("a try" tries);
+
+(* 8. Logical immediates: and, orr, and eor of bitmasks; 0x1234 is not one *)
+let logic = ssa.newFunction("qf_logic" false array of tInt end array of tInt end);
+let lp = params(logic);
+let l1 = ssa.binary(logic 0 ssa.opAnd lp[0] ssa.constant(logic 0 65280));
+let l2 = ssa.binary(logic 0 ssa.opOr ssa.constant(logic 0 6148914691236517205) l1);
+let l3 = ssa.binary(logic 0 ssa.opXor l2 ssa.constant(logic 0 ~16));
+let l4 = ssa.binary(logic 0 ssa.opAnd l3 ssa.constant(logic 0 4660));
+ret(logic 0 array of l4 end);
+show("logical immediates" logic);
+
+(* 9. Branches on bits: on an and of one bit (seen through a conversion to an
+ * int), and on one compared with 0 *)
+let bits = ssa.newFunction("qf_bits" false array of tPtr tInt end array of tInt end);
+let bp = params(bits);
+let bt1 = ssa.newBlock(bits);
+let bt2 = ssa.newBlock(bits);
+let bt3 = ssa.newBlock(bits);
+let tag = ssa.binary(bits 0 ssa.opAnd ssa.emit(bits 0 ssa.opPtrToInt array of bp[0] end tInt) ssa.constant(bits 0 1));
+branch(bits 0 tag bt1 bt2);
+ret(bits bt1 array of ssa.constant(bits bt1 1) end);
+let high = ssa.binary(bits bt2 ssa.opAnd bp[1] ssa.constant(bits bt2 1099511627776));
+branch(bits bt2 ssa.binary(bits bt2 ssa.opEq high ssa.constant(bits bt2 0)) bt3 bt1);
+ret(bits bt3 array of ssa.constant(bits bt3 3) end);
+show("branches on bits" bits);
+
+(* 10. A branch on a conjunction of comparisons, the second with a small
+ * immediate *)
+let conj = ssa.newFunction("qf_conj" false array of tInt tInt end array of tInt end);
+let cp = params(conj);
+let cj1 = ssa.newBlock(conj);
+let cj2 = ssa.newBlock(conj);
+let both = ssa.binary(conj 0 ssa.opAnd ssa.binary(conj 0 ssa.opEq cp[0] cp[1])
+    ssa.binary(conj 0 ssa.opLt cp[1] ssa.constant(conj 0 7)));
+branch(conj 0 both cj1 cj2);
+ret(conj cj1 array of cp[0] end);
+ret(conj cj2 array of cp[1] end);
+show("a conjunction" conj);
+
+(* 11. Logical immediates, and the flags that falsify each condition *)
+writer.putString(writer.output "== logical immediates and falsifying flags\n");
+let candidates = array of 0 ~1 1 255 65280 6148914691236517205 ~16 4660 5 ~9223372036854775807 end;
+for i = 0 upto {extent candidates - 1} do
+    writer.putString(writer.output conv.int(candidates[i]) <> ": " <> conv.bool(minst.isLogical(candidates[i])) <> "\n")
+end;
+let conds = array of minst.condEq minst.condNe minst.condLt minst.condGe minst.condGt minst.condLe minst.condLo
+    minst.condHs minst.condHi minst.condLs minst.condMi minst.condPl minst.condVs minst.condVc end;
+for i = 0 upto {extent conds - 1} do
+    writer.putString(writer.output conv.int(minst.falsifying(conds[i])) <> if i < extent conds - 1 then " " else "\n" end)
+end;

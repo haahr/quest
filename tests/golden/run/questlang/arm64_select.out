@@ -129,8 +129,7 @@ b0:
 	mov %4, x0 [move]
 	b Lt_b1 { %4 } [jump] -> b1
 b1(%0):
-	cmp %0, #0
-	b.eq Lt_b6 [branch] -> b6
+	cbz %0, Lt_b6 [branch] -> b6
 	cmp %0, #1
 	b.eq Lt_b7 [branch] -> b7
 	movz %5, #5000, lsl #0
@@ -180,3 +179,68 @@ b3:
 	ret { x0 } [return]
 b4: raised
 	b Lt_b3 [jump] -> b3
+== logical immediates
+b0:
+	mov %9, x0 [move]
+	b Lt_b1 { %9 } [jump] -> b1
+b1(%0):
+	and %2, %0, #0xff00
+	orr %4, %2, #0x5555555555555555
+	eor %6, %4, #0xfffffffffffffff0
+	movz %7, #4660, lsl #0
+	and %8, %6, %7
+	mov x0, %8 [move]
+	ret { x0 } [return]
+== branches on bits
+b0:
+	mov %11, x0 [move]
+	mov %12, x1 [move]
+	b Lt_b1 { %11 %12 } [jump] -> b1
+b1(%0 %1):
+	tbnz %0, #0, Lt_b5 [branch] -> b5
+	b Lt_b3 [jump] -> b3
+b2:
+	movz %5, #1, lsl #0
+	mov x0, %5 [move]
+	ret { x0 } [return]
+b3:
+	tbz %1, #40, Lt_b6 [branch] -> b6
+	b Lt_b2 [jump] -> b2
+b4:
+	movz %10, #3, lsl #0
+	mov x0, %10 [move]
+	ret { x0 } [return]
+b5:
+	b Lt_b2 [jump] -> b2
+b6:
+	b Lt_b4 [jump] -> b4
+== a conjunction
+b0:
+	mov %6, x0 [move]
+	mov %7, x1 [move]
+	b Lt_b1 { %6 %7 } [jump] -> b1
+b1(%0 %1):
+	cmp %0, %1
+	ccmp %1, #7, #0, eq
+	b.lt Lt_b4 [branch] -> b4
+	b Lt_b3 [jump] -> b3
+b2:
+	mov x0, %0 [move]
+	ret { x0 } [return]
+b3:
+	mov x0, %1 [move]
+	ret { x0 } [return]
+b4:
+	b Lt_b2 [jump] -> b2
+== logical immediates and falsifying flags
+0: false
+~1: false
+1: true
+255: true
+65280: true
+6148914691236517205: true
+~16: true
+4660: false
+5: false
+~9223372036854775807: true
+0 4 0 8 4 0 2 0 0 2 0 8 0 1
