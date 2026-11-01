@@ -17,7 +17,7 @@ export
     Def Move = Tuple at: Int value: Int from: Int to: Int end
     Def Allocation = Tuple
         starts: Array(Array(Int)) homes: Array(Array(Int)) spilled: Array(Bool) remat: Array(Bool) moves: Array(Move)
-        blockStart: Array(Int) liveIn: Array(Array(Int)) calleeUsed: Array(Int)
+        blockStart: Array(Int) liveIn: Array(Array(Int)) calleeUsed: Array(Int) first: Array(Int) last: Array(Int)
     end
     let memory = ~1
     Let Function = machine.Function
@@ -668,13 +668,18 @@ export
                 let given = array of(nValues ~1)
             end
             (* Every value defined or used has an interval; the lists were
-             * built latest first, so each is reversed *)
+             * built latest first, so each is reversed. Its first and last
+             * positions are kept before the scan splits it. *)
+            let first = array of(nValues never)
+            let last = array of(nValues ~1)
             for v = 0 upto {nValues - 1} do
                 if vector.length(:Int rangeFroms[v]) > 0 then
                     let it = tuple
                         let value = v let var froms = reversed(rangeFroms[v]) let var tos = reversed(rangeTos[v])
                         let var uses = reversed(usesAt[v]) let var reg = ~2
                     end
+                    first[v] := firstPos(it)
+                    last[v] := lastPos(it)
                     made(sc it)
                     push(sc.heap it)
                 end
@@ -760,6 +765,7 @@ export
             tuple
                 let starts = starts let homes = homes let spilled = spilled let remat = remat let moves = moved
                 let blockStart = blockStart let liveIn = ins let calleeUsed = vector.toArray(:Int used)
+                let first = first let last = last
             end
         end
 
@@ -1093,6 +1099,79 @@ export
                 end
             end
             tuple let after = after let atStart = atStart end
+        end
+
+    (* Slots are shared as registers are, by intervals that do not intersect,
+     * but over each value's whole lifetime, from its first position to its
+     * last, holes and all: a value in memory is stored once, where it is
+     * defined, and its slot must hold it until its last read. rewrite writes
+     * a slot at two places outside that: a parameter's, on each jump into its
+     * block (at the jump, where the jump's arguments are read, which may
+     * share it otherwise); and a clear, after the instruction where its value
+     * dies (where the instruction's results are stored), or at the start of a
+     * branch's target (where what is live into the target is held). Each
+     * lifetime is stretched to cover those. Then, in order of their first
+     * positions, each value takes the first slot of its kind whose values
+     * have all ended before it starts, or a new one. *)
+    let shareSlots(f: Function a: Allocation lowering: machine.Lowering kind: All(v: Int) Int): Array(Int) =
+        begin
+            let nBlocks = vector.length(:machine.Block f.blocks)
+            let nValues = machine.virtuals(f)
+            let first = array of(nValues 0)
+            let last = array of(nValues 0)
+            for v = 0 upto {nValues - 1} do
+                first[v] := a.first[v]
+                last[v] := a.last[v]
+            end
+            let reach(v: Int p: Int): Ok =
+                begin
+                    if p < first[v] then first[v] := p end
+                    if p > last[v] then last[v] := p end
+                end
+            let cleared = clears(f a lowering)
+            for b = 0 upto {nBlocks - 1} do
+                let bs = a.blockStart[b]
+                if bs >= 0 then
+                    for k = 0 upto {extent cleared.atStart[b] - 1} do reach(cleared.atStart[b][k] bs) end
+                    let insts = machine.block(f b).insts
+                    for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
+                        let i = vector.get(:machine.Inst insts j)
+                        let p = bs + {2 * {j + 1}}
+                        for k = 0 upto {extent cleared.after[b][j] - 1} do reach(cleared.after[b][j][k] p + 1) end
+                        if machine.isKind(i machine.kindJump) then
+                            let params = machine.block(f i.target).params
+                            for k = 0 upto {vector.length(:Int params) - 1} do
+                                reach(machine.index(f vector.get(:Int params k)) p)
+                            end
+                        end
+                    end
+                end
+            end
+            let stored = vector.new(:Int)
+            for v = 0 upto {nValues - 1} do if needsSlot(a v) then vector.append(:Int stored v) end end
+            let byFirst = vector.toArray(:Int stored)
+            sort.sort(:Int byFirst fun(x: Int y: Int): Int
+                if first[x] isnot first[y] then sort.intCompare(first[x] first[y]) else sort.intCompare(x y) end)
+            let slot = array of(nValues ~1)
+            let kinds = vector.new(:Int)
+            let ends = vector.new(:Int)
+            for k = 0 upto {extent byFirst - 1} do
+                let v = byFirst[k]
+                let c = kind(f.firstVirtual + v)
+                let var chosen = ~1
+                for s = 0 upto {vector.length(:Int kinds) - 1} do
+                    let free = {vector.get(:Int kinds s) is c} andif {vector.get(:Int ends s) < first[v]}
+                    if {chosen < 0} andif free then chosen := s end
+                end
+                if chosen < 0 then
+                    chosen := vector.length(:Int kinds)
+                    vector.append(:Int kinds c)
+                    vector.append(:Int ends 0)
+                end
+                vector.set(:Int ends chosen last[v])
+                slot[v] := chosen
+            end
+            slot
         end
 
     let rewrite(f: Function a: Allocation lowering: machine.Lowering): Ok =

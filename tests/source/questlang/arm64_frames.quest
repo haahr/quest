@@ -82,3 +82,28 @@ ssa.terminate(held 0 option termReturn of ssa.Terminator with
     let values = array of ssa.binary(held 0 ssa.opAdd back h0) end
 end);
 show("held" held);
+
+(* 3. Slots shared by type: twelve pointers live across a first call, then
+ * twelve integers across a second, then twelve pointers again across a third,
+ * each group dead before the next is loaded. The integers do not take the
+ * first pointers' slots, though those are free; the second pointers do *)
+let typed = ssa.newFunction("typed" false array of ssa.typePtr end array of ssa.typeInt end);
+let q0 = vector.get(:Int ssa.block(typed 0).params 0);
+let across(base: Int type: ssa.Type into: Int): Int =
+    begin
+        let vs = array of(12 0)
+        for k = 0 upto 11 do vs[k] := ssa.load(typed 0 q0 base + {8 * k} 8 false type) end
+        let ignored = call(typed 0 "g" none)
+        let var t = into
+        for k = 0 upto 11 do
+            let x = if type is ssa.typePtr then ssa.emit(typed 0 ssa.opPtrToInt array of vs[k] end ssa.typeInt)
+                else vs[k] end
+            t := ssa.binary(typed 0 ssa.opAdd t x)
+        end
+        t
+    end;
+let t1 = across(0 ssa.typePtr ssa.constant(typed 0 0));
+let t2 = across(100 ssa.typeInt t1);
+let t3 = across(200 ssa.typePtr t2);
+ssa.terminate(typed 0 option termReturn of ssa.Terminator with let values = array of t3 end end);
+show("typed" typed);

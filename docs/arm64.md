@@ -305,6 +305,12 @@ the SSA's values, and it reads no register's name: a target (`codegen/target`) g
   collection can happen, may follow before the function returns, and if the target's `Lowering` says the value may
   be a pointer: arm64 clears integers' and pointers' slots, not Reals', and none in a function that enters a `try`,
   whose handler reloads from slots what liveness in the try's body does not see it use.
+- **Spill slots shared by type** (2026-11-01, arm64-performance-review.md §3.2, item 3b). `regalloc.shareSlots`
+  gives values of one kind (for arm64, one SSA type: `int`, `ptr`, `val`, or `real`) one slot where their lifetimes,
+  from first position to last, do not overlap, so a frame holds the most values in memory at once rather than every
+  one ever there. A lifetime is stretched over the two places `rewrite` writes a slot outside it: a parameter's on
+  each jump into its block, and a clear after its value dies. A function that enters a `try` keeps a slot for each
+  value, for the clears' reason.
 - **A block a raise enters,** beside its `try`, which jumps to the handler, has every register dead at its start;
   the handler may then have what it uses in registers, loaded by that jump's moves.
 
@@ -1035,16 +1041,17 @@ with what would address it.
    carries each virtual register's `ptr` or `int` class through allocation, into spill slots, and the frame records
    which slots hold pointers, so that stack maps at calls could be emitted later; and a word whose pointer-ness is
    dynamic (a `QVal`) is described as such, for a precise collector to resolve by descriptor. *Addressed in part*
-   (2026-10-30, the user choosing this scope). The requirement, precisely: at each call, a precise collector must
-   find every live pointer, so every value live across a call is either in a callee-saved register, whose class the
-   allocation knows from the value's SSA type, or in a frame slot of its own, never shared, whose class is that
-   type; a stack slot's memory is described by what the code stores in it, word by word, which nothing records yet;
-   and a word that may or may not be a pointer is resolved through its type descriptor. What is done: the
-   allocator keeps a value's type through allocation (each interval is one value's), a value in memory has a slot
-   of its own at a fixed offset (rematerialized ones have none: they hold no pointer the collector must see, or one
-   to static data), and `codegen.frameSlots` returns each slot of a function's frame with its offset, its size, and
-   its class, a value's SSA type or, for a stack slot, memory; `questlang/arm64_frames` prints them for functions
-   that spill pointers, integers, and reals across a call. Nothing emits stack maps. A derived pointer is a `ptr`
-   throughout (`ptrAdd`, [backend-improvements.md](backend-improvements.md) step 7). What remains is that plan's
-   step 10: a `val` type for `QVal` words, which are `int`s now, so that the frame tells them apart. *Done*
-   (2026-10-31): `QVal` words are `val`s, and `arm64_frames` shows their slots.
+   (2026-10-30, the user choosing this scope). The requirement, precisely: at each call, a precise collector must find
+   every live pointer, so every value live across a call is either in a callee-saved register, whose class the
+   allocation knows from the value's SSA type, or in a frame slot whose class is that type, which no value of another
+   type ever shares; a stack slot's memory is described by what the code stores in it, word by word, which nothing
+   records yet; and a word that may or may not be a pointer is resolved through its type descriptor. What is done: the
+   allocator keeps a value's type through allocation (each interval is one value's), a value in memory has a slot at a
+   fixed offset (rematerialized ones have none: they hold no pointer the collector must see, or one to static data),
+   shared only with values of its type whose lifetimes do not overlap its own (since 2026-11-01, §3.8), and
+   `codegen.frameSlots` returns each slot of a function's frame with its offset, its size, and its class, a value's SSA
+   type or, for a stack slot, memory; `questlang/arm64_frames` prints them for functions that spill pointers, integers,
+   and reals across a call. Nothing emits stack maps. A derived pointer is a `ptr` throughout (`ptrAdd`,
+   [backend-improvements.md](backend-improvements.md) step 7). What remains is that plan's step 10: a `val` type for
+   `QVal` words, which are `int`s now, so that the frame tells them apart. *Done* (2026-10-31): `QVal` words are `val`s,
+   and `arm64_frames` shows their slots.

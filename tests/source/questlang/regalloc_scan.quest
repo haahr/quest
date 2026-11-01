@@ -11,10 +11,11 @@
  * the interval used furthest away is spilled until its next use; a loop's
  * values stay in their registers through it; reals take registers of their
  * own class; a constant is made again rather than stored; what a block a
- * raise enters uses is in memory at its start; and a dead value's slot is
- * cleared where a call may follow. Each virtual register's pieces
+ * raise enters uses is in memory at its start; a dead value's slot is
+ * cleared where a call may follow; and values whose lifetimes do not overlap
+ * share a slot. Each virtual register's pieces
  * are shown with the positions they start at, then the moves to pieces that
- * start inside blocks, then the function rewritten in the registers
+ * start inside blocks, the slots of those stored, then the function rewritten in the registers
  * allocated. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
@@ -151,6 +152,13 @@ let show(title: String f: machine.Function): Ok =
             let clear = fun(v: Int): Array(machine.Inst)
                 array of make(ordinary "clear [" <> name(f v) <> "]" array of :machine.Operand end ~1) end
         end
+        (* The slots, shared by values of a class *)
+        let slots = regalloc.shareSlots(f a lowering fun(r: Int): Int targets.index(machine.virtualClass(f r)))
+        let var shown = ""
+        for v = 0 upto {extent slots - 1} do
+            if slots[v] >= 0 then shown := shown <> " %" <> conv.int(v) <> " in " <> conv.int(slots[v]) end
+        end
+        if shown isnot "" then emit("slots:" <> shown) end
         regalloc.rewrite(f a lowering)
         emit("rewritten:")
         writer.putString(writer.output machine.format(f fun(r: Int): String name(f r) fun(i: machine.Inst): String
@@ -291,3 +299,22 @@ call(dead 0);
 add(dead 0 d3 d2 d2);
 ret(dead 0 d3);
 show("a dead value's slot cleared before a later call" dead);
+
+(* 9. Slots shared: a value in memory across one call, and another across a
+ * second call, defined after the first is dead and its slot cleared, which
+ * takes the first's slot *)
+let shared = machine.newFunction(extent toy.registers);
+let e0 = entry(shared);
+let e = array of(6 0);
+for j = 0 upto 5 do e[j] := fresh(shared) end;
+add(shared 0 e[0] e0 e0);
+add(shared 0 e[1] e0 e0);
+call(shared 0);
+add(shared 0 e[2] e[0] e[1]);
+add(shared 0 e[3] e[2] e[2]);
+add(shared 0 e[4] e[2] e[2]);
+call(shared 0);
+add(shared 0 e[5] e[3] e[4]);
+call(shared 0);
+ret(shared 0 e[5]);
+show("slots shared after their values die" shared);

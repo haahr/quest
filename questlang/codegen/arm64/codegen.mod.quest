@@ -103,8 +103,8 @@ export
             let s = select.select(f "Lf" <> conv.int(index) defined)
             let m = s.f
             let a = regalloc.allocate(m target.description fun(i: machine.Inst): Bool select.rematerializable(s i))
-            (* A slot for each register stored in memory, after the stack
-             * slots *)
+            (* The stack slots, then (below) the slots of registers stored in
+             * memory *)
             let slots = vector.new(:FrameSlot)
             for k = 0 upto {extent s.slotAt - 1} do
                 let slot = vector.get(:ssa.Slot f.slots k)
@@ -115,17 +115,6 @@ export
             end
             let n = machine.virtuals(m)
             let spillAt = array of(n ~1)
-            let var at = s.slotsEnd
-            for v = 0 upto {n - 1} do
-                if regalloc.needsSlot(a v) then
-                    spillAt[v] := at
-                    vector.append(:FrameSlot slots tuple
-                        let offset = at let bytes = 8 let type = maybe.some(:ssa.Type vector.get(:ssa.Type s.types v))
-                        let id = v
-                    end)
-                    at := at + 8
-                end
-            end
             let lowering = tuple
                 let move = fun(dst: Int src: Int): machine.Inst select.make(s machine.kindMove minst.mov(dst src))
                 let load = fun(dst: Int v: Int): Array(machine.Inst)
@@ -149,6 +138,41 @@ export
                 let clear = fun(v: Int): Array(machine.Inst)
                     frameAccess(s spillAt[machine.index(m v)] fun(base: Int mode: minst.Mode): minst.Inst
                         minst.store(minst.store64 target.xzr base mode))
+            end
+            (* Values of one SSA type share slots where their lifetimes do not
+             * overlap (docs/arm64-performance-review.md section 3.2), so a
+             * slot holds one type for its whole life; the first value given
+             * one names it. Not in a function that enters a try, for the
+             * reason above. *)
+            let kind = fun(v: Int): Int
+                case vector.get(:ssa.Type s.types machine.index(m v))
+                    when typeInt then 0
+                    when typePtr then 1
+                    when typeVal then 2
+                    when typeReal then 3
+                end
+            let slotOf = if s.entersTry then
+                begin
+                    let own = array of(n ~1)
+                    for v = 0 upto {n - 1} do own[v] := v end
+                    own
+                end
+            else regalloc.shareSlots(m a lowering kind) end
+            let offsetOf = array of(n ~1)
+            let var at = s.slotsEnd
+            for v = 0 upto {n - 1} do
+                if regalloc.needsSlot(a v) then
+                    let k = slotOf[v]
+                    if offsetOf[k] < 0 then
+                        offsetOf[k] := at
+                        vector.append(:FrameSlot slots tuple
+                            let offset = at let bytes = 8
+                            let type = maybe.some(:ssa.Type vector.get(:ssa.Type s.types v)) let id = v
+                        end)
+                        at := at + 8
+                    end
+                    spillAt[v] := offsetOf[k]
+                end
             end
             regalloc.rewrite(m a lowering)
             let savedList = vector.new(:Int)

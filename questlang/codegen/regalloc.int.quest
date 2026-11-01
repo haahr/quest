@@ -118,6 +118,10 @@ export
         (* The callee-saved registers given to any, which the function must
          * save and restore for its caller *)
         calleeUsed: Array(Int)
+        (* Each virtual register's first and last positions, by its index,
+         * over all its pieces: where its slot, if it has one, holds it *)
+        first: Array(Int)
+        last: Array(Int)
     end
 
     (* The allocation of a function's virtual registers to the target's
@@ -132,6 +136,16 @@ export
     (* Whether a virtual register (by index) is stored in its memory when it
      * is defined, and so needs a stack slot *)
     needsSlot(a: Allocation v: Int): Bool
+
+    (* The slot each virtual register that needs one is stored in (by its
+     * index; ~1 for one that needs none), numbered from 0: registers of the
+     * same kind (by register) share a slot where their lifetimes do not
+     * overlap, counting the places rewrite writes a slot outside its value's
+     * lifetime (a block parameter's, on the jumps into its block, and a clear
+     * after its value dies), so that a frame holds the most values in memory
+     * at once rather than every value ever there. Not for a function a raise
+     * enters, whose handler reads slots where liveness does not see it. *)
+    shareSlots(f: machine.Function a: Allocation lowering: machine.Lowering kind: All(v: Int) Int): Array(Int)
 
     (* The function, its virtual registers replaced by those allocated, the
      * loads, stores, and moves added *)
