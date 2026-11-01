@@ -744,7 +744,26 @@ functions once Quest's inliner has run. Allocation and collection are 50 to 67 p
    overlap, with `ldp` and `stp` for adjacent ones. Eager loads at a block's start (`repeat` in imp-for loads all four
    of its closure's fields at entry, two into callee-saved registers, though two are used only on one path) belong
    here too. Expected: the rest of the second factor; LLVM's allocators show that it is where the code generator's
-   advantage lies.
+   advantage lies. *Tried, and not kept* (2026-11-01), since neither paid:
+   - **Hints followed through registers not yet given one:** a value passed to a block's parameter is allocated
+     before the parameter, so its hint names no register and it takes `x12`, and the edge moves it. Following the
+     parameter's own hints, three deep, to a call's result or another argument removed life's `ldr x12, [x20]; mov
+     x0, x12`, but no benchmark changed beyond noise.
+   - **Coalescing:** a move's two registers, and a jump's argument and its target's parameter, joined in one interval
+     (union-find before the scan; each register given the group's pieces where it is live, and the moves between
+     pieces credited to the one live there) where the groups' ranges do not overlap. It passed the suite, left life's
+     inner loop with no moves, and took 942 instructions and 153 stack accesses of life's `qf_f_6` to 815 and 115.
+     On an idle machine (five rounds), against no coalescing: ray, hamlet, zebra, and nucleic within noise either
+     way; coalescing only the jumps that go forward, mlyacc 1.50 to 1.40 but life 1.50 to 1.59; only moves, or only
+     back edges, nothing. Longer intervals in a function short of registers (`qf_f_6` uses every callee-saved one)
+     are the likely cost, so a conservative test (Briggs's: coalesce only where the merged interval stays
+     allocatable) would be the next thing to try.
+
+   With items 1 and 2 done, `llc -O2` on the same SSA leaves hamlet no faster than arm64, life 1.25 times faster,
+   and mlyacc 1.34. In the hot functions read (life's `qf_f_5`, mlyacc's `qf_union` and its list length) arm64
+   spills nothing; what LLVM does that arm64 does not is block placement (a cold exit between a loop's blocks costs
+   arm64 a `b` on the hot path; without it `llc` was 1.04 to 1.07 slower, §6.2) and a move made before a branch rather
+   than in a block of its own.
 4. **Allocation's fast path inline:** with benchmarks.md §3.1's per-size free-list cache in the runtime, the
    pop of a free list is a few instructions that the C backend gets from the header and arm64 could select inline.
    Not part of the arm64/C gap, but the largest cost both share. *Not to be done* (the user's decision,
