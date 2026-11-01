@@ -387,8 +387,10 @@ the runtime for every program, and come first so that the JIT is built on them.
 2. **Frames by the frame-pointer chain** (§3.9). The runtime's capture and uncaught walk step by `x29`; the
    stack-overflow handler starts from the faulting context. The run goldens that list frames are checked through the
    C, ssac, and arm64 backends, and exceptions.md §5.3 describes the walk.
-3. **`os/value` and `os/code`** (§3.11): the interfaces, their unsound modules, and a C file in `runtime/`. Both
-   interpreters refuse a program that imports either. Tests: an unsound module that reads a tuple's and a record's
+3. **`os/value` and `os/code`** (§3.11): the interfaces, their unsound modules, and a C file in `runtime/`, with an
+   ABI bump. Both interpreters refuse a program that imports either, by the interface's name rather than through
+   builtins that name the new natives, so that the current release can still build stage 1. **A release follows this
+   step.** Tests: an unsound module that reads a tuple's and a record's
    words through `os/value`; one that writes a hand-encoded function into a code region and calls it, and one whose
    function raises and gets the exception back.
 4. **Hosts** (§3.3, §3.10): the fingerprint (§3.3.1) and each module unit's `qh_` symbol, in both self-hosted
@@ -398,7 +400,7 @@ the runtime for every program, and come first so that the JIT is built on them.
 5. **The encoder** (§3.5), beside the printer in `codegen/arm64`. A unit check encodes every arm64 golden's unit and
    compares the code with the `__text` of the printed assembly assembled by `clang -c`, relocations aside, and the
    data likewise.
-6. **The loader and phrase units: the REPL on `--jit`** (§3.2, §3.6–§3.9): the arena, GOT slots and stubs,
+6. **The loader and phrase units: the REPL on `--jit`** (after step 3's release) (§3.2, §3.6–§3.9): the arena, GOT slots and stubs,
    thread-locals, registration, roots, and function ranges; phrase units, their entries, result globals, and earlier
    inputs' globals; reflection; exceptions and rollback; `system.args`. A runner mode runs the REPL transcripts
    through `--jit` against their goldens, and tools/check runs it.
@@ -408,6 +410,19 @@ the runtime for every program, and come first so that the JIT is built on them.
 8. **Files and `-e`** through `--jit`, each one input. A runner mode runs the run goldens through `quest --jit`;
    exceptions.md and this document list the differences that remain. The time to compile and load an input,
    measured on the transcripts and a few programs, in benchmarks.md.
+
+**Releases.** Stage 1 is the release compiling the tree's `questlang/` against its own `lib/` and `runtime/`
+(release-compiler.md §2), so a release is needed only when `questlang/` first uses something the release's `lib/` or
+`runtime/` lacks:
+
+- Steps 1 and 2 need none. `questlang/` binds no externals, and the release parses `unsound` without checking it.
+  Stage 1, which checks it, compiles the tree's marked `lib/`; step 2 changes only `runtime/`, which stage 2 links.
+- **Step 3 is followed by a release,** because step 6's `questlang/jit` is the first of `questlang/` to import
+  `os/value` and `os/code`. `QUEST_SEED=bootstrap` could bridge the gap instead, but tools/check seeds its
+  self-hosting check from the release.
+- Steps 4, 5, 7, and 8 need none: `list` and `dynamic` are already in the release's `lib/`, only a test program reads
+  the `qh_` symbols, and the rest is `questlang/` alone.
+- An optional release after step 8 puts the JIT in the release.
 
 After step 8, whether the JIT becomes the default for the REPL, for files, and for `-e` is decided from those
 measurements, as the default backend was. roadmap.md and the README's status table follow each step.
