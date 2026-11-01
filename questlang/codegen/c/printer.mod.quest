@@ -140,6 +140,10 @@ export
         labelDepth: hashMap.T(String Int)
         joinParams: hashMap.T(String Array(Variable))
         var volatile: hashMap.T(Int Bool)
+        (* The lets of tuples made only to be an option's payload, which the
+         * next statement makes: printed as the option's components instead,
+         * by variable (fusedTuples) *)
+        var fused: hashMap.T(Int nodes.Stmt)
     end
     let newFnState(f: maybe.T(nodes.Function)): FnState =
         tuple
@@ -150,6 +154,7 @@ export
             let labelDepth = hashMap.new(:String :Int eq hash.string)
             let joinParams = hashMap.new(:String :Array(Variable) eq hash.string)
             let var volatile = hashMap.new(:Int :Bool intEqual hash.int)
+            let var fused = hashMap.new(:Int :nodes.Stmt intEqual hash.int)
         end
 
     (* A field of an aggregate being made: its C expression, a record or
@@ -928,6 +933,137 @@ export
     (* A new option: its tag, and its payload's components (a tuple's read as
      * the represent pass decided, a payload that is not a tuple in its slot
      * form) *)
+    (* Whether a tuple's let st can be fused into the option the next
+     * statement makes of it: the option's case stores each component as the
+     * tuple would (of the same shape, read directly), and none needs a box *)
+    let fusable(p: P st: nodes.StmtLet next: nodes.Stmt): Bool =
+        case st.value
+            when opMakeTuple with t then
+                case next
+                    when sLet with y then
+                        case y.value
+                            when opMakeOption with o then
+                                let os = held(y.v.type shapes.shapeOption)
+                                let rs = shapeOf(st.v.type)
+                                let pt = if maybe.isSome(:String o.tag) then caseShape(os maybe.unwrap(:String o.tag))
+                                    else maybe.none(:Shape) end
+                                if {extent t.embedded > 0} orif maybe.isNone(:Shape pt)
+                                    orif not(shapes.kindIs(maybe.unwrap(:Shape pt) shapes.shapeTuple))
+                                    orif {extent maybe.unwrap(:Shape pt).components isnot extent rs.components}
+                                    orif {extent t.args isnot extent rs.components} then
+                                    false
+                                else
+                                    let cs = maybe.unwrap(:Shape pt)
+                                    let var same = true
+                                    for i = 0 upto {extent rs.components - 1} do
+                                        if {componentShape(rs i).id isnot componentShape(cs i).id}
+                                            orif not(o.access[i]?direct) then
+                                            same := false
+                                        end
+                                    end
+                                    same
+                                end
+                            else false
+                        end
+                    else false
+                end
+            else false
+        end
+
+    (* The lets of a body's tuples that only the next statement uses, as the
+     * payload of the option it makes: those not global, volatile, or unboxed
+     * (docs/option-values.md, the payload made from components) *)
+    let fusedTuples(p: P b: nodes.Body): hashMap.T(Int nodes.Stmt) =
+        begin
+            let found = hashMap.new(:Int :nodes.Stmt intEqual hash.int)
+            let uses = hashMap.new(:Int :Int intEqual hash.int)
+            let all = walk.walkStatements(b false)
+            for i = 0 upto {vector.length(:nodes.Stmt all) - 1} do
+                let us = walk.statementUses(vector.get(:nodes.Stmt all i))
+                for j = 0 upto {extent us - 1} do
+                    case us[j]
+                        when atomVar with v then
+                            put(:Int :Int uses v.v.id maybe.unwrapOr(:Int hashMap.get(:Int :Int uses v.v.id) 0) + 1)
+                        else ok
+                    end
+                end
+            end
+            let rec visit(body: nodes.Body): Ok =
+                begin
+                    let n = vector.length(:nodes.Stmt body.statements)
+                    for k = 0 upto {n - 1} do
+                        let st = vector.get(:nodes.Stmt body.statements k)
+                        let inner = walk.statementBodies(st)
+                        for j = 0 upto {extent inner - 1} do visit(inner[j]) end
+                        if {k + 1} < n then
+                            case st
+                                when sLet with x then
+                                    let next = vector.get(:nodes.Stmt body.statements k + 1)
+                                    let paysFor = case next
+                                        when sLet with y then
+                                            case y.value
+                                                when opMakeOption with o then
+                                                    maybe.isNone(:Atom o.ordinalAtom)
+                                                        andif maybe.isSome(:Atom o.payload)
+                                                        andif case maybe.unwrap(:Atom o.payload)
+                                                            when atomVar with v then nodes.same(v.v x.v)
+                                                            else false
+                                                        end
+                                                else false
+                                            end
+                                        else false
+                                    end
+                                    let readOnce = case next
+                                        when sLet with y then
+                                            case y.value
+                                                when opTupleField with f then
+                                                    maybe.isNone(:Variable f.viewMap)
+                                                        andif {f.index >= 1} andif case f.tup
+                                                            when atomVar with v then nodes.same(v.v x.v)
+                                                            else false
+                                                        end
+                                                else false
+                                            end
+                                        else false
+                                    end
+                                    let payloadRead = readOnce andif case x.value
+                                        when opPayload with q then
+                                            maybe.isNone(:Variable q.viewMap)
+                                                andif tagShape(atomType(q.value)).kind?shapeOption
+                                        else false
+                                    end
+                                    if {{paysFor andif fusable(p x next)} orif payloadRead} andif not(x.v.unboxed)
+                                        andif not(hashMap.contains(:Int :Bool p.globals x.v.id))
+                                        andif not(hashMap.contains(:Int :Bool p.fs.volatile x.v.id))
+                                        andif {maybe.unwrapOr(:Int hashMap.get(:Int :Int uses x.v.id) 0) is 1} then
+                                        put(:Int :nodes.Stmt found x.v.id st)
+                                    end
+                                else ok
+                            end
+                        end
+                    end
+                end
+            visit(b)
+            found
+        end
+
+    (* The C values of a fused payload tuple's components, as its slots would
+     * have held them *)
+    let fusedValues(p: P st: nodes.Stmt): vector.T(String) =
+        begin
+            let values = vector.new(:String)
+            case st
+                when sLet with x then
+                    case x.value
+                        when opMakeTuple with t then
+                            for i = 0 upto {extent t.args - 1} do add(values atom(p t.args[i])) end
+                        else ok
+                    end
+                else ok
+            end
+            values
+        end
+
     let makeAllocatedOption(p: P o: nodes.OpMakeOption os: Shape struct: String): String =
         begin
             let tmp = temp(p struct <> " *")
@@ -960,7 +1096,28 @@ export
             else
                 emit(p tmp <> "->tag = " <> lit(tagIndex(os tag)) <> ";")
             end
-            if maybe.isSome(:Atom o.payload) andif maybe.isSome(:String tag) then
+            let fusedLet = if maybe.isSome(:Atom o.payload) then
+                case maybe.unwrap(:Atom o.payload)
+                    when atomVar with v then hashMap.get(:Int :nodes.Stmt p.fs.fused v.v.id)
+                    else maybe.none(:nodes.Stmt)
+                end
+            else
+                maybe.none(:nodes.Stmt)
+            end
+            let fusedComponents = if maybe.isSome(:nodes.Stmt fusedLet) andif maybe.isSome(:String tag) then
+                maybe.some(:vector.T(String) fusedValues(p maybe.unwrap(:nodes.Stmt fusedLet)))
+            else
+                maybe.none(:vector.T(String))
+            end
+            if maybe.isSome(:vector.T(String) fusedComponents) then
+                (* The payload tuple's components, stored as it would have
+                 * stored them, the tuple never made *)
+                let values = maybe.unwrap(:vector.T(String) fusedComponents)
+                for i = 0 upto {vector.length(:String values) - 1} do
+                    emit(p tmp <> "->u.qo_" <> maybe.unwrap(:String tag) <> "._" <> cInt(i) <> " = "
+                        <> vector.get(:String values i) <> ";")
+                end
+            elsif maybe.isSome(:Atom o.payload) andif maybe.isSome(:String tag) then
                 let tagName = maybe.unwrap(:String tag)
                 let pt = caseShape(os tagName)
                 let payloadAtom = maybe.unwrap(:Atom o.payload)
@@ -977,9 +1134,6 @@ export
             end
             tmp
         end
-
-    (* A component of an option's case, read from the case's struct, in the C
-     * type of wanted *)
 
     (* Whether an option shape's case has no components *)
     let caseWithoutComponents(os: Shape tag: String): Bool =
@@ -1030,6 +1184,9 @@ export
                 makeAllocatedOption(p o os struct)
             end
         end
+
+    (* A component of an option's case, read from the case's struct, in the C
+     * type of wanted *)
 
     let optionField(src: String stored: maybe.T(Shape) index: Int wanted: Shape): String =
         if maybe.isNone(:Shape stored) orif not(shapes.kindIs(maybe.unwrap(:Shape stored) shapes.shapeTuple))
@@ -1092,6 +1249,32 @@ export
             else "(quest_is_proxy(" <> opt <> ") ? (" <> struct <> " *)quest_proxy_option_payload(" <> opt <> ") : "
                 <> own(opt) <> ")"
             end
+        end
+
+    (* Component index (from 1; 0 is the ordinal) of the tuple a fused payload
+     * let would have made of its option: the option's tag checked as the
+     * payload checks it, and the component read from its case, in the
+     * tuple's slot form *)
+    let payloadComponent(p: P st: nodes.Stmt index: Int): String =
+        case st
+            when sLet with x then
+                case x.value
+                    when opPayload with o then
+                        let ts = tagShape(atomType(o.value))
+                        let v = atom(p o.value)
+                        emit(p "if (" <> optionTag(v o.access) <> " != " <> lit(tagIndexOf(ts o.tag))
+                            <> ") quest_raise_variant_error_at(" <> site(p o.offset) <> ");")
+                        let pt = caseShape(ts o.tag)
+                        let i = index - 1
+                        let wanted = componentShape(shapeOf(x.v.type) index)
+                        if maybe.isSome(:Shape pt) andif shapes.kindIs(maybe.unwrap(:Shape pt) shapes.shapeTuple) then
+                            optionField(optionComponent(p v ts o.tag maybe.some(:Int i) o.components[i]) pt i wanted)
+                        else
+                            optionComponent(p v ts o.tag maybe.none(:Int) o.components[0])
+                        end
+                    else "/* not a payload */ 0"
+                end
+            else "/* not a payload */ 0"
         end
 
     let payload(p: P o: nodes.OpPayload t: Type): String =
@@ -1568,7 +1751,15 @@ export
                     makeTuple(p maybe.unwrap(:Variable result).type fields)
                 end
             when opTupleField with x then
-                if maybe.isSome(:Variable x.viewMap) then
+                let fusedPayload = case x.tup
+                    when atomVar with v then hashMap.get(:Int :nodes.Stmt p.fs.fused v.v.id)
+                    else maybe.none(:nodes.Stmt)
+                end
+                if maybe.isSome(:nodes.Stmt fusedPayload) then
+                    (* o!tag.field: the option's component, read in place,
+                     * the tuple of its ordinal and components never made *)
+                    payloadComponent(p maybe.unwrap(:nodes.Stmt fusedPayload) x.index)
+                elsif maybe.isSome(:Variable x.viewMap) then
                     (* A tuple-bounded type parameter's value: through the view
                      * map, converted to the bound's type *)
                     let comp = componentShape(layout.resolvedShape(shapeOf(atomType(x.tup))) x.index)
@@ -1883,7 +2074,13 @@ export
     and body(p: P b: nodes.Body): Ok =
         begin
             for i = 0 upto {vector.length(:nodes.Stmt b.statements) - 1} do
-                statement(p vector.get(:nodes.Stmt b.statements i)) end
+                let st = vector.get(:nodes.Stmt b.statements i)
+                let skipped = case st
+                    when sLet with x then hashMap.contains(:Int :nodes.Stmt p.fs.fused x.v.id)
+                    else false
+                end
+                if not(skipped) then statement(p st) end
+            end
             ok
         end
 
@@ -2198,6 +2395,7 @@ export
         begin
             p.fs := newFnState(maybe.some(:nodes.Function f))
             p.fs.volatile := volatileVars(f.body)
+            p.fs.fused := fusedTuples(p f.body)
             let nCaptured = extent f.typeParams - typeParameterCount(f.v.type)
             let signature = functionSignature(p f)
             let prologue = vector.new(:String)
@@ -2287,6 +2485,7 @@ export
         begin
             p.fs := newFnState(maybe.none(:nodes.Function))
             p.fs.volatile := volatileVars(b)
+            p.fs.fused := fusedTuples(p b)
             let decls = declareLocals(p b p.globals)
             p.lines := vector.new(:String)
             p.indent := 1
