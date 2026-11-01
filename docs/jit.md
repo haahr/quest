@@ -402,8 +402,8 @@ the runtime for every program, and come first so that the JIT is built on them.
    data likewise.
 6. **The loader and phrase units: the REPL on `--jit`** (§3.2, §3.6–§3.9), after step 3's release: the arena, GOT
    slots and stubs, thread-locals, registration, roots, and function ranges; phrase units, their entries, result
-   globals, and earlier inputs' globals; reflection; exceptions and rollback; `system.args`. A runner mode runs the REPL transcripts
-   through `--jit` against their goldens, and tools/check runs it.
+   globals, and earlier inputs' globals; reflection; exceptions and rollback; `system.args`. A runner mode runs the
+   REPL transcripts through `--jit` against their goldens, and tools/check runs it.
 7. **Imports and `-i`** (§3.3, §3.4): imports of the driver's units, refused when stale and, for the user's own
    modules, refused for now; `-i FILE` as the first input. The transcripts through a C-built and an arm64-built
    stage 2 (`QUEST_BACKEND`).
