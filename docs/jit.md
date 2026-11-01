@@ -6,7 +6,7 @@ backend's pipeline ([arm64.md](arm64.md)) unchanged up to machine instructions, 
 with an in-memory encoder and loader. It is written in Quest, in `questlang/`, and the bootstrap does not get it
 ([testing.md](testing.md) §2.8), though it gets the language change the JIT needs (§3.11).
 
-**Status: steps 1 to 4 of 8 done** (§7). Section 1 records the decisions, section 7 the steps.
+**Status: steps 1 to 5 of 8 done** (§7). Section 1 records the decisions, section 7 the steps.
 
 ---
 
@@ -171,8 +171,8 @@ later work (§6). A unit is never both: if the host links it, the host's copy is
 
 ### 3.5. The encoder
 
-`jit/encode` turns a unit's minst sequence and its static data into a code section and a data section, each a byte
-array with a list of relocations (symbol, kind, offset). Each `Op` case gives its 32-bit word as the printer's gives
+`codegen/arm64/encode` turns a unit's minst sequence and its static data into a code section (32-bit words) and a
+data section (bytes), each with a list of relocations (symbol, kind, offset). Each `Op` case gives its 32-bit word as the printer's gives
 its text; the encoder's cases sit beside the printer's in `codegen/arm64`, so that adding an instruction is one edit
 and the exhaustiveness check catches a case missing from either. What the assembler does now and the encoder must:
 
@@ -419,6 +419,15 @@ the runtime for every program, and come first so that the JIT is built on them.
 5. **The encoder** (§3.5), beside the printer in `codegen/arm64`. A unit check encodes every arm64 golden's unit and
    compares the code with the `__text` of the printed assembly assembled by `clang -c`, relocations aside, and the
    data likewise.
+   *Done* (2026-11-01). `codegen/arm64/encode` gives each instruction's word beside the printer's spelling of it
+   (the printer now exports `expansion`), and lays out a unit's code and data with their relocations and each
+   function's offset and size. Labels are resolved; so is a function's call of itself, which `as` resolves too
+   (each function is an atom of its own under `.subsections_via_symbols`); every other symbol is relocated. With
+   `QUEST_CHECK_ENCODING=1` the backend appends the encoding to a unit's assembly as comments, which
+   `tests/self-hosted/encoder.py` (`self-hosted/encoder`) compares with `clang -c`'s object: 390 units, the run
+   goldens' programs and the units they link. The driver's own 151 units, built with arm64, agree too. Forms the
+   backend can emit but these programs do not (post-index loads, `ldrsw`, `movn`, `cmn`, shifts right by an
+   immediate) are encoded from the manual and checked once a program uses them.
 6. **The loader and phrase units: the REPL on `--jit`** (§3.2, §3.6–§3.9), after step 3's release: the arena, GOT
    slots and stubs, thread-locals, registration, roots, and function ranges; phrase units, their entries, result
    globals, and earlier inputs' globals; reflection; exceptions and rollback; `system.args`. A runner mode runs the

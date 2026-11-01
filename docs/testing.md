@@ -227,7 +227,11 @@ backtrace's frames ([arm64.md](arm64.md) §3.16). It passes where there is no ll
 (`tests/self-hosted/fingerprints.py`) builds a program whose unsound module reads its units' `qh_` fingerprints through
 `os/code` ([jit.md](jit.md) §3.3.1), with each backend and with variants of its interfaces: the fingerprints must agree
 across backends and directories, be the digest of the units' `.qi` files, ignore comments and declaration order, and
-change with an exported type and with a manifest type an interface imports.
+change with an exported type and with a manifest type an interface imports. `self-hosted/encoder`
+(`tests/self-hosted/encoder.py`) compiles the run goldens' programs with `--backend arm64` and
+`QUEST_CHECK_ENCODING=1`, which appends the encoder's code and data to each unit's assembly as comments
+([jit.md](jit.md) §3.5): `clang -c` assembles each unit, and the encoder's words, function offsets, data, and
+relocations must be the object's, relocated fields apart.
 
 **The SSA's backends:** `--self-hosted --backend MODE` runs the self-hosted suite's compiled tests (`run_c_compiled`,
 golden and error) with the driver's units compiled by another backend ([arm64.md](arm64.md) §4): `ssac` compiles every

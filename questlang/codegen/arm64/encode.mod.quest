@@ -1,0 +1,504 @@
+(* Quest Self-Hosted Compiler: The arm64 Encoder Implementation
+ *
+ * The encodings are the Arm Architecture Reference Manual's (A64), for the
+ * forms the printer's mnemonics stand for: mov of registers is orr (or add,
+ * with sp), lsl and the others of an immediate are ubfm and sbfm, cmp is subs
+ * to xzr, cset is csinc, mul is madd, and a mov of an immediate is movz, movn,
+ * or orr, as the assembler chooses. *)
+
+module encode : Encode
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+    questlang/codegen/arm64/printer : questlang/codegen/arm64/Printer
+    questlang/codegen/arm64/target : questlang/codegen/arm64/Target
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    ascii : Ascii
+    conv : Conv
+    words = word : Word
+export
+    Let RelocKind = Option
+        relocBranch26 relocPage21 relocPageOff12 relocGotPage21 relocGotPageOff12 relocTlvPage21 relocTlvPageOff12
+        relocAbsolute64
+    end
+    Let Reloc = Tuple offset: Int kind: RelocKind symbol: String addend: Int end
+    Let Symbol = Tuple name: String offset: Int size: Int exported: Bool end
+    Let Function = Tuple symbol: String exported: Bool code: vector.T(minst.Inst) endLabel: String end
+    Let Encoded = Tuple
+        code: Array(Int)
+        codeRelocs: Array(Reloc)
+        functions: Array(Symbol)
+        data: Array(Int)
+        dataRelocs: Array(Reloc)
+        dataSymbols: Array(Symbol)
+    end
+
+    let unencodable: Exception(String) = exception unencodable: String end
+
+    (* =========================================================================
+     * Fields
+     * ====================================================================== *)
+
+    (* n's low bits bits, as an unsigned field (n may be negative) *)
+    let field(n: Int bits: Int): Int = words.toInt(words.extract(words.fromInt(n) 0 bits))
+
+    (* A register's number in an instruction: x0-x30, and 31 for both xzr and
+     * sp; d0-d31 *)
+    let reg(r: Int): Int =
+        if r is target.sp then 31 elsif target.isReal(r) then r - target.d(0) else r end
+
+    (* Rd (or Rt) at bit 0, Rn at 5, Rm at 16, and the others *)
+    let rd(r: Int): Int = reg(r)
+    let rn(r: Int): Int = reg(r) * 32
+    let rm(r: Int): Int = reg(r) * 65536
+    let ra(r: Int): Int = reg(r) * 1024
+    let rt2(r: Int): Int = reg(r) * 1024
+
+    let shl(n: Int k: Int): Int = words.toInt(words.shift(words.fromInt(n) k))
+
+    let cond(c: minst.Cond): Int =
+        case c
+            when condEq then 0 when condNe then 1 when condHs then 2 when condLo then 3 when condMi then 4
+            when condPl then 5 when condVs then 6 when condVc then 7 when condHi then 8 when condLs then 9
+            when condGe then 10 when condLt then 11 when condGt then 12 when condLe then 13
+        end
+
+    (* The halfword shift (0 to 3) at which n is its one nonzero halfword, or
+     * ~1 *)
+    let soleHalfword(n: Int): Int =
+        begin
+            let w = words.fromInt(n)
+            let var found = ~1
+            let var count = 0
+            for k = 0 upto 3 do
+                if words.toInt(words.extract(w 16 * k 16)) isnot 0 then
+                    found := k
+                    count := count + 1
+                end
+            end
+            if count is 0 then 0 elsif count is 1 then found else ~1 end
+        end
+
+    (* A logical immediate's N:immr:imms (at bits 22, 16, and 10), for an n
+     * that minst.isLogical accepts: the element, the run of ones in it, and
+     * the rotation right that makes the element of the run at its bottom *)
+    let bitmask(n: Int): Int =
+        begin
+            let w = words.fromInt(n)
+            let same(a: words.T b: words.T): Bool = words.toInt(a) is words.toInt(b)
+            let var e = 2
+            while {e < 64} andif not(same(words.rotate(w e) w)) do e := e * 2 end
+            let x = words.extract(w 0 e)
+            let ones = words.popCount(x)
+            let run = words.extract(words.notBits(words.fromInt(0)) 0 ones)
+            let rotateRight(v: words.T r: Int): words.T =
+                if r is 0 then v
+                else words.extract(words.orBits(words.shift(v 0 - r) words.shift(v e - r)) 0 e) end
+            let var immr = ~1
+            for r = 0 upto {e - 1} do
+                if {immr < 0} andif same(rotateRight(x r) run) then immr := r end
+            end
+            if immr < 0 then raise unencodable with "logical immediate " <> conv.int(n) end end
+            (* For an element of e bits, imms is ones less 1 below the bits
+             * that give e: 0 for 64 (with N 1), 0 for 32, 10 for 16, 110 for
+             * 8, 1110 for 4, and 11110 for 2 *)
+            let sizeBits = field(shl(0 - e 1) 6)
+            let imms = words.toInt(words.orBits(words.fromInt(sizeBits) words.fromInt(ones - 1)))
+            {if e is 64 then shl(1 22) else 0 end} + shl(immr 16) + shl(field(imms 6) 10)
+        end
+
+    (* =========================================================================
+     * Instructions
+     * ====================================================================== *)
+
+    let arithWord(a: minst.Arith rs: Array(Int)): Int =
+        begin
+            let three(base: Int): Int = base + rm(rs[2]) + rn(rs[1]) + rd(rs[0])
+            (* add and sub with sp are the extended register form, UXTX *)
+            let withSp = {rs[0] is target.sp} orif {rs[1] is target.sp}
+            case a
+                when arithAdd then three(if withSp then 2334154752 (* 0x8B206000 *) else 2332033024 (* 0x8B000000 *) end)
+                when arithSub then three(if withSp then 3407896576 (* 0xCB206000 *) else 3405774848 (* 0xCB000000 *) end)
+                when arithMul then three(2600500224) (* madd, 0x9B007C00 *)
+                when arithSdiv then three(2596277248) (* 0x9AC00C00 *)
+                when arithAnd then three(2315255808) (* 0x8A000000 *)
+                when arithOrr then three(2852126720) (* 0xAA000000 *)
+                when arithEor then three(3388997632) (* 0xCA000000 *)
+                when arithLsl then three(2596282368) (* lslv, 0x9AC02000 *)
+                when arithLsr then three(2596283392) (* lsrv, 0x9AC02400 *)
+                when arithAsr then three(2596284416) (* asrv, 0x9AC02800 *)
+                when arithFadd then three(509618176) (* 0x1E602800 *)
+                when arithFsub then three(509622272) (* 0x1E603800 *)
+                when arithFmul then three(509609984) (* 0x1E600800 *)
+                when arithFdiv then three(509614080) (* 0x1E601800 *)
+            end
+        end
+
+    (* A load's or store's opcodes: its unsigned scaled offset form and its
+     * unscaled (and pre- and post-index) form, and its width *)
+    Let Access = Tuple scaled: Int unscaled: Int width: Int end
+
+    let loadAccess(l: minst.Load real: Bool): Access =
+        case l
+            when load64 then
+                if real then tuple let scaled = 4248829952 (* 0xFD400000 *) let unscaled = 4232052736 (* 0xFC400000 *) let width = 8 end
+                else tuple let scaled = 4181721088 (* 0xF9400000 *) let unscaled = 4164943872 (* 0xF8400000 *) let width = 8 end end
+            when loadS32 then tuple let scaled = 3112173568 (* 0xB9800000 *) let unscaled = 3095396352 (* 0xB8800000 *) let width = 4 end
+            when loadS8 then tuple let scaled = 964689920 (* 0x39800000 *) let unscaled = 947912704 (* 0x38800000 *) let width = 1 end
+            when loadU8 then tuple let scaled = 960495616 (* 0x39400000 *) let unscaled = 943718400 (* 0x38400000 *) let width = 1 end
+        end
+
+    let storeAccess(s: minst.Store real: Bool): Access =
+        case s
+            when store64 then
+                if real then tuple let scaled = 4244635648 (* 0xFD000000 *) let unscaled = 4227858432 (* 0xFC000000 *) let width = 8 end
+                else tuple let scaled = 4177526784 (* 0xF9000000 *) let unscaled = 4160749568 (* 0xF8000000 *) let width = 8 end end
+            when store32 then
+                if real then tuple let scaled = 3170893824 (* 0xBD000000 *) let unscaled = 3154116608 (* 0xBC000000 *) let width = 4 end
+                else tuple let scaled = 3103784960 (* 0xB9000000 *) let unscaled = 3087007744 (* 0xB8000000 *) let width = 4 end end
+            when store8 then tuple let scaled = 956301312 (* 0x39000000 *) let unscaled = 939524096 (* 0x38000000 *) let width = 1 end
+        end
+
+    let pageOffKind(r: minst.Reloc): RelocKind =
+        case r
+            when relocPage then option relocPageOff12 of RelocKind end
+            when relocGot then option relocGotPageOff12 of RelocKind end
+            when relocTlv then option relocTlvPageOff12 of RelocKind end
+        end
+
+    let pageKind(r: minst.Reloc): RelocKind =
+        case r
+            when relocPage then option relocPage21 of RelocKind end
+            when relocGot then option relocGotPage21 of RelocKind end
+            when relocTlv then option relocTlvPage21 of RelocKind end
+        end
+
+    let word(op: minst.Op rs: Array(Int) at: Int labelOffset: All(label: String) Int
+        localFunction: All(symbol: String) Int relocs: vector.T(Reloc)): Int =
+        begin
+            (* A call or branch to a symbol: direct to a function of the
+             * unit's own that it does not export, else relocated *)
+            let toSymbol(base: Int symbol: String): Int =
+                begin
+                    let target = localFunction(symbol)
+                    if target >= 0 then
+                        base + field({target - at} / 4 26)
+                    else
+                        vector.append(:Reloc relocs tuple
+                            let offset = at let kind = option relocBranch26 of RelocKind end let symbol = symbol
+                            let addend = 0
+                        end)
+                        base
+                    end
+                end
+            let reloc(kind: RelocKind symbol: String): Ok =
+                vector.append(:Reloc relocs tuple let offset = at let kind = kind let symbol = symbol let addend = 0 end)
+            (* A label's distance from here, in instructions, as a field of
+             * bits *)
+            let distance(label: String bits: Int): Int =
+                begin
+                    let d = labelOffset(label) - at
+                    field(d / 4 bits)
+                end
+            let access(a: Access t: Int base: Int m: minst.Mode): Int =
+                case m
+                    when modeOffset with x then
+                        if printer.unscaledOffset(m a.width) then
+                            a.unscaled + shl(field(x.imm 9) 12) + rn(base) + rd(t)
+                        else
+                            a.scaled + shl(x.imm / a.width 10) + rn(base) + rd(t)
+                        end
+                    when modeBase then a.scaled + rn(base) + rd(t)
+                    when modePre with x then a.unscaled + 3072 (* 0xC00 *) + shl(field(x.imm 9) 12) + rn(base) + rd(t)
+                    when modePost with x then a.unscaled + 1024 (* 0x400 *) + shl(field(x.imm 9) 12) + rn(base) + rd(t)
+                    when modePageOff with x then
+                        reloc(pageOffKind(x.reloc) x.symbol)
+                        a.scaled + rn(base) + rd(t)
+                end
+            (* ldp and stp: their signed offset, pre-index, and post-index
+             * forms, x's or d's *)
+            let pair(load: Bool m: minst.Mode): Int =
+                begin
+                    let real = target.isReal(rs[0])
+                    let opc = if real then 1811939328 (* 0x6C000000 *) else 2818572288 (* 0xA8000000 *) end
+                    let l = if load then 4194304 (* 0x400000 *) else 0 end
+                    let regs = rt2(rs[1]) + rn(rs[2]) + rd(rs[0])
+                    let imm(n: Int): Int = shl(field(n / 8 7) 15)
+                    case m
+                        when modeOffset with x then opc + 16777216 (* 0x1000000 *) + l + imm(x.imm) + regs
+                        when modeBase then opc + 16777216 + l + regs
+                        when modePre with x then opc + 25165824 (* 0x1800000 *) + l + imm(x.imm) + regs
+                        when modePost with x then opc + 8388608 (* 0x800000 *) + l + imm(x.imm) + regs
+                        when modePageOff then raise unencodable with "ldp or stp of a page offset" end
+                    end
+                end
+            case op
+                when opMovImm with x then
+                    let h = soleHalfword(x.imm)
+                    let inverse = soleHalfword(0 - x.imm - 1)
+                    if h >= 0 then
+                        (* movz *)
+                        3531603968 (* 0xD2800000 *) + shl(h 21)
+                            + shl(words.toInt(words.extract(words.fromInt(x.imm) 16 * h 16)) 5) + rd(rs[0])
+                    elsif inverse >= 0 then
+                        (* movn *)
+                        2457862144 (* 0x92800000 *) + shl(inverse 21)
+                            + shl(words.toInt(words.extract(words.fromInt(0 - x.imm - 1) 16 * inverse 16)) 5) + rd(rs[0])
+                    elsif minst.isLogical(x.imm) then
+                        (* orr from xzr *)
+                        2986345440 (* 0xB20003E0 *) + bitmask(x.imm) + rd(rs[0])
+                    else
+                        raise unencodable with "mov of " <> conv.int(x.imm) end
+                    end
+                when opMovz with x then 3531603968 + shl(x.shift / 16 21) + shl(x.imm 5) + rd(rs[0])
+                when opMovk with x then 4068474880 (* 0xF2800000 *) + shl(x.shift / 16 21) + shl(x.imm 5) + rd(rs[0])
+                when opMov then
+                    let d = rs[0]
+                    let s = rs[1]
+                    if target.isReal(d) andif target.isReal(s) then 509624320 (* fmov d, d: 0x1E604000 *) + rn(s) + rd(d)
+                    elsif target.isReal(d) then 2657550336 (* fmov d, x: 0x9E670000 *) + rn(s) + rd(d)
+                    elsif target.isReal(s) then 2657484800 (* fmov x, d: 0x9E660000 *) + rn(s) + rd(d)
+                    elsif {d is target.sp} orif {s is target.sp} then 2432696320 (* add #0: 0x91000000 *) + rn(s) + rd(d)
+                    else 2852127712 (* orr from xzr: 0xAA0003E0 *) + rm(s) + rd(d)
+                    end
+                when opArith with x then arithWord(x.arith rs)
+                when opAddImm with x then
+                    2432696320 (* 0x91000000 *) + {if x.shift is 12 then shl(1 22) else 0 end} + shl(x.imm 10)
+                        + rn(rs[1]) + rd(rs[0])
+                when opSubImm with x then 3506438144 (* 0xD1000000 *) + shl(x.imm 10) + rn(rs[1]) + rd(rs[0])
+                when opLogicImm with x then
+                    let base: Int = case x.arith
+                        when arithAnd then 2449473536 (* 0x92000000 *)
+                        when arithOrr then 2986344448 (* 0xB2000000 *)
+                        when arithEor then 3523215360 (* 0xD2000000 *)
+                        else raise unencodable with "a logical immediate's operation" end
+                    end
+                    base + bitmask(x.imm) + rn(rs[1]) + rd(rs[0])
+                when opShiftImm with x then
+                    let s = x.imm
+                    case x.arith
+                        (* ubfm d, s, #(64 - s) % 64, #63 - s *)
+                        when arithLsl then 3544186880 (* 0xD3400000 *) + shl(field(0 - s 6) 16) + shl(63 - s 10) + rn(rs[1]) + rd(rs[0])
+                        (* ubfm d, s, #s, #63 *)
+                        when arithLsr then 3544186880 + shl(s 16) + shl(63 10) + rn(rs[1]) + rd(rs[0])
+                        (* sbfm d, s, #s, #63 *)
+                        when arithAsr then 2470445056 (* 0x93400000 *) + shl(s 16) + shl(63 10) + rn(rs[1]) + rd(rs[0])
+                        else raise unencodable with "a shift's operation" end
+                    end
+                when opMsub then 2600501248 (* 0x9B008000 *) + rm(rs[2]) + ra(rs[3]) + rn(rs[1]) + rd(rs[0])
+                when opSxtb then 2470452224 (* sbfm #0, #7: 0x93401C00 *) + rn(rs[1]) + rd(rs[0])
+                when opSxtw then 2470476800 (* sbfm #0, #31: 0x93407C00 *) + rn(rs[1]) + rd(rs[0])
+                when opCmp then
+                    if rs[0] is target.sp then 3944767519 (* subs, extended: 0xEB20601F *) + rm(rs[1]) + rn(rs[0])
+                    else 3942645791 (* subs: 0xEB00001F *) + rm(rs[1]) + rn(rs[0]) end
+                when opFcmp then 509616128 (* 0x1E602000 *) + rm(rs[1]) + rn(rs[0])
+                when opCmpImm with x then
+                    (* subs xzr (cmp), or adds xzr (cmn) of a negative one;
+                     * shifted by 12 when its low 12 bits are 0 *)
+                    let base = if x.imm < 0 then 2969567263 (* 0xB100001F *) else 4043309087 (* 0xF100001F *) end
+                    let n = if x.imm < 0 then 0 - x.imm else x.imm end
+                    let imm = if {n >= 4096} andif {{n % 4096} is 0} then shl(1 22) + shl(n / 4096 10) else shl(n 10) end
+                    base + imm + rn(rs[0])
+                when opCcmp with x then
+                    4198498304 (* 0xFA400000 *) + rm(rs[1]) + shl(cond(x.cond) 12) + rn(rs[0]) + x.nzcv
+                when opCcmpImm with x then
+                    4198500352 (* 0xFA400800 *) + shl(x.imm 16) + shl(cond(x.cond) 12) + rn(rs[0]) + x.nzcv
+                when opCset with x then
+                    (* csinc d, xzr, xzr, the inverse condition *)
+                    2594113504 (* 0x9A9F07E0 *) + shl(cond(minst.inverse(x.cond)) 12) + rd(rs[0])
+                when opLoad with x then access(loadAccess(x.load target.isReal(rs[0])) rs[0] rs[1] x.mode)
+                when opStore with x then access(storeAccess(x.store target.isReal(rs[0])) rs[0] rs[1] x.mode)
+                when opLdp with x then pair(true x.mode)
+                when opStp with x then pair(false x.mode)
+                when opAdrp with x then
+                    reloc(pageKind(x.reloc) x.symbol)
+                    2415919104 (* 0x90000000 *) + rd(rs[0])
+                when opAddPageOff with x then
+                    reloc(option relocPageOff12 of RelocKind end x.symbol)
+                    2432696320 (* 0x91000000 *) + rn(rs[1]) + rd(rs[0])
+                when opAdr with x then
+                    let d = labelOffset(x.label) - at
+                    268435456 (* 0x10000000 *) + shl(field(d 2) 29) + shl(field(d / 4 19) 5) + rd(rs[0])
+                when opB with x then 335544320 (* 0x14000000 *) + distance(x.label 26)
+                when opBSymbol with x then toSymbol(335544320 x.symbol)
+                when opBl with x then toSymbol(2483027968 (* 0x94000000 *) x.symbol)
+                when opBlr then 3594452992 (* 0xD63F0000 *) + rn(rs[0])
+                when opBr then 3592355840 (* 0xD61F0000 *) + rn(rs[0])
+                when opRet then 3596551104 (* 0xD65F03C0 *)
+                when opCbz with x then 3019898880 (* 0xB4000000 *) + shl(distance(x.label 19) 5) + rd(rs[0])
+                when opCbnz with x then 3036676096 (* 0xB5000000 *) + shl(distance(x.label 19) 5) + rd(rs[0])
+                when opTbz with x then
+                    905969664 (* 0x36000000 *) + shl(x.bit / 32 31) + shl(x.bit % 32 19) + shl(distance(x.label 14) 5)
+                        + rd(rs[0])
+                when opTbnz with x then
+                    922746880 (* 0x37000000 *) + shl(x.bit / 32 31) + shl(x.bit % 32 19) + shl(distance(x.label 14) 5)
+                        + rd(rs[0])
+                when opBCond with x then 1409286144 (* 0x54000000 *) + shl(distance(x.label 19) 5) + cond(x.cond)
+                when opBrk with x then 3558866944 (* 0xD4200000 *) + shl(x.imm 5)
+                when opNop then 3573751839 (* 0xD503201F *)
+                when opMovConst, opSymbolAddress, opTlvAddress, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                    raise unencodable with "a pseudo-instruction, label, or directive" end
+            end
+        end
+
+    (* =========================================================================
+     * Units
+     * ====================================================================== *)
+
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+
+    let unit(functions: Array(Function) data: Array(ssa.Data)): Encoded =
+        begin
+            (* Each label's offset: its function's instructions laid out one
+             * after another, each function 4-byte aligned, which they all
+             * are *)
+            let labels = hashMap.new(:String :Int eq hash.string)
+            let symbols = vector.new(:Symbol)
+            let var at = 0
+            for k = 0 upto {extent functions - 1} do
+                let f = functions[k]
+                let start = at
+                for j = 0 upto {vector.length(:minst.Inst f.code) - 1} do
+                    let i = vector.get(:minst.Inst f.code j)
+                    case i.op
+                        when opLabel with x then begin hashMap.insert(:String :Int labels x.label at) ok end
+                        else at := at + 4 * printer.count(i.op)
+                    end
+                end
+                hashMap.insert(:String :Int labels f.endLabel at)
+                vector.append(:Symbol symbols tuple
+                    let name = f.symbol let offset = start let size = at - start let exported = f.exported
+                end)
+            end
+            let labelOffset(l: String): Int =
+                begin
+                    let found = hashMap.get(:String :Int labels l)
+                    if maybe.isNone(:Int found) then raise unencodable with "label " <> l end end
+                    maybe.unwrap(:Int found)
+                end
+            (* A function's recursive calls of itself, which asm resolves: the
+             * function being encoded, if it is not exported *)
+            let var current = maybe.none(:Symbol)
+            let localFunction(symbol: String): Int =
+                if maybe.isSome(:Symbol current) andif eq(maybe.unwrap(:Symbol current).name symbol)
+                    andif not(maybe.unwrap(:Symbol current).exported) then
+                    maybe.unwrap(:Symbol current).offset
+                else ~1 end
+            let code = array of(at / 4 0)
+            let codeRelocs = vector.new(:Reloc)
+            let var pc = 0
+            for k = 0 upto {extent functions - 1} do
+                let f = functions[k]
+                current := maybe.some(:Symbol vector.get(:Symbol symbols k))
+                for j = 0 upto {vector.length(:minst.Inst f.code) - 1} do
+                    let i = vector.get(:minst.Inst f.code j)
+                    case i.op
+                        when opLabel, opCfiDefCfa, opCfiOffset, opLoc then ok
+                        else
+                            let expanded = printer.expansion(i.op i.regs)
+                            for e = 0 upto {extent expanded - 1} do
+                                code[pc / 4] := word(expanded[e].op expanded[e].regs pc labelOffset localFunction codeRelocs)
+                                pc := pc + 4
+                            end
+                    end
+                end
+            end
+            (* The data: each datum's bytes, from an offset that is a multiple
+             * of 8 *)
+            let bytes = vector.new(:Int)
+            let dataRelocs = vector.new(:Reloc)
+            let dataSymbols = vector.new(:Symbol)
+            let littleEndian(n: Int): Ok =
+                begin
+                    let w = words.fromInt(n)
+                    for b = 0 upto 7 do vector.append(:Int bytes words.toInt(words.extract(w 8 * b 8))) end
+                end
+            for k = 0 upto {extent data - 1} do
+                let d = data[k]
+                while {vector.length(:Int bytes) % 8} isnot 0 do vector.append(:Int bytes 0) end
+                let start = vector.length(:Int bytes)
+                case d.contents
+                    when contentsZero with x then
+                        for b = 1 upto {if x.bytes > 0 then x.bytes else 1 end} do vector.append(:Int bytes 0) end
+                    when contentsText with x then
+                        for c = 0 upto {stringOp.length(x.text) - 1} do
+                            vector.append(:Int bytes ascii.val(stringOp.getChar(x.text c)))
+                        end
+                        vector.append(:Int bytes 0)
+                    when contentsWords with x then
+                        if extent x.words is 0 then littleEndian(0) end
+                        for w = 0 upto {extent x.words - 1} do
+                            case x.words[w]
+                                when wordInt with v then littleEndian(v.n)
+                                when wordSymbol with v then
+                                    vector.append(:Reloc dataRelocs tuple
+                                        let offset = vector.length(:Int bytes) let kind = option relocAbsolute64 of RelocKind end
+                                        let symbol = v.symbol let addend = v.addend
+                                    end)
+                                    littleEndian(v.addend)
+                            end
+                        end
+                end
+                vector.append(:Symbol dataSymbols tuple
+                    let name = d.symbol let offset = start let size = vector.length(:Int bytes) - start
+                    let exported = d.exported
+                end)
+            end
+            tuple
+                let code = code let codeRelocs = vector.toArray(:Reloc codeRelocs)
+                let functions = vector.toArray(:Symbol symbols)
+                let data = vector.toArray(:Int bytes) let dataRelocs = vector.toArray(:Reloc dataRelocs)
+                let dataSymbols = vector.toArray(:Symbol dataSymbols)
+            end
+        end
+
+    (* =========================================================================
+     * Description
+     * ====================================================================== *)
+
+    let hex(n: Int digits: Int): String =
+        begin
+            let var s = strutil.formatWord(words.fromInt(n) 16)
+            while stringOp.length(s) < digits do s := "0" <> s end
+            s
+        end
+
+    let kindName(k: RelocKind): String =
+        case k
+            when relocBranch26 then "branch26" when relocPage21 then "page21" when relocPageOff12 then "pageoff12"
+            when relocGotPage21 then "gotpage21" when relocGotPageOff12 then "gotpageoff12"
+            when relocTlvPage21 then "tlvpage21" when relocTlvPageOff12 then "tlvpageoff12"
+            when relocAbsolute64 then "absolute64"
+        end
+
+    let describe(e: Encoded): Array(String) =
+        begin
+            let lines = vector.new(:String)
+            for k = 0 upto {extent e.functions - 1} do
+                let f = e.functions[k]
+                vector.append(:String lines "function " <> f.name <> " " <> conv.int(f.offset) <> " " <> conv.int(f.size))
+            end
+            for k = 0 upto {extent e.code - 1} do
+                vector.append(:String lines "code " <> conv.int(4 * k) <> " " <> hex(e.code[k] 8))
+            end
+            let relocLines(section: String rs: Array(Reloc)): Ok =
+                for k = 0 upto {extent rs - 1} do
+                    vector.append(:String lines "reloc " <> section <> " " <> conv.int(rs[k].offset) <> " "
+                        <> kindName(rs[k].kind) <> " " <> rs[k].symbol <> " " <> conv.int(rs[k].addend))
+                end
+            relocLines("code" e.codeRelocs)
+            relocLines("data" e.dataRelocs)
+            for k = 0 upto {extent e.dataSymbols - 1} do
+                let s = e.dataSymbols[k]
+                let b = vector.new(:String)
+                for i = s.offset upto {s.offset + s.size - 1} do vector.append(:String b hex(e.data[i] 2)) end
+                vector.append(:String lines "data " <> s.name <> " " <> conv.int(s.offset) <> " " <> strutil.join("" b))
+            end
+            vector.toArray(:String lines)
+        end
+end

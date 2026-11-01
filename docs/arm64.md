@@ -341,7 +341,8 @@ this is in one module, so that another object format would replace only it.
 
 An in-memory encoder (instructions to 32-bit words, with relocations) belongs to step 7, the JIT; the instruction
 descriptions should be data that both the printer and an encoder can use, and the encoder can then be tested byte for
-byte against the assembler.
+byte against the assembler. It is `codegen/arm64/encode` ([jit.md](jit.md) §3.5, step 5), checked so by
+`self-hosted/encoder`.
 
 ### 3.12. Build integration and mixing units
 

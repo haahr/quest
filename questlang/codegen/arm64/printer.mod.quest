@@ -44,7 +44,7 @@ export
 
     (* Whether a mode needs a load's or store's unscaled form, for width
      * bytes: an offset not a multiple of the width, negative, or too far *)
-    let unscaled(m: minst.Mode width: Int): Bool =
+    let unscaledOffset(m: minst.Mode width: Int): Bool =
         case m
             when modeOffset with x then
                 {x.imm < 0} orif {x.imm isnot {{x.imm / width} * width}} orif {{x.imm / width} >= 4096}
@@ -54,7 +54,7 @@ export
     (* A load or store: its scaled mnemonic, its unscaled one, the register
      * as the width names it, and its address *)
     let access(n: Names scaled: String unscaledForm: String t: String base: Int m: minst.Mode width: Int): String =
-        {if unscaled(m width) then unscaledForm else scaled end} <> " " <> t <> ", " <> address(n base m)
+        {if unscaledOffset(m width) then unscaledForm else scaled end} <> " " <> t <> ", " <> address(n base m)
 
     (* A register as the unwind information names it *)
     let cfiName(r: Int): String =

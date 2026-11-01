@@ -77,7 +77,7 @@ The compilers were built in steps ([docs/roadmap.md](docs/roadmap.md)):
 | **4** | Python | Compiler to C99, through an IR, with the Boehm garbage collector | Complete |
 | **5** | Quest | Self-hosted front end, interpreter, and compiler to C | Complete |
 | **6** | Quest | Native arm64 backend | Working; C is still the default backend |
-| **7** | Quest | arm64 JIT compiler and incremental runtime | Begun ([docs/jit.md](docs/jit.md)): steps 1 to 4 of 8 done |
+| **7** | Quest | arm64 JIT compiler and incremental runtime | Begun ([docs/jit.md](docs/jit.md)): steps 1 to 5 of 8 done |
 
 ### Implementation Notes
 - **Representation:** polymorphism, structural subtyping, and mutable state together make data layout the subtle

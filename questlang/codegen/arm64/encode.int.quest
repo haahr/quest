@@ -1,0 +1,65 @@
+(* Quest Self-Hosted Compiler: The arm64 Encoder Interface
+ *
+ * What the assembler makes of the arm64 backend's code (docs/jit.md section
+ * 3.5), for the JIT, which loads code without as and ld: each instruction of
+ * codegen/arm64/minst as its 32-bit word, as codegen/arm64/printer spells it,
+ * and a unit's functions and static data as a code section and a data
+ * section, each with the relocations that address symbols. Labels are
+ * resolved here; symbols, even the unit's own, are left to the loader, so a
+ * relocated field is 0 (a data word holds its addend), as in an object file.
+ * The unwind directives and line positions are dropped. *)
+
+interface Encode
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+    collections/vector : collections/Vector
+export
+    (* What an instruction's or a data word's relocation fills in: a bl's or
+     * b's target (branch26); adrp's page, and the offset in it of an add or a
+     * load (page21, pageOff12), of the symbol, of its GOT entry, or of its
+     * thread-local descriptor; a data word's address (absolute64) *)
+    Def RelocKind = Option
+        relocBranch26 relocPage21 relocPageOff12 relocGotPage21 relocGotPageOff12 relocTlvPage21 relocTlvPageOff12
+        relocAbsolute64
+    end
+    (* At offset bytes into its section, the symbol's address plus addend *)
+    Def Reloc = Tuple offset: Int kind: RelocKind symbol: String addend: Int end
+    (* A symbol defined at offset bytes into its section, of size bytes *)
+    Def Symbol = Tuple name: String offset: Int size: Int exported: Bool end
+
+    (* A function's machine code: its instructions, after branch relaxation,
+     * and the label just past them *)
+    Def Function = Tuple symbol: String exported: Bool code: vector.T(minst.Inst) endLabel: String end
+
+    (* A unit encoded: its code as 32-bit words, its data as bytes, each
+     * datum aligned to 8 bytes as asm places it *)
+    Def Encoded = Tuple
+        code: Array(Int)
+        codeRelocs: Array(Reloc)
+        functions: Array(Symbol)
+        data: Array(Int)
+        dataRelocs: Array(Reloc)
+        dataSymbols: Array(Symbol)
+    end
+
+    (* What cannot be encoded, naming it *)
+    unencodable: Exception(String)
+
+    (* An instruction's word (one the printer writes as one line: not a
+     * pseudo-instruction, a label, or a directive) at offset at in the code,
+     * given each label's offset, and the offset of a symbol a call or branch
+     * reaches directly (~1 for one it does not), as the assembler resolves
+     * it: a function's call of itself, if it is not exported; a relocation
+     * it needs is added to relocs *)
+    word(op: minst.Op regs: Array(Int) at: Int labelOffset: All(label: String) Int
+        localFunction: All(symbol: String) Int relocs: vector.T(Reloc)): Int
+
+    unit(functions: Array(Function) data: Array(ssa.Data)): Encoded
+
+    (* An Encoded as text, one item a line, for the encoder's check
+     * (tests/self-hosted/encoder.py): "code OFFSET WORD", "reloc SECTION
+     * OFFSET KIND SYMBOL ADDEND", "function NAME OFFSET SIZE", "data NAME
+     * OFFSET BYTES" (words and bytes in hexadecimal) *)
+    describe(e: Encoded): Array(String)
+end

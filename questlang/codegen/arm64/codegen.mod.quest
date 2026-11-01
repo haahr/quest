@@ -11,6 +11,7 @@ import
     questlang/codegen/arm64/printer : questlang/codegen/arm64/Printer
     questlang/codegen/arm64/select : questlang/codegen/arm64/Select
     questlang/codegen/arm64/target : questlang/codegen/arm64/Target
+    questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
@@ -18,6 +19,7 @@ import
     util/strutil : util/Strutil
     stringOp = string : StringOp
     conv : Conv
+    system : System
 export
     Let Function = ssa.Function
     Let Lines = vector.T(String)
@@ -363,7 +365,8 @@ export
     (* The label just past the code of the unit's function numbered index *)
     let endLabel(index: Int): String = "Lf" <> conv.int(index) <> "_end"
 
-    let function(f: Function index: Int defined: hashMap.T(String Bool)): Lines =
+    (* A function's machine code, after branch relaxation *)
+    let machineCode(f: Function index: Int defined: hashMap.T(String Bool)): Code =
         begin
             let c = compile(f index defined)
             let s = c.selection
@@ -445,7 +448,11 @@ export
                     end
                 end
             end
-            let code = relaxBranches(e.code s.prefix branchReach)
+            relaxBranches(e.code s.prefix branchReach)
+        end
+
+    let function(f: Function index: Int code: Code): Lines =
+        begin
             let lines = vector.new(:String)
             let start = asm.functionStart(f.symbol f.exported)
             for k = 0 upto {extent start - 1} do vector.append(:String lines start[k]) end
@@ -478,8 +485,16 @@ export
             appendAll(asm.files(files))
             let debugged = {extent files > 0} andif {stringOp.length(files[0]) > 0}
                 andif not(vector.empty(:Function u.functions))
+            let machines = array of(vector.length(:Function u.functions) tuple
+                let symbol = "" let exported = false let code = vector.new(:minst.Inst) let endLabel = ""
+            end)
             for k = 0 upto {vector.length(:Function u.functions) - 1} do
-                let fl = function(vector.get(:Function u.functions k) k defined)
+                let f = vector.get(:Function u.functions k)
+                machines[k] := tuple
+                    let symbol = f.symbol let exported = f.exported let code = machineCode(f k defined)
+                    let endLabel = endLabel(k)
+                end
+                let fl = function(f k machines[k].code)
                 for j = 0 upto {vector.length(:String fl) - 1} do
                     vector.append(:String lines vector.get(:String fl j))
                 end
@@ -499,6 +514,13 @@ export
                 appendAll(asm.debugInfo(files[0] functions))
             end
             appendAll(asm.unitEnd)
+            (* With QUEST_CHECK_ENCODING=1, the encoder's code and data for
+             * the unit, as comments, which tests/self-hosted/encoder.py
+             * compares with what the assembler makes of the rest *)
+            if stringOp.equal(system.getEnv("QUEST_CHECK_ENCODING") "1") then
+                let described = encode.describe(encode.unit(machines vector.toArray(:ssa.Data u.data)))
+                for k = 0 upto {extent described - 1} do vector.append(:String lines "// encoded " <> described[k]) end
+            end
             strutil.join("\n" lines) <> "\n"
         end
 end
