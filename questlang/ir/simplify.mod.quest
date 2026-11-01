@@ -226,6 +226,16 @@ export
      * Operations
      * ====================================================================== *)
 
+
+    (* Whether two atoms are options made by operations the simplifier knows *)
+    let knownOptions(s: Simplifier a: Atom b: Atom): Bool =
+        begin
+            let m = madeOf(s a)
+            let n = madeOf(s b)
+            maybe.isSome(:Made m) andif maybe.isSome(:Made n) andif not(maybe.unwrap(:Made m).isVariant)
+                andif not(maybe.unwrap(:Made n).isVariant)
+        end
+
     let boolConst(b: Bool): Op =
         nodes.opOfAtom(nodes.atomOfConst(tuple
             let value = option constBool of nodes.ConstValue with let b = b end
@@ -281,7 +291,18 @@ export
         end
 
     let foldPrim(s: Simplifier x: nodes.OpPrim): maybe.T(Op) =
-        if {extent x.args is 1} andif {case x.op when primNot then true else false end} then
+        if {extent x.args is 2} andif {x.op?primIs orif x.op?primIsnot} andif knownOptions(s x.args[0] x.args[1]) then
+            (* Options of different cases are never the same, and of one case
+             * made without components always are (docs/option-values.md
+             * section 2) *)
+            let a = maybe.unwrap(:Made madeOf(s x.args[0]))
+            let b = maybe.unwrap(:Made madeOf(s x.args[1]))
+            if eq(a.tag b.tag) andif {maybe.isSome(:Atom a.payload) orif maybe.isSome(:Atom b.payload)} then
+                maybe.none(:Op)
+            else
+                maybe.some(:Op boolConst(eq(a.tag b.tag) is x.op?primIs))
+            end
+        elsif {extent x.args is 1} andif {case x.op when primNot then true else false end} then
             let b = boolOf(s x.args[0])
             if maybe.isSome(:Bool b) then maybe.some(:Op boolConst(not(maybe.unwrap(:Bool b)))) else maybe.none(:Op) end
         elsif extent x.args is 2 then
@@ -348,6 +369,17 @@ export
                 let m = madeOf(s x.value)
                 if maybe.isSome(:Made m) then maybe.some(:Op boolConst(eq(maybe.unwrap(:Made m).tag x.tag)))
                 else maybe.none(:Op) end
+            when opOrdinal with x then
+                (* A known option's ordinal: its case's position in the cases
+                 * as written *)
+                let m = madeOf(s x.value)
+                let var n = ~1
+                if maybe.isSome(:Made m) andif not(maybe.unwrap(:Made m).isVariant) then
+                    for i = 0 upto {extent x.cases - 1} do
+                        if eq(x.cases[i] maybe.unwrap(:Made m).tag) then n := i end
+                    end
+                end
+                if n >= 0 then maybe.some(:Op intConst(n)) else maybe.none(:Op) end
             when opPayload with x then
                 (* A variant's payload is the value it was made of; an
                  * option's is a new tuple (of its ordinal and its

@@ -326,9 +326,8 @@ export
             end
         end
 
-    let makeOption(fn: vals.Fn o: ir.OpMakeOption t: Type): Array(Int) =
+    let makeAllocatedOption(fn: vals.Fn o: ir.OpMakeOption t: Type os: shapes.Shape): Array(Int) =
         begin
-            let os = layout.resolvedShape(shapes.shape(t))
             let opt = vals.alloc(fn layout.optionBytes(os.structure))
             let var tag = o.tag
             if maybe.isSome(:Atom o.ordinalAtom) then
@@ -377,6 +376,41 @@ export
 
     (* A new tuple of an option's case components (after offset components of
      * tupleType: the case's ordinal), read as access says *)
+
+    (* Whether an option shape's case has no components *)
+    let caseWithoutComponents(os: shapes.Shape tag: String): Bool =
+        begin
+            let pt = caseShape(os tag)
+            maybe.isNone(:shapes.Shape pt) orif {extent maybe.unwrap(:shapes.Shape pt).components is 0}
+        end
+
+    let makeOption(fn: vals.Fn o: ir.OpMakeOption t: Type): Array(Int) =
+        begin
+            let os = layout.resolvedShape(shapes.shape(t))
+            let var allWithout = true
+            for i = 0 upto {extent os.cases - 1} do
+                if not(caseWithoutComponents(os maybe.unwrapOr(:String os.cases[i].name ""))) then allWithout := false end
+            end
+            (* A case without components is its constant, in the option
+             * struct's table (docs/option-values.md section 3.1) *)
+            let table = fun(): Int vals.symbolAt(fn vals.optionTable(fn.u layout.shapeTag(os) extent os.cases))
+            if maybe.isNone(:Atom o.ordinalAtom) andif maybe.isSome(:String o.tag)
+                andif caseWithoutComponents(os maybe.unwrap(:String o.tag)) then
+                array of vals.offsetPtr(fn table() 8 * vals.tagIndex(os maybe.unwrap(:String o.tag))) end
+            elsif maybe.isSome(:Atom o.ordinalAtom) andif allWithout then
+                let ordinalAtom = maybe.unwrap(:Atom o.ordinalAtom)
+                let checked = vals.atom1(fn ordinalAtom)
+                vals.check(fn vals.binary(fn ssa.opUlt checked vals.constant(fn extent os.cases)) true
+                    "quest_option_ordinal_error_at"
+                    fun(): Array(Int) array of checked vals.constant(fn extent os.cases) vals.site(fn o.offset) end)
+                let tags = array of(extent o.cases 0)
+                for i = 0 upto {extent o.cases - 1} do tags[i] := vals.tagIndex(os o.cases[i]) end
+                array of vals.indexPtr(fn table() vals.binary(fn ssa.opShl mapped(fn checked tags) vals.constant(fn 3))) end
+            else
+                makeAllocatedOption(fn o t os)
+            end
+        end
+
     let optionCaseTuple(fn: vals.Fn opt: Int os: shapes.Shape tag: String tupleType: Type offset: Int access: Array(ir.Access)
         ordinalValue: Int): Int =
         begin

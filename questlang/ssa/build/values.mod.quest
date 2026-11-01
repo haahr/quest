@@ -133,6 +133,7 @@ export
         (* String literals, as symbols *)
         strings: hashMap.T(String String)
         var stringCount: Int
+        optionTables: hashMap.T(String String)
         (* Names records and their offset tables as the unit's static data
          * does *)
         naming: staticdata.RecordNaming
@@ -226,6 +227,18 @@ export
                 end)
             end
             hashMap.find(:String :String u.strings s)
+        end
+
+    let optionTable(u: UnitBuilder key: String count: Int): String =
+        begin
+            if not(hashMap.contains(:String :String u.optionTables key)) then
+                let symbol = freshName(u "qc_" <> key)
+                put(:String :String u.optionTables key symbol)
+                let words = array of(count option wordInt of ssa.Word with let n = 0 end)
+                for i = 0 upto {count - 1} do words[i] := option wordInt of ssa.Word with let n = i end end
+                vector.append(:ssa.Data u.built.data ssa.words(symbol false false words))
+            end
+            hashMap.find(:String :String u.optionTables key)
         end
 
     (* =========================================================================

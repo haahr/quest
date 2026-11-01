@@ -183,6 +183,11 @@ export
          * which the C asserts), in the order first cast *)
         tupleCastKeys: vector.T(String)
         tupleCasts: hashMap.T(String declarations.Pair)
+        (* The tables of options of cases without components, by option
+         * struct: their names, and their definitions in the order first used
+         * (docs/option-values.md section 3.1) *)
+        optionTables: hashMap.T(String String)
+        optionTableDecls: vector.T(String)
         var fs: FnState
         var lines: Lines
         var indent: Int
@@ -923,10 +928,8 @@ export
     (* A new option: its tag, and its payload's components (a tuple's read as
      * the represent pass decided, a payload that is not a tuple in its slot
      * form) *)
-    let makeOption(p: P o: nodes.OpMakeOption t: Type): String =
+    let makeAllocatedOption(p: P o: nodes.OpMakeOption os: Shape struct: String): String =
         begin
-            let os = held(t shapes.shapeOption)
-            let struct = layout.shapeTag(os)
             let tmp = temp(p struct <> " *")
             emit(p tmp <> " = (" <> struct <> " *)quest_alloc(sizeof(" <> struct <> "));")
             let var tag = o.tag
@@ -977,6 +980,57 @@ export
 
     (* A component of an option's case, read from the case's struct, in the C
      * type of wanted *)
+
+    (* Whether an option shape's case has no components *)
+    let caseWithoutComponents(os: Shape tag: String): Bool =
+        begin
+            let pt = caseShape(os tag)
+            maybe.isNone(:Shape pt) orif {extent maybe.unwrap(:Shape pt).components is 0}
+        end
+
+    (* The table of option struct's options of each tag, which those of cases
+     * without components are (docs/option-values.md section 3.1) *)
+    let optionTable(p: P struct: String count: Int): String =
+        begin
+            if not(hashMap.contains(:String :String p.optionTables struct)) then
+                let name = "qc_" <> struct
+                put(:String :String p.optionTables struct name)
+                let entries = vector.new(:String)
+                for i = 0 upto {count - 1} do vector.append(:String entries "{ .tag = " <> lit(i) <> " }") end
+                vector.append(:String p.optionTableDecls "static Q_UNUSED const " <> struct <> " " <> name <> "["
+                    <> cInt(count) <> "] = { " <> strutil.join(", " entries) <> " };")
+            end
+            hashMap.find(:String :String p.optionTables struct)
+        end
+
+    let makeOption(p: P o: nodes.OpMakeOption t: Type): String =
+        begin
+            let os = held(t shapes.shapeOption)
+            let struct = layout.shapeTag(os)
+            let var allWithout = true
+            for i = 0 upto {extent os.cases - 1} do
+                if not(caseWithoutComponents(os maybe.unwrapOr(:String os.cases[i].name ""))) then allWithout := false end
+            end
+            if maybe.isNone(:Atom o.ordinalAtom) andif maybe.isSome(:String o.tag)
+                andif caseWithoutComponents(os maybe.unwrap(:String o.tag)) then
+                "((" <> struct <> " *)&" <> optionTable(p struct extent os.cases) <> "["
+                    <> cInt(tagIndex(os o.tag)) <> "])"
+            elsif maybe.isSome(:Atom o.ordinalAtom) andif allWithout then
+                let checked = syntax.call("quest_check_option_ordinal_at"
+                    strings(array of atom(p maybe.unwrap(:Atom o.ordinalAtom)) lit(extent os.cases) site(p o.offset) end))
+                let tags = array of(extent o.cases 0)
+                let var identity = true
+                for i = 0 upto {extent o.cases - 1} do
+                    tags[i] := tagIndexOf(os o.cases[i])
+                    if not(tags[i] is i) then identity := false end
+                end
+                let mapped = if identity then checked else syntax.indexTable(tags) <> "[" <> checked <> "]" end
+                "((" <> struct <> " *)&" <> optionTable(p struct extent os.cases) <> "[" <> mapped <> "])"
+            else
+                makeAllocatedOption(p o os struct)
+            end
+        end
+
     let optionField(src: String stored: maybe.T(Shape) index: Int wanted: Shape): String =
         if maybe.isNone(:Shape stored) orif not(shapes.kindIs(maybe.unwrap(:Shape stored) shapes.shapeTuple))
             orif {index >= extent maybe.unwrap(:Shape stored).components} then
@@ -2566,6 +2620,9 @@ export
                 let g = vector.get(:GlobalDecl globalDecls i)
                 add(res "static " <> g.cType <> " " <> g.name <> ";")
             end
+            for i = 0 upto {vector.length(:String p.optionTableDecls) - 1} do
+                add(res vector.get(:String p.optionTableDecls i))
+            end
             for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
                 let m = vector.get(:nodes.Module unit.modules i)
                 let clean = symbols.mangleModuleName(m.name)
@@ -2658,6 +2715,8 @@ export
             let handlerVars = hashMap.new(:Int :Bool intEqual hash.int)
             let tupleCastKeys = vector.new(:String)
             let tupleCasts = hashMap.new(:String :declarations.Pair eq hash.string)
+            let optionTables = hashMap.new(:String :String eq hash.string)
+            let optionTableDecls = vector.new(:String)
             let var fs = newFnState(maybe.none(:nodes.Function))
             let var lines = vector.new(:String)
             let var indent = 1
