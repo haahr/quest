@@ -7,8 +7,9 @@
  * packed on the stack; a function that takes as many; Real arithmetic and
  * comparisons; loads and stores of every width at near and far offsets; a
  * switch and a loop; a try, entered with _setjmp; a loop whose parallel copy
- * has cycles of either class; a thread-local's address and
- * a symbol the unit does not define; and data of zeros, text, and words.
+ * has cycles of either class; checks whose raising blocks are laid out
+ * last; a thread-local's address and a symbol the unit does not define; and
+ * data of zeros, text, and words.
  * tests/python/test_arm64.py assembles the golden. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
@@ -155,7 +156,30 @@ jumpTo(rotate next top array of ssa.binary(rotate next ssa.opSub lp[0] ssa.const
 ret(rotate finish array of lp[1] end);
 add(rotate);
 
-(* 7. A main, which calls through a pointer too *)
+(* 7. Two checks, each branching to a block that raises, made before the
+ * code after it as the SSA's builder makes them (values.check): the raising
+ * blocks go last, so that each check is one branch the code falls past *)
+let checked = ssa.newFunction("qf_checked" false array of tInt end array of tInt end);
+let cx = params(checked)[0];
+let check(at: Int cond: Int): Int =
+    begin
+        let good = ssa.newBlock(checked)
+        let bad = ssa.newBlock(checked)
+        ssa.terminate(checked at option termBranch of ssa.Terminator with
+            let cond = cond let ifTrue = ssa.target(bad none) let ifFalse = ssa.target(good none)
+        end)
+        call(checked bad "quest_raise_int_error_at" array of ssa.symbolAddress(checked bad "qs_text") end none none
+            noTypes)
+        ssa.terminate(checked bad ssa.termUnreachable)
+        good
+    end;
+let ok1 = check(0 ssa.binary(checked 0 ssa.opLt cx ssa.constant(checked 0 0)));
+let doubled = ssa.binary(checked ok1 ssa.opAdd cx cx);
+let ok2 = check(ok1 ssa.binary(checked ok1 ssa.opGt doubled ssa.constant(checked ok1 100)));
+ret(checked ok2 array of ssa.binary(checked ok2 ssa.opSub doubled ssa.constant(checked ok2 1)) end);
+add(checked);
+
+(* 8. A main, which calls through a pointer too *)
 let mainF = ssa.newFunction("main" true array of tInt tPtr end array of tInt end);
 mainF.signature := ssa.withResult(ssa.withParam(mainF.signature 0 ssa.passInt32) ssa.passInt32);
 let pair = call(mainF 0 "qv_test_swap" array of params(mainF)[1] params(mainF)[1] params(mainF)[0] end
@@ -167,7 +191,7 @@ ssa.tailCall(mainF 0 "qf_memory" array of pair[0] tried end ssa.signature(array 
     array of tInt end);
 add(mainF);
 
-(* 8. Data *)
+(* 9. Data *)
 let word(n: Int): ssa.Word = option wordInt of ssa.Word with let n = n end;
 let address(s: String n: Int): ssa.Word = option wordSymbol of ssa.Word with let symbol = s let addend = n end;
 vector.append(:ssa.Data unit.data tuple

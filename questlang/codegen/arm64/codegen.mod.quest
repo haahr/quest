@@ -369,6 +369,59 @@ export
      * Functions and the unit
      * ====================================================================== *)
 
+    (* The layout, with the blocks from which every path raises (a check's
+     * raising block, and what only leads to one) moved to its end, in their
+     * order, the entry still first. Laid out where the builder made them, a
+     * check's raising block came between the check and the code after it,
+     * which jumped over it every time (docs/arm64-performance-review.md
+     * section 3.3) *)
+    let coldLast(s: select.Selection): Array(Int) =
+        begin
+            let m = s.f
+            let n = vector.length(:machine.Block m.blocks)
+            (* A block is cold when it ends in brk (termUnreachable), or every
+             * block it can go to is cold and it does not return *)
+            let cold = array of(n false)
+            let var changed = true
+            while changed do
+                changed := false
+                for b = 0 upto {n - 1} do
+                    if not(cold[b]) then
+                        let insts = machine.block(m b).insts
+                        let var raises = false
+                        let var leaves = false
+                        let var exits = 0
+                        let var hot = false
+                        for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
+                            let i = vector.get(:machine.Inst insts j)
+                            if machine.isKind(i machine.kindReturn) then
+                                if isBrk(vector.get(:minst.Op s.ops i.op)) then raises := true else leaves := true end
+                            end
+                            if i.target >= 0 then
+                                exits := exits + 1
+                                if not(cold[i.target]) then hot := true end
+                            end
+                        end
+                        if raises orif {not(leaves) andif {exits > 0} andif not(hot)} then
+                            cold[b] := true
+                            changed := true
+                        end
+                    end
+                end
+            end
+            let order = vector.new(:Int)
+            let count = vector.length(:Int s.layout)
+            for k = 0 upto {count - 1} do
+                let b = vector.get(:Int s.layout k)
+                if {k is 0} orif not(cold[b]) then vector.append(:Int order b) end
+            end
+            for k = 1 upto {count - 1} do
+                let b = vector.get(:Int s.layout k)
+                if cold[b] then vector.append(:Int order b) end
+            end
+            vector.toArray(:Int order)
+        end
+
     (* The label just past the code of the unit's function numbered index *)
     let endLabel(index: Int): String = "Lf" <> conv.int(index) <> "_end"
 
@@ -403,9 +456,9 @@ export
                 final[b] := if passes(to) then b else to end
             end
             let printed = vector.new(:Int)
-            for k = 0 upto {vector.length(:Int s.layout) - 1} do
-                let b = vector.get(:Int s.layout k)
-                if final[b] is b then vector.append(:Int printed b) end
+            let order = coldLast(s)
+            for k = 0 upto {extent order - 1} do
+                if final[order[k]] is order[k] then vector.append(:Int printed order[k]) end
             end
             prologue(e)
             (* The line table: the source position before each instruction
