@@ -1,0 +1,142 @@
+(* Language: tuples, options, and records made in a function, used there and
+ * escaping it in each way (docs/escape-analysis.md section 4): stored into
+ * a global's array, passed to a function, returned, captured by a closure, raised,
+ * and kept in an array; made in a loop; updated through a var field; and
+ * used in a try's body and its handler. Each keeps its values, and two made
+ * apart are not the same object. *)
+
+import writer: Writer;
+import conv: Conv;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let yes(b: Bool): String = if b then "true" else "false" end;
+
+Let Pair = Tuple x: Int y: Int end;
+Let Shape = Option dot circle with r: Int end square with s: Int end end;
+exception Thrown: Pair end;
+
+(* 1. Only read where it is made *)
+let sum(a: Int b: Int): Int =
+    begin
+        let t = tuple let x = a let y = b end
+        t.x + t.y
+    end;
+print("sum: " <> conv.int(sum(3 4)));
+
+(* 2. Stored into a global's array *)
+let kept = array of(1 tuple let x = 0 let y = 0 end);
+let keep(a: Int): Int =
+    begin
+        let t = tuple let x = a let y = a * 2 end
+        kept[0] := t
+        t.x
+    end;
+keep(5);
+print("kept: " <> conv.int(kept[0].x) <> " " <> conv.int(kept[0].y));
+
+(* 3. Passed to a function, and returned *)
+let show(p: Pair): String = conv.int(p.x) <> "," <> conv.int(p.y);
+let shown(a: Int): String =
+    begin
+        let t = tuple let x = a let y = a + 1 end
+        show(t)
+    end;
+let make(a: Int): Pair = tuple let x = a let y = a - 1 end;
+print("passed: " <> shown(7) <> ", returned: " <> show(make(9)));
+
+(* 4. Captured by a closure *)
+let adder(a: Int): All(b: Int) Int =
+    begin
+        let t = tuple let x = a let y = 0 end
+        fun(b: Int): Int t.x + b
+    end;
+print("captured: " <> conv.int(adder(10)(5)));
+
+(* 5. Raised *)
+let thrown(a: Int): Int =
+    try
+        begin
+            let t = tuple let x = a let y = a * a end
+            raise Thrown with t end
+        end
+    when Thrown with p then p.y
+    end;
+print("raised: " <> conv.int(thrown(6)));
+
+(* 6. Kept in an array, each made in a loop *)
+let pairs(n: Int): Array(Pair) =
+    begin
+        let r = array of(n tuple let x = 0 let y = 0 end)
+        for i = 0 upto {n - 1} do r[i] := tuple let x = i let y = i * i end end
+        r
+    end;
+let ps = pairs(4);
+print("kept in an array: " <> show(ps[1]) <> " " <> show(ps[3]) <> ", apart: " <> yes(ps[1] is ps[2]));
+
+(* 7. Made in a loop and read there *)
+let loopSum(n: Int): Int =
+    begin
+        let var s = 0
+        for i = 1 upto n do
+            let t = tuple let x = i let y = s end
+            s := t.x + t.y
+        end
+        s
+    end;
+print("loop: " <> conv.int(loopSum(10)));
+
+(* 8. Updated through a var field *)
+let counter(n: Int): Int =
+    begin
+        let c = tuple let var k = 0 end
+        for i = 1 upto n do c.k := c.k + i end
+        c.k
+    end;
+print("var field: " <> conv.int(counter(5)));
+
+(* 9. Two made apart are not the same object; one is itself *)
+let apart(a: Int): Bool =
+    begin
+        let t = tuple let x = a end
+        let u = tuple let x = a end
+        t is u
+    end;
+let itself(a: Int): Bool =
+    begin
+        let t = tuple let x = a end
+        t is t
+    end;
+print("apart: " <> yes(apart(1)) <> ", itself: " <> yes(itself(1)));
+
+(* 10. Options made and read where they are made, and one returned *)
+let area(n: Int): Int =
+    begin
+        let o = option circle of Shape with n end
+        if o?circle then o!circle.r * o!circle.r else 0 end
+    end;
+let side(n: Int): Shape = option square of Shape with n end;
+print("option: " <> conv.int(area(3)) <> ", returned: " <> conv.int(side(4)!square.s));
+
+(* 11. A record, read where it is made *)
+let recordSum(a: Int): Int =
+    begin
+        let r = record x = a y = a + 1 end
+        r.x + r.y
+    end;
+print("record: " <> conv.int(recordSum(20)));
+
+(* 12. In a try's body and its handler *)
+let guarded(a: Int): Int =
+    begin
+        let c = tuple let var k = a end
+        try
+            begin
+                c.k := c.k + 1
+                if c.k > 2 then raise Thrown with tuple let x = c.k let y = 0 end end end
+                c.k := 0
+            end
+        when Thrown with p then c.k := c.k + {p.x * 10}
+        end
+        c.k
+    end;
+print("try: " <> conv.int(guarded(1)) <> " " <> conv.int(guarded(5)));

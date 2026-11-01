@@ -1,0 +1,687 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedLetValue 'yes' :type Fun(b: Bool): String
+      :value (TypedFun :params (('b' : Bool)) :type Fun(b: Bool): String
+        :body (TypedIf :type String
+          :cond (TypedVar 'b' :type Bool)
+          :then (TypedString 'true' :type String)
+          :else (TypedString 'false' :type String))))
+    (TypedLetType 'Pair' :kind TYPE)
+    (TypedLetType 'Shape' :kind TYPE)
+    (TypedExprStmt
+      :expr (TypedException 'Thrown' :type Exception(Pair)))
+    (TypedLetValue 'sum' :type Fun(a: Int b: Int): Int
+      :value (TypedFun :params (('a' : Int) ('b' : Int)) :type Fun(a: Int b: Int): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 't' :type Tuple x: Int y: Int end
+              :value (TypedTuple :type Tuple x: Int y: Int end
+                :elements (
+                  (TypedVar 'a' :type Int)
+                  (TypedVar 'b' :type Int)
+                )))
+          )
+          :result (TypedInfix '+' :type Int
+            :left (TypedSelect 'x' :type Int
+              :target (TypedVar 't' :type Tuple x: Int y: Int end))
+            :right (TypedSelect 'y' :type Int
+              :target (TypedVar 't' :type Tuple x: Int y: Int end))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'sum: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedVar 'sum' :type Fun(a: Int b: Int): Int)
+                  :args (
+                    (TypedInt 3 :type Int)
+                    (TypedInt 4 :type Int)
+                  ))
+              )))
+        )))
+    (TypedLetValue 'kept' :type Array(Tuple x: Int y: Int end)
+      :value (TypedArrayRep :type Array(Tuple x: Int y: Int end)
+        :count (TypedInt 1 :type Int)
+        :init (TypedTuple :type Tuple x: Int y: Int end
+          :elements (
+            (TypedInt 0 :type Int)
+            (TypedInt 0 :type Int)
+          ))))
+    (TypedLetValue 'keep' :type Fun(a: Int): Int
+      :value (TypedFun :params (('a' : Int)) :type Fun(a: Int): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 't' :type Tuple x: Int y: Int end
+              :value (TypedTuple :type Tuple x: Int y: Int end
+                :elements (
+                  (TypedVar 'a' :type Int)
+                  (TypedInfix '*' :type Int
+                    :left (TypedVar 'a' :type Int)
+                    :right (TypedInt 2 :type Int))
+                )))
+            (TypedExprStmt
+              :expr (TypedIndexAssign
+                :target (TypedVar 'kept' :type Array(Tuple x: Int y: Int end))
+                :index (TypedInt 0 :type Int)
+                :value (TypedVar 't' :type Tuple x: Int y: Int end)))
+          )
+          :result (TypedSelect 'x' :type Int
+            :target (TypedVar 't' :type Tuple x: Int y: Int end)))))
+    (TypedExprStmt
+      :expr (TypedApp :type Int
+        :func (TypedVar 'keep' :type Fun(a: Int): Int)
+        :args (
+          (TypedInt 5 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'kept: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedSelect 'x' :type Int
+                    :target (TypedIndex :type Tuple x: Int y: Int end
+                      :target (TypedVar 'kept' :type Array(Tuple x: Int y: Int end))
+                      :index (TypedInt 0 :type Int)))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedSelect 'y' :type Int
+                      :target (TypedIndex :type Tuple x: Int y: Int end
+                        :target (TypedVar 'kept' :type Array(Tuple x: Int y: Int end))
+                        :index (TypedInt 0 :type Int)))
+                  )))))
+        )))
+    (TypedLetValue 'show' :type Fun(p: Pair): String
+      :value (TypedFun :params (('p' : Pair)) :type Fun(p: Pair): String
+        :body (TypedInfix '<>' :type String
+          :left (TypedApp :type String
+            :func (TypedSelect 'int' :type Fun(n: Int): String
+              :target (TypedVar 'conv' :type Module 'conv'))
+            :args (
+              (TypedSelect 'x' :type Int
+                :target (TypedVar 'p' :type Pair))
+            ))
+          :right (TypedInfix '<>' :type String
+            :left (TypedString ',' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedSelect 'y' :type Int
+                  :target (TypedVar 'p' :type Pair))
+              ))))))
+    (TypedLetValue 'shown' :type Fun(a: Int): String
+      :value (TypedFun :params (('a' : Int)) :type Fun(a: Int): String
+        :body (TypedBlock :type String
+          :bindings (
+            (TypedLetValue 't' :type Tuple x: Int y: Int end
+              :value (TypedTuple :type Tuple x: Int y: Int end
+                :elements (
+                  (TypedVar 'a' :type Int)
+                  (TypedInfix '+' :type Int
+                    :left (TypedVar 'a' :type Int)
+                    :right (TypedInt 1 :type Int))
+                )))
+          )
+          :result (TypedApp :type String
+            :func (TypedVar 'show' :type Fun(p: Pair): String)
+            :args (
+              (TypedVar 't' :type Tuple x: Int y: Int end)
+            )))))
+    (TypedLetValue 'make' :type Fun(a: Int): Pair
+      :value (TypedFun :params (('a' : Int)) :type Fun(a: Int): Pair
+        :body (TypedTuple :type Tuple x: Int y: Int end
+          :elements (
+            (TypedVar 'a' :type Int)
+            (TypedInfix '-' :type Int
+              :left (TypedVar 'a' :type Int)
+              :right (TypedInt 1 :type Int))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'passed: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'shown' :type Fun(a: Int): String)
+                :args (
+                  (TypedInt 7 :type Int)
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', returned: ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedVar 'show' :type Fun(p: Pair): String)
+                  :args (
+                    (TypedApp :type Pair
+                      :func (TypedVar 'make' :type Fun(a: Int): Pair)
+                      :args (
+                        (TypedInt 9 :type Int)
+                      ))
+                  )))))
+        )))
+    (TypedLetValue 'adder' :type Fun(a: Int): Fun(b: Int): Int
+      :value (TypedFun :params (('a' : Int)) :type Fun(a: Int): Fun(b: Int): Int
+        :body (TypedBlock :type Fun(b: Int): Int
+          :bindings (
+            (TypedLetValue 't' :type Tuple x: Int y: Int end
+              :value (TypedTuple :type Tuple x: Int y: Int end
+                :elements (
+                  (TypedVar 'a' :type Int)
+                  (TypedInt 0 :type Int)
+                )))
+          )
+          :result (TypedFun :params (('b' : Int)) :type Fun(b: Int): Int
+            :body (TypedInfix '+' :type Int
+              :left (TypedSelect 'x' :type Int
+                :target (TypedVar 't' :type Tuple x: Int y: Int end))
+              :right (TypedVar 'b' :type Int))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'captured: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedApp :type Fun(b: Int): Int
+                    :func (TypedVar 'adder' :type Fun(a: Int): Fun(b: Int): Int)
+                    :args (
+                      (TypedInt 10 :type Int)
+                    ))
+                  :args (
+                    (TypedInt 5 :type Int)
+                  ))
+              )))
+        )))
+    (TypedLetValue 'thrown' :type Fun(a: Int): Int
+      :value (TypedFun :params (('a' : Int)) :type Fun(a: Int): Int
+        :body (TypedTry :type Int
+          :body (TypedBlock :type Int
+            :bindings (
+              (TypedLetValue 't' :type Tuple x: Int y: Int end
+                :value (TypedTuple :type Tuple x: Int y: Int end
+                  :elements (
+                    (TypedVar 'a' :type Int)
+                    (TypedInfix '*' :type Int
+                      :left (TypedVar 'a' :type Int)
+                      :right (TypedVar 'a' :type Int))
+                  )))
+            )
+            :result (TypedRaise :type Int
+              :exc (TypedVar 'Thrown' :type Exception(Pair))
+              :payload (TypedVar 't' :type Tuple x: Int y: Int end)))
+          :branches (
+            (TypedTryBranch
+              :exc_pattern (TypedVar 'Thrown' :type Exception(Pair))
+              :body (TypedSelect 'y' :type Int
+                :target (TypedVar 'p' :type Pair)))
+          ))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'raised: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedVar 'thrown' :type Fun(a: Int): Int)
+                  :args (
+                    (TypedInt 6 :type Int)
+                  ))
+              )))
+        )))
+    (TypedLetValue 'pairs' :type Fun(n: Int): Array(Pair)
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Array(Pair)
+        :body (TypedBlock :type Array(Pair)
+          :bindings (
+            (TypedLetValue 'r' :type Array(Tuple x: Int y: Int end)
+              :value (TypedArrayRep :type Array(Tuple x: Int y: Int end)
+                :count (TypedVar 'n' :type Int)
+                :init (TypedTuple :type Tuple x: Int y: Int end
+                  :elements (
+                    (TypedInt 0 :type Int)
+                    (TypedInt 0 :type Int)
+                  ))))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 0 :type Int)
+                :stop (TypedInfix '-' :type Int
+                  :left (TypedVar 'n' :type Int)
+                  :right (TypedInt 1 :type Int))
+                :body (TypedIndexAssign
+                  :target (TypedVar 'r' :type Array(Tuple x: Int y: Int end))
+                  :index (TypedVar 'i' :type Int)
+                  :value (TypedTuple :type Tuple x: Int y: Int end
+                    :elements (
+                      (TypedVar 'i' :type Int)
+                      (TypedInfix '*' :type Int
+                        :left (TypedVar 'i' :type Int)
+                        :right (TypedVar 'i' :type Int))
+                    )))))
+          )
+          :result (TypedVar 'r' :type Array(Tuple x: Int y: Int end)))))
+    (TypedLetValue 'ps' :type Array(Pair)
+      :value (TypedApp :type Array(Pair)
+        :func (TypedVar 'pairs' :type Fun(n: Int): Array(Pair))
+        :args (
+          (TypedInt 4 :type Int)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'kept in an array: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'show' :type Fun(p: Pair): String)
+                :args (
+                  (TypedIndex :type Pair
+                    :target (TypedVar 'ps' :type Array(Pair))
+                    :index (TypedInt 1 :type Int))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedInfix '<>' :type String
+                  :left (TypedApp :type String
+                    :func (TypedVar 'show' :type Fun(p: Pair): String)
+                    :args (
+                      (TypedIndex :type Pair
+                        :target (TypedVar 'ps' :type Array(Pair))
+                        :index (TypedInt 3 :type Int))
+                    ))
+                  :right (TypedInfix '<>' :type String
+                    :left (TypedString ', apart: ' :type String)
+                    :right (TypedApp :type String
+                      :func (TypedVar 'yes' :type Fun(b: Bool): String)
+                      :args (
+                        (TypedInfix 'is' :type Bool
+                          :left (TypedIndex :type Pair
+                            :target (TypedVar 'ps' :type Array(Pair))
+                            :index (TypedInt 1 :type Int))
+                          :right (TypedIndex :type Pair
+                            :target (TypedVar 'ps' :type Array(Pair))
+                            :index (TypedInt 2 :type Int)))
+                      )))))))
+        )))
+    (TypedLetValue 'loopSum' :type Fun(n: Int): Int
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 's' :type Int
+              :value (TypedInt 0 :type Int))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 1 :type Int)
+                :stop (TypedVar 'n' :type Int)
+                :body (TypedBlock :type Ok
+                  :bindings (
+                    (TypedLetValue 't' :type Tuple x: Int y: Int end
+                      :value (TypedTuple :type Tuple x: Int y: Int end
+                        :elements (
+                          (TypedVar 'i' :type Int)
+                          (TypedDerefCell :type Int
+                            :target (TypedVar 's' :type Var(Int)))
+                        )))
+                  )
+                  :result (TypedAssign
+                    :target (TypedVar 's' :type Var(Int))
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedSelect 'x' :type Int
+                        :target (TypedVar 't' :type Tuple x: Int y: Int end))
+                      :right (TypedSelect 'y' :type Int
+                        :target (TypedVar 't' :type Tuple x: Int y: Int end)))))))
+          )
+          :result (TypedDerefCell :type Int
+            :target (TypedVar 's' :type Var(Int))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'loop: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedVar 'loopSum' :type Fun(n: Int): Int)
+                  :args (
+                    (TypedInt 10 :type Int)
+                  ))
+              )))
+        )))
+    (TypedLetValue 'counter' :type Fun(n: Int): Int
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'c' :type Tuple var k: Int end
+              :value (TypedTuple :type Tuple var k: Int end
+                :elements (
+                  (TypedInt 0 :type Int)
+                )))
+            (TypedExprStmt
+              :expr (TypedFor 'i' :upto
+                :start (TypedInt 1 :type Int)
+                :stop (TypedVar 'n' :type Int)
+                :body (TypedAssign
+                  :target (TypedSelect 'k' :type Int
+                    :target (TypedVar 'c' :type Tuple var k: Int end))
+                  :value (TypedInfix '+' :type Int
+                    :left (TypedSelect 'k' :type Int
+                      :target (TypedVar 'c' :type Tuple var k: Int end))
+                    :right (TypedVar 'i' :type Int)))))
+          )
+          :result (TypedSelect 'k' :type Int
+            :target (TypedVar 'c' :type Tuple var k: Int end)))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'var field: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedVar 'counter' :type Fun(n: Int): Int)
+                  :args (
+                    (TypedInt 5 :type Int)
+                  ))
+              )))
+        )))
+    (TypedLetValue 'apart' :type Fun(a: Int): Bool
+      :value (TypedFun :params (('a' : Int)) :type Fun(a: Int): Bool
+        :body (TypedBlock :type Bool
+          :bindings (
+            (TypedLetValue 't' :type Tuple x: Int end
+              :value (TypedTuple :type Tuple x: Int end
+                :elements (
+                  (TypedVar 'a' :type Int)
+                )))
+            (TypedLetValue 'u' :type Tuple x: Int end
+              :value (TypedTuple :type Tuple x: Int end
+                :elements (
+                  (TypedVar 'a' :type Int)
+                )))
+          )
+          :result (TypedInfix 'is' :type Bool
+            :left (TypedVar 't' :type Tuple x: Int end)
+            :right (TypedVar 'u' :type Tuple x: Int end)))))
+    (TypedLetValue 'itself' :type Fun(a: Int): Bool
+      :value (TypedFun :params (('a' : Int)) :type Fun(a: Int): Bool
+        :body (TypedBlock :type Bool
+          :bindings (
+            (TypedLetValue 't' :type Tuple x: Int end
+              :value (TypedTuple :type Tuple x: Int end
+                :elements (
+                  (TypedVar 'a' :type Int)
+                )))
+          )
+          :result (TypedInfix 'is' :type Bool
+            :left (TypedVar 't' :type Tuple x: Int end)
+            :right (TypedVar 't' :type Tuple x: Int end)))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'apart: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedVar 'yes' :type Fun(b: Bool): String)
+                :args (
+                  (TypedApp :type Bool
+                    :func (TypedVar 'apart' :type Fun(a: Int): Bool)
+                    :args (
+                      (TypedInt 1 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', itself: ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedVar 'yes' :type Fun(b: Bool): String)
+                  :args (
+                    (TypedApp :type Bool
+                      :func (TypedVar 'itself' :type Fun(a: Int): Bool)
+                      :args (
+                        (TypedInt 1 :type Int)
+                      ))
+                  )))))
+        )))
+    (TypedLetValue 'area' :type Fun(n: Int): Int
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'o' :type Shape
+              :value (TypedOption 'circle' :type Shape
+                :payload (TypedTuple :type Tuple r: Int end
+                  :elements (
+                    (TypedVar 'n' :type Int)
+                  ))))
+          )
+          :result (TypedIf :type Int
+            :cond (TypedVariantCheck 'circle' :type Bool
+              :target (TypedVar 'o' :type Shape))
+            :then (TypedInfix '*' :type Int
+              :left (TypedSelect 'r' :type Int
+                :target (TypedVariantAssert 'circle' :type Tuple Int r: Int end
+                  :target (TypedVar 'o' :type Shape)))
+              :right (TypedSelect 'r' :type Int
+                :target (TypedVariantAssert 'circle' :type Tuple Int r: Int end
+                  :target (TypedVar 'o' :type Shape))))
+            :else (TypedInt 0 :type Int)))))
+    (TypedLetValue 'side' :type Fun(n: Int): Shape
+      :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Shape
+        :body (TypedOption 'square' :type Shape
+          :payload (TypedTuple :type Tuple s: Int end
+            :elements (
+              (TypedVar 'n' :type Int)
+            )))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'option: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedVar 'area' :type Fun(n: Int): Int)
+                    :args (
+                      (TypedInt 3 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ', returned: ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedSelect 's' :type Int
+                      :target (TypedVariantAssert 'square' :type Tuple Int s: Int end
+                        :target (TypedApp :type Shape
+                          :func (TypedVar 'side' :type Fun(n: Int): Shape)
+                          :args (
+                            (TypedInt 4 :type Int)
+                          ))))
+                  )))))
+        )))
+    (TypedLetValue 'recordSum' :type Fun(a: Int): Int
+      :value (TypedFun :params (('a' : Int)) :type Fun(a: Int): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'r' :type Record x: Int y: Int end
+              :value (TypedRecord :type Record x: Int y: Int end
+                :fields (
+                  (TypedRecordField 'x'
+                    :value (TypedVar 'a' :type Int))
+                  (TypedRecordField 'y'
+                    :value (TypedInfix '+' :type Int
+                      :left (TypedVar 'a' :type Int)
+                      :right (TypedInt 1 :type Int)))
+                )))
+          )
+          :result (TypedInfix '+' :type Int
+            :left (TypedSelect 'x' :type Int
+              :target (TypedVar 'r' :type Record x: Int y: Int end))
+            :right (TypedSelect 'y' :type Int
+              :target (TypedVar 'r' :type Record x: Int y: Int end))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'record: ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedVar 'recordSum' :type Fun(a: Int): Int)
+                  :args (
+                    (TypedInt 20 :type Int)
+                  ))
+              )))
+        )))
+    (TypedLetValue 'guarded' :type Fun(a: Int): Int
+      :value (TypedFun :params (('a' : Int)) :type Fun(a: Int): Int
+        :body (TypedBlock :type Int
+          :bindings (
+            (TypedLetValue 'c' :type Tuple var k: Int end
+              :value (TypedTuple :type Tuple var k: Int end
+                :elements (
+                  (TypedVar 'a' :type Int)
+                )))
+            (TypedExprStmt
+              :expr (TypedTry :type Ok
+                :body (TypedBlock :type Ok
+                  :bindings (
+                    (TypedExprStmt
+                      :expr (TypedAssign
+                        :target (TypedSelect 'k' :type Int
+                          :target (TypedVar 'c' :type Tuple var k: Int end))
+                        :value (TypedInfix '+' :type Int
+                          :left (TypedSelect 'k' :type Int
+                            :target (TypedVar 'c' :type Tuple var k: Int end))
+                          :right (TypedInt 1 :type Int))))
+                    (TypedExprStmt
+                      :expr (TypedIf :type Ok
+                        :cond (TypedInfix '>' :type Bool
+                          :left (TypedSelect 'k' :type Int
+                            :target (TypedVar 'c' :type Tuple var k: Int end))
+                          :right (TypedInt 2 :type Int))
+                        :then (TypedBlock :type Ok
+                          :bindings (
+                            (TypedExprStmt
+                              :expr (TypedRaise :type Ok
+                                :exc (TypedVar 'Thrown' :type Exception(Pair))
+                                :payload (TypedTuple :type Tuple x: Int y: Int end
+                                  :elements (
+                                    (TypedSelect 'k' :type Int
+                                      :target (TypedVar 'c' :type Tuple var k: Int end))
+                                    (TypedInt 0 :type Int)
+                                  ))))
+                          )
+                          :result (TypedOk))
+                        :else (TypedOk)))
+                  )
+                  :result (TypedAssign
+                    :target (TypedSelect 'k' :type Int
+                      :target (TypedVar 'c' :type Tuple var k: Int end))
+                    :value (TypedInt 0 :type Int)))
+                :branches (
+                  (TypedTryBranch
+                    :exc_pattern (TypedVar 'Thrown' :type Exception(Pair))
+                    :body (TypedAssign
+                      :target (TypedSelect 'k' :type Int
+                        :target (TypedVar 'c' :type Tuple var k: Int end))
+                      :value (TypedInfix '+' :type Int
+                        :left (TypedSelect 'k' :type Int
+                          :target (TypedVar 'c' :type Tuple var k: Int end))
+                        :right (TypedInfix '*' :type Int
+                          :left (TypedSelect 'x' :type Int
+                            :target (TypedVar 'p' :type Pair))
+                          :right (TypedInt 10 :type Int)))))
+                )))
+          )
+          :result (TypedSelect 'k' :type Int
+            :target (TypedVar 'c' :type Tuple var k: Int end)))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString 'try: ' :type String)
+            :right (TypedInfix '<>' :type String
+              :left (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedVar 'guarded' :type Fun(a: Int): Int)
+                    :args (
+                      (TypedInt 1 :type Int)
+                    ))
+                ))
+              :right (TypedInfix '<>' :type String
+                :left (TypedString ' ' :type String)
+                :right (TypedApp :type String
+                  :func (TypedSelect 'int' :type Fun(n: Int): String
+                    :target (TypedVar 'conv' :type Module 'conv'))
+                  :args (
+                    (TypedApp :type Int
+                      :func (TypedVar 'guarded' :type Fun(a: Int): Int)
+                      :args (
+                        (TypedInt 5 :type Int)
+                      ))
+                  )))))
+        )))
+  ))

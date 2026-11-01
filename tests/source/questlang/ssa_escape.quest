@@ -2,7 +2,9 @@
  *
  * questlang/ssa/escape (docs/escape-analysis.md) on functions of the SSA
  * written as text and read by questlang/ssa/parser, each printed with what
- * the analysis says of its allocations: one only loaded from and stored to,
+ * the analysis says of its allocations, and after the pass (which makes
+ * those that do not escape slots) and promotion, each verified: one only
+ * loaded from and stored to,
  * through a pointer derived from it, which does not escape; one stored into
  * another, passed to a call, returned, bound to a block's parameter that
  * another value is also bound to, and compared, which do; one made in a loop;
@@ -15,6 +17,8 @@ import
     questlang/ssa/parser : questlang/ssa/Parser
     questlang/ssa/printer : questlang/ssa/Printer
     questlang/ssa/escape : questlang/ssa/Escape
+    questlang/ssa/promote : questlang/ssa/Promote
+    questlang/ssa/verify : questlang/ssa/Verify
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     util/strutil : util/Strutil
     collections/vector : collections/Vector
@@ -36,6 +40,21 @@ let show(title: String lines: Array(String)): Ok =
                 let v = vs[a]
                 emit("-- %" <> conv.int(v.value) <> " (" <> conv.int(v.bytes) <> " bytes): "
                     <> if v.escapes then "escapes, " <> v.reason else "does not escape" end <> "\n")
+            end
+            let check(): Ok =
+                begin
+                    let problems = verify.functionProblems(f)
+                    for j = 0 upto {extent problems - 1} do emit("!! " <> problems[j] <> "\n") end
+                end
+            let removed = escape.escapeFunction(f)
+            if removed > 0 then
+                emit("-- after escape: " <> conv.int(removed) <> " removed\n")
+                emit(printer.formatFunction(f))
+                check()
+                let promoted = promote.promoteFunction(f)
+                emit("-- after promote: " <> conv.int(promoted) <> " promoted\n")
+                emit(printer.formatFunction(f))
+                check()
             end
         end
     end;

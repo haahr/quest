@@ -143,7 +143,7 @@ The test runner executes each test source file across active compiler phases via
   tests are not run through them.
 - `ssa` (the self-hosted driver only): the SSA of the native backends ([ssa.md](ssa.md)), built from the described
   IR, its passes run, verified, and printed, for every program that has an `ir_core` dump, compared against
-  `tests/golden/ssa/`. `ssa_built`, `ssa_promote`, and `ssa_tailCalls` dump it after the builder and each pass
+  `tests/golden/ssa/`. `ssa_built`, `ssa_escape`, `ssa_promote`, and `ssa_tailCalls` dump it after the builder and each pass
   (ssa.md §4.1); they have no goldens yet.
 - `interpret`: Runs `quest_driver.py --stop-after interpret <source_file>` (compared against `tests/golden/run/`).
 - `run_c_compiled`: Runs `quest_driver.py --stop-after run_c_compiled <source_file>`, which compiles the program

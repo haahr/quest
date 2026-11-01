@@ -51,17 +51,23 @@ reached to a fixed point, and drops those that do escape, until none more does.
 
 `questlang/ssa/escape`, `ssa_escape` in the pipeline before `ssa_promote`:
 
-1. Find the candidates and their pointers (§2), in one walk of the function.
-2. For each that does not escape: fold its proxy tests and comparisons; replace the call by a fresh stack slot of
-   its size (whole words), its words stored zero in the entry block, so that a load before a store reads zero as
-   the heap's zeroed memory did; and its derived pointers by the slot's address plus their offsets.
-3. Leave the rest to `ssa/promote` and the existing dead-value handling: the stores to a promoted slot's words
+1. Find the candidates and their pointers, and the blocks reached (§2).
+2. For each that does not escape: fold its proxy tests (each `and` a zero, each branch on one a jump to its false
+   arm); replace the call by a fresh stack slot of its size (whole words), its words stored zero where the call was,
+   so that a load before a store reads zero as the heap's zeroed memory did, each zero of the type the word is
+   stored (or loaded) as, so that promotion sees one type; access it through the slot's address, its derived
+   pointers' offsets added to the accesses' own; and drop its derived pointers, the words holding its pointer and
+   their stores and loads, its `ptrToInt`s, and the parameters bound to its pointers, with their arguments.
+3. Drop the blocks no longer reached, renumbering the rest, as the builder does.
+4. Leave the rest to `ssa/promote` and the existing dead-value handling: the stores to a promoted slot's words
    become values, and loads of them those values.
 
-The fold of proxy branches may leave unreachable blocks, which the pass removes, as `nodes.mapTargets` allows.
+A slot is per function, not per execution: an allocation in a loop reuses its slot each time round, zeroed each
+time. That is sound because a parameter that is one of its pointers is bound to that one value on every edge
+(§2), so no pointer from one iteration is live in the next.
 
-A slot is per function, not per execution: an allocation in a loop reuses its slot each time round. That is sound
-because none of its pointers is a block argument (§2), so no pointer from one iteration is live in the next.
+Promotion does not take a slot whose word is stored and loaded as different types: a tuple of a type parameter's
+values stores a `val` and may load it as a `ptr`. Such slots stay slots, which is still cheaper than the heap.
 
 ## 4. Testing
 
@@ -90,7 +96,9 @@ because none of its pointers is a block argument (§2), so no pointer from one i
    *Done when* the per-pass goldens show each case of §4 classified as intended. *Done* (2026-11-01):
    `questlang/ssa/escape`'s `analyze`, and the questlang test `ssa_escape`.
 3. **The transformation** (§3), with the folds. *Done when* the suite passes in every SSA mode, the fixed points
-   through `ssac` and `arm64` hold, and the per-pass goldens show the removals.
+   through `ssac` and `arm64` hold, and the per-pass goldens show the removals. *Done* (2026-11-01): `escape` in
+   `questlang/ssa/pipeline` before `promote`, `ssa_escape` showing each function after the pass and after
+   promotion, and the behavior test `language/escaping_allocations`.
 4. **Measurements:** allocation counts and the suite's times through `ssac` and `arm64`, separate and whole, in
    benchmarks.md, dated. *Done when* benchmarks.md records them against the counts and times before the pass.
 5. **The C printer's fixes** (§6), decided from the measurements.

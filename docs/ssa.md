@@ -154,10 +154,14 @@ registration, and the unit).
 What the builder does not yet build raises `unsupported`, naming the construct; `--stop-after ssa` reports it as an
 internal error.
 
-### 4.1. The Pipeline: Promotion and Tail Calls
+### 4.1. The Pipeline: Escape Analysis, Promotion, and Tail Calls
 
 `questlang/ssa/pipeline` builds a unit and then runs its passes, by name, in order, each on every function:
 
+- **`ssa/escape`** makes each allocation of a constant size that does not leave its function a stack slot
+  ([escape-analysis.md](escape-analysis.md)): its pointers only loaded from and stored to within it, or tested for
+  being a proxy, which folds. Its words are stored zero where it was made, and promotion then makes most such slots
+  values.
 - **`ssa/promote`** turns stack slots into values. A slot can be promoted when it is whole words and its address is
   only loaded from and stored to, a word at a time or a word's first byte (a `Bool` or `Char` variable's), never
   passed, stored, or offset otherwise. Each word becomes a variable of one type, stored all at one width, and loaded
@@ -176,7 +180,7 @@ The passes share their analyses: `ssa/cfg` (predecessors, successors, reverse po
 preorder and postorder numbers, dominance frontiers, and loop depths) and `ssa/liveness` (each block's live-in and
 live-out values, which the register allocator uses); `nodes` has the mutators (`targets`, `mapTargets`, `mapBlocks`,
 `replaceUses`). The driver dumps the SSA after the builder (`--dump-after ssa_built`), after each pass
-(`ssa_promote`, `ssa_tailCalls`), and at the end (`ssa`); `QUEST_SKIP_PASSES`, a comma-separated list of passes'
+(`ssa_escape`, `ssa_promote`, `ssa_tailCalls`), and at the end (`ssa`); `QUEST_SKIP_PASSES`, a comma-separated list of passes'
 names, leaves passes out, for a test or a bisection.
 
 ## 5. Functions and Units
@@ -227,8 +231,8 @@ b0(%0: ptr, %1: int):
 `questlang/ssa/parser` reads the text back into a unit, values keeping their numbers, so that printing what it reads
 prints what it read: with `QUEST_CHECK_IR=1` the driver reads back the SSA it prints and reports any difference, so
 every golden is checked to read back as itself. A pass is tested on SSA written as text: the questlang tests
-`ssa_promote` and `ssa_tailcalls` read small functions, run their pass and the verifier, and print the functions
-before and after; and a program's SSA can be cut down to the functions that show a bug.
+`ssa_promote`, `ssa_escape`, and `ssa_tailcalls` read small functions, run their pass and the verifier, and print the
+functions before and after; and a program's SSA can be cut down to the functions that show a bug.
 
 ## 7. The Verifier
 

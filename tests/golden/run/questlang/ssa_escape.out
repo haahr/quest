@@ -13,6 +13,33 @@ b0(%0: int, %1: int):
   return %8
 }
 -- %3 (16 bytes): does not escape
+-- after escape: 1 removed
+function pair(%0: int, %1: int): int slots [16:8] {
+b0(%0: int, %1: int):
+  %2: int = const 16
+  %3: ptr = slot 0
+  %9: int = const 0
+  store8 %3 + 0, %9
+  %10: int = const 0
+  store8 %3 + 8, %10
+  store8 %3 + 0, %0
+  %4: int = const 8
+  store8 %3 + 8, %1
+  %6: int = load8 %3 + 0
+  %7: int = load8 %3 + 8
+  %8: int = add %6, %7
+  return %8
+}
+-- after promote: 1 promoted
+function pair(%0: int, %1: int): int {
+b0(%0: int, %1: int):
+  %2: int = const 16
+  %9: int = const 0
+  %10: int = const 0
+  %4: int = const 8
+  %8: int = add %0, %1
+  return %8
+}
 == escaping: stored, passed, returned, compared
 function stored(%0: ptr): int {
 b0(%0: ptr):
@@ -61,6 +88,30 @@ b0(%0: int):
 }
 -- %2 (8 bytes): escapes, stored
 -- %3 (8 bytes): does not escape
+-- after escape: 1 removed
+function nested(%0: int): int slots [8:8] {
+b0(%0: int):
+  %1: int = const 8
+  %2: ptr = call quest_alloc(%1)
+  store8 %2 + 0, %0
+  %3: ptr = slot 0
+  %6: ptr = null
+  store8 %3 + 0, %6
+  store8 %3 + 0, %2
+  %4: ptr = load8 %3 + 0
+  %5: int = load8 %4 + 0
+  return %5
+}
+-- after promote: 1 promoted
+function nested(%0: int): int {
+b0(%0: int):
+  %1: int = const 8
+  %2: ptr = call quest_alloc(%1)
+  store8 %2 + 0, %0
+  %6: ptr = null
+  %5: int = load8 %2 + 0
+  return %5
+}
 == bound to a parameter, alone and with another value
 function alone(%0: int): int {
 b0(%0: int):
@@ -73,6 +124,28 @@ b1(%3: ptr):
   return %4
 }
 -- %2 (8 bytes): does not escape
+-- after escape: 1 removed
+function alone(%0: int): int slots [8:8] {
+b0(%0: int):
+  %1: int = const 8
+  %2: ptr = slot 0
+  %5: int = const 0
+  store8 %2 + 0, %5
+  store8 %2 + 0, %0
+  jump b1()
+b1():
+  %4: int = load8 %2 + 0
+  return %4
+}
+-- after promote: 1 promoted
+function alone(%0: int): int {
+b0(%0: int):
+  %1: int = const 8
+  %5: int = const 0
+  jump b1()
+b1():
+  return %0
+}
 function either(%0: int, %1: ptr): int {
 b0(%0: int, %1: ptr):
   %2: int = const 8
@@ -103,6 +176,45 @@ b3():
   return %2
 }
 -- %5 (8 bytes): does not escape
+-- after escape: 1 removed
+function loop(%0: int): int slots [8:8] {
+b0(%0: int):
+  %1: int = const 0
+  jump b1(%1)
+b1(%2: int):
+  %3: int = lt %2, %0
+  branch %3, b2(), b3()
+b2():
+  %4: int = const 8
+  %5: ptr = slot 0
+  %9: int = const 0
+  store8 %5 + 0, %9
+  store8 %5 + 0, %2
+  %6: int = load8 %5 + 0
+  %7: int = const 1
+  %8: int = add %6, %7
+  jump b1(%8)
+b3():
+  return %2
+}
+-- after promote: 1 promoted
+function loop(%0: int): int {
+b0(%0: int):
+  %11: int = const 0
+  %1: int = const 0
+  jump b1(%1, %11)
+b1(%2: int, %10: int):
+  %3: int = lt %2, %0
+  branch %3, b2(), b3()
+b2():
+  %4: int = const 8
+  %9: int = const 0
+  %7: int = const 1
+  %8: int = add %2, %7
+  jump b1(%8, %2)
+b3():
+  return %2
+}
 == a tuple holding a pointer to its fields, read behind proxy tests
 function fields(%0: int, %1: int): int {
 b0(%0: int, %1: int):
@@ -128,6 +240,42 @@ b3(%10: ptr):
   return %12
 }
 -- %3 (24 bytes): does not escape
+-- after escape: 1 removed
+function fields(%0: int, %1: int): int slots [24:8] {
+b0(%0: int, %1: int):
+  %2: int = const 24
+  %3: ptr = slot 0
+  %13: int = const 0
+  store8 %3 + 8, %13
+  %14: int = const 0
+  store8 %3 + 16, %14
+  %4: int = const 8
+  store8 %3 + 8, %0
+  store8 %3 + 16, %1
+  %7: int = const 1
+  %8: int = const 0
+  jump b1()
+b1():
+  jump b2()
+b2():
+  %12: int = load8 %3 + 16
+  return %12
+}
+-- after promote: 1 promoted
+function fields(%0: int, %1: int): int {
+b0(%0: int, %1: int):
+  %2: int = const 24
+  %13: int = const 0
+  %14: int = const 0
+  %4: int = const 8
+  %7: int = const 1
+  %8: int = const 0
+  jump b1()
+b1():
+  jump b2()
+b2():
+  return %1
+}
 == accessed outside it
 function outside(): int {
 b0():
@@ -152,3 +300,35 @@ b2():
   return %4
 }
 -- %2 (8 bytes): does not escape
+-- after escape: 1 removed
+function tries(%0: int): int slots [240:16 8:8] {
+b0(%0: int):
+  %1: int = const 8
+  %2: ptr = slot 1
+  %5: int = const 0
+  store8 %2 + 0, %5
+  store8 %2 + 0, %0
+  try slot 0, b1(), handler b2
+b1():
+  %3: int = load8 %2 + 0
+  return %3
+b2():
+  %4: int = load8 %2 + 0
+  return %4
+}
+-- after promote: 0 promoted
+function tries(%0: int): int slots [240:16 8:8] {
+b0(%0: int):
+  %1: int = const 8
+  %2: ptr = slot 1
+  %5: int = const 0
+  store8 %2 + 0, %5
+  store8 %2 + 0, %0
+  try slot 0, b1(), handler b2
+b1():
+  %3: int = load8 %2 + 0
+  return %3
+b2():
+  %4: int = load8 %2 + 0
+  return %4
+}

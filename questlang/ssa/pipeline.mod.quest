@@ -7,18 +7,20 @@ import
     ssaBuild = questlang/ssa/build : questlang/ssa/Build
     collections/vector : collections/Vector
     questlang/ssa/verify : questlang/ssa/Verify
+    questlang/ssa/escape : questlang/ssa/Escape
     questlang/ssa/promote : questlang/ssa/Promote
     questlang/ssa/tailCalls : questlang/ssa/TailCalls
     util/strutil : util/Strutil
     stringOp = string : StringOp
     system : System
 export
-    let passes = array of "promote" "tailCalls" end
+    let passes = array of "escape" "promote" "tailCalls" end
 
     let unknownPass: Exception(String) = exception unknownPass: String end
 
     let runPass(name: String u: ssa.Unit): Ok =
-        if stringOp.equal(name "promote") then begin let ignored = promote.promoteUnit(u) end
+        if stringOp.equal(name "escape") then begin let ignored = escape.escapeUnit(u) end
+        elsif stringOp.equal(name "promote") then begin let ignored = promote.promoteUnit(u) end
         elsif stringOp.equal(name "tailCalls") then tailCalls.markUnit(u)
         else raise unknownPass with name end end
 

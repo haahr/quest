@@ -5,7 +5,7 @@ b0():
   tail call quest_register_funcs(%0, %1)
 }
 
-function main exported(%0: int, %1: ptr) int32 [0]: int result int32 slots [8:8 240:16 8:8 32:8] {
+function main exported(%0: int, %1: ptr) int32 [0]: int result int32 slots [8:8 240:16 8:8 32:8 16:8 8:8 16:8 16:8 16:8] {
 b0(%0: int, %1: ptr):
   call quest_gc_init()
   call quest_builtins_init(%0, %1) int32 [0]
@@ -83,7 +83,13 @@ b2():
 b3():
   @18:6
   %18: int = const 16
-  %19: ptr = call quest_alloc(%18)
+  %19: ptr = slot 4
+  %468: int = const 0
+  %467: val = toVal %468
+  store8 %19 + 0, %467
+  %470: int = const 0
+  %469: val = toVal %470
+  store8 %19 + 8, %469
   %20: val = load8 %14 + 0
   %21: ptr = symbol quest_type_Int
   %22: val = call quest_convert(%20, %13, %21)
@@ -96,8 +102,7 @@ b3():
   %26: int = load8 %19 + 0
   @18:52
   %27: int = const 8
-  %28: ptr = ptrAdd %19, %27
-  %29: int = load8 %28 + 0
+  %29: int = load8 %19 + 8
   @18:46
   %30: int = add %26, %29
   @18:37
@@ -154,23 +159,25 @@ b5(%60: ptr):
   %133: int = call quest_is_subtype(%130, %128) result narrow
   %134: int = zext8 %133
   %135: int = and %132, %134
-  branch %135, b17(), b18()
+  branch %135, b15(), b16()
 b6():
   @14:67
   jump b2()
 b7():
   @22:6
   %66: int = const 8
-  %67: ptr = call quest_alloc(%66)
+  %67: ptr = slot 5
+  %472: int = const 0
+  %471: val = toVal %472
+  store8 %67 + 0, %471
   %68: val = load8 %62 + 0
   %69: ptr = symbol quest_type_QT_record_47ac11e7f0df397c
   %70: val = call quest_convert(%68, %61, %69)
   store8 %67 + 0, %70
   @22:66
-  %71: int = ptrToInt %67
   %72: int = const 1
-  %73: int = and %71, %72
-  branch %73, b9(), b10()
+  %73: int = const 0
+  jump b9()
 b8():
   @22:6
   %99: ptr = symbol qs_28
@@ -179,15 +186,9 @@ b8():
   jump b5(%101)
 b9():
   @22:66
-  %75: int = const 0
-  %76: val = call quest_proxy_element(%67, %75)
-  %77: ptr = fromVal %76
-  jump b11(%77)
-b10():
-  @22:66
   %78: ptr = load8 %67 + 0
-  jump b11(%78)
-b11(%74: ptr):
+  jump b10(%78)
+b10(%74: ptr):
   @22:66
   %79: ptr = load8 %74 + 0
   %80: ptr = load8 %74 + 8
@@ -195,21 +196,14 @@ b11(%74: ptr):
   %82: ptr = ptrAdd %79, %81
   %83: ptr = load8 %82 + 0
   @22:87
-  %84: int = ptrToInt %67
   %85: int = const 1
-  %86: int = and %84, %85
-  branch %86, b12(), b13()
-b12():
-  @22:87
-  %88: int = const 0
-  %89: val = call quest_proxy_element(%67, %88)
-  %90: ptr = fromVal %89
-  jump b14(%90)
-b13():
+  %86: int = const 0
+  jump b11()
+b11():
   @22:87
   %91: ptr = load8 %67 + 0
-  jump b14(%91)
-b14(%87: ptr):
+  jump b12(%91)
+b12(%87: ptr):
   @22:87
   %92: ptr = load8 %87 + 0
   %93: ptr = load8 %87 + 8
@@ -222,7 +216,7 @@ b14(%87: ptr):
   %98: ptr = call quest_string_concat(%83, %97)
   @22:6
   jump b5(%98)
-b15(%127: ptr):
+b13(%127: ptr):
   @14:50
   %192: ptr = symbol qm_writer
   %193: ptr = load8 %192 + 0
@@ -266,25 +260,25 @@ b15(%127: ptr):
   %223: int = call quest_is_subtype(%220, %218) result narrow
   %224: int = zext8 %223
   %225: int = and %222, %224
-  branch %225, b33(), b34()
-b16():
+  branch %225, b31(), b32()
+b14():
   @14:67
   jump b6()
-b17():
+b15():
   @26:6
   %136: int = call quest_layout_equivalent(%128, %130) result narrow
   %137: int = zext8 %136
-  branch %137, b19(), b20()
-b18():
+  branch %137, b17(), b18()
+b16():
   @26:6
   %189: ptr = symbol qs_28
   %190: int = const 1
   %191: ptr = call quest_string_new(%189, %190)
-  jump b15(%191)
-b19():
+  jump b13(%191)
+b17():
   @26:6
-  jump b21(%129)
-b20():
+  jump b19(%129)
+b18():
   @26:6
   %139: int = const 16
   %140: ptr = call quest_alloc(%139)
@@ -301,40 +295,46 @@ b20():
   %149: ptr = symbol quest_type_auto_5aec350642c82def
   %150: val = call quest_convert(%144, %148, %149)
   store8 %140 + 8, %150
-  jump b21(%140)
-b21(%138: ptr):
+  jump b19(%140)
+b19(%138: ptr):
   @27:13
   %152: int = ptrToInt %138
   %153: int = const 1
   %154: int = and %152, %153
-  branch %154, b23(), b24()
-b22(%151: ptr):
+  branch %154, b21(), b22()
+b20(%151: ptr):
   @26:6
-  jump b15(%151)
-b23():
+  jump b13(%151)
+b21():
   @27:13
   %156: int = const 1
   %157: val = call quest_proxy_element(%138, %156)
   %158: ptr = fromVal %157
-  jump b25(%158)
-b24():
+  jump b23(%158)
+b22():
   @27:13
   %159: int = const 8
   %160: ptr = ptrAdd %138, %159
   %161: ptr = load8 %160 + 0
-  jump b25(%161)
-b25(%155: ptr):
+  jump b23(%161)
+b23(%155: ptr):
   @27:5
   %162: ptr = load8 %155 + 0
   %163: ptr = load8 %155 + 8
   %164: ptr = symbol quest_type_String
   %165: int = call quest_is_subtype(%162, %164) result narrow
   %166: int = zext8 %165
-  branch %166, b26(), b27()
-b26():
+  branch %166, b24(), b25()
+b24():
   @27:5
   %167: int = const 16
-  %168: ptr = call quest_alloc(%167)
+  %168: ptr = slot 6
+  %474: int = const 0
+  %473: val = toVal %474
+  store8 %168 + 0, %473
+  %476: int = const 0
+  %475: val = toVal %476
+  store8 %168 + 8, %475
   %169: val = load8 %163 + 0
   %170: ptr = symbol quest_type_String
   %171: val = call quest_convert(%169, %162, %170)
@@ -347,27 +347,26 @@ b26():
   %174: int = ptrToInt %138
   %175: int = const 1
   %176: int = and %174, %175
-  branch %176, b28(), b29()
-b27():
+  branch %176, b26(), b27()
+b25():
   @27:5
   %186: ptr = symbol qs_28
   %187: int = const 1
   %188: ptr = call quest_string_new(%186, %187)
-  jump b22(%188)
-b28():
+  jump b20(%188)
+b26():
   @27:61
   %178: ptr = load8 %138 + ~1
-  jump b30(%178)
-b29():
+  jump b28(%178)
+b27():
   @27:61
-  jump b30(%138)
-b30(%177: ptr):
+  jump b28(%138)
+b28(%177: ptr):
   @27:61
   %179: int = load8 %177 + 0
   @27:67
   %180: int = const 8
-  %181: ptr = ptrAdd %168, %180
-  %182: int = load8 %181 + 0
+  %182: int = load8 %168 + 8
   @27:61
   %183: int = add %179, %182
   @27:52
@@ -375,8 +374,8 @@ b30(%177: ptr):
   @27:45
   %185: ptr = call quest_string_concat(%173, %184)
   @27:5
-  jump b22(%185)
-b31(%217: ptr):
+  jump b20(%185)
+b29(%217: ptr):
   @14:50
   %275: ptr = symbol qm_writer
   %276: ptr = load8 %275 + 0
@@ -420,25 +419,25 @@ b31(%217: ptr):
   %306: int = const 0
   %307: ptr = null
   %308: int = peq %305, %307
-  branch %308, b50(), b49()
-b32():
+  branch %308, b48(), b47()
+b30():
   @14:67
-  jump b16()
-b33():
+  jump b14()
+b31():
   @32:6
   %226: int = call quest_layout_equivalent(%218, %220) result narrow
   %227: int = zext8 %226
-  branch %227, b35(), b36()
-b34():
+  branch %227, b33(), b34()
+b32():
   @32:6
   %272: ptr = symbol qs_28
   %273: int = const 1
   %274: ptr = call quest_string_new(%272, %273)
-  jump b31(%274)
-b35():
+  jump b29(%274)
+b33():
   @32:6
-  jump b37(%219)
-b36():
+  jump b35(%219)
+b34():
   @32:6
   call quest_layout_conversion_error(%218, %220)
   %229: int = const 16
@@ -449,8 +448,8 @@ b36():
   store8 %230 + 0, %233
   %234: val = load8 %219 + 8
   store8 %230 + 8, %234
-  jump b37(%230)
-b37(%228: ptr):
+  jump b35(%230)
+b35(%228: ptr):
   @33:18
   %235: int = const 16
   %236: ptr = call quest_alloc(%235)
@@ -464,34 +463,34 @@ b37(%228: ptr):
   %241: int = ptrToInt %228
   %242: int = const 1
   %243: int = and %241, %242
-  branch %243, b38(), b39()
-b38():
+  branch %243, b36(), b37()
+b36():
   @33:11
   %244: int = const 0
   %245: val = toVal %236
   call quest_proxy_store(%228, %244, %245)
-  jump b40()
-b39():
+  jump b38()
+b37():
   @33:11
   store8 %228 + 0, %236
-  jump b40()
-b40():
+  jump b38()
+b38():
   @33:61
   %246: int = ptrToInt %228
   %247: int = const 1
   %248: int = and %246, %247
-  branch %248, b41(), b42()
-b41():
+  branch %248, b39(), b40()
+b39():
   @33:61
   %250: int = const 0
   %251: val = call quest_proxy_element(%228, %250)
   %252: ptr = fromVal %251
-  jump b43(%252)
-b42():
+  jump b41(%252)
+b40():
   @33:61
   %253: ptr = load8 %228 + 0
-  jump b43(%253)
-b43(%249: ptr):
+  jump b41(%253)
+b41(%249: ptr):
   @33:61
   %254: int = load8 %249 + 0
   @33:52
@@ -500,20 +499,20 @@ b43(%249: ptr):
   %256: int = ptrToInt %228
   %257: int = const 1
   %258: int = and %256, %257
-  branch %258, b44(), b45()
-b44():
+  branch %258, b42(), b43()
+b42():
   @33:98
   %260: int = const 1
   %261: val = call quest_proxy_element(%228, %260)
   %262: ptr = fromVal %261
-  jump b46(%262)
-b45():
+  jump b44(%262)
+b43():
   @33:98
   %263: int = const 8
   %264: ptr = ptrAdd %228, %263
   %265: ptr = load8 %264 + 0
-  jump b46(%265)
-b46(%259: ptr):
+  jump b44(%265)
+b44(%259: ptr):
   @33:81
   %266: ptr = symbol quest_type_Char
   %267: val = call qv_dynamic_be(%266, %259)
@@ -524,8 +523,8 @@ b46(%259: ptr):
   @33:52
   %271: ptr = call quest_string_concat(%255, %270)
   @32:6
-  jump b31(%271)
-b47(%302: ptr):
+  jump b29(%271)
+b45(%302: ptr):
   @14:50
   %341: ptr = symbol qm_writer
   %342: ptr = load8 %341 + 0
@@ -554,21 +553,21 @@ b47(%302: ptr):
   %360: int = const 1
   %361: ptr = null
   %362: int = peq %359, %361
-  branch %362, b58(), b57()
-b48():
+  branch %362, b56(), b55()
+b46():
   @14:67
-  jump b32()
-b49():
+  jump b30()
+b47():
   @37:14
   %310: int = load8 %305 + 0
   %311: int = ult %306, %310
-  branch %311, b51(), b52()
-b50():
+  branch %311, b49(), b50()
+b48():
   @37:14
   %309: ptr = symbol qs_30
   call quest_raise_array_error_at(%309)
   unreachable
-b51():
+b49():
   @37:14
   %313: int = const 8
   %314: int = mul %306, %313
@@ -583,16 +582,22 @@ b51():
   %322: ptr = symbol quest_type_String
   %323: int = call quest_is_subtype(%320, %322) result narrow
   %324: int = zext8 %323
-  branch %324, b53(), b54()
-b52():
+  branch %324, b51(), b52()
+b50():
   @37:14
   %312: ptr = symbol qs_30
   call quest_raise_array_error_at(%312)
   unreachable
-b53():
+b51():
   @37:6
   %325: int = const 16
-  %326: ptr = call quest_alloc(%325)
+  %326: ptr = slot 7
+  %478: int = const 0
+  %477: val = toVal %478
+  store8 %326 + 0, %477
+  %480: int = const 0
+  %479: val = toVal %480
+  store8 %326 + 8, %479
   %327: val = load8 %321 + 0
   %328: ptr = symbol quest_type_String
   %329: val = call quest_convert(%327, %320, %328)
@@ -605,19 +610,18 @@ b53():
   %333: ptr = load8 %326 + 0
   @37:54
   %334: int = const 8
-  %335: ptr = ptrAdd %326, %334
-  %336: ptr = load8 %335 + 0
+  %336: ptr = load8 %326 + 8
   @37:47
   %337: ptr = call quest_string_concat(%333, %336)
   @37:6
-  jump b47(%337)
-b54():
+  jump b45(%337)
+b52():
   @37:6
   %338: ptr = symbol qs_28
   %339: int = const 1
   %340: ptr = call quest_string_new(%338, %339)
-  jump b47(%340)
-b55(%356: ptr):
+  jump b45(%340)
+b53(%356: ptr):
   @14:50
   %398: ptr = symbol qm_writer
   %399: ptr = load8 %398 + 0
@@ -658,21 +662,21 @@ b55(%356: ptr):
   %425: int = const 1
   store8 %420 + 16, %425
   store8 %421 + 0, %420
-  try slot 1, b68(), handler b69
-b56():
+  try slot 1, b66(), handler b67
+b54():
   @14:67
-  jump b48()
-b57():
+  jump b46()
+b55():
   @38:14
   %364: int = load8 %359 + 0
   %365: int = ult %360, %364
-  branch %365, b59(), b60()
-b58():
+  branch %365, b57(), b58()
+b56():
   @38:14
   %363: ptr = symbol qs_31
   call quest_raise_array_error_at(%363)
   unreachable
-b59():
+b57():
   @38:14
   %367: int = const 8
   %368: int = mul %360, %367
@@ -687,16 +691,22 @@ b59():
   %376: ptr = symbol quest_type_Bool
   %377: int = call quest_is_subtype(%374, %376) result narrow
   %378: int = zext8 %377
-  branch %378, b61(), b62()
-b60():
+  branch %378, b59(), b60()
+b58():
   @38:14
   %366: ptr = symbol qs_31
   call quest_raise_array_error_at(%366)
   unreachable
-b61():
+b59():
   @38:6
   %379: int = const 16
-  %380: ptr = call quest_alloc(%379)
+  %380: ptr = slot 8
+  %482: int = const 0
+  %481: val = toVal %482
+  store8 %380 + 0, %481
+  %484: int = const 0
+  %483: val = toVal %484
+  store8 %380 + 8, %483
   %381: val = load8 %375 + 0
   %382: ptr = symbol quest_type_Bool
   %383: val = call quest_convert(%381, %374, %382)
@@ -708,29 +718,29 @@ b61():
   @38:48
   %388: int = load8 %380 + 0
   @38:45
-  branch %388, b64(), b65()
-b62():
+  branch %388, b62(), b63()
+b60():
   @38:6
   %395: ptr = symbol qs_28
   %396: int = const 1
   %397: ptr = call quest_string_new(%395, %396)
-  jump b55(%397)
-b63(%387: ptr):
+  jump b53(%397)
+b61(%387: ptr):
   @38:6
-  jump b55(%387)
-b64():
+  jump b53(%387)
+b62():
   @38:45
   %389: ptr = symbol qs_32
   %390: int = const 4
   %391: ptr = call quest_string_new(%389, %390)
-  jump b63(%391)
-b65():
+  jump b61(%391)
+b63():
   @38:45
   %392: ptr = symbol qs_33
   %393: int = const 5
   %394: ptr = call quest_string_new(%392, %393)
-  jump b63(%394)
-b66(%413: ptr):
+  jump b61(%394)
+b64(%413: ptr):
   @14:50
   %451: ptr = symbol qm_writer
   %452: ptr = load8 %451 + 0
@@ -752,11 +762,11 @@ b66(%413: ptr):
   %464: int = const 1
   %465: ptr = call quest_string_new(%463, %464)
   call qv_writer_putString(%462, %465)
-  jump b67()
-b67():
+  jump b65()
+b65():
   @14:67
-  jump b56()
-b68():
+  jump b54()
+b66():
   @41:31
   %426: ptr = symbol qm_reader
   %427: ptr = load8 %426 + 0
@@ -773,8 +783,8 @@ b68():
   %436: ptr = threadLocal quest_current_exception_handler
   %437: ptr = load8 %420 + 0
   store8 %436 + 0, %437
-  jump b66(%435)
-b69():
+  jump b64(%435)
+b67():
   @41:6
   %438: ptr = threadLocal quest_current_exception_handler
   %439: ptr = load8 %420 + 0
@@ -791,14 +801,14 @@ b69():
   store8 %440 + 24, %445
   %446: ptr = load8 %440 + 0
   %447: int = peq %446, %419
-  branch %447, b70(), b71()
-b70():
+  branch %447, b68(), b69()
+b68():
   @41:6
   %448: ptr = symbol qs_35
   %449: int = const 8
   %450: ptr = call quest_string_new(%448, %449)
-  jump b66(%450)
-b71():
+  jump b64(%450)
+b69():
   @41:6
   call quest_reraise(%440) memory [0:32]
   unreachable

@@ -1,0 +1,365 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @11:45
+      let %2: String = prim <>(s, "\n") @11:59
+      let %3: Ok = call writer.putString(%1, %2) @11:28
+      return %3
+    }
+  }
+  funs {
+    fun yes(b: Bool): String {
+      join k1(r: String) {
+        return r
+      } in {
+        if b { @12:28
+          jump k1("true") @12:28
+        } else {
+          jump k1("false") @12:28
+        }
+      }
+    }
+  }
+  let Thrown: Exception(Pair) = exception Thrown: Pair @16:1
+  funs {
+    fun sum(a: Int, b.1: Int): Int {
+      let x: Int = a @21:31
+      let y: Int = b.1 @21:41
+      let t: Tuple x: Int y: Int end = tuple(x, y) @21:17
+      let %4: Int = tuple_field(t, 0) @22:9
+      let %5: Int = tuple_field(t, 1) @22:15
+      let %6: Int = prim +(%4, %5) @22:9
+      return %6
+    }
+  }
+  let %7: Int = call sum(3, 4) @24:27
+  let %8: String = call conv.int(%7) @24:18
+  let %9: String = prim <>("sum: ", %8) @24:7
+  do call print(%9) @24:1
+  let x.1: Int = 0 @27:37
+  let y.1: Int = 0 @27:47
+  let %10: Tuple x: Int y: Int end = tuple(x.1, y.1) @27:23
+  let kept: Array(Tuple x: Int y: Int end) = array_rep(1, %10) @27:12
+  funs {
+    fun keep(a.1: Int): Int {
+      let x.2: Int = a.1 @30:31
+      let y.2: Int = prim *(a.1, 2) @30:41
+      let t.1: Tuple x: Int y: Int end = tuple(x.2, y.2) @30:17
+      store kept[0] := t.1 @31:9
+      let %11: Int = tuple_field(t.1, 0) @32:9
+      return %11
+    }
+  }
+  let %12: Int = call keep(5) @34:1
+  let %13: Tuple x: Int y: Int end = index(kept, 0) @35:28
+  let %14: Int = tuple_field(%13, 0) @35:28
+  let %15: String = call conv.int(%14) @35:19
+  let %16: Tuple x: Int y: Int end = index(kept, 0) @35:58
+  let %17: Int = tuple_field(%16, 1) @35:58
+  let %18: String = call conv.int(%17) @35:49
+  let %19: String = prim <>(" ", %18) @35:42
+  let %20: String = prim <>(%15, %19) @35:19
+  let %21: String = prim <>("kept: ", %20) @35:7
+  do call print(%21) @35:1
+  funs {
+    fun show(p: Pair): String {
+      let %22: Int = tuple_field(p, 0) @38:38
+      let %23: String = call conv.int(%22) @38:29
+      let %24: Int = tuple_field(p, 1) @38:62
+      let %25: String = call conv.int(%24) @38:53
+      let %26: String = prim <>(",", %25) @38:46
+      let %27: String = prim <>(%23, %26) @38:29
+      return %27
+    }
+  }
+  funs {
+    fun shown(a.2: Int): String {
+      let x.3: Int = a.2 @41:31
+      let y.3: Int = prim +(a.2, 1) @41:41
+      let t.2: Tuple x: Int y: Int end = tuple(x.3, y.3) @41:17
+      let %28: String = call show(t.2) @42:9
+      return %28
+    }
+  }
+  funs {
+    fun make(a.3: Int): Pair {
+      let x.4: Int = a.3 @44:40
+      let y.4: Int = prim -(a.3, 1) @44:50
+      let %29: Tuple x: Int y: Int end = tuple(x.4, y.4) @44:26
+      return %29
+    }
+  }
+  let %30: String = call shown(7) @45:21
+  let %31: Pair = call make(9) @45:56
+  let %32: String = call show(%31) @45:51
+  let %33: String = prim <>(", returned: ", %32) @45:33
+  let %34: String = prim <>(%30, %33) @45:21
+  let %35: String = prim <>("passed: ", %34) @45:7
+  do call print(%35) @45:1
+  funs {
+    fun adder(a.4: Int): Fun(b: Int): Int {
+      let x.5: Int = a.4 @50:31
+      let y.5: Int = 0 @50:41
+      let t.3: Tuple x: Int y: Int end = tuple(x.5, y.5) @50:17
+      funs {
+        fun f(b.2: Int): Int {
+          let %36: Int = tuple_field(t.3, 0) @51:26
+          let %37: Int = prim +(%36, b.2) @51:26
+          return %37
+        }
+      }
+      return f
+    }
+  }
+  let %38: Fun(b: Int): Int = call adder(10) @53:32
+  let %39: Int = call %38(5) @53:32
+  let %40: String = call conv.int(%39) @53:23
+  let %41: String = prim <>("captured: ", %40) @53:7
+  do call print(%41) @53:1
+  funs {
+    fun thrown(a.5: Int): Int {
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        try catching (Thrown) {
+          let x.6: Int = a.5 @59:35
+          let y.6: Int = prim *(a.5, a.5) @59:45
+          let t.4: Tuple x: Int y: Int end = tuple(x.6, y.6) @59:21
+          raise Thrown with t.4 @60:13
+        } handle (e: Exception) {
+          let %42: Bool = prim is(e, Thrown) @57:5
+          if %42 { @57:5
+            let p.1: Pair = exception_payload(e) @57:5
+            let %43: Int = tuple_field(p.1, 1) @62:29
+            jump k2(%43) @57:5
+          } else {
+            reraise e @57:5
+          }
+        }
+      }
+    }
+  }
+  let %44: Int = call thrown(6) @64:30
+  let %45: String = call conv.int(%44) @64:21
+  let %46: String = prim <>("raised: ", %45) @64:7
+  do call print(%46) @64:1
+  funs {
+    fun pairs(n: Int): Array(Pair) {
+      let x.7: Int = 0 @69:42
+      let y.7: Int = 0 @69:52
+      let %47: Tuple x: Int y: Int end = tuple(x.7, y.7) @69:28
+      let r.2: Array(Tuple x: Int y: Int end) = array_rep(n, %47) @69:17
+      let %48: Int = prim -(n, 1) @70:25
+      var i: Int = 0 @70:9
+      loop L1 {
+        let %49: Bool = prim <=(i, %48) @70:9
+        if %49 { @70:9
+          let i.1: Int = i @70:9
+          let x.8: Int = i.1 @70:57
+          let y.8: Int = prim *(i.1, i.1) @70:67
+          let %50: Tuple x: Int y: Int end = tuple(x.8, y.8) @70:43
+          store r.2[i.1] := %50 @70:35
+          let %51: Int = prim +(i, 1) @70:9
+          i := %51 @70:9
+        } else {
+          break L1 @70:9
+        }
+      }
+      return r.2
+    }
+  }
+  let ps: Array(Pair) = call pairs(4) @73:10
+  let %52: Pair = index(ps, 1) @74:36
+  let %53: String = call show(%52) @74:31
+  let %54: Pair = index(ps, 3) @74:58
+  let %55: String = call show(%54) @74:53
+  let %56: Pair = index(ps, 1) @74:87
+  let %57: Pair = index(ps, 2) @74:96
+  let %58: Bool = prim is(%56, %57) @74:87
+  let %59: String = call yes(%58) @74:83
+  let %60: String = prim <>(", apart: ", %59) @74:68
+  let %61: String = prim <>(%55, %60) @74:53
+  let %62: String = prim <>(" ", %61) @74:46
+  let %63: String = prim <>(%53, %62) @74:31
+  let %64: String = prim <>("kept in an array: ", %63) @74:7
+  do call print(%64) @74:1
+  funs {
+    fun loopSum(n.1: Int): Int {
+      var s.1: Int = 0 @79:9
+      var i.2: Int = 1 @80:9
+      loop L2 {
+        let %65: Bool = prim <=(i.2, n.1) @80:9
+        if %65 { @80:9
+          let i.3: Int = i.2 @80:9
+          let x.9: Int = i.3 @81:35
+          let y.9: Int = s.1 @81:45
+          let t.5: Tuple x: Int y: Int end = tuple(x.9, y.9) @81:21
+          let %66: Int = tuple_field(t.5, 0) @82:18
+          let %67: Int = tuple_field(t.5, 1) @82:24
+          let %68: Int = prim +(%66, %67) @82:18
+          s.1 := %68 @82:13
+          let %69: Int = prim +(i.2, 1) @80:9
+          i.2 := %69 @80:9
+        } else {
+          break L2 @80:9
+        }
+      }
+      return s.1
+    }
+  }
+  let %70: Int = call loopSum(10) @86:28
+  let %71: String = call conv.int(%70) @86:19
+  let %72: String = prim <>("loop: ", %71) @86:7
+  do call print(%72) @86:1
+  funs {
+    fun counter(n.2: Int): Int {
+      let k: Int = 0 @91:35
+      let c: Tuple var k: Int end = tuple(k) @91:17
+      var i.4: Int = 1 @92:9
+      loop L3 {
+        let %73: Bool = prim <=(i.4, n.2) @92:9
+        if %73 { @92:9
+          let i.5: Int = i.4 @92:9
+          let %74: Int = tuple_field(c, 0) @92:36
+          let %75: Int = prim +(%74, i.5) @92:36
+          store c.#0 := %75 @92:29
+          let %76: Int = prim +(i.4, 1) @92:9
+          i.4 := %76 @92:9
+        } else {
+          break L3 @92:9
+        }
+      }
+      let %77: Int = tuple_field(c, 0) @93:9
+      return %77
+    }
+  }
+  let %78: Int = call counter(5) @95:33
+  let %79: String = call conv.int(%78) @95:24
+  let %80: String = prim <>("var field: ", %79) @95:7
+  do call print(%80) @95:1
+  funs {
+    fun apart(a.6: Int): Bool {
+      let x.10: Int = a.6 @100:31
+      let t.6: Tuple x: Int end = tuple(x.10) @100:17
+      let x.11: Int = a.6 @101:31
+      let u: Tuple x: Int end = tuple(x.11) @101:17
+      let %81: Bool = prim is(t.6, u) @102:9
+      return %81
+    }
+  }
+  funs {
+    fun itself(a.7: Int): Bool {
+      let x.12: Int = a.7 @106:31
+      let t.7: Tuple x: Int end = tuple(x.12) @106:17
+      let %82: Bool = prim is(t.7, t.7) @107:9
+      return %82
+    }
+  }
+  let %83: Bool = call apart(1) @109:24
+  let %84: String = call yes(%83) @109:20
+  let %85: Bool = call itself(1) @109:57
+  let %86: String = call yes(%85) @109:53
+  let %87: String = prim <>(", itself: ", %86) @109:37
+  let %88: String = prim <>(%84, %87) @109:20
+  let %89: String = prim <>("apart: ", %88) @109:7
+  do call print(%89) @109:1
+  funs {
+    fun area(n.3: Int): Int {
+      let r.3: Int = n.3 @114:45
+      let %90: Tuple r: Int end = tuple(r.3) @114:17
+      let o: Shape = option(circle, %90) @114:17
+      join k3(r.4: Int) {
+        return r.4
+      } in {
+        let %91: Bool = is_tag(o, circle) @115:12
+        if %91 { @115:9
+          let %92: Tuple Int r: Int end = payload(o, circle) #1 @115:26
+          let %93: Int = tuple_field(%92, 1) @115:26
+          let %94: Tuple Int r: Int end = payload(o, circle) #1 @115:39
+          let %95: Int = tuple_field(%94, 1) @115:39
+          let %96: Int = prim *(%93, %95) @115:26
+          jump k3(%96) @115:9
+        } else {
+          jump k3(0) @115:9
+        }
+      }
+    }
+  }
+  funs {
+    fun side(n.4: Int): Shape {
+      let s.2: Int = n.4 @117:55
+      let %97: Tuple s: Int end = tuple(s.2) @117:27
+      let %98: Shape = option(square, %97) @117:27
+      return %98
+    }
+  }
+  let %99: Int = call area(3) @118:30
+  let %100: String = call conv.int(%99) @118:21
+  let %101: Shape = call side(4) @118:69
+  let %102: Tuple Int s: Int end = payload(%101, square) #2 @118:69
+  let %103: Int = tuple_field(%102, 1) @118:69
+  let %104: String = call conv.int(%103) @118:60
+  let %105: String = prim <>(", returned: ", %104) @118:42
+  let %106: String = prim <>(%100, %105) @118:21
+  let %107: String = prim <>("option: ", %106) @118:7
+  do call print(%107) @118:1
+  funs {
+    fun recordSum(a.8: Int): Int {
+      let %108: Int = prim +(a.8, 1) @123:34
+      let r.5: Record x: Int y: Int end = record(x = a.8, y = %108) @123:17
+      let %109: Int = record_field(r.5, x) @124:9
+      let %110: Int = record_field(r.5, y) @124:15
+      let %111: Int = prim +(%109, %110) @124:9
+      return %111
+    }
+  }
+  let %112: Int = call recordSum(20) @126:30
+  let %113: String = call conv.int(%112) @126:21
+  let %114: String = prim <>("record: ", %113) @126:7
+  do call print(%114) @126:1
+  funs {
+    fun guarded(a.9: Int): Int {
+      let k.1: Int = a.9 @131:35
+      let c.1: Tuple var k: Int end = tuple(k.1) @131:17
+      try catching (Thrown) {
+        let %115: Int = tuple_field(c.1, 0) @134:24
+        let %116: Int = prim +(%115, 1) @134:24
+        store c.1.#0 := %116 @134:17
+        let %117: Int = tuple_field(c.1, 0) @135:20
+        let %118: Bool = prim >(%117, 2) @135:20
+        if %118 { @135:17
+          let x.13: Int = tuple_field(c.1, 0) @135:65
+          let y.10: Int = 0 @135:77
+          let %119: Tuple x: Int y: Int end = tuple(x.13, y.10) @135:51
+          raise Thrown with %119 @135:33
+        }
+        store c.1.#0 := 0 @136:17
+      } handle (e.1: Exception) {
+        let %120: Bool = prim is(e.1, Thrown) @132:9
+        if %120 { @132:9
+          let p.2: Pair = exception_payload(e.1) @132:9
+          let %121: Int = tuple_field(c.1, 0) @138:40
+          let %122: Int = tuple_field(p.2, 0) @138:47
+          let %123: Int = prim *(%122, 10) @138:47
+          let %124: Int = prim +(%121, %123) @138:40
+          store c.1.#0 := %124 @138:33
+        } else {
+          reraise e.1 @132:9
+        }
+      }
+      let %125: Int = tuple_field(c.1, 0) @140:9
+      return %125
+    }
+  }
+  let %126: Int = call guarded(1) @142:27
+  let %127: String = call conv.int(%126) @142:18
+  let %128: Int = call guarded(5) @142:58
+  let %129: String = call conv.int(%128) @142:49
+  let %130: String = prim <>(" ", %129) @142:42
+  let %131: String = prim <>(%127, %130) @142:18
+  let %132: String = prim <>("try: ", %131) @142:7
+  do call print(%132) @142:1
+}
+
