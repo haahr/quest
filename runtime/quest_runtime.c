@@ -327,23 +327,24 @@ static void quest_frames_add(QFramePrinter *p, const void *start, int64_t count)
     p->count = count;
 }
 
-#if defined(__APPLE__) || (defined(__linux__) && defined(__GLIBC__))
+#if defined(__APPLE__) && defined(__aarch64__)
+#include <dlfcn.h>
+#include <pthread.h>
+#define Q_HAVE_UNWIND 1
+#define Q_FRAME_POINTER_WALK 1
+#elif defined(__APPLE__) || (defined(__linux__) && defined(__GLIBC__))
 #include <unwind.h>
 #define Q_HAVE_UNWIND 1
-#ifdef __APPLE__
-#include <dlfcn.h>
 #endif
 
-/* The start of the function containing pc. Linux's unwind tables (.eh_frame)
-   describe each function on its own, so the unwinder's start is the function's.
-   macOS's compact unwind tables describe a run of adjacent functions whose
-   prologues are alike as one, so the unwinder's start may be an earlier
-   function's: the symbol table's start (which has static functions, unless the
-   binary is stripped) is the function's own, if it is no earlier.
+#ifdef Q_HAVE_UNWIND
+/* The start of the function containing pc, cached by pc (code is never
+   unloaded), since a program that raises often from the same calls would
+   otherwise spend most of its time finding them.
 
-   Both searches are slow, and dladdr scans every symbol, the debug map's too,
-   so a program that raises often from the same calls spent most of its time
-   here: the starts found are cached by pc (code is never unloaded). */
+   On Darwin arm64 it is the symbol table's start (which has static functions,
+   unless the binary is stripped), from dladdr. Elsewhere it is the unwinder's:
+   Linux's unwind tables (.eh_frame) describe each function on its own. */
 #define Q_FUNCTION_START_CACHE 1024
 
 typedef struct QFunctionStart {
@@ -357,23 +358,46 @@ static const void *quest_function_start(void *pc) {
     uintptr_t       h = (uintptr_t)pc;
     QFunctionStart *cached = &quest_function_starts[((h >> 2) ^ (h >> 12)) % Q_FUNCTION_START_CACHE];
     if (cached->pc == pc) return cached->start;
-    void *start = _Unwind_FindEnclosingFunction(pc);
-#ifdef __APPLE__
-    Dl_info info;
-    if (dladdr(pc, &info) != 0 && info.dli_saddr != NULL && (uintptr_t)info.dli_saddr >= (uintptr_t)start &&
-        (uintptr_t)info.dli_saddr <= (uintptr_t)pc) {
-        start = info.dli_saddr;
-    }
+#ifdef Q_FRAME_POINTER_WALK
+    Dl_info     info;
+    const void *start = dladdr(pc, &info) != 0 ? info.dli_saddr : NULL;
+#else
+    const void *start = _Unwind_FindEnclosingFunction(pc);
 #endif
     cached->pc = pc;
     cached->start = start;
     return start;
 }
 
-/* The start of the function of each frame of the stack, from the platform's
- * unwind tables, for a visitor */
+/* The start of the function of each frame of the stack, for a visitor */
 typedef void (*QFrameVisitor)(const void *start, void *arg);
 
+#ifdef Q_FRAME_POINTER_WALK
+/* Every function on Darwin arm64 that calls another keeps a frame record, x29
+   pointing at its caller's x29 and the return address: the arm64 backend's
+   always, and clang's, which keeps frame pointers in non-leaf functions. A
+   raise is a call, so every frame below it has one, and the walk follows the
+   chain from fp to the stack's base (docs/exceptions.md §5.3). Unlike the
+   unwinder, it needs no unwind information, so it steps through code that has
+   none. */
+static void quest_walk_frames_from(uintptr_t fp, QFrameVisitor visit, void *arg) {
+    uintptr_t base = (uintptr_t)pthread_get_stackaddr_np(pthread_self());
+    while (fp != 0 && (fp & 7) == 0 && fp < base) {
+        const uintptr_t *record = (const uintptr_t *)fp;
+        uintptr_t        ret = record[1];
+        if (ret == 0) break;
+        /* ret is the return address, which follows the call: a call to a
+         * noreturn helper may end its function */
+        visit(quest_function_start((void *)(ret - 1)), arg);
+        if (record[0] <= fp) break;
+        fp = record[0];
+    }
+}
+
+static void quest_walk_stack(QFrameVisitor visit, void *arg) {
+    quest_walk_frames_from((uintptr_t)__builtin_frame_address(0), visit, arg);
+}
+#else
 typedef struct QStackWalk {
     QFrameVisitor visit;
     void         *arg;
@@ -393,6 +417,7 @@ static void quest_walk_stack(QFrameVisitor visit, void *arg) {
     QStackWalk walk = { visit, arg };
     _Unwind_Backtrace(quest_walk_frame, &walk);
 }
+#endif
 
 static void quest_print_live_frame(const void *start, void *arg) {
     quest_frames_add((QFramePrinter *)arg, start, 1);
@@ -4211,13 +4236,24 @@ static uintptr_t quest_stack_low = 0;
 static char quest_signal_stack[1 << 18];
 
 static void quest_on_fault(int sig, siginfo_t *info, void *context) {
-    (void)context;
     uintptr_t addr = (uintptr_t)info->si_addr;
     if (quest_stack_low != 0 && addr + Q_STACK_REACH_BELOW >= quest_stack_low &&
         addr < quest_stack_low + Q_STACK_REACH_ABOVE) {
         fflush(stdout);
         fprintf(stderr, "Exception: stack.overflow\n");
+#ifdef Q_FRAME_POINTER_WALK
+        /* The handler runs on a stack of its own, so the frames are walked
+         * from the faulting function's: its pc, then its x29's chain */
+        const ucontext_t *uc = (const ucontext_t *)context;
+        QFramePrinter     printer = { NULL, 0 };
+        quest_frames_add(&printer, quest_function_start((void *)uc->uc_mcontext->__ss.__pc), 1);
+        quest_walk_frames_from((uintptr_t)uc->uc_mcontext->__ss.__fp, quest_print_live_frame, &printer);
+        quest_frames_flush(&printer);
+        exit(1);
+#else
+        (void)context;
         quest_fail_with(NULL, NULL);
+#endif
     }
     /* Returning faults again, with the default action */
     signal(sig, SIG_DFL);

@@ -6,7 +6,7 @@ backend's pipeline ([arm64.md](arm64.md)) unchanged up to machine instructions, 
 with an in-memory encoder and loader. It is written in Quest, in `questlang/`, and the bootstrap does not get it
 ([testing.md](testing.md) §2.8), though it gets the language change the JIT needs (§3.11).
 
-**Status: step 1 of 8 done** (§7). Section 1 records the decisions, section 7 the steps.
+**Status: steps 1 and 2 of 8 done** (§7). Section 1 records the decisions, section 7 the steps.
 
 ---
 
@@ -391,6 +391,9 @@ the runtime for every program, and come first so that the JIT is built on them.
 2. **Frames by the frame-pointer chain** (§3.9). The runtime's capture and uncaught walk step by `x29`; the
    stack-overflow handler starts from the faulting context. The run goldens that list frames are checked through the
    C, ssac, and arm64 backends, and exceptions.md §5.3 describes the walk.
+   *Done* (2026-11-01). The walk is Darwin arm64's (`Q_FRAME_POINTER_WALK`), with function starts from `dladdr` alone;
+   other platforms keep the unwinder. Tracebacks through the C and arm64 backends, and the stack overflow's count of
+   frames, are unchanged, and no golden changed.
 3. **`os/value` and `os/code`** (§3.11): the interfaces, their unsound modules, and a C file in `runtime/`, with an
    ABI bump. Both interpreters refuse a program that imports either, by the interface's name rather than through
    builtins that name the new natives, so that the current release can still build stage 1. **A release follows this

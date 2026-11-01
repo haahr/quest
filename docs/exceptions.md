@@ -260,22 +260,29 @@ measurable difference in the benchmarks' run times with the tables.
 
 ### 5.3. Walking and Attributing Frames
 
-The runtime walks the stack with the platform unwinder (`<unwind.h>`), on macOS (libSystem) and on Linux with glibc,
-where clang and gcc emit unwind tables at `-O2` by default:
+On macOS on arm64, the runtime walks the chain of frame records. Every function there that calls another keeps one:
+`x29` points at its caller's `x29` and the return address. The arm64 backend's functions always keep one
+([arm64.md](arm64.md) §3.10), and so do clang's non-leaf functions, since clang keeps frame pointers on Darwin. A raise
+is a call, so every frame below it has a record. For each frame:
 
-- `_Unwind_Backtrace` visits each frame; `_Unwind_GetIP` gives its return address, `ip`;
-- `_Unwind_FindEnclosingFunction(ip - 1)` gives the start of the function containing the call, from the unwind tables
-  (`ip - 1`, because a call to a `noreturn` helper may be a function's last instruction);
+- the walk reads the record at `x29`, which gives the return address, `ip`, and the caller's `x29`, and stops at a null
+  or misaligned record, at one that does not lie above the last, or at the stack's base;
+- `dladdr(ip - 1)` gives the start of the function containing the call, from the symbol table, which has static
+  functions (`ip - 1`, because a call to a `noreturn` helper may be a function's last instruction);
 - the frame is attributed to the table entry whose address is **exactly** that start, and skipped if there is none.
 
-Linux's unwind tables (`.eh_frame`) describe each function on its own. macOS's compact unwind tables do not: they
-describe a run of adjacent functions whose prologues are alike as one entry, so the unwinder's start can be an
-earlier function's (a function placed just after `main` was reported as `main`). On macOS, the runtime takes the
-start from the symbol table instead (`dladdr`, which has static functions), when it lies between the unwinder's start
-and `ip` (`quest_function_start`). A stripped binary has no local symbols, and its frames may be attributed to the
-nearest exported function before them; the driver does not strip binaries.
+The walk needs no unwind information, so it steps through code that has none, as the JIT's will not
+([jit.md](jit.md) §3.9). A stripped binary has no local symbols, and its frames may be attributed to the nearest
+exported function before them; the driver does not strip binaries.
 
-Both searches are slow, and `dladdr` scans the whole symbol table, the debug map's entries for the line tables too
+Elsewhere (Linux with glibc, macOS on x86-64) the runtime walks the stack with the platform unwinder (`<unwind.h>`),
+since clang and gcc emit unwind tables at `-O2` by default: `_Unwind_Backtrace` visits each frame, `_Unwind_GetIP`
+gives its `ip`, and `_Unwind_FindEnclosingFunction(ip - 1)` gives the start of the function, from the unwind tables.
+Linux's tables (`.eh_frame`) describe each function on its own. (macOS's compact unwind tables describe a run of
+adjacent functions whose prologues are alike as one entry, so their start can be an earlier function's, which is why
+the walk on macOS uses the symbol table.)
+
+Both searches for a start are slow, and `dladdr` scans the whole symbol table, the debug map's entries for the line tables too
 ([arm64.md](arm64.md) §3.16), so a program that raises often from the same calls spent most of its time in them
 (zebra under arm64 ran at 2.07 times C's time instead of 1.45). The runtime caches each return address's start, in a
 direct-mapped table of 1024 entries per thread; code is never unloaded, so an entry stays right.
@@ -331,7 +338,8 @@ simple function, well within the 8 MB of the main thread's.
 main thread's stack, and a handler for the fault, on a signal stack of its own (`quest_install_stack_guard` in
 `runtime/quest_runtime.c`, on macOS and on Linux with glibc), prints `Exception: stack.overflow` and the frames
 running, with no site, and exits with status 1, as for any uncaught exception (§2.2); output written before is
-flushed. A handler cannot catch it. Other faults keep their default action. The C compiler may turn some runaway recursion
+flushed. On macOS on arm64 the frames are walked from the faulting context: its `pc`'s function, then its `x29`'s
+chain (§5.3). A handler cannot catch it. Other faults keep their default action. The C compiler may turn some runaway recursion
 into a loop, such as `1 + f(n + 1)`, which then runs forever rather than overflowing. Since the self-hosted interpreter is
 compiled code, the handler also reports the rare overflow of its own stack that comes before its limit.
 
