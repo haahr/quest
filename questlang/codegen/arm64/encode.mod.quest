@@ -122,22 +122,20 @@ export
             (* add and sub with sp are the extended register form, UXTX *)
             let withSp = {rs[0] is target.sp} orif {rs[1] is target.sp}
             case a
-                (* 0x8B206000, 0x8B000000 *)
-                when arithAdd then three(if withSp then 2334154752 else 2332033024 end)
-                (* 0xCB206000, 0xCB000000 *)
-                when arithSub then three(if withSp then 3407896576 else 3405774848 end)
-                when arithMul then three(2600500224) (* madd, 0x9B007C00 *)
-                when arithSdiv then three(2596277248) (* 0x9AC00C00 *)
-                when arithAnd then three(2315255808) (* 0x8A000000 *)
-                when arithOrr then three(2852126720) (* 0xAA000000 *)
-                when arithEor then three(3388997632) (* 0xCA000000 *)
-                when arithLsl then three(2596282368) (* lslv, 0x9AC02000 *)
-                when arithLsr then three(2596283392) (* lsrv, 0x9AC02400 *)
-                when arithAsr then three(2596284416) (* asrv, 0x9AC02800 *)
-                when arithFadd then three(509618176) (* 0x1E602800 *)
-                when arithFsub then three(509622272) (* 0x1E603800 *)
-                when arithFmul then three(509609984) (* 0x1E600800 *)
-                when arithFdiv then three(509614080) (* 0x1E601800 *)
+                when arithAdd then three(if withSp then 0x8B206000 else 0x8B000000 end)
+                when arithSub then three(if withSp then 0xCB206000 else 0xCB000000 end)
+                when arithMul then three(0x9B007C00) (* madd *)
+                when arithSdiv then three(0x9AC00C00)
+                when arithAnd then three(0x8A000000)
+                when arithOrr then three(0xAA000000)
+                when arithEor then three(0xCA000000)
+                when arithLsl then three(0x9AC02000) (* lslv *)
+                when arithLsr then three(0x9AC02400) (* lsrv *)
+                when arithAsr then three(0x9AC02800) (* asrv *)
+                when arithFadd then three(0x1E602800)
+                when arithFsub then three(0x1E603800)
+                when arithFmul then three(0x1E600800)
+                when arithFdiv then three(0x1E601800)
             end
         end
 
@@ -148,25 +146,21 @@ export
     let access(scaled: Int unscaled: Int width: Int): Access =
         tuple let scaled = scaled let unscaled = unscaled let width = width end
 
-    (* ldr d (0xFD400000, ldur 0xFC400000), ldr x (0xF9400000, 0xF8400000),
-     * ldrsw (0xB9800000, 0xB8800000), ldrsb (0x39800000, 0x38800000), ldrb
-     * (0x39400000, 0x38400000) *)
+    (* ldr and ldur of d and of x, ldrsw, ldrsb, and ldrb *)
     let loadAccess(l: minst.Load real: Bool): Access =
         case l
-            when load64 then if real then access(4248829952 4232052736 8) else access(4181721088 4164943872 8) end
-            when loadS32 then access(3112173568 3095396352 4)
-            when loadS8 then access(964689920 947912704 1)
-            when loadU8 then access(960495616 943718400 1)
+            when load64 then if real then access(0xFD400000 0xFC400000 8) else access(0xF9400000 0xF8400000 8) end
+            when loadS32 then access(0xB9800000 0xB8800000 4)
+            when loadS8 then access(0x39800000 0x38800000 1)
+            when loadU8 then access(0x39400000 0x38400000 1)
         end
 
-    (* str d (0xFD000000, stur 0xFC000000), str x (0xF9000000, 0xF8000000),
-     * str s (0xBD000000, 0xBC000000), str w (0xB9000000, 0xB8000000), strb
-     * (0x39000000, 0x38000000) *)
+    (* str and stur of d, x, s, and w, and strb *)
     let storeAccess(s: minst.Store real: Bool): Access =
         case s
-            when store64 then if real then access(4244635648 4227858432 8) else access(4177526784 4160749568 8) end
-            when store32 then if real then access(3170893824 3154116608 4) else access(3103784960 3087007744 4) end
-            when store8 then access(956301312 939524096 1)
+            when store64 then if real then access(0xFD000000 0xFC000000 8) else access(0xF9000000 0xF8000000 8) end
+            when store32 then if real then access(0xBD000000 0xBC000000 4) else access(0xB9000000 0xB8000000 4) end
+            when store8 then access(0x39000000 0x38000000 1)
         end
 
     let pageOffKind(r: minst.Reloc): RelocKind =
@@ -231,15 +225,15 @@ export
             let pair(load: Bool m: minst.Mode): Int =
                 begin
                     let real = target.isReal(rs[0])
-                    let opc = if real then 1811939328 (* 0x6C000000 *) else 2818572288 (* 0xA8000000 *) end
-                    let l = if load then 4194304 (* 0x400000 *) else 0 end
+                    let opc = if real then 0x6C000000 else 0xA8000000 end
+                    let l = if load then 0x400000 else 0 end
                     let regs = rt2(rs[1]) + rn(rs[2]) + rd(rs[0])
                     let imm(n: Int): Int = shl(field(n / 8 7) 15)
                     case m
-                        when modeOffset with x then opc + 16777216 (* 0x1000000 *) + l + imm(x.imm) + regs
-                        when modeBase then opc + 16777216 + l + regs
-                        when modePre with x then opc + 25165824 (* 0x1800000 *) + l + imm(x.imm) + regs
-                        when modePost with x then opc + 8388608 (* 0x800000 *) + l + imm(x.imm) + regs
+                        when modeOffset with x then opc + 0x1000000 + l + imm(x.imm) + regs
+                        when modeBase then opc + 0x1000000 + l + regs
+                        when modePre with x then opc + 0x1800000 + l + imm(x.imm) + regs
+                        when modePost with x then opc + 0x800000 + l + imm(x.imm) + regs
                         when modePageOff then raise unencodable with "ldp or stp of a page offset" end
                     end
                 end
@@ -249,42 +243,40 @@ export
                     let inverse = soleHalfword({0 - x.imm} - 1)
                     if h >= 0 then
                         (* movz *)
-                        3531603968 (* 0xD2800000 *) + shl(h 21)
+                        0xD2800000 + shl(h 21)
                             + shl(words.toInt(words.extract(words.fromInt(x.imm) 16 * h 16)) 5) + rd(rs[0])
                     elsif inverse >= 0 then
                         (* movn *)
                         let complement = words.fromInt({0 - x.imm} - 1)
-                        2457862144 (* 0x92800000 *) + shl(inverse 21)
+                        0x92800000 + shl(inverse 21)
                             + shl(words.toInt(words.extract(complement 16 * inverse 16)) 5) + rd(rs[0])
                     elsif minst.isLogical(x.imm) then
                         (* orr from xzr *)
-                        2986345440 (* 0xB20003E0 *) + bitmask(x.imm) + rd(rs[0])
+                        0xB20003E0 + bitmask(x.imm) + rd(rs[0])
                     else
                         raise unencodable with "mov of " <> conv.int(x.imm) end
                     end
-                when opMovz with x then 3531603968 + shl(x.shift / 16 21) + shl(x.imm 5) + rd(rs[0])
-                when opMovk with x then 4068474880 (* 0xF2800000 *) + shl(x.shift / 16 21) + shl(x.imm 5) + rd(rs[0])
+                when opMovz with x then 0xD2800000 + shl(x.shift / 16 21) + shl(x.imm 5) + rd(rs[0])
+                when opMovk with x then 0xF2800000 + shl(x.shift / 16 21) + shl(x.imm 5) + rd(rs[0])
                 when opMov then
                     let d = rs[0]
                     let s = rs[1]
-                    (* fmov d, d: 0x1E604000 *)
-                    if target.isReal(d) andif target.isReal(s) then 509624320 + rn(s) + rd(d)
-                    elsif target.isReal(d) then 2657550336 (* fmov d, x: 0x9E670000 *) + rn(s) + rd(d)
-                    elsif target.isReal(s) then 2657484800 (* fmov x, d: 0x9E660000 *) + rn(s) + rd(d)
-                    (* add #0: 0x91000000 *)
-                    elsif {d is target.sp} orif {s is target.sp} then 2432696320 + rn(s) + rd(d)
-                    else 2852127712 (* orr from xzr: 0xAA0003E0 *) + rm(s) + rd(d)
+                    if target.isReal(d) andif target.isReal(s) then 0x1E604000 (* fmov d, d *) + rn(s) + rd(d)
+                    elsif target.isReal(d) then 0x9E670000 (* fmov d, x *) + rn(s) + rd(d)
+                    elsif target.isReal(s) then 0x9E660000 (* fmov x, d *) + rn(s) + rd(d)
+                    elsif {d is target.sp} orif {s is target.sp} then 0x91000000 (* add #0 *) + rn(s) + rd(d)
+                    else 0xAA0003E0 (* orr from xzr *) + rm(s) + rd(d)
                     end
                 when opArith with x then arithWord(x.arith rs)
                 when opAddImm with x then
-                    2432696320 (* 0x91000000 *) + {if x.shift is 12 then shl(1 22) else 0 end} + shl(x.imm 10)
+                    0x91000000 + {if x.shift is 12 then shl(1 22) else 0 end} + shl(x.imm 10)
                         + rn(rs[1]) + rd(rs[0])
-                when opSubImm with x then 3506438144 (* 0xD1000000 *) + shl(x.imm 10) + rn(rs[1]) + rd(rs[0])
+                when opSubImm with x then 0xD1000000 + shl(x.imm 10) + rn(rs[1]) + rd(rs[0])
                 when opLogicImm with x then
                     let base: Int = case x.arith
-                        when arithAnd then 2449473536 (* 0x92000000 *)
-                        when arithOrr then 2986344448 (* 0xB2000000 *)
-                        when arithEor then 3523215360 (* 0xD2000000 *)
+                        when arithAnd then 0x92000000
+                        when arithOrr then 0xB2000000
+                        when arithEor then 0xD2000000
                         else raise unencodable with "a logical immediate's operation" end
                     end
                     base + bitmask(x.imm) + rn(rs[1]) + rd(rs[0])
@@ -293,66 +285,66 @@ export
                     case x.arith
                         (* ubfm d, s, #(64 - s) % 64, #63 - s *)
                         when arithLsl then
-                            3544186880 (* 0xD3400000 *) + shl(field(0 - s 6) 16) + shl(63 - s 10) + rn(rs[1])
+                            0xD3400000 + shl(field(0 - s 6) 16) + shl(63 - s 10) + rn(rs[1])
                                 + rd(rs[0])
                         (* ubfm d, s, #s, #63 *)
-                        when arithLsr then 3544186880 + shl(s 16) + shl(63 10) + rn(rs[1]) + rd(rs[0])
+                        when arithLsr then 0xD3400000 + shl(s 16) + shl(63 10) + rn(rs[1]) + rd(rs[0])
                         (* sbfm d, s, #s, #63 *)
-                        when arithAsr then 2470445056 (* 0x93400000 *) + shl(s 16) + shl(63 10) + rn(rs[1]) + rd(rs[0])
+                        when arithAsr then 0x93400000 + shl(s 16) + shl(63 10) + rn(rs[1]) + rd(rs[0])
                         else raise unencodable with "a shift's operation" end
                     end
-                when opMsub then 2600501248 (* 0x9B008000 *) + rm(rs[2]) + ra(rs[3]) + rn(rs[1]) + rd(rs[0])
-                when opSxtb then 2470452224 (* sbfm #0, #7: 0x93401C00 *) + rn(rs[1]) + rd(rs[0])
-                when opSxtw then 2470476800 (* sbfm #0, #31: 0x93407C00 *) + rn(rs[1]) + rd(rs[0])
+                when opMsub then 0x9B008000 + rm(rs[2]) + ra(rs[3]) + rn(rs[1]) + rd(rs[0])
+                when opSxtb then 0x93401C00 (* sbfm #0, #7 *) + rn(rs[1]) + rd(rs[0])
+                when opSxtw then 0x93407C00 (* sbfm #0, #31 *) + rn(rs[1]) + rd(rs[0])
                 when opCmp then
-                    if rs[0] is target.sp then 3944767519 (* subs, extended: 0xEB20601F *) + rm(rs[1]) + rn(rs[0])
-                    else 3942645791 (* subs: 0xEB00001F *) + rm(rs[1]) + rn(rs[0]) end
-                when opFcmp then 509616128 (* 0x1E602000 *) + rm(rs[1]) + rn(rs[0])
+                    if rs[0] is target.sp then 0xEB20601F (* subs, extended *) + rm(rs[1]) + rn(rs[0])
+                    else 0xEB00001F (* subs *) + rm(rs[1]) + rn(rs[0]) end
+                when opFcmp then 0x1E602000 + rm(rs[1]) + rn(rs[0])
                 when opCmpImm with x then
                     (* subs xzr (cmp), or adds xzr (cmn) of a negative one;
                      * shifted by 12 when its low 12 bits are 0 *)
-                    let base = if x.imm < 0 then 2969567263 (* 0xB100001F *) else 4043309087 (* 0xF100001F *) end
+                    let base = if x.imm < 0 then 0xB100001F else 0xF100001F end
                     let n = if x.imm < 0 then 0 - x.imm else x.imm end
                     let imm = if {n >= 4096} andif {{n % 4096} is 0} then shl(1 22) + shl(n / 4096 10)
                         else shl(n 10) end
                     base + imm + rn(rs[0])
                 when opCcmp with x then
-                    4198498304 (* 0xFA400000 *) + rm(rs[1]) + shl(cond(x.cond) 12) + rn(rs[0]) + x.nzcv
+                    0xFA400000 + rm(rs[1]) + shl(cond(x.cond) 12) + rn(rs[0]) + x.nzcv
                 when opCcmpImm with x then
-                    4198500352 (* 0xFA400800 *) + shl(x.imm 16) + shl(cond(x.cond) 12) + rn(rs[0]) + x.nzcv
+                    0xFA400800 + shl(x.imm 16) + shl(cond(x.cond) 12) + rn(rs[0]) + x.nzcv
                 when opCset with x then
                     (* csinc d, xzr, xzr, the inverse condition *)
-                    2594113504 (* 0x9A9F07E0 *) + shl(cond(minst.inverse(x.cond)) 12) + rd(rs[0])
+                    0x9A9F07E0 + shl(cond(minst.inverse(x.cond)) 12) + rd(rs[0])
                 when opLoad with x then access(loadAccess(x.load target.isReal(rs[0])) rs[0] rs[1] x.mode)
                 when opStore with x then access(storeAccess(x.store target.isReal(rs[0])) rs[0] rs[1] x.mode)
                 when opLdp with x then pair(true x.mode)
                 when opStp with x then pair(false x.mode)
                 when opAdrp with x then
                     reloc(pageKind(x.reloc) x.symbol)
-                    2415919104 (* 0x90000000 *) + rd(rs[0])
+                    0x90000000 + rd(rs[0])
                 when opAddPageOff with x then
                     reloc(option relocPageOff12 of RelocKind end x.symbol)
-                    2432696320 (* 0x91000000 *) + rn(rs[1]) + rd(rs[0])
+                    0x91000000 + rn(rs[1]) + rd(rs[0])
                 when opAdr with x then
                     let d = labelOffset(x.label) - at
-                    268435456 (* 0x10000000 *) + shl(field(d 2) 29) + shl(field(d / 4 19) 5) + rd(rs[0])
-                when opB with x then 335544320 (* 0x14000000 *) + distance(x.label 26)
-                when opBSymbol with x then toSymbol(335544320 x.symbol)
-                when opBl with x then toSymbol(2483027968 (* 0x94000000 *) x.symbol)
-                when opBlr then 3594452992 (* 0xD63F0000 *) + rn(rs[0])
-                when opBr then 3592355840 (* 0xD61F0000 *) + rn(rs[0])
-                when opRet then 3596551104 (* 0xD65F03C0 *)
-                when opCbz with x then 3019898880 (* 0xB4000000 *) + shl(distance(x.label 19) 5) + rd(rs[0])
-                when opCbnz with x then 3036676096 (* 0xB5000000 *) + shl(distance(x.label 19) 5) + rd(rs[0])
+                    0x10000000 + shl(field(d 2) 29) + shl(field(d / 4 19) 5) + rd(rs[0])
+                when opB with x then 0x14000000 + distance(x.label 26)
+                when opBSymbol with x then toSymbol(0x14000000 x.symbol)
+                when opBl with x then toSymbol(0x94000000 x.symbol)
+                when opBlr then 0xD63F0000 + rn(rs[0])
+                when opBr then 0xD61F0000 + rn(rs[0])
+                when opRet then 0xD65F03C0
+                when opCbz with x then 0xB4000000 + shl(distance(x.label 19) 5) + rd(rs[0])
+                when opCbnz with x then 0xB5000000 + shl(distance(x.label 19) 5) + rd(rs[0])
                 when opTbz with x then
-                    905969664 (* 0x36000000 *) + shl(x.bit / 32 31) + shl(x.bit % 32 19) + shl(distance(x.label 14) 5)
+                    0x36000000 + shl(x.bit / 32 31) + shl(x.bit % 32 19) + shl(distance(x.label 14) 5)
                         + rd(rs[0])
                 when opTbnz with x then
-                    922746880 (* 0x37000000 *) + shl(x.bit / 32 31) + shl(x.bit % 32 19) + shl(distance(x.label 14) 5)
+                    0x37000000 + shl(x.bit / 32 31) + shl(x.bit % 32 19) + shl(distance(x.label 14) 5)
                         + rd(rs[0])
-                when opBCond with x then 1409286144 (* 0x54000000 *) + shl(distance(x.label 19) 5) + cond(x.cond)
-                when opBrk with x then 3558866944 (* 0xD4200000 *) + shl(x.imm 5)
-                when opNop then 3573751839 (* 0xD503201F *)
+                when opBCond with x then 0x54000000 + shl(distance(x.label 19) 5) + cond(x.cond)
+                when opBrk with x then 0xD4200000 + shl(x.imm 5)
+                when opNop then 0xD503201F
                 when opMovConst, opSymbolAddress, opTlvAddress, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                     raise unencodable with "a pseudo-instruction, label, or directive" end
             end

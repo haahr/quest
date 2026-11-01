@@ -104,7 +104,9 @@ export
     let page(target: Int pc: Int): Int =
         begin
             let delta = {target / 4096} - {pc / 4096}
-            if {delta >= 1048576} orif {delta < ~1048576} then raise loadError with "a page beyond adrp's reach" end end
+            if {delta >= 0x100000} orif {delta < ~0x100000} then
+                raise loadError with "a page beyond adrp's reach" end
+            end
             shl(field(delta 2) 29) + shl(field(delta / 4 19) 5)
         end
 
@@ -132,9 +134,9 @@ export
                 let offset = allocateCode(l 12)
                 let at = codeBase(l) + offset
                 code.write32(l.code offset array of
-                    2415919120 (* adrp x16: 0x90000010 *) + page(s at)
-                    4181721616 (* ldr x16, [x16]: 0xF9400210 *) + pageOffset(4181721616 s)
-                    3592356352 (* br x16: 0xD61F0200 *)
+                    0x90000010 (* adrp x16 *) + page(s at)
+                    0xF9400210 (* ldr x16, [x16] *) + pageOffset(0xF9400210 s)
+                    0xD61F0200 (* br x16 *)
                 end)
                 hashMap.insert(:String :Int l.stubs name at)
                 at
