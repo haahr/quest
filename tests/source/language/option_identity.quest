@@ -1,0 +1,82 @@
+(* Options as values (docs/option-values.md section 2): is compares options of a
+ * case without components by their case, and those of a single-word option
+ * type (one case with one component that is not var, the others without) by
+ * their component, at the type is is applied at; other options are the same
+ * only if they are one object. hash.identityHash agrees, so that an identity
+ * map's keys do. *)
+
+import writer: Writer;
+import conv: Conv;
+import maybe = util/maybe: util/Maybe;
+import hashMap = collections/hashMap: collections/HashMap;
+import hash = util/hash: util/Hash;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+let yes(b: Bool): String = if b then "true" else "false" end;
+
+(* 1. Cases without components, made apart *)
+Let Color = Option red green blue end;
+let red1 = option red of Color end;
+let red2 = option red of Color end;
+print("red is red: " <> yes(red1 is red2));
+print("red isnot red: " <> yes(red1 isnot red2));
+print("red is blue: " <> yes(red1 is option blue of Color end));
+print("ordinal(0) is red: " <> yes({option ordinal(0) of Color end} is red1));
+
+(* 2. Through an upcast that numbers the cases otherwise: thu is the second of
+ * WeekDay's cases by name and the fourth of Day's *)
+Let Day = Option mon tue wed thu fri sat sun end;
+Let WeekDay = Option mon tue wed thu fri end;
+let wThu: WeekDay = option thu of WeekDay end;
+let dThu: Day = wThu;
+print("thu as a Day is thu: " <> yes(dThu is option thu of Day end));
+print("thu as a Day is fri: " <> yes(dThu is option fri of Day end));
+
+(* 3. Through a polymorphic function, at its type argument *)
+let same(A::TYPE)(a: A b: A): Bool = a is b;
+print("same(red red): " <> yes(same(:Color)(red1 red2)));
+print("same(red green): " <> yes(same(:Color)(red1 option green of Color end)));
+
+(* 4. Another case with components keeps the same-object rule; the cases
+ * without components of its type still compare by case *)
+Let Shape = Option dot circle with r: Int end square with s: Int end end;
+let c1 = option circle of Shape with 1 end;
+let c2 = option circle of Shape with 1 end;
+print("circle is circle, apart: " <> yes(c1 is c2));
+print("circle is itself: " <> yes(c1 is c1));
+print("dot is dot: " <> yes({option dot of Shape end} is option dot of Shape end));
+
+(* 5. Single-word types compare by their component *)
+let s = "word";
+let t = "wo" <> "rd";
+print("some(s) is some(s): " <> yes(maybe.some(:String)(s) is maybe.some(:String)(s)));
+print("some(s) is some(t), t made apart: " <> yes(maybe.some(:String)(s) is maybe.some(:String)(t)));
+print("some(3) is some(3): " <> yes(maybe.some(:Int)(3) is maybe.some(:Int)(3)));
+print("some(3) is some(4): " <> yes(maybe.some(:Int)(3) is maybe.some(:Int)(4)));
+print("none is none: " <> yes(maybe.none(:String) is maybe.none(:String)));
+print("same(some(s) some(s)): " <> yes(same(:maybe.T(String))(maybe.some(:String)(s) maybe.some(:String)(s))));
+
+(* 6. At a supertype that is not single-word, the same-object rule again *)
+Let Opt = Option none some with val: String end end;
+Let Wider = Option none other with x: Int end some with val: String end end;
+let o1: Wider = option some of Opt with s end;
+let o2: Wider = option some of Opt with s end;
+print("some(s) is some(s) as a Wider: " <> yes(o1 is o2));
+let o3: Opt = option some of Opt with s end;
+let o4: Opt = option some of Opt with s end;
+print("some(s) is some(s) as an Opt: " <> yes(o3 is o4));
+
+(* 7. A var component is a location: the same-object rule *)
+Let Cell = Option empty full with var n: Int end end;
+let f1 = option full of Cell with let var n = 1 end;
+let f2 = option full of Cell with let var n = 1 end;
+print("full is full, var: " <> yes(f1 is f2));
+
+(* 8. Identity maps and identity hashes agree *)
+let m = hashMap.newIdentityMap(:Color :Int);
+hashMap.insert(:Color :Int m red1 1);
+print("red found: " <> yes(maybe.isSome(:Int hashMap.get(:Color :Int m red2))));
+print("blue found: " <> yes(maybe.isSome(:Int hashMap.get(:Color :Int m option blue of Color end))));
+print("red hashes alike: " <> yes(hash.identityHash(:Color red1) is hash.identityHash(:Color red2)));
+let ms = hashMap.newIdentityMap(:maybe.T(String) :Int);
+hashMap.insert(:maybe.T(String) :Int ms maybe.some(:String)(s) 2);
+print("some(s) found: " <> yes(maybe.isSome(:Int hashMap.get(:maybe.T(String) :Int ms maybe.some(:String)(s)))));

@@ -638,7 +638,14 @@ export
                 when exprInfix with x then
                     let left = evalExpr(x.left f)
                     let right = evalExpr(x.right f)
-                    infix(x.op left right offset)
+                    if stringOp.equal(x.op "is") orif stringOp.equal(x.op "isnot") then
+                        (* At the left operand's type (docs/option-values.md
+                         * section 2) *)
+                        model.boolValue(primitives.sameAt(resolveType(f x.left.type) left right)
+                            is stringOp.equal(x.op "is"))
+                    else
+                        infix(x.op left right offset)
+                    end
 
                 (* Control *)
                 when exprIf with x then

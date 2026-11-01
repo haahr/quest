@@ -46,6 +46,8 @@ export
 
     let abstractTypeGlobalName(symbolId: Int): maybe.T(String) = hashMap.get(:Int :String globalNames symbolId)
 
+    let symbolOf(typeVar: model.Type): Int = case typeVar.form when typeVariable with v then v.symbolId else 0 end
+
     let recordType(globalName: String typeVar: model.Type linked: Bool): ModuleAbstractType =
         begin
             let found = hashMap.get(:String :ModuleAbstractType byName globalName)
@@ -54,15 +56,25 @@ export
                     {maybe.unwrap(:ModuleAbstractType found).linked is linked} then
                 maybe.unwrap(:ModuleAbstractType found)
             else
+                (* Elaborating the module's interface again (for another
+                 * importer) keeps the representation its source gave the same
+                 * symbol *)
+                let kept = if maybe.isSome(:ModuleAbstractType found)
+                    andif {maybe.unwrap(:ModuleAbstractType found).linked is linked}
+                    andif {symbolOf(maybe.unwrap(:ModuleAbstractType found).typeVar) is symbolOf(typeVar)} then
+                    maybe.unwrap(:ModuleAbstractType found).rep
+                else
+                    maybe.none(:model.Type)
+                end
                 let e: ModuleAbstractType = tuple
                     let globalName = globalName let typeVar = typeVar let linked = linked
-                    let var rep = maybe.none(:model.Type)
+                    let var rep = kept
                     let instances = vector.new(:Instance)
                 end
                 hashMap.insert(:String :ModuleAbstractType byName globalName e)
                 e
             end
-            let symbolId = case typeVar.form when typeVariable with v then v.symbolId else 0 end
+            let symbolId = symbolOf(typeVar)
             hashMap.insert(:Int :ModuleAbstractType bySymbol symbolId entry)
             entry
         end

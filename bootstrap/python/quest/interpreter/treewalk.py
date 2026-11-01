@@ -633,11 +633,8 @@ def eval_expr(expr: TypedExpr, env: RuntimeEnvironment) -> QValue:
                 )
 
             # Equality & Identity
-            if op == "is":
-                res = qvalue_is(left_val, right_val)
-                return TRUE_VALUE if res else FALSE_VALUE
-            if op == "isnot":
-                res = not qvalue_is(left_val, right_val)
+            if op in ("is", "isnot"):
+                res = qvalue_is(left_val, right_val, env.resolve_type(left.type_val)) == (op == "is")
                 return TRUE_VALUE if res else FALSE_VALUE
 
             raise QuestRuntimeError(f"Unsupported infix operator '{op}'", offset=offset)

@@ -150,7 +150,7 @@ export
 
     (* The identity hash of what `is` compares: a scalar's value, or the object
      * a value holds *)
-    let identityHash(v: Value): word.T =
+    let rec identityHash(v: Value): word.T =
         case v
             when vInt with x then hash.identityHash(:Int x.n)
             when vWord with x then hash.identityHash(:word.T x.w)
@@ -163,7 +163,23 @@ export
             when vTuple with x then hash.identityHash(:model.TupleValue x.t)
             when vArray with x then hash.identityHash(:Array(Value) x.a)
             when vVariant with x then hash.identityHash(:model.Tagged x.v)
-            when vOption with x then hash.identityHash(:model.Tagged x.v)
+            when vOption with x then
+                (* As is compares them at any type (docs/option-values.md
+                 * section 2): a case without components by its name, and one
+                 * of a single-word type by its component too *)
+                if maybe.isNone(:Value x.v.payload) then
+                    hash.string(x.v.tag)
+                else
+                    case maybe.unwrap(:Value x.v.payload)
+                        when vTuple with t then
+                            if extent t.t.elements is 0 then hash.string(x.v.tag)
+                            elsif extent t.t.elements is 1 then
+                                hash.combine(hash.string(x.v.tag) identityHash(t.t.elements[0]))
+                            else hash.identityHash(:model.Tagged x.v)
+                            end
+                        else hash.identityHash(:model.Tagged x.v)
+                    end
+                end
             when vClosure with x then hash.identityHash(:model.Closure x.c)
             when vBuiltin with x then hash.identityHash(:model.Builtin x.b)
             when vRef with x then hash.identityHash(:model.Ref x.r)

@@ -4,6 +4,8 @@
 module primitives : Primitives
 import
     questlang/values/model : questlang/values/Model
+    tm = questlang/types/model : questlang/types/Model
+    questlang/types/canonical : questlang/types/Canonical
     util/maybe : util/Maybe
     stringOp = string : StringOp
     intOp = int : IntOp
@@ -65,5 +67,45 @@ export
         elsif stringOp.equal(op ">>") then a >> b
         elsif stringOp.equal(op ">>=") then a >>= b
         else model.internalError(:Bool "Unknown real relational operator '" <> op <> "'" offset)
+        end
+
+    let rec sameAt(t: tm.Type v1: model.Value v2: model.Value): Bool =
+        model.same(v1 v2) orif case v1
+            when vOption with x then
+                case v2
+                    when vOption with y then
+                        if stringOp.equal(x.v.tag y.v.tag) then
+                            let rule = canonical.optionIdentity(t)
+                            if maybe.isNone(:canonical.OptionIdentity rule) then
+                                false
+                            else
+                                let r = maybe.unwrap(:canonical.OptionIdentity rule)
+                                let var empty = false
+                                for i = 0 upto {extent r.empty - 1} do
+                                    if stringOp.equal(r.empty[i] x.v.tag) then empty := true end
+                                end
+                                if empty then
+                                    true
+                                elsif maybe.isSome(:String r.single) andif stringOp.equal(maybe.unwrap(:String r.single) x.v.tag)
+                                    andif maybe.isSome(:model.Value x.v.payload) andif maybe.isSome(:model.Value y.v.payload) then
+                                    case maybe.unwrap(:model.Value x.v.payload)
+                                        when vTuple with a then
+                                            case maybe.unwrap(:model.Value y.v.payload)
+                                                when vTuple with b then
+                                                    sameAt(maybe.unwrap(:tm.Type r.component) a.t.elements[0] b.t.elements[0])
+                                                else false
+                                            end
+                                        else false
+                                    end
+                                else
+                                    false
+                                end
+                            end
+                        else
+                            false
+                        end
+                    else false
+                end
+            else false
         end
 end

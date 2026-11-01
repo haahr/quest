@@ -58,6 +58,7 @@ from quest.values.model import (
     QExceptionVal,
     QInt,
     QOk,
+    QOption,
     QProcess,
     QRaised,
     QReader,
@@ -869,9 +870,25 @@ def _quest_identity_hash(v: QValue) -> QWord:
             raw = struct.unpack(">Q", struct.pack(">d", val + 0.0))[0]
         case QOk():
             raw = 0
+        case QOption(tag=tag, payload=payload) if payload is None or (
+                isinstance(payload, QTuple) and len(payload.elements) <= 1):
+            # As is compares them at any type (docs/option-values.md §2): a
+            # case without components by its name, and one of a single-word
+            # type by its component too
+            raw = _string_hash(tag)
+            if payload is not None and payload.elements:
+                raw ^= _quest_identity_hash(payload.elements[0]).value
         case _:
             raw = id(v) & 0xFFFF_FFFF_FFFF_FFFF
     return QWord(_splitmix64(raw))
+
+
+def _string_hash(s: str) -> int:
+    """A deterministic hash of a string (Python's is salted per run)."""
+    h = 0xCBF29CE484222325
+    for c in s:
+        h = ((h ^ ord(c)) * 0x100000001B3) & 0xFFFF_FFFF_FFFF_FFFF
+    return h
 
 def _sb_append(b: QStringBuilder, text: str) -> QOk:
     b.append(text)

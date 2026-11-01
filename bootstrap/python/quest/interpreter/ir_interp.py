@@ -409,7 +409,8 @@ class Interpreter:
                 return self.atom(o, frame)
             case ir.Prim(op=op, args=args, offset=offset):
                 try:
-                    return self.prim(op, self.atoms(args, frame))
+                    at = frame.resolve(args[0].type) if args and isinstance(args[0], ir.Var) else None
+                    return self.prim(op, self.atoms(args, frame), at)
                 except QuestCompilerError as error:
                     raise self.located(error, offset)
             case ir.Call(callee=callee, type_args=type_args, args=args, module=module, member=member):
@@ -515,10 +516,12 @@ class Interpreter:
                 return _deref(self.atom(a, frame))
         raise IRInterpreterError(f"not an operation: {type(o).__name__}")
 
-    def prim(self, op: str, args: list[QValue]) -> QValue:
+    def prim(self, op: str, args: list[QValue], at: Optional[QType] = None) -> QValue:
+        """A primitive's value; at is its first operand's type, the type `is`
+        compares at."""
         if op in ("is", "isnot"):
             a, b = (x.raised.exc_val if isinstance(x, _Raised) else x for x in args)
-            return TRUE_VALUE if qvalue_is(a, b) == (op == "is") else FALSE_VALUE
+            return TRUE_VALUE if qvalue_is(a, b, at) == (op == "is") else FALSE_VALUE
         if op == "not":
             return FALSE_VALUE if args[0].value else TRUE_VALUE
         if op == "extent":

@@ -6,6 +6,7 @@ import
     questlang/types/model : questlang/types/Model
     questlang/types/subtyping : questlang/types/Subtyping
     questlang/types/dump : questlang/types/Dump
+    questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
@@ -235,6 +236,70 @@ export
                     for i = 0 upto {extent x.options - 1} do names[i] := x.options[i].name end
                     names
                 else array of :String end
+            end
+        end
+
+    Def OptionIdentity = Tuple empty: Array(String) single: maybe.T(String) component: maybe.T(Type) end
+
+    let optionIdentity(t: Type): maybe.T(OptionIdentity) =
+        begin
+            let var curr = normalizeType(t)
+            let var stuck = false
+            while not(stuck) andif not(curr.form?typeOption) do
+                let reps = model.newSubst()
+                for i = 0 upto {extent curr.fv - 1} do
+                    let e = abstractTypes.abstractTypeBySymbol(curr.fv[i])
+                    if maybe.isSome(:abstractTypes.ModuleAbstractType e)
+                        andif maybe.isSome(:Type maybe.unwrap(:abstractTypes.ModuleAbstractType e).rep) then
+                        hashMap.insert(:Int :Type reps curr.fv[i]
+                            maybe.unwrap(:Type maybe.unwrap(:abstractTypes.ModuleAbstractType e).rep))
+                    end
+                end
+                let var exposed = if hashMap.size(:Int :Type reps) > 0 then
+                    normalizeType(model.substitute(curr reps)) else curr end
+                if model.same(exposed curr) then exposed := normalizeType(resolveTypeBound(curr)) end
+                if model.same(exposed curr) then stuck := true else curr := exposed end
+            end
+            case curr.form
+                when typeOption with x then
+                    let empty = vector.new(:String)
+                    let var withComponents = 0
+                    let var single = maybe.none(:String)
+                    let var component = maybe.none(:Type)
+                    for i = 0 upto {extent x.options - 1} do
+                        let o = x.options[i]
+                        let fields = if maybe.isSome(:Type o.payload) then
+                            case normalizeType(maybe.unwrap(:Type o.payload)).form
+                                when typeTuple with y then y.fields
+                                else array of :model.TupleComponent end
+                            end
+                        else
+                            array of :model.TupleComponent end
+                        end
+                        if extent fields is 0 then
+                            vector.append(:String empty o.name)
+                        else
+                            withComponents := withComponents + 1
+                            if extent fields is 1 then
+                                case fields[0]
+                                    when tupleField with f then
+                                        if not(f.isVar) then
+                                            single := maybe.some(:String o.name)
+                                            component := maybe.some(:Type f.type)
+                                        end
+                                    else ok
+                                end
+                            end
+                        end
+                    end
+                    if withComponents isnot 1 then
+                        single := maybe.none(:String)
+                        component := maybe.none(:Type)
+                    end
+                    maybe.some(:OptionIdentity tuple
+                        let empty = vector.toArray(:String empty) let single = single let component = component
+                    end)
+                else maybe.none(:OptionIdentity)
             end
         end
 

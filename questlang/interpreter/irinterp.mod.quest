@@ -682,7 +682,14 @@ export
             when opAtom with x then atom(it x.atom f)
             when opPrim with x then
                 let values = atoms(it x.args f)
-                at(:Value it x.offset fun(): Value prim(it x.op values))
+                (* is compares at its first operand's type (docs/option-values.md
+                 * section 2) *)
+                if {x.op?primIs orif x.op?primIsnot} andif {extent x.args > 0} then
+                    model.boolValue(primitives.sameAt(resolve(f nodes.atomType(x.args[0])) values[0] values[1])
+                        is x.op?primIs)
+                else
+                    at(:Value it x.offset fun(): Value prim(it x.op values))
+                end
             when opCall with x then
                 checkDescriptors(it x.descriptors x.typeArgs f)
                 let var callee = calleeValue(it x.callee x.moduleRef x.member f)

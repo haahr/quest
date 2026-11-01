@@ -805,15 +805,28 @@ class QTypeValue(QValue):
 # 8. Predicates: Identity & Structural Equality
 # ============================================================================
 
-def qvalue_is(v1: QValue, v2: QValue) -> bool:
-    """Implements Quest's 'is' equality predicate (Cardelli Section 3.1).
+def qvalue_is(v1: QValue, v2: QValue, t: Optional[QType] = None) -> bool:
+    """Implements Quest's 'is' equality predicate (Cardelli Section 3.1), at
+    static type t (with its run-time type arguments substituted) if known.
 
     Value equality for primitives (Ok, Bool, Char, Int, Real);
     object identity (same memory location) for all other types (String, Array,
-    Record, Tuple, Variant, Option, Closure, Ref, Dynamic, Exception).
+    Record, Tuple, Variant, Option, Closure, Ref, Dynamic, Exception); except
+    that options of a case without components at t are the same if of the same
+    case, and those of a single-word option type's case with a component if
+    their components are (docs/option-values.md §2).
     """
     if type(v1) is not type(v2):
         return False
+
+    if isinstance(v1, QOption) and v1 is not v2 and t is not None and v1.tag == v2.tag:
+        from quest.types.canonical import option_identity
+        rule = option_identity(t)
+        if rule is not None:
+            if v1.tag in rule.empty:
+                return True
+            if v1.tag == rule.single and isinstance(v1.payload, QTuple) and isinstance(v2.payload, QTuple):
+                return qvalue_is(v1.payload.elements[0], v2.payload.elements[0], rule.component)
 
     match v1:
         case QOk():

@@ -1658,6 +1658,75 @@ QVal quest_option_element(const void *opt, const QTypeDescriptor *t, size_t i) {
     return quest_payload_element((const char *)opt + Q_OPTION_PAYLOAD_OFFSET, c->payload_type, i);
 }
 
+/* ============================================================================
+ * Options as values (docs/option-values.md section 2)
+ *
+ * is compares options of a case without components by their case, and those of
+ * a single-word option type's case with a component (an option type with one
+ * case with components, which has one, not var) by their component; an
+ * abstract type's values as its representation's.
+ * ========================================================================= */
+
+const QTypeDescriptor *quest_identity_type(const QTypeDescriptor *t) {
+    for (int depth = 0; t != NULL && depth < 64; ++depth) {
+        if (t->kind == QTYPE_KIND_STORED) {
+            t = ((const QStoredDescriptor *)t->extra)->type;
+        } else if (t->kind == QTYPE_KIND_OPAQUE) {
+            const QTypeDescriptor *rep = quest_abstract_type_rep(t);
+            if (rep == NULL) return t;
+            t = rep;
+        } else {
+            return t;
+        }
+    }
+    return t;
+}
+
+static size_t quest_case_component_count(const QVariantCaseDescriptor *c) {
+    return c->payload_type == NULL ? 0 : ((const QTupleTypeDescriptor *)c->payload_type->extra)->element_count;
+}
+
+/* The tag of option type t's single-word case, or -1 if t is not single-word */
+static int64_t quest_single_word_case(const QTypeDescriptor *t) {
+    const QVariantTypeDescriptor *v = (const QVariantTypeDescriptor *)t->extra;
+    int64_t found = -1;
+    for (size_t i = 0; i < v->case_count; ++i) {
+        size_t n = quest_case_component_count(&v->cases[i]);
+        if (n == 0) continue;
+        if (found >= 0 || n != 1) return -1;
+        if (((const QTupleTypeDescriptor *)v->cases[i].payload_type->extra)->elements[0].is_var) return -1;
+        found = (int64_t)i;
+    }
+    return found;
+}
+
+bool quest_option_is(const QTypeDescriptor *t, const void *a, const void *b) {
+    if (quest_unproxy(a) == quest_unproxy(b)) return true;
+    t = quest_identity_type(t);
+    if (t == NULL || t->kind != QTYPE_KIND_OPTION || a == NULL || b == NULL) return false;
+    int64_t tag = quest_option_tag(a);
+    if (tag != quest_option_tag(b)) return false;
+    const QVariantCaseDescriptor *c = &((const QVariantTypeDescriptor *)t->extra)->cases[tag];
+    if (quest_case_component_count(c) == 0) return true;
+    if (quest_single_word_case(t) != tag) return false;
+    const QTypeDescriptor *component = ((const QTupleTypeDescriptor *)c->payload_type->extra)->elements[0].type;
+    return quest_val_is(component, quest_option_element(a, t, 0), quest_option_element(b, t, 0));
+}
+
+/* An option's identity hash at its type t (quest_identity_type's), as
+ * quest_option_is compares options */
+static uint64_t quest_option_identity_hash(const QTypeDescriptor *t, const void *p) {
+    if (p == NULL) return quest_hash_mix64(0);
+    int64_t tag = quest_option_tag(p);
+    const QVariantCaseDescriptor *c = &((const QVariantTypeDescriptor *)t->extra)->cases[tag];
+    if (quest_case_component_count(c) == 0) return quest_hash_mix64(0x9E3779B97F4A7C15ULL ^ (uint64_t)tag);
+    if (quest_single_word_case(t) == tag) {
+        const QTypeDescriptor *component = ((const QTupleTypeDescriptor *)c->payload_type->extra)->elements[0].type;
+        return quest_hash_mix64((uint64_t)tag ^ quest_identity_hash(component, quest_option_element(p, t, 0)));
+    }
+    return quest_hash_mix64((uint64_t)(uintptr_t)quest_unproxy(p));
+}
+
 /* Reads and writes an auto value's component in its payload (see
  * QAutoComponentDescriptor) */
 static QVal quest_auto_component_read(const QAutoComponentDescriptor *c, const char *payload) {
@@ -4102,11 +4171,12 @@ uint64_t quest_hash_combine(uint64_t h1, uint64_t h2) {
 
 /* Hashes consistently with is (quest_val_is): ~0.0 hashes as 0.0. */
 uint64_t quest_identity_hash(const QTypeDescriptor *t, QVal x) {
-    if (t != NULL && t->kind == QTYPE_KIND_STORED) t = ((const QStoredDescriptor *)t->extra)->type;
+    t = quest_identity_type(t);
     if (t != NULL && t->kind == QTYPE_KIND_REAL && x.r == 0.0) {
         x.u = 0;
     }
-    if (t != NULL && (t->kind == QTYPE_KIND_TUPLE || t->kind == QTYPE_KIND_OPTION)) {
+    if (t != NULL && t->kind == QTYPE_KIND_OPTION) return quest_option_identity_hash(t, x.p);
+    if (t != NULL && t->kind == QTYPE_KIND_TUPLE) {
         /* A proxy hashes as the object it is a view of, as is compares them */
         x.p = quest_unproxy(x.p);
     }

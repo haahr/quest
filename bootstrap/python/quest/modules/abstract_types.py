@@ -74,7 +74,10 @@ def is_abstract_type_symbol(symbol_id: int) -> bool:
 def _record(global_name: str, type_var: QTypeVar, linked: bool) -> ModuleAbstractType:
     entry = _BY_NAME.get(global_name)
     if entry is None or entry.type_var is not type_var or entry.linked != linked:
-        entry = ModuleAbstractType(global_name, type_var, linked)
+        # Elaborating the module's interface again (for another importer)
+        # keeps the representation its source gave the same symbol
+        same = entry is not None and entry.linked == linked and entry.type_var.symbol_id == type_var.symbol_id
+        entry = ModuleAbstractType(global_name, type_var, linked, entry.rep if same else None)
         _BY_NAME[global_name] = entry
     _BY_SYMBOL[type_var.symbol_id] = entry
     return entry

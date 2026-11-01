@@ -187,6 +187,52 @@ def option_case_names(t: QType) -> tuple[str, ...]:
     return tuple(o.name for o in curr.options)
 
 
+@dataclass(frozen=True)
+class OptionIdentity:
+    """How `is` compares options of an option type (docs/option-values.md
+    §2): its cases without components compare by case; and if the type is
+    single-word, its one case with components (`single`) compares by its one
+    component, of type `component`."""
+    empty: frozenset[str]
+    single: Optional[str] = None
+    component: Optional[QType] = None
+
+
+def option_identity(t: QType) -> Optional[OptionIdentity]:
+    """t's option identity, or None if t is not an option type: for a module's
+    abstract type, its representation's, since is compares an abstract type's
+    values as their representation's; for a type parameter bounded by an option
+    type, its bound's."""
+    from quest.modules.abstract_types import abstract_type_by_symbol
+    curr = normalize_type(t)
+    while not isinstance(curr, QOptionType):
+        reps = {}
+        for symbol_id in curr._fv:
+            entry = abstract_type_by_symbol(symbol_id)
+            if entry is not None and entry.rep is not None:
+                reps[symbol_id] = entry.rep
+        exposed = normalize_type(curr.substitute(reps)) if reps else curr
+        if exposed is curr:
+            exposed = normalize_type(resolve_type_bound(curr))
+        if exposed is curr:
+            return None
+        curr = exposed
+    empty: set[str] = set()
+    with_components: list[tuple[str, tuple[Any, ...]]] = []
+    for o in curr.options:
+        payload = normalize_type(o.payload_type) if o.payload_type is not None else None
+        fields = payload.fields if isinstance(payload, QTupleType) else ()
+        if not fields:
+            empty.add(o.name)
+        else:
+            with_components.append((o.name, fields))
+    if len(with_components) == 1:
+        name, fields = with_components[0]
+        if len(fields) == 1 and isinstance(fields[0], QTupleField) and not fields[0].is_var:
+            return OptionIdentity(frozenset(empty), name, fields[0].type_val)
+    return OptionIdentity(frozenset(empty))
+
+
 def collect_fun_quantifiers(fun_type: QType) -> tuple[tuple[QQuantifier, ...], QType]:
     """The universal quantifiers wrapping a function type (a recursive one,
     through its unfolding), and the type they quantify, as written: their

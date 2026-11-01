@@ -143,6 +143,17 @@ def _type_of(a: ir.Atom) -> QType:
     return a.type if isinstance(a, ir.Var) else a.shape.type
 
 
+def _compares_as_option(t: QType) -> bool:
+    """Whether is compares options of t other than as one object: t is an
+    option type with a case without components, or single-word
+    (docs/option-values.md section 2)."""
+    if shape(t).kind != "option":
+        return False
+    from quest.types.canonical import option_identity
+    rule = option_identity(t)
+    return rule is not None and (bool(rule.empty) or rule.single is not None)
+
+
 class _Describer:
     def __init__(self, unit: ir.Unit) -> None:
         self.unit = unit
@@ -362,7 +373,7 @@ class _Describer:
                 a = args[0]
                 if not (isinstance(a, ir.Var) and id(a) in self.handler_vars):
                     t = _type_of(a)
-                    if representation(t) == "QVal":
+                    if representation(t) == "QVal" or _compares_as_option(t):
                         o.descriptor = self.describe(t)
             case ir.Call(type_args=type_args) | ir.CallExternal(type_args=type_args) | \
                     ir.MakeClosure(type_args=type_args):

@@ -3,6 +3,7 @@
 module describe : Describe
 import
     questlang/types/model : questlang/types/Model
+    questlang/types/canonical : questlang/types/Canonical
     questlang/modules/abstractTypes : questlang/modules/AbstractTypes
     questlang/ir/shapes : questlang/ir/Shapes
     questlang/ir/nodes : questlang/ir/Nodes
@@ -34,6 +35,17 @@ export
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
     let typeOf(a: Atom): Type = nodes.atomType(a)
+
+    (* Whether is compares options of t other than as one object: t is an
+     * option type with a case without components, or single-word
+     * (docs/option-values.md section 2) *)
+    let comparesAsOption(t: Type): Bool =
+        shapes.shape(t).kind?shapeOption andif begin
+            let rule = canonical.optionIdentity(t)
+            maybe.isSome(:canonical.OptionIdentity rule)
+                andif {{extent maybe.unwrap(:canonical.OptionIdentity rule).empty > 0}
+                    orif maybe.isSome(:String maybe.unwrap(:canonical.OptionIdentity rule).single)}
+        end
 
     let heldShape(t: Type kind: shapes.ShapeKind): maybe.T(Shape) =
         begin
@@ -442,7 +454,7 @@ export
                     if nodes.comparesIdentity(x.op) andif {extent x.args > 0} then
                         let a = x.args[0]
                         let isHandler = case a when atomVar with y then hashMap.contains(:Int :Bool d.handlerVars y.v.id) else false end
-                        if not(isHandler) andif layout.isQVal(shapes.shape(typeOf(a))) then
+                        if not(isHandler) andif {layout.isQVal(shapes.shape(typeOf(a))) orif comparesAsOption(typeOf(a))} then
                             x.descriptor := maybe.some(:Descriptor describeType(d typeOf(a)))
                         end
                     end

@@ -1148,6 +1148,11 @@ class CPrinter:
             if t is not None and self.c_type(t) == "QVal":
                 negate = "" if op == "is" else "!"
                 return f"({negate}quest_val_is({self.descriptor(descriptor)}, {left}, {right}))"
+            if descriptor is not None and t is not None:
+                # An option type whose options is compares by case or component
+                negate = "" if op == "is" else "!"
+                return (f"({negate}quest_option_is({self.descriptor(descriptor)}, (const void *)({left}), "
+                        f"(const void *)({right})))")
             t2 = self.atom_type(args[1]) if t is not None else None
             if access == ir.ORIGINAL:
                 # A proxy is the object it views

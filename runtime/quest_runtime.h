@@ -1013,12 +1013,20 @@ Q_INLINE double quest_real_sub(double a, double b) { return quest_real_sub_at(a,
 Q_INLINE double quest_real_mul(double a, double b) { return quest_real_mul_at(a, b, NULL); }
 Q_INLINE double quest_real_divide(double a, double b) { return quest_real_divide_at(a, b, NULL); }
 
+/* The type is compares values of descriptor t at: a stored type's type, and a module abstract type's
+   representation, which is compares its values as (docs/option-values.md section 2) */
+const QTypeDescriptor *quest_identity_type(const QTypeDescriptor *t);
+/* is on options of type t (or of an abstract type that is one): the same object, or the same case, which has no
+   components or is a single-word option type's case with a component and the same component */
+bool quest_option_is(const QTypeDescriptor *t, const void *a, const void *b);
+
 /* is on values of a type known only by its descriptor. Bit equality is identity for every type except Real,
-   where 0.0 is ~0.0 (NaN, the other case where bits and IEEE equality differ, never occurs). */
+   where 0.0 is ~0.0 (NaN, the other case where bits and IEEE equality differ, never occurs), and options. */
 Q_INLINE bool quest_val_is(const QTypeDescriptor *t, QVal a, QVal b) {
     if (a.u == b.u) return true;
-    if (t != NULL && t->kind == QTYPE_KIND_STORED) t = ((const QStoredDescriptor *)t->extra)->type;
-    if (t != NULL && (t->kind == QTYPE_KIND_TUPLE || t->kind == QTYPE_KIND_OPTION)) {
+    t = quest_identity_type(t);
+    if (t != NULL && t->kind == QTYPE_KIND_OPTION) return quest_option_is(t, a.p, b.p);
+    if (t != NULL && t->kind == QTYPE_KIND_TUPLE) {
         /* A proxy is the object it is a view of */
         return quest_unproxy(a.p) == quest_unproxy(b.p);
     }
