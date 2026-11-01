@@ -223,7 +223,11 @@ print the same, each unit's manifest must record its backend, a unit is compiled
 changed, and malformed `--backend` and `--unit-backend` options are errors. `self-hosted/line_tables`
 (`tests/self-hosted/line_tables.py`) compiles a recursive program with `--backend arm64`, separately and whole, and
 runs lldb in batch mode on each binary: it must stop at a breakpoint set on a Quest line and show the Quest lines of the
-backtrace's frames ([arm64.md](arm64.md) §3.16). It passes where there is no lldb.
+backtrace's frames ([arm64.md](arm64.md) §3.16). It passes where there is no lldb. `self-hosted/fingerprints`
+(`tests/self-hosted/fingerprints.py`) builds a program whose unsound module reads its units' `qh_` fingerprints through
+`os/code` ([jit.md](jit.md) §3.3.1), with each backend and with variants of its interfaces: the fingerprints must agree
+across backends and directories, be the digest of the units' `.qi` files, ignore comments and declaration order, and
+change with an exported type and with a manifest type an interface imports.
 
 **The SSA's backends:** `--self-hosted --backend MODE` runs the self-hosted suite's compiled tests (`run_c_compiled`,
 golden and error) with the driver's units compiled by another backend ([arm64.md](arm64.md) §4): `ssac` compiles every

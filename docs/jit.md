@@ -6,7 +6,7 @@ backend's pipeline ([arm64.md](arm64.md)) unchanged up to machine instructions, 
 with an in-memory encoder and loader. It is written in Quest, in `questlang/`, and the bootstrap does not get it
 ([testing.md](testing.md) §2.8), though it gets the language change the JIT needs (§3.11).
 
-**Status: steps 1 to 3 of 8 done** (§7). Section 1 records the decisions, section 7 the steps.
+**Status: steps 1 to 4 of 8 done** (§7). Section 1 records the decisions, section 7 the steps.
 
 ---
 
@@ -146,8 +146,9 @@ written as hex, of
 6. the fingerprints of the interfaces it imports, so that a change to a type it uses by name (a manifest type in
    another interface, `maybe.T` say) changes its fingerprint too.
 
-One function in `modules/` computes it, from the elaborated interface that the compiler writes to a `.qi` and the
-JIT loads; the compiler calls it when it compiles a module unit, and the JIT when it imports one.
+One function in `modules/` computes it (`modules/fingerprint`), from the `.qi` that the compiler writes for the
+interface and the JIT loads, and from the fingerprints of the interfaces it imports, found as the loader finds them;
+the compiler calls it when it compiles a module unit, and the JIT when it imports one.
 
 It leaves out everything that does not change what JIT code assumes: the interface file's comments, layout, and
 declaration order; every absolute path (the `.qi` records its source and its dependencies' directories, which differ
@@ -409,6 +410,12 @@ the runtime for every program, and come first so that the JIT is built on them.
    backends; the driver imports `list` and `dynamic`. Tests: a program finds its units' fingerprints with `os/code`;
    the fingerprint is unchanged by an interface's comments, declaration order, and location, and changed by a change
    to an exported type, to a manifest type it imports, or to the ABI version.
+   *Done* (2026-11-01, ABI 61). `modules/fingerprint` digests a `.qi` and, recursively, those of the interfaces it
+   imports; the module compiler passes the digest to the backend, which emits `qh_<unit>` as a C string beside the
+   module's record, through the C printer or as an SSA datum. Every module unit now exports a symbol it did not, so the
+   ABI changed, which also rebuilds every unit with one. Test: `tests/self-hosted/fingerprints.py`
+   (`self-hosted/fingerprints`), which checks the digest against one it computes from the `.qi` files, and so the
+   ABI version's part in it.
 5. **The encoder** (§3.5), beside the printer in `codegen/arm64`. A unit check encodes every arm64 golden's unit and
    compares the code with the `__text` of the printed assembly assembled by `clang -c`, relocations aside, and the
    data likewise.

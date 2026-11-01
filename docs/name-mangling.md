@@ -109,6 +109,8 @@ Every compiled Quest module produces a single global `QRecordVal` holding its ex
 - **Import declaration (in consumers):** `extern QRecordVal qm_<clean_mod>;`
 - Module records use their own `qm_` prefix rather than `qv_`: `qv_<clean_mod>` is also the mangling of a user
   identifier with the same name as the module (e.g. a top-level `let real` in a program that links module `real`).
+- **Its interface's fingerprint** (self-hosted compiler only): `const char qh_<clean_mod>[]`, 64 hexadecimal digits that
+  the JIT compares with the interface it compiles against ([jit.md](jit.md) §3.3.1).
 
 ### 4.3. Module Initialization Function & Guard
 Each module defines an idempotent initialization function that initializes imported dependencies before evaluating
@@ -270,6 +272,7 @@ declared at the function's start. Exception handlers are `_qh`, `_qh_2`, ...
 | **Compound Operator** | `qv_sym_<tokens>` | `let :=` | `qv_sym_colon_equals` |
 | **Module Name** | `lowercase, / -> __, . -> _` | `util/path` | `util__path` |
 | **Module Instance** | `qm_<clean_mod>` | `util/path` | `qm_util__path` |
+| **Module Fingerprint** | `qh_<clean_mod>` | `util/path` | `qh_util__path` |
 | **Module Init Function** | `qv_mod_<clean_mod>_init` | `util/path` | `qv_mod_util__path_init` |
 | **Module Init Flag** | `qv_mod_<clean_mod>_initialized` | `util/path` | `qv_mod_util__path_initialized` |
 | **Module Function** | `qv_<clean_mod>_<name>` | `calc.add` | `qv_calc_add` |

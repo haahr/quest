@@ -130,6 +130,7 @@ UNIT_CHECKS = (
     ("self-hosted/compile_command", ROOT_DIR / "tests" / "self-hosted" / "compile_command.py", ()),
     ("self-hosted/backends", ROOT_DIR / "tests" / "self-hosted" / "backends.py", ()),
     ("self-hosted/line_tables", ROOT_DIR / "tests" / "self-hosted" / "line_tables.py", ()),
+    ("self-hosted/fingerprints", ROOT_DIR / "tests" / "self-hosted" / "fingerprints.py", ()),
 )
 EVAL_GOLDEN = TESTS_GOLDEN_DIR / "self-hosted" / "eval.out"
 SELF_HOSTED_ERRORS_DIR = ROOT_DIR / "tests" / "self-hosted" / "errors"

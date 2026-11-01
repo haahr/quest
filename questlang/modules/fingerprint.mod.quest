@@ -1,0 +1,161 @@
+(* Quest Self-Hosted Compiler: Interface Fingerprints Implementation *)
+
+module fingerprint : Fingerprint
+import
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/env : questlang/types/Env
+    questlang/modules/paths : questlang/modules/Paths
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/loader : questlang/modules/Loader
+    questlang/modules/interfaceCompiler : questlang/modules/InterfaceCompiler
+    values = questlang/values/model : questlang/values/Model
+    questlang/values/dynamicjson : questlang/values/DynamicJson
+    questlang/config/abi : questlang/config/Abi
+    questlang/codegen/sha256 : questlang/codegen/Sha256
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    conv : Conv
+    raised : Raised
+    system : System
+export
+    Let Value = values.Value
+
+    let fieldOf(r: Value name: String): maybe.T(Value) =
+        case r when vRecord with x then hashMap.get(:String :Value x.r.fields name) else maybe.none(:Value) end
+    let stringOf(v: maybe.T(Value)): String =
+        if maybe.isNone(:Value v) then "" else case maybe.unwrap(:Value v) when vString with x then x.s else "" end end
+    let boolOf(v: maybe.T(Value)): Bool =
+        maybe.isSome(:Value v) andif case maybe.unwrap(:Value v) when vBool with x then x.b else false end
+    let itemsOf(v: maybe.T(Value)): Array(Value) =
+        if maybe.isNone(:Value v) then array of :Value end
+        else case maybe.unwrap(:Value v) when vArray with x then x.a else array of :Value end end
+        end
+
+    (* The interface path an import of a .qi names: what follows its last
+     * colon (maybe=util/maybe:util/Maybe, :Word) *)
+    let importedPath(imp: String): String =
+        begin
+            let at = strutil.rfind(imp ":")
+            if at < 0 then imp else stringOp.getSub(imp {at + 1} {{stringOp.length(imp) - at} - 1}) end
+        end
+
+    (* The shadow record a .qi holds *)
+    let qiRecord(qi: String): Value =
+        case dynamicjson.decode(qi)
+            when vAuto with x then
+                case x.a.value
+                    when vTuple with t then t.t.elements[0]
+                    else diagnostics.fail(:Value "Malformed .qi metadata" 0)
+                end
+            else diagnostics.fail(:Value "Malformed .qi metadata" 0)
+        end
+
+    let imports(r: Value): Array(String) =
+        begin
+            let items = itemsOf(fieldOf(r "imports"))
+            let result = array of(extent items "")
+            for i = 0 upto {extent items - 1} do
+                result[i] := case items[i] when vString with x then x.s else "" end
+            end
+            result
+        end
+
+    let sorted(lines: vector.T(String)): String =
+        begin
+            sort.sortVector(:String lines sort.stringCompare)
+            strutil.join("" lines)
+        end
+
+    (* The text digested, one line per item, each group sorted:
+     *
+     *     abi 60
+     *     interface util/Strutil
+     *     import maybe=util/maybe:util/Maybe
+     *     type T TYPE
+     *     value join: All(...) String
+     *     uses util/Maybe 3f... *)
+    let ofQi(canonical: String qi: String imported: All(path: String) String): String =
+        begin
+            let r = qiRecord(qi)
+            let imps = imports(r)
+            let importLines = vector.new(:String)
+            let useLines = vector.new(:String)
+            for i = 0 upto {extent imps - 1} do
+                vector.append(:String importLines "import " <> imps[i] <> "\n")
+                let path = importedPath(imps[i])
+                vector.append(:String useLines "uses " <> path <> " " <> imported(path) <> "\n")
+            end
+            let typeLines = vector.new(:String)
+            let types = itemsOf(fieldOf(r "types"))
+            for i = 0 upto {extent types - 1} do
+                let t = types[i]
+                let manifest = if boolOf(fieldOf(t "isManifest")) then " = " <> stringOf(fieldOf(t "manifestType"))
+                    else "" end
+                vector.append(:String typeLines
+                    "type " <> stringOf(fieldOf(t "name")) <> " " <> stringOf(fieldOf(t "kind")) <> manifest <> "\n")
+            end
+            let valueLines = vector.new(:String)
+            let vals = itemsOf(fieldOf(r "values"))
+            for i = 0 upto {extent vals - 1} do
+                let v = vals[i]
+                vector.append(:String valueLines
+                    "value " <> stringOf(fieldOf(v "name")) <> ": " <> stringOf(fieldOf(v "typeSig")) <> "\n")
+            end
+            sha256.hexDigest("abi " <> conv.int(abi.abiVersion) <> "\ninterface " <> canonical <> "\n"
+                <> sorted(importLines) <> sorted(typeLines) <> sorted(valueLines) <> sorted(useLines))
+        end
+
+    (* The fingerprints computed in this process, by .qi, with the .qi's
+     * modification time *)
+    Let Known = Tuple mtime: Int fingerprint: String end
+    let known = hashMap.new(:String :Known stringOp.equal hash.string)
+
+    let rec ofInterface(name: String e: env.T): String =
+        begin
+            let resolved = env.resolveInterface(e name)
+            let canonical = graph.interfaceName(resolved)
+            let root = loader.resolvedArtifactRoot(e resolved)
+            let qi = if maybe.isSome(:String root) then
+                maybe.some(:String interfaceCompiler.ensureResolvedInterfaceArtifacts(resolved
+                    maybe.unwrap(:String root) maybe.none(:interfaceCompiler.OnCompiled) e.units.resolver).qiFile)
+            else
+                graph.freshInterfaceQi(resolved)
+            end
+            if maybe.isNone(:String qi) orif not(strutil.endsWith(maybe.unwrap(:String qi) ".qi"))
+                orif not(system.isFile(maybe.unwrap(:String qi))) then
+                (* A builtin interface, which changes only with the ABI *)
+                sha256.hexDigest("abi " <> conv.int(abi.abiVersion) <> "\ninterface " <> canonical <> "\nbuiltin\n")
+            else
+                let file = maybe.unwrap(:String qi)
+                let mtime = paths.modifiedNs(file)
+                let cached = hashMap.get(:String :Known known file)
+                if maybe.isSome(:Known cached) andif {maybe.unwrap(:Known cached).mtime >= mtime} then
+                    maybe.unwrap(:Known cached).fingerprint
+                else
+                    let text = paths.readText(file)
+                    if maybe.isNone(:String text) then diagnostics.fail(:Ok "Error reading .qi file '" <> file <> "'" 0) end
+                    (* Its imports are resolved from its own directory *)
+                    let dir = paths.parent(maybe.unwrapOr(:String resolved.source file))
+                    let saved = e.currentDir
+                    let importedFingerprint(path: String): String =
+                        begin
+                            e.currentDir := maybe.some(:String dir)
+                            let result = try ofInterface(path e) else with r then
+                                e.currentDir := saved
+                                raised.reraise(:String r)
+                            end
+                            e.currentDir := saved
+                            result
+                        end
+                    let result = ofQi(canonical maybe.unwrap(:String text) importedFingerprint)
+                    hashMap.insert(:String :Known known file tuple let mtime = mtime let fingerprint = result end)
+                    result
+                end
+            end
+        end
+end
