@@ -1,0 +1,407 @@
+(* Quest Self-Hosted Compiler: The SSA's Escape Analysis Implementation *)
+
+module escape : Escape
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
+    collections/vector : collections/Vector
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Def Verdict = Tuple value: Int bytes: Int escapes: Bool reason: String end
+
+    Let Function = ssa.Function
+
+    (* What the analysis knows of a function's values and allocations *)
+    Let State = Tuple
+        f: Function
+        (* Each value's defining instruction, by block and index (~1 for a
+         * parameter); whether it is a constant (opConst), and its value *)
+        defBlock: Array(Int)
+        defIndex: Array(Int)
+        isConst: Array(Bool)
+        constant: Array(Int)
+        (* Each block's parameters' values, and the block of each parameter's
+         * value (~1 for others) and its index *)
+        paramBlock: Array(Int)
+        paramIndex: Array(Int)
+        (* The candidates: each one's value and size, and whether it is still
+         * thought not to escape, and if it does, why *)
+        allocValue: Array(Int)
+        allocBytes: Array(Int)
+        alive: Array(Bool)
+        reasons: Array(String)
+        (* The candidate each value points into (~1 for none) and its offset
+         * there *)
+        ptr: Array(Int)
+        off: Array(Int)
+        (* For each candidate, each word: whether it holds the candidate's own
+         * pointer, and at what offset *)
+        selfHas: Array(Array(Bool))
+        selfOff: Array(Array(Int))
+        (* The blocks reached once proxy tests of the candidates fold *)
+        reach: Array(Bool)
+    end
+
+    let proxyTag(): Int = runtimeLayout.constant("QUEST_PROXY_TAG")
+
+    let defOf(s: State v: Int): ssa.Inst =
+        vector.get(:ssa.Inst ssa.block(s.f s.defBlock[v]).insts s.defIndex[v])
+
+    let definedBy(s: State v: Int op: ssa.Opcode): Bool =
+        {v >= 0} andif {s.defBlock[v] >= 0} andif ssa.isOp(defOf(s v) op)
+
+    let isConstant(s: State v: Int n: Int): Bool = s.isConst[v] andif {s.constant[v] is n}
+
+    (* Whether v tests a candidate's pointer for being a proxy:
+     * and(ptrToInt(p), QUEST_PROXY_TAG), p one of its pointers *)
+    let isProxyTest(s: State v: Int): Bool =
+        if definedBy(s v ssa.opAnd) then
+            let i = defOf(s v)
+            let test(x: Int c: Int): Bool =
+                isConstant(s c proxyTag()) andif definedBy(s x ssa.opPtrToInt) andif
+                    begin
+                        let p = defOf(s x).args[0]
+                        {s.ptr[p] >= 0} andif s.alive[s.ptr[p]]
+                    end
+            test(i.args[0] i.args[1]) orif test(i.args[1] i.args[0])
+        else false end
+
+    (* The blocks reached from the entry, a branch on a proxy test of a
+     * candidate going only where it is false *)
+    let reachable(s: State): Ok =
+        begin
+            let n = vector.length(:ssa.Block s.f.blocks)
+            for b = 0 upto {n - 1} do s.reach[b] := false end
+            let work = vector.new(:Int)
+            let visit(b: Int): Ok = if not(s.reach[b]) then begin s.reach[b] := true vector.append(:Int work b) end end
+            if n > 0 then visit(0) end
+            while not(vector.empty(:Int work)) do
+                let term = ssa.block(s.f vector.pop(:Int work)).term
+                let folded =
+                    case term
+                        when termBranch with x then
+                            if isProxyTest(s x.cond) then begin visit(x.ifFalse.block) true end else false end
+                        when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then
+                            false
+                    end
+                if not(folded) then
+                    let succs = ssa.successors(term)
+                    for k = 0 upto {extent succs - 1} do visit(succs[k]) end
+                end
+            end
+        end
+
+    (* The targets of a reached block's terminator that are taken: a branch
+     * folded by a proxy test takes only its false one *)
+    let takenTargets(s: State term: ssa.Terminator): Array(ssa.Target) =
+        case term
+            when termBranch with x then
+                if isProxyTest(s x.cond) then array of :ssa.Target x.ifFalse end else ssa.targets(term) end
+            when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then
+                ssa.targets(term)
+        end
+
+    let setPointer(s: State v: Int a: Int offset: Int): Bool =
+        if s.ptr[v] < 0 then begin s.ptr[v] := a s.off[v] := offset true end
+        elsif {s.ptr[v] isnot a} orif {s.off[v] isnot offset} then
+            (* Two candidates or offsets meet: both escape *)
+            begin
+                if s.alive[s.ptr[v]] then begin s.alive[s.ptr[v]] := false s.reasons[s.ptr[v]] := "merged" end end
+                if s.alive[a] then begin s.alive[a] := false s.reasons[a] := "merged" end end
+                false
+            end
+        else false end
+
+    let escapes(s: State a: Int reason: String): Ok =
+        if s.alive[a] then begin s.alive[a] := false s.reasons[a] := reason end end
+
+    (* The word of candidate a that an access at offset (from a pointer of
+     * offset base) reads or writes, ~1 if it is not a whole aligned word *)
+    let wordAt(s: State a: Int base: Int imm: Int width: Int): Int =
+        begin
+            let o = base + imm
+            if {width is 8} andif {o >= 0} andif {{o % 8} is 0} andif {{o + 8} <= s.allocBytes[a]} then o / 8
+            else ~1 end
+        end
+
+    (* The candidates' pointers, to a fixed point over the blocks reached: the
+     * candidates' values, a constant offset from a pointer, a load of a word
+     * holding a pointer, and a parameter every taken edge binds to one
+     * value that is a pointer *)
+    let pointers(s: State): Ok =
+        begin
+            let f = s.f
+            let nBlocks = vector.length(:ssa.Block f.blocks)
+            for v = 0 upto {extent s.ptr - 1} do s.ptr[v] := ~1 end
+            for a = 0 upto {extent s.allocValue - 1} do
+                for w = 0 upto {extent s.selfHas[a] - 1} do s.selfHas[a][w] := false end
+                if s.alive[a] then begin s.ptr[s.allocValue[a]] := a s.off[s.allocValue[a]] := 0 end end
+            end
+            let var changed = true
+            while changed do
+                changed := false
+                (* The value each parameter is bound to, ~1 for none yet, ~2 for
+                 * more than one *)
+                let bound = array of(extent s.ptr ~1)
+                for b = 0 upto {nBlocks - 1} do
+                    if s.reach[b] then
+                        let blk = ssa.block(f b)
+                        for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                            let i = vector.get(:ssa.Inst blk.insts k)
+                            if ssa.isOp(i ssa.opPtrAdd) then
+                                let p = i.args[0]
+                                if {s.ptr[p] >= 0} andif s.isConst[i.args[1]] then
+                                    if setPointer(s i.results[0] s.ptr[p] {s.off[p] + s.constant[i.args[1]]}) then
+                                        changed := true
+                                    end
+                                end
+                            elsif ssa.isOp(i ssa.opStore) then
+                                let p = i.args[0]
+                                let v = i.args[1]
+                                if {s.ptr[p] >= 0} andif {s.ptr[v] >= 0} andif {s.ptr[p] is s.ptr[v]} then
+                                    let a = s.ptr[p]
+                                    let w = wordAt(s a s.off[p] i.imm i.width)
+                                    if w < 0 then escapes(s a "its pointer stored at an odd place in it")
+                                    elsif not(s.selfHas[a][w]) then
+                                        begin s.selfHas[a][w] := true s.selfOff[a][w] := s.off[v] changed := true end
+                                    elsif s.selfOff[a][w] isnot s.off[v] then
+                                        escapes(s a "its pointers of two offsets stored in it")
+                                    end
+                                end
+                            elsif ssa.isOp(i ssa.opLoad) then
+                                let p = i.args[0]
+                                if s.ptr[p] >= 0 then
+                                    let a = s.ptr[p]
+                                    let w = wordAt(s a s.off[p] i.imm i.width)
+                                    if {w >= 0} andif s.selfHas[a][w] then
+                                        if setPointer(s i.results[0] a s.selfOff[a][w]) then changed := true end
+                                    end
+                                end
+                            end
+                        end
+                        let ts = takenTargets(s blk.term)
+                        for k = 0 upto {extent ts - 1} do
+                            let t = ts[k]
+                            let params = ssa.block(f t.block).params
+                            for j = 0 upto {extent t.args - 1} do
+                                let p = vector.get(:Int params j)
+                                if bound[p] is ~1 then bound[p] := t.args[j]
+                                elsif bound[p] isnot t.args[j] then bound[p] := ~2 end
+                            end
+                        end
+                    end
+                end
+                for p = 0 upto {extent bound - 1} do
+                    if {bound[p] >= 0} andif {s.ptr[bound[p]] >= 0} then
+                        if setPointer(s p s.ptr[bound[p]] s.off[bound[p]]) then changed := true end
+                    end
+                end
+            end
+        end
+
+    (* Marks the candidates whose pointers are used other than as
+     * docs/escape-analysis.md section 2 allows, in the blocks reached *)
+    let check(s: State): Ok =
+        begin
+            let f = s.f
+            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let isPointer(v: Int): Bool = {s.ptr[v] >= 0} andif s.alive[s.ptr[v]]
+            (* Whether every use of v, reached, is a proxy test *)
+            let onlyProxyTests(v: Int): Bool =
+                begin
+                    let var only = true
+                    for b = 0 upto {nBlocks - 1} do
+                        if s.reach[b] then
+                            let blk = ssa.block(f b)
+                            for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                                let i = vector.get(:ssa.Inst blk.insts k)
+                                for j = 0 upto {extent i.args - 1} do
+                                    if {i.args[j] is v} andif
+                                        {{extent i.results is 0} orif not(isProxyTest(s i.results[0]))}
+                                    then only := false end
+                                end
+                            end
+                            let uses = ssa.terminatorUses(blk.term)
+                            for j = 0 upto {extent uses - 1} do if uses[j] is v then only := false end end
+                        end
+                    end
+                    only
+                end
+            let inBounds(a: Int o: Int width: Int): Bool = {o >= 0} andif {{o + width} <= s.allocBytes[a]}
+            for b = 0 upto {nBlocks - 1} do
+                if s.reach[b] then
+                    let blk = ssa.block(f b)
+                    for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                        let i = vector.get(:ssa.Inst blk.insts k)
+                        for j = 0 upto {extent i.args - 1} do
+                            let v = i.args[j]
+                            if isPointer(v) then
+                                let a = s.ptr[v]
+                                if {ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opStore)} andif {j is 0} then
+                                    let o = s.off[v] + i.imm
+                                    if not(inBounds(a o i.width)) then escapes(s a "accessed outside it")
+                                    else
+                                        (* A word holding its pointer holds nothing else *)
+                                        let w = wordAt(s a s.off[v] i.imm i.width)
+                                        let holds = {w >= 0} andif s.selfHas[a][w]
+                                        let pointerStored = ssa.isOp(i ssa.opStore) andif {s.ptr[i.args[1]] is a}
+                                        (* An access of part of a word holding its pointer *)
+                                        let var overlaps = false
+                                        if w < 0 then
+                                            for x = 0 upto {extent s.selfHas[a] - 1} do
+                                                if s.selfHas[a][x] andif {o < {{x * 8} + 8}} andif
+                                                    {{x * 8} < {o + i.width}} then overlaps := true end
+                                            end
+                                        end
+                                        if holds andif ssa.isOp(i ssa.opStore) andif not(pointerStored) then
+                                            escapes(s a "a word of it holding its pointer and another value")
+                                        elsif overlaps then
+                                            escapes(s a "a word of it holding its pointer accessed in part")
+                                        end
+                                    end
+                                elsif ssa.isOp(i ssa.opStore) andif {j is 1} then
+                                    if s.ptr[i.args[0]] isnot a then escapes(s a "stored") end
+                                elsif ssa.isOp(i ssa.opPtrAdd) andif {j is 0} andif s.isConst[i.args[1]] then ok
+                                elsif ssa.isOp(i ssa.opPtrToInt) then
+                                    if not(onlyProxyTests(i.results[0])) then escapes(s a "converted to an integer") end
+                                elsif ssa.isCall(i) then escapes(s a "passed to " <> i.symbol)
+                                else escapes(s a "used by " <> ssa.opcodeName(i.op)) end
+                            end
+                        end
+                    end
+                    (* At a terminator, only bound to a parameter that is one of
+                     * its pointers, on an edge taken *)
+                    let ts = takenTargets(s blk.term)
+                    for k = 0 upto {extent ts - 1} do
+                        let t = ts[k]
+                        let params = ssa.block(f t.block).params
+                        for j = 0 upto {extent t.args - 1} do
+                            let v = t.args[j]
+                            if isPointer(v) then
+                                let p = vector.get(:Int params j)
+                                if {s.ptr[p] isnot s.ptr[v]} orif {s.off[p] isnot s.off[v]} then
+                                    escapes(s s.ptr[v] "passed to a block that is not only its")
+                                end
+                            end
+                        end
+                    end
+                    let other(uses: Array(Int) reason: String): Ok =
+                        for j = 0 upto {extent uses - 1} do
+                            if isPointer(uses[j]) then escapes(s s.ptr[uses[j]] reason) end
+                        end
+                    case blk.term
+                        when termBranch with x then other(array of x.cond end "used by a branch")
+                        when termSwitch with x then other(array of x.value end "used by a switch")
+                        when termReturn with x then other(x.values "returned")
+                        when termTailCall with x then other(x.call.args "passed to " <> x.call.symbol)
+                        when termNone, termJump, termTry, termUnreachable then ok
+                    end
+                end
+            end
+        end
+
+    (* The analysis of f *)
+    let solve(f: Function): State =
+        begin
+            let nValues = vector.length(:ssa.Type f.types)
+            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let defBlock = array of(nValues ~1)
+            let defIndex = array of(nValues ~1)
+            let isConst = array of(nValues false)
+            let constant = array of(nValues 0)
+            let paramBlock = array of(nValues ~1)
+            let paramIndex = array of(nValues ~1)
+            let values = vector.new(:Int)
+            let sizes = vector.new(:Int)
+            for b = 0 upto {nBlocks - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:Int blk.params) - 1} do
+                    let p = vector.get(:Int blk.params k)
+                    paramBlock[p] := b
+                    paramIndex[p] := k
+                end
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    for r = 0 upto {extent i.results - 1} do
+                        defBlock[i.results[r]] := b
+                        defIndex[i.results[r]] := k
+                    end
+                    if ssa.isOp(i ssa.opConst) then
+                        isConst[i.results[0]] := true
+                        constant[i.results[0]] := i.imm
+                    end
+                end
+            end
+            for b = 0 upto {nBlocks - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    if ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol "quest_alloc") andif
+                        {extent i.args is 1} andif {extent i.results is 1} andif isConst[i.args[0]] andif
+                        {constant[i.args[0]] > 0}
+                    then
+                        vector.append(:Int values i.results[0])
+                        vector.append(:Int sizes constant[i.args[0]])
+                    end
+                end
+            end
+            let n = vector.length(:Int values)
+            let allocBytes = vector.toArray(:Int sizes)
+            let selfHas = array of(n array of(0 false))
+            let selfOff = array of(n array of(0 0))
+            for a = 0 upto {n - 1} do
+                selfHas[a] := array of({{allocBytes[a] + 7} / 8} false)
+                selfOff[a] := array of({{allocBytes[a] + 7} / 8} 0)
+            end
+            let s = tuple
+                let f = f let defBlock = defBlock let defIndex = defIndex let isConst = isConst let constant = constant
+                let paramBlock = paramBlock let paramIndex = paramIndex
+                let allocValue = vector.toArray(:Int values) let allocBytes = allocBytes
+                let alive = array of(n true) let reasons = array of(n "")
+                let ptr = array of(nValues ~1) let off = array of(nValues 0)
+                let selfHas = selfHas let selfOff = selfOff
+                let reach = array of(nBlocks true)
+            end
+            (* Optimistically, none escapes; each round drops those that do,
+             * until none more does *)
+            let countAlive(): Int =
+                begin
+                    let var c = 0
+                    for a = 0 upto {n - 1} do if s.alive[a] then c := c + 1 end end
+                    c
+                end
+            let var before = ~1
+            while {n > 0} andif {before isnot countAlive()} do
+                before := countAlive()
+                (* Reaching depends on the pointers, a parameter's binding on
+                 * reaching *)
+                for b = 0 upto {nBlocks - 1} do s.reach[b] := true end
+                let var settled = false
+                while not(settled) do
+                    pointers(s)
+                    let old = array of(nBlocks false)
+                    for b = 0 upto {nBlocks - 1} do old[b] := s.reach[b] end
+                    reachable(s)
+                    settled := true
+                    for b = 0 upto {nBlocks - 1} do if old[b] isnot s.reach[b] then settled := false end end
+                end
+                check(s)
+            end
+            s
+        end
+
+    let analyze(f: Function): Array(Verdict) =
+        begin
+            let s = solve(f)
+            let n = extent s.allocValue
+            let verdicts = array of(n tuple let value = 0 let bytes = 0 let escapes = false let reason = "" end)
+            for a = 0 upto {n - 1} do
+                verdicts[a] := tuple
+                    let value = s.allocValue[a] let bytes = s.allocBytes[a] let escapes = not(s.alive[a])
+                    let reason = s.reasons[a]
+                end
+            end
+            verdicts
+        end
+end

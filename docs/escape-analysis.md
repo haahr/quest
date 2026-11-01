@@ -34,12 +34,18 @@ runtime's other allocators are not candidates. Its result, and pointers derived 
    the test folds to zero, and the branches `vals.unproxy` and the tuple and option readers make on it fold to their
    direct arm. The fold is the pass's own (§3), since nothing else in the SSA knows that `quest_alloc` returns an
    aligned pointer.
-3. **A pointer comparison** (`peq`) with a value that is not one of its pointers: false, since nothing else is the
-   allocation; with one of its pointers, decided by their offsets.
+3. **A value stored into a word of the allocation itself:** a word whose stores all store one of its pointers, at one
+   offset, holds that pointer (as a tuple's first word holds the address of its fields), and a whole load of it is
+   one of its pointers too.
+4. **An argument bound to a block's parameter** that every edge taken binds to that one value (as the merge after a
+   folded proxy test is): the parameter is one of its pointers.
 
 Anything else is an escape: an argument to a call (the runtime's included: `quest_option_is`, `quest_val_is`, a
-conversion), a value stored to memory, a return, a block argument, a `toVal`, or a `ptrToInt` used other than in a
-proxy test. The analysis iterates over the function's allocations once, each against its uses.
+conversion), a value stored to memory, a return, a parameter bound to other values too, a comparison (`peq`, which
+could fold but is left for now), a `toVal`, a `ptrToInt` used other than in a proxy test, or an access of part of a
+word holding a pointer. Since the folds decide which blocks are reached, and a parameter's binding depends on the
+edges reached, the analysis starts with every allocation thought not to escape, finds its pointers and the blocks
+reached to a fixed point, and drops those that do escape, until none more does.
 
 ## 3. The Pass
 
@@ -81,7 +87,8 @@ because none of its pointers is a block argument (§2), so no pointer from one i
    benchmarks.md §8.2 through C (§7.2's 29.3 million predate options as values), and through `ssac` and `arm64`,
    whose allocations go through the runtime's `quest_alloc`, 187 more, by the same functions.
 2. **The analysis and its dump** (§2): `ssa_escape` marks candidates as kept or removable, without changing them.
-   *Done when* the per-pass goldens show each case of §4 classified as intended.
+   *Done when* the per-pass goldens show each case of §4 classified as intended. *Done* (2026-11-01):
+   `questlang/ssa/escape`'s `analyze`, and the questlang test `ssa_escape`.
 3. **The transformation** (§3), with the folds. *Done when* the suite passes in every SSA mode, the fixed points
    through `ssac` and `arm64` hold, and the per-pass goldens show the removals.
 4. **Measurements:** allocation counts and the suite's times through `ssac` and `arm64`, separate and whole, in

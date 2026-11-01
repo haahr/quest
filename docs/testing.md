@@ -251,7 +251,8 @@ transcript marked `@skip-phase: jit` shows a difference the JIT is allowed and i
 `tests/self-hosted/pending-jit.txt` lists those that wait on later steps. The questlang tests `ssac_print` and `arm64_assemble` print a unit of the SSA built by hand
 as C and as assembly, whose goldens `tests/python/test_ssac.py` compiles and `tests/python/test_arm64.py` assembles. The
 SSA's passes are tested on SSA written as text (`questlang/ssa/parser`): `ssa_promote` and `ssa_tailcalls` print small
-functions before and after their pass, and `ssa_verify` the problems the verifier finds ([ssa.md](ssa.md) §6).
+functions before and after their pass, `ssa_escape` what escape analysis says of their allocations
+([escape-analysis.md](escape-analysis.md)), and `ssa_verify` the problems the verifier finds ([ssa.md](ssa.md) §6).
 
 The runners set `QUEST_HOME` to the project directory, where the self-hosted driver, which runs in a scratch
 directory, finds `lib/`. `--self-hosted-driver PATH` runs a driver already compiled (as by `./questboot -o build/questlang/main

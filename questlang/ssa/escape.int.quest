@@ -1,0 +1,23 @@
+(* Quest Self-Hosted Compiler: The SSA's Escape Analysis Interface
+ *
+ * Allocations that never leave the function that makes them
+ * (docs/escape-analysis.md): a call of quest_alloc of a constant size whose
+ * pointers, the call's result and those derived from it by a constant offset,
+ * a word of the allocation that holds only its own pointer, or a block
+ * parameter only ever bound to one of them, are only loaded from and stored
+ * to within its size, or tested for being a proxy, which a fresh allocation
+ * never is. Such an allocation does not escape; any other use of one of its
+ * pointers (an argument to a call, a value stored elsewhere, a return, a
+ * comparison) does. *)
+
+interface Escape
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* An allocation: the value its call returns, its size in bytes, and
+     * whether it escapes, and if so why *)
+    Def Verdict = Tuple value: Int bytes: Int escapes: Bool reason: String end
+
+    (* The allocations of f, in the order they are made, without changing f *)
+    analyze(f: ssa.Function): Array(Verdict)
+end

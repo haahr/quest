@@ -1,0 +1,154 @@
+== loaded and stored, through a derived pointer
+function pair(%0: int, %1: int): int {
+b0(%0: int, %1: int):
+  %2: int = const 16
+  %3: ptr = call quest_alloc(%2)
+  store8 %3 + 0, %0
+  %4: int = const 8
+  %5: ptr = ptrAdd %3, %4
+  store8 %5 + 0, %1
+  %6: int = load8 %3 + 0
+  %7: int = load8 %5 + 0
+  %8: int = add %6, %7
+  return %8
+}
+-- %3 (16 bytes): does not escape
+== escaping: stored, passed, returned, compared
+function stored(%0: ptr): int {
+b0(%0: ptr):
+  %1: int = const 8
+  %2: ptr = call quest_alloc(%1)
+  store8 %0 + 0, %2
+  %3: int = const 0
+  return %3
+}
+-- %2 (8 bytes): escapes, stored
+function passed(): int {
+b0():
+  %0: int = const 8
+  %1: ptr = call quest_alloc(%0)
+  call fill(%1)
+  %2: int = load8 %1 + 0
+  return %2
+}
+-- %1 (8 bytes): escapes, passed to fill
+function returned(): ptr {
+b0():
+  %0: int = const 8
+  %1: ptr = call quest_alloc(%0)
+  return %1
+}
+-- %1 (8 bytes): escapes, returned
+function compared(%0: ptr): int {
+b0(%0: ptr):
+  %1: int = const 8
+  %2: ptr = call quest_alloc(%1)
+  %3: int = peq %2, %0
+  return %3
+}
+-- %2 (8 bytes): escapes, used by peq
+== stored into another
+function nested(%0: int): int {
+b0(%0: int):
+  %1: int = const 8
+  %2: ptr = call quest_alloc(%1)
+  store8 %2 + 0, %0
+  %3: ptr = call quest_alloc(%1)
+  store8 %3 + 0, %2
+  %4: ptr = load8 %3 + 0
+  %5: int = load8 %4 + 0
+  return %5
+}
+-- %2 (8 bytes): escapes, stored
+-- %3 (8 bytes): does not escape
+== bound to a parameter, alone and with another value
+function alone(%0: int): int {
+b0(%0: int):
+  %1: int = const 8
+  %2: ptr = call quest_alloc(%1)
+  store8 %2 + 0, %0
+  jump b1(%2)
+b1(%3: ptr):
+  %4: int = load8 %3 + 0
+  return %4
+}
+-- %2 (8 bytes): does not escape
+function either(%0: int, %1: ptr): int {
+b0(%0: int, %1: ptr):
+  %2: int = const 8
+  %3: ptr = call quest_alloc(%2)
+  branch %0, b1(%3), b1(%1)
+b1(%4: ptr):
+  %5: int = load8 %4 + 0
+  return %5
+}
+-- %3 (8 bytes): escapes, passed to a block that is not only its
+== made in a loop
+function loop(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  jump b1(%1)
+b1(%2: int):
+  %3: int = lt %2, %0
+  branch %3, b2(), b3()
+b2():
+  %4: int = const 8
+  %5: ptr = call quest_alloc(%4)
+  store8 %5 + 0, %2
+  %6: int = load8 %5 + 0
+  %7: int = const 1
+  %8: int = add %6, %7
+  jump b1(%8)
+b3():
+  return %2
+}
+-- %5 (8 bytes): does not escape
+== a tuple holding a pointer to its fields, read behind proxy tests
+function fields(%0: int, %1: int): int {
+b0(%0: int, %1: int):
+  %2: int = const 24
+  %3: ptr = call quest_alloc(%2)
+  %4: int = const 8
+  %5: ptr = ptrAdd %3, %4
+  store8 %5 + 0, %0
+  store8 %5 + 8, %1
+  store8 %3 + 0, %5
+  %6: int = ptrToInt %3
+  %7: int = const 1
+  %8: int = and %6, %7
+  branch %8, b1(), b2()
+b1():
+  %9: ptr = load8 %3 + ~1
+  jump b3(%9)
+b2():
+  jump b3(%3)
+b3(%10: ptr):
+  %11: ptr = load8 %10 + 0
+  %12: int = load8 %11 + 8
+  return %12
+}
+-- %3 (24 bytes): does not escape
+== accessed outside it
+function outside(): int {
+b0():
+  %0: int = const 8
+  %1: ptr = call quest_alloc(%0)
+  %2: int = load8 %1 + 8
+  return %2
+}
+-- %1 (8 bytes): escapes, accessed outside it
+== in a function that enters a try
+function tries(%0: int): int slots [240:16] {
+b0(%0: int):
+  %1: int = const 8
+  %2: ptr = call quest_alloc(%1)
+  store8 %2 + 0, %0
+  try slot 0, b1(), handler b2
+b1():
+  %3: int = load8 %2 + 0
+  return %3
+b2():
+  %4: int = load8 %2 + 0
+  return %4
+}
+-- %2 (8 bytes): does not escape
