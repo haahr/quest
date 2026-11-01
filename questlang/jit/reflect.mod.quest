@@ -1,0 +1,162 @@
+(* Quest Self-Hosted Compiler: The JIT's Reflection Implementation *)
+
+unsound module reflect : Reflect
+import
+    os/value : os/Value
+    tm = questlang/types/model : questlang/types/Model
+    questlang/values/model : questlang/values/Model
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/codegen/layout : questlang/codegen/Layout
+    questlang/interpreter/formatting : questlang/interpreter/Formatting
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    stringOp = string : StringOp
+    ascii : Ascii
+    word : Word
+export
+    Let Value = model.Value
+
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+    let fetch(w: value.T at: Int): value.T = value.fetch(w at)
+    let int(w: value.T): Int = value.be(:Int w)
+
+    (* The index of name among names, in name order *)
+    let indexByName(names: Array(String) name: String): Int =
+        begin
+            let var n = 0
+            for i = 0 upto {extent names - 1} do if sort.stringCompare(names[i] name) < 0 then n := n + 1 end end
+            n
+        end
+
+    let rec slot(w: value.T t0: tm.Type): Value =
+        begin
+            let t = formatting.exposedType(t0)
+            let s = layout.resolvedShape(shapes.shape(t))
+            case s.kind
+                when shapeInt then option vInt of Value with let n = int(w) end
+                when shapeReal then option vReal of Value with let r = value.be(:Real w) end
+                when shapeBool then option vBool of Value with let b = int(w) isnot 0 end
+                when shapeChar then option vChar of Value with let c = ascii.char(int(w) % 256) end
+                when shapeString then option vString of Value with let s = value.be(:String w) end
+                when shapeWord then option vWord of Value with let w = value.be(:word.T w) end
+                when shapeTuple then tupleAt(w 0 t)
+                when shapeRecord then recordOf(fetch(w 0) fetch(w 8) t)
+                when shapeOption then optionOf(w t)
+                when shapeVariant then variantOf(w t)
+                when shapeArray then
+                    let n = int(fetch(w 0))
+                    let elementType = case t.form when typeArray with x then x.element else tm.okType end
+                    let elements = array of(n option vOk of Value end)
+                    for i = 0 upto {n - 1} do elements[i] := slot(fetch(w 8 + 8 * i) elementType) end
+                    option vArray of Value with let a = elements end
+                else option vOk of Value end
+            end
+        end
+
+    (* A tuple of type t whose value components are the words from base plus
+     * at bytes; its type components have no words, and are ok *)
+    and tupleAt(base: value.T at: Int t: tm.Type): Value =
+        case t.form
+            when typeTuple with tt then
+                let elements = array of(extent tt.fields option vOk of Value end)
+                let var k = 0
+                for i = 0 upto {extent tt.fields - 1} do
+                    case tt.fields[i]
+                        when tupleField with c then
+                            elements[i] := slot(fetch(base at + 8 * k) c.type)
+                            k := k + 1
+                        else ok
+                    end
+                end
+                option vTuple of Value with let t = tuple
+                    let elements = elements let labels = maybe.none(:Array(maybe.T(String)))
+                    let nameToIndex = hashMap.new(:String :Int eq hash.string)
+                end end
+            else option vOk of Value end
+        end
+
+    (* A record from its payload and offset table, which gives each field's
+     * offset in the payload at its index in name order *)
+    and recordOf(payload: value.T table: value.T t: tm.Type): Value =
+        case t.form
+            when typeRecord with rt then
+                let names = array of(extent rt.fields "")
+                for i = 0 upto {extent rt.fields - 1} do names[i] := rt.fields[i].name end
+                let fields = hashMap.new(:String :Value eq hash.string)
+                for i = 0 upto {extent rt.fields - 1} do
+                    let offset = int(fetch(table 8 * indexByName(names rt.fields[i].name)))
+                    let f = rt.fields[i]
+                    hashMap.insert(:String :Value fields f.name slot(fetch(payload offset) f.type))
+                end
+                option vRecord of Value with let r = tuple let fields = fields end end
+            else option vOk of Value end
+        end
+
+    (* An option: its tag, the case's index in name order, then its case's
+     * components *)
+    and optionOf(w: value.T t: tm.Type): Value =
+        case t.form
+            when typeOption with o then
+                let names = array of(extent o.options "")
+                for i = 0 upto {extent o.options - 1} do names[i] := o.options[i].name end
+                let tag = int(fetch(w 0))
+                let var result = option vOk of Value end
+                for i = 0 upto {extent o.options - 1} do
+                    if indexByName(names names[i]) is tag then
+                        let c = o.options[i]
+                        let payload = if maybe.isSome(:tm.Type c.payload) then
+                            maybe.some(:Value tupleAt(w 8 formatting.exposedType(maybe.unwrap(:tm.Type c.payload))))
+                        else maybe.none(:Value) end
+                        result := option vOption of Value with
+                            let v = tuple let tag = c.name let payload = payload end
+                        end
+                    end
+                end
+                result
+            else option vOk of Value end
+        end
+
+    (* A variant's box: its tag, the case's index in name order, and its
+     * payload's word *)
+    and variantOf(w: value.T t: tm.Type): Value =
+        case t.form
+            when typeVariant with o then
+                let names = array of(extent o.variants "")
+                for i = 0 upto {extent o.variants - 1} do names[i] := o.variants[i].name end
+                let tag = int(fetch(w 0))
+                let var result = option vOk of Value end
+                for i = 0 upto {extent o.variants - 1} do
+                    if indexByName(names names[i]) is tag then
+                        let c = o.variants[i]
+                        let payload = if maybe.isSome(:tm.Type c.type) then
+                            maybe.some(:Value slot(fetch(w 8) maybe.unwrap(:tm.Type c.type)))
+                        else maybe.none(:Value) end
+                        result := option vVariant of Value with
+                            let v = tuple let tag = c.name let payload = payload end
+                        end
+                    end
+                end
+                result
+            else option vOk of Value end
+        end
+
+    let field(at: value.T recordType: tm.Type name: String): Value =
+        begin
+            let payload = fetch(at 0)
+            let table = fetch(at 8)
+            case formatting.exposedType(recordType).form
+                when typeRecord with rt then
+                    let names = array of(extent rt.fields "")
+                    let var fieldType = tm.okType
+                    for i = 0 upto {extent rt.fields - 1} do
+                        names[i] := rt.fields[i].name
+                        if eq(rt.fields[i].name name) then fieldType := rt.fields[i].type end
+                    end
+                    slot(fetch(payload int(fetch(table 8 * indexByName(names name)))) fieldType)
+                else option vOk of Value end
+            end
+        end
+end

@@ -16,6 +16,7 @@ import
     questlang/values/model : questlang/values/Model
     questlang/interpreter/formatting : questlang/interpreter/Formatting
     questlang/interpreter/treewalk : questlang/interpreter/Treewalk
+    questlang/jit/session : questlang/jit/Session
     io/readline : io/Readline
     collections/vector : collections/Vector
     util/maybe : util/Maybe
@@ -86,10 +87,53 @@ export
             d
         end
 
-    Let T = Tuple e: env.T var frame: model.Frame var errorSource: maybe.T(location.SourceMap) end
+    Let T = Tuple
+        e: env.T
+        var frame: model.Frame
+        var errorSource: maybe.T(location.SourceMap)
+        jit: maybe.T(session.T)
+    end
 
     let new(e: env.T f: model.Frame): T =
-        tuple let e = e let var frame = f let var errorSource = maybe.none(:location.SourceMap) end
+        tuple
+            let e = e let var frame = f let var errorSource = maybe.none(:location.SourceMap)
+            let jit = maybe.none(:session.T)
+        end
+
+    let newJit(e: env.T f: model.Frame args: Array(String)): T =
+        tuple
+            let e = e let var frame = f let var errorSource = maybe.none(:location.SourceMap)
+            let jit = maybe.some(:session.T session.new(e args))
+        end
+
+    (* An input run by the JIT: its phrases' results, or none, its error in
+     * bag *)
+    let runJit(r: T s: session.T program: typedAst.Program sm: location.SourceMap bag: diagbag.T):
+        maybe.T(Array(treewalk.PhraseResult)) =
+        try
+            case session.run(s program sm)
+                when ran with x then
+                    let results = vector.new(:treewalk.PhraseResult)
+                    for i = 0 upto {extent x.results - 1} do
+                        vector.append(:treewalk.PhraseResult results
+                            tuple let phrase = x.results[i].phrase let value = x.results[i].value end)
+                    end
+                    maybe.some(:Array(treewalk.PhraseResult) vector.toArray(:treewalk.PhraseResult results))
+                when raised with x then
+                    let file = if maybe.isSome(:location.SourceMap x.sourceMap) then inputName else "" end
+                    let sp = if maybe.isSome(:Int x.offset) then
+                        location.span(file maybe.unwrap(:Int x.offset) maybe.unwrap(:Int x.offset) + 1)
+                    else location.span("" ~1 ~1) end
+                    let d = diagnostics.error("Exception: " <> x.name sp)
+                    if extent x.frames > 0 then diagnostics.setTrace(d x.frames) end
+                    r.errorSource := x.sourceMap
+                    diagbag.add(bag d)
+                    maybe.none(:Array(treewalk.PhraseResult))
+            end
+        when session.unsupported with m then
+            diagbag.add(bag diagnostics.error("the JIT cannot compile this input: " <> m location.span("" ~1 ~1)))
+            maybe.none(:Array(treewalk.PhraseResult))
+        end
 
     (* An input's phrases' results, if it ran; the errors it found are in bag *)
     let compileAndRun(r: T text: String sm: location.SourceMap bag: diagbag.T): maybe.T(Array(treewalk.PhraseResult)) =
@@ -107,6 +151,8 @@ export
                     end
                     if diagbag.hasErrors(bag) orif maybe.isNone(:typedAst.Program result.program) then
                         failed
+                    elsif maybe.isSome(:session.T r.jit) then
+                        runJit(r maybe.unwrap(:session.T r.jit) maybe.unwrap(:typedAst.Program result.program) sm bag)
                     else
                         (* The input runs in a scope of its own, which holds its
                          * source, so that the functions earlier inputs made go

@@ -103,14 +103,21 @@ BACKEND_MODES = {
     "c-whole": ["--whole-program"],
     "ssac-whole": ["--whole-program", "--backend", "ssac"],
     "arm64-whole": ["--whole-program", "--backend", "arm64"],
+    # The REPL's transcripts, their inputs compiled and run by the JIT
+    # (docs/jit.md section 5)
+    "jit": ["--jit"],
 }
 SSAC_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-ssac.txt"
 ARM64_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-arm64.txt"
 WHOLE_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-whole.txt"
+JIT_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-jit.txt"
 BACKEND_PENDING = {mode: WHOLE_PENDING if mode.endswith("-whole") else SSAC_PENDING if mode.startswith("ssac")
-                   else ARM64_PENDING for mode in BACKEND_MODES}
-# The phases that compile a program, which a backend's mode runs
+                   else JIT_PENDING if mode == "jit" else ARM64_PENDING for mode in BACKEND_MODES}
+# The phases that compile a program, which a backend's mode runs; the jit mode
+# runs the REPL's transcripts, but those marked @skip-phase: jit, which show a
+# difference the JIT is allowed (docs/jit.md section 4)
 BACKEND_PHASES = ("run_c_compiled",)
+JIT_PHASES = ("repl",)
 SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 # Tests of several errors, which only the self-hosted driver reports:
 # tests/self-hosted/errors/PHASE/NAME.quest
@@ -1197,7 +1204,8 @@ def run_all_tests(
             driver_command = [str(build_self_hosted_driver(python_executable, build_dir))]
         pending = self_hosted_pending()
         if args.backend != "c":
-            phases_to_run = [phase for phase in phases_to_run if phase in BACKEND_PHASES]
+            mode_phases = JIT_PHASES if args.backend == "jit" else BACKEND_PHASES
+            phases_to_run = [phase for phase in phases_to_run if phase in mode_phases]
             driver_args.extend(BACKEND_MODES[args.backend])
             pending |= self_hosted_pending(BACKEND_PENDING[args.backend])
     elif args.backend != "c":
@@ -1264,16 +1272,23 @@ def run_all_tests(
                     phase_tasks: list[PhaseTask] = []
                     # The REPL's transcripts, rather than the programs
                     for source_file in repl_files if phase == "repl" else []:
-                        def make_repl_runner(sf: Path) -> Callable[[Path], tuple[bool, str, str]]:
+                        test_id = f"repl/{source_file.stem}"
+                        if args.backend == "jit" and "jit" in parse_skipped_phases(source_file):
+                            skipped_golden += 1
+                            print(f"  [SKIP] {phase}:{test_id}")
+                            continue
+                        repl_command = [*driver_command, *driver_args] if driver_command is not None else None
+
+                        def make_repl_runner(sf: Path, command: Optional[list[str]]
+                                             ) -> Callable[[Path], tuple[bool, str, str]]:
                             return lambda w_dir: run_repl_test(
-                                sf, args.update_golden, python_executable, args.timeout, w_dir, driver_command
+                                sf, args.update_golden, python_executable, args.timeout, w_dir, command
                             )
 
-                        test_id = f"repl/{source_file.stem}"
                         phase_tasks.append(PhaseTask(
                             test_id=test_id,
                             run_fn=with_pending(f"{phase}:{test_id}", pending, pending_counts,
-                                                make_repl_runner(source_file)),
+                                                make_repl_runner(source_file, repl_command)),
                         ))
                     if phase == "run_c_compiled" and questlang_build is not None:
                         questlang_build.join()

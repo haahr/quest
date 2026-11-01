@@ -11,6 +11,7 @@ import
     questlang/common/diagnostics : questlang/common/Diagnostics
     questlang/types/env : questlang/types/Env
     questlang/values/model : questlang/values/Model
+    questlang/jit/session : questlang/jit/Session
     util/maybe : util/Maybe
 export
     (* The prompts, and the prefix of a phrase's result *)
@@ -28,11 +29,21 @@ export
     runErrorDiagnostic(err: model.RunError mainFile: String): diagnostics.Diagnostic
 
     (* A session: the environment inputs are elaborated in, the frame the next
-     * input runs in, and the source an input's error was raised in, when it is
-     * not the input's own (a function an earlier input made), to render it in *)
-    Def T = Tuple e: env.T var frame: model.Frame var errorSource: maybe.T(location.SourceMap) end
+     * input runs in, the source an input's error was raised in, when it is
+     * not the input's own (a function an earlier input made), to render it in,
+     * and with --jit, the JIT's session, which runs inputs instead of the
+     * interpreter (docs/jit.md) *)
+    Def T = Tuple
+        e: env.T
+        var frame: model.Frame
+        var errorSource: maybe.T(location.SourceMap)
+        jit: maybe.T(session.T)
+    end
     (* A session continuing in e and f, after a file -i ran, say *)
     new(e: env.T f: model.Frame): T
+    (* A session in e whose inputs the JIT compiles and runs, their programs
+     * seeing args as system.args *)
+    newJit(e: env.T f: model.Frame args: Array(String)): T
     (* Reads, elaborates, and runs inputs until the end of the input, keeping a
      * history in ~/.quest_history when lines are edited; the exit status *)
     run(r: T): Int

@@ -597,4 +597,26 @@ export
             end
             strutil.join("\n" lines) <> "\n"
         end
+
+    let encodeUnit(u: ssa.Unit): encode.Encoded =
+        begin
+            let defined = hashMap.new(:String :Bool eq hash.string)
+            for k = 0 upto {vector.length(:Function u.functions) - 1} do
+                put(:String :Bool defined vector.get(:Function u.functions k).symbol true)
+            end
+            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
+                put(:String :Bool defined vector.get(:ssa.Data u.data k).symbol true)
+            end
+            let machines = array of(vector.length(:Function u.functions) tuple
+                let symbol = "" let exported = false let code = vector.new(:minst.Inst) let endLabel = ""
+            end)
+            for k = 0 upto {vector.length(:Function u.functions) - 1} do
+                let f = vector.get(:Function u.functions k)
+                machines[k] := tuple
+                    let symbol = f.symbol let exported = f.exported let code = machineCode(f k defined)
+                    let endLabel = endLabel(k)
+                end
+            end
+            encode.unit(machines vector.toArray(:ssa.Data u.data))
+        end
 end

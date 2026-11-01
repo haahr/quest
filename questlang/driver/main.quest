@@ -178,6 +178,7 @@ let options =
         let var echo = false
         let var printResult = false
         let var interactive = false
+        let var jit = false
         let var compileOnly = false
         let var emitC = false
         let var nogc = false
@@ -270,6 +271,11 @@ let options =
             elsif isOneOf(arg array of "-i" "--interactive" end) andif not(compileMode) then
                 interactive := true
                 i := i + 1
+            elsif stringOp.equal(arg "--jit") andif not(compileMode) then
+                (* The REPL's inputs compiled and run by the JIT, not
+                 * interpreted (docs/jit.md) *)
+                jit := true
+                i := i + 1
             elsif stringOp.equal(arg "--emit-c") then
                 compiling(arg)
                 emitC := true
@@ -358,6 +364,7 @@ let options =
             let extraObjects = vector.toArray(:String extraObjects)
             let includePaths = vector.toArray(:String includePaths)
             let interactive = interactive orif {noProgram andif atTerminal}
+            let jit = jit
             let programArgs = vector.toArray(:String programArgs)
             let compileOnly = compileOnly
             let emitC = emitC
@@ -979,7 +986,14 @@ let interactive(e: env.T f: model.Frame bag: diagbag.T sm: location.SourceMap): 
         writer.flush(writer.output)
         diagbag.renderAll(bag sm writer.err)
         writer.flush(writer.err)
-        system.sysexit(repl.run(repl.new(e f)))
+        let r = if options.jit then
+            let args = array of({extent options.programArgs + 1} options.file)
+            for i = 0 upto {extent options.programArgs - 1} do args[i + 1] := options.programArgs[i] end
+            repl.newJit(e f args)
+        else
+            repl.new(e f)
+        end
+        system.sysexit(repl.run(r))
     end;
 
 (* Compiles a unit file alone, as the bootstrap's compile_unit_file does *)

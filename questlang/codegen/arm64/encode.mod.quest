@@ -122,8 +122,10 @@ export
             (* add and sub with sp are the extended register form, UXTX *)
             let withSp = {rs[0] is target.sp} orif {rs[1] is target.sp}
             case a
-                when arithAdd then three(if withSp then 2334154752 (* 0x8B206000 *) else 2332033024 (* 0x8B000000 *) end)
-                when arithSub then three(if withSp then 3407896576 (* 0xCB206000 *) else 3405774848 (* 0xCB000000 *) end)
+                (* 0x8B206000, 0x8B000000 *)
+                when arithAdd then three(if withSp then 2334154752 else 2332033024 end)
+                (* 0xCB206000, 0xCB000000 *)
+                when arithSub then three(if withSp then 3407896576 else 3405774848 end)
                 when arithMul then three(2600500224) (* madd, 0x9B007C00 *)
                 when arithSdiv then three(2596277248) (* 0x9AC00C00 *)
                 when arithAnd then three(2315255808) (* 0x8A000000 *)
@@ -143,25 +145,28 @@ export
      * unscaled (and pre- and post-index) form, and its width *)
     Let Access = Tuple scaled: Int unscaled: Int width: Int end
 
+    let access(scaled: Int unscaled: Int width: Int): Access =
+        tuple let scaled = scaled let unscaled = unscaled let width = width end
+
+    (* ldr d (0xFD400000, ldur 0xFC400000), ldr x (0xF9400000, 0xF8400000),
+     * ldrsw (0xB9800000, 0xB8800000), ldrsb (0x39800000, 0x38800000), ldrb
+     * (0x39400000, 0x38400000) *)
     let loadAccess(l: minst.Load real: Bool): Access =
         case l
-            when load64 then
-                if real then tuple let scaled = 4248829952 (* 0xFD400000 *) let unscaled = 4232052736 (* 0xFC400000 *) let width = 8 end
-                else tuple let scaled = 4181721088 (* 0xF9400000 *) let unscaled = 4164943872 (* 0xF8400000 *) let width = 8 end end
-            when loadS32 then tuple let scaled = 3112173568 (* 0xB9800000 *) let unscaled = 3095396352 (* 0xB8800000 *) let width = 4 end
-            when loadS8 then tuple let scaled = 964689920 (* 0x39800000 *) let unscaled = 947912704 (* 0x38800000 *) let width = 1 end
-            when loadU8 then tuple let scaled = 960495616 (* 0x39400000 *) let unscaled = 943718400 (* 0x38400000 *) let width = 1 end
+            when load64 then if real then access(4248829952 4232052736 8) else access(4181721088 4164943872 8) end
+            when loadS32 then access(3112173568 3095396352 4)
+            when loadS8 then access(964689920 947912704 1)
+            when loadU8 then access(960495616 943718400 1)
         end
 
+    (* str d (0xFD000000, stur 0xFC000000), str x (0xF9000000, 0xF8000000),
+     * str s (0xBD000000, 0xBC000000), str w (0xB9000000, 0xB8000000), strb
+     * (0x39000000, 0x38000000) *)
     let storeAccess(s: minst.Store real: Bool): Access =
         case s
-            when store64 then
-                if real then tuple let scaled = 4244635648 (* 0xFD000000 *) let unscaled = 4227858432 (* 0xFC000000 *) let width = 8 end
-                else tuple let scaled = 4177526784 (* 0xF9000000 *) let unscaled = 4160749568 (* 0xF8000000 *) let width = 8 end end
-            when store32 then
-                if real then tuple let scaled = 3170893824 (* 0xBD000000 *) let unscaled = 3154116608 (* 0xBC000000 *) let width = 4 end
-                else tuple let scaled = 3103784960 (* 0xB9000000 *) let unscaled = 3087007744 (* 0xB8000000 *) let width = 4 end end
-            when store8 then tuple let scaled = 956301312 (* 0x39000000 *) let unscaled = 939524096 (* 0x38000000 *) let width = 1 end
+            when store64 then if real then access(4244635648 4227858432 8) else access(4177526784 4160749568 8) end
+            when store32 then if real then access(3170893824 3154116608 4) else access(3103784960 3087007744 4) end
+            when store8 then access(956301312 939524096 1)
         end
 
     let pageOffKind(r: minst.Reloc): RelocKind =
@@ -197,7 +202,8 @@ export
                     end
                 end
             let reloc(kind: RelocKind symbol: String): Ok =
-                vector.append(:Reloc relocs tuple let offset = at let kind = kind let symbol = symbol let addend = 0 end)
+                vector.append(:Reloc relocs
+                    tuple let offset = at let kind = kind let symbol = symbol let addend = 0 end)
             (* A label's distance from here, in instructions, as a field of
              * bits *)
             let distance(label: String bits: Int): Int =
@@ -240,15 +246,16 @@ export
             case op
                 when opMovImm with x then
                     let h = soleHalfword(x.imm)
-                    let inverse = soleHalfword(0 - x.imm - 1)
+                    let inverse = soleHalfword({0 - x.imm} - 1)
                     if h >= 0 then
                         (* movz *)
                         3531603968 (* 0xD2800000 *) + shl(h 21)
                             + shl(words.toInt(words.extract(words.fromInt(x.imm) 16 * h 16)) 5) + rd(rs[0])
                     elsif inverse >= 0 then
                         (* movn *)
+                        let complement = words.fromInt({0 - x.imm} - 1)
                         2457862144 (* 0x92800000 *) + shl(inverse 21)
-                            + shl(words.toInt(words.extract(words.fromInt(0 - x.imm - 1) 16 * inverse 16)) 5) + rd(rs[0])
+                            + shl(words.toInt(words.extract(complement 16 * inverse 16)) 5) + rd(rs[0])
                     elsif minst.isLogical(x.imm) then
                         (* orr from xzr *)
                         2986345440 (* 0xB20003E0 *) + bitmask(x.imm) + rd(rs[0])
@@ -260,10 +267,12 @@ export
                 when opMov then
                     let d = rs[0]
                     let s = rs[1]
-                    if target.isReal(d) andif target.isReal(s) then 509624320 (* fmov d, d: 0x1E604000 *) + rn(s) + rd(d)
+                    (* fmov d, d: 0x1E604000 *)
+                    if target.isReal(d) andif target.isReal(s) then 509624320 + rn(s) + rd(d)
                     elsif target.isReal(d) then 2657550336 (* fmov d, x: 0x9E670000 *) + rn(s) + rd(d)
                     elsif target.isReal(s) then 2657484800 (* fmov x, d: 0x9E660000 *) + rn(s) + rd(d)
-                    elsif {d is target.sp} orif {s is target.sp} then 2432696320 (* add #0: 0x91000000 *) + rn(s) + rd(d)
+                    (* add #0: 0x91000000 *)
+                    elsif {d is target.sp} orif {s is target.sp} then 2432696320 + rn(s) + rd(d)
                     else 2852127712 (* orr from xzr: 0xAA0003E0 *) + rm(s) + rd(d)
                     end
                 when opArith with x then arithWord(x.arith rs)
@@ -283,7 +292,9 @@ export
                     let s = x.imm
                     case x.arith
                         (* ubfm d, s, #(64 - s) % 64, #63 - s *)
-                        when arithLsl then 3544186880 (* 0xD3400000 *) + shl(field(0 - s 6) 16) + shl(63 - s 10) + rn(rs[1]) + rd(rs[0])
+                        when arithLsl then
+                            3544186880 (* 0xD3400000 *) + shl(field(0 - s 6) 16) + shl(63 - s 10) + rn(rs[1])
+                                + rd(rs[0])
                         (* ubfm d, s, #s, #63 *)
                         when arithLsr then 3544186880 + shl(s 16) + shl(63 10) + rn(rs[1]) + rd(rs[0])
                         (* sbfm d, s, #s, #63 *)
@@ -302,7 +313,8 @@ export
                      * shifted by 12 when its low 12 bits are 0 *)
                     let base = if x.imm < 0 then 2969567263 (* 0xB100001F *) else 4043309087 (* 0xF100001F *) end
                     let n = if x.imm < 0 then 0 - x.imm else x.imm end
-                    let imm = if {n >= 4096} andif {{n % 4096} is 0} then shl(1 22) + shl(n / 4096 10) else shl(n 10) end
+                    let imm = if {n >= 4096} andif {{n % 4096} is 0} then shl(1 22) + shl(n / 4096 10)
+                        else shl(n 10) end
                     base + imm + rn(rs[0])
                 when opCcmp with x then
                     4198498304 (* 0xFA400000 *) + rm(rs[1]) + shl(cond(x.cond) 12) + rn(rs[0]) + x.nzcv
@@ -402,7 +414,8 @@ export
                         else
                             let expanded = printer.expansion(i.op i.regs)
                             for e = 0 upto {extent expanded - 1} do
-                                code[pc / 4] := word(expanded[e].op expanded[e].regs pc labelOffset localFunction codeRelocs)
+                                code[pc / 4] :=
+                                    word(expanded[e].op expanded[e].regs pc labelOffset localFunction codeRelocs)
                                 pc := pc + 4
                             end
                     end
@@ -437,7 +450,8 @@ export
                                 when wordInt with v then littleEndian(v.n)
                                 when wordSymbol with v then
                                     vector.append(:Reloc dataRelocs tuple
-                                        let offset = vector.length(:Int bytes) let kind = option relocAbsolute64 of RelocKind end
+                                        let offset = vector.length(:Int bytes)
+                                        let kind = option relocAbsolute64 of RelocKind end
                                         let symbol = v.symbol let addend = v.addend
                                     end)
                                     littleEndian(v.addend)
@@ -481,7 +495,8 @@ export
             let lines = vector.new(:String)
             for k = 0 upto {extent e.functions - 1} do
                 let f = e.functions[k]
-                vector.append(:String lines "function " <> f.name <> " " <> conv.int(f.offset) <> " " <> conv.int(f.size))
+                vector.append(:String lines
+                    "function " <> f.name <> " " <> conv.int(f.offset) <> " " <> conv.int(f.size))
             end
             for k = 0 upto {extent e.code - 1} do
                 vector.append(:String lines "code " <> conv.int(4 * k) <> " " <> hex(e.code[k] 8))

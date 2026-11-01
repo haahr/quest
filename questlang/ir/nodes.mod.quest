@@ -466,6 +466,13 @@ export
     Let SourcePos = Tuple file: Int line: Int col: Int end
 
     (* A compilation unit *)
+    (* A phrase unit, one input of the REPL: its number, and the fields of
+     * its record that hold each phrase's result (a let's bound values, an
+     * expression's value), in order. Its top level is the initializer of a
+     * module of its own (qj_<number>), whose record holds its bindings, which
+     * later inputs read as an import's members (ir/lower). *)
+    Let Phrase = Tuple number: Int results: vector.T(Array(String)) end
+
     Let Unit = Tuple
         var isProgram: Bool
         var main: Body
@@ -476,6 +483,8 @@ export
         var sourceMap: maybe.T(location.SourceMap)
         var mergedSources: vector.T(maybe.T(location.SourceMap))
         var staticData: maybe.T(StaticData)
+        (* A phrase unit's (docs/jit.md section 3.2), compiled for the JIT *)
+        var phrase: maybe.T(Phrase)
     end
 
     let direct: Access = option direct of Access end
@@ -638,6 +647,7 @@ export
             let var sourceMap = sourceMap
             let var mergedSources = vector.new(:maybe.T(location.SourceMap))
             let var staticData = maybe.none(:StaticData)
+            let var phrase = maybe.none(:Phrase)
         end
 
     (* Each file's offsets are below 2^32, so a unit's offsets carry their file

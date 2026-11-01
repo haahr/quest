@@ -13,7 +13,9 @@ import
     questlang/common/location : questlang/common/Location
     questlang/types/env : questlang/types/Env
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/types/model : questlang/types/Model
     questlang/ir/nodes : questlang/ir/Nodes
+    collections/hashMap : collections/HashMap
     util/maybe : util/Maybe
 export
     (* A typed program the lowering does not handle (a gap in the lowering, not
@@ -28,4 +30,22 @@ export
      * its exports, its offsets those of the file numbered file
      * (nodes.fileOffset: 0 but for the modules ir/whole merges) *)
     lowerModuleFile(m: typedAst.Binding e: env.T sourceMap: maybe.T(location.SourceMap) file: Int): nodes.Unit
+
+    (* An earlier input's binding, which a phrase unit reads (or writes, a var)
+     * as a field of a record (docs/jit.md section 3.2): holder, the module
+     * whose record holds it, the field, the record's type, and whether it is
+     * a var; or a module that input declared or imported, whose record is
+     * holder's, and whose field is empty *)
+    Def Earlier = Tuple holder: String field: String recordType: model.Type isVar: Bool end
+    (* The module whose initializer runs input number's phrases (qj_<number>),
+     * whose name begins the names of the modules the input declares
+     * (qj_<number>_<name>), and its record's field for the binding of the
+     * symbol symbolId *)
+    phraseModuleName(number: Int): String
+    phraseField(symbolId: Int): String
+    (* An input of the REPL, numbered number, lowered to a phrase unit
+     * (nodes.Phrase), which names earlier inputs' bindings, by symbol, as
+     * earlier gives them *)
+    lowerPhrases(program: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) number: Int
+        earlier: hashMap.T(Int Earlier)): nodes.Unit
 end

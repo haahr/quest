@@ -1,0 +1,239 @@
+(* Quest Self-Hosted Compiler: The JIT's Loader Implementation *)
+
+unsound module loader : Loader
+import
+    os/value : os/Value
+    os/code : os/Code
+    questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+    conv : Conv
+    words = word : Word
+export
+    Let T = Tuple
+        code: code.Region
+        var codeUsed: Int
+        data: code.Region
+        var dataUsed: Int
+        (* The addresses of the exported symbols of the units loaded, and of
+         * the GOT slots and stubs made *)
+        exported: hashMap.T(String Int)
+        slots: hashMap.T(String Int)
+        stubs: hashMap.T(String Int)
+    end
+
+    let loadError: Exception(String) = exception loadError: String end
+
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+
+    let new(codeBytes: Int dataBytes: Int): T =
+        begin
+            let arena = code.reserve(codeBytes true)
+            let region = code.reserve(dataBytes false)
+            tuple
+                let code = arena
+                let var codeUsed = 0
+                let data = region
+                let var dataUsed = 0
+                let exported = hashMap.new(:String :Int eq hash.string)
+                let slots = hashMap.new(:String :Int eq hash.string)
+                let stubs = hashMap.new(:String :Int eq hash.string)
+            end
+        end
+
+    (* =========================================================================
+     * Addresses and fields
+     * ====================================================================== *)
+
+    let address(v: value.T): Int = value.be(:Int v)
+    let pointer(n: Int): value.T = value.new(:Int n)
+    let codeBase(l: T): Int = address(code.base(l.code))
+    let dataBase(l: T): Int = address(code.base(l.data))
+    let alignUp(n: Int a: Int): Int = {{{n + a} - 1} / a} * a
+
+    (* n's low bits bits, as an unsigned field *)
+    let field(n: Int bits: Int): Int = words.toInt(words.extract(words.fromInt(n) 0 bits))
+    let bits(w: Int from: Int count: Int): Int = words.toInt(words.extract(words.fromInt(w) from count))
+    let shl(n: Int k: Int): Int = words.toInt(words.shift(words.fromInt(n) k))
+
+    (* Room for bytes in a region, aligned to 16 *)
+    let allocateData(l: T bytes: Int): Int =
+        begin
+            let at = alignUp(l.dataUsed 16)
+            if {at + bytes} > code.size(l.data) then raise loadError with "the JIT's data region is full" end end
+            l.dataUsed := at + bytes
+            at
+        end
+    let allocateCode(l: T bytes: Int): Int =
+        begin
+            let at = alignUp(l.codeUsed 16)
+            if {at + bytes} > code.size(l.code) then raise loadError with "the JIT's code arena is full" end end
+            l.codeUsed := at + bytes
+            at
+        end
+
+    let writeWord(l: T address: Int w: Int): Ok =
+        code.write64(l.data address - dataBase(l) array of w end)
+
+    (* A driver symbol's address *)
+    let hostSymbol(name: String): Int =
+        begin
+            let found = code.symbol(name)
+            if maybe.isNone(:value.T found) then raise loadError with "undefined symbol " <> name end end
+            address(maybe.unwrap(:value.T found))
+        end
+
+    (* A slot holding a symbol's address, made once: a GOT entry *)
+    let slot(l: T name: String resolve: All(name: String) Int): Int =
+        begin
+            let found = hashMap.get(:String :Int l.slots name)
+            if maybe.isSome(:Int found) then
+                maybe.unwrap(:Int found)
+            else
+                let at = dataBase(l) + allocateData(l 8)
+                writeWord(l at resolve(name))
+                hashMap.insert(:String :Int l.slots name at)
+                at
+            end
+        end
+
+    (* adrp's immediate: the distance in pages from pc's page to target's *)
+    let page(target: Int pc: Int): Int =
+        begin
+            let delta = {target / 4096} - {pc / 4096}
+            if {delta >= 1048576} orif {delta < ~1048576} then raise loadError with "a page beyond adrp's reach" end end
+            shl(field(delta 2) 29) + shl(field(delta / 4 19) 5)
+        end
+
+    (* An add's or load's offset in a page, scaled by the access's size *)
+    let pageOffset(w: Int target: Int): Int =
+        begin
+            let low = field(target 12)
+            (* A load or store with an unsigned offset: bits 29-27 are 111,
+             * 25-24 are 01; its size is in bits 31-30 *)
+            let isAccess = {bits(w 27 3) is 7} andif {bits(w 24 2) is 1}
+            let scale = if isAccess then shl(1 bits(w 30 2)) else 1 end
+            if {low % scale} isnot 0 then raise loadError with "a misaligned page offset" end end
+            shl(low / scale 10)
+        end
+
+    (* A stub that branches to a driver function through its slot, made
+     * once: adrp x16, ldr x16, br x16 *)
+    let stub(l: T name: String resolve: All(name: String) Int): Int =
+        begin
+            let found = hashMap.get(:String :Int l.stubs name)
+            if maybe.isSome(:Int found) then
+                maybe.unwrap(:Int found)
+            else
+                let s = slot(l name resolve)
+                let offset = allocateCode(l 12)
+                let at = codeBase(l) + offset
+                code.write32(l.code offset array of
+                    2415919120 (* adrp x16: 0x90000010 *) + page(s at)
+                    4181721616 (* ldr x16, [x16]: 0xF9400210 *) + pageOffset(4181721616 s)
+                    3592356352 (* br x16: 0xD61F0200 *)
+                end)
+                hashMap.insert(:String :Int l.stubs name at)
+                at
+            end
+        end
+
+    (* =========================================================================
+     * Loading
+     * ====================================================================== *)
+
+    let load(l: T e: encode.Encoded): hashMap.T(String value.T) =
+        begin
+            let codeOffset = allocateCode(l 4 * extent e.code)
+            let codeAt = codeBase(l) + codeOffset
+            let dataBytes = alignUp(extent e.data 8)
+            let dataOffset = allocateData(l if dataBytes > 0 then dataBytes else 8 end)
+            let dataAt = dataBase(l) + dataOffset
+            (* The unit's own symbols, then the exported ones of the units
+             * before it, then the driver's *)
+            let own = hashMap.new(:String :Int eq hash.string)
+            for k = 0 upto {extent e.functions - 1} do
+                hashMap.insert(:String :Int own e.functions[k].name codeAt + e.functions[k].offset)
+            end
+            for k = 0 upto {extent e.dataSymbols - 1} do
+                hashMap.insert(:String :Int own e.dataSymbols[k].name dataAt + e.dataSymbols[k].offset)
+            end
+            let loaded(name: String): maybe.T(Int) =
+                begin
+                    let mine = hashMap.get(:String :Int own name)
+                    if maybe.isSome(:Int mine) then mine else hashMap.get(:String :Int l.exported name) end
+                end
+            let resolve(name: String): Int =
+                begin
+                    let found = loaded(name)
+                    if maybe.isSome(:Int found) then maybe.unwrap(:Int found) else hostSymbol(name) end
+                end
+            (* The code, its relocated fields filled *)
+            let text = array of(extent e.code 0)
+            for k = 0 upto {extent e.code - 1} do text[k] := e.code[k] end
+            for k = 0 upto {extent e.codeRelocs - 1} do
+                let r = e.codeRelocs[k]
+                let pc = codeAt + r.offset
+                let i = r.offset / 4
+                let w = text[i]
+                text[i] := w + case r.kind
+                    when relocBranch26 then
+                        let found = loaded(r.symbol)
+                        let target = if maybe.isSome(:Int found) then maybe.unwrap(:Int found)
+                            else stub(l r.symbol resolve) end
+                        field({target - pc} / 4 26)
+                    when relocPage21 then page(resolve(r.symbol) pc)
+                    when relocPageOff12 then pageOffset(w resolve(r.symbol))
+                    when relocGotPage21 then page(slot(l r.symbol resolve) pc)
+                    when relocGotPageOff12 then pageOffset(w slot(l r.symbol resolve))
+                    (* A thread-local's slot holds the driver's own descriptor
+                     * of it, which is what dlsym gives *)
+                    when relocTlvPage21 then page(slot(l r.symbol resolve) pc)
+                    when relocTlvPageOff12 then pageOffset(w slot(l r.symbol resolve))
+                    when relocAbsolute64 then raise loadError with "an absolute relocation in code" end
+                end
+            end
+            (* The data, as words, its addresses filled *)
+            let data = array of(dataBytes / 8 0)
+            for k = 0 upto {extent data - 1} do
+                let var w = words.fromInt(0)
+                for b = 0 upto 7 do
+                    let at = {8 * k} + b
+                    if at < extent e.data then
+                        w := words.orBits(w words.shift(words.fromInt(e.data[at]) 8 * b))
+                    end
+                end
+                data[k] := words.toInt(w)
+            end
+            for k = 0 upto {extent e.dataRelocs - 1} do
+                let r = e.dataRelocs[k]
+                data[r.offset / 8] := resolve(r.symbol) + r.addend
+            end
+            if extent data > 0 then code.write64(l.data dataOffset data) end
+            if extent text > 0 then code.write32(l.code codeOffset text) end
+            (* The collector scans the data, and frames in the functions are
+             * attributed *)
+            if extent data > 0 then code.addRoots(pointer(dataAt) pointer(dataAt + dataBytes)) end
+            for k = 0 upto {extent e.functions - 1} do
+                let f = e.functions[k]
+                code.addFunction(pointer(codeAt + f.offset) pointer(codeAt + f.offset + f.size))
+            end
+            for k = 0 upto {extent e.functions - 1} do
+                if e.functions[k].exported then
+                    hashMap.insert(:String :Int l.exported e.functions[k].name codeAt + e.functions[k].offset)
+                end
+            end
+            for k = 0 upto {extent e.dataSymbols - 1} do
+                if e.dataSymbols[k].exported then
+                    hashMap.insert(:String :Int l.exported e.dataSymbols[k].name dataAt + e.dataSymbols[k].offset)
+                end
+            end
+            let result = hashMap.new(:String :value.T eq hash.string)
+            hashMap.forEach(:String :Int own fun(name: String a: Int): Ok
+                begin hashMap.insert(:String :value.T result name pointer(a)) ok end)
+            result
+        end
+end

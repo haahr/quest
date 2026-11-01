@@ -45,6 +45,10 @@ $ quest
 ==  40 : Int
 ```
 
+With `--jit`, the self-hosted driver's REPL compiles each input to arm64 code and runs it in its own process,
+instead of interpreting it ([jit.md](jit.md)); its output is the interpreter's but for the differences jit.md §4
+lists. A file given with `-i` is still interpreted, for now.
+
 ### 2.2. Interactive Mode with File (`-i` / `--interactive`)
 The `-i` and `--interactive` flags execute a file through the compiler pipeline first, and if successful, drop into
 the REPL with the file's bindings and types in scope:

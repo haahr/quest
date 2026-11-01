@@ -242,7 +242,9 @@ other both ways; `arm64`, `arm64-program`, and `arm64-modules` do the same with 
 [build-process.md](build-process.md) §1.2) through each backend. Several modes, separated by commas, run one after
 another with one driver. Each mode's pending list adds to `pending.txt`: `tests/self-hosted/pending-ssac.txt` for the
 `ssac` modes, `tests/self-hosted/pending-arm64.txt` for the `arm64` ones, and `tests/self-hosted/pending-whole.txt` for
-the whole ones, all empty. The questlang tests `ssac_print` and `arm64_assemble` print a unit of the SSA built by hand
+the whole ones, all empty. `jit` runs the REPL's transcripts instead, with `--jit` ([jit.md](jit.md) §5): a
+transcript marked `@skip-phase: jit` shows a difference the JIT is allowed and is skipped, and
+`tests/self-hosted/pending-jit.txt` lists those that wait on later steps. The questlang tests `ssac_print` and `arm64_assemble` print a unit of the SSA built by hand
 as C and as assembly, whose goldens `tests/python/test_ssac.py` compiles and `tests/python/test_arm64.py` assembles. The
 SSA's passes are tested on SSA written as text (`questlang/ssa/parser`): `ssa_promote` and `ssa_tailcalls` print small
 functions before and after their pass, and `ssa_verify` the problems the verifier finds ([ssa.md](ssa.md) §6).
@@ -637,7 +639,7 @@ suites, and any other change the first's. It says which, and why; `--all` and `-
 
 | Change | Runs | Takes (10 cores) |
 | :--- | :--- | ---: |
-| **Both compilers,** or what they share: the language, `lib/`, `runtime/`, `bootstrap/`, a fix to what programs do or what errors they report, the shared tests | At once: the self-hosting check seeded from the release (50% of the workers), the fixed point through `arm64`, each with the whole-program fixed point through its backend, the backends' suite (20%: `--self-hosted --backend` with `ssac`, `arm64`, `arm64-program`, `c-whole`, and `arm64-whole`), the bootstrap's suite (30%), and the unit tests but the terminal ones; then the terminal tests alone | about 11 min |
+| **Both compilers,** or what they share: the language, `lib/`, `runtime/`, `bootstrap/`, a fix to what programs do or what errors they report, the shared tests | At once: the self-hosting check seeded from the release (50% of the workers), the fixed point through `arm64`, each with the whole-program fixed point through its backend, the backends' suite (20%: `--self-hosted --backend` with `ssac`, `arm64`, `arm64-program`, `c-whole`, `arm64-whole`, and `jit`), the bootstrap's suite (30%), and the unit tests but the terminal ones; then the terminal tests alone | about 11 min |
 | **The self-hosted compiler alone:** `questlang/` changes to how it compiles (its IR, its C), refactorings, and its own goldens | The self-hosting check seeded from the release, with 8 workers, the fixed point through `arm64`, each with the whole-program one, and the backends' suite, with a quarter of the cores | about 11 min |
 
 - **Both take about as long,** since the self-hosted suite sets when either ends (section 5.1); the second leaves the

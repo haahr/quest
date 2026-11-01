@@ -21,6 +21,8 @@ import
     descriptors = questlang/ssa/build/descriptors : questlang/ssa/build/Descriptors
     control = questlang/ssa/build/control : questlang/ssa/build/Control
     adapters = questlang/ssa/build/adapters : questlang/ssa/build/Adapters
+    stringOp = string : StringOp
+    conv : Conv
 export
     Let Type = model.Type
     Let Variable = ir.Variable
@@ -195,6 +197,13 @@ export
 
     let isModuleFile(unit: ir.Unit): Bool = not(unit.isProgram)
 
+    (* A phrase unit's module, whose initializer runs its phrases, and its
+     * entry, which the JIT calls (docs/jit.md section 3.2) *)
+    let phraseModule(unit: ir.Unit): String =
+        if maybe.isSome(:ir.Phrase unit.phrase) then "qj_" <> conv.int(maybe.unwrap(:ir.Phrase unit.phrase).number)
+        else "" end
+    let phraseEntry(unit: ir.Unit): String = phraseModule(unit) <> "_entry"
+
     (* The function table (docs/exceptions.md section 5.2) of the unit's
      * functions with frames in tracebacks, and qr_register_dicts, which
      * registers it and the offset tables of records the unit views at
@@ -214,9 +223,13 @@ export
             end
             for i = 0 upto {vector.length(:ir.Module unit.modules) - 1} do
                 let m = vector.get(:ir.Module unit.modules i)
-                entry("qv_mod_" <> symbols.mangleModuleName(m.name) <> "_init" diagnostics.initFrame(m.name))
+                let frame = if stringOp.equal(m.name phraseModule(unit)) then diagnostics.mainFrame
+                    else diagnostics.initFrame(m.name) end
+                entry("qv_mod_" <> symbols.mangleModuleName(m.name) <> "_init" frame)
             end
-            if not(isModuleFile(unit)) then entry("main" diagnostics.mainFrame) end
+            if not(isModuleFile(unit)) andif maybe.isNone(:ir.Phrase unit.phrase) then
+                entry("main" diagnostics.mainFrame)
+            end
             let fn = adapters.newFunction(u "qr_register_dicts" false adapters.pointers(0) array of :vals.Part end)
             if not(vector.empty(:ssa.Word entries)) then
                 addData(u ssa.words("qr_funcs" false false vector.toArray(:ssa.Word entries)))
@@ -392,7 +405,27 @@ export
             end
             descriptorData(u)
             vector.append(:Function u.built.functions registration(u))
-            if not(isModuleFile(unit)) then vector.append(:Function u.built.functions mainOf(topLevel(u "main" unit.main
+            if maybe.isSome(:ir.Phrase unit.phrase) then
+                (* A phrase unit's entry: main's, without the collector's and
+                 * the builtins' initialization, which the host has done *)
+                vector.append(:Function u.built.functions topLevel(u phraseEntry(unit) unit.main
+                    fun(fn: vals.Fn): Ok
+                        begin
+                            vals.callOwn(fn "qr_register_dicts")
+                            for j = 0 upto {extent unit.imports - 1} do
+                                vals.callOwn(fn "qv_mod_" <> symbols.mangleModuleName(unit.imports[j].canonicalPath)
+                                    <> "_init")
+                            end
+                            for j = 0 upto {vector.length(:ir.Module unit.modules) - 1} do
+                                vals.callOwn(fn "qv_mod_"
+                                    <> symbols.mangleModuleName(vector.get(:ir.Module unit.modules j).name) <> "_init")
+                            end
+                        end
+                    fun(fn: vals.Fn): Ok
+                        vals.terminate(fn option termReturn of ssa.Terminator with let values = vals.noValues end)
+                    array of :ssa.Type end array of :ssa.Type end true))
+            elsif not(isModuleFile(unit)) then
+                vector.append(:Function u.built.functions mainOf(topLevel(u "main" unit.main
                 fun(fn: vals.Fn): Ok
                     begin
                         let params = ssa.block(fn.f 0).params

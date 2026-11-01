@@ -167,6 +167,8 @@ export
      *
      * value and effect, the entry points for expressions, are described in
      * the interface's header comment. *)
+    Let Earlier = Tuple holder: String field: String recordType: Type isVar: Bool end
+
     Let Lowerer = Tuple
         vars: hashMap.T(Int Variable)
         builtins: hashMap.T(Int String)
@@ -201,6 +203,13 @@ export
          * component, which the frame and the closures share *)
         captured: hashMap.T(Int Bool)
         boxes: hashMap.T(Int Variable)
+        (* In a phrase unit, the earlier inputs' bindings it may name, by
+         * symbol, and the imports of those inputs' records, by number *)
+        earlier: hashMap.T(Int Earlier)
+        earlierImports: hashMap.T(String nodes.Import)
+        (* What a phrase unit's declared modules' names begin with, so that
+         * each input's are its own *)
+        var modulePrefix: String
     end
 
     (* Adds to captured the symbols of the local var variables that functions
@@ -267,6 +276,9 @@ export
                 let made = hashMap.new(:Int :Bool intEqual hash.int)
                 let captured = hashMap.new(:Int :Bool intEqual hash.int)
                 let boxes = hashMap.new(:Int :Variable intEqual hash.int)
+                let earlier = hashMap.new(:Int :Earlier intEqual hash.int)
+                let earlierImports = hashMap.new(:String :nodes.Import stringOp.equal hash.string)
+                let var modulePrefix = ""
             end
         end
 
@@ -397,6 +409,37 @@ export
             nodes.newImport(name modulePath canonicalPath interfacePath recordType libPath)
         end
 
+    let phraseModuleName(number: Int): String = "qj_" <> conv.int(number)
+
+    (* The earlier input's binding the symbol symbolId is, if it is one (in a
+     * phrase unit), with the import of the record that holds it *)
+    let earlierBinding(l: Lowerer symbolId: Int): maybe.T(Tuple binding: Earlier ref: nodes.ModuleRef end) =
+        begin
+            let found = hashMap.get(:Int :Earlier l.earlier symbolId)
+            if maybe.isNone(:Earlier found) orif hashMap.contains(:Int :Variable l.vars symbolId) then
+                maybe.none(:Tuple binding: Earlier ref: nodes.ModuleRef end)
+            else
+                let b = maybe.unwrap(:Earlier found)
+                if not(hashMap.contains(:String :nodes.Import l.earlierImports b.holder)) then
+                    let imp = nodes.newImport(b.holder b.holder b.holder "" maybe.some(:Type b.recordType)
+                        maybe.none(:String))
+                    hashMap.insert(:String :nodes.Import l.earlierImports b.holder imp)
+                    vector.append(:nodes.Import l.imports imp)
+                end
+                let ref = option refImport of nodes.ModuleRef with
+                    let i = hashMap.find(:String :nodes.Import l.earlierImports b.holder)
+                end
+                maybe.some(:Tuple binding: Earlier ref: nodes.ModuleRef end tuple let binding = b let ref = ref end)
+            end
+        end
+
+    (* The earlier input's binding e names, if it is one *)
+    let earlierOf(l: Lowerer e: Expr): maybe.T(Tuple binding: Earlier ref: nodes.ModuleRef end) =
+        case e.form
+            when exprVar with x then earlierBinding(l x.symbol.symbolId)
+            else maybe.none(:Tuple binding: Earlier ref: nodes.ModuleRef end)
+        end
+
     (* The module e refers to, if it is a reference to a module rather than a
      * value *)
     let moduleRefOf(l: Lowerer e: Expr): maybe.T(nodes.ModuleRef) =
@@ -406,7 +449,14 @@ export
                     maybe.none(:nodes.ModuleRef)
                 else
                     let found = hashMap.get(:Int :nodes.ModuleRef l.moduleRefs x.symbol.symbolId)
-                    if maybe.isNone(:nodes.ModuleRef found) andif model.bindsModule(x.name e.type) then
+                    (* A module an earlier input declared, whose record that
+                     * input exported (lowerPhrases) *)
+                    let declared = earlierBinding(l x.symbol.symbolId)
+                    if maybe.isNone(:nodes.ModuleRef found)
+                        andif maybe.isSome(:Tuple binding: Earlier ref: nodes.ModuleRef end declared) then
+                        let d = maybe.unwrap(:Tuple binding: Earlier ref: nodes.ModuleRef end declared)
+                        maybe.some(:nodes.ModuleRef d.ref)
+                    elsif maybe.isNone(:nodes.ModuleRef found) andif model.bindsModule(x.name e.type) then
                         (* A standard library module, which a unit uses without
                          * importing it *)
                         let std = standardModuleName(x.name)
@@ -641,6 +691,23 @@ export
                         letOp(l option opAddrVar of Op with let var v = v end e.type into)
                     else
                         copyInto(l va(v) into)
+                    end
+                elsif maybe.isSome(:Tuple binding: Earlier ref: nodes.ModuleRef end earlierOf(l e)) then
+                    (* An earlier input's binding is a field of its record; a
+                     * var's address is its field's *)
+                    let found = maybe.unwrap(:Tuple binding: Earlier ref: nodes.ModuleRef end earlierOf(l e))
+                    if found.binding.isVar then
+                        let recordAtom = letOp(l option opModuleMember of Op with
+                            let var moduleRef = found.ref let var member = maybe.none(:String)
+                        end found.binding.recordType none)
+                        letOp(l option opAddrField of Op with
+                            let var base = recordAtom let name = found.binding.field
+                            let var viewMap = maybe.none(:Variable)
+                        end e.type into)
+                    else
+                        letOp(l option opModuleMember of Op with
+                            let var moduleRef = found.ref let var member = maybe.some(:String found.binding.field)
+                        end e.type into)
                     end
                 elsif maybe.isSome(:String builtin) then
                     let name = maybe.unwrap(:String builtin)
@@ -1095,6 +1162,17 @@ export
                 let a = value(l v none)
                 emit(l option sAssign of Stmt with
                     let var pos = ~1 let var v = maybe.unwrap(:Variable bound) let var value = a
+                end)
+            elsif maybe.isSome(:Tuple binding: Earlier ref: nodes.ModuleRef end earlierOf(l target)) then
+                (* An earlier input's var is a field of its record *)
+                let found = maybe.unwrap(:Tuple binding: Earlier ref: nodes.ModuleRef end earlierOf(l target))
+                let a = value(l v none)
+                let recordAtom = letOp(l option opModuleMember of Op with
+                    let var moduleRef = found.ref let var member = maybe.none(:String)
+                end found.binding.recordType none)
+                emit(l option sStoreField of Stmt with
+                    let var pos = ~1 let var value = a let var base = recordAtom let name = found.binding.field
+                    let var viewMap = maybe.none(:Variable)
                 end)
             else
                 case target.form
@@ -1734,7 +1812,7 @@ export
                         end
                     end)
                 l.frame := savedFrame
-                let lowered = nodes.newModule(m.name m.interfaceName init members)
+                let lowered = nodes.newModule(l.modulePrefix <> m.name m.interfaceName init members)
                 if maybe.isSome(:Int m.symbolId) then
                     hashMap.insert(:Int :nodes.ModuleRef l.moduleRefs maybe.unwrap(:Int m.symbolId)
                         option refModule of nodes.ModuleRef with let m = lowered end)
@@ -1827,6 +1905,120 @@ export
             m.exports := maybe.some(:nodes.Members exports)
             addModuleRecord(m)
             unit.isProgram := false
+            unit
+        end
+
+    let phraseField(symbolId: Int): String = "v" <> conv.int(symbolId)
+
+    (* The phrases are lowered as program() lowers them, into the initializer
+     * of a module of their own, whose members are their top-level bindings and
+     * their expressions' values; its record is made, as a module file's is,
+     * when they have run, with a var field for a var *)
+    let lowerPhrases(prog: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) number: Int
+        earlier: hashMap.T(Int Earlier)): nodes.Unit =
+        begin
+            let l = newLowerer(e sourceMap 0 false false)
+            hashMap.forEach(:Int :Earlier earlier fun(k: Int b: Earlier): Ok
+                begin hashMap.insert(:Int :Earlier l.earlier k b) ok end)
+            capturedMutables(prog l.captured)
+            l.modulePrefix := phraseModuleName(number) <> "_"
+            let init = nodes.newBody()
+            let modules = vector.new(:nodes.Module)
+            let members = nodes.newMembers()
+            let results = vector.new(:Array(String))
+            let member(name: String v: Variable): String =
+                begin
+                    if maybe.isNone(:Variable nodes.member(members name)) then nodes.addMember(members name v) end
+                    name
+                end
+            let bound(symbol: symbols.ValueSymbol): String =
+                member(phraseField(symbol.symbolId) hashMap.find(:Int :Variable l.vars symbol.symbolId))
+            let none = array of :String end
+            let var lastBody = init
+            inBody(l init fun(): Ok
+                begin
+                    for i = 0 upto {extent prog.phrases - 1} do
+                        let phrase = prog.phrases[i]
+                        let shown = case phrase.form
+                            when bindModule with x then
+                                if not(x.isPrecompiled) then
+                                    (* Its record is exported, for later
+                                     * inputs *)
+                                    let dm = lowerModule(l phrase)
+                                    dm.exports := maybe.some(:nodes.Members dm.members)
+                                    addModuleRecord(dm)
+                                    vector.append(:nodes.Module modules dm)
+                                end
+                                none
+                            when bindInterface then none
+                            when bindExprStmt with x then
+                                let namedException = case x.expr.form
+                                    when exprException with y then stringOp.length(y.name) > 0
+                                    else false
+                                end
+                                if namedException orif isOk(x.expr.type) then
+                                    binding(l phrase false)
+                                    none
+                                else
+                                    let v = fresh("result" x.expr.type false)
+                                    at(:Ok l phrase.offset fun(): Ok
+                                        begin
+                                            makeScopeExceptions(l typedAst.scopeExceptions(phrase))
+                                            value(l x.expr some(v))
+                                            ok
+                                        end)
+                                    array of member("r" <> conv.int(i) v) end
+                                end
+                            when bindLetValue with x then
+                                binding(l phrase false)
+                                array of bound(x.value.symbol) end
+                            when bindLetValueGroup with x then
+                                binding(l phrase false)
+                                let names = array of(extent x.members "")
+                                for j = 0 upto {extent x.members - 1} do names[j] := bound(x.members[j].symbol) end
+                                names
+                            else
+                                binding(l phrase false)
+                                none
+                        end
+                        vector.append(:Array(String) results shown)
+                        (* The exceptions it names, which later inputs may raise
+                         * and catch *)
+                        let excs = typedAst.namedExceptionsIn(phrase)
+                        for j = 0 upto {extent excs - 1} do
+                            case excs[j].form
+                                when exprException with x then
+                                    if maybe.isSome(:symbols.ValueSymbol x.symbol) then
+                                        bound(maybe.unwrap(:symbols.ValueSymbol x.symbol))
+                                        ok
+                                    end
+                                else ok
+                            end
+                        end
+                    end
+                    lastBody := l.body
+                end)
+            (* Its record, of its members' values when the phrases have run,
+             * made where they end (after a join, in its continuation) *)
+            let recordFields = vector.new(:model.RecordField)
+            let atoms = vector.new(:nodes.FieldAtom)
+            for i = 0 upto {vector.length(:String members.names) - 1} do
+                let n = vector.get(:String members.names i)
+                let v = hashMap.find(:String :Variable members.vars n)
+                vector.append(:model.RecordField recordFields
+                    tuple let name = n let type = v.type let isVar = v.isMutable end)
+                vector.append(:nodes.FieldAtom atoms tuple let name = n let atom = va(v) let isVar = v.isMutable end)
+            end
+            let recordType = model.recordType(vector.toArray(:model.RecordField recordFields) maybe.none(:String))
+            let rv = fresh(phraseModuleName(number) <> "_record" recordType false)
+            l.body := lastBody
+            emit(l nodes.letStmt(rv nodes.makeRecord(vector.toArray(:nodes.FieldAtom atoms))))
+            let m = nodes.newModule(phraseModuleName(number) "" init members)
+            m.exports := maybe.some(:nodes.Members members)
+            m.recordVar := some(rv)
+            vector.append(:nodes.Module modules m)
+            let unit = nodes.newUnit(nodes.newBody() modules vector.toArray(:nodes.Import l.imports) sourceMap)
+            unit.phrase := maybe.some(:nodes.Phrase tuple let number = number let results = results end)
             unit
         end
 end

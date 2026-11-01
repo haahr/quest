@@ -1,0 +1,25 @@
+(* Quest Self-Hosted Compiler: The JIT's Reflection Interface
+ *
+ * docs/jit.md section 3.8: the interpreter's model of a value (values/model)
+ * that JIT code made, read out of native memory through os/value, directed by
+ * the value's static type, so that the REPL prints it with the interpreter's
+ * formatter. A value is read from its slot form, a word
+ * (docs/c-representation.md section 5.1, "Slots"): a scalar as it is, a
+ * string as the native string the model holds, a record field by field
+ * through its offset table, a tuple, option, variant, or array component by
+ * component. A function, or a value of an abstract type or a type parameter,
+ * whose formatting depends on its type alone, is ok. *)
+
+unsound interface Reflect
+import
+    os/value : os/Value
+    tm = questlang/types/model : questlang/types/Model
+    questlang/values/model : questlang/values/Model
+export
+    (* The value of type t whose slot form is w *)
+    slot(w: value.T t: tm.Type): model.Value
+
+    (* The field of a record whose QRecordVal is at address at, of record
+     * type recordType *)
+    field(at: value.T recordType: tm.Type name: String): model.Value
+end

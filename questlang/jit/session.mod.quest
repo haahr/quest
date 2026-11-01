@@ -1,0 +1,301 @@
+(* Quest Self-Hosted Compiler: The JIT Session Implementation *)
+
+unsound module session : Session
+import
+    questlang/common/location : questlang/common/Location
+    questlang/types/env : questlang/types/Env
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/modules/elaboration : questlang/modules/Elaboration
+    tm = questlang/types/model : questlang/types/Model
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/values/model : questlang/values/Model
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/lower : questlang/ir/Lower
+    questlang/ir/verify : questlang/ir/Verify
+    passes = questlang/codegen/backend : questlang/codegen/Backend
+    ssaBuild = questlang/ssa/build : questlang/ssa/Build
+    ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
+    arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
+    questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
+    questlang/jit/loader : questlang/jit/Loader
+    questlang/jit/reflect : questlang/jit/Reflect
+    os/value : os/Value
+    os/code : os/Code
+    raised : Raised
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/sort : util/Sort
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    ascii : Ascii
+    conv : Conv
+export
+    Let T = Tuple
+        e: env.T
+        loader: loader.T
+        var count: Int
+        (* The bindings of the inputs that ran, by symbol *)
+        earlier: hashMap.T(Int lower.Earlier)
+        (* Each input's source, by number *)
+        sources: hashMap.T(Int location.SourceMap)
+    end
+    Let Result = Tuple phrase: typedAst.Binding value: model.Value end
+    Let Outcome = Option
+        ran with results: Array(Result) end
+        raised with
+            name: String
+            sourceMap: maybe.T(location.SourceMap)
+            offset: maybe.T(Int)
+            frames: Array(String)
+        end
+    end
+
+    let unsupported: Exception(String) = exception unsupported: String end
+    let fail(A::TYPE m: String): A = raise unsupported with m end
+
+    (* The arena: every bl within 128 MB reaches *)
+    let codeBytes = 134217728
+    let dataBytes = 67108864
+
+    (* system.args, an external value, is copied into the driver's system
+     * record when system is initialized, from the runtime's array: both are
+     * made args, the record's field at its index in name order *)
+    let setArgs(e: env.T args: Array(String)): Ok =
+        begin
+            code.setArgs(args)
+            let at = code.symbol("qm_system")
+            if maybe.isSome(:value.T at) then
+                let scope = elaboration.loadInterface("System" e)
+                let names = hashMap.keys(:String :symbols.ValueSymbol scope.values)
+                let var index = 0
+                for i = 0 upto {vector.length(:String names) - 1} do
+                    if sort.stringCompare(vector.get(:String names i) "args") < 0 then index := index + 1 end
+                end
+                let systemRecord = maybe.unwrap(:value.T at)
+                let offset = value.be(:Int value.fetch(value.fetch(systemRecord 8) 8 * index))
+                value.store(value.fetch(systemRecord 0) offset value.new(:Array(String) args))
+            end
+        end
+
+    let new(e: env.T args: Array(String)): T =
+        begin
+            setArgs(e args)
+            tuple
+                let e = e
+                let loader = loader.new(codeBytes dataBytes)
+                let var count = 0
+                let earlier = hashMap.new(:Int :lower.Earlier fun(a: Int b: Int): Bool a is b hash.int)
+                let sources = hashMap.new(:Int :location.SourceMap fun(a: Int b: Int): Bool a is b hash.int)
+            end
+        end
+
+    (* The value symbols an input binds at its top level, which its record
+     * holds (as lowerPhrases makes it) *)
+    let boundSymbols(program: typedAst.Program): vector.T(symbols.ValueSymbol) =
+        begin
+            let found = vector.new(:symbols.ValueSymbol)
+            for i = 0 upto {extent program.phrases - 1} do
+                let phrase = program.phrases[i]
+                case phrase.form
+                    when bindLetValue with x then vector.append(:symbols.ValueSymbol found x.value.symbol)
+                    when bindLetValueGroup with x then
+                        for j = 0 upto {extent x.members - 1} do
+                            vector.append(:symbols.ValueSymbol found x.members[j].symbol)
+                        end
+                    else ok
+                end
+                let excs = typedAst.namedExceptionsIn(phrase)
+                for j = 0 upto {extent excs - 1} do
+                    case excs[j].form
+                        when exprException with x then
+                            if maybe.isSome(:symbols.ValueSymbol x.symbol) then
+                                vector.append(:symbols.ValueSymbol found maybe.unwrap(:symbols.ValueSymbol x.symbol))
+                            end
+                        else ok
+                    end
+                end
+            end
+            found
+        end
+
+    (* An input's code names its source <repl>#N, N its number, so that the
+     * site of a raise in it, file:line:col, says which input it is in *)
+    let sourcePrefix = "<repl>#"
+
+    (* The decimal number text is, if it is one *)
+    let number(text: String): maybe.T(Int) =
+        begin
+            let var n = 0
+            let var valid = stringOp.length(text) > 0
+            for i = 0 upto {stringOp.length(text) - 1} do
+                let d = ascii.val(stringOp.getChar(text i)) - 48
+                if {d < 0} orif {d > 9} then valid := false else n := {10 * n} + d end
+            end
+            if valid then maybe.some(:Int n) else maybe.none(:Int) end
+        end
+
+    (* Where a site, FILE:LINE:COL, is: an input's source, and the offset of
+     * its line and column in it *)
+    let located(s: T site: String): Tuple sourceMap: maybe.T(location.SourceMap) offset: maybe.T(Int) end =
+        begin
+            let nowhere = tuple let sourceMap = maybe.none(:location.SourceMap) let offset = maybe.none(:Int) end
+            let last = strutil.rfind(site ":")
+            let before = if last > 0 then strutil.rfind(stringOp.getSub(site 0 last) ":") else ~1 end
+            if {before < 0} orif not(strutil.startsWith(site sourcePrefix)) then
+                nowhere
+            else
+                let file = stringOp.getSub(site 0 before)
+                let input = number(stringOp.getSub(file stringOp.length(sourcePrefix)
+                    stringOp.length(file) - stringOp.length(sourcePrefix)))
+                let line = number(stringOp.getSub(site before + 1 {last - before} - 1))
+                let col = number(stringOp.getSub(site last + 1 {stringOp.length(site) - last} - 1))
+                let found = if maybe.isSome(:Int input) then
+                    hashMap.get(:Int :location.SourceMap s.sources maybe.unwrap(:Int input))
+                else maybe.none(:location.SourceMap) end
+                if maybe.isNone(:location.SourceMap found) orif maybe.isNone(:Int line) orif maybe.isNone(:Int col) then
+                    nowhere
+                else
+                    let text = location.text(maybe.unwrap(:location.SourceMap found))
+                    let var offset = 0
+                    let var lines = 1
+                    while {lines < maybe.unwrap(:Int line)} andif {offset < stringOp.length(text)} do
+                        if stringOp.getChar(text offset) is '\n' then lines := lines + 1 end
+                        offset := offset + 1
+                    end
+                    tuple let sourceMap = found let offset = maybe.some(:Int offset + maybe.unwrap(:Int col) - 1) end
+                end
+            end
+        end
+
+    (* The frames the runtime prints, "  in NAME" each, down to the first
+     * <main>, the input's own; those below it are the driver's *)
+    let framesOf(text: String): Array(String) =
+        begin
+            let names = vector.new(:String)
+            let lines = strutil.split(text "\n")
+            let var done = false
+            for i = 0 upto {vector.length(:String lines) - 1} do
+                let line = vector.get(:String lines i)
+                if not(done) andif strutil.startsWith(line "  in ") then
+                    let name = stringOp.getSub(line 5 stringOp.length(line) - 5)
+                    vector.append(:String names name)
+                    if stringOp.equal(name "<main>") then done := true end
+                end
+            end
+            vector.toArray(:String names)
+        end
+
+    let symbolAt(symbols: hashMap.T(String value.T) name: String): value.T =
+        begin
+            let found = hashMap.get(:String :value.T symbols name)
+            if maybe.isNone(:value.T found) then raise unsupported with "the unit defines no " <> name end end
+            maybe.unwrap(:value.T found)
+        end
+
+    (* A module a later input may name: an imported one, by its record, as
+     * the unit imported it; a declared one, by its record, which the unit
+     * exported *)
+    let remember(s: T symbolId: Int holder: String recordType: tm.Type): Ok =
+        begin
+            hashMap.insert(:Int :lower.Earlier s.earlier symbolId tuple
+                let holder = holder let field = "" let recordType = recordType let isVar = false
+            end)
+            ok
+        end
+    let rememberImport(s: T unit: nodes.Unit item: typedAst.ImportItem): Ok =
+        if maybe.isSome(:Array(maybe.T(Int)) item.symbolIds) then
+            let ids = maybe.unwrap(:Array(maybe.T(Int)) item.symbolIds)
+            let canonical = typedAst.effectiveCanonicalModulePaths(item)
+            for j = 0 upto {extent ids - 1} do
+                for u = 0 upto {extent unit.imports - 1} do
+                    let imp = unit.imports[u]
+                    if maybe.isSome(:Int ids[j]) andif {j < extent canonical}
+                        andif stringOp.equal(imp.canonicalPath canonical[j]) andif maybe.isSome(:tm.Type imp.recordType)
+                    then
+                        remember(s maybe.unwrap(:Int ids[j]) imp.canonicalPath maybe.unwrap(:tm.Type imp.recordType))
+                    end
+                end
+            end
+        end
+    let rememberModule(s: T unit: nodes.Unit symbolId: Int moduleName: String): Ok =
+        for j = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+            let dm = vector.get(:nodes.Module unit.modules j)
+            if stringOp.equal(dm.name moduleName) andif maybe.isSome(:nodes.Variable dm.recordVar) then
+                remember(s symbolId moduleName maybe.unwrap(:nodes.Variable dm.recordVar).type)
+            end
+        end
+
+    let run(s: T program: typedAst.Program sourceMap: location.SourceMap): Outcome =
+        begin
+            s.count := s.count + 1
+            let number = s.count
+            let name = lower.phraseModuleName(number)
+            hashMap.insert(:Int :location.SourceMap s.sources number sourceMap)
+            let compiled = location.newSourceMap(sourcePrefix <> conv.int(number) location.text(sourceMap))
+            let unit = try lower.lowerPhrases(program s.e maybe.some(:location.SourceMap compiled) number s.earlier)
+                when lower.loweringError with m then fail(:nodes.Unit m)
+                end
+            if verify.irChecksEnabled() then
+                try verify.checkUnit(unit) when verify.verifyError with x then fail(:Ok x) end
+            end
+            let phrase = maybe.unwrap(:nodes.Phrase unit.phrase)
+            let m = vector.get(:nodes.Module unit.modules vector.length(:nodes.Module unit.modules) - 1)
+            let recordType = maybe.unwrap(:nodes.Variable m.recordVar).type
+            let encoded = try arm64.encodeUnit(ssaPipeline.build(passes.runPasses(unit)))
+                when ssaBuild.unsupported with x then fail(:encode.Encoded "ssa: unsupported: " <> x)
+                when arm64.unsupported with x then fail(:encode.Encoded x)
+                when encode.unencodable with x then fail(:encode.Encoded "encoding: " <> x)
+                end
+            let symbols = try loader.load(s.loader encoded)
+                when loader.loadError with x then fail(:hashMap.T(String value.T) x)
+                end
+            let raised = code.call(symbolAt(symbols name <> "_entry"))
+            if maybe.isSome(:raised.T raised) then
+                let r = maybe.unwrap(:raised.T raised)
+                let where = located(s code.raiseSite(r))
+                option raised of Outcome with
+                    let name = code.exceptionName(r) let sourceMap = where.sourceMap let offset = where.offset
+                    let frames = framesOf(code.frames(r))
+                end
+            else
+                let recordAt = symbolAt(symbols "qm_" <> name)
+                let results = vector.new(:Result)
+                for i = 0 upto {extent program.phrases - 1} do
+                    let fields = vector.get(:Array(String) phrase.results i)
+                    let values = array of(extent fields option vOk of model.Value end)
+                    for j = 0 upto {extent fields - 1} do values[j] := reflect.field(recordAt recordType fields[j]) end
+                    let value = if extent values is 1 then values[0]
+                        elsif extent values is 0 then option vOk of model.Value end
+                        else option vTuple of model.Value with let t = tuple
+                            let elements = values let labels = maybe.none(:Array(maybe.T(String)))
+                            let nameToIndex = hashMap.new(:String :Int stringOp.equal hash.string)
+                        end end end
+                    vector.append(:Result results tuple let phrase = program.phrases[i] let value = value end)
+                end
+                (* Its bindings, for the inputs after it *)
+                let bound = boundSymbols(program)
+                for i = 0 upto {vector.length(:symbols.ValueSymbol bound) - 1} do
+                    let sym = vector.get(:symbols.ValueSymbol bound i)
+                    hashMap.insert(:Int :lower.Earlier s.earlier sym.symbolId tuple
+                        let holder = name let field = lower.phraseField(sym.symbolId) let recordType = recordType
+                        let isVar = sym.isVar
+                    end)
+                end
+                (* And the modules it declared and imported *)
+                for i = 0 upto {extent program.phrases - 1} do
+                    case program.phrases[i].form
+                        when bindImport with x then
+                            for k = 0 upto {extent x.items - 1} do rememberImport(s unit x.items[k]) end
+                        when bindModule with x then
+                            if maybe.isSome(:Int x.symbolId) then
+                                rememberModule(s unit maybe.unwrap(:Int x.symbolId) name <> "_" <> x.name)
+                            end
+                        else ok
+                    end
+                end
+                option ran of Outcome with let results = vector.toArray(:Result results) end
+            end
+        end
+end

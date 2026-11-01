@@ -6,7 +6,7 @@ backend's pipeline ([arm64.md](arm64.md)) unchanged up to machine instructions, 
 with an in-memory encoder and loader. It is written in Quest, in `questlang/`, and the bootstrap does not get it
 ([testing.md](testing.md) §2.8), though it gets the language change the JIT needs (§3.11).
 
-**Status: steps 1 to 5 of 8 done** (§7). Section 1 records the decisions, section 7 the steps.
+**Status: steps 1 to 6 of 8 done** (§7). Section 1 records the decisions, section 7 the steps.
 
 ---
 
@@ -84,24 +84,27 @@ Each input (one or more phrases, `let x = 1; let y = 2; x + y`) is compiled as o
 beside program and module units:
 
 - **Namespaces stack.** An input sees every binding of the inputs before it, as the interpreter's frames do; the type
-  checker's environment already provides that. A top-level binding of an earlier input is, to a later input's IR, an
-  external global: a symbol with a type, a representation fixed when it was defined, and an address the session
-  knows. Its name is unique to the input that bound it (`qj_<n>_<name>`), so that rebindings, which are distinct
-  symbols already (ir.md §2), are distinct globals.
-- **Every top-level binding of a phrase unit is a global.** The self-hosted compiler makes a top-level variable a
-  global only when a function, another top level, or a module names it (`walk.globalVariables`, ir.md §8.2), and
-  keeps the rest in registers. A later input is another top level that is not yet written, so for a phrase unit
-  every variable its top level binds outside loops counts as named.
-- **What an input can reach of an earlier one** is only its globals. A top-level function is reached through the
-  global holding its closure; calling its code directly, or inlining it, is a later optimization (§6).
+  checker's environment already provides that.
+- **An input is a module of its own.** `lower.lowerPhrases` lowers the phrases, as a program's are lowered, into the
+  initializer of a module named for the input (`qj_<n>`), whose members are the input's top-level bindings (field
+  `v<symbol>`) and its expressions' values (`r<k>`). When the phrases have run, the initializer makes the module's
+  record, with a `var` field for a `var`, and exports it (`qm_qj_<n>`). A top-level binding is then a module member,
+  which the compiler already keeps whatever the passes do, in a representation that the record's layout fixes.
+- **What an input can reach of an earlier one** is that input's record: a later input imports it, as a unit imports a
+  module (`nodes.Import`, with the record's type), and reads a binding as the member it is; a top-level function is
+  reached through the field holding its closure. Calling its code directly, or inlining it, is a later optimization
+  (§6). Rebindings are distinct symbols already (ir.md §2), so they are distinct fields.
 - Global `var`s cannot be captured by functions (the rule the REPL already reports), so an earlier input's `var` is
-  read and written only by top-level code, through its global.
-- **The entry** is a function of no arguments: it registers the unit's dictionaries and function table, calls its
-  imports' initializers (each guarded, so the driver's already-initialized modules return at once), and runs the
-  phrases, storing each phrase's result in a global of its own. Unlike a program's `main`, it does not initialize
-  the collector or the builtins.
-- **Modules declared in an input** (`module k: I export ... end`) are part of its unit, as they are of a program's;
-  their globals' and abstract types' names include the input's number (§3.6).
+  read and written only by top-level code: a later input reads it through its field's address and writes it with a
+  store to the field, in the record's payload, which every copy of the record shares.
+- **The entry** (`qj_<n>_entry`) is a function of no arguments: it registers the unit's dictionaries and function
+  table, calls its imports' initializers (each guarded, so the driver's already-initialized modules, and earlier
+  inputs', return at once), and its modules', the input's own last. Unlike a program's `main`, it does not
+  initialize the collector or the builtins. The input's initializer is the frame `<main>` in tracebacks.
+- **Modules declared in an input** (`module k: I export ... end`) are part of its unit, as they are of a program's.
+  Their names begin with the input's (`qj_<n>_k`), so that each input's are its own, and their records are exported,
+  so that a later input that names `k` imports its record; so are the modules an input imports, by their own
+  records.
 
 ### 3.3. The driver as the library
 
@@ -184,10 +187,9 @@ and the exhaustiveness check catches a case missing from either. What the assemb
 - **Calls** (`bl _f`): `bl` reaches ±128 MB. A call to the host goes to a stub in the arena (`adrp x16` of its GOT
   slot, `ldr x16`, `br x16`), as the linker's stubs do; calls within the arena are direct.
 - **Thread-locals** (`relocTlv`, for `quest_current_exception_handler` and `quest_current_exception`): the code reads
-  a descriptor and calls its first word, which returns the variable's address on the current thread. The REPL runs on
-  one thread, so the loader makes a descriptor of its own whose function returns the main thread's address (what
-  `dlsym` gives for a thread-local), and puts it in the GOT slot. Code generation is unchanged, and the encoder treats
-  the reference as any other GOT entry.
+  a descriptor and calls its first word, which returns the variable's address on the current thread. The loader puts
+  the driver's own descriptor of the variable, which `dlsym` gives, in the GOT slot. Code generation is unchanged, and
+  the encoder treats the reference as any other GOT entry.
 - **Data:** the static data's words, with absolute relocations for pointers to functions and other data.
 - **Unwind directives and `.loc`:** dropped. Frames need no unwind information (§3.9); line tables for JIT code are
   later work (§6).
@@ -199,8 +201,13 @@ The encoder is checked against the assembler: for every arm64 golden, the encode
 
 - **The arena:** one region reserved with `mmap(MAP_JIT)` at the session's start (128 MB, so that every `bl` within
   it reaches), filled from its start. Writing toggles `pthread_jit_write_protect_np` and ends with
-  `sys_icache_invalidate`. The data section goes in a separate, non-executable mapping; the GOT and stubs in the
-  arena. Nothing is freed: an input that fails leaves its code behind, unused.
+  `sys_icache_invalidate`. The data section goes in a separate, non-executable mapping (64 MB), with the GOT slots;
+  the stubs go in the arena. Nothing is freed: an input that fails leaves its code behind, unused.
+- **Symbols** (`jit/loader`): a unit's own symbols resolve first, then those the units before it export (the entries,
+  the records), then the driver's (`dlsym`). A unit's other symbols (`qr_register_dicts`, its functions' names) are
+  its own, so that units do not collide. A thread-local's slot holds the driver's own descriptor of it, which is what
+  `dlsym` gives for a thread-local, so JIT code reads it as compiled code does; `os/code`'s `threadLocalGetter` is not
+  needed.
 - **Registration,** done by the entry as it is by `main` now: function tables (`quest_register_funcs`), record offset
   tables (`quest_register_record_dict`), and abstract types (`quest_register_abstract_type`). Type descriptors are
   interned by the runtime, so an input's descriptors are the host's when the types are the same. Two inputs may
@@ -432,6 +439,14 @@ the runtime for every program, and come first so that the JIT is built on them.
    slots and stubs, thread-locals, registration, roots, and function ranges; phrase units, their entries, result
    globals, and earlier inputs' globals; reflection; exceptions and rollback; `system.args`. A runner mode runs the
    REPL transcripts through `--jit` against their goldens, and tools/check runs it.
+   *Done* (2026-11-01). `questlang/jit/` holds the loader, reflection, and the session (a sound interface, which
+   `driver/repl` uses with `--jit`, over an unsound module). An input is a module of its own whose record holds its
+   bindings (§3.2), rather than a global for each. An exception's site is located in the input whose code raised it,
+   whose source the unit names `<repl>#N`. `system.args` is also stored into the driver's `system` record, which
+   copied the runtime's array when it was initialized. The runner's `--backend jit` mode runs the transcripts, but for
+   those marked `@skip-phase: jit` (`rethrow`, `stack_overflow`, §4) and those pending for step 7
+   (`tests/self-hosted/pending-jit.txt`: `load`, `modules`); tools/check runs it with the backends. Fixed alongside:
+   the encoder's `movn` (no program had used one).
 7. **Imports and `-i`** (§3.3, §3.4): imports of the driver's units, refused when stale and, for the user's own
    modules, refused for now; `-i FILE` as the first input. The transcripts through a C-built and an arm64-built
    stage 2 (`QUEST_BACKEND`).
