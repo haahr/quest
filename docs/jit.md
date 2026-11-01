@@ -6,7 +6,7 @@ backend's pipeline ([arm64.md](arm64.md)) unchanged up to machine instructions, 
 with an in-memory encoder and loader. It is written in Quest, in `questlang/`, and the bootstrap does not get it
 ([testing.md](testing.md) §2.8), though it gets the language change the JIT needs (§3.11).
 
-**Status: steps 1 to 6 of 8 done** (§7). Section 1 records the decisions, section 7 the steps.
+**Status: steps 1 to 7 of 8 done** (§7). Section 1 records the decisions, section 7 the steps.
 
 ---
 
@@ -450,6 +450,14 @@ the runtime for every program, and come first so that the JIT is built on them.
 7. **Imports and `-i`** (§3.3, §3.4): imports of the driver's units, refused when stale and, for the user's own
    modules, refused for now; `-i FILE` as the first input. The transcripts through a C-built and an arm64-built
    stage 2 (`QUEST_BACKEND`).
+   *Done* (2026-11-01). Before an input runs, the session checks each module it imports: one not in the driver
+   (`qm_`) is refused, as is one whose `qh_` differs from the fingerprint of the interface the input was compiled
+   against, saying to rebuild the driver. With `--jit` the REPL's environment compiles as a program's does, its
+   interfaces from `.qi` files in a build directory (`.build`, or `--build-dir`), which the fingerprints are of. A
+   driver without fingerprints (a whole-program build) refuses `--jit` at the start. `-i FILE` runs the file as the
+   first input, printing its last result as a program run does, and ends the driver with 1 if it fails. `modules`, which
+   imports the user's own modules, is skipped under `--jit`. `tests/self-hosted/jit_hosts.py` checks a stale
+   interface, an unchanged one, and a user's module, and runs the transcripts through an arm64-built driver.
 8. **Files and `-e`** through `--jit`, each one input. A runner mode runs the run goldens through `quest --jit`;
    exceptions.md and this document list the differences that remain. The time to compile and load an input,
    measured on the transcripts and a few programs, in benchmarks.md.

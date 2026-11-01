@@ -100,10 +100,18 @@ export
             let jit = maybe.none(:session.T)
         end
 
+    (* A driver that cannot host the JIT ends with 1 *)
     let newJit(e: env.T f: model.Frame args: Array(String)): T =
-        tuple
-            let e = e let var frame = f let var errorSource = maybe.none(:location.SourceMap)
-            let jit = maybe.some(:session.T session.new(e args))
+        begin
+            let refusal = session.refusal()
+            if maybe.isSome(:String refusal) then
+                writer.putString(writer.err "quest: error: " <> maybe.unwrap(:String refusal) <> "\n")
+                system.sysexit(1)
+            end
+            tuple
+                let e = e let var frame = f let var errorSource = maybe.none(:location.SourceMap)
+                let jit = maybe.some(:session.T session.new(e args))
+            end
         end
 
     (* An input run by the JIT: its phrases' results, or none, its error in
@@ -120,7 +128,8 @@ export
                     end
                     maybe.some(:Array(treewalk.PhraseResult) vector.toArray(:treewalk.PhraseResult results))
                 when raised with x then
-                    let file = if maybe.isSome(:location.SourceMap x.sourceMap) then inputName else "" end
+                    let file = if maybe.isSome(:location.SourceMap x.sourceMap) then
+                        location.file(maybe.unwrap(:location.SourceMap x.sourceMap)) else "" end
                     let sp = if maybe.isSome(:Int x.offset) then
                         location.span(file maybe.unwrap(:Int x.offset) maybe.unwrap(:Int x.offset) + 1)
                     else location.span("" ~1 ~1) end
@@ -198,6 +207,10 @@ export
             end
             results
         end
+
+    let runInput(r: T program: typedAst.Program sm: location.SourceMap bag: diagbag.T):
+        maybe.T(Array(treewalk.PhraseResult)) =
+        runJit(r maybe.unwrap(:session.T r.jit) program sm bag)
 
     (* ======================================================================
      * 3. The loop

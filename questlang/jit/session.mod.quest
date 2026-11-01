@@ -6,6 +6,8 @@ import
     questlang/types/env : questlang/types/Env
     questlang/types/symbols : questlang/types/Symbols
     questlang/modules/elaboration : questlang/modules/Elaboration
+    questlang/modules/fingerprint : questlang/modules/Fingerprint
+    mangling = questlang/codegen/symbols : questlang/codegen/Symbols
     tm = questlang/types/model : questlang/types/Model
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/values/model : questlang/values/Model
@@ -28,6 +30,8 @@ import
     util/maybe : util/Maybe
     util/sort : util/Sort
     util/strutil : util/Strutil
+    util/stringBuilder : util/StringBuilder
+    words = word : Word
     stringOp = string : StringOp
     ascii : Ascii
     conv : Conv
@@ -78,6 +82,15 @@ export
                 value.store(value.fetch(systemRecord 0) offset value.new(:Array(String) args))
             end
         end
+
+    (* A driver whose modules carry fingerprints (docs/jit.md section 3.10):
+     * this one's own JIT module does if any does *)
+    let hostSymbol = mangling.fingerprintIdent(mangling.mangleModuleName("questlang/jit/session"))
+
+    let refusal(): maybe.T(String) =
+        if maybe.isSome(:value.T code.symbol(hostSymbol)) then maybe.none(:String)
+        else maybe.some(:String "this driver cannot host the JIT: its modules carry no fingerprints (a whole-program "
+            <> "build drops them)") end
 
     let new(e: env.T args: Array(String)): T =
         begin
@@ -187,6 +200,41 @@ export
             vector.toArray(:String names)
         end
 
+    (* The C string of n characters at a symbol's address, read a word at a
+     * time, since fetch takes aligned addresses *)
+    let cString(at: value.T n: Int): String =
+        begin
+            let start = value.be(:Int at)
+            let b = stringBuilder.new()
+            for i = 0 upto {n - 1} do
+                let addr = start + i
+                let w = value.be(:words.T value.fetch(value.new(:Int addr - {addr % 8}) 0))
+                b.char(ascii.char(words.toInt(words.extract(w 8 * {addr % 8} 8))))
+            end
+            b.toString()
+        end
+
+    (* An input imports only the driver's own modules, for now (docs/jit.md
+     * section 3.4), and only those whose interfaces are the ones the driver
+     * was built with (section 3.3): an imported module's fingerprint, qh_, is
+     * that of the interface the input was compiled against *)
+    let checkImport(s: T imp: nodes.Import): Ok =
+        if strutil.startsWith(imp.canonicalPath "qj_") orif {stringOp.length(imp.interfacePath) is 0} then
+            ok
+        else
+            let clean = mangling.mangleModuleName(imp.canonicalPath)
+            if maybe.isNone(:value.T code.symbol(mangling.moduleRecordIdent(clean))) then
+                fail(:Ok "module '" <> imp.canonicalPath <> "' is not in the driver, and the JIT imports only the "
+                    <> "driver's own modules, for now")
+            end
+            let found = code.symbol(mangling.fingerprintIdent(clean))
+            let built = if maybe.isSome(:value.T found) then cString(maybe.unwrap(:value.T found) 64) else "" end
+            if not(stringOp.equal(built fingerprint.ofInterface(imp.interfacePath s.e))) then
+                fail(:Ok "the driver was built from another version of the interface of module '" <> imp.canonicalPath
+                    <> "'; rebuild the driver (./quest rebuilds it)")
+            end
+        end
+
     let symbolAt(symbols: hashMap.T(String value.T) name: String): value.T =
         begin
             let found = hashMap.get(:String :value.T symbols name)
@@ -240,6 +288,7 @@ export
             if verify.irChecksEnabled() then
                 try verify.checkUnit(unit) when verify.verifyError with x then fail(:Ok x) end
             end
+            for i = 0 upto {extent unit.imports - 1} do checkImport(s unit.imports[i]) end
             let phrase = maybe.unwrap(:nodes.Phrase unit.phrase)
             let m = vector.get(:nodes.Module unit.modules vector.length(:nodes.Module unit.modules) - 1)
             let recordType = maybe.unwrap(:nodes.Variable m.recordVar).type

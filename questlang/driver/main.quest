@@ -986,13 +986,32 @@ let interactive(e: env.T f: model.Frame bag: diagbag.T sm: location.SourceMap): 
         writer.flush(writer.output)
         diagbag.renderAll(bag sm writer.err)
         writer.flush(writer.err)
-        let r = if options.jit then
-            let args = array of({extent options.programArgs + 1} options.file)
-            for i = 0 upto {extent options.programArgs - 1} do args[i + 1] := options.programArgs[i] end
-            repl.newJit(e f args)
-        else
-            repl.new(e f)
+        system.sysexit(repl.run(repl.new(e f)))
+    end;
+
+(* Enters the REPL with the JIT (docs/jit.md), after running the file -i
+ * names, if any, as its first input, whose last phrase's result is printed as
+ * a program's is; a file that fails to run ends the driver with 1 *)
+let jitInteractive(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
+    begin
+        let args = array of({extent options.programArgs + 1} options.file)
+        for i = 0 upto {extent options.programArgs - 1} do args[i + 1] := options.programArgs[i] end
+        let r = repl.newJit(e runFrame(e sm) args)
+        if options.fromFile orif options.fromStdin orif maybe.isSome(:String options.code) then
+            let results = repl.runInput(r program sm bag)
+            if maybe.isNone(:Array(treewalk.PhraseResult) results) then
+                writer.flush(writer.output)
+                diagbag.renderAll(bag maybe.unwrapOr(:location.SourceMap r.errorSource sm) writer.err)
+                writer.flush(writer.err)
+                system.sysexit(1)
+            end
+            let shown = maybe.unwrap(:Array(treewalk.PhraseResult) results)
+            if extent shown > 0 then printResult(shown[extent shown - 1].phrase shown[extent shown - 1].value) end
         end
+        flushDumps()
+        writer.flush(writer.output)
+        diagbag.renderAll(bag sm writer.err)
+        writer.flush(writer.err)
         system.sysexit(repl.run(r))
     end;
 
@@ -1067,10 +1086,10 @@ let run(): Ok =
                     e.currentDir := maybe.some(:String dir)
                     e.programDir := maybe.some(:String dir)
                     e.sourceFile := options.file
-                    if cPipeline then
-                        (* Compiled to C, the modules are known through their
-                         * interfaces, with the build directory's artifacts,
-                         * which is searched first *)
+                    if cPipeline orif options.jit then
+                        (* Compiled to C, or by the JIT, the modules are known
+                         * through their interfaces, with the build
+                         * directory's artifacts, which is searched first *)
                         e.compilingC := not(options.wholeProgram)
                         e.buildDir := maybe.some(:String buildDir)
                         vector.append(:String e.includePaths buildDir)
@@ -1105,6 +1124,8 @@ let run(): Ok =
                             runIr(typed e sm bag maybe.unwrap(:String irStage("run_ir_")))
                         elsif reaches("ir_core") then
                             lowerOnly(typed e sm bag)
+                        elsif reaches("interpret") andif options.jit andif options.interactive then
+                            jitInteractive(typed e sm bag)
                         elsif reaches("interpret") then
                             let f = interpret(typed e sm bag)
                             if options.interactive andif not(diagbag.hasErrors(bag)) then interactive(e f bag sm) end

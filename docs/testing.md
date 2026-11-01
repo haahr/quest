@@ -231,7 +231,11 @@ change with an exported type and with a manifest type an interface imports. `sel
 (`tests/self-hosted/encoder.py`) compiles the run goldens' programs with `--backend arm64` and
 `QUEST_CHECK_ENCODING=1`, which appends the encoder's code and data to each unit's assembly as comments
 ([jit.md](jit.md) §3.5): `clang -c` assembles each unit, and the encoder's words, function offsets, data, and
-relocations must be the object's, relocated fields apart.
+relocations must be the object's, relocated fields apart. `self-hosted/jit_hosts` (`tests/self-hosted/jit_hosts.py`)
+checks the JIT's imports ([jit.md](jit.md) §3.3, §3.4): with a copy of `lib/` as `QUEST_HOME`, an import is refused
+when the copy changes the module's interface and not otherwise, and an import of the user's own module is refused;
+and it builds the driver with `--backend arm64` and runs the REPL's transcripts through it with `--jit`, as the
+`jit` mode runs them through the C-built one.
 
 **The SSA's backends:** `--self-hosted --backend MODE` runs the self-hosted suite's compiled tests (`run_c_compiled`,
 golden and error) with the driver's units compiled by another backend ([arm64.md](arm64.md) §4): `ssac` compiles every
