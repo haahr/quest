@@ -443,8 +443,8 @@ and `.out` files) and its runs of `tools/check` here, beside the estimate.
 | 4a | 352 | 1, with 3b and the fixes | `df46c85c` |
 | 4b | | | |
 | 5 | | | |
-| 6 | | | |
-| 7 | | | |
+| 6 | 25, 73, 148, and 155 (`adrp` + `ldr`, no re-extension, register offsets, `ldp`/`stp`); post-index not made | none yet | `ed2ca3fa`, `be94cc2f`, `7018e29d`, `a4d1d7cd` |
+| 7 | 80 (chains); rotation tried and not kept | none yet | `54af24fe` |
 
 The first batch (items 1, 2, and 3a, 2026-11-01) passed `tools/check` in one run of every suite (40 minutes, since it
 changes tests' goldens, which the self-hosted compiler's suites alone do not cover). Its estimates held: each item
@@ -564,6 +564,53 @@ skew it. Across the whole suite, though, the six are no longer where arm64's dis
 C's time, and the suite 1.46, most of the difference in md5, checksum, and psdes-random (which `ssac` is as slow on,
 so the cause is before the code generator) and in zern, string-concat, mpuz, and the vector concatenations (which
 it is not). Batches 4 and 5 are to be measured on those as well as the six.
+
+**Batches 4 and 5** (2026-11-02, not yet pushed) were timed on the twelve, five rounds at a thirty-second of the
+suite's counts, at a load of 1.2 to 2.2, each change against the commit before it. Two changes outside the review's
+items, which the six added programs pointed to, came with them, each in `ssa/`, so `ssac` gains too:
+
+- `3e18633e` (189 lines): a call of an external through its thunk (`qx_`) calls the external itself, as clang makes
+  it by inlining the thunk, and an importer calls a library external's C function, as the C printer does; and the
+  word module's operations, `static inline` in the runtime's header, are their instructions (ssa.md §4). md5,
+  checksum, and psdes-random spent their loops calling them, through thunks: the cause before the code generator
+  that §11 of benchmarks.md found, and string-concat's and mpuz's `getChar` and `ascii.val` went through thunks too.
+- `32270dd0` (40 lines): a call followed by a jump to a block that only returns is a tail call though the jump
+  passes the block parameters it does not return. zern's two loops, closures that call each other, nested a call per
+  element, 16,384 deep, and the collector scanned the stack.
+
+Time against the C backend's, before batch 4 (`568c3a56`), after batch 5 (`a4d1d7cd`), and after both SSA changes
+(`32270dd0`), and `ssac`'s before and after them:
+
+| | before 4 | after 5 | now | `ssac` before | `ssac` now |
+|---|--:|--:|--:|--:|--:|
+| life | 1.14 | 0.90 | 0.91 | 0.79 | 0.80 |
+| ray | 0.72 | 0.70 | 0.69 | 0.69 | 0.69 |
+| hamlet | 1.28 | 1.16 | 0.87 | 0.97 | 0.87 |
+| mlyacc | 0.99 | 0.93 | 0.92 | 0.78 | 0.78 |
+| zebra | 1.38 | 0.94 | 0.94 | 1.11 | 1.11 |
+| nucleic | 0.99 | 0.94 | 0.94 | 0.88 | 0.88 |
+| psdes-random | 3.90 | 3.83 | 1.36 | 2.92 | 1.02 |
+| checksum | 4.47 | 4.31 | 0.60 | 2.70 | 0.60 |
+| md5 | 6.18 | 6.22 | 1.16 | 3.33 | 1.12 |
+| zern | 2.92 | 2.91 | 1.16 | 0.98 | 1.00 |
+| string-concat | 1.76 | 1.50 | 0.64 | 1.00 | 0.64 |
+| mpuz | 1.85 | 1.40 | 1.07 | 0.94 | 0.71 |
+| geometric mean | 1.83 | 1.64 | 0.91 | 1.21 | 0.83 |
+
+- **Chain layout is batch 4's and 5's gain:** life 1.14 to 0.91, zebra 1.38 to 0.94, mpuz 1.85 to 1.40, hamlet
+  1.28 to 1.16, string-concat 1.76 to 1.50, alone. Unconditional branches fell 27 to 30% in every program.
+- **The rest of item 6 is neutral in time,** each within 1 to 2% alone, though together they take 7 to 10% of the
+  instructions: `adrp` + `ldr` (life 682 fewer, mlyacc 1,257), no re-extension (3 to 55 masks a program), register
+  offsets (an element in 2 instructions rather than 5; life 78 such operands, clang 66), and pairs (life 221 outside
+  the frame, clang 393). They are worth keeping as smaller code that frees registers, not as speed.
+- **Not kept:** loop rotation (adds 53 to 119 static branches, saves no taken branch here, and took zebra from 0.94 to
+  1.00); post-index forms (1 to 18 candidates a binary); and functions without a frame record when they call nothing
+  but in tail position (more than half of life's, but no program moved: even-odd stayed at 7.8, the push and pop
+  overlapping its branches).
+- **What is left,** past batch 7's value numbering: even-odd (7.8, against `ssac`'s 1.0), which clang turns into a
+  loop; psdes-random's 1.36 (its time is the collector's and first stores to new pairs, which `ssac` has as well);
+  mpuz's 1.07 against `ssac`'s 0.71, a fifth of whose `assign` samples are 3a's clears of dead slots; and md5's
+  shifts by a count not constant (12 calls a binary), which could be inline branches.
 
 Each is to be measured as benchmarks.md measures (`run.py time --clean`), and the six here against `ssac` with
 `tools/perf/timeit.py`. The figures above will move: §3.1's and §3.2's interact (fewer spills mean fewer slots to
