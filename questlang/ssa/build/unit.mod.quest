@@ -21,6 +21,7 @@ import
     descriptors = questlang/ssa/build/descriptors : questlang/ssa/build/Descriptors
     control = questlang/ssa/build/control : questlang/ssa/build/Control
     adapters = questlang/ssa/build/adapters : questlang/ssa/build/Adapters
+    util/strutil : util/Strutil
     stringOp = string : StringOp
     conv : Conv
 export
@@ -223,7 +224,13 @@ export
             end
             for i = 0 upto {vector.length(:ir.Module unit.modules) - 1} do
                 let m = vector.get(:ir.Module unit.modules i)
+                (* A phrase unit's own module is its top level; a module an
+                 * input declares has the name it was declared with *)
+                let prefix = phraseModule(unit) <> "_"
                 let frame = if stringOp.equal(m.name phraseModule(unit)) then diagnostics.mainFrame
+                    elsif {stringOp.length(prefix) > 1} andif strutil.startsWith(m.name prefix) then
+                        diagnostics.initFrame(stringOp.getSub(m.name stringOp.length(prefix)
+                            stringOp.length(m.name) - stringOp.length(prefix)))
                     else diagnostics.initFrame(m.name) end
                 entry("qv_mod_" <> symbols.mangleModuleName(m.name) <> "_init" frame)
             end

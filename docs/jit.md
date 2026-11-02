@@ -107,7 +107,8 @@ beside program and module units:
 - **Modules declared in an input** (`module k: I export ... end`) are part of its unit, as they are of a program's.
   Their names begin with the input's (`qj_<n>_k`), so that each input's are its own, and their records are exported,
   so that a later input that names `k` imports its record; so are the modules an input imports, by their own
-  records.
+  records. Tracebacks show the names they were declared with (`k.<init>`), and the input's top level as `<main>`,
+  as the interpreter's do, so nothing of this shows but in a debugger.
 
 ### 3.3. The driver as the library
 

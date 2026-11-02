@@ -182,22 +182,42 @@ export
             end
         end
 
-    (* The frames the runtime prints, "  in NAME" each, down to the first
-     * <main>, the input's own; those below it are the driver's *)
+    (* The frames the runtime prints of the input's code: those above
+     * os/code's call (or this module's run, where a C-built driver keeps no
+     * frame of call's), and the driver's below them, each "  in
+     * NAME", a run of one written once and then "  ... NAME repeated N more
+     * times". The input's top level is <main>, which its entry, running a
+     * module the input declared, does not show *)
     let framesOf(text: String): Array(String) =
         begin
-            let names = vector.new(:String)
+            let frames = vector.new(:String)
             let lines = strutil.split(text "\n")
             let var done = false
             for i = 0 upto {vector.length(:String lines) - 1} do
                 let line = vector.get(:String lines i)
-                if not(done) andif strutil.startsWith(line "  in ") then
-                    let name = stringOp.getSub(line 5 stringOp.length(line) - 5)
-                    vector.append(:String names name)
-                    if stringOp.equal(name "<main>") then done := true end
+                if stringOp.equal(line "  in os/code.call") orif stringOp.equal(line "  in questlang/jit/session.run") then
+                    done := true
+                end
+                if done then
+                    ok
+                elsif strutil.startsWith(line "  in ") then
+                    vector.append(:String frames stringOp.getSub(line 5 stringOp.length(line) - 5))
+                elsif strutil.startsWith(line "  ... ") andif strutil.endsWith(line " more times") then
+                    let rest = stringOp.getSub(line 6 stringOp.length(line) - 17)
+                    let at = strutil.rfind(rest " repeated ")
+                    let count = if at > 0 then number(stringOp.getSub(rest at + 10 {stringOp.length(rest) - at} - 10))
+                        else maybe.none(:Int) end
+                    if maybe.isSome(:Int count) then
+                        let name = stringOp.getSub(rest 0 at)
+                        for k = 1 upto maybe.unwrap(:Int count) do vector.append(:String frames name) end
+                    end
                 end
             end
-            vector.toArray(:String names)
+            let n = vector.length(:String frames)
+            if {n is 0} orif not(stringOp.equal(vector.get(:String frames n - 1) "<main>")) then
+                vector.append(:String frames "<main>")
+            end
+            vector.toArray(:String frames)
         end
 
     (* The C string of n characters at a symbol's address, read a word at a
