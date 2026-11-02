@@ -14,6 +14,7 @@ import
     questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
+    collections/bitset : collections/Bitset
     util/hash : util/Hash
     util/maybe : util/Maybe
     util/strutil : util/Strutil
@@ -66,6 +67,9 @@ export
          * savedFirsts and savedSeconds): every pair if it enters a try, else
          * those its values use *)
         saved: Array(Int)
+        (* With QUEST_LIVE_SLOTS=1, for each block's calls in order, where
+         * the values live across each are: their slots and registers *)
+        liveAtCalls: Array(Array(String))
     end
 
     (* The callee-saved registers a function saves, in pairs, in the order it
@@ -140,6 +144,67 @@ export
                 end
             end
             cold
+        end
+
+    (* For each block's calls, in order, the values live across each (by a
+     * backward walk from what the block has live out), each where it is
+     * after the call: its slot, as an offset from sp, if it has one (which
+     * holds it wherever it is live), and its register, if it is in one. What
+     * a collection in the call scans of the frame and the callee-saved
+     * registers, other than these, holds no live value (docs/profiling.md
+     * section 6). *)
+    let describeLive(s: select.Selection a: regalloc.Allocation spillAt: Array(Int)): Array(Array(String)) =
+        begin
+            let m = s.f
+            let nBlocks = vector.length(:machine.Block m.blocks)
+            let n = machine.virtuals(m)
+            let live = machine.live(m)
+            let described = array of(nBlocks array of :String end)
+            for b = 0 upto {nBlocks - 1} do
+                if a.blockStart[b] >= 0 then
+                    let insts = machine.block(m b).insts
+                    let cur = bitset.new(n)
+                    bitset.assign(cur live.liveOut[b])
+                    let found = vector.new(:String)
+                    for j = {vector.length(:machine.Inst insts) - 1} downto 0 do
+                        let i = vector.get(:machine.Inst insts j)
+                        if machine.isKind(i machine.kindCall) then
+                            let p = a.blockStart[b] + {2 * {j + 1}}
+                            let parts = vector.new(:String)
+                            let vs = bitset.elements(cur)
+                            for k = 0 upto {extent vs - 1} do
+                                let v = vs[k]
+                                let what = "%" <> conv.int(v) <> " " <> ssa.typeName(vector.get(:ssa.Type s.types v))
+                                if regalloc.needsSlot(a v) then
+                                    vector.append(:String parts "sp+" <> conv.int(spillAt[v]) <> " " <> what)
+                                end
+                                let h = regalloc.home(a v p + 1)
+                                if h isnot regalloc.memory then
+                                    vector.append(:String parts target.description.registers[h].name <> " " <> what)
+                                end
+                            end
+                            vector.append(:String found strutil.join(", " parts))
+                        end
+                        for k = 0 upto {extent i.operands - 1} do
+                            let o = i.operands[k]
+                            if machine.isVirtual(m o.reg) andif o.defines then
+                                begin let ignored = bitset.remove(cur machine.index(m o.reg)) end
+                            end
+                        end
+                        for k = 0 upto {extent i.operands - 1} do
+                            let o = i.operands[k]
+                            if machine.isVirtual(m o.reg) andif not(o.defines) then
+                                begin let ignored = bitset.insert(cur machine.index(m o.reg)) end
+                            end
+                        end
+                    end
+                    let ordered = vector.toArray(:String found)
+                    let r = array of(extent ordered "")
+                    for k = 0 upto {extent ordered - 1} do r[k] := ordered[{extent ordered - 1} - k] end
+                    described[b] := r
+                end
+            end
+            described
         end
 
     (* A function that enters a try saves every callee-saved pair. A raise
@@ -224,6 +289,9 @@ export
                     spillAt[v] := offsetOf[k]
                 end
             end
+            let liveAtCalls = if stringOp.equal(system.getEnv("QUEST_LIVE_SLOTS") "1") then
+                describeLive(s a spillAt)
+            else array of(vector.length(:machine.Block m.blocks) array of :String end) end
             regalloc.rewrite(m a lowering)
             let savedList = vector.new(:Int)
             for k = 0 upto {extent savedFirsts - 1} do
@@ -232,7 +300,7 @@ export
             end
             tuple
                 let selection = s let size = alignUp(at 16) let slots = vector.toArray(:FrameSlot slots)
-                let saved = vector.toArray(:Int savedList)
+                let saved = vector.toArray(:Int savedList) let liveAtCalls = liveAtCalls
             end
         end
 
@@ -509,6 +577,7 @@ export
                 if final[order[k]] is order[k] then vector.append(:Int printed order[k]) end
             end
             prologue(e)
+            let var liveLabels = 0
             (* The line table: the source position before each instruction
              * whose position differs from the last one given. A constant or an
              * address made again where it is used keeps its definition's
@@ -521,6 +590,7 @@ export
                 let insts = machine.block(m b).insts
                 let count = vector.length(:machine.Inst insts)
                 let var inverted = false
+                let var calls = 0
                 for j = 0 upto {count - 1} do
                     let i = vector.get(:machine.Inst insts j)
                     let regs = array of(extent i.operands 0)
@@ -553,6 +623,20 @@ export
                         else
                             emit(e tuple let op = op let regs = regs end)
                         end
+                    end
+                    (* With QUEST_LIVE_SLOTS=1, a symbol at the return address,
+                     * by which a debugger can find what is live across the
+                     * call, which a comment gives with the size of the frame
+                     * below the saved registers (docs/profiling.md section 6).
+                     * The symbol is an alternative entry, so that the linker
+                     * does not take it to start a function of its own. *)
+                    if machine.isKind(i machine.kindCall) andif {calls < extent e.c.liveAtCalls[b]} then
+                        let name = asm.symbol(f.symbol <> "_live_" <> conv.int(liveLabels))
+                        let described = e.c.liveAtCalls[b][calls]
+                        let comment = "// live (frame " <> conv.int(e.c.size) <> "): " <> described
+                        emit(e minst.label(".alt_entry " <> name <> "\n" <> comment <> "\n" <> name))
+                        calls := calls + 1
+                        liveLabels := liveLabels + 1
                     end
                 end
             end

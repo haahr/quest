@@ -109,18 +109,40 @@ registers conservatively, and a stack slot holding a dead value's pointer keeps 
 `6f7cb100`, arm64's live data was 3.5 times ssac's, and marking took twice as long. Running at `--count 1` shows
 whether the retention is within one iteration or of earlier ones.
 
-To find the frames responsible, stop the program in lldb at a collection, with a breakpoint on `GC_stopped_mark`,
-and walk the stack in lldb's Python:
+The live data at the collector's own collections is a poor measure, though: it collects where its heuristics say,
+which depend on what the program keeps alive, so two builds (and two runs of one build: mlyacc's 96 iterations took
+286 collections in one run and 673 in another) are measured at different points. Compare builds at the same points
+instead:
 
-- **Frame sizes:** the difference between consecutive frames' `GetSP()`, for each frame of
-  `lldb.thread`. A frame much larger in one build than the other is a suspect (mlyacc's `main`: 7.7 KB under arm64,
-  1 KB under clang).
-- **Pointers in a frame:** read the frame's memory (`process.ReadMemory(lo, hi - lo, error)`) and count the words
-  that fall in the collector's heap, which is the `VM_ALLOCATE` regions that `vmmap PID` lists. Calling `GC_base`
-  from an lldb expression does not work there, since the collector holds its lock.
+```bash
+python3.11 tools/perf/retention.py live .build/perf/mlyacc.c .build/perf/mlyacc.ssac .build/perf/mlyacc.arm64
+```
 
-Run lldb with `--batch` and `-o` commands (`b GC_stopped_mark`, `process launch -o /dev/null -- COUNT`, `c` to
-skip collections, then `script ...`), from a directory with a copy of `DATA/`.
+forces a collection every 20,000 allocations (`--every`) with `tools/perf/gcat.c`, which interposes the runtime's
+`GC_malloc` and `GC_malloc_atomic`, and prints the live data there: the median and the largest for each binary, and
+the points where the others differ most from the first. Builds from the same SSA allocate the same, so each point is
+the same point of the program in every build.
+
+To find what keeps it alive at one of those points:
+
+```bash
+python3.11 tools/perf/retention.py dead mlyacc --at 120
+```
+
+builds the program with the arm64 backend and `QUEST_LIVE_SLOTS=1` into `.build/perf/live/`, with its assembly
+beside it, runs it to the 120th forced collection in lldb, and prints each word of each Quest frame that points into
+the heap but holds no value live across the call the frame is in: what a precise collector would not keep. With
+`QUEST_LIVE_SLOTS=1`, the backend puts a symbol at each call's return address and, as a comment before it, where the
+values live across the call are (their slots, as offsets from `sp`, and their registers) and the frame's size below
+its saved registers; the code is the same as without it. A word is DEAD if it is in one of the frame's own slots, and
+SAVED if it is a callee-saved register the frame saved for its caller, whose own annotation says whether it is live.
+The annotated assembly then shows where a DEAD word's slot was written and where its value should have been cleared.
+`tools/perf/lldb_frames.py` has the lldb command (`deadroots`), and the heap is the `VM_ALLOCATE` regions that
+`vmmap PID` lists: calling `GC_base` from lldb does not work there, since the collector holds its lock.
+
+This found the two leaks of arm64-performance-review.md §4's actuals: values dying as a jump's argument were never
+cleared, and a loop header's parameters that nothing reads were stored by the back edge every time round. With them
+fixed, mlyacc's `main` had no DEAD words.
 
 ## 7. Unwind information
 
