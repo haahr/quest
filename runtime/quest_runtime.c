@@ -1798,7 +1798,7 @@ QVal quest_option_element(const void *opt, const QTypeDescriptor *t, size_t i) {
 }
 
 /* ============================================================================
- * Options as values (docs/option-values.md section 2)
+ * Options as values (docs/extensions.md, Options as Values)
  *
  * is compares options of a case without components by their case, and those of
  * a single-word option type's case with a component (an option type with one

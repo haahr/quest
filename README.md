@@ -135,7 +135,7 @@ cd quest
 The self-hosted compiler is a Quest program, `questlang/driver/main.quest` and the modules it imports, called the
 driver because it is the command-line entry point that runs the front end, the interpreter, and the backends. Its
 front end and interpreter mirror the bootstrap's; beyond the bootstrap, it optimizes the IR
-([docs/inlining.md](docs/inlining.md)), can write arm64 machine code instead of C (`--backend arm64`;
+([docs/ir.md](docs/ir.md) §8.6), can write arm64 machine code instead of C (`--backend arm64`;
 [docs/arm64.md](docs/arm64.md)), and runs programs, `-e`, and the REPL's inputs by compiling them to arm64 code in
 memory rather than interpreting them (`--no-jit` interprets; [docs/jit.md](docs/jit.md)).
 
@@ -318,13 +318,14 @@ program through every phase, then [docs/type-system.md](docs/type-system.md) and
   representations fit together.
 - [docs/ir.md](docs/ir.md): the A-normal-form IR, its canonical shapes of types, and its passes (`lower`, `simplify`,
   `specialize`, `closure`, `represent`, `describe`).
-- [docs/inlining.md](docs/inlining.md): the self-hosted compiler's IR optimizer: inlining, simplification, and
-  contification.
+- [docs/inlining.md](docs/inlining.md): the plan for what remains of the IR optimizer (ir.md §8.6): tuning, and
+  workers.
 - [docs/c-representation.md](docs/c-representation.md): the C runtime's ABI: value and slot representations, proxies,
   closures, and arrays.
 - [docs/codegen-c.md](docs/codegen-c.md): how the IR is printed as C99 and compiled.
 - [docs/name-mangling.md](docs/name-mangling.md): how Quest names become C symbols.
-- [docs/ssa.md](docs/ssa.md): the SSA form the native backend is built on.
+- [docs/ssa.md](docs/ssa.md): the SSA form the native backend is built on, and its passes (escape analysis,
+  promotion, tail calls).
 - [docs/arm64.md](docs/arm64.md): the arm64 backend: instruction selection, register allocation, and assembly for
   Darwin.
 - [docs/exceptions.md](docs/exceptions.md): how an uncaught exception is reported, with where it was raised and the

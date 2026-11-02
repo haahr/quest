@@ -16,7 +16,7 @@ that the IR verifier checks. The C printer consumes the last stage. A future nat
 source → tokens → AST → typed AST ─┬─→ interpreter
                                    └─→ lower → Core IR → (simplify) → specialize → closure-convert → represent
                                                 → describe → C printer → C → clang
-                                                          └→ (future) CFG/SSA → AArch64
+                                                          └→ SSA → ssac (C) or arm64 (ssa.md)
 ```
 
 Lowering the typed AST into the IR and running small, single-responsibility passes ensures that:
@@ -114,9 +114,15 @@ canonical type (`shape(t)`, cached by the hash-consed type):
 
 Aliases are stripped and operator applications reduced before a shape is built; recursion is explicit through
 `rec` references into the canonical graph, so that equal recursive types, however written, share one shape. In a
-whole program ([inlining.md](inlining.md) §6), the self-hosted compiler's shapes see through a module's abstract
-types without a bound to their representations, while its opaque shapes (`shapes.opaqueShape`), which descriptors
-and echo use, keep them opaque.
+whole program (§8.6), the self-hosted compiler's shapes see through a module's abstract types without a bound to
+their representations, substituted before the type is canonicalized, while its opaque shapes (`shapes.opaqueShape`),
+which descriptors, echo, static descriptors' identity, records' names, and the representations registered for
+dynamic values use, keep them opaque, so that what a program does is the same whole or not. Outside the module,
+`layout.abstractInstance` then gives no generic layout, and a plan between types of one shape is none. A bounded
+abstract type (`T::POWER(B)`) stays opaque, since outside its module it is seen at its bound, which numbers its cases
+and fields otherwise; so does every abstract type of a module compiled apart rather than merged (the prelinked
+library modules, `conv`, `int`, `ascii`, `string`, `arrayOp`, `real`, and `list`), whose representations are
+registered as a module compiled apart's (`abstractTypes.setRegisteringApart`), which transparent shapes leave out.
 Variant and option types are equal whatever order they list their cases in, so their shapes (and canonical forms)
 order cases by name: equal types have one layout and one numbering of tags. An option's ordinal counts instead in
 the order of its static type as written, which lowering records on the operations that read or make one. Each
@@ -589,23 +595,105 @@ exported functions, the `static_assert`s of the tuple casts it prints,
 and the reinterpretation of a slot's word as a QVal (and back) for a variant's or exception's payload and an echoed
 value, which the slots pass gives it in their slot forms.
 
-### 8.6. Future: CFG and SSA for the native backend
+### 8.6. Simplify, Inline, and Contify (the Self-Hosted Compiler)
 
-The native AArch64 backend would add, after §8.4 (whose descriptor operands it would materialize as it sees fit):
-building a control-flow graph from the structured IR (join points
-become blocks with arguments), promoting mutable locals whose address is not taken to SSA values, and then
-instruction selection, register allocation (simpler on SSA), and emission. The C path does not need these: clang
-builds its own SSA and optimizes. The plan for the backend is [arm64.md](arm64.md).
+The self-hosted compiler optimizes the Core IR before specialization, into the Simplified stage (§9). The bootstrap
+does not: it goes from Core to Specialized, and the behavior goldens stay shared while each compiler's IR goldens are
+its own ([testing.md](testing.md) §2.8). What remains to do is in [inlining.md](inlining.md).
+
+**Why the Core IR.** Before specialize and closure conversion, functions are `funs` with free variables and types are
+explicit, with no representations or conversions yet. Inlining there removes what later passes would build: a
+higher-order call (imp-for's `forLoop(1 n fun(i) ...)`) whose argument becomes a known local function, inlined or
+contified in turn, rather than an allocated closure called indirectly; a polymorphic function inlined at closed type
+arguments, so that represent never sees the call and makes no conversions between native and generic layouts; `var`
+and `out` arguments whose addresses are no longer taken, which the SSA's promotion gains from. After closure
+conversion it is too late for closures, and after represent every conversion must be preserved. The SSA expands only
+the runtime's helpers inline ([ssa.md](ssa.md) §4); clang inlines within a C unit.
+
+**Principles:**
+
+- **Always on.** No option enables it; tests and bisection leave passes out through `QUEST_SKIP_PASSES`.
+- **Across modules only in whole programs** (`--whole-program`, [build-process.md](build-process.md) §1.2), whose
+  modules are one unit (`ir/whole`). Separate compilation gets no unfoldings: `.qi` files and manifests carry no
+  bodies, so an importer depends on interfaces alone and builds keep their parallelism.
+- **Deterministic:** sizes, counts, and source order, never a hash table's iteration order, so that the self-hosting
+  fixed point holds.
+- **Tracebacks lose inlined frames,** as they lose frames clang removes ([exceptions.md](exceptions.md) §2.4).
+- **No `inline` or `noinline` annotations** unless measurements show the heuristics cannot do without them.
+
+**The simplifier** (`questlang/ir/simplify`, dumped as `ir_simplified`, run as `run_ir_simplified`) runs in rounds,
+at most six, each followed by contification:
+
+- copy propagation, only between variables of one type, so that no later pass sees a variable's type change;
+- constant propagation (not of Strings, whose identity `is` compares) and folding, with `if` and `switch` on
+  constants; `Int` arithmetic wraps, so only division can raise, and a division by zero is not folded;
+- dead `let`s, closures and allocations nothing reads included, and unused `funs`;
+- a `switch` on an option or variant made in the same function, and `!` of one; a case of a known option that binds
+  its payload is left, since the binder shares the option's payload, which compiled code copies from the tuple it was
+  made of (a variant's payload is the value itself);
+- projections of a tuple made in the same function, when it has no `var` components and nothing reads its identity;
+- `ordinal` of a known option, and `is` between known options of different cases or of one case made without
+  components ([c-representation.md](c-representation.md) §5.3);
+- a join point jumped to only at its body's end straightened, and a jump to a join point whose continuation only
+  returns made a return, which makes a call before a jump to the function's end a tail call.
+
+**Inlining** (`questlang/ir/inline`: the functions, their components, and sizes; a call's expansion; with
+`questlang/ir/clone`, specialize's cloner, which gives a copy's loops and join points fresh labels). A call is
+inlined when its callee is a function a `funs` statement binds (or a copy of one), not recursive, and called once or
+small enough: its size, in IR operations and statements, less its bonuses, at most 30. The bonuses are for what
+inlining at this call removes: 30 for closed type arguments (the largest, since the caller is then left with no
+polymorphic call), 10 for an argument that is a known function the callee calls, 5 for a constant. Each `var` or
+`out` argument must be the address of a variable in scope, which stands for the parameter. Not inlined:
+
+- a function with a bounded type parameter, whose code sees values at the bound (an option's ordinal counts the
+  bound's cases), which a type argument substituted for the parameter would change;
+- a polymorphic function that calls an external at type arguments (`hash.identityHash`, say), which takes and returns
+  the parameter's values as `QVal` words, as a type argument's need not be, and nothing would box them;
+- a recursive function at all, rather than only into its own component, so that none is unrolled once per round;
+- past the unit's growth bound: half its size, or 1000, whichever is more. The rounds' bound stands for a caller's
+  bound and a depth bound.
+
+A body whose one return is its end is spliced in place; any other becomes a join point's body, whose continuation
+is the rest of the caller's body, its returns jumps to it. In a whole program, a call of one of the unit's modules'
+members (`call m.x`) is inlined as a call of the member's function is, when the function names no variable of its
+module (none is in the caller's scope) and the interface's type for the member is represented as the function's own
+(`layout.signatureRepresentation`), and the simplifier visits the modules' initializations before the main body.
+
+**Contification** (`questlang/ir/contify`, MLton's term), after each round: a function of value parameters and no
+type parameters, every use of which is a call, one outside its body and the rest tail calls of itself in its body
+(not in a `try`'s region; an `Ok` call is in tail position when control falls from it to `return ok`), becomes a loop
+at the outside call, which need not be in tail position. The call's result is a join point's parameter, whose
+continuation is the rest of the caller's body; the function's returns jump to it, its tail calls assign mutable
+variables for its parameters and continue, and each iteration binds the parameters to them, so that its own
+functions capture values as before. A function that never calls itself and is not recursive through others is left
+to the inliner: as a loop at a module's top level, its bindings would be the loop's rather than the module's globals,
+which its functions would capture. One recursive through others, which the inliner never inlines, is contified, so
+that a mutually recursive pair becomes one loop. With inlining, contification is what turns imp-for and tailfib into
+loops.
+
+`language/simplified_code`, `language/inlined_calls`, and `language/contified_loops` show what each does and what it
+leaves.
+
+### 8.7. Unboxed Results (the Self-Hosted Compiler)
+
+`questlang/ir/unbox`, after closure conversion and before represent, marks a function as returning its result unboxed
+(`Function.unboxedResult`) when every call of it is known (its closures only called, directly), every return is of a
+tuple made for the return alone, and every call's result is only read from; those tuples and results become unboxed
+variables (`Variable.unboxed`, printed `unboxed(T)`). The C printer holds one as its struct by value, and the SSA as
+its components' values, a function returning one returning them as its results. The tuple has one or two components,
+each an `Int`, `Bool`, `Char`, or `String` and none `var`, so that no conversion, box, or proxy applies and two words
+of results fit every backend's convention. Tuples have identity, so this is decided from the body, not the type.
+`language/unboxed_results`' `fibPair` allocates nothing.
 
 ## 9. Stages and Invariants
 
 | Stage | After | Invariants (checked by the verifier) |
 |---|---|---|
 | **Core** | lowering | ANF: operation arguments are atoms; every variable is bound once and used only in its scope; functions do not use mutable variables of enclosing functions; jumps name enclosing join points with matching arity, and breaks and continues enclosing loops, within one function; returns only in functions; terminators last; ordinal operations record a permutation of their option's cases, and option payloads their ordinals (`ir/verify.py`). Types are shapes, so aliases and unreduced applications cannot occur. Type parameters are checked on the typed AST (`typechecker/scoping.py`), as abstract types of modules are type variables too |
-| **Simplified** | the simplifier and inliner ([inlining.md](inlining.md) §§3–4) | as Core; an inlined call's copy has fresh binders and labels. The self-hosted compiler's alone: the bootstrap goes from Core to Specialized |
+| **Simplified** | the simplifier, inliner, and contification (§8.6) | as Core; an inlined call's copy has fresh binders and labels. The self-hosted compiler's alone: the bootstrap goes from Core to Specialized |
 | **Specialized** | §8.1 | as Core; every specialized call refers to an existing clone |
 | **Closed** | §8.2 | no `funs` statement remains; every closure is of one of the unit's functions; those functions use only their parameters, their environment, and globals (the variables the unit's top levels bind outside loops). `type_app` remains, an operation on closures |
-| **Represented** | §8.3 (after `questlang/ir/unbox`, [inlining.md](inlining.md) §5, in the self-hosted compiler) | every value is used in the representation its use requires (a let's copy, an assignment, a return, a jump's argument, and a call's arguments and result have the C representations of what they bind, assign, return, or pass to; a boxed value's is its slot representation); conversions only through `convert`; slots (components of tuples, records, and arrays being made, stores, cells) take records and variants boxed, but for those embedded; only variables of record or variant types are boxed; an unboxed variable is a tuple of one or two Int, Bool, Char, or String components, made for a return, or the result of a call of a function returning one, only read from |
+| **Represented** | §8.3 (after `questlang/ir/unbox`, §8.7, in the self-hosted compiler) | every value is used in the representation its use requires (a let's copy, an assignment, a return, a jump's argument, and a call's arguments and result have the C representations of what they bind, assign, return, or pass to; a boxed value's is its slot representation); conversions only through `convert`; slots (components of tuples, records, and arrays being made, stores, cells) take records and variants boxed, but for those embedded; only variables of record or variant types are boxed; an unboxed variable is a tuple of one or two Int, Bool, Char, or String components, made for a return, or the result of a call of a function returning one, only read from |
 | **Described** | §8.4 | every run-time use of a type has its descriptor operands (type arguments, auto values' witnesses, inspect cases and arms, `is` of QVal words, record literals, stored field reads, echo, the plans converted by descriptor), and every function its type parameters' descriptor variables; every descriptor variable an operand uses is bound where it is used and of the `descriptor` type (a thunk's plans use only the thunk's own); no static descriptor or template mentions a type parameter whose descriptor is a variable there (nor, in a thunk, one of the enclosing function's); the static descriptors and tables operations refer to are the unit's static data. In the self-hosted compiler
 (§8.4.1), every `adapt` plan has its adapter and no thunk parameters or fields, and no type application's instance is a
 function. The IR interpreter also checks that each operation's descriptors describe the types they stand for |
@@ -666,7 +754,5 @@ let n: Int = call length [descriptor(Bool)](flags)
 
 ## 11. Open Questions
 
-- **Inlining.** Not planned for the C path (clang inlines). A small inliner over Core IR would mostly help the
-  native backend, and specialization of small polymorphic functions.
 - **Separate compilation of specializations.** Specializing calls of another unit's functions needs the callee's IR,
   which `.qi` files do not carry; they stay unspecialized unless units ship their Core IR.

@@ -375,8 +375,8 @@ and model-elimination raise and catch constantly. Options:
 
 `option none of T end` allocates an object holding only its tag every time (`maybe.none` in peek and zebra, `nil` in
 every list). A case with no payload could be one shared constant per option type, if nothing observes the identity of
-an option value. *Done* in part (2026-11-01, [option-values.md](option-values.md) steps 1 and 2, §8): such cases are
-constants compared by case; `maybe.some`'s box (step 3) remains.
+an option value. *Done* in part (2026-11-01, [extensions.md](extensions.md), "Options as Values", §8): such cases are
+constants compared by case; `maybe.some`'s box ([option-values.md](option-values.md)) remains.
 
 ### 3.7. Arbitrary-precision integers are slow in the suite's library
 
@@ -414,7 +414,7 @@ fill a cell instead, which allocates more than the original does.
 
 ## 4. The backends compared (2026-10-30)
 
-Step 11 of [arm64.md](arm64.md) (linear scan) asks for dated run and compile times for both backends; these are the
+Linear scan ([arm64.md](arm64.md) §3.8) asked for dated run and compile times for both backends; these are the
 first. They show what the arm64 backend's code cost before interval splitting (§3.8 of arm64.md, as built: one
 range per value, spilled whole; promotion and tail calls in).
 
@@ -470,7 +470,7 @@ The C backend's 5.24 against 5.05 on 2026-10-28 is mixed:
 Without the four benchmarks §1.3 sets aside, the mean improved, from 6.49 to 6.12.
 
 The arm64 numbers are the baseline against which interval splitting, rematerialization, and allocation in `try`
-functions (arm64.md step 11) are to be measured.
+functions (arm64.md §3.8) are to be measured.
 
 ### 4.3. With splitting
 
@@ -500,7 +500,7 @@ tailfib, checksum, and logic 1.35 to 1.74 times slower than before splitting. Th
 of eleven benchmarks at `--scale 0.05` on an idle machine put all but three within 3 percent. Measurements need the
 machine to themselves.
 
-## 5. Choosing the default backend (arm64.md step 12, 2026-10-30)
+## 5. Choosing the default backend (2026-10-30)
 
 Step 12 asks for the measurements from which the default backend is decided. The user decides; this section gives the
 numbers and a recommendation. Releases are built with C until then.
@@ -531,23 +531,23 @@ measurement step 15 needs).
 ### 5.3. Recommendation
 
 **Keep `c` the default for now.** The arm64 backend's code runs about twice as long as clang's, in the compiler and in
-the suite, and saves only a few percent of build time, while `c` is the backend everything else is measured against.
-The gap is the instruction selection, jump threading, and inlining that clang does and arm64.md §6 and
-[backend-improvements.md](backend-improvements.md) list. Revisit when arm64's code is within about 1.2 times C's on
-both measures, or when building time matters more than running time (the REPL, the test suite's many small
-programs), where arm64's builds skip clang's compile of the C: an assembly unit needs only the assembler.
+the suite, and saves only a few percent of build time, while `c` is the backend everything else is measured against. The
+gap is the instruction selection, jump threading, and inlining that clang does and arm64.md §6 and the
+backend-improvements plan (since done; arm64.md §3.17) listed. Revisit when arm64's code is within about 1.2 times C's
+on both measures, or when building time matters more than running time (the REPL, the test suite's many small programs),
+where arm64's builds skip clang's compile of the C: an assembly unit needs only the assembler.
 
 ## 6. The backend improvements (2026-10-31)
 
-[backend-improvements.md](backend-improvements.md)'s steps 8 to 10 (the arm64 backend's instructions as data, the
-allocator on machine functions, the compiler's speed, and the `val` type) and the arm64 backend before register
+The backend-improvements plan's steps 8 to 10 (the arm64 backend's instructions as data ([arm64.md](arm64.md) §3.17),
+the allocator on machine functions, the compiler's speed, and the `val` type) and the arm64 backend before register
 allocation, measured as one batch at the plan's end.
 
 ### 6.1. How they were taken
 
 Each version was built in a detached worktree of its own: step 8's base `c08fea94`, after step 8 `373ecce3`, after
 each of step 9's two changes `0e8ca0cd` and `20f0d4ed`, the plan's end `88d7970b`, and the arm64 backend before
-register allocation, `2aad8279` and `73e7aaf9` (arm64.md steps 10 and 11's first commit), each with the builder's
+register allocation, `2aad8279` and `73e7aaf9` (tail calls, and linear scan's first commit), each with the builder's
 part of `59743032` (the Ok-argument fix) applied. Each job waited until no test suite, check, or other benchmark ran
 and the load average had been under 6 for two minutes. The suite's runs are `run.py time --clean --scale 0.25
 --timeout 1800`, one run each, against the 2026-10-28 baseline's MLton times; this session was editing and testing
@@ -591,20 +591,20 @@ later) and smith-normal-form timed out.
   even-odd 0.67, tsp 0.74, flat-array and life 0.77, fib 0.84, and most of the rest 0.85 to 0.95. Four got slower:
   string-concat 1.38, md5 1.11, checksum 1.06, and imp-for 1.00, the word-arithmetic and string loops, where
   selection now folds immediates and offsets the old code did not but the allocator spills differently.
-- **Register allocation** (arm64.md step 11, with steps 8 to 10 after it) made them 0.42 times as long as at
-  `2aad8279`, over the 40 both finished.
+- **Register allocation** (linear scan, arm64.md §3.8, with exceptions and tail calls after it) made them 0.42 times as
+  long as at `2aad8279`, over the 40 both finished.
 - **ssac**, the SSA printed as C for clang, takes 0.73 times arm64's time at the end and 1.42 times C's: clang
   inlines and turns into loops what neither the SSA nor arm64 does (fib 12.6 times ssac's in arm64, tailfib 18.4,
   tak 8.6, even-odd 3.5), while arm64 is ahead on flat-array (0.46 of ssac's time, its try without `_setjmp`).
 - **Against C**, arm64 is furthest behind on md5 (6.7), checksum and psdes-random (3.6), vector32-concat (3.4), and
-  the small recursive functions; the inliner ([inlining.md](inlining.md)) is to close most of the gap that is not
+  the small recursive functions; the inliner ([ir.md](ir.md) §8.6) is to close most of the gap that is not
   instruction selection.
 
 ## 7. The inliner (2026-10-31)
 
-[inlining.md](inlining.md)'s steps 1 to 6 (exported functions called directly, the simplifier, inlining,
-contification, and in part unboxed tuple results and inlining across a whole program's modules), measured at `36244e7b` against
-the last measurements before them: C at `074bc251` (§4.2) and arm64 at `88d7970b` (§6.3).
+The inlining plan's steps 1 to 6 ([ir.md](ir.md) §8.6 and §8.7; exported functions called directly, the simplifier,
+inlining, contification, and in part unboxed tuple results and inlining across a whole program's modules), measured at
+`36244e7b` against the last measurements before them: C at `074bc251` (§4.2) and arm64 at `88d7970b` (§6.3).
 
 ### 7.1. How they were taken
 
@@ -642,7 +642,7 @@ meanwhile. The times are in `benchmarks/mlton/baselines/2026-10-31/`: `quest-c-3
   inliner could splice it in, so its matrices were the loop's variables rather than the module's globals, and the
   closures `preflowPush`'s inner loop passes to `lists.app` captured them, allocating an environment, a closure, and
   an adapter each per iteration rather than using static closures. Contification now leaves a function that never
-  calls itself and is not recursive to the inliner ([inlining.md](inlining.md) step 4); `49452427` had already hidden
+  calls itself and is not recursive to the inliner ([ir.md](ir.md) §8.6, contification); `49452427` had already hidden
   it here. These whole-program times predate `49452427`, which makes a whole program's abstract types transparent so
   that the library's members inline across them; they are to be retaken.
 - **Building** the 46 took 42.1 s through C (median 0.4 s), 72.1 s whole (median 0.9 s: each build compiles the
@@ -663,10 +663,10 @@ driver is larger.
 
 ## 8. Options as values (2026-11-01)
 
-[option-values.md](option-values.md)'s steps 1 and 2 (an option of a case without components is compared by its case
+Options as values ([extensions.md](extensions.md); an option of a case without components is compared by its case
 and is a shared constant; a single-word option is compared by its component) and the C printer's two payload fixes
 (an option made from its payload tuple's components, and `o!tag.field` read in place,
-[escape-analysis.md](escape-analysis.md) §6), measured through C against the commit before them. What they buy is
+[c-representation.md](c-representation.md) §5.3), measured through C against the commit before them. What they buy is
 allocation: §3.6's objects for `nil` and `none`, and the tuples copied into and out of options' payloads.
 
 ### 8.1. How they were taken
@@ -726,7 +726,7 @@ Times as a fraction of A's (below 1 is faster), for the benchmarks that moved mo
 ### 8.3. zebra and the traceback cache
 
 zebra raises and catches exceptions constantly, and is what showed that attributing a traceback's frames had become
-slow: with line tables in the binary (arm64.md step 14), `dladdr` scanned every symbol, the debug map's entries
+slow: with line tables in the binary (arm64.md §3.16), `dladdr` scanned every symbol, the debug map's entries
 included, for each frame of each raise. `3fc7b821` caches each return address's function start. Measured alone,
 as §8.1, with that commit's compiler (A plus the cache and a documentation commit):
 
@@ -743,7 +743,7 @@ time is `quest-c-zebra-3fc7b821.jsonl`.
 
 ## 9. Escape analysis (2026-11-01)
 
-[escape-analysis.md](escape-analysis.md)'s pass, which makes the allocations that do not leave their function stack
+Escape analysis ([ssa.md](ssa.md) §4.2), which makes the allocations that do not leave their function stack
 slots in the SSA, measured by allocations rather than time: the allocations are what it changes, and its effect on
 them is large and exact, so the suite's times are left to a later retake. Counted by `allocations.py` at `--scale
 0.25` (ratio-regions n=384, peek n=48, zebra n=16), with `eb84b59b`'s compiler, the pass skipped
@@ -763,9 +763,9 @@ fixes (§8).
   `relabel`'s, and `enqueue`'s.
 - **Against the C printer's fixes,** the SSA allocates no more on any of the three, and less on zebra (1.12 billion
   against 1.38), since the pass also removes the payload tuples of `cons` and `append`, which the fixes' patterns do
-  not match ([escape-analysis.md](escape-analysis.md) §6).
+  not match ([c-representation.md](c-representation.md) §5.3).
 - **What remains** in peek and zebra is mostly `maybe.some`'s box (9.6 billion and 672 million), which escapes by
-  being returned, and which [option-values.md](option-values.md) step 3 (deferred) would remove; in ratio-regions,
+  being returned, and which [option-values.md](option-values.md) (deferred) would remove; in ratio-regions,
   90 percent is `preflowPush`'s 706 million, which the pass does not touch.
 
 ## 10. The JIT (2026-11-01)

@@ -1,5 +1,5 @@
 """The self-hosted compiler's tables of the runtime's layouts (questlang/codegen/runtimeLayout, docs/arm64.md section 3.3)
-and functions (questlang/codegen/runtimeFunctions, docs/backend-improvements.md section 3.5) agree with
+and functions (questlang/codegen/runtimeFunctions, docs/ssa.md section 2.2) agree with
 runtime/quest_runtime.h: the questlang tests codegen_runtime_layout and codegen_runtime_functions print the tables as C
 assertions, and this test compiles their goldens against the header. A change to either that the other does not follow
 fails here (and a change to a table changes its golden, which its questlang test checks)."""

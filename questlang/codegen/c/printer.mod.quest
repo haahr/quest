@@ -190,7 +190,7 @@ export
         tupleCasts: hashMap.T(String declarations.Pair)
         (* The tables of options of cases without components, by option
          * struct: their names, and their definitions in the order first used
-         * (docs/option-values.md section 3.1) *)
+         * (docs/c-representation.md section 5.3) *)
         optionTables: hashMap.T(String String)
         optionTableDecls: vector.T(String)
         var fs: FnState
@@ -972,7 +972,7 @@ export
 
     (* The lets of a body's tuples that only the next statement uses, as the
      * payload of the option it makes: those not global, volatile, or unboxed
-     * (docs/option-values.md, the payload made from components) *)
+     * (docs/c-representation.md section 5.3, payloads not made) *)
     let fusedTuples(p: P b: nodes.Body): hashMap.T(Int nodes.Stmt) =
         begin
             let found = hashMap.new(:Int :nodes.Stmt intEqual hash.int)
@@ -1143,7 +1143,8 @@ export
         end
 
     (* The table of option struct's options of each tag, which those of cases
-     * without components are (docs/option-values.md section 3.1) *)
+     * without components are
+     * (docs/c-representation.md section 5.3) *)
     let optionTable(p: P struct: String count: Int): String =
         begin
             if not(hashMap.contains(:String :String p.optionTables struct)) then
@@ -1375,7 +1376,7 @@ export
                             <> right() <> "))"
                     elsif maybe.isSome(:Type t) andif maybe.isSome(:nodes.Descriptor o.descriptor) then
                         (* An option type whose options is compares by case or
-                         * component (docs/option-values.md section 2) *)
+                         * component (docs/extensions.md, Options as Values) *)
                         let negate = if isIs then "" else "!" end
                         "(" <> negate <> "quest_option_is(" <> maybeDescriptor(p o.descriptor) <> ", (const void *)("
                             <> left <> "), (const void *)(" <> right() <> ")))"

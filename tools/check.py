@@ -14,13 +14,13 @@ self-hosted compiler's suites alone; any other change needs every suite.
 The self-hosted compiler's suites, run at once: the self-hosting check
 (run_tests.py --self-hosting --seed release, which ends by running the
 self-hosted suite with stage 2), the fixed point through arm64 (stages 2 and 3
-built by it, which must write what stage 1 wrote: docs/arm64.md step 12), each
+built by it, which must write what stage 1 wrote: docs/arm64.md section 3.12), each
 self-hosting check also checking the whole-program fixed point through its
 backend (stage 2's whole-program build writes stage 2's whole-program code), and
 the backends' suite (the self-hosted suite's compiled tests through the SSA's C
 printer, ssac, for every unit; through the native arm64 backend, for every unit,
 and for the program's alone; and whole programs through C and arm64:
-docs/arm64.md sections 4 and 5). Every suite adds, at once, the bootstrap's
+docs/arm64.md section 4). Every suite adds, at once, the bootstrap's
 suite and the unit tests but those that drive a terminal, and then, alone, the
 terminal tests, which time out under load.
 

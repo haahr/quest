@@ -23,7 +23,7 @@ There is no aggregate type: a 16-byte value (a record's `QRecordVal`, a variant'
 is no boolean type: a comparison gives an `int` 0 or 1, and a branch tests an `int` for nonzero. `ptr` and `int` are
 apart so that a later collector could find pointers precisely (arm64.md §3.13); converting between them is explicit.
 `val` is apart from both for the same reason: a precise collector resolves a `val` by its descriptor
-(backend-improvements.md step 10). A `val` is an `int` in registers, and `toVal` and `fromVal` convert it.
+(arm64.md §3.13). A `val` is an `int` in registers, and `toVal` and `fromVal` convert it.
 
 ## 2. Instructions
 
@@ -65,7 +65,7 @@ register allocation) walk the arrays; only the passes that care what an instruct
 
 A load or store names its width: 8 bytes (an `int`, `ptr`, or `real`), 4 (a C `int`, read sign-extended), or 1 (a C
 `bool` or a `QChar`: read zero- or sign-extended, as the instruction says; both are zero-extended now, since a `Char` is
-an unsigned byte, arm64.md §10.4). Its address is its pointer argument plus the
+an unsigned byte, arm64.md §3.9). Its address is its pointer argument plus the
 immediate.
 
 ### 2.2. Calls
@@ -149,6 +149,12 @@ registration, and the unit).
 - **Thread-locals.** The handler chain and the current exception are the runtime's thread-local variables, whose
   addresses `threadLocal` takes: the native backend calls their accessor (arm64.md §3.6), which clobbers what a call
   does and is not rematerialized, and `ssac` takes the address with `&`; neither keeps a list of their names.
+- **Runtime helpers expanded inline,** as the C printer gets them from the header's `static inline` functions, so
+  that `ssac` and arm64 both gain: an option's tag and unproxying, by a test of the proxy bit (`values.choose`), the
+  runtime called only for a proxy; real `+`, `-`, `*`, and `/` by their instruction and an `isNaN` test; `Int` `div`
+  and `mod` with the test for zero inline; and the bounds, count, and ordinal checks. Each check branches to a block
+  that computes the site and calls the runtime's raise (`values.check`), so that the common path computes no site.
+  The string and `ascii` helpers are calls in C too, and stay calls.
 - **Blocks the entry does not reach are dropped** when a function is finished, and the rest renumbered.
 
 What the builder does not yet build raises `unsupported`, naming the construct; `--stop-after ssa` reports it as an
@@ -158,10 +164,8 @@ internal error.
 
 `questlang/ssa/pipeline` builds a unit and then runs its passes, by name, in order, each on every function:
 
-- **`ssa/escape`** makes each allocation of a constant size that does not leave its function a stack slot
-  ([escape-analysis.md](escape-analysis.md)): its pointers only loaded from and stored to within it, or tested for
-  being a proxy, which folds. Its words are stored zero where it was made, and promotion then makes most such slots
-  values.
+- **`ssa/escape`** makes each allocation that does not leave its function a stack slot (§4.2), which promotion then
+  makes values where it can.
 - **`ssa/promote`** turns stack slots into values. A slot can be promoted when it is whole words and its address is
   only loaded from and stored to, a word at a time or a word's first byte (a `Bool` or `Char` variable's), never
   passed, stored, or offset otherwise. Each word becomes a variable of one type, stored all at one width, and loaded
@@ -182,6 +186,53 @@ live-out values, which the register allocator uses); `nodes` has the mutators (`
 `replaceUses`). The driver dumps the SSA after the builder (`--dump-after ssa_built`), after each pass
 (`ssa_escape`, `ssa_promote`, `ssa_tailCalls`), and at the end (`ssa`); `QUEST_SKIP_PASSES`, a comma-separated list of passes'
 names, leaves passes out, for a test or a bisection.
+
+### 4.2. Escape Analysis
+
+`ssa/escape` removes allocations whose pointers never leave the function that makes them: a tuple made only to be
+taken apart, the tuple `o!tag` makes to read one component of, an option's payload tuple copied into the option, a
+record's box only read. Inlining ([ir.md](ir.md) §8.6) is what brings producer and consumer into one function. The
+pass is local and conservative, one function at a time with no summaries of others, and reuses promotion rather than
+repeating it. `benchmarks/mlton/allocations.py` counts a program's allocations by function, to see what it removes
+and what still escapes ([benchmarks.md](benchmarks.md) §9).
+
+**What escapes.** A candidate is a call of `quest_alloc` with a constant size (`vals.alloc`); `quest_array_new`,
+exceptions, and the runtime's other allocators are not. Its result is one of *its pointers*, and so is:
+
+- a `ptrAdd` of one of them by a constant;
+- a whole load of a word of the allocation whose stores all store one of its pointers at one offset (as a tuple's
+  first word holds the address of its fields);
+- a block's parameter that every edge taken binds to that one value (as the merge after a folded proxy test is).
+
+The allocation does not escape when every use of each of its pointers is the address of a load or store at a constant
+offset within its size, such a store into a word holding its pointer, or a proxy test (`vals.isProxy`:
+`and(ptrToInt(p), QUEST_PROXY_TAG)`). A fresh allocation is never a proxy, so the test folds to zero, and the branches
+`vals.unproxy` and the tuple and option readers make on it go to their direct arm; the fold is the pass's own, since
+nothing else in the SSA knows that `quest_alloc` returns an aligned pointer. Anything else is an escape: an argument to
+a call (the runtime's included: `quest_option_is`, `quest_val_is`, a conversion), a value stored elsewhere, a return,
+a parameter bound to other values too, a comparison (`peq`, which could fold but does not yet), a `toVal`, any other
+`ptrToInt`, or an access of part of a word holding a pointer. Since the folds decide which blocks are reached, and a
+parameter's binding depends on the edges reached, the analysis starts with every candidate thought not to escape,
+finds its pointers and the blocks reached to a fixed point, drops those that escape, and repeats until none more does.
+`analyze` reports each candidate's verdict without changing the function.
+
+**The transformation.** Each allocation that does not escape becomes a stack slot of its size, in whole words. Where
+the call was, each of its words is stored zero, as `quest_alloc`'s memory is, each zero of the type its word is stored
+(or else loaded) as, so that promotion sees one type, and one byte wide if only its first byte is accessed. Its
+accesses go through the slot's address, its derived pointers' offsets added to their own; its derived pointers, the
+words holding its pointer with their stores and loads, its `ptrToInt`s, and the parameters bound to its pointers, with
+their arguments, are dropped; its proxy tests fold, and the blocks they no longer reach are dropped and the rest
+renumbered. Promotion then makes values of what it can. A slot is per function, not per execution, so an allocation
+in a loop reuses its slot, zeroed each time round; that is sound because a parameter that is one of its pointers is
+bound to that one value on every edge, so no pointer from one iteration is live in the next. A slot whose word is
+stored and loaded as different types (a type parameter's value stored as a `val` and loaded as a `ptr`) is not
+promoted and stays a slot, which is still cheaper than the heap, as is one in a function that enters a `try`.
+
+The C printer has its own, narrower forms of this, by pattern ([c-representation.md](c-representation.md) §5.3,
+"Payloads Not Made"), since clang cannot remove a `GC_malloc`; the SSA's pass allocates no more than they do on the
+benchmarks that need them, and less on zebra. The questlang test `ssa_escape` shows functions before and after the
+pass and after promotion, and `language/escaping_allocations` checks that values survive each kind of escape and
+that fresh tuples and options keep their identity.
 
 ## 5. Functions and Units
 
@@ -249,5 +300,5 @@ it reports.
 ## 8. The C Printer
 
 `codegen/ssac` prints a unit's SSA as C (arm64.md §3.14), an oracle for the SSA and the backends after it: with
-`--backend ssac`, or `--unit-backend UNIT=ssac` for one unit, a build compiles units through it (arm64.md §5, step
-5). The questlang test `ssac_print` prints a unit built by hand, and `tests/python/test_ssac.py` compiles its golden.
+`--backend ssac`, or `--unit-backend UNIT=ssac` for one unit, a build compiles units through it (arm64.md §3.12). The
+questlang test `ssac_print` prints a unit built by hand, and `tests/python/test_ssac.py` compiles its golden.

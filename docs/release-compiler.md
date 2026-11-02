@@ -33,9 +33,9 @@ seconds.
   `quest` and `home/` throughout, so that a cut or rollback in another worktree while it runs cannot give it one
   release's compiler and another's `home/`.
 - **A release is a commit's stage 2,** or with `--whole-program`, stage 2's whole-program build of the driver
-  (`--whole-program`, [arm64.md](arm64.md) step 13), which `release.json` records as its `build`. It is cut only from a clean tree at a commit on main. `release.json` records
-  the commit, so the release can be rebuilt from its sources: from the release before it, or from the bootstrap while
-  it lasts.
+  (`--whole-program`, [arm64.md](arm64.md) §3.12), which `release.json` records as its `build`. It is cut only from a
+  clean tree at a commit on main. `release.json` records the commit, so the release can be rebuilt from its sources:
+  from the release before it, or from the bootstrap while it lasts.
 - **The release carries its own `lib/` and `runtime/`** (`home/`, run as its `QUEST_HOME`). The binary was compiled
   against them, and the C it generates is for their ABI. So the working tree's runtime can change, ABI version
   included, without breaking the seed. Copying the snapshot is cheap: both are small.
@@ -87,7 +87,7 @@ Stage 2 is the new compiler. Each stage has its own build directory, and the eng
   changes, as when a release is cut in another worktree. A release's `home/` carries its commit's times, so artifacts
   built against one release could look fresh against the next one's older sources.
 - **`QUEST_BACKEND=ssac` or `arm64`** has stage 1 compile stage 2 through that backend, its stages kept apart in
-  `.build/quest-stages-BACKEND` ([arm64.md](arm64.md) step 12). Stage 1 is the seed's, compiled by C, either way.
+  `.build/quest-stages-BACKEND` ([arm64.md](arm64.md) §3.12). Stage 1 is the seed's, compiled by C, either way.
 - **The release finds the tree's `questlang/` through `-I`,** because its `QUEST_HOME` is its own `home/`, which
   holds only `lib/` and `runtime/`.
 - **Both stages build in parallel,** with `-j` set to the number of CPUs (`QUEST_JOBS` for `./quest`).

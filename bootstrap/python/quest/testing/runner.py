@@ -65,7 +65,7 @@ DRIVER_SCRIPT = ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"
 # are recorded (docs/testing.md §2.3)
 SELF_HOSTED_DRIVER = ROOT_DIR / "questlang" / "driver" / "main.quest"
 # The IR stages only the self-hosted compiler has, after Core: the simplified
-# stage (docs/inlining.md), dumped and run as the other stages are
+# stage (docs/ir.md section 8.6), dumped and run as the other stages are
 SELF_HOSTED_IR_DUMP_PHASES = ("ir_simplified",)
 SELF_HOSTED_IR_RUN_PHASES = ("run_ir_simplified",)
 # The bootstrap's phases whose pipeline stands for theirs, to find the phases an
@@ -99,7 +99,7 @@ BACKEND_MODES = {
     "arm64-program": ["--backend", "c", "--unit-backend", "main=arm64"],
     "arm64-modules": ["--backend", "arm64", "--unit-backend", "main=c"],
     # A whole program, its modules merged into the program's unit (ir/whole,
-    # docs/arm64.md step 13), through each backend
+    # docs/arm64.md section 3.12), through each backend
     "c-whole": ["--whole-program"],
     "ssac-whole": ["--whole-program", "--backend", "ssac"],
     "arm64-whole": ["--whole-program", "--backend", "arm64"],
@@ -775,7 +775,7 @@ def check_self_hosting(python_executable: str, build_dir: Path, seed: str = "boo
     whose artifacts must be the release's stage 1's: that is, the bootstrap
     still builds the compiler the release does (docs/testing.md section 2.8).
 
-    With a backend other than c (docs/arm64.md step 12), stages 2 and 3 are
+    With a backend other than c (docs/arm64.md section 3.12), stages 2 and 3 are
     built through it: stage 2 is then the compiler as that backend compiles it,
     built by stage 1, compiled by C, and the fixed point is that it writes what
     stage 1 wrote, assembly or C, for every unit. The bootstrap's comparison,
@@ -1104,7 +1104,7 @@ def main() -> int:
         choices=list(STAGE_BACKENDS),
         default="c",
         help="With --self-hosting, build stages 2 and 3 through this backend, so that the fixed point is the "
-        "compiler as the backend compiles it (docs/arm64.md step 12).",
+        "compiler as the backend compiles it (docs/arm64.md section 3.12).",
     )
     arg_parser.add_argument(
         "--whole-program-fixed-point",

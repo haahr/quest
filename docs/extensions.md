@@ -269,8 +269,7 @@ use no semicolons at all; the tests use both forms, so that both stay accepted.
 
 *Typeful Programming* (§3.1, under `Bool`) defines `is` as "ordinary equality for `Ok`, `Bool`, `Char`, `Int`, and
 `Real`, and as 'same memory location' for all the other types", options included, so that two evaluations of
-`option red of Color end` are not `is` each other. This implementation compares some options by value
-([option-values.md](option-values.md) §2):
+`option red of Color end` are not `is` each other. This implementation compares some options by value:
 
 - **A case without components is its case.** Two options are `is` each other if they are the same object, or of the
   same case and the case has no components at the type `is` is applied at. A case is its name, so `option thu of
@@ -294,7 +293,7 @@ the allocation in the MLton benchmarks ([benchmarks.md](benchmarks.md) §3.6 and
 now a constant shared by every use.
 
 The single-word rule anticipates representing such options by their component
-([option-values.md](option-values.md) step 3), which is deferred. If that representation is not adopted, the rule
+([option-values.md](option-values.md)), which is deferred. If that representation is not adopted, the rule
 is to be withdrawn, leaving only the rule for cases without components.
 
 ---

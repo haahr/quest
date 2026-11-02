@@ -872,9 +872,9 @@ def _quest_identity_hash(v: QValue) -> QWord:
             raw = 0
         case QOption(tag=tag, payload=payload) if payload is None or (
                 isinstance(payload, QTuple) and len(payload.elements) <= 1):
-            # As is compares them at any type (docs/option-values.md §2): a
-            # case without components by its name, and one of a single-word
-            # type by its component too
+            # As is compares them at any type (docs/extensions.md, Options as
+            # Values): a case without components by its name, and one of a
+            # single-word type by its component too
             raw = _string_hash(tag)
             if payload is not None and payload.elements:
                 raw ^= _quest_identity_hash(payload.elements[0]).value

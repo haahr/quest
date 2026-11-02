@@ -814,7 +814,7 @@ def qvalue_is(v1: QValue, v2: QValue, t: Optional[QType] = None) -> bool:
     Record, Tuple, Variant, Option, Closure, Ref, Dynamic, Exception); except
     that options of a case without components at t are the same if of the same
     case, and those of a single-word option type's case with a component if
-    their components are (docs/option-values.md §2).
+    their components are (docs/extensions.md, Options as Values).
     """
     if type(v1) is not type(v2):
         return False

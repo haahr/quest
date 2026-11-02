@@ -179,7 +179,7 @@ module's record, initializer, and `qv_` export, and links all of `questlang/` an
 JIT code depends on a host unit only through its interface: it calls the unit's exported functions by their `qv_`
 symbols with signatures that follow from their types, reads its module record through offset tables that follow from
 its exports, and lays out its abstract types' values generically, as all code outside a module does. Separate
-compilation exposes no function bodies (inlining.md §1), so nothing in a module's implementation reaches JIT code.
+compilation exposes no function bodies (ir.md §8.6), so nothing in a module's implementation reaches JIT code.
 The fingerprint is therefore of the interface as the compiler elaborates it, and of nothing else: a SHA-256 digest,
 written as hex, of
 

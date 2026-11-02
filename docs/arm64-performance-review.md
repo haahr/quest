@@ -4,7 +4,7 @@ Why programs compiled by the arm64 backend run slower than the same programs com
 generated machine code does that clang's does not, and what in the back end (`questlang/ssa`,
 `questlang/codegen/arm64`, `questlang/codegen/regalloc`) makes it do so. Every time here is a compiled program's run
 time, on the six benchmarks near the median (life, ray, hamlet, mlyacc, zebra, nucleic), at `6f7cb100` (options as
-values, and the traceback cache); none is the compiler's own. [arm64.md](arm64.md) §6 records what was found and done
+values, and the traceback cache); none is the compiler's own. [arm64.md](arm64.md) §6 records what was found
 before this; this review starts again from the measurements, and some of its conclusions revise §6's.
 
 ## 1. Summary
@@ -51,7 +51,7 @@ for reasons that apply here.
 
 What does not explain the gap: instruction count in memory-bound loops (life's `member` loop costs arm64 what it
 costs clang, with 1.3 times the instructions); clang's inlining of Quest's own functions, once Quest's inliner has
-run (0 to 9 percent, mlyacc the most); and, as §6.2 of arm64.md found, vectorization and unrolling.
+run (0 to 9 percent, mlyacc the most); and, as §6.1 of arm64.md found, vectorization and unrolling.
 
 ## 2. The measurements
 
@@ -291,7 +291,7 @@ end of the function. Unconditional branches, arm64 against clang: life 1,155 aga
 4,616, mlyacc 6,247 against 2,538; in single functions, ray's `psRaytrace` 193 against 25, and `tfoApply` 17
 against 0.
 
-**Why it matters more than arm64.md §6.2 measured.** That section found `llc` without block placement 4 to 7 percent
+**Why it matters more than arm64.md §6.1 measured.** That section found `llc` without block placement 4 to 7 percent
 slower. But `llc` without `MachineBlockPlacement` still keeps the order its IR passes chose, and clang's front end and
 `SimplifyCFG` had already sunk the cold blocks. A taken branch per check splits the fetch stream on each check. In
 check-dense code (real arithmetic, array loops) that is a bubble per operation.
@@ -326,7 +326,7 @@ and for a descriptor's fields. The builder knows which loads are of immutable me
 Briggs, Cooper, and Simpson). Keys: pure arithmetic and comparisons, addresses, and loads the builder marks as
 immutable. Then loop-invariant hoisting of the same, where the loop's preheader dominates every exit. That condition
 keeps a load from moving above its null or proxy check. This is the "copy propagation, constant folding, dead code
-elimination, value numbering" of arm64.md §6.3 item 5, which ranked it after the allocator because LLVM's
+elimination, value numbering" of arm64.md §6.2 item 3, which ranked it after the allocator because LLVM's
 equivalents gained 3 to 5 percent there. But that measured LLVM's IR passes with `llc`'s selection-DAG combining
 and `MachineCSE` still running, which recover part of the same redundancy. Here nothing does, so the gain should be
 larger, and it serves `ssac` too.
@@ -363,7 +363,7 @@ None of these is large alone, and §3.1's loop shows that extra instructions are
   global's load as `adrp` then `ldr x, [x, sym@PAGEOFF]`, without the `add`. Since options as values, `nil` is
   such a global (`g_nil_2` in life, loaded this way at each use in `nthgen`'s loops).
 - **Narrow results.** The SSA extends a C `bool` or `char` result after every call (ssa.md §2.2), even from a Quest
-  function, which returns 0 or 1. arm64.md §6.4's Quest calling convention would remove it; a cheaper first step is
+  function, which returns 0 or 1. arm64.md §6.3's Quest calling convention would remove it; a cheaper first step is
   to skip the extension when the callee is known to be Quest's.
 - **Real constants.** A literal-pool `ldr d` or `fmov d, #imm` rather than four `mov`s and an `fmov` (nucleic's
   tables).
@@ -393,7 +393,7 @@ handler's backtrace.
 
 ### 3.7. Outside the code generator
 
-- **The SSA's builder lags the C printer** on options' payloads (escape-analysis.md §6, benchmarks.md §8): zebra
+- **The SSA's builder lags the C printer** on options' payloads (c-representation.md §5.3, benchmarks.md §8): zebra
   allocates 73 percent more through the SSA, hamlet 7 percent. This is all of zebra's and hamlet's ssac-over-C
   factor (1.58, 1.34). It is not code generation, but it is the largest single factor in zebra's arm64/C ratio, and
   both backends that use the SSA pay it.
@@ -413,7 +413,7 @@ handler's backtrace.
 | 5 | Value numbering and hoisting of pure values and immutable loads | a new `ssa` pass; `ssa/build` | 100 to 1,000 | 2 to 4 | nucleic; every program; ssac too |
 | 6 | `ldp`/`stp` and post-index; register-offset addresses; `adrp` + `ldr`; no re-extension | `select`, a post-allocation pass | 100 each | 1 to 2 each | a few percent each |
 | 7 | Chain layout and loop rotation | after 2, with 4a's frequencies | 100 | 1 to 2 | a few percent |
-| 8 | Options' payloads in the SSA, as in the C printer | escape-analysis.md (steps 1 to 5 done) | — | — | zebra 1.58, hamlet 1.34 (ssac and arm64) |
+| 8 | Options' payloads in the SSA, as in the C printer | escape analysis, done ([ssa.md](ssa.md) §4.2) | — | — | zebra 1.58, hamlet 1.34 (ssac and arm64) |
 | 9 | What else keeps mlyacc's heap alive | to be found, with `tools/perf/retention.py` | — | — | mlyacc: 1.31 MB live, against C's 0.73 |
 
 **Lines** is the order of magnitude of the compiler's (and runtime's) lines added and removed, not counting tests and
@@ -481,7 +481,7 @@ cold calls. Its first half is small and useful alone. Measure it, and a narrower
 before writing the second half: proxy helpers called through stubs that preserve the caller-saved registers, as
 LLVM's `preserve_most` convention does, since proxy calls are most of the cold calls hot values are live across.
 Item 5 is the first optimization pass the SSA would have, and it would help `ssac` too. Item 8 is the largest factor
-for zebra and hamlet, but it is outside the code generator, and escape-analysis.md is its plan.
+for zebra and hamlet, but it is outside the code generator, and escape analysis ([ssa.md](ssa.md) §4.2) addresses it.
 
 After the first two batches (items 1 to 3 and 4a, with item 8's escape analysis pushed beside them), the rest is
 in five batches. Each is pushed after one run of `tools/check`, with each of its items measured alone before that
@@ -510,7 +510,7 @@ run, as the second batch's were: its three fixes were found by measuring, not by
   to be looked at again if batch 3's timings or a later profile put time on spills across calls. Item 9's fix is a
   batch of its own, when item 9 finds what it is.
 - **Batch 7** is the SSA's first optimization pass, and it changes `ssac` too, so it gets a plan like
-  escape-analysis.md before code. It depends on nothing, and the plan can be written at any time; it comes last
+  escape analysis had (now [ssa.md](ssa.md) §4.2) before code. It depends on nothing, and the plan can be written at any time; it comes last
   because batches 4 to 6 are cheaper, and its gain is clearer measured after them.
 
 Batches 4 and 5 wait only for batch 3's baseline timings.

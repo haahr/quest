@@ -130,7 +130,7 @@ The test runner executes each test source file across active compiler phases via
 - `typecheck`: Runs `quest_driver.py --stop-after typecheck <source_file>`.
 - `ir_core`: Runs `quest_driver.py --stop-after ir_core <source_file>`, which lowers the typed program to Core IR
   ([ir.md](ir.md)) and prints it (compared against `tests/golden/ir_core/`). Generated tests skip it.
-- `ir_simplified` (the self-hosted driver only): the Core IR simplified ([inlining.md](inlining.md) §4), compared
+- `ir_simplified` (the self-hosted driver only): the Core IR simplified ([ir.md](ir.md) §8.6), compared
   against `tests/golden/ir_simplified/` for a subset of the programs, as the later stages are; `run_ir_simplified`
   runs it, as the `run_ir_<stage>` phases below run theirs.
 - `ir_specialized` (and each later IR stage, `ir_<stage>`): the IR after that stage's pass, compared against
@@ -256,7 +256,7 @@ payload left out of the header it expects; `tests/self-hosted/pending-jit.txt` l
 questlang tests `ssac_print` and `arm64_assemble` print a unit of the SSA built by hand as C and as assembly, whose
 goldens `tests/python/test_ssac.py` compiles and `tests/python/test_arm64.py` assembles. The SSA's passes are tested on
 SSA written as text (`questlang/ssa/parser`): `ssa_promote` and `ssa_tailcalls` print small functions before and after
-their pass, `ssa_escape` what escape analysis says of their allocations ([escape-analysis.md](escape-analysis.md)), and
+their pass, `ssa_escape` what escape analysis says of their allocations ([ssa.md](ssa.md) §4.2), and
 `ssa_verify` the problems the verifier finds ([ssa.md](ssa.md) §6).
 
 The runners set `QUEST_HOME` to the project directory, where the self-hosted driver, which runs in a scratch
@@ -280,7 +280,7 @@ requires:
   `.qm`) must be the one stage 1 wrote, up to the producer and the build directory's path. Stages 2 and 3 should be
   the same binary, and the check says so if they are not.
 - **The whole-program fixed point,** with `--whole-program-fixed-point`: stage 2 builds the driver as a whole program
-  (`--whole-program`, [arm64.md](arm64.md) step 13), through the stage backend, and that compiler must write the
+  (`--whole-program`, [arm64.md](arm64.md) §3.12), through the stage backend, and that compiler must write the
   whole program's code (`compile --whole-program --emit-c`: C, or arm64's assembly) that stage 2 writes. Its own
   whole-program build would then be the same compiler, so it is not built. The code is compared rather than the
   binaries, which `-o --whole-program` compiles and links in a temporary directory of its own, whose path the
@@ -666,7 +666,7 @@ suites, and any other change the first's. It says which, and why; `--all` and `-
   stage 2. It replaces `--self-hosted`, for 5-6 minutes more. Past a gap (a feature the release does not have yet,
   [instructions.md](instructions.md) §6.1), `tools/check --seed bootstrap` builds stage 1 with the bootstrap.
 - **The fixed point through the other backends** (`run_tests.py --self-hosting --stage-backend ssac|arm64
-  --fixed-point-only`, [arm64.md](arm64.md) step 12): stage 1, built by the release, builds stage 2 through the
+  --fixed-point-only`, [arm64.md](arm64.md) §3.12): stage 1, built by the release, builds stage 2 through the
   backend, and stage 2, the compiler as that backend compiles it, builds stage 3 through it too, which must write
   the same artifacts (C, or arm64's assembly) for every unit, and then checks the whole-program fixed point through
   the backend too. It compares artifacts rather than binaries: two arm64 binaries linked from the same assembly

@@ -199,6 +199,10 @@ How `QProxy` works across the runtime:
 4. **Object Identity (`is` and `hash.identityHash`):**
    - Pointer equality (`quest_val_is`) and `quest_identity_hash` call `quest_unproxy(p)` on both operands before
      comparing addresses. Thus `tSup is tSub` is always `true` in $O(1)$ time.
+   - Options are the exception ([extensions.md](extensions.md), "Options as Values"): `quest_option_is` also takes
+     two options of the same case as `is` each other when the case has no components, or is a single-word type's case
+     with a component and their components are `is` each other; `quest_identity_hash` hashes such options by case and
+     component, so that it agrees.
 
 ---
 

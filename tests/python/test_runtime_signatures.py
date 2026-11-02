@@ -1,5 +1,5 @@
 """Unit test that the runtime's functions take and return no C type narrower
-than a word but bool and QChar (docs/arm64.md section 10, hazard 3).
+than a word but bool and QChar (docs/arm64.md section 3.3).
 
 The arm64 backend places arguments past the registers as Darwin does, at their
 C types' sizes and alignments, and extends a narrow result after a call; it
@@ -83,7 +83,7 @@ class TestRuntimeSignatures(unittest.TestCase):
                 if by_value(declared) in NARROW and (name, i) not in REGISTER_INTS:
                     problems.append(f"{name}: parameter {i} is {declared!r}")
         self.assertEqual(problems, [], "a runtime function takes or returns a narrow C type the arm64 backend does "
-                         "not place (docs/arm64.md section 10, hazard 3)")
+                         "not place (docs/arm64.md section 3.3)")
 
     def test_the_check_can_fail(self) -> None:
         self.assertEqual(by_value("int"), "int")

@@ -2,8 +2,7 @@
 
 A `try`'s `else` branch may name the exception it caught, whatever its type, and raise it again: the binder `else
 with e then`, and the library module `raised` (`lib/raised.int.quest`, `lib/raised.mod.quest`), whose type `raised.T`
-is the binder's type and whose function `raised.reraise` raises a caught exception again. The plan that implemented it
-is [raised-plan.md](raised-plan.md).
+is the binder's type and whose function `raised.reraise` raises a caught exception again.
 
 ---
 

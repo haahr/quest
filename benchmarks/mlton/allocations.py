@@ -12,7 +12,7 @@ operation) is counted to the compiled function that called it, the runtime's
 function named after it. --sites also lists the allocating call sites.
 
 The counts are the collector's calls; GC_malloc_atomic's are included.
-docs/escape-analysis.md section 4 uses them.
+docs/benchmarks.md section 9 records them.
 """
 
 from __future__ import annotations

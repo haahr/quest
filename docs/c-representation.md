@@ -528,6 +528,20 @@ typedef struct QT_T {
   the original's payload, viewed at the proxy's payload type for the case (`quest_proxy_option_payload`: the payload
   itself where no component changes view, else a proxy of it); through a bounded type parameter's view map, at the
   bound's (`quest_view_option_payload`). `opt!tag` is a new tuple: its ordinal, then copies of the components.
+- **Cases Without Components Are Constants** (the self-hosted compiler; [extensions.md](extensions.md), "Options as
+  Values"): each unit has a read-only table per option struct, one object of each tag (`qc_QT_T[n] = { { .tag = 0 },
+  ... }` in C; in the SSA, a datum of words, each a tag). Making an option of a case without components is the
+  address of its entry, and `option ordinal(n) of T end`, when no case of `T` has components, indexes the table. A
+  table is the unit's own, since `is` compares such options by case, not address. The simplifier folds `ordinal` of a
+  known option, and `is` between known options of different cases, or of one case made without components.
+- **Identity:** `is` at an option type is the same object or, as extensions.md defines it, the same case with no
+  components or a single-word type's same component (`quest_option_is`, which `quest_val_is` calls for an option
+  descriptor, and `quest_identity_hash` agrees). The bootstrap implements the same `is` without the constants.
+- **Payloads Not Made** (the C printer): a tuple made only to be the payload of the option the next statement makes
+  is not made, the option storing its components (when each is a slot value of the case's component shape); and
+  `opt!tag.field`, a payload only the next statement reads a component of, reads the component from the option
+  after checking the tag. The SSA's backends get the same, and more, from escape analysis ([ssa.md](ssa.md) §4.1);
+  clang cannot remove a `GC_malloc`, so the C printer keeps these while it is the default backend.
 
 #### 2. Variant Types (Unordered, First-Class 16-Byte `QVariantVal`, Zero-Allocation Tag Remapping)
 Unlike options, variants are unordered and each branch has **exactly one type** $A_i$ (§6.3):

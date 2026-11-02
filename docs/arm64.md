@@ -1,9 +1,10 @@
-# Plan: The Native arm64 Backend
+# The Native arm64 Backend
 
-Step 6 of the [roadmap](roadmap.md): a backend in the self-hosted compiler that writes arm64 machine code for Darwin,
-as an alternative to the C backend. Its object files link with the C backend's, unit by unit, and with the runtime,
-which stays in C. It is written in Quest, in `questlang/`, and the bootstrap does not get it
-([testing.md](testing.md) §2.8: the bootstrap gets the language's changes, not the self-hosted compiler's backends).
+A backend in the self-hosted compiler that writes arm64 machine code for Darwin, beside the C backend, from the SSA
+([ssa.md](ssa.md)). Its object files link with the C backend's, unit by unit, and with the runtime, which stays in
+C. It is written in Quest, in `questlang/`, and the bootstrap does not get it ([testing.md](testing.md) §2.8: the
+bootstrap gets the language's changes, not the self-hosted compiler's backends). The JIT ([jit.md](jit.md)) uses the
+same pipeline up to machine instructions.
 
 The code says **arm64** in directory, module, and option names; this document says arm64 too.
 
@@ -29,13 +30,13 @@ The code says **arm64** in directory, module, and option names; this document sa
 - **The exception state stays thread-local** (§3.6), as it is for C.
 - **Shared passes are the self-hosted compiler's.** Decisions moved out of the C printer into passes both of its
   backends use (§3.1) are not made in the bootstrap, whose C printer keeps making them itself.
-- **Debug information** (decided 2026-10-29): DWARF line tables (`.file` and `.loc` directives, from the IR's source
-  offsets), in a step of their own after linear scan; no variable locations.
-- **The default backend** stays C; whether arm64 becomes the default (for programs, for building the compiler, for
-  releases) is decided after step 12, from measured compile and run times (decided 2026-10-29). No such decision is
-  final: step 12's measurements are of a backend without most optimizations (§6), and as its code improves, arm64
-  becomes the more likely choice. The question is reopened whenever benchmarks.md records a significant change.
-- **One SSA-based C backend in the end** (step 15): the tree-walking C printer is a second, hand-written
+- **Debug information:** DWARF line tables (`.file` and `.loc` directives, from the IR's source offsets, §3.16); no
+  variable locations.
+- **The default backend is C,** for programs, for building the compiler, and for releases, the user's decision from
+  the measurements of [benchmarks.md](benchmarks.md) §5 (2026-10-30), which recommended it. No such decision is
+  final: as arm64's code improves (§6), it becomes the more likely choice, and the question is reopened whenever
+  benchmarks.md records a significant change.
+- **One SSA-based C backend in the end** (§5): the tree-walking C printer is a second, hand-written
   implementation of every operation's access sequence (§3.1), kept in agreement with the SSA's builder only by tests.
   Once the SSA's code is good enough, `ssac` replaces it as the self-hosted compiler's C backend, so that each
   operation is lowered once. The bootstrap's C printer stays, since the bootstrap gets no SSA.
@@ -77,48 +78,27 @@ since their units link with C's.
 The inventory (§7) lists each decision and where the SSA backends get it. In short:
 
 - **Layout is simple.** Every aggregate slot is one word, so tuples, records, options, and offset tables are word
-  arithmetic, which the shared `layout` module can compute (step 3). Closure environments are private to their unit,
+  arithmetic, which the shared `layout` module computes (§3.3). Closure environments are private to their unit,
   so the SSA backends need not lay them out as C does.
-- **Shared by step 2** (§7.5): thunks become IR functions made by a pass, so that every backend gets them; static data
-  (descriptors, offset tables, tag maps) gets a shared description; slot conversions become data in `layout`; and
-  the runtime's inline helpers get external definitions too.
+- **Shared** (§7.5): thunks are IR functions made by a pass, so that every backend gets them; static data
+  (descriptors, offset tables, tag maps) has a shared description; slot conversions are data in `layout`; and the
+  runtime's inline helpers have external definitions too.
 - **Everything else is the SSA's construction:** each operation's access sequence (proxies, offset tables, view maps,
   option payloads, checks), `try`, and the unit's structure. It is a second implementation of what the C printer
   prints, kept in agreement by the mixed builds (§4).
 
 ### 3.2. The SSA
 
-`questlang/ssa`: nodes, printer, verifier, and construction from the IR.
-
-- **Types:** `i64`, `f64`, `ptr` (a pointer the collector must see; see §3.13), and `i1` for conditions. Narrower
-  integers appear only as the widths of loads and stores (strings' bytes, `Bool` and `Char` fields, if their layouts
-  have them).
-- **Values** are instruction results and block parameters. An instruction may have several results: a call that
-  returns a 16-byte value (a record's evidence pair, a `QVariantVal`) returns two. Every 16-byte value is split into
-  two scalars when the SSA is built, so no later stage sees aggregates.
-- **Instructions:** integer and floating arithmetic and comparisons, conversions, `load`/`store` (width, base,
-  offset), `addr` of a stack slot or a global, constants and symbol addresses, `call` (direct, by symbol, or indirect,
-  by address) with an ABI-neutral argument list, and the runtime's operations as calls by name.
-- **Terminators:** `jump b(args)`, `branch c, b1(args), b2(args)`, `switch v, table, default`, `return values`,
-  `tail_call`, `raise` (a call that does not return), `unreachable`.
-- **Stack slots:** a function's mutable locals whose address is taken (`addr x`, for `var`/`out` arguments and `@x`)
-  and the locals of §3.6 live in named stack slots; everything else is an SSA value.
-- **The verifier** checks that definitions dominate uses, that jumps pass arguments of their blocks' parameters'
-  number and types, that terminators end blocks, and the stage's invariants; it runs after each pass when
-  `QUEST_CHECK_IR=1`, as the IR's does.
-- **A textual form,** dumped by `--stop-after ssa` and by later stages (`ssa_arm64`, `arm64_asm`), with goldens owned
-  by the self-hosted compiler (testing.md §2.8): the SSA's for every run test, since it is target-independent and
-  changes only when the lowering does; machine code's and assembly's for a curated set, each chosen for a construct
-  (switches, `try`, closures, tail calls, spills), since they change with almost any backend change (decided
-  2026-10-29).
-
-**Construction.** The IR is structured, so its statements become blocks and edges directly. Mutable variables are
-built as stack slots, loaded and stored (decided 2026-10-29, [ssa.md](ssa.md) §4); a later pass promotes those whose
-address is not taken to values, for which Braun et al.'s algorithm (*Simple and Efficient Construction of Static
-Single Assignment Form*, CC 2013) suits the structured IR: blocks sealed as they are walked, with no dominance
-frontiers. `if`,
-`switch`, `loop`, `break`, `continue`, and `join` become blocks and edges; a join point is a block whose parameters
-are its own.
+`questlang/ssa`, described in [ssa.md](ssa.md): target-independent and low-level. Its values are machine scalars of
+four types (`int`, `ptr`, `real`, and `val`, a `QVal` word), a 16-byte value split into two when the SSA is built, so
+that no later stage sees aggregates; its instructions reach memory by byte offsets and call by symbol or address,
+each call with its C signature; mutable variables are built as stack slots, loaded and stored, and promoted to values
+by a later pass ([ssa.md](ssa.md) §4.1). The IR is structured, so its statements become blocks and edges directly:
+`if`, `switch`, `loop`, `break`, `continue`, and `join` become blocks and edges, and a join point is a block whose
+parameters are its own. The verifier runs after the builder and after every pass when `QUEST_CHECK_IR=1`, as the
+IR's does. Its textual form is dumped by `--stop-after ssa`, with a golden for every run test, the self-hosted
+compiler's own (testing.md §2.8), since it is target-independent and changes only when the lowering does; nothing
+after it has goldens, since machine code changes with almost any backend change.
 
 ### 3.3. Layout and the ABI
 
@@ -127,20 +107,30 @@ are its own.
   - aggregates' structs (tuples, records, options and their cases' payloads): `codegen/layout` (`tupleBytes`,
     `recordFieldOffset`, `optionBytes`, `slotsBytes`), asserted after each struct the C defines, in units and in
     interface headers (`static_assert(... == N, layout_<struct>_...)`);
-  - the unit's static data (descriptors and their payloads, offset tables): `codegen/staticdata` (step 2), asserted
-    after each;
+  - the unit's static data (descriptors and their payloads, offset tables): `codegen/staticdata`, asserted after
+    each;
   - the runtime's own structs that generated code touches (`QClosure`, `QArray`, `QString`, `QExceptionState`,
     `QViewMap`, every descriptor struct, ...) and its constants (`QTypeKind`'s, `Q_CATCH_ALL`, ...):
     `codegen/runtimeLayout`, a table that the questlang test `codegen_runtime_layout` prints as C assertions and
     `tests/python/test_runtime_layout.py` compiles against `quest_runtime.h`.
 
-  Closure environments are private to their unit and need no assertions (§7.1); the exception handler's layout
-  changes in step 8.
+  Closure environments are private to their unit and need no assertions (§7.1).
 - **Calls** follow Apple's AAPCS64, as clang does for the same C declarations: integer and pointer arguments in
   `x0`–`x7`, `double`s in `d0`–`d7`, the rest on the stack; a 16-byte composite that is not all `double`s in two `x`
   registers, even if it holds a `double`; results in `x0`/`x1` or `d0`; the caller extends arguments narrower than 32
   bits. The closure calling convention of [runtime-design.md](runtime-design.md) §4.1 and the signatures of
   [c-representation.md](c-representation.md) §6.2 are the contract.
+- **Narrow arguments.** Darwin places arguments past the registers at their natural size and alignment, not in 8-byte
+  slots as standard AAPCS64 does, so a C `bool` or `QChar` on the stack takes a byte. The SSA marks such parameters and
+  results (`narrow`, [ssa.md](ssa.md) §2.2), `placeArguments` places each stack argument at its size and alignment (a
+  16-byte composite as two words), and a function extends its own narrow parameters on entry, since a C caller leaves
+  their upper bits unspecified. No other C type narrower than a word occurs: Quest's own types are words, `bool`,
+  `QChar`, or 16-byte composites, and `tests/python/test_runtime_signatures.py` fails if any function the runtime
+  declares takes or returns another (`quest_system_init`'s and `quest_builtins_init`'s `int argc` alone, the first
+  argument, in a register). `modules/wide_calls` calls across units with arguments past the registers of each kind,
+  which the backends' mixed modes compile natively on one side and through C on the other.
+- **Symbols the unit does not define** are reached through the GOT, and a thread-local through its descriptor's
+  accessor, so that one spelling serves the runtime, other units, and the system's libraries.
 - **A unit's interface to others** is what its C would define: the exported wrappers `qv_<mod>_<fn>`, the module
   record and initializer (`qv_mod_<M>_init`, [build-process.md](build-process.md) §8), the registration of record
   dictionaries and function tables, and `main` for a program. A C unit importing a native one includes the same
@@ -154,6 +144,12 @@ literals, static closures `{ fn, NULL }`, record dictionaries and offset tables,
 in data are relocations. Read-only data goes in `__TEXT,__const` or `__TEXT,__cstring`; data with pointers in
 `__DATA,__const` (or `__DATA` when written at run time).
 
+The data is the SSA's, not the C declarations': a unit's data is words, text, and zeros ([ssa.md](ssa.md) §5), its
+descriptors laid out by `ssa/statics` from `codegen/staticdata`'s descriptions (§7.5), and its function types'
+adapters, thunks, and invokers, its exported functions, its function table, and `qr_register_dicts` are SSA
+functions, so that `ssac` and arm64 emit the same data and code. Static data cannot hold a thread-local's address,
+which is not a constant.
+
 ### 3.5. Instruction selection
 
 Greedy pattern matching over single-use values within a block, producing machine SSA: arm64 instructions over
@@ -166,12 +162,19 @@ few constraints, so the patterns are few:
 - comparison fused into branches: `cbz`/`cbnz`, `tbz`/`tbnz`, `cmp` + `b.cond`; `csel`/`cset` for values;
 - `ldp`/`stp` for the halves of 16-byte values and for saving registers.
 
+As built (`codegen/arm64/select`, over `minst`'s instructions, §3.17): immediates
+for `add`, `sub`, and `cmp`; `and`, `orr`, and `eor` with logical (bitmask) immediates; a comparison fused into its
+branch; an `and` of one bit, seen through conversions between words, or a value compared with 0, as `tbz`/`tbnz` or
+`cbz`/`cbnz`, and a switch's case 0 as `cbz`; an `and` of two integer comparisons as `cmp`, `ccmp`, and `b.cond`. When
+the code is emitted, blocks that only jump are passed over, a jump to the next block falls through, and a conditional
+branch to the next block is inverted before the block's last jump.
+
 ### 3.6. Exceptions
 
-**Today** a `try` pushes a `QExceptionHandler` holding a `jmp_buf` (`runtime/quest_runtime.h`) onto a thread-local
+**In C** a `try` pushes a `QExceptionHandler` holding a `jmp_buf` (`runtime/quest_runtime.h`) onto a thread-local
 chain and calls `_setjmp`; a raise walks the chain (exceptions.md §5.1) and `_longjmp`s. `_setjmp` stores all the
 callee-saved registers (`x19`–`x28`, `fp`, `lr`, `sp`, `d8`–`d15`) through a dyld stub: no system call, but
-flat-array, with a `try` in its innermost loop, spends 69 percent of its time there ([benchmarks.md](benchmarks.md)
+flat-array, with a `try` in its innermost loop, spent 69 percent of its time there ([benchmarks.md](benchmarks.md)
 §3.5).
 
 **C cannot do much better.** clang does not provide `__builtin_setjmp`, which saves only the frame and stack pointers
@@ -179,29 +182,32 @@ and the resume address, on arm64. An assembly routine that returns twice is no b
 values in callee-saved registers across any call, so the routine must save them all. Only inline assembly can let
 clang save just the registers live across the `try`: an `asm goto` that stores `sp`, `fp`, and the handler label's
 address, names the label as a target, and clobbers every callee-saved register. Whether clang keeps the label's code
-and the frame as the handler expects is not something it promises, so that is an experiment, not part of this plan.
-What C can do reliably is enter fewer handlers (§6).
+and the frame as the handler expects is not something it promises, so that is an experiment (§6). What C can do
+reliably is enter fewer handlers (§6).
 
-**Native code can.** A native function controls its own registers, so its handler needs only where to resume:
+**Native code does.** A native function controls its own registers, so its handler needs only where to resume:
 
-- **One handler record, two kinds.** The record keeps its common fields (`prev`, `catches`, `n_catches`) first, then
-  either the `jmp_buf` (C) or a resume address, `sp`, and `fp` (native), with a field telling which. A raise walks
-  the chain as it does now and resumes a C handler with `_longjmp` and a native one through a small assembly routine
-  in the runtime that sets `sp` and `fp` and branches. This is an ABI change (a version bump), and the C printers of
-  both compilers change only in the field names they use.
+- **One handler record, two kinds.** The record's common fields (`prev`, `catches`, `n_catches`) come first, then
+  `resume`, `sp`, and `fp`, then the `jmp_buf`. A C handler's `resume` is `NULL` (both C printers and the SSA's builder
+  set it); a native `try` stores its handler block's address and its frame's `sp` and `fp` instead of calling
+  `_setjmp`. A raise walks the chain as before and resumes a C handler with `_longjmp`, and a native one with a few
+  instructions of inline assembly in the runtime (`quest_resume_native`) that set `sp` and `fp` and branch.
 - **At a native handler's entry every register is dead.** The function's frame is intact, and its prologue's saved
   registers are still in it, so its epilogue restores its caller's registers as usual. Values the handler uses come
-  from the frame.
+  from the frame, or are reloaded by the jump from the block a raise enters (§3.8).
+- **A function that enters a `try` saves every callee-saved register** (`x19`–`x28`, `d8`–`d15`) on entry and
+  restores them at each return, with their unwind information: the frames a raise skips may have left anything in
+  them, and the function's caller expects its own. That is one save per call, where `_setjmp` was one per `try`
+  entered, so a `try` in a loop costs only its record's stores. `tests/self-hosted/backends` checks it: a C loop keeps
+  its state in such registers across calls of a native closure that catches what C code raises.
 - **SSA and `try`.** As the C printer marks `volatile` the mutable variables assigned in a `try` body and live in its
-  handler or after the `try` (ir.md §6.4), the SSA keeps exactly those in stack slots rather than promoting them.
-  Every other value the handler uses dominates the `try`'s entry, so the handler block needs no parameters from the
-  points that raise. The register allocator gives each value live into a handler a stack slot that is valid
-  throughout the `try`'s body.
+  handler or after the `try` (ir.md §6.4), the SSA keeps a function's mutable variables in stack slots when it enters
+  a `try` ([ssa.md](ssa.md) §4.1). Every other value the handler uses dominates the `try`'s entry, so the handler
+  block needs no parameters from the points that raise.
 - **The chain stays thread-local** (`_Thread_local`, though Quest has no threads). On Darwin, native code gets a
-  thread-local's address from its descriptor's accessor (`_tlv_get_addr`, a call); the address does not change
-  within a thread, so a function that enters a `try` gets it once, and keeps it in a stack slot. Raises go through the
-  runtime, as now.
-- **Tracebacks** need no change to the runtime: native functions are in the unit's function table, have frame
+  thread-local's address from its descriptor's accessor (`_tlv_get_addr`, a call; the SSA's `threadLocal`), taken at
+  each use. Raises go through the runtime.
+- **Tracebacks** need no change to the runtime: native functions are in their units' function tables, have frame
   pointers, and have unwind information (§3.10).
 
 ### 3.7. Tail calls
@@ -218,39 +224,38 @@ Direct, indirect (through a closure), and runtime calls are all eligible. Self t
 function's first block, which also gives loops written as recursion (benchmarks.md §3.2) their speed. Frames
 removed by tail calls are missing from tracebacks, as frames clang removes are now (exceptions.md §2.4).
 
+**As built.** `ssa/tailCalls` marks them as the builder finishes a unit, so the SSA's dumps show them (`tail` before
+the call), and both native backends compile them:
+
+- A call is in tail position when its results, or the extension of its byte result (a `Bool` or `Char`, which every
+  caller extends again), are returned, directly or through blocks that only pass them on to a `return`.
+- A function from which a stack slot's address may escape (stored, passed to a call, or returned, through
+  arithmetic, copies, and block parameters) has no tail calls. That covers the first two exceptions above at once,
+  since a `try`'s record is such a slot, and so is a `var` argument's cell and a composite passed through memory. It
+  is coarser than they ask: a function with any such slot loses all its tail calls.
+- arm64 compiles a call of the function itself as a jump to its first block, whatever its arguments; one of another
+  function whose arguments all go in registers as the frame popped and `b` or `br`; and the rest as a call and a
+  return, a coarser rule than the comparison with the caller's incoming argument area. `ssac` prints `return
+  f(...);` and leaves the jump to clang.
+- `language/tail_calls` covers each case in every phase, a hundred deep; `self-hosted/backends` runs self, mutual,
+  and closure tail recursions ten million deep with arm64, in the default 8 MB stack.
+
 ### 3.8. Register allocation
 
 `questlang/codegen/regalloc`, parameterized by a target description (register classes, allocatable and fixed
 registers, what a call clobbers), so that it can be tested on its own.
 
-1. **First, a trivial allocator:** every virtual register gets a stack slot, and each instruction loads its operands
-   into scratch registers and stores its results. It is small, obviously correct, and stays as the baseline the real
-   allocator is tested against.
-2. **Then linear scan on SSA** (Wimmer and Franz, *Linear Scan Register Allocation on SSA Form*, CGO 2010), with
-   interval splitting, spilling, and rematerialization of constants.
-3. **Out of SSA:** split critical edges, turn block arguments into parallel copies, and sequence each set of copies,
-   breaking cycles with a scratch register.
+It is linear scan on SSA with interval splitting (Wimmer and Mössenböck, *Optimized Interval Splitting in a Linear
+Scan Register Allocator*, VEE 2005), on a machine function's virtual registers (§3.17): spilling, rematerialization
+of constants, and leaving SSA by parallel copies on each edge, sequenced so that nothing is overwritten before it is
+read. `regalloc_scan` (a questlang test) shows its choices on small functions with a target of a few registers.
 
 Registers: `x18` is never used; `x16`/`x17` are scratch only within a sequence (the linker's veneers use them);
 `x29` is always the frame pointer; `x19`–`x28` and `d8`–`d15` are callee-saved (the low 64 bits of `d8`–`d15`,
 which is all a `double` needs). A pointer is never held only in a floating-point register (§3.13).
 
-**As built (2026-10-30).** `questlang/codegen/regalloc` is linear scan in its simplest form (Poletto and Sarkar's),
-not yet Wimmer and Franz's: each value has one range, the hull of where it is live (liveness over the blocks in
-reverse postorder, a jump's arguments used at its end and its destination's parameters written there), and a value
-spilled is spilled throughout. A range that crosses a call takes only a callee-saved register; when none of its class
-is free, whichever range ends last is spilled. There is no splitting and no rematerialization yet. The registers it
-gives are `x12`–`x15`, `x19`–`x28`, `d16`–`d31`, and `d8`–`d15`, none an argument, a result, or a scratch register
-(`x9`–`x11`, `x16`, `x17`, `d0`, `d1`), so a call's arguments can be loaded in any order; a thread-local's address,
-whose accessor is called, counts as a call. The prologue saves the pairs of callee-saved registers the function's
-values use. A jump's copies are moves when no parameter's register holds another of its arguments, and otherwise go
-through the copy area, as before. A function that enters a `try` keeps every value in its slot, as step 8 left it,
-which also keeps its handler's view of them simple (§3.6). `regalloc_scan` (a questlang test) shows its choices on
-small functions with a target of a few registers.
-
-**With splitting (2026-10-30, after Wimmer and Mössenböck, *Optimized Interval Splitting in a Linear Scan Register
-Allocator*, VEE 2005).** A value's interval is now the ranges where it is live, with holes, so another value can
-use its register in a hole. Intervals are taken in order of their starts:
+**Intervals.** A value's interval is the ranges where it is live, with holes, so another value can use its register
+in a hole. Intervals are taken in order of their starts:
 
 - **A free register.** An interval takes a register free for all of it, a caller-saved one first. If none is, it
   takes the one free longest and the rest is split off, as long as some register is free where it starts.
@@ -267,7 +272,7 @@ use its register in a hole. Intervals are taken in order of their starts:
   A register is also taken, where one is free for only part of the interval, if its holders cost less than the
   part the free one would spill: so a value used in a loop and live across a call in it gets a callee-saved
   register held by one used next only after the loop. That one is then in memory from the loop's body, and is
-  loaded again on the back edge if it is in its register at the header; splitting it before the loop is item 4b.
+  loaded again on the back edge if it is in its register at the header.
 
 So a value lives in pieces, each in a register or in memory:
 
@@ -289,7 +294,7 @@ So a value lives in pieces, each in a register or in memory:
   memory at the handler's start, so the handler's code reloads it. The function still saves every callee-saved
   pair, which it must restore for its caller after a raise has passed through frames that clobbered them.
 
-**On machine functions (2026-10-30, backend-improvements.md step 8).** The allocator now works on a machine
+**On machine functions.** The allocator works on a machine
 function's virtual registers (`codegen/machine`), which `codegen/arm64/select` selects from the SSA, rather than on
 the SSA's values, and it reads no register's name: a target (`codegen/target`) gives it register numbers.
 
@@ -342,8 +347,13 @@ Native code must do what the C helpers do, including the cases where arm64 and C
 - Shift counts are taken modulo 64 by arm64 and are undefined in C past 63; the word helpers handle the counts.
 - `fcvtzs` saturates; C's conversion of an out-of-range `double` is undefined.
 - `Real` arithmetic raises `real.error` on a NaN result, and division on a zero divisor (`quest_real_result_at`).
-- `Char` is a `uint8_t` (`QChar`), so a `Char` widened to a slot or a register is zero-extended, on every platform
-  (§10.4).
+- `Char` is a `uint8_t` (`QChar`) on every platform, not C's `char`, whose signedness is the platform's (signed on
+  Darwin arm64, unsigned on Linux arm64), so a `Char` widened to a slot or a register is zero-extended everywhere. A C
+  character literal above 127 is cast to `QChar` (a C character literal is an `int` of the platform's `char`, so
+  `'\310'` alone is -56 on Darwin); the SSA's `Char` constants are 0 to 255 and its loads and received values
+  zero-extended; the runtime and both interpreters read a `Char` as unsigned. `stdlib/high_chars` runs characters
+  above 127 through constants, strings, slots, generic words, a hash map, parameters, results, and a dynamic round
+  trip, in every phase and backend.
 
 The inventory (§7.2) lists every helper, and the arm64 tests (§4) cover each edge case against the C backend.
 
@@ -360,10 +370,17 @@ every function that saved a pair had DWARF CFI instead, which libunwind interpre
 A compact unwind entry assumes the whole prologue has run, and the stack-overflow handler's backtrace reads it, so a
 prologue that pushed the record and then each pair downward could fault on a pair just below a record that fit, and
 the backtrace then read that pair from the guard page and crashed in the handler (found 2026-10-30, once in many
-runs, after step 11 made frames small). Stored lowest first, the prologue faults on its first store or not at all.
+runs, once linear scan made frames small). Stored lowest first, the prologue faults on its first store or not at all.
 Each function has a symbol (local unless exported), so that
 `dladdr` attributes frames as exceptions.md §5.3 describes, and the unit emits `.subsections_via_symbols`. The
 stack-overflow handler (exceptions.md §6) works unchanged.
+
+**Large frames and the guard page.** A frame larger than the stack's guard region could step over it, so that a stack
+overflow wrote beyond the stack rather than faulting in the guard, and exceptions.md §6's handler never ran. As clang
+does, a prologue whose frame is more than 4 KB calls `___chkstk_darwin` (`x9` holding its size in bytes), which
+probes each page, before moving `sp`. `tests/self-hosted/backends.py` recurses without end through a function with a
+24 KB frame (its values kept live across the recursive call, where they are spilled) and checks that each backend
+reports `stack.overflow`.
 
 ### 3.11. Emission
 
@@ -374,26 +391,40 @@ for data in dylibs, `@TLVPPAGE`/`@TLVPPAGEOFF` for thread-locals' descriptors, `
 adds stubs). The linker signs arm64 executables ad hoc. All of
 this is in one module, so that another object format would replace only it.
 
-An in-memory encoder (instructions to 32-bit words, with relocations) belongs to step 7, the JIT; the instruction
-descriptions should be data that both the printer and an encoder can use, and the encoder can then be tested byte for
-byte against the assembler. It is `codegen/arm64/encode` ([jit.md](jit.md) §3.5, step 5), checked so by
-`self-hosted/encoder`.
+The instructions are data (§3.17) that both the printer and an in-memory encoder use: `codegen/arm64/encode`, the
+JIT's ([jit.md](jit.md) §3.5), turns them into 32-bit words with relocations, checked byte for byte against the
+assembler by `self-hosted/encoder`.
+
+**Branch ranges.** `clang -c`'s assembler does not relax arm64 branches whose targets are out of range; it reports a
+fixup error. `b.cond`, `cbz`, `cbnz`, and `adr` reach 1 MB either way, and `tbz` and `tbnz` only 32 KB. So
+`codegen.relaxBranches`, once instruction sizes are known, turns a conditional branch whose target is out of reach
+into the inverse branch around an unconditional `b` (128 MB), round after round until none changes, a
+pseudo-instruction counted as the instructions it expands to; a `try`'s `adr` takes the address of a branch beside it
+to the handler. The questlang test `arm64_relax` checks it with a reach of a few instructions. The backend makes no
+jump tables yet; they will need the same care.
 
 ### 3.12. Build integration and mixing units
 
-- **Selecting it:** `--backend arm64` (the default stays `c`; `ssac` selects the oracle). Every unit of the build is
-  compiled by the selected backend.
-- **No fallback.** A unit using something the arm64 backend does not support yet is an error that names the
-  construct, never compiled with C instead, so that a passing test means what it says.
-- **Choosing per unit** (for bring-up, tests, and finding a miscompile): an option naming units and the backend
-  each is compiled with, overriding `--backend` for them. During bring-up, a test whose units are not all supported
-  is on a pending list (§4) until they are.
+- **Choosing the backend, per unit** (`codegen/choice`): `--backend c|ssac|arm64` for every unit (`c` by default),
+  and a repeatable `--unit-backend UNIT=BACKEND` for one, a unit named as its manifest names it (a module by its
+  canonical name, the program as `main`). Mixed builds are for tests and for finding a miscompile.
+- **No fallback.** A unit using something the arm64 backend does not support is an error that names the construct,
+  never compiled with C instead, so that a passing test means what it says.
 - **Artifacts:** an arm64 unit writes `.mod.s` (or `.main.s`) where the C backend writes `.mod.c`, and its `.o` in
-  the same place. The backend that wrote a unit's `.o` is recorded with its artifacts, and an `.o` from the other
-  backend is stale. Interface headers are still written when a C unit needs them; the arm64 backend reads layouts
+  the same place, assembled by `clang -c`. A unit's manifest records its backend (`"backend"`), and a unit compiled
+  by another is stale. Interface headers are still written when a C unit needs them; the arm64 backend reads layouts
   from interfaces, not from headers.
-- **Whole-program compilation** (build-process.md §1.2) goes through either backend: the modules are merged into the
-  program's unit (`ir/whole`, step 13).
+- **Whole programs** (`--whole-program`, [build-process.md](build-process.md) §1.2) go through any backend, as one
+  unit, so they take no `--unit-backend`. `ir/whole` lowers each imported module with a source as a module file is
+  lowered and merges it into the program's unit, its references to merged modules made the unit's own, while the
+  library's modules known only through interfaces and objects stay imported and are linked. A unit says whether it
+  is a program's (`Unit.isProgram`). The merged files' offsets are numbered apart, so that a raise names its own file
+  (`nodes.site`); a module imported by two names is merged once, by its name in lower case.
+- **Building the compiler:** `QUEST_BACKEND=c|ssac|arm64` chooses the backend `./quest`'s stage 1 compiles stage 2
+  with ([release-compiler.md](release-compiler.md) §2), each backend's stages in their own directory (`c`'s in
+  `.build/quest-stages`, another's in `.build/quest-stages-<backend>/`), so that switching rebuilds neither.
+  `run_tests.py --self-hosting --stage-backend ssac|arm64` checks that the compiler built by that backend writes the
+  C-built compiler's artifacts for every unit (testing.md §4.1).
 
 ### 3.13. The collector
 
@@ -401,11 +432,20 @@ Boehm's collector scans the stack and registers conservatively, so native code n
 
 - no pointer held only in a floating-point register, or in a spill slot the collector cannot see;
 - no derived pointer outside its object while the object is live only through it (a pointer to one past an array,
-  kept as a loop's end). Nothing in this plan makes one; later optimizations must not;
+  kept as a loop's end). Nothing in the backend makes one; optimizations must not;
 - interior pointers to be recognized, as for C now (a proxy is its original's address plus one).
 
-The SSA's `ptr` type costs little and keeps stack maps, and so a precise or moving collector, possible later: each
-frame slot's class is known (`codegen.frameSlots`, §10.5), though nothing emits maps yet.
+The SSA's `ptr` type costs little and keeps stack maps, and so a precise or moving collector, possible later. What
+such a collector needs, precisely: at each call, every live pointer, so every value live across a call is either in a
+callee-saved register, whose class the allocation knows from the value's SSA type, or in a frame slot whose class is
+that type, which no value of another type shares; and a word that may or may not be a pointer is resolved through its
+type descriptor. So the allocator keeps a value's type through allocation (each interval is one value's); a value in
+memory has a slot at a fixed offset (rematerialized ones have none: they hold no pointer the collector must see, or
+one to static data), shared only with values of its type whose lifetimes do not overlap (§3.8); a derived pointer is
+a `ptr` throughout (`ptrAdd`); and a `QVal` word is a `val` ([ssa.md](ssa.md) §1). `codegen.frameSlots` returns each
+slot of a function's frame with its offset, its size, and its class, a value's SSA type or, for a stack slot,
+memory, whose words nothing describes yet; `questlang/arm64_frames` prints them for functions that spill pointers,
+integers, reals, and `val`s across a call. Nothing emits stack maps.
 
 ### 3.14. The SSA-to-C printer
 
@@ -415,6 +455,10 @@ memory reached by byte offsets (`*(int64_t *)(p + 16)`). It computes no layout a
 only prints what the SSA says, so a test that passes through it checks the SSA's construction, the shared layout
 (its units link with the C backend's, which assert their offsets), and every lowering before instruction selection.
 
+- **No header.** `ssac`'s C includes nothing and declares everything itself, so that nothing it prints conflicts with
+  the runtime's declarations: a symbol the unit does not define is `extern char name[]` (a thread-local, `extern
+  __thread`). Its units compile as GNU C, with `-fno-strict-aliasing` (they read and write a word of memory as
+  different C types) and `-fno-builtin` (`ssac.cFlags`).
 - **Calls** are C calls through a pointer to a function of the types the call's arguments and results have (a 16-byte
   composite a struct of two words, one passed through memory a struct of its bytes), so clang applies the ABI as the
   callee's own C declaration would; the arm64 backend's ABI lowering is checked by the mixed builds instead (§4).
@@ -450,7 +494,7 @@ instruction's number is an error it does not catch. Quest's typed alternatives c
 
 So the backend relies instead on names (`block`, `inst`, `value`, `vreg` in every identifier that holds one), on
 helper functions that take and return one kind, and on the verifier, which checks each table's references after every
-pass. Cross-module inlining would make abstract ids free, and the backend could adopt them then.
+pass. Cross-module inlining, in whole programs, now makes abstract ids affordable there (§6.3).
 
 **Other conventions:**
 
@@ -481,7 +525,7 @@ pass. Cross-module inlining would make abstract ids free, and the backend could 
 - **Iteration, not recursion, over graphs:** compiled Quest uses about 2 KB of stack per call, so reverse postorder,
   dominators (Cooper, Harvey, and Kennedy's iterative algorithm), and liveness use explicit worklists.
 - **A bitset library** (`collections/bitset`) for liveness, which `lib/` lacks. A new library reaches `questlang/`
-  only after a release (release-compiler.md §2), so it lands in step 3.
+  only after a release (release-compiler.md §2).
 
 ### 3.16. Line tables
 
@@ -520,14 +564,45 @@ What the table cannot show: code that the inliner copies keeps its source's line
 shows the callee's lines without a frame for it; and a line whose code is gone (a constant propagated, a jump to the
 next block) has no address, so a breakpoint set on it resolves to the next line that has one.
 
+### 3.17. Machine instructions and targets
+
+**The SSA stays one target-independent representation,** with one `Opcode` option. It is not parameterized by a
+target's operations, and targets' operations are not subtypes of a shared subset: an option with fewer cases is the
+subtype, so a shared subset would be a subtype of each target's option, not a supertype a target extends; a pass
+generic over "some target's operations" would need a bounded type parameter, which compiled Quest implements with
+view maps and tag maps at run time (the cost §3.15 keeps out of inner loops); and a shared pass casing on the subset
+would need `else` for the rest. What is specific to a target happens after the SSA, in three layers:
+
+1. **The SSA** ([ssa.md](ssa.md)), target-independent.
+2. **A target's machine instructions** (`codegen/arm64/minst`): `arm64.Op`, an option of the target's operations with
+   their immediates, conditions, and addressing modes, made by instruction selection over virtual registers and cased
+   on, without `else`, only by that target's selection (`codegen/arm64/select`), printer, and encoder.
+3. **Shared machine-level code over a structural shape** (`codegen/machine`): a machine function's blocks hold
+   instructions, each with its operands (each a virtual or physical register, used or defined) and a shared kind
+   (`kindOrdinary`, `kindMove`, `kindJump`, `kindBranch`, `kindCall`, `kindReturn`); the target's `Op` sits in a table
+   beside them, indexed by instruction, which shared code never reads. A physical operand is fixed, and moves (and a
+   jump's arguments with its target's parameters) are the allocator's hints. The register allocator, liveness over
+   virtual registers, parallel moves, frame layout, and branch relaxation work on that shape; when they must make an
+   instruction (a move, a spill, a reload, a jump), they ask the target through a record of its functions
+   (`Lowering`: a move, a load and a store of a virtual register's slot, and the scratch registers).
+
+**A target description** (`codegen/target`) gives the shared code a target's registers (numbers, classes, names),
+which are allocatable, caller-saved, and callee-saved, its argument and result registers by class, its scratch
+registers, its stack alignment, and its word size. `codegen/arm64/target` is the only one; nothing outside a target's
+own modules names a register. Selection gives each conditional branch's target a block of its own, where its edge's
+moves go, and a `try` a block beside it that a raise enters; the printer expands three pseudo-instructions (a
+constant, a symbol's address, a thread-local's). An x86-64 backend would be a selection, a printer, and a target
+description, reusing everything in `codegen/machine`; an LLVM or WASM backend would print the SSA with its
+signatures (WASM would also need `try` through its exception handling, slots on a shadow stack, and precise roots).
+
 ## 4. Testing
 
 - **The shared goldens** of what programs do run with `--backend ssac` and `--backend arm64` too (runner modes, as
-  `--self-hosted` is), and every run test passes with each. Until then, each mode has a pending list, as the
-  self-hosted driver had (`tests/self-hosted/pending.txt`, testing.md §2.3): a pending test that passes fails, so the
-  list only shrinks.
+  `--self-hosted` is), and every run test passes with each. Each mode has a pending list, as the self-hosted driver
+  has (`tests/self-hosted/pending-ssac.txt`, `pending-arm64.txt`, testing.md §2.3), now empty: a pending test that
+  passes fails, so the lists only shrink.
 - **Mixed builds:** each multi-unit test also runs with its units split between the backends (alternating, and the
-  other way), which finds any disagreement about layout or calls. For `ssac` (step 5), every test is multi-unit (its
+  other way), which finds any disagreement about layout or calls. For `ssac`, every test is multi-unit (its
   library modules are units too), and the runner's `ssac-program` and `ssac-modules` modes compile the program's unit
   or its modules' through `ssac` and the rest through C, so that calls, closures, records, and exceptions cross
   between the backends both ways; `tests/self-hosted/backends.py` builds one program with every split in one build
@@ -536,185 +611,29 @@ next block) has no address, so a breakpoint set on it resolves to the next line 
   descriptors, closures, `var`/`out` pointers, more than eight arguments, in both directions.
 - **Layout assertions** (§3.3) compile in every C unit.
 - **The verifier** after every stage, and the SSA's goldens.
-- **The real allocator against the trivial one:** the suite passes with each.
 - **The self-hosting check** with the arm64 backend: stage 2 built by it compiles the compiler and writes the same
   artifacts as stage 2 built by the C backend.
-- **Before every push,** `tools/check` runs all of these, the `ssac` and `arm64` modes included, though it takes
-  longer for them. The self-hosting check through the `ssac` and `arm64` backends (the compiler built by each,
-  compiling itself to a fixed point) runs on demand until the compiler self-hosts fully on arm64 (step 12), and from
-  then on through both before every push (decided 2026-10-29).
+- **Before every push,** `tools/check` runs these (testing.md §4.1): the backends' modes, the self-hosting check
+  through `arm64` with the whole-program fixed point, and the ABI tests; through `ssac`, and `arm64-modules`, by
+  hand.
 - **Benchmarks:** compile and run times against the C backend, recorded with their dates in benchmarks.md.
 
-## 5. Steps
+## 5. Open Work
 
-1. **Inventory the C backend's implicit decisions** (§3.1, §3.9). *Done* (2026-10-29): §7, with what step 2 shares in
-   §7.5 and what it decided in §8.
-2. **Share what §7.5 lists:** thunks as IR functions, the description of static data, slot conversions as data, and
-   the runtime helpers' external definitions; and make `Int` arithmetic wrap everywhere (§8). *Done* (2026-10-29):
-   `Int` wraps (ABI 52); the helpers have external definitions (ABI 53); thunks are IR functions (`ir/thunks`, ir.md
-   §8.4.1); slot conversions are layout's word forms; and `codegen/staticdata` describes the descriptor forms,
-   record naming, descriptors, offset tables, and tag maps (the function-type adapters are those of its function
-   descriptors, whose code each backend generates), whose sizes and offsets the C asserts.
-3. **Shared layout with assertions** (§3.3), and `collections/bitset` (§3.15). *Done* (2026-10-29): `codegen/layout`
-   and `codegen/staticdata` compute every struct's layout and the C asserts them (ABI 54); `codegen/runtimeLayout`'s
-   table of the runtime's structs is checked against the header; release a5ddef5b has `collections/bitset`.
-4. **The SSA:** nodes, printer, verifier, construction (§3.2), with `--stop-after ssa`. *Done* (2026-10-29): every
-   run test's program unit builds SSA that verifies, with a golden for each ([ssa.md](ssa.md) §6); the questlang test
-   `ssa_verify` checks the verifier. Decided while building it: mutable variables are stack slots, promoted by a later
-   pass, rather than built into values on the fly (ssa.md §4). Module units are built through the SSA by `ssac`'s
-   builds in step 5, which run every unit through it.
-5. **The SSA-to-C printer** (§3.14) and `--backend ssac`, with its runner mode and pending list. *Done*
-   (2026-10-29): every golden and error test of the self-hosted suite's compiled phase passes with every unit, the
-   library's included, compiled by `ssac`, and with the program's unit or its modules' alone (`run_tests.py
-   --self-hosted --backend ssac`, `ssac-program`, `ssac-modules`); `tests/self-hosted/pending-ssac.txt` is empty;
-   and `tools/check` runs the three modes before every push (decided 2026-10-29: from this step on, rather than from
-   step 9). What it settled (§9 has the rest):
-   - **`ssac`'s C includes no header** and declares everything itself, so that nothing it prints conflicts with the
-     runtime's declarations: a symbol the unit does not define is `extern char name[]` (a thread-local, `extern
-     __thread`); each call goes through a pointer to a function of the types its arguments and results have, a
-     16-byte composite as a struct of two words and one passed through memory as a struct of its bytes, so that
-     clang passes them as AAPCS64 does. Its units compile as GNU C, with `-fno-strict-aliasing` (they read and write
-     a word of memory as different C types) and `-fno-builtin` (`ssac.cFlags`).
-   - **Static data is the SSA's,** not the C declarations' (superseding what was settled before this step): a unit's
-     data is words, text, and zeros (ssa.md §5), its descriptors laid out by `ssa/statics` from `codegen/staticdata`'s
-     descriptions, and its function types' adapters, thunks, and invokers, its exported functions, its function
-     table, and `qr_register_dicts` built as SSA functions, so that the arm64 backend emits the same data and code.
-   - **The backend is chosen per unit** (`codegen/choice`): `--backend` for every unit, and a repeatable
-     `--unit-backend UNIT=BACKEND` for one, a unit named as its manifest names it (a module by its canonical name,
-     the program as `main`). A unit's manifest records its backend (`"backend"`), and a unit compiled by another is
-     stale. `--whole-program` compiles one unit, so it takes no `--unit-backend` (step 13).
-6. **A first arm64 backend:** instruction selection, the trivial allocator, frames, static data, emission, and
-   linking, for straight-line code, calls, and control flow; other constructs are errors (§3.12). *Done*
-   (2026-10-29), with step 7: `codegen/arm64/codegen` compiles the SSA with the trivial allocator (every value has a
-   slot in its frame; each instruction loads its arguments into scratch registers and stores its results), and
-   `codegen/arm64/asm` spells Darwin's assembly; a unit's `.mod.s` (or `.main.s`) is assembled by `clang -c`. Every
-   golden and error test passes with `--backend arm64`, with the program's unit alone (`arm64-program`) and with the
-   modules' alone (`arm64-modules`); `tests/self-hosted/pending-arm64.txt` is empty, and `tools/check` ran the
-   three modes (ahead of step 9; `arm64-modules` by hand since 2026-10-31, testing.md §4.1). Decided while building it:
-   - **A `try` called `_setjmp`,** with the C backend's handler record, until step 8: the trivial allocator keeps no
-     value in a register across a call, so `_setjmp`'s register restore lost nothing.
-   - **Narrow arguments** (a C `bool` or `char`) are marked in the SSA (`narrow`, ssa.md §2.2): Darwin packs them on
-     the stack a byte each, which a mixed build of `tests/self-hosted/backends` (with more arguments than registers)
-     found, for `ssac` too; and a function extends its own on entry, since a C caller leaves their upper bits
-     unspecified.
-   - **Every symbol the unit does not define is reached through the GOT,** a thread-local through its descriptor's
-     accessor, so that one spelling serves the runtime, other units, and the system's libraries.
-7. **Every construct:** closures, descriptors, conversions, records, variants, arrays, strings, modules and their
-   initialization, function tables. *Done* (2026-10-29) with step 6: the SSA had lowered every construct to loads,
-   stores, and calls, so nothing was pending.
-8. **Exceptions** (§3.6): the shared handler record (ABI bump), native `try` and `raise`, tracebacks. *Done when* the
-   pending list is empty, and mixed builds raise across the backends both ways. *Done* (2026-10-29, ABI 55): the
-   record's common fields come first, then `resume`, `sp`, and `fp`, then the `jmp_buf`; a C handler's `resume` is
-   `NULL` (both C printers and the SSA's builder set it), and the native backend's `try` stores its handler block's
-   address and its frame's `sp` and `fp` instead of calling `_setjmp`. A raise resumes a native handler with a few
-   instructions of inline assembly in the runtime (`quest_resume_native`). Decided while building it:
-   - **A function that enters a `try` saves every callee-saved register** (`x19`-`x28`, `d8`-`d15`) on entry and
-     restores them at each return, with their unwind information: the frames a raise skips may have left anything
-     in them, and the function's caller expects its own. That is one save per call, where `_setjmp` was one per
-     `try` entered, so a `try` in a loop costs only its record's stores. `tests/self-hosted/backends` checks it: a C
-     loop keeps its state in such registers across calls of a native closure that catches what C code raises.
-   - The chain's thread-local address is still taken at each use (its accessor is a call), not once per function as
-     §3.6 suggests; with the linear-scan allocator (step 11), a function that enters a `try` can keep it in a slot.
-   - Tracebacks needed nothing: native functions are in their units' function tables and keep frame pointers.
-9. **`tools/check` runs everything** (§4): the `arm64` mode, its mixed builds, and the ABI tests, before every push,
-   besides `ssac`'s (step 5). *Done when* it does, with both pending lists empty. *Done* (2026-10-29), with step 8: its
-   backends' suite runs `ssac`, `arm64`, and the mixed modes of each, both pending lists empty; the self-hosted
-   suite runs `self-hosted/backends` (calls of every kind of signature across the backends, both ways), the ABI
-   corpus, and `test_ssac`/`test_arm64`.
-10. **Tail calls** (§3.7). *Done when* self, sibling, and closure tail calls are jumps, and a deep tail recursion runs
-    in constant stack. *Done* (2026-10-29): `ssa/tailCalls` marks them as the builder finishes a unit, so the SSA
-    dumps show them (`tail` before the call), and both native backends compile them:
-    - A call is in tail position when its results, or the extension of its byte result (a `Bool` or `Char`, which
-      every caller extends again), are returned, directly or through blocks that only pass them on to a `return`.
-    - A function from which a stack slot's address may escape (stored, passed to a call, or returned, through
-      arithmetic, copies, and block parameters) has no tail calls. That covers §3.7's first two exceptions at
-      once: a `try`'s record is such a slot, and so is a `var` argument's cell and a composite passed through
-      memory. It is coarser than §3.7 asks, a function with any such slot losing all its tail calls; the linear
-      scan's liveness (step 11) can narrow it.
-    - `arm64` compiles a call of the function itself as a jump to its first block, whatever its arguments; one of
-      another function whose arguments all go in registers as the frame popped and `b` or `br`; and the rest as a
-      call and a return, a coarser rule than §3.7's comparison with the caller's incoming argument area. `ssac` prints `return f(...);` and leaves the jump to clang.
-    - `language/tail_calls` covers each case in every phase, a hundred deep; `self-hosted/backends` runs self,
-      mutual, and closure tail recursions ten million deep with `arm64`, in the default 8 MB stack.
-11. **Linear scan** (§3.8). *Done when* the suite passes with it, and benchmarks.md has dated run and compile times
-    for both backends. *Begun* (2026-10-30) with promotion, as §6 suggests: `ssa/promote` makes values of the slots
-    of whole words whose addresses do not escape, in functions without a `try` ([ssa.md](ssa.md) §4.1). Then the
-    simplest linear scan (§3.8, as built), which the suite passes with. Then interval splitting, rematerialization,
-    and allocation in functions that enter a `try` (§3.8, with splitting). *Done* (2026-10-30): benchmarks.md §4 has
-    the run and build times of both backends from before splitting (arm64's geometric mean against MLton 11.6, C's
-    5.2) and arm64's with splitting (11.0, 2.09 times C's).
-12. **Self-hosting with the arm64 backend** (§4). *Done when* the check passes, `./quest` can build its stages with
-    either backend, `tools/check` runs the self-hosting check through `ssac` and `arm64` too, and benchmarks.md has
-    the measurements from which the default backend is decided. *Decided* (2026-10-30, by the user):
-    - **§10's hazard 4 first** (`Char` as `uint8_t`), since a `Char`'s signedness differing between the backends
-      could break the fixed point; hazards 3 and 5 after this step.
-    - **`QUEST_BACKEND=c|ssac|arm64`** chooses the backend `./quest` builds its stages with (`c` by default), each
-      backend's stages in their own directory, so that switching rebuilds neither. As built, stage 1 (the seed's)
-      compiles stage 2 through the backend, and `c`'s stages stay in `.build/quest-stages`, where the runner, the
-      benchmarks, and the docs find them; another's are in `.build/quest-stages-<backend>/`.
-    - **The user decides the default backend:** benchmarks.md records the compile and run times of the compiler and
-      the MLton suite under each backend, with a recommendation. Releases are built with C until then.
-
-    *Done* (2026-10-30). The compiler built by arm64 crashed at once: the SSA bound a join's parameter as a local
-    even when it was a top-level global, so a function read `compileOutput` unset (ssa.md §4,
-    `language/global_joins`). Fixed, the compiler built by `arm64`, and the one built by `ssac`, each write the
-    C-built compiler's artifacts for every unit, and the arm64-built one passes the self-hosted suite.
-    `run_tests.py --self-hosting --stage-backend ssac|arm64` checks that fixed point, and `tools/check` runs it
-    through `arm64`, with the whole-program fixed point (testing.md §4.1; through `ssac` by hand since 2026-10-31). benchmarks.md §5 has the measurements: the compiler compiled by `ssac` takes 1.2
-    to 1.4 times as long as the one compiled by C, by `arm64` 1.6 to 2.2; with §4's suite times, it recommends keeping
-    `c` the default for now. The suite through `ssac` is still to be timed (step 15's measurement).
-
-13. **Whole-program compilation** with the arm64 backend (build-process.md §1.2). *Done when* `--whole-program`
-    builds with `--backend arm64` (and `ssac`) pass the suite.
-
-    *Done* (2026-10-30). The C printer had compiled whole programs from the typed program; the SSA's backends take a
-    unit. `ir/whole` lowers each imported module with a source as a module file is lowered and merges it into the
-    program's unit, its references to merged modules made the unit's own, while the library's modules known only
-    through interfaces and objects stay imported and are linked. A unit says whether it is a program's
-    (`Unit.isProgram`, where it had been inferred from its modules' exports). The merged files' offsets are numbered
-    apart, so that a raise names its own file (`nodes.site`). Merged, the library is specialized with the program,
-    which showed that a polymorphic value applied to types alone (`hashMap.newIdentityMap(:Real :Int)`) made its
-    result generically while the calls that used it, specialized, read it natively: such a type application is now
-    specialized as a call (ir.md §8.1). A module imported by two names (`arrayOp`, prelinked, and `arrayop`, imported
-    by a library module) is merged once, by its name in lower case. And a type application of a member of one of the
-    unit's modules used the module's variable outside its initialization, in a program's own modules too
-    (`language/inline_module_type_applications`): the thunks pass now binds the member by a let, as an imported
-    module's. The runner's `c-whole`, `ssac-whole`, and `arm64-whole` modes run the suite whole through each backend,
-    and `tools/check` runs all three (testing.md §4.1).
-14. **Line tables** (§1). *Done when* native code has `.file` and `.loc` directives for its source lines, and lldb
-    shows a breakpoint's Quest line and a backtrace's lines in a test program.
-
-    *Done* (2026-10-31) as §3.16 describes, after the backend improvements: every IR statement that makes code has a
-    position, printed in the IR's and the SSA's dumps (so their goldens changed), carried to the SSA's instructions and
-    to `.loc` directives, with the compile unit's debugging information the assembler leaves out.
-    `self-hosted/line_tables` (testing.md §2.3) debugs a recursive program, built separately and whole, with lldb.
-15. **`ssac` as the C backend** (§1). Measure `ssac`'s code and compile times against the C printer's, with the
-    SSA's promotion of stack slots (§6) and whatever else the comparison needs. If `ssac` is close enough, it becomes
-    the self-hosted compiler's C backend: `--backend c` selects it, the C printer and its goldens are retired, and
-    `--whole-program` goes through the SSA. *Done when* the self-hosted compiler has one C backend, or benchmarks.md
-    records why the C printer stays and what would change that.
-
-The plan is not complete until each hazard of §10 is addressed or shown not to arise.
+**`ssac` as the C backend** (§1). Measure `ssac`'s code and compile times against the C printer's, with the SSA's
+passes (promotion, escape analysis) and whatever else the comparison needs. If `ssac` is close enough, it becomes the
+self-hosted compiler's C backend: `--backend c` selects it, the C printer and its goldens are retired, along with its
+own forms of escape analysis (c-representation.md §5.3), and `--whole-program` goes through the SSA. *Done when* the
+self-hosted compiler has one C backend, or benchmarks.md records why the C printer stays and what would change that.
+At the last measurement (benchmarks.md §5), the compiler built by `ssac` took 1.2 to 1.4 times as long to run as the
+one built by C; the suite's programs through `ssac` are still to be timed.
 
 ## 6. Possible Future Optimizations
 
-Not part of this plan: what might be done now that it is complete, each to be measured (benchmarks.md) before and
-after. Changes to how the backend is written, rather than to the code it generates, are
-[backend-improvements.md](backend-improvements.md)'s.
+What might be done to the code the backend generates, each to be measured (benchmarks.md) before and after.
+[arm64-performance-review.md](arm64-performance-review.md) carries this on from new measurements.
 
-### 6.1. Done since this list began
-
-- **Inlining, on the IR** ([inlining.md](inlining.md) steps 1 to 5): the simplifier, inlining, contification, and
-  unboxed tuple results, so that every backend gains; and **across modules** in whole programs (step 6), where
-  abstract types without bounds are transparent. arm64's programs take 0.76 times as long (benchmarks.md §7).
-- **What step 11's code did badly,** done by backend-improvements.md step 8: immediates for `add`, `sub`, and `cmp`,
-  comparisons fused into branches, blocks that only jump passed over, a jump to the next block falling through, and
-  rematerialized constants computed into their parameters' registers.
-- **Promotion before linear scan:** `ssa/promote` makes mutable variables' slots values before allocation, except in a
-  function that enters a `try` (§6.3).
-- **`try` without `_setjmp`:** a native handler record pushed inline (§3.6, backend-improvements.md step 7).
-
-### 6.2. Where arm64's time goes (2026-10-31)
+### 6.1. Where arm64's time goes (2026-10-31)
 
 arm64's programs take 2.08 times C's (geometric mean, benchmarks.md §7.2), but the median ratio is 1.58: tailfib,
 fib, tak, md5, checksum, and psdes-random (5 to 17) pull the mean up. Six benchmarks near the median (life, ray,
@@ -739,48 +658,21 @@ size:
 
 Neither vectorization nor unrolling changes these programs (0.90 to 1.01), nor does clang's inlining of their own
 functions once Quest's inliner has run. Allocation and collection are 50 to 67 percent of C's time in the same six
-(§6.3, item 4), a cost the two backends share.
+(§6.2, item 2), a cost the two backends share.
 
-### 6.3. Recommendations, in order
+### 6.2. Recommendations, in order
 
-1. **Runtime helpers expanded inline, in the SSA's builder** (§3.1), so that `ssac` gains as arm64 does. The
-   common path of each is a few instructions, and the call is left for the rare one:
-   - an option's tag (`values.optionTag` for `original` and `proxy` access): a test of the proxy bit, then the tag's
-     load, calling `quest_proxy_tag` only for a proxy, as the C printer does;
-   - `quest_unproxy` (`values.unproxy`): the same bit test and a load of the original;
-   - real `+`, `-`, `*`, and `/` (`calls.checked`): `fadd` and the rest, then `isNaN` branching to a cold block that
-     calls `quest_raise_real_error_at`; `Int` `div` and `mod` likewise, with the test for zero inline;
-   - a string's length and character (a bounds check, then a load), `ascii.val` and `ascii.char`, and arrays' bounds
-     checks.
+§6.1's first factor, the runtime's helpers called out of line, is gone: the SSA's builder expands them inline
+([ssa.md](ssa.md) §4). Most of the instruction selection it found missing is done (§3.5). arm64's time against C's
+after both: life 1.50, ray 1.25, hamlet 1.38, mlyacc 1.54, zebra 1.44, nucleic 1.20. What remains:
 
-   Expected: most of §6.2's first factor, 1.2 to 1.45 on the median programs. *Done* (2026-10-31) for the ones C
-   inlines: the tag and unproxying (by `values.choose` on the proxy bit), real arithmetic by `isNaN`, `Int` `div` and
-   `mod`, and the bounds, count, and ordinal checks, each a branch to a block that computes the site and calls the
-   runtime's raise (`values.check`), so that the common path computes no site. The string and `ascii` helpers are
-   calls in C too, and stay calls. arm64's time against C's, before and after: life 1.73 to 1.55, ray 1.53 to 1.25,
-   hamlet 1.46 to 1.38, mlyacc 1.69 to 1.58, zebra 1.61 to 1.47, nucleic 1.64 to 1.20.
-2. **The instruction selection still missing:**
-   - `and`, `orr`, and `eor` with logical (bitmask) immediates, rather than `movz` then the register form;
-   - `tbz` and `tbnz` for a test of one bit (the proxy bit, a `Bool`), and `cbz` and `cbnz` for a comparison with 0;
-   - a conditional branch inverted so that the next block is its fallthrough, rather than `b.eq` to the next block and
-     `b` to the other;
-   - a conjunction or disjunction of comparisons (`andif`, a record's fields compared one by one) as branches or
-     `ccmp`, rather than `cset`s, an `and`, and `cbnz`.
-
-   Expected: a share of the second factor, in instructions executed and in registers freed. *Done* (2026-10-31):
-   `minst` gains `opLogicImm` (and, orr, eor), `opTbz` and `opTbnz` (relaxed at their 32 KB reach), and `opCcmp`;
-   selection fuses an and of one bit, seen through conversions between words, or one compared with 0, into its
-   branch, and an and of two integer comparisons into `cmp`, `ccmp`, and `b.cond`; a switch's case 0 is `cbz`; and
-   emission inverts a conditional branch to the next block before the block's last jump. arm64's time against C's,
-   after item 1 and after this: life 1.56 to 1.50, ray 1.24 to 1.25, hamlet 1.45 to 1.38, mlyacc 1.54 to 1.54, zebra
-   1.47 to 1.44, nucleic 1.22 to 1.20: what remains of the second factor is the allocator's (item 3).
-3. **Fewer moves and spills in the allocator:** coalescing a copy's source and destination where their ranges do not
-   interfere (a block argument and its parameter, a call's argument and its register), a spill placed at the
-   definition and a reload at the use rather than around every use, and spill slots shared between ranges that do not
-   overlap, with `ldp` and `stp` for adjacent ones. Eager loads at a block's start (`repeat` in imp-for loads all four
-   of its closure's fields at entry, two into callee-saved registers, though two are used only on one path) belong
-   here too. Expected: the rest of the second factor; LLVM's allocators show that it is where the code generator's
-   advantage lies. *Tried, and not kept* (2026-11-01), since neither paid:
+1. **Fewer moves and spills in the allocator:** coalescing a copy's source and destination where their ranges do not
+   interfere (a block argument and its parameter, a call's argument and its register), a spill placed at the definition
+   and a reload at the use rather than around every use, and `ldp` and `stp` for adjacent spill slots (now shared by
+   values whose lifetimes do not overlap, §3.8). Eager loads at a block's start (`repeat` in imp-for loads all four of
+   its closure's fields at entry, two into callee-saved registers, though two are used only on one path) belong here
+   too. Expected: the rest of the second factor; LLVM's allocators show that it is where the code generator's advantage
+   lies. *Tried, and not kept* (2026-11-01), since neither paid:
    - **Hints followed through registers not yet given one:** a value passed to a block's parameter is allocated
      before the parameter, so its hint names no register and it takes `x12`, and the edge moves it. Following the
      parameter's own hints, three deep, to a call's result or another argument removed life's `ldr x12, [x20]; mov
@@ -795,22 +687,22 @@ functions once Quest's inliner has run. Allocation and collection are 50 to 67 p
      are the likely cost, so a conservative test (Briggs's: coalesce only where the merged interval stays
      allocatable) would be the next thing to try.
 
-   With items 1 and 2 done, `llc -O2` on the same SSA leaves hamlet no faster than arm64, life 1.25 times faster,
-   and mlyacc 1.34. In the hot functions read (life's `qf_f_5`, mlyacc's `qf_union` and its list length) arm64
-   spills nothing; what LLVM does that arm64 does not is block placement (a cold exit between a loop's blocks costs
-   arm64 a `b` on the hot path; without it `llc` was 1.04 to 1.07 slower, §6.2) and a move made before a branch rather
-   than in a block of its own.
-4. **Allocation's fast path inline:** with benchmarks.md §3.1's per-size free-list cache in the runtime, the
+   With the helpers inline and the selection done, `llc -O2` on the same SSA leaves hamlet no faster than arm64, life
+   1.25 times faster, and mlyacc 1.34. In the hot functions read (life's `qf_f_5`, mlyacc's `qf_union` and its list
+   length) arm64 spills nothing; what LLVM does that arm64 does not is block placement (a cold exit between a loop's
+   blocks costs arm64 a `b` on the hot path; without it `llc` was 1.04 to 1.07 slower, §6.1) and a move made before a
+   branch rather than in a block of its own.
+2. **Allocation's fast path inline:** with benchmarks.md §3.1's per-size free-list cache in the runtime, the
    pop of a free list is a few instructions that the C backend gets from the header and arm64 could select inline.
    Not part of the arm64/C gap, but the largest cost both share. *Not to be done* (the user's decision,
    2026-10-31): an allocation path compiled into programs is a deeper dependency on the Boehm collector than Quest
    should have.
-5. **Then, measured before more is done:**
+3. **Then, measured before more is done:**
    - **On the SSA:** copy propagation, constant folding, dead code elimination, value numbering, block merging, and
      jump threading. LLVM's equivalents gain 3 to 5 percent on SSA the IR's passes have simplified (life 13 to 19),
-     so these come after 1 to 3;
-   - **promotion in functions that enter a `try`** (backend-improvements.md §2.2, item 7), whose mutable variables
-     stay in slots;
+     so these come after the allocator;
+   - **promotion in functions that enter a `try`,** whose mutable variables stay in slots ([ssa.md](ssa.md) §4.1),
+     and tail calls in functions any of whose slots' addresses escape (§3.7);
    - **entering fewer handlers:** a `try` whose body cannot raise pushes no handler, and a raise whose handler is in
      the same function is a jump (benchmarks.md §3.5); on the IR, for every backend, and commoner now that inlining
      puts a raise beside its handler;
@@ -818,23 +710,10 @@ functions once Quest's inliner has run. Allocation and collection are 50 to 67 p
      loops or accumulations and neither the IR's passes nor arm64 do, and **word arithmetic** (md5 7.1, checksum
      6.7, psdes-random 5.2), which is instruction selection: these make the mean twice the median.
 
-### 6.4. Other ideas
+### 6.3. Other ideas
 
-- **Payload-free option cases as shared constants** (benchmarks.md §3.6), so that a case such as `maybe.none` or an
-  opcode allocates nothing. `is` compares options by address, so this changes what `is` says of two such values, a
-  decision for the language.
-- **Options like `maybe.T` as a pointer or 0, with nothing allocated** (noted 2026-10-29; nothing done yet): for an
-  option with one case whose payload is one pointer, which is never 0, and other cases without payloads, the
-  payload-free case is 0 (or, for several, small integers below the first page) and the other case is its payload's
-  pointer itself, as Rust represents `Option<&T>`. To be worked out:
-  - **proxies** (c-representation.md §5.8): an option value may be a proxy, its low bit set, and so may a tuple or
-    option payload, so the encoding must still tell a proxied option from a payload that is itself a proxy;
-  - **case binders share payloads**, `var` components included, and a payload held as the option itself has no
-    memory of its own for a binder to share, so only immutable payloads qualify;
-  - **`is`**, which compares options by address now;
-  - **everything that reads options by descriptor:** the runtime's readers (`quest_option_tag`,
-    `quest_option_element`), `quest_convert`, dynamic values and their serialization, and the interpreters'
-    agreement with compiled code.
+- **Options like `maybe.T` as a pointer or a constant, with nothing allocated:** [option-values.md](option-values.md)
+  (deferred).
 - **A calling convention of Quest's own for calls between native functions.** The SSA's calls now follow C's: values
   in the order of the C function's parameters, 16-byte composites' starts and `memory` arguments recorded, narrow
   results extended after the call (ssa.md §2.2). Making the convention an attribute of each function and call, C's
@@ -846,18 +725,19 @@ functions once Quest's inliner has run. Allocation and collection are 50 to 67 p
 - **Fixing the language's costs that shape the backend's code** (§3.15), so that its largest and most bug-prone
   parts can be written with types rather than conventions. Retrofitting typed ids into a mature allocator and
   instruction selector is costly, so these are worth doing before the backend grows large:
-  - **payload-free option cases as shared constants** (above), so that opcodes need not be made once by hand;
+  - **payload-free option cases are now constants** (c-representation.md §5.3), so opcodes need not be made once
+    by hand any more;
   - **`maybe.T` as a manifest option type** (§3.15), so that code `case`s on it and needs no `-1` for "none";
   - **one-case variants unboxed in aggregates' slots,** so that a `Variant block: Int end` id costs nothing in an
     array or a node, and the type checker tells a block's number from an instruction's;
   - **typed ids even while they allocate,** if the language fixes come later, accepting their cost until they do.
-  Cross-module inlining (§6.1) has made the backend's ids as abstract types affordable in whole programs.
+  Cross-module inlining (ir.md §8.6) has made the backend's ids as abstract types affordable in whole programs.
 - **A cheaper `try` in C:** the `asm goto` experiment of §3.6.
-- **Better register allocation than linear scan,** if §6.3's third item leaves spilling costs.
+- **Better register allocation than linear scan,** if §6.2's first item leaves spilling costs.
 
-## 7. Inventory of the C Backend's Decisions
+## 7. The C Backend's Decisions, and Where the SSA Gets Each
 
-Step 1's survey (2026-10-29) of `questlang/codegen/c/printer`, `declarations`, and `types`, and of
+A survey (2026-10-29) of `questlang/codegen/c/printer`, `declarations`, and `types`, and of
 `runtime/quest_runtime.h`: what the C backend decides that is more than C syntax, and where the SSA backends (`ssac`
 and `arm64`) get each decision. The sources are:
 
@@ -876,7 +756,7 @@ alignment beyond 8.
 
 | Decision | In the C backend | SSA backends |
 |---|---|---|
-| Scalars: `Int` `int64_t`, `Real` `double`, `Word` `uint64_t`, `Bool` C `bool` (1 byte), `Char` `uint8_t` (`QChar`, §10.4), `Ok` nothing (a `void` result; `QVal` 0 where stored) | `layout.representation` | layout; a narrow value in a register is always extended to 64 bits (zero-extended, both), and one received is extended again, never trusted (Apple's ABI extends only to 32 bits) |
+| Scalars: `Int` `int64_t`, `Real` `double`, `Word` `uint64_t`, `Bool` C `bool` (1 byte), `Char` `uint8_t` (`QChar`, §3.9), `Ok` nothing (a `void` result; `QVal` 0 where stored) | `layout.representation` | layout; a narrow value in a register is always extended to 64 bits (zero-extended, both), and one received is extended again, never trusted (Apple's ABI extends only to 32 bits) |
 | 16-byte values: a record is `QRecordVal { val, dict }`, a variant `QVariantVal { tag, payload }` | runtime structs | layout; two SSA values each (§3.2) |
 | Slots: a record or variant in a slot is a pointer to an immutable 16-byte box; `Bool` and `Char` are widened to a word (`QBoolSlot`, `QCharSlot`); every other value is its own word | `layout.slotRepresentation` | layout |
 | Slot conversions, value to slot and back: `Real` by its bits, `Bool`, `Char`, and `Int` as `.i`, a record or variant boxed or dereferenced | `codegen/c/types` (`shapeSlotToQval`, `qvalWrap`, ...), as C text | build, by rules moved into layout (§7.5) |
@@ -889,9 +769,9 @@ alignment beyond 8.
 | Variant tags: a case's index in name order; tag maps between subtypes are static `int64_t` arrays | `shapes`, `emitCoercionTables` | layout, data |
 | Tuple casts: a supertype's components at the same offsets as the subtype's prefix, checked by `static_assert` | `emitCoercionTables` | nothing: true of word slots by construction |
 | Array elements: `QVal` words after `length`; a `Bool` or `Char` element's address is its word's first byte (little-endian) | `arraySlot` | build |
-| Runtime structs read or written directly: `QClosure`, `QArray`, `QAuto`, `QRecordHeader`, `QExceptionState`, `QExceptionHandler`, `QViewMap.index`, offset tables, the proxy tag bit | `quest_runtime.h` | layout, with assertions in `quest_runtime.c` (step 3) |
+| Runtime structs read or written directly: `QClosure`, `QArray`, `QAuto`, `QRecordHeader`, `QExceptionState`, `QExceptionHandler`, `QViewMap.index`, offset tables, the proxy tag bit | `quest_runtime.h` | layout, with assertions (§3.3) |
 | Descriptor structs: every `QTypeDescriptor` kind and its payload structs, with `bool` and `size_t` fields | `emitTypeDescriptors` (500 lines), `types.descriptorForm` | data, laid out by the runtime structs' layouts |
-| Function-type adapters: for each function type described, `quest_adapt_<T>` (wraps a closure converted at run time by descriptor), its thunk, and `quest_invoke_<T>` (calls a closure with `QVal` arguments), which the runtime calls through the type's descriptor (found in step 2) | `emitFunTypeAdapters` | data describes them; each backend generates their code from it (the SSA's backends in the SSA), since the IR cannot express a call through a descriptor's invoker |
+| Function-type adapters: for each function type described, `quest_adapt_<T>` (wraps a closure converted at run time by descriptor), its thunk, and `quest_invoke_<T>` (calls a closure with `QVal` arguments), which the runtime calls through the type's descriptor | `emitFunTypeAdapters` | data describes them; each backend generates their code from it (the SSA's backends in the SSA), since the IR cannot express a call through a descriptor's invoker |
 
 ### 7.2. Operations
 
@@ -902,7 +782,7 @@ alignment beyond 8.
 | `Real` `++`, `--`, `**`, `//`: a NaN result raises `real.error`, as does a zero divisor; `^^` | `quest_real_*_at` (inline), `quest_real_pow_at` | build for the inline ones; runtime for `^^` |
 | `is`: `==` on words and pointers; through `quest_unproxy` for an original access; `quest_val_is(d, a, b)` on `QVal` words | `prim` | build; runtime for `quest_val_is` |
 | `<>` and string constants: `quest_string_concat`; a constant is `quest_string_new(literal, length)` at each evaluation | `prim`, `const` | runtime, the literal's bytes as data |
-| Word operations: the externals of `lib/word`, called directly (ABI 50), all `static inline` | `quest_word_*` | runtime, out of line (§7.5); inline later (§6) |
+| Word operations: the externals of `lib/word`, called directly (ABI 50), all `static inline` | `quest_word_*` | runtime, out of line (§7.5) |
 | Arrays: `quest_check_array_bounds_at` and `quest_check_array_count_at` (inline), `quest_array_new`; a literal allocated and filled inline | `arraySlot`, `makeArray` | build for the checks; runtime for the rest |
 | Tuple components, and option tags and payloads, by access: direct; original (`quest_unproxy`: the tag bit cleared); proxy (the tag bit tested, then the runtime's `quest_proxy_*`, or the slot) | `tupleComponent`, `optionTag`, `optionComponent` | build; runtime for the proxy paths |
 | Record fields: through the offset table (`dict->offset_f`); a stored field (`stored_types`) converted by `quest_convert`; through a view map (`quest_view_record_*`) | `recordSlot`, `recordField` | build; runtime for conversions and view maps |
@@ -941,7 +821,7 @@ alignment beyond 8.
 - **Optimization:** the inline helpers inlined, registers allocated, and more, none of which the SSA backends must
   match.
 
-### 7.5. What Step 2 Shares
+### 7.5. What the Backends Share
 
 1. **Thunks as IR functions.** A pass after describe makes the adapters, type applications' thunks, and closures of
    externals into IR functions and closures. The IR can express them: a thunk's closure captures the original closure
@@ -957,9 +837,9 @@ alignment beyond 8.
    `declarations.emitTypeDescriptors` computes them now, and lists the function types whose adapters and invokers the
    unit supplies, with their signatures. Each value carries both its C spelling (`sizeof`, `offsetof`, a descriptor's
    expression) and what the SSA backends need (bytes, offsets, a symbol and an index). The C printer prints the
-   description, its C unchanged; the SSA backends lay it out by the runtime structs' layouts (step 3) and generate
-   the adapters' and invokers' code in the SSA. In order: the descriptor forms and record naming move from
-   `codegen/c/types` into a shared module; the description is built there; then `declarations` prints it.
+   description, its C unchanged; the SSA backends lay it out by the runtime structs' layouts (§3.3) and generate
+   the adapters' and invokers' code in the SSA. The descriptor forms and record naming are in
+   `codegen/staticdata`, which builds the description; `declarations` prints it.
 3. **Slot conversions as data.** `layout` says which of a few kinds of conversion takes a shape's value to its slot's
    word and back, and `codegen/c/types` spells each kind in C.
 4. **Out-of-line runtime helpers.** The header's `static inline` helpers are declared `Q_INLINE`, which is
@@ -971,105 +851,12 @@ Everything else in §7.2 and §7.3 is the SSA's construction. An operation's acc
 does not translate into SSA, so sharing it would need an intermediate form that neither backend wants. The mixed
 builds (§4) keep the two implementations agreeing.
 
-## 8. Decided From the Inventory
+## 8. Integer Arithmetic Wraps
 
-1. **`Int` arithmetic wraps** (decided 2026-10-29), in two's complement, in every implementation. The three disagree
-   today (tried on `9223372036854775807 + 1` and `INT64_MIN / ~1`): the bootstrap's interpreter gives
-   `9223372036854775808`, outside `Int`'s range, from Python's unbounded integers, and compiled code and the
-   self-hosted interpreter (which is compiled code) wrap, to `-9223372036854775808`, by C's undefined behavior.
-   `INT64_MIN % ~1` is 0 in all three. Step 2 makes them agree: `-fwrapv` for C, `INT64_MIN / -1` defined as
-   `INT64_MIN` (and `% -1` as 0) in the runtime's helpers, results reduced to 64 bits in the bootstrap's interpreter,
-   and run tests of each case. arm64's `add`, `sub`, `mul`, `sdiv`, and `msub` then do what Quest does.
-
-## 9. What the Oracle Found
-
-Running every unit through `ssac` (step 5) found where the SSA's builder did not do what the C printer does, each
-fixed in the builder, with what the test that found it was:
-
-- A static descriptor operand of an echoed type is its echo descriptor (`echoDescriptorForm`), as the C printer's
-  `staticDescriptorOf` has it.
-- Only a module file's initializer (an exported module's) calls `qr_register_dicts` and its imports' initializers; a
-  module file has no `main`.
-- External values the runtime spells as expressions: an object's address (`(&quest_exc_writer_error)`), a Real
-  without a literal (`QUEST_REAL_INFINITY`, by its bits, `runtimeLayout.realBits`), and a runtime variable read as a
-  value (`quest_system_args`, `runtimeLayout.variables`).
-- Static data cannot hold a thread-local's address, which is not a constant; `ssac` refuses such data.
-
-## 10. Hazards to Address
-
-Problems the plan does not yet handle, each to be addressed (or shown not to arise) before the plan is complete (§5),
-with what would address it.
-
-1. **Branch ranges.** `clang -c`'s assembler does not relax arm64 branches whose targets are out of range; it reports
-   a fixup error. `b.cond`, `cbz`, and `cbnz`, which step 6's code uses, reach 1 MB either way, and `tbz` and `tbnz`,
-   which instruction selection (§3.5) would add, only 32 KB, so a large function, above all with the trivial
-   allocator's loads and stores (§3.8), can exceed them. *Solution:* the emitter relaxes branches itself: once
-   instruction sizes are known, an out-of-range conditional branch becomes the inverted condition around an
-   unconditional `b` (128 MB), repeated until no branch changes. Jump tables for `switch` hold offsets wide enough for
-   the function. *Addressed* (2026-10-29): `relaxBranches` relaxes each function's conditional branches whose
-   targets are more than 260,000 instructions away, round after round (the questlang test `arm64_relax`, with a reach
-   of a few instructions); a `try`'s `adr`, which also reaches 1 MB, takes the address of a branch beside it to the
-   handler. Step 6 makes no jump tables yet; they will need the same care. Since backend-improvements.md step 8,
-   `relaxBranches` works on instructions rather than lines of text, a pseudo-instruction counted as the instructions
-   it expands to.
-2. **Large frames and the guard page.** The trivial allocator gives every virtual register a slot, so a large
-   function has a large frame, and a frame larger than the stack's guard region can step over it, so that a stack
-   overflow writes into whatever memory lies beyond rather than faulting in the guard, and exceptions.md §6's handler
-   may never run. Step 6's prologue moves `sp` by the whole frame at once, however large. *Solution:* as clang does,
-   a prologue whose frame exceeds a page calls `___chkstk_darwin` (or probes each page itself) before moving `sp`; a
-   test recurses through a function with a large frame and checks that the stack overflow is reported.
-   *Addressed* (2026-10-29): a frame of more than 4 KB is moved through `___chkstk_darwin` (`x9` holding its size in
-   bytes), as clang does; `tests/self-hosted/backends.py` recurses without end through a function with a 24 KB
-   frame and checks that each backend reports `stack.overflow`. Once step 11 put values in registers, that frame
-   was 32 bytes, so the test keeps its values live across the recursive call, where they are spilled, and the frame
-   is 24 KB again.
-3. **Apple's stack arguments.** Darwin's arm64 ABI places arguments past the registers at their natural size and
-   alignment, not in 8-byte slots as standard AAPCS64 does. Step 6 handles the case that arises today, a C `bool` or
-   `char` taking one byte (`narrow`, ssa.md §2.2), but any other C type narrower than a word that a signature gains
-   (a 4-byte `int`, say) would be packed the same way. *Solution:* the ABI lowering places stack arguments by their
-   C types' sizes and alignments rather than by a list of narrow ones, and §4's tests of calls between C and native
-   code cover narrow types, `double`s, and 16-byte composites past the eighth argument, in both directions.
-   *Addressed* (2026-10-30), by showing that no other narrow type arises and checking that none does:
-   `placeArguments` places a stack argument at its size and alignment (a byte for a C `bool` or `QChar`, 8 bytes
-   otherwise, a 16-byte composite as two), and `tests/python/test_runtime_signatures.py` reads every function the
-   runtime's headers declare (their inline ones too, whose out-of-line copies native code calls) and fails if one
-   takes or returns any other C type narrower than a word. The only ones are `quest_system_init`'s and
-   `quest_builtins_init`'s `int argc`, the first argument, in a register, where the callee reads the 32 bits it is
-   given. Quest's own types are all words, `bool`, `QChar`, or 16-byte composites, so a narrower type would come
-   only from a new runtime signature. `modules/wide_calls` calls between units with seven `Int`s, a record on the
-   stack (one register left), an `Int`, nine `Real`s (one past the `d` registers), and then `Bool`s and `Char`s (a
-   byte each), a `String`, a variant, and a `Char`, directly, through a value, and back through a closure, which the
-   backends' mixed modes compile natively on one side and through C on the other, both ways.
-4. **`Char` is C's `char`** (§3.9, §7.1), whose signedness is the platform's: signed on Darwin arm64, unsigned on
-   Linux arm64. A `Char` above 127 is then a negative integer on one and not on the other, and the representation
-   leaks into conversions, comparisons, and slots. *Solution (preferred):* `Char` is `uint8_t` everywhere, in the
-   runtime's types, `layout.representation`, both compilers' C printers, the SSA (a `Char` loaded, received, or
-   returned is zero-extended, as `Bool` is), and both interpreters, which must agree; an ABI bump, with run tests of
-   characters above 127. Doing it while there is one platform keeps the change small. *Addressed* (2026-10-30, ABI
-   57): `QChar` is `uint8_t`; a C character literal above 127 is cast to `QChar` (a C character literal is an `int`
-   of the platform's `char`, so `'\310'` alone is -56 on Darwin); the SSA's `Char` constants are 0 to 255 and its
-   loads and received values zero-extended. The runtime and both interpreters already read a `Char` as unsigned
-   (`ascii.val`, `dynamic.intern`). `stdlib/high_chars` runs characters above 127 through constants, strings, slots,
-   generic words, a hash map, parameters, results, and a dynamic round trip, in every phase and backend. Before the
-   change it passed too: every path narrowed a `Char` through the same signed type, so the hazard was portability
-   and a future path that did not.
-5. **Pointers through integers.** §3.13 keeps `ptr` apart from `int` so that a precise or moving collector stays
-   possible, but `QVal` words and proxies already cross between them (`intToPtr`, `ptrToInt`, ssa.md §1), so the
-   distinction alone does not give stack maps. *Solution:* state the requirement precisely: the register allocator
-   carries each virtual register's `ptr` or `int` class through allocation, into spill slots, and the frame records
-   which slots hold pointers, so that stack maps at calls could be emitted later; and a word whose pointer-ness is
-   dynamic (a `QVal`) is described as such, for a precise collector to resolve by descriptor. *Addressed in part*
-   (2026-10-30, the user choosing this scope). The requirement, precisely: at each call, a precise collector must find
-   every live pointer, so every value live across a call is either in a callee-saved register, whose class the
-   allocation knows from the value's SSA type, or in a frame slot whose class is that type, which no value of another
-   type ever shares; a stack slot's memory is described by what the code stores in it, word by word, which nothing
-   records yet; and a word that may or may not be a pointer is resolved through its type descriptor. What is done: the
-   allocator keeps a value's type through allocation (each interval is one value's), a value in memory has a slot at a
-   fixed offset (rematerialized ones have none: they hold no pointer the collector must see, or one to static data),
-   shared only with values of its type whose lifetimes do not overlap its own (since 2026-11-01, §3.8), and
-   `codegen.frameSlots` returns each slot of a function's frame with its offset, its size, and its class, a value's SSA
-   type or, for a stack slot, memory; `questlang/arm64_frames` prints them for functions that spill pointers, integers,
-   and reals across a call. Nothing emits stack maps. A derived pointer is a `ptr` throughout (`ptrAdd`,
-   [backend-improvements.md](backend-improvements.md) step 7). What remains is that plan's step 10: a `val` type for
-   `QVal` words, which are `int`s now, so that the frame tells them apart. *Done* (2026-10-31): `QVal` words are `val`s,
-   and `arm64_frames` shows their slots.
+`Int` arithmetic wraps, in two's complement, in every implementation (decided 2026-10-29). The three implementations
+disagreed before (tried on `9223372036854775807 + 1` and `INT64_MIN / ~1`): the bootstrap's interpreter gave
+`9223372036854775808`, outside `Int`'s range, from Python's unbounded integers, and compiled code and the self-hosted
+interpreter (which is compiled code) wrapped, by C's undefined behavior. Now C is compiled with `-fwrapv`,
+`INT64_MIN / -1` is `INT64_MIN` (and `% -1` is 0) in the runtime's helpers, the bootstrap's interpreter reduces
+results to 64 bits, and run tests check each case (ABI 52). arm64's `add`, `sub`, `mul`, `sdiv`, and `msub` do what
+Quest does.

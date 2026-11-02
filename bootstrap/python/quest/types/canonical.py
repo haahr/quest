@@ -189,10 +189,10 @@ def option_case_names(t: QType) -> tuple[str, ...]:
 
 @dataclass(frozen=True)
 class OptionIdentity:
-    """How `is` compares options of an option type (docs/option-values.md
-    §2): its cases without components compare by case; and if the type is
-    single-word, its one case with components (`single`) compares by its one
-    component, of type `component`."""
+    """How `is` compares options of an option type (docs/extensions.md,
+    Options as Values): its cases without components compare by case; and
+    if the type is single-word, its one case with components (`single`)
+    compares by its one component, of type `component`."""
     empty: frozenset[str]
     single: Optional[str] = None
     component: Optional[QType] = None

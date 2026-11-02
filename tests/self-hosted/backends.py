@@ -137,7 +137,7 @@ def overflow_program(lets: int) -> str:
 def check_overflow(driver: str) -> list[str]:
     """Each backend's recursion through a large frame works when bounded, and
     when runaway ends with stack.overflow, as exceptions.md section 6 has it,
-    rather than a crash past the guard page (docs/arm64.md section 10.2)."""
+    rather than a crash past the guard page (docs/arm64.md section 3.10)."""
     environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
     problems: list[str] = []
     with tempfile.TemporaryDirectory() as d:

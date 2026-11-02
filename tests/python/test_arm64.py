@@ -83,7 +83,7 @@ class TestArm64(unittest.TestCase):
         resume = re.search(r"adr x\d+, (Lf4_b\d+)\n", text)
         self.assertTrue(resume, text)
         self.assertTrue(re.search(resume.group(1) + r":\n\tb Lf4_b\d+\n", text), text)
-        # A frame of more than a page is probed (docs/arm64.md section 10.2)
+        # A frame of more than a page is probed (docs/arm64.md section 3.10)
         probe = re.search(r"\tmovz x9, #(\d+), lsl #0\n\tbl ___chkstk_darwin\n\tmovz x9, #\1, lsl #0\n\tsub sp, sp, x9",
                           text)
         self.assertTrue(probe and int(probe.group(1)) > 4096, text)
