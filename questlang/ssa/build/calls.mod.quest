@@ -9,6 +9,7 @@ import
     questlang/codegen/layout : questlang/codegen/Layout
     questlang/codegen/symbols : questlang/codegen/Symbols
     questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
+    questlang/codegen/externals : questlang/codegen/Externals
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/maybe : util/Maybe
@@ -172,6 +173,72 @@ export
             vector.toArray(:Int found)
         end
 
+    (* An Int constant's value, if the atom is one *)
+    let intConstant(a: Atom): maybe.T(Int) =
+        case a
+            when atomConst with x then
+                case x.c.value when constInt with k then maybe.some(:Int k.n) else maybe.none(:Int) end
+            when atomVar then maybe.none(:Int)
+        end
+
+    (* What a call of an external C function that the runtime defines inline
+     * (runtime/quest_runtime.h) is, as the C compiler compiles it: the word
+     * module's arithmetic, bitwise operations, comparisons, conversions, and
+     * shifts and rotations by a constant count, and ascii.val (a Char is held
+     * zero-extended); none for any other call *)
+    let inlineExternal(fn: vals.Fn symbol: String args: Array(Atom)): maybe.T(Int) =
+        begin
+            let x(): Int = vals.atom1(fn args[0])
+            let y(): Int = vals.atom1(fn args[1])
+            let one(v: Int): maybe.T(Int) = maybe.some(:Int v)
+            let both(op: ssa.Opcode): maybe.T(Int) = one(vals.binary(fn op x() y()))
+            let below(a: Int b: Int): Int = vals.binary(fn ssa.opUlt a b)
+            let inverted(v: Int): Int = vals.binary(fn ssa.opXor v vals.constant(fn 1))
+            let named(name: String): Bool = vals.eq(symbol name)
+            let count = if extent args is 2 then intConstant(args[1]) else maybe.none(:Int) end
+            if named("quest_word_from_int") orif named("quest_word_to_int") orif named("quest_ascii_val") then one(x())
+            elsif named("quest_word_add") then both(ssa.opAdd)
+            elsif named("quest_word_sub") then both(ssa.opSub)
+            elsif named("quest_word_mul") then both(ssa.opMul)
+            elsif named("quest_word_and_bits") then both(ssa.opAnd)
+            elsif named("quest_word_or_bits") then both(ssa.opOr)
+            elsif named("quest_word_xor_bits") then both(ssa.opXor)
+            elsif named("quest_word_not_bits") then one(vals.binary(fn ssa.opXor x() vals.constant(fn ~1)))
+            elsif named("quest_word_lt") then one(below(x() y()))
+            elsif named("quest_word_gt") then
+                let a = x()
+                one(below(y() a))
+            elsif named("quest_word_le") then
+                let a = x()
+                one(inverted(below(y() a)))
+            elsif named("quest_word_ge") then one(inverted(below(x() y())))
+            elsif named("quest_word_shift_val") andif maybe.isSome(:Int count) then
+                (* A left shift by a positive count, a logical right shift by
+                 * a negative one, and 0 past either end *)
+                let c = maybe.unwrap(:Int count)
+                if {c >= 64} orif {c <= ~64} then
+                    one(vals.constant(fn 0))
+                elsif c > 0 then one(vals.binary(fn ssa.opShl x() vals.constant(fn c)))
+                elsif c < 0 then one(vals.binary(fn ssa.opLshr x() vals.constant(fn 0 - c)))
+                else one(x())
+                end
+            elsif named("quest_word_rotate_val") andif maybe.isSome(:Int count) then
+                (* A left rotation by the count modulo 64 *)
+                let c = maybe.unwrap(:Int count) % 64
+                let s = if c < 0 then c + 64 else c end
+                if s is 0 then
+                    one(x())
+                else
+                    let w = x()
+                    let left = vals.binary(fn ssa.opShl w vals.constant(fn s))
+                    one(vals.binary(fn ssa.opOr left vals.binary(fn ssa.opLshr w vals.constant(fn 64 - s))))
+                end
+            else
+                maybe.none(:Int)
+            end
+        end
+
+    (* A direct call whose results are ps *)
     (* A direct call whose results are ps *)
     let directCallOf(fn: vals.Fn symbol: String lead: Array(Int) args: Array(Atom) ps: Array(vals.Part)): Array(Int) =
         begin
@@ -185,9 +252,44 @@ export
 
     let calleeResultType(t: Type): Type = t
 
+    (* The external C function that f only calls, if f is an external's thunk
+     * (questlang/ir/thunks): its body a call of the external with f's value
+     * parameters in order, and no descriptors, then a return of the call's
+     * result (or of ok) *)
+    let forwardedExternal(f: ir.Function): maybe.T(String) =
+        begin
+            let stmts = f.body.statements
+            let var found = maybe.none(:String)
+            if {vector.length(:ir.Stmt stmts) is 2} andif {extent f.descriptorParams is 0} then
+                let call = case vector.get(:ir.Stmt stmts 0)
+                    when sLet with x then maybe.some(:ir.Op x.value)
+                    when sDo with x then maybe.some(:ir.Op x.value)
+                    else maybe.none(:ir.Op)
+                end
+                let returns = case vector.get(:ir.Stmt stmts 1) when sReturn then true else false end
+                case maybe.unwrapOr(:ir.Op call option opAtom of ir.Op with let var atom = ir.atomOfVar(f.v) end)
+                    when opCallExternal with x then
+                        let var forwards = returns andif {extent x.descriptors is 0}
+                            andif {extent x.args is extent f.params}
+                        for i = 0 upto {extent x.args - 1} do
+                            let same = case x.args[i]
+                                when atomVar with a then
+                                    forwards andif {a.v.id is f.params[i].v.id} andif vals.eq(f.params[i].mode "value")
+                                when atomConst then false
+                            end
+                            if not(same) then forwards := false end
+                        end
+                        if forwards then found := maybe.some(:String x.symbol) end
+                    else ok
+                end
+            end
+            found
+        end
+
     (* A call of the closure the variable holds: its function directly, when
-     * the variable is bound to a closure of one of the unit's functions, or
-     * through its function pointer *)
+     * the variable is bound to a closure of one of the unit's functions (and
+     * the external C function directly, when that function is an external's
+     * thunk), or through its function pointer *)
     let rec callClosure(fn: vals.Fn callee: Variable descs: Array(Int) args: Array(Atom)): Array(Int) =
         begin
             let known = hashMap.get(:Int :ir.OpMakeClosure fn.u.closureVars callee.id)
@@ -200,7 +302,17 @@ export
                 (* A function returning an unboxed tuple returns its
                  * components (questlang/ir/unbox) *)
                 let ps = if k.code.unboxedResult then vals.unboxedParts(k.code.resultType) else resultParts(callee.type) end
-                directCallOf(fn vals.codeName(fn.u k.code) vals.concat(array of env end descs) args ps)
+                let thunked = forwardedExternal(k.code)
+                let inlined = if maybe.isSome(:String thunked) then
+                    inlineExternal(fn maybe.unwrap(:String thunked) args)
+                else maybe.none(:Int) end
+                if maybe.isSome(:Int inlined) then
+                    array of maybe.unwrap(:Int inlined) end
+                elsif maybe.isSome(:String thunked) then
+                    directCallOf(fn maybe.unwrap(:String thunked) array of :Int end args ps)
+                else
+                    directCallOf(fn vals.codeName(fn.u k.code) vals.concat(array of env end descs) args ps)
+                end
             else
                 indirectCall(fn callee descs args)
             end
@@ -243,14 +355,6 @@ export
                     all
                 else false
             end
-        end
-
-    (* The constant an atom is, if it is an Int's *)
-    let constantOf(a: Atom): maybe.T(Int) =
-        case a
-            when atomConst with x then
-                case x.c.value when constInt with y then maybe.some(:Int y.n) else maybe.none(:Int) end
-            else maybe.none(:Int)
         end
 
     (* A call of one of the standard library's external functions that C
@@ -301,7 +405,7 @@ export
                          * a negative one, 0 by one of 64 or more either way;
                          * by a constant, one instruction or none *)
                         let w = x()
-                        let count = constantOf(o.args[1])
+                        let count = intConstant(o.args[1])
                         if maybe.isSome(:Int count) then
                             let n = maybe.unwrap(:Int count)
                             if {n >= 64} orif {n <= ~64} then one(vals.constant(fn 0))
@@ -352,6 +456,38 @@ export
             end
         end
 
+    (* The C function a call of an imported member is, if the member is one of
+     * the standard library's external functions built into the compiler
+     * (questlang/codegen/externals), the import resolves to lib/, and no
+     * argument or result is held as a QVal, as the importer holds an external
+     * type it sees only as abstract (os/process's process.T); as the C
+     * printer's libraryExternal *)
+    let libraryExternal(imp: ir.Import member: String args: Array(Atom) calleeType: Type): maybe.T(String) =
+        begin
+            let held(ps: Array(vals.Part)): Bool =
+                begin
+                    let var any = false
+                    for k = 0 upto {extent ps - 1} do
+                        case ps[k].type when typeVal then any := true else ok end
+                    end
+                    any
+                end
+            let var unheld = not(held(resultParts(calleeType)))
+            for i = 0 upto {extent args - 1} do
+                if held(vals.parts(ir.atomType(args[i]))) then unheld := false end
+            end
+            let var symbol = maybe.none(:String)
+            if unheld andif maybe.isSome(:String imp.libPath) then
+                for i = 0 upto {extent externals.functions - 1} do
+                    let entry = externals.functions[i]
+                    if vals.eq(entry[0] maybe.unwrap(:String imp.libPath)) andif vals.eq(entry[1] member) then
+                        symbol := maybe.some(:String entry[2])
+                    end
+                end
+            end
+            symbol
+        end
+
     let callOp(fn: vals.Fn o: ir.OpCall): Array(Int) =
         begin
             let descs = descriptors.descriptors(fn o.descriptors)
@@ -368,7 +504,19 @@ export
                     else
                         let clean = symbols.mangleModuleName(imp.canonicalPath)
                         let calleeType = maybe.unwrapOr(:Type o.calleeType model.okType)
-                        directCall(fn symbols.mangleModuleIdent(clean member) descs o.args calleeType)
+                        let direct = libraryExternal(imp member o.args calleeType)
+                        let inlined = if maybe.isSome(:String direct) then
+                            inlineExternal(fn maybe.unwrap(:String direct) o.args)
+                        else maybe.none(:Int) end
+                        if maybe.isSome(:Int inlined) then
+                            array of maybe.unwrap(:Int inlined) end
+                        elsif maybe.isSome(:String direct) then
+                            (* The C function itself, rather than the module's
+                             * wrapper, which has its signature *)
+                            directCall(fn maybe.unwrap(:String direct) array of :Int end o.args calleeType)
+                        else
+                            directCall(fn symbols.mangleModuleIdent(clean member) descs o.args calleeType)
+                        end
                     end
                 end
             else

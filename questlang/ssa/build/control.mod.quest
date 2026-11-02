@@ -76,11 +76,19 @@ export
             when opPrim with x then calls.prim(fn x)
             when opCall with x then calls.callOp(fn x)
             when opCallExternal with x then
-                let resultType = if maybe.isSome(:Variable result) then maybe.unwrap(:Variable result).type else model.okType end
-                let ps = vals.parts(resultType)
-                let args = vals.concat(descriptors.descriptors(fn x.descriptors) vals.callAtoms(fn x.args))
-                let vs = vals.callQuest(fn x.symbol args calls.pairsOf(extent x.descriptors x.args) vals.noValues ps)
-                calls.resultsOf(fn ps vs)
+                let inlined = if extent x.descriptors is 0 then calls.inlineExternal(fn x.symbol x.args)
+                    else maybe.none(:Int) end
+                if maybe.isSome(:Int inlined) then
+                    array of maybe.unwrap(:Int inlined) end
+                else
+                    let resultType = if maybe.isSome(:Variable result) then maybe.unwrap(:Variable result).type
+                        else model.okType end
+                    let ps = vals.parts(resultType)
+                    let args = vals.concat(descriptors.descriptors(fn x.descriptors) vals.callAtoms(fn x.args))
+                    let pairs = calls.pairsOf(extent x.descriptors x.args)
+                    let vs = vals.callQuest(fn x.symbol args pairs vals.noValues ps)
+                    calls.resultsOf(fn ps vs)
+                end
             when opMakeClosure with x then makeClosure(fn x)
             when opEnvField with x then envField(fn x maybe.unwrap(:Variable result).type)
             when opBuiltin with x then array of vals.symbolAt(fn symbols.mangleIdent(x.name) <> "_closure") end

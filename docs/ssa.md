@@ -145,7 +145,10 @@ registration, and the unit).
   `codegen/runtimeLayout`, which the C asserts.
 - **Closures.** A closure's environment is the descriptors of its type arguments then its captures, a word for each
   of their values: private to the unit, which alone reads it ([arm64.md](arm64.md) §7.1). A call of a variable bound
-  to a closure of one of the unit's functions calls the function directly, as the C printer does.
+  to a closure of one of the unit's functions calls the function directly, as the C printer does; when that function
+  is an external's thunk (`qx_`, ir.md §8.4.1), which only forwards its arguments, the call is of the external C
+  function itself, as the C compiler makes it by inlining the thunk. A call of an imported member that is one of the
+  standard library's externals (`codegen/externals`) calls the C function, as the C printer's `libraryExternal` does.
 - **Thread-locals.** The handler chain and the current exception are the runtime's thread-local variables, whose
   addresses `threadLocal` takes: the native backend calls their accessor (arm64.md §3.6), which clobbers what a call
   does and is not rematerialized, and `ssac` takes the address with `&`; neither keeps a list of their names.
@@ -154,7 +157,10 @@ registration, and the unit).
   runtime called only for a proxy; real `+`, `-`, `*`, and `/` by their instruction and an `isNaN` test; `Int` `div`
   and `mod` with the test for zero inline; and the bounds, count, and ordinal checks. Each check branches to a block
   that computes the site and calls the runtime's raise (`values.check`), so that the common path computes no site.
-  The string and `ascii` helpers are calls in C too, and stay calls.
+  The word module's operations, `static inline` in the header, are their instructions wherever they are called
+  (`calls.inlineExternal`): arithmetic, bitwise operations, unsigned comparisons, conversions, and shifts and rotations
+  by a constant count; so is `ascii.val`, a conversion of a Char, which the SSA holds zero-extended. The other string
+  and `ascii` helpers are calls in C too, and stay calls.
 - **The library's external functions that C inlines are their instructions** (`calls.libraryOperation`). The C
   printer calls a library member's C function in place of its wrapper (`libraryExternal`,
   [c-representation.md](c-representation.md) §6.2), and clang inlines the word module's `static inline` primitives;
@@ -163,9 +169,10 @@ registration, and the unit).
   instructions, and `word.shift` a shift (by a constant, one instruction or none; otherwise branches for the
   direction and for a count of 64 or more); `ascii.val` its argument and `ascii.char` a range check; and `string`'s
   `length`, `getChar`, and `setChar` a load or a store after the runtime's null and bounds checks, raising through
-  `quest_raise_string_error` and `quest_raise_ascii_error` as the runtime does. The rest call the wrapper. Through
-  `ssac`, checksum took 3.65 times the C backend's time and takes 0.17 (clang vectorizes its loop), md5 3.94 and
-  0.76, and psdes-random 4.09 and 1.01 ([benchmarks.md](benchmarks.md) §11).
+  `quest_raise_string_error` and `quest_raise_ascii_error` as the runtime does. The rest of the library's externals
+  call their C function, as the C printer does, and the others the wrapper. Through `ssac`, checksum took 3.65 times
+  the C backend's time and takes 0.17 (clang vectorizes its loop), md5 3.94 and 0.76, and psdes-random 4.09 and 1.01
+  ([benchmarks.md](benchmarks.md) §11).
 - **Blocks the entry does not reach are dropped** when a function is finished, and the rest renumbered.
 
 What the builder does not yet build raises `unsupported`, naming the construct; `--stop-after ssa` reports it as an
