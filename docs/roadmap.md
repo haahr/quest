@@ -143,8 +143,8 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   frames by the frame-pointer chain; step 3, `os/value` and `os/code` ([new-libraries.md](new-libraries.md) §4.3);
   step 4, interface fingerprints in every module unit (`qh_`); step 5, the arm64 encoder;
   step 6, the REPL on `--jit`; step 7, imports and `-i`;
-  step 8, files and `-e` ([benchmarks.md](benchmarks.md) §10 has the times). The REPL and `-e` run on it by default
-  (2026-11-01).
+  step 8, files and `-e` ([benchmarks.md](benchmarks.md) §10 has the times). Since 2026-11-01 the REPL, `-e`, and
+  files run on it by default, and it compiles the user's own modules.
 
 ---
 

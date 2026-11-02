@@ -15,8 +15,8 @@ with an in-memory encoder and loader. It is written in Quest, in `questlang/`, a
 Decided 2026-10-31:
 
 - **What runs on it.** Eventually all of the REPL, and also `quest file.quest` and `-e`. While it is developed, only
-  with `--jit`; without it, the driver interprets as now. *Revised 2026-11-01:* the REPL and `-e` run on it by
-  default (§3.10), and files will now that a program's own modules can be imported (§3.4).
+  with `--jit`; without it, the driver interprets as now. *Revised 2026-11-01:* the REPL, `-e`, and files run on it
+  by default (§3.10), files once a program's own modules could be imported (§3.4).
 - **The same process,** sharing the driver's heap, runtime, and library state.
 - **The driver is the library.** A phrase that imports a unit linked into the driver uses the driver's copy of it, its
   code and its state: `writer.output` is the compiler's own, and a phrase that imports `questlang/...` modules
@@ -357,9 +357,10 @@ setjmp state of C-built code and the resume state of arm64 code (arm64.md §3.6)
 **The driver:**
 
 - The REPL, `-i FILE` (whose file is then compiled as the first input, its top-level bindings in scope for later
-  inputs), and `-e` run on the JIT by default; `quest FILE` runs on it with `--jit`, as a single input.
+  inputs), `-e`, and `quest FILE` (a single input) run on the JIT by default; `--jit` asks for it explicitly.
 - `--no-jit` interprets instead, as do `--stop-after`, `--dump-after`, `--show-offsets`, and `--show-values`, which
-  name the interpreter's phases or output, and a driver that is not a host.
+  name the interpreter's phases or output, `--whole-program`, and a driver that is not a host. The test runners pass
+  `--stop-after interpret` for the interpreter's goldens, so they check the interpreter.
 
 ### 3.11. Unsound interfaces and modules
 
@@ -466,7 +467,6 @@ Running in the driver's own process adds two more, which the run goldens through
 - Calling earlier inputs' functions directly, and inlining them.
 - Registering JIT code with lldb (the GDB JIT interface), with line tables (arm64.md §3.16).
 - Surviving faults and runaway recursion, and Ctrl-C, in the REPL.
-- Running files on the JIT by default (the REPL and `-e` do, since 2026-11-01).
 
 ## 7. Steps
 

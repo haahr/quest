@@ -5,27 +5,27 @@
  * --stop-after PHASE FILE` prints the dump of PHASE (tokenize, parse, desugar,
  * or typecheck) in the bootstrap's format on standard output, and the
  * diagnostics on standard error, exiting with 1 if there are errors. The
- * interpret phase, the default, runs the program in the tree-walking
- * interpreter and prints its last phrase's result (or, with --echo, every
- * phrase's); `-e PROGRAM` runs a program given as a string. The arguments after
- * FILE are the program's, as are those after a `--` (which is how `-e` gets
- * any). The codegen_c phase prints the program's C (with --print-result, a C
- * program that prints its last phrase's result, as compiled runs do). A unit
+ * interpret phase, the default, runs the program and prints its last phrase's
+ * result (or, with --echo, every phrase's): compiled and run by the JIT
+ * (questlang/jit), unless --no-jit, an interpreter's option (--stop-after
+ * itself among them), or a driver that cannot host it asks for the tree-walking
+ * interpreter; `-e PROGRAM` runs a program given as a string. The arguments
+ * after FILE are the program's, as are those after a `--` (which is how `-e`
+ * gets any). The codegen_c phase prints the program's C (with --print-result, a
+ * C program that prints its last phrase's result, as compiled runs do). A unit
  * file given without --stop-after is compiled alone: an interface file to its
  * .qi and C header, under --build-dir, else beside -o, else beside the file
  * (-c, which says so, is optional for a unit file). `-i` enters the REPL
  * (questlang/driver/repl) after running FILE, in its environment and frame;
  * with neither FILE nor `-e`, the driver enters the REPL when standard input is
  * a terminal, and otherwise runs the program standard input holds, as it does
- * for a FILE of `-`. `-e`'s program and the REPL's inputs are compiled and run
- * by the JIT (questlang/jit), unless --no-jit, an interpreter's option, or a
- * driver that cannot host it says otherwise; --jit runs a file on it too. `main
- * compile FILE` compiles the program to a binary (FILE without its .quest, or
- * -o), as the bootstrap's `quest compile` does: with --emit-c it writes the
- * program's C instead (to -o, else standard output), with --nogc it compiles
- * without the collector, and with -c it compiles the program into the build
- * directory without linking it. run_tests.py --self-hosted compiles it and
- * checks it against the bootstrap's goldens (docs/testing.md section 2.3). *)
+ * for a FILE of `-`; the REPL's inputs run as programs do. `main compile FILE`
+ * compiles the program to a binary (FILE without its .quest, or -o), as the
+ * bootstrap's `quest compile` does: with --emit-c it writes the program's C
+ * instead (to -o, else standard output), with --nogc it compiles without the
+ * collector, and with -c it compiles the program into the build directory
+ * without linking it. run_tests.py --self-hosted compiles it and checks it
+ * against the bootstrap's goldens (docs/testing.md section 2.3). *)
 
 import
     questlang/common/location : questlang/common/Location
@@ -377,13 +377,13 @@ let options =
             let extraObjects = vector.toArray(:String extraObjects)
             let includePaths = vector.toArray(:String includePaths)
             let interactive = interactive orif {noProgram andif atTerminal}
-            (* -e's program and the REPL's inputs run on the JIT by default,
-             * unless an option asks for the interpreter's phases or output,
-             * or this driver cannot host the JIT (docs/jit.md section 3.10) *)
+            (* A program run, a file's, -e's, or the REPL's inputs, runs on the
+             * JIT by default, unless an option asks for the interpreter's
+             * phases or output, or for a whole program, or this driver cannot
+             * host the JIT (docs/jit.md section 3.10) *)
             let jit = jit orif {not(noJit) andif not(compileMode) andif not(stopGiven)
-                andif {extent dumpAfter is 0} andif not(showOffsets) andif not(showValues)
-                andif {maybe.isSome(:String code) orif interactive orif {noProgram andif atTerminal}}
-                andif maybe.isNone(:String session.refusal())}
+                andif stringOp.equal(stopAfter "interpret") andif {extent dumpAfter is 0} andif not(showOffsets)
+                andif not(showValues) andif not(wholeProgram) andif maybe.isNone(:String session.refusal())}
             let programArgs = vector.toArray(:String programArgs)
             let compileOnly = compileOnly
             let emitC = emitC

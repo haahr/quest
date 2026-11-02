@@ -135,8 +135,9 @@ cd quest
 The self-hosted compiler is a Quest program, `questlang/driver/main.quest` and the modules it imports, called the
 driver because it is the command-line entry point that runs the front end, the interpreter, and the backends. Its
 front end and interpreter mirror the bootstrap's; beyond the bootstrap, it optimizes the IR
-([docs/inlining.md](docs/inlining.md)) and can write arm64 machine code instead of C (`--backend arm64`;
-[docs/arm64.md](docs/arm64.md)).
+([docs/inlining.md](docs/inlining.md)), can write arm64 machine code instead of C (`--backend arm64`;
+[docs/arm64.md](docs/arm64.md)), and runs programs, `-e`, and the REPL's inputs by compiling them to arm64 code in
+memory rather than interpreting them (`--no-jit` interprets; [docs/jit.md](docs/jit.md)).
 
 `./quest` is a shell script that builds the driver into a native binary when needed and then runs it. The binary is
 not checked in: it is built from `questlang/` on first use, and again whenever `questlang/`, `lib/`, or `runtime/`

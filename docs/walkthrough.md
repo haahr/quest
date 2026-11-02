@@ -169,8 +169,8 @@ Each `tuple let ... end` makes a tuple whose components are named as the `let`s 
 
 ### 1.4. Running it
 
-`./quest` runs a program with the interpreter. `--echo` prints each top-level phrase, its type, and its value, as
-an interactive session would:
+`./quest` runs a program, compiling it in memory with the JIT ([jit.md](jit.md); `--no-jit` interprets it instead, with
+the same output). `--echo` prints each top-level phrase, its type, and its value, as an interactive session would:
 
 <!-- excerpt: examples/argmax/argmax.quest interpret --echo -->
 ```
