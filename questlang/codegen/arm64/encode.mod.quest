@@ -208,7 +208,7 @@ export
                     let d = labelOffset(label) - at
                     field(d / 4 bits)
                 end
-            let access(a: Access t: Int base: Int m: minst.Mode): Int =
+            let access(a: Access t: Int base: Int index: Int m: minst.Mode): Int =
                 case m
                     when modeOffset with x then
                         if printer.unscaledOffset(m a.width) then
@@ -222,6 +222,10 @@ export
                     when modePageOff with x then
                         reloc(pageOffKind(x.reloc) x.symbol)
                         a.scaled + rn(base) + rd(t)
+                    (* The register form: bit 21 set, the index's extension
+                     * LSL (option 011), and S, whether it is shifted *)
+                    when modeIndex with x then
+                        a.unscaled + 0x206800 + {if x.shift > 0 then 0x1000 else 0 end} + rm(index) + rn(base) + rd(t)
                 end
             (* ldp and stp: their signed offset, pre-index, and post-index
              * forms, x's or d's *)
@@ -238,8 +242,11 @@ export
                         when modePre with x then opc + 0x1800000 + l + imm(x.imm) + regs
                         when modePost with x then opc + 0x800000 + l + imm(x.imm) + regs
                         when modePageOff then raise unencodable with "ldp or stp of a page offset" end
+                        when modeIndex then raise unencodable with "ldp or stp at an index register" end
                     end
                 end
+            (* A load's or store's index register, for modeIndex *)
+            let index = if extent rs > 2 then rs[2] else ~1 end
             case op
                 when opMovImm with x then
                     let h = soleHalfword(x.imm)
@@ -318,8 +325,8 @@ export
                 when opCset with x then
                     (* csinc d, xzr, xzr, the inverse condition *)
                     0x9A9F07E0 + shl(cond(minst.inverse(x.cond)) 12) + rd(rs[0])
-                when opLoad with x then access(loadAccess(x.load target.isReal(rs[0])) rs[0] rs[1] x.mode)
-                when opStore with x then access(storeAccess(x.store target.isReal(rs[0])) rs[0] rs[1] x.mode)
+                when opLoad with x then access(loadAccess(x.load target.isReal(rs[0])) rs[0] rs[1] index x.mode)
+                when opStore with x then access(storeAccess(x.store target.isReal(rs[0])) rs[0] rs[1] index x.mode)
                 when opLdp with x then pair(true x.mode)
                 when opStp with x then pair(false x.mode)
                 when opAdrp with x then

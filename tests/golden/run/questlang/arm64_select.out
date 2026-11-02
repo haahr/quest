@@ -244,3 +244,37 @@ b4:
 5: false
 ~9223372036854775807: true
 0 4 0 8 4 0 2 0 0 2 0 8 0 1
+== addresses and narrow results
+b0:
+	mov %29, x0 [move]
+	mov %30, x1 [move]
+	b Lt_b1 { %29 %30 } [jump] -> b1
+b1(%0 %1):
+	adrp %31, _qd_global@PAGE
+	ldr %3, [%31, _qd_global@PAGEOFF]
+	adrp %32, _qd_global@PAGE
+	str %3, [%32, _qd_global@PAGEOFF]
+	adrp %5, _qd_outside@GOTPAGE; ldr %5, [%5, _qd_outside@GOTPAGEOFF]
+	ldr %6, [%5, #0]
+	ldr %10, [%0, %1, lsl #3]
+	str %10, [%0, %1, lsl #3]
+	ldrb %15, [%0, %1]
+	movz %16, #8, lsl #0
+	mul %17, %3, %16
+	add %18, %0, %17
+	ldr %19, [%18, #0]
+	ldr %20, [%18, #0]
+	mov x0, %15 [move]
+	bl _qf_local { x0 =x0 } [call]
+	mov %21, x0 [move]
+	mov %22, %21 [move]
+	mov x0, %15 [move]
+	bl _qf_other { x0 =x0 } [call]
+	mov %23, x0 [move]
+	and %24, %23, #0xff
+	add %25, %6, %19
+	add %26, %22, %24
+	add %27, %20, %26
+	add %28, %25, %27
+	mov x0, %28 [move]
+	ret { x0 } [return]

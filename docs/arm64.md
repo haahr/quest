@@ -167,6 +167,8 @@ for `add`, `sub`, and `cmp`; `and`, `orr`, and `eor` with logical (bitmask) imme
 branch; an `and` of one bit, seen through conversions between words, or a value compared with 0, as `tbz`/`tbnz` or
 `cbz`/`cbnz`, and a switch's case 0 as `cbz`; an `and` of two integer comparisons as `cmp`, `ccmp`, and `b.cond`; a
 load or store at the start of a symbol the unit defines as `adrp` and the access at the symbol's page offset, without
+the `add`; one at a `ptrAdd` of a base and an index, or of an index times the access's width (an array's element),
+made for it alone, at the base and the index register, shifted (`ldr x0, [x1, x2, lsl #3]`), without the `mul` or
 the `add`; and no extension of a narrow result (ssa.md §2.2) of a call of a function in the unit that returns its
 narrow results extended, which is every one but those that tail-call, for such a result, a function that may not. When
 the code is emitted, blocks that only jump are passed over, a jump to the next block falls through, and a conditional

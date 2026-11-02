@@ -13,8 +13,11 @@
  * pointer; a switch (cbz for its case 0); a try, its handler entered through
  * a block beside it; logical immediates, a constant that is not one kept in a
  * register; a branch on one bit, or on a bit compared with 0, as tbnz or tbz;
- * a branch on a conjunction of comparisons as cmp, ccmp, and b.cond; and which
- * constants are logical immediates, and the flags that falsify a condition. *)
+ * a branch on a conjunction of comparisons as cmp, ccmp, and b.cond; which
+ * constants are logical immediates, and the flags that falsify a condition;
+ * a load and a store of a symbol the unit defines at its page offset, an
+ * array's element and a byte at an index register, and a narrow result of a
+ * call extended unless the unit's callee extends it. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
@@ -46,6 +49,7 @@ let call(f: ssa.Function b: Int symbol: String args: Array(Int) results: Array(s
     ssa.call(f b symbol args ssa.signature(ssa.valueTypes(f args) results none none) results);
 let defined = hashMap.new(:String :Bool stringOp.equal hash.string);
 hashMap.insert(:String :Bool defined "qf_local" true);
+hashMap.insert(:String :Bool defined "qd_global" false);
 let show(title: String f: ssa.Function): Ok =
     begin
         let problems = verify.functionProblems(f)
@@ -216,3 +220,33 @@ let conds = array of minst.condEq minst.condNe minst.condLt minst.condGe minst.c
 for i = 0 upto {extent conds - 1} do
     writer.putString(writer.output conv.int(minst.falsifying(conds[i])) <> if i < extent conds - 1 then " " else "\n" end)
 end;
+
+(* 12. Addresses and narrow results: a load and a store of a symbol the unit
+ * defines, at its page offset, and a load of one it does not; an element of
+ * an array (a ptrAdd of an index times 8) loaded and stored at an index
+ * register, shifted, and a byte at a ptrAdd of an index, not; an element's
+ * address used twice, computed; and a Bool from a function of the unit,
+ * not extended, and from one outside it, extended *)
+let folds = ssa.newFunction("qf_folds" false array of tPtr tInt end array of tInt end);
+let fp = params(folds);
+let global = ssa.symbolAddress(folds 0 "qd_global");
+let gv = ssa.load(folds 0 global 0 8 false tInt);
+ssa.store(folds 0 ssa.symbolAddress(folds 0 "qd_global") 0 8 gv);
+let outside = ssa.load(folds 0 ssa.symbolAddress(folds 0 "qd_outside") 0 8 false tInt);
+let scaled = ssa.binary(folds 0 ssa.opMul fp[1] ssa.constant(folds 0 8));
+let element = ssa.load(folds 0 ssa.ptrAdd(folds 0 fp[0] scaled) 0 8 false tInt);
+let scaled2 = ssa.binary(folds 0 ssa.opMul fp[1] ssa.constant(folds 0 8));
+ssa.store(folds 0 ssa.ptrAdd(folds 0 fp[0] scaled2) 0 8 element);
+let byte = ssa.load(folds 0 ssa.ptrAdd(folds 0 fp[0] fp[1]) 0 1 false tInt);
+let twiceAt = ssa.ptrAdd(folds 0 fp[0] ssa.binary(folds 0 ssa.opMul gv ssa.constant(folds 0 8)));
+let twice1 = ssa.load(folds 0 twiceAt 0 8 false tInt);
+let twice2 = ssa.load(folds 0 twiceAt 0 8 false tInt);
+let boolSig = ssa.withResult(ssa.signature(array of tInt end array of tInt end none none) ssa.passByte);
+let mine = ssa.emit(folds 0 ssa.opZext8 array of ssa.call(folds 0 "qf_local" array of byte end boolSig
+    array of tInt end)[0] end tInt);
+let theirs = ssa.emit(folds 0 ssa.opZext8 array of ssa.call(folds 0 "qf_other" array of byte end boolSig
+    array of tInt end)[0] end tInt);
+let sum = ssa.binary(folds 0 ssa.opAdd ssa.binary(folds 0 ssa.opAdd outside twice1)
+    ssa.binary(folds 0 ssa.opAdd twice2 ssa.binary(folds 0 ssa.opAdd mine theirs)));
+ret(folds 0 array of sum end);
+show("addresses and narrow results" folds);

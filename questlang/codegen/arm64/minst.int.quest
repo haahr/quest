@@ -27,14 +27,16 @@ export
     Def Reloc = Option relocPage relocGot relocTlv end
     (* How a load or store addresses memory from its base register: plus an
      * immediate, the base alone, plus an immediate with the base moved there
-     * first (pre-index) or after (post-index), or plus a symbol's offset in
-     * its page *)
+     * first (pre-index) or after (post-index), plus a symbol's offset in its
+     * page, or plus an index register (the instruction's last) shifted left
+     * by shift, 0 or the log of the access's width *)
     Def Mode = Option
         modeOffset with imm: Int end
         modeBase
         modePre with imm: Int end
         modePost with imm: Int end
         modePageOff with symbol: String reloc: Reloc end
+        modeIndex with shift: Int end
     end
     (* A load's width and extension: 8 bytes (into an x or d register), 4
      * sign-extended, 1 sign-extended, or 1 zero-extended; a store's width *)
@@ -176,6 +178,7 @@ export
 
     offset(imm: Int): Mode
     modeBase: Mode
+    indexed(shift: Int): Mode
     pre(imm: Int): Mode
     post(imm: Int): Mode
     pageOff(symbol: String reloc: Reloc): Mode
@@ -213,6 +216,9 @@ export
     cset(c: Cond d: Int): Inst
     load(l: Load t: Int base: Int m: Mode): Inst
     store(s: Store t: Int base: Int m: Mode): Inst
+    (* A load or store at base plus index, shifted left by shift *)
+    loadIndex(l: Load t: Int base: Int index: Int shift: Int): Inst
+    storeIndex(s: Store t: Int base: Int index: Int shift: Int): Inst
     ldp(a: Int b: Int base: Int m: Mode): Inst
     stp(a: Int b: Int base: Int m: Mode): Inst
     adrp(d: Int symbol: String reloc: Reloc): Inst

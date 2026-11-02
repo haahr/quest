@@ -18,6 +18,7 @@ export
         modePre with imm: Int end
         modePost with imm: Int end
         modePageOff with symbol: String reloc: Reloc end
+        modeIndex with shift: Int end
     end
     Def Load = Option load64 loadS32 loadS8 loadU8 end
     Def Store = Option store64 store32 store8 end
@@ -140,6 +141,7 @@ export
 
     let offset(imm: Int): Mode = option modeOffset of Mode with let imm = imm end
     let modeBase: Mode = option modeBase of Mode end
+    let indexed(shift: Int): Mode = option modeIndex of Mode with let shift = shift end
     let pre(imm: Int): Mode = option modePre of Mode with let imm = imm end
     let post(imm: Int): Mode = option modePost of Mode with let imm = imm end
     let pageOff(symbol: String reloc: Reloc): Mode =
@@ -214,6 +216,12 @@ export
         inst(option opLoad of Op with let load = l let mode = m end array of t base end)
     let store(s: Store t: Int base: Int m: Mode): Inst =
         inst(option opStore of Op with let store = s let mode = m end array of t base end)
+    let loadIndex(l: Load t: Int base: Int index: Int shift: Int): Inst =
+        inst(option opLoad of Op with let load = l let mode = option modeIndex of Mode with let shift = shift end end
+            array of t base index end)
+    let storeIndex(s: Store t: Int base: Int index: Int shift: Int): Inst =
+        inst(option opStore of Op with let store = s let mode = option modeIndex of Mode with let shift = shift end end
+            array of t base index end)
     let ldp(a: Int b: Int base: Int m: Mode): Inst =
         inst(option opLdp of Op with let mode = m end array of a b base end)
     let stp(a: Int b: Int base: Int m: Mode): Inst =

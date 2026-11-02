@@ -144,6 +144,12 @@ export
         uses: Array(Int)
         (* The comparisons each fused into the branch on it *)
         fused: Array(Bool)
+        (* The addresses folded into the one load or store of each, with an
+         * index register: each one's index (~1 for one not folded) and its
+         * shift; and the values computed only for those, which are not *)
+        indexOf: Array(Int)
+        shiftOf: Array(Int)
+        folded: Array(Bool)
         slotAt: Array(Int)
         (* The machine block being filled, and the source position of what
          * is being selected *)
@@ -396,10 +402,12 @@ export
         end
 
     (* Memory at a value plus imm, for a load or store of width bytes: a
-     * symbol the unit defines, by its page and its offset in the page; or
-     * the offset of a ptrAdd of a constant folded in, then an immediate
-     * offset, scaled or unscaled, if it fits, else the address computed *)
-    Let Address = Tuple base: Int mode: minst.Mode end
+     * symbol the unit defines, by its page and its offset in the page; a
+     * ptrAdd folded into it, as a base and an index register (index, ~1 for
+     * none); or the offset of a ptrAdd of a constant folded in, then an
+     * immediate offset, scaled or unscaled, if it fits, else the address
+     * computed *)
+    Let Address = Tuple base: Int mode: minst.Mode index: Int end
     let fits(imm: Int width: Int): Bool =
         {{imm >= 0} andif {imm is {{imm / width} * width}} andif {{imm / width} < 4096}}
             orif {{imm >= ~256} andif {imm < 256}}
@@ -419,7 +427,12 @@ export
             let symbol = maybe.unwrap(:String localSymbol(s v imm))
             let t = temp(s ssa.typePtr)
             emit(s minst.adrp(t symbol minst.relocPage))
-            tuple let base = t let mode = minst.pageOff(symbol minst.relocPage) end
+            tuple let base = t let mode = minst.pageOff(symbol minst.relocPage) let index = ~1 end
+        elsif s.indexOf[v] >= 0 then
+            tuple
+                let base = r(s maybe.unwrap(:ssa.Inst s.defs[v]).args[0]) let mode = minst.indexed(s.shiftOf[v])
+                let index = r(s s.indexOf[v])
+            end
         else
             let var base = v
             let var offset = imm
@@ -431,13 +444,13 @@ export
                     offset := imm + maybe.unwrap(:Int constOf(s p.args[1]))
                 end
             end
-            if fits(offset width) then tuple let base = r(s base) let mode = minst.offset(offset) end
+            if fits(offset width) then tuple let base = r(s base) let mode = minst.offset(offset) let index = ~1 end
             else
                 let t = temp(s ssa.typeInt)
                 let a = temp(s ssa.typePtr)
                 emit(s minst.movConst(t offset))
                 emit(s minst.arith(minst.arithAdd a r(s base) t))
-                tuple let base = a let mode = minst.modeBase end
+                tuple let base = a let mode = minst.modeBase let index = ~1 end
             end
         end
 
@@ -559,18 +572,23 @@ export
                 when opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opCopy, opToVal, opFromVal then emitMove(s d a(0))
                 (* A byte extended, unless it is the result of a call in the
                  * unit that comes back extended (codegen's definedSymbols) *)
-                when opSext8 then if extended(s i.args[0]) then emitMove(s d a(0)) else emit(s minst.sxtb(d a(0))) end
-                when opZext8 then if extended(s i.args[0]) then emitMove(s d a(0)) else emit(s minst.andImm(d a(0) 255)) end
+                when opSext8 then
+                    if extended(s i.args[0]) then emitMove(s d a(0)) else emit(s minst.sxtb(d a(0))) end
+                when opZext8 then
+                    if extended(s i.args[0]) then emitMove(s d a(0)) else emit(s minst.andImm(d a(0) 255)) end
                 when opLoad then
                     let width = if i.width is 8 then minst.load64 elsif i.width is 4 then minst.loadS32
                         elsif i.signed then minst.loadS8 else minst.loadU8 end
                     let at = address(s i.args[0] i.imm if i.width >= 4 then i.width else 1 end)
-                    emit(s minst.load(width d at.base at.mode))
+                    emit(s if at.index >= 0 then minst.loadIndex(width d at.base at.index s.shiftOf[i.args[0]])
+                        else minst.load(width d at.base at.mode) end)
                 when opStore then
                     let width = if i.width is 8 then minst.store64 elsif i.width is 4 then minst.store32
                         else minst.store8 end
                     let at = address(s i.args[0] i.imm if i.width >= 4 then i.width else 1 end)
-                    emit(s minst.store(width zeroOr(s i.args[1]) at.base at.mode))
+                    emit(s if at.index >= 0 then minst.storeIndex(width zeroOr(s i.args[1]) at.base at.index
+                        s.shiftOf[i.args[0]])
+                    else minst.store(width zeroOr(s i.args[1]) at.base at.mode) end)
                 when opCall, opCallIndirect then call(s i)
             end
         end
@@ -815,6 +833,43 @@ export
                     when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then ok
                 end
             end
+            (* The addresses folded into loads and stores: a ptrAdd of a
+             * base and an index, or of an index times the access's width
+             * (an array's element), made in the access's block for it
+             * alone, the multiplication too *)
+            let indexOf = array of(nValues ~1)
+            let shiftOf = array of(nValues 0)
+            let folded = array of(nValues false)
+            let constAt(v: Int): maybe.T(Int) =
+                if maybe.isSome(:ssa.Inst defs[v]) andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[v]) ssa.opConst) then
+                    maybe.some(:Int maybe.unwrap(:ssa.Inst defs[v]).imm)
+                else maybe.none(:Int) end
+            for b = 0 upto {nBlocks - 1} do
+                let insts = ssa.block(f b).insts
+                let here(v: Int): Bool = {defBlock[v] is b} andif {uses[v] is 1} andif maybe.isSome(:ssa.Inst defs[v])
+                for k = 0 upto {vector.length(:ssa.Inst insts) - 1} do
+                    let i = vector.get(:ssa.Inst insts k)
+                    if {ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opStore)} andif {i.imm is 0} andif here(i.args[0])
+                            andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[i.args[0]]) ssa.opPtrAdd)
+                            andif maybe.isNone(:Int constAt(maybe.unwrap(:ssa.Inst defs[i.args[0]]).args[1])) then
+                        let v = i.args[0]
+                        let x = maybe.unwrap(:ssa.Inst defs[v]).args[1]
+                        let width = if i.width >= 4 then i.width else 1 end
+                        let log = if width is 8 then 3 elsif width is 4 then 2 else 0 end
+                        folded[v] := true
+                        let scale = if here(x) andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[x]) ssa.opMul) then
+                            constAt(maybe.unwrap(:ssa.Inst defs[x]).args[1])
+                        else maybe.none(:Int) end
+                        if {log > 0} andif maybe.isSome(:Int scale) andif {maybe.unwrap(:Int scale) is width} then
+                            indexOf[v] := maybe.unwrap(:ssa.Inst defs[x]).args[0]
+                            shiftOf[v] := log
+                            folded[x] := true
+                        else
+                            indexOf[v] := x
+                        end
+                    end
+                end
+            end
             (* The stack slots, after the outgoing arguments *)
             let nSlots = vector.length(:ssa.Slot f.slots)
             let slotAt = array of(nSlots 0)
@@ -834,7 +889,8 @@ export
                 let types = vector.new(:ssa.Type)
                 let layout = vector.new(:Int) let prefix = prefix let defined = defined
                 let blockOf = array of(nBlocks ~1) let defs = defs let defBlock = defBlock let uses = uses
-                let fused = fused let slotAt = slotAt let var b = 0 let var loc = ssa.noLoc
+                let fused = fused let indexOf = indexOf let shiftOf = shiftOf let folded = folded let slotAt = slotAt
+                let var b = 0 let var loc = ssa.noLoc
             end
             for v = 0 upto {nValues - 1} do
                 vector.append(:ssa.Type s.types ssa.typeOf(f v))
@@ -860,7 +916,7 @@ export
                     for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
                         let i = vector.get(:ssa.Inst blk.insts k)
                         s.loc := i.loc
-                        instruction(s i)
+                        if {extent i.results isnot 1} orif not(folded[i.results[0]]) then instruction(s i) end
                     end
                     s.loc := blk.termLoc
                     terminator(s blk.term)

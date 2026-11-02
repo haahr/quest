@@ -32,14 +32,18 @@ export
             when arithFmul then "fmul" when arithFdiv then "fdiv"
         end
 
-    (* The memory a mode addresses from a base register *)
-    let address(n: Names base: Int m: minst.Mode): String =
+    (* The memory a mode addresses from a base register (and an index
+     * register, for modeIndex) *)
+    let address(n: Names base: Int index: Int m: minst.Mode): String =
         case m
             when modeOffset with x then "[" <> n.full(base) <> ", " <> immediate(x.imm) <> "]"
             when modeBase then "[" <> n.full(base) <> "]"
             when modePre with x then "[" <> n.full(base) <> ", " <> immediate(x.imm) <> "]!"
             when modePost with x then "[" <> n.full(base) <> "], " <> immediate(x.imm)
             when modePageOff with x then "[" <> n.full(base) <> ", " <> asm.reference(x.symbol x.reloc true) <> "]"
+            when modeIndex with x then
+                let shift = if x.shift > 0 then ", lsl #" <> conv.int(x.shift) else "" end
+                "[" <> n.full(base) <> ", " <> n.full(index) <> shift <> "]"
         end
 
     (* Whether a mode needs a load's or store's unscaled form, for width
@@ -48,13 +52,14 @@ export
         case m
             when modeOffset with x then
                 {x.imm < 0} orif {x.imm isnot {{x.imm / width} * width}} orif {{x.imm / width} >= 4096}
-            when modeBase, modePre, modePost, modePageOff then false
+            when modeBase, modePre, modePost, modePageOff, modeIndex then false
         end
 
     (* A load or store: its scaled mnemonic, its unscaled one, the register
      * as the width names it, and its address *)
-    let access(n: Names scaled: String unscaledForm: String t: String base: Int m: minst.Mode width: Int): String =
-        {if unscaledOffset(m width) then unscaledForm else scaled end} <> " " <> t <> ", " <> address(n base m)
+    let access(n: Names scaled: String unscaledForm: String t: String rs: Array(Int) m: minst.Mode width: Int): String =
+        {if unscaledOffset(m width) then unscaledForm else scaled end} <> " " <> t <> ", "
+            <> address(n rs[1] if extent rs > 2 then rs[2] else ~1 end m)
 
     (* A register as the unwind information names it *)
     let cfiName(r: Int): String =
@@ -96,19 +101,21 @@ export
             when opCset with x then "cset " <> n.full(rs[0]) <> ", " <> condition(x.cond)
             when opLoad with x then
                 case x.load
-                    when load64 then access(n "ldr" "ldur" n.full(rs[0]) rs[1] x.mode 8)
-                    when loadS32 then access(n "ldrsw" "ldursw" n.full(rs[0]) rs[1] x.mode 4)
-                    when loadS8 then access(n "ldrsb" "ldursb" n.full(rs[0]) rs[1] x.mode 1)
-                    when loadU8 then access(n "ldrb" "ldurb" n.half(rs[0]) rs[1] x.mode 1)
+                    when load64 then access(n "ldr" "ldur" n.full(rs[0]) rs x.mode 8)
+                    when loadS32 then access(n "ldrsw" "ldursw" n.full(rs[0]) rs x.mode 4)
+                    when loadS8 then access(n "ldrsb" "ldursb" n.full(rs[0]) rs x.mode 1)
+                    when loadU8 then access(n "ldrb" "ldurb" n.half(rs[0]) rs x.mode 1)
                 end
             when opStore with x then
                 case x.store
-                    when store64 then access(n "str" "stur" n.full(rs[0]) rs[1] x.mode 8)
-                    when store32 then access(n "str" "stur" n.half(rs[0]) rs[1] x.mode 4)
-                    when store8 then access(n "strb" "sturb" n.half(rs[0]) rs[1] x.mode 1)
+                    when store64 then access(n "str" "stur" n.full(rs[0]) rs x.mode 8)
+                    when store32 then access(n "str" "stur" n.half(rs[0]) rs x.mode 4)
+                    when store8 then access(n "strb" "sturb" n.half(rs[0]) rs x.mode 1)
                 end
-            when opLdp with x then "ldp " <> n.full(rs[0]) <> ", " <> n.full(rs[1]) <> ", " <> address(n rs[2] x.mode)
-            when opStp with x then "stp " <> n.full(rs[0]) <> ", " <> n.full(rs[1]) <> ", " <> address(n rs[2] x.mode)
+            when opLdp with x then
+                "ldp " <> n.full(rs[0]) <> ", " <> n.full(rs[1]) <> ", " <> address(n rs[2] ~1 x.mode)
+            when opStp with x then
+                "stp " <> n.full(rs[0]) <> ", " <> n.full(rs[1]) <> ", " <> address(n rs[2] ~1 x.mode)
             when opAdrp with x then "adrp " <> n.full(rs[0]) <> ", " <> asm.reference(x.symbol x.reloc false)
             when opAddPageOff with x then
                 "add "
