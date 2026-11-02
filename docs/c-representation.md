@@ -875,15 +875,8 @@ unbounded generic functions called with 16-byte record fat pointers (`QRecordVal
 - **Open Type Arguments**: A call whose type arguments mention the caller's own type parameters
   (`pack(:Array(Tuple v: A end) ...)` inside a function of `A`) is not specialized, since the clone would have no
   descriptor for `A`; the caller's own specializations specialize such calls in turn.
-
-#### 4. Optimization via Inlining and Partial Evaluation
-While the uniform quantifier rule guarantees modular separate compilation, it does not mandate runtime overhead when
-optimizations are enabled:
-- **Inlining:** When a polymorphic call site is inlined into the caller, the concrete type descriptor becomes statically
-  known. If the inlined body does not perform dynamic inspection or packaging, the unused descriptor parameter is
-  eliminated via dead-code elimination.
-- **Partial Evaluation with Respect to Types (Specialization):** Call sites with concrete type arguments can be
-  specialized at compile time, eliminating descriptor parameters and generating unboxed, zero-overhead native code.
+- **Inlining** (the self-hosted compiler): a polymorphic function inlined at closed type arguments has them
+  substituted, so no call, descriptor, or layout conversion is left ([ir.md](ir.md) §8.6).
 
 #### 4. Descriptor Structure and Memory Management
 Every type descriptor is an instance of `QTypeDescriptor`:

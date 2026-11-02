@@ -1527,7 +1527,7 @@ class CPrinter:
         self.indent -= 1
         self.emit("}")
 
-    # Auto values (docs/c-representation.md §6.4.4): a type component's
+    # Auto values (docs/c-representation.md §8.1): a type component's
     # descriptor and the payload, stored in the witness-independent layout
     # (docs/c-representation.md §8), as the represent pass converted it
 

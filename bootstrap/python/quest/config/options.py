@@ -43,7 +43,7 @@ class CompilerOptions:
         if self.whole_program:
             return False
         # The C backends' phases: the current emitter's, and the IR's
-        # (docs/ir.md §12, step 5)
+        # (docs/testing.md §2.3)
         c_phases = ("codegen_c", "run_c_compiled")
         if self.stop_after in c_phases:
             return True

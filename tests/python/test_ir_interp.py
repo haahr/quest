@@ -1,4 +1,4 @@
-"""The IR interpreter (quest/interpreter/ir_interp.py, docs/ir.md §12 step 4).
+"""The IR interpreter (quest/interpreter/ir_interp.py, docs/testing.md §2.3).
 
 Every golden test program runs through it in run_tests.py's run_ir phases,
 compared with the source interpreter's output; these tests check particular

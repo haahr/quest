@@ -1,5 +1,5 @@
-"""An interpreter for the IR (docs/ir.md §12, step 4), a test oracle for the
-lowering and the passes.
+"""An interpreter for the IR (docs/testing.md §2.3, the run_ir phases), a
+test oracle for the lowering and the passes.
 
 The test runner runs every golden test program's IR through it and compares the
 output with the source interpreter's (tests/golden/run), so that a lowering or a

@@ -1,4 +1,4 @@
-"""Lowering from the typed AST to Core IR (docs/ir.md §12, step 3).
+"""Lowering from the typed AST to Core IR (docs/ir.md §1).
 
 value(e) lowers an expression, emitting statements into the current body, and
 returns the atom holding its value; effect(e) lowers one for its effect alone.

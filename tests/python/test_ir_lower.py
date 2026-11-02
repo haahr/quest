@@ -1,5 +1,5 @@
-"""Lowering from the typed AST to Core IR (quest/ir/lower.py, docs/ir.md §12
-step 3).
+"""Lowering from the typed AST to Core IR (quest/ir/lower.py, docs/ir.md
+§1).
 
 Every golden test program is lowered and verified by run_tests.py's ir_core
 phase; these tests check particular decisions of the lowering on small
