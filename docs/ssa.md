@@ -193,7 +193,11 @@ internal error.
   left are renumbered. A function that enters a `try` keeps all its slots, since its handler must see what the body
   stored (arm64.md §3.6); a variable captured by a closure is a heap cell, and one passed as a `var` argument keeps
   its slot, its address escaping. `language/mutable_locals` covers each kind.
-- **`ssa/tailCalls`** marks calls in tail position (§3, arm64.md §3.7).
+- **`ssa/tailCalls`** marks calls in tail position (§3, arm64.md §3.7): a call whose block returns its results (or the
+  extension of its byte), or jumps, through blocks that do nothing else, to one that does. A block's parameters are
+  taken as what the jump passes them, so that a join's parameter that its block does not return (as a contified
+  loop's exit leaves) does not keep the call from being a tail call: zern's `lp1` and `lp2`, which call each other
+  through their closures, were nested calls, 16,384 deep for each array they filled.
 
 Neither removes values that become dead, such as parameters no load reads; the trivial allocator gives them slots,
 and linear scan none.

@@ -4,10 +4,12 @@
  * 3.7) on functions of the SSA written as text and read by
  * questlang/ssa/parser, each printed before and after the pass and verified:
  * a call whose results are returned; one whose results a jump passes to a
- * block that returns them; one whose byte result is extended, which the
- * caller's caller extends again; and calls that are not in tail position, one
- * whose result is added to and one in a function a slot's address escapes
- * from. *)
+ * block that returns them; one followed by a jump that passes a join's
+ * parameters it does not return (a contified loop's exit); one whose byte
+ * result is extended, which the caller's caller extends again; and calls that
+ * are not in tail position, one whose result is added to, one followed by a
+ * jump to a block that returns another value, and one in a function a slot's
+ * address escapes from. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
@@ -45,6 +47,27 @@ show("results returned through a jump" array of
     "b0(%0: int):"
     "  %1: int = call g(%0)"
     "  jump b1(%1)"
+    "b1(%2: int):"
+    "  return %2"
+    "}"
+end);
+
+show("a join's parameters passed but not returned" array of
+    "function join(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 0"
+    "  %2: int = call g(%0)"
+    "  jump b1(%1, %2)"
+    "b1(%3: int, %4: int):"
+    "  return %4"
+    "}"
+end);
+
+show("a jump to a block that returns another value" array of
+    "function other(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = call g(%0)"
+    "  jump b1(%0)"
     "b1(%2: int):"
     "  return %2"
     "}"

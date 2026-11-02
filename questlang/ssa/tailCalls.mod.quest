@@ -83,18 +83,30 @@ export
         end
 
     (* Whether a jump to t returns exactly values: t's block does nothing but
-     * return its parameters, the arguments being values, or pass them on to
-     * another such block (through at most a few) *)
+     * return, or pass on to another such block (through at most a few), what
+     * are values once its parameters are taken as the jump's arguments. A
+     * parameter the block does not return (one a join left dead) may be
+     * passed anything *)
     let rec returnsThrough(f: Function t: ssa.Target values: Array(Int) depth: Int): Bool =
         begin
             let blk = ssa.block(f t.block)
             let params = vector.toArray(:Int blk.params)
-            if {depth > 8} orif not(vector.empty(:ssa.Inst blk.insts)) orif not(sameValues(t.args values)) then
+            let passed(vs: Array(Int)): Array(Int) =
+                begin
+                    let r = array of(extent vs 0)
+                    for i = 0 upto {extent vs - 1} do
+                        r[i] := vs[i]
+                        for j = 0 upto {extent params - 1} do if vs[i] is params[j] then r[i] := t.args[j] end end
+                    end
+                    r
+                end
+            if {depth > 8} orif not(vector.empty(:ssa.Inst blk.insts)) then
                 false
             else
                 case blk.term
-                    when termReturn with x then sameValues(x.values params)
-                    when termJump with x then returnsThrough(f x.target params {depth + 1})
+                    when termReturn with x then sameValues(passed(x.values) values)
+                    when termJump with x then
+                        returnsThrough(f ssa.target(x.target.block passed(x.target.args)) values {depth + 1})
                     when termNone, termBranch, termSwitch, termTailCall, termTry, termUnreachable then false
                 end
             end
