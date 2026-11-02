@@ -516,24 +516,72 @@ export
      * Functions and the unit
      * ====================================================================== *)
 
-    (* The layout, with the blocks from which every path raises (a check's
-     * raising block, and what only leads to one) moved to its end, in their
-     * order, the entry still first. Laid out where the builder made them, a
-     * check's raising block came between the check and the code after it,
-     * which jumped over it every time (docs/arm64-performance-review.md
-     * section 3.3) *)
-    let coldLast(s: select.Selection): Array(Int) =
+    (* The blocks in the order they are emitted, each by where its code is
+     * (final, past the blocks that only jump), in chains: from the entry,
+     * each block is followed by its best successor not yet placed, so that
+     * the edge falls through, and where none is left, by the next block of
+     * the builder's layout. A successor is better if it is not cold (one
+     * from which every path raises), then if it is in a deeper loop, then if
+     * it makes no call (a proxy's slow path, say, beside the fast path), then
+     * if it comes first in the layout. The cold blocks are last, in the
+     * layout's order. Laid out where the builder made them, a check's
+     * raising block came between the check and the code after it, which
+     * jumped over it every time (docs/arm64-performance-review.md section
+     * 3.3), and so did a proxy's slow path. *)
+    let chains(s: select.Selection final: Array(Int)): Array(Int) =
         begin
+            let m = s.f
             let cold = coldBlocks(s)
-            let order = vector.new(:Int)
+            let depth = machine.loopDepths(m)
             let count = vector.length(:Int s.layout)
+            let n = vector.length(:machine.Block m.blocks)
+            let at = array of(n ~1)
+            for k = 0 upto {count - 1} do at[vector.get(:Int s.layout k)] := k end
+            let calls = array of(n false)
+            for b = 0 upto {n - 1} do
+                let insts = machine.block(m b).insts
+                for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
+                    if machine.isKind(vector.get(:machine.Inst insts j) machine.kindCall) then calls[b] := true end
+                end
+            end
+            let placed = array of(n false)
+            let order = vector.new(:Int)
+            let place(b: Int): Ok =
+                begin
+                    placed[b] := true
+                    vector.append(:Int order b)
+                end
+            let open(b: Int): Bool = {at[b] >= 0} andif {final[b] is b} andif not(placed[b]) andif not(cold[b])
+            let better(a: Int b: Int): Bool =
+                if depth[a] isnot depth[b] then depth[a] > depth[b]
+                elsif calls[a] isnot calls[b] then not(calls[a])
+                else at[a] < at[b] end
+            let var cur = vector.get(:Int s.layout 0)
+            let var next = 0
+            place(cur)
+            let var done = false
+            while not(done) do
+                let insts = machine.block(m cur).insts
+                let var best = ~1
+                for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
+                    let t = vector.get(:machine.Inst insts j).target
+                    if {t >= 0} andif open(final[t]) andif {{best < 0} orif better(final[t] best)} then
+                        best := final[t]
+                    end
+                end
+                while {best < 0} andif {next < count} do
+                    if open(vector.get(:Int s.layout next)) then best := vector.get(:Int s.layout next) end
+                    next := next + 1
+                end
+                if best < 0 then done := true
+                else
+                    place(best)
+                    cur := best
+                end
+            end
             for k = 0 upto {count - 1} do
                 let b = vector.get(:Int s.layout k)
-                if {k is 0} orif not(cold[b]) then vector.append(:Int order b) end
-            end
-            for k = 1 upto {count - 1} do
-                let b = vector.get(:Int s.layout k)
-                if cold[b] then vector.append(:Int order b) end
+                if not(placed[b]) andif {final[b] is b} then place(b) end
             end
             vector.toArray(:Int order)
         end
@@ -572,10 +620,8 @@ export
                 final[b] := if passes(to) then b else to end
             end
             let printed = vector.new(:Int)
-            let order = coldLast(s)
-            for k = 0 upto {extent order - 1} do
-                if final[order[k]] is order[k] then vector.append(:Int printed order[k]) end
-            end
+            let order = chains(s final)
+            for k = 0 upto {extent order - 1} do vector.append(:Int printed order[k]) end
             prologue(e)
             let var liveLabels = 0
             (* The line table: the source position before each instruction

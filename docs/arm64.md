@@ -172,7 +172,10 @@ made for it alone, at the base and the index register, shifted (`ldr x0, [x1, x2
 the `add`; and no extension of a narrow result (ssa.md §2.2) of a call of a function in the unit that returns its
 narrow results extended, which is every one but those that tail-call, for such a result, a function that may not. When
 the code is emitted, blocks that only jump are passed over, a jump to the next block falls through, and a conditional
-branch to the next block is inverted before the block's last jump.
+branch to the next block is inverted before the block's last jump. The blocks are laid out in chains: from the entry,
+each is followed by its best successor not yet placed, one not cold, then in a deeper loop, then making no call (a
+proxy's slow path is not followed into), then first in the builder's order; the blocks from which every path raises
+come last (arm64-performance-review.md §3.3).
 
 ### 3.6. Exceptions
 
