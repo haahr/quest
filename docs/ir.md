@@ -76,6 +76,10 @@ An IR **unit** corresponds to a compilation unit (a program, or a module compile
   C function `qv_<module>_<member>` for each that is a function or a polymorphic value, the ABI other units call
   (`codegen/c/declarations.py`, `module_function_signature`).
 - **Main:** the program's top-level phrases, in order, as the body of an initializer, including echo (§6.6).
+- **A phrase unit** (`unit.phrase`), one input of the JIT's REPL ([jit.md](jit.md) §3.2), has an empty main: its
+  phrases are the initializer of a module of its own, `qj_<n>`, whose exported record holds its top-level bindings,
+  and the modules it declares are named `qj_<n>_<name>`. Earlier inputs' bindings are members of their modules,
+  which it imports.
 - **Imports:** the units it depends on and the symbols it uses from them; interfaces (`.qi`) are unchanged.
 
 Type declarations do not appear as items: the shapes in the IR carry everything later stages need, and the printer

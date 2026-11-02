@@ -143,7 +143,7 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   frames by the frame-pointer chain; step 3, `os/value` and `os/code` ([new-libraries.md](new-libraries.md) §4.3);
   step 4, interface fingerprints in every module unit (`qh_`); step 5, the arm64 encoder;
   step 6, the REPL on `--jit`; step 7, imports and `-i`;
-  step 8, files and `-e` ([benchmarks.md](benchmarks.md) §9 has the times).
+  step 8, files and `-e` ([benchmarks.md](benchmarks.md) §10 has the times).
 
 ---
 

@@ -55,7 +55,9 @@ Decided 2026-11-01:
   - the driver links all of `lib/`, so the JIT compiles no imported module from source at first (§3.4);
   - the transcripts that show an accepted difference are skipped under `--jit` rather than given goldens of their own
     (§5);
-  - phrase units stay a unit kind of their own (§3.2), not modules in disguise.
+  - phrase units stay a unit kind of their own (§3.2), not modules in disguise. *Revised* in step 6, and kept by
+    the user's decision of 2026-11-01: a phrase unit is still a unit kind of its own (`nodes.Phrase`), but its top
+    level is the initializer of a module of its own, whose record holds its bindings (§3.2).
 
 ## 2. Pipeline
 
@@ -83,32 +85,68 @@ them are new.
 
 ### 3.2. Inputs as units
 
-Each input (one or more phrases, `let x = 1; let y = 2; x + y`) is compiled as one **phrase unit**, a new unit kind
-beside program and module units:
+Each input (one or more phrases, `let x = 1; let y = 2; x + y`) is compiled as one **phrase unit**, a unit kind of its
+own beside program and module units (`nodes.Unit.phrase`, a `nodes.Phrase`: the input's number and whether its
+results are captured, §3.8). The session numbers inputs from 1, and every name a unit defines that another unit can
+see carries its number.
+
+**An input is a module of its own.** `lower.lowerPhrases` lowers the phrases as `program()` lowers a program's,
+into the initializer of a module named for the input, `qj_<n>`. The module's members are the input's top-level
+value bindings, each a field `v<symbol>` named for its symbol's number. When the phrases have run, the initializer
+makes the module's record, with a `var` field for each `var`, and the unit exports it as `qm_qj_<n>`; a later
+input reaches the input's bindings only through that record. For the REPL's inputs
+
+```quest
+let x = 1                 (* input 1 *)
+let var count = 0         (* input 2 *)
+let f(n: Int): Int = n + x
+count := f(count)         (* input 3 *)
+```
+
+input 1's unit is a module `qj_1` with one member, `x`, and a record `{v<x> = 1}`; input 2's is `qj_2`, whose
+record holds `count`, a `var` field, and `f`'s closure; `f`, compiled in input 2, reads `x` as a member of
+`qj_1`, which input 2 imports. Input 3 imports `qj_2` alone: it reads `f` as a member of it, `count` through its
+field's address, and stores the result into that field.
+
+Why a module: a module's members are what the compiler already keeps whatever its passes do, and a member's
+representation is the one its record's layout fixes (an imported member is read by its record's offset table, at
+its index in name order, in its slot form). A global per binding, the first design, would have needed every pass to
+keep each top-level variable alive and in a representation that later units agree on, which nothing in the compiler
+ensures today.
 
 - **Namespaces stack.** An input sees every binding of the inputs before it, as the interpreter's frames do; the type
-  checker's environment already provides that.
-- **An input is a module of its own.** `lower.lowerPhrases` lowers the phrases, as a program's are lowered, into the
-  initializer of a module named for the input (`qj_<n>`), whose members are the input's top-level bindings (field
-  `v<symbol>`) and its expressions' values (`r<k>`). When the phrases have run, the initializer makes the module's
-  record, with a `var` field for a `var`, and exports it (`qm_qj_<n>`). A top-level binding is then a module member,
-  which the compiler already keeps whatever the passes do, in a representation that the record's layout fixes.
-- **What an input can reach of an earlier one** is that input's record: a later input imports it, as a unit imports a
-  module (`nodes.Import`, with the record's type), and reads a binding as the member it is; a top-level function is
-  reached through the field holding its closure. Calling its code directly, or inlining it, is a later optimization
-  (§6). Rebindings are distinct symbols already (ir.md §2), so they are distinct fields.
-- Global `var`s cannot be captured by functions (the rule the REPL already reports), so an earlier input's `var` is
-  read and written only by top-level code: a later input reads it through its field's address and writes it with a
-  store to the field, in the record's payload, which every copy of the record shares.
+  checker's environment already provides that. The session keeps, for each symbol an input that ran bound, where it
+  lives (`lower.Earlier`: the module whose record holds it, its field, the record's type, and whether it is a `var`),
+  and passes them to the next input's lowering.
+- **Reading an earlier binding.** In a later input, a variable whose symbol the input does not bind and the session
+  knows is a member of that module: the input imports the module as a unit imports any module (a `nodes.Import` of
+  `qj_<n>`, with the record's type), and reads the binding as an `opModuleMember`. A top-level function is reached
+  through the field holding its closure; calling its code directly, or inlining it, is a later optimization (§6).
+  Rebindings are distinct symbols already (ir.md §2), so they are distinct fields, and a function an earlier input
+  made keeps the binding it saw (lexical semantics, §1).
+- **Writing an earlier `var`.** Global `var`s cannot be captured by functions (the rule the REPL already reports), so
+  an earlier input's `var` is read and written only by later top-level code: through its field's address
+  (`opAddrField` on the record) and with a store to the field (`sStoreField`). The field is in the record's payload,
+  which every copy of the record shares, so a write is seen by every later input.
+- **What is not a field.** A binding of type `Ok` has no words, so it is not in the record, and a later input reads
+  it as `ok`. A named exception is a field when a phrase declares it (`exception E end`); one a `let` binds is the
+  `let`'s value, its field.
+- **Modules an input declares** (`module k: I export ... end`) are part of its unit, as a program's are. Their names
+  begin with the input's (`qj_<n>_k`), so that each input's are its own (the REPL allows `module k` twice), and their
+  records are exported, so that a later input that names `k` imports its record. So, likewise, are the modules an
+  input imports: a later input that names one imports it by its own record (`qm_<module>`, the driver's).
 - **The entry** (`qj_<n>_entry`) is a function of no arguments: it registers the unit's dictionaries and function
   table, calls its imports' initializers (each guarded, so the driver's already-initialized modules, and earlier
   inputs', return at once), and its modules', the input's own last. Unlike a program's `main`, it does not
-  initialize the collector or the builtins. The input's initializer is the frame `<main>` in tracebacks.
-- **Modules declared in an input** (`module k: I export ... end`) are part of its unit, as they are of a program's.
-  Their names begin with the input's (`qj_<n>_k`), so that each input's are its own, and their records are exported,
-  so that a later input that names `k` imports its record; so are the modules an input imports, by their own
-  records. Tracebacks show the names they were declared with (`k.<init>`), and the input's top level as `<main>`,
-  as the interpreter's do, so nothing of this shows but in a debugger.
+  initialize the collector or the builtins. With capture (§3.8) it starts the capture first and leaves the captured
+  text in `qj_<n>_echo` last.
+- **An input that fails** raises before its initializer makes the record. The REPL forgets its bindings (the
+  environment rolls back) and the session records none of them, so no later input reads its record; its code and
+  data stay loaded, unused. A write it made to an earlier input's `var` stays, as in the interpreter.
+- **What a user sees of it:** nothing, but in a debugger. Tracebacks name a declared module by the name it was
+  declared with (`k.<init>`) and the input's top level `<main>`, as the interpreter's do (§3.9), and diagnostics never
+  name the modules. The SSA builds no direct-call adapters (`qv_qj_<n>_<field>`) for a phrase unit's members, which
+  only records are read through.
 
 ### 3.3. The driver as the library
 
@@ -232,9 +270,13 @@ handler whichever backend built the host.
 - **Results** are in the entry's result globals, one per phrase, each with the phrase's static type, which the
   session knows.
 - **An exception** is reported as compiled code reports it through the driver (exceptions.md §2.1): the raise site,
-  from the location string that `quest_raise_at` receives (a JIT'd unit's sites name `<repl>`), and the frames
-  (§3.9), without the payload (§4). The input is then rolled back as now: the environment forgets its bindings; its
-  globals stay in memory, unreachable. Writes it made to earlier inputs' `var`s stay, as in the interpreter
+  from the location string that `quest_raise_at` receives, and the frames (§3.9), without the payload (§4). A unit
+  names its source `<repl>#N`, N the input's number, so the site says which input raised, even a function an
+  earlier input made; the session finds that input's source and reports the error in it, under its own name
+  (`<repl>`, or the file's). The frames are those above `os/code`'s `call` (or the session's `run`, where a C-built
+  driver keeps no frame of `call`'s), ending with `<main>`, the input's top level; the runtime's runs of one frame
+  are kept. The input is then rolled back as now: the environment forgets its bindings, and its code and record stay
+  in memory, unreachable. Writes it made to earlier inputs' `var`s stay, as in the interpreter
   (`tests/golden/repl/rollback.out`).
 - **Output** goes through the runtime's writers, which the host shares, so the order of a phrase's output and the
   REPL's is kept.
