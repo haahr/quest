@@ -11,8 +11,8 @@ Quest has two sets of benchmarks:
   backend does not slow it or its output (`python tests/perf/measure.py`, compared with `tests/perf/baseline.json`).
 
 This document describes the MLton suite, records the baseline taken on 2026-10-28, lists what profiling the
-slowest benchmarks found and what could be done about it, compares the C and arm64 backends (§4 to §6), and
-measures the inliner (§7).
+slowest benchmarks found and what could be done about it, compares the C and arm64 backends (§4 to §6),
+measures the inliner (§7), and times every backend and the inliner's settings at one commit (§11).
 
 ## 1. The MLton suite
 
@@ -812,3 +812,129 @@ that does little (`thunks` compiles many generic functions and their thunks), an
 does some work (`sort_operations`); a program that runs long would gain what compiled code gains over the
 interpreter. Whether the JIT becomes the default is decided from these (jit.md §7).
 
+
+## 11. Every backend, and the inliner's settings (2026-11-02)
+
+The whole suite through every backend at one commit, `9a08223f` (ABI 63), after the arm64 performance review's first
+two batches ([arm64-performance-review.md](arm64-performance-review.md) §4), escape analysis (§9), and options as
+values (§8); the six programs that review follows, timed again on an idle machine; and the inliner's settings, each
+varied alone ([inlining.md](inlining.md) §1).
+
+### 11.1. How they were taken
+
+As §7.1: `run.py time --clean --scale 0.25 --timeout 1800`, one run each, with `--backend c`, `--backend c
+--whole-program`, `--backend ssac`, `--backend arm64`, `--backend arm64 --whole-program`, and `--jit`, in that order,
+each waiting until the load average had been under 6 for two minutes. Another worktree's work kept the load at 1.1 to
+2.2 throughout, on one or two of the machine's cores. The compiler was the release cut at `9a08223f`, a normal (not
+whole-program) build, so the JIT ran in a driver the C backend built; its times include compiling each program, which
+it does on every run. Then the six through `tools/perf/variants.py` and `tools/perf/timeit.py --rounds 5`, and the
+inliner's settings through C at `--scale 0.05`, each with `QUEST_INLINE` set and `--clean`. The times are in
+`benchmarks/mlton/baselines/2026-11-02/`: `quest-c-9a08223f.jsonl`, `quest-c-whole-9a08223f.jsonl`,
+`quest-ssac-9a08223f.jsonl`, `quest-arm64-9a08223f.jsonl`, `quest-arm64-whole-9a08223f.jsonl`,
+`quest-jit-9a08223f.jsonl`, and `quest-c-inline-SETTING-9a08223f.jsonl`.
+
+### 11.2. Programs
+
+| System | Geometric mean of time / MLton's | Without fib, tailfib, tak, and tensor | Run time, all 46 |
+|---|--:|--:|--:|
+| C, `7ef34e42` (§8.2) | 3.50 | 3.94 | 31.7 min |
+| C | **3.54** | 4.00 | 31.7 min |
+| C, `--whole-program` | **3.34** | 3.75 | 30.8 min |
+| ssac, `88d7970b` (§6.3) | 7.42 | 8.94 | 65.2 min |
+| ssac | **3.48** | 4.08 | 37.9 min |
+| arm64, `36244e7b` (§7.2) | 7.79 | 7.95 | 60.4 min |
+| arm64 | **5.17** | 5.30 | 44.9 min |
+| arm64, `--whole-program` | **4.86** | 4.97 | 41.0 min |
+| JIT | **6.11** | 6.39 | 46.6 min |
+
+Each backend's time against C's (below 1 is faster), for the programs furthest from it, and the geometric means:
+
+| Benchmark | C (s) | C whole | ssac | arm64 | arm64 whole | JIT |
+|---|--:|--:|--:|--:|--:|--:|
+| tailfib | 0.25 | 1.00 | 1.07 | 16.65 | 16.51 | 16.04 |
+| fib | 0.74 | 1.02 | 1.05 | 9.08 | 9.12 | 8.86 |
+| tak | 0.81 | 1.02 | 1.03 | 7.48 | 7.41 | 7.22 |
+| md5 | 17.10 | 0.96 | 3.94 | 6.83 | 5.88 | 3.69 |
+| checksum | 49.94 | 0.97 | 3.65 | 6.39 | 4.29 | 4.12 |
+| psdes-random | 19.93 | 1.01 | 4.09 | 4.77 | 3.85 | 4.24 |
+| even-odd | 1.20 | 0.64 | 1.02 | 3.38 | 3.38 | 3.25 |
+| string-concat | 7.03 | 1.00 | 1.36 | 2.78 | 1.73 | 1.99 |
+| zern | 5.25 | 0.93 | 0.94 | 2.63 | 2.63 | 2.97 |
+| mpuz | 10.10 | 1.01 | 1.13 | 2.01 | 1.84 | 1.99 |
+| vector64-concat | 3.50 | 1.03 | 1.02 | 1.80 | 1.80 | 2.44 |
+| vector32-concat | 5.13 | 1.12 | 0.99 | 1.77 | 1.79 | 2.20 |
+| hamlet | 15.28 | 0.87 | 0.96 | 1.40 | 1.14 | 7.81 |
+| ratio-regions | 8.67 | 0.90 | 0.99 | 1.08 | 1.04 | 3.09 |
+| flat-array | 64.44 | 0.92 | 3.88 | 1.04 | 1.10 | 1.12 |
+| count-graphs | 17.31 | 0.96 | 2.27 | 0.91 | 0.89 | 1.17 |
+| boyer | 33.34 | 0.91 | 1.71 | 0.86 | 0.84 | 1.00 |
+| tensor | 80.18 | 0.99 | 0.18 | 0.23 | 0.23 | 0.23 |
+| imp-for | 5.98 | 1.00 | 0.04 | 0.95 | 0.94 | 0.93 |
+| **geometric mean, all 46** | | **0.94** | **0.98** | **1.46** | **1.37** | **1.73** |
+| without fib, tailfib, tak, and tensor | | 0.94 | 1.02 | 1.32 | 1.24 | 1.60 |
+
+- **The SSA's backends have caught up.** ssac takes 0.47 of its time at §6.3 and now runs as fast as C (0.98), ahead
+  of it on 24 of the 46; arm64 takes 0.66 of its time at §7.2, and 1.46 of C's. C itself is where §8.2 left it.
+- **On the six, arm64 is level with C:** the geometric mean of their ratios is 1.04 here, and 1.06 in five rounds
+  of `timeit.py` ([arm64-performance-review.md](arm64-performance-review.md) §4, the baseline). The rest of arm64's
+  distance from C is in a few programs. Without the four, three (md5, checksum, and psdes-random) are 46 percent of
+  it, by the sum of the logarithms of the ratios, and with even-odd, string-concat, zern, and mpuz, 80 percent; the
+  other 35 take 1.08 of C's time.
+- **md5, checksum, and psdes-random are slow in the SSA, not the code generator:** ssac takes 3.7 to 4.1 times C's
+  time on them, as arm64 does 4.8 to 6.8. What the C path keeps and the SSA loses is not yet known (they are word
+  arithmetic in loops); fixing it speeds up ssac, arm64, and the JIT alike. flat-array, count-graphs, and boyer are
+  slow through ssac only (1.7 to 3.9), and arm64 is faster than C on them.
+- **zern, string-concat, mpuz, and the vector concatenations are the code generator's:** ssac takes about C's time
+  and arm64 1.8 to 2.8 times it. even-odd (3.4 through arm64, 1.0 through ssac) is a second of mutual tail calls,
+  as the four are small recursions that clang transforms; it is to be looked at before being counted with these.
+- **Whole programs** take 0.94 of a separate build's time through C and 0.94 through arm64, which gains most where
+  the library's members inline into the program's loops: checksum 0.67, peek 0.67, string-concat 0.62, zebra 0.82.
+- **The JIT** takes 1.18 of arm64's time (geometric mean), since it compiles the program on each run: hamlet, the
+  largest, takes 5.6 times arm64's time, and ratio-regions 2.9. Where the run is long, it is near arm64, and it is
+  faster on md5, checksum, and psdes-random (0.54 to 0.89 of arm64's), most likely because their calls into the
+  library go to the driver's copies, which the C backend built ([jit.md](jit.md) §3.4).
+
+### 11.3. The inliner's settings
+
+Each of §7's settings ([ir.md](ir.md) §8.6) varied alone from the defaults, the suite's time with each as a fraction
+of its time with the defaults (geometric mean of the 46), and the programs that moved more than 8 percent:
+
+| Setting | Default | Time / default's | Programs that moved most |
+|---|--:|--:|---|
+| `size=0` | 30 | 1.051 | checksum 2.50, md5 1.53, life 1.26, hamlet 1.26 |
+| `size=15` | | 1.013 | life 1.79 |
+| `size=60` | | 1.008 | |
+| `size=120` | | 1.004 | |
+| `rounds=1` | 6 | 1.060 | psdes-random 1.57, md5 1.56, life 1.43, matrix-multiply 1.43, mpuz 1.38 |
+| `rounds=3` | | 1.007 | life 1.15 |
+| `rounds=12` | | 1.002 | string-concat 1.09 |
+| `polymorphic=0` | 30 | 1.004 | |
+| `polymorphic=60` | | 1.000 | ratio-regions 0.92 |
+| `function=0` | 10 | 1.016 | tsp 1.12, vliw 1.11 |
+| `function=30` | | 1.034 | peek 1.41, tsp 1.10, ratio-regions 0.88 |
+| `constant=0` | 5 | 1.029 | model-elimination 1.29, mpuz 1.10 |
+| `constant=20` | | 1.021 | tsp 1.12 |
+| `growth=25` | 50 | 1.024 | mlyacc 1.10, hamlet 1.09 |
+| `growth=100` | | 0.999 | tailmerge 0.86 |
+| `budget=250` | 1000 | 1.006 | |
+| `budget=4000` | | 0.999 | ratio-regions 0.91 |
+
+output1, which writes a file, took 1.38 and 1.51 of its time with `constant=0` and `function=30`, which ran while
+another worktree's load rose to 3.6, and about its default time with every other setting; it is left out of those
+two rows' means.
+
+**The defaults stay.** No setting is faster than them by more than 0.1 percent, so none was retaken at `--scale 0.25`.
+Each default is near the best of its range:
+
+- **size (30):** inlining nothing larger than 0 loses checksum's and md5's inner loops, and 15 loses life's (1.79);
+  60 and 120 gain nothing, so 30 is where the gains stop, with room either way.
+- **rounds (6):** one round leaves the calls that inlining exposes (psdes-random, md5, life, matrix-multiply,
+  mpuz); three is nearly enough (life 1.15), and twelve gains nothing, the simplifier having reached its fixed point.
+- **polymorphic (30):** neither 0 nor 60 changes the suite's time. The bonus matters only for a callee that a
+  closed type argument makes small enough, which in the suite is ratio-regions, gaining 8 percent at 60 and losing
+  4 at 0; kept, as it costs nothing.
+- **function (10) and constant (5):** both directions are slower. Without them, functions that take a known function
+  or constant (tsp's and vliw's iterators, model-elimination's) are not inlined; with three or four times the bonus,
+  larger callees are, and peek, tsp, and model-elimination grow and slow.
+- **growth (50 percent) and budget (1000):** limits rather than levers: halving the growth costs 2 percent (mlyacc
+  and hamlet stop inlining), and doubling it or raising the budget to 4000 changes nothing, so they rarely bind.

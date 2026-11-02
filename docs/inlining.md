@@ -10,8 +10,10 @@ longer.
 ## 1. Tuning
 
 The threshold (30), the bonuses (30 for closed type arguments, 10 for a known function argument, 5 for a constant),
-the growth bound (half the unit, or 1000), and the bound of six rounds were chosen, not measured. *Done when*
-benchmarks.md records the settings and why.
+the growth bound (half the unit, or 1000), and the bound of six rounds were chosen, not measured. *Done* (2026-11-02):
+[benchmarks.md](benchmarks.md) §11.3 varies each alone across the suite, and keeps them all. No setting is faster
+than the defaults by more than 0.1 percent; one round, a size of 0, or either bonus changed by a factor of three is
+slower by 1.6 to 6 percent.
 
 `QUEST_INLINE` overrides them for measuring, as a list of `name=value` separated by commas, read by `ir/simplify`
 when the compiler starts: `size` (30), `polymorphic` (30), `function` (10), `constant` (5), `growth` (the percent of

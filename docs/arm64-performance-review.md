@@ -557,6 +557,14 @@ not in C's, so `ssac` is now faster than C on four of the six, and the code gene
 - **The inner loop's clears cost about 2%:** life with `qf_nthgen`'s clears left out takes 1.14 of C's time, within
   the noise at this load. The samples on them were the loads' latency. Batch 6 stays deferred.
 
+Taken again on 2026-11-02 at `9a08223f`, five rounds on an idle machine (load 1.2 to 1.7; benchmarks.md §11), the
+six's ratios are the same to within 0.01: arm64 / C life 1.15, ray 0.72, hamlet 1.27, mlyacc 0.99, zebra 1.38,
+nucleic 0.99, and arm64 / `ssac` 1.44, 1.05, 1.30, 1.27, 1.24, 1.13. The load the baseline was taken at did not
+skew it. Across the whole suite, though, the six are no longer where arm64's distance from C is: they take 1.04 of
+C's time, and the suite 1.46, most of the difference in md5, checksum, and psdes-random (which `ssac` is as slow on,
+so the cause is before the code generator) and in zern, string-concat, mpuz, and the vector concatenations (which
+it is not). Batches 4 and 5 are to be measured on those as well as the six.
+
 Each is to be measured as benchmarks.md measures (`run.py time --clean`), and the six here against `ssac` with
 `tools/perf/timeit.py`. The figures above will move: §3.1's and §3.2's interact (fewer spills mean fewer slots to
 clear), and §3.3's makes §3.1's loops shorter.
