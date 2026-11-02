@@ -165,7 +165,9 @@ few constraints, so the patterns are few:
 As built (`codegen/arm64/select`, over `minst`'s instructions, §3.17): immediates
 for `add`, `sub`, and `cmp`; `and`, `orr`, and `eor` with logical (bitmask) immediates; a comparison fused into its
 branch; an `and` of one bit, seen through conversions between words, or a value compared with 0, as `tbz`/`tbnz` or
-`cbz`/`cbnz`, and a switch's case 0 as `cbz`; an `and` of two integer comparisons as `cmp`, `ccmp`, and `b.cond`. When
+`cbz`/`cbnz`, and a switch's case 0 as `cbz`; an `and` of two integer comparisons as `cmp`, `ccmp`, and `b.cond`; a
+load or store at the start of a symbol the unit defines as `adrp` and the access at the symbol's page offset, without
+the `add`. When
 the code is emitted, blocks that only jump are passed over, a jump to the next block falls through, and a conditional
 branch to the next block is inverted before the block's last jump.
 

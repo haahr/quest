@@ -395,15 +395,32 @@ export
             else emit(s minst.cmp(r(s i.args[0]) r(s i.args[1]))) end
         end
 
-    (* Memory at a value plus imm, for a load or store of width bytes: the
-     * offset of a ptrAdd of a constant folded in, then an immediate offset,
-     * scaled or unscaled, if it fits, else the address computed *)
+    (* Memory at a value plus imm, for a load or store of width bytes: a
+     * symbol the unit defines, by its page and its offset in the page; or
+     * the offset of a ptrAdd of a constant folded in, then an immediate
+     * offset, scaled or unscaled, if it fits, else the address computed *)
     Let Address = Tuple base: Int mode: minst.Mode end
     let fits(imm: Int width: Int): Bool =
         {{imm >= 0} andif {imm is {{imm / width} * width}} andif {{imm / width} < 4096}}
             orif {{imm >= ~256} andif {imm < 256}}
+    (* The symbol a value is the address of, if the unit defines it (so it
+     * is 8-byte aligned, as any access's page offset must be scaled) and
+     * the access is at its start *)
+    let localSymbol(s: S v: Int imm: Int): maybe.T(String) =
+        if maybe.isSome(:ssa.Inst s.defs[v]) then
+            let p = maybe.unwrap(:ssa.Inst s.defs[v])
+            if ssa.isOp(p ssa.opSymbol) andif {{p.imm + imm} is 0}
+                    andif hashMap.contains(:String :Bool s.defined p.symbol) then
+                maybe.some(:String p.symbol)
+            else maybe.none(:String) end
+        else maybe.none(:String) end
     let address(s: S v: Int imm: Int width: Int): Address =
-        begin
+        if maybe.isSome(:String localSymbol(s v imm)) then
+            let symbol = maybe.unwrap(:String localSymbol(s v imm))
+            let t = temp(s ssa.typePtr)
+            emit(s minst.adrp(t symbol minst.relocPage))
+            tuple let base = t let mode = minst.pageOff(symbol minst.relocPage) end
+        else
             let var base = v
             let var offset = imm
             if maybe.isSome(:ssa.Inst s.defs[v]) then
