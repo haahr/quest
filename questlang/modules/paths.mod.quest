@@ -3,6 +3,7 @@
 module paths : Paths
 import
     questlang/common/location : questlang/common/Location
+    questlang/common/memoryFiles : questlang/common/MemoryFiles
     questlang/config/abi : questlang/config/Abi
     questlang/values/json : questlang/values/Json
     questlang/common/diagnostics : questlang/common/Diagnostics
@@ -121,7 +122,9 @@ export
         end
 
     let readText(file: String): maybe.T(String) =
-        if not(system.isFile(file)) then
+        if memoryFiles.isMemory(file) then
+            memoryFiles.read(file)
+        elsif not(system.isFile(file)) then
             maybe.none(:String)
         else
             try
@@ -141,7 +144,11 @@ export
             end
         end
 
-    let modifiedNs(p: String): Int = fileStats.stat(p).modifiedNs
+    (* A file in memory is newer than every file *)
+    let modifiedNs(p: String): Int = if memoryFiles.isMemory(p) then 9223372036854775807 else fileStats.stat(p).modifiedNs end
+
+    let isFile(p: String): Bool =
+        if memoryFiles.isMemory(p) then maybe.isSome(:String memoryFiles.read(p)) else system.isFile(p) end
 
     (* What this process's temporary files are named with: none but the
      * driver's workers set one (build/workers) *)
@@ -149,7 +156,9 @@ export
     let setWorkerTag(tag: String): Ok = worker.tag := tag
 
     let writeAtomically(file: String text: String): Ok =
-        begin
+        if memoryFiles.isMemory(file) then
+            memoryFiles.write(file text)
+        else
             system.makeDirectory(parent(file))
             let temporary = file <> ".tmp" <> worker.tag
             let w = writer.file(temporary)

@@ -1,0 +1,24 @@
+(* Quest Self-Hosted Compiler: Files in Memory Implementation *)
+
+module memoryFiles : MemoryFiles
+import
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+export
+    let root = "/<quest-memory>"
+
+    let isMemory(path: String): Bool = stringOp.equal(path root) orif strutil.startsWith(path root <> "/")
+
+    let files = hashMap.new(:String :String stringOp.equal hash.string)
+
+    let read(path: String): maybe.T(String) = hashMap.get(:String :String files path)
+
+    let write(path: String text: String): Ok =
+        begin
+            hashMap.insert(:String :String files path text)
+            ok
+        end
+end

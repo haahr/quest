@@ -78,6 +78,7 @@ import
     questlang/codegen/choice : questlang/codegen/Choice
     questlang/driver/repl : questlang/driver/Repl
     questlang/jit/session : questlang/jit/Session
+    questlang/common/memoryFiles : questlang/common/MemoryFiles
     questlang/build/engine : questlang/build/Engine
     questlang/build/workers : questlang/build/Workers
     passes = questlang/codegen/backend : questlang/codegen/Backend
@@ -1114,10 +1115,14 @@ let run(): Ok =
                     if cPipeline orif options.jit then
                         (* Compiled to C, or by the JIT, the modules are known
                          * through their interfaces, with the build
-                         * directory's artifacts, which is searched first *)
+                         * directory's artifacts, which is searched first;
+                         * the JIT's, unless --build-dir names one, are kept
+                         * in memory (docs/jit.md section 3.4.1) *)
+                        let artifacts = if options.jit andif maybe.isNone(:String options.buildDir) then memoryFiles.root
+                            else buildDir end
                         e.compilingC := not(options.wholeProgram)
-                        e.buildDir := maybe.some(:String buildDir)
-                        vector.append(:String e.includePaths buildDir)
+                        e.buildDir := maybe.some(:String artifacts)
+                        vector.append(:String e.includePaths artifacts)
                     end
                     for i = 0 upto {extent options.includePaths - 1} do
                         vector.append(:String e.includePaths options.includePaths[i])

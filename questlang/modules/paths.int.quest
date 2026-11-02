@@ -39,18 +39,22 @@ export
      * directory if inside it *)
     displayName(p: String): String
 
-    (* The text of a file; none if it cannot be read *)
+    (* The text of a file, or of a file in memory (common/memoryFiles); none if
+     * it cannot be read *)
     readText(file: String): maybe.T(String)
     (* A regular file's modification time in nanoseconds, from a single stat;
      * none if the path names anything else or nothing *)
     fileTime(file: String): maybe.T(Int)
-    (* What a path names' modification time in nanoseconds; raises
-     * system.error if it names nothing *)
+    (* What a path names' modification time in nanoseconds, the greatest Int
+     * for a file in memory; raises system.error if it names nothing *)
     modifiedNs(p: String): Int
+    (* Whether a path names a regular file, or a file in memory that has been
+     * written *)
+    isFile(p: String): Bool
     (* Writes text to file (making its directory) through a temporary file
      * renamed over it, so that another process never reads it half written:
      * the workers of a parallel build may write the same interface's
-     * artifacts at once *)
+     * artifacts at once; or to the file in memory *)
     writeAtomically(file: String text: String): Ok
     (* Names this process's temporary files apart from other workers' *)
     setWorkerTag(tag: String): Ok

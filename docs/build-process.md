@@ -155,7 +155,7 @@ interfaces, `ensure_resolved_interface_header`) but the graph never reaches the 
 ### 3.1. Full Application Builds vs. Standalone Compilation
 The compiler driver differentiates between orchestrating a full build of an application and compiling an isolated unit:
 
-- **Full Application Builds (`quest main.quest`):**
+- **Full Application Builds (`quest compile main.quest`, or `-o`):**
   All intermediate artifacts (`.qi`, `*.int.h`, `.qm`, `.mod.c`, `.main.c`, `.o`, and `build.log`) reside strictly within a dedicated
   build directory (default `.build/` in the project root, or `--build-dir <dir>`). Source trees (`lib/`, `tests/`) are
   never modified by the build process.
@@ -165,6 +165,8 @@ The compiler driver differentiates between orchestrating a full build of an appl
   Nested interface and module compilations inherit the same build directory. Only the main routine itself
   is handled differently: its C code is kept in memory (or written where `-o` / `--emit-c` say) rather than as
   `.build/<dir>/<main>.main.{qm,c,o}`.
+- **Programs run on the JIT (`quest main.quest`, `-e`, the REPL):** the interfaces they import are compiled to `.qi`
+  text kept in memory, unless `--build-dir <dir>` is given ([jit.md](jit.md) §3.4.1), so nothing is written.
 - **Standalone Unit Compilation (`quest -c unit.int.quest` or `quest -c unit.mod.quest`):**
   - If `--build-dir <dir>` is specified, outputs are routed into `<dir>`.
   - If `-o <path>` is specified, outputs are placed in the directory containing `<path>`.

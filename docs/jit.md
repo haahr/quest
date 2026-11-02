@@ -232,6 +232,22 @@ is used (§3.3); otherwise the JIT compiles the module file from source, and loa
 - **Exceptions** raised in a module file's code are located in its file (§3.7): the session keeps each loaded file's
   source by the name its code gives sites in it.
 
+#### 3.4.1. Artifacts in memory
+
+The JIT types imports as separately compiled code does, each module through its interface's record, and so reads
+interfaces from `.qi` artifacts, whose text is also what the fingerprints of §3.3.1 digest. Those artifacts are kept
+in memory, not in a build directory: nothing a program run on the JIT does writes to the directory it runs in.
+
+- **Where.** The JIT's build directory is `common/memoryFiles`' root, `/<quest-memory>`, a path that is never a real
+  directory. `modules/paths` (`readText`, `isFile`, `modifiedNs`, `writeAtomically`) and `config/abi`'s reader treat a
+  path under it as a text in the process, so the interface compiler, the loader, and `modules/fingerprint` run as they
+  do with files, the same `.qi` text written, parsed, and digested.
+- **Freshness.** A file in memory is newer than every file (`modifiedNs` is the greatest `Int`), so it is never
+  rebuilt: within a process a unit, once loaded, stays loaded, as in the interpreter's REPL (§3.4).
+- **Cost.** Each run elaborates the interfaces it imports again, which a build directory would have kept: about 10 ms
+  for a program that imports `util/maybe` and `collections/hashMap`, 1.5 ms for one that imports nothing.
+- `--build-dir DIR` keeps them in `DIR` instead, as before.
+
 ### 3.5. The encoder
 
 `codegen/arm64/encode` turns a unit's minst sequence and its static data into a code section (32-bit words) and a

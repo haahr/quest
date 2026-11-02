@@ -15,6 +15,7 @@ import
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/typechecker/elaborateTypes : questlang/typechecker/ElaborateTypes
     questlang/modules/paths : questlang/modules/Paths
+    questlang/common/memoryFiles : questlang/common/MemoryFiles
     questlang/modules/graph : questlang/modules/Graph
     questlang/modules/manifest : questlang/modules/Manifest
     questlang/modules/units : questlang/modules/Units
@@ -677,7 +678,7 @@ export
              * the interfaces it depends on has changed or would resolve
              * elsewhere *)
             let current(qi: String): Bool =
-                if not(system.isFile(qi)) orif not(abi.hasCurrentAbi(qi)) then
+                if not(paths.isFile(qi)) orif not(abi.hasCurrentAbi(qi)) then
                     false
                 elsif not(hasSource) then
                     true
@@ -701,7 +702,7 @@ export
             if not(current(qiFile)) then
                 let fresh = graph.freshInterfaceQi(resolved)
                 if maybe.isSome(:String fresh) andif strutil.endsWith(maybe.unwrap(:String fresh) ".qi") then
-                    if current(maybe.unwrap(:String fresh)) orif {not(hasSource) andif not(system.isFile(qiFile))} then
+                    if current(maybe.unwrap(:String fresh)) orif {not(hasSource) andif not(paths.isFile(qiFile))} then
                         qiFile := maybe.unwrap(:String fresh)
                     end
                 end
@@ -709,13 +710,13 @@ export
             (* Rule 3: without a source, existing artifacts cannot be rebuilt
              * (a binary distribution) *)
             if not(hasSource) then
-                if system.isFile(qiFile) andif not(abi.hasCurrentAbi(qiFile)) then
+                if paths.isFile(qiFile) andif not(abi.hasCurrentAbi(qiFile)) then
                     diagnostics.fail(:Ok abi.incompatibleArtifactMessage(qiFile) 0)
                 end
                 artifacts(qiFile)
             else
                 if not(current(qiFile)) then
-                    system.makeDirectory(targetDir)
+                    if not(memoryFiles.isMemory(targetDir)) then system.makeDirectory(targetDir) end
                     qiFile := compileInterfaceFile(maybe.unwrap(:String src) maybe.some(:String targetDir) searchPaths
                         maybe.some(:String buildDir) programDir true onCompiled res).qiFile
                 end
