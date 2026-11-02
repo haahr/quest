@@ -162,13 +162,31 @@ tools/release --seed bootstrap   # the first release, built by the bootstrap
 tools/release --show             # what it is
 ```
 
-`tools/release --install` copies the current release to `~/.local/share/quest` and puts a `quest` that runs it in
-`~/.local/bin` (`--install PREFIX` for another place), for using Quest outside the tree.
-
 From then on `./quest` builds from the release, in about two minutes from nothing, and `tools/check` seeds the
 self-hosting check from it. Every worktree of the clone shares the release
 ([docs/release-compiler.md](docs/release-compiler.md)). Without a release, `tools/check --seed bootstrap` runs the same
 suites.
+
+### Releases and Installing Quest
+
+A release is a checked build of the self-hosted compiler at a commit on `main`, with that commit's `lib/` and
+`runtime/`, kept in the clone's git directory. It seeds `./quest`'s builds, so after a pull, `./quest` rebuilds
+its stages from the release rather than from the bootstrap; a new release is only needed when the compiler's sources
+use something the current release cannot compile. `tools/release` manages them:
+
+```bash
+tools/release                    # cut a release from HEAD (clean, and on main), after the self-hosting check
+tools/release --whole-program    # the same, releasing the whole-program build of the compiler
+tools/release --show             # describe the current and previous releases
+tools/release --verify           # check the current release: its binary's digest, and a program it builds and runs
+tools/release --rollback         # swap the current and previous releases
+tools/release --install          # install the current release for use outside the tree
+```
+
+`--install` copies the current release to `~/.local/share/quest/COMMIT`, where later cuts cannot remove it, checks
+it there, and writes `~/.local/bin/quest`, which runs it against its own `lib/` and `runtime/`; `--install PREFIX`
+uses `PREFIX/share` and `PREFIX/bin` instead. Installing a later release keeps the earlier ones beside it. An installed
+compiler still needs clang and Homebrew's `bdw-gc` to build programs.
 
 ### Running and Compiling Quest Code
 A Quest source file's suffix says what it holds. An interface, the exported names and types of a module, is in a
