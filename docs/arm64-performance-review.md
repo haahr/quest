@@ -509,9 +509,9 @@ run, as the second batch's were: its three fixes were found by measuring, not by
 - **Batch 6** is deferred: the classification below finds nothing for 4b to gain and little for the stubs. It is
   to be looked at again if batch 3's timings or a later profile put time on spills across calls. Item 9's fix is a
   batch of its own, when item 9 finds what it is.
-- **Batch 7** is the SSA's first optimization pass, and it changes `ssac` too, so it gets a plan like
-  escape analysis had (now [ssa.md](ssa.md) §4.2) before code. It depends on nothing, and the plan can be written at any time; it comes last
-  because batches 4 to 6 are cheaper, and its gain is clearer measured after them.
+- **Batch 7** is the SSA's first optimization pass, and it changes `ssac` too, so it gets a plan like escape
+  analysis had (now [ssa.md](ssa.md) §4.2) before code. It depends on nothing, and the plan can be written at any
+  time; it comes last because batches 4 to 6 are cheaper, and its gain is clearer measured after them.
 
 Batches 4 and 5 waited only for batch 3's baseline timings, which are below.
 
