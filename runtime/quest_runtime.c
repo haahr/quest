@@ -585,11 +585,11 @@ static Q_NORETURN void quest_resume_native(const QExceptionHandler *h) {
 
 void quest_reraise(QExceptionState state) {
     switch (quest_handlers_catch(quest_current_exception_handler, state.exc)) {
-        case 0: {
-            const char *name = (state.exc != NULL && state.exc->name != NULL) ? state.exc->name : "<unknown>";
-            fprintf(stderr, "Exception: %s\n", name);
+        case 0:
+            fputs("Exception: ", stderr);
+            quest_write_exception(stderr, &state);
+            fputc('\n', stderr);
             quest_fail_with(state.loc, state.trace);
-        }
         case -1:
             if (state.trace == NULL) state.trace = quest_capture_trace();
             break;
@@ -602,7 +602,12 @@ void quest_reraise(QExceptionState state) {
 }
 
 void quest_raise_at(const QException *exc, QVal payload, const char *loc) {
-    quest_reraise((QExceptionState){ exc, payload, loc, NULL });
+    quest_reraise((QExceptionState){ exc, payload, loc, NULL, NULL, NULL });
+}
+
+void quest_raise_typed_at(const QException *exc, QVal payload, const QTypeDescriptor *type, const char *text,
+                          const char *loc) {
+    quest_reraise((QExceptionState){ exc, payload, loc, NULL, type, text });
 }
 
 void quest_raise(const QException *exc, QVal payload) {
@@ -2915,6 +2920,19 @@ static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescrip
             return;
     }
     fputs("<val>", stdout);
+}
+
+void quest_write_exception(FILE *out, const QExceptionState *state) {
+    fputs((state->exc != NULL && state->exc->name != NULL) ? state->exc->name : "<unknown>", out);
+    if (state->payload_type == NULL || state->payload_text == NULL) return;
+    fputs(" with ", out);
+    /* quest_put_value writes to stdout */
+    fflush(stdout);
+    FILE *saved = stdout;
+    stdout = out;
+    quest_put_value(state->payload, state->payload_type, NULL);
+    stdout = saved;
+    fprintf(out, ":%s", state->payload_text);
 }
 
 void quest_print_typed(const char *prefix, QVal val, const QTypeDescriptor *type, const char *suffix) {

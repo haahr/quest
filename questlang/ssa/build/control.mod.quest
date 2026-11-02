@@ -488,7 +488,13 @@ export
                     let payload = if maybe.isNone(:Atom x.payload) then vals.toVal(fn vals.constant(fn 0))
                         else vals.toWord(fn vals.atom(fn maybe.unwrap(:Atom x.payload)) ir.atomType(maybe.unwrap(:Atom x.payload)))
                     end
-                    vals.callVoid(fn "quest_raise_at" array of vals.atom1(fn x.exc) payload vals.site(fn x.offset) end)
+                    if maybe.isSome(:ir.Descriptor x.descriptor) then
+                        vals.callVoid(fn "quest_raise_typed_at" array of vals.atom1(fn x.exc) payload
+                            descriptors.maybeDescriptor(fn x.descriptor) vals.symbolAt(fn vals.stringSymbol(fn.u x.payloadText))
+                            vals.site(fn x.offset) end)
+                    else
+                        vals.callVoid(fn "quest_raise_at" array of vals.atom1(fn x.exc) payload vals.site(fn x.offset) end)
+                    end
                     vals.terminate(fn ssa.termUnreachable)
                 else raise vals.unsupported with "statement " <> vals.statementName(s) end
             end

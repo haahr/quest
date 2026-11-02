@@ -1124,10 +1124,12 @@ typedef struct QException {
 } QException;
 
 typedef struct QExceptionState {
-    const QException *exc;
-    QVal              payload;
-    const char       *loc;      /* the raise site, "file:line:col", or NULL (docs/exceptions.md §3.3) */
-    const QTrace     *trace;    /* frames captured at the raise, or NULL (docs/exceptions.md §5.4) */
+    const QException      *exc;
+    QVal                   payload;
+    const char            *loc;           /* the raise site, "file:line:col", or NULL (docs/exceptions.md §3.3) */
+    const QTrace          *trace;         /* frames captured at the raise, or NULL (docs/exceptions.md §5.4) */
+    const QTypeDescriptor *payload_type;  /* a payload's type other than Ok, or NULL (docs/exceptions.md §2.1) */
+    const char            *payload_text;  /* that type as the raise wrote it */
 } QExceptionState;
 
 typedef struct QExceptionHandler {
@@ -1176,7 +1178,9 @@ patterns are computed when it runs), the raise captures the frames first, in cas
 void quest_reraise(QExceptionState state) {
     switch (quest_handlers_catch(quest_current_exception_handler, state.exc)) {
         case 0:   /* uncaught */
-            fprintf(stderr, "Exception: %s\n", state.exc->name);
+            fputs("Exception: ", stderr);
+            quest_write_exception(stderr, &state);   /* the name, and the payload with its type */
+            fputc('\n', stderr);
             quest_fail_with(state.loc, state.trace);   /* the site, the frames; exit(1) */
         case -1:  /* might be caught, and raised again */
             if (state.trace == NULL) state.trace = quest_capture_trace();
@@ -1188,7 +1192,12 @@ void quest_reraise(QExceptionState state) {
 }
 
 void quest_raise_at(const QException *exc, QVal payload, const char *loc) {
-    quest_reraise((QExceptionState){ exc, payload, loc, NULL });
+    quest_reraise((QExceptionState){ exc, payload, loc, NULL, NULL, NULL });
+}
+
+void quest_raise_typed_at(const QException *exc, QVal payload, const QTypeDescriptor *type, const char *text,
+                          const char *loc) {
+    quest_reraise((QExceptionState){ exc, payload, loc, NULL, type, text });
 }
 ```
 

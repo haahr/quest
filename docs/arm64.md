@@ -795,7 +795,7 @@ alignment beyond 8.
 | Closures: a static closure `{ f, NULL }` for every function; otherwise environment and closure allocated apart; a `let rec`'s captures of its own variables filled in afterwards | `makeClosure`, `sLetRec` | build, data |
 | Descriptor operands: variables, static descriptors (symbols), templates instantiated by `quest_instantiate_descriptor(t, n, array)` with the array on the stack; view maps fetched in the prologue (`quest_view_map`) | `descriptor`, `function` | build, data; the array a stack slot |
 | Auto values and `inspect`: `quest_auto_new`, `quest_is_subtype`, `quest_layout_equivalent`, conversions arm by arm | `makeAuto`, `inspectAuto` | build, runtime |
-| Exceptions: `quest_alloc_exception(name)` at each evaluation; the handler record and catch array on the C stack, popped on every way out (`leaveTo`); the handler's variable a copy of `QExceptionState` (32 bytes); `quest_raise_at(exc, payload, site)`, `quest_reraise(state)` (by value, so through memory) | `sTry`, `sRaise`, `emitCatches` | build (§3.6), runtime, abi |
+| Exceptions: `quest_alloc_exception(name)` at each evaluation; the handler record and catch array on the C stack, popped on every way out (`leaveTo`); the handler's variable a copy of `QExceptionState` (48 bytes); `quest_raise_at(exc, payload, site)`, or `quest_raise_typed_at(exc, payload, descriptor, text, site)` with a payload of a type other than `Ok`; `quest_reraise(state)` (by value, so through memory) | `sTry`, `sRaise`, `emitCatches` | build (§3.6), runtime, abi |
 | Raise sites: a C string `"file:line:col"` for each, or `NULL` | `site` | data |
 | Mutable variables: locals, `volatile` when assigned in a `try` body; `var` and `out` parameters as pointers to their locations; boxed mutable variables; a cell for `var(e)`, a C local whose address is passed | `assign`, `atom`, `opAddrVar`, `opAddrCell`, `volatileVars` | build: stack slots (§3.2, §3.6) |
 | Echo: `quest_print_value`, `quest_print_typed` | `echo` | runtime |
@@ -815,7 +815,7 @@ alignment beyond 8.
 ### 7.4. What clang Does
 
 - **The calling convention** (§3.3), with the composites: `QRecordVal` and `QVariantVal` in two `x` registers, and
-  `QExceptionState` (32 bytes) through memory, as any composite over 16 bytes.
+  `QExceptionState` (48 bytes) through memory, as any composite over 16 bytes.
 - **Frames and unwind information** (§3.10): clang keeps frame pointers on Darwin and emits compact unwind.
 - **`setjmp`** (§3.6).
 - **Optimization:** the inline helpers inlined, registers allocated, and more, none of which the SSA backends must

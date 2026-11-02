@@ -716,7 +716,9 @@ class _Lowerer:
             case TypedRaise(exc=exc, payload=payload):
                 x = self.value(exc)
                 p = self.value(payload) if payload is not None else None
-                self.terminate(ir.Raise(x, p, e.offset))
+                # The payload's type as the interpreters show it
+                text = str(payload.type_val) if payload is not None and payload.type_val is not OK_TYPE else ""
+                self.terminate(ir.Raise(x, p, e.offset, payload_text=text))
             case TypedApp() if e.type_val is OK_TYPE:
                 atom = self.call(e, None)
                 # A call for its effect: its result is not used (Ok)

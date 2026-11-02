@@ -594,6 +594,14 @@ export
                         let closed = extent freeTypeVars(x.type fun(sid: Int): Bool hashMap.contains(:Int :Variable d.scope sid)) is 0
                         x.descriptor := maybe.some(:Descriptor if closed then descStatic(static(d x.type true)) else describeType(d x.type) end)
                     end
+                when sRaise with x then
+                    (* The payload is shown by its type, written as echo
+                     * writes a value *)
+                    if maybe.isSome(:Atom x.payload) andif not(stringOp.isEmpty(x.payloadText)) then
+                        let t = typeOf(maybe.unwrap(:Atom x.payload))
+                        let closed = extent freeTypeVars(t fun(sid: Int): Bool hashMap.contains(:Int :Variable d.scope sid)) is 0
+                        x.descriptor := maybe.some(:Descriptor if closed then descStatic(static(d t true)) else describeType(d t) end)
+                    end
                 else ok
             end
             if maybe.isSome(:Stmt replaced) then
@@ -905,7 +913,13 @@ export
             when sEcho with x then begin atom(c x.value) add(c x.type) end
             when sReturn with x then atom(c x.value)
             when sJump with x then atoms(c x.args)
-            when sRaise with x then begin atom(c x.exc) optAtom(c x.payload) end
+            when sRaise with x then
+                begin
+                    atom(c x.exc) optAtom(c x.payload)
+                    if maybe.isSome(:Atom x.payload) andif not(stringOp.isEmpty(x.payloadText)) then
+                        add(c typeOf(maybe.unwrap(:Atom x.payload)))
+                    end
+                end
             when sReraise with x then variable(c x.exc)
             else ok
         end

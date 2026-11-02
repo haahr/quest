@@ -298,6 +298,7 @@ def replace_vars(node, f) -> None:
         case ir.Raise():
             node.exception = _replaced(node.exception, f)
             node.payload = _replaced(node.payload, f)
+            node.descriptor = _replaced(node.descriptor, f)
         case ir.Reraise():
             node.exception = _replaced(node.exception, f)
 
@@ -401,7 +402,7 @@ _FIELDS_OF: dict[type, Callable[[Any], tuple]] = {
     ir.Jump: lambda node: (node.label, node.args),
     ir.Break: lambda node: (node.label,),
     ir.Continue: lambda node: (node.label,),
-    ir.Raise: lambda node: (node.exception, node.payload, node.offset),
+    ir.Raise: lambda node: (node.exception, node.payload, node.offset, node.payload_text, node.descriptor),
     ir.Reraise: lambda node: (node.exception,),
     ir.Unreachable: lambda node: (),
     ir.Body: lambda node: (node.statements,),
@@ -491,7 +492,7 @@ _CONTENTS: dict[type, Callable[[Any], tuple]] = {
     ir.Jump: lambda node: (node.label, node.args),
     ir.Break: lambda node: (node.label,),
     ir.Continue: lambda node: (node.label,),
-    ir.Raise: lambda node: (node.exception, node.payload, node.offset),
+    ir.Raise: lambda node: (node.exception, node.payload, node.offset, node.payload_text),
     ir.Reraise: lambda node: (node.exception,),
     ir.Unreachable: lambda node: (),
     ir.Body: lambda node: (node.statements,),
@@ -629,7 +630,8 @@ _REBUILD: dict[type, Callable[[Any, tuple], Any]] = {
     ir.Jump: lambda node, values: ir.Jump(label=values[0], args=values[1]),
     ir.Break: lambda node, values: ir.Break(label=values[0]),
     ir.Continue: lambda node, values: ir.Continue(label=values[0]),
-    ir.Raise: lambda node, values: ir.Raise(exception=values[0], payload=values[1], offset=values[2]),
+    ir.Raise: lambda node, values: ir.Raise(exception=values[0], payload=values[1], offset=values[2],
+                                            payload_text=values[3], descriptor=values[4]),
     ir.Reraise: lambda node, values: ir.Reraise(exception=values[0]),
     ir.Unreachable: lambda node, values: ir.Unreachable(),
     ir.Body: lambda node, values: ir.Body(statements=values[0]),

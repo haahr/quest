@@ -251,8 +251,8 @@ the whole ones, all empty. The self-hosted driver's REPL and `-e` run on the JIT
 `-e`'s transcript pass it `--no-jit`, checking the interpreter. `jit` runs the REPL's transcripts on the JIT instead
 ([jit.md](jit.md) §5): a transcript marked `@skip-phase: jit` shows a difference the JIT is allowed and is skipped.
 `jit-files` runs the run goldens' programs with `--jit` (the `interpret` phase), skipping those marked
-`@skip-phase: jit` or `@skip-phase: run_c_compiled`, and `-e`'s transcript on the JIT, the uncaught exception's
-payload left out of the header it expects; `tests/self-hosted/pending-jit.txt` lists the differences that remain. The
+`@skip-phase: jit` or `@skip-phase: run_c_compiled`, and `-e`'s transcript on the JIT;
+`tests/self-hosted/pending-jit.txt` lists the differences that remain. The
 questlang tests `ssac_print` and `arm64_assemble` print a unit of the SSA built by hand as C and as assembly, whose
 goldens `tests/python/test_ssac.py` compiles and `tests/python/test_arm64.py` assembles. The SSA's passes are tested on
 SSA written as text (`questlang/ssa/parser`): `ssa_promote` and `ssa_tailcalls` print small functions before and after

@@ -1430,7 +1430,11 @@ class CPrinter:
                     self.emit(f"return {self.atom(value)};")
             case ir.Raise(exception=e, payload=p, offset=offset):
                 payload = "Q_OK_VAL" if p is None else shape_slot_to_qval(self.atom(p), shape(self.atom_type(p)))
-                self.emit(f"quest_raise_at({self.atom(e)}, {payload}, {self.site(offset)});")
+                if s.descriptor is not None:
+                    args = [self.atom(e), payload, self.descriptor(s.descriptor), c_string(s.payload_text), self.site(offset)]
+                    self.emit(f"{call('quest_raise_typed_at', args)};")
+                else:
+                    self.emit(f"quest_raise_at({self.atom(e)}, {payload}, {self.site(offset)});")
             case ir.Reraise(exception=e):
                 self.emit(f"quest_reraise({self.name(e)});")
             case ir.Unreachable():

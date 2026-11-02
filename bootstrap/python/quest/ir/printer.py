@@ -382,8 +382,9 @@ class _Printer:
                 self.emit(depth, f"break {label}")
             case ir.Continue(label=label):
                 self.emit(depth, f"continue {label}")
-            case ir.Raise(exception=e, payload=p):
-                self.emit(depth, f"raise {self.atom(e)}{' with ' + self.atom(p) if p is not None else ''}")
+            case ir.Raise(exception=e, payload=p, payload_text=text, descriptor=d):
+                shown = f" : {json.dumps(text)}" if text else ""
+                self.emit(depth, f"raise {self.atom(e)}{' with ' + self.atom(p) if p is not None else ''}{shown}{self.of(d)}")
             case ir.Reraise(exception=e):
                 self.emit(depth, f"reraise {self.atom(e)}")
             case ir.Unreachable():

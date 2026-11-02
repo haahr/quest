@@ -342,6 +342,12 @@ class _Describer:
                 if not echo_value_kind(t):
                     closed = not free_type_vars(t, lambda sid: sid in self.scope)
                     s.descriptor = self.static(t, echo=True) if closed else self.describe(t)
+            case ir.Raise(payload=p, payload_text=text) if p is not None and text:
+                # The payload is shown by its type, written as echo writes a
+                # value
+                t = _type_of(p)
+                closed = not free_type_vars(t, lambda sid: sid in self.scope)
+                s.descriptor = self.static(t, echo=True) if closed else self.describe(t)
         for b in statement_bodies(s):
             self.body(b)
         return s

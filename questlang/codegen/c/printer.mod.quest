@@ -2054,7 +2054,12 @@ export
                     else types.shapeSlotToQval(atom(p maybe.unwrap(:Atom x.payload))
                         shapeOf(atomType(maybe.unwrap(:Atom x.payload))))
                 end
-                emit(p "quest_raise_at(" <> atom(p x.exc) <> ", " <> pl <> ", " <> site(p x.offset) <> ");")
+                if maybe.isSome(:nodes.Descriptor x.descriptor) then
+                    emit(p "quest_raise_typed_at(" <> atom(p x.exc) <> ", " <> pl <> ", " <> maybeDescriptor(p x.descriptor)
+                        <> ", " <> syntax.cString(x.payloadText) <> ", " <> site(p x.offset) <> ");")
+                else
+                    emit(p "quest_raise_at(" <> atom(p x.exc) <> ", " <> pl <> ", " <> site(p x.offset) <> ");")
+                end
             when sReraise with x then emit(p "quest_reraise(" <> name(p x.exc) <> ");")
             when sUnreachable then emit(p "abort();")
             when sEcho with x then

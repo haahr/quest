@@ -196,8 +196,14 @@ QRaised *quest_code_last_raised(void) {
 }
 
 QString *quest_code_exception_name(QRaised *r) {
-    const char *name = (r->state.exc != NULL && r->state.exc->name != NULL) ? r->state.exc->name : "<unknown>";
-    return quest_string_new(name, (int64_t)strlen(name));
+    char *text = NULL;
+    size_t length = 0;
+    FILE *out = open_memstream(&text, &length);
+    quest_write_exception(out, &r->state);
+    fclose(out);
+    QString *s = quest_string_new(text, (int64_t)length);
+    free(text);
+    return s;
 }
 
 QString *quest_code_raise_site(QRaised *r) {

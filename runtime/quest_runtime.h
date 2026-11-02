@@ -35,7 +35,7 @@
 
 /* The runtime's inline helpers are static inline in every translation unit that includes this header, except
    quest_inline.c, which defines Q_INLINE as nothing first, so that the runtime also has an external definition of
-   each, under its own name, for code that cannot inline them to call (native code; docs/arm64.md §7.5) */
+   each, under its own name, for code that cannot inline them to call (native code; docs/arm64.md §3.1) */
 #ifndef Q_INLINE
 #  define Q_INLINE static inline
 #endif
@@ -56,7 +56,7 @@
 typedef int64_t  QInt;
 typedef double   QReal;
 typedef bool     QBool;
-typedef uint8_t  QChar;   /* A byte, unsigned on every platform (docs/arm64.md section 10, hazard 4) */
+typedef uint8_t  QChar;   /* A byte, unsigned on every platform (docs/arm64.md §3.9) */
 typedef uint64_t QWord;
 
 /* A Bool or Char in an aggregate slot (a tuple component, option payload, record field, or auto payload): a word of
@@ -336,12 +336,15 @@ typedef struct QTrace {
 
 /* Thread-local active exception state: the exception raised, its payload, the site it was raised at
    ("file:line:col", or NULL inside an external; docs/exceptions.md §3.3), and the frames captured there, if any,
-   which a re-raise keeps */
+   which a re-raise keeps; and for a payload of a type other than Ok, its type's descriptor and its type as the raise
+   wrote it, by which an uncaught exception's payload is shown as the interpreters show it (docs/exceptions.md §2.1) */
 typedef struct QExceptionState {
-    const QException *exc;
-    QVal              payload;
-    const char       *loc;
-    const QTrace     *trace;
+    const QException      *exc;
+    QVal                   payload;
+    const char            *loc;
+    const QTrace          *trace;
+    const QTypeDescriptor *payload_type;
+    const char            *payload_text;
 } QExceptionState;
 
 /* What a handler catches (docs/exceptions.md §5.1): the n_catches exceptions in catches, or every exception
@@ -438,7 +441,7 @@ static_assert(offsetof(QVariantVal, tag)     == 0,  qvariantval_tag_at_offset_0)
 static_assert(offsetof(QVariantVal, payload) == 8,  qvariantval_payload_at_offset_8);
 static_assert(sizeof(QVariant)      == 24, qvariant_must_be_24_bytes);
 static_assert(sizeof(QException)    == 8, qexception_must_be_8_bytes);
-static_assert(sizeof(QExceptionState) == 32, qexception_state_must_be_32_bytes);
+static_assert(sizeof(QExceptionState) == 48, qexception_state_must_be_48_bytes);
 static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
 static_assert(offsetof(QArray, data)  == 8, qarray_data_at_offset_8);
 static_assert(offsetof(QVariant, tag)     == 8, qvariant_tag_at_offset_8);
@@ -490,7 +493,13 @@ const QException *quest_alloc_exception(const char *name);
 /* Raises: generated code passes the raise site (docs/exceptions.md §3.3); the runtime's primitives raise with none */
 Q_NORETURN void quest_raise(const QException *exc, QVal payload);
 Q_NORETURN void quest_raise_at(const QException *exc, QVal payload, const char *loc);
+/* A raise with a payload of a type other than Ok: the payload's type's descriptor, and the type as written */
+Q_NORETURN void quest_raise_typed_at(const QException *exc, QVal payload, const QTypeDescriptor *type, const char *text,
+                                     const char *loc);
 Q_NORETURN void quest_reraise(QExceptionState state);
+/* Writes the exception as an uncaught one is reported: its name, and with a payload of a type other than Ok, " with ",
+   the payload, ":", and its type, as the interpreters write them */
+void quest_write_exception(FILE *out, const QExceptionState *state);
 Q_NORETURN void quest_raise_array_error(void);
 Q_NORETURN void quest_raise_array_error_at(const char *loc);
 Q_NORETURN void quest_raise_string_error(void);

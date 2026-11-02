@@ -46,8 +46,13 @@ An exception raised inside an external C primitive (`quest_string_get_char`, say
 has no label, and the first frame is the Quest function that called the primitive (when it was not inlined). An
 exception raised in a library module's Quest code (`raise error` in `lib/dynamic.mod.quest`) is located in that file.
 
-The interpreters format a non-`Ok` payload on the header line (`Exception: E with 42:Int`); compiled code does not
-know the payload's type and prints `Exception: E`, as now.
+A non-`Ok` payload is shown on the header line (`Exception: E with 42:Int`): the payload as echo writes a value, and
+its type as the raise wrote it. The interpreters know both; in compiled code each raise with such a payload passes them
+to the runtime (`quest_raise_typed_at`: the descriptor of the payload's type, static or made from the function's type
+parameters' descriptors, and the type's text, fixed when the raise is lowered), and the exception state carries them
+(`QExceptionState.payload_type` and `payload_text`), so that a handler's re-raise and `raised.reraise` show them too.
+A payload of a module's abstract type is shown as `<hidden>` in compiled code, where the interpreters show its
+representation.
 
 ### 2.2. From a Binary
 
@@ -112,10 +117,10 @@ To see every frame, run the program with the interpreter (`--stop-after interpre
 ### 2.5. The JIT
 
 A program or REPL input that the JIT runs (by default, unless `--no-jit`; [jit.md](jit.md)) is compiled code, so it
-reports exceptions as §2.1 and §2.4 describe, without the payload and perhaps with fewer frames, and runaway recursion
-ends the driver (§6). Running in the driver's process, it also differs in two ways of its own: a fatal runtime error (an
-option's ordinal out of bounds) ends the driver with the runtime's message, whose site names the input as `<repl>#N`;
-and the frames it lists stop at the input's `<main>`, leaving out the driver's. jit.md §4 lists these with the rest.
+reports exceptions as §2.1 and §2.4 describe, perhaps with fewer frames, and runaway recursion ends the driver (§6).
+Running in the driver's process, it also differs in two ways of its own: a fatal runtime error (an option's ordinal out
+of bounds) ends the driver with the runtime's message, whose site names the input as `<repl>#N`; and the frames it lists
+stop at the input's `<main>`, leaving out the driver's. jit.md §4 lists these with the rest.
 
 ---
 

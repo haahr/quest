@@ -371,7 +371,14 @@ export
         sJump with var pos: Int label: String var args: Array(Atom) end
         sBreak with var pos: Int label: String end
         sContinue with var pos: Int label: String end
-        sRaise with var pos: Int var exc: Atom var payload: maybe.T(Atom) offset: maybe.T(Int) end
+        (* A raise; with a payload of a type other than Ok, its type as the
+         * raise wrote it, and the descriptor the describe pass gives it, by
+         * which an uncaught exception's payload is shown (docs/exceptions.md
+         * section 2.1) *)
+        sRaise with
+            var pos: Int var exc: Atom var payload: maybe.T(Atom) offset: maybe.T(Int) payloadText: String
+            var descriptor: maybe.T(Descriptor)
+        end
         sReraise with var pos: Int var exc: Variable end
         sUnreachable
     end
@@ -518,7 +525,10 @@ export
     and StmtJump = Tuple var pos: Int label: String var args: Array(Atom) end
     and StmtBreak = Tuple var pos: Int label: String end
     and StmtContinue = Tuple var pos: Int label: String end
-    and StmtRaise = Tuple var pos: Int var exc: Atom var payload: maybe.T(Atom) offset: maybe.T(Int) end
+    and StmtRaise = Tuple
+        var pos: Int var exc: Atom var payload: maybe.T(Atom) offset: maybe.T(Int) payloadText: String
+        var descriptor: maybe.T(Descriptor)
+    end
     and StmtReraise = Tuple var pos: Int var exc: Variable end
     (* A sequence of statements; a terminator, if any, is last *)
     and Body = Tuple id: Int var statements: vector.T(Stmt) end

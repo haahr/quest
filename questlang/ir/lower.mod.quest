@@ -1124,8 +1124,12 @@ export
                 let exc = value(l x.exc none)
                 let p = if maybe.isSome(:Expr x.payload) then maybe.some(:Atom value(l maybe.unwrap(:Expr x.payload) none))
                     else maybe.none(:Atom) end
+                (* The payload's type as the interpreters show it *)
+                let text = if maybe.isSome(:Expr x.payload) andif not(isOk(maybe.unwrap(:Expr x.payload).type)) then
+                    model.show(maybe.unwrap(:Expr x.payload).type) else "" end
                 terminate(l option sRaise of Stmt with
-                    let var pos = ~1 let var exc = exc let var payload = p let offset = offsetOf(l e)
+                    let var pos = ~1 let var exc = exc let var payload = p let offset = offsetOf(l e) let payloadText = text
+                    let var descriptor = maybe.none(:nodes.Descriptor)
                 end)
             when exprApp then
                 if isOk(e.type) then

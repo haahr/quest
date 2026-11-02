@@ -904,6 +904,11 @@ class Raise:
     exception: Atom
     payload: Optional[Atom] = None
     offset: Optional[int] = None
+    # With a payload of a type other than Ok, its type as the raise wrote it,
+    # and the descriptor the describe pass gives it, by which an uncaught
+    # exception's payload is shown (docs/exceptions.md §2.1)
+    payload_text: str = ""
+    descriptor: Optional[Descriptor] = None
 
 
 @dataclass(eq=False)

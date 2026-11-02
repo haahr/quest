@@ -868,14 +868,11 @@ def eval_transcript(driver_command: list[str], timeout: float = 30.0) -> str:
     return "".join(parts)
 
 
-def run_eval_test(driver_command: list[str], timeout: float, jit: bool = False) -> tuple[bool, str, str]:
+def run_eval_test(driver_command: list[str], timeout: float) -> tuple[bool, str, str]:
     """The self-hosted driver's -e against the bootstrap's transcript
-    (eval_transcript). With jit, the programs run on the JIT, whose header of
-    an uncaught exception omits its payload (docs/jit.md section 4)."""
+    (eval_transcript)."""
     actual = eval_transcript(driver_command, timeout)
     expected = EVAL_GOLDEN.read_text(encoding=BYTE_ENCODING)
-    if jit:
-        expected = re.sub(r"(error: Exception: \S+) with .*", r"\1", expected)
     if actual == expected:
         return True, "[PASS]", ""
     diff = difflib.unified_diff(
@@ -1363,7 +1360,7 @@ def run_all_tests(
                             test_id="self-hosted/eval",
                             run_fn=with_pending(
                                 f"{phase}:self-hosted/eval", pending, pending_counts,
-                                lambda w_dir: run_eval_test(eval_command, args.timeout, eval_jit),
+                                lambda w_dir: run_eval_test(eval_command, args.timeout),
                             ),
                         ))
 

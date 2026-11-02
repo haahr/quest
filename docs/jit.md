@@ -287,7 +287,7 @@ handler whichever backend built the host.
 - **Results** are in the entry's result globals, one per phrase, each with the phrase's static type, which the
   session knows.
 - **An exception** is reported as compiled code reports it through the driver (exceptions.md §2.1): the raise site,
-  from the location string that `quest_raise_at` receives, and the frames (§3.9), without the payload (§4). A unit
+  from the location string that the raise passes, its payload (exceptions.md §2.1), and the frames (§3.9). A unit
   names its source `<repl>#N`, N the input's number, so the site says which input raised, even a function an
   earlier input made; the session finds that input's source and reports the error in it, under its own name
   (`<repl>`, or the file's). The frames are those above `os/code`'s `call` (or the session's `run`, where a C-built
@@ -425,16 +425,14 @@ contains the JIT, though stage 1 cannot run it (§3.10).
 
 ## 4. Differences From the Interpreter
 
-Compiled code already differs from the interpreters in three accepted ways (exceptions.md §2.1, §2.4, §6), which
-the JIT inherits, and which show in the REPL transcripts:
+Compiled code already differs from the interpreters in two accepted ways (exceptions.md §2.4, §6), which the JIT
+inherits, and which show in the REPL transcripts:
 
-- an uncaught exception's header omits its payload (`Exception: Fail`, not `Exception: Fail with 3:Int`;
-  `tests/golden/repl/rethrow.out`);
 - it lists fewer frames, when the inliner or a tail call removes them;
 - runaway recursion ends the session rather than raising `stack.overflow` (`tests/golden/repl/stack_overflow.out`).
 
-All three are accepted and documented, here and in exceptions.md, for now. The payload could be printed in the REPL
-if each exception carried its payload's type descriptor; that is deferred (§6).
+Both are accepted and documented, here and in exceptions.md, for now. An uncaught exception's payload is shown as the
+interpreters show it (exceptions.md §2.1) since 2026-11-01, but for one of a module's abstract type.
 
 Running in the driver's own process adds two more, which the run goldens through `--jit` show:
 
@@ -451,19 +449,16 @@ Running in the driver's own process adds two more, which the run goldens through
 - **The REPL transcripts** (`tests/source/repl`, `tests/golden/repl`) on the JIT, as a runner mode against the same
   goldens; the `repl` phase runs them with `--no-jit`, checking the interpreter. A transcript that shows an accepted
   difference (§4) is skipped under `--jit` by a marker in its source, as `@skip-phase run_c_compiled` skips a program;
-  today that is `rethrow` and `stack_overflow`.
+  today that is `stack_overflow`.
 - **The run goldens** through `quest --jit FILE` (`--backend jit-files`), skipping the programs marked
   `@skip-phase: jit` or `@skip-phase: run_c_compiled`, whose differences the JIT shares with compiled code.
   `tests/self-hosted/pending-jit.txt` lists the rest of the differences (§4). The mode also runs `-e`'s transcript
-  (`tests/eval`) on the JIT, the uncaught exception's payload left out of the expected header; the `interpret` phase
-  runs it with `--no-jit`.
+  (`tests/eval`) on the JIT; the `interpret` phase runs it with `--no-jit`.
 - **Both hosts:** the transcripts through a C-built and an arm64-built stage 2 (`QUEST_BACKEND`).
 - tools/check runs these with the backends suite.
 
 ## 6. Later
 
-- Printing an exception's payload in the REPL: a descriptor of the payload's type in `QException`, set by every
-  backend (the bootstrap's C printer among them), an ABI change.
 - Calling earlier inputs' functions directly, and inlining them.
 - Registering JIT code with lldb (the GDB JIT interface), with line tables (arm64.md §3.16).
 - Surviving faults and runaway recursion, and Ctrl-C, in the REPL.
