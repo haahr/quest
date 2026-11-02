@@ -280,3 +280,67 @@ b0:
 	call g
 	mov =a0 s1
 	ret a0
+== values that die at a jump, and a loop's invariant that does not
+b0:
+	mov =%0 a0
+	add =%3 %0 %0
+	call g
+	b %3 %0 -> b1
+b1(%1 %2):
+	add =%6 %1 %2
+	b %6 %2 -> b2
+b2(%4 %5):
+	call g
+	cbnz %5 -> b4
+	b -> b5
+b3:
+	add =%7 %4 %5
+	b %7 %5 -> b2
+b4:
+	b -> b3
+b5:
+	mov =a0 %4
+	ret a0
+%0: s1 at 3
+%1: r1 at 10
+%2: s1 at 10
+%3: r1 at 5, memory at 7, r1 at 8 (stored)
+%4: s1 at 16
+%5: r1 at 16, memory at 19, r1 at 20 (stored)
+%6: r1 at 13
+%7: s1 at 37
+move at 8: %3 memory -> r1
+move at 20: %5 memory -> r1
+callee-saved used: s1
+slots: %3 in 0 %5 in 0
+rewritten:
+b0:
+	mov =s1 a0
+	add =r1 s1 s1
+	store [%3] r1
+	call g
+	load [%3] =r1
+	clear [%3]
+	b -> b1
+b1(%1 %2):
+	add =r1 r1 s1
+	store [%5] s1
+	mov =t2 r1
+	mov =r1 s1
+	mov =s1 t2
+	b -> b2
+b2(%4 %5):
+	call g
+	load [%5] =r1
+	cbnz r1 -> b4
+	clear [%5]
+	b -> b5
+b3:
+	add =s1 s1 r1
+	store [%5] r1
+	b -> b2
+b4:
+	b -> b3
+b5:
+	mov =a0 s1
+	ret a0

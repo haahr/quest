@@ -318,3 +318,36 @@ add(shared 0 e[5] e[3] e[4]);
 call(shared 0);
 ret(shared 0 e[5]);
 show("slots shared after their values die" shared);
+
+(* 10. Values that die at a jump: two values live across a call, one in
+ * memory, are passed to a block that calls again; they die at the jump, so
+ * the one in memory is cleared there, after the edge's moves. A loop's
+ * parameter in memory, passed back to its header unchanged, is not: the back
+ * edge has just stored it again *)
+let jumped = machine.newFunction(extent toy.registers);
+let j0 = entry(jumped);
+let jNext = machine.newBlock(jumped);
+let jp = machine.addParam(jumped jNext intClass);
+let jq = machine.addParam(jumped jNext intClass);
+let j1 = fresh(jumped);
+add(jumped 0 j1 j0 j0);
+call(jumped 0);
+jump(jumped 0 jNext array of j1 j0 end);
+let jHead = machine.newBlock(jumped);
+let jk = machine.addParam(jumped jHead intClass);
+let ji = machine.addParam(jumped jHead intClass);
+let jBody = machine.newBlock(jumped);
+let jEdge = machine.newBlock(jumped);
+let jExit = machine.newBlock(jumped);
+let jr = fresh(jumped);
+add(jumped jNext jr jp jq);
+jump(jumped jNext jHead array of jr jq end);
+call(jumped jHead);
+branch(jumped jHead ji jEdge);
+jump(jumped jHead jExit noArgs);
+jump(jumped jEdge jBody noArgs);
+let jn = fresh(jumped);
+add(jumped jBody jn jk ji);
+jump(jumped jBody jHead array of jn ji end);
+ret(jumped jExit jk);
+show("values that die at a jump, and a loop's invariant that does not" jumped);

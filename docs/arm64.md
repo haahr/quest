@@ -304,7 +304,10 @@ the SSA's values, and it reads no register's name: a target (`codegen/target`) g
   it, or at the start of a branch's target it is not live into), `rewrite` stores zero to its slot, if a call, where a
   collection can happen, may follow before the function returns, and if the target's `Lowering` says the value may
   be a pointer: arm64 clears integers' and pointers' slots, not Reals', and none in a function that enters a `try`,
-  whose handler reloads from slots what liveness in the try's body does not see it use.
+  whose handler reloads from slots what liveness in the try's body does not see it use. A value that dies as a jump's
+  argument is cleared after the edge's moves, unless it is one of the target's own parameters (a loop's invariant
+  passed back to its header), which the edge has just stored again (fixed 2026-11-01: the jump's own target was not
+  counted among the places a call may follow, so no value dying at a jump was cleared).
 - **Spill slots shared by type** (2026-11-01, arm64-performance-review.md §3.2, item 3b). `regalloc.shareSlots`
   gives values of one kind (for arm64, one SSA type: `int`, `ptr`, `val`, or `real`) one slot where their lifetimes,
   from first position to last, do not overlap, so a frame holds the most values in memory at once rather than every

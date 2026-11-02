@@ -1023,12 +1023,17 @@ export
             end
             (* Whether a call may come after a block's jth instruction, before
              * the function returns: in the block, or in a block it may go to
-             * from there, to a fixed point *)
+             * from there (the jth's own target among them, as for the jump that
+             * ends the block), to a fixed point *)
             let callIn = array of(nBlocks false)
             let callsAfter(b: Int j: Int): Bool =
                 begin
                     let insts = machine.block(f b).insts
                     let var found = false
+                    if j >= 0 then
+                        let i = vector.get(:machine.Inst insts j)
+                        if {i.target >= 0} andif callIn[i.target] then found := true end
+                    end
                     for k = {j + 1} upto {vector.length(:machine.Inst insts) - 1} do
                         let i = vector.get(:machine.Inst insts k)
                         if machine.isKind(i machine.kindCall) orif {{i.target >= 0} andif callIn[i.target]} then
@@ -1061,7 +1066,18 @@ export
                         let i = vector.get(:machine.Inst insts j)
                         let dies = vector.new(:Int)
                         let reads = bitset.new(nValues)
-                        if machine.isKind(i machine.kindJump) then bitset.assign(live liveIn[i.target]) end
+                        (* A jump's target's parameters are not live into it, but
+                         * one passed as an argument (a loop's invariant, back
+                         * to its header) does not die there: the edge stores
+                         * it again *)
+                        let redefined = bitset.new(nValues)
+                        if machine.isKind(i machine.kindJump) then
+                            bitset.assign(live liveIn[i.target])
+                            let params = machine.block(f i.target).params
+                            for k = 0 upto {vector.length(:Int params) - 1} do
+                                add(redefined machine.index(f vector.get(:Int params k)))
+                            end
+                        end
                         if machine.isKind(i machine.kindBranch) then
                             (* What is live after the branch but not in its
                              * target dies at the target's start *)
@@ -1087,9 +1103,8 @@ export
                         end
                         let rs = bitset.elements(reads)
                         for k = 0 upto {extent rs - 1} do
-                            if clearable[rs[k]] andif not(bitset.contains(live rs[k])) then
-                                vector.append(:Int dies rs[k])
-                            end
+                            let dead = not(bitset.contains(live rs[k])) andif not(bitset.contains(redefined rs[k]))
+                            if clearable[rs[k]] andif dead then vector.append(:Int dies rs[k]) end
                         end
                         if not(machine.isKind(i machine.kindReturn)) andif callsAfter(b j) then
                             after[b][j] := vector.toArray(:Int dies)
