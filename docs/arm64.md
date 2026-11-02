@@ -175,7 +175,10 @@ the code is emitted, blocks that only jump are passed over, a jump to the next b
 branch to the next block is inverted before the block's last jump. The blocks are laid out in chains: from the entry,
 each is followed by its best successor not yet placed, one not cold, then in a deeper loop, then making no call (a
 proxy's slow path is not followed into), then first in the builder's order; the blocks from which every path raises
-come last (arm64-performance-review.md §3.3).
+come last (arm64-performance-review.md §3.3). Last, loads (or stores) of 8 bytes off one base, at offsets 8 apart,
+are merged into an `ldp` (`stp`): a load's partner moved up to it, a store moved down to its partner, across up to 16
+instructions that touch only registers, and none that branch or store (nor, for a store, load) or that write the
+base or the moved access's register (arm64-performance-review.md §3.5).
 
 ### 3.6. Exceptions
 

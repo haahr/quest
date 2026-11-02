@@ -513,6 +513,159 @@ export
         end
 
     (* =========================================================================
+     * Pairs of loads and stores (docs/arm64-performance-review.md section 3.5)
+     * ====================================================================== *)
+
+    (* A load or store of 8 bytes at a base plus an immediate offset: whether
+     * it loads, its register, its base, and its offset *)
+    Let Access = Tuple load: Bool t: Int base: Int offset: Int end
+    let access(i: minst.Inst): maybe.T(Access) =
+        begin
+            let made = fun(load: Bool offset: Int): maybe.T(Access)
+                maybe.some(:Access tuple let load = load let t = i.regs[0] let base = i.regs[1] let offset = offset end)
+            let at = fun(load: Bool m: minst.Mode): maybe.T(Access)
+                case m
+                    when modeOffset with x then made(load x.imm)
+                    when modeBase then made(load 0)
+                    when modePre, modePost, modePageOff, modeIndex then maybe.none(:Access)
+                end
+            case i.op
+                when opLoad with x then
+                    case x.load
+                        when load64 then at(true x.mode)
+                        when loadS32, loadS8, loadU8 then maybe.none(:Access)
+                    end
+                when opStore with x then
+                    case x.store
+                        when store64 then at(false x.mode)
+                        when store32, store8 then maybe.none(:Access)
+                    end
+                when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
+                    opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp,
+                    opCcmpImm, opCset, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr,
+                    opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset,
+                    opLoc then
+                    maybe.none(:Access)
+            end
+        end
+
+    (* How an instruction between two accesses bears on pairing them: one a
+     * pair may move across, which touches only registers (and the flags), or
+     * a load of one register (which a load may move across, and a store not),
+     * or neither (a store, a call, a branch, or a label) *)
+    let registersOnly = 0
+    let aLoad = 1
+    let barrier = 2
+    let crossing(op: minst.Op): Int =
+        case op
+            when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith, opAddImm, opSubImm, opLogicImm,
+                opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opAdrp,
+                opAddPageOff, opAdr, opLoc then
+                registersOnly
+            when opLoad with x then
+                case x.mode
+                    when modeOffset, modeBase, modePageOff, modeIndex then aLoad
+                    when modePre, modePost then barrier
+                end
+            when opTlvAddress, opStore, opLdp, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz,
+                opTbnz, opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset then
+                barrier
+        end
+
+    (* Whether b can be a's partner, given the registers written and read
+     * between them: the same kind of access, of the same class of register,
+     * off the same base, at offsets 8 apart that ldp and stp can encode; a
+     * load's partner's register neither written nor read between them, and a
+     * store's own not written *)
+    let pairable(a: Access b: Access written: Array(Bool) read: Array(Bool)): Bool =
+        begin
+            let low = if a.offset < b.offset then a.offset else b.offset end
+            let apart = {{a.offset - b.offset} is 8} orif {{b.offset - a.offset} is 8}
+            let free = if a.load then not(written[b.t]) andif not(read[b.t]) else not(written[a.t]) end
+            {b.load is a.load} andif {b.base is a.base} andif {target.isReal(b.t) is target.isReal(a.t)} andif apart
+                andif {{low % 8} is 0} andif {low >= ~512} andif {low <= 504} andif {b.t isnot a.t}
+                andif not(written[a.base]) andif free
+        end
+
+    (* How many instructions after a load or store its pair is looked for *)
+    let pairWindow = 16
+
+    (* A function's code with loads (and stores) of 8 bytes off one base, at
+     * offsets 8 apart, merged into ldp (stp) where the instructions between
+     * them allow: a load's partner is moved up to it, across instructions
+     * that neither write its base or register nor read its register, nor
+     * store; a store is moved down to its partner, across instructions that
+     * write neither its base nor its register, nor load or store. Tuples,
+     * list cells, and options' payloads are adjacent words, and so are a
+     * frame's slots, so this is AArch64LoadStoreOptimizer's main pattern *)
+    let pairs(code: Code): Code =
+        begin
+            let n = vector.length(:minst.Inst code)
+            let accesses = array of(n maybe.none(:Access))
+            for k = 0 upto {n - 1} do accesses[k] := access(vector.get(:minst.Inst code k)) end
+            (* What replaces each instruction (none for one dropped), and
+             * whether it is already in a pair *)
+            let replaced = array of(n maybe.none(:minst.Inst))
+            let dropped = array of(n false)
+            let paired = array of(n false)
+            let written = array of(65 false)
+            let read = array of(65 false)
+            for i = 0 upto {n - 1} do
+                if maybe.isSome(:Access accesses[i]) andif not(paired[i]) then
+                    let a = maybe.unwrap(:Access accesses[i])
+                    for r = 0 upto 64 do
+                        written[r] := false
+                        read[r] := false
+                    end
+                    let first = vector.get(:minst.Inst code i)
+                    for r = 0 upto {minst.results(first.op) - 1} do written[first.regs[r]] := true end
+                    let var j = i + 1
+                    let var looking = true
+                    while looking andif {j < n} andif {j <= {i + pairWindow}} do
+                        let next = vector.get(:minst.Inst code j)
+                        let c = crossing(next.op)
+                        let partner = maybe.isSome(:Access accesses[j]) andif not(paired[j])
+                            andif pairable(a maybe.unwrap(:Access accesses[j]) written read)
+                        if partner then
+                            let b = maybe.unwrap(:Access accesses[j])
+                            let lowFirst = a.offset < b.offset
+                            let lo = if lowFirst then a.t else b.t end
+                            let hi = if lowFirst then b.t else a.t end
+                            let low = if lowFirst then a.offset else b.offset end
+                            let m = if low is 0 then minst.modeBase else minst.offset(low) end
+                            if a.load then
+                                replaced[i] := maybe.some(:minst.Inst minst.ldp(lo hi a.base m))
+                                dropped[j] := true
+                            else
+                                replaced[j] := maybe.some(:minst.Inst minst.stp(lo hi a.base m))
+                                dropped[i] := true
+                            end
+                            paired[i] := true
+                            paired[j] := true
+                            looking := false
+                        elsif {c is barrier} orif {{c is aLoad} andif not(a.load)} then
+                            looking := false
+                        else
+                            for r = 0 upto {minst.results(next.op) - 1} do written[next.regs[r]] := true end
+                            for r = 0 upto {extent next.regs - 1} do read[next.regs[r]] := true end
+                            if written[a.base] orif {not(a.load) andif written[a.t]} then looking := false end
+                        end
+                        j := j + 1
+                    end
+                end
+            end
+            let merged = vector.new(:minst.Inst)
+            for k = 0 upto {n - 1} do
+                if maybe.isSome(:minst.Inst replaced[k]) then
+                    vector.append(:minst.Inst merged maybe.unwrap(:minst.Inst replaced[k]))
+                elsif not(dropped[k]) then
+                    vector.append(:minst.Inst merged vector.get(:minst.Inst code k))
+                end
+            end
+            merged
+        end
+
+    (* =========================================================================
      * Functions and the unit
      * ====================================================================== *)
 
@@ -686,7 +839,7 @@ export
                     end
                 end
             end
-            relaxBranches(e.code s.prefix branchReach)
+            relaxBranches(pairs(e.code) s.prefix branchReach)
         end
 
     let function(f: Function index: Int code: Code): Lines =
