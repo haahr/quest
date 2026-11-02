@@ -238,7 +238,8 @@ checks the JIT's imports ([jit.md](jit.md) §3.3, §3.4): with a copy of `lib/` 
 when the copy changes the module's interface and not otherwise; inputs importing the user's own modules, one
 importing another, show what the interpreter shows;
 and it builds the driver with `--backend arm64` and runs the REPL's transcripts through it with `--jit`, as the
-`jit` mode runs them through the C-built one.
+`jit` mode runs them through the C-built one. It, and `line_tables`' JIT sessions, are skipped for a driver that cannot
+host the JIT, a whole-program build, which `tools/release --whole-program` checks the suite with.
 
 **The SSA's backends:** `--self-hosted --backend MODE` runs the self-hosted suite's compiled tests (`run_c_compiled`,
 golden and error) with the driver's units compiled by another backend ([arm64.md](arm64.md) §4): `ssac` compiles every

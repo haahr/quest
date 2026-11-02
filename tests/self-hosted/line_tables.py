@@ -5,7 +5,8 @@ mode, must stop at a breakpoint set on a Quest line and show the Quest lines of
 the backtrace's frames. So must the JIT's code (docs/jit.md section 3.12), run
 with QUEST_JIT_DEBUG=1 and lldb's plugin.jit-loader.gdb.enable on: the program
 as a file, and its function as one REPL input called by the next, whose lines
-lldb lists from the file the session writes. Skipped where there is no lldb.
+lldb lists from the file the session writes, unless the driver cannot host the
+JIT (a whole-program build). Skipped where there is no lldb.
 run_tests.py --self-hosted runs it (docs/testing.md).
 
     python tests/self-hosted/line_tables.py DRIVER
@@ -101,8 +102,11 @@ if __name__ == "__main__":
         print("no lldb: line tables not checked")
         sys.exit(0)
     driver = str(Path(sys.argv[1]).resolve())
-    problems = [problem for options in BUILDS for problem in check(driver, options)] + check_jit(driver)
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from jit_hosts import hosts_jit  # noqa: E402
+    jit = hosts_jit(driver)
+    problems = [problem for options in BUILDS for problem in check(driver, options)] + (check_jit(driver) if jit else [])
     for problem in problems:
         print(problem)
-    print(f"{len(BUILDS)} builds and the JIT debugged, {len(problems)} problems")
+    print(f"{len(BUILDS)} builds {'and the JIT ' if jit else ''}debugged, {len(problems)} problems")
     sys.exit(1 if problems else 0)

@@ -13,7 +13,8 @@
   backend compiled, as they do in one the C backend compiled (run_tests.py
   --backend jit), against their goldens, but for those the jit mode skips.
 
-run_tests.py --self-hosted runs it (docs/testing.md).
+run_tests.py --self-hosted runs it (docs/testing.md). A driver that cannot host
+the JIT, a whole-program build (docs/jit.md section 3.10), is not checked.
 
     python tests/self-hosted/jit_hosts.py DRIVER
 """
@@ -39,6 +40,13 @@ def session(driver: str, home: Path, cwd: Path, text: str) -> str:
     ran = subprocess.run([driver, "--jit", "-i"], input=text, capture_output=True, text=True, cwd=cwd,
                          env=environment, timeout=120)
     return ran.stdout + ran.stderr
+
+
+def hosts_jit(driver: str) -> bool:
+    """Whether the driver can host the JIT: a whole-program build cannot."""
+    ran = subprocess.run([driver, "--jit", "-e", "1"], capture_output=True, text=True,
+                         env={**os.environ, "QUEST_HOME": str(ROOT_DIR)}, timeout=120)
+    return "cannot host the JIT" not in ran.stderr
 
 
 def check_imports(driver: str, scratch: Path) -> list[str]:
@@ -131,6 +139,9 @@ if __name__ == "__main__":
         print(__doc__)
         sys.exit(2)
     driver = str(Path(sys.argv[1]).resolve())
+    if not hosts_jit(driver):
+        print("the driver cannot host the JIT: jit hosts not checked")
+        sys.exit(0)
     with tempfile.TemporaryDirectory() as d:
         found = check_imports(driver, Path(d)) + check_own_modules(driver, Path(d)) + check_arm64_host(driver, Path(d))
     for problem in found:
