@@ -89,7 +89,7 @@ def dead(args: argparse.Namespace) -> int:
     common = ["--backend", "arm64", "--whole-program", "--build-dir", str(build)]
     subprocess.run([str(ROOT / "quest"), "compile", *common, "-o", str(binary), str(source)], env=env, check=True)
     with open(asm, "w") as f:
-        subprocess.run([str(ROOT / "quest"), *common, "--stop-after", "codegen_c", str(source)], env=env,
+        subprocess.run([str(ROOT / "quest"), *common, "--stop-after", "codegen_arm64", str(source)], env=env,
                        stdout=f, check=True, cwd=BENCHMARKS)
     symbols = subprocess.run(["nm", str(binary)], capture_output=True, text=True, check=True).stdout
     nm.write_text("".join(line + "\n" for line in symbols.splitlines() if "_live_" in line))

@@ -12,7 +12,8 @@
  * interpreter; `-e PROGRAM` runs a program given as a string. The arguments
  * after FILE are the program's, as are those after a `--` (which is how `-e`
  * gets any). The codegen_c phase prints the program's C (with --print-result, a
- * C program that prints its last phrase's result, as compiled runs do). A unit
+ * C program that prints its last phrase's result, as compiled runs do), and
+ * codegen_arm64 its arm64 assembly. A unit
  * file given without --stop-after is compiled alone: an interface file to its
  * .qi and C header, under --build-dir, else beside -o, else beside the file
  * (-c, which says so, is optional for a unit file). `-i` enters the REPL
@@ -108,15 +109,16 @@ let phases = array of
     "ir_core" "ir_simplified" "ir_specialized" "ir_closed" "ir_represented" "ir_described"
     "run_ir_core" "run_ir_simplified" "run_ir_specialized" "run_ir_closed" "run_ir_represented" "run_ir_described"
     "interpret"
-    "codegen_c" "run_c_compiled" "ssa_built" "ssa_escape" "ssa_promote" "ssa_tailCalls" "ssa"
+    "codegen_c" "codegen_arm64" "run_c_compiled" "ssa_built" "ssa_escape" "ssa_promote" "ssa_tailCalls" "ssa"
 end;
 
 (* The SSA's phases (docs/ssa.md): the builder's, each pass's
  * (questlang/ssa/pipeline), and the last *)
 let ssaPhases = array of "ssa_built" "ssa_escape" "ssa_promote" "ssa_tailCalls" "ssa" end;
 
-(* The phases of the C backend *)
-let cPhases = array of "codegen_c" "run_c_compiled" end;
+(* The phases of the backends: the program's code (C, or arm64's assembly), and
+ * its run *)
+let cPhases = array of "codegen_c" "codegen_arm64" "run_c_compiled" end;
 
 let isOneOf(s: String xs: Array(String)): Bool =
     begin
@@ -145,19 +147,54 @@ let compileMode = {extent system.args > 1} andif stringOp.equal(system.args[1] "
 (* The program's name in errors that are not diagnostics *)
 let programName = if compileMode then "quest compile" else "quest" end;
 
+(* The command line's forms, options, and phases, one to a line *)
+let usageText = strutil.joinArray("\n" array of
+    "usage: quest [OPTION...] [OBJECT...] [FILE|- [ARG...] | -e PROGRAM [-- ARG...] | -- ARG...]"
+    "       quest compile [OPTION...] [OBJECT...] [FILE|- | -e PROGRAM]"
+    ""
+    "quest runs a program, compiled by the JIT; with neither FILE nor -e, it enters the REPL at a"
+    "terminal, and otherwise runs standard input. quest compile writes a binary: FILE without its"
+    ".quest, or -o's. OBJECTs (.o, .a, .dylib, .so) are linked with the program."
+    ""
+    "Options:"
+    "  --stop-after PHASE   run through PHASE and print its output"
+    "  --dump-after PHASE   print PHASE's output too (may be repeated)"
+    "  -e PROGRAM           run PROGRAM, given as a string"
+    "  -i                   enter the REPL after running FILE"
+    "  --jit, --no-jit      compile with the JIT (the default), or interpret"
+    "  --echo               print every top-level phrase's result"
+    "  --print-result       print the last phrase's result when compiled"
+    "  --show-offsets       show source offsets in parse and desugar's output"
+    "  --show-values        show tokens' values in tokenize's output"
+    "  --expected-exit N    the status a compiled program must exit with"
+    "  --backend B          compile every unit with B: c (the default), ssac, or arm64"
+    "  --unit-backend U=B   compile unit U (main, the program's) with B"
+    "  --whole-program      compile the program and its modules as one unit"
+    "  -o FILE              write the binary to FILE"
+    "  -c                   compile without linking"
+    "  -I DIR               look for modules in DIR too"
+    "  --build-dir DIR      build in DIR (default .build)"
+    "  -j N                 compile N modules at once"
+    "  -v                   report what the build does"
+    "  --emit-c             (compile) write the program's C, not a binary"
+    "  --nogc               (compile) compile without the collector"
+    "  -h, --help           print this message"
+    ""
+    "Phases (for --stop-after and --dump-after):"
+    "  tokenize, parse, desugar, typecheck"
+    "  ir_STAGE, run_ir_STAGE, with STAGE core, simplified, specialized, closed, represented,"
+    "    or described: the IR at STAGE, printed or run"
+    "  ssa_built, ssa_escape, ssa_promote, ssa_tailCalls, ssa: the SSA after each pass"
+    "  interpret: run the program (not with compile)"
+    "  codegen_c: the program's code (C, or with --backend arm64, assembly)"
+    "  codegen_arm64: the program's arm64 assembly"
+    "  run_c_compiled: run the compiled program (not with compile)"
+    ""
+end);
+
 let usage(message: String): Ok =
     begin
-        writer.putString(writer.err "main: " <> message <> "\n")
-        writer.putString(writer.err
-            "usage: main [--stop-after tokenize|parse|desugar|typecheck|ir_STAGE|run_ir_STAGE|interpret|codegen_c"
-            <> "|run_c_compiled] [--dump-after PHASE] [--show-offsets] [--show-values] [--echo] [--print-result] "
-            <> "[--expected-exit N] [-c] [-I DIR] [-o FILE] [-v] [-j N] [--build-dir DIR] [--whole-program] [-i] "
-            <> "[--jit|--no-jit] "
-            <> "[OBJECT...] "
-            <> "[FILE|- [ARG...] | -e PROGRAM [-- ARG...] | -- ARG...]\n"
-            <> "       main compile [--stop-after PHASE] [--dump-after PHASE] [--emit-c] [--nogc] [--echo] "
-            <> "[--print-result] [-c] [-I DIR] [-o FILE] [-v] [-j N] [--build-dir DIR] [--whole-program] [OBJECT...] "
-            <> "[FILE|- | -e PROGRAM]\n")
+        writer.putString(writer.err programName <> ": " <> message <> "\n" <> usageText)
         system.sysexit(2)
     end;
 
@@ -173,6 +210,7 @@ let options =
         let var jobs = 1
         let var wholeProgram = false
         let var backend = "c"
+        let var backendGiven = false
         let unitBackends = vector.new(:choice.Override)
         let var expectedExit = 0
         let dumpAfter = vector.new(:String)
@@ -247,6 +285,7 @@ let options =
                     usage("--backend takes c, ssac, or arm64, not '" <> system.args[i + 1] <> "'")
                 end
                 backend := system.args[i + 1]
+                backendGiven := true
                 i := i + 2
             elsif stringOp.equal(arg "--unit-backend") andif valued then
                 let o = choice.parseOverride(system.args[i + 1])
@@ -298,6 +337,9 @@ let options =
                 compiling(arg)
                 nogc := true
                 i := i + 1
+            elsif isOneOf(arg array of "-h" "--help" end) then
+                writer.putString(writer.output usageText)
+                system.sysexit(0)
             elsif isObjectFile(arg) then
                 vector.append(:String extraObjects if system.fileExists(arg) then paths.absolute(arg) else arg end)
                 i := i + 1
@@ -342,6 +384,13 @@ let options =
             if not(allowed(vector.get(:String dumpAfter j))) then
                 usage("unknown phase '" <> vector.get(:String dumpAfter j) <> "'")
             end
+        end
+        (* codegen_arm64 compiles the program with arm64, unless a backend is
+         * given (which must then be arm64, checked once the program's backend
+         * is known) *)
+        if {stringOp.equal(stopAfter "codegen_arm64") orif isOneOf("codegen_arm64" vector.toArray(:String dumpAfter))}
+            andif not(backendGiven) then
+            backend := "arm64"
         end
         (* With neither a file nor a program, the REPL starts on an empty
          * program at a terminal; otherwise standard input holds the program,
@@ -449,6 +498,13 @@ let cPipeline =
 
 let dumps(phase: String): Bool = isOneOf(phase options.dumpAfter);
 
+(* The backend that compiles the program's own unit *)
+let programBackend = choice.forUnit(options.backends choice.programUnit);
+if {stringOp.equal(options.stopAfter "codegen_arm64") orif dumps("codegen_arm64")}
+    andif not(stringOp.equal(programBackend "arm64")) then
+    usage("codegen_arm64 is the arm64 backend's phase, but the program is compiled by " <> programBackend)
+end;
+
 let dumpsSsa: Bool =
     begin
         let var any = false
@@ -494,6 +550,8 @@ let pipeline: Array(String) =
         if cPipeline then
             irThrough("described")
             vector.append(:String ps "codegen_c")
+            (* arm64's code is its assembly, which codegen_c prints too *)
+            if stringOp.equal(programBackend "arm64") then vector.append(:String ps "codegen_arm64") end
             if not(compileMode) andif maybe.isNone(:String options.output) then
                 vector.append(:String ps "run_c_compiled")
             end
@@ -780,8 +838,6 @@ let newEngine(e: env.T): engine.T =
         options.nogc options.extraObjects maybe.some(:graph.Resolver e.units.resolver)) options.jobs system.args[0])
         options.backends);
 
-(* The backend that compiles the program's own unit *)
-let programBackend = choice.forUnit(options.backends choice.programUnit);
 (* A whole program is one unit, the program's with its modules', which
  * --backend chooses the backend of (docs/arm64.md section 3.12), so a
  * unit of its own has none *)
@@ -851,7 +907,7 @@ let compiled(program: typedAst.Program e: env.T sm: location.SourceMap bag: diag
         end
         if maybe.isSome(:Tuple c: String unit: nodes.Unit end translated) then
             let t = maybe.unwrap(:Tuple c: String unit: nodes.Unit end translated)
-            if shows("codegen_c") then dump(t.c) end
+            if shows("codegen_c") orif shows("codegen_arm64") then dump(t.c) end
             let running = reaches("run_c_compiled")
             let writing = {compileMode orif maybe.isSome(:String options.output)} andif not(options.stopGiven)
                 andif not(options.emitC)

@@ -49,8 +49,9 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   `tools/check` ([testing.md](testing.md) §4.1).
 - **The compiler:** `./quest PROGRAM` runs the self-hosted compiler, which is the default; `./quest --stop-after PHASE
   file.quest` prints a phase, with `PHASE` one of `tokenize`, `parse`, `desugar`, `typecheck`, `ir_STAGE`,
-  `interpret`, `codegen_c` (prints the C), `run_c_compiled`; `--echo` echoes top-level phrases; `--build-dir DIR`
-  keeps a program's compiled interfaces and modules out of the source tree. It builds itself first when its sources
+  `interpret`, `codegen_c` (prints the C), `codegen_arm64` (prints the arm64 assembly), `run_c_compiled`; `--echo`
+  echoes top-level phrases; `--build-dir DIR` keeps a program's compiled interfaces and modules out of the source tree;
+  `--help` lists the options and phases. It builds itself first when its sources
   have changed: from the current release when there is one (which all worktrees share), else from the bootstrap
   ([release-compiler.md](release-compiler.md)). Its `-j N` compiles up to N modules at once
   ([build-process.md](build-process.md) §7.4).

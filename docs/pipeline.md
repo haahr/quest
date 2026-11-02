@@ -81,6 +81,9 @@ All compiler phases are named by their **Verb / Action Form**:
   the IR's passes ([ir.md](ir.md) §8, §9): specialization, closure conversion, representation, and descriptors. Each
   stage is verified when `QUEST_CHECK_IR=1`; `run_ir_<stage>` runs a stage in the IR interpreter.
 - `codegen_c`: C code generation, printing the described IR as portable C99 source.
+- `codegen_arm64` (the self-hosted driver's alone): the program's arm64 assembly, as the arm64 backend writes it
+  for `clang -c`. It compiles the program with arm64 unless `--backend` or `--unit-backend` chooses another, which
+  is an error; `codegen_c` prints the same assembly for a program `--backend arm64` compiles.
 - `run_c_compiled`: Host compilation and execution of generated C code. Runs the binary and captures standard output.
 
 ### Uniform Enforcement Across Interfaces
