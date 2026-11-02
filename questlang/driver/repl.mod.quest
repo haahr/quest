@@ -136,6 +136,11 @@ export
         when session.unsupported with m then
             diagbag.add(bag diagnostics.error("the JIT cannot compile this input: " <> m location.span("" ~1 ~1)))
             maybe.none(:Array(String))
+        when diagnostics.compilerError with err then
+            (* An error in a module file the input imports, which the JIT
+             * compiles (docs/jit.md section 3.4) *)
+            diagbag.add(bag diagnostics.errorDiagnostic(err inputName))
+            maybe.none(:Array(String))
         end
 
     (* An input's phrases' results, if it ran; the errors it found are in bag *)

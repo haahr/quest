@@ -16,7 +16,7 @@ Decided 2026-10-31:
 
 - **What runs on it.** Eventually all of the REPL, and also `quest file.quest` and `-e`. While it is developed, only
   with `--jit`; without it, the driver interprets as now. *Revised 2026-11-01:* the REPL and `-e` run on it by
-  default (§3.10), and files will once a program's own modules can be imported (§6).
+  default (§3.10), and files will now that a program's own modules can be imported (§3.4).
 - **The same process,** sharing the driver's heap, runtime, and library state.
 - **The driver is the library.** A phrase that imports a unit linked into the driver uses the driver's copy of it, its
   code and its state: `writer.output` is the compiler's own, and a phrase that imports `questlang/...` modules
@@ -211,9 +211,25 @@ for, and `./quest` rebuilds the driver whenever it happens in the tree.
 ### 3.4. Units not in the driver
 
 With all of `lib/` in the driver, the only units a phrase can import that the driver lacks are the user's own module
-files. At first the JIT refuses those imports, with an error that says so; modules declared in an input (§3.2) work.
-Compiling an imported module from source, loading it once per session, and resolving references among JIT'd units is
-later work (§6). A unit is never both: if the host links it, the host's copy is used, or the import is refused.
+files; modules declared in an input (§3.2) are part of it. A unit is never both: if the host links it, the host's copy
+is used (§3.3); otherwise the JIT compiles the module file from source, and loads it once in the session.
+
+- **Compiling.** `modules/moduleCompiler.moduleFileUnit` elaborates the file as a separately compiled module is
+  elaborated (in an environment of its own, its abstract types opaque, its imports known through their interfaces),
+  and lowers it to a unit of the module alone; the session compiles that unit as it does an input's, through the
+  passes, the SSA, and the arm64 backend, and loads it. Its record, initializer, and exports are the symbols a
+  separately compiled module's object would define, so an input that imports it refers to them as it refers to the
+  driver's, and the loader resolves them among the units loaded before (§3.6) rather than with `dlsym`.
+- **Order.** A module file's own imports of module files are loaded before it, depth first; each of its imports of
+  the driver's modules is checked against the driver's fingerprints, as an input's are.
+- **Once.** A module file is loaded the first time an input imports it, and later inputs (and module files) that
+  import it use that copy, whose state persists, as the interpreter's does. Editing the file during the session does
+  not reload it. An input that fails after loading a module leaves it loaded; one whose module fails to compile
+  leaves nothing loaded, and reports the module's error as the interpreter would.
+- **Initialization.** The module's initializer, guarded to run once, runs when its first importer's does, as in a
+  compiled program.
+- **Exceptions** raised in a module file's code are located in its file (§3.7): the session keeps each loaded file's
+  source by the name its code gives sites in it.
 
 ### 3.5. The encoder
 
@@ -419,9 +435,8 @@ the JIT inherits, and which show in the REPL transcripts:
 All three are accepted and documented, here and in exceptions.md, for now. The payload could be printed in the REPL
 if each exception carried its payload's type descriptor; that is deferred (§6).
 
-Running in the driver's own process adds three more, which the run goldens through `--jit` show:
+Running in the driver's own process adds two more, which the run goldens through `--jit` show:
 
-- an import of a module of the user's own is refused, for now (§3.4);
 - a fatal runtime error (an option's ordinal out of bounds, say), which ends a compiled program, ends the driver,
   with the runtime's message and the input's internal source name (`<repl>#N`) as its site;
 - a program that calls the compiler's own modules (the questlang tests) calls the running compiler's, and sees its
@@ -438,9 +453,9 @@ Running in the driver's own process adds three more, which the run goldens throu
   today that is `rethrow` and `stack_overflow`.
 - **The run goldens** through `quest --jit FILE` (`--backend jit-files`), skipping the programs marked
   `@skip-phase: jit` or `@skip-phase: run_c_compiled`, whose differences the JIT shares with compiled code.
-  `tests/self-hosted/pending-jit.txt` lists the rest of the differences (§4) and the programs that import modules of
-  their own. The mode also runs `-e`'s transcript (`tests/eval`) on the JIT, the uncaught exception's payload left out
-  of the expected header; the `interpret` phase runs it with `--no-jit`.
+  `tests/self-hosted/pending-jit.txt` lists the rest of the differences (§4). The mode also runs `-e`'s transcript
+  (`tests/eval`) on the JIT, the uncaught exception's payload left out of the expected header; the `interpret` phase
+  runs it with `--no-jit`.
 - **Both hosts:** the transcripts through a C-built and an arm64-built stage 2 (`QUEST_BACKEND`).
 - tools/check runs these with the backends suite.
 
@@ -448,7 +463,6 @@ Running in the driver's own process adds three more, which the run goldens throu
 
 - Printing an exception's payload in the REPL: a descriptor of the payload's type in `QException`, set by every
   backend (the bootstrap's C printer among them), an ABI change.
-- Importing the user's own module files: compiling them from source, loading each once per session.
 - Calling earlier inputs' functions directly, and inlining them.
 - Registering JIT code with lldb (the GDB JIT interface), with line tables (arm64.md §3.16).
 - Surviving faults and runaway recursion, and Ctrl-C, in the REPL.

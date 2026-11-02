@@ -9,6 +9,8 @@ interface ModuleCompiler
 import
     questlang/modules/graph : questlang/modules/Graph
     questlang/codegen/choice : questlang/codegen/Choice
+    questlang/common/location : questlang/common/Location
+    questlang/ir/nodes : questlang/ir/Nodes
     util/maybe : util/Maybe
 export
     Def ModuleCompileResult = Tuple c: String o: String qm: String end
@@ -21,4 +23,14 @@ export
     compileModuleFile(file: String outputDir: maybe.T(String) includePaths: Array(String) compiler: maybe.T(String)
         nogc: Bool extraFlags: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
         res: maybe.T(graph.Resolver) backends: choice.T): ModuleCompileResult
+
+    (* A module file elaborated as compileModuleFile elaborates it, and lowered
+     * to a unit of the module alone, for the JIT to compile and load
+     * (docs/jit.md section 3.4); with its source, and the module files it
+     * imports (each module's canonical name and source), which are loaded
+     * before it *)
+    Def ModuleImport = Tuple name: String source: String end
+    Def ModuleUnit = Tuple unit: nodes.Unit sourceMap: location.SourceMap imports: Array(ModuleImport) end
+    moduleFileUnit(file: String includePaths: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
+        res: maybe.T(graph.Resolver)): ModuleUnit
 end

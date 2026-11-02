@@ -233,7 +233,8 @@ change with an exported type and with a manifest type an interface imports. `sel
 ([jit.md](jit.md) §3.5): `clang -c` assembles each unit, and the encoder's words, function offsets, data, and
 relocations must be the object's, relocated fields apart. `self-hosted/jit_hosts` (`tests/self-hosted/jit_hosts.py`)
 checks the JIT's imports ([jit.md](jit.md) §3.3, §3.4): with a copy of `lib/` as `QUEST_HOME`, an import is refused
-when the copy changes the module's interface and not otherwise, and an import of the user's own module is refused;
+when the copy changes the module's interface and not otherwise; inputs importing the user's own modules, one
+importing another, show what the interpreter shows;
 and it builds the driver with `--backend arm64` and runs the REPL's transcripts through it with `--jit`, as the
 `jit` mode runs them through the C-built one.
 
@@ -251,13 +252,12 @@ the whole ones, all empty. The self-hosted driver's REPL and `-e` run on the JIT
 ([jit.md](jit.md) §5): a transcript marked `@skip-phase: jit` shows a difference the JIT is allowed and is skipped.
 `jit-files` runs the run goldens' programs with `--jit` (the `interpret` phase), skipping those marked
 `@skip-phase: jit` or `@skip-phase: run_c_compiled`, and `-e`'s transcript on the JIT, the uncaught exception's
-payload left out of the header it expects; `tests/self-hosted/pending-jit.txt` lists the differences that remain, and
-the programs that import modules of their own, which the JIT refuses for now. The questlang tests `ssac_print` and `arm64_assemble`
-print a unit of the SSA built by hand
-as C and as assembly, whose goldens `tests/python/test_ssac.py` compiles and `tests/python/test_arm64.py` assembles. The
-SSA's passes are tested on SSA written as text (`questlang/ssa/parser`): `ssa_promote` and `ssa_tailcalls` print small
-functions before and after their pass, `ssa_escape` what escape analysis says of their allocations
-([escape-analysis.md](escape-analysis.md)), and `ssa_verify` the problems the verifier finds ([ssa.md](ssa.md) §6).
+payload left out of the header it expects; `tests/self-hosted/pending-jit.txt` lists the differences that remain. The
+questlang tests `ssac_print` and `arm64_assemble` print a unit of the SSA built by hand as C and as assembly, whose
+goldens `tests/python/test_ssac.py` compiles and `tests/python/test_arm64.py` assembles. The SSA's passes are tested on
+SSA written as text (`questlang/ssa/parser`): `ssa_promote` and `ssa_tailcalls` print small functions before and after
+their pass, `ssa_escape` what escape analysis says of their allocations ([escape-analysis.md](escape-analysis.md)), and
+`ssa_verify` the problems the verifier finds ([ssa.md](ssa.md) §6).
 
 The runners set `QUEST_HOME` to the project directory, where the self-hosted driver, which runs in a scratch
 directory, finds `lib/`. `--self-hosted-driver PATH` runs a driver already compiled (as by `./questboot -o build/questlang/main

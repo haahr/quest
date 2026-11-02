@@ -7,6 +7,8 @@ import
     questlang/types/symbols : questlang/types/Symbols
     questlang/modules/elaboration : questlang/modules/Elaboration
     questlang/modules/fingerprint : questlang/modules/Fingerprint
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/moduleCompiler : questlang/modules/ModuleCompiler
     mangling = questlang/codegen/symbols : questlang/codegen/Symbols
     tm = questlang/types/model : questlang/types/Model
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
@@ -41,8 +43,11 @@ export
         var count: Int
         (* The bindings of the inputs that ran, by symbol *)
         earlier: hashMap.T(Int lower.Earlier)
-        (* Each input's source, by number *)
-        sources: hashMap.T(Int location.SourceMap)
+        (* The source of each input, by the name its code gives it (<repl>#N),
+         * and of each module file loaded, by its own *)
+        sources: hashMap.T(String location.SourceMap)
+        (* The module files loaded, by canonical name *)
+        loaded: hashMap.T(String Bool)
     end
     Let Outcome = Option
         ran with shown: Array(String) end
@@ -98,7 +103,8 @@ export
                 let loader = loader.new(codeBytes dataBytes)
                 let var count = 0
                 let earlier = hashMap.new(:Int :lower.Earlier fun(a: Int b: Int): Bool a is b hash.int)
-                let sources = hashMap.new(:Int :location.SourceMap fun(a: Int b: Int): Bool a is b hash.int)
+                let sources = hashMap.new(:String :location.SourceMap stringOp.equal hash.string)
+                let loaded = hashMap.new(:String :Bool stringOp.equal hash.string)
             end
         end
 
@@ -134,7 +140,8 @@ export
         end
 
     (* An input's code names its source <repl>#N, N its number, so that the
-     * site of a raise in it, file:line:col, says which input it is in *)
+     * site of a raise in it, file:line:col, says which input it is in; a
+     * module file's names its file *)
     let sourcePrefix = "<repl>#"
 
     (* The decimal number text is, if it is one *)
@@ -149,24 +156,19 @@ export
             if valid then maybe.some(:Int n) else maybe.none(:Int) end
         end
 
-    (* Where a site, FILE:LINE:COL, is: an input's source, and the offset of
-     * its line and column in it *)
+    (* Where a site, FILE:LINE:COL, is: the source of the input or module file
+     * FILE names, and the offset of its line and column in it *)
     let located(s: T site: String): Tuple sourceMap: maybe.T(location.SourceMap) offset: maybe.T(Int) end =
         begin
             let nowhere = tuple let sourceMap = maybe.none(:location.SourceMap) let offset = maybe.none(:Int) end
             let last = strutil.rfind(site ":")
             let before = if last > 0 then strutil.rfind(stringOp.getSub(site 0 last) ":") else ~1 end
-            if {before < 0} orif not(strutil.startsWith(site sourcePrefix)) then
+            if before < 0 then
                 nowhere
             else
-                let file = stringOp.getSub(site 0 before)
-                let input = number(stringOp.getSub(file stringOp.length(sourcePrefix)
-                    stringOp.length(file) - stringOp.length(sourcePrefix)))
+                let found = hashMap.get(:String :location.SourceMap s.sources stringOp.getSub(site 0 before))
                 let line = number(stringOp.getSub(site before + 1 {last - before} - 1))
                 let col = number(stringOp.getSub(site last + 1 {stringOp.length(site) - last} - 1))
-                let found = if maybe.isSome(:Int input) then
-                    hashMap.get(:Int :location.SourceMap s.sources maybe.unwrap(:Int input))
-                else maybe.none(:location.SourceMap) end
                 if maybe.isNone(:location.SourceMap found) orif maybe.isNone(:Int line) orif maybe.isNone(:Int col) then
                     nowhere
                 else
@@ -234,18 +236,23 @@ export
             b.toString()
         end
 
-    (* An input imports only the driver's own modules, for now (docs/jit.md
-     * section 3.4), and only those whose interfaces are the ones the driver
-     * was built with (section 3.3): an imported module's fingerprint, qh_, is
-     * that of the interface the input was compiled against *)
+    (* Whether the driver links the module canonical names *)
+    let inDriver(canonical: String): Bool =
+        maybe.isSome(:value.T code.symbol(mangling.moduleRecordIdent(mangling.mangleModuleName(canonical))))
+
+    (* A module of the driver's own that an input or a module file imports is
+     * the driver's copy (docs/jit.md section 3.3), whose interface must be the
+     * one the driver was built with: its fingerprint, qh_, is that of the
+     * interface the import was compiled against. One the driver lacks was
+     * loaded before (section 3.4). *)
     let checkImport(s: T imp: nodes.Import): Ok =
-        if strutil.startsWith(imp.canonicalPath "qj_") orif {stringOp.length(imp.interfacePath) is 0} then
+        if strutil.startsWith(imp.canonicalPath "qj_") orif {stringOp.length(imp.interfacePath) is 0}
+            orif hashMap.contains(:String :Bool s.loaded imp.canonicalPath) then
             ok
         else
             let clean = mangling.mangleModuleName(imp.canonicalPath)
-            if maybe.isNone(:value.T code.symbol(mangling.moduleRecordIdent(clean))) then
-                fail(:Ok "module '" <> imp.canonicalPath <> "' is not in the driver, and the JIT imports only the "
-                    <> "driver's own modules, for now")
+            if not(inDriver(imp.canonicalPath)) then
+                fail(:Ok "module '" <> imp.canonicalPath <> "' is neither in the driver nor loaded")
             end
             let found = code.symbol(mangling.fingerprintIdent(clean))
             let built = if maybe.isSome(:value.T found) then cString(maybe.unwrap(:value.T found) 64) else "" end
@@ -260,6 +267,56 @@ export
             let found = hashMap.get(:String :value.T symbols name)
             if maybe.isNone(:value.T found) then raise unsupported with "the unit defines no " <> name end end
             maybe.unwrap(:value.T found)
+        end
+
+    (* A unit compiled, encoded, and loaded, with the addresses of its
+     * symbols; the modules it imports are the driver's or loaded *)
+    let compileAndLoad(s: T unit: nodes.Unit): hashMap.T(String value.T) =
+        begin
+            if verify.irChecksEnabled() then
+                try verify.checkUnit(unit) when verify.verifyError with x then fail(:Ok x) end
+            end
+            for i = 0 upto {extent unit.imports - 1} do checkImport(s unit.imports[i]) end
+            let encoded = try arm64.encodeUnit(ssaPipeline.build(passes.runPasses(unit)))
+                when ssaBuild.unsupported with x then fail(:encode.Encoded "ssa: unsupported: " <> x)
+                when ssaVerify.verifyError with x then fail(:encode.Encoded x)
+                when arm64.unsupported with x then fail(:encode.Encoded x)
+                when encode.unencodable with x then fail(:encode.Encoded "encoding: " <> x)
+                end
+            try loader.load(s.loader encoded)
+            when loader.loadError with x then fail(:hashMap.T(String value.T) x)
+            end
+        end
+
+    (* A module file the driver does not link, which an input or another such
+     * module imports, loaded once in a session (docs/jit.md section 3.4):
+     * compiled from source, after the module files it imports. Its
+     * initializer runs when an importer's first does. *)
+    let rec loadModuleFile(s: T canonical: String source: String): Ok =
+        if inDriver(canonical) orif hashMap.contains(:String :Bool s.loaded canonical) then
+            ok
+        else
+            let e = s.e
+            let m = moduleCompiler.moduleFileUnit(source vector.toArray(:String e.includePaths) e.buildDir e.programDir
+                maybe.some(:graph.Resolver e.units.resolver))
+            for i = 0 upto {extent m.imports - 1} do loadModuleFile(s m.imports[i].name m.imports[i].source) end
+            compileAndLoad(s m.unit)
+            hashMap.insert(:String :location.SourceMap s.sources location.file(m.sourceMap) m.sourceMap)
+            hashMap.insert(:String :Bool s.loaded canonical true)
+            ok
+        end
+
+    (* The module an input imports, if the driver does not link it *)
+    let loadImported(s: T imp: nodes.Import): Ok =
+        if strutil.startsWith(imp.canonicalPath "qj_") orif {stringOp.length(imp.interfacePath) is 0}
+            orif inDriver(imp.canonicalPath) orif hashMap.contains(:String :Bool s.loaded imp.canonicalPath) then
+            ok
+        else
+            let source = env.resolveModule(s.e imp.canonicalPath).source
+            if maybe.isNone(:String source) then
+                fail(:Ok "module '" <> imp.canonicalPath <> "' is not in the driver, and has no source to compile")
+            end
+            loadModuleFile(s imp.canonicalPath maybe.unwrap(:String source))
         end
 
     (* A module a later input may name: an imported one, by its record, as
@@ -315,27 +372,16 @@ export
             s.count := s.count + 1
             let number = s.count
             let name = lower.phraseModuleName(number)
-            hashMap.insert(:Int :location.SourceMap s.sources number sourceMap)
+            hashMap.insert(:String :location.SourceMap s.sources sourcePrefix <> conv.int(number) sourceMap)
             let compiled = location.newSourceMap(sourcePrefix <> conv.int(number) location.text(sourceMap))
             let unit = try lower.lowerPhrases(program s.e maybe.some(:location.SourceMap compiled) number s.earlier echo
                 printResult capture)
                 when lower.loweringError with m then fail(:nodes.Unit m)
                 end
-            if verify.irChecksEnabled() then
-                try verify.checkUnit(unit) when verify.verifyError with x then fail(:Ok x) end
-            end
-            for i = 0 upto {extent unit.imports - 1} do checkImport(s unit.imports[i]) end
+            for i = 0 upto {extent unit.imports - 1} do loadImported(s unit.imports[i]) end
             let m = vector.get(:nodes.Module unit.modules vector.length(:nodes.Module unit.modules) - 1)
             let recordType = maybe.unwrap(:nodes.Variable m.recordVar).type
-            let encoded = try arm64.encodeUnit(ssaPipeline.build(passes.runPasses(unit)))
-                when ssaBuild.unsupported with x then fail(:encode.Encoded "ssa: unsupported: " <> x)
-                when ssaVerify.verifyError with x then fail(:encode.Encoded x)
-                when arm64.unsupported with x then fail(:encode.Encoded x)
-                when encode.unencodable with x then fail(:encode.Encoded "encoding: " <> x)
-                end
-            let symbols = try loader.load(s.loader encoded)
-                when loader.loadError with x then fail(:hashMap.T(String value.T) x)
-                end
+            let symbols = compileAndLoad(s unit)
             let raised = code.call(symbolAt(symbols name <> "_entry"))
             if maybe.isSome(:raised.T raised) then
                 let r = maybe.unwrap(:raised.T raised)

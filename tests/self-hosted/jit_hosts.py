@@ -5,7 +5,10 @@
   driver was built with (a copy of lib/ with one interface changed, as
   QUEST_HOME) is refused, naming the module and saying to rebuild, and one whose
   interface is the same (an unchanged copy) is not;
-- an input that imports a module of the user's own is refused;
+- an input that imports modules of the user's own, which the JIT compiles from
+  source, one importing another, in one input and again in a later one, shows
+  what the interpreter shows: the modules are loaded once, keeping their state,
+  and an exception raised in one is located in its file;
 - the REPL's transcripts run through --jit in a driver whose units the arm64
   backend compiled, as they do in one the C backend compiled (run_tests.py
   --backend jit), against their goldens, but for those the jit mode skips.
@@ -55,14 +58,52 @@ def check_imports(driver: str, scratch: Path) -> list[str]:
         if refused != change:
             problems.append(f"an import of util/maybe with its interface {name} was "
                             f"{'refused' if refused else 'not refused'}:\n{shown}")
+    return problems
+
+
+OWN_MODULES = {
+    "step.int.quest": "interface Step export size: Int end\n",
+    "step.mod.quest": "module step: Step export let size = 2 end\n",
+    "counter.int.quest": "interface Counter export next(): Int fail(): Int end\n",
+    "counter.mod.quest": """module counter: Counter
+import step: Step
+export
+    let count = record var n = 0 end
+    let next(): Int =
+        begin
+            count.n := count.n + step.size
+            count.n
+        end
+    let broken: Exception = exception broken end
+    let fail(): Int = raise broken end
+end
+""",
+}
+OWN_INPUTS = """import counter: Counter
+counter.next()
+counter.next()
+import counter: Counter
+counter.next()
+counter.fail()
+counter.next()
+"""
+
+
+def check_own_modules(driver: str, scratch: Path) -> list[str]:
     own = scratch / "own"
     own.mkdir()
-    (own / "counter.int.quest").write_text("interface Counter export n: Int end\n", encoding="utf-8")
-    (own / "counter.mod.quest").write_text("module counter: Counter export let n = 1 end\n", encoding="utf-8")
-    shown = session(driver, ROOT_DIR, own, "import counter: Counter\ncounter.n\n")
-    if "module 'counter' is not in the driver" not in shown:
-        problems.append(f"an import of the user's own module was not refused:\n{shown}")
-    return problems
+    for name, text in OWN_MODULES.items():
+        (own / name).write_text(text, encoding="utf-8")
+    environment = {**os.environ, "QUEST_HOME": str(ROOT_DIR)}
+    shown = {}
+    for name, options in (("JIT", []), ("interpreter", ["--no-jit"])):
+        ran = subprocess.run([driver, *options, "-i"], input=OWN_INPUTS, capture_output=True, text=True, cwd=own,
+                             env=environment, timeout=120)
+        shown[name] = ran.stdout + ran.stderr
+    if shown["JIT"] != shown["interpreter"] or "8 : Int" not in shown["JIT"]:
+        return [f"modules of the user's own through the JIT:\n{shown['JIT']}\nand the interpreter:\n"
+                f"{shown['interpreter']}"]
+    return []
 
 
 def check_arm64_host(driver: str, scratch: Path) -> list[str]:
@@ -91,7 +132,7 @@ if __name__ == "__main__":
         sys.exit(2)
     driver = str(Path(sys.argv[1]).resolve())
     with tempfile.TemporaryDirectory() as d:
-        found = check_imports(driver, Path(d)) + check_arm64_host(driver, Path(d))
+        found = check_imports(driver, Path(d)) + check_own_modules(driver, Path(d)) + check_arm64_host(driver, Path(d))
     for problem in found:
         print(problem)
     print(f"jit hosts: {len(found)} problems")
