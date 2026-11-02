@@ -246,11 +246,13 @@ other both ways; `arm64`, `arm64-program`, and `arm64-modules` do the same with 
 [build-process.md](build-process.md) §1.2) through each backend. Several modes, separated by commas, run one after
 another with one driver. Each mode's pending list adds to `pending.txt`: `tests/self-hosted/pending-ssac.txt` for the
 `ssac` modes, `tests/self-hosted/pending-arm64.txt` for the `arm64` ones, and `tests/self-hosted/pending-whole.txt` for
-the whole ones, all empty. `jit` runs the REPL's transcripts instead, with `--jit` ([jit.md](jit.md) §5): a
-transcript marked `@skip-phase: jit` shows a difference the JIT is allowed and is skipped. `jit-files` runs the run
-goldens' programs with `--jit` (the `interpret` phase), skipping those marked `@skip-phase: jit` or
-`@skip-phase: run_c_compiled`; `tests/self-hosted/pending-jit.txt` lists the differences that remain, and the programs
-that import modules of their own, which the JIT refuses for now. The questlang tests `ssac_print` and `arm64_assemble`
+the whole ones, all empty. The self-hosted driver's REPL and `-e` run on the JIT by default, so the `repl` phase and
+`-e`'s transcript pass it `--no-jit`, checking the interpreter. `jit` runs the REPL's transcripts on the JIT instead
+([jit.md](jit.md) §5): a transcript marked `@skip-phase: jit` shows a difference the JIT is allowed and is skipped.
+`jit-files` runs the run goldens' programs with `--jit` (the `interpret` phase), skipping those marked
+`@skip-phase: jit` or `@skip-phase: run_c_compiled`, and `-e`'s transcript on the JIT, the uncaught exception's
+payload left out of the header it expects; `tests/self-hosted/pending-jit.txt` lists the differences that remain, and
+the programs that import modules of their own, which the JIT refuses for now. The questlang tests `ssac_print` and `arm64_assemble`
 print a unit of the SSA built by hand
 as C and as assembly, whose goldens `tests/python/test_ssac.py` compiles and `tests/python/test_arm64.py` assembles. The
 SSA's passes are tested on SSA written as text (`questlang/ssa/parser`): `ssa_promote` and `ssa_tailcalls` print small

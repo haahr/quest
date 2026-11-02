@@ -15,7 +15,8 @@ with an in-memory encoder and loader. It is written in Quest, in `questlang/`, a
 Decided 2026-10-31:
 
 - **What runs on it.** Eventually all of the REPL, and also `quest file.quest` and `-e`. While it is developed, only
-  with `--jit`; without it, the driver interprets as now.
+  with `--jit`; without it, the driver interprets as now. *Revised 2026-11-01:* the REPL and `-e` run on it by
+  default (§3.10), and files will once a program's own modules can be imported (§6).
 - **The same process,** sharing the driver's heap, runtime, and library state.
 - **The driver is the library.** A phrase that imports a unit linked into the driver uses the driver's copy of it, its
   code and its state: `writer.output` is the compiler's own, and a phrase that imports `questlang/...` modules
@@ -327,10 +328,11 @@ into Quest, say), so the run goldens that list frames are checked again.
 
 ### 3.10. The host binary and the driver
 
-**Hosts.** A host is a binary the JIT runs code in: in practice the driver. Any separately compiled binary built by
-the self-hosted compiler, with either backend, can be one (§3.3); a binary is a host if its units export fingerprint
+**Hosts.** A host is a binary the JIT runs code in: in practice the driver. Any separately compiled binary built by the
+self-hosted compiler, with either backend, can be one (§3.3); a binary is a host if its units export fingerprint
 symbols, which the JIT checks for. The bootstrap emits none, so stage 1 is not a host, and `--jit` there is an error
-that says so; nor is a whole-program build. Stage 2, and so `./quest` and every release, is a host.
+that says so; nor is a whole-program build, which interprets the REPL and `-e` instead. Stage 2, and so `./quest` and
+every release, is a host.
 
 Nothing in the JIT's code depends on how the host's units were compiled: it calls them through the C ABI, reaches
 their data through GOT slots, and raises and catches through the runtime's handler records, which carry both the
@@ -338,9 +340,10 @@ setjmp state of C-built code and the resume state of arm64 code (arm64.md §3.6)
 
 **The driver:**
 
-- `--jit` selects the JIT for the REPL, and for `-i FILE`, whose file is then compiled as the first input, its
-  top-level bindings globals that later inputs see.
-- Later, also for `quest FILE` and `-e`, each a single input; and later still, the default.
+- The REPL, `-i FILE` (whose file is then compiled as the first input, its top-level bindings in scope for later
+  inputs), and `-e` run on the JIT by default; `quest FILE` runs on it with `--jit`, as a single input.
+- `--no-jit` interprets instead, as do `--stop-after`, `--dump-after`, `--show-offsets`, and `--show-values`, which
+  name the interpreter's phases or output, and a driver that is not a host.
 
 ### 3.11. Unsound interfaces and modules
 
@@ -429,13 +432,15 @@ Running in the driver's own process adds three more, which the run goldens throu
 - **Unsound interfaces:** the checks of §3.11 in both compilers, with a test of each rule's error.
 - **Frames:** the run goldens that list frames, through the C, ssac, and arm64 backends, after the walk changes.
 - **Encoder:** byte-for-byte against `clang -c` on the arm64 goldens (§3.5), in the unit checks.
-- **The REPL transcripts** (`tests/source/repl`, `tests/golden/repl`) through `--jit`, as a runner mode against the
-  same goldens. A transcript that shows an accepted difference (§4) is skipped under `--jit` by a marker in its
-  source, as `@skip-phase run_c_compiled` skips a program; today that is `rethrow` and `stack_overflow`.
+- **The REPL transcripts** (`tests/source/repl`, `tests/golden/repl`) on the JIT, as a runner mode against the same
+  goldens; the `repl` phase runs them with `--no-jit`, checking the interpreter. A transcript that shows an accepted
+  difference (§4) is skipped under `--jit` by a marker in its source, as `@skip-phase run_c_compiled` skips a program;
+  today that is `rethrow` and `stack_overflow`.
 - **The run goldens** through `quest --jit FILE` (`--backend jit-files`), skipping the programs marked
   `@skip-phase: jit` or `@skip-phase: run_c_compiled`, whose differences the JIT shares with compiled code.
   `tests/self-hosted/pending-jit.txt` lists the rest of the differences (§4) and the programs that import modules of
-  their own.
+  their own. The mode also runs `-e`'s transcript (`tests/eval`) on the JIT, the uncaught exception's payload left out
+  of the expected header; the `interpret` phase runs it with `--no-jit`.
 - **Both hosts:** the transcripts through a C-built and an arm64-built stage 2 (`QUEST_BACKEND`).
 - tools/check runs these with the backends suite.
 
@@ -447,7 +452,7 @@ Running in the driver's own process adds three more, which the run goldens throu
 - Calling earlier inputs' functions directly, and inlining them.
 - Registering JIT code with lldb (the GDB JIT interface), with line tables (arm64.md §3.16).
 - Surviving faults and runaway recursion, and Ctrl-C, in the REPL.
-- Running files and `-e` on the JIT by default; then the REPL.
+- Running files on the JIT by default (the REPL and `-e` do, since 2026-11-01).
 
 ## 7. Steps
 

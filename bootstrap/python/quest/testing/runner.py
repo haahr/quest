@@ -103,9 +103,9 @@ BACKEND_MODES = {
     "c-whole": ["--whole-program"],
     "ssac-whole": ["--whole-program", "--backend", "ssac"],
     "arm64-whole": ["--whole-program", "--backend", "arm64"],
-    # The REPL's transcripts, their inputs compiled and run by the JIT
-    # (docs/jit.md section 5)
-    "jit": ["--jit"],
+    # The REPL's transcripts, their inputs compiled and run by the JIT, the
+    # REPL's default (docs/jit.md section 5)
+    "jit": [],
     # The run goldens' programs, each one input of the JIT
     "jit-files": ["--jit"],
 }
@@ -868,11 +868,14 @@ def eval_transcript(driver_command: list[str], timeout: float = 30.0) -> str:
     return "".join(parts)
 
 
-def run_eval_test(driver_command: list[str], timeout: float) -> tuple[bool, str, str]:
+def run_eval_test(driver_command: list[str], timeout: float, jit: bool = False) -> tuple[bool, str, str]:
     """The self-hosted driver's -e against the bootstrap's transcript
-    (eval_transcript)."""
+    (eval_transcript). With jit, the programs run on the JIT, whose header of
+    an uncaught exception omits its payload (docs/jit.md section 4)."""
     actual = eval_transcript(driver_command, timeout)
     expected = EVAL_GOLDEN.read_text(encoding=BYTE_ENCODING)
+    if jit:
+        expected = re.sub(r"(error: Exception: \S+) with .*", r"\1", expected)
     if actual == expected:
         return True, "[PASS]", ""
     diff = difflib.unified_diff(
@@ -1281,7 +1284,11 @@ def run_all_tests(
                             skipped_golden += 1
                             print(f"  [SKIP] {phase}:{test_id}")
                             continue
-                        repl_command = [*driver_command, *driver_args] if driver_command is not None else None
+                        # The self-hosted driver's REPL runs on the JIT by
+                        # default; the repl phase checks its interpreter, the
+                        # jit mode its JIT
+                        repl_command = None if driver_command is None else [
+                            *driver_command, *driver_args, *([] if args.backend == "jit" else ["--no-jit"])]
 
                         def make_repl_runner(sf: Path, command: Optional[list[str]]
                                              ) -> Callable[[Path], tuple[bool, str, str]]:
@@ -1347,14 +1354,16 @@ def run_all_tests(
                         phase_tasks.append(PhaseTask(test_id=test_id, run_fn=run_fn))
 
                     # The self-hosted driver's -e, against the bootstrap's
-                    # transcript
+                    # transcript: its interpreter, and in the jit-files mode
+                    # its JIT, -e's default
                     if phase == "interpret" and runs_eval:
-                        eval_command = driver_command
+                        eval_jit = args.backend == "jit-files"
+                        eval_command = [*driver_command, *([] if eval_jit else ["--no-jit"])]
                         phase_tasks.append(PhaseTask(
                             test_id="self-hosted/eval",
                             run_fn=with_pending(
                                 f"{phase}:self-hosted/eval", pending, pending_counts,
-                                lambda w_dir: run_eval_test(eval_command, args.timeout),
+                                lambda w_dir: run_eval_test(eval_command, args.timeout, eval_jit),
                             ),
                         ))
 

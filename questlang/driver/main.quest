@@ -17,13 +17,15 @@
  * (questlang/driver/repl) after running FILE, in its environment and frame;
  * with neither FILE nor `-e`, the driver enters the REPL when standard input is
  * a terminal, and otherwise runs the program standard input holds, as it does
- * for a FILE of `-`. `main compile FILE` compiles the program to a binary
- * (FILE without its .quest, or -o), as the bootstrap's `quest compile` does:
- * with --emit-c it writes the program's C instead (to -o, else standard
- * output), with --nogc it compiles without the collector, and with -c it
- * compiles the program into the build directory without linking it.
- * run_tests.py --self-hosted compiles it and checks it against the
- * bootstrap's goldens (docs/testing.md section 2.3). *)
+ * for a FILE of `-`. `-e`'s program and the REPL's inputs are compiled and run
+ * by the JIT (questlang/jit), unless --no-jit, an interpreter's option, or a
+ * driver that cannot host it says otherwise; --jit runs a file on it too. `main
+ * compile FILE` compiles the program to a binary (FILE without its .quest, or
+ * -o), as the bootstrap's `quest compile` does: with --emit-c it writes the
+ * program's C instead (to -o, else standard output), with --nogc it compiles
+ * without the collector, and with -c it compiles the program into the build
+ * directory without linking it. run_tests.py --self-hosted compiles it and
+ * checks it against the bootstrap's goldens (docs/testing.md section 2.3). *)
 
 import
     questlang/common/location : questlang/common/Location
@@ -75,6 +77,7 @@ import
     cBackend = questlang/codegen/c/backend : questlang/codegen/c/Backend
     questlang/codegen/choice : questlang/codegen/Choice
     questlang/driver/repl : questlang/driver/Repl
+    questlang/jit/session : questlang/jit/Session
     questlang/build/engine : questlang/build/Engine
     questlang/build/workers : questlang/build/Workers
     passes = questlang/codegen/backend : questlang/codegen/Backend
@@ -148,6 +151,7 @@ let usage(message: String): Ok =
             "usage: main [--stop-after tokenize|parse|desugar|typecheck|ir_STAGE|run_ir_STAGE|interpret|codegen_c"
             <> "|run_c_compiled] [--dump-after PHASE] [--show-offsets] [--show-values] [--echo] [--print-result] "
             <> "[--expected-exit N] [-c] [-I DIR] [-o FILE] [-v] [-j N] [--build-dir DIR] [--whole-program] [-i] "
+            <> "[--jit|--no-jit] "
             <> "[OBJECT...] "
             <> "[FILE|- [ARG...] | -e PROGRAM [-- ARG...] | -- ARG...]\n"
             <> "       main compile [--stop-after PHASE] [--dump-after PHASE] [--emit-c] [--nogc] [--echo] "
@@ -181,6 +185,7 @@ let options =
         let var printResult = false
         let var interactive = false
         let var jit = false
+        let var noJit = false
         let var compileOnly = false
         let var emitC = false
         let var nogc = false
@@ -277,6 +282,12 @@ let options =
                 (* The program, or the REPL's inputs, compiled and run by the
                  * JIT, not interpreted (docs/jit.md) *)
                 jit := true
+                noJit := false
+                i := i + 1
+            elsif stringOp.equal(arg "--no-jit") andif not(compileMode) then
+                (* Interpreted, where the JIT would be the default *)
+                jit := false
+                noJit := true
                 i := i + 1
             elsif stringOp.equal(arg "--emit-c") then
                 compiling(arg)
@@ -366,7 +377,13 @@ let options =
             let extraObjects = vector.toArray(:String extraObjects)
             let includePaths = vector.toArray(:String includePaths)
             let interactive = interactive orif {noProgram andif atTerminal}
-            let jit = jit
+            (* -e's program and the REPL's inputs run on the JIT by default,
+             * unless an option asks for the interpreter's phases or output,
+             * or this driver cannot host the JIT (docs/jit.md section 3.10) *)
+            let jit = jit orif {not(noJit) andif not(compileMode) andif not(stopGiven)
+                andif {extent dumpAfter is 0} andif not(showOffsets) andif not(showValues)
+                andif {maybe.isSome(:String code) orif interactive orif {noProgram andif atTerminal}}
+                andif maybe.isNone(:String session.refusal())}
             let programArgs = vector.toArray(:String programArgs)
             let compileOnly = compileOnly
             let emitC = emitC
