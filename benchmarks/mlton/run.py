@@ -21,7 +21,8 @@ A benchmark's output is its standard output, its exit status, and the files it
 writes. Builds go to .build/ here: the conversions are built by ./quest, the
 self-hosted compiler (or --compiler, such as ./questboot), the originals by
 mlton. With --interpret, the conversions are not built but run by the
-compiler's tree-walking interpreter (--stop-after interpret). A build
+compiler's tree-walking interpreter (--stop-after interpret); with --jit, by
+its JIT (docs/jit.md), each run compiling the program again. A build
 directory reused across compiler changes can keep units the new compiler would
 build differently, so --clean removes all of .build/ first; use it whenever the
 compiler has changed since the last run.
@@ -171,6 +172,15 @@ def interpreted(name: str, compiler: list[str]) -> list[str]:
     # directory of its own rather than the scratch directory's .build/
     build = BUILD_DIR / "interpret" / Path(compiler[0]).name
     return [*compiler, "--build-dir", str(build), "--stop-after", "interpret", str(source)]
+
+
+def jitted(name: str, compiler: list[str]) -> list[str]:
+    """The command that runs the conversion on the compiler's JIT, which keeps
+    the artifacts of the modules the program imports in memory."""
+    source = HERE / f"{name}.quest"
+    if not source.is_file():
+        raise FileNotFoundError(f"{source.relative_to(ROOT)} does not exist")
+    return [*compiler, "--jit", str(source)]
 
 
 def run_in_scratch(program: Path | list[str], count: int | str,
@@ -335,6 +345,7 @@ def main() -> int:
                         help="build the conversions as whole programs, their modules' IR merged (check, time)")
     parser.add_argument("--interpret", action="store_true",
                         help="run the conversions in the compiler's interpreter (check, time)")
+    parser.add_argument("--jit", action="store_true", help="run the conversions on the compiler's JIT (check, time)")
     parser.add_argument("--runs", type=int, default=1, help="time each program this many times (time)")
     parser.add_argument("--results", help="append the times to this file, as JSON lines (time)")
     parser.add_argument("--timeout", type=float, default=3600.0, help="seconds a run may take")
@@ -349,10 +360,12 @@ def main() -> int:
         shutil.rmtree(BUILD_DIR, ignore_errors=True)
     # Programs run in a scratch directory, so a compiler named by a path is named by its absolute one
     compiler = [str(Path(args.compiler).resolve()) if "/" in args.compiler else args.compiler]
-    system = Path(args.compiler).name + (" interpret" if args.interpret else "") + \
+    system = Path(args.compiler).name + (" interpret" if args.interpret else "") + (" jit" if args.jit else "") + \
         (f" {args.backend}" if args.backend else "") + (" whole" if args.whole_program else "")
 
     def conversion(name: str) -> Path | list[str]:
+        if args.jit:
+            return jitted(name, compiler)
         return interpreted(name, compiler) if args.interpret else build_conversion(name, compiler, args.backend, args.whole_program)
 
     failed = []

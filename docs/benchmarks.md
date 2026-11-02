@@ -45,6 +45,7 @@ Options of `time` (and, where they apply, `check`):
 | `--compiler PATH` | The Quest compiler that builds (or interprets) the conversions |
 | `--backend B` | Builds the conversions with backend `B` (`c`, `ssac`, or `arm64`; [arm64.md](arm64.md)), into a build directory of its own; `time` reports each build's seconds |
 | `--interpret` | Runs each conversion in the compiler's tree-walking interpreter (`--stop-after interpret`) instead of building it |
+| `--jit` | Runs each conversion on the compiler's JIT (`--jit`, [jit.md](jit.md)) instead of building it, each run compiling it again |
 | `--mlton` | Also times the original, and prints the ratio |
 | `--mlton-only` | Times only the original |
 | `--scale S`, `--count N` | Runs at MLton's count times S (default 1), or at N |
