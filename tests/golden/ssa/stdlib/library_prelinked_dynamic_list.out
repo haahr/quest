@@ -32,8 +32,10 @@ b0(%0: int, %1: ptr):
   %5: int = call qv_int_abs(%4)
   @13:1
   %6: int = const 65
-  %7: int = call qv_ascii_char(%6) result narrow
-  %8: int = zext8 %7
+  %7: int = const 256
+  %8: int = ult %6, %7
+  branch %8, b1(), b2()
+b1():
   @14:1
   %9: int = const 3
   %10: int = const 120
@@ -42,8 +44,12 @@ b0(%0: int, %1: ptr):
   %12: int = const 2
   %13: int = const 0
   %14: int = lt %12, %13
-  branch %14, b2(), b1()
-b1():
+  branch %14, b4(), b3()
+b2():
+  @13:1
+  call quest_raise_ascii_error()
+  unreachable
+b3():
   @15:1
   %16: int = const 7
   %17: val = toVal %16
@@ -97,13 +103,13 @@ b1():
   %55: int = const 1
   store8 %50 + 16, %55
   store8 %51 + 0, %50
-  try slot 0, b5(), handler b6
-b2():
+  try slot 0, b7(), handler b8
+b4():
   @15:1
   %15: ptr = symbol qs_7
   call quest_raise_array_error_at(%15)
   unreachable
-b3(%43: int):
+b5(%43: int):
   @27:9
   %75: ptr = symbol qs_9
   %76: int = const 8
@@ -291,12 +297,12 @@ b3(%43: int):
   %201: int = const 1
   store8 %196 + 16, %201
   store8 %197 + 0, %196
-  try slot 3, b11(), handler b12
-b4():
+  try slot 3, b13(), handler b14
+b6():
   @86:1
   %312: int = const 0
   return %312
-b5():
+b7():
   @24:5
   %56: ptr = symbol quest_type_Bool
   %57: val = call qv_dynamic_be(%56, %30)
@@ -306,8 +312,8 @@ b5():
   %60: ptr = threadLocal quest_current_exception_handler
   %61: ptr = load8 %50 + 0
   store8 %60 + 0, %61
-  jump b3(%59)
-b6():
+  jump b5(%59)
+b8():
   @24:1
   %62: ptr = threadLocal quest_current_exception_handler
   %63: ptr = load8 %50 + 0
@@ -328,16 +334,16 @@ b6():
   store8 %64 + 40, %71
   %72: ptr = load8 %64 + 0
   %73: int = peq %72, %49
-  branch %73, b7(), b8()
-b7():
+  branch %73, b9(), b10()
+b9():
   @24:1
   %74: int = const 0
-  jump b3(%74)
-b8():
+  jump b5(%74)
+b10():
   @24:1
   call quest_reraise(%64) memory [0:48]
   unreachable
-b9(%189: int):
+b11(%189: int):
   @75:6
   %221: ptr = symbol qm_list
   %222: ptr = load8 %221 + 0
@@ -357,11 +363,11 @@ b9(%189: int):
   %232: int = const 1
   store8 %227 + 16, %232
   store8 %228 + 0, %227
-  try slot 6, b17(), handler b18
-b10():
+  try slot 6, b19(), handler b20
+b12():
   @86:1
-  jump b4()
-b11():
+  jump b6()
+b13():
   @71:5
   %202: ptr = symbol quest_type_Int
   %203: val = call qv_list_head(%202, %141)
@@ -370,8 +376,8 @@ b11():
   %205: ptr = threadLocal quest_current_exception_handler
   %206: ptr = load8 %196 + 0
   store8 %205 + 0, %206
-  jump b9(%204)
-b12():
+  jump b11(%204)
+b14():
   @71:1
   %207: ptr = threadLocal quest_current_exception_handler
   %208: ptr = load8 %196 + 0
@@ -392,16 +398,16 @@ b12():
   store8 %209 + 40, %216
   %217: ptr = load8 %209 + 0
   %218: int = peq %217, %195
-  branch %218, b13(), b14()
-b13():
+  branch %218, b15(), b16()
+b15():
   @71:1
   %219: int = const ~1
-  jump b9(%219)
-b14():
+  jump b11(%219)
+b16():
   @71:1
   call quest_reraise(%209) memory [0:48]
   unreachable
-b15(%220: int):
+b17(%220: int):
   @80:10
   %251: ptr = symbol qs_12
   %252: int = const 6
@@ -454,11 +460,11 @@ b15(%220: int):
   %290: int = const 1
   store8 %285 + 16, %290
   store8 %286 + 0, %285
-  try slot 9, b23(), handler b24
-b16():
+  try slot 9, b25(), handler b26
+b18():
   @86:1
-  jump b10()
-b17():
+  jump b12()
+b19():
   @73:19
   %233: ptr = symbol quest_type_Int
   %234: val = call qv_list_tail(%233, %141)
@@ -467,8 +473,8 @@ b17():
   %236: ptr = threadLocal quest_current_exception_handler
   %237: ptr = load8 %227 + 0
   store8 %236 + 0, %237
-  jump b15(%235)
-b18():
+  jump b17(%235)
+b20():
   @72:1
   %238: ptr = threadLocal quest_current_exception_handler
   %239: ptr = load8 %227 + 0
@@ -489,22 +495,22 @@ b18():
   store8 %240 + 40, %247
   %248: ptr = load8 %240 + 0
   %249: int = peq %248, %226
-  branch %249, b19(), b20()
-b19():
+  branch %249, b21(), b22()
+b21():
   @72:1
   %250: int = const ~2
-  jump b15(%250)
-b20():
+  jump b17(%250)
+b22():
   @72:1
   call quest_reraise(%240) memory [0:48]
   unreachable
-b21(%278: int):
+b23(%278: int):
   @86:1
-  jump b22()
-b22():
+  jump b24()
+b24():
   @86:1
-  jump b16()
-b23():
+  jump b18()
+b25():
   @86:5
   %291: int = const 0
   %292: int = const 100
@@ -516,8 +522,8 @@ b23():
   %297: ptr = threadLocal quest_current_exception_handler
   %298: ptr = load8 %285 + 0
   store8 %297 + 0, %298
-  jump b21(%296)
-b24():
+  jump b23(%296)
+b26():
   @86:1
   %299: ptr = threadLocal quest_current_exception_handler
   %300: ptr = load8 %285 + 0
@@ -538,12 +544,12 @@ b24():
   store8 %301 + 40, %308
   %309: ptr = load8 %301 + 0
   %310: int = peq %309, %284
-  branch %310, b25(), b26()
-b25():
+  branch %310, b27(), b28()
+b27():
   @86:1
   %311: int = const 0
-  jump b21(%311)
-b26():
+  jump b23(%311)
+b28():
   @86:1
   call quest_reraise(%301) memory [0:48]
   unreachable

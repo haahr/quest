@@ -222,6 +222,136 @@ export
     let importOf(r: ir.ModuleRef): maybe.T(ir.Import) =
         case r when refImport with x then maybe.some(:ir.Import x.i) else maybe.none(:ir.Import) end
 
+    (* Whether a function type's parameters and result are all held as words
+     * or bytes, not QVal words (or the result is Ok): a library function's
+     * wrapper then has the C function's signature (as the C printer's
+     * libraryExternal requires) *)
+    let concrete(t: maybe.T(Type)): Bool =
+        if maybe.isNone(:Type t) then false
+        else
+            case maybe.unwrap(:Type t).form
+                when typeFun with f then
+                    let unboxed(p: Type): Bool =
+                        case layout.representationKind(p)
+                            when repInt, repWord, repBool, repChar, repPointer then true
+                            else false
+                        end
+                    let var all = case layout.representationKind(f.result) when repVoid then true else unboxed(f.result) end
+                    for i = 0 upto {extent f.params - 1} do
+                        if not(unboxed(f.params[i].type)) then all := false end
+                    end
+                    all
+                else false
+            end
+        end
+
+    (* The constant an atom is, if it is an Int's *)
+    let constantOf(a: Atom): maybe.T(Int) =
+        case a
+            when atomConst with x then
+                case x.c.value when constInt with y then maybe.some(:Int y.n) else maybe.none(:Int) end
+            else maybe.none(:Int)
+        end
+
+    (* A call of one of the standard library's external functions that C
+     * inlines (runtime/quest_runtime.h's word primitives, and the string's
+     * and ascii's that read or write a byte), as the instructions it is: the
+     * C backend calls the C function itself (the C printer's libraryExternal),
+     * which clang inlines, and the SSA would otherwise call the module's
+     * wrapper. The rest, and a shift by a count that is not a constant, call
+     * the wrapper. *)
+    let libraryOperation(fn: vals.Fn imp: ir.Import member: String o: ir.OpCall): maybe.T(Array(Int)) =
+        begin
+            let none = maybe.none(:Array(Int))
+            let one(v: Int): maybe.T(Array(Int)) = maybe.some(:Array(Int) array of v end)
+            let x(): Int = vals.atom1(fn o.args[0])
+            let y(): Int = vals.atom1(fn o.args[1])
+            let binary(op: ssa.Opcode): maybe.T(Array(Int)) = one(vals.binary(fn op x() y()))
+            let negated(v: Int): Int = vals.binary(fn ssa.opXor v vals.constant(fn 1))
+            let noSite = fun(): Array(Int) array of :Int end
+            (* A string's byte at an index, after the check of
+             * quest_string_get_char and quest_string_set_char: a null string,
+             * or an index outside it, raises string.error *)
+            let byteAddress(s: Int idx: Int): Int =
+                begin
+                    vals.check(fn vals.binary(fn ssa.opPeq s vals.null(fn)) false "quest_raise_string_error" noSite)
+                    let length = vals.loadWord(fn s runtimeLayout.offset("QString" "length") vals.tInt)
+                    vals.check(fn vals.binary(fn ssa.opUlt idx length) true "quest_raise_string_error" noSite)
+                    vals.indexPtr(fn vals.loadWord(fn s runtimeLayout.offset("QString" "data") vals.tPtr) idx)
+                end
+            let named(name: String): Bool = vals.eq(member name)
+            if maybe.isNone(:String imp.libPath) orif not(concrete(o.calleeType)) then none
+            else
+                let lib = maybe.unwrap(:String imp.libPath)
+                if vals.eq(lib "word") then
+                    if named("andBits") then binary(ssa.opAnd)
+                    elsif named("orBits") then binary(ssa.opOr)
+                    elsif named("xorBits") then binary(ssa.opXor)
+                    elsif named("notBits") then one(vals.binary(fn ssa.opXor x() vals.constant(fn ~1)))
+                    elsif named("add") then binary(ssa.opAdd)
+                    elsif named("sub") then binary(ssa.opSub)
+                    elsif named("mul") then binary(ssa.opMul)
+                    elsif named("fromInt") orif named("toInt") then one(x())
+                    elsif named("lt") then binary(ssa.opUlt)
+                    elsif named("gt") then one(vals.binary(fn ssa.opUlt y() x()))
+                    elsif named("le") then one(negated(vals.binary(fn ssa.opUlt y() x())))
+                    elsif named("ge") then one(negated(vals.binary(fn ssa.opUlt x() y())))
+                    elsif named("shift") then
+                        (* quest_word_shift: left by a positive count, right by
+                         * a negative one, 0 by one of 64 or more either way;
+                         * by a constant, one instruction or none *)
+                        let w = x()
+                        let count = constantOf(o.args[1])
+                        if maybe.isSome(:Int count) then
+                            let n = maybe.unwrap(:Int count)
+                            if {n >= 64} orif {n <= ~64} then one(vals.constant(fn 0))
+                            elsif n > 0 then one(vals.binary(fn ssa.opShl w vals.constant(fn n)))
+                            elsif n < 0 then one(vals.binary(fn ssa.opLshr w vals.constant(fn 0 - n)))
+                            else one(w)
+                            end
+                        else
+                            let n = y()
+                            let shifted(op: ssa.Opcode by: Int): Array(Int) =
+                                vals.choose(fn vals.binary(fn ssa.opUlt by vals.constant(fn 64)) array of vals.tInt end
+                                    fun(): Array(Int) array of vals.binary(fn op w by) end
+                                    fun(): Array(Int) array of vals.constant(fn 0) end)
+                            maybe.some(:Array(Int) vals.choose(fn vals.binary(fn ssa.opLt n vals.constant(fn 0))
+                                array of vals.tInt end
+                                fun(): Array(Int) shifted(ssa.opLshr vals.binary(fn ssa.opSub vals.constant(fn 0) n))
+                                fun(): Array(Int) shifted(ssa.opShl n)))
+                        end
+                    else none
+                    end
+                elsif vals.eq(lib "ascii") then
+                    (* A Char is held zero-extended *)
+                    if named("val") then one(x())
+                    elsif named("char") then
+                        let n = x()
+                        vals.check(fn vals.binary(fn ssa.opUlt n vals.constant(fn 256)) true "quest_raise_ascii_error"
+                            noSite)
+                        one(n)
+                    else none
+                    end
+                elsif vals.eq(lib "string") then
+                    if named("length") then
+                        let s = x()
+                        maybe.some(:Array(Int) vals.choose(fn vals.binary(fn ssa.opPeq s vals.null(fn))
+                            array of vals.tInt end
+                            fun(): Array(Int) array of vals.constant(fn 0) end
+                            fun(): Array(Int)
+                                array of vals.loadWord(fn s runtimeLayout.offset("QString" "length") vals.tInt) end))
+                    elsif named("getChar") then
+                        one(vals.load(fn byteAddress(x() y()) 0 vals.part(vals.tInt 1 false)))
+                    elsif named("setChar") then
+                        vals.store(fn byteAddress(x() y()) 0 1 vals.atom1(fn o.args[2]))
+                        maybe.some(:Array(Int) array of :Int end)
+                    else none
+                    end
+                else none
+                end
+            end
+        end
+
     let callOp(fn: vals.Fn o: ir.OpCall): Array(Int) =
         begin
             let descs = descriptors.descriptors(fn o.descriptors)
@@ -232,9 +362,14 @@ export
                     let v = maybe.unwrap(:Variable ir.member(maybe.unwrap(:ir.Module moduleOf(r)).members member))
                     callClosure(fn v descs o.args)
                 else
-                    let clean = symbols.mangleModuleName(maybe.unwrap(:ir.Import importOf(r)).canonicalPath)
-                    let calleeType = maybe.unwrapOr(:Type o.calleeType model.okType)
-                    directCall(fn symbols.mangleModuleIdent(clean member) descs o.args calleeType)
+                    let imp = maybe.unwrap(:ir.Import importOf(r))
+                    let inline = libraryOperation(fn imp member o)
+                    if maybe.isSome(:Array(Int) inline) then maybe.unwrap(:Array(Int) inline)
+                    else
+                        let clean = symbols.mangleModuleName(imp.canonicalPath)
+                        let calleeType = maybe.unwrapOr(:Type o.calleeType model.okType)
+                        directCall(fn symbols.mangleModuleIdent(clean member) descs o.args calleeType)
+                    end
                 end
             else
                 callClosure(fn maybe.unwrap(:Variable o.callee) descs o.args)

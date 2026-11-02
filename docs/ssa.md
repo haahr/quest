@@ -155,6 +155,17 @@ registration, and the unit).
   and `mod` with the test for zero inline; and the bounds, count, and ordinal checks. Each check branches to a block
   that computes the site and calls the runtime's raise (`values.check`), so that the common path computes no site.
   The string and `ascii` helpers are calls in C too, and stay calls.
+- **The library's external functions that C inlines are their instructions** (`calls.libraryOperation`). The C
+  printer calls a library member's C function in place of its wrapper (`libraryExternal`,
+  [c-representation.md](c-representation.md) §6.2), and clang inlines the word module's `static inline` primitives;
+  the SSA would call the wrapper, out of line. So for an import that resolves to `lib/`, at a signature of words and
+  bytes, the builder makes `word`'s bitwise operations, arithmetic, conversions, and unsigned comparisons their
+  instructions, and `word.shift` a shift (by a constant, one instruction or none; otherwise branches for the
+  direction and for a count of 64 or more); `ascii.val` its argument and `ascii.char` a range check; and `string`'s
+  `length`, `getChar`, and `setChar` a load or a store after the runtime's null and bounds checks, raising through
+  `quest_raise_string_error` and `quest_raise_ascii_error` as the runtime does. The rest call the wrapper. Through
+  `ssac`, checksum took 3.65 times the C backend's time and takes 0.17 (clang vectorizes its loop), md5 3.94 and
+  0.76, and psdes-random 4.09 and 1.01 ([benchmarks.md](benchmarks.md) §11).
 - **Blocks the entry does not reach are dropped** when a function is finished, and the rest renumbered.
 
 What the builder does not yet build raises `unsupported`, naming the construct; `--stop-after ssa` reports it as an

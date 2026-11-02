@@ -781,7 +781,7 @@ static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
    (`libraryExternal` in `questlang/codegen/c/printer`) when the wrapper has its signature: when the importer holds
    no parameter or result as a `QVal`, as it holds an external type it sees only as abstract (`os/process`'s
    `process.T`). The word module's primitives are `static inline` in `runtime/quest_runtime.h`, so such a call
-   compiles to its operator.
+   compiles to its operator. The SSA's builder makes the same calls their instructions ([ssa.md](ssa.md) §4).
 4. **Indirect Call Site:**
    ```c
    ((RetType (*)(void *, ParamTypes...))(c_func->fn))(c_func->env, args...);
