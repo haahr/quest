@@ -483,23 +483,38 @@ LLVM's `preserve_most` convention does, since proxy calls are most of the cold c
 Item 5 is the first optimization pass the SSA would have, and it would help `ssac` too. Item 8 is the largest factor
 for zebra and hamlet, but it is outside the code generator, and escape-analysis.md is its plan.
 
-After the first two batches (items 1 to 3 and 4a, with item 8's escape analysis pushed beside them), the order is:
+After the first two batches (items 1 to 3 and 4a, with item 8's escape analysis pushed beside them), the rest is
+in five batches. Each is pushed after one run of `tools/check`, with each of its items measured alone before that
+run, as the second batch's were: its three fixes were found by measuring, not by `tools/check`.
 
-1. **The six timed again** on main, against `ssac` and the C backend, since the second batch's timings predate
-   escape analysis: the baseline the rest is measured from.
-2. **What the spills that remain are,** in life's `qf_nthgen` (34 loads, against clang's 7) and mlyacc's hottest
-   functions: values live across cold calls, mostly proxies (which the stubs would keep in registers), across cold
-   calls of other kinds (which 4b would), or more values than registers (which neither would). That decides between
-   4b and the stubs, and whether either is worth its cost; 4a's actual lines (352 against 100) suggest 4b's are near
-   the top of its estimate.
-3. **Items 6 and 7,** independent of that decision, as a batch of their own. Item 7 needed 4a's frequencies, which
-   are there now.
-4. **Item 9,** open since the first batch: neither clearing slots (3a and its fixes) nor clearing callee-saved
-   registers closes mlyacc's retention, and the suspect, callee-saved registers saved by deeper frames, is unconfirmed.
-   `retention.py dead` reports those words as SAVED; what they held in the caller is the next thing to see.
+| Batch | Items | Lines | Depends on |
+|---|---|--:|---|
+| 3 | The six timed again; the spills that remain classified; item 9 looked into | tools only | — |
+| 4 | 6's register-offset addresses, `adrp` + `ldr`, and no re-extension; 7 | 300 to 400 | 3's timings |
+| 5 | 6's `ldp`/`stp` and post-index | 100 to 200 | 4 |
+| 6 | 4b or the proxy stubs, and item 9's fix if it is about callee-saved registers | 100 to 1,000 | 3's classification |
+| 7 | 5, with a plan of its own first | 100 to 1,000 | — |
 
-The second batch's fixes were found by measuring before `tools/check`, not by it, and each run of `tools/check` so
-far passed the first time; 4b or the stubs should be measured the same way before their run.
+- **Batch 3** changes no compiler. The second batch's timings predate escape analysis, so the six are timed again
+  on main, against `ssac` and the C backend: the baseline for the rest. Each stack load that remains in life's
+  `qf_nthgen` (34, against clang's 7) and mlyacc's hottest functions is classified by why its value is in memory:
+  live across a proxy call (which the stubs would keep in registers), across a cold call of another kind (which 4b
+  would), or more values than registers (which neither would). For item 9, `retention.py dead` reports the words
+  frames save as SAVED; what they held in the caller is the next thing to see. The classification and item 9 need
+  counts only, not an idle machine; a tool kept from them is a tools-only commit.
+- **Batch 4** is local changes to `select` and `layout`, leaving the allocator alone: the least risky of what remains,
+  and the first measured against the new baseline. Item 7 is layout too, and has 4a's frequencies now.
+- **Batch 5** is a pass after allocation, not a pattern in selection, and the most likely of item 6's parts to need
+  a fix. It follows batch 4 so that its pairs are counted in the layout it ships with.
+- **Batch 6** is whichever of 4b and the stubs batch 3's classification favors, or neither, if most of what remains
+  is more values than registers. It changes the allocator's core heuristic or proxies' calling convention, so it is
+  alone, with `regalloc_scan` extended to loops with cold calls. Item 9's fix joins it if it is about callee-saved
+  registers, which the allocator chooses; otherwise item 9 is a small batch of its own.
+- **Batch 7** is the SSA's first optimization pass, and it changes `ssac` too, so it gets a plan like
+  escape-analysis.md before code. It depends on nothing, and the plan can be written at any time; it comes last
+  because batches 4 to 6 are cheaper, and its gain is clearer measured after them.
+
+Batches 4 and 5 do not wait for batch 3's classification, and may come before batch 6 if it takes long.
 
 Each is to be measured as benchmarks.md measures (`run.py time --clean`), and the six here against `ssac` with
 `tools/perf/timeit.py`. The figures above will move: §3.1's and §3.2's interact (fewer spills mean fewer slots to
