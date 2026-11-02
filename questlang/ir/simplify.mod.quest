@@ -14,7 +14,9 @@ import
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
+    util/strutil : util/Strutil
     stringOp = string : StringOp
+    system : System
     intOp = int : IntOp
 export
     Let Variable = nodes.Variable
@@ -26,23 +28,41 @@ export
     let intEqual(a: Int b: Int): Bool = a is b
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
+    (* A setting below, or the value QUEST_INLINE gives it, a list of
+     * name=value separated by commas (rounds=3,size=60), for measuring
+     * others (docs/inlining.md section 1) *)
+    let setting(name: String default: Int): Int =
+        begin
+            let var value = default
+            let pairs = strutil.split(system.getEnv("QUEST_INLINE") ",")
+            for i = 0 upto {vector.length(:String pairs) - 1} do
+                let pair = strutil.split(vector.get(:String pairs i) "=")
+                if {vector.length(:String pair) is 2} andif eq(vector.get(:String pair 0) name) then
+                    value := strutil.toInt(vector.get(:String pair 1))
+                end
+            end
+            value
+        end
+
     (* The most rounds the simplifier makes over a unit: each round simplifies
      * what the last one made simpler, and inlines into what it inlined *)
-    let maxRounds = 6
+    let maxRounds = setting("rounds" 6)
 
     (* Inlining (docs/ir.md section 8.6): a function no larger than
      * inlineSize, less its bonuses for the call, is inlined; one called once,
-     * whatever its size. Calls are inlined until the unit has grown by half
-     * its size before the first round, or by minimumBudget, if more. *)
-    let inlineSize = 30
-    let minimumBudget = 1000
+     * whatever its size. Calls are inlined until the unit has grown by
+     * growthPercent of its size before the first round (half), or by
+     * minimumBudget, if more. *)
+    let inlineSize = setting("size" 30)
+    let minimumBudget = setting("budget" 1000)
+    let growthPercent = setting("growth" 50)
     (* The call supplies type arguments: the caller no longer calls a
      * polymorphic function *)
-    let polymorphicBonus = 30
+    let polymorphicBonus = setting("polymorphic" 30)
     (* An argument that is a known function, whose calls then are known *)
-    let functionBonus = 10
+    let functionBonus = setting("function" 10)
     (* An argument that is a constant, which the callee may branch on *)
-    let constantBonus = 5
+    let constantBonus = setting("constant" 5)
 
     Let Simplifier = Tuple
         (* How many times each variable is used, by id, counted at the start of
@@ -896,7 +916,8 @@ export
                 let var grown = 0
                 let var budget = 0
             end
-            s.budget := if {s.analysis.size / 2} > minimumBudget then s.analysis.size / 2 else minimumBudget end
+            let grow = {s.analysis.size * growthPercent} / 100
+            s.budget := if grow > minimumBudget then grow else minimumBudget end
             let var round = 0
             while s.changed andif {round < maxRounds} do
                 s.changed := false

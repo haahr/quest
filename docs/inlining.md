@@ -13,6 +13,11 @@ The threshold (30), the bonuses (30 for closed type arguments, 10 for a known fu
 the growth bound (half the unit, or 1000), and the bound of six rounds were chosen, not measured. *Done when*
 benchmarks.md records the settings and why.
 
+`QUEST_INLINE` overrides them for measuring, as a list of `name=value` separated by commas, read by `ir/simplify`
+when the compiler starts: `size` (30), `polymorphic` (30), `function` (10), `constant` (5), `growth` (the percent of
+the unit it may grow by, 50), `budget` (the least growth, 1000), and `rounds` (6). A build's workers inherit it, so
+`QUEST_INLINE=size=60 run.py time --clean` measures the suite with that setting.
+
 The whole-program comparison has been retaken since abstract types became transparent in whole programs (ir.md §4.1):
 at [benchmarks.md](benchmarks.md) §8.2, a whole program takes 0.94 times as long as a separate build, and
 ratio-regions, which took 1.68 times as long whole at §7.2, is no longer slower whole.
