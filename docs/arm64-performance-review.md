@@ -489,7 +489,7 @@ run, as the second batch's were: its three fixes were found by measuring, not by
 
 | Batch | Items | Lines | Depends on |
 |---|---|--:|---|
-| 3 | The six timed again; escape analysis and the inner loops' clears timed; item 9 looked into | tools only | — |
+| 3 | The six timed again; escape analysis and the inner loops' clears timed (done); item 9 looked into | tools only | — |
 | 4 | 6's register-offset addresses, `adrp` + `ldr`, and no re-extension; 7 | 300 to 400 | 3's timings |
 | 5 | 6's `ldp`/`stp` and post-index | 100 to 200 | 4 |
 | 6 | 4b or the proxy stubs: deferred, by the classification below | 100 to 1,000 | — |
@@ -513,7 +513,7 @@ run, as the second batch's were: its three fixes were found by measuring, not by
   escape analysis had (now [ssa.md](ssa.md) §4.2) before code. It depends on nothing, and the plan can be written at any time; it comes last
   because batches 4 to 6 are cheaper, and its gain is clearer measured after them.
 
-Batches 4 and 5 wait only for batch 3's baseline timings.
+Batches 4 and 5 waited only for batch 3's baseline timings, which are below.
 
 **The classification** (2026-11-01, at `e72fc0cb`) built life and mlyacc with the allocator told that some calls
 clobber no register, which is wrong code, only counted: calls in cold blocks (what 4b could gain at most), proxy
@@ -535,6 +535,27 @@ frequencies, and set against `tools/perf/profile.py`'s samples:
   either way, since 4a took §3.1's out of it. Of `qf_nthgen`'s 785 samples, 4 are on reloads. 176 are on two clears in
   the inner loop, but each follows a branch on a chain of loads, which is most likely the loads' latency counted at
   the next instruction; batch 3 times them to tell.
+
+**The baseline** (batch 3's timings, 2026-11-01, at `2b619714`): `tools/perf/timeit.py`, five rounds at a
+thirty-second of the suite's counts, at a load of 6 falling to 2. Escape analysis is in both of the SSA's backends and
+not in C's, so `ssac` is now faster than C on four of the six, and the code generator's own factor is arm64 against
+`ssac`:
+
+| | arm64 / C | arm64 / `ssac` | `ssac` / C | arm64 / C, second batch |
+|---|--:|--:|--:|--:|
+| life | 1.15 | 1.45 | 0.80 | 1.33 |
+| ray | 0.72 | 1.05 | 0.69 | 1.14 |
+| hamlet | 1.28 | 1.29 | 0.99 | — |
+| mlyacc | 1.00 | 1.27 | 0.78 | 1.29 |
+| zebra | 1.38 | 1.24 | 1.11 | 1.87 |
+| nucleic | 1.00 | 1.14 | 0.88 | 1.13 |
+
+- **Item 8 has done its part:** zebra's and hamlet's `ssac` / C, 1.58 and 1.34 in §1, are 1.11 and 0.99, so what
+  remains of their arm64 / C is the code generator's.
+- **Escape analysis is worth its spills on arm64:** life without it (`QUEST_SKIP_PASSES=escape`) takes 1.33 of C's
+  time, against 1.16 with it, the same five rounds.
+- **The inner loop's clears cost about 2%:** life with `qf_nthgen`'s clears left out takes 1.14 of C's time, within
+  the noise at this load. The samples on them were the loads' latency. Batch 6 stays deferred.
 
 Each is to be measured as benchmarks.md measures (`run.py time --clean`), and the six here against `ssac` with
 `tools/perf/timeit.py`. The figures above will move: §3.1's and §3.2's interact (fewer spills mean fewer slots to
