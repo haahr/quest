@@ -438,8 +438,8 @@ and `.out` files) and its runs of `tools/check` here, beside the estimate.
 | 1 | 19 | 1, with 2 and 3a | `e7b7e44b` |
 | 2 | 59 | 1, with 1 and 3a | `ee258b96` |
 | 3a | 143 | 1, with 1 and 2 | `33b8e719` |
-| 3b | | | |
-| 4a | | | |
+| 3b | 147 | 1, with 4a and the fixes | `914aec10` |
+| 4a | 352 | 1, with 3b and the fixes | `ba0f9a4b` |
 | 4b | | | |
 | 5 | | | |
 | 6 | | | |
@@ -454,6 +454,22 @@ information from every binary. Item 3a cleared `main`'s frame (90 to 126 heap po
 to 717 before and clang's 78 to 81), but mlyacc's median live data fell only from 2.6 MB to 2.0 MB, against clang's
 0.77: what else keeps the rest alive (slots not yet written, callee-saved registers, or something not yet seen) is
 open. Timings were taken on a machine loaded by other suites and are to be taken again.
+
+The second batch (items 3b and 4a, 2026-11-01) came with three fixes that measuring it found, each a commit of its
+own: a value dying as a jump's argument was never cleared, since the test of whether a call may follow looked only
+at the instructions after the jump, of which there are none (`8ecaaf2c`, 25 lines); a loop header's parameter that
+nothing reads, in memory because the header had more parameters than registers, was stored by the back edge every
+time round and never cleared, since it dies at no read (`cb3757ed`, 11 lines); and raising blocks cleared slots
+just before raising (`2df9f23c`, 10 lines). They were found with `tools/perf/retention.py` and the backend's
+`QUEST_LIVE_SLOTS=1` annotations (`8f692304`, 86 lines of compiler and 272 of tools; docs/profiling.md section 6),
+after the collector's own statistics proved misleading: it collects at different points in each build and run.
+Clearing dead values' callee-saved registers was tried and not kept: it changed mlyacc's live data by under 1%. 4a's
+estimate was low (352 lines against 100), a third of it moving definitions above their first use. Results against the
+C backend, five rounds, at a load of 2 to 22: life 1.33 (1.55 with 3b alone), mlyacc 1.29 (1.34), nucleic 1.13
+(1.14), ray 1.14, zebra 1.87, hamlet 1.00 of 3b's. mlyacc's median live data at forced collections is 1.31 MB, against
+1.48 MB with 3b alone and 0.73 MB under C; `main`'s frame holds no dead pointers at the points checked, and what keeps
+the rest alive (perhaps callee-saved registers saved by deeper frames) is open. In life's `qf_nthgen`, 4a takes
+the stack loads from 74 to 34 and the stores from 116 to 59 (clang: 7 and 7).
 
 Items 1 to 3 are small, independent, and each fixes something measured above; do them first and measure (3a
 before 3b, so that each is measured alone). Item 4 is
