@@ -489,32 +489,52 @@ run, as the second batch's were: its three fixes were found by measuring, not by
 
 | Batch | Items | Lines | Depends on |
 |---|---|--:|---|
-| 3 | The six timed again; the spills that remain classified; item 9 looked into | tools only | — |
+| 3 | The six timed again; escape analysis and the inner loops' clears timed; item 9 looked into | tools only | — |
 | 4 | 6's register-offset addresses, `adrp` + `ldr`, and no re-extension; 7 | 300 to 400 | 3's timings |
 | 5 | 6's `ldp`/`stp` and post-index | 100 to 200 | 4 |
-| 6 | 4b or the proxy stubs, and item 9's fix if it is about callee-saved registers | 100 to 1,000 | 3's classification |
+| 6 | 4b or the proxy stubs: deferred, by the classification below | 100 to 1,000 | — |
 | 7 | 5, with a plan of its own first | 100 to 1,000 | — |
 
 - **Batch 3** changes no compiler. The second batch's timings predate escape analysis, so the six are timed again
-  on main, against `ssac` and the C backend: the baseline for the rest. Each stack load that remains in life's
-  `qf_nthgen` (34, against clang's 7) and mlyacc's hottest functions is classified by why its value is in memory:
-  live across a proxy call (which the stubs would keep in registers), across a cold call of another kind (which 4b
-  would), or more values than registers (which neither would). For item 9, `retention.py dead` reports the words
-  frames save as SAVED; what they held in the caller is the next thing to see. The classification and item 9 need
-  counts only, not an idle machine; a tool kept from them is a tools-only commit.
+  on main, against `ssac` and the C backend: the baseline for the rest. Two timings follow from the classification
+  below: arm64 life with escape analysis and without (`QUEST_SKIP_PASSES=escape`), to see whether the spills it adds
+  take back what its allocations save; and a build without the clears in `qf_nthgen`'s inner loop, to tell what they
+  cost from the latency of the loads before them. For item 9, `retention.py dead` reports the words frames save as
+  SAVED; what they held in the caller is the next thing to see. Item 9 needs counts only, not an idle machine; a
+  tool kept from it is a tools-only commit.
 - **Batch 4** is local changes to `select` and `layout`, leaving the allocator alone: the least risky of what remains,
   and the first measured against the new baseline. Item 7 is layout too, and has 4a's frequencies now.
 - **Batch 5** is a pass after allocation, not a pattern in selection, and the most likely of item 6's parts to need
   a fix. It follows batch 4 so that its pairs are counted in the layout it ships with.
-- **Batch 6** is whichever of 4b and the stubs batch 3's classification favors, or neither, if most of what remains
-  is more values than registers. It changes the allocator's core heuristic or proxies' calling convention, so it is
-  alone, with `regalloc_scan` extended to loops with cold calls. Item 9's fix joins it if it is about callee-saved
-  registers, which the allocator chooses; otherwise item 9 is a small batch of its own.
+- **Batch 6** is deferred: the classification below finds nothing for 4b to gain and little for the stubs. It is
+  to be looked at again if batch 3's timings or a later profile put time on spills across calls. Item 9's fix is a
+  batch of its own, when item 9 finds what it is.
 - **Batch 7** is the SSA's first optimization pass, and it changes `ssac` too, so it gets a plan like
   escape-analysis.md before code. It depends on nothing, and the plan can be written at any time; it comes last
   because batches 4 to 6 are cheaper, and its gain is clearer measured after them.
 
-Batches 4 and 5 do not wait for batch 3's classification, and may come before batch 6 if it takes long.
+Batches 4 and 5 wait only for batch 3's baseline timings.
+
+**The classification** (2026-11-01, at `0108d012`) built life and mlyacc with the allocator told that some calls
+clobber no register, which is wrong code, only counted: calls in cold blocks (what 4b could gain at most), proxy
+helpers' calls (what the stubs could), and every call. Stack loads and stores are weighted by their blocks'
+frequencies, and set against `tools/perf/profile.py`'s samples:
+
+- **4b, splitting around cold calls, gains nothing.** With cold blocks' calls clobbering nothing, both programs'
+  code is the same, byte for byte: a cold block raises, so nothing is live after its calls. Proxies' slow paths
+  return, and so are not cold by 4a's definition; what 4b would do for them is what the stubs would.
+- **mlyacc's gap is not spills.** Its hottest compiled functions (`qf_union`, `qf_length_3`, `qf_graphShift`) have
+  none, and the collector has 51% of its samples. `main` has most of its spills by the static frequencies, and none
+  of its samples. Its levers are item 9 and instruction selection.
+- **life's `qf_nthgen` has three times the spills it had before escape analysis,** which turns its tuples into
+  separate values: 74 reloads, 76 stores, and 49 clears, against 28, 33, and 21 with the pass skipped (the 34 above
+  was before the rebase onto it). Proxy calls that preserved every register would leave 40 reloads; calls that
+  clobbered nothing, 16. The pass takes life's allocations from 220 million to 123 million, and mlyacc's from 212
+  million to 127 million (at `--scale 0.05`).
+- **Those spills cost little time.** The new reloads are at loop depth 2 (64 against 16); the innermost loop's are 6
+  either way, since 4a took §3.1's out of it. Of `qf_nthgen`'s 785 samples, 4 are on reloads. 176 are on two clears in
+  the inner loop, but each follows a branch on a chain of loads, which is most likely the loads' latency counted at
+  the next instruction; batch 3 times them to tell.
 
 Each is to be measured as benchmarks.md measures (`run.py time --clean`), and the six here against `ssac` with
 `tools/perf/timeit.py`. The figures above will move: §3.1's and §3.2's interact (fewer spills mean fewer slots to
