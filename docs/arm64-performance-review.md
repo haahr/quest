@@ -413,7 +413,8 @@ handler's backtrace.
 | 5 | Value numbering and hoisting of pure values and immutable loads | a new `ssa` pass; `ssa/build` | 100 to 1,000 | 2 to 4 | nucleic; every program; ssac too |
 | 6 | `ldp`/`stp` and post-index; register-offset addresses; `adrp` + `ldr`; no re-extension | `select`, a post-allocation pass | 100 each | 1 to 2 each | a few percent each |
 | 7 | Chain layout and loop rotation | after 2, with 4a's frequencies | 100 | 1 to 2 | a few percent |
-| 8 | Options' payloads in the SSA, as in the C printer | escape-analysis.md (in progress) | — | — | zebra 1.58, hamlet 1.34 (ssac and arm64) |
+| 8 | Options' payloads in the SSA, as in the C printer | escape-analysis.md (steps 1 to 5 done) | — | — | zebra 1.58, hamlet 1.34 (ssac and arm64) |
+| 9 | What else keeps mlyacc's heap alive | to be found, with `tools/perf/retention.py` | — | — | mlyacc: 1.31 MB live, against C's 0.73 |
 
 **Lines** is the order of magnitude of the compiler's (and runtime's) lines added and removed, not counting tests and
 goldens. **Checks** is how many runs of `tools/check` the change should take to push: one when it is right the first
@@ -428,18 +429,18 @@ change takes. They are estimates from comparable commits:
 - The C printer's payload fixes (`193a3f11`): 211.
 - `ssa/cfg` already has the dominator tree and loop depths, so 4a's frequencies are little more than loop depth and
   a walk for blocks that only reach `unreachable`, plus the use of them in the spill choice. Item 5 needs the
-  builder to mark loads of immutable memory, which is in `ssa/build`, where escape analysis is being written.
+  builder to mark loads of immutable memory, which is in `ssa/build`.
 
 To check the estimates, each item's commit should record its actual lines (`git show --numstat`, without `tests/`
 and `.out` files) and its runs of `tools/check` here, beside the estimate.
 
 | | Lines, actual | Checks, actual | Commit |
 |---|--:|--:|---|
-| 1 | 19 | 1, with 2 and 3a | `e7b7e44b` |
-| 2 | 59 | 1, with 1 and 3a | `ee258b96` |
-| 3a | 143 | 1, with 1 and 2 | `33b8e719` |
-| 3b | 147 | 1, with 4a and the fixes | `914aec10` |
-| 4a | 352 | 1, with 3b and the fixes | `ba0f9a4b` |
+| 1 | 19 | 1, with 2 and 3a | `a9f50a2c` |
+| 2 | 59 | 1, with 1 and 3a | `c117f3f8` |
+| 3a | 143 | 1, with 1 and 2 | `b6c56e08` |
+| 3b | 147 | 1, with 4a and the fixes | `cdf4cf76` |
+| 4a | 352 | 1, with 3b and the fixes | `df46c85c` |
 | 4b | | | |
 | 5 | | | |
 | 6 | | | |
@@ -457,11 +458,11 @@ open. Timings were taken on a machine loaded by other suites and are to be taken
 
 The second batch (items 3b and 4a, 2026-11-01) came with three fixes that measuring it found, each a commit of its
 own: a value dying as a jump's argument was never cleared, since the test of whether a call may follow looked only
-at the instructions after the jump, of which there are none (`8ecaaf2c`, 25 lines); a loop header's parameter that
+at the instructions after the jump, of which there are none (`5b2acd1f`, 25 lines); a loop header's parameter that
 nothing reads, in memory because the header had more parameters than registers, was stored by the back edge every
-time round and never cleared, since it dies at no read (`cb3757ed`, 11 lines); and raising blocks cleared slots
-just before raising (`2df9f23c`, 10 lines). They were found with `tools/perf/retention.py` and the backend's
-`QUEST_LIVE_SLOTS=1` annotations (`8f692304`, 86 lines of compiler and 272 of tools; docs/profiling.md section 6),
+time round and never cleared, since it dies at no read (`2c972461`, 11 lines); and raising blocks cleared slots
+just before raising (`5f74f6c4`, 10 lines). They were found with `tools/perf/retention.py` and the backend's
+`QUEST_LIVE_SLOTS=1` annotations (`1ab6c5c7`, 86 lines of compiler and 272 of tools; docs/profiling.md section 6),
 after the collector's own statistics proved misleading: it collects at different points in each build and run.
 Clearing dead values' callee-saved registers was tried and not kept: it changed mlyacc's live data by under 1%. 4a's
 estimate was low (352 lines against 100), a third of it moving definitions above their first use. Results against the
@@ -469,17 +470,36 @@ C backend, five rounds, at a load of 2 to 22: life 1.33 (1.55 with 3b alone), ml
 (1.14), ray 1.14, zebra 1.87, hamlet 1.00 of 3b's. mlyacc's median live data at forced collections is 1.31 MB, against
 1.48 MB with 3b alone and 0.73 MB under C; `main`'s frame holds no dead pointers at the points checked, and what keeps
 the rest alive (perhaps callee-saved registers saved by deeper frames) is open. In life's `qf_nthgen`, 4a takes
-the stack loads from 74 to 34 and the stores from 116 to 59 (clang: 7 and 7).
+the stack loads from 74 to 34 and the stores from 116 to 59 (clang: 7 and 7). These timings predate escape
+analysis (`88b91256` to `0093eb23`, item 8), which takes zebra to 0.41 of its allocations through the SSA, so zebra's
+and hamlet's, at least, are to be taken again.
 
 Items 1 to 3 are small, independent, and each fixes something measured above; do them first and measure (3a
-before 3b, so that each is measured alone). Item 4 is
-the one that closes the most of the gap and is the most work. It changes the allocator's core heuristic, so it
-should come with the `regalloc_scan` tests extended to loops with cold calls. Its first half is small and useful
-alone. Measure it, and a narrower alternative to the second half, before writing the second half: proxy helpers
-called through stubs that preserve the caller-saved registers, as LLVM's `preserve_most` convention does, since
-proxy calls are most of the cold calls hot values are live across. Item 5 is the first optimization pass the SSA
-would have, and it would help `ssac` too. Item 8 is the largest factor for zebra and hamlet, but it is outside the
-code generator, and escape-analysis.md is its plan.
+before 3b, so that each is measured alone). Item 4 is the one that closes the most of the gap and is the most work.
+It changes the allocator's core heuristic, so it should come with the `regalloc_scan` tests extended to loops with
+cold calls. Its first half is small and useful alone. Measure it, and a narrower alternative to the second half,
+before writing the second half: proxy helpers called through stubs that preserve the caller-saved registers, as
+LLVM's `preserve_most` convention does, since proxy calls are most of the cold calls hot values are live across.
+Item 5 is the first optimization pass the SSA would have, and it would help `ssac` too. Item 8 is the largest factor
+for zebra and hamlet, but it is outside the code generator, and escape-analysis.md is its plan.
+
+After the first two batches (items 1 to 3 and 4a, with item 8's escape analysis pushed beside them), the order is:
+
+1. **The six timed again** on main, against `ssac` and the C backend, since the second batch's timings predate
+   escape analysis: the baseline the rest is measured from.
+2. **What the spills that remain are,** in life's `qf_nthgen` (34 loads, against clang's 7) and mlyacc's hottest
+   functions: values live across cold calls, mostly proxies (which the stubs would keep in registers), across cold
+   calls of other kinds (which 4b would), or more values than registers (which neither would). That decides between
+   4b and the stubs, and whether either is worth its cost; 4a's actual lines (352 against 100) suggest 4b's are near
+   the top of its estimate.
+3. **Items 6 and 7,** independent of that decision, as a batch of their own. Item 7 needed 4a's frequencies, which
+   are there now.
+4. **Item 9,** open since the first batch: neither clearing slots (3a and its fixes) nor clearing callee-saved
+   registers closes mlyacc's retention, and the suspect, callee-saved registers saved by deeper frames, is unconfirmed.
+   `retention.py dead` reports those words as SAVED; what they held in the caller is the next thing to see.
+
+The second batch's fixes were found by measuring before `tools/check`, not by it, and each run of `tools/check` so
+far passed the first time; 4b or the stubs should be measured the same way before their run.
 
 Each is to be measured as benchmarks.md measures (`run.py time --clean`), and the six here against `ssac` with
 `tools/perf/timeit.py`. The figures above will move: §3.1's and §3.2's interact (fewer spills mean fewer slots to
