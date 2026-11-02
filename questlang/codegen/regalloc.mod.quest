@@ -743,6 +743,12 @@ export
                         end)
                     end
                 end
+                (* A value never read is never stored, though its piece is in
+                 * memory: nothing would read the slot, and since it dies at no
+                 * read, nothing would clear it either (a loop's parameter
+                 * that only its header defines, say, which the back edge
+                 * would store each time round) *)
+                if vector.empty(:Int usesAt[v]) then spilled[v] := false end
             end
             let moved = vector.toArray(:Move moves)
             sort.sort(:Move moved fun(a: Move b: Move): Int
@@ -989,7 +995,7 @@ export
                 if h isnot memory then
                     readInto(w h src)
                     if needsSlot(w.a v) then emitAll(w w.lowering.store(h dst)) end
-                else place(w inMemory(v) src) end
+                elsif needsSlot(w.a v) then place(w inMemory(v) src) end
             end
         end
 

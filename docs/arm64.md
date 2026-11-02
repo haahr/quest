@@ -308,6 +308,10 @@ the SSA's values, and it reads no register's name: a target (`codegen/target`) g
   argument is cleared after the edge's moves, unless it is one of the target's own parameters (a loop's invariant
   passed back to its header), which the edge has just stored again (fixed 2026-11-01: the jump's own target was not
   counted among the places a call may follow, so no value dying at a jump was cleared).
+- **A value never read is never stored** (2026-11-01). Its piece may be in memory, a loop header's parameter that
+  only the back edge defines when the header has more parameters than registers, say; but nothing would read its slot,
+  and since it dies at no read, nothing would clear it, so the back edge stored a dead pointer each time round, as in
+  mlyacc's `main`.
 - **Spill slots shared by type** (2026-11-01, arm64-performance-review.md §3.2, item 3b). `regalloc.shareSlots`
   gives values of one kind (for arm64, one SSA type: `int`, `ptr`, `val`, or `real`) one slot where their lifetimes,
   from first position to last, do not overlap, so a frame holds the most values in memory at once rather than every

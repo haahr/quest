@@ -351,3 +351,32 @@ add(jumped jBody jn jk ji);
 jump(jumped jBody jHead array of jn ji end);
 ret(jumped jExit jk);
 show("values that die at a jump, and a loop's invariant that does not" jumped);
+
+(* 11. A value never read: a loop's header has four parameters, more than
+ * the registers, and one of them only the back edge defines, which nothing
+ * reads. Its piece is in memory, but it is never stored, so no slot holds a
+ * value no clear would reach *)
+let unread = machine.newFunction(extent toy.registers);
+let u0 = entry(unread);
+let uHead = machine.newBlock(unread);
+let ua = machine.addParam(unread uHead intClass);
+let ub = machine.addParam(unread uHead intClass);
+let uc = machine.addParam(unread uHead intClass);
+let ud = machine.addParam(unread uHead intClass);
+let uBody = machine.newBlock(unread);
+let uEdge = machine.newBlock(unread);
+let uExit = machine.newBlock(unread);
+jump(unread 0 uHead array of u0 u0 u0 u0 end);
+let ue = fresh(unread);
+let uf = fresh(unread);
+add(unread uHead ue ua ub);
+add(unread uHead uf ue uc);
+branch(unread uHead uf uEdge);
+jump(unread uHead uExit noArgs);
+jump(unread uEdge uBody noArgs);
+let ug = fresh(unread);
+add(unread uBody ug uf uf);
+call(unread uBody);
+jump(unread uBody uHead array of uf ub uc ug end);
+ret(unread uExit ua);
+show("a value never read, in memory but never stored" unread);

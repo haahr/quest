@@ -344,3 +344,68 @@ b4:
 b5:
 	mov =a0 s1
 	ret a0
+== a value never read, in memory but never stored
+b0:
+	mov =%0 a0
+	b %0 %0 %0 %0 -> b1
+b1(%1 %2 %3 %4):
+	add =%5 %1 %2
+	add =%6 %5 %3
+	cbnz %6 -> b3
+	b -> b4
+b2:
+	add =%7 %6 %6
+	call g
+	b %6 %2 %3 %7 -> b1
+b3:
+	b -> b2
+b4:
+	mov =a0 %1
+	ret a0
+%0: a0 at 3
+%1: a0 at 6
+%2: s1 at 6, memory at 9, a0 at 32 (stored)
+%3: r1 at 6, memory at 31, r1 at 32 (stored)
+%4: memory at 6
+%5: s1 at 9
+%6: s1 at 11, memory at 32 (stored)
+%7: a0 at 29, memory at 31, s1 at 32 (stored)
+move at 32: %2 memory -> a0
+move at 32: %3 memory -> r1
+move at 32: %7 memory -> s1
+callee-saved used: s1
+slots: %2 in 0 %3 in 1 %6 in 2 %7 in 3
+rewritten:
+b0:
+	mov =s1 a0
+	store [%2] a0
+	mov =r1 a0
+	store [%3] a0
+	b -> b1
+b1(%1 %2 %3 %4):
+	add =s1 a0 s1
+	add =s1 s1 r1
+	store [%6] s1
+	cbnz s1 -> b3
+	clear [%2]
+	clear [%3]
+	clear [%6]
+	b -> b4
+b2:
+	add =a0 s1 s1
+	store [%7] a0
+	call g
+	load [%2] =a0
+	load [%3] =r1
+	load [%7] =s1
+	mov =s1 a0
+	store [%2] a0
+	load [%6] =a0
+	store [%3] r1
+	clear [%6]
+	clear [%7]
+	b -> b1
+b3:
+	b -> b2
+b4:
+	ret a0
