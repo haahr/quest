@@ -317,6 +317,8 @@ the SSA's values, and it reads no register's name: a target (`codegen/target`) g
   argument is cleared after the edge's moves, unless it is one of the target's own parameters (a loop's invariant
   passed back to its header), which the edge has just stored again (fixed 2026-11-01: the jump's own target was not
   counted among the places a call may follow, so no value dying at a jump was cleared).
+  Nothing is cleared in a cold block, from which every path raises (arm64-performance-review.md §3.3): the raise
+  ends the function soon after.
 - **A value never read is never stored** (2026-11-01). Its piece may be in memory, a loop header's parameter that
   only the back edge defines when the header has more parameters than registers, say; but nothing would read its slot,
   and since it dies at no read, nothing would clear it, so the back edge stored a dead pointer each time round, as in

@@ -1066,7 +1066,7 @@ export
      * it is not live into though it is live at the branch. Only a value the
      * lowering clears (one that may be a pointer) that has a slot is, and only
      * where a call, in which a collection can happen, may follow before the
-     * function returns. after holds, for each block's instructions, the values
+     * function returns, and not in a cold block. after holds, for each block's instructions, the values
      * (by index) cleared after each; atStart, those cleared at each block's
      * start. *)
     Let Clears = Tuple after: Array(Array(Array(Int))) atStart: Array(Array(Int)) end
@@ -1077,6 +1077,10 @@ export
             let nValues = machine.virtuals(f)
             let after = array of(nBlocks array of :Array(Int) end)
             let atStart = array of(nBlocks array of :Int end)
+            (* Nothing is cleared in a cold block, from which every path
+             * raises: the raise ends the function soon, and a collection on
+             * the way keeps the dead values only that long *)
+            let cold(b: Int): Bool = a.frequency[b] is 1
             let liveIn = array of(nBlocks bitset.new(nValues))
             for b = 0 upto {nBlocks - 1} do
                 liveIn[b] := bitset.new(nValues)
@@ -1125,7 +1129,7 @@ export
                 let insts = machine.block(f b).insts
                 let n = vector.length(:machine.Inst insts)
                 after[b] := array of(n array of :Int end)
-                if a.blockStart[b] >= 0 then
+                if {a.blockStart[b] >= 0} andif not(cold(b)) then
                     let live = bitset.new(nValues)
                     for j = {n - 1} downto 0 do
                         let i = vector.get(:machine.Inst insts j)
@@ -1146,7 +1150,7 @@ export
                         if machine.isKind(i machine.kindBranch) then
                             (* What is live after the branch but not in its
                              * target dies at the target's start *)
-                            if callIn[i.target] then
+                            if callIn[i.target] andif not(cold(i.target)) then
                                 let gone = vector.new(:Int)
                                 let es = bitset.elements(live)
                                 for k = 0 upto {extent es - 1} do

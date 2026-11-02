@@ -121,12 +121,13 @@ let line(f: machine.Function i: machine.Inst): String =
 
 let rematerializable(i: machine.Inst): Bool = strutil.startsWith(vector.get(:String ops i.op) "const");
 
-let show(title: String f: machine.Function): Ok =
+(* A function's allocation, with the blocks cold says are cold *)
+let showCold(title: String f: machine.Function cold: All(b: Int) Bool): Ok =
     begin
         emit("== " <> title)
         writer.putString(writer.output machine.format(f fun(r: Int): String name(f r) fun(i: machine.Inst): String
             line(f i)))
-        let a = regalloc.allocate(f toy rematerializable fun(b: Int): Bool false)
+        let a = regalloc.allocate(f toy rematerializable cold)
         for v = 0 upto {extent a.starts - 1} do
             let var text = "%" <> conv.int(v) <> ":"
             for k = 0 upto {extent a.starts[v] - 1} do
@@ -173,6 +174,8 @@ let show(title: String f: machine.Function): Ok =
         writer.putString(writer.output machine.format(f fun(r: Int): String name(f r) fun(i: machine.Inst): String
             line(f i)))
     end;
+
+let show(title: String f: machine.Function): Ok = showCold(title f fun(b: Int): Bool false);
 
 (* 1. A chain: each result can take its operand's register, and the first and
  * the last the argument's and the result's *)
@@ -419,3 +422,37 @@ let wr = fresh(weighed);
 add(weighed wExit wr wOuter wi);
 ret(weighed wExit wr);
 show("a loop's value kept in a register over one read after the loop" weighed);
+
+(* 13. A cold block, from which every path raises: a value in memory dies in
+ * it, before the call that raises, and its slot is not cleared, as it is
+ * when the same block is not cold *)
+let raising = machine.newFunction(extent toy.registers);
+let k0 = entry(raising);
+let kRaise = machine.newBlock(raising);
+let kOn = machine.newBlock(raising);
+let k1 = fresh(raising);
+let k2 = fresh(raising);
+add(raising 0 k1 k0 k0);
+call(raising 0);
+branch(raising 0 k1 kRaise);
+jump(raising 0 kOn noArgs);
+add(raising kRaise k2 k1 k0);
+call(raising kRaise);
+put(raising kRaise machine.kindReturn "brk" none);
+ret(raising kOn k0);
+show("a block that raises, not cold" raising);
+let raisingCold = machine.newFunction(extent toy.registers);
+let c0 = entry(raisingCold);
+let cRaise = machine.newBlock(raisingCold);
+let cOn = machine.newBlock(raisingCold);
+let c1 = fresh(raisingCold);
+let c2 = fresh(raisingCold);
+add(raisingCold 0 c1 c0 c0);
+call(raisingCold 0);
+branch(raisingCold 0 c1 cRaise);
+jump(raisingCold 0 cOn noArgs);
+add(raisingCold cRaise c2 c1 c0);
+call(raisingCold cRaise);
+put(raisingCold cRaise machine.kindReturn "brk" none);
+ret(raisingCold cOn c0);
+showCold("the same block, cold" raisingCold fun(b: Int): Bool b is cRaise);
