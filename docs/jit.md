@@ -224,8 +224,9 @@ is used (§3.3); otherwise the JIT compiles the module file from source, and loa
   the driver's modules is checked against the driver's fingerprints, as an input's are.
 - **Once.** A module file is loaded the first time an input imports it, and later inputs (and module files) that
   import it use that copy, whose state persists, as the interpreter's does. Editing the file during the session does
-  not reload it. An input that fails after loading a module leaves it loaded; one whose module fails to compile
-  leaves nothing loaded, and reports the module's error as the interpreter would.
+  not reload it. An input that fails forgets the module files it loaded, as the interpreter forgets the modules it ran,
+  so that a later import loads them afresh (`tests/repl/modules.quest`); those earlier inputs loaded stay, their state
+  kept. A module that fails to compile reports its error as the interpreter would.
 - **Initialization.** The module's initializer, guarded to run once, runs when its first importer's does, as in a
   compiled program.
 - **Exceptions** raised in a module file's code are located in its file (§3.7): the session keeps each loaded file's

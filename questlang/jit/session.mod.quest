@@ -46,8 +46,10 @@ export
         (* The source of each input, by the name its code gives it (<repl>#N),
          * and of each module file loaded, by its own *)
         sources: hashMap.T(String location.SourceMap)
-        (* The module files loaded, by canonical name *)
+        (* The module files loaded, by canonical name, and those the input
+         * running loaded *)
         loaded: hashMap.T(String Bool)
+        loadedNow: vector.T(String)
     end
     Let Outcome = Option
         ran with shown: Array(String) end
@@ -105,6 +107,7 @@ export
                 let earlier = hashMap.new(:Int :lower.Earlier fun(a: Int b: Int): Bool a is b hash.int)
                 let sources = hashMap.new(:String :location.SourceMap stringOp.equal hash.string)
                 let loaded = hashMap.new(:String :Bool stringOp.equal hash.string)
+                let loadedNow = vector.new(:String)
             end
         end
 
@@ -185,11 +188,11 @@ export
         end
 
     (* The frames the runtime prints of the input's code: those above
-     * os/code's call (or this module's run, where a C-built driver keeps no
-     * frame of call's), and the driver's below them, each "  in
-     * NAME", a run of one written once and then "  ... NAME repeated N more
-     * times". The input's top level is <main>, which its entry, running a
-     * module the input declared, does not show *)
+     * os/code's call (or this module's runInput or run, where a C-built
+     * driver keeps no frame of call's), and the driver's below them, each
+     * "  in NAME", a run of one written once and then "  ... NAME repeated N
+     * more times". The input's top level is <main>, which its entry, running
+     * a module the input declared, does not show *)
     let framesOf(text: String): Array(String) =
         begin
             let frames = vector.new(:String)
@@ -197,7 +200,8 @@ export
             let var done = false
             for i = 0 upto {vector.length(:String lines) - 1} do
                 let line = vector.get(:String lines i)
-                if stringOp.equal(line "  in os/code.call") orif stringOp.equal(line "  in questlang/jit/session.run") then
+                if stringOp.equal(line "  in os/code.call") orif stringOp.equal(line "  in questlang/jit/session.runInput")
+                    orif stringOp.equal(line "  in questlang/jit/session.run") then
                     done := true
                 end
                 if done then
@@ -303,7 +307,7 @@ export
             compileAndLoad(s m.unit)
             hashMap.insert(:String :location.SourceMap s.sources location.file(m.sourceMap) m.sourceMap)
             hashMap.insert(:String :Bool s.loaded canonical true)
-            ok
+            vector.append(:String s.loadedNow canonical)
         end
 
     (* The module an input imports, if the driver does not link it *)
@@ -366,8 +370,8 @@ export
             vector.toArray(:String shown)
         end
 
-    let run(s: T program: typedAst.Program sourceMap: location.SourceMap echo: Bool printResult: Bool capture: Bool):
-        Outcome =
+    let runInput(s: T program: typedAst.Program sourceMap: location.SourceMap echo: Bool printResult: Bool
+        capture: Bool): Outcome =
         begin
             s.count := s.count + 1
             let number = s.count
@@ -417,5 +421,26 @@ export
                 end
                 option ran of Outcome with let shown = shown end
             end
+        end
+
+    (* An input that fails forgets the module files it loaded, as the
+     * interpreter forgets the modules it ran: a later import loads them
+     * again, afresh (docs/jit.md section 3.4) *)
+    let run(s: T program: typedAst.Program sourceMap: location.SourceMap echo: Bool printResult: Bool capture: Bool):
+        Outcome =
+        begin
+            vector.clear(:String s.loadedNow)
+            let forget = fun(): Ok
+                for i = 0 upto {vector.length(:String s.loadedNow) - 1} do
+                    begin hashMap.delete(:String :Bool s.loaded vector.get(:String s.loadedNow i)) ok end
+                end
+            let outcome = try
+                runInput(s program sourceMap echo printResult capture)
+            else with r then
+                forget()
+                raised.reraise(:Outcome r)
+            end
+            if outcome?raised then forget() end
+            outcome
         end
 end

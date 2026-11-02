@@ -62,6 +62,14 @@ def interface_artifact_root(name: str, env: Environment) -> Optional[Path]:
     return resolved_artifact_root(env, resolve_interface(name, env))
 
 
+def _listed_include_paths(env: Environment) -> list[str]:
+    """The include paths an error lists as searched for a unit's source: all
+    but the build directory, which holds only artifacts."""
+    build_dir = env.options.build_dir if env.options is not None else None
+    built = str(Path(build_dir).resolve()) if build_dir is not None else None
+    return [str(p) for p in env.include_paths if built is None or str(Path(p).resolve()) != built]
+
+
 def resolved_artifact_root(env: Environment, resolved: Resolved) -> Optional[Path]:
     """interface_artifact_root, given the interface's resolution."""
     build_dir = env.options.build_dir if env.options is not None else None
@@ -154,7 +162,7 @@ def load_interface(name: str, env: Environment) -> Scope:
     file_path = fresh_interface_qi(resolved)
     if file_path is None:
         searched = [str(env.current_dir)] if env.current_dir else []
-        searched.extend(str(p) for p in env.include_paths)
+        searched.extend(_listed_include_paths(env))
         if DEFAULT_LIB_DIR.is_dir():
             searched.append(str(DEFAULT_LIB_DIR))
         if DEFAULT_PROJECT_DIR.is_dir():
@@ -296,7 +304,7 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
             return _synthesize_precompiled_module()
 
         searched = [str(env.current_dir)] if env.current_dir else []
-        searched.extend(str(p) for p in env.include_paths)
+        searched.extend(_listed_include_paths(env))
         if DEFAULT_LIB_DIR.is_dir():
             searched.append(str(DEFAULT_LIB_DIR))
         if DEFAULT_PROJECT_DIR.is_dir():

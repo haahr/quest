@@ -118,6 +118,19 @@ export
             end
         end
 
+    (* The include paths an error lists as searched for a unit's source: all
+     * but the build directory, which holds only artifacts *)
+    let listedIncludePaths(e: env.T): Array(String) =
+        begin
+            let built = if maybe.isSome(:String e.buildDir) then paths.absolute(maybe.unwrap(:String e.buildDir)) else "" end
+            let listed = vector.new(:String)
+            for i = 0 upto {vector.length(:String e.includePaths) - 1} do
+                let p = vector.get(:String e.includePaths i)
+                if not(stringOp.equal(paths.absolute(p) built)) then vector.append(:String listed p) end
+            end
+            vector.toArray(:String listed)
+        end
+
     let rec loadInterface(name: String e: env.T): Scope =
         begin
             let normName = paths.lower(name)
@@ -204,7 +217,7 @@ export
                     diagnostics.fail(:Scope "Undefined interface '" <> name <> "': cannot find interface file for '"
                         <> name <>
                         "' (looked for '" <> normName <> ".qi' or '" <> normName <> ".int.quest' in " <>
-                        reprList(paths.searchedDirs(e.currentDir vector.toArray(:String e.includePaths))) <> ")" 0)
+                        reprList(paths.searchedDirs(e.currentDir listedIncludePaths(e))) <> ")" 0)
                 elsif strutil.endsWith(maybe.unwrap(:String fresh) ".qi") then
                     register(loadQi(maybe.unwrap(:String fresh)))
                 else
@@ -310,7 +323,7 @@ export
                         let normName = paths.lower(name)
                         diagnostics.fail(:typedAst.Binding "Undefined module '" <> name <> "': cannot find module file for '" <>
                             name <> "' (looked for '" <> normName <> ".mod.quest' or '" <> normName <> ".o' in " <>
-                            reprList(paths.searchedDirs(e.currentDir vector.toArray(:String e.includePaths))) <> ")" 0)
+                            reprList(paths.searchedDirs(e.currentDir listedIncludePaths(e))) <> ")" 0)
                     end
                 else
                     loadModuleSource(name expectedInterface e maybe.unwrap(:String filePath) canon u)
