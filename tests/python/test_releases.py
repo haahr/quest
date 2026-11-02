@@ -1,7 +1,8 @@
 """Tests where the releases of the self-hosted compiler live, and how
 tools/release changes which is current (docs/release-compiler.md section 1):
-the links it points, the rollback that swaps them, and the removal of the
-releases neither names, in a directory QUEST_RELEASE_DIR names."""
+the links it points, the rollback that swaps them, the removal of the
+releases neither names, and the install of one outside them, in a directory
+QUEST_RELEASE_DIR names."""
 
 from __future__ import annotations
 
@@ -79,6 +80,27 @@ class ReleasesTest(unittest.TestCase):
         self.assertTrue(all(path.is_dir() for path in kept))
         self.assertFalse(stale.exists())
         self.assertTrue(in_progress.is_dir())
+
+    def test_install_copies_the_current_release_and_writes_its_command(self) -> None:
+        prefix = Path(tempfile.mkdtemp(prefix="quest-install-")).resolve()
+        self.addCleanup(shutil.rmtree, prefix, True)
+        commits = ["a" * 40, "b" * 40]
+        command = prefix / "bin" / "quest"
+        # verify would run the release's binary, which these releases lack
+        with mock.patch.object(self.tool, "verify", return_value=""), redirect_stdout(io.StringIO()):
+            for commit in commits:
+                self.tool.point(self.tool.CURRENT, self.release(commit))
+                self.tool.install(prefix)
+                self.assertIn(str(prefix / "share" / "quest" / commit / "quest"), command.read_text())
+            # Each is kept, and survives the releases' removal of it
+            shutil.rmtree(self.directory / commits[0])
+            self.assertTrue(all((prefix / "share" / "quest" / commit / "release.json").is_file() for commit in commits))
+            self.assertTrue(os.access(command, os.X_OK))
+            # A command it did not write is left alone
+            command.write_text("#!/bin/sh\n", encoding="utf-8")
+            with self.assertRaises(SystemExit):
+                self.tool.install(prefix)
+            self.assertEqual(command.read_text(), "#!/bin/sh\n")
 
 
 if __name__ == "__main__":

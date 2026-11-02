@@ -14,6 +14,9 @@ current names the release that seeds builds, and previous the one before it.
     tools/release --verify     check the current release: its binary's digest, and a program it builds and runs
     tools/release --rollback   swap the current and previous releases
     tools/release --show       print the current and previous releases' descriptions
+    tools/release --install [PREFIX]
+                               copy the current release to PREFIX/share/quest/COMMIT (PREFIX is ~/.local by
+                               default), check it there, and point PREFIX/bin/quest at it
 """
 
 import argparse
@@ -24,6 +27,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -254,6 +258,47 @@ def rollback() -> None:
     show()
 
 
+# The first lines of the command --install writes, by which a later --install
+# knows that it may replace it
+WRAPPER_HEADER = "#!/bin/sh\n# Quest, installed by tools/release --install"
+
+
+def install(prefix: Path) -> None:
+    """Copies the current release out of the repository, where a later cut
+    cannot remove it, and writes prefix/bin/quest, which runs it against its
+    own home/. Releases installed before are kept, to switch back to."""
+    current = target(CURRENT)
+    if current is None:
+        fail(f"there is no current release in {RELEASES} to install")
+    commit = json.loads((current / "release.json").read_text(encoding="utf-8"))["commit"]
+    command = prefix / "bin" / "quest"
+    if command.exists() and not command.read_text(encoding="utf-8", errors="replace").startswith(WRAPPER_HEADER):
+        fail(f"{command} exists, and tools/release --install did not write it")
+    installed = prefix / "share" / "quest" / commit
+    if not installed.is_dir():
+        # Copied beside it and renamed into place, so that an interrupted
+        # install leaves no partial release under its commit's name
+        partial = installed.with_name(f"new-{commit[:8]}-{os.getpid()}")
+        shutil.rmtree(partial, ignore_errors=True)
+        shutil.copytree(current, partial, symlinks=True)
+        partial.rename(installed)
+    problem = verify(installed)
+    if problem:
+        fail(f"the installed release does not work ({problem})")
+    # QUEST_HOME is the release's own home/, whatever the caller's says: the
+    # binary was compiled against its lib/ and runtime/
+    command.parent.mkdir(parents=True, exist_ok=True)
+    temporary = command.with_name(command.name + ".new")
+    temporary.write_text(f'{WRAPPER_HEADER} from release {commit} (release.json there)\n'
+                         f'QUEST_HOME={shlex.quote(str(installed / "home"))} exec {shlex.quote(str(installed / "quest"))} '
+                         '"$@"\n', encoding="utf-8")
+    temporary.chmod(0o755)
+    os.replace(temporary, command)
+    print(f"Installed {commit[:8]} in {installed}, run as {command}")
+    if str(command.parent) not in os.environ.get("PATH", "").split(os.pathsep):
+        print(f"{command.parent} is not on PATH")
+
+
 def show() -> None:
     for release in (CURRENT, PREVIOUS):
         description = release / "release.json"
@@ -276,6 +321,9 @@ def main() -> None:
     action.add_argument("--verify", action="store_true", help="check the current release")
     action.add_argument("--rollback", action="store_true", help="swap the current and previous releases")
     action.add_argument("--show", action="store_true", help="describe the current and previous releases")
+    action.add_argument("--install", nargs="?", type=Path, const=Path.home() / ".local", metavar="PREFIX",
+                        help="install the current release in PREFIX/share/quest, run as PREFIX/bin/quest "
+                             "(default ~/.local)")
     parser.add_argument("--seed", choices=("release", "bootstrap"), default="release",
                         help="what builds the check's stage 1: the current release (default), or the bootstrap")
     parser.add_argument("--check-dir", type=Path, default=DEFAULT_CHECK_DIR,
@@ -292,6 +340,8 @@ def main() -> None:
         rollback()
     elif args.show:
         show()
+    elif args.install is not None:
+        install(args.install.expanduser().resolve())
     else:
         cut(sys.executable, args.check_dir.resolve(), args.seed, args.whole_program)
 

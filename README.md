@@ -162,6 +162,9 @@ tools/release --seed bootstrap   # the first release, built by the bootstrap
 tools/release --show             # what it is
 ```
 
+`tools/release --install` copies the current release to `~/.local/share/quest` and puts a `quest` that runs it in
+`~/.local/bin` (`--install PREFIX` for another place), for using Quest outside the tree.
+
 From then on `./quest` builds from the release, in about two minutes from nothing, and `tools/check` seeds the
 self-hosting check from it. Every worktree of the clone shares the release
 ([docs/release-compiler.md](docs/release-compiler.md)). Without a release, `tools/check --seed bootstrap` runs the same

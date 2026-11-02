@@ -60,6 +60,12 @@ seconds.
   `tools/release --verify` checks the current release, `--rollback` swaps `previous` and `current` (with the lock
   held), and `--show` describes both. A release removed while a build in another worktree still uses it can only be
   one two cuts old.
+- **Installing one outside the repository** (`tools/release --install [PREFIX]`, `~/.local` by default) copies the
+  current release to `PREFIX/share/quest/COMMIT`, where a later cut cannot remove it, checks it there as `--verify`
+  does, and writes `PREFIX/bin/quest`, a script that runs it with `QUEST_HOME` set to its own `home/`, whatever the
+  caller's is. Installing a later release copies it beside the earlier ones, which are kept, and points the script at
+  it; the script is replaced only if `--install` wrote it. The install still needs clang and Homebrew's `bdw-gc`, which
+  the compiler uses to build programs.
 - **When to cut one:** by hand, when the working tree needs something the current release cannot compile (§2), and
   otherwise when convenient, for example after a larger piece of work. A release is never cut automatically by a push.
 
@@ -119,4 +125,5 @@ language's changes and bug fixes, not the self-hosted compiler's optimizations, 
 that it still builds the compiler the release does. Deleting it would leave the chain of releases, each rebuildable
 from its commit by the one before, as the compiler's only provenance.
 
-Releases are not published outside the repository (as GitHub releases, for other machines or a CI).
+Releases are not published outside the repository (as GitHub releases, for other machines or a CI); `--install`
+copies one out of it on this machine only.
