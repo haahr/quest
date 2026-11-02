@@ -1287,6 +1287,9 @@ QString     *quest_code_frames(QRaised *r);
 void         quest_code_add_roots(void *low, void *high);
 void         quest_code_add_function(void *start, void *limit);
 void         quest_code_set_args(QArray *args);
+/* The GDB JIT interface's descriptor and the function a debugger breaks on (quest_code.c) */
+extern struct jit_descriptor __jit_debug_descriptor;
+void __jit_debug_register_code(void);
 
 #include "quest_serialization.h"
 

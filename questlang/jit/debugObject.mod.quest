@@ -1,0 +1,270 @@
+(* Quest Self-Hosted Compiler: The JIT's Debugging Objects Implementation *)
+
+module debugObject : DebugObject
+import
+    questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
+    collections/vector : collections/Vector
+    util/strutil : util/Strutil
+    util/stringBuilder : util/StringBuilder
+    words = word : Word
+    stringOp = string : StringOp
+    ascii : Ascii
+export
+    Let Bytes = vector.T(Int)
+
+    (* =========================================================================
+     * Bytes
+     * ====================================================================== *)
+
+    let byte(b: Bytes n: Int): Ok = vector.append(:Int b n)
+
+    (* n's low size bytes, least significant first *)
+    let little(b: Bytes n: Int size: Int): Ok =
+        begin
+            let w = words.fromInt(n)
+            for i = 0 upto {size - 1} do byte(b words.toInt(words.extract(w 8 * i 8))) end
+        end
+    let u16(b: Bytes n: Int): Ok = little(b n 2)
+    let u32(b: Bytes n: Int): Ok = little(b n 4)
+    let u64(b: Bytes n: Int): Ok = little(b n 8)
+
+    (* A string's characters and a NUL *)
+    let cString(b: Bytes s: String): Ok =
+        begin
+            for i = 0 upto {stringOp.length(s) - 1} do byte(b ascii.val(stringOp.getChar(s i))) end
+            byte(b 0)
+        end
+
+    (* A name of exactly 16 bytes, padded with NULs, as Mach-O's segment and
+     * section names are *)
+    let name16(b: Bytes s: String): Ok =
+        for i = 0 upto 15 do byte(b if i < stringOp.length(s) then ascii.val(stringOp.getChar(s i)) else 0 end) end
+
+    let uleb(b: Bytes n0: Int): Ok =
+        begin
+            let var n = n0
+            let var more = true
+            while more do
+                let low = n % 128
+                n := n / 128
+                more := n > 0
+                byte(b if more then low + 128 else low end)
+            end
+        end
+
+    let sleb(b: Bytes n0: Int): Ok =
+        begin
+            let var n = n0
+            let var more = true
+            while more do
+                let low = {{n % 128} + 128} % 128
+                n := {n - low} / 128
+                more := not({{n is 0} andif {low < 64}} orif {{n is ~1} andif {low >= 64}})
+                byte(b if more then low + 128 else low end)
+            end
+        end
+
+    let append(b: Bytes more: Bytes): Ok =
+        for i = 0 upto {vector.length(:Int more) - 1} do byte(b vector.get(:Int more i)) end
+
+    let padTo(b: Bytes alignment: Int): Ok = while {vector.length(:Int b) % alignment} isnot 0 do byte(b 0) end
+
+    (* =========================================================================
+     * DWARF
+     * ====================================================================== *)
+
+    let directory(path: String): String =
+        begin
+            let slash = strutil.rfind(path "/")
+            if slash > 0 then stringOp.getSub(path 0 slash) elsif slash is 0 then "/" else "." end
+        end
+    let baseName(path: String): String =
+        begin
+            let slash = strutil.rfind(path "/")
+            if slash >= 0 then stringOp.getSub(path slash + 1 {stringOp.length(path) - slash} - 1) else path end
+        end
+
+    (* The compile unit's and the subprograms' abbreviations *)
+    let abbreviations(): Bytes =
+        begin
+            let b = vector.new(:Int)
+            (* 1: DW_TAG_compile_unit, with children: producer, language,
+             * name, comp_dir, stmt_list, low_pc, high_pc (a length) *)
+            uleb(b 1) uleb(b 0x11) byte(b 1)
+            uleb(b 0x25) uleb(b 0x08) uleb(b 0x13) uleb(b 0x05) uleb(b 0x03) uleb(b 0x08) uleb(b 0x1b) uleb(b 0x08)
+            uleb(b 0x10) uleb(b 0x17) uleb(b 0x11) uleb(b 0x01) uleb(b 0x12) uleb(b 0x07)
+            uleb(b 0) uleb(b 0)
+            (* 2: DW_TAG_subprogram, without: name, low_pc, high_pc, and
+             * frame_base, x29 *)
+            uleb(b 2) uleb(b 0x2e) byte(b 0)
+            uleb(b 0x03) uleb(b 0x08) uleb(b 0x11) uleb(b 0x01) uleb(b 0x12) uleb(b 0x07) uleb(b 0x40) uleb(b 0x18)
+            uleb(b 0) uleb(b 0)
+            uleb(b 0)
+            b
+        end
+
+    (* The compile unit: the unit's code, its first file its name, and a
+     * subprogram for each function; its line table at offset 0. Its
+     * language is 0x8000, from the range DWARF leaves to users, as asm's. *)
+    let information(e: encode.Encoded codeAddress: Int files: Array(String)): Bytes =
+        begin
+            let body = vector.new(:Int)
+            u16(body 4)
+            u32(body 0)
+            byte(body 8)
+            let main = if extent files > 0 then files[0] else "<jit>" end
+            uleb(body 1)
+            cString(body "quest")
+            u16(body 0x8000)
+            cString(body main)
+            cString(body directory(main))
+            u32(body 0)
+            u64(body codeAddress)
+            u64(body 4 * extent e.code)
+            for k = 0 upto {extent e.functions - 1} do
+                let f = e.functions[k]
+                uleb(body 2)
+                cString(body f.name)
+                u64(body codeAddress + f.offset)
+                u64(body f.size)
+                uleb(body 1)
+                byte(body 0x6d)
+            end
+            uleb(body 0)
+            let b = vector.new(:Int)
+            u32(b vector.length(:Int body))
+            append(b body)
+            b
+        end
+
+    (* The line table: a sequence for each function with positions, from its
+     * start, which has its first position (so that a debugger breaking on
+     * the function finds a line there, and skips its prologue to the next
+     * row), to its end; each row an address and the file, line, and column
+     * there *)
+    let lineTable(e: encode.Encoded codeAddress: Int files: Array(String)): Bytes =
+        begin
+            let header = vector.new(:Int)
+            byte(header 1)
+            byte(header 1)
+            byte(header 1)
+            byte(header 251)
+            byte(header 14)
+            byte(header 13)
+            let lengths = array of 0 1 1 1 1 0 0 0 1 0 0 1 end
+            for i = 0 upto {extent lengths - 1} do byte(header lengths[i]) end
+            for i = 0 upto {extent files - 1} do cString(header directory(files[i])) end
+            byte(header 0)
+            for i = 0 upto {extent files - 1} do
+                cString(header baseName(files[i]))
+                uleb(header i + 1)
+                uleb(header 0)
+                uleb(header 0)
+            end
+            byte(header 0)
+            let program = vector.new(:Int)
+            let var next = 0
+            for k = 0 upto {extent e.functions - 1} do
+                let f = e.functions[k]
+                let limit = f.offset + f.size
+                while {next < extent e.lines} andif {e.lines[next].offset < f.offset} do next := next + 1 end
+                if {next < extent e.lines} andif {e.lines[next].offset < limit} then
+                    byte(program 0) uleb(program 9) byte(program 2) u64(program codeAddress + f.offset)
+                    let var at = f.offset
+                    let var file = 1
+                    let var line = 1
+                    let var first = true
+                    while {next < extent e.lines} andif {e.lines[next].offset < limit} do
+                        let r = e.lines[next]
+                        if {r.offset > at} andif not(first) then
+                            begin byte(program 2) uleb(program r.offset - at) at := r.offset end
+                        end
+                        first := false
+                        if r.file isnot file then begin byte(program 4) uleb(program r.file) file := r.file end end
+                        if r.line isnot line then begin byte(program 3) sleb(program r.line - line) line := r.line end end
+                        byte(program 5) uleb(program r.column)
+                        byte(program 1)
+                        next := next + 1
+                    end
+                    if limit > at then begin byte(program 2) uleb(program limit - at) end end
+                    byte(program 0) uleb(program 1) byte(program 1)
+                end
+            end
+            let b = vector.new(:Int)
+            let rest = vector.new(:Int)
+            u16(rest 4)
+            u32(rest vector.length(:Int header))
+            append(rest header)
+            append(rest program)
+            u32(b vector.length(:Int rest))
+            append(b rest)
+            b
+        end
+
+    (* =========================================================================
+     * Mach-O
+     * ====================================================================== *)
+
+    let object(e: encode.Encoded codeAddress: Int files: Array(String)): String =
+        begin
+            let codeBytes = 4 * extent e.code
+            let sections = array of
+                tuple let name = "__debug_abbrev" let bytes = abbreviations() end
+                tuple let name = "__debug_info" let bytes = information(e codeAddress files) end
+                tuple let name = "__debug_line" let bytes = lineTable(e codeAddress files) end
+            end
+            (* The header, a segment of the code and the debugging sections,
+             * and the symbol table's command; then the sections' contents,
+             * the symbols, and their names *)
+            let commandBytes = {72 + {80 * {1 + extent sections}}} + 24
+            let dataStart = 32 + commandBytes
+            let var debugBytes = 0
+            for i = 0 upto {extent sections - 1} do debugBytes := debugBytes + vector.length(:Int sections[i].bytes) end
+            let contents = codeBytes + debugBytes
+            let symbolsAt = {{{dataStart + contents} + 7} / 8} * 8
+            let names = vector.new(:Int)
+            byte(names 0)
+            let nameAt = array of(extent e.functions 0)
+            for k = 0 upto {extent e.functions - 1} do
+                nameAt[k] := vector.length(:Int names)
+                cString(names "_" <> e.functions[k].name)
+            end
+            let namesAt = symbolsAt + {16 * extent e.functions}
+            let b = vector.new(:Int)
+            (* mach_header_64: arm64, an object file *)
+            u32(b 0xfeedfacf) u32(b 0x0100000c) u32(b 0) u32(b 1) u32(b 2) u32(b commandBytes) u32(b 0) u32(b 0)
+            (* LC_SEGMENT_64, unnamed, as an object file's is, of the code *)
+            u32(b 0x19) u32(b 72 + {80 * {1 + extent sections}})
+            name16(b "")
+            u64(b codeAddress) u64(b codeBytes) u64(b dataStart) u64(b contents)
+            u32(b 7) u32(b 7) u32(b 1 + extent sections) u32(b 0)
+            (* __TEXT,__text: pure instructions *)
+            name16(b "__text") name16(b "__TEXT")
+            u64(b codeAddress) u64(b codeBytes) u32(b dataStart) u32(b 2) u32(b 0) u32(b 0)
+            u32(b 0x80000400) u32(b 0) u32(b 0) u32(b 0)
+            (* __DWARF's sections, debugging only, at address 0: lldb reads
+             * an object in memory's sections from the process, each at its
+             * address, but one at a small address from the object itself *)
+            let var offset = dataStart + codeBytes
+            for i = 0 upto {extent sections - 1} do
+                let size = vector.length(:Int sections[i].bytes)
+                name16(b sections[i].name) name16(b "__DWARF")
+                u64(b 0) u64(b size) u32(b offset) u32(b 0) u32(b 0) u32(b 0)
+                u32(b 0x02000000) u32(b 0) u32(b 0) u32(b 0)
+                offset := offset + size
+            end
+            (* LC_SYMTAB *)
+            u32(b 2) u32(b 24) u32(b symbolsAt) u32(b extent e.functions) u32(b namesAt) u32(b vector.length(:Int names))
+            for k = 0 upto {extent e.code - 1} do u32(b e.code[k]) end
+            for i = 0 upto {extent sections - 1} do append(b sections[i].bytes) end
+            padTo(b 8)
+            (* nlist_64: external, defined in section 1 *)
+            for k = 0 upto {extent e.functions - 1} do
+                u32(b nameAt[k]) byte(b 0x0f) byte(b 1) u16(b 0) u64(b codeAddress + e.functions[k].offset)
+            end
+            append(b names)
+            let s = stringBuilder.new()
+            for i = 0 upto {vector.length(:Int b) - 1} do s.char(ascii.char(vector.get(:Int b i))) end
+            s.toString()
+        end
+end

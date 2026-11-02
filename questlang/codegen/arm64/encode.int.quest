@@ -7,7 +7,9 @@
  * section, each with the relocations that address symbols. Labels are
  * resolved here; symbols, even the unit's own, are left to the loader, so a
  * relocated field is 0 (a data word holds its addend), as in an object file.
- * The unwind directives and line positions are dropped. *)
+ * The unwind directives are dropped, and the line positions kept as a table,
+ * by which the JIT describes the code to a debugger (docs/jit.md section
+ * 3.12). *)
 
 interface Encode
 import
@@ -32,8 +34,14 @@ export
      * and the label just past them *)
     Def Function = Tuple symbol: String exported: Bool code: vector.T(minst.Inst) endLabel: String end
 
+    (* From offset bytes into the code, the source position file (a number in
+     * the unit's files, from 1), line, and column, as a .loc directive gives
+     * it *)
+    Def Line = Tuple offset: Int file: Int line: Int column: Int end
+
     (* A unit encoded: its code as 32-bit words, its data as bytes, each
-     * datum aligned to 8 bytes as asm places it *)
+     * datum aligned to 8 bytes as asm places it, and its code's positions,
+     * in the absolute paths of its source files (ssa.Unit.files) *)
     Def Encoded = Tuple
         code: Array(Int)
         codeRelocs: Array(Reloc)
@@ -41,6 +49,8 @@ export
         data: Array(Int)
         dataRelocs: Array(Reloc)
         dataSymbols: Array(Symbol)
+        lines: Array(Line)
+        files: Array(String)
     end
 
     (* What cannot be encoded, naming it *)
@@ -55,7 +65,7 @@ export
     word(op: minst.Op regs: Array(Int) at: Int labelOffset: All(label: String) Int
         localFunction: All(symbol: String) Int relocs: vector.T(Reloc)): Int
 
-    unit(functions: Array(Function) data: Array(ssa.Data)): Encoded
+    unit(functions: Array(Function) data: Array(ssa.Data) files: Array(String)): Encoded
 
     (* An Encoded as text, one item a line, for the encoder's check
      * (tests/self-hosted/encoder.py): "code OFFSET WORD", "reloc SECTION

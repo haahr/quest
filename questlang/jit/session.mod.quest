@@ -22,6 +22,8 @@ import
     arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
     questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
     questlang/jit/loader : questlang/jit/Loader
+    questlang/jit/debugObject : questlang/jit/DebugObject
+    questlang/modules/paths : questlang/modules/Paths
     os/value : os/Value
     os/code : os/Code
     raised : Raised
@@ -36,6 +38,8 @@ import
     stringOp = string : StringOp
     ascii : Ascii
     conv : Conv
+    system : System
+    writer : Writer
 export
     Let T = Tuple
         e: env.T
@@ -50,6 +54,14 @@ export
          * running loaded *)
         loaded: hashMap.T(String Bool)
         loadedNow: vector.T(String)
+        (* Whether the session describes its code to a debugger
+         * (QUEST_JIT_DEBUG=1, docs/jit.md section 3.12), and what it
+         * described: the objects and their list entries, kept for as long as
+         * the code is, and the directory and files holding inputs' sources *)
+        debugging: Bool
+        described: vector.T(String)
+        var sourceDir: String
+        sourceFiles: vector.T(String)
     end
     Let Outcome = Option
         ran with shown: Array(String) end
@@ -108,6 +120,10 @@ export
                 let sources = hashMap.new(:String :location.SourceMap stringOp.equal hash.string)
                 let loaded = hashMap.new(:String :Bool stringOp.equal hash.string)
                 let loadedNow = vector.new(:String)
+                let debugging = stringOp.equal(system.getEnv("QUEST_JIT_DEBUG") "1")
+                let described = vector.new(:String)
+                let var sourceDir = ""
+                let sourceFiles = vector.new(:String)
             end
         end
 
@@ -273,6 +289,106 @@ export
             maybe.unwrap(:value.T found)
         end
 
+    (* The GDB JIT interface's descriptor and the function a debugger breaks
+     * on, which the runtime defines (quest_code.c), if the driver has them *)
+    let descriptorSymbol = "__jit_debug_descriptor"
+    let breakSymbol = "__jit_debug_register_code"
+
+    (* A string's characters' address: its QString's data (word 2) *)
+    let bytesOf(text: String): value.T = value.fetch(value.new(:String text) 16)
+    let word(n: Int): value.T = value.new(:Int n)
+
+    (* Adds object to the interface's list of objects, as its first, and
+     * calls the function a debugger breaks on, with the action JIT_REGISTER_FN
+     * (1). Its entry, of the next and previous entries, the object's address,
+     * and its size, is a string's bytes. *)
+    let register(s: T object: String): Ok =
+        begin
+            let descriptor = code.symbol(descriptorSymbol)
+            let breaks = code.symbol(breakSymbol)
+            if maybe.isSome(:value.T descriptor) andif maybe.isSome(:value.T breaks) then
+                let d = maybe.unwrap(:value.T descriptor)
+                let holder = stringOp.new(32 ascii.char(0))
+                vector.append(:String s.described object)
+                vector.append(:String s.described holder)
+                let entry = bytesOf(holder)
+                let first = value.fetch(d 16)
+                value.store(entry 0 first)
+                value.store(entry 8 word(0))
+                value.store(entry 16 bytesOf(object))
+                value.store(entry 24 word(stringOp.length(object)))
+                if value.be(:Int first) isnot 0 then value.store(first 8 entry) end
+                value.store(d 16 entry)
+                value.store(d 8 entry)
+                (* version 1, action 1 *)
+                value.store(d 0 word(4294967297))
+                code.call(maybe.unwrap(:value.T breaks))
+                ok
+            end
+        end
+
+    (* The source of code that has no file of its own, written to a file
+     * named name in a directory of the session's own under TMPDIR, which
+     * finish removes; its path *)
+    let writeSource(s: T name: String text: String): String =
+        begin
+            if stringOp.length(s.sourceDir) is 0 then
+                let tmp = system.getEnv("TMPDIR")
+                let base = paths.join(if stringOp.length(tmp) > 0 then tmp else "/tmp" end
+                    "quest-jit-" <> conv.int(value.be(:Int bytesOf(name)) % 1000000007))
+                let var n = 0
+                while system.isDirectory(base <> "-" <> conv.int(n)) do n := n + 1 end
+                s.sourceDir := base <> "-" <> conv.int(n)
+                system.makeDirectory(s.sourceDir)
+            end
+            let path = paths.join(s.sourceDir name)
+            let w = writer.file(path)
+            writer.putString(w text)
+            writer.close(w)
+            vector.append(:String s.sourceFiles path)
+            path
+        end
+
+    let finish(s: T): Ok =
+        begin
+            for i = 0 upto {vector.length(:String s.sourceFiles) - 1} do
+                try system.removeFile(vector.get(:String s.sourceFiles i)) when system.error then ok end
+            end
+            if stringOp.length(s.sourceDir) > 0 then
+                try system.removeDirectory(s.sourceDir) when system.error then ok end
+            end
+        end
+
+    (* Where a debugger finds the source of a unit's file: an input's (named
+     * <repl>#N in its code) is its file, if it has one, else its text written
+     * to a file of the process's own (os/code's debugSource); a module file's
+     * is itself *)
+    let debugFile(s: T file: String): String =
+        begin
+            let base = stringOp.getSub(file strutil.rfind(file "/") + 1 {stringOp.length(file) - strutil.rfind(file "/")} - 1)
+            let original = if strutil.startsWith(base sourcePrefix) then
+                hashMap.get(:String :location.SourceMap s.sources base) else maybe.none(:location.SourceMap) end
+            if maybe.isNone(:location.SourceMap original) then
+                file
+            else
+                let sm = maybe.unwrap(:location.SourceMap original)
+                let named = paths.absolute(location.file(sm))
+                if system.isFile(named) then named
+                else writeSource(s "input-" <> stringOp.getSub(base stringOp.length(sourcePrefix)
+                    {stringOp.length(base) - stringOp.length(sourcePrefix)}) <> ".quest" location.text(sm)) end
+            end
+        end
+
+    (* A unit loaded, described to a debugger, if the session describes its
+     * code (docs/jit.md section 3.12) *)
+    let describe(s: T e: encode.Encoded symbols: hashMap.T(String value.T)): Ok =
+        if s.debugging andif {extent e.functions > 0} then
+            let start = value.be(:Int symbolAt(symbols e.functions[0].name)) - e.functions[0].offset
+            let files = array of(extent e.files "")
+            for i = 0 upto {extent files - 1} do files[i] := debugFile(s e.files[i]) end
+            register(s debugObject.object(e start files))
+        end
+
     (* A unit compiled, encoded, and loaded, with the addresses of its
      * symbols; the modules it imports are the driver's or loaded *)
     let compileAndLoad(s: T unit: nodes.Unit): hashMap.T(String value.T) =
@@ -287,9 +403,11 @@ export
                 when arm64.unsupported with x then fail(:encode.Encoded x)
                 when encode.unencodable with x then fail(:encode.Encoded "encoding: " <> x)
                 end
-            try loader.load(s.loader encoded)
-            when loader.loadError with x then fail(:hashMap.T(String value.T) x)
-            end
+            let symbols = try loader.load(s.loader encoded)
+                when loader.loadError with x then fail(:hashMap.T(String value.T) x)
+                end
+            describe(s encoded symbols)
+            symbols
         end
 
     (* A module file the driver does not link, which an input or another such

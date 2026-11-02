@@ -223,7 +223,9 @@ print the same, each unit's manifest must record its backend, a unit is compiled
 changed, and malformed `--backend` and `--unit-backend` options are errors. `self-hosted/line_tables`
 (`tests/self-hosted/line_tables.py`) compiles a recursive program with `--backend arm64`, separately and whole, and
 runs lldb in batch mode on each binary: it must stop at a breakpoint set on a Quest line and show the Quest lines of the
-backtrace's frames ([arm64.md](arm64.md) §3.16). It passes where there is no lldb. `self-hosted/fingerprints`
+backtrace's frames ([arm64.md](arm64.md) §3.16); and runs the program on the JIT with `QUEST_JIT_DEBUG=1`, as a file
+and as REPL inputs, where lldb must do the same, listing a REPL input's lines from the file the session writes
+([jit.md](jit.md) §3.12). It passes where there is no lldb. `self-hosted/fingerprints`
 (`tests/self-hosted/fingerprints.py`) builds a program whose unsound module reads its units' `qh_` fingerprints through
 `os/code` ([jit.md](jit.md) §3.3.1), with each backend and with variants of its interfaces: the fingerprints must agree
 across backends and directories, be the digest of the units' `.qi` files, ignore comments and declaration order, and

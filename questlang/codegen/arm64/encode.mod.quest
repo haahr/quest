@@ -29,6 +29,7 @@ export
     Let Reloc = Tuple offset: Int kind: RelocKind symbol: String addend: Int end
     Let Symbol = Tuple name: String offset: Int size: Int exported: Bool end
     Let Function = Tuple symbol: String exported: Bool code: vector.T(minst.Inst) endLabel: String end
+    Let Line = Tuple offset: Int file: Int line: Int column: Int end
     Let Encoded = Tuple
         code: Array(Int)
         codeRelocs: Array(Reloc)
@@ -36,6 +37,8 @@ export
         data: Array(Int)
         dataRelocs: Array(Reloc)
         dataSymbols: Array(Symbol)
+        lines: Array(Line)
+        files: Array(String)
     end
 
     let unencodable: Exception(String) = exception unencodable: String end
@@ -357,7 +360,7 @@ export
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
-    let unit(functions: Array(Function) data: Array(ssa.Data)): Encoded =
+    let unit(functions: Array(Function) data: Array(ssa.Data) files: Array(String)): Encoded =
         begin
             (* Each label's offset: its function's instructions laid out one
              * after another, each function 4-byte aligned, which they all
@@ -396,6 +399,7 @@ export
                 else ~1 end
             let code = array of(at / 4 0)
             let codeRelocs = vector.new(:Reloc)
+            let lines = vector.new(:Line)
             let var pc = 0
             for k = 0 upto {extent functions - 1} do
                 let f = functions[k]
@@ -403,7 +407,11 @@ export
                 for j = 0 upto {vector.length(:minst.Inst f.code) - 1} do
                     let i = vector.get(:minst.Inst f.code j)
                     case i.op
-                        when opLabel, opCfiDefCfa, opCfiOffset, opLoc then ok
+                        when opLoc with x then
+                            vector.append(:Line lines tuple
+                                let offset = pc let file = x.file let line = x.line let column = x.col
+                            end)
+                        when opLabel, opCfiDefCfa, opCfiOffset then ok
                         else
                             let expanded = printer.expansion(i.op i.regs)
                             for e = 0 upto {extent expanded - 1} do
@@ -461,6 +469,7 @@ export
                 let functions = vector.toArray(:Symbol symbols)
                 let data = vector.toArray(:Int bytes) let dataRelocs = vector.toArray(:Reloc dataRelocs)
                 let dataSymbols = vector.toArray(:Symbol dataSymbols)
+                let lines = vector.toArray(:Line lines) let files = files
             end
         end
 

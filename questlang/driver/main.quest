@@ -1017,8 +1017,11 @@ let jitRun(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagba
         let args = array of({extent options.programArgs + 1} options.file)
         for i = 0 upto {extent options.programArgs - 1} do args[i + 1] := options.programArgs[i] end
         let r = repl.newJit(e runFrame(e sm) args)
+        (* The session's files for a debugger are removed as it ends *)
+        let finished = fun(): Ok session.finish(maybe.unwrap(:session.T r.jit))
         if options.fromFile orif options.fromStdin orif maybe.isSome(:String options.code) then
             if not(repl.runInput(r program sm bag options.echo)) then
+                finished()
                 writer.flush(writer.output)
                 diagbag.renderAll(bag maybe.unwrapOr(:location.SourceMap r.errorSource sm) writer.err)
                 writer.flush(writer.err)
@@ -1030,8 +1033,11 @@ let jitRun(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagba
             writer.flush(writer.output)
             diagbag.renderAll(bag sm writer.err)
             writer.flush(writer.err)
-            system.sysexit(repl.run(r))
+            let status = repl.run(r)
+            finished()
+            system.sysexit(status)
         end
+        finished()
     end;
 
 (* Compiles a unit file alone, as the bootstrap's compile_unit_file does *)

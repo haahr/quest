@@ -251,8 +251,8 @@ and the exhaustiveness check catches a case missing from either. What the assemb
   the driver's own descriptor of the variable, which `dlsym` gives, in the GOT slot. Code generation is unchanged, and
   the encoder treats the reference as any other GOT entry.
 - **Data:** the static data's words, with absolute relocations for pointers to functions and other data.
-- **Unwind directives and `.loc`:** dropped. Frames need no unwind information (§3.9); line tables for JIT code are
-  later work (§6).
+- **Unwind directives:** dropped, since frames need no unwind information (§3.9). **`.loc`:** kept as a table of
+  positions by code offset, for a debugger (§3.12).
 
 The encoder is checked against the assembler: for every arm64 golden, the encoder's bytes equal the `__text` that
 `clang -c` makes of the printed assembly, relocations aside.
@@ -424,6 +424,38 @@ Neither interpreter runs them: interpreting a program that imports `os/value` or
 the self-hosted interpreter, is an error. The bootstrap's C backend compiles them, since it builds stage 1, which
 contains the JIT, though stage 1 cannot run it (§3.10).
 
+### 3.12. Debugging
+
+With `QUEST_JIT_DEBUG=1`, a session describes each unit it loads to a debugger through the GDB JIT interface, which
+lldb reads when told to (macOS's lldb ignores it by default):
+
+```text
+$ QUEST_JIT_DEBUG=1 lldb -o 'settings set plugin.jit-loader.gdb.enable on' -- quest prog.quest
+(lldb) breakpoint set --file prog.quest --line 8
+(lldb) run
+```
+
+Breakpoints on Quest lines and on functions (by their symbols, `qf_fib`) resolve as the units load, and backtraces
+show the lines of JIT frames; there are no variable locations, as in the arm64 backend's own debugging information.
+
+- **The object.** For each unit, `jit/debugObject` writes a Mach-O arm64 object in memory: one section of code, at
+  the address the loader put it at, so that nothing needs relocating; a symbol for each function; and DWARF 4, a
+  compile unit with a subprogram per function and a line table, as `codegen/arm64/asm` writes for a unit assembled to a
+  file ([arm64.md](arm64.md) §3.16). The encoder keeps the `.loc` positions it used to drop (`Encoded.lines`). Each
+  function's line sequence starts at its first instruction with its first position, so that a breakpoint on the
+  function finds a line and lldb skips the prologue. The DWARF sections are at address 0: lldb reads an in-memory
+  object's sections from the process at their addresses, but one at a small address from the object itself.
+- **The interface.** The runtime defines its two symbols, `__jit_debug_descriptor` and `__jit_debug_register_code`
+  (`quest_code.c`); the session finds them with `os/code`'s `symbol`, links the object into the descriptor's list
+  with `os/value`'s `store` (each object and its list entry a string's bytes, which the session keeps), and calls the
+  function with `os/code`'s `call`. Since a release builds stage 1 against its own `lib/`, the session uses no new
+  `os/code` function, and a driver whose runtime lacks the symbols describes nothing.
+- **Sources.** A unit's file is the input's file, for a program given as a file, or a module file's own. An input
+  that has none (a REPL input, an `-e` program) is written to `input-N.quest` in a directory of the session's own
+  under `TMPDIR`, which the session removes when it ends; a driver that is killed, or a program that calls
+  `system.exit`, leaves it.
+- **Cost.** Describing a unit costs about 0.2 ms, a fifth of a typical REPL input, so it is not the default.
+
 ## 4. Differences From the Interpreter
 
 Compiled code already differs from the interpreters in two accepted ways (exceptions.md §2.4, §6), which the JIT
@@ -460,8 +492,12 @@ Running in the driver's own process adds two more, which the run goldens through
 
 ## 6. Later
 
-- Calling earlier inputs' functions directly, and inlining them.
-- Registering JIT code with lldb (the GDB JIT interface), with line tables (arm64.md §3.16).
+- Inlining and specializing earlier inputs' functions in later inputs. Calling them directly alone (exporting a
+  phrase unit's functions' code and calling it with a null environment, rather than loading the binding's closure)
+  was tried on 2026-11-01 and not kept: 200 million calls of an earlier `add1` took 0.27 s against 0.26 s, and 100
+  million of an earlier generic `twice` 1.78 s against 1.47 s, `twice`'s code byte for byte the same, its placement
+  differing. In one unit the same loops take 0.13 s and 0.06 s: the gap is inlining and specialization, which need the
+  earlier inputs' IR, not the call.
 - Surviving faults and runaway recursion, and Ctrl-C, in the REPL.
 
 ## 7. Steps

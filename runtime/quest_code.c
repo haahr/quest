@@ -227,3 +227,33 @@ void quest_code_add_roots(void *low, void *high) {
 void quest_code_set_args(QArray *args) {
     quest_system_args = args;
 }
+
+/* ============================================================================
+ * Describing the JIT's code to a debugger
+ * ============================================================================ */
+
+/* The GDB JIT interface (docs/jit.md section 3.12), which lldb reads when
+   plugin.jit-loader.gdb.enable is on: a list of in-memory object files, each
+   describing code the JIT loaded, and a function a debugger breaks on, called
+   after each is added. The names and layout are the interface's; the JIT
+   (questlang/jit/session) finds them with dlsym, links its objects into the
+   list with os/value, and calls the function with os/code's call. */
+struct jit_code_entry {
+    struct jit_code_entry *next_entry;
+    struct jit_code_entry *prev_entry;
+    const char            *symfile_addr;
+    uint64_t               symfile_size;
+};
+
+struct jit_descriptor {
+    uint32_t               version;
+    uint32_t               action_flag;
+    struct jit_code_entry *relevant_entry;
+    struct jit_code_entry *first_entry;
+};
+
+struct jit_descriptor __jit_debug_descriptor = { 1, 0, NULL, NULL };
+
+__attribute__((noinline, used)) void __jit_debug_register_code(void) {
+    __asm__ volatile("" ::: "memory");
+}
