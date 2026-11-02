@@ -515,7 +515,7 @@ run, as the second batch's were: its three fixes were found by measuring, not by
 
 Batches 4 and 5 wait only for batch 3's baseline timings.
 
-**The classification** (2026-11-01, at `0108d012`) built life and mlyacc with the allocator told that some calls
+**The classification** (2026-11-01, at `e72fc0cb`) built life and mlyacc with the allocator told that some calls
 clobber no register, which is wrong code, only counted: calls in cold blocks (what 4b could gain at most), proxy
 helpers' calls (what the stubs could), and every call. Stack loads and stores are weighted by their blocks'
 frequencies, and set against `tools/perf/profile.py`'s samples:
