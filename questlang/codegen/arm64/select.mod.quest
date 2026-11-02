@@ -441,6 +441,16 @@ export
             end
         end
 
+    (* Whether a value is a call's result that the callee extends: a call of
+     * a function defined, as select's defined says, with its narrow results
+     * extended *)
+    let extended(s: S v: Int): Bool =
+        if maybe.isSome(:ssa.Inst s.defs[v]) then
+            let c = maybe.unwrap(:ssa.Inst s.defs[v])
+            ssa.isOp(c ssa.opCall) andif maybe.isSome(:Bool hashMap.get(:String :Bool s.defined c.symbol))
+                andif maybe.unwrap(:Bool hashMap.get(:String :Bool s.defined c.symbol))
+        else false end
+
     (* The registers results come back in *)
     let resultRegisters(f: ssa.Function results: Array(Int)): Array(Int) =
         if extent results is 1 then array of if isReal(ssa.typeOf(f results[0])) then d0 else x0 end end
@@ -547,8 +557,10 @@ export
                 (* Copies of a word: conversions between ints, pointers, and a
                  * Real's bits *)
                 when opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opCopy, opToVal, opFromVal then emitMove(s d a(0))
-                when opSext8 then emit(s minst.sxtb(d a(0)))
-                when opZext8 then emit(s minst.andImm(d a(0) 255))
+                (* A byte extended, unless it is the result of a call in the
+                 * unit that comes back extended (codegen's definedSymbols) *)
+                when opSext8 then if extended(s i.args[0]) then emitMove(s d a(0)) else emit(s minst.sxtb(d a(0))) end
+                when opZext8 then if extended(s i.args[0]) then emitMove(s d a(0)) else emit(s minst.andImm(d a(0) 255)) end
                 when opLoad then
                     let width = if i.width is 8 then minst.load64 elsif i.width is 4 then minst.loadS32
                         elsif i.signed then minst.loadS8 else minst.loadU8 end

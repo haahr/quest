@@ -658,15 +658,50 @@ export
             lines
         end
 
-    let assembleUnit(u: ssa.Unit): String =
+    (* The symbols the unit defines, each with whether a call of it in the
+     * unit gets its narrow results extended, so that the caller need not
+     * extend them again (docs/ssa.md section 2.2): a function's do, since it
+     * extends what it computes, unless it tail-calls, for a narrow result, a
+     * function outside the unit, through a pointer, or one whose results do
+     * not, returning the byte as that callee left it. Data's are false. *)
+    let definedSymbols(u: ssa.Unit): hashMap.T(String Bool) =
         begin
             let defined = hashMap.new(:String :Bool eq hash.string)
-            for k = 0 upto {vector.length(:Function u.functions) - 1} do
-                put(:String :Bool defined vector.get(:Function u.functions k).symbol true)
-            end
             for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
-                put(:String :Bool defined vector.get(:ssa.Data u.data k).symbol true)
+                put(:String :Bool defined vector.get(:ssa.Data u.data k).symbol false)
             end
+            let n = vector.length(:Function u.functions)
+            for k = 0 upto {n - 1} do put(:String :Bool defined vector.get(:Function u.functions k).symbol true) end
+            let extends(i: ssa.Inst): Bool =
+                {extent ssa.narrowOf(i.signature.results) is 0} orif {ssa.isOp(i ssa.opCall)
+                    andif maybe.isSome(:Bool hashMap.get(:String :Bool defined i.symbol))
+                    andif maybe.unwrap(:Bool hashMap.get(:String :Bool defined i.symbol))}
+            let var changed = true
+            while changed do
+                changed := false
+                for k = 0 upto {n - 1} do
+                    let f = vector.get(:Function u.functions k)
+                    if maybe.unwrap(:Bool hashMap.get(:String :Bool defined f.symbol)) then
+                        for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                            case ssa.block(f b).term
+                                when termTailCall with x then
+                                    if not(extends(x.call)) then
+                                        put(:String :Bool defined f.symbol false)
+                                        changed := true
+                                    end
+                                when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable
+                                    then ok
+                            end
+                        end
+                    end
+                end
+            end
+            defined
+        end
+
+    let assembleUnit(u: ssa.Unit): String =
+        begin
+            let defined = definedSymbols(u)
             let lines = vector.new(:String)
             let appendAll(ls: Array(String)): Ok =
                 for k = 0 upto {extent ls - 1} do vector.append(:String lines ls[k]) end
@@ -719,13 +754,7 @@ export
 
     let encodeUnit(u: ssa.Unit): encode.Encoded =
         begin
-            let defined = hashMap.new(:String :Bool eq hash.string)
-            for k = 0 upto {vector.length(:Function u.functions) - 1} do
-                put(:String :Bool defined vector.get(:Function u.functions k).symbol true)
-            end
-            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
-                put(:String :Bool defined vector.get(:ssa.Data u.data k).symbol true)
-            end
+            let defined = definedSymbols(u)
             let machines = array of(vector.length(:Function u.functions) tuple
                 let symbol = "" let exported = false let code = vector.new(:minst.Inst) let endLabel = ""
             end)
