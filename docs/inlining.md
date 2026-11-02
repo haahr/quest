@@ -10,15 +10,12 @@ longer.
 ## 1. Tuning
 
 The threshold (30), the bonuses (30 for closed type arguments, 10 for a known function argument, 5 for a constant),
-the growth bound (half the unit, or 1000), and the bound of six rounds were chosen, not measured. Two results ask for
-a closer look:
+the growth bound (half the unit, or 1000), and the bound of six rounds were chosen, not measured. *Done when*
+benchmarks.md records the settings and why.
 
-- **Whole programs** ([benchmarks.md](benchmarks.md) §7) were compared with separate builds before abstract types
-  became transparent in them (ir.md §4.1); they are to be measured again.
-- **ratio-regions** took 1.68 times as long whole as separately at that comparison, from contification of a function
-  at a module's top level, which is no longer contified (ir.md §8.6); what remains of the difference is to be found.
-
-*Done when* benchmarks.md records the settings and why, and the whole-program comparison is retaken.
+The whole-program comparison has been retaken since abstract types became transparent in whole programs (ir.md §4.1):
+at [benchmarks.md](benchmarks.md) §8.2, a whole program takes 0.94 times as long as a separate build, and
+ratio-regions, which took 1.68 times as long whole at §7.2, is no longer slower whole.
 
 ## 2. Workers: Reduced Entry Points
 
