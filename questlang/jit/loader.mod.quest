@@ -107,7 +107,10 @@ export
             if {delta >= 0x100000} orif {delta < ~0x100000} then
                 raise loadError with "a page beyond adrp's reach" end
             end
-            shl(field(delta 2) 29) + shl(field(delta / 4 19) 5)
+            (* Its 21 bits, the low 2 at 29 and the rest at 5: split from the
+             * field, since / truncates a negative delta *)
+            let f = field(delta 21)
+            shl(f % 4 29) + shl(f / 4 5)
         end
 
     (* An add's or load's offset in a page, scaled by the access's size *)

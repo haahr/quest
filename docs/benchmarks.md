@@ -767,3 +767,47 @@ fixes (§8).
 - **What remains** in peek and zebra is mostly `maybe.some`'s box (9.6 billion and 672 million), which escapes by
   being returned, and which [option-values.md](option-values.md) step 3 (deferred) would remove; in ratio-regions,
   90 percent is `preflowPush`'s 706 million, which the pass does not touch.
+
+## 10. The JIT (2026-11-01)
+
+The time the JIT ([jit.md](jit.md)) takes to compile, load, and run an input, against the interpreter's time to
+run it, measured on the REPL transcripts and on four programs, with a stage 2 the C backend built.
+
+### 10.1. How they were taken
+
+Each command was run three times, in a scratch directory, and the least wall time kept; the time of an empty session
+(`quest --jit -i` and `quest -i` with no input: 8 ms and 7 ms) is subtracted. Inputs are counted as the transcript's
+lines that begin a phrase, roughly. Another worktree's tests were running on the machine, so the times are rough.
+
+### 10.2. The transcripts
+
+| Transcript | Inputs | JIT (ms) | Per input (ms) | Interpreter (ms) |
+|---|---:|---:|---:|---:|
+| args | 2 | 3 | 1.5 | 3 |
+| declared_modules | 8 | 6 | 0.7 | 1 |
+| earlier_function_error | 5 | 6 | 1.3 | 1 |
+| incomplete_at_end | 2 | 1 | 0.4 | 0 |
+| multiline | 12 | 7 | 0.6 | 3 |
+| phrases | 11 | 6 | 0.5 | 1 |
+| rethrow | 5 | 8 | 1.5 | 2 |
+| rollback | 15 | 10 | 0.7 | 1 |
+| syntax_errors | 6 | 1 | 0.2 | 1 |
+
+An input takes 0.2 to 1.5 ms through the JIT: lowering, the passes, the SSA, selection and allocation, encoding,
+loading, and running, the first three dominating. That is several times the interpreter's time for these small
+inputs, and well under what a person notices.
+
+### 10.3. Programs
+
+| Program | Lines | JIT (ms) | Interpreter (ms) |
+|---|---:|---:|---:|
+| `language/thunks` | 98 | 35 | 11 |
+| `language/cardelli_operators` | 48 | 6 | 1 |
+| `03_functions_closures` | 11 | 2 | 1 |
+| `stdlib/sort_operations` | 147 | 36 | 39 |
+
+A file is one input, so the JIT compiles all of it before running it. It costs more than interpreting a program
+that does little (`thunks` compiles many generic functions and their thunks), and about the same where the program
+does some work (`sort_operations`); a program that runs long would gain what compiled code gains over the
+interpreter. Whether the JIT becomes the default is decided from these (jit.md §7).
+

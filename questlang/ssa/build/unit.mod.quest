@@ -388,7 +388,10 @@ export
                             vals.terminate(fn option termReturn of ssa.Terminator with let values = vals.noValues end)
                         end
                     array of :ssa.Type end array of :ssa.Type end exported))
-                if exported then
+                (* Direct calls of the exported functions, for other units; but
+                 * not of a phrase unit's bindings, which later inputs read
+                 * from its record *)
+                if exported andif not(stringOp.equal(m.name phraseModule(unit))) then
                     let exports = maybe.unwrap(:ir.Members m.exports)
                     for j = 0 upto {vector.length(:String exports.names) - 1} do
                         let name = vector.get(:String exports.names j)
@@ -407,10 +410,21 @@ export
             vector.append(:Function u.built.functions registration(u))
             if maybe.isSome(:ir.Phrase unit.phrase) then
                 (* A phrase unit's entry: main's, without the collector's and
-                 * the builtins' initialization, which the host has done *)
+                 * the builtins' initialization, which the host has done. With
+                 * capture, what its phrases show is captured, and left in
+                 * qj_<n>_echo, a string *)
+                let capture = maybe.unwrap(:ir.Phrase unit.phrase).capture
+                let echoed = phraseModule(unit) <> "_echo"
+                if capture then
+                    addData(u tuple
+                        let symbol = echoed let exported = true let writable = true
+                        let contents = option contentsZero of ssa.Contents with let bytes = 8 end
+                    end)
+                end
                 vector.append(:Function u.built.functions topLevel(u phraseEntry(unit) unit.main
                     fun(fn: vals.Fn): Ok
                         begin
+                            if capture then vals.callVoid(fn "quest_echo_capture" vals.noValues) end
                             vals.callOwn(fn "qr_register_dicts")
                             for j = 0 upto {extent unit.imports - 1} do
                                 vals.callOwn(fn "qv_mod_" <> symbols.mangleModuleName(unit.imports[j].canonicalPath)
@@ -419,6 +433,10 @@ export
                             for j = 0 upto {vector.length(:ir.Module unit.modules) - 1} do
                                 vals.callOwn(fn "qv_mod_"
                                     <> symbols.mangleModuleName(vector.get(:ir.Module unit.modules j).name) <> "_init")
+                            end
+                            if capture then
+                                let text = vals.call1(fn "quest_echo_captured" vals.noValues)
+                                vals.store(fn vals.symbolAt(fn echoed) 0 8 text)
                             end
                         end
                     fun(fn: vals.Fn): Ok

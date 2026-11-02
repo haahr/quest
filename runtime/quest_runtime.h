@@ -504,6 +504,9 @@ double   quest_real_pow_at(double base, double exp, const char *loc);
 void     quest_print_val(QVal val, const char *type_name);
 void     quest_print_value(const char *prefix, QVal val, const char *kind, const char *suffix);
 void     quest_print_typed(const char *prefix, QVal val, const QTypeDescriptor *type, const char *suffix);
+void     quest_echo_text(const char *text);
+void     quest_echo_capture(void);
+QString *quest_echo_captured(void);
 
 /* Standard library singleton exceptions */
 extern const QException quest_exc_writer_error;

@@ -109,6 +109,14 @@ ends with `<main>`, and nothing is listed that was not running.
 To see every frame, run the program with the interpreter (`--stop-after interpret`) or the IR interpreter
 (`--stop-after run_ir_represented`), which report the same raise site.
 
+### 2.5. The JIT
+
+A program or REPL input that the JIT runs (`--jit`, [jit.md](jit.md)) is compiled code, so it reports exceptions as
+§2.1 and §2.4 describe, without the payload and perhaps with fewer frames, and runaway recursion ends the driver
+(§6). Running in the driver's process, it also differs in two ways of its own: a fatal runtime error (an option's
+ordinal out of bounds) ends the driver with the runtime's message, whose site names the input as `<repl>#N`; and the
+frames it lists stop at the input's `<main>`, leaving out the driver's. jit.md §4 lists these with the rest.
+
 ---
 
 ## 3. Raise Sites

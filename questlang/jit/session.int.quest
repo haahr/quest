@@ -4,16 +4,16 @@
  * driver's own process, loaded (jit/loader), and run, instead of interpreted.
  * Each input is a phrase unit (ir/lower's lowerPhrases): the arm64 backend's
  * pipeline compiles it, codegen/arm64/encode encodes it, and its entry runs
- * under a handler that catches every exception. Its phrases' results are read
- * back from its record (jit/reflect), and its bindings stay there for later
- * inputs, which read them as the record's fields. *)
+ * under a handler that catches every exception. Its phrases' results are
+ * printed by the runtime as they run, as a compiled program prints them, or
+ * captured for the REPL; its bindings stay in its record for later inputs,
+ * which read them as the record's fields. *)
 
 interface Session
 import
     questlang/common/location : questlang/common/Location
     questlang/types/env : questlang/types/Env
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
-    questlang/values/model : questlang/values/Model
     util/maybe : util/Maybe
 export
     T::TYPE
@@ -28,15 +28,14 @@ export
      * as system.args *)
     new(e: env.T args: Array(String)): T
 
-    (* A phrase's result, as the REPL prints it (formatting's
-     * formatInteractiveResult) *)
-    Def Result = Tuple phrase: typedAst.Binding value: model.Value end
-    (* What an input came to: its phrases' results, or the exception it
-     * raised: its name, where it was raised (the source of the input whose
+    (* What an input came to: what each of its phrases showed, if they were
+     * captured (as interpret shows a phrase, its lines after the first
+     * continuing it; empty for a phrase that shows nothing), or the exception
+     * it raised: its name, where it was raised (the source of the input whose
      * code raised it, and the offset in it), if known, and the frames running
      * there, most recent first, down to the input's own *)
     Def Outcome = Option
-        ran with results: Array(Result) end
+        ran with shown: Array(String) end
         raised with
             name: String
             sourceMap: maybe.T(location.SourceMap)
@@ -47,6 +46,10 @@ export
 
     (* Compiles, loads, and runs an input, typed in the session's
      * environment from the source sourceMap holds; its bindings are known to
-     * later inputs only if it ran *)
-    run(s: T program: typedAst.Program sourceMap: location.SourceMap): Outcome
+     * later inputs only if it ran. Its phrases show their results as a
+     * program's do, with the runtime's printers (docs/jit.md section 3.8):
+     * with echo every phrase's, with printResult the last's; written as they
+     * run, or with capture, returned *)
+    run(s: T program: typedAst.Program sourceMap: location.SourceMap echo: Bool printResult: Bool capture: Bool):
+        Outcome
 end

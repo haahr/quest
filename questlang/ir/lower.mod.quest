@@ -694,9 +694,12 @@ export
                     end
                 elsif maybe.isSome(:Tuple binding: Earlier ref: nodes.ModuleRef end earlierOf(l e)) then
                     (* An earlier input's binding is a field of its record; a
-                     * var's address is its field's *)
+                     * var's address is its field's; one of type Ok is not in
+                     * the record *)
                     let found = maybe.unwrap(:Tuple binding: Earlier ref: nodes.ModuleRef end earlierOf(l e))
-                    if found.binding.isVar then
+                    if isOk(e.type) andif not(found.binding.isVar) then
+                        copyInto(l okConst() into)
+                    elsif found.binding.isVar then
                         let recordAtom = letOp(l option opModuleMember of Op with
                             let var moduleRef = found.ref let var member = maybe.none(:String)
                         end found.binding.recordType none)
@@ -1914,10 +1917,12 @@ export
      * of a module of their own, whose members are their top-level bindings and
      * their expressions' values; its record is made, as a module file's is,
      * when they have run, with a var field for a var *)
+    let phraseSeparator = "\x1e"
+
     let lowerPhrases(prog: typedAst.Program e: env.T sourceMap: maybe.T(location.SourceMap) number: Int
-        earlier: hashMap.T(Int Earlier)): nodes.Unit =
+        earlier: hashMap.T(Int Earlier) echo: Bool printResult: Bool capture: Bool): nodes.Unit =
         begin
-            let l = newLowerer(e sourceMap 0 false false)
+            let l = newLowerer(e sourceMap 0 echo printResult)
             hashMap.forEach(:Int :Earlier earlier fun(k: Int b: Earlier): Ok
                 begin hashMap.insert(:Int :Earlier l.earlier k b) ok end)
             capturedMutables(prog l.captured)
@@ -1925,21 +1930,27 @@ export
             let init = nodes.newBody()
             let modules = vector.new(:nodes.Module)
             let members = nodes.newMembers()
-            let results = vector.new(:Array(String))
-            let member(name: String v: Variable): String =
+            (* A binding of type Ok has no words to keep: it is not in the
+             * record *)
+            let bound(symbol: symbols.ValueSymbol): Ok =
                 begin
-                    if maybe.isNone(:Variable nodes.member(members name)) then nodes.addMember(members name v) end
-                    name
+                    let v = hashMap.find(:Int :Variable l.vars symbol.symbolId)
+                    let name = phraseField(symbol.symbolId)
+                    if not(isOk(v.type)) andif maybe.isNone(:Variable nodes.member(members name)) then
+                        nodes.addMember(members name v)
+                    end
                 end
-            let bound(symbol: symbols.ValueSymbol): String =
-                member(phraseField(symbol.symbolId) hashMap.find(:Int :Variable l.vars symbol.symbolId))
-            let none = array of :String end
             let var lastBody = init
             inBody(l init fun(): Ok
                 begin
                     for i = 0 upto {extent prog.phrases - 1} do
                         let phrase = prog.phrases[i]
-                        let shown = case phrase.form
+                        (* What a phrase shows (all with echo, the last with
+                         * printResult) the runtime writes as it runs; captured,
+                         * each phrase's begins with a separator line *)
+                        let show = echo orif {printResult andif {i is {extent prog.phrases - 1}}}
+                        if capture then emit(l option sEchoText of Stmt with let text = phraseSeparator end) end
+                        case phrase.form
                             when bindModule with x then
                                 if not(x.isPrecompiled) then
                                     (* Its record is exported, for later
@@ -1949,51 +1960,28 @@ export
                                     addModuleRecord(dm)
                                     vector.append(:nodes.Module modules dm)
                                 end
-                                none
-                            when bindInterface then none
-                            when bindExprStmt with x then
-                                let namedException = case x.expr.form
-                                    when exprException with y then stringOp.length(y.name) > 0
-                                    else false
-                                end
-                                if namedException orif isOk(x.expr.type) then
-                                    binding(l phrase false)
-                                    none
-                                else
-                                    let v = fresh("result" x.expr.type false)
-                                    at(:Ok l phrase.offset fun(): Ok
-                                        begin
-                                            makeScopeExceptions(l typedAst.scopeExceptions(phrase))
-                                            value(l x.expr some(v))
-                                            ok
-                                        end)
-                                    array of member("r" <> conv.int(i) v) end
-                                end
+                            when bindInterface then ok
                             when bindLetValue with x then
-                                binding(l phrase false)
-                                array of bound(x.value.symbol) end
+                                binding(l phrase show)
+                                bound(x.value.symbol)
                             when bindLetValueGroup with x then
-                                binding(l phrase false)
-                                let names = array of(extent x.members "")
-                                for j = 0 upto {extent x.members - 1} do names[j] := bound(x.members[j].symbol) end
-                                names
-                            else
-                                binding(l phrase false)
-                                none
+                                binding(l phrase show)
+                                for j = 0 upto {extent x.members - 1} do bound(x.members[j].symbol) end
+                            else binding(l phrase show)
                         end
-                        vector.append(:Array(String) results shown)
-                        (* The exceptions it names, which later inputs may raise
-                         * and catch *)
-                        let excs = typedAst.namedExceptionsIn(phrase)
-                        for j = 0 upto {extent excs - 1} do
-                            case excs[j].form
-                                when exprException with x then
-                                    if maybe.isSome(:symbols.ValueSymbol x.symbol) then
-                                        bound(maybe.unwrap(:symbols.ValueSymbol x.symbol))
-                                        ok
-                                    end
-                                else ok
-                            end
+                        (* An exception it declares, which later inputs may
+                         * raise and catch (one a let binds is the let's
+                         * value) *)
+                        case phrase.form
+                            when bindExprStmt with x then
+                                case x.expr.form
+                                    when exprException with y then
+                                        if maybe.isSome(:symbols.ValueSymbol y.symbol) then
+                                            bound(maybe.unwrap(:symbols.ValueSymbol y.symbol))
+                                        end
+                                    else ok
+                                end
+                            else ok
                         end
                     end
                     lastBody := l.body
@@ -2018,7 +2006,7 @@ export
             m.recordVar := some(rv)
             vector.append(:nodes.Module modules m)
             let unit = nodes.newUnit(nodes.newBody() modules vector.toArray(:nodes.Import l.imports) sourceMap)
-            unit.phrase := maybe.some(:nodes.Phrase tuple let number = number let results = results end)
+            unit.phrase := maybe.some(:nodes.Phrase tuple let number = number let capture = capture end)
             unit
         end
 end

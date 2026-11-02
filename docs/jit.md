@@ -6,7 +6,7 @@ backend's pipeline ([arm64.md](arm64.md)) unchanged up to machine instructions, 
 with an in-memory encoder and loader. It is written in Quest, in `questlang/`, and the bootstrap does not get it
 ([testing.md](testing.md) §2.8), though it gets the language change the JIT needs (§3.11).
 
-**Status: steps 1 to 7 of 8 done** (§7). Section 1 records the decisions, section 7 the steps.
+**Status: all 8 steps done** (2026-11-01) (§7). Section 1 records the decisions, section 7 the steps.
 
 ---
 
@@ -40,6 +40,8 @@ Decided 2026-11-01:
   from source (§3.3).
 - **Frames by the frame-pointer chain,** for all compiled code, not only the JIT's (§3.9).
 - **Results printed by the interpreter's formatter,** from values that reflection reads out of native memory (§3.8).
+  *Replaced* during step 8: reflection could not follow proxies or show `Dynamic` values without redoing the
+  runtime's work, so results are printed by the runtime's own formatter, as a compiled program prints them (§3.8).
 - **The low-level primitives live in `os/`,** named for what they do rather than for the JIT, behind interfaces
   marked `unsound`: Cardelli's scheme, which the language now enforces (§3.11), with `external` an unsound
   operation (§3.11, "Externals").
@@ -61,19 +63,20 @@ Decided 2026-11-01:
 input text ──parse, typecheck (as now: env, unit graph, snapshots)──► typed phrases
    ──lower as a phrase unit (§3.2)──► IR ──passes──► SSA ──select, allocate──► minst
    ──encode (§3.5)──► code and data with relocations ──load (§3.6)──► executable memory
-   ──call the input's entry (§3.7)──► results in globals ──reflect (§3.8)──► model.Value ──format──► "==  ..."
+   ──call the input's entry (§3.7)──► results printed by the runtime (§3.8)
+   ──captured, for the REPL──► "==  ..."
 ```
 
-Everything up to minst is the arm64 backend's, given a new kind of unit. The encoder, loader, reflection, and the
-REPL's use of them are new.
+Everything up to minst is the arm64 backend's, given a new kind of unit. The encoder, loader, and the REPL's use of
+them are new.
 
 ## 3. Design
 
 ### 3.1. Where the JIT lives
 
-- `questlang/jit/`: `encode` (minst and static data to bytes and relocations), `loader` (the code arena, symbol
-  resolution, relocation, registration), `session` (the REPL's state: earlier inputs' globals), `reflect` (native
-  values to `model.Value`). The modules that use the unsound primitives are `unsound` modules.
+- `questlang/jit/`: `loader` (the code arena, symbol resolution, relocation, registration) and `session` (the REPL's
+  state: earlier inputs' records); the encoder is `codegen/arm64/encode`. The modules that use the unsound primitives
+  are `unsound` modules.
 - Two unsound interfaces in `lib/os/`, with a C file in `runtime/`, for what Quest cannot do (§3.11).
 - `driver/repl` chooses between `treewalk.evalProgramPhrasesIn` and the JIT for its running step; snapshots, rollback,
   completeness, and printing stay its own.
@@ -237,15 +240,23 @@ handler whichever backend built the host.
 
 ### 3.8. Printing results
 
-The REPL prints a result by its type with `formatting.formatInteractiveResult`, from a `model.Value`. `jit/reflect`
-makes that value from the native one, directed by the static type: a scalar is read as is; a string, reader, or
-writer is the native object, which `model.Value` already holds; a record is read field by field through its offset
-table; a function is `<fun>`; an abstract type is `<hidden>`. The formatter is then the interpreter's, so the output
-is the same by construction.
+A phrase unit's phrases show their results as a compiled program's do with `--echo` (or `--print-result`): the
+lowering emits each one's echo, and the runtime's printers (`quest_print_value`, `quest_print_typed`, and
+`quest_echo_text` for a declaration) write it when the phrase runs, by its descriptor. Those printers are checked
+against the interpreter's formatter already, by the shared run goldens, and they read values as compiled code holds
+them: through proxies, `Dynamic` values by their descriptors, cycles guarded.
 
-Reflection reads memory through `os/value` (§3.11). It is one of the metalevel operations that *Typeful
-Programming* §9.3 says no type-sound language can do without: jumping to freshly compiled code, and printing what it
-returns by its static type, whose validity "depends on the correctness of the typechecker".
+- **A file or `-e`** is one input, which prints as a compiled program does: its last phrase's result, or every
+  phrase's with `--echo`, as it runs.
+- **The REPL** captures what an input prints instead (`quest_echo_capture` in its entry, and `quest_echo_captured`,
+  whose string the entry leaves in `qj_<n>_echo`), with a separator line before each phrase's, and prints each
+  phrase's lines with its prompts (`==  `, then the continuation's indentation), after the input has run, as it does
+  for the interpreter. While capturing, the printers write to a memory stream made `stdout`, so a program's own output
+  is not captured.
+
+The first design read values back with reflection through `os/value` and formatted them with the interpreter's
+formatter; it was replaced in step 8, since it could not follow proxies (a tuple or option viewed at a supertype) or
+show a `Dynamic` value without redoing what the runtime already does (§1).
 
 ### 3.9. Frames
 
@@ -332,9 +343,10 @@ end
 It fits this implementation exactly because every slot holds one word, the value's slot representation
 (c-representation.md, "Slots"): `new` gives that word (a record's or variant's box pointer, a real's bits, a
 string's pointer), and `be` takes it back. `fetch` and `store` address bytes, the "implementation-dependent units",
-and raise `error` for a null address or a displacement that is not a multiple of 8. That is enough for reflection
-(§3.8): a tuple's components and a record's offset table and fields are words, and a `Bool` or `Char` slot is a
-whole word too.
+and raise `error` for a null address or a displacement that is not a multiple of 8. That was enough for the first
+design's reflection (§3.8): a tuple's components and a record's offset table and fields are words, and a `Bool` or
+`Char` slot is a whole word too. The session uses it to read the string an input captured, and to give
+`system.args` to the driver's `system` record.
 
 **`os/code`** is new, and holds what has no counterpart in Cardelli's system:
 
@@ -361,6 +373,14 @@ the JIT inherits, and which show in the REPL transcripts:
 All three are accepted and documented, here and in exceptions.md, for now. The payload could be printed in the REPL
 if each exception carried its payload's type descriptor; that is deferred (§6).
 
+Running in the driver's own process adds three more, which the run goldens through `--jit` show:
+
+- an import of a module of the user's own is refused, for now (§3.4);
+- a fatal runtime error (an option's ordinal out of bounds, say), which ends a compiled program, ends the driver,
+  with the runtime's message and the input's internal source name (`<repl>#N`) as its site;
+- a program that calls the compiler's own modules (the questlang tests) calls the running compiler's, and sees its
+  state (§1, "the driver is the library").
+
 ## 5. Testing
 
 - **Unsound interfaces:** the checks of §3.11 in both compilers, with a test of each rule's error.
@@ -369,7 +389,10 @@ if each exception carried its payload's type descriptor; that is deferred (§6).
 - **The REPL transcripts** (`tests/source/repl`, `tests/golden/repl`) through `--jit`, as a runner mode against the
   same goldens. A transcript that shows an accepted difference (§4) is skipped under `--jit` by a marker in its
   source, as `@skip-phase run_c_compiled` skips a program; today that is `rethrow` and `stack_overflow`.
-- **The run goldens** through `quest --jit FILE`, once files run on the JIT, with the same markers.
+- **The run goldens** through `quest --jit FILE` (`--backend jit-files`), skipping the programs marked
+  `@skip-phase: jit` or `@skip-phase: run_c_compiled`, whose differences the JIT shares with compiled code.
+  `tests/self-hosted/pending-jit.txt` lists the rest of the differences (§4) and the programs that import modules of
+  their own.
 - **Both hosts:** the transcripts through a C-built and an arm64-built stage 2 (`QUEST_BACKEND`).
 - tools/check runs these with the backends suite.
 
@@ -461,6 +484,15 @@ the runtime for every program, and come first so that the JIT is built on them.
 8. **Files and `-e`** through `--jit`, each one input. A runner mode runs the run goldens through `quest --jit`;
    exceptions.md and this document list the differences that remain. The time to compile and load an input,
    measured on the transcripts and a few programs, in benchmarks.md.
+   *Done* (2026-11-01, ABI 62). Results are printed by the runtime (§3.8), not by reflection, which is gone;
+   `jit/reflect`
+   with it. `--backend jit-files` runs the run goldens through `--jit`: all pass but those §4 and `pending-jit.txt`
+   list (40, 37 of them importing modules of their own), and tools/check runs it. Fixed alongside: the loader's
+   `adrp`, and the encoder's `adr`, for a negative distance (`/` truncates, so the high field was wrong), which
+   crashed every program whose code called back into an earlier page; a phrase unit's top-level `Ok` bindings, which
+   have no words to keep in its record; and the driver now links `collections/hashset` and `util/argparse`, the two
+   library modules it did not. benchmarks.md §10 has the times: an input of the transcripts takes 0.2 to 1.5 ms to
+   compile, load, and run.
 
 **Releases.** Stage 1 is the release compiling the tree's `questlang/` against its own `lib/` and `runtime/`
 (release-compiler.md §2), so a release is needed only when `questlang/` first uses something the release's `lib/` or

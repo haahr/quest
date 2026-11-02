@@ -47,7 +47,8 @@ $ quest
 
 With `--jit`, the self-hosted driver's REPL compiles each input to arm64 code and runs it in its own process,
 instead of interpreting it ([jit.md](jit.md)); its output is the interpreter's but for the differences jit.md §4
-lists. A file given with `-i` is the first input; an input may import the driver's own modules (the library's, and
+lists. A file or `-e` program given with `--jit` (and no `-i`) runs as one input in the same way. A file given with `-i`
+is the first input; an input may import the driver's own modules (the library's, and
 the compiler's), but not the user's, for now.
 
 ### 2.2. Interactive Mode with File (`-i` / `--interactive`)

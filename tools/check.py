@@ -144,7 +144,7 @@ def main() -> int:
     fixed_points = [Suite(f"self-hosting-{backend}", [*self_hosting, "--stage-backend", backend, "--fixed-point-only"])
                     for backend in ("arm64",)]
     backends = [*run_tests, "--self-hosted", "--seed", args.seed, "--backend",
-                "ssac,arm64,arm64-program,c-whole,arm64-whole,jit"]
+                "ssac,arm64,arm64-program,c-whole,arm64-whole,jit,jit-files"]
     unit = [python, "-m", "unittest"]
     unit_environment = {"PYTHONPATH": str(ROOT_DIR / "bootstrap" / "python")}
 

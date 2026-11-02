@@ -802,12 +802,56 @@ static void quest_sb_append_escaped(QStringBuilder *b, unsigned char c, char quo
     for (int i = 0; i < n; ++i) quest_sb_append_char(b, (QChar)out[i]);
 }
 
+/* The REPL's results, captured while the JIT runs an input (docs/jit.md
+ * section 3.8): the echo printers below write to the capture's stream, made
+ * stdout while they write, rather than to stdout, so the program's own output
+ * is not captured */
+static FILE  *quest_echo_stream = NULL;
+static char  *quest_echo_buffer = NULL;
+static size_t quest_echo_length = 0;
+
+void quest_echo_capture(void) {
+    if (quest_echo_stream != NULL) {
+        fclose(quest_echo_stream);
+        free(quest_echo_buffer);
+    }
+    quest_echo_buffer = NULL;
+    quest_echo_length = 0;
+    quest_echo_stream = open_memstream(&quest_echo_buffer, &quest_echo_length);
+}
+
+QString *quest_echo_captured(void) {
+    if (quest_echo_stream == NULL) return quest_string_new("", 0);
+    fclose(quest_echo_stream);
+    QString *s = quest_string_new(quest_echo_buffer, (int64_t)quest_echo_length);
+    free(quest_echo_buffer);
+    quest_echo_stream = NULL;
+    quest_echo_buffer = NULL;
+    return s;
+}
+
+/* An echo printer's body runs with stdout the capture's stream, if any */
+#define Q_ECHO_BEGIN                                       \
+    FILE *q_echo_saved = stdout;                           \
+    if (quest_echo_stream != NULL) stdout = quest_echo_stream
+#define Q_ECHO_END stdout = q_echo_saved
+
+/* Writes text and a newline: what echo shows of a phrase without a value (a
+ * declaration of a type, say) */
+void quest_echo_text(const char *text) {
+    Q_ECHO_BEGIN;
+    fputs(text, stdout);
+    putchar('\n');
+    Q_ECHO_END;
+}
+
 /* Writes prefix, val, suffix, and a newline. kind says how to write the value,
  * as the interpreter writes a value of that type (format_value_with_type): a
  * base type (Int, Real, Bool, Char, String, Ok, or Word), "fun" for a function,
  * "hidden" for a value of an abstract type, and anything else as <val>
  * (compiled code writes values of other types with quest_print_typed). */
 void quest_print_value(const char *prefix, QVal val, const char *kind, const char *suffix) {
+    Q_ECHO_BEGIN;
     fputs(prefix, stdout);
     if (strcmp(kind, "Int") == 0) {
         printf("%lld", (long long)val.i);
@@ -837,6 +881,7 @@ void quest_print_value(const char *prefix, QVal val, const char *kind, const cha
     }
     fputs(suffix, stdout);
     putchar('\n');
+    Q_ECHO_END;
 }
 
 /* Writes the result of an expression of type type_name, whose value is
@@ -2873,10 +2918,12 @@ static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescrip
 }
 
 void quest_print_typed(const char *prefix, QVal val, const QTypeDescriptor *type, const char *suffix) {
+    Q_ECHO_BEGIN;
     fputs(prefix, stdout);
     quest_put_value(val, type, NULL);
     fputs(suffix, stdout);
     putchar('\n');
+    Q_ECHO_END;
 }
 
 const void *quest_record_dict(const QTypeDescriptor *view, const QTypeDescriptor *layout) {

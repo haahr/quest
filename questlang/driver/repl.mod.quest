@@ -116,17 +116,11 @@ export
 
     (* An input run by the JIT: its phrases' results, or none, its error in
      * bag *)
-    let runJit(r: T s: session.T program: typedAst.Program sm: location.SourceMap bag: diagbag.T):
-        maybe.T(Array(treewalk.PhraseResult)) =
+    let runJit(r: T s: session.T program: typedAst.Program sm: location.SourceMap bag: diagbag.T echo: Bool
+        printResult: Bool capture: Bool): maybe.T(Array(String)) =
         try
-            case session.run(s program sm)
-                when ran with x then
-                    let results = vector.new(:treewalk.PhraseResult)
-                    for i = 0 upto {extent x.results - 1} do
-                        vector.append(:treewalk.PhraseResult results
-                            tuple let phrase = x.results[i].phrase let value = x.results[i].value end)
-                    end
-                    maybe.some(:Array(treewalk.PhraseResult) vector.toArray(:treewalk.PhraseResult results))
+            case session.run(s program sm echo printResult capture)
+                when ran with x then maybe.some(:Array(String) x.shown)
                 when raised with x then
                     let file = if maybe.isSome(:location.SourceMap x.sourceMap) then
                         location.file(maybe.unwrap(:location.SourceMap x.sourceMap)) else "" end
@@ -137,17 +131,17 @@ export
                     if extent x.frames > 0 then diagnostics.setTrace(d x.frames) end
                     r.errorSource := x.sourceMap
                     diagbag.add(bag d)
-                    maybe.none(:Array(treewalk.PhraseResult))
+                    maybe.none(:Array(String))
             end
         when session.unsupported with m then
             diagbag.add(bag diagnostics.error("the JIT cannot compile this input: " <> m location.span("" ~1 ~1)))
-            maybe.none(:Array(treewalk.PhraseResult))
+            maybe.none(:Array(String))
         end
 
     (* An input's phrases' results, if it ran; the errors it found are in bag *)
-    let compileAndRun(r: T text: String sm: location.SourceMap bag: diagbag.T): maybe.T(Array(treewalk.PhraseResult)) =
+    let compileAndRun(r: T text: String sm: location.SourceMap bag: diagbag.T): maybe.T(Array(String)) =
         begin
-            let failed = maybe.none(:Array(treewalk.PhraseResult))
+            let failed = maybe.none(:Array(String))
             try
                 let toks = tokenizer.tokenizeAll(tokenizer.new(sm bag))
                 if diagbag.hasErrors(bag) then
@@ -161,7 +155,8 @@ export
                     if diagbag.hasErrors(bag) orif maybe.isNone(:typedAst.Program result.program) then
                         failed
                     elsif maybe.isSome(:session.T r.jit) then
-                        runJit(r maybe.unwrap(:session.T r.jit) maybe.unwrap(:typedAst.Program result.program) sm bag)
+                        runJit(r maybe.unwrap(:session.T r.jit) maybe.unwrap(:typedAst.Program result.program) sm bag
+                            true false true)
                     else
                         (* The input runs in a scope of its own, which holds its
                          * source, so that the functions earlier inputs made go
@@ -172,7 +167,12 @@ export
                             let ran = treewalk.evalProgramPhrasesIn(maybe.unwrap(:typedAst.Program result.program) f
                                 fun(p: treewalk.PhraseResult): Ok ok)
                             r.frame := ran.frame
-                            maybe.some(:Array(treewalk.PhraseResult) ran.results)
+                            let shown = array of(extent ran.results "")
+                            for i = 0 upto {extent shown - 1} do
+                                let p = ran.results[i]
+                                shown[i] := formatting.formatInteractiveResult(p.phrase p.value)
+                            end
+                            maybe.some(:Array(String) shown)
                         when model.runError with err then
                             treewalk.noteFrames(err f)
                             r.errorSource := err.sourceMap
@@ -190,7 +190,7 @@ export
      * the session as it found it (evaluate). Each input is a compilation
      * session of its own on the unit graph, so that its imports find files
      * created since; units loaded by earlier inputs stay loaded *)
-    let evaluate(r: T text: String sm: location.SourceMap bag: diagbag.T): maybe.T(Array(treewalk.PhraseResult)) =
+    let evaluate(r: T text: String sm: location.SourceMap bag: diagbag.T): maybe.T(Array(String)) =
         begin
             r.errorSource := maybe.none(:location.SourceMap)
             let envSnapshot = env.snapshot(r.e)
@@ -198,7 +198,7 @@ export
             let frameSnapshot = treewalk.snapshot(start)
             graph.newSession(r.e.units)
             let results = compileAndRun(r text sm bag)
-            if maybe.isNone(:Array(treewalk.PhraseResult) results) then
+            if maybe.isNone(:Array(String) results) then
                 env.restore(r.e envSnapshot)
                 (* A phrase that rebinds a name continues in a new frame; go
                  * back to the one the input started in *)
@@ -208,9 +208,8 @@ export
             results
         end
 
-    let runInput(r: T program: typedAst.Program sm: location.SourceMap bag: diagbag.T):
-        maybe.T(Array(treewalk.PhraseResult)) =
-        runJit(r maybe.unwrap(:session.T r.jit) program sm bag)
+    let runInput(r: T program: typedAst.Program sm: location.SourceMap bag: diagbag.T echo: Bool): Bool =
+        maybe.isSome(:Array(String) runJit(r maybe.unwrap(:session.T r.jit) program sm bag echo not(echo) false))
 
     (* ======================================================================
      * 3. The loop
@@ -218,11 +217,10 @@ export
 
     let say(s: String): Ok = writer.putString(writer.output s)
 
-    (* A phrase's result, its lines after the first indented as the prompts are
-     *)
-    let showResult(p: treewalk.PhraseResult): Ok =
+    (* A phrase's result, as interpret shows it, its lines after the first
+     * indented as the prompts are *)
+    let showResult(shown: String): Ok =
         begin
-            let shown = formatting.formatInteractiveResult(p.phrase p.value)
             if stringOp.length(shown) > 0 then
                 let lines = strutil.split(shown "\n")
                 say(prefixResult <> vector.get(:String lines 0) <> "\n")
@@ -266,8 +264,8 @@ export
                             let sm = location.newSourceMap(inputName text)
                             let bag = diagbag.new()
                             let results = evaluate(r text sm bag)
-                            if maybe.isSome(:Array(treewalk.PhraseResult) results) then
-                                let shown = maybe.unwrap(:Array(treewalk.PhraseResult) results)
+                            if maybe.isSome(:Array(String) results) then
+                                let shown = maybe.unwrap(:Array(String) results)
                                 for i = 0 upto {extent shown - 1} do showResult(shown[i]) end
                             else
                                 writer.flush(writer.output)

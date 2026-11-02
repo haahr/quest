@@ -10,17 +10,16 @@ import
     mangling = questlang/codegen/symbols : questlang/codegen/Symbols
     tm = questlang/types/model : questlang/types/Model
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
-    questlang/values/model : questlang/values/Model
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/lower : questlang/ir/Lower
     questlang/ir/verify : questlang/ir/Verify
     passes = questlang/codegen/backend : questlang/codegen/Backend
     ssaBuild = questlang/ssa/build : questlang/ssa/Build
     ssaPipeline = questlang/ssa/pipeline : questlang/ssa/Pipeline
+    ssaVerify = questlang/ssa/verify : questlang/ssa/Verify
     arm64 = questlang/codegen/arm64/codegen : questlang/codegen/arm64/Codegen
     questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
     questlang/jit/loader : questlang/jit/Loader
-    questlang/jit/reflect : questlang/jit/Reflect
     os/value : os/Value
     os/code : os/Code
     raised : Raised
@@ -45,9 +44,8 @@ export
         (* Each input's source, by number *)
         sources: hashMap.T(Int location.SourceMap)
     end
-    Let Result = Tuple phrase: typedAst.Binding value: model.Value end
     Let Outcome = Option
-        ran with results: Array(Result) end
+        ran with shown: Array(String) end
         raised with
             name: String
             sourceMap: maybe.T(location.SourceMap)
@@ -119,15 +117,17 @@ export
                         end
                     else ok
                 end
-                let excs = typedAst.namedExceptionsIn(phrase)
-                for j = 0 upto {extent excs - 1} do
-                    case excs[j].form
-                        when exprException with x then
-                            if maybe.isSome(:symbols.ValueSymbol x.symbol) then
-                                vector.append(:symbols.ValueSymbol found maybe.unwrap(:symbols.ValueSymbol x.symbol))
-                            end
-                        else ok
-                    end
+                case phrase.form
+                    when bindExprStmt with x then
+                        case x.expr.form
+                            when exprException with y then
+                                if maybe.isSome(:symbols.ValueSymbol y.symbol) then
+                                    let declared = maybe.unwrap(:symbols.ValueSymbol y.symbol)
+                                    vector.append(:symbols.ValueSymbol found declared)
+                                end
+                            else ok
+                        end
+                    else ok
                 end
             end
             found
@@ -275,25 +275,41 @@ export
             end
         end
 
-    let run(s: T program: typedAst.Program sourceMap: location.SourceMap): Outcome =
+    (* What each phrase showed, from the text an input captured: after each
+     * separator line, the lines up to the next, without their last newline *)
+    let shownByPhrase(text: String): Array(String) =
+        begin
+            let parts = strutil.split(text lower.phraseSeparator <> "\n")
+            let shown = vector.new(:String)
+            for i = 1 upto {vector.length(:String parts) - 1} do
+                let p = vector.get(:String parts i)
+                vector.append(:String shown
+                    if strutil.endsWith(p "\n") then stringOp.getSub(p 0 stringOp.length(p) - 1) else p end)
+            end
+            vector.toArray(:String shown)
+        end
+
+    let run(s: T program: typedAst.Program sourceMap: location.SourceMap echo: Bool printResult: Bool capture: Bool):
+        Outcome =
         begin
             s.count := s.count + 1
             let number = s.count
             let name = lower.phraseModuleName(number)
             hashMap.insert(:Int :location.SourceMap s.sources number sourceMap)
             let compiled = location.newSourceMap(sourcePrefix <> conv.int(number) location.text(sourceMap))
-            let unit = try lower.lowerPhrases(program s.e maybe.some(:location.SourceMap compiled) number s.earlier)
+            let unit = try lower.lowerPhrases(program s.e maybe.some(:location.SourceMap compiled) number s.earlier echo
+                printResult capture)
                 when lower.loweringError with m then fail(:nodes.Unit m)
                 end
             if verify.irChecksEnabled() then
                 try verify.checkUnit(unit) when verify.verifyError with x then fail(:Ok x) end
             end
             for i = 0 upto {extent unit.imports - 1} do checkImport(s unit.imports[i]) end
-            let phrase = maybe.unwrap(:nodes.Phrase unit.phrase)
             let m = vector.get(:nodes.Module unit.modules vector.length(:nodes.Module unit.modules) - 1)
             let recordType = maybe.unwrap(:nodes.Variable m.recordVar).type
             let encoded = try arm64.encodeUnit(ssaPipeline.build(passes.runPasses(unit)))
                 when ssaBuild.unsupported with x then fail(:encode.Encoded "ssa: unsupported: " <> x)
+                when ssaVerify.verifyError with x then fail(:encode.Encoded x)
                 when arm64.unsupported with x then fail(:encode.Encoded x)
                 when encode.unencodable with x then fail(:encode.Encoded "encoding: " <> x)
                 end
@@ -309,20 +325,9 @@ export
                     let frames = framesOf(code.frames(r))
                 end
             else
-                let recordAt = symbolAt(symbols "qm_" <> name)
-                let results = vector.new(:Result)
-                for i = 0 upto {extent program.phrases - 1} do
-                    let fields = vector.get(:Array(String) phrase.results i)
-                    let values = array of(extent fields option vOk of model.Value end)
-                    for j = 0 upto {extent fields - 1} do values[j] := reflect.field(recordAt recordType fields[j]) end
-                    let value = if extent values is 1 then values[0]
-                        elsif extent values is 0 then option vOk of model.Value end
-                        else option vTuple of model.Value with let t = tuple
-                            let elements = values let labels = maybe.none(:Array(maybe.T(String)))
-                            let nameToIndex = hashMap.new(:String :Int stringOp.equal hash.string)
-                        end end end
-                    vector.append(:Result results tuple let phrase = program.phrases[i] let value = value end)
-                end
+                let shown = if capture then
+                    shownByPhrase(value.be(:String value.fetch(symbolAt(symbols name <> "_echo") 0)))
+                else array of :String end end
                 (* Its bindings, for the inputs after it *)
                 let bound = boundSymbols(program)
                 for i = 0 upto {vector.length(:symbols.ValueSymbol bound) - 1} do
@@ -344,7 +349,7 @@ export
                         else ok
                     end
                 end
-                option ran of Outcome with let results = vector.toArray(:Result results) end
+                option ran of Outcome with let shown = shown end
             end
         end
 end

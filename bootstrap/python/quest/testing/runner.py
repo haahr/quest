@@ -106,18 +106,21 @@ BACKEND_MODES = {
     # The REPL's transcripts, their inputs compiled and run by the JIT
     # (docs/jit.md section 5)
     "jit": ["--jit"],
+    # The run goldens' programs, each one input of the JIT
+    "jit-files": ["--jit"],
 }
 SSAC_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-ssac.txt"
 ARM64_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-arm64.txt"
 WHOLE_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-whole.txt"
 JIT_PENDING = ROOT_DIR / "tests" / "self-hosted" / "pending-jit.txt"
 BACKEND_PENDING = {mode: WHOLE_PENDING if mode.endswith("-whole") else SSAC_PENDING if mode.startswith("ssac")
-                   else JIT_PENDING if mode == "jit" else ARM64_PENDING for mode in BACKEND_MODES}
+                   else JIT_PENDING if mode.startswith("jit") else ARM64_PENDING for mode in BACKEND_MODES}
 # The phases that compile a program, which a backend's mode runs; the jit mode
 # runs the REPL's transcripts, but those marked @skip-phase: jit, which show a
 # difference the JIT is allowed (docs/jit.md section 4)
 BACKEND_PHASES = ("run_c_compiled",)
 JIT_PHASES = ("repl",)
+JIT_FILE_PHASES = ("interpret",)
 SELF_HOSTED_ERRORS_GOLDEN_DIR = TESTS_GOLDEN_DIR / "self-hosted" / "errors"
 # Tests of several errors, which only the self-hosted driver reports:
 # tests/self-hosted/errors/PHASE/NAME.quest
@@ -1205,7 +1208,7 @@ def run_all_tests(
             driver_command = [str(build_self_hosted_driver(python_executable, build_dir))]
         pending = self_hosted_pending()
         if args.backend != "c":
-            mode_phases = JIT_PHASES if args.backend == "jit" else BACKEND_PHASES
+            mode_phases = {"jit": JIT_PHASES, "jit-files": JIT_FILE_PHASES}.get(args.backend, BACKEND_PHASES)
             phases_to_run = [phase for phase in phases_to_run if phase in mode_phases]
             driver_args.extend(BACKEND_MODES[args.backend])
             pending |= self_hosted_pending(BACKEND_PENDING[args.backend])
@@ -1301,6 +1304,11 @@ def run_all_tests(
                             skipped_phases = skipped_phases | set(QUESTLANG_INTERPRETED_PHASES)
                         if phase in ("ssa", *SELF_HOSTED_IR_DUMP_PHASES) and "ir_core" in skipped_phases:
                             # The SSA is dumped for the programs whose IR is
+                            skipped_phases = skipped_phases | {phase}
+                        if args.backend == "jit-files" and skipped_phases & {"jit", "run_c_compiled"}:
+                            # A difference the JIT is allowed, or one compiled
+                            # code shows, which the JIT does too (docs/jit.md
+                            # section 4)
                             skipped_phases = skipped_phases | {phase}
                         if phase.lower() in skipped_phases:
                             skipped_golden += 1
@@ -1402,6 +1410,8 @@ def run_all_tests(
                 for error_file in error_files:
                     skipped_phases = parse_skipped_phases(error_file)
                     rel_id = str(error_file.relative_to(phase_error_dir).with_suffix(""))
+                    if args.backend == "jit-files" and skipped_phases & {"jit", "run_c_compiled"}:
+                        skipped_phases = skipped_phases | {phase}
                     if phase.lower() in skipped_phases:
                         print(f"  [SKIP] {phase}:{rel_id}")
                         continue

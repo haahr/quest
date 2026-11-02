@@ -91,6 +91,8 @@ import
      * rest of lib/, for the JIT's inputs to import (docs/jit.md section 3.4) *)
     list : List
     dynamic : Dynamic
+    collections/hashSet : collections/HashSet
+    util/argparse : util/ArgParse
 ;
 
 (* The IR's stages (docs/ir.md section 9) the driver dumps (ir_STAGE) and runs
@@ -272,8 +274,8 @@ let options =
                 interactive := true
                 i := i + 1
             elsif stringOp.equal(arg "--jit") andif not(compileMode) then
-                (* The REPL's inputs compiled and run by the JIT, not
-                 * interpreted (docs/jit.md) *)
+                (* The program, or the REPL's inputs, compiled and run by the
+                 * JIT, not interpreted (docs/jit.md) *)
                 jit := true
                 i := i + 1
             elsif stringOp.equal(arg "--emit-c") then
@@ -989,30 +991,30 @@ let interactive(e: env.T f: model.Frame bag: diagbag.T sm: location.SourceMap): 
         system.sysexit(repl.run(repl.new(e f)))
     end;
 
-(* Enters the REPL with the JIT (docs/jit.md), after running the file -i
- * names, if any, as its first input, whose last phrase's result is printed as
- * a program's is; a file that fails to run ends the driver with 1 *)
-let jitInteractive(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
+(* Runs a program with the JIT (docs/jit.md), as one input, which prints its
+ * last phrase's result (or, with --echo, every phrase's) as interpret does; a
+ * program that fails to run ends the driver with 1. With -i, the REPL then
+ * reads inputs, the program's bindings in scope. *)
+let jitRun(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagbag.T): Ok =
     begin
         let args = array of({extent options.programArgs + 1} options.file)
         for i = 0 upto {extent options.programArgs - 1} do args[i + 1] := options.programArgs[i] end
         let r = repl.newJit(e runFrame(e sm) args)
         if options.fromFile orif options.fromStdin orif maybe.isSome(:String options.code) then
-            let results = repl.runInput(r program sm bag)
-            if maybe.isNone(:Array(treewalk.PhraseResult) results) then
+            if not(repl.runInput(r program sm bag options.echo)) then
                 writer.flush(writer.output)
                 diagbag.renderAll(bag maybe.unwrapOr(:location.SourceMap r.errorSource sm) writer.err)
                 writer.flush(writer.err)
                 system.sysexit(1)
             end
-            let shown = maybe.unwrap(:Array(treewalk.PhraseResult) results)
-            if extent shown > 0 then printResult(shown[extent shown - 1].phrase shown[extent shown - 1].value) end
         end
         flushDumps()
-        writer.flush(writer.output)
-        diagbag.renderAll(bag sm writer.err)
-        writer.flush(writer.err)
-        system.sysexit(repl.run(r))
+        if options.interactive then
+            writer.flush(writer.output)
+            diagbag.renderAll(bag sm writer.err)
+            writer.flush(writer.err)
+            system.sysexit(repl.run(r))
+        end
     end;
 
 (* Compiles a unit file alone, as the bootstrap's compile_unit_file does *)
@@ -1124,8 +1126,8 @@ let run(): Ok =
                             runIr(typed e sm bag maybe.unwrap(:String irStage("run_ir_")))
                         elsif reaches("ir_core") then
                             lowerOnly(typed e sm bag)
-                        elsif reaches("interpret") andif options.jit andif options.interactive then
-                            jitInteractive(typed e sm bag)
+                        elsif reaches("interpret") andif options.jit then
+                            jitRun(typed e sm bag)
                         elsif reaches("interpret") then
                             let f = interpret(typed e sm bag)
                             if options.interactive andif not(diagbag.hasErrors(bag)) then interactive(e f bag sm) end
