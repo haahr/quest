@@ -260,6 +260,10 @@ PYTHONPATH=bootstrap/python python3.11 -m unittest discover -s tests/python   # 
    exception, whatever its type, and `raised.reraise` raises it again, still reported where it was first raised. Code
    can thus clean up after any failure and let the failure continue, as `finally` does in other languages
    ([docs/raised.md](docs/raised.md)).
+6. **Hexadecimal integers:** the paper writes integers in decimal only. Here `0x` or `0X` followed by hexadecimal
+   digits is an integer too (`0xFF` is 255, `~0x10` is -16), within the same 64-bit signed range, so
+   `0xFFFFFFFFFFFFFFFF` is out of range rather than ~1. In the paper's syntax, `0xab` is the integer 0 followed by
+   the identifier `xab` ([docs/extensions.md](docs/extensions.md), "Hexadecimal Integers").
 
 [docs/extensions.md](docs/extensions.md) describes the additions to the language and its libraries, among them the
 `System` interface to the operating system, the `Word` type, and `external` declarations of C functions.
