@@ -1108,7 +1108,7 @@ _TYPED_FIELDS: dict[type, Callable[[Any], tuple]] = {
     TypedRaise: lambda node: (node.exc, node.type_val, node.payload),
     TypedTryBranch: lambda node: (node.exc_pattern, node.body, node.binder),
     TypedTry: lambda node: (node.body, node.branches, node.type_val, node.else_branch, node.else_binder),
-    TypedLetValue: lambda node: (node.name, node.value, node.symbol, node.is_rec),
+    TypedLetValue: lambda node: (node.name, node.value, node.symbol, node.is_rec, node.redefines),
     TypedLetValueGroup: lambda node: (node.members,),
     TypedLetType: lambda node: (node.name, node.symbol),
     TypedLetTypeGroup: lambda node: (node.members,),
@@ -1242,7 +1242,7 @@ _REBUILD_TYPED: dict[type, Callable[[Any, tuple], Any]] = {
         else_binder=values[4],
     ),
     TypedLetValue: lambda node, values: TypedLetValue(
-        offset=node.offset, name=values[0], value=values[1], symbol=values[2], is_rec=values[3],
+        offset=node.offset, name=values[0], value=values[1], symbol=values[2], is_rec=values[3], redefines=values[4],
     ),
     TypedLetValueGroup: lambda node, values: TypedLetValueGroup(offset=node.offset, members=values[0]),
     TypedLetType: lambda node, values: TypedLetType(offset=node.offset, name=values[0], symbol=values[1]),
