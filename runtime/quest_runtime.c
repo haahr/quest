@@ -3817,8 +3817,14 @@ bool quest_system_is_terminal(int64_t fd) {
 QWriter quest_writer_output_val = { NULL, false, false };
 QWriter quest_writer_err_val    = { NULL, false, false };
 
+/* Standard output is line-buffered, as at a terminal, when QUEST_LINE_BUFFERED
+ * is set and not empty: the Jupyter kernel sets it for the driver it runs, so
+ * that a cell's output appears while the cell runs (docs/jupyter.md). It must
+ * be set before anything is written. */
 static void quest_writer_init_std(void) {
     if (quest_writer_output_val.file == NULL) {
+        const char *line = getenv("QUEST_LINE_BUFFERED");
+        if (line != NULL && line[0] != '\0') setvbuf(stdout, NULL, _IOLBF, 0);
         quest_writer_output_val.file = stdout;
         quest_writer_output_val.is_file = false;
         quest_writer_output_val.is_closed = false;

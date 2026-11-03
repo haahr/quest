@@ -33,12 +33,14 @@ export
     (* A session: the environment inputs are elaborated in, the frame the next
      * input runs in, the source an input's error was raised in, when it is
      * not the input's own (a function an earlier input made), to render it in,
-     * and with --jit, the JIT's session, which runs inputs instead of the
-     * interpreter (docs/jit.md) *)
+     * what the last input that failed failed in (kernelFailure), and with
+     * --jit, the JIT's session, which runs inputs instead of the interpreter
+     * (docs/jit.md) *)
     Def T = Tuple
         e: env.T
         var frame: model.Frame
         var errorSource: maybe.T(location.SourceMap)
+        var failure: String
         jit: maybe.T(session.T)
     end
     (* A session continuing in e and f, after a file -i ran, say *)
@@ -53,4 +55,8 @@ export
     (* Reads, elaborates, and runs inputs until the end of the input, keeping a
      * history in ~/.quest_history when lines are edited; the exit status *)
     run(r: T): Int
+    (* Kernel mode (docs/jupyter.md section 2): reads requests, a JSON object
+     * a line, from descriptor 3, and writes their records to descriptor 4,
+     * until descriptor 3 ends; the exit status *)
+    runKernel(r: T): Int
 end

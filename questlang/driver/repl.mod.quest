@@ -17,11 +17,14 @@ import
     questlang/interpreter/formatting : questlang/interpreter/Formatting
     questlang/interpreter/treewalk : questlang/interpreter/Treewalk
     questlang/jit/session : questlang/jit/Session
+    questlang/values/json : questlang/values/Json
     io/readline : io/Readline
     collections/vector : collections/Vector
     util/maybe : util/Maybe
     util/strutil : util/Strutil
+    util/stringBuilder : util/StringBuilder
     stringOp = string : StringOp
+    reader : Reader
     writer : Writer
     system : System
 export
@@ -91,12 +94,13 @@ export
         e: env.T
         var frame: model.Frame
         var errorSource: maybe.T(location.SourceMap)
+        var failure: String
         jit: maybe.T(session.T)
     end
 
     let new(e: env.T f: model.Frame): T =
         tuple
-            let e = e let var frame = f let var errorSource = maybe.none(:location.SourceMap)
+            let e = e let var frame = f let var errorSource = maybe.none(:location.SourceMap) let var failure = ""
             let jit = maybe.none(:session.T)
         end
 
@@ -109,7 +113,7 @@ export
                 system.sysexit(1)
             end
             tuple
-                let e = e let var frame = f let var errorSource = maybe.none(:location.SourceMap)
+                let e = e let var frame = f let var errorSource = maybe.none(:location.SourceMap) let var failure = ""
                 let jit = maybe.some(:session.T session.new(e args))
             end
         end
@@ -130,29 +134,45 @@ export
                     let d = diagnostics.error("Exception: " <> x.name sp)
                     if extent x.frames > 0 then diagnostics.setTrace(d x.frames) end
                     r.errorSource := x.sourceMap
+                    r.failure := x.name
                     diagbag.add(bag d)
                     maybe.none(:Array(String))
             end
         when session.unsupported with m then
+            r.failure := "unsupported"
             diagbag.add(bag diagnostics.error("the JIT cannot compile this input: " <> m location.span("" ~1 ~1)))
             maybe.none(:Array(String))
         when diagnostics.compilerError with err then
             (* An error in a module file the input imports, which the JIT
              * compiles (docs/jit.md section 3.4) *)
+            r.failure := "compile"
             diagbag.add(bag diagnostics.errorDiagnostic(err inputName))
             maybe.none(:Array(String))
+        end
+
+    (* The exception's name in an error's message ("Exception: name ..."), or
+     * "error" for an error of the interpreter's own *)
+    let exceptionName(message: String): String =
+        if strutil.startsWith(message "Exception: ") then
+            let rest = stringOp.getSub(message 11 {stringOp.length(message) - 11})
+            let space = strutil.find(rest " ")
+            if space >= 0 then stringOp.getSub(rest 0 space) else rest end
+        else
+            "error"
         end
 
     (* An input's phrases' results, if it ran; the errors it found are in bag *)
     let compileAndRun(r: T text: String sm: location.SourceMap bag: diagbag.T): maybe.T(Array(String)) =
         begin
             let failed = maybe.none(:Array(String))
+            r.failure := "syntax"
             try
                 let toks = tokenizer.tokenizeAll(tokenizer.new(sm bag))
                 if diagbag.hasErrors(bag) then
                     failed
                 else
                     let program = parser.parseProgram(toks sm bag)
+                    r.failure := "type"
                     let result = typecheck.elaborateProgram(desugar.program(program) r.e)
                     for i = 0 upto {extent result.errors - 1} do
                         diagbag.add(bag diagnostics.errorDiagnostic(result.errors[i] inputName))
@@ -184,6 +204,7 @@ export
                         when model.runError with err then
                             treewalk.noteFrames(err f)
                             r.errorSource := err.sourceMap
+                            r.failure := exceptionName(model.runErrorMessage(err))
                             diagbag.add(bag runErrorDiagnostic(err inputName))
                             failed
                         end
@@ -298,6 +319,153 @@ export
             if maybe.isSome(:String history) then
                 try readline.writeHistory(maybe.unwrap(:String history) historyLength) when readline.error then ok end
             end
+            0
+        end
+
+    (* ======================================================================
+     * 4. Kernel mode
+     *
+     * docs/jupyter.md section 2: a request or a record is a JSON object on a
+     * line of its own, its strings bytes (each above 126 escaped as \u00XX).
+     * Standard output and error are the program's, flushed before each record
+     * so that what the program wrote is in its pipe ahead of the record.
+     * ====================================================================== *)
+
+    (* A line of r, without its newline, if r has one before its end *)
+    let readRequest(r: reader.T): maybe.T(String) =
+        if not(reader.more(r)) then
+            maybe.none(:String)
+        else
+            let b = stringBuilder.new()
+            let var reading = true
+            while reading andif reader.more(r) do
+                let c = reader.getChar(r)
+                if c is '\n' then reading := false else b.char(c) ok end
+            end
+            maybe.some(:String b.toString())
+        end
+
+    (* Writes a record of the members names and values, after the program's
+     * output *)
+    let writeRecord(w: writer.T names: Array(String) values: Array(json.Value)): Ok =
+        begin
+            writer.flush(writer.output)
+            writer.flush(writer.err)
+            let o = json.newObject()
+            for i = 0 upto {extent names - 1} do json.put(o names[i] values[i]) end
+            writer.putString(w json.dump(json.object(o)) <> "\n")
+            writer.flush(w)
+        end
+
+    (* The records of a cell that failed: its error, from the diagnostics in
+     * bag, with the position of the first in the cell, if it has one *)
+    let failed(r: T w: writer.T sm: location.SourceMap bag: diagbag.T): Ok =
+        begin
+            let shown = maybe.unwrapOr(:location.SourceMap r.errorSource sm)
+            let b = stringBuilder.new()
+            let var message = ""
+            let var position = maybe.none(:location.Pos)
+            for i = 0 upto {diagbag.count(bag) - 1} do
+                let d = diagbag.get(bag i)
+                b.str(diagnostics.format(d shown))
+                if stringOp.isEmpty(message) then
+                    message := diagnostics.message(d)
+                    let sp = diagnostics.span(d)
+                    if stringOp.equal(sp.file inputName) andif {sp.startOffset >= 0} then
+                        position := maybe.some(:location.Pos location.locate(sm sp.startOffset))
+                    end
+                end
+            end
+            let names = vector.new(:String)
+            let values = vector.new(:json.Value)
+            vector.append(:String names "error") vector.append(:json.Value values json.string(r.failure))
+            vector.append(:String names "message") vector.append(:json.Value values json.string(message))
+            vector.append(:String names "rendered") vector.append(:json.Value values json.string(b.toString()))
+            if maybe.isSome(:location.Pos position) then
+                let p = maybe.unwrap(:location.Pos position)
+                vector.append(:String names "line") vector.append(:json.Value values json.int(p.line))
+                vector.append(:String names "column") vector.append(:json.Value values json.int(p.col))
+            end
+            writeRecord(w vector.toArray(:String names) vector.toArray(:json.Value values))
+        end
+
+    (* Runs a cell as one input, writing its records *)
+    let execute(r: T w: writer.T text: String): Ok =
+        begin
+            let var status = "ok"
+            if stringOp.length(strutil.strip(text)) > 0 then
+                let sm = location.newSourceMap(inputName text)
+                let bag = diagbag.new()
+                r.failure := ""
+                let results = evaluate(r text sm bag)
+                if maybe.isSome(:Array(String) results) then
+                    let shown = maybe.unwrap(:Array(String) results)
+                    for i = 0 upto {extent shown - 1} do
+                        if stringOp.length(shown[i]) > 0 then
+                            writeRecord(w array of "result" end array of json.string(shown[i]) end)
+                        end
+                    end
+                else
+                    failed(r w sm bag)
+                    status := "error"
+                end
+            end
+            writeRecord(w array of "done" end array of json.string(status) end)
+        end
+
+    (* The string member name of o, if it has one *)
+    let member(o: json.Object name: String): maybe.T(String) =
+        begin
+            let v = json.get(o name)
+            if maybe.isSome(:json.Value v) then
+                case maybe.unwrap(:json.Value v)
+                    when jString with x then maybe.some(:String x.s)
+                    else maybe.none(:String)
+                end
+            else
+                maybe.none(:String)
+            end
+        end
+
+    let runKernel(r: T): Int =
+        begin
+            let closed = fun(what: String): Ok
+                begin
+                    writer.putString(writer.err "quest: error: --kernel " <> what <> ", which is not open\n")
+                    system.sysexit(2)
+                end
+            let requests = try reader.file("/dev/fd/3")
+                when reader.error then closed("reads requests from descriptor 3") reader.input end
+            let w = try writer.file("/dev/fd/4")
+                when writer.error then closed("writes records to descriptor 4") writer.output end
+            let var reading = true
+            while reading do
+                let line = readRequest(requests)
+                if maybe.isNone(:String line) then
+                    reading := false
+                elsif stringOp.length(strutil.strip(maybe.unwrap(:String line))) > 0 then
+                    let request = try maybe.some(:json.Value json.parse(maybe.unwrap(:String line)))
+                        when json.error then maybe.none(:json.Value) end
+                    let code = if maybe.isSome(:json.Value request) then
+                        case maybe.unwrap(:json.Value request)
+                            when jObject with x then member(x.o "execute")
+                            else maybe.none(:String)
+                        end
+                    else
+                        maybe.none(:String)
+                    end
+                    if maybe.isSome(:String code) then
+                        execute(r w maybe.unwrap(:String code))
+                    else
+                        writeRecord(w array of "error" "message" "rendered" end array of json.string("protocol")
+                            json.string("not a request: " <> maybe.unwrap(:String line))
+                            json.string("not a request: " <> maybe.unwrap(:String line) <> "\n") end)
+                        writeRecord(w array of "done" end array of json.string("error") end)
+                    end
+                end
+            end
+            writer.flush(writer.output)
+            writer.flush(writer.err)
             0
         end
 end

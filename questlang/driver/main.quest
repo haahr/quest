@@ -161,6 +161,7 @@ let usageText = strutil.joinArray("\n" array of
     "  --dump-after PHASE   print PHASE's output too (may be repeated)"
     "  -e PROGRAM           run PROGRAM, given as a string"
     "  -i                   enter the REPL after running FILE"
+    "  --kernel             serve a Jupyter kernel's requests on descriptors 3 and 4"
     "  --jit, --no-jit      compile with the JIT (the default), or interpret"
     "  --echo               print every top-level phrase's result"
     "  --print-result       print the last phrase's result when compiled"
@@ -223,6 +224,7 @@ let options =
         let var echo = false
         let var printResult = false
         let var interactive = false
+        let var kernel = false
         let var jit = false
         let var noJit = false
         let var compileOnly = false
@@ -318,6 +320,11 @@ let options =
             elsif isOneOf(arg array of "-i" "--interactive" end) andif not(compileMode) then
                 interactive := true
                 i := i + 1
+            elsif stringOp.equal(arg "--kernel") andif not(compileMode) then
+                (* Requests from a Jupyter kernel instead of lines from a
+                 * person (docs/jupyter.md) *)
+                kernel := true
+                i := i + 1
             elsif stringOp.equal(arg "--jit") andif not(compileMode) then
                 (* The program, or the REPL's inputs, compiled and run by the
                  * JIT, not interpreted (docs/jit.md) *)
@@ -397,8 +404,10 @@ let options =
          * as it does for a file of - *)
         let noProgram = stringOp.equal(file "") andif maybe.isNone(:String code)
         let atTerminal = system.isTerminal(0)
+        if kernel andif not(noProgram) then usage("--kernel takes neither FILE nor -e PROGRAM") end
         if compileMode andif noProgram andif atTerminal then usage("compile takes a FILE, -, or -e PROGRAM") end
-        let fromStdin = stringOp.equal(file "-") orif {noProgram andif not(interactive) andif not(atTerminal)}
+        let fromStdin = stringOp.equal(file "-") orif {noProgram andif not(interactive) andif not(kernel)
+            andif not(atTerminal)}
         let fromFile = not(stringOp.equal(file "")) andif not(fromStdin)
         tuple
             let stopAfter = stopAfter
@@ -427,6 +436,7 @@ let options =
             let extraObjects = vector.toArray(:String extraObjects)
             let includePaths = vector.toArray(:String includePaths)
             let interactive = interactive orif {noProgram andif atTerminal}
+            let kernel = kernel
             (* A program run, a file's, -e's, or the REPL's inputs, runs on the
              * JIT by default, unless an option asks for the interpreter's
              * phases or output, or for a whole program, or this driver cannot
@@ -1054,15 +1064,17 @@ let interpret(program: typedAst.Program e: env.T sm: location.SourceMap bag: dia
         end
     end;
 
-(* Enters the REPL in the program's environment and frame, after reporting the
- * program's diagnostics, and exits with its status *)
+(* Enters the REPL in the program's environment and frame (or with --kernel,
+ * serves the kernel's requests), after reporting the program's diagnostics, and
+ * exits with its status *)
 let interactive(e: env.T f: model.Frame bag: diagbag.T sm: location.SourceMap): Ok =
     begin
         flushDumps()
         writer.flush(writer.output)
         diagbag.renderAll(bag sm writer.err)
         writer.flush(writer.err)
-        system.sysexit(repl.run(repl.new(e f)))
+        let r = repl.new(e f)
+        system.sysexit(if options.kernel then repl.runKernel(r) else repl.run(r) end)
     end;
 
 (* Runs a program with the JIT (docs/jit.md), as one input, which prints its
@@ -1086,6 +1098,11 @@ let jitRun(program: typedAst.Program e: env.T sm: location.SourceMap bag: diagba
             end
         end
         flushDumps()
+        if options.kernel then
+            let status = repl.runKernel(r)
+            finished()
+            system.sysexit(status)
+        end
         if options.interactive then
             writer.flush(writer.output)
             diagbag.renderAll(bag sm writer.err)
@@ -1220,7 +1237,9 @@ let run(): Ok =
                             jitRun(typed e sm bag)
                         elsif reaches("interpret") then
                             let f = interpret(typed e sm bag)
-                            if options.interactive andif not(diagbag.hasErrors(bag)) then interactive(e f bag sm) end
+                            if {options.interactive orif options.kernel} andif not(diagbag.hasErrors(bag)) then
+                                interactive(e f bag sm)
+                            end
                         end
                     end
                 end

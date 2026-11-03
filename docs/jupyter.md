@@ -41,8 +41,10 @@ compiled by the JIT ([jit.md](jit.md)), with the session's bindings kept from ce
 ## 2. The protocol (`quest --kernel`)
 
 The driver reads requests from descriptor 3 and writes records to descriptor 4. Each request and record is one JSON
-object on one line, so a cell's newlines are escaped inside its string. Its standard input is `/dev/null` until a step
-connects Jupyter's stdin channel (§4). Standard output and error are the program's.
+object on one line, so a cell's newlines are escaped inside its string. A string's characters are bytes, as Quest's
+are: each byte above 126 is escaped as `\u00XX` (`questlang/values/json`). The wrapper therefore sends a cell's UTF-8
+bytes and decodes records' strings from theirs (`tools/jupyter/quest_session.py`). The driver's standard input is
+`/dev/null` until step 4 connects Jupyter's stdin channel. Standard output and error are the program's.
 
 Requests:
 
@@ -80,9 +82,12 @@ Each step is a commit or a few. Run times and check runs are recorded as steps f
 - Rendering a diagnostic to a string for `rendered`: `diagnostics.format` exists for one diagnostic. A diagbag's
   diagnostics are rendered in turn.
 - Output during a long phrase: `writer.output` writes through C's `stdout`, which is fully buffered on a pipe (and
-  `writer.err` through `stderr`, unbuffered). Kernel mode makes `stdout` line-buffered (`setvbuf(stdout, NULL,
-  _IOLBF, 0)`) before anything is written, through a runtime entry of the driver's own, not the library's. A cell's
-  progress then appears while it runs, as at a terminal, for C linked into the program too, at a `write` per line.
+  `writer.err` through `stderr`, unbuffered). The runtime makes `stdout` line-buffered (`setvbuf(stdout, NULL,
+  _IOLBF, 0)`) as it starts, before anything is written, when `QUEST_LINE_BUFFERED` is set, and the wrapper sets it
+  for the driver. A driver of its own calling the runtime would need a release between the runtime's commit and the
+  driver's (release-compiler.md §2), and an environment variable needs none. A program a cell starts inherits it,
+  and is line-buffered too, which a notebook wants. A cell's progress then appears while it runs, as at a terminal,
+  for C linked into the program too, at a `write` per line.
   The wrapper sends what is readable as one `stream` message, so bursts of lines don't flood the notebook. A
   pseudo-terminal would make the program think it was at a terminal, and flushing on a timer isn't safe in the
   runtime.

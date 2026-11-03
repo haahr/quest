@@ -240,6 +240,13 @@ importing another, show what the interpreter shows;
 and it builds the driver with `--backend arm64` and runs the REPL's transcripts through it with `--jit`, as the
 `jit` mode runs them through the C-built one. It, and `line_tables`' JIT sessions, are skipped for a driver that cannot
 host the JIT, a whole-program build, which `tools/release --whole-program` checks the suite with.
+`self-hosted/kernel_protocol` (`tests/self-hosted/kernel_protocol.py`) drives the driver's kernel mode
+([repl.md](repl.md) §2.3) through `tools/jupyter/quest_session.py`, with the JIT (when the driver can host it) and with `--no-jit`. It checks:
+- bindings kept from cell to cell, and a result for each phrase
+- output ahead of the records after it, and a line arriving while its cell sleeps
+- syntax, type and exception errors, with their positions, rolled back
+- a module of the user's, imported by two cells
+- a malformed request, and a cell that exits
 
 **The SSA's backends:** `--self-hosted --backend MODE` runs the self-hosted suite's compiled tests (`run_c_compiled`,
 golden and error) with the driver's units compiled by another backend ([arm64.md](arm64.md) §4): `ssac` compiles every
