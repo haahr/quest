@@ -12,7 +12,8 @@ Quest has two sets of benchmarks:
 
 This document describes the MLton suite, records the baseline taken on 2026-10-28, lists what profiling the
 slowest benchmarks found and what could be done about it, compares the C and arm64 backends (§4 to §6),
-measures the inliner (§7), and times every backend and the inliner's settings at one commit (§11).
+measures the inliner (§7), times every backend and the inliner's settings at one commit (§11), and measures the
+Jupyter kernel's interrupt checks (§12).
 
 ## 1. The MLton suite
 
@@ -938,3 +939,27 @@ Each default is near the best of its range:
   larger callees are, and peek, tsp, and model-elimination grow and slow.
 - **growth (50 percent) and budget (1000):** limits rather than levers: halving the growth costs 2 percent (mlyacc
   and hamlet stop inlining), and doubling it or raising the budget to 4000 changes nothing, so they rarely bind.
+
+## 12. The Jupyter kernel's interrupt checks (2026-11-03)
+
+Under `--kernel`, the code the JIT compiles checks the interrupt flag at each function's entry and loop head
+([jupyter-kernel.md](jupyter-kernel.md) §5). Nothing else compiles them, so only a kernel's cells pay. Each of the six
+of [arm64-performance-review.md](arm64-performance-review.md) ran as one cell, at `--scale 0.25`'s count, in a fresh
+session with the checks and in one with `QUEST_SKIP_PASSES=interrupts`, alternating, three rounds, the best of each.
+A cell's time includes compiling the program, so the time of the same cell at a count of 0 was subtracted. The load
+average was 3 to 5.
+
+| Program | With checks | Without | Ratio |
+|---|--:|--:|--:|
+| life | 15.70 s | 15.26 s | 1.03 |
+| ray | 19.04 s | 21.08 s | 0.90 |
+| mlyacc | 13.51 s | 13.11 s | 1.03 |
+| zebra | 28.24 s | 27.69 s | 1.02 |
+| nucleic | 10.80 s | 10.61 s | 1.02 |
+
+- **The checks cost 2 to 3 percent** in four of the five. Ray was faster with them, in every round, which nothing
+  here explains (code placement, perhaps); taken as noise, the cost is about 2.5 percent.
+- **Hamlet can't be measured this way.** Its cell at a count of 0 took 97 to 152 seconds, more than its count adds,
+  and varied more than the checks could cost.
+- The cost is a cell's alone, and small next to what interrupting without losing the session is worth, so the checks
+  stay on in kernel mode.
