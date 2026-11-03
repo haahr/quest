@@ -3296,6 +3296,42 @@ void quest_system_init(int argc, char **argv) {
     }
 }
 
+/* Interrupts in a Jupyter kernel's driver (docs/jupyter.md step 5): the
+ * driver, given --kernel, installs a SIGINT handler that sets a flag, and the
+ * code the JIT compiles for a cell checks it at function entries and loop
+ * headers (ssa/interrupts), raising `interrupted`. None of these is in
+ * quest_runtime.h: only the driver, through os/code's symbol, and the code the
+ * JIT links use them, so that a binary that never asks for interrupts is as
+ * before. The flag is a word, which the driver reads and clears through
+ * os/value, and which an aligned store from the handler writes at once on
+ * the machines the runtime runs on (arm64, x86-64). */
+extern volatile int64_t quest_interrupt_pending;
+extern const QException quest_exc_interrupted;
+void quest_interrupt_install(void);
+Q_NORETURN void quest_interrupt_raise(void);
+
+volatile int64_t quest_interrupt_pending;
+const QException quest_exc_interrupted = { "interrupted" };
+
+static void quest_interrupt_on_sigint(int sig) {
+    (void)sig;
+    quest_interrupt_pending = 1;
+}
+
+void quest_interrupt_install(void) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = quest_interrupt_on_sigint;
+    sa.sa_flags = SA_RESTART;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGINT, &sa, NULL);
+}
+
+void quest_interrupt_raise(void) {
+    quest_interrupt_pending = 0;
+    quest_raise(&quest_exc_interrupted, Q_OK_VAL);
+}
+
 void quest_system_exit(int64_t code) {
     exit((int)code);
 }

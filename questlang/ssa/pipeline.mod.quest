@@ -10,11 +10,15 @@ import
     questlang/ssa/escape : questlang/ssa/Escape
     questlang/ssa/promote : questlang/ssa/Promote
     questlang/ssa/tailCalls : questlang/ssa/TailCalls
+    questlang/ssa/interrupts : questlang/ssa/Interrupts
     util/strutil : util/Strutil
     stringOp = string : StringOp
     system : System
 export
     let passes = array of "escape" "promote" "tailCalls" end
+
+    let settings = tuple let var interruptChecks = false end
+    let setInterruptChecks(on: Bool): Ok = settings.interruptChecks := on
 
     let unknownPass: Exception(String) = exception unknownPass: String end
 
@@ -47,6 +51,7 @@ export
                 end
                 after(passes[i] u)
             end
+            if settings.interruptChecks andif not(skipped("interrupts")) then interrupts.checkUnit(u) end
             verify.checkUnit(u)
             u
         end

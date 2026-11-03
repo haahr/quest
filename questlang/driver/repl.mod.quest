@@ -19,6 +19,8 @@ import
     questlang/interpreter/formatting : questlang/interpreter/Formatting
     questlang/interpreter/treewalk : questlang/interpreter/Treewalk
     questlang/jit/session : questlang/jit/Session
+    questlang/ssa/pipeline : questlang/ssa/Pipeline
+    questlang/driver/interrupts : questlang/driver/Interrupts
     questlang/values/json : questlang/values/Json
     io/readline : io/Readline
     collections/vector : collections/Vector
@@ -635,6 +637,12 @@ export
                 when reader.error then closed("reads requests from descriptor 3") reader.input end
             let w = try writer.file("/dev/fd/4")
                 when writer.error then closed("writes records to descriptor 4") writer.output end
+            (* An interrupt raises `interrupted` in the cell running, in code
+             * the JIT compiles from now on and in the interpreter *)
+            if interrupts.install() then
+                pipeline.setInterruptChecks(true)
+                treewalk.setInterruptPoll(interrupts.take)
+            end
             let var reading = true
             while reading do
                 let line = readRequest(requests)
@@ -656,6 +664,8 @@ export
                             andif maybe.isSome(:String member(maybe.unwrap(:json.Object o) name))
                     let text = fun(name: String): String maybe.unwrap(:String member(maybe.unwrap(:json.Object o) name))
                     if has("execute") then
+                        (* One that arrived between cells is not this cell's *)
+                        interrupts.clear()
                         execute(r w text("execute"))
                     elsif has("complete") then
                         complete(r w text("complete") cursorOf(maybe.unwrap(:json.Object o) text("complete")))

@@ -4,7 +4,7 @@ from cell to cell, each phrase's result a record, the program's output ahead of
 the records written after it and arriving while the cell runs, failures as
 error records of their kind and position, rolled back, and the driver's end
 reported; completion, inspection, and complete input; io/display's values and
-io/readline's lines. With --no-jit too, the
+io/readline's lines; and an interrupt raising `interrupted` in a cell. With --no-jit too, the
 interpreter serves the same requests.
 
 run_tests.py --self-hosted runs it (docs/testing.md). A driver that cannot host
@@ -17,9 +17,11 @@ the JIT, a whole-program build (docs/jit.md section 3.10), is checked with
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -152,6 +154,28 @@ def check_cells(driver: str, options: list[str], label: str, scratch: Path) -> l
             ("display", {"image/png": "TQ==", "text/plain": "<image/png, 1 bytes>"}),
             ("input", "name? "), ("input", "again? ")],
             ['let name:String = "Zo\\xc3\\xab"', 'let again:String = "none"', "false : Bool"]))
+
+        # An interrupt (SIGINT) ends a cell in a loop, or in a function that
+        # calls itself in tail position (compiled, a loop the interpreter
+        # doesn't make, its stack overflowing first), as `interrupted`, rolled
+        # back; the session goes on
+        cells = [("a loop", "let lost = 1\nlet var i = 0\nwhile true do i := i + 1 end")]
+        if label == "jit":
+            cells.append(("a recursion", "let lost = 1\nlet rec spin(n: Int): Int = spin(n + 1)\nspin(0)"))
+        for what, cell in cells:
+            timer = threading.Timer(1.0, os.kill, (s.process.pid, signal.SIGINT))
+            timer.start()
+            reply = s.execute(cell)
+            timer.join()
+            c.expect(f"interrupting {what}", (reply.status, reply.error and reply.error["error"]),
+                     ("error", "interrupted"))
+            c.expect(f"the session after interrupting {what}", (s.execute("a").results, s.execute("lost").status),
+                     (["10 : Int"], "error"))
+        # One between cells is forgotten
+        os.kill(s.process.pid, signal.SIGINT)
+        time.sleep(0.5)
+        c.expect("an interrupt between cells", s.execute("let var j = 0\nwhile j < 1000 do j := j + 1 end\nj").results,
+                 ["let var j:Int = 0", "1000 : Int"])
 
         # A request that is not one
         records = s.request({"run": "1"})

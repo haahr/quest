@@ -17,6 +17,7 @@ import os
 import selectors
 import signal
 import subprocess
+import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
@@ -49,6 +50,10 @@ class DriverExited(Exception):
         super().__init__(f"the Quest driver exited with status {status}")
         self.status = status
         self.stderr = stderr
+
+
+# How long a cell has to end after an interrupt before its session is ended
+GRACE = 5.0
 
 
 def to_bytes_text(text: str) -> str:
@@ -105,7 +110,7 @@ class Session:
         environment["QUEST_KERNEL"] = "1"
         try:
             self.process = subprocess.Popen(
-                [*command, "--kernel"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                [command[0], "--kernel", *command[1:]], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, pass_fds=(3, 4), preexec_fn=place, start_new_session=True,
                 cwd=cwd, env=environment)
         finally:
@@ -153,7 +158,14 @@ class Session:
         written after it. A display record goes to on_display, and an input
         record is answered with what on_input gives (the end of the input
         without one); neither is returned. Raises DriverExited if the driver
-        ends first."""
+        ends first.
+
+        A KeyboardInterrupt (Jupyter's interrupt, which ipykernel turns
+        SIGINT into) is passed to the driver as SIGINT, which raises
+        `interrupted` in the cell, rolling it back. If the request isn't done
+        within GRACE seconds after (a cell inside a library call, which no
+        check reaches), or on a second interrupt, KeyboardInterrupt is raised,
+        for the caller to end the session."""
         line = json.dumps({k: to_bytes_text(v) if isinstance(v, str) else v for k, v in message.items()})
         try:
             self.requests.write(line.encode("ascii") + b"\n")
@@ -165,9 +177,28 @@ class Session:
         for fd in streams:
             selector.register(fd, selectors.EVENT_READ)
         selector.register(self.records, selectors.EVENT_READ)
+        deadline: Optional[float] = None
+
+        def interrupt() -> None:
+            nonlocal deadline
+            if deadline is not None:
+                raise KeyboardInterrupt
+            deadline = time.monotonic() + GRACE
+            try:
+                os.kill(self.process.pid, signal.SIGINT)
+            except ProcessLookupError:
+                pass
+
         try:
             while True:
-                for key, _ in selector.select():
+                try:
+                    ready = selector.select(None if deadline is None else max(0.0, deadline - time.monotonic()))
+                except KeyboardInterrupt:
+                    interrupt()
+                    continue
+                if not ready and deadline is not None and time.monotonic() >= deadline:
+                    raise KeyboardInterrupt
+                for key, _ in ready:
                     fd = key.fd
                     if fd in streams:
                         if self._drain(streams[fd], fd, on_stream):
@@ -193,7 +224,13 @@ class Session:
                                 on_display(record["display"])
                             continue
                         if "input" in record:
-                            line = on_input(record["input"]) if on_input is not None else None
+                            try:
+                                line = on_input(record["input"]) if on_input is not None else None
+                            except KeyboardInterrupt:
+                                # The line is the end of the input, and the
+                                # cell interrupted
+                                line = None
+                                interrupt()
                             reply = b"E\n" if line is None else b"L" + line.replace("\n", " ").encode("utf-8") + b"\n"
                             try:
                                 self.requests.write(reply)

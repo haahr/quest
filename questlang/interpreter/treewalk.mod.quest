@@ -38,6 +38,17 @@ export
     (* The loop exit (the bootstrap's _LoopExit) *)
     let loopExit: Exception = exception loopExit end
 
+    let interrupts = tuple let var polling = false let var poll = fun(): Bool false end
+    let setInterruptPoll(poll: All() Bool): Ok =
+        begin
+            interrupts.polling := true
+            interrupts.poll := poll
+        end
+    let interrupted = model.exceptionValue("interrupted")
+    (* Raises `interrupted` at offset if one is pending *)
+    let checkInterrupt(offset: maybe.T(Int)): Ok =
+        if interrupts.polling andif interrupts.poll() then model.raiseException(:Ok interrupted offset) end
+
     (* Raises an error again, at any type *)
     let rethrow(A::TYPE e: model.RunError): A = raise model.runError with e end
 
@@ -672,11 +683,12 @@ export
                     for i = 0 upto {extent x.bindings - 1} do g := evalScopedBinding(x.bindings[i] g).frame end
                     evalExpr(x.result g)
                 when exprLoop with x then
-                    try begin loop evalExpr(x.body f) end ok end when loopExit then ok end
+                    try begin loop checkInterrupt(offset) evalExpr(x.body f) end ok end when loopExit then ok end
                     model.okValue
                 when exprWhile with x then
                     let var going = true
                     while going do
+                        checkInterrupt(offset)
                         case evalExpr(x.cond f)
                             when vBool with b then
                                 if b.b then
@@ -699,6 +711,7 @@ export
                                     let var cur = s.n
                                     let var going = true
                                     while going andif {if x.isDownto then cur >= t.n else cur <= t.n end} do
+                                        checkInterrupt(offset)
                                         define(loopEnv x.varName model.intValue(cur))
                                         try begin evalExpr(x.body loopEnv) ok end when loopExit then going := false end
                                         cur := if x.isDownto then cur - 1 else cur + 1 end
@@ -1012,6 +1025,7 @@ export
             if vector.length(:String env.root.callStack) >= primitives.maxCallDepth then
                 model.raiseException(:Ok primitives.stackOverflow offset)
             end
+            checkInterrupt(offset)
             vector.append(:String env.root.callStack c.traceName)
             let result = try
                 case c.body.form

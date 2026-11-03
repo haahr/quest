@@ -1,0 +1,30 @@
+(* Quest Self-Hosted Compiler: The Kernel's Interrupts Implementation *)
+
+unsound module interrupts : Interrupts
+import
+    os/value : os/Value
+    os/code : os/Code
+    util/maybe : util/Maybe
+export
+    let flag = code.symbol("quest_interrupt_pending")
+
+    let install(): Bool =
+        begin
+            let handler = code.symbol("quest_interrupt_install")
+            if maybe.isSome(:value.T handler) andif maybe.isSome(:value.T flag) then
+                let ignored = code.call(maybe.unwrap(:value.T handler))
+                true
+            else
+                false
+            end
+        end
+
+    (* The flag, a word *)
+    let read(): Int =
+        if maybe.isSome(:value.T flag) then value.be(:Int value.fetch(maybe.unwrap(:value.T flag) 0)) else 0 end
+
+    let clear(): Ok =
+        if maybe.isSome(:value.T flag) then value.store(maybe.unwrap(:value.T flag) 0 value.new(:Int 0)) end
+
+    let take(): Bool = if read() isnot 0 then begin clear() true end else false end
+end

@@ -179,13 +179,21 @@ Each step is a commit or a few. Run times and check runs are recorded as steps f
 
   Ctrl-C keeps its default meaning there.
 - In kernel mode, the driver installs a SIGINT handler that sets a flag. The code the JIT compiles for a cell polls the
-  flag at loop back-edges and function entries, and when it is set, raises `system.interrupted`. The cell then fails
-  and is rolled back like any other failing input, and its bindings from earlier cells survive. The poll is an option
-  of the arm64 code generator, which only kernel mode turns on. The interpreter polls too, under `--kernel --no-jit`.
+  flag at loop back-edges and function entries, and when it is set, raises `interrupted`. The cell then fails and is
+  rolled back like any other failing input, and its bindings from earlier cells survive. The poll is an SSA pass
+  (`ssa/interrupts`), which only kernel mode turns on. The interpreter polls too, under `--kernel --no-jit`.
+  - *As built:* the runtime's flag (`quest_interrupt_pending`, a word), its handler's installer, and
+    `quest_interrupt_raise` are not in `quest_runtime.h`, so nothing compiled changes. The driver finds them by name
+    (`questlang/driver/interrupts`, through `os/code`'s `symbol`), so stage 1, built by the release's runtime, simply
+    has no interrupts. The driver clears the flag before each cell, so an interrupt between cells is forgotten.
+  - `interrupted` is the runtime's exception alone, declared by no interface, so a cell can't name it; a `try` with a
+    catch-all branch would catch it.
+  - The interpreter has no tail calls, so a function calling itself forever overflows its stack first.
 - Code that is already compiled doesn't poll: the driver's own modules and the library that cells call. A cell stuck
   inside a library call stays uninterruptible until the call returns. If the cell hasn't ended a few seconds after
   SIGINT, the wrapper falls back to restarting the driver, as in step 2.
-- The wrapper sends SIGINT to the driver instead of ending it.
+- The wrapper sends SIGINT to the driver instead of ending it (`quest_session.py`, `GRACE`, 5 seconds), and a second
+  interrupt ends it at once.
 - *Measure:* the six of arm64-performance-review.md through the JIT, with and without `--kernel`, so the poll's cost
   to a cell is known. Check that code generated without `--kernel` is identical to before (the SSA and IR goldens
   don't change).

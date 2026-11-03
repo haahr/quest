@@ -3,8 +3,9 @@ through jupyter_client, as a notebook drives it: with a self-hosted driver, the
 kernel's info names Quest; cells keep their bindings and show every phrase's
 result as one execute_result; a cell's output is a stream ahead of its result;
 a failing cell is an error of its kind, its rendering the traceback; an
-interrupt during an endless loop restarts the session, as does a cell that
-exits, and the next cell runs in the new one; completion, inspection, and
+interrupt during an endless loop ends the cell and keeps the session, and one
+during a library call restarts it, as does a cell that exits, the next cell
+running in the new one; completion, inspection, and
 complete input are answered; io/display's values are display data, and
 io/readline's lines are asked of the notebook.
 
@@ -134,20 +135,28 @@ def check(driver: str) -> list[str]:
             reply = client.get_shell_msg(timeout=TIMEOUT)["content"]
             expect("incomplete input", reply["status"], "incomplete")
 
-            # An interrupt during an endless loop restarts the session
-            msg_id = client.execute("let var i = 0\nwhile true do i := i + 1 end")
-            time.sleep(2)
-            manager.interrupt_kernel()
-            while True:
-                message = client.get_shell_msg(timeout=30)
-                if message["parent_header"].get("msg_id") == msg_id:
-                    break
-            expect("an interrupt", (message["content"]["status"], message["content"].get("ename")),
-                   ("error", "Interrupted"))
-            reply, published = run(client, "1 + 1")
-            expect("a cell after an interrupt", result(published), "2 : Int")
+            # An interrupt during an endless loop ends the cell, and the session
+            # goes on; one during a cell that no check reaches (a library call)
+            # restarts it
+            def interrupted(code: str) -> dict:
+                msg_id = client.execute(code, allow_stdin=False)
+                time.sleep(2)
+                manager.interrupt_kernel()
+                while True:
+                    message = client.get_shell_msg(timeout=30)
+                    if message["parent_header"].get("msg_id") == msg_id:
+                        return message["content"]
+
+            reply = interrupted("let var i = 0\nwhile true do i := i + 1 end")
+            expect("an interrupt", (reply["status"], reply.get("ename")), ("error", "interrupted"))
             reply, published = run(client, "a")
-            expect("a binding after an interrupt", reply["status"], "error")
+            expect("a binding after an interrupt", result(published), "10 : Int")
+            reply = interrupted('import system: System\nsystem.run(array of "sleep" "30" end)')
+            expect("an interrupt that restarts", (reply["status"], reply.get("ename")), ("error", "Interrupted"))
+            reply, published = run(client, "1 + 1")
+            expect("a cell after a restart", result(published), "2 : Int")
+            reply, published = run(client, "a")
+            expect("a binding after a restart", reply["status"], "error")
 
             reply, published = run(client, "import system: System\nsystem.sysexit(3)")
             expect("a cell that exits", (reply["status"], reply.get("ename")), ("error", "DriverExited"))

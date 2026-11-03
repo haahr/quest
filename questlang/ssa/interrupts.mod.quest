@@ -1,0 +1,77 @@
+(* Quest Self-Hosted Compiler: The SSA's Interrupt Checks Implementation *)
+
+module interrupts : Interrupts
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    collections/vector : collections/Vector
+export
+    Let Function = ssa.Function
+
+    (* The blocks to check: the entry, and each loop's head *)
+    let heads(f: Function): Array(Bool) =
+        begin
+            let g = cfg.graph(f)
+            let n = vector.length(:ssa.Block f.blocks)
+            let head = array of(n false)
+            head[0] := true
+            for b = 0 upto {n - 1} do
+                if cfg.reached(g b) then
+                    let preds = g.preds[b]
+                    for k = 0 upto {extent preds - 1} do
+                        if cfg.reached(g preds[k]) andif cfg.dominates(g b preds[k]) then head[b] := true end
+                    end
+                end
+            end
+            head
+        end
+
+    (* Puts the check at the start of block b, the rest of b after it in a new
+     * block; raiser is the block that raises *)
+    let check(f: Function b: Int raiser: Int): Ok =
+        begin
+            let blk = ssa.block(f b)
+            let rest = ssa.newBlock(f)
+            let moved = ssa.block(f rest)
+            for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                vector.append(:ssa.Inst moved.insts vector.get(:ssa.Inst blk.insts k))
+            end
+            moved.term := blk.term
+            moved.termLoc := blk.termLoc
+            vector.clear(:ssa.Inst blk.insts)
+            let at = if vector.empty(:ssa.Inst moved.insts) then blk.termLoc
+                else vector.get(:ssa.Inst moved.insts 0).loc end
+            let flag = ssa.newValue(f ssa.typePtr)
+            let pending = ssa.newValue(f ssa.typeInt)
+            let address = ssa.instruction(ssa.opSymbol array of :Int end array of flag end 0 "quest_interrupt_pending" 0
+                false ssa.emptySignature)
+            address.loc := at
+            vector.append(:ssa.Inst blk.insts address)
+            let load = ssa.instruction(ssa.opLoad array of flag end array of pending end 0 "" 8 true ssa.emptySignature)
+            load.loc := at
+            vector.append(:ssa.Inst blk.insts load)
+            blk.term := option termBranch of ssa.Terminator with
+                let cond = pending
+                let ifTrue = ssa.target(raiser array of :Int end)
+                let ifFalse = ssa.target(rest array of :Int end)
+            end
+            blk.termLoc := at
+        end
+
+    let checkFunction(f: Function): Ok =
+        begin
+            let head = heads(f)
+            let raiser = ssa.newBlock(f)
+            let call = ssa.instruction(ssa.opCall array of :Int end array of :Int end 0 "quest_interrupt_raise" 0 false
+                ssa.emptySignature)
+            call.loc := ssa.block(f 0).termLoc
+            vector.append(:ssa.Inst ssa.block(f raiser).insts call)
+            ssa.block(f raiser).term := ssa.termUnreachable
+            for b = 0 upto {extent head - 1} do if head[b] then check(f b raiser) end end
+        end
+
+    let checkUnit(u: ssa.Unit): Ok =
+        for i = 0 upto {vector.length(:Function u.functions) - 1} do
+            checkFunction(vector.get(:Function u.functions i))
+        end
+end

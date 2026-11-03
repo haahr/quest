@@ -89,9 +89,10 @@ class QuestKernel(Kernel):
         try:
             reply = self.quest().execute(code, on_stream, on_display, on_input)
         except KeyboardInterrupt:
+            # The cell didn't end when interrupted
             self.end_session()
-            return self.failed("Interrupted", f"the cell was interrupted; {RESTARTED}", [
-                f"Interrupted: the cell was interrupted; {RESTARTED}"])
+            return self.failed("Interrupted", f"the cell did not stop when interrupted; {RESTARTED}", [
+                f"Interrupted: the cell did not stop when interrupted; {RESTARTED}"])
         except DriverExited as e:
             self.quest_session = None
             lines = [f"DriverExited: the Quest driver exited with status {e.status}; {RESTARTED}"]

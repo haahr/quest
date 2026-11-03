@@ -198,6 +198,11 @@ internal error.
   taken as what the jump passes them, so that a join's parameter that its block does not return (as a contified
   loop's exit leaves) does not keep the call from being a tail call: zern's `lp1` and `lp2`, which call each other
   through their closures, were nested calls, 16,384 deep for each array they filled.
+- **`ssa/interrupts`**, last and only when the Jupyter kernel's driver asks (`pipeline.setInterruptChecks`, under
+  `--kernel`, for the code its JIT compiles; [jupyter.md](jupyter.md) step 5), checks the runtime's interrupt flag at
+  each function's entry and each loop's head (a block a back edge goes to): it splits the block, loading
+  `quest_interrupt_pending` and branching to a block that calls `quest_interrupt_raise`, or on to the block's old
+  instructions. It isn't in `passes`, so no phase dumps it, and no golden sees it.
 
 Neither removes values that become dead, such as parameters no load reads; the trivial allocator gives them slots,
 and linear scan none.
