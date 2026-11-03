@@ -35,7 +35,7 @@ from quest.pipeline import (
 from quest.build.engine import BuildEngine, compile_unit_file
 from quest.codegen.c.compiler_runner import compile_c_source
 from quest.modules.graph import UnitKind, file_unit_kind
-from quest.repl import redefinition_enabled, run_repl
+from quest.repl import run_repl
 from quest.values.model import QOk, qvalue_to_str
 from quest.syntax.sources import SourceMap, os_text, read_source
 
@@ -409,8 +409,8 @@ def run_driver(args: list[str]) -> int:
         ctx = CompilerContext.create(source_text, file_name, options=options)
         ctx.env.units.add_prebuilt_objects(extra_objects, options.include_paths)
         # The file -i runs is interactive, the REPL's first input
-        # (docs/redefinition.md)
-        ctx.env.interactive = parsed_args.interactive and redefinition_enabled()
+        # (docs/repl.md section 6)
+        ctx.env.interactive = parsed_args.interactive
         result = pipeline.execute(source_text, file_name, options=options, ctx=ctx)
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)

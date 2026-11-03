@@ -16,7 +16,6 @@ Implements Phase 3.6 of the Quest bootstrap compiler:
 from __future__ import annotations
 
 import atexit
-import os
 import sys
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -46,13 +45,6 @@ PROMPT_CONT = "    "
 PREFIX_RESP = "==  "
 HISTORY_FILE_NAME = ".quest_history"
 HISTORY_LENGTH = 1000
-
-
-def redefinition_enabled() -> bool:
-    """Whether interactive inputs redefine their slots in place
-    (docs/redefinition.md), which QUEST_REDEFINE=1 turns on until the work is
-    done."""
-    return os.environ.get("QUEST_REDEFINE") == "1"
 
 
 def read_input_line(prompt: str) -> str:
@@ -141,8 +133,9 @@ class QuestREPL:
         stderr_write: Optional[Callable[[str], Any]] = None,
     ):
         self.context = ctx or CompilerContext.create("", "<repl>", options=CompilerOptions())
-        # The REPL's inputs are interactive, as the file -i ran was
-        self.context.env.interactive = redefinition_enabled()
+        # The REPL's inputs are interactive, as the file -i ran was: their
+        # top-level lets redefine in place (docs/repl.md section 6)
+        self.context.env.interactive = True
         self.pipeline = default_pipeline()
         self.input_fn = input_fn or read_input_line
         self.stdout_write = stdout_write or sys.stdout.write

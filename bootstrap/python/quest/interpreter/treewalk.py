@@ -1009,7 +1009,7 @@ def _define_members(members: tuple[TypedLetValue, ...], values: tuple[QValue, ..
 
 def bind_let(binding: TypedLetValue, val: QValue, env: RuntimeEnvironment) -> None:
     """Binds a value let's name to its value in env's frame, or, if the let
-    redefines an interactive slot (docs/redefinition.md section 3.2), stores the
+    redefines an interactive slot (docs/repl.md section 6), stores the
     value where the name is bound, as an assignment does: in the frame that
     holds it, or into its cell if it is a var."""
     if binding.redefines:

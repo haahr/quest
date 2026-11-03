@@ -818,7 +818,7 @@ class TypedLetValue(TypedBinding):
     symbol: ValueSymbol
     is_rec: bool = False
     # Whether the let redefines an interactive slot in place
-    # (docs/redefinition.md)
+    # (docs/repl.md section 6)
     redefines: bool = False
 
     def dump_header(self, env: Optional[Any] = None) -> str:

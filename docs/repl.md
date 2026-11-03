@@ -13,11 +13,13 @@ functions, importing modules, and experimenting with types.
 Both drivers have one, and they behave the same: the bootstrap's (`bootstrap/python/quest/repl.py`, in Python) and the
 self-hosted compiler's (`questlang/driver/repl`, in Quest, compiled with the driver). Each reads its input through
 `io/readline` (§4) and interprets each input in the tree-walking interpreter; the same transcripts test both
-(docs/testing.md §2.7). Section 7 describes how the two are built.
+(docs/testing.md §2.7). Section 8 describes how the two are built.
 
 Key features:
 - **Persistent Lexical and Dynamic Environments:** Types, bindings, and modules defined in one phrase remain in scope
   for subsequent phrases.
+- **Redefinition in Place:** A top-level `let` of a name's type redefines it for the code that already uses it, so
+  fixing a function fixes its callers (§6).
 - **Semicolon-Optional Multi-line Buffering:** Evaluates syntactically complete phrases immediately. If input is
   incomplete (e.g. open block, unclosed delimiter, or missing operand), the REPL automatically prompts for continuation
   lines until the phrase is closed. Semicolons may end a phrase but are optional.
@@ -184,7 +186,8 @@ bindings, the frame evaluation continues in, and the units the input loaded. The
 typed forms; the runtime environment holds that same graph, and the values of the modules the interpreter has run
 (`module_values`). An input that fails forgets the units it loaded and the modules it ran, so that importing a module
 again elaborates and runs it again, as if the failed input had never been. Side effects are not undone: output already
-written stays written, and a variable of an earlier binding or module assigned by the failed input keeps its new value.
+written stays written, a variable of an earlier binding or module assigned by the failed input keeps its new value, and
+so does a binding the failed input redefined (§6), since a redefinition is an assignment.
 
 Each input is also a compilation session of its own (`UnitGraph.new_session`): its imports are resolved again, so
 that it finds interface and module files created since an earlier input, including one that failed for want of them.
@@ -208,7 +211,77 @@ Notice `a` remains `10` because the failed line was rolled back transactionally.
 
 ---
 
-## 6. Signals & Exit
+## 6. Redefinition
+
+Interactive code, the REPL's inputs and the file `-i` runs (its first input), binds its top-level names as Python and
+Lisp do: a later definition of a name updates the code that already uses it, so that fixing a function fixes its
+callers without redefining each of them. Programs, `-e`, and `quest FILE` scope lexically, and nothing here changes
+them.
+
+```quest
+>>  let f(n: Int): Int = 100 / n
+>>  let g(n: Int): Int = f(n) + 1
+>>  let f(n: Int): Int = n
+>>  g(0)
+==  1 : Int
+```
+
+**The rule.** Each value `let` at an interactive input's top level (not in a block, function, tuple, or module) binds
+a *slot*, which has a type and a `var`-ness. A later top-level `let` of the name whose current binding is a slot of an
+equal type and the same `var`-ness **redefines** the slot: every use of it, earlier and later, sees the new value from
+then on. Types are equal when each is a subtype of the other, so two quantified types that differ only in their
+variables' names are equal, as are a type and an alias of it. Any other rebinding shadows, as in a program: a different
+type, a `var` for a non-`var`, or a name that is not a slot (a module's, an import's, an exception's).
+
+- **Every use is late-bound**, in later inputs and in the input that defines the slot, inside functions too: `let
+  p() = 1; let q() = p(); let p() = 2; q()` on one line is 2. A function's calls of itself go through its slot, so a
+  redefined `let rec` function's old callers reach its new body.
+- **`let x = 2 and y = x`** computes every member's value before binding any, so `y` gets the `x` before the
+  redefinition.
+- **A `var` slot** is redefined by `let var x = e`, which stores to it as `x := e` does; functions still may not name a
+  global `var`.
+- **Modules' bodies are closed**: they cannot name the bindings around them, so no module names a slot, and a module's
+  members are never slots. A module declared again replaces the first, as before (§5).
+- **Types are not redefined**: `Let T = ...` again shadows, and a function whose type names the old `T`, redefined
+  with the new one, shadows too.
+
+**The warning.** A top-level `let` that shadows a slot, because its type or `var`-ness differs, writes a warning on
+standard error, and the input runs:
+
+```
+<repl>:1:1: warning: 't' now has a different type; functions defined earlier keep the earlier 't'
+```
+
+It is the only shadowing left at an interactive top level, so it names exactly the case that surprises.
+
+**Rollback.** A redefinition is an assignment: an input that fails after redefining a slot leaves the slot's new value,
+as it leaves a `:=` (§5). The environment and the values still agree, since a redefinition keeps the slot's type.
+
+**How.** The type checkers (`_declare_let` in `quest/typechecker/bindings.py`, `declareLet` in
+`questlang/typechecker/bindings`) map each interactive top-level `let`'s symbol to its slot, in the environment's
+`slots` (part of its snapshot), and mark a redefining `let` (`TypedLetValue.redefines`, `LetValue.redefines`,
+`:redefines` in the dump); they report the warning, the self-hosted checker through its `warnings`. The drivers set
+`interactive` on the environment for the REPL and for `-i`. The interpreters, whose frames bind by name, store a
+redefinition where the name is bound, as an assignment does (`bind_let`, `bindLet`), instead of opening a frame for
+it. The JIT holds each slot in a box, which uses load and redefinitions store to ([jit.md](jit.md) §3.2).
+
+**The cost**, on the JIT: a use of a slot is a load when it runs, so interactive code's top-level functions are called
+through their slots, never inlined, specialized, or called directly. Calls from a later input already went through the
+earlier input's record, and pay little more; calls within the input that defines the function lose what inlining
+gave. Typed at the REPL (2026-11-02, the best of three, each including about 0.1 s for the session):
+
+| Loop | Lexical | Redefinable |
+|---|--:|--:|
+| 200 million calls of an earlier input's `add1` | 0.32 s | 0.35 s |
+| 200 million calls of `add1`, all in one input | 0.17 s | 0.30 s |
+| 100 million calls of an earlier input's generic `twice` | 2.17 s | 2.57 s |
+| 100 million calls of `twice`, all in one input | 0.17 s | 2.43 s |
+
+So a file run with `-i` is slower than the same file run as a program; a program pays nothing.
+
+---
+
+## 7. Signals & Exit
 
 - **`Ctrl-D` (EOF):** On an empty input line, exits the REPL cleanly with exit code `0`.
 - **`Ctrl-C` (Interrupt):** Cancels the current multi-line input buffer without terminating the session, returning to
@@ -216,7 +289,7 @@ Notice `a` remains `10` because the failed line was rolled back transactionally.
 
 ---
 
-## 7. The Two Implementations
+## 8. The Two Implementations
 
 The two REPLs are the same loop over the same steps; only their languages differ.
 

@@ -715,6 +715,11 @@ Universal quantifiers can be bounded by power kinds (`A <: Bound`, represented s
   1, and `let p = q and q = p` swaps), and all are declared once every member has been elaborated. At run time
   every value is computed, in order, before any member is bound, and a closure a member's value builds keeps the
   bindings the members shadow. They may also be tuple components (§4.1).
+- **Interactive Redefinition:** A later binding of a name shadows it, everywhere but at an interactive top level (the
+  REPL's inputs and the file `-i` runs), where a `let` of a name whose binding is a slot of an equal type (each a
+  subtype of the other) and the same `var`-ness redefines it instead: its new symbol is bound to the earlier one's
+  slot, so code that uses either sees the new value ([repl.md](repl.md) §6). Any other rebinding there shadows, with
+  a warning.
 - **Recursive Value Bindings:**
   Any recursive value binding without parameters (`let rec x: T = e`) similarly requires an explicit type
   annotation, and its right-hand side entity must syntactically be a constructor or abstraction (Cardelli,

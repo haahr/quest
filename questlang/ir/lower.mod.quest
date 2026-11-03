@@ -407,14 +407,14 @@ export
 
     let phraseModuleName(number: Int): String = "qj_" <> conv.int(number)
 
-    (* The slot a symbol is bound to (docs/redefinition.md section 2): the id of
+    (* The slot a symbol is bound to (docs/repl.md section 6): the id of
      * the first symbol bound to it, which is the symbol's own but for an
      * interactive let that redefines an earlier one *)
     let slotOf(e: env.T symbolId: Int): Int = maybe.unwrapOr(:Int hashMap.get(:Int :Int e.slots symbolId) symbolId)
 
     (* Whether a phrase unit holds a symbol's slot in a box: a one-component
      * var tuple, which every use reads and a redefinition stores to
-     * (docs/redefinition.md section 3.3); one of type Ok has no words, and is
+     * (docs/jit.md section 3.2); one of type Ok has no words, and is
      * not held *)
     let boxesSlot(e: env.T sym: symbols.ValueSymbol): Bool =
         e.interactive andif hashMap.contains(:Int :Int e.slots sym.symbolId) andif not(isOk(sym.type))
@@ -1615,7 +1615,7 @@ export
 
     (* Puts a slot's value v in its box: a new box, which the unit's record
      * holds, or, for a redefinition, the slot's box, the unit's own or an
-     * earlier input's, stored to (docs/redefinition.md section 3.3) *)
+     * earlier input's, stored to (docs/jit.md section 3.2) *)
     and storeSlot(l: Lowerer lv: typedAst.LetValue v: Variable): Ok =
         if lv.redefines then
             let box = boxOfSymbol(l lv.symbol.symbolId)

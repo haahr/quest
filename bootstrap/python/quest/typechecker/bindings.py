@@ -477,7 +477,7 @@ class BindingMixin(Checker):
     def _declare_let(self, sym: ValueSymbol, offset: int, env: Environment) -> ValueSymbol:
         """Declares the symbol of a value let in env's current scope. At an
         interactive input's top level (env.interactive, outside any function or
-        block), the symbol is a slot (docs/redefinition.md section 2): the slot of
+        block), the symbol is a slot (docs/repl.md section 6): the slot of
         the name's earlier symbol, which it redefines, if that is a slot of an
         equal type and the same var-ness, and otherwise a new one, which
         shadows the earlier symbol, with a warning if that was a slot."""

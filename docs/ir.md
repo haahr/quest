@@ -79,7 +79,8 @@ An IR **unit** corresponds to a compilation unit (a program, or a module compile
 - **A phrase unit** (`unit.phrase`), one input of the JIT's REPL ([jit.md](jit.md) §3.2), has an empty main: its
   phrases are the initializer of a module of its own, `qj_<n>`, whose exported record holds its top-level bindings,
   and the modules it declares are named `qj_<n>_<name>`. Earlier inputs' bindings are members of their modules,
-  which it imports.
+  which it imports. Its top-level value bindings are slots ([repl.md](repl.md) §6), each held in a box, a
+  one-component `var` tuple that uses load and redefinitions store to, and that the record holds.
 - **Imports:** the units it depends on and the symbols it uses from them; interfaces (`.qi`) are unchanged.
 
 Type declarations do not appear as items: the shapes in the IR carry everything later stages need, and the printer

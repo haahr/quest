@@ -23,10 +23,11 @@ Decided 2026-10-31:
   reaches the running compiler's. The circularity is intended.
 - **Straight to an encoder.** No stage that writes `.s` and shells out to `as` and `ld` to make a dylib: `minst`
   already makes instructions data, so the encoder replaces the assembler from the start (§3.5).
-- **Lexical semantics.** A rebinding shadows: functions compiled earlier keep the binding they saw, as in the
-  interpreters (where `let f() = 1; let g() = f(); let f() = 2; g()` is 1). There is no hot-swapping, in the
-  interpreters or here; the roadmap's "dynamic patching and hot-swapping" is dropped. The REPL's output stays the
-  interpreter's.
+- **The interpreters' semantics.** Interactive code redefines in place ([repl.md](repl.md) §6): a top-level `let` of
+  a name's type updates the code that already uses it, so `let f() = 1; let g() = f(); let f() = 2; g()` is 2, in
+  the interpreters and here; any other rebinding shadows, and programs, `-e`, and files scope lexically. Beyond that
+  there is no hot-swapping (a redefinition with another type, or of a type); the roadmap's "dynamic patching and
+  hot-swapping" is dropped. The REPL's output stays the interpreter's.
 - **Incremental** means that an input compiles only itself; what earlier inputs compiled stays loaded.
 - **A crash ends the session,** for now: a fault or a runaway recursion in a phrase ends the driver as it ends a
   compiled program (exceptions.md §6). Ctrl-C likewise.
@@ -117,18 +118,31 @@ ensures today.
 
 - **Namespaces stack.** An input sees every binding of the inputs before it, as the interpreter's frames do; the type
   checker's environment already provides that. The session keeps, for each symbol an input that ran bound, where it
-  lives (`lower.Earlier`: the module whose record holds it, its field, the record's type, and whether it is a `var`),
-  and passes them to the next input's lowering.
+  lives (`lower.Earlier`: the module whose record holds it, its field, the record's type, whether it is a `var`, and
+  whether it is a slot's box), and passes them to the next input's lowering. A slot's is kept once, by its first
+  symbol, and looked up through the environment's `slots` (`lower.slotOf`).
 - **Reading an earlier binding.** In a later input, a variable whose symbol the input does not bind and the session
   knows is a member of that module: the input imports the module as a unit imports any module (a `nodes.Import` of
   `qj_<n>`, with the record's type), and reads the binding as an `opModuleMember`. A top-level function is reached
   through the field holding its closure; calling its code directly, or inlining it, is a later optimization (§6).
-  Rebindings are distinct symbols already (ir.md §2), so they are distinct fields, and a function an earlier input
-  made keeps the binding it saw (lexical semantics, §1).
+  Rebindings are distinct symbols already (ir.md §2), so they are distinct fields; a redefinition is not a rebinding
+  (below).
 - **Writing an earlier `var`.** Global `var`s cannot be captured by functions (the rule the REPL already reports), so
   an earlier input's `var` is read and written only by later top-level code: through its field's address
   (`opAddrField` on the record) and with a store to the field (`sStoreField`). The field is in the record's payload,
   which every copy of the record shares, so a write is seen by every later input.
+- **Slots are boxes.** In an interactive input (the REPL's, or the file `-i` runs), every top-level value binding is
+  a slot ([repl.md](repl.md) §6), and the phrase unit holds it in a **box**, the one-component `var` tuple the
+  lowering uses for a local `var` that closures capture (`lower.boxesSlot`, `l.boxes`). Defining a slot makes its box,
+  and the record's field `v<slot>` is the box (`Earlier.boxed`). Every use loads the box's component when it runs: the
+  input's own uses (closures capture the box), and a later input's, through the record. A redefinition stores to the
+  box, its own input's or an earlier one's, and adds no field. So a slot's symbol is never a known callee: its
+  function is called through its closure, never inlined, specialized, or called directly, which is what redefinition
+  costs ([repl.md](repl.md) §6). New recursive functions are made with their boxes in one `let rec` (`recSlots`), so
+  that their bodies, which name their slots, read the boxes; a simultaneous `let ... and ...` computes every member's
+  value before storing any. A slot of type `Ok` has no box, and a recursive value that is not a function names its
+  group's members directly. A box's loads are ordinary loads of a `var` cell, which the SSA's passes do not take as
+  invariant. A failed input's stores to earlier boxes stay, as its assignments do.
 - **What is not a field.** A binding of type `Ok` has no words, so it is not in the record, and a later input reads
   it as `ok`. A named exception is a field when a phrase declares it (`exception E end`); one a `let` binds is the
   `let`'s value, its field.
@@ -513,7 +527,10 @@ Running in the driver's own process adds two more, which the run goldens through
   was tried on 2026-11-01 and not kept: 200 million calls of an earlier `add1` took 0.27 s against 0.26 s, and 100
   million of an earlier generic `twice` 1.78 s against 1.47 s, `twice`'s code byte for byte the same, its placement
   differing. In one unit the same loops take 0.13 s and 0.06 s: the gap is inlining and specialization, which need the
-  earlier inputs' IR, not the call.
+  earlier inputs' IR, not the call. Since interactive code's functions are slots (§3.2), this is now direct calls
+  and inlining of slots whose definition has not changed, undone when one does: the session would keep each input's
+  IR and each slot's dependents. Only if redefinition's cost (repl.md §6) matters in practice.
+- Redefining a function with another type, or a type, which earlier code would need checked or recompiled.
 - Surviving faults and runaway recursion, and Ctrl-C, in the REPL.
 
 ## 7. Steps

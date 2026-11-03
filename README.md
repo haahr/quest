@@ -265,6 +265,11 @@ PYTHONPATH=bootstrap/python python3.11 -m unittest discover -s tests/python   # 
    digits is an integer too (`0xFF` is 255, `~0x10` is -16), within the same 64-bit signed range, so
    `0xFFFFFFFFFFFFFFFF` is out of range rather than ~1. In the paper's syntax, `0xab` is the integer 0 followed by
    the identifier `xab` ([docs/extensions.md](docs/extensions.md), "Hexadecimal Integers").
+7. **Redefinition at the REPL:** the paper's top level is lexically scoped, so a new definition of a name shadows it,
+   and functions defined earlier keep the old one. Here, interactively (the REPL, and a file run with `-i`), a new
+   `let` of a name at the same type updates it in place, for the code that already uses it, so that fixing a function
+   fixes its callers; one at another type shadows, with a warning. Programs are unchanged
+   ([docs/repl.md](docs/repl.md) §6).
 
 [docs/extensions.md](docs/extensions.md) describes the additions to the language and its libraries, among them the
 `System` interface to the operating system, the `Word` type, and `external` declarations of C functions.

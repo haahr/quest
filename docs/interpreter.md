@@ -143,6 +143,8 @@ The evaluator in `quest/interpreter/treewalk.py` evaluates typed expressions and
 - `define(name, value)`: Binds a symbol in the local frame.
 - `lookup(name)`: Searches outward from innermost to outermost frame; raises `QuestRuntimeError` if missing.
 - `assign(name, new_value)`: Resolves an existing variable and either mutates its `QRef` cell or updates the binding.
+  A `let` that redefines an interactive slot binds this way too (`bind_let`), rather than in a frame of its own, so
+  that closures made earlier see the new value ([repl.md](repl.md) §6).
 - `create_root_env()`: Factory pre-populating:
   - Standard constants: `true`, `false`, and `ok`.
   - Monadic operators: `not` (boolean negation), `extent` (array size), `ordinal` (option tag index).

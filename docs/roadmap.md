@@ -138,7 +138,8 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
 
 ### Step 7: Native AArch64 JIT & Interactive Incremental Runtime
 - In-process dynamic code emission and execution for the REPL, and later for files and `-e`, with the interpreters'
-  lexical semantics: a rebinding shadows, and code compiled earlier keeps the binding it saw (no hot-swapping).
+  semantics: interactive code redefines a name of the same type in place ([repl.md](repl.md) §6), and otherwise a
+  rebinding shadows (no hot-swapping).
 - Planned in [jit.md](jit.md). Done: step 1, `unsound` interfaces and modules ([modules.md](modules.md) §4.4); step 2,
   frames by the frame-pointer chain; step 3, `os/value` and `os/code` ([new-libraries.md](new-libraries.md) §4.3);
   step 4, interface fingerprints in every module unit (`qh_`); step 5, the arm64 encoder;

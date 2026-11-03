@@ -139,7 +139,7 @@ class Environment:
         self.in_unsound_module = False
         # Whether the bindings being elaborated are an interactive input's (the
         # REPL's, or the file -i runs), whose top-level lets make slots that a
-        # later let of the same type redefines (docs/redefinition.md); and the
+        # later let of the same type redefines (docs/repl.md section 6); and the
         # slots, each value symbol of such a let mapped to its slot's id, the id
         # of the first symbol bound to it
         self.interactive = False
