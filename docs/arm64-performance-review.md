@@ -443,8 +443,8 @@ and `.out` files) and its runs of `tools/check` here, beside the estimate.
 | 4a | 352 | 1, with 3b and the fixes | `df46c85c` |
 | 4b | | | |
 | 5 | | | |
-| 6 | 25, 73, 148, and 155 (`adrp` + `ldr`, no re-extension, register offsets, `ldp`/`stp`); post-index not made | none yet | `ed2ca3fa`, `be94cc2f`, `7018e29d`, `a4d1d7cd` |
-| 7 | 80 (chains); rotation tried and not kept | none yet | `54af24fe` |
+| 6 | 25, 73, 148, and 155 (`adrp` + `ldr`, no re-extension, register offsets, `ldp`/`stp`); post-index not made | 1, with 7 and the SSA's two | `94ff0a37`, `94b14de7`, `7dfe2ff1`, `8d37e163` |
+| 7 | 80 (chains); rotation tried and not kept | 1, with 6 and the SSA's two | `4626369d` |
 
 The first batch (items 1, 2, and 3a, 2026-11-01) passed `tools/check` in one run of every suite (40 minutes, since it
 changes tests' goldens, which the self-hosted compiler's suites alone do not cover). Its estimates held: each item
@@ -565,21 +565,22 @@ C's time, and the suite 1.46, most of the difference in md5, checksum, and psdes
 so the cause is before the code generator) and in zern, string-concat, mpuz, and the vector concatenations (which
 it is not). Batches 4 and 5 are to be measured on those as well as the six.
 
-**Batches 4 and 5** (2026-11-02, not yet pushed) were timed on the twelve, five rounds at a thirty-second of the
-suite's counts, at a load of 1.2 to 2.2, each change against the commit before it. Two changes outside the review's
-items, which the six added programs pointed to, came with them, each in `ssa/`, so `ssac` gains too:
+**Batches 4 and 5** (2026-11-02, pushed at `f5bf8f64` after one `tools/check` run, rebased onto 35f49904) were
+timed on the twelve, five rounds at a thirty-second of the suite's counts, at a load of 1.2 to 2.2, each change
+against the commit before it. Two changes outside the review's items, which the six added programs pointed to, came
+with them, each in `ssa/`, so `ssac` gains too:
 
-- `3e18633e` (189 lines): a call of an external through its thunk (`qx_`) calls the external itself, as clang makes
+- `7e837cfd` (189 lines): a call of an external through its thunk (`qx_`) calls the external itself, as clang makes
   it by inlining the thunk, and an importer calls a library external's C function, as the C printer does; and the
   word module's operations, `static inline` in the runtime's header, are their instructions (ssa.md §4). md5,
   checksum, and psdes-random spent their loops calling them, through thunks: the cause before the code generator
   that §11 of benchmarks.md found, and string-concat's and mpuz's `getChar` and `ascii.val` went through thunks too.
-- `32270dd0` (40 lines): a call followed by a jump to a block that only returns is a tail call though the jump
+- `4e69c67e` (40 lines): a call followed by a jump to a block that only returns is a tail call though the jump
   passes the block parameters it does not return. zern's two loops, closures that call each other, nested a call per
   element, 16,384 deep, and the collector scanned the stack.
 
-Time against the C backend's, before batch 4 (`568c3a56`), after batch 5 (`a4d1d7cd`), and after both SSA changes
-(`32270dd0`), and `ssac`'s before and after them:
+Time against the C backend's, before batch 4 (`568c3a56`), after batch 5 (`8d37e163`), and after both SSA changes
+(`4e69c67e`), and `ssac`'s before and after them:
 
 | | before 4 | after 5 | now | `ssac` before | `ssac` now |
 |---|--:|--:|--:|--:|--:|
@@ -611,6 +612,26 @@ Time against the C backend's, before batch 4 (`568c3a56`), after batch 5 (`a4d1d
   loop; psdes-random's 1.36 (its time is the collector's and first stores to new pairs, which `ssac` has as well);
   mpuz's 1.07 against `ssac`'s 0.71, a fifth of whose `assign` samples are 3a's clears of dead slots; and md5's
   shifts by a count not constant (12 calls a binary), which could be inline branches.
+
+**Batch 7's baseline** ([value-numbering.md](value-numbering.md) step 1, 2026-11-02, at `568b3252`, after
+35f49904's library operations in the SSA, which made md5's shifts by a count not constant inline branches): the
+thirteen, five rounds at a thirty-second of the suite's counts, at a load of 2.6 to 4.4. Time against the C
+backend's:
+
+| | life | ray | hamlet | mlyacc | zebra | nucleic | psdes-random | checksum | md5 | zern | string-concat | mpuz | even-odd |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| arm64 | 0.89 | 0.68 | 0.94 | 0.90 | 0.94 | 0.93 | 1.35 | 0.60 | 1.17 | 1.15 | 0.64 | 1.07 | 7.88 |
+| `ssac` | 0.79 | 0.68 | 0.92 | 0.78 | 1.11 | 0.88 | 1.02 | 0.60 | 1.12 | 0.99 | 0.64 | 0.71 | 1.00 |
+
+- **The ratios are the batches' "now" to within 0.03** but hamlet's (0.87 then, 0.92 and 0.94 now, both backends
+  alike, so the C build's time, at this load). 35f49904 moved none of the thirteen at a thirty-second of their
+  counts: 7e837cfd had already taken their loops' word operations out of their thunks.
+- **`tfoCombine` makes 89 loads through arm64** (548 instructions, 14 stack accesses past the prologue's and the
+  epilogue's), against 38 through both clang builds (C 347 instructions, `ssac` 302): the SSA's 70 loads and the
+  allocator's reloads. Over each program's Quest functions, arm64 makes 2,210 loads (checksum, mostly the library's)
+  to 27,674 (hamlet), and 101 to 163 `cset`s, the counts step 3 must not raise.
+- **The compiler builds its driver** (`-j 8`, a fresh build directory, at a load of 4 to 8) in 30 s through C and 26
+  s through arm64, which the new passes add to.
 
 Each is to be measured as benchmarks.md measures (`run.py time --clean`), and the six here against `ssac` with
 `tools/perf/timeit.py`. The figures above will move: §3.1's and §3.2's interact (fewer spills mean fewer slots to

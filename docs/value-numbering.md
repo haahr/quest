@@ -128,7 +128,7 @@ thirty-second of the suite's counts, through C, `ssac`, and arm64, on the twelve
 even-odd; and the suite's geometric means with `run.py time --clean` at `--scale 0.25`
 ([benchmarks.md](benchmarks.md) §11). Also counted, with `tools/perf/variants.py`'s builds:
 
-- loads in `tfoCombine` (70 now; clang has 31) and in each program, static;
+- loads in `tfoCombine` (at step 1, 70 in the SSA and 89 in arm64's code, clang's 38) and in each program, static;
 - `cset`s, to show that no fused branch was lost (§2.1);
 - spill stores and reloads, before and after hoisting;
 - the time the self-hosted compiler takes to build itself (`./quest`'s driver build, `QUEST_JOBS` 8), since the
