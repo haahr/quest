@@ -12,8 +12,8 @@ Quest has two sets of benchmarks:
 
 This document describes the MLton suite, records the baseline taken on 2026-10-28, lists what profiling the
 slowest benchmarks found and what could be done about it, compares the C and arm64 backends (§4 to §6),
-measures the inliner (§7), times every backend and the inliner's settings at one commit (§11), and measures the
-Jupyter kernel's interrupt checks (§12).
+measures the inliner (§7), times every backend and the inliner's settings at one commit (§11), measures the
+Jupyter kernel's interrupt checks (§12), and times the SSA's backends after the arm64 review (§13).
 
 ## 1. The MLton suite
 
@@ -963,3 +963,84 @@ average was 3 to 5.
   and varied more than the checks could cost.
 - The cost is a cell's alone, and small next to what interrupting without losing the session is worth, so the checks
   stay on in kernel mode.
+
+## 13. The SSA's backends after the review's batches (2026-11-03)
+
+The suite through C, ssac, and arm64 at `42ba562c`, after the arm64 performance review's batches 4 to 7
+([arm64-performance-review.md](arm64-performance-review.md) §4): block layout, register-offset and paired loads and
+stores, the library's inlined externals as instructions in the SSA and other externals called directly from it, and
+value numbering ([ssa.md](ssa.md) §4.1).
+
+### 13.1. How they were taken
+
+As §11.1: `run.py time --clean --scale 0.25 --timeout 1800`, one run each, with `--backend c`, `--backend ssac`, and
+`--backend arm64`, in that order, each waiting until the load average had been under 4 for two minutes (the
+desktop's own load kept it near 3, so §11's threshold of 6 would have waited for nothing). The load was 1.5 to 3.2
+throughout. The compiler was `./quest` at `42ba562c`, stage 2 built by C. The times are in
+`benchmarks/mlton/baselines/2026-11-03/`: `quest-c-42ba562c.jsonl`, `quest-ssac-42ba562c.jsonl`, and
+`quest-arm64-42ba562c.jsonl`.
+
+### 13.2. Programs
+
+| System | Geometric mean of time / MLton's | Without fib, tailfib, tak, and tensor | Run time, all 46 |
+|---|--:|--:|--:|
+| C, `9a08223f` (§11.2) | 3.54 | 4.00 | 31.7 min |
+| C | **3.47** | 3.92 | 31.5 min |
+| ssac, `9a08223f` (§11.2) | 3.48 | 4.08 | 37.9 min |
+| ssac | **2.79** | 3.20 | 31.6 min |
+| arm64, `9a08223f` (§11.2) | 5.17 | 5.30 | 44.9 min |
+| arm64 | **3.63** | 3.66 | 34.0 min |
+
+Each backend's time against C's at the same commit (below 1 is faster), ordered by arm64's, with §11's ratios beside
+them:
+
+| Benchmark | C (s) | ssac | arm64 | ssac, §11 | arm64, §11 |
+|---|--:|--:|--:|--:|--:|
+| tailfib | 0.25 | 1.00 | 9.12 | 1.07 | 16.65 |
+| fib | 0.76 | 1.03 | 8.89 | 1.05 | 9.08 |
+| tak | 0.81 | 1.02 | 7.48 | 1.03 | 7.48 |
+| even-odd | 1.22 | 1.00 | 3.36 | 1.02 | 3.38 |
+| peek | 107.23 | 1.03 | 1.52 | 1.01 | 1.62 |
+| vector32-concat | 5.08 | 1.04 | 1.51 | 0.99 | 1.77 |
+| vector64-concat | 3.64 | 0.90 | 1.43 | 1.02 | 1.80 |
+| psdes-random | 20.06 | 1.03 | 1.34 | 4.09 | 4.77 |
+| wc-scanStream | 127.69 | 0.95 | 1.31 | 1.09 | 1.43 |
+| smith-normal-form | 764.78 | 1.00 | 1.30 | 1.00 | 1.30 |
+| pidigits | 35.22 | 1.00 | 1.24 | 0.99 | 1.41 |
+| zebra | 21.54 | 1.01 | 1.21 | 1.03 | 1.46 |
+| matrix-multiply | 5.88 | 0.99 | 1.19 | 0.95 | 1.42 |
+| zern | 5.06 | 0.98 | 1.11 | 0.94 | 2.63 |
+| mandelbrot | 4.88 | 0.99 | 1.00 | 1.03 | 1.34 |
+| mpuz | 10.04 | 0.46 | 0.85 | 1.13 | 2.01 |
+| md5 | 16.59 | 0.76 | 0.84 | 3.94 | 6.83 |
+| tyan | 12.33 | 0.86 | 0.83 | 1.10 | 1.31 |
+| hamlet | 14.24 | 0.80 | 0.81 | 0.96 | 1.40 |
+| count-graphs | 16.57 | 2.13 | 0.76 | 2.27 | 0.91 |
+| boyer | 32.93 | 1.64 | 0.75 | 1.71 | 0.86 |
+| flat-array | 61.77 | 3.51 | 0.71 | 3.88 | 1.04 |
+| string-concat | 7.04 | 0.25 | 0.40 | 1.36 | 2.78 |
+| checksum | 49.44 | 0.16 | 0.27 | 3.65 | 6.39 |
+| tensor | 79.94 | 0.18 | 0.21 | 0.18 | 0.23 |
+| imp-for | 5.88 | 0.04 | 0.90 | 0.04 | 0.95 |
+| **geometric mean, all 46** | | **0.80** | **1.04** | 0.98 | 1.46 |
+| without fib, tailfib, tak, and tensor | | 0.82 | 0.93 | 1.02 | 1.32 |
+
+- **arm64 has caught C:** 1.04 of its time over all 46, down from 1.46, and 0.93 without the four; it is faster than
+  C on 26 of the 46, and takes 0.70 of its own time at §11. Without fib, tailfib, tak, and even-odd (the small
+  recursions clang transforms), it takes 0.87 of C's.
+- **ssac is now the fastest backend,** 0.80 of C's time and 2.79 of MLton's, faster than C on 31 of the 46. arm64
+  takes 1.30 of ssac's time, and 1.11 without those four.
+- **md5, checksum, psdes-random, string-concat, and mpuz were the externals:** §11 found them slow in the SSA, not
+  the code generator. With the library's inlined word operations as instructions in the SSA, and other externals
+  called directly, they take 0.04 to 0.40 of their §11 times through both ssac and arm64, and all but psdes-random
+  are now faster than C. zern (2.63 to 1.11), hamlet (1.40 to 0.81), and tyan (1.31 to 0.83) gained on arm64 alone,
+  from the code generator's batches.
+- **What is left for arm64** is mostly the four small recursions (tailfib, though 9.12 from 16.65, fib, tak, and
+  even-odd), which are 72 percent of what it loses to C where it is slower, by the sum of the logarithms of the
+  ratios. Of the rest, peek, the vector concatenations, wc-scanStream, smith-normal-form, pidigits, zebra, and
+  matrix-multiply take 1.2 to 1.5 of C's time; ssac takes about C's time on all of them, so they are the code
+  generator's.
+- **ssac is still slow on flat-array (3.51), count-graphs (2.13), and boyer (1.64),** where arm64 is faster than
+  C; this is in ssac's C, not the SSA.
+- **C moved by 0.98,** within noise except tailmerge, at 1.25 of its §11 time; a second run took 54.6 seconds, and
+  every run before §11 took 50 to 54, so §11's 44.1 was the outlier.
