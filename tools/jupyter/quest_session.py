@@ -1,8 +1,8 @@
-"""A session of the self-hosted driver's kernel mode (docs/jupyter.md section 2):
-`quest --kernel` started with its requests on descriptor 3 and its records on
-descriptor 4, cells sent to it one at a time, and what each wrote collected as
-it comes. The Jupyter kernel (quest_kernel.py) and the protocol's test
-(tests/self-hosted/kernel_protocol.py) share it; it needs only the standard
+"""A session of the self-hosted driver's kernel mode (docs/jupyter-kernel.md
+section 2): `quest --kernel` started with its requests on descriptor 3 and its
+records on descriptor 4, cells sent to it one at a time, and what each wrote
+collected as it comes. The Jupyter kernel (quest_kernel.py) and the protocol's
+test (tests/self-hosted/kernel_protocol.py) share it; it needs only the standard
 library.
 
 The protocol's strings are bytes, each above 126 escaped as \\u00XX, so text is

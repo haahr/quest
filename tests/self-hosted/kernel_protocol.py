@@ -1,11 +1,11 @@
-"""Checks the self-hosted driver's kernel mode (docs/jupyter.md section 2), through
-tools/jupyter/quest_session.py: cells run as REPL inputs with their bindings kept
-from cell to cell, each phrase's result a record, the program's output ahead of
-the records written after it and arriving while the cell runs, failures as
-error records of their kind and position, rolled back, and the driver's end
-reported; completion, inspection, and complete input; io/display's values and
-io/readline's lines; and an interrupt raising `interrupted` in a cell. With --no-jit too, the
-interpreter serves the same requests.
+"""Checks the self-hosted driver's kernel mode (docs/jupyter-kernel.md section
+2), through tools/jupyter/quest_session.py: cells run as REPL inputs with their
+bindings kept from cell to cell, each phrase's result a record, the program's
+output ahead of the records written after it and arriving while the cell runs,
+failures as error records of their kind and position, rolled back, and the
+driver's end reported; completion, inspection, and complete input; io/display's
+values and io/readline's lines; and an interrupt raising `interrupted` in a
+cell. With --no-jit too, the interpreter serves the same requests.
 
 run_tests.py --self-hosted runs it (docs/testing.md). A driver that cannot host
 the JIT, a whole-program build (docs/jit.md section 3.10), is checked with

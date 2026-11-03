@@ -3296,15 +3296,15 @@ void quest_system_init(int argc, char **argv) {
     }
 }
 
-/* Interrupts in a Jupyter kernel's driver (docs/jupyter.md step 5): the
- * driver, given --kernel, installs a SIGINT handler that sets a flag, and the
- * code the JIT compiles for a cell checks it at function entries and loop
+/* Interrupts in a Jupyter kernel's driver (docs/jupyter-kernel.md section 5):
+ * the driver, given --kernel, installs a SIGINT handler that sets a flag, and
+ * the code the JIT compiles for a cell checks it at function entries and loop
  * headers (ssa/interrupts), raising `interrupted`. None of these is in
  * quest_runtime.h: only the driver, through os/code's symbol, and the code the
  * JIT links use them, so that a binary that never asks for interrupts is as
  * before. The flag is a word, which the driver reads and clears through
- * os/value, and which an aligned store from the handler writes at once on
- * the machines the runtime runs on (arm64, x86-64). */
+ * os/value, and which an aligned store from the handler writes at once on the
+ * machines the runtime runs on (arm64, x86-64). */
 extern volatile int64_t quest_interrupt_pending;
 extern const QException quest_exc_interrupted;
 void quest_interrupt_install(void);
@@ -3855,8 +3855,8 @@ QWriter quest_writer_err_val    = { NULL, false, false };
 
 /* Standard output is line-buffered, as at a terminal, when QUEST_LINE_BUFFERED
  * is set and not empty: the Jupyter kernel sets it for the driver it runs, so
- * that a cell's output appears while the cell runs (docs/jupyter.md). It must
- * be set before anything is written. */
+ * that a cell's output appears while the cell runs (docs/jupyter-kernel.md). It
+ * must be set before anything is written. */
 static void quest_writer_init_std(void) {
     if (quest_writer_output_val.file == NULL) {
         const char *line = getenv("QUEST_LINE_BUFFERED");

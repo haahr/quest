@@ -317,6 +317,7 @@ program through every phase, then [docs/type-system.md](docs/type-system.md) and
   and linking.
 - [docs/interpreter.md](docs/interpreter.md): the tree-walking interpreter and its evaluation rules.
 - [docs/repl.md](docs/repl.md): the REPL, its continuation lines, and how it undoes a phrase that fails.
+- [docs/jupyter-kernel.md](docs/jupyter-kernel.md): the Jupyter kernel, its protocol, interrupts, and installing it.
 
 ### 3. IR, Runtime, and Code Generation
 - [docs/runtime-design.md](docs/runtime-design.md): why compiling Quest is subtle, and how its runtime

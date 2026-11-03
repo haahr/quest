@@ -1,9 +1,9 @@
-"""Installs the Quest kernel for the user's Jupyter (docs/jupyter.md step 2): a
-kernelspec named quest whose kernel is this checkout's tools/jupyter/
-quest_kernel.py, run by --python (the Python running this, by the path it was
-started with, so that Homebrew's opt link survives an upgrade), with this
-checkout's ./quest as its driver; and the Quest lexer (quest_lexer.py), as a
-Pygments plugin in that Python, for nbconvert. --uninstall removes both.
+"""Installs the Quest kernel for the user's Jupyter (docs/jupyter-kernel.md
+section 3): a kernelspec named quest whose kernel is this checkout's
+tools/jupyter/quest_kernel.py, run by --python (the Python running this, by the
+path it was started with, so that Homebrew's opt link survives an upgrade), with
+this checkout's ./quest as its driver; and the Quest lexer (quest_lexer.py), as
+a Pygments plugin in that Python, for nbconvert. --uninstall removes both.
 tools/jupyter/install runs this with jupyterlab's Python.
 
     python install.py [--uninstall] [--name NAME] [--driver DRIVER] [--python PYTHON] [--prefix DIR]

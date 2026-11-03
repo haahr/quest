@@ -1,9 +1,9 @@
-"""A Pygments lexer for Quest (docs/syntax.md section 2), which nbconvert uses to
-highlight a notebook's Quest cells when it exports one (docs/jupyter.md step 6).
-tools/jupyter/install installs it as a Pygments plugin named quest, in a wheel
-it builds; the kernel names it as its pygments_lexer. Its keywords are the
-tokenizer's (questlang/syntax/tokenizer), which
-tests/self-hosted/jupyter_kernel.py checks."""
+"""A Pygments lexer for Quest (docs/syntax.md section 2), which nbconvert uses
+to highlight a notebook's Quest cells when it exports one
+(docs/jupyter-kernel.md section 6). tools/jupyter/install installs it as a
+Pygments plugin named quest, in a wheel it builds; the kernel names it as its
+pygments_lexer. Its keywords are the tokenizer's (questlang/syntax/tokenizer),
+which tests/self-hosted/jupyter_kernel.py checks."""
 
 from __future__ import annotations
 

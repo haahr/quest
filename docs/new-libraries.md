@@ -744,10 +744,11 @@ does nothing if the file does not exist, and `writeHistory` writes the history's
   `rl_cleanup_after_signal`) and `interrupted` raised. Nothing `longjmp`s out of the library.
 - **Without editing,** `readLine` writes the prompt to `writer.output`, flushes it, and reads up to a newline through
   `quest_reader_input`'s buffer. End of input before any byte is `endOfInput`.
-- **In a Jupyter kernel's driver** (`QUEST_KERNEL` set, [jupyter.md](jupyter.md) §2), `readLine` asks the notebook:
-  it writes an `{"input": PROMPT}` record to descriptor 4, the driver's records, and reads the reply from descriptor
-  3, its requests: `L` and the line, or `E` for the end of the input, which a cell run without input allowed gets.
-  The C runtime does this, so a program the self-hosted driver interprets asks too; the bootstrap's externals don't.
+- **In a Jupyter kernel's driver** (`QUEST_KERNEL` set, [jupyter-kernel.md](jupyter-kernel.md) §2), `readLine` asks the
+  notebook: it writes an `{"input": PROMPT}` record to descriptor 4, the driver's records, and reads the reply from
+  descriptor 3, its requests: `L` and the line, or `E` for the end of the input, which a cell run without input allowed
+  gets. The C runtime does this, so a program the self-hosted driver interprets asks too; the bootstrap's externals
+  don't.
 - **The history** is the runtime's own list, mirrored into the line editor's, and its file is plain lines. The line
   editors' own files differ (libedit's starts with a cookie and escapes its lines), and the bootstrap's REPL, whose
   Python may use libedit, shares `~/.quest_history` with compiled REPLs, which may use GNU readline.
@@ -762,7 +763,7 @@ program compiled with each line editor installed and interpreted by the bootstra
 ### 3.2. `io/display : io/Display`
 
 Values shown as HTML, Markdown, SVG, or images where a notebook shows the program's output (the Quest kernel,
-[jupyter.md](jupyter.md)), and as text elsewhere. It is Quest alone, with no externals.
+[jupyter-kernel.md](jupyter-kernel.md)), and as text elsewhere. It is Quest alone, with no externals.
 
 #### Interface Summary
 

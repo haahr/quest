@@ -241,18 +241,23 @@ and it builds the driver with `--backend arm64` and runs the REPL's transcripts 
 `jit` mode runs them through the C-built one. It, and `line_tables`' JIT sessions, are skipped for a driver that cannot
 host the JIT, a whole-program build, which `tools/release --whole-program` checks the suite with.
 `self-hosted/kernel_protocol` (`tests/self-hosted/kernel_protocol.py`) drives the driver's kernel mode
-([repl.md](repl.md) §2.3) through `tools/jupyter/quest_session.py`, with the JIT (when the driver can host it) and with `--no-jit`. It checks:
+([jupyter-kernel.md](jupyter-kernel.md) §2) through `tools/jupyter/quest_session.py`, with the JIT (when the driver can
+host it) and with `--no-jit`. It checks:
 - bindings kept from cell to cell, and a result for each phrase
 - output ahead of the records after it, and a line arriving while its cell sleeps
 - syntax, type and exception errors, with their positions, rolled back
 - a module of the user's, imported by two cells
+- completion, inspection, and complete input
+- `io/display`'s records and `io/readline`'s lines
+- an interrupt ending a loop (and, compiled, a recursion) as `interrupted`, and one between cells forgotten
 - a malformed request, and a cell that exits
 
 `self-hosted/jupyter_kernel` (`tests/self-hosted/jupyter_kernel.py`) starts the Jupyter kernel
-(`tools/jupyter/quest_kernel.py`, [jupyter.md](jupyter.md)) through `jupyter_client`, from a kernelspec in a temporary
-`JUPYTER_PATH`, as a notebook does. It checks results, output, errors, the restart after an interrupt during an endless
-loop, and the restart after a cell that exits. It runs itself again under jupyterlab's Python, which has
-`jupyter_client` and ipykernel, and is skipped, saying so, when there is none.
+(`tools/jupyter/quest_kernel.py`, [jupyter-kernel.md](jupyter-kernel.md) §3) through `jupyter_client`, from a
+kernelspec in a temporary `JUPYTER_PATH`, as a notebook does. It checks results, output, errors, displays, an input
+request, completion and inspection, an interrupt that keeps the session and one that ends it, and a cell that exits;
+and the Pygments lexer (§6). It runs itself again under jupyterlab's Python, which has `jupyter_client` and ipykernel,
+and is skipped, saying so, when there is none.
 
 **The SSA's backends:** `--self-hosted --backend MODE` runs the self-hosted suite's compiled tests (`run_c_compiled`,
 golden and error) with the driver's units compiled by another backend ([arm64.md](arm64.md) §4): `ssac` compiles every

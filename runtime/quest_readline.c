@@ -67,12 +67,12 @@ static QString *quest_readline_plain(const QString *prompt) {
     return quest_sb_to_string(b);
 }
 
-/* In a Jupyter kernel's driver (QUEST_KERNEL set; docs/jupyter.md section 2),
- * a line is asked of the notebook: an input record, {"input": PROMPT}, on
- * descriptor 4, the driver's records, after the program's output; and the
- * reply a line on descriptor 3, the driver's requests, "L" and the line, or
- * "E" for the end of input. The prompt's bytes are escaped as the driver's
- * strings are, each above 126 as \u00XX. */
+/* In a Jupyter kernel's driver (QUEST_KERNEL set; docs/jupyter-kernel.md
+ * section 2), a line is asked of the notebook: an input record, {"input":
+ * PROMPT}, on descriptor 4, the driver's records, after the program's output;
+ * and the reply a line on descriptor 3, the driver's requests, "L" and the
+ * line, or "E" for the end of input. The prompt's bytes are escaped as the
+ * driver's strings are, each above 126 as \u00XX. */
 static bool quest_readline_in_kernel(void) {
     const char *kernel = getenv("QUEST_KERNEL");
     return kernel != NULL && *kernel != '\0';

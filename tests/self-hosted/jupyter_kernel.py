@@ -1,11 +1,11 @@
-"""Checks the Jupyter kernel (docs/jupyter.md step 2, tools/jupyter/quest_kernel.py)
-through jupyter_client, as a notebook drives it: with a self-hosted driver, the
-kernel's info names Quest; cells keep their bindings and show every phrase's
-result as one execute_result; a cell's output is a stream ahead of its result;
-a failing cell is an error of its kind, its rendering the traceback; an
-interrupt during an endless loop ends the cell and keeps the session, and one
-during a library call restarts it, as does a cell that exits, the next cell
-running in the new one; completion, inspection, and
+"""Checks the Jupyter kernel (docs/jupyter-kernel.md section 3,
+tools/jupyter/quest_kernel.py) through jupyter_client, as a notebook drives it:
+with a self-hosted driver, the kernel's info names Quest; cells keep their
+bindings and show every phrase's result as one execute_result; a cell's output
+is a stream ahead of its result; a failing cell is an error of its kind, its
+rendering the traceback; an interrupt during an endless loop ends the cell and
+keeps the session, and one during a library call restarts it, as does a cell
+that exits, the next cell running in the new one; completion, inspection, and
 complete input are answered; io/display's values are display data, and
 io/readline's lines are asked of the notebook. And the lexer, for nbconvert: its
 keywords are the tokenizer's, its tokens, and Pygments finding it installed.

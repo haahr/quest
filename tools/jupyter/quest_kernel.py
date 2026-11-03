@@ -1,5 +1,5 @@
-"""The Jupyter kernel for Quest (docs/jupyter.md): an ipykernel kernel that runs
-each cell in a session of the self-hosted driver's kernel mode
+"""The Jupyter kernel for Quest (docs/jupyter-kernel.md): an ipykernel kernel
+that runs each cell in a session of the self-hosted driver's kernel mode
 (quest_session.py), started when the kernel starts and again after it ends.
 
 The driver is QUEST_KERNEL_DRIVER, which tools/jupyter/install sets to the
