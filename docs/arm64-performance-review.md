@@ -442,7 +442,7 @@ and `.out` files) and its runs of `tools/check` here, beside the estimate.
 | 3b | 147 | 1, with 4a and the fixes | `cdf4cf76` |
 | 4a | 352 | 1, with 3b and the fixes | `df46c85c` |
 | 4b | | | |
-| 5 | | | |
+| 5 | 77, 342, 8, and 149 (invariant marks, value numbering, constants within a block, ordinary loads); hoisting 317, not kept | 1, with the batch | `1f438be9`, `e913387c`, `76344a73`, `21f39190` |
 | 6 | 25, 73, 148, and 155 (`adrp` + `ldr`, no re-extension, register offsets, `ldp`/`stp`); post-index not made | 1, with 7 and the SSA's two | `94ff0a37`, `94b14de7`, `7dfe2ff1`, `8d37e163` |
 | 7 | 80 (chains); rotation tried and not kept | 1, with 6 and the SSA's two | `4626369d` |
 
@@ -510,8 +510,9 @@ run, as the second batch's were: its three fixes were found by measuring, not by
   to be looked at again if batch 3's timings or a later profile put time on spills across calls. Item 9's fix is a
   batch of its own, when item 9 finds what it is.
 - **Batch 7** is the SSA's first optimization pass, and it changes `ssac` too, so it gets a plan like escape
-  analysis had (now [ssa.md](ssa.md) §4.2) before code: [value-numbering.md](value-numbering.md). It depends on
-  nothing; it comes last because batches 4 to 6 are cheaper, and its gain is clearer measured after them.
+  analysis had (now [ssa.md](ssa.md) §4.2) before code; the plan's steps and results are below, its design in ssa.md
+  §2.1 and §4.1. It depends on nothing; it comes last because batches 4 to 6 are cheaper, and its gain is clearer
+  measured after them.
 
 Batches 4 and 5 waited only for batch 3's baseline timings, which are below.
 
@@ -613,7 +614,7 @@ Time against the C backend's, before batch 4 (`568c3a56`), after batch 5 (`8d37e
   mpuz's 1.07 against `ssac`'s 0.71, a fifth of whose `assign` samples are 3a's clears of dead slots; and md5's
   shifts by a count not constant (12 calls a binary), which could be inline branches.
 
-**Batch 7's baseline** ([value-numbering.md](value-numbering.md) step 1, 2026-11-02, at `568b3252`, after
+**Batch 7's baseline** (its plan's step 1, 2026-11-02, at `568b3252`, after
 35f49904's library operations in the SSA, which made md5's shifts by a count not constant inline branches): the
 thirteen, five rounds at a thirty-second of the suite's counts, at a load of 2.6 to 4.4. Time against the C
 backend's:
@@ -632,6 +633,52 @@ backend's:
   to 27,674 (hamlet), and 101 to 163 `cset`s, the counts step 3 must not raise.
 - **The compiler builds its driver** (`-j 8`, a fresh build directory, at a load of 4 to 8) in 30 s through C and 26
   s through arm64, which the new passes add to.
+
+**Batch 7** (2026-11-03): item 5 as a plan of five steps, each committed and measured alone, the thirteen five rounds
+at a thirty-second of the suite's counts against the step before. The design is in [ssa.md](ssa.md) §2.1 (invariant
+loads) and §4.1 (the pass):
+
+1. The baseline above.
+2. **Invariant loads** (`1f438be9`): the builder marks the loads of what nothing writes once it is made (a closure's
+   code and environment, an array's and a string's length, a proxy's original, an option's tag, offset tables). A
+   field's static type is not enough, since `Tuple var a: A end <: Tuple a: A end`; `language/var_field_views`
+   checks that a `var` field read through an immutable view is not taken as invariant.
+3. **`ssa/valueNumbers`** (`e913387c`, `76344a73`): dominator-tree value numbering of pure values and invariant loads,
+   copies, and trivial block parameters, then the instructions left without uses removed. Comparisons, `and`s,
+   `mul`s, and `ptrAdd`s are numbered only within their block, since arm64 fuses them into their use there (the
+   `cset` counts did not move). Constants numbered across the function were live longer and spilled (stack accesses:
+   hamlet 8,129 to 10,022, mlyacc 4,522 to 5,713, at no gain), so they are numbered within a block, and keyed by value
+   in their uses. It exposed a latent bug: a tail call left unreachable blocks returning a value it no longer defined,
+   so `tailCalls` now drops them (`cfg.dropUnreached`).
+4. **Ordinary loads** (`21f39190`), within a memory generation that a store, a call that may write (not
+   `quest_alloc`), and a try's handler start anew; and a store's value, read back. `tfoCombine` makes 38 loads, as
+   clang does, where it made 89. psdes-random first took 1.89 of C's time rather than 1.37: removing a redundant load
+   of a pair's second word left the first loaded by a lone `ldr` after the `stp` that stored it, where the pairs pass
+   had made an `ldp` (1,251 and 694 samples on the two such `ldr`s, against about 180 on the `ldp`; instructions
+   retired the same, cycles 34% more). A word whose neighbor its block loads is now kept for the pair, and psdes-random
+   takes 1.39.
+5. **Hoisting** (317 lines, not kept): loop-invariant pure values and invariant loads moved to preheaders, made where
+   needed. It found almost nothing to move once value numbering had run, since a loop's invariant loads sit behind
+   null and bounds checks inside the loop (`dominatesExits` fails), and its constants are rematerialized; the
+   thirteen's code was the same but in zebra and hamlet, and no time moved.
+
+Time against the C backend's, at a load of 2.2 to 3.8, without value numbering (`QUEST_SKIP_PASSES`) and with it:
+
+| | life | ray | hamlet | mlyacc | zebra | nucleic | psdes-random | checksum | md5 | zern | string-concat | mpuz | even-odd |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| arm64 before | 0.90 | 0.69 | 0.88 | 0.92 | 0.95 | 0.93 | 1.35 | 0.60 | 1.16 | 1.14 | 0.64 | 1.07 | 7.81 |
+| arm64 after | 0.90 | 0.68 | 0.89 | 0.92 | 0.93 | 0.93 | 1.35 | 0.60 | 1.17 | 1.14 | 0.64 | 1.00 | 7.80 |
+| `ssac` before | 0.80 | 0.69 | 0.89 | 0.78 | 1.12 | 0.88 | 1.03 | 0.60 | 1.12 | 0.98 | 0.64 | 0.70 | 1.00 |
+| `ssac` after | 0.79 | 0.69 | 0.87 | 0.78 | 1.09 | 0.88 | 1.03 | 0.60 | 1.12 | 0.99 | 0.64 | 0.71 | 1.00 |
+
+- **The gain is small and narrow:** mpuz 1.07 to 1.00 and zebra 0.95 to 0.93 through arm64, zebra 1.12 to 1.09 and
+  hamlet 0.89 to 0.87 through `ssac`; the rest within 0.01. Loads fall 1 to 4% a program (mlyacc 16,101 to 15,872)
+  and instructions up to 1.3%. nucleic's `tfoCombine` loads as clang's does, but nucleic did not move: §3.4's
+  redundancy was not where its time is.
+- **What is left:** a join starts a new memory generation, so a load after an `if` without an `else` is not reused
+  (the plan's question; no benchmark here showed one hot); hoisting's guard, which a load of a pointer already
+  dereferenced before the loop could pass; and the even-odd, psdes-random, and md5 gaps above, which value numbering
+  does not reach.
 
 Each is to be measured as benchmarks.md measures (`run.py time --clean`), and the six here against `ssac` with
 `tools/perf/timeit.py`. The figures above will move: §3.1's and §3.2's interact (fewer spills mean fewer slots to

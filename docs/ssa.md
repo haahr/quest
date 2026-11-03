@@ -69,14 +69,14 @@ an unsigned byte, arm64.md §3.9). Its address is its pointer argument plus the
 immediate.
 
 A load is **invariant** (`Inst.invariant`) when nothing writes what it reads once the object it reads from is made, so
-that it may be reused across stores and calls and moved out of a loop ([value-numbering.md](value-numbering.md) §2.2).
-The builder marks the loads it knows of (`values.invariantWord`): a closure's code and environment pointers and its
-environment's words (a deferred capture of a `let rec` is stored before the closure can run), an array's and a
-string's length and a string's data pointer (the runtime writes a string's bytes, never these), a proxy's original,
-an option's tag, a record's offset table, a view map's index, and a conversion's static map. A module's record is
-written while its module is initialized, and is not marked. A field's static type does not make it invariant, since
-an immutable view may alias a `var` field (`Tuple var a: A end <: Tuple a: A end`). The escape pass clears the mark on
-the accesses it moves to a stack slot, which a loop reuses.
+that value numbering may reuse it across stores and calls (§4.1). The builder marks the loads it knows of
+(`values.invariantWord`): a closure's code and environment pointers and its environment's words (a deferred capture of a
+`let rec` is stored before the closure can run), an array's and a string's length and a string's data pointer (the
+runtime writes a string's bytes, never these), a proxy's original, an option's tag, a record's offset table, a view
+map's index, and a conversion's static map. A module's record is written while its module is initialized, and is not
+marked. A field's static type does not make it invariant, since an immutable view may alias a `var` field (`Tuple var a:
+A end <: Tuple a: A end`). The escape pass clears the mark on the accesses it moves to a stack slot, which a loop
+reuses.
 
 ### 2.2. Calls
 
@@ -203,22 +203,22 @@ internal error.
   left are renumbered. A function that enters a `try` keeps all its slots, since its handler must see what the body
   stored (arm64.md §3.6); a variable captured by a closure is a heap cell, and one passed as a `var` argument keeps
   its slot, its address escaping. `language/mutable_locals` covers each kind.
-- **`ssa/valueNumbers`** removes redundant values along the dominator tree, in the manner of Briggs, Cooper, and Simpson
-  ([value-numbering.md](value-numbering.md) §3): a pure instruction or a load whose equal dominates it becomes that
-  equal, by a key of its opcode, immediate, symbol, result type, and arguments' numbers (a constant's by its value;
-  commutative ones ordered; a load's address taken apart into a base, an index, and a constant offset through `ptrAdd`s,
-  so that `load8 %4 + 0` of `%4 = ptrAdd %1, const 8` is `load8 %1 + 8`). An invariant load (§2.1) is available across
-  anything; an ordinary one only within a memory generation, which a store, a call that may write memory (any but of a
-  runtime function whose effects say it does not, `quest_alloc` among them), and a try's handler start anew, and which a
-  block continues from its predecessor when it has one. A whole word's store makes its value what a load of its address
-  reads in the generation it starts. A whole word's load whose neighbor its block also loads is kept though an equal is
-  available from another block, so that arm64 loads the two as a pair: a lone load of half of a pair just stored, after
-  `quest_alloc` cleared its first word, took psdes-random's loop from 1.39 to 1.90 of C's time. A `copy` becomes its
-  argument; and a block's parameter that every jump binds to one value that value. The comparisons, `and`s, `mul`s, and
-  `ptrAdd`s arm64's selection fuses into the branch or access using them in their block are replaced only by an equal in
-  their own block, and so are constants, symbols, and nulls: shared across a function, they were live longer and spilled
-  (hamlet's stack accesses rose from 8,129 to 10,022, mlyacc's from 4,522 to 5,713, and neither ran faster). The pure
-  instructions and loads then left without uses are removed. `ssa_valuenumbers` shows each case.
+- **`ssa/valueNumbers`** removes redundant values along the dominator tree, in the manner of Briggs, Cooper, and
+  Simpson: a pure instruction or a load whose equal dominates it becomes that equal, by a key of its opcode, immediate,
+  symbol, result type, and arguments' numbers (a constant's by its value; commutative ones ordered; a load's address
+  taken apart into a base, an index, and a constant offset through `ptrAdd`s, so that `load8 %4 + 0` of `%4 = ptrAdd %1,
+  const 8` is `load8 %1 + 8`). An invariant load (§2.1) is available across anything; an ordinary one only within a
+  memory generation, which a store, a call that may write memory (any but of a runtime function whose effects say it
+  does not, `quest_alloc` among them), and a try's handler start anew, and which a block continues from its predecessor
+  when it has one. A whole word's store makes its value what a load of its address reads in the generation it starts. A
+  whole word's load whose neighbor its block also loads is kept though an equal is available from another block, so that
+  arm64 loads the two as a pair: a lone load of half of a pair just stored, after `quest_alloc` cleared its first word,
+  took psdes-random's loop from 1.39 to 1.90 of C's time. A `copy` becomes its argument; and a block's parameter that
+  every jump binds to one value that value. The comparisons, `and`s, `mul`s, and `ptrAdd`s arm64's selection fuses into
+  the branch or access using them in their block are replaced only by an equal in their own block, and so are constants,
+  symbols, and nulls: shared across a function, they were live longer and spilled (hamlet's stack accesses rose from
+  8,129 to 10,022, mlyacc's from 4,522 to 5,713, and neither ran faster). The pure instructions and loads then left
+  without uses are removed. `ssa_valuenumbers` shows each case.
 - **`ssa/tailCalls`** marks calls in tail position (§3, arm64.md §3.7): a call whose block returns its results (or the
   extension of its byte), or jumps, through blocks that do nothing else, to one that does. A block's parameters are
   taken as what the jump passes them, so that a join's parameter that its block does not return (as a contified
