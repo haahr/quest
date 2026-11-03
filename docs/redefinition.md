@@ -22,23 +22,28 @@ Decided 2026-11-02:
    (§2) of the **same type** and the same `var`-ness **redefines** the slot: every use of it, earlier and later, sees
    the new value from then on. Any other rebinding (a different type, a `var` for a non-`var`, a name from a module or
    import) shadows, as now, with the warning of decision 4. Same type only: storing a subtype would be sound for the
-   earlier uses, but later inputs would still see the slot's original type, a type the user did not write. Types,
+   earlier uses, but later inputs would still see the slot's original type, a type the user did not write. Types
+   that differ only in the names of their quantified variables are the same, as are a type and an alias of it. Types,
    modules, interfaces, and exceptions declared with `exception E end` are unchanged (§4).
 3. **Late binding everywhere in interactive code:** a use of a slot is a load when it runs, in later inputs *and in
    the input that defines it*, inside functions too: never inlined, propagated, specialized, or called directly. So
    `-i`'s file, one input, is redefinable, and `let f() = 1; let g() = f(); let f() = 2; g()` on one line is 2, as
    in Python. The cost is in the JIT: jit.md §6 measured calls of an earlier input's `add1` at 2x a direct call and of
-   a generic `twice` at 25x an inlined one; interactive code pays that for its top-level functions. A program pays
-   nothing.
+   a generic `twice` at 25x an inlined one; interactive code pays that for its top-level functions, including a
+   function's calls of itself, so a recursive function of an `-i` file is slower than in the same file run as a
+   program. That is accepted: it is the price of redefining it. A program pays nothing.
 4. **A shadow with a different type warns.** When a top-level `let` of an interactive input shadows a slot because
    the type (or `var`-ness) differs, the REPL writes a warning on stderr, in the diagnostics' form:
    `warning: 'f' now has a different type; functions defined earlier keep the earlier 'f'`. After this plan it is the
    only shadowing left at an interactive top level, so it names exactly the case that surprises. No existing
    transcript changes a binding's type, so no golden changes. A warning for shadowing within one scope in programs
    is a separate question (§6).
-5. **Rollback restores redefinitions.** An input that fails after redefining a slot puts the slot back, as the
-   environment is put back (repl.md §5), so that the environment and the values agree; writes to `var`s stay, as
-   now. It costs a journal in each interpreter and a few words read and written back by the JIT session (§3.4).
+5. **A redefinition is an assignment, and stays.** An input that fails after redefining a slot leaves the slot's
+   new value, as it leaves a `:=` to a `var` (repl.md §5): `let var x = 5` and `x := 5` store to the same place, and
+   rollback treats them alike. The environment and the values still agree, since a redefinition keeps the slot's type:
+   the environment forgets the failed input's symbols, and the slot's earlier symbol reads the new value. (Revised
+   2026-11-02 from restoring redefinitions, which needed a journal in each interpreter and a restore in the JIT
+   session.)
 6. **Every implementation:** the bootstrap's type checker, interpreter, and REPL (Python), the self-hosted type
    checker and interpreter, and the JIT. The REPL transcripts stay shared goldens (testing.md §2.7, §2.8).
 7. **No way back.** Once the steps are done there is no option or environment variable for the lexical REPL: a second
@@ -60,7 +65,9 @@ the input, not inside a block, function, tuple, or module. A slot has a type and
   `let g(n: Int): Int = if n is 0 then 0 else f(n - 1) end`.
 - `let x = 2 and y = x` (simultaneous): the members' values are computed before any member is bound (type-system.md
   §4), so `y` gets the `x` before the redefinition, and then `x`'s slot is redefined.
-- A redefinition is an assignment to the slot's storage; what a failed input assigned is restored (decision 5).
+- A redefinition is an assignment to the slot's storage, and stays when the input fails later (decision 5). What it
+  stored may be a closure of the failed input's other bindings, which the closure keeps alive as a closure of any
+  input does.
 - `let var x` makes a `var` slot; `x := e` and a redefinition `let var x = e` both store to it. A function still may
   not name a global `var` (the rule `checker.isGlobalVar` enforces, unchanged); it may name a non-`var` slot, which
   is where the new behavior lives.
@@ -92,9 +99,6 @@ name of its frame runs in a frame of its own (`evalScopedBinding`'s `declaresNam
 - A `LetValue` with `redefines` gets no frame of its own; its value is bound by **replacing the binding in the frame
   that holds the name** (as `assignName` finds it), not by `define` in the current frame. A `var` slot's cell is
   replaced too, which is safe since no function holds it (§2).
-- Before replacing, the old binding is journaled in the root (`Root.journal`: frame, name, value).
-  `treewalk.snapshot` clears the journal and `restore` replays it in reverse, so the REPL's existing rollback
-  (`evaluate`) restores redefinitions (decision 5). Same in `RuntimeEnvironment.snapshot`/`restore`.
 - Nothing else changes: unmarked bindings, `makeScopeExceptions`, modules, and imports are as they are.
 
 ### 3.3. The JIT's lowering (self-hosted)
@@ -109,9 +113,8 @@ the one-component `var` tuple the lowering already uses for captured local `var`
   function paths in `value`, in calls, and in type applications. (The guards `symbol.isVar andif ... l.captured` at
   the binding and its uses become "is boxed".)
 - **Using** a slot of the same input loads the box's component; closures capture the box, as they capture a
-  local `var`'s. Within a function nothing writes a box (only top-level code does), so a pass that hoists or merges
-  such loads is still right; at the top level the stores are in the same body, which the passes already respect for
-  captured `var`s.
+  local `var`'s. A box's loads are ordinary loads of a `var` cell, never marked invariant (value-numbering.md
+  §2.2), so the passes treat them as they treat a captured `var`'s, within functions and at the top level.
 - **The record** holds the boxes: member `v<slot>` is the box, named by the slot's id, so `lower.Earlier` is keyed
   by slot (`earlierBinding` maps a symbol through `env.slots`). `Earlier` gets `boxed: Bool`: a boxed binding is
   read by `opModuleMember` of the record and a component load, written (a `var` assignment, or a redefinition) by a
@@ -125,10 +128,8 @@ or called directly (decision 3). Polymorphic slots take the generic path a recor
 
 ### 3.4. The JIT session
 
-Before running an input, the session reads the current value of each box the input's marked bindings redefine
-(`os/value`: the holder's record symbol, its payload and offset table as `setArgs` reads them, the field, the
-component) and, if the input raises, stores them back (decision 5). A redefinition within the input itself needs no
-restoring: a failed input's own record is never made.
+Nothing new: a redefinition's store to an earlier input's box stays when the input fails (decision 5), as a `:=` to
+an earlier `var` does, and a failed input's own record is never made.
 
 ### 3.5. The drivers
 
@@ -142,7 +143,9 @@ output is unchanged: a redefinition echoes as a `let` does.
 - **Types.** `Let T = ...` again shadows. A function whose type names the old `T` is redefinable only with the old
   `T`; redefined with the new one, it shadows (its type differs), with the warning. Redefinition of types would need
   descriptors and layouts to agree, and is out of scope.
-- **Modules and interfaces** declared in inputs: a module declared again replaces the first, as now (repl.md §5).
+- **Modules and interfaces** declared in inputs: a module declared again replaces the first, as now (repl.md §5). A
+  module's body is closed (it cannot name the bindings around it), so no module names a slot, and a module's members
+  are never slots.
 - **`exception E end`** is a declaration, not a `let`; it shadows, as now. `let e = exception e: String end` is a
   `let` of type `Exception(String)`, a slot, so it is redefinable and old handlers catch the new exception.
 - **Side effects** of a failed input, other than its redefinitions, stay (repl.md §5).
@@ -154,11 +157,13 @@ output is unchanged: a redefinition echoes as a `let` does.
   function redefined; a group member redefined and `let x = 2 and y = x`; a local that shadows a slot's name inside
   a function, unaffected; a redefinition with another type shadows, with the warning, and one with a `var` for a
   non-`var` likewise; a module declared twice.
-- `tests/repl/redefine_rollback.quest`: an input that redefines two slots and then raises leaves both as they were.
+- `tests/repl/redefine_rollback.quest`: an input that redefines two slots and then raises leaves both redefined, as
+  a `:=` before the raise is left; one that redefines a function with a closure of its own new bindings, then raises,
+  leaves the function callable.
 - `tests/repl/redefine_load.quest` with a file in `tests/repl/files/`: a function of the `-i` file redefined, and a
   function of the file that calls it sees the new one.
 - `tests/repl/rollback.quest` changes: `let x = 1; let f(): Int = x; let x = 2; f() + x` becomes 4, and after
-  `let x = 3; 1 / 0` is rolled back, 4 again.
+  `let x = 3; 1 / 0` fails, 6, since the redefinition stays.
 - The run goldens through `--backend jit-files` and `tests/eval` through the JIT: unchanged, since neither is
   interactive. Both hosts (`QUEST_BACKEND=c` and `arm64`), as jit.md §5.
 - The cost of decision 3, for the record: jit.md §6's loops (200 million calls of `add1`, 100 million of `twice`)
@@ -181,11 +186,11 @@ output is unchanged: a redefinition echoes as a `let` does.
 Each step ends with tools/check passing and its documentation.
 
 1. **Checker and interpreters** (§3.1, §3.2, §3.5), in both compilers, behind `QUEST_REDEFINE=1`: slots in the
-   environment, `redefines` on the typed let, the warning, in-place redefinition with the journal, the drivers' flag.
+   environment, `redefines` on the typed let, the warning, in-place redefinition, the drivers' flag.
    The transcripts of §5 with `@env QUEST_REDEFINE=1`, marked to be skipped on the JIT (jit.md §5's marker) until
    step 2. *Done when:* the new transcripts pass in the bootstrap's REPL and the self-hosted one under `--no-jit`, and
    no existing golden changes.
-2. **The JIT** (§3.3, §3.4): boxed slots, `Earlier.boxed`, redefinition stores, the session's restore; the markers
+2. **The JIT** (§3.3, §3.4): boxed slots, `Earlier.boxed`, redefinition stores; the markers
    come off the transcripts. *Done when:* the transcripts pass on the JIT in a C-built and an arm64-built driver, and
    the run and `-e` goldens through the JIT are unchanged.
 3. **Default, and the documents.** The measurement of §5, for the record; then the REPL and `-i` redefine always,
