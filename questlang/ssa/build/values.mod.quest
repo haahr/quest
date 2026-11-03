@@ -835,20 +835,6 @@ export
             for b = 0 upto {n - 1} do
                 if not(ssa.isTerminated(f b)) then ssa.terminate(f b ssa.termUnreachable) end
             end
-            let g = cfg.graph(f)
-            let number = array of(n ~1)
-            let kept = vector.new(:ssa.Block)
-            for b = 0 upto {n - 1} do
-                if cfg.reached(g b) then
-                    number[b] := vector.length(:ssa.Block kept)
-                    vector.append(:ssa.Block kept ssa.block(f b))
-                end
-            end
-            for b = 0 upto {vector.length(:ssa.Block kept) - 1} do
-                let blk = vector.get(:ssa.Block kept b)
-                blk.term := ssa.mapBlocks(blk.term fun(x: Int): Int number[x])
-            end
-            vector.clear(:ssa.Block f.blocks)
-            for b = 0 upto {vector.length(:ssa.Block kept) - 1} do vector.append(:ssa.Block f.blocks vector.get(:ssa.Block kept b)) end
+            cfg.dropUnreached(f)
         end
 end

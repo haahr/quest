@@ -222,4 +222,28 @@ export
             end
             depth
         end
+
+    let dropUnreached(f: ssa.Function): Ok =
+        begin
+            let n = vector.length(:ssa.Block f.blocks)
+            let g = graph(f)
+            let number = array of(n ~1)
+            let kept = vector.new(:ssa.Block)
+            for b = 0 upto {n - 1} do
+                if reached(g b) then
+                    number[b] := vector.length(:ssa.Block kept)
+                    vector.append(:ssa.Block kept ssa.block(f b))
+                end
+            end
+            if vector.length(:ssa.Block kept) < n then
+                for b = 0 upto {vector.length(:ssa.Block kept) - 1} do
+                    let blk = vector.get(:ssa.Block kept b)
+                    blk.term := ssa.mapBlocks(blk.term fun(x: Int): Int number[x])
+                end
+                vector.clear(:ssa.Block f.blocks)
+                for b = 0 upto {vector.length(:ssa.Block kept) - 1} do
+                    vector.append(:ssa.Block f.blocks vector.get(:ssa.Block kept b))
+                end
+            end
+        end
 end

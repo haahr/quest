@@ -3,6 +3,7 @@
 module tailCalls : TailCalls
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/cfg : questlang/ssa/Cfg
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 export
@@ -114,6 +115,7 @@ export
 
     let markFunction(f: Function): Ok =
         if not(slotsEscape(f)) then
+            let var marked = false
             for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
                 let blk = ssa.block(f b)
                 let n = vector.length(:ssa.Inst blk.insts)
@@ -150,9 +152,12 @@ export
                         let c = maybe.unwrap(:ssa.Inst call)
                         blk.term := option termTailCall of ssa.Terminator with let call = c end
                         blk.termLoc := c.loc
+                        marked := true
                     end
                 end
             end
+            (* The blocks that only returned what a tail call now returns *)
+            if marked then cfg.dropUnreached(f) end
         end
 
     let markUnit(u: ssa.Unit): Ok =

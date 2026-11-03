@@ -1,0 +1,262 @@
+(* Quest Self-Hosted Compiler: The SSA's Value Numbering Implementation *)
+
+module valueNumbers : ValueNumbers
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    conv : Conv
+    stringOp = string : StringOp
+export
+    Let Function = ssa.Function
+
+    (* Whether an instruction is numbered: a pure one, or an invariant
+     * load *)
+    let numbered(i: ssa.Inst): Bool =
+        case i.op
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opThreadLocal, opPtrAdd, opAdd, opSub, opMul, opDiv,
+                opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq,
+                opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr,
+                opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opToVal, opFromVal then
+                true
+            when opLoad then i.invariant
+            when opStore, opCall, opCallIndirect, opCopy then false
+        end
+
+    (* Whether only an equal in its own block may replace an instruction:
+     * what arm64's selection fuses into the branch or the access that uses
+     * it, when both are in one block (select.mod.quest, fused and indexOf) *)
+    let local(op: ssa.Opcode): Bool =
+        case op
+            when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN,
+                opAnd, opMul, opPtrAdd then
+                true
+            else false
+        end
+
+    let commutative(op: ssa.Opcode): Bool =
+        case op
+            when opAdd, opMul, opAnd, opOr, opXor, opEq, opNe, opPeq, opPne, opFadd, opFmul, opFeq then true
+            else false
+        end
+
+    (* Whether an instruction left without uses can be removed *)
+    let removable(i: ssa.Inst): Bool = numbered(i) orif ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opCopy)
+
+    let numberFunction(f: Function): Ok =
+        begin
+            let n = vector.length(:ssa.Type f.types)
+            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let g = cfg.graph(f)
+            (* What each value is replaced by, a chain ending at a value that
+             * stays *)
+            let repl = array of(n 0)
+            for v = 0 upto {n - 1} do repl[v] := v end
+            let find(v: Int): Int =
+                begin
+                    let var r = v
+                    while repl[r] isnot r do r := repl[r] end
+                    r
+                end
+            let defs = array of(n maybe.none(:ssa.Inst))
+            for b = 0 upto {nBlocks - 1} do
+                let insts = ssa.block(f b).insts
+                for k = 0 upto {vector.length(:ssa.Inst insts) - 1} do
+                    let i = vector.get(:ssa.Inst insts k)
+                    for r = 0 upto {extent i.results - 1} do defs[i.results[r]] := maybe.some(:ssa.Inst i) end
+                end
+            end
+            let constantOf(v: Int): maybe.T(Int) =
+                if maybe.isSome(:ssa.Inst defs[v]) andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[v]) ssa.opConst) then
+                    maybe.some(:Int maybe.unwrap(:ssa.Inst defs[v]).imm)
+                else maybe.none(:Int) end
+
+            (* The jumps to each block, and the parameters every jump binds
+             * to one value (or to the parameter itself), to a fixed point:
+             * each is that value *)
+            let incoming = array of(nBlocks vector.new(:ssa.Target))
+            for b = 0 upto {nBlocks - 1} do incoming[b] := vector.new(:ssa.Target) end
+            for b = 0 upto {nBlocks - 1} do
+                let ts = ssa.targets(ssa.block(f b).term)
+                for k = 0 upto {extent ts - 1} do vector.append(:ssa.Target incoming[ts[k].block] ts[k]) end
+            end
+            let dropped = array of(n false)
+            let var changed = true
+            while changed do
+                changed := false
+                for b = 1 upto {nBlocks - 1} do
+                    let params = ssa.block(f b).params
+                    let jumps = incoming[b]
+                    for j = 0 upto {vector.length(:Int params) - 1} do
+                        let p = vector.get(:Int params j)
+                        if not(dropped[p]) andif not(vector.empty(:ssa.Target jumps)) then
+                            let var same = ~1
+                            let var trivial = true
+                            for k = 0 upto {vector.length(:ssa.Target jumps) - 1} do
+                                let a = find(vector.get(:ssa.Target jumps k).args[j])
+                                if a isnot p then
+                                    if same < 0 then same := a elsif a isnot same then trivial := false end
+                                end
+                            end
+                            if trivial andif {same >= 0} then
+                                repl[p] := same
+                                dropped[p] := true
+                                changed := true
+                            end
+                        end
+                    end
+                end
+            end
+
+            (* An address as a base, an index (or ~1), and a constant offset,
+             * through pointer additions *)
+            let addressKey(v: Int offset: Int): String =
+                begin
+                    let var base = find(v)
+                    let var index = ~1
+                    let var off = offset
+                    let var more = true
+                    while more do
+                        more := false
+                        let def = defs[base]
+                        if maybe.isSome(:ssa.Inst def) andif ssa.isOp(maybe.unwrap(:ssa.Inst def) ssa.opPtrAdd) then
+                            let d = maybe.unwrap(:ssa.Inst def)
+                            let c = constantOf(find(d.args[1]))
+                            if maybe.isSome(:Int c) then
+                                off := off + maybe.unwrap(:Int c)
+                                base := find(d.args[0])
+                                more := true
+                            elsif index < 0 then
+                                index := find(d.args[1])
+                                base := find(d.args[0])
+                                more := true
+                            end
+                        end
+                    end
+                    conv.int(base) <> " " <> conv.int(index) <> " " <> conv.int(off)
+                end
+            let key(i: ssa.Inst b: Int): String =
+                begin
+                    let t = ssa.typeName(ssa.typeOf(f i.results[0]))
+                    if ssa.isOp(i ssa.opLoad) then
+                        "load" <> conv.int(i.width) <> if i.signed then "s " else " " end <> t <> " "
+                            <> addressKey(i.args[0] i.imm)
+                    else
+                        let args = array of(extent i.args 0)
+                        for a = 0 upto {extent i.args - 1} do args[a] := find(i.args[a]) end
+                        if commutative(i.op) andif {extent args is 2} andif {args[0] > args[1]} then
+                            let first = args[0]
+                            args[0] := args[1]
+                            args[1] := first
+                        end
+                        let var text = ssa.opcodeName(i.op) <> " " <> t <> " " <> conv.int(i.imm) <> " " <> i.symbol
+                        for a = 0 upto {extent args - 1} do text := text <> " " <> conv.int(args[a]) end
+                        if local(i.op) then text := text <> " @" <> conv.int(b) end
+                        text
+                    end
+                end
+
+            (* The walk of the dominator tree, in preorder: an entry is
+             * available where its block dominates, and one that does not
+             * is from a subtree already left, and is replaced *)
+            let table = hashMap.new(:String :Int stringOp.equal hash.string)
+            let defBlock = array of(n ~1)
+            let stack = vector.new(:Int)
+            if nBlocks > 0 then vector.append(:Int stack 0) end
+            while not(vector.empty(:Int stack)) do
+                let b = vector.pop(:Int stack)
+                let blk = ssa.block(f b)
+                let kept = vector.new(:ssa.Inst)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    if ssa.isOp(i ssa.opCopy) then repl[i.results[0]] := find(i.args[0])
+                    elsif numbered(i) andif {extent i.results is 1} then
+                        let text = key(i b)
+                        let found = hashMap.get(:String :Int table text)
+                        if maybe.isSome(:Int found) andif cfg.dominates(g defBlock[maybe.unwrap(:Int found)] b) then
+                            repl[i.results[0]] := maybe.unwrap(:Int found)
+                        else
+                            let ignored = hashMap.insert(:String :Int table text i.results[0])
+                            defBlock[i.results[0]] := b
+                            vector.append(:ssa.Inst kept i)
+                        end
+                    else vector.append(:ssa.Inst kept i) end
+                end
+                vector.clear(:ssa.Inst blk.insts)
+                for k = 0 upto {vector.length(:ssa.Inst kept) - 1} do
+                    vector.append(:ssa.Inst blk.insts vector.get(:ssa.Inst kept k))
+                end
+                let children = g.children[b]
+                for c = 0 upto {extent children - 1} do vector.append(:Int stack children[{extent children - 1} - c]) end
+            end
+            ssa.replaceUses(f find)
+
+            (* The dropped parameters, and what jumps bind to them *)
+            for b = 0 upto {nBlocks - 1} do
+                let ts = ssa.targets(ssa.block(f b).term)
+                for k = 0 upto {extent ts - 1} do
+                    let to = ssa.block(f ts[k].block).params
+                    let args = vector.new(:Int)
+                    for j = 0 upto {extent ts[k].args - 1} do
+                        if not(dropped[vector.get(:Int to j)]) then vector.append(:Int args ts[k].args[j]) end
+                    end
+                    ts[k].args := vector.toArray(:Int args)
+                end
+            end
+            for b = 0 upto {nBlocks - 1} do
+                let params = ssa.block(f b).params
+                let left = vector.new(:Int)
+                for j = 0 upto {vector.length(:Int params) - 1} do
+                    let p = vector.get(:Int params j)
+                    if not(dropped[p]) then vector.append(:Int left p) end
+                end
+                vector.clear(:Int params)
+                for j = 0 upto {vector.length(:Int left) - 1} do vector.append(:Int params vector.get(:Int left j)) end
+            end
+
+            (* The instructions left without uses, to a fixed point *)
+            let uses = array of(n 0)
+            for b = 0 upto {nBlocks - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    for a = 0 upto {extent i.args - 1} do uses[i.args[a]] := uses[i.args[a]] + 1 end
+                end
+                let us = ssa.terminatorUses(blk.term)
+                for a = 0 upto {extent us - 1} do uses[us[a]] := uses[us[a]] + 1 end
+            end
+            let unused(i: ssa.Inst): Bool =
+                begin
+                    let var none = removable(i)
+                    for r = 0 upto {extent i.results - 1} do if uses[i.results[r]] > 0 then none := false end end
+                    none
+                end
+            changed := true
+            while changed do
+                changed := false
+                for b = 0 upto {nBlocks - 1} do
+                    let insts = ssa.block(f b).insts
+                    let kept = vector.new(:ssa.Inst)
+                    for k = 0 upto {vector.length(:ssa.Inst insts) - 1} do
+                        let i = vector.get(:ssa.Inst insts {vector.length(:ssa.Inst insts) - 1} - k)
+                        if unused(i) then
+                            for a = 0 upto {extent i.args - 1} do uses[i.args[a]] := uses[i.args[a]] - 1 end
+                            changed := true
+                        else vector.append(:ssa.Inst kept i) end
+                    end
+                    vector.clear(:ssa.Inst insts)
+                    for k = 0 upto {vector.length(:ssa.Inst kept) - 1} do
+                        vector.append(:ssa.Inst insts vector.get(:ssa.Inst kept {vector.length(:ssa.Inst kept) - 1} - k))
+                    end
+                end
+            end
+        end
+
+    let numberUnit(u: ssa.Unit): Ok =
+        for i = 0 upto {vector.length(:Function u.functions) - 1} do
+            numberFunction(vector.get(:Function u.functions i))
+        end
+end
