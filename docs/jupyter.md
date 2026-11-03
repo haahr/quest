@@ -51,7 +51,14 @@ Requests:
 - `{"execute": CODE}` runs a cell. CODE is evaluated as one input, the way the REPL evaluates a completed phrase: its
   phrases run in order, and an input that fails is rolled back whole. The REPL's check for incomplete lines doesn't
   apply. A cell that ends in the middle of a phrase gets the syntax error the parser gives at its end.
-- `{"complete": CODE, "cursor": N}`, `{"inspect": CODE, "cursor": N}` and `{"isComplete": CODE}` (step 3).
+- `{"complete": CODE, "cursor": N}`: the names that complete the one before byte offset N (the end of CODE if N is
+  missing). Its record is `{"matches": NAMES, "start": S, "end": N}`, S where the name begins. After `m.`, they are the
+  members of the module m; otherwise the session's bindings and types, its modules and interfaces, and the keywords.
+- `{"inspect": CODE, "cursor": N}`: what the name at N is, as the REPL shows a binding (`let a:Int`), or a module's
+  members, a line each. Its record is `{"found": true, "text": T}`, or `{"found": false}`.
+- `{"isComplete": CODE}`: whether CODE needs more lines, by the REPL's test. Its record is `{"status": S}`, S
+  `complete` or `incomplete`.
+- Each request ends with a `done` record. The wrapper turns Jupyter's character offsets into byte offsets and back.
 
 Records, for each request in order:
 
@@ -139,7 +146,10 @@ Each step is a commit or a few. Run times and check runs are recorded as steps f
   `inspect_request` (Shift-Tab in a notebook).
 - `isComplete`: the REPL's `incomplete`, for `is_complete_request`, which `jupyter console` uses to decide whether
   Enter runs the input.
-- *Done when* the protocol test and the kernel test cover each, and Tab completes `vector.` in a notebook.
+- *Done when* the protocol test and the kernel test cover each, and Tab completes `vector.` in a notebook. *Done*
+  (2026-11-03) but for the notebook by hand: both tests cover each, the protocol test completing `vector.ap` after
+  `vector` is imported. A module the session has not imported completes only if the library's registry knows its
+  name, as using it would (`string.l` does; `vector.` needs `import collections/vector`).
 
 ### Step 4: Rich display and input
 

@@ -92,6 +92,31 @@ class QuestKernel(Kernel):
             })
         return {"status": "ok", "execution_count": self.execution_count, "payload": [], "user_expressions": {}}
 
+    async def do_complete(self, code, cursor_pos):
+        try:
+            matches, start, end = self.quest().complete(code, cursor_pos)
+        except DriverExited:
+            self.quest_session = None
+            matches, start, end = [], cursor_pos, cursor_pos
+        return {"status": "ok", "matches": matches, "cursor_start": start, "cursor_end": end, "metadata": {}}
+
+    async def do_inspect(self, code, cursor_pos, detail_level=0, omit_sections=()):
+        try:
+            text = self.quest().inspect(code, cursor_pos)
+        except DriverExited:
+            self.quest_session = None
+            text = None
+        return {"status": "ok", "found": text is not None, "data": {"text/plain": text} if text else {},
+                "metadata": {}}
+
+    async def do_is_complete(self, code):
+        try:
+            complete = self.quest().is_complete(code)
+        except DriverExited:
+            self.quest_session = None
+            return {"status": "unknown"}
+        return {"status": "complete"} if complete else {"status": "incomplete", "indent": "    "}
+
     async def do_shutdown(self, restart):
         self.end_session()
         return {"status": "ok", "restart": restart}

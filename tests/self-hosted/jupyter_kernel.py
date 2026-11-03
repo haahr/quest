@@ -4,7 +4,8 @@ kernel's info names Quest; cells keep their bindings and show every phrase's
 result as one execute_result; a cell's output is a stream ahead of its result;
 a failing cell is an error of its kind, its rendering the traceback; an
 interrupt during an endless loop restarts the session, as does a cell that
-exits, and the next cell runs in the new one.
+exits, and the next cell runs in the new one; completion, inspection, and
+complete input are answered.
 
 It needs jupyter_client and ipykernel, so it runs itself again with
 jupyterlab's Python (QUEST_JUPYTER_PYTHON, or Homebrew's), and is skipped,
@@ -102,6 +103,18 @@ def check(driver: str) -> list[str]:
                    ("error", "type", ["error"]))
             if not any("Type mismatch" in line for line in reply.get("traceback", [])):
                 problems.append(f"a type error's traceback: {reply.get('traceback')!r}")
+
+            # Completion, inspection, and complete input
+            client.complete("let alpha = a", 13)
+            reply = client.get_shell_msg(timeout=TIMEOUT)["content"]
+            expect("completion", (reply["matches"], reply["cursor_start"], reply["cursor_end"]),
+                   (["a", "and", "andif", "array", "as", "auto"], 12, 13))
+            client.inspect("a + 1", 0)
+            reply = client.get_shell_msg(timeout=TIMEOUT)["content"]
+            expect("inspection", (reply["found"], reply["data"].get("text/plain")), (True, "let a:Int"))
+            client.is_complete("let f(): Int =")
+            reply = client.get_shell_msg(timeout=TIMEOUT)["content"]
+            expect("incomplete input", reply["status"], "incomplete")
 
             # An interrupt during an endless loop restarts the session
             msg_id = client.execute("let var i = 0\nwhile true do i := i + 1 end")

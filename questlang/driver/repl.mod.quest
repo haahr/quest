@@ -10,6 +10,8 @@ import
     questlang/syntax/parser : questlang/syntax/Parser
     questlang/syntax/desugar : questlang/syntax/Desugar
     questlang/types/env : questlang/types/Env
+    tm = questlang/types/model : questlang/types/Model
+    questlang/types/symbols : questlang/types/Symbols
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/typechecker/typecheck : questlang/typechecker/Typecheck
     questlang/modules/graph : questlang/modules/Graph
@@ -20,6 +22,8 @@ import
     questlang/values/json : questlang/values/Json
     io/readline : io/Readline
     collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
+    util/sort : util/Sort
     util/maybe : util/Maybe
     util/strutil : util/Strutil
     util/stringBuilder : util/StringBuilder
@@ -413,6 +417,183 @@ export
             writeRecord(w array of "done" end array of json.string(status) end)
         end
 
+    (* ----------------------------------------------------------------------
+     * Completion and inspection: names at a cursor, a byte offset into a
+     * cell, from the session's environment
+     * ---------------------------------------------------------------------- *)
+
+    let isNameChar(c: Char): Bool = strutil.isAlnum(c) orif {c is '_'}
+
+    (* Where the name that ends at offset begins *)
+    let nameStart(code: String offset: Int): Int =
+        begin
+            let var start = offset
+            while {start > 0} andif isNameChar(stringOp.getChar(code {start - 1})) do start := start - 1 end
+            start
+        end
+
+    (* The module a name before a '.' at start names, if the name is one: a
+     * module the session imported or declared, or the standard library's of
+     * the name, which is loaded as a use of it would load it *)
+    let qualifier(r: T code: String start: Int): maybe.T(Tuple name: String scope: symbols.Scope end) =
+        if {start > 0} andif {stringOp.getChar(code {start - 1}) is '.'} then
+            let q = nameStart(code {start - 1})
+            let name = stringOp.getSub(code q {{start - 1} - q})
+            let known = env.lookupModule(r.e name)
+            let scope = if maybe.isSome(:symbols.Scope known) orif maybe.isNone(:env.Registry r.e.registry) then
+                known
+            else
+                try maybe.unwrap(:env.Registry r.e.registry).ensureModule(name r.e)
+                when diagnostics.compilerError then maybe.none(:symbols.Scope) end
+            end
+            if maybe.isSome(:symbols.Scope scope) then
+                maybe.some(:Tuple name: String scope: symbols.Scope end
+                    tuple let name = name let scope = maybe.unwrap(:symbols.Scope scope) end)
+            else
+                maybe.none(:Tuple name: String scope: symbols.Scope end)
+            end
+        else
+            maybe.none(:Tuple name: String scope: symbols.Scope end)
+        end
+
+    let appendAll(names: vector.T(String) more: vector.T(String)): Ok =
+        for i = 0 upto {vector.length(:String more) - 1} do vector.append(:String names vector.get(:String more i)) end
+
+    (* The names a scope declares *)
+    let addNames(names: vector.T(String) scope: symbols.Scope): Ok =
+        begin
+            appendAll(names hashMap.keys(:String :symbols.ValueSymbol scope.values))
+            appendAll(names hashMap.keys(:String :symbols.TypeSymbol scope.types))
+        end
+
+    (* The names that complete the one before cursor: where it starts, and the
+     * names, sorted *)
+    let completions(r: T code: String cursor: Int): Tuple start: Int matches: Array(String) end =
+        begin
+            let start = nameStart(code cursor)
+            let prefix = stringOp.getSub(code start {cursor - start})
+            let names = vector.new(:String)
+            let q = qualifier(r code start)
+            if maybe.isSome(:Tuple name: String scope: symbols.Scope end q) then
+                addNames(names maybe.unwrap(:Tuple name: String scope: symbols.Scope end q).scope)
+            elsif {start is 0} orif {stringOp.getChar(code {start - 1}) isnot '.'} then
+                let var scope = maybe.some(:symbols.Scope r.e.currentScope)
+                while maybe.isSome(:symbols.Scope scope) do
+                    addNames(names maybe.unwrap(:symbols.Scope scope))
+                    scope := maybe.unwrap(:symbols.Scope scope).parent
+                end
+                appendAll(names hashMap.keys(:String :symbols.Scope r.e.modules))
+                appendAll(names hashMap.keys(:String :symbols.Scope r.e.interfaces))
+                appendAll(names vector.fromArray(:String tokenizer.keywordNames()))
+            end
+            let all = vector.toArray(:String names)
+            sort.sort(:String all sort.stringCompare)
+            (* Names a person could type, once each *)
+            let matches = vector.new(:String)
+            for i = 0 upto {extent all - 1} do
+                let n = all[i]
+                let typable = {stringOp.length(n) > 0}
+                    andif {strutil.isAlpha(stringOp.getChar(n 0)) orif {stringOp.getChar(n 0) is '_'}}
+                let repeated = {i > 0} andif stringOp.equal(all[i - 1] n)
+                if typable andif not(repeated) andif strutil.startsWith(n prefix) then
+                    vector.append(:String matches n)
+                end
+            end
+            tuple let start = start let matches = vector.toArray(:String matches) end
+        end
+
+    let showValue(name: String v: symbols.ValueSymbol): String =
+        "let " <> {if v.isVar then "var " else "" end} <> name <> ":" <> tm.show(v.type)
+
+    let showType(name: String t: symbols.TypeSymbol): String =
+        if maybe.isSome(:tm.Type t.definition) then
+            "Let " <> name <> "::" <> tm.showKind(t.kind) <> " = " <> tm.show(maybe.unwrap(:tm.Type t.definition))
+        else
+            "Let " <> name <> "::" <> tm.showKind(t.kind)
+        end
+
+    (* What a module declares, a line a member, in the order declared *)
+    let showModule(name: String scope: symbols.Scope): String =
+        begin
+            let b = stringBuilder.new()
+            b.str("module ").str(name)
+            for i = 0 upto {vector.length(:symbols.Symbol scope.declarations) - 1} do
+                case vector.get(:symbols.Symbol scope.declarations i)
+                    when valueSymbol with x then b.str("\n    ").str(showValue(x.sym.name x.sym))
+                    when typeSymbol with x then b.str("\n    ").str(showType(x.sym.name x.sym))
+                    else b
+                end
+            end
+            b.toString()
+        end
+
+    (* What the name at cursor is, as the REPL shows a binding of it *)
+    let inspection(r: T code: String cursor: Int): maybe.T(String) =
+        begin
+            let var finish = cursor
+            while {finish < stringOp.length(code)} andif isNameChar(stringOp.getChar(code finish)) do
+                finish := finish + 1
+            end
+            let start = nameStart(code cursor)
+            let name = stringOp.getSub(code start {finish - start})
+            let q = qualifier(r code start)
+            if stringOp.isEmpty(name) then
+                maybe.none(:String)
+            elsif maybe.isSome(:Tuple name: String scope: symbols.Scope end q) then
+                let m = maybe.unwrap(:Tuple name: String scope: symbols.Scope end q)
+                let shown = m.name <> "." <> name
+                let v = symbols.lookupValueLocal(m.scope name)
+                let t = symbols.lookupTypeLocal(m.scope name)
+                if maybe.isSome(:symbols.ValueSymbol v) then
+                    maybe.some(:String showValue(shown maybe.unwrap(:symbols.ValueSymbol v)))
+                elsif maybe.isSome(:symbols.TypeSymbol t) then
+                    maybe.some(:String showType(shown maybe.unwrap(:symbols.TypeSymbol t)))
+                else
+                    maybe.none(:String)
+                end
+            else
+                let v = symbols.lookupValue(r.e.currentScope name)
+                let t = symbols.lookupType(r.e.currentScope name)
+                let m = env.lookupModule(r.e name)
+                (* A module is a value too, of a type that shows only its name *)
+                if maybe.isSome(:symbols.Scope m) then
+                    maybe.some(:String showModule(name maybe.unwrap(:symbols.Scope m)))
+                elsif maybe.isSome(:symbols.ValueSymbol v) then
+                    maybe.some(:String showValue(name maybe.unwrap(:symbols.ValueSymbol v)))
+                elsif maybe.isSome(:symbols.TypeSymbol t) then
+                    maybe.some(:String showType(name maybe.unwrap(:symbols.TypeSymbol t)))
+                else
+                    maybe.none(:String)
+                end
+            end
+        end
+
+    (* A cursor clamped to the cell *)
+    let clamp(code: String cursor: Int): Int =
+        if cursor < 0 then 0 elsif cursor > stringOp.length(code) then stringOp.length(code) else cursor end
+
+    let complete(r: T w: writer.T code: String cursor: Int): Ok =
+        begin
+            let found = completions(r code clamp(code cursor))
+            let matches = vector.new(:json.Value)
+            for i = 0 upto {extent found.matches - 1} do
+                vector.append(:json.Value matches json.string(found.matches[i]))
+            end
+            writeRecord(w array of "matches" "start" "end" end
+                array of json.arrayValue(matches) json.int(found.start) json.int(clamp(code cursor)) end)
+        end
+
+    let inspectName(r: T w: writer.T code: String cursor: Int): Ok =
+        begin
+            let shown = inspection(r code clamp(code cursor))
+            if maybe.isSome(:String shown) then
+                writeRecord(w array of "found" "text" end
+                    array of json.bool(true) json.string(maybe.unwrap(:String shown)) end)
+            else
+                writeRecord(w array of "found" end array of json.bool(false) end)
+            end
+        end
+
     (* The string member name of o, if it has one *)
     let member(o: json.Object name: String): maybe.T(String) =
         begin
@@ -424,6 +605,22 @@ export
                 end
             else
                 maybe.none(:String)
+            end
+        end
+
+    (* A request's cursor, or the end of its code *)
+    let cursorOf(o: json.Object code: String): Int =
+        begin
+            let v = json.get(o "cursor")
+            if maybe.isSome(:json.Value v) then
+                case maybe.unwrap(:json.Value v)
+                    when jNumber with x then
+                        if x.isInteger then maybe.unwrapOr(:Int strutil.tryToInt(x.text) stringOp.length(code))
+                        else stringOp.length(code) end
+                    else stringOp.length(code)
+                end
+            else
+                stringOp.length(code)
             end
         end
 
@@ -446,16 +643,30 @@ export
                 elsif stringOp.length(strutil.strip(maybe.unwrap(:String line))) > 0 then
                     let request = try maybe.some(:json.Value json.parse(maybe.unwrap(:String line)))
                         when json.error then maybe.none(:json.Value) end
-                    let code = if maybe.isSome(:json.Value request) then
+                    let o = if maybe.isSome(:json.Value request) then
                         case maybe.unwrap(:json.Value request)
-                            when jObject with x then member(x.o "execute")
-                            else maybe.none(:String)
+                            when jObject with x then maybe.some(:json.Object x.o)
+                            else maybe.none(:json.Object)
                         end
                     else
-                        maybe.none(:String)
+                        maybe.none(:json.Object)
                     end
-                    if maybe.isSome(:String code) then
-                        execute(r w maybe.unwrap(:String code))
+                    let has = fun(name: String): Bool
+                        maybe.isSome(:json.Object o)
+                            andif maybe.isSome(:String member(maybe.unwrap(:json.Object o) name))
+                    let text = fun(name: String): String maybe.unwrap(:String member(maybe.unwrap(:json.Object o) name))
+                    if has("execute") then
+                        execute(r w text("execute"))
+                    elsif has("complete") then
+                        complete(r w text("complete") cursorOf(maybe.unwrap(:json.Object o) text("complete")))
+                        writeRecord(w array of "done" end array of json.string("ok") end)
+                    elsif has("inspect") then
+                        inspectName(r w text("inspect") cursorOf(maybe.unwrap(:json.Object o) text("inspect")))
+                        writeRecord(w array of "done" end array of json.string("ok") end)
+                    elsif has("isComplete") then
+                        let status = if incomplete(text("isComplete")) then "incomplete" else "complete" end
+                        writeRecord(w array of "status" end array of json.string(status) end)
+                        writeRecord(w array of "done" end array of json.string("ok") end)
                     else
                         writeRecord(w array of "error" "message" "rendered" end array of json.string("protocol")
                             json.string("not a request: " <> maybe.unwrap(:String line))

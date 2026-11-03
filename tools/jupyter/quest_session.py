@@ -56,6 +56,16 @@ def from_bytes_text(text: str) -> str:
     return text.encode("latin-1").decode("utf-8", "replace")
 
 
+def byte_offset(text: str, offset: int) -> int:
+    """The offset in text's UTF-8 bytes of its character at offset."""
+    return len(text[:offset].encode("utf-8"))
+
+
+def char_offset(text: str, offset: int) -> int:
+    """The offset of the character at offset in text's UTF-8 bytes."""
+    return len(text.encode("utf-8")[:offset].decode("utf-8", "ignore"))
+
+
 def decoded(value: object) -> object:
     """A record's value, its strings decoded from bytes."""
     if isinstance(value, str):
@@ -184,6 +194,21 @@ class Session:
             elif "error" in record:
                 reply.error = record
         return reply
+
+    def complete(self, code: str, cursor: int) -> tuple[list[str], int, int]:
+        """The names that complete the one before cursor (a character offset,
+        as Jupyter's are), and the characters they replace: from, to."""
+        record = self.request({"complete": code, "cursor": byte_offset(code, cursor)})[0]
+        return record["matches"], char_offset(code, record["start"]), char_offset(code, record["end"])
+
+    def inspect(self, code: str, cursor: int) -> Optional[str]:
+        """What the name at cursor is, as the REPL shows a binding of it."""
+        record = self.request({"inspect": code, "cursor": byte_offset(code, cursor)})[0]
+        return record.get("text") if record.get("found") else None
+
+    def is_complete(self, code: str) -> bool:
+        """Whether code is complete, or needs more lines."""
+        return self.request({"isComplete": code})[0]["status"] == "complete"
 
     def kill(self) -> None:
         """Ends the driver and everything it started."""

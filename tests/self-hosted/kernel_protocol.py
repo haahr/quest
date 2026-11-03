@@ -3,7 +3,8 @@ tools/jupyter/quest_session.py: cells run as REPL inputs with their bindings kep
 from cell to cell, each phrase's result a record, the program's output ahead of
 the records written after it and arriving while the cell runs, failures as
 error records of their kind and position, rolled back, and the driver's end
-reported. With --no-jit too, the interpreter serves the same requests.
+reported; completion, inspection, and complete input. With --no-jit too, the
+interpreter serves the same requests.
 
 run_tests.py --self-hosted runs it (docs/testing.md). A driver that cannot host
 the JIT, a whole-program build (docs/jit.md section 3.10), is checked with
@@ -106,6 +107,28 @@ def check_cells(driver: str, options: list[str], label: str, scratch: Path) -> l
             "let next(): Int = begin s.n := s.n + 1 s.n end end\n")
         c.expect("a module", s.execute("import counter: Counter\ncounter.next()").results, ["1 : Int"])
         c.expect("a module again", s.execute("import counter: Counter\ncounter.next()").results, ["2 : Int"])
+
+        # Completion: bindings and keywords, a module's members after its name
+        # and a dot, the cursor a character offset (after an é, two bytes)
+        s.execute("let alpha = 1\nlet alphabet = \"x\"\nimport collections/vector : collections/Vector")
+        c.expect("completing a binding", s.complete("alp", 3), (["alpha", "alphabet"], 0, 3))
+        c.expect("completing a keyword", s.complete("wh", 2)[0], ["when", "while"])
+        c.expect("completing after text", s.complete('"é" <> alph', 11), (["alpha", "alphabet"], 7, 11))
+        c.expect("completing a member", s.complete("1 + vector.ap", 13), (["append"], 11, 13))
+        c.expect("completing nothing", s.complete("zzz", 3)[0], [])
+
+        # Inspection: a binding, a module's member, a module, nothing
+        c.expect("inspecting a binding", s.inspect("alphabet", 2), "let alphabet:String")
+        c.expect("inspecting a member", s.inspect("vector.get(v 0)", 9),
+                 "let vector.get:All(A :: TYPE) Fun(v: vector.T(A) index: Int): A")
+        shown = s.inspect("vector", 6) or ""
+        if not shown.startswith("module vector\n") or "    let append:" not in shown:
+            c.problems.append(f"{label}: inspecting a module: {shown!r}")
+        c.expect("inspecting nothing", (s.inspect("nosuch", 2), s.inspect("1 + 2", 2)), (None, None))
+
+        # Complete input
+        c.expect("complete input", (s.is_complete("let f(): Int =\n"), s.is_complete("1 + 2"),
+                                    s.is_complete("(* open")), (False, True, False))
 
         # A request that is not one
         records = s.request({"run": "1"})

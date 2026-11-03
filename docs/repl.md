@@ -77,7 +77,8 @@ The self-hosted driver's `--kernel` serves a program instead of a person: the Ju
 on a line of its own (jupyter.md §2), until descriptor 3 ends. Its standard output and error are the program's.
 `{"execute": CODE}` runs CODE as one input, as a completed phrase runs here: its phrases' results are `result`
 records, an input that fails is rolled back (§5) and reported as an `error` record, and a `done` record ends the
-request. A cell has no continuation lines: one that ends in the middle of a phrase is a syntax error. `--kernel` takes
+request. `complete`, `inspect` and `isComplete` requests answer from the session's environment, for completion,
+inspection, and complete input. A cell has no continuation lines: one that ends in the middle of a phrase is a syntax error. `--kernel` takes
 neither a file nor `-e`, and `--no-jit` interprets the cells. Standard output is line-buffered when
 `QUEST_LINE_BUFFERED` is set, which the kernel does, so that a cell's lines arrive while it runs.
 
