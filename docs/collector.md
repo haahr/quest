@@ -9,7 +9,7 @@ samples in half the programs), and it keeps dead data alive through stale stack 
 bump-allocating, moving where it may, and asks what must change to get there.
 
 **Status: decided, not started** (2026-11-02). Section 6 records the decisions, section 7 the risks and the checking
-modes that catch them, section 8 the steps.
+modes that catch them, section 8 the steps, and section 9 a review's open points (2026-11-03).
 
 ---
 
@@ -520,3 +520,93 @@ A release follows step 1 and step 4, since each changes the ABI (the allocation 
 
 When the plan is complete, what it found moves into runtime-design.md §3, c-representation.md §9, arm64.md §3.13,
 and profiling.md §6, and this document is deleted.
+
+## 9. Review (2026-11-03)
+
+A review from another session, after the decisions of §6. Each point is open for the authoring session to answer and
+fold into the sections above, except where the user has already decided (marked *Decided*). When a point is settled,
+its answer goes into the section it concerns and the point is removed from this list.
+
+### 9.1. Soundness
+
+1. **Evacuation and ambiguous words found mid-trace** (§3.6). Conservative Immix can pin before anything moves
+   because its ambiguous words are all roots, scanned before tracing. Here ambiguous words are also in the heap (the
+   `val` words of generically allocated objects), found only as the trace reaches them. If an object X has been copied
+   and its precise referrers rewritten, and the trace then finds a `val` word pointing at X's old copy, the word cannot
+   be rewritten (it may be an `Int`) and the move cannot be undone. "Rewritten as marking reaches it" and "mark with
+   pinning first, then choose and evacuate" disagree; only the second is sound. Options:
+   - *Two traces* per defragmenting collection: mark and pin, then copy and rewrite. Simple; doubles the cost of
+     those collections.
+   - *Mark first, with a slot log for the candidates* (the reviewer's recommendation): choose candidate blocks before
+     marking, as Immix does; mark without moving, pinning what ambiguous words reach; record the address of every
+     precise word that refers into a candidate block; then copy the unpinned live objects of the candidates and
+     rewrite only the logged words. The log is proportional to the references into candidates, a small part of the
+     heap; if it overflows a bound, the remaining candidates are left in place (pinned), so the collection degrades
+     to non-moving rather than failing. This is G1's remembered set for its collection set, built during marking.
+   - *Fewer ambiguous words* (step 2's generic layouts): shrinks the problem without removing it, since the stack's
+     words stay ambiguous; the stack is scanned first, though, so it is only the heap's ambiguous words at issue.
+2. **Incremental marking loses objects as written** (§3.10). Objects allocated during a cycle are allocated marked,
+   the `opMake*` initializing stores have no barrier, and the barrier logs only objects already marked. The mutator
+   loads an unmarked W from an unscanned object G, overwrites that field of G (G unmarked, nothing logged), builds a
+   new, marked A holding W (unbarriered, so A is never scanned), and drops W from its stack: W is lost, and the final
+   rescan of the stack does not find it. *Decided* (user, 2026-11-03): initializing stores are barriered while a cycle
+   runs. The fast path's threshold test is already there; outside a cycle `opMake*` stays unbarriered. §3.5, §3.10,
+   and step 8 to say so.
+3. **Minor collections during an incremental cycle** are unspecified. "A full collection clears mark bits" and sticky
+   marks meaning "old" conflict while a cycle is under way: either minor collections are suspended for the cycle (and
+   the nursery grows), or the mark state distinguishes "old" from "marked in this cycle" (epochs, §9.2 item 1).
+
+### 9.2. Mechanisms
+
+1. **Where the mark state lives.** A header bit (§3.2) costs a touch of every object to clear at each full
+   collection, and under step 9 shares a word with the mutator's logged and hash bits, so every hash or log write
+   would need an atomic, not only marks; the single accessor of step 4 does not cover the mutator's writes. In a
+   sticky minor collection most referents are old and already marked, and a header bit makes testing that a load of
+   each old referent's line, where a side bitmap (one bit per 8 bytes, 1/64 of the heap) keeps the test in a small,
+   hot structure and old objects untouched. The reviewer's recommendation: a side mark bitmap per block, beside the
+   object-start bitmap (cleared per block, or swapped for a zeroed one as Go does); the logged and hash bits stay in
+   the header, written by the mutator; forwarding stays in the header, written only in a pause.
+2. **arm64 stack maps and callee-saved registers** (step 6). A mapped frame's pointer in x19 to x28 is saved by
+   whichever callee saves it; if that callee is a C-built unit or the runtime, the saved copy is in a conservative
+   frame and cannot be rewritten. Such registers are ambiguous unless the frame that saved them is mapped too.
+3. **The allocation cursor in a register** (§3.4). Exceptions are `_setjmp` and `_longjmp` (`quest_runtime.h`); a
+   callee-saved cursor would be restored to its value when the `try` was entered, and allocation would then overwrite
+   live objects. The cursor lives in a global, or is reloaded at every handler's entry.
+4. **The object-start bitmap is set by every allocation,** a read-modify-write that §3.4's fast path ("compare, store
+   the header, return") does not count. Its cost belongs in the inline sequence and in step 4's measurement.
+5. **The immortal space under the JIT** (§3.1). Module rollback, redefinition, and long REPL and Jupyter sessions
+   keep making descriptors, dictionaries, and view maps. *Decided* (user, 2026-11-03): the immortal space grows with
+   the session, as JIT code does already; §3.1 to say so. Still open: immortal caches that are written after they are
+   made and point into the heap must either be rescanned at every minor collection (a cost growing with the space) or
+   be barriered; which?
+6. **Identity hash of interior objects** (§3.7). Embedded boxes and a record's payload share their allocation's
+   header, so the *moved* word holds the allocation's old base, and the hash of an interior object is the mix of the
+   old base plus its offset.
+7. **Serialization** (§3.7). Its `QPtrNode`s are allocated with `quest_alloc`; a precise `ptr` field would be rewritten
+   by a move while the node stays in the bucket of the old address. Keying by identity hash works; simpler is a
+   counter that suspends evacuation while serialization runs, since evacuation is optional in any collection.
+
+### 9.3. Accuracy
+
+1. §3.1 puts the record dictionaries in both the large object space and the immortal space.
+2. §2 and §3.1 cite Riptide for an object-start bitmap. JavaScriptCore's blocks are segregated by size, so a cell's
+   start is arithmetic; only conservative Immix fits the citation.
+3. The `layouts` check (§7: "each precise pointer word is null or points at or into an allocation") fails on every
+   pointer to static data: the generated C's static `QTypeDescriptor`s, which auto values point at, the function
+   tables, the module records. It needs "or outside the heap", or "or in a registered static region".
+4. §5 says no program can form a pointer one past an array's end. Quest programs cannot, but clang can, from the C
+   backends' output and in the runtime (a strength-reduced loop's end with its base dead). With the header at p-8,
+   such a pointer validates as the *next* object. Boehm has the same exposure, so this is no regression, but the
+   conservative rule should also take p equal to an object's end as that object's.
+5. §3.2's "the heap grows little" understates the header's cost: a two-word tuple is 16 bytes today and 24 after,
+   half again for the commonest object. Step 1 measures it on Boehm, where the 24 bytes round to 32 (double); that
+   number needs translating before it is recorded as the design's growth.
+6. §3.5's list of mutating stores should say every pointer store into an existing object in the runtime's C, found
+   by audit, rather than name a few; replacing a string's buffer is one it misses.
+
+### 9.4. Order
+
+1. Step 2 (generic layouts) is an ABI change that adds descriptor arguments to polymorphic functions, before
+   anything can measure whether pinning matters: pinning costs only evacuation (step 7), and step 1's `layouts` mode
+   already counts ambiguous words. The reviewer suggests moving it after step 7, taken if the pinned fraction measured
+   there warrants it, unless the answer to §9.1 item 1 favors shrinking the heap's ambiguity early.
