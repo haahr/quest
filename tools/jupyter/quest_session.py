@@ -23,6 +23,11 @@ from typing import Callable, Optional
 # A stream's text as it arrives: the stream's name (stdout or stderr), and the
 # text
 StreamHandler = Callable[[str, str], None]
+# A value io/display shows: its forms, by MIME type
+DisplayHandler = Callable[[dict], None]
+# A line io/readline asks for: its prompt, and the line, or None for the end of
+# the input
+InputHandler = Callable[[str], Optional[str]]
 
 
 @dataclass
@@ -96,6 +101,8 @@ class Session:
 
         environment = dict(os.environ if env is None else env)
         environment["QUEST_LINE_BUFFERED"] = "1"
+        # io/display and io/readline then use the driver's descriptors
+        environment["QUEST_KERNEL"] = "1"
         try:
             self.process = subprocess.Popen(
                 [*command, "--kernel"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -139,10 +146,14 @@ class Session:
         self._drain("stdout", self.process.stdout.fileno(), on_stream)
         self._drain("stderr", self.process.stderr.fileno(), on_stream)
 
-    def request(self, message: dict, on_stream: Optional[StreamHandler] = None) -> list[dict]:
+    def request(self, message: dict, on_stream: Optional[StreamHandler] = None,
+                on_display: Optional[DisplayHandler] = None, on_input: Optional[InputHandler] = None) -> list[dict]:
         """Sends a request, and returns its records, through its done record;
         what the driver writes meanwhile goes to on_stream, ahead of any record
-        written after it. Raises DriverExited if the driver ends first."""
+        written after it. A display record goes to on_display, and an input
+        record is answered with what on_input gives (the end of the input
+        without one); neither is returned. Raises DriverExited if the driver
+        ends first."""
         line = json.dumps({k: to_bytes_text(v) if isinstance(v, str) else v for k, v in message.items()})
         try:
             self.requests.write(line.encode("ascii") + b"\n")
@@ -177,16 +188,29 @@ class Session:
                         # pipes already, since it flushes before each record
                         self._drain_streams(on_stream)
                         record = decoded(json.loads(text.decode("ascii")))
+                        if "display" in record:
+                            if on_display is not None:
+                                on_display(record["display"])
+                            continue
+                        if "input" in record:
+                            line = on_input(record["input"]) if on_input is not None else None
+                            reply = b"E\n" if line is None else b"L" + line.replace("\n", " ").encode("utf-8") + b"\n"
+                            try:
+                                self.requests.write(reply)
+                            except BrokenPipeError:
+                                pass
+                            continue
                         records.append(record)
                         if "done" in record:
                             return records
         finally:
             selector.close()
 
-    def execute(self, code: str, on_stream: Optional[StreamHandler] = None) -> Reply:
+    def execute(self, code: str, on_stream: Optional[StreamHandler] = None,
+                on_display: Optional[DisplayHandler] = None, on_input: Optional[InputHandler] = None) -> Reply:
         """Runs a cell (request)."""
         reply = Reply()
-        for record in self.request({"execute": code}, on_stream):
+        for record in self.request({"execute": code}, on_stream, on_display, on_input):
             if "result" in record:
                 reply.results.append(record["result"])
             elif "done" in record:

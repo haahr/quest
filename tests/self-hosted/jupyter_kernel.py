@@ -5,7 +5,8 @@ result as one execute_result; a cell's output is a stream ahead of its result;
 a failing cell is an error of its kind, its rendering the traceback; an
 interrupt during an endless loop restarts the session, as does a cell that
 exits, and the next cell runs in the new one; completion, inspection, and
-complete input are answered.
+complete input are answered; io/display's values are display data, and
+io/readline's lines are asked of the notebook.
 
 It needs jupyter_client and ipykernel, so it runs itself again with
 jupyterlab's Python (QUEST_JUPYTER_PYTHON, or Homebrew's), and is skipped,
@@ -31,9 +32,9 @@ TIMEOUT = 120
 
 
 def run(client, code: str) -> tuple[dict, list[tuple[str, dict]]]:
-    """Runs a cell: its execute reply's content, and the messages it
-    published, but for its status and its input."""
-    msg_id = client.execute(code)
+    """Runs a cell, without input: its execute reply's content, and the
+    messages it published, but for its status and its input."""
+    msg_id = client.execute(code, allow_stdin=False)
     published = []
     while True:
         message = client.get_iopub_msg(timeout=TIMEOUT)
@@ -103,6 +104,23 @@ def check(driver: str) -> list[str]:
                    ("error", "type", ["error"]))
             if not any("Type mismatch" in line for line in reply.get("traceback", [])):
                 problems.append(f"a type error's traceback: {reply.get('traceback')!r}")
+
+            # A value io/display shows, and a line io/readline asks for
+            reply, published = run(client, 'import io/display : io/Display\ndisplay.markdown("# Hi")')
+            expect("a display", [(k, c["data"]) for k, c in published],
+                   [("display_data", {"text/markdown": "# Hi", "text/plain": "# Hi"})])
+            msg_id = client.execute('import io/readline : io/Readline\nreadline.readLine("name? ")', allow_stdin=True)
+            request = client.get_stdin_msg(timeout=TIMEOUT)
+            expect("an input request", request["content"]["prompt"], "name? ")
+            client.input("Zoë")
+            while True:
+                message = client.get_shell_msg(timeout=TIMEOUT)
+                if message["parent_header"].get("msg_id") == msg_id:
+                    break
+            expect("a line read", message["content"]["status"], "ok")
+            reply, published = run(client, 'import io/readline : io/Readline\n'
+                                           'try readline.readLine("x") when readline.endOfInput then "none" end')
+            expect("a line read without input allowed", result(published), '"none" : String')
 
             # Completion, inspection, and complete input
             client.complete("let alpha = a", 13)

@@ -13,7 +13,8 @@
  * select, as CPython's readline module does: a SIGINT, while it waits, sets a
  * flag that ends the wait, and the line is abandoned and readline's state
  * cleaned up, with no longjmp out of the library. Without editing, readLine
- * reads through reader.input's buffer.
+ * reads through reader.input's buffer. In a Jupyter kernel, it asks the
+ * notebook for the line (quest_readline_kernel).
  */
 
 #define _POSIX_C_SOURCE 200809L
@@ -61,6 +62,76 @@ static QString *quest_readline_plain(const QString *prompt) {
         quest_sb_append_char(b, c);
     }
     if (!any) {
+        quest_raise(&quest_exc_readline_end_of_input, Q_OK_VAL);
+    }
+    return quest_sb_to_string(b);
+}
+
+/* In a Jupyter kernel's driver (QUEST_KERNEL set; docs/jupyter.md section 2),
+ * a line is asked of the notebook: an input record, {"input": PROMPT}, on
+ * descriptor 4, the driver's records, after the program's output; and the
+ * reply a line on descriptor 3, the driver's requests, "L" and the line, or
+ * "E" for the end of input. The prompt's bytes are escaped as the driver's
+ * strings are, each above 126 as \u00XX. */
+static bool quest_readline_in_kernel(void) {
+    const char *kernel = getenv("QUEST_KERNEL");
+    return kernel != NULL && *kernel != '\0';
+}
+
+static void quest_readline_write_all(int fd, const char *data, size_t length) {
+    while (length > 0) {
+        ssize_t written = write(fd, data, length);
+        if (written < 0) {
+            if (errno == EINTR) continue;
+            quest_raise(&quest_exc_readline_error, Q_OK_VAL);
+        }
+        data += written;
+        length -= (size_t)written;
+    }
+}
+
+/* A byte of descriptor 3, or -1 at its end */
+static int quest_readline_reply_byte(void) {
+    unsigned char c;
+    for (;;) {
+        ssize_t n = read(3, &c, 1);
+        if (n == 1) return c;
+        if (n < 0 && errno == EINTR) continue;
+        return -1;
+    }
+}
+
+static QString *quest_readline_kernel(const QString *prompt) {
+    quest_writer_flush(quest_writer_output);
+    quest_writer_flush(quest_writer_err);
+    QStringBuilder *record = quest_sb_new();
+    static const char start[] = "{\"input\":\"";
+    for (const char *p = start; *p != '\0'; p++) quest_sb_append_char(record, (QChar)*p);
+    for (int64_t i = 0; i < prompt->length; i++) {
+        unsigned char c = (unsigned char)prompt->data[i];
+        if (c == '"' || c == '\\') {
+            quest_sb_append_char(record, '\\');
+            quest_sb_append_char(record, (QChar)c);
+        } else if (c < 32 || c > 126) {
+            static const char hex[] = "0123456789abcdef";
+            const char escape[] = { '\\', 'u', '0', '0', hex[c >> 4], hex[c & 15] };
+            for (size_t j = 0; j < sizeof escape; j++) quest_sb_append_char(record, (QChar)escape[j]);
+        } else {
+            quest_sb_append_char(record, (QChar)c);
+        }
+    }
+    quest_sb_append_char(record, '"');
+    quest_sb_append_char(record, '}');
+    quest_sb_append_char(record, '\n');
+    QString *text = quest_sb_to_string(record);
+    quest_readline_write_all(4, text->data, (size_t)text->length);
+    int kind = quest_readline_reply_byte();
+    QStringBuilder *b = quest_sb_new();
+    int c;
+    while ((c = quest_readline_reply_byte()) != -1 && c != '\n') {
+        quest_sb_append_char(b, (QChar)c);
+    }
+    if (kind != 'L') {
         quest_raise(&quest_exc_readline_end_of_input, Q_OK_VAL);
     }
     return quest_sb_to_string(b);
@@ -133,6 +204,9 @@ static char *quest_readline_edit(const char *prompt, bool *interrupted) {
 QString *quest_readline_read_line(const QString *prompt) {
     if (prompt == NULL) {
         quest_raise(&quest_exc_readline_error, Q_OK_VAL);
+    }
+    if (quest_readline_in_kernel()) {
+        return quest_readline_kernel(prompt);
     }
 #ifndef QUEST_NOREADLINE
     if (quest_readline_editing()) {

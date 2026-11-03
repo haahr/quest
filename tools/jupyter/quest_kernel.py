@@ -17,7 +17,7 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from ipykernel.kernelbase import Kernel  # noqa: E402
+from ipykernel.kernelbase import Kernel, StdinNotImplementedError  # noqa: E402
 
 from quest_session import DriverExited, Session  # noqa: E402
 
@@ -69,8 +69,25 @@ class QuestKernel(Kernel):
     async def do_execute(self, code, silent, store_history=True, user_expressions=None, allow_stdin=False,
                          *, cell_meta=None, cell_id=None):
         on_stream = None if silent else self.stream
+
+        def on_display(bundle: dict) -> None:
+            if not silent:
+                self.send_response(self.iopub_socket, "display_data", {"data": bundle, "metadata": {}})
+
+        # raw_input asks the notebook only if the request allows it, as
+        # ipykernel's own kernel arranges
+        self._allow_stdin = allow_stdin
+
+        def on_input(prompt: str) -> Optional[str]:
+            if not allow_stdin:
+                return None
+            try:
+                return self.raw_input(prompt)
+            except (EOFError, StdinNotImplementedError):
+                return None
+
         try:
-            reply = self.quest().execute(code, on_stream)
+            reply = self.quest().execute(code, on_stream, on_display, on_input)
         except KeyboardInterrupt:
             self.end_session()
             return self.failed("Interrupted", f"the cell was interrupted; {RESTARTED}", [

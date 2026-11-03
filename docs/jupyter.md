@@ -162,6 +162,12 @@ Each step is a commit or a few. Run times and check runs are recorded as steps f
   the reply on descriptor 3. The wrapper asks the notebook with `input_request`. A cell run with input disallowed gets
   end of input.
 - *Done when* a notebook shows an HTML table and a PNG drawn by Quest, and a cell reads a line the notebook types.
+  *Done* (2026-11-03) but for the notebook by hand. The kernel's driver knows it is one by `QUEST_KERNEL`, which the
+  session sets, so `io/display` is Quest alone and `readLine`'s request is the C runtime's: the driver, which could
+  install a hook only after a release (release-compiler.md §2), is unchanged. `readLine`'s reply comes on descriptor
+  3, so reading standard input otherwise still ends at once. The protocol test checks the records (base64 at each
+  padding), and the kernel test `display_data` and an `input_request` answered, and refused when input isn't
+  allowed.
 
 ### Step 5: Interrupts that unwind
 

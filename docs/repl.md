@@ -72,15 +72,16 @@ followed by the arguments after it. `-i` alone enters the REPL whatever standard
 transcripts feed it their lines.
 
 ### 2.3. Kernel Mode (`--kernel`)
-The self-hosted driver's `--kernel` serves a program instead of a person: the Jupyter kernel
-([jupyter.md](jupyter.md)). It reads requests from descriptor 3 and writes records to descriptor 4, each a JSON object
-on a line of its own (jupyter.md §2), until descriptor 3 ends. Its standard output and error are the program's.
-`{"execute": CODE}` runs CODE as one input, as a completed phrase runs here: its phrases' results are `result`
-records, an input that fails is rolled back (§5) and reported as an `error` record, and a `done` record ends the
-request. `complete`, `inspect` and `isComplete` requests answer from the session's environment, for completion,
-inspection, and complete input. A cell has no continuation lines: one that ends in the middle of a phrase is a syntax error. `--kernel` takes
-neither a file nor `-e`, and `--no-jit` interprets the cells. Standard output is line-buffered when
-`QUEST_LINE_BUFFERED` is set, which the kernel does, so that a cell's lines arrive while it runs.
+The self-hosted driver's `--kernel` serves a program instead of a person: the Jupyter kernel ([jupyter.md](jupyter.md)).
+It reads requests from descriptor 3 and writes records to descriptor 4, each a JSON object on a line of its own
+(jupyter.md §2), until descriptor 3 ends. Its standard output and error are the program's. `{"execute": CODE}` runs CODE
+as one input, as a completed phrase runs here: its phrases' results are `result` records, an input that fails is rolled
+back (§5) and reported as an `error` record, and a `done` record ends the request. `complete`, `inspect` and
+`isComplete` requests answer from the session's environment, for completion, inspection, and complete input. With
+`QUEST_KERNEL` set, as the kernel sets it, `io/display` and `io/readline` use the same descriptors for a notebook's
+displays and lines (new-libraries.md §3.1, §3.2). A cell has no continuation lines: one that ends in the middle of a
+phrase is a syntax error. `--kernel` takes neither a file nor `-e`, and `--no-jit` interprets the cells. Standard output
+is line-buffered when `QUEST_LINE_BUFFERED` is set, which the kernel does, so that a cell's lines arrive while it runs.
 
 ---
 

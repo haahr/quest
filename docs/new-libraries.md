@@ -744,6 +744,10 @@ does nothing if the file does not exist, and `writeHistory` writes the history's
   `rl_cleanup_after_signal`) and `interrupted` raised. Nothing `longjmp`s out of the library.
 - **Without editing,** `readLine` writes the prompt to `writer.output`, flushes it, and reads up to a newline through
   `quest_reader_input`'s buffer. End of input before any byte is `endOfInput`.
+- **In a Jupyter kernel's driver** (`QUEST_KERNEL` set, [jupyter.md](jupyter.md) §2), `readLine` asks the notebook:
+  it writes an `{"input": PROMPT}` record to descriptor 4, the driver's records, and reads the reply from descriptor
+  3, its requests: `L` and the line, or `E` for the end of the input, which a cell run without input allowed gets.
+  The C runtime does this, so a program the self-hosted driver interprets asks too; the bootstrap's externals don't.
 - **The history** is the runtime's own list, mirrored into the line editor's, and its file is plain lines. The line
   editors' own files differ (libedit's starts with a cookie and escapes its lines), and the bootstrap's REPL, whose
   Python may use libedit, shares `~/.quest_history` with compiled REPLs, which may use GNU readline.
@@ -754,6 +758,37 @@ does nothing if the file does not exist, and `writeHistory` writes the history's
 
 `tests/python/test_readline_terminal.py` runs editing, history, Ctrl-C, and Ctrl-D through a pseudo-terminal, for a
 program compiled with each line editor installed and interpreted by the bootstrap, and for both REPLs.
+
+### 3.2. `io/display : io/Display`
+
+Values shown as HTML, Markdown, SVG, or images where a notebook shows the program's output (the Quest kernel,
+[jupyter.md](jupyter.md)), and as text elsewhere. It is Quest alone, with no externals.
+
+#### Interface Summary
+
+```quest
+interface Display export
+    (* One form of a value: its MIME type, and its data, an image's bytes *)
+    Def Item = Tuple mimeType: String data: String end
+    (* Whether the program runs in a Jupyter kernel's driver (QUEST_KERNEL is set) *)
+    inKernel(): Bool
+    (* Shows a value's forms, after what the program has written *)
+    bundle(items: Array(Item)): Ok
+    html(text: String): Ok
+    markdown(text: String): Ok
+    svg(text: String): Ok
+    png(bytes: String): Ok
+end
+```
+
+- **In a kernel,** `bundle` flushes standard output and error, then writes `{"display": {MIMETYPE: DATA, ...}}` to
+  descriptor 4, the driver's records, which the kernel sends as `display_data`. Its strings are bytes, as the
+  driver's are; an image's data (an `image/` type but SVG) is encoded in base64.
+- **Elsewhere,** it writes the `text/plain` form and a newline to standard output, or, for a value without one, its
+  forms' types (`<application/json>`). `html`, `markdown`, and `svg` give their text as the plain form, and `png` a
+  line naming its size.
+
+`tests/source/stdlib/io_display.quest` tests the text; `tests/self-hosted/kernel_protocol.py` the records.
 
 ---
 

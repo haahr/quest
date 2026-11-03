@@ -1,0 +1,109 @@
+(* In a kernel, a value's forms are a record on descriptor 4, the driver's
+ * records (docs/jupyter.md section 2): {"display": {MIMETYPE: DATA, ...}}, its
+ * strings bytes as the driver's are, each above 126 escaped as \u00XX. *)
+
+module display : Display
+import
+    ascii: Ascii
+    conv: Conv
+    system: System
+    writer: Writer
+    stringOp = string : StringOp
+    util/stringBuilder : util/StringBuilder
+export
+    Def Item = Tuple mimeType: String data: String end
+
+    let inKernel(): Bool = stringOp.length(system.getEnv("QUEST_KERNEL")) > 0
+
+    let hexDigit(n: Int): Char = stringOp.getChar("0123456789abcdef" n)
+
+    (* A JSON string of s's bytes *)
+    let quoted(b: stringBuilder.T s: String): Ok =
+        begin
+            b.char('"')
+            for i = 0 upto {stringOp.length(s) - 1} do
+                let c = stringOp.getChar(s i)
+                let v = ascii.val(c)
+                if c is '"' then b.str("\\\"")
+                elsif c is '\\' then b.str("\\\\")
+                elsif c is '\n' then b.str("\\n")
+                elsif {v < 32} orif {v > 126} then b.str("\\u00").char(hexDigit(v / 16)).char(hexDigit(v % 16))
+                else b.char(c)
+                end
+            end
+            b.char('"')
+            ok
+        end
+
+    let base64Digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+    (* s's bytes in base64, padded *)
+    let base64(s: String): String =
+        begin
+            let b = stringBuilder.new()
+            let n = stringOp.length(s)
+            let byte = fun(i: Int): Int if i < n then ascii.val(stringOp.getChar(s i)) else 0 end
+            let var i = 0
+            while i < n do
+                let group = {{byte(i) * 65536} + {byte(i + 1) * 256}} + byte(i + 2)
+                b.char(stringOp.getChar(base64Digits {group / 262144}))
+                b.char(stringOp.getChar(base64Digits {{group / 4096} % 64}))
+                b.char(if {i + 1} < n then stringOp.getChar(base64Digits {{group / 64} % 64}) else '=' end)
+                b.char(if {i + 2} < n then stringOp.getChar(base64Digits {group % 64}) else '=' end)
+                i := i + 3
+            end
+            b.toString()
+        end
+
+    (* Whether a form's data is bytes, which JSON carries in base64: an image's,
+     * but for SVG's text *)
+    let isBinary(mimeType: String): Bool =
+        {stringOp.length(mimeType) > 6} andif stringOp.equal(stringOp.getSub(mimeType 0 6) "image/")
+            andif not(stringOp.equal(mimeType "image/svg+xml"))
+
+    let bundle(items: Array(Item)): Ok =
+        begin
+            writer.flush(writer.output)
+            writer.flush(writer.err)
+            if inKernel() then
+                let b = stringBuilder.new()
+                b.str("{\"display\":{")
+                for i = 0 upto {extent items - 1} do
+                    if i > 0 then b.char(',') end
+                    quoted(b items[i].mimeType)
+                    b.char(':')
+                    quoted(b if isBinary(items[i].mimeType) then base64(items[i].data) else items[i].data end)
+                end
+                b.str("}}\n")
+                let w = writer.file("/dev/fd/4")
+                writer.putString(w b.toString())
+                writer.close(w)
+            else
+                let var shown = false
+                for i = 0 upto {extent items - 1} do
+                    if not(shown) andif stringOp.equal(items[i].mimeType "text/plain") then
+                        writer.putString(writer.output items[i].data <> "\n")
+                        shown := true
+                    end
+                end
+                if not(shown) then
+                    let b = stringBuilder.new()
+                    b.str("<")
+                    for i = 0 upto {extent items - 1} do
+                        if i > 0 then b.str(", ") end
+                        b.str(items[i].mimeType)
+                    end
+                    writer.putString(writer.output b.str(">\n").toString())
+                end
+            end
+        end
+
+    let item(mimeType: String data: String): Item = tuple let mimeType = mimeType let data = data end
+
+    let html(text: String): Ok = bundle(array of item("text/html" text) item("text/plain" text) end)
+    let markdown(text: String): Ok = bundle(array of item("text/markdown" text) item("text/plain" text) end)
+    let svg(text: String): Ok = bundle(array of item("image/svg+xml" text) item("text/plain" text) end)
+    let png(bytes: String): Ok =
+        bundle(array of item("image/png" bytes)
+            item("text/plain" "<image/png, " <> conv.int(stringOp.length(bytes)) <> " bytes>") end)
+end

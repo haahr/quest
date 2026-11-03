@@ -3,7 +3,8 @@ tools/jupyter/quest_session.py: cells run as REPL inputs with their bindings kep
 from cell to cell, each phrase's result a record, the program's output ahead of
 the records written after it and arriving while the cell runs, failures as
 error records of their kind and position, rolled back, and the driver's end
-reported; completion, inspection, and complete input. With --no-jit too, the
+reported; completion, inspection, and complete input; io/display's values and
+io/readline's lines. With --no-jit too, the
 interpreter serves the same requests.
 
 run_tests.py --self-hosted runs it (docs/testing.md). A driver that cannot host
@@ -129,6 +130,28 @@ def check_cells(driver: str, options: list[str], label: str, scratch: Path) -> l
         # Complete input
         c.expect("complete input", (s.is_complete("let f(): Int =\n"), s.is_complete("1 + 2"),
                                     s.is_complete("(* open")), (False, True, False))
+
+        # io/display's values, in order with the output, images in base64; and
+        # io/readline's lines, asked of the session, and the end of the input
+        events: list[tuple] = []
+        prompts = {"name? ": "Zoë"}
+        reply = s.execute(
+            'import io/display : io/Display\nimport io/readline : io/Readline\nimport reader: Reader\n'
+            'writer.putString(writer.output "x\\n")\ndisplay.html("<b>é</b>")\n'
+            'display.png("Man")\ndisplay.png("Ma")\ndisplay.png("M")\n'
+            'let name = readline.readLine("name? ")\n'
+            'let again = try readline.readLine("again? ") when readline.endOfInput then "none" end\n'
+            'reader.more(reader.input)',
+            lambda name, text: events.append(("stream", name, text)), lambda bundle: events.append(("display", bundle)),
+            lambda prompt: events.append(("input", prompt)) or prompts.get(prompt))
+        c.expect("display and input", (events, reply.results), ([
+            ("stream", "stdout", "x\n"),
+            ("display", {"text/html": "<b>é</b>", "text/plain": "<b>é</b>"}),
+            ("display", {"image/png": "TWFu", "text/plain": "<image/png, 3 bytes>"}),
+            ("display", {"image/png": "TWE=", "text/plain": "<image/png, 2 bytes>"}),
+            ("display", {"image/png": "TQ==", "text/plain": "<image/png, 1 bytes>"}),
+            ("input", "name? "), ("input", "again? ")],
+            ['let name:String = "Zo\\xc3\\xab"', 'let again:String = "none"', "false : Bool"]))
 
         # A request that is not one
         records = s.request({"run": "1"})
