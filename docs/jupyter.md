@@ -101,7 +101,8 @@ Each step is a commit or a few. Run times and check runs are recorded as steps f
   - have syntax and type errors
   - raise an exception, then use a binding from before it to show the rollback
   - import a module the test writes
-- *Done when* the test passes, and tools/check runs it wherever it runs `test_readline_terminal.py`.
+- *Done when* the test passes, and tools/check runs it. *Done* (2026-11-03, e44abc9f): a unit check of the
+  self-hosted suite, `self-hosted/kernel_protocol`, which tools/check runs.
 
 ### Step 2: The wrapper kernel
 
@@ -116,15 +117,19 @@ Each step is a commit or a few. Run times and check runs are recorded as steps f
     standard error, and a new driver starts.
   - An interrupt (SIGINT to the wrapper, which ipykernel turns into `KeyboardInterrupt` in `do_execute`) ends the
     driver's process group and starts a new driver. The cell's error says the session restarted.
-- `tools/jupyter/kernel.json` and `tools/jupyter/install`. The install script runs
-  `jupyter kernelspec install --user --name quest` with a kernel.json that names jupyterlab's Python and this checkout,
-  and `--uninstall` removes it. A notebook then has *Quest* among its kernels.
-- *Test:* `tools/jupyter/test_kernel.py`, under jupyterlab's Python with `jupyter_client`'s `KernelManager`. It starts
-  the kernel, runs cells (bindings, output, an error, an interrupt during a long loop), and checks the messages and the
-  restart. tools/check runs it for a change to `tools/jupyter/` or to the driver's REPL. When jupyterlab's Python is
-  missing, it skips the test and says so.
+- `tools/jupyter/install` (a shell script running `install.py` with jupyterlab's Python) installs a kernelspec named
+  `quest` for the user, its `kernel.json` written then: it names jupyterlab's Python by its `opt` path and this
+  checkout's `quest_kernel.py` and `./quest`. `--uninstall` removes it, and `--prefix DIR` installs under
+  `DIR/share/jupyter` instead. A notebook then has *Quest* among its kernels. The kernel's first cell after the
+  compiler's sources change shows `./quest` rebuilding its stages, as its output.
+- *Test:* `tests/self-hosted/jupyter_kernel.py`, a unit check of the self-hosted suite (as step 1's is), under
+  jupyterlab's Python with `jupyter_client`'s `KernelManager`. It starts the kernel, runs cells (bindings, output, an
+  error, an interrupt during an endless loop, a cell that exits), and checks the messages and the restarts. When
+  jupyterlab's Python is missing, it skips the test and says so.
 - *Done when* the test passes, and a notebook run by hand in JupyterLab binds, prints, fails and recovers, and restarts
-  on an interrupt.
+  on an interrupt. *Done* (2026-11-03) but for the hand run: the test passes, and `jupyter nbconvert --execute` ran a
+  notebook through a kernel installed with `--prefix` (its first cell showing `./quest` rebuilding). JupyterLab's own
+  page is left to its user, since signing in to it takes its token.
 
 ### Step 3: Completion, inspection, and complete input
 

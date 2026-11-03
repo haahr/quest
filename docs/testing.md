@@ -248,6 +248,12 @@ host the JIT, a whole-program build, which `tools/release --whole-program` check
 - a module of the user's, imported by two cells
 - a malformed request, and a cell that exits
 
+`self-hosted/jupyter_kernel` (`tests/self-hosted/jupyter_kernel.py`) starts the Jupyter kernel
+(`tools/jupyter/quest_kernel.py`, [jupyter.md](jupyter.md)) through `jupyter_client`, from a kernelspec in a temporary
+`JUPYTER_PATH`, as a notebook does. It checks results, output, errors, the restart after an interrupt during an endless
+loop, and the restart after a cell that exits. It runs itself again under jupyterlab's Python, which has
+`jupyter_client` and ipykernel, and is skipped, saying so, when there is none.
+
 **The SSA's backends:** `--self-hosted --backend MODE` runs the self-hosted suite's compiled tests (`run_c_compiled`,
 golden and error) with the driver's units compiled by another backend ([arm64.md](arm64.md) §4): `ssac` compiles every
 unit, the library's included, through the SSA's C printer ([ssa.md](ssa.md) §8), `ssac-program` the program's unit

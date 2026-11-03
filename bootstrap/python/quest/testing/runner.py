@@ -132,7 +132,8 @@ EVAL_CASES = ROOT_DIR / "tests" / "eval" / "cases.quest"
 # and of the errors its builds report, against the bootstrap's; that its
 # parallel builds (-j) are its serial ones; that its compile command does
 # what the bootstrap's does; that lldb reads the arm64 backend's line tables;
-# and that its kernel mode serves a Jupyter kernel's requests
+# that its kernel mode serves a Jupyter kernel's requests; and that the kernel
+# serves a notebook's
 UNIT_CHECKS = (
     ("self-hosted/abi_corpus", ROOT_DIR / "tests" / "abi" / "corpus.py", ("--compiler",)),
     ("self-hosted/unit_artifacts", ROOT_DIR / "tests" / "self-hosted" / "unit_artifacts.py", ()),
@@ -145,6 +146,7 @@ UNIT_CHECKS = (
     ("self-hosted/encoder", ROOT_DIR / "tests" / "self-hosted" / "encoder.py", ()),
     ("self-hosted/jit_hosts", ROOT_DIR / "tests" / "self-hosted" / "jit_hosts.py", ()),
     ("self-hosted/kernel_protocol", ROOT_DIR / "tests" / "self-hosted" / "kernel_protocol.py", ()),
+    ("self-hosted/jupyter_kernel", ROOT_DIR / "tests" / "self-hosted" / "jupyter_kernel.py", ()),
 )
 EVAL_GOLDEN = TESTS_GOLDEN_DIR / "self-hosted" / "eval.out"
 SELF_HOSTED_ERRORS_DIR = ROOT_DIR / "tests" / "self-hosted" / "errors"
