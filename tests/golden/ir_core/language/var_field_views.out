@@ -1,0 +1,115 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun say(s: String): Ok {
+      let %1: writer.T = member writer.output @12:43
+      let %2: String = prim <>(s, "\n") @12:57
+      let %3: Ok = call writer.putString(%1, %2) @12:26
+      return %3
+    }
+  }
+  funs {
+    fun bump(c: Counter): Ok {
+      let %4: Int = tuple_field(c, 0) @17:35
+      let %5: Int = prim +(%4, 1) @17:35
+      store c.#0 := %5 @17:28
+      return ok
+    }
+  }
+  funs {
+    fun acrossCall(r: Reading, c.1: Counter): String {
+      let before: Int = tuple_field(r, 0) @22:22
+      do call bump(c.1) @23:9
+      let %6: String = call conv.int(before) @24:9
+      let %7: Int = tuple_field(r, 0) @24:45
+      let %8: String = call conv.int(%7) @24:36
+      let %9: String = prim <>(" ", %8) @24:29
+      let %10: String = prim <>(%6, %9) @24:9
+      return %10
+    }
+  }
+  let n: Int = 10 @26:37
+  let c1: Counter = tuple(n) @26:19
+  let %11: String = call acrossCall(c1, c1) @27:23
+  let %12: String = prim <>("acrossCall: ", %11) @27:5
+  do call say(%12) @27:1
+  funs {
+    fun inLoop(r.1: Reading, c.2: Counter, k: Int): String {
+      var seen: String = "" @33:9
+      var i: Int = 1 @34:9
+      loop L1 {
+        let %13: Bool = prim <=(i, k) @34:9
+        if %13 { @34:9
+          let i.1: Int = i @34:9
+          let %14: Int = tuple_field(r.1, 0) @35:38
+          let %15: String = call conv.int(%14) @35:29
+          let %16: String = prim <>(%15, " ") @35:29
+          let %17: String = prim <>(seen, %16) @35:21
+          seen := %17 @35:13
+          let %18: Int = tuple_field(c.2, 0) @36:20
+          let %19: Int = prim *(%18, 2) @36:20
+          store c.2.#0 := %19 @36:13
+          let %20: Int = prim +(i, 1) @34:9
+          i := %20 @34:9
+        } else {
+          break L1 @34:9
+        }
+      }
+      let %21: Int = tuple_field(r.1, 0) @38:26
+      let %22: String = call conv.int(%21) @38:17
+      let %23: String = prim <>(seen, %22) @38:9
+      return %23
+    }
+  }
+  let n.1: Int = 1 @40:37
+  let c2: Counter = tuple(n.1) @40:19
+  let %24: String = call inLoop(c2, c2, 4) @41:19
+  let %25: String = prim <>("inLoop: ", %24) @41:5
+  do call say(%25) @41:1
+  funs {
+    fun throughAlias(c.3: Counter): String {
+      let r.2: Reading = c.3 @46:26
+      let first: Int = tuple_field(r.2, 0) @47:21
+      let %26: Int = prim +(first, 5) @48:16
+      store c.3.#0 := %26 @48:9
+      let %27: String = call conv.int(first) @49:9
+      let %28: Int = tuple_field(r.2, 0) @49:44
+      let %29: String = call conv.int(%28) @49:35
+      let %30: String = prim <>(" ", %29) @49:28
+      let %31: String = prim <>(%27, %30) @49:9
+      return %31
+    }
+  }
+  let n.2: Int = 7 @51:56
+  let %32: Tuple var n: Int end = tuple(n.2) @51:38
+  let %33: String = call throughAlias(%32) @51:25
+  let %34: String = prim <>("throughAlias: ", %33) @51:5
+  do call say(%34) @51:1
+  funs {
+    fun elements(xs: Array(Int), ys: Array(Int)): String {
+      let a: Int = index(xs, 0) @57:17
+      let n.3: Int = prim extent(xs) @58:17
+      let %35: Int = prim +(a, 100) @59:18
+      store ys[0] := %35 @59:9
+      let %36: String = call conv.int(a) @60:9
+      let %37: Int = index(xs, 0) @60:40
+      let %38: String = call conv.int(%37) @60:31
+      let %39: String = call conv.int(n.3) @60:57
+      let %40: Int = prim extent(xs) @60:88
+      let %41: String = call conv.int(%40) @60:79
+      let %42: String = prim <>(" ", %41) @60:72
+      let %43: String = prim <>(%39, %42) @60:57
+      let %44: String = prim <>(" ", %43) @60:50
+      let %45: String = prim <>(%38, %44) @60:31
+      let %46: String = prim <>(" ", %45) @60:24
+      let %47: String = prim <>(%36, %46) @60:9
+      return %47
+    }
+  }
+  let shared: Array(Int) = array(3, 4, 5) @62:14
+  let %48: String = call elements(shared, shared) @63:21
+  let %49: String = prim <>("elements: ", %48) @63:5
+  do call say(%49) @63:1
+}
+
