@@ -7,7 +7,8 @@ interrupt during an endless loop ends the cell and keeps the session, and one
 during a library call restarts it, as does a cell that exits, the next cell
 running in the new one; completion, inspection, and
 complete input are answered; io/display's values are display data, and
-io/readline's lines are asked of the notebook.
+io/readline's lines are asked of the notebook. And the lexer, for nbconvert: its
+keywords are the tokenizer's, its tokens, and Pygments finding it installed.
 
 It needs jupyter_client and ipykernel, so it runs itself again with
 jupyterlab's Python (QUEST_JUPYTER_PYTHON, or Homebrew's), and is skipped,
@@ -21,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -56,6 +58,49 @@ def run(client, code: str) -> tuple[dict, list[tuple[str, dict]]]:
 def result(published: list[tuple[str, dict]]) -> object:
     texts = [c["data"]["text/plain"] for kind, c in published if kind == "execute_result"]
     return texts[0] if len(texts) == 1 else texts
+
+
+def check_lexer() -> list[str]:
+    """The lexer (tools/jupyter/quest_lexer.py): its keywords are the
+    tokenizer's, it tells a binding's name, comments that nest, escapes,
+    numbers, and types apart, and installed as install.py builds it (into a
+    temporary directory, with pip's --target), Pygments finds it by name, as
+    nbconvert does."""
+    sys.path.insert(0, str(ROOT_DIR / "tools" / "jupyter"))
+    import install
+    import quest_lexer
+    from pygments.token import Comment, Keyword, Name, Number, String
+
+    problems: list[str] = []
+    tokenizer = (ROOT_DIR / "questlang" / "syntax" / "tokenizer.mod.quest").read_text(encoding="utf-8")
+    keywords = set(re.findall(r'add\(m "([A-Za-z]+)"', tokenizer))
+    lexed = set(quest_lexer.TYPE_KEYWORDS) | set(quest_lexer.VALUE_KEYWORDS)
+    if keywords != lexed:
+        problems.append(f"the lexer's keywords differ from the tokenizer's: only the tokenizer's "
+                        f"{sorted(keywords - lexed)}, only the lexer's {sorted(lexed - keywords)}")
+    text = '(* a (* b *) c *) let rec fib(n: Int): Int = if n <= 1 then ~2 else 0x1F end "s\\n" endpoint'
+    tokens = [(t, v) for t, v in quest_lexer.QuestLexer().get_tokens(text) if v.strip()]
+    for wanted in [(Comment.Multiline, "(*"), (Keyword, "let"), (Name.Function, "fib"), (Name.Class, "Int"),
+                   (Keyword, "if"), (Number.Integer, "~2"), (Number.Hex, "0x1F"), (String.Escape, "\\n"),
+                   (Name, "endpoint")]:
+        if wanted not in tokens:
+            problems.append(f"the lexer gives no {wanted}: {tokens}")
+    if (Comment.Multiline, " c ") not in tokens:
+        problems.append(f"the lexer ends a comment at a nested one's end: {tokens}")
+    with tempfile.TemporaryDirectory() as d:
+        wheel = install.lexer_wheel(Path(d))
+        target = Path(d) / "site"
+        ran = subprocess.run([sys.executable, "-m", "pip", "--disable-pip-version-check", "install", "--quiet",
+                              "--no-deps", "--no-index", "--target", str(target), str(wheel)],
+                             capture_output=True, text=True)
+        if ran.returncode != 0:
+            return problems + [f"installing the lexer's wheel failed: {ran.stderr}"]
+        ran = subprocess.run([sys.executable, "-c", "from pygments.lexers import get_lexer_by_name; "
+                              "print(get_lexer_by_name('quest').name)"],
+                             capture_output=True, text=True, env={**os.environ, "PYTHONPATH": str(target)})
+        if ran.stdout.strip() != "Quest":
+            problems.append(f"Pygments finds no lexer named quest once it is installed: {ran.stdout}{ran.stderr}")
+    return problems
 
 
 def check(driver: str) -> list[str]:
@@ -182,7 +227,7 @@ if __name__ == "__main__":
             sys.exit(0)
         sys.exit(subprocess.run([JUPYTER_PYTHON, __file__, driver],
                                 env={**os.environ, "QUEST_JUPYTER_RERUN": "1"}).returncode)
-    found = check(driver)
+    found = check_lexer() + check(driver)
     for problem in found:
         print(problem)
     print(f"jupyter kernel: {len(found)} problems")

@@ -207,7 +207,13 @@ Each step is a commit or a few. Run times and check runs are recorded as steps f
 - In the notebook itself, JupyterLab 4's editor is CodeMirror 6, which needs a JupyterLab extension (TypeScript, built
   with jupyterlab's tools) for a new language. That is a separate decision, after steps 1–5. Until then, cells are
   highlighted as plain text.
-- *Done when* an exported notebook's Quest cells are highlighted.
+- *Done when* an exported notebook's Quest cells are highlighted. *Done* (2026-11-03): `tools/jupyter/quest_lexer.py`,
+  its keywords the tokenizer's. jupyterlab's Python has pip but not setuptools, so `install.py` builds the plugin's
+  wheel itself (`quest_pygments`, its entry point in `pygments.lexers`) and installs it with pip, with `--prefix` when
+  given; `--uninstall` removes it. A notebook exported after it ran is highlighted as Quest (`hl-quest`, keywords as
+  `k`, a binding's name as `nf`); one exported by `--execute` in the same run is not, since nbconvert picks the
+  lexer before running it. `tests/self-hosted/jupyter_kernel.py` checks the keywords, the tokens, and that Pygments
+  finds the lexer once its wheel is installed.
 
 ### Step 7: Retire the plan
 

@@ -32,6 +32,7 @@ class QuestKernel(Kernel):
         "name": "quest",
         "mimetype": "text/x-quest",
         "file_extension": ".quest",
+        "pygments_lexer": "quest",
     }
 
     def __init__(self, **kwargs) -> None:
