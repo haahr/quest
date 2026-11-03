@@ -220,7 +220,7 @@ internal error.
   8,129 to 10,022, mlyacc's from 4,522 to 5,713, and neither ran faster). The pure instructions and loads then left
   without uses are removed. `ssa_valuenumbers` shows each case.
 - **`ssa/accumulate`** makes loops of recursion through an associative operation (LLVM's accumulator recursion
-  elimination; [tail-loops.md](tail-loops.md) §2): in a function of one `int` result, from which no slot's address
+  elimination; [benchmarks.md](benchmarks.md) §14): in a function of one `int` result, from which no slot's address
   escapes, a block whose last instructions are a call of the function itself and an `add`, `mul`, `and`, `or`, or `xor`
   of its result and another value, and which returns that (directly or through blocks that pass it on, as for
   `tailCalls`), jumps instead to a loop header with the call's arguments and the accumulator combined with the other
@@ -239,7 +239,7 @@ internal error.
   through their closures, were nested calls, 16,384 deep for each array they filled. The blocks a tail call leaves
   unreached are dropped (`cfg.dropUnreached`, as the builder drops its own), since they may return a value that value
   numbering put in place of their parameter, and that the call no longer defines.
-- **`ssa/tailJumps`**, last, makes loops of mutual tail calls ([tail-loops.md](tail-loops.md) §3). The unit's functions
+- **`ssa/tailJumps`**, last, makes loops of mutual tail calls ([benchmarks.md](benchmarks.md) §14). The unit's functions
   and the direct tail calls between them form a graph, whose strongly connected components (Tarjan's) are the groups
   of mutually tail-recursive functions. Into each function of a group of more than one are copied the other members it
   reaches through tail calls, its own and its copies', each once, while the copies total at most 100 instructions: a

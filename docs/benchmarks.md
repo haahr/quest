@@ -10,10 +10,11 @@ Quest has two sets of benchmarks:
   records and variants in hot loops, and the time the backend takes to generate C, for checking that a change to the
   backend does not slow it or its output (`python tests/perf/measure.py`, compared with `tests/perf/baseline.json`).
 
-This document describes the MLton suite, records the baseline taken on 2026-10-28, lists what profiling the
-slowest benchmarks found and what could be done about it, compares the C and arm64 backends (§4 to §6),
-measures the inliner (§7), times every backend and the inliner's settings at one commit (§11), measures the
-Jupyter kernel's interrupt checks (§12), and times the SSA's backends after the arm64 review (§13).
+This document describes the MLton suite, records the baseline taken on 2026-10-28, lists what profiling the slowest
+benchmarks found and what could be done about it, compares the C and arm64 backends (§4 to §6), measures the inliner
+(§7), times every backend and the inliner's settings at one commit (§11), measures the Jupyter kernel's interrupt checks
+(§12), times the SSA's backends after the arm64 review (§13), and measures the SSA's loops of accumulated recursion and
+mutual tail calls (§14).
 
 ## 1. The MLton suite
 
@@ -1044,3 +1045,50 @@ them:
   C; this is in ssac's C, not the SSA.
 - **C moved by 0.98,** within noise except tailmerge, at 1.25 of its §11 time; a second run took 54.6 seconds, and
   every run before §11 took 50 to 54, so §11's 44.1 was the outlier.
+
+## 14. Loops of accumulated recursion and of mutual tail calls (2026-11-03)
+
+§13 left arm64's distance from C mostly in four small recursions. Two are not the code's: clang calls `tak(33 22 11)`
+once for the whole count, seeing that it returns the same value each time, and folds tailfib's `fib(44)` to a
+constant, so that its main does nothing but call `bench.count()`; arm64 makes the same loops of their tail calls. The
+other two were: fib, whose `fib(n - 1) + fib(n - 2)` clang turns into one call and a loop adding into an accumulator,
+and even-odd, whose `even1` and `odd1` clang makes one loop. Two passes of the SSA now do the same ([ssa.md](ssa.md)
+§4.1): `ssa/accumulate` and `ssa/tailJumps`.
+
+### 14.1. What they change
+
+A count, not kept, of the functions each pass changed, over the 46 programs (whole programs, through arm64) and the
+compiler's driver:
+
+| | `accumulate` | `tailJumps` (copies made) |
+|---|--:|--:|
+| The 46 | 1 (fib's `fib`) | 15: hamlet 11, even-odd 2, logic 1, knuth-bendix 1 |
+| The driver | 0 | 5 |
+
+### 14.2. Times
+
+`tools/perf/variants.py` and `tools/perf/timeit.py --rounds 5` at its default thirty-second of the suite's counts,
+whole programs, with both passes and with `QUEST_SKIP_PASSES=accumulate,tailJumps`; the load average was 2.1 to 2.7.
+Each time is the least user time of the five rounds, and the ratio is to C's:
+
+| Program | C | arm64 before | arm64 after | ssac before | ssac after |
+|---|--:|--:|--:|--:|--:|
+| fib | 0.50 s | 0.81 (1.62) | 0.57 (1.15) | 0.50 (1.00) | 0.53 (1.07) |
+| even-odd | 0.08 s | 0.62 (7.81) | 0.31 (3.91) | 0.08 (1.00) | 0.00 (0.03) |
+| hamlet | 1.74 s | 1.49 (0.85) | 1.55 (0.89) | 1.50 (0.86) | 1.47 (0.84) |
+| logic | 2.37 s | 1.83 (0.77) | 1.82 (0.77) | 1.81 (0.76) | 1.83 (0.77) |
+| knuth-bendix | 6.78 s | 5.77 (0.85) | 5.77 (0.85) | 7.86 (1.16) | 7.99 (1.18) |
+
+- **fib through arm64 takes 0.70 of its time,** one call a level instead of two; through ssac, clang had already done
+  the same to the C, and gains nothing.
+- **even-odd through arm64 takes half its time:** one loop of two steps, without a frame pushed and popped at each.
+  It is still 3.9 times C's, whose whole program (at this count, one even and one odd of 500,000,000) clang reduces
+  further; through ssac, given one function, clang now folds the loop away.
+- **hamlet, logic, and knuth-bendix do not move.** hamlet's arm64 difference was noise: nine rounds of timeit made it
+  1.01, and its cycles were 5,097 and 5,096 million, its instructions retired 0.2 percent more. Its copies are of
+  small functions of its elaborator's, pattern matcher's, and pretty printer's traversals.
+- **Compile times do not move:** the driver's build through arm64 took 59.3 to 59.9 seconds with the passes and
+  without, twice each.
+
+Scaled by these ratios, §13's 8.89 times C's time for fib through arm64 would be about 6.2, and even-odd's 3.36 about
+1.7; the rest of fib's is the count clang hoists. The suite was not retaken, as no other program changed.
