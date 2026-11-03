@@ -1,0 +1,41 @@
+(* Functions that tail-call each other, which the self-hosted compiler's SSA
+ * makes loops of, each function holding copies of the others it reaches
+ * (docs/ssa.md section 4.1, ssa/tailJumps): a pair returning a Bool; a
+ * machine of three states, scanning an array, each state a function; one
+ * that raises from a copy; and a pair through closures, which it leaves. The
+ * ssa golden shows the copies. Counts stay below the interpreters' depth of
+ * 1,000 calls, since they make no tail calls. *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+let rec even(n: Int): Bool = if n is 0 then true else odd(n - 1) end
+and odd(n: Int): Bool = if n is 0 then false else even(n - 1) end;
+print("even 500: " <> conv.bool(even(500)) <> ", odd 333: " <> conv.bool(odd(333)));
+
+(* The runs of the same value in an array: outside one, in one of 0s, and in
+ * one of 1s, counting the runs *)
+let rec outside(a: Array(Int) i: Int runs: Int): Int =
+    if i is extent a then runs
+    elsif a[i] is 0 then zeros(a i + 1 runs + 1)
+    else ones(a i + 1 runs + 1)
+    end
+and zeros(a: Array(Int) i: Int runs: Int): Int =
+    if i is extent a then runs elsif a[i] is 0 then zeros(a i + 1 runs) else ones(a i + 1 runs + 1) end
+and ones(a: Array(Int) i: Int runs: Int): Int =
+    if i is extent a then runs elsif a[i] is 1 then ones(a i + 1 runs) else zeros(a i + 1 runs + 1) end;
+print("runs: " <> conv.int(outside(array of 0 0 1 1 1 0 1 0 0 0 1 end 0 0)));
+
+let tooDeep: Exception(Int) = exception tooDeep: Int end;
+let rec ping(n: Int limit: Int): Int = if n >= limit then raise tooDeep with n end else pong(n + 1 limit) end
+and pong(n: Int limit: Int): Int = ping(n + 2 limit);
+print("raised: " <> conv.int(try ping(0 100) when tooDeep with n then n end));
+
+let closures(n: Int): Bool =
+    begin
+        let fs = array of(2 fun(k: Int): Bool true)
+        fs[0] := fun(k: Int): Bool if k is 0 then true else fs[1](k - 1) end
+        fs[1] := fun(k: Int): Bool if k is 0 then false else fs[0](k - 1) end
+        fs[0](n)
+    end;
+print("closures: " <> conv.bool(closures(7)));

@@ -1,0 +1,544 @@
+== a pair
+function even(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  %3: int = const 1
+  return %3
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  tail %6: int = call odd(%5)
+}
+
+function odd(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  %3: int = const 0
+  return %3
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  tail %6: int = call even(%5)
+}
+-- after tailJumps
+function even(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  %3: int = const 1
+  return %3
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  jump b3(%5)
+b3(%7: int):
+  %8: int = const 0
+  %9: int = eq %7, %8
+  branch %9, b4(), b5()
+b4():
+  %10: int = const 0
+  return %10
+b5():
+  %11: int = const 1
+  %12: int = sub %7, %11
+  tail %13: int = call even(%12)
+}
+
+function odd(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  %3: int = const 0
+  return %3
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  jump b3(%5)
+b3(%7: int):
+  %8: int = const 0
+  %9: int = eq %7, %8
+  branch %9, b4(), b5()
+b4():
+  %10: int = const 1
+  return %10
+b5():
+  %11: int = const 1
+  %12: int = sub %7, %11
+  tail %13: int = call odd(%12)
+}
+== a group of three
+function first(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  %3: int = const 1
+  return %3
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  tail %6: int = call second(%5)
+}
+
+function second(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  %3: int = const 2
+  return %3
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  tail %6: int = call third(%5)
+}
+
+function third(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  %3: int = const 3
+  return %3
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  tail %6: int = call first(%5)
+}
+-- after tailJumps
+function first(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  %3: int = const 1
+  return %3
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  jump b3(%5)
+b3(%7: int):
+  %8: int = const 0
+  %9: int = eq %7, %8
+  branch %9, b4(), b5()
+b4():
+  %10: int = const 2
+  return %10
+b5():
+  %11: int = const 1
+  %12: int = sub %7, %11
+  jump b6(%12)
+b6(%14: int):
+  %15: int = const 0
+  %16: int = eq %14, %15
+  branch %16, b7(), b8()
+b7():
+  %17: int = const 3
+  return %17
+b8():
+  %18: int = const 1
+  %19: int = sub %14, %18
+  tail %20: int = call first(%19)
+}
+
+function second(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  %3: int = const 2
+  return %3
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  jump b3(%5)
+b3(%7: int):
+  %8: int = const 0
+  %9: int = eq %7, %8
+  branch %9, b4(), b5()
+b4():
+  %10: int = const 3
+  return %10
+b5():
+  %11: int = const 1
+  %12: int = sub %7, %11
+  jump b6(%12)
+b6(%14: int):
+  %15: int = const 0
+  %16: int = eq %14, %15
+  branch %16, b7(), b8()
+b7():
+  %17: int = const 1
+  return %17
+b8():
+  %18: int = const 1
+  %19: int = sub %14, %18
+  tail %20: int = call second(%19)
+}
+
+function third(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  %3: int = const 3
+  return %3
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  jump b3(%5)
+b3(%7: int):
+  %8: int = const 0
+  %9: int = eq %7, %8
+  branch %9, b4(), b5()
+b4():
+  %10: int = const 1
+  return %10
+b5():
+  %11: int = const 1
+  %12: int = sub %7, %11
+  jump b6(%12)
+b6(%14: int):
+  %15: int = const 0
+  %16: int = eq %14, %15
+  branch %16, b7(), b8()
+b7():
+  %17: int = const 2
+  return %17
+b8():
+  %18: int = const 1
+  %19: int = sub %14, %18
+  tail %20: int = call third(%19)
+}
+== a member with a stack slot
+function slotted(%0: int): int slots [8:8] {
+b0(%0: int):
+  %1: ptr = slot 0
+  store8 %1 + 0, %0
+  %2: int = load8 %1 + 0
+  tail %3: int = call plain(%2)
+}
+
+function plain(%0: int): int {
+b0(%0: int):
+  tail %1: int = call slotted(%0)
+}
+-- after tailJumps
+function slotted(%0: int): int slots [8:8] {
+b0(%0: int):
+  %1: ptr = slot 0
+  store8 %1 + 0, %0
+  %2: int = load8 %1 + 0
+  jump b1(%2)
+b1(%4: int):
+  tail %5: int = call slotted(%4)
+}
+
+function plain(%0: int): int {
+b0(%0: int):
+  tail %1: int = call slotted(%0)
+}
+== a member with a byte parameter
+function bytes(%0: int) narrow [0]: int {
+b0(%0: int):
+  tail %1: int = call words(%0)
+}
+
+function words(%0: int): int {
+b0(%0: int):
+  tail %1: int = call bytes(%0) narrow [0]
+}
+-- after tailJumps
+function bytes(%0: int) narrow [0]: int {
+b0(%0: int):
+  jump b1(%0)
+b1(%2: int):
+  tail %3: int = call bytes(%2) narrow [0]
+}
+
+function words(%0: int): int {
+b0(%0: int):
+  tail %1: int = call bytes(%0) narrow [0]
+}
+== a member whose result is passed otherwise
+function narrowed(%0: int): int result narrow {
+b0(%0: int):
+  tail %1: int = call widened(%0)
+}
+
+function widened(%0: int): int {
+b0(%0: int):
+  tail %1: int = call narrowed(%0) result narrow
+}
+-- after tailJumps
+function narrowed(%0: int): int result narrow {
+b0(%0: int):
+  tail %1: int = call widened(%0)
+}
+
+function widened(%0: int): int {
+b0(%0: int):
+  tail %1: int = call narrowed(%0) result narrow
+}
+== a member too large
+function large(%0: int): int {
+b0(%0: int):
+  %1: int = add %0, %0
+  %2: int = add %1, %0
+  %3: int = add %2, %0
+  %4: int = add %3, %0
+  %5: int = add %4, %0
+  %6: int = add %5, %0
+  %7: int = add %6, %0
+  %8: int = add %7, %0
+  %9: int = add %8, %0
+  %10: int = add %9, %0
+  %11: int = add %10, %0
+  %12: int = add %11, %0
+  %13: int = add %12, %0
+  %14: int = add %13, %0
+  %15: int = add %14, %0
+  %16: int = add %15, %0
+  %17: int = add %16, %0
+  %18: int = add %17, %0
+  %19: int = add %18, %0
+  %20: int = add %19, %0
+  %21: int = add %20, %0
+  %22: int = add %21, %0
+  %23: int = add %22, %0
+  %24: int = add %23, %0
+  %25: int = add %24, %0
+  %26: int = add %25, %0
+  %27: int = add %26, %0
+  %28: int = add %27, %0
+  %29: int = add %28, %0
+  %30: int = add %29, %0
+  %31: int = add %30, %0
+  %32: int = add %31, %0
+  %33: int = add %32, %0
+  %34: int = add %33, %0
+  %35: int = add %34, %0
+  %36: int = add %35, %0
+  %37: int = add %36, %0
+  %38: int = add %37, %0
+  %39: int = add %38, %0
+  %40: int = add %39, %0
+  %41: int = add %40, %0
+  %42: int = add %41, %0
+  %43: int = add %42, %0
+  %44: int = add %43, %0
+  %45: int = add %44, %0
+  %46: int = add %45, %0
+  %47: int = add %46, %0
+  %48: int = add %47, %0
+  %49: int = add %48, %0
+  %50: int = add %49, %0
+  %51: int = add %50, %0
+  %52: int = add %51, %0
+  %53: int = add %52, %0
+  %54: int = add %53, %0
+  %55: int = add %54, %0
+  %56: int = add %55, %0
+  %57: int = add %56, %0
+  %58: int = add %57, %0
+  %59: int = add %58, %0
+  %60: int = add %59, %0
+  %61: int = add %60, %0
+  %62: int = add %61, %0
+  %63: int = add %62, %0
+  %64: int = add %63, %0
+  %65: int = add %64, %0
+  %66: int = add %65, %0
+  %67: int = add %66, %0
+  %68: int = add %67, %0
+  %69: int = add %68, %0
+  %70: int = add %69, %0
+  %71: int = add %70, %0
+  %72: int = add %71, %0
+  %73: int = add %72, %0
+  %74: int = add %73, %0
+  %75: int = add %74, %0
+  %76: int = add %75, %0
+  %77: int = add %76, %0
+  %78: int = add %77, %0
+  %79: int = add %78, %0
+  %80: int = add %79, %0
+  %81: int = add %80, %0
+  %82: int = add %81, %0
+  %83: int = add %82, %0
+  %84: int = add %83, %0
+  %85: int = add %84, %0
+  %86: int = add %85, %0
+  %87: int = add %86, %0
+  %88: int = add %87, %0
+  %89: int = add %88, %0
+  %90: int = add %89, %0
+  %91: int = add %90, %0
+  %92: int = add %91, %0
+  %93: int = add %92, %0
+  %94: int = add %93, %0
+  %95: int = add %94, %0
+  %96: int = add %95, %0
+  %97: int = add %96, %0
+  %98: int = add %97, %0
+  %99: int = add %98, %0
+  %100: int = add %99, %0
+  tail %101: int = call small(%100)
+}
+
+function small(%0: int): int {
+b0(%0: int):
+  tail %1: int = call large(%0)
+}
+-- after tailJumps
+function large(%0: int): int {
+b0(%0: int):
+  %1: int = add %0, %0
+  %2: int = add %1, %0
+  %3: int = add %2, %0
+  %4: int = add %3, %0
+  %5: int = add %4, %0
+  %6: int = add %5, %0
+  %7: int = add %6, %0
+  %8: int = add %7, %0
+  %9: int = add %8, %0
+  %10: int = add %9, %0
+  %11: int = add %10, %0
+  %12: int = add %11, %0
+  %13: int = add %12, %0
+  %14: int = add %13, %0
+  %15: int = add %14, %0
+  %16: int = add %15, %0
+  %17: int = add %16, %0
+  %18: int = add %17, %0
+  %19: int = add %18, %0
+  %20: int = add %19, %0
+  %21: int = add %20, %0
+  %22: int = add %21, %0
+  %23: int = add %22, %0
+  %24: int = add %23, %0
+  %25: int = add %24, %0
+  %26: int = add %25, %0
+  %27: int = add %26, %0
+  %28: int = add %27, %0
+  %29: int = add %28, %0
+  %30: int = add %29, %0
+  %31: int = add %30, %0
+  %32: int = add %31, %0
+  %33: int = add %32, %0
+  %34: int = add %33, %0
+  %35: int = add %34, %0
+  %36: int = add %35, %0
+  %37: int = add %36, %0
+  %38: int = add %37, %0
+  %39: int = add %38, %0
+  %40: int = add %39, %0
+  %41: int = add %40, %0
+  %42: int = add %41, %0
+  %43: int = add %42, %0
+  %44: int = add %43, %0
+  %45: int = add %44, %0
+  %46: int = add %45, %0
+  %47: int = add %46, %0
+  %48: int = add %47, %0
+  %49: int = add %48, %0
+  %50: int = add %49, %0
+  %51: int = add %50, %0
+  %52: int = add %51, %0
+  %53: int = add %52, %0
+  %54: int = add %53, %0
+  %55: int = add %54, %0
+  %56: int = add %55, %0
+  %57: int = add %56, %0
+  %58: int = add %57, %0
+  %59: int = add %58, %0
+  %60: int = add %59, %0
+  %61: int = add %60, %0
+  %62: int = add %61, %0
+  %63: int = add %62, %0
+  %64: int = add %63, %0
+  %65: int = add %64, %0
+  %66: int = add %65, %0
+  %67: int = add %66, %0
+  %68: int = add %67, %0
+  %69: int = add %68, %0
+  %70: int = add %69, %0
+  %71: int = add %70, %0
+  %72: int = add %71, %0
+  %73: int = add %72, %0
+  %74: int = add %73, %0
+  %75: int = add %74, %0
+  %76: int = add %75, %0
+  %77: int = add %76, %0
+  %78: int = add %77, %0
+  %79: int = add %78, %0
+  %80: int = add %79, %0
+  %81: int = add %80, %0
+  %82: int = add %81, %0
+  %83: int = add %82, %0
+  %84: int = add %83, %0
+  %85: int = add %84, %0
+  %86: int = add %85, %0
+  %87: int = add %86, %0
+  %88: int = add %87, %0
+  %89: int = add %88, %0
+  %90: int = add %89, %0
+  %91: int = add %90, %0
+  %92: int = add %91, %0
+  %93: int = add %92, %0
+  %94: int = add %93, %0
+  %95: int = add %94, %0
+  %96: int = add %95, %0
+  %97: int = add %96, %0
+  %98: int = add %97, %0
+  %99: int = add %98, %0
+  %100: int = add %99, %0
+  jump b1(%100)
+b1(%102: int):
+  tail %103: int = call large(%102)
+}
+
+function small(%0: int): int {
+b0(%0: int):
+  tail %1: int = call large(%0)
+}
+== calls not all tail calls
+function outer(%0: int): int {
+b0(%0: int):
+  %1: int = call inner(%0)
+  %2: int = add %1, %0
+  return %2
+}
+
+function inner(%0: int): int {
+b0(%0: int):
+  tail %1: int = call outer(%0)
+}
+-- after tailJumps
+function outer(%0: int): int {
+b0(%0: int):
+  %1: int = call inner(%0)
+  %2: int = add %1, %0
+  return %2
+}
+
+function inner(%0: int): int {
+b0(%0: int):
+  tail %1: int = call outer(%0)
+}

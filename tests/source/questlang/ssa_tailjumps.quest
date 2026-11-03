@@ -1,0 +1,133 @@
+(* Self-Hosted Quest Compiler: Test Mutual Tail Calls Made Jumps
+ *
+ * questlang/ssa/tailJumps (docs/ssa.md section 4.1) on units of the SSA
+ * written as text and read by questlang/ssa/parser, each printed before and
+ * after the pass and verified: a pair that tail-call each other, each of
+ * which gets a copy of the other; a group of three, whose copies are reached
+ * through other copies; and members left uncopied: one with a stack slot, one
+ * with a byte parameter, one whose result is passed otherwise, and one too
+ * large; and a pair whose calls are not all tail calls, which is no group. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/tailJumps : questlang/ssa/TailJumps
+    questlang/ssa/verify : questlang/ssa/Verify
+    collections/vector : collections/Vector
+    util/strutil : util/Strutil
+    conv : Conv
+    writer : Writer
+;
+
+let emit(s: String): Ok = writer.putString(writer.output s);
+
+let show(title: String lines: Array(String)): Ok =
+    begin
+        emit("== " <> title <> "\n")
+        let u = parser.readUnit(strutil.joinArray("\n" lines) <> "\n")
+        emit(printer.formatUnit(u))
+        tailJumps.jumpUnit(u)
+        emit("-- after tailJumps\n")
+        emit(printer.formatUnit(u))
+        try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
+    end;
+
+(* A function of one parameter, n, that returns result when n is 0 and
+ * otherwise tail-calls next with n - 1, as tailCalls leaves it *)
+let countdown(name: String next: String result: Int): Array(String) =
+    array of
+        "function " <> name <> "(%0: int): int {"
+        "b0(%0: int):"
+        "  %1: int = const 0"
+        "  %2: int = eq %0, %1"
+        "  branch %2, b1(), b2()"
+        "b1():"
+        "  %3: int = const " <> conv.int(result)
+        "  return %3"
+        "b2():"
+        "  %4: int = const 1"
+        "  %5: int = sub %0, %4"
+        "  tail %6: int = call " <> next <> "(%5)"
+        "}"
+    end;
+
+let joined(units: Array(Array(String))): Array(String) =
+    begin
+        let all = vector.new(:String)
+        for u = 0 upto {extent units - 1} do
+            for k = 0 upto {extent units[u] - 1} do vector.append(:String all units[u][k]) end
+        end
+        vector.toArray(:String all)
+    end;
+
+show("a pair" joined(array of countdown("even" "odd" 1) countdown("odd" "even" 0) end));
+
+show("a group of three" joined(array of
+    countdown("first" "second" 1) countdown("second" "third" 2) countdown("third" "first" 3)
+end));
+
+show("a member with a stack slot" array of
+    "function slotted(%0: int): int slots [8:8] {"
+    "b0(%0: int):"
+    "  %1: ptr = slot 0"
+    "  store8 %1 + 0, %0"
+    "  %2: int = load8 %1 + 0"
+    "  tail %3: int = call plain(%2)"
+    "}"
+    "function plain(%0: int): int {"
+    "b0(%0: int):"
+    "  tail %1: int = call slotted(%0)"
+    "}"
+end);
+
+show("a member with a byte parameter" array of
+    "function bytes(%0: int) narrow [0]: int {"
+    "b0(%0: int):"
+    "  tail %1: int = call words(%0)"
+    "}"
+    "function words(%0: int): int {"
+    "b0(%0: int):"
+    "  tail %1: int = call bytes(%0) narrow [0]"
+    "}"
+end);
+
+show("a member whose result is passed otherwise" array of
+    "function narrowed(%0: int): int result narrow {"
+    "b0(%0: int):"
+    "  tail %1: int = call widened(%0)"
+    "}"
+    "function widened(%0: int): int {"
+    "b0(%0: int):"
+    "  tail %1: int = call narrowed(%0) result narrow"
+    "}"
+end);
+
+let large(): Array(String) =
+    begin
+        let lines = vector.fromArray(:String array of "function large(%0: int): int {" "b0(%0: int):" end)
+        for k = 1 upto 100 do
+            vector.append(:String lines "  %" <> conv.int(k) <> ": int = add %" <> conv.int(k - 1) <> ", %0")
+        end
+        vector.append(:String lines "  tail %101: int = call small(%100)")
+        vector.append(:String lines "}")
+        vector.append(:String lines "function small(%0: int): int {")
+        vector.append(:String lines "b0(%0: int):")
+        vector.append(:String lines "  tail %1: int = call large(%0)")
+        vector.append(:String lines "}")
+        vector.toArray(:String lines)
+    end;
+show("a member too large" large());
+
+show("calls not all tail calls" array of
+    "function outer(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = call inner(%0)"
+    "  %2: int = add %1, %0"
+    "  return %2"
+    "}"
+    "function inner(%0: int): int {"
+    "b0(%0: int):"
+    "  tail %1: int = call outer(%0)"
+    "}"
+end);

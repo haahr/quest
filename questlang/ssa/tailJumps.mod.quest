@@ -1,0 +1,261 @@
+(* Quest Self-Hosted Compiler: The SSA's Tail Jumps Implementation *)
+
+module tailJumps : TailJumps
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    Let Function = ssa.Function
+
+    (* The most instructions copied into one function *)
+    let budget = 100
+
+    (* The unit's functions that a function's tail calls call, by number *)
+    let tailCallees(f: Function numbers: hashMap.T(String Int)): vector.T(Int) =
+        begin
+            let callees = vector.new(:Int)
+            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                case ssa.block(f b).term
+                    when termTailCall with x then
+                        let n = hashMap.get(:String :Int numbers x.call.symbol)
+                        if ssa.isOp(x.call ssa.opCall) andif maybe.isSome(:Int n) then
+                            vector.append(:Int callees maybe.unwrap(:Int n))
+                        end
+                    when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable then ok
+                end
+            end
+            callees
+        end
+
+    (* The strongly connected components of a graph (Tarjan's algorithm), as
+     * each node's component's number *)
+    let components(edges: Array(vector.T(Int))): Array(Int) =
+        begin
+            let n = extent edges
+            let order = array of(n ~1)
+            let low = array of(n 0)
+            let onStack = array of(n false)
+            let component = array of(n ~1)
+            let stack = vector.new(:Int)
+            let counts = tuple let var visited = 0 let var components = 0 end
+            let rec visit(v: Int): Ok =
+                begin
+                    order[v] := counts.visited
+                    low[v] := counts.visited
+                    counts.visited := counts.visited + 1
+                    vector.append(:Int stack v)
+                    onStack[v] := true
+                    for k = 0 upto {vector.length(:Int edges[v]) - 1} do
+                        let w = vector.get(:Int edges[v] k)
+                        if order[w] < 0 then
+                            visit(w)
+                            if low[w] < low[v] then low[v] := low[w] end
+                        elsif onStack[w] andif {order[w] < low[v]} then
+                            low[v] := order[w]
+                        end
+                    end
+                    if low[v] is order[v] then
+                        let var w = ~1
+                        while w isnot v do
+                            w := vector.pop(:Int stack)
+                            onStack[w] := false
+                            component[w] := counts.components
+                        end
+                        counts.components := counts.components + 1
+                    end
+                end
+            for v = 0 upto {n - 1} do if order[v] < 0 then visit(v) end end
+            component
+        end
+
+    (* How a parameter or a result is passed, as a number *)
+    let passing(p: ssa.Passed): Int =
+        case p
+            when passWord then 0
+            when passReal then 1
+            when passPair then 2
+            when passPairRest then 3
+            when passByte then 4
+            when passInt32 then 5
+            when passMemory with x then 6 + x.bytes
+        end
+
+    (* Whether g can be copied into a function: it has no stack slots and no
+     * try, and each of its parameters is passed in a register, as a jump
+     * passes it *)
+    let copiable(g: Function): Bool =
+        begin
+            let var can = vector.empty(:ssa.Slot g.slots)
+            for k = 0 upto {extent g.signature.params - 1} do
+                if passing(g.signature.params[k]) > 3 then can := false end
+            end
+            for b = 0 upto {vector.length(:ssa.Block g.blocks) - 1} do
+                case ssa.block(g b).term
+                    when termTry then can := false
+                    when termNone, termJump, termBranch, termSwitch, termReturn, termTailCall, termUnreachable then ok
+                end
+            end
+            can
+        end
+
+    (* Whether g's returns are f's: the same results, passed the same way *)
+    let sameResults(f: Function g: Function): Bool =
+        begin
+            let fs = f.signature.results
+            let gs = g.signature.results
+            let var same = {extent fs is extent gs}
+                andif {vector.length(:ssa.Type f.resultTypes) is vector.length(:ssa.Type g.resultTypes)}
+            if same then
+                for k = 0 upto {extent fs - 1} do if passing(fs[k]) isnot passing(gs[k]) then same := false end end
+                for k = 0 upto {vector.length(:ssa.Type f.resultTypes) - 1} do
+                    if vector.get(:ssa.Type f.resultTypes k) isnot vector.get(:ssa.Type g.resultTypes k) then
+                        same := false
+                    end
+                end
+            end
+            same
+        end
+
+    let size(g: Function blocks: Int): Int =
+        begin
+            let var n = 0
+            for b = 0 upto {blocks - 1} do n := n + vector.length(:ssa.Inst ssa.block(g b).insts) + 1 end
+            n
+        end
+
+    (* Copies g's first blocks (those it had before any copy was made into
+     * it), and the values they use, into f; the number of the copy's first
+     * block *)
+    let copyInto(f: Function g: Function blocks: Int values: Int): Int =
+        begin
+            let numbers = array of(values 0)
+            for v = 0 upto {values - 1} do numbers[v] := ssa.newValue(f vector.get(:ssa.Type g.types v)) end
+            let base = vector.length(:ssa.Block f.blocks)
+            for b = 0 upto {blocks - 1} do let ignored = ssa.newBlock(f) end
+            let renumber(vs: Array(Int)): Array(Int) =
+                begin
+                    let r = array of(extent vs 0)
+                    for k = 0 upto {extent vs - 1} do r[k] := numbers[vs[k]] end
+                    r
+                end
+            let copy(i: ssa.Inst): ssa.Inst =
+                begin
+                    let c = ssa.instruction(i.op renumber(i.args) renumber(i.results) i.imm i.symbol i.width i.signed
+                        i.signature)
+                    c.loc := i.loc
+                    c.invariant := i.invariant
+                    c
+                end
+            let retarget(t: ssa.Target): ssa.Target = ssa.target(base + t.block renumber(t.args))
+            for b = 0 upto {blocks - 1} do
+                let from = ssa.block(g b)
+                let to = ssa.block(f {base + b})
+                for k = 0 upto {vector.length(:Int from.params) - 1} do
+                    vector.append(:Int to.params numbers[vector.get(:Int from.params k)])
+                end
+                for k = 0 upto {vector.length(:ssa.Inst from.insts) - 1} do
+                    vector.append(:ssa.Inst to.insts copy(vector.get(:ssa.Inst from.insts k)))
+                end
+                to.term := case from.term
+                    when termJump with x then option termJump of ssa.Terminator with let target = retarget(x.target) end
+                    when termBranch with x then
+                        option termBranch of ssa.Terminator with
+                            let cond = numbers[x.cond] let ifTrue = retarget(x.ifTrue) let ifFalse = retarget(x.ifFalse)
+                        end
+                    when termSwitch with x then
+                        let ts = array of(extent x.targets retarget(x.default))
+                        for k = 0 upto {extent x.targets - 1} do ts[k] := retarget(x.targets[k]) end
+                        option termSwitch of ssa.Terminator with
+                            let value = numbers[x.value] let cases = x.cases let targets = ts
+                            let default = retarget(x.default)
+                        end
+                    when termReturn with x then
+                        option termReturn of ssa.Terminator with let values = renumber(x.values) end
+                    when termTailCall with x then option termTailCall of ssa.Terminator with let call = copy(x.call) end
+                    when termTry with x then
+                        option termTry of ssa.Terminator with
+                            let slot = x.slot let body = retarget(x.body) let handler = base + x.handler
+                        end
+                    when termNone, termUnreachable then from.term
+                end
+                to.termLoc := from.termLoc
+            end
+            base
+        end
+
+    let jumpUnit(u: ssa.Unit): Ok =
+        begin
+            let n = vector.length(:Function u.functions)
+            let function(k: Int): Function = vector.get(:Function u.functions k)
+            let numbers = hashMap.new(:String :Int stringOp.equal hash.string)
+            for k = 0 upto {n - 1} do let ignored = hashMap.insert(:String :Int numbers function(k).symbol k) end
+            let edges = array of(n vector.new(:Int))
+            for k = 0 upto {n - 1} do edges[k] := tailCallees(function(k) numbers) end
+            let component = components(edges)
+            let members = array of(n 0)
+            for k = 0 upto {n - 1} do members[component[k]] := members[component[k]] + 1 end
+            (* Each function's blocks and values before any copy is made *)
+            let blocks = array of(n 0)
+            let values = array of(n 0)
+            for k = 0 upto {n - 1} do
+                blocks[k] := vector.length(:ssa.Block function(k).blocks)
+                values[k] := vector.length(:ssa.Type function(k).types)
+            end
+            (* The copies made into each function: the first block of each,
+             * by the copied function's symbol *)
+            let entries = array of(n hashMap.new(:String :Int stringOp.equal hash.string))
+            for k = 0 upto {n - 1} do
+                entries[k] := hashMap.new(:String :Int stringOp.equal hash.string)
+                let f = function(k)
+                if members[component[k]] > 1 then
+                    (* The members f reaches through its tail calls and its
+                     * copies', each copied once, while the budget lasts *)
+                    let copied = array of(n false)
+                    copied[k] := true
+                    let var spent = 0
+                    let pending = vector.new(:Int)
+                    let reach(from: Int): Ok =
+                        for e = 0 upto {vector.length(:Int edges[from]) - 1} do
+                            vector.append(:Int pending vector.get(:Int edges[from] e))
+                        end
+                    reach(k)
+                    while not(vector.empty(:Int pending)) do
+                        let g = vector.pop(:Int pending)
+                        let cost = size(function(g) blocks[g])
+                        if not(copied[g]) andif {component[g] is component[k]} andif copiable(function(g))
+                            andif sameResults(f function(g)) andif {{spent + cost} <= budget} then
+                            copied[g] := true
+                            spent := spent + cost
+                            let entry = copyInto(f function(g) blocks[g] values[g])
+                            let ignored = hashMap.insert(:String :Int entries[k] function(g).symbol entry)
+                            reach(g)
+                        end
+                    end
+                end
+            end
+            (* Each tail call of a function copied in jumps to its copy *)
+            for k = 0 upto {n - 1} do
+                let f = function(k)
+                if not(hashMap.empty(:String :Int entries[k])) then
+                    for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                        let blk = ssa.block(f b)
+                        case blk.term
+                            when termTailCall with x then
+                                let entry = hashMap.get(:String :Int entries[k] x.call.symbol)
+                                if maybe.isSome(:Int entry) then
+                                    blk.term := option termJump of ssa.Terminator with
+                                        let target = ssa.target(maybe.unwrap(:Int entry) x.call.args)
+                                    end
+                                end
+                            when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable then
+                                ok
+                        end
+                    end
+                end
+            end
+        end
+end

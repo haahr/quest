@@ -1,0 +1,237 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @10:45
+      let %2: String = prim <>(s, "\n") @10:59
+      let %3: Ok = call writer.putString(%1, %2) @10:28
+      return %3
+    }
+  }
+  funs rec {
+    fun even(n: Int): Bool {
+      join k1(r: Bool) {
+        return r
+      } in {
+        let %4: Bool = prim is(n, 0) @12:33
+        if %4 { @12:30
+          jump k1(true) @12:30
+        } else {
+          let %5: Int = prim -(n, 1) @12:59
+          let %6: Bool = call odd(%5) @12:55
+          jump k1(%6) @12:30
+        }
+      }
+    }
+    fun odd(n.1: Int): Bool {
+      join k2(r.1: Bool) {
+        return r.1
+      } in {
+        let %7: Bool = prim is(n.1, 0) @13:28
+        if %7 { @13:25
+          jump k2(false) @13:25
+        } else {
+          let %8: Int = prim -(n.1, 1) @13:56
+          let %9: Bool = call even(%8) @13:51
+          jump k2(%9) @13:25
+        }
+      }
+    }
+  }
+  let %10: Bool = call even(500) @14:33
+  let %11: String = call conv.bool(%10) @14:23
+  let %12: Bool = call odd(333) @14:74
+  let %13: String = call conv.bool(%12) @14:64
+  let %14: String = prim <>(", odd 333: ", %13) @14:47
+  let %15: String = prim <>(%11, %14) @14:23
+  let %16: String = prim <>("even 500: ", %15) @14:7
+  do call print(%16) @14:1
+  funs rec {
+    fun outside(a: Array(Int), i: Int, runs: Int): Int {
+      join k3(r.2: Int) {
+        return r.2
+      } in {
+        let %17: Int = prim extent(a) @19:13
+        let %18: Bool = prim is(i, %17) @19:8
+        if %18 { @19:5
+          jump k3(runs) @19:5
+        } else {
+          join k4(r.3: Int) {
+            jump k3(r.3) @19:5
+          } in {
+            let %19: Int = index(a, i) @20:11
+            let %20: Bool = prim is(%19, 0) @20:11
+            if %20 { @20:11
+              let %21: Int = prim +(i, 1) @20:34
+              let %22: Int = prim +(runs, 1) @20:40
+              let %23: Int = call zeros(a, %21, %22) @20:26
+              jump k4(%23) @20:11
+            } else {
+              let %24: Int = prim +(i, 1) @21:17
+              let %25: Int = prim +(runs, 1) @21:23
+              let %26: Int = call ones(a, %24, %25) @21:10
+              jump k4(%26) @20:11
+            }
+          }
+        }
+      }
+    }
+    fun zeros(a.1: Array(Int), i.1: Int, runs.1: Int): Int {
+      join k5(r.4: Int) {
+        return r.4
+      } in {
+        let %27: Int = prim extent(a.1) @24:13
+        let %28: Bool = prim is(i.1, %27) @24:8
+        if %28 { @24:5
+          jump k5(runs.1) @24:5
+        } else {
+          join k6(r.5: Int) {
+            jump k5(r.5) @24:5
+          } in {
+            let %29: Int = index(a.1, i.1) @24:38
+            let %30: Bool = prim is(%29, 0) @24:38
+            if %30 { @24:38
+              let %31: Int = prim +(i.1, 1) @24:61
+              let %32: Int = call zeros(a.1, %31, runs.1) @24:53
+              jump k6(%32) @24:38
+            } else {
+              let %33: Int = prim +(i.1, 1) @24:85
+              let %34: Int = prim +(runs.1, 1) @24:91
+              let %35: Int = call ones(a.1, %33, %34) @24:78
+              jump k6(%35) @24:38
+            }
+          }
+        }
+      }
+    }
+    fun ones(a.2: Array(Int), i.2: Int, runs.2: Int): Int {
+      join k7(r.6: Int) {
+        return r.6
+      } in {
+        let %36: Int = prim extent(a.2) @26:13
+        let %37: Bool = prim is(i.2, %36) @26:8
+        if %37 { @26:5
+          jump k7(runs.2) @26:5
+        } else {
+          join k8(r.7: Int) {
+            jump k7(r.7) @26:5
+          } in {
+            let %38: Int = index(a.2, i.2) @26:38
+            let %39: Bool = prim is(%38, 1) @26:38
+            if %39 { @26:38
+              let %40: Int = prim +(i.2, 1) @26:60
+              let %41: Int = call ones(a.2, %40, runs.2) @26:53
+              jump k8(%41) @26:38
+            } else {
+              let %42: Int = prim +(i.2, 1) @26:85
+              let %43: Int = prim +(runs.2, 1) @26:91
+              let %44: Int = call zeros(a.2, %42, %43) @26:77
+              jump k8(%44) @26:38
+            }
+          }
+        }
+      }
+    }
+  }
+  let %45: Array(Int) = array(0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1) @27:36
+  let %46: Int = call outside(%45, 0, 0) @27:28
+  let %47: String = call conv.int(%46) @27:19
+  let %48: String = prim <>("runs: ", %47) @27:7
+  do call print(%48) @27:1
+  let tooDeep: Exception(Int) = exception tooDeep: Int @29:31
+  let tooDeep.1: Exception(Int) = tooDeep @29:31
+  funs rec {
+    fun ping(n.2: Int, limit: Int): Int {
+      join k9(r.8: Int) {
+        return r.8
+      } in {
+        let %49: Bool = prim >=(n.2, limit) @30:43
+        if %49 { @30:40
+          raise tooDeep.1 with n.2 : "Int" @30:59
+        } else {
+          let %50: Int = prim +(n.2, 1) @30:94
+          let %51: Int = call pong(%50, limit) @30:89
+          jump k9(%51) @30:40
+        }
+      }
+    }
+    fun pong(n.3: Int, limit.1: Int): Int {
+      let %52: Int = prim +(n.3, 2) @31:41
+      let %53: Int = call ping(%52, limit.1) @31:36
+      return %53
+    }
+  }
+  join k10(r.9: Int) {
+    let %54: String = call conv.int(r.9) @32:21
+    let %55: String = prim <>("raised: ", %54) @32:7
+    do call print(%55) @32:1
+    funs {
+      fun closures(n.4: Int): Bool {
+        funs {
+          fun f(k: Int): Bool {
+            return true
+          }
+        }
+        let fs: Array(Fun(k: Int): Bool) = array_rep(2, f) @36:18
+        funs {
+          fun f.1(k.1: Int): Bool {
+            join k11(r.10: Bool) {
+              return r.10
+            } in {
+              let %56: Bool = prim is(k.1, 0) @37:39
+              if %56 { @37:36
+                jump k11(true) @37:36
+              } else {
+                let %57: Fun(k: Int): Bool = index(fs, 1) @37:61
+                let %58: Int = prim -(k.1, 1) @37:67
+                let %59: Bool = call %57(%58) @37:61
+                jump k11(%59) @37:36
+              }
+            }
+          }
+        }
+        store fs[0] := f.1 @37:9
+        funs {
+          fun f.2(k.2: Int): Bool {
+            join k12(r.11: Bool) {
+              return r.11
+            } in {
+              let %60: Bool = prim is(k.2, 0) @38:39
+              if %60 { @38:36
+                jump k12(false) @38:36
+              } else {
+                let %61: Fun(k: Int): Bool = index(fs, 0) @38:62
+                let %62: Int = prim -(k.2, 1) @38:68
+                let %63: Bool = call %61(%62) @38:62
+                jump k12(%63) @38:36
+              }
+            }
+          }
+        }
+        store fs[1] := f.2 @38:9
+        let %64: Fun(k: Int): Bool = index(fs, 0) @39:9
+        let %65: Bool = call %64(n.4) @39:9
+        return %65
+      }
+    }
+    let %66: Bool = call closures(7) @41:33
+    let %67: String = call conv.bool(%66) @41:23
+    let %68: String = prim <>("closures: ", %67) @41:7
+    do call print(%68) @41:1
+  } in {
+    try catching (tooDeep.1) {
+      let %69: Int = call ping(0, 100) @32:34
+      jump k10(%69) @32:30
+    } handle (e: Exception) {
+      let %70: Bool = prim is(e, tooDeep.1) @32:30
+      if %70 { @32:30
+        let n.5: Int = exception_payload(e) @32:30
+        jump k10(n.5) @32:30
+      } else {
+        reraise e @32:30
+      }
+    }
+  }
+}
+

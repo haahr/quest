@@ -1,0 +1,19 @@
+(* Quest Self-Hosted Compiler: The SSA's Tail Jumps Interface
+ *
+ * Makes loops of mutual tail calls (docs/ssa.md section 4.1): the unit's
+ * functions and the direct tail calls between them form a graph, whose
+ * strongly connected components are the groups of mutually tail-recursive
+ * functions. Into each function of a group of more than one are copied the
+ * other members it reaches through tail calls, each once: those without stack
+ * slots or a try, whose parameters are passed in registers and whose results
+ * are passed as the function's, while the copies total at most 100
+ * instructions. Each tail call of a member copied in then jumps to its copy's
+ * first block; a tail call of the function itself is left, for the backends
+ * to make a jump. *)
+
+interface TailJumps
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    jumpUnit(u: ssa.Unit): Ok
+end

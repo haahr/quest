@@ -188,7 +188,7 @@ registration, and the unit).
 What the builder does not yet build raises `unsupported`, naming the construct; `--stop-after ssa` reports it as an
 internal error.
 
-### 4.1. The Pipeline: Escape Analysis, Promotion, Value Numbering, and Tail Calls
+### 4.1. The Pipeline: Escape Analysis, Promotion, Value Numbering, Accumulation, and Tail Calls
 
 `questlang/ssa/pipeline` builds a unit and then runs its passes, by name, in order, each on every function:
 
@@ -221,16 +221,17 @@ internal error.
   without uses are removed. `ssa_valuenumbers` shows each case.
 - **`ssa/accumulate`** makes loops of recursion through an associative operation (LLVM's accumulator recursion
   elimination; [tail-loops.md](tail-loops.md) §2): in a function of one `int` result, from which no slot's address
-  escapes, a block whose last instructions are a call of the function itself and an `add`, `mul`, `and`, `or`, or
-  `xor` of its result and another value, and which returns that (directly or through blocks that pass it on, as for
+  escapes, a block whose last instructions are a call of the function itself and an `add`, `mul`, `and`, `or`, or `xor`
+  of its result and another value, and which returns that (directly or through blocks that pass it on, as for
   `tailCalls`), jumps instead to a loop header with the call's arguments and the accumulator combined with the other
-  value. The header takes the entry's instructions, with a parameter for each of the function's, which replace them,
-  and one for the accumulator, which the entry passes the operation's identity; every return combines what it returns
-  with the accumulator, and every tail call of the function itself jumps to the header with the accumulator as it is
-  (left a tail call, arm64 would jump to the entry and start it again). `Int` arithmetic wraps, so the five are
-  associative and commutative and the result is the same. fib's `fib(n - 1) + fib(n - 2)` keeps its first call and
-  loops down the second; a runaway `1 + f(n + 1)` loops forever rather than overflowing the stack, as clang already
-  made it in C ([exceptions.md](exceptions.md) §6). `ssa_accumulate` shows each case.
+  value. The header takes the entry's instructions, with a parameter for each of the function's, which replace them, and
+  one for the accumulator, which the entry passes the operation's identity; every return combines what it returns with
+  the accumulator, and every tail call of the function itself jumps to the header with the accumulator as it is (left a
+  tail call, arm64 would jump to the entry and start it again). `Int` arithmetic wraps, so the five are associative and
+  commutative and the result is the same. fib's `fib(n - 1) + fib(n - 2)` keeps its first call and loops down the
+  second; a runaway `1 + f(n + 1)` loops forever rather than overflowing the stack, as clang already made it in C
+  ([exceptions.md](exceptions.md) §6), and a traceback through the loop's levels shows one frame, as through tail calls
+  (`repl/module_errors` subtracts, to keep its frames). `ssa_accumulate` shows each case.
 - **`ssa/tailCalls`** marks calls in tail position (§3, arm64.md §3.7): a call whose block returns its results (or the
   extension of its byte), or jumps, through blocks that do nothing else, to one that does. A block's parameters are
   taken as what the jump passes them, so that a join's parameter that its block does not return (as a contified
@@ -238,7 +239,18 @@ internal error.
   through their closures, were nested calls, 16,384 deep for each array they filled. The blocks a tail call leaves
   unreached are dropped (`cfg.dropUnreached`, as the builder drops its own), since they may return a value that value
   numbering put in place of their parameter, and that the call no longer defines.
-- **`ssa/interrupts`**, last and only when the Jupyter kernel's driver asks (`pipeline.setInterruptChecks`, under
+- **`ssa/tailJumps`**, last, makes loops of mutual tail calls ([tail-loops.md](tail-loops.md) §3). The unit's functions
+  and the direct tail calls between them form a graph, whose strongly connected components (Tarjan's) are the groups
+  of mutually tail-recursive functions. Into each function of a group of more than one are copied the other members it
+  reaches through tail calls, its own and its copies', each once, while the copies total at most 100 instructions: a
+  member without stack slots or a `try`, whose parameters are passed in registers (as a word, a real, or a pair's
+  word, as a jump passes them) and whose results are passed as the function's, so that its returns are the
+  function's. Copies are made from each function's blocks as they were before the pass, and then each tail call of a
+  member copied in jumps to its copy's first block; a tail call of the function itself is left, which arm64 makes a
+  jump to its first block and clang a loop. even-odd's `even1` holds a copy of `odd1`, whose tail call of `even1` is
+  then a self tail call: one loop, without pushing and popping a frame at each step. A call through a closure is
+  indirect and is left. `ssa_tailjumps` shows each case.
+- **`ssa/interrupts`**, after them and only when the Jupyter kernel's driver asks (`pipeline.setInterruptChecks`, under
   `--kernel`, for the code its JIT compiles; [jupyter-kernel.md](jupyter-kernel.md) §5), checks the runtime's interrupt
   flag at each function's entry and each loop's head (a block a back edge goes to): it splits the block, loading
   `quest_interrupt_pending` and branching to a block that calls `quest_interrupt_raise`, or on to the block's old
@@ -251,8 +263,8 @@ The passes share their analyses: `ssa/cfg` (predecessors, successors, reverse po
 preorder and postorder numbers, dominance frontiers, and loop depths) and `ssa/liveness` (each block's live-in and
 live-out values, which the register allocator uses); `nodes` has the mutators (`targets`, `mapTargets`, `mapBlocks`,
 `replaceUses`). The driver dumps the SSA after the builder (`--dump-after ssa_built`), after each pass (`ssa_escape`,
-`ssa_promote`, `ssa_valueNumbers`, `ssa_accumulate`, `ssa_tailCalls`), and at the end (`ssa`); `QUEST_SKIP_PASSES`, a
-comma-separated list of passes' names, leaves passes out, for a test or a bisection.
+`ssa_promote`, `ssa_valueNumbers`, `ssa_accumulate`, `ssa_tailCalls`, `ssa_tailJumps`), and at the end (`ssa`);
+`QUEST_SKIP_PASSES`, a comma-separated list of passes' names, leaves passes out, for a test or a bisection.
 
 ### 4.2. Escape Analysis
 
@@ -350,9 +362,9 @@ b0(%0: ptr, %1: int):
 `questlang/ssa/parser` reads the text back into a unit, values keeping their numbers, so that printing what it reads
 prints what it read: with `QUEST_CHECK_IR=1` the driver reads back the SSA it prints and reports any difference, so
 every golden is checked to read back as itself. A pass is tested on SSA written as text: the questlang tests
-`ssa_promote`, `ssa_escape`, `ssa_valuenumbers`, `ssa_accumulate`, and `ssa_tailcalls` read small functions, run their
-pass and the verifier, and print the functions before and after; and a program's SSA can be cut down to the functions
-that show a bug.
+`ssa_promote`, `ssa_escape`, `ssa_valuenumbers`, `ssa_accumulate`, `ssa_tailcalls`, and `ssa_tailjumps` read small
+functions, run their pass and the verifier, and print the functions before and after; and a program's SSA can be cut
+down to the functions that show a bug.
 
 ## 7. The Verifier
 

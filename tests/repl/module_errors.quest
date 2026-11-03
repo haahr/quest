@@ -1,6 +1,8 @@
 (* An error raised in a declared module's initializer, and one raised after a run of recursive calls, list their
-   frames as the interpreter does, through the JIT too (the functions recurse, so that none is inlined away) *)
+   frames as the interpreter does, through the JIT too (the functions recurse, so that none is inlined away, and
+   subtract from their calls' results, which the SSA leaves calls, as it would not an addition: docs/ssa.md
+   section 4.1) *)
 interface I export f(n: Int): Int x: Int end
-module m: I export let rec f(n: Int): Int = if n is 0 then 10 / n else 1 + f(n - 1) end let x = f(1) end
-let rec d(n: Int): Int = if n is 0 then 1 / 0 else 1 + d(n - 1) end
+module m: I export let rec f(n: Int): Int = if n is 0 then 10 / n else f(n - 1) - 1 end let x = f(1) end
+let rec d(n: Int): Int = if n is 0 then 1 / 0 else d(n - 1) - 1 end
 d(5)
