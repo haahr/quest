@@ -167,7 +167,7 @@ export
      *
      * value and effect, the entry points for expressions, are described in
      * the interface's header comment. *)
-    Let Earlier = Tuple holder: String field: String recordType: Type isVar: Bool end
+    Let Earlier = Tuple holder: String field: String recordType: Type isVar: Bool boxed: Bool end
 
     Let Lowerer = Tuple
         vars: hashMap.T(Int Variable)
@@ -210,6 +210,9 @@ export
         (* What a phrase unit's declared modules' names begin with, so that
          * each input's are its own *)
         var modulePrefix: String
+        (* Whether the unit is an interactive input's phrase unit, whose slots
+         * are held in boxes (boxesSlot) *)
+        var boxSlots: Bool
     end
 
     (* Adds to captured the symbols of the local var variables that functions
@@ -279,6 +282,7 @@ export
                 let earlier = hashMap.new(:Int :Earlier intEqual hash.int)
                 let earlierImports = hashMap.new(:String :nodes.Import stringOp.equal hash.string)
                 let var modulePrefix = ""
+                let var boxSlots = false
             end
         end
 
@@ -382,14 +386,6 @@ export
             else maybe.none(:Variable)
         end
 
-    (* The box holding a captured var variable (capturedMutables), if e is
-     * one *)
-    let boxOf(l: Lowerer e: Expr): maybe.T(Variable) =
-        case e.form
-            when exprVar with x then hashMap.get(:Int :Variable l.boxes x.symbol.symbolId)
-            else maybe.none(:Variable)
-        end
-
     (* An imported module, with the record type of the interface it is imported
      * through *)
     let makeImport(l: Lowerer name: String modulePath: String canonicalPath: String interfacePath: String): nodes.Import =
@@ -411,11 +407,24 @@ export
 
     let phraseModuleName(number: Int): String = "qj_" <> conv.int(number)
 
+    (* The slot a symbol is bound to (docs/redefinition.md section 2): the id of
+     * the first symbol bound to it, which is the symbol's own but for an
+     * interactive let that redefines an earlier one *)
+    let slotOf(e: env.T symbolId: Int): Int = maybe.unwrapOr(:Int hashMap.get(:Int :Int e.slots symbolId) symbolId)
+
+    (* Whether a phrase unit holds a symbol's slot in a box: a one-component
+     * var tuple, which every use reads and a redefinition stores to
+     * (docs/redefinition.md section 3.3); one of type Ok has no words, and is
+     * not held *)
+    let boxesSlot(e: env.T sym: symbols.ValueSymbol): Bool =
+        e.interactive andif hashMap.contains(:Int :Int e.slots sym.symbolId) andif not(isOk(sym.type))
+
     (* The earlier input's binding the symbol symbolId is, if it is one (in a
-     * phrase unit), with the import of the record that holds it *)
+     * phrase unit), with the import of the record that holds it; a slot's is
+     * its first symbol's *)
     let earlierBinding(l: Lowerer symbolId: Int): maybe.T(Tuple binding: Earlier ref: nodes.ModuleRef end) =
         begin
-            let found = hashMap.get(:Int :Earlier l.earlier symbolId)
+            let found = hashMap.get(:Int :Earlier l.earlier slotOf(l.env symbolId))
             if maybe.isNone(:Earlier found) orif hashMap.contains(:Int :Variable l.vars symbolId) then
                 maybe.none(:Tuple binding: Earlier ref: nodes.ModuleRef end)
             else
@@ -438,6 +447,47 @@ export
         case e.form
             when exprVar with x then earlierBinding(l x.symbol.symbolId)
             else maybe.none(:Tuple binding: Earlier ref: nodes.ModuleRef end)
+        end
+
+    (* The type of a record's field *)
+    let fieldType(recordType: Type name: String): Type =
+        case recordType.form
+            when typeRecord with r then
+                begin
+                    let var found = maybe.none(:Type)
+                    for i = 0 upto {extent r.fields - 1} do
+                        if eq(r.fields[i].name name) then found := maybe.some(:Type r.fields[i].type) end
+                    end
+                    if maybe.isNone(:Type found) then fail(:Ok "no field '" <> name <> "' in an earlier record") end
+                    maybe.unwrap(:Type found)
+                end
+            else fail(:Type "an earlier input's record is not a record")
+        end
+
+    (* The box holding the symbol symbolId, if it is held in one: a captured
+     * var variable's (capturedMutables), or a slot's, the unit's own or an
+     * earlier input's, read from its record *)
+    let boxOfSymbol(l: Lowerer symbolId: Int): maybe.T(Variable) =
+        begin
+            let local = hashMap.get(:Int :Variable l.boxes slotOf(l.env symbolId))
+            let earlier = if maybe.isSome(:Variable local) then maybe.none(:Tuple binding: Earlier ref: nodes.ModuleRef end)
+                else earlierBinding(l symbolId) end
+            if maybe.isSome(:Tuple binding: Earlier ref: nodes.ModuleRef end earlier)
+                andif maybe.unwrap(:Tuple binding: Earlier ref: nodes.ModuleRef end earlier).binding.boxed then
+                let found = maybe.unwrap(:Tuple binding: Earlier ref: nodes.ModuleRef end earlier)
+                maybe.some(:Variable letVar(l option opModuleMember of Op with
+                    let var moduleRef = found.ref let var member = maybe.some(:String found.binding.field)
+                end fieldType(found.binding.recordType found.binding.field) none ""))
+            else
+                local
+            end
+        end
+
+    (* The box holding the variable e, if it is one held in a box *)
+    let boxOf(l: Lowerer e: Expr): maybe.T(Variable) =
+        case e.form
+            when exprVar with x then boxOfSymbol(l x.symbol.symbolId)
+            else maybe.none(:Variable)
         end
 
     (* The module e refers to, if it is a reference to a module rather than a
@@ -676,8 +726,11 @@ export
                 let symbolId = x.symbol.symbolId
                 let bound = hashMap.get(:Int :Variable l.vars symbolId)
                 let builtin = hashMap.get(:Int :String l.builtins symbolId)
-                let box = hashMap.get(:Int :Variable l.boxes symbolId)
-                if maybe.isSome(:Variable box) then
+                let box = boxOfSymbol(l symbolId)
+                if maybe.isSome(:Variable box) andif not(x.symbol.isVar) then
+                    (* A slot's value is its box's component *)
+                    letOp(l nodes.tupleField(va(maybe.unwrap(:Variable box)) 0) e.type into)
+                elsif maybe.isSome(:Variable box) then
                     (* A boxed variable's address is its box's component's *)
                     letOp(l option opAddrComponent of Op with
                         let var base = va(maybe.unwrap(:Variable box)) let index = 0 let var access = nodes.direct
@@ -1536,7 +1589,107 @@ export
     and funText(name: String t: Type): Stmt =
         option sEchoText of Stmt with let text = "let " <> name <> ":" <> model.show(t) <> " = <fun>" end
 
+    (* Whether a let binds a slot that the unit holds in a box *)
+    and boxedLet(l: Lowerer lv: typedAst.LetValue): Bool = l.boxSlots andif boxesSlot(l.env lv.symbol)
+
+    (* A slot's box type: a tuple of one var component *)
+    and boxType(lv: typedAst.LetValue): Type =
+        model.tupleType(array of model.tupleField(maybe.some(:String lv.name) lv.symbol.type true) end)
+
+    (* The value of a let held in a slot, lowered into a fresh variable, which
+     * no symbol names: a function's closure, or the value *)
+    and slotValue(l: Lowerer lv: typedAst.LetValue): Variable =
+        begin
+            let v = fresh(lv.name lv.symbol.type false)
+            if lv.value.form?exprFun then
+                emit(l option sFuns of Stmt with
+                    let var functions = array of function(l lv.value v maybe.some(:String lv.name)) end
+                    let recursive = false
+                end)
+            else
+                if lv.isRec then fail(:Ok "recursive values other than functions") end
+                begin value(l lv.value some(v)) ok end
+            end
+            v
+        end
+
+    (* Puts a slot's value v in its box: a new box, which the unit's record
+     * holds, or, for a redefinition, the slot's box, the unit's own or an
+     * earlier input's, stored to (docs/redefinition.md section 3.3) *)
+    and storeSlot(l: Lowerer lv: typedAst.LetValue v: Variable): Ok =
+        if lv.redefines then
+            let box = boxOfSymbol(l lv.symbol.symbolId)
+            if maybe.isNone(:Variable box) then fail(:Ok "slot '" <> lv.name <> "' has no box") end
+            emit(l option sStoreComponent of Stmt with
+                let var pos = ~1 let var value = va(v) let var base = va(maybe.unwrap(:Variable box)) let index = 0
+                let var access = nodes.direct let var viewMap = maybe.none(:Variable)
+            end)
+        else
+            let box = letVar(l nodes.makeTuple(array of va(v) end array of :nodes.TypeComponent end) boxType(lv) none lv.name)
+            hashMap.insert(:Int :Variable l.boxes lv.symbol.symbolId box)
+            ok
+        end
+
+    (* What a let held in a slot shows when it is echoed *)
+    and showSlot(l: Lowerer lv: typedAst.LetValue v: Variable): Ok =
+        if lv.value.form?exprFun then emit(l funText(lv.name lv.symbol.type))
+        else echoBinding(l lv.name lv.symbol v) end
+
+    (* Recursive functions held in slots: each new slot's box is made with the
+     * functions, in one let rec, so that their bodies, which name the slots,
+     * read the boxes; a redefined slot's box is stored to after *)
+    and recSlots(l: Lowerer members: Array(typedAst.LetValue) show: Bool): Ok =
+        begin
+            let fvs = array of(extent members fresh("f" model.okType false))
+            let vars = vector.new(:Variable)
+            for i = 0 upto {extent members - 1} do
+                fvs[i] := fresh(members[i].name members[i].symbol.type false)
+                vector.append(:Variable vars fvs[i])
+            end
+            let made = vector.new(:Tuple box: Variable value: Variable end)
+            for i = 0 upto {extent members - 1} do
+                if not(members[i].redefines) then
+                    let box = fresh(members[i].name boxType(members[i]) false)
+                    hashMap.insert(:Int :Variable l.boxes members[i].symbol.symbolId box)
+                    vector.append(:Variable vars box)
+                    vector.append(:Tuple box: Variable value: Variable end made tuple let box = box let value = fvs[i] end)
+                end
+            end
+            let groupBody = nodes.newBody()
+            emit(l option sLetRec of Stmt with let var vars = vector.toArray(:Variable vars) let var body = groupBody end)
+            inBody(l groupBody fun(): Ok
+                begin
+                    let functions = vector.new(:nodes.Function)
+                    for i = 0 upto {extent members - 1} do
+                        vector.append(:nodes.Function functions
+                            function(l members[i].value fvs[i] maybe.some(:String members[i].name)))
+                    end
+                    emit(l option sFuns of Stmt with
+                        let var functions = vector.toArray(:nodes.Function functions) let recursive = false
+                    end)
+                    for i = 0 upto {vector.length(:Tuple box: Variable value: Variable end made) - 1} do
+                        let m = vector.get(:Tuple box: Variable value: Variable end made i)
+                        emit(l nodes.letStmt(m.box nodes.makeTuple(array of va(m.value) end array of :nodes.TypeComponent end)))
+                    end
+                end)
+            for i = 0 upto {extent members - 1} do
+                if members[i].redefines then storeSlot(l members[i] fvs[i]) end
+                if show then showSlot(l members[i] fvs[i]) end
+            end
+        end
+
     and letValue(l: Lowerer lv: typedAst.LetValue show: Bool): Ok =
+        if boxedLet(l lv) andif lv.isRec andif lv.value.form?exprFun then
+            recSlots(l array of lv end show)
+        elsif boxedLet(l lv) then
+            let v = slotValue(l lv)
+            storeSlot(l lv v)
+            if show then showSlot(l lv v) end
+        else
+            plainLetValue(l lv show)
+        end
+
+    and plainLetValue(l: Lowerer lv: typedAst.LetValue show: Bool): Ok =
         begin
             let symbol = lv.symbol
             case lv.value.form
@@ -1630,8 +1783,34 @@ export
                     let isRec = {extent x.members > 0} andif x.members[0].isRec
                     let var allFuns = true
                     for i = 0 upto {extent x.members - 1} do if not(x.members[i].value.form?exprFun) then allFuns := false end end
+                    let var anyBoxed = false
+                    for i = 0 upto {extent x.members - 1} do if boxedLet(l x.members[i]) then anyBoxed := true end end
                     if isRec andif not(allFuns) then
                         recValues(l x.members show)
+                    elsif isRec andif anyBoxed then
+                        recSlots(l x.members show)
+                    elsif anyBoxed then
+                        (* Simultaneous, with slots: every member's value is
+                         * computed before any is stored, since a member may
+                         * read a slot another redefines *)
+                        let values = array of(extent x.members fresh("v" model.okType false))
+                        for i = 0 upto {extent x.members - 1} do
+                            values[i] := if boxedLet(l x.members[i]) then slotValue(l x.members[i])
+                                else
+                                    let v = fresh(x.members[i].name x.members[i].symbol.type false)
+                                    begin value(l x.members[i].value some(v)) v end
+                                end
+                        end
+                        for i = 0 upto {extent x.members - 1} do
+                            let m = x.members[i]
+                            if boxedLet(l m) then
+                                storeSlot(l m values[i])
+                                if show then showSlot(l m values[i]) end
+                            else
+                                hashMap.insert(:Int :Variable l.vars m.symbol.symbolId values[i])
+                                if show then echoBinding(l m.name m.symbol values[i]) end
+                            end
+                        end
                     elsif isRec then
                         let vars = vector.new(:Variable)
                         for i = 0 upto {extent x.members - 1} do
@@ -1713,6 +1892,14 @@ export
                     else
                         echoBinding(l m.name m.symbol vector.get(:Variable vars i))
                     end
+                end
+            end
+            (* Slots among them are held in boxes from here on; within the
+             * group, the members name one another directly *)
+            for i = 0 upto {extent members - 1} do
+                if boxedLet(l members[i]) then
+                    hashMap.delete(:Int :Variable l.vars members[i].symbol.symbolId)
+                    storeSlot(l members[i] vector.get(:Variable vars i))
                 end
             end
         end
@@ -1932,13 +2119,24 @@ export
                 begin hashMap.insert(:Int :Earlier l.earlier k b) ok end)
             capturedMutables(prog l.captured)
             l.modulePrefix := phraseModuleName(number) <> "_"
+            l.boxSlots := e.interactive
             let init = nodes.newBody()
             let modules = vector.new(:nodes.Module)
             let members = nodes.newMembers()
             (* A binding of type Ok has no words to keep: it is not in the
              * record *)
             let bound(symbol: symbols.ValueSymbol): Ok =
-                begin
+                if boxesSlot(e symbol) then
+                    (* A slot's box, which a redefinition stores to and does
+                     * not add *)
+                    if not(env.redefines(e symbol)) then
+                        nodes.addMember(members phraseField(symbol.symbolId)
+                            hashMap.find(:Int :Variable l.boxes symbol.symbolId))
+                    end
+                elsif env.redefines(e symbol) then
+                    (* A redefined slot of type Ok, which has no words *)
+                    ok
+                else
                     let v = hashMap.find(:Int :Variable l.vars symbol.symbolId)
                     let name = phraseField(symbol.symbolId)
                     if not(isOk(v.type)) andif maybe.isNone(:Variable nodes.member(members name)) then

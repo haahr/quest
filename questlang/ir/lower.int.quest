@@ -12,6 +12,7 @@ interface Lower
 import
     questlang/common/location : questlang/common/Location
     questlang/types/env : questlang/types/Env
+    questlang/types/symbols : questlang/types/Symbols
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/types/model : questlang/types/Model
     questlang/ir/nodes : questlang/ir/Nodes
@@ -35,8 +36,14 @@ export
      * as a field of a record (docs/jit.md section 3.2): holder, the module
      * whose record holds it, the field, the record's type, and whether it is
      * a var; or a module that input declared or imported, whose record is
-     * holder's, and whose field is empty *)
-    Def Earlier = Tuple holder: String field: String recordType: model.Type isVar: Bool end
+     * holder's, and whose field is empty. A slot's binding (boxed) is its box,
+     * which every use reads and a redefinition stores to
+     * (docs/redefinition.md section 3.3); the earlier bindings are by slot, a
+     * slot's by its first symbol *)
+    Def Earlier = Tuple holder: String field: String recordType: model.Type isVar: Bool boxed: Bool end
+    (* Whether a phrase unit holds a symbol's slot in a box: an interactive
+     * input's top-level let's, but one of type Ok *)
+    boxesSlot(e: env.T sym: symbols.ValueSymbol): Bool
     (* The module whose initializer runs input number's phrases (qj_<number>),
      * whose name begins the names of the modules the input declares
      * (qj_<number>_<name>), and its record's field for the binding of the

@@ -128,17 +128,21 @@ export
         end
 
     (* The value symbols an input binds at its top level, which its record
-     * holds (as lowerPhrases makes it) *)
+     * holds (as lowerPhrases makes it): not a redefinition's, which stores to
+     * an earlier slot's box *)
     let boundSymbols(program: typedAst.Program): vector.T(symbols.ValueSymbol) =
         begin
             let found = vector.new(:symbols.ValueSymbol)
             for i = 0 upto {extent program.phrases - 1} do
                 let phrase = program.phrases[i]
                 case phrase.form
-                    when bindLetValue with x then vector.append(:symbols.ValueSymbol found x.value.symbol)
+                    when bindLetValue with x then
+                        if not(x.value.redefines) then vector.append(:symbols.ValueSymbol found x.value.symbol) end
                     when bindLetValueGroup with x then
                         for j = 0 upto {extent x.members - 1} do
-                            vector.append(:symbols.ValueSymbol found x.members[j].symbol)
+                            if not(x.members[j].redefines) then
+                                vector.append(:symbols.ValueSymbol found x.members[j].symbol)
+                            end
                         end
                     else ok
                 end
@@ -447,7 +451,7 @@ export
     let remember(s: T symbolId: Int holder: String recordType: tm.Type): Ok =
         begin
             hashMap.insert(:Int :lower.Earlier s.earlier symbolId tuple
-                let holder = holder let field = "" let recordType = recordType let isVar = false
+                let holder = holder let field = "" let recordType = recordType let isVar = false let boxed = false
             end)
             ok
         end
@@ -522,7 +526,7 @@ export
                     let sym = vector.get(:symbols.ValueSymbol bound i)
                     hashMap.insert(:Int :lower.Earlier s.earlier sym.symbolId tuple
                         let holder = name let field = lower.phraseField(sym.symbolId) let recordType = recordType
-                        let isVar = sym.isVar
+                        let isVar = sym.isVar let boxed = lower.boxesSlot(s.e sym)
                     end)
                 end
                 (* And the modules it declared and imported *)

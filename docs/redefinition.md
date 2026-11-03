@@ -6,7 +6,7 @@ raises `int.error`. That is lexical scoping, which is right for programs, and wr
 fixing a function should fix its callers without redefining each of them. This plan gives the REPL (and the file `-i`
 loads) Python's and Lisp's behavior, redefinition in place, and changes nothing for programs, `-e`, or `quest FILE`.
 
-**Status: step 1 done** (2026-11-02), behind `QUEST_REDEFINE=1`. Section 1 records the decisions, section 7 the
+**Status: steps 1 and 2 done** (2026-11-02), behind `QUEST_REDEFINE=1`. Section 1 records the decisions, section 7 the
 steps.
 
 ---
