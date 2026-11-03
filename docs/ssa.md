@@ -210,7 +210,8 @@ internal error.
   `ptrAdd`s, so that `load8 %4 + 0` of `%4 = ptrAdd %1, const 8` is `load8 %1 + 8`); a `copy` its argument; and a
   block's parameter that every jump binds to one value that value. The comparisons, `and`s, `mul`s, and `ptrAdd`s
   arm64's selection fuses into the branch or access using them in their block are replaced only by an equal in their
-  own block. The pure instructions and loads then left without uses are removed. `ssa_valuenumbers` shows each case.
+  own block, and so are constants, symbols, and nulls: shared across a function, they were live longer and spilled
+  (hamlet's stack accesses rose from 8,129 to 10,022, mlyacc's from 4,522 to 5,713, and neither ran faster). The pure instructions and loads then left without uses are removed. `ssa_valuenumbers` shows each case.
 - **`ssa/tailCalls`** marks calls in tail position (§3, arm64.md §3.7): a call whose block returns its results (or the
   extension of its byte), or jumps, through blocks that do nothing else, to one that does. A block's parameters are
   taken as what the jump passes them, so that a join's parameter that its block does not return (as a contified
