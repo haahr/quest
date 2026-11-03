@@ -1,0 +1,478 @@
+== a sum
+function sum(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  return %1
+b2():
+  %3: int = const 1
+  %4: int = sub %0, %3
+  %5: int = call sum(%4)
+  %6: int = add %0, %5
+  return %6
+}
+-- after accumulate
+function sum(%0: int): int {
+b0(%0: int):
+  %11: int = const 0
+  jump b3(%0, %11)
+b1():
+  %10: int = add %8, %1
+  return %10
+b2():
+  %3: int = const 1
+  %4: int = sub %7, %3
+  %9: int = add %8, %7
+  jump b3(%4, %9)
+b3(%7: int, %8: int):
+  %1: int = const 0
+  %2: int = eq %7, %1
+  branch %2, b1(), b2()
+}
+== a site in the entry
+function down(%0: int): int {
+b0(%0: int):
+  %1: int = const 1
+  %2: int = add %0, %1
+  %3: int = call down(%2)
+  %4: int = add %1, %3
+  return %4
+}
+-- after accumulate
+function down(%0: int): int {
+b0(%0: int):
+  %8: int = const 0
+  jump b1(%0, %8)
+b1(%5: int, %6: int):
+  %1: int = const 1
+  %2: int = add %5, %1
+  %7: int = add %6, %1
+  jump b1(%2, %7)
+}
+== a product
+function product(%0: int): int {
+b0(%0: int):
+  %1: int = const 1
+  %2: int = le %0, %1
+  branch %2, b1(), b2()
+b1():
+  return %1
+b2():
+  %3: int = sub %0, %1
+  %4: int = call product(%3)
+  %5: int = mul %4, %0
+  return %5
+}
+-- after accumulate
+function product(%0: int): int {
+b0(%0: int):
+  %10: int = const 1
+  jump b3(%0, %10)
+b1():
+  %9: int = mul %7, %1
+  return %9
+b2():
+  %3: int = sub %6, %1
+  %8: int = mul %7, %6
+  jump b3(%3, %8)
+b3(%6: int, %7: int):
+  %1: int = const 1
+  %2: int = le %6, %1
+  branch %2, b1(), b2()
+}
+== a conjunction
+function masks(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  %3: int = const 255
+  return %3
+b2():
+  %4: int = const 1
+  %5: int = lshr %0, %4
+  %6: int = call masks(%5)
+  %7: int = and %0, %6
+  return %7
+}
+-- after accumulate
+function masks(%0: int): int {
+b0(%0: int):
+  %12: int = const ~1
+  jump b3(%0, %12)
+b1():
+  %3: int = const 255
+  %11: int = and %9, %3
+  return %11
+b2():
+  %4: int = const 1
+  %5: int = lshr %8, %4
+  %10: int = and %9, %8
+  jump b3(%5, %10)
+b3(%8: int, %9: int):
+  %1: int = const 0
+  %2: int = eq %8, %1
+  branch %2, b1(), b2()
+}
+== fib
+function fib(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: int = const 2
+  %3: int = lt %1, %2
+  branch %3, b1(), b2()
+b1():
+  return %1
+b2():
+  %4: int = const 1
+  %5: int = sub %1, %4
+  %6: int = call fib(%0, %5)
+  %7: int = sub %1, %2
+  %8: int = call fib(%0, %7)
+  %9: int = add %6, %8
+  return %9
+}
+-- after accumulate
+function fib(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %15: int = const 0
+  jump b3(%0, %1, %15)
+b1():
+  %14: int = add %12, %11
+  return %14
+b2():
+  %4: int = const 1
+  %5: int = sub %11, %4
+  %6: int = call fib(%10, %5)
+  %7: int = sub %11, %2
+  %13: int = add %12, %6
+  jump b3(%10, %7, %13)
+b3(%10: ptr, %11: int, %12: int):
+  %2: int = const 2
+  %3: int = lt %11, %2
+  branch %3, b1(), b2()
+}
+== a sum returned through a join
+function joined(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  jump b3(%1)
+b2():
+  %3: int = const 1
+  %4: int = sub %0, %3
+  %5: int = call joined(%4)
+  %6: int = add %5, %0
+  jump b3(%6)
+b3(%7: int):
+  return %7
+}
+-- after accumulate
+function joined(%0: int): int {
+b0(%0: int):
+  %12: int = const 0
+  jump b4(%0, %12)
+b1():
+  jump b3(%1)
+b2():
+  %3: int = const 1
+  %4: int = sub %8, %3
+  %10: int = add %9, %8
+  jump b4(%4, %10)
+b3(%7: int):
+  %11: int = add %9, %7
+  return %11
+b4(%8: int, %9: int):
+  %1: int = const 0
+  %2: int = eq %8, %1
+  branch %2, b1(), b2()
+}
+== a self tail call beside a site
+function evens(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  return %1
+b2():
+  %3: int = const 1
+  %4: int = sub %0, %3
+  %5: int = and %0, %3
+  branch %5, b3(), b4()
+b3():
+  %6: int = call evens(%4)
+  return %6
+b4():
+  %7: int = call evens(%4)
+  %8: int = add %7, %3
+  return %8
+}
+-- after accumulate
+function evens(%0: int): int {
+b0(%0: int):
+  %13: int = const 0
+  jump b5(%0, %13)
+b1():
+  %12: int = add %10, %1
+  return %12
+b2():
+  %3: int = const 1
+  %4: int = sub %9, %3
+  %5: int = and %9, %3
+  branch %5, b3(), b4()
+b3():
+  jump b5(%4, %10)
+b4():
+  %11: int = add %10, %3
+  jump b5(%4, %11)
+b5(%9: int, %10: int):
+  %1: int = const 0
+  %2: int = eq %9, %1
+  branch %2, b1(), b2()
+}
+== another function's result returned
+function other(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  %3: int = call g(%0)
+  return %3
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  %6: int = call other(%5)
+  %7: int = xor %6, %0
+  return %7
+}
+-- after accumulate
+function other(%0: int): int {
+b0(%0: int):
+  %12: int = const 0
+  jump b3(%0, %12)
+b1():
+  %3: int = call g(%8)
+  %11: int = xor %9, %3
+  return %11
+b2():
+  %4: int = const 1
+  %5: int = sub %8, %4
+  %10: int = xor %9, %8
+  jump b3(%5, %10)
+b3(%8: int, %9: int):
+  %1: int = const 0
+  %2: int = eq %8, %1
+  branch %2, b1(), b2()
+}
+== a result subtracted from
+function subtracted(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  return %1
+b2():
+  %3: int = const 1
+  %4: int = sub %0, %3
+  %5: int = call subtracted(%4)
+  %6: int = sub %0, %5
+  return %6
+}
+-- after accumulate
+function subtracted(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  return %1
+b2():
+  %3: int = const 1
+  %4: int = sub %0, %3
+  %5: int = call subtracted(%4)
+  %6: int = sub %0, %5
+  return %6
+}
+== a result added to itself
+function doubled(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  %3: int = const 1
+  return %3
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  %6: int = call doubled(%5)
+  %7: int = add %6, %6
+  return %7
+}
+-- after accumulate
+function doubled(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  %3: int = const 1
+  return %3
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  %6: int = call doubled(%5)
+  %7: int = add %6, %6
+  return %7
+}
+== a real result
+function reals(%0: int, %1: real): real {
+b0(%0: int, %1: real):
+  %2: int = const 0
+  %3: int = eq %0, %2
+  branch %3, b1(), b2()
+b1():
+  return %1
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  %6: real = call reals(%5, %1)
+  %7: real = fadd %6, %1
+  return %7
+}
+-- after accumulate
+function reals(%0: int, %1: real): real {
+b0(%0: int, %1: real):
+  %2: int = const 0
+  %3: int = eq %0, %2
+  branch %3, b1(), b2()
+b1():
+  return %1
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  %6: real = call reals(%5, %1)
+  %7: real = fadd %6, %1
+  return %7
+}
+== a slot's address escaping
+function escaping(%0: int): int slots [8:8] {
+b0(%0: int):
+  %1: ptr = slot 0
+  store8 %1 + 0, %0
+  call h(%1)
+  %2: int = const 0
+  %3: int = eq %0, %2
+  branch %3, b1(), b2()
+b1():
+  return %2
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  %6: int = call escaping(%5)
+  %7: int = add %6, %0
+  return %7
+}
+-- after accumulate
+function escaping(%0: int): int slots [8:8] {
+b0(%0: int):
+  %1: ptr = slot 0
+  store8 %1 + 0, %0
+  call h(%1)
+  %2: int = const 0
+  %3: int = eq %0, %2
+  branch %3, b1(), b2()
+b1():
+  return %2
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  %6: int = call escaping(%5)
+  %7: int = add %6, %0
+  return %7
+}
+== only a self tail call
+function counts(%0: int, %1: int): int {
+b0(%0: int, %1: int):
+  %2: int = const 0
+  %3: int = eq %0, %2
+  branch %3, b1(), b2()
+b1():
+  return %1
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  %6: int = add %1, %4
+  %7: int = call counts(%5, %6)
+  return %7
+}
+-- after accumulate
+function counts(%0: int, %1: int): int {
+b0(%0: int, %1: int):
+  %2: int = const 0
+  %3: int = eq %0, %2
+  branch %3, b1(), b2()
+b1():
+  return %1
+b2():
+  %4: int = const 1
+  %5: int = sub %0, %4
+  %6: int = add %1, %4
+  %7: int = call counts(%5, %6)
+  return %7
+}
+== two operations
+function mixed(%0: int): int {
+b0(%0: int):
+  %1: int = const 0
+  %2: int = eq %0, %1
+  branch %2, b1(), b2()
+b1():
+  return %1
+b2():
+  %3: int = const 1
+  %4: int = sub %0, %3
+  %5: int = and %0, %3
+  branch %5, b3(), b4()
+b3():
+  %6: int = call mixed(%4)
+  %7: int = add %6, %0
+  return %7
+b4():
+  %8: int = call mixed(%4)
+  %9: int = mul %8, %0
+  return %9
+}
+-- after accumulate
+function mixed(%0: int): int {
+b0(%0: int):
+  %15: int = const 0
+  jump b5(%0, %15)
+b1():
+  %13: int = add %11, %1
+  return %13
+b2():
+  %3: int = const 1
+  %4: int = sub %10, %3
+  %5: int = and %10, %3
+  branch %5, b3(), b4()
+b3():
+  %12: int = add %11, %10
+  jump b5(%4, %12)
+b4():
+  %8: int = call mixed(%4)
+  %9: int = mul %8, %10
+  %14: int = add %11, %9
+  return %14
+b5(%10: int, %11: int):
+  %1: int = const 0
+  %2: int = eq %10, %1
+  branch %2, b1(), b2()
+}

@@ -1,0 +1,185 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+import word = "word" : Word
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @10:45
+      let %2: String = prim <>(s, "\n") @10:59
+      let %3: Ok = call writer.putString(%1, %2) @10:28
+      return %3
+    }
+  }
+  funs rec {
+    fun sum(n: Int): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        let %4: Bool = prim is(n, 0) @12:31
+        if %4 { @12:28
+          jump k1(0) @12:28
+        } else {
+          let %5: Int = prim -(n, 1) @12:58
+          let %6: Int = call sum(%5) @12:54
+          let %7: Int = prim +(n, %6) @12:50
+          jump k1(%7) @12:28
+        }
+      }
+    }
+  }
+  let %8: Int = call sum(100) @13:27
+  let %9: String = call conv.int(%8) @13:18
+  let %10: String = prim <>("sum: ", %9) @13:7
+  do call print(%10) @13:1
+  funs rec {
+    fun factorial(n.1: Int): Int {
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        let %11: Bool = prim <=(n.1, 1) @15:37
+        if %11 { @15:34
+          jump k2(1) @15:34
+        } else {
+          let %12: Int = prim -(n.1, 1) @15:66
+          let %13: Int = call factorial(%12) @15:56
+          let %14: Int = prim *(%13, n.1) @15:56
+          jump k2(%14) @15:34
+        }
+      }
+    }
+  }
+  let %15: Int = call factorial(20) @16:33
+  let %16: String = call conv.int(%15) @16:24
+  let %17: String = prim <>("factorial: ", %16) @16:7
+  do call print(%17) @16:1
+  funs rec {
+    fun fib(n.2: Int): Int {
+      join k3(r.2: Int) {
+        return r.2
+      } in {
+        let %18: Bool = prim <(n.2, 2) @18:31
+        if %18 { @18:28
+          jump k3(n.2) @18:28
+        } else {
+          let %19: Int = prim -(n.2, 1) @18:53
+          let %20: Int = call fib(%19) @18:49
+          let %21: Int = prim -(n.2, 2) @18:66
+          let %22: Int = call fib(%21) @18:62
+          let %23: Int = prim +(%20, %22) @18:49
+          jump k3(%23) @18:28
+        }
+      }
+    }
+  }
+  let %24: Int = call fib(20) @19:27
+  let %25: String = call conv.int(%24) @19:18
+  let %26: String = prim <>("fib: ", %25) @19:7
+  do call print(%26) @19:1
+  funs rec {
+    fun xors(a: Array(Int), i: Int): word.T {
+      join k4(r.3: word.T) {
+        return r.3
+      } in {
+        let %27: Int = prim extent(a) @22:13
+        let %28: Bool = prim is(i, %27) @22:8
+        if %28 { @22:5
+          let %29: word.T = call word.fromInt(0) @22:27
+          jump k4(%29) @22:5
+        } else {
+          let %30: Int = index(a, i) @22:74
+          let %31: word.T = call word.fromInt(%30) @22:61
+          let %32: Int = prim +(i, 1) @22:87
+          let %33: word.T = call xors(a, %32) @22:80
+          let %34: word.T = call word.xorBits(%31, %33) @22:48
+          jump k4(%34) @22:5
+        }
+      }
+    }
+  }
+  let %35: Array(Int) = array(1, 2, 4, 8, 3) @23:44
+  let %36: word.T = call xors(%35, 0) @23:39
+  let %37: Int = call word.toInt(%36) @23:28
+  let %38: String = call conv.int(%37) @23:19
+  let %39: String = prim <>("xors: ", %38) @23:7
+  do call print(%39) @23:1
+  funs rec {
+    fun bits(n.3: Int): word.T {
+      join k5(r.4: word.T) {
+        return r.4
+      } in {
+        let %40: Bool = prim is(n.3, 0) @25:35
+        if %40 { @25:32
+          let %41: word.T = call word.fromInt(1) @25:47
+          jump k5(%41) @25:32
+        } else {
+          let %42: Int = prim /(n.3, 2) @25:85
+          let %43: word.T = call bits(%42) @25:80
+          let %44: word.T = call word.fromInt(n.3) @25:92
+          let %45: word.T = call word.orBits(%43, %44) @25:68
+          jump k5(%45) @25:32
+        }
+      }
+    }
+  }
+  let %46: word.T = call bits(1000) @26:39
+  let %47: Int = call word.toInt(%46) @26:28
+  let %48: String = call conv.int(%47) @26:19
+  let %49: String = prim <>("bits: ", %48) @26:7
+  do call print(%49) @26:1
+  funs rec {
+    fun odds(n.4: Int): Int {
+      join k6(r.5: Int) {
+        return r.5
+      } in {
+        let %50: Bool = prim is(n.4, 0) @29:8
+        if %50 { @29:5
+          jump k6(0) @29:5
+        } else {
+          join k7(r.6: Int) {
+            jump k6(r.6) @29:5
+          } in {
+            let %51: Int = prim /(n.4, 2) @30:13
+            let %52: Int = prim *(%51, 2) @30:13
+            let %53: Bool = prim is(%52, n.4) @30:13
+            if %53 { @30:13
+              let %54: Int = prim -(n.4, 1) @30:40
+              let %55: Int = call odds(%54) @30:35
+              jump k7(%55) @30:13
+            } else {
+              let %56: Int = prim -(n.4, 1) @31:19
+              let %57: Int = call odds(%56) @31:14
+              let %58: Int = prim +(1, %57) @31:10
+              jump k7(%58) @30:13
+            }
+          }
+        }
+      }
+    }
+  }
+  let %59: Int = call odds(99) @33:28
+  let %60: String = call conv.int(%59) @33:19
+  let %61: String = prim <>("odds: ", %60) @33:7
+  do call print(%61) @33:1
+  funs rec {
+    fun alternating(n.5: Int): Int {
+      join k8(r.7: Int) {
+        return r.7
+      } in {
+        let %62: Bool = prim is(n.5, 0) @35:39
+        if %62 { @35:36
+          jump k8(0) @35:36
+        } else {
+          let %63: Int = prim -(n.5, 1) @35:74
+          let %64: Int = call alternating(%63) @35:62
+          let %65: Int = prim -(n.5, %64) @35:58
+          jump k8(%65) @35:36
+        }
+      }
+    }
+  }
+  let %66: Int = call alternating(10) @36:35
+  let %67: String = call conv.int(%66) @36:26
+  let %68: String = prim <>("alternating: ", %67) @36:7
+  do call print(%68) @36:1
+}
+

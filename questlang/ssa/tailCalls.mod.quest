@@ -88,7 +88,7 @@ export
      * are values once its parameters are taken as the jump's arguments. A
      * parameter the block does not return (one a join left dead) may be
      * passed anything *)
-    let rec returnsThrough(f: Function t: ssa.Target values: Array(Int) depth: Int): Bool =
+    let rec returnsWithin(f: Function t: ssa.Target values: Array(Int) depth: Int): Bool =
         begin
             let blk = ssa.block(f t.block)
             let params = vector.toArray(:Int blk.params)
@@ -107,11 +107,13 @@ export
                 case blk.term
                     when termReturn with x then sameValues(passed(x.values) values)
                     when termJump with x then
-                        returnsThrough(f ssa.target(x.target.block passed(x.target.args)) values {depth + 1})
+                        returnsWithin(f ssa.target(x.target.block passed(x.target.args)) values {depth + 1})
                     when termNone, termBranch, termSwitch, termTailCall, termTry, termUnreachable then false
                 end
             end
         end
+
+    let returnsThrough(f: Function t: ssa.Target values: Array(Int)): Bool = returnsWithin(f t values 0)
 
     let markFunction(f: Function): Ok =
         if not(slotsEscape(f)) then
@@ -144,7 +146,7 @@ export
                 if maybe.isSome(:ssa.Inst call) then
                     let tail = case blk.term
                         when termReturn with x then sameValues(x.values returned)
-                        when termJump with x then returnsThrough(f x.target returned 0)
+                        when termJump with x then returnsThrough(f x.target returned)
                         when termNone, termBranch, termSwitch, termTailCall, termTry, termUnreachable then false
                     end
                     if tail then

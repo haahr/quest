@@ -1,14 +1,16 @@
 function qf_eval(%0: ptr, %1: int, %2: val) pairs [1]: int {
 b0(%0: ptr, %1: int, %2: val):
   @21:5
-  switch %1 [1: b1(), 0: b2()] default b3()
+  %40: int = const 0
+  jump b10(%0, %1, %2, %40)
 b1():
   @21:5
-  %3: int = fromVal %2
-  return %3
+  %3: int = fromVal %35
+  %38: int = add %36, %3
+  return %38
 b2():
   @21:5
-  %4: ptr = fromVal %2
+  %4: ptr = fromVal %35
   @23:35
   %5: int = ptrToInt %4
   %6: int = const 1
@@ -17,7 +19,8 @@ b2():
 b3():
   @21:5
   %32: int = const 0
-  return %32
+  %39: int = add %36, %32
+  return %39
 b4():
   @23:35
   %9: int = const 0
@@ -57,11 +60,12 @@ b9(%20: ptr):
   %28: val = load8 %20 + 8
   @23:42
   %29: ptr = null
-  %30: int = call qf_eval(%29, %27, %28) pairs [1]
   @23:30
-  %31: int = add %16, %30
+  %37: int = add %36, %16
+  jump b10(%29, %27, %28, %37)
+b10(%33: ptr, %34: int, %35: val, %36: int):
   @21:5
-  return %31
+  switch %34 [1: b1(), 0: b2()] default b3()
 }
 
 function qr_register_dicts() {

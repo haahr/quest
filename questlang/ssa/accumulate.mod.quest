@@ -1,0 +1,163 @@
+(* Quest Self-Hosted Compiler: The SSA's Accumulation Implementation *)
+
+module accumulate : Accumulate
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/tailCalls : questlang/ssa/TailCalls
+    collections/vector : collections/Vector
+    stringOp = string : StringOp
+export
+    Let Function = ssa.Function
+
+    (* A block that ends in a call of the function itself (with op none, a
+     * tail call) or in such a call and op of its result and other *)
+    Let Site = Tuple block: Int call: ssa.Inst op: ssa.Inst other: Int end
+
+    (* The operations an accumulator combines with: associative and
+     * commutative on ints, which wrap *)
+    let combines(i: ssa.Inst): Bool =
+        ssa.isOp(i ssa.opAdd) orif ssa.isOp(i ssa.opMul) orif ssa.isOp(i ssa.opAnd) orif ssa.isOp(i ssa.opOr)
+            orif ssa.isOp(i ssa.opXor)
+
+    let identity(op: ssa.Inst): Int =
+        if ssa.isOp(op ssa.opMul) then 1 elsif ssa.isOp(op ssa.opAnd) then ~1 else 0 end
+
+    (* Whether f returns one int, passed as a word *)
+    let returnsInt(f: Function): Bool =
+        if {vector.length(:ssa.Type f.resultTypes) isnot 1} orif {extent f.signature.results isnot 1} then false
+        elsif vector.get(:ssa.Type f.resultTypes 0) isnot ssa.typeInt then false
+        else
+            case f.signature.results[0]
+                when passWord then true
+                when passReal, passPair, passPairRest, passByte, passInt32, passMemory then false
+            end
+        end
+
+    (* Whether a block returns v, directly or through blocks that pass it
+     * on *)
+    let returns(f: Function blk: ssa.Block v: Int): Bool =
+        case blk.term
+            when termReturn with x then {extent x.values is 1} andif {x.values[0] is v}
+            when termJump with x then tailCalls.returnsThrough(f x.target array of v end)
+            when termNone, termBranch, termSwitch, termTailCall, termTry, termUnreachable then false
+        end
+
+    let withLast(vs: Array(Int) v: Int): Array(Int) =
+        begin
+            let r = array of({extent vs + 1} v)
+            for k = 0 upto {extent vs - 1} do r[k] := vs[k] end
+            r
+        end
+
+    let jump(block: Int args: Array(Int)): ssa.Terminator =
+        option termJump of ssa.Terminator with let target = ssa.target(block args) end
+
+    (* The function's sites: its blocks that return a call of it, or op of
+     * one, op being the first such block's *)
+    let sites(f: Function): vector.T(Site) =
+        begin
+            let found = vector.new(:Site)
+            let isSelf(i: ssa.Inst): Bool =
+                ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol f.symbol) andif {extent i.results is 1}
+            let var op = ssa.inst(ssa.opCopy array of :Int end array of :Int end)
+            let var chosen = false
+            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                let blk = ssa.block(f b)
+                let n = vector.length(:ssa.Inst blk.insts)
+                if n > 0 then
+                    let last = vector.get(:ssa.Inst blk.insts {n - 1})
+                    if isSelf(last) andif returns(f blk last.results[0]) then
+                        vector.append(:Site found tuple let block = b let call = last let op = last let other = ~1 end)
+                    elsif {n > 1} andif combines(last) andif returns(f blk last.results[0]) then
+                        let before = vector.get(:ssa.Inst blk.insts {n - 2})
+                        let r = before.results
+                        let a = last.args
+                        if isSelf(before) andif {a[0] isnot a[1]} andif {{a[0] is r[0]} orif {a[1] is r[0]}}
+                            andif {not(chosen) orif ssa.isOp(last op.op)} then
+                            op := last
+                            chosen := true
+                            let other = if a[0] is r[0] then a[1] else a[0] end
+                            vector.append(:Site found tuple
+                                let block = b let call = before let op = last let other = other
+                            end)
+                        end
+                    end
+                end
+            end
+            (* Without a combining site, tail calls are left to the
+             * backends *)
+            if not(chosen) then vector.clear(:Site found) end
+            found
+        end
+
+    let accumulateFunction(f: Function): Ok =
+        if returnsInt(f) andif not(tailCalls.slotsEscape(f)) then
+            let found = sites(f)
+            if not(vector.empty(:Site found)) then
+                let var op = vector.get(:Site found 0).op
+                for k = 0 upto {vector.length(:Site found) - 1} do
+                    if vector.get(:Site found k).other >= 0 then op := vector.get(:Site found k).op end
+                end
+                (* The header: the entry's instructions and terminator, and
+                 * parameters for the function's, which replace them, and the
+                 * accumulator *)
+                let entry = ssa.block(f 0)
+                let header = ssa.newBlock(f)
+                let h = ssa.block(f header)
+                let params = vector.toArray(:Int entry.params)
+                let fresh = array of(vector.length(:ssa.Type f.types) ~1)
+                for k = 0 upto {extent params - 1} do
+                    fresh[params[k]] := ssa.addParam(f header ssa.typeOf(f params[k]))
+                end
+                let acc = ssa.addParam(f header ssa.typeInt)
+                for k = 0 upto {vector.length(:ssa.Inst entry.insts) - 1} do
+                    vector.append(:ssa.Inst h.insts vector.get(:ssa.Inst entry.insts k))
+                end
+                vector.clear(:ssa.Inst entry.insts)
+                h.term := entry.term
+                h.termLoc := entry.termLoc
+                entry.term := ssa.termNone
+                let replace(v: Int): Int = if {v < extent fresh} andif {fresh[v] >= 0} then fresh[v] else v end
+                ssa.replaceUses(f replace)
+                (* Each site jumps to the header, combining its other value
+                 * with the accumulator *)
+                for k = 0 upto {vector.length(:Site found) - 1} do
+                    let s = vector.get(:Site found k)
+                    let b = if s.block is 0 then header else s.block end
+                    let blk = ssa.block(f b)
+                    let ignored = vector.pop(:ssa.Inst blk.insts)
+                    if s.other < 0 then
+                        blk.term := jump(header withLast(s.call.args acc))
+                        blk.termLoc := s.call.loc
+                    else
+                        let ignoredCall = vector.pop(:ssa.Inst blk.insts)
+                        f.at := s.op.loc
+                        let next = ssa.binary(f b s.op.op acc replace(s.other))
+                        blk.term := jump(header withLast(s.call.args next))
+                        blk.termLoc := s.op.loc
+                    end
+                end
+                (* Each return combines what it returns with the
+                 * accumulator *)
+                for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                    let blk = ssa.block(f b)
+                    case blk.term
+                        when termReturn with x then
+                            f.at := blk.termLoc
+                            let v = ssa.binary(f b op.op acc x.values[0])
+                            blk.term := option termReturn of ssa.Terminator with let values = array of v end end
+                        when termNone, termJump, termBranch, termSwitch, termTailCall, termTry, termUnreachable then ok
+                    end
+                end
+                f.at := entry.termLoc
+                let start = ssa.constant(f 0 identity(op))
+                entry.term := jump(header withLast(params start))
+                f.at := ssa.noLoc
+            end
+        end
+
+    let accumulateUnit(u: ssa.Unit): Ok =
+        for i = 0 upto {vector.length(:Function u.functions) - 1} do
+            accumulateFunction(vector.get(:Function u.functions i))
+        end
+end

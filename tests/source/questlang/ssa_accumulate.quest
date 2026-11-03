@@ -1,0 +1,291 @@
+(* Self-Hosted Quest Compiler: Test Accumulated Recursion
+ *
+ * questlang/ssa/accumulate (docs/ssa.md section 4.1) on functions of the SSA
+ * written as text and read by questlang/ssa/parser, each printed before and
+ * after the pass and verified: a sum, whose call's result is added to; one
+ * whose entry is its site, without a base case, a runaway recursion; a
+ * product, whose identity is 1, and a conjunction, whose identity is all
+ * ones; fib's two calls, the second accumulated and the first left; a sum
+ * returned through a join; a self tail call beside a site, which keeps the
+ * accumulator; a call of another function returned, which the accumulator is
+ * combined with; and functions left alone: one whose result is subtracted
+ * from, one whose call's result is added to itself, one of a real result, one
+ * a slot's address escapes from, one with only a self tail call, and one
+ * whose sites combine with two operations, the second's left. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/accumulate : questlang/ssa/Accumulate
+    questlang/ssa/verify : questlang/ssa/Verify
+    util/strutil : util/Strutil
+    writer : Writer
+;
+
+let emit(s: String): Ok = writer.putString(writer.output s);
+
+let show(title: String lines: Array(String)): Ok =
+    begin
+        emit("== " <> title <> "\n")
+        let u = parser.readUnit(strutil.joinArray("\n" lines) <> "\n")
+        emit(printer.formatUnit(u))
+        accumulate.accumulateUnit(u)
+        emit("-- after accumulate\n")
+        emit(printer.formatUnit(u))
+        try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
+    end;
+
+show("a sum" array of
+    "function sum(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 0"
+    "  %2: int = eq %0, %1"
+    "  branch %2, b1(), b2()"
+    "b1():"
+    "  return %1"
+    "b2():"
+    "  %3: int = const 1"
+    "  %4: int = sub %0, %3"
+    "  %5: int = call sum(%4)"
+    "  %6: int = add %0, %5"
+    "  return %6"
+    "}"
+end);
+
+show("a site in the entry" array of
+    "function down(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 1"
+    "  %2: int = add %0, %1"
+    "  %3: int = call down(%2)"
+    "  %4: int = add %1, %3"
+    "  return %4"
+    "}"
+end);
+
+show("a product" array of
+    "function product(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 1"
+    "  %2: int = le %0, %1"
+    "  branch %2, b1(), b2()"
+    "b1():"
+    "  return %1"
+    "b2():"
+    "  %3: int = sub %0, %1"
+    "  %4: int = call product(%3)"
+    "  %5: int = mul %4, %0"
+    "  return %5"
+    "}"
+end);
+
+show("a conjunction" array of
+    "function masks(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 0"
+    "  %2: int = eq %0, %1"
+    "  branch %2, b1(), b2()"
+    "b1():"
+    "  %3: int = const 255"
+    "  return %3"
+    "b2():"
+    "  %4: int = const 1"
+    "  %5: int = lshr %0, %4"
+    "  %6: int = call masks(%5)"
+    "  %7: int = and %0, %6"
+    "  return %7"
+    "}"
+end);
+
+show("fib" array of
+    "function fib(%0: ptr, %1: int): int {"
+    "b0(%0: ptr, %1: int):"
+    "  %2: int = const 2"
+    "  %3: int = lt %1, %2"
+    "  branch %3, b1(), b2()"
+    "b1():"
+    "  return %1"
+    "b2():"
+    "  %4: int = const 1"
+    "  %5: int = sub %1, %4"
+    "  %6: int = call fib(%0, %5)"
+    "  %7: int = sub %1, %2"
+    "  %8: int = call fib(%0, %7)"
+    "  %9: int = add %6, %8"
+    "  return %9"
+    "}"
+end);
+
+show("a sum returned through a join" array of
+    "function joined(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 0"
+    "  %2: int = eq %0, %1"
+    "  branch %2, b1(), b2()"
+    "b1():"
+    "  jump b3(%1)"
+    "b2():"
+    "  %3: int = const 1"
+    "  %4: int = sub %0, %3"
+    "  %5: int = call joined(%4)"
+    "  %6: int = add %5, %0"
+    "  jump b3(%6)"
+    "b3(%7: int):"
+    "  return %7"
+    "}"
+end);
+
+show("a self tail call beside a site" array of
+    "function evens(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 0"
+    "  %2: int = eq %0, %1"
+    "  branch %2, b1(), b2()"
+    "b1():"
+    "  return %1"
+    "b2():"
+    "  %3: int = const 1"
+    "  %4: int = sub %0, %3"
+    "  %5: int = and %0, %3"
+    "  branch %5, b3(), b4()"
+    "b3():"
+    "  %6: int = call evens(%4)"
+    "  return %6"
+    "b4():"
+    "  %7: int = call evens(%4)"
+    "  %8: int = add %7, %3"
+    "  return %8"
+    "}"
+end);
+
+show("another function's result returned" array of
+    "function other(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 0"
+    "  %2: int = eq %0, %1"
+    "  branch %2, b1(), b2()"
+    "b1():"
+    "  %3: int = call g(%0)"
+    "  return %3"
+    "b2():"
+    "  %4: int = const 1"
+    "  %5: int = sub %0, %4"
+    "  %6: int = call other(%5)"
+    "  %7: int = xor %6, %0"
+    "  return %7"
+    "}"
+end);
+
+show("a result subtracted from" array of
+    "function subtracted(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 0"
+    "  %2: int = eq %0, %1"
+    "  branch %2, b1(), b2()"
+    "b1():"
+    "  return %1"
+    "b2():"
+    "  %3: int = const 1"
+    "  %4: int = sub %0, %3"
+    "  %5: int = call subtracted(%4)"
+    "  %6: int = sub %0, %5"
+    "  return %6"
+    "}"
+end);
+
+show("a result added to itself" array of
+    "function doubled(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 0"
+    "  %2: int = eq %0, %1"
+    "  branch %2, b1(), b2()"
+    "b1():"
+    "  %3: int = const 1"
+    "  return %3"
+    "b2():"
+    "  %4: int = const 1"
+    "  %5: int = sub %0, %4"
+    "  %6: int = call doubled(%5)"
+    "  %7: int = add %6, %6"
+    "  return %7"
+    "}"
+end);
+
+show("a real result" array of
+    "function reals(%0: int, %1: real): real {"
+    "b0(%0: int, %1: real):"
+    "  %2: int = const 0"
+    "  %3: int = eq %0, %2"
+    "  branch %3, b1(), b2()"
+    "b1():"
+    "  return %1"
+    "b2():"
+    "  %4: int = const 1"
+    "  %5: int = sub %0, %4"
+    "  %6: real = call reals(%5, %1)"
+    "  %7: real = fadd %6, %1"
+    "  return %7"
+    "}"
+end);
+
+show("a slot's address escaping" array of
+    "function escaping(%0: int): int slots [8:8] {"
+    "b0(%0: int):"
+    "  %1: ptr = slot 0"
+    "  store8 %1 + 0, %0"
+    "  call h(%1)"
+    "  %2: int = const 0"
+    "  %3: int = eq %0, %2"
+    "  branch %3, b1(), b2()"
+    "b1():"
+    "  return %2"
+    "b2():"
+    "  %4: int = const 1"
+    "  %5: int = sub %0, %4"
+    "  %6: int = call escaping(%5)"
+    "  %7: int = add %6, %0"
+    "  return %7"
+    "}"
+end);
+
+show("only a self tail call" array of
+    "function counts(%0: int, %1: int): int {"
+    "b0(%0: int, %1: int):"
+    "  %2: int = const 0"
+    "  %3: int = eq %0, %2"
+    "  branch %3, b1(), b2()"
+    "b1():"
+    "  return %1"
+    "b2():"
+    "  %4: int = const 1"
+    "  %5: int = sub %0, %4"
+    "  %6: int = add %1, %4"
+    "  %7: int = call counts(%5, %6)"
+    "  return %7"
+    "}"
+end);
+
+show("two operations" array of
+    "function mixed(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 0"
+    "  %2: int = eq %0, %1"
+    "  branch %2, b1(), b2()"
+    "b1():"
+    "  return %1"
+    "b2():"
+    "  %3: int = const 1"
+    "  %4: int = sub %0, %3"
+    "  %5: int = and %0, %3"
+    "  branch %5, b3(), b4()"
+    "b3():"
+    "  %6: int = call mixed(%4)"
+    "  %7: int = add %6, %0"
+    "  return %7"
+    "b4():"
+    "  %8: int = call mixed(%4)"
+    "  %9: int = mul %8, %0"
+    "  return %9"
+    "}"
+end);
