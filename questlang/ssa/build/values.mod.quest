@@ -252,6 +252,8 @@ export
     let threadLocal(fn: Fn symbol: String): Int = ssa.threadLocal(fn.f fn.cur symbol)
     let load(fn: Fn address: Int offset: Int p: Part): Int = ssa.load(fn.f fn.cur address offset p.width p.signed p.type)
     let loadWord(fn: Fn address: Int offset: Int t: ssa.Type): Int = ssa.load(fn.f fn.cur address offset 8 false t)
+    let invariantWord(fn: Fn address: Int offset: Int t: ssa.Type): Int =
+        ssa.invariantLoad(fn.f fn.cur address offset 8 false t)
     let store(fn: Fn address: Int offset: Int width: Int value: Int): Ok = ssa.store(fn.f fn.cur address offset width value)
     (* A call of the runtime's function name (codegen/runtimeFunctions), at
      * its signature: its results; its one result; none *)
@@ -711,7 +713,7 @@ export
     let unproxy(fn: Fn p: Int): Int =
         choose(fn isProxy(fn p) array of tPtr end
             fun(): Array(Int) array of
-                loadWord(fn p runtimeLayout.offset("QProxy" "orig") - runtimeLayout.constant("QUEST_PROXY_TAG") tPtr)
+                invariantWord(fn p runtimeLayout.offset("QProxy" "orig") - runtimeLayout.constant("QUEST_PROXY_TAG") tPtr)
             end
             fun(): Array(Int) array of p end)[0]
 
@@ -754,12 +756,12 @@ export
     (* The tag of the option at o, read as access says *)
     let optionTag(fn: Fn o: Int access: ir.Access): Int =
         case access
-            when direct then loadWord(fn o runtimeLayout.offset("QOptionHeader" "tag") tInt)
+            when direct then invariantWord(fn o runtimeLayout.offset("QOptionHeader" "tag") tInt)
             (* A proxy's tag is the view's numbering of the original's *)
             when original, proxy then
                 choose(fn isProxy(fn o) array of tInt end
                     fun(): Array(Int) array of call1(fn "quest_proxy_tag" array of o end) end
-                    fun(): Array(Int) array of loadWord(fn o runtimeLayout.offset("QOptionHeader" "tag") tInt) end)[0]
+                    fun(): Array(Int) array of invariantWord(fn o runtimeLayout.offset("QOptionHeader" "tag") tInt) end)[0]
         end
 
     (* The tag of a variant or option value vs of shape ts, in its numbering,
@@ -769,9 +771,9 @@ export
             let vm = atom1(fn ir.atomOfVar(maybe.unwrap(:Variable viewMap)))
             case ts.kind
                 when shapeVariant then
-                    let index = loadWord(fn vm runtimeLayout.offset("QViewMap" "index") tPtr)
+                    let index = invariantWord(fn vm runtimeLayout.offset("QViewMap" "index") tPtr)
                     let scaled = binary(fn ssa.opMul vs[0] constant(fn 8))
-                    loadWord(fn indexPtr(fn index scaled) 0 tInt)
+                    invariantWord(fn indexPtr(fn index scaled) 0 tInt)
                 when shapeInt, shapeReal, shapeBool, shapeChar, shapeString, shapeOk, shapeWord, shapeBottom,
                     shapeTuple, shapeRecord, shapeOption, shapeArray, shapeCell, shapeOut, shapeException, shapeFun,
                     shapeAll, shapeAuto, shapeTypevar, shapeAbstract, shapeExternal, shapeOperator, shapePending then

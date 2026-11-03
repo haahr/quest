@@ -109,8 +109,8 @@ export
                         vals.concat(array of vals.null(fn) end args) shifted(s.pairs 1) shifted(s.narrow 1) ps)
                 else
                     let clos = vals.read(fn v)[0]
-                    let fnPtr = vals.loadWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
-                    let env = vals.loadWord(fn clos runtimeLayout.offset("QClosure" "env") vals.tPtr)
+                    let fnPtr = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
+                    let env = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "env") vals.tPtr)
                     vals.callQuest(fn "" vals.concat(array of fnPtr env end args) shifted(s.pairs 2) shifted(s.narrow 2)
                         ps)
                 end
@@ -140,8 +140,8 @@ export
                 vals.loadWord(fn d bytes("QFunTypeDescriptor") + {bytes("QFunParamDescriptor") * j} vals.tPtr)
             let convertWord(fn: vals.Fn w: Int from: Int to: Int): Int = vals.call1(fn "quest_convert" array of w from
                 to end)
-            let closureFn(fn: vals.Fn c: Int): Int = vals.loadWord(fn c runtimeLayout.offset("QClosure" "fn") vals.tPtr)
-            let closureEnv(fn: vals.Fn c: Int): Int = vals.loadWord(fn c runtimeLayout.offset("QClosure" "env") vals.tPtr)
+            let closureFn(fn: vals.Fn c: Int): Int = vals.invariantWord(fn c runtimeLayout.offset("QClosure" "fn") vals.tPtr)
+            let closureEnv(fn: vals.Fn c: Int): Int = vals.invariantWord(fn c runtimeLayout.offset("QClosure" "env") vals.tPtr)
 
             (* The thunk, whose environment is a QFunAdapterEnv *)
             let thunk = newFunction(u thunkName false s retParts)

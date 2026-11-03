@@ -39,7 +39,7 @@ export
                     let table = maybe.unwrap(:ir.TagMap plan.tagMap)
                     let map = staticdata.describeTagMap(table.target table.source)
                     let scaled = vals.binary(fn ssa.opMul vs[0] vals.constant(fn 8))
-                    array of vals.loadWord(fn vals.indexPtr(fn vals.symbolAt(fn map.symbol) scaled) 0 vals.tInt) vs[1] end
+                    array of vals.invariantWord(fn vals.indexPtr(fn vals.symbolAt(fn map.symbol) scaled) 0 vals.tInt) vs[1] end
                 when planCast then
                     vs
                 when planUnproxy then
@@ -187,7 +187,7 @@ export
                 let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable viewMap)))
                 vals.call1(fn "quest_view_record_slot" array of vs[0] vs[1] vm vals.constant(fn k) end)
             else
-                vals.indexPtr(fn vs[0] vals.loadWord(fn vs[1] 8 * k vals.tInt))
+                vals.indexPtr(fn vs[0] vals.invariantWord(fn vs[1] 8 * k vals.tInt))
             end
         end
 
@@ -545,7 +545,7 @@ export
         begin
             let site = fun(): Array(Int) array of vals.site(fn offset) end
             vals.check(fn vals.binary(fn ssa.opPeq arr vals.null(fn)) false "quest_raise_array_error_at" site)
-            let length = vals.loadWord(fn arr runtimeLayout.offset("QArray" "length") vals.tInt)
+            let length = vals.invariantWord(fn arr runtimeLayout.offset("QArray" "length") vals.tInt)
             vals.check(fn vals.binary(fn ssa.opUlt idx length) true "quest_raise_array_error_at" site)
             let scaled = vals.binary(fn ssa.opMul idx vals.constant(fn 8))
             vals.indexPtr(fn vals.offsetPtr(fn arr runtimeLayout.offset("QArray" "data")) scaled)
@@ -571,8 +571,8 @@ export
     (* A call of the closure at clos, with its environment and args *)
     let callClosureWith(fn: vals.Fn clos: Int args: Array(Int) results: Array(vals.Part)): Array(Int) =
         begin
-            let code = vals.loadWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
-            let env = vals.loadWord(fn clos runtimeLayout.offset("QClosure" "env") vals.tPtr)
+            let code = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
+            let env = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "env") vals.tPtr)
             vals.callQuest(fn "" vals.concat(array of code env end args) vals.noValues vals.noValues results)
         end
 

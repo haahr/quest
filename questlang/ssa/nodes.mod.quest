@@ -36,6 +36,7 @@ export
         signed: Bool
         var signature: Signature
         var loc: Loc
+        var invariant: Bool
     end
 
     Def Target = Tuple block: Int var args: Array(Int) end
@@ -317,6 +318,7 @@ export
         tuple
             let op = op let var args = args let results = results let var imm = imm let symbol = symbol
             let width = width let signed = signed let var signature = s let var loc = noLoc
+            let var invariant = false
         end
 
     let inst(op: Opcode args: Array(Int) results: Array(Int)): Inst =
@@ -367,6 +369,15 @@ export
         begin
             let v = newValue(f t)
             append(f b instruction(opLoad array of address end array of v end offset "" width signed emptySignature))
+            v
+        end
+
+    let invariantLoad(f: Function b: Int address: Int offset: Int width: Int signed: Bool t: Type): Int =
+        begin
+            let v = newValue(f t)
+            let i = instruction(opLoad array of address end array of v end offset "" width signed emptySignature)
+            i.invariant := true
+            append(f b i)
             v
         end
 

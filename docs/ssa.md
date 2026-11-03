@@ -68,6 +68,16 @@ A load or store names its width: 8 bytes (an `int`, `ptr`, or `real`), 4 (a C `i
 an unsigned byte, arm64.md §3.9). Its address is its pointer argument plus the
 immediate.
 
+A load is **invariant** (`Inst.invariant`) when nothing writes what it reads once the object it reads from is made, so
+that it may be reused across stores and calls and moved out of a loop ([value-numbering.md](value-numbering.md) §2.2).
+The builder marks the loads it knows of (`values.invariantWord`): a closure's code and environment pointers and its
+environment's words (a deferred capture of a `let rec` is stored before the closure can run), an array's and a
+string's length and a string's data pointer (the runtime writes a string's bytes, never these), a proxy's original,
+an option's tag, a record's offset table, a view map's index, and a conversion's static map. A module's record is
+written while its module is initialized, and is not marked. A field's static type does not make it invariant, since
+an immutable view may alias a `var` field (`Tuple var a: A end <: Tuple a: A end`). The escape pass clears the mark on
+the accesses it moves to a stack slot, which a loop reuses.
+
 ### 2.2. Calls
 
 A call's arguments and results are values in the order of the C function's parameters; an `Ok` argument, which has no
@@ -289,7 +299,8 @@ What a unit refers to and does not define is another unit's or the runtime's; th
 
 `--stop-after ssa` prints a program unit's SSA; its goldens (`tests/golden/ssa`) are the self-hosted compiler's own,
 one for every run test that has an `ir_core` dump (arm64.md §3.2). Values print as `%n`, blocks as `bN`, a
-function's stack slots as `bytes:alignment`, a load or store with its width (`load1s` sign-extends a byte), and a call
+function's stack slots as `bytes:alignment`, a load or store with its width (`load1s` sign-extends a byte; an invariant
+load, §2.1, ends `invariant`), and a call
 or a function with its signature where it is not words and reals (`pairs [0]`, `narrow [2]`, `memory [0:32]`,
 `int32 [0]`, `result narrow`, `result int32`); the unit's data follows its functions, a
 datum per line (`data qs_1 text "add1"`, `data g_res writable zero 8`, `data qf_f_closure words [qf_f, 0]`). A

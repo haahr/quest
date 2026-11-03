@@ -1,0 +1,63 @@
+(* Var Fields Through Immutable Views
+ *
+ * A tuple's var field read through a type that views it as immutable
+ * (Tuple var a: A end <: Tuple a: A end), while another holder of the tuple
+ * assigns it: across a call, in a loop, and through an alias in the same
+ * function. A load of the field may be reused only while nothing writes
+ * memory, never as invariant (docs/value-numbering.md section 2.2), and an
+ * array's elements likewise; each read here must see the latest value. *)
+
+import writer : Writer conv : Conv ;
+
+let say(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+Let Counter = Tuple var n: Int end
+Let Reading = Tuple n: Int end
+
+let bump(c: Counter): Ok = c.n := c.n + 1;
+
+(* Read, then a call assigns through the other view, then read again *)
+let acrossCall(r: Reading c: Counter): String =
+    begin
+        let before = r.n
+        bump(c)
+        conv.int(before) <> " " <> conv.int(r.n)
+    end;
+let c1: Counter = tuple let var n = 10 end;
+say("acrossCall: " <> acrossCall(c1 c1));
+
+(* A loop reads the field through one view and assigns it through the
+ * other *)
+let inLoop(r: Reading c: Counter k: Int): String =
+    begin
+        let var seen = ""
+        for i = 1 upto k do
+            seen := seen <> conv.int(r.n) <> " "
+            c.n := c.n * 2
+        end
+        seen <> conv.int(r.n)
+    end;
+let c2: Counter = tuple let var n = 1 end;
+say("inLoop: " <> inLoop(c2 c2 4));
+
+(* An assignment through an alias between two reads of the same field *)
+let throughAlias(c: Counter): String =
+    begin
+        let r: Reading = c
+        let first = r.n
+        c.n := first + 5
+        conv.int(first) <> " " <> conv.int(r.n)
+    end;
+say("throughAlias: " <> throughAlias(tuple let var n = 7 end));
+
+(* An array's element, read, assigned through another reference, and read
+ * again; its length, which is invariant, read across the assignment *)
+let elements(xs: Array(Int) ys: Array(Int)): String =
+    begin
+        let a = xs[0]
+        let n = extent xs
+        ys[0] := a + 100
+        conv.int(a) <> " " <> conv.int(xs[0]) <> " " <> conv.int(n) <> " " <> conv.int(extent xs)
+    end;
+let shared = array of 3 4 5 end;
+say("elements: " <> elements(shared shared));

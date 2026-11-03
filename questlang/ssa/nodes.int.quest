@@ -49,7 +49,10 @@ export
 
     (* An instruction. For a load or a store, width is 8, 4, or 1 bytes and
      * signed says how a narrow load extends; a call has its signature (others
-     * an empty one); loc is the source position it is compiled from. *)
+     * an empty one); loc is the source position it is compiled from. A load
+     * is invariant when nothing writes what it reads once the object it reads
+     * from is made (docs/value-numbering.md section 2.2), as the builder
+     * knows of a closure's code, say; false for any other instruction. *)
     Def Inst = Tuple
         op: Opcode
         var args: Array(Int)
@@ -60,6 +63,7 @@ export
         signed: Bool
         var signature: Signature
         var loc: Loc
+        var invariant: Bool
     end
 
     (* A jump's destination: a block, and the values bound to its
@@ -267,6 +271,8 @@ export
     slotAddress(f: Function b: Int s: Int): Int
     binary(f: Function b: Int op: Opcode x: Int y: Int): Int
     load(f: Function b: Int address: Int offset: Int width: Int signed: Bool t: Type): Int
+    (* A load of what is not written once made (Inst.invariant) *)
+    invariantLoad(f: Function b: Int address: Int offset: Int width: Int signed: Bool t: Type): Int
     store(f: Function b: Int address: Int offset: Int width: Int value: Int): Ok
     (* A call of symbol (or, with symbol "", of the function pointer that is
      * the first argument) of signature s: its results, of the types

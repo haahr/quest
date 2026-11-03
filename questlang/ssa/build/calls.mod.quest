@@ -92,7 +92,7 @@ export
                 end
             case o.op
                 when primNot then array of vals.binary(fn ssa.opXor x() vals.constant(fn 1)) end
-                when primExtent then array of vals.loadWord(fn x() runtimeLayout.offset("QArray" "length") vals.tInt) end
+                when primExtent then array of vals.invariantWord(fn x() runtimeLayout.offset("QArray" "length") vals.tInt) end
                 when primDiv then divided(ssa.opDiv fun(a: Int): Int vals.binary(fn ssa.opSub vals.constant(fn 0) a))
                 when primRem, primMod then divided(ssa.opRem fun(a: Int): Int vals.constant(fn 0))
                 when primRealAdd then real(ssa.opFadd x() y())
@@ -297,7 +297,7 @@ export
                 andif {extent maybe.unwrap(:ir.OpMakeClosure known).typeArgs is 0} then
                 let k = maybe.unwrap(:ir.OpMakeClosure known)
                 let env = if extent k.captures is 0 then vals.null(fn)
-                    else vals.loadWord(fn vals.atom1(fn ir.atomOfVar(callee)) runtimeLayout.offset("QClosure" "env") vals.tPtr)
+                    else vals.invariantWord(fn vals.atom1(fn ir.atomOfVar(callee)) runtimeLayout.offset("QClosure" "env") vals.tPtr)
                 end
                 (* A function returning an unboxed tuple returns its
                  * components (questlang/ir/unbox) *)
@@ -321,8 +321,8 @@ export
     and indirectCall(fn: vals.Fn callee: Variable descs: Array(Int) args: Array(Atom)): Array(Int) =
         begin
             let clos = vals.atom1(fn ir.atomOfVar(callee))
-            let fnPtr = vals.loadWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
-            let env = vals.loadWord(fn clos runtimeLayout.offset("QClosure" "env") vals.tPtr)
+            let fnPtr = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "fn") vals.tPtr)
+            let env = vals.invariantWord(fn clos runtimeLayout.offset("QClosure" "env") vals.tPtr)
             let ps = resultParts(callee.type)
             let all = vals.concat(vals.concat(array of fnPtr env end descs) vals.callAtoms(fn args))
             let vs = vals.callQuest(fn "" all pairsOf({2 + extent descs} args) narrowOf({2 + extent descs} args) ps)
@@ -379,9 +379,9 @@ export
             let byteAddress(s: Int idx: Int): Int =
                 begin
                     vals.check(fn vals.binary(fn ssa.opPeq s vals.null(fn)) false "quest_raise_string_error" noSite)
-                    let length = vals.loadWord(fn s runtimeLayout.offset("QString" "length") vals.tInt)
+                    let length = vals.invariantWord(fn s runtimeLayout.offset("QString" "length") vals.tInt)
                     vals.check(fn vals.binary(fn ssa.opUlt idx length) true "quest_raise_string_error" noSite)
-                    vals.indexPtr(fn vals.loadWord(fn s runtimeLayout.offset("QString" "data") vals.tPtr) idx)
+                    vals.indexPtr(fn vals.invariantWord(fn s runtimeLayout.offset("QString" "data") vals.tPtr) idx)
                 end
             let named(name: String): Bool = vals.eq(member name)
             if maybe.isNone(:String imp.libPath) orif not(concrete(o.calleeType)) then none
@@ -443,7 +443,7 @@ export
                             array of vals.tInt end
                             fun(): Array(Int) array of vals.constant(fn 0) end
                             fun(): Array(Int)
-                                array of vals.loadWord(fn s runtimeLayout.offset("QString" "length") vals.tInt) end))
+                                array of vals.invariantWord(fn s runtimeLayout.offset("QString" "length") vals.tInt) end))
                     elsif named("getChar") then
                         one(vals.load(fn byteAddress(x() y()) 0 vals.part(vals.tInt 1 false)))
                     elsif named("setChar") then
