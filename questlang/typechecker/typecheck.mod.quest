@@ -101,7 +101,10 @@ import
     stringOp = string : StringOp
 export
     Let Type = model.Type
-    Let Result = Tuple program: maybe.T(typedAst.Program) errors: Array(diagnostics.CompilerError) end
+    Let Result = Tuple
+        program: maybe.T(typedAst.Program) errors: Array(diagnostics.CompilerError)
+        warnings: Array(diagnostics.CompilerError)
+    end
 
     let expr(offset: Int t: Type form: typedAst.ExprForm): typedAst.Expr = typedAst.expr(offset t form)
 
@@ -459,6 +462,9 @@ export
             end
             let errors = vector.toArray(:diagnostics.CompilerError c.errors)
             let result = if extent errors is 0 then maybe.some(:typedAst.Program typed) else maybe.none(:typedAst.Program) end
-            tuple let program = result let errors = errors end
+            tuple
+                let program = result let errors = errors
+                let warnings = vector.toArray(:diagnostics.CompilerError c.warnings)
+            end
         end
 end

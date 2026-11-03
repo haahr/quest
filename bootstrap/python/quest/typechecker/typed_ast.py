@@ -817,10 +817,15 @@ class TypedLetValue(TypedBinding):
     value: TypedExpr
     symbol: ValueSymbol
     is_rec: bool = False
+    # Whether the let redefines an interactive slot in place
+    # (docs/redefinition.md)
+    redefines: bool = False
 
     def dump_header(self, env: Optional[Any] = None) -> str:
         rec_tag = " :rec" if self.is_rec else ""
-        return f"'{self.name}'{rec_tag} :type {format_type_compact(self.symbol.type_val, env=env)}"
+        redefines_tag = " :redefines" if self.redefines else ""
+        return (f"'{self.name}'{rec_tag}{redefines_tag} :type "
+                f"{format_type_compact(self.symbol.type_val, env=env)}")
 
     def dump_children(self) -> list[tuple[str, Any]]:
         return [(":value", self.value)]

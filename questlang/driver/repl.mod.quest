@@ -157,6 +157,9 @@ export
                     for i = 0 upto {extent result.errors - 1} do
                         diagbag.add(bag diagnostics.errorDiagnostic(result.errors[i] inputName))
                     end
+                    for i = 0 upto {extent result.warnings - 1} do
+                        diagbag.add(bag diagnostics.warningDiagnostic(result.warnings[i] inputName))
+                    end
                     if diagbag.hasErrors(bag) orif maybe.isNone(:typedAst.Program result.program) then
                         failed
                     elsif maybe.isSome(:session.T r.jit) then
@@ -270,6 +273,10 @@ export
                             let bag = diagbag.new()
                             let results = evaluate(r text sm bag)
                             if maybe.isSome(:Array(String) results) then
+                                (* An input that ran may have warnings *)
+                                writer.flush(writer.output)
+                                diagbag.renderAll(bag sm writer.err)
+                                writer.flush(writer.err)
                                 let shown = maybe.unwrap(:Array(String) results)
                                 for i = 0 upto {extent shown - 1} do showResult(shown[i]) end
                             else

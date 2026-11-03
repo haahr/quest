@@ -1,0 +1,53 @@
+(* An interactive let of a name's type redefines it in place, for earlier uses too; one of another type shadows, with a warning *)
+(* @env: QUEST_REDEFINE=1 *)
+(* @skip-phase: jit *) (* the JIT redefines in docs/redefinition.md's step 2 *)
+let f(n: Int): Int = 100 / n
+let g(n: Int): Int = f(n) + 1
+let f(n: Int): Int = n
+g(0)
+let x = 1
+let readX(): Int = x
+let x = 2
+readX() + x
+let var w = 1
+let var w = 7
+w
+let rec fact(n: Int): Int = if n is 0 then 1 else n * fact(n - 1) end
+let factFive(): Int = fact(5)
+let rec fact(n: Int): Int = if n is 0 then 0 else n + fact(n - 1) end
+factFive()
+let even(n: Int): Bool = false
+let odd(n: Int): Bool = if n is 0 then false else even(n - 1) end
+let even(n: Int): Bool = if n is 0 then true else odd(n - 1) end
+odd(7)
+let first(A::TYPE x: A y: A): A = x
+let pick(): Int = first(:Int 1 2)
+let first(B::TYPE x: B y: B): B = y
+pick()
+Let Num = Int
+let k: Num = 1
+let readK(): Int = k
+let k: Int = 2
+readK()
+let a = 1
+let readA(): Int = a
+let a = 2 and b = a
+readA() + b
+let s = 10
+let localS(): Int = begin let s = 1 s end
+let s = 20
+localS() + s
+let p() = 1; let q() = p(); let p() = 2; q()
+let t = 1
+let readT(): Int = t
+let t = "now a string"
+readT()
+let t = "another string"
+let u = 1
+let readU(): Int = u
+let var u = 5
+readU()
+interface J export z: Int end
+module m: J export let z = 1 end
+module m: J export let z = 2 end
+m.z

@@ -137,6 +137,13 @@ class Environment:
         # Whether the bindings being elaborated are an unsound module's, the
         # only place 'external' may be used (docs/modules.md §4.4)
         self.in_unsound_module = False
+        # Whether the bindings being elaborated are an interactive input's (the
+        # REPL's, or the file -i runs), whose top-level lets make slots that a
+        # later let of the same type redefines (docs/redefinition.md); and the
+        # slots, each value symbol of such a let mapped to its slot's id, the id
+        # of the first symbol bound to it
+        self.interactive = False
+        self.slots: dict[int, int] = {}
         self._units: Optional[UnitGraph] = None
         self._loading_interfaces: list[str] = []
         self._loading_modules: list[str] = []
@@ -307,6 +314,7 @@ class Environment:
             "scope_types_by_id": dict(self.current_scope._types_by_id),
             "scope_kinds": dict(self.current_scope._kinds),
             "scope_kinds_by_id": dict(self.current_scope._kinds_by_id),
+            "slots": dict(self.slots),
         }
 
     def restore(self, snap: dict[str, Any]) -> None:
@@ -322,6 +330,11 @@ class Environment:
         self.current_scope._types_by_id = dict(snap["scope_types_by_id"])
         self.current_scope._kinds = dict(snap["scope_kinds"])
         self.current_scope._kinds_by_id = dict(snap["scope_kinds_by_id"])
+        self.slots = dict(snap["slots"])
+
+    def redefines(self, symbol: ValueSymbol) -> bool:
+        """Whether symbol's let redefines an earlier symbol's slot."""
+        return self.slots.get(symbol.symbol_id, symbol.symbol_id) != symbol.symbol_id
 
     # --- Built-in Initialization ---
 

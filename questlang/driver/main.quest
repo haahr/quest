@@ -1168,6 +1168,9 @@ let run(): Ok =
                     e.currentDir := maybe.some(:String dir)
                     e.programDir := maybe.some(:String dir)
                     e.sourceFile := options.file
+                    (* The file -i runs, and the REPL's inputs, are interactive
+                     * (docs/redefinition.md) *)
+                    e.interactive := options.interactive andif stringOp.equal(system.getEnv("QUEST_REDEFINE") "1")
                     if cPipeline orif options.jit then
                         (* Compiled to C, or by the JIT, the modules are known
                          * through their interfaces, with the build
@@ -1198,6 +1201,9 @@ let run(): Ok =
                     let result = typecheck.elaborateProgram(desugared e)
                     for i = 0 upto {extent result.errors - 1} do
                         diagbag.add(bag diagnostics.errorDiagnostic(result.errors[i] options.file))
+                    end
+                    for i = 0 upto {extent result.warnings - 1} do
+                        diagbag.add(bag diagnostics.warningDiagnostic(result.warnings[i] options.file))
                     end
                     if maybe.isSome(:typedAst.Program result.program) then
                         let typed = maybe.unwrap(:typedAst.Program result.program)

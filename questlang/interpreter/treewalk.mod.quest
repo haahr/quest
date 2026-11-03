@@ -480,13 +480,27 @@ export
             found
         end
 
+    (* Whether a binding is a let that redefines an interactive slot, which
+     * rebinds nothing: it stores to the slot (bindLet) *)
+    let redefines(b: Binding): Bool = case b.form when bindLetValue with x then x.value.redefines else false end
+
+    (* Binds a value let's name to its value in f's frame, or, if the let
+     * redefines an interactive slot (docs/redefinition.md section 3.2), stores
+     * the value where the name is bound, as an assignment does: in the frame
+     * that holds it, or into its cell if it is a var *)
+    let bindLet(v: typedAst.LetValue val: Value f: Frame): Ok =
+        if v.redefines then assignName(f v.name val maybe.none(:Int))
+        else define(f v.name if v.symbol.isVar then model.cellValue(val) else val end) end
+
     let declaresName(b: Binding f: Frame): Bool =
         begin
             let members = typedAst.bindingMembers(b)
             let var found = false
             for i = 0 upto {extent members - 1} do
                 let name = typedAst.declaredName(members[i])
-                if maybe.isSome(:String name) andif hashMap.contains(:String :Value f.bindings maybe.unwrap(:String name)) then
+                if maybe.isSome(:String name)
+                    andif hashMap.contains(:String :Value f.bindings maybe.unwrap(:String name))
+                    andif not(redefines(members[i])) then
                     found := true
                 end
             end
@@ -1034,9 +1048,7 @@ export
         else evalExpr(value f) end
 
     and defineMembers(members: Array(typedAst.LetValue) values: Array(Value) f: Frame): Ok =
-        for i = 0 upto {extent members - 1} do
-            define(f members[i].name if members[i].symbol.isVar then model.cellValue(values[i]) else values[i] end)
-        end
+        for i = 0 upto {extent members - 1} do bindLet(members[i] values[i] f) end
 
     and memberNames(members: Array(typedAst.LetValue)): maybe.T(Array(maybe.T(String))) =
         begin
@@ -1048,11 +1060,11 @@ export
     and evalLetValue(v: typedAst.LetValue f: Frame): Value =
         if v.isRec andif v.value.form?exprFun then
             let closure = makeClosure(v.value f maybe.some(:String v.name) maybe.some(:String v.name))
-            define(f v.name closure)
+            bindLet(v closure f)
             closure
         else
             let val = evalBoundValue(v.name v.value f)
-            define(f v.name if v.symbol.isVar then model.cellValue(val) else val end)
+            bindLet(v val f)
             val
         end
 

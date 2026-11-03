@@ -16,6 +16,7 @@ Implements Phase 3.6 of the Quest bootstrap compiler:
 from __future__ import annotations
 
 import atexit
+import os
 import sys
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -45,6 +46,13 @@ PROMPT_CONT = "    "
 PREFIX_RESP = "==  "
 HISTORY_FILE_NAME = ".quest_history"
 HISTORY_LENGTH = 1000
+
+
+def redefinition_enabled() -> bool:
+    """Whether interactive inputs redefine their slots in place
+    (docs/redefinition.md), which QUEST_REDEFINE=1 turns on until the work is
+    done."""
+    return os.environ.get("QUEST_REDEFINE") == "1"
 
 
 def read_input_line(prompt: str) -> str:
@@ -133,6 +141,8 @@ class QuestREPL:
         stderr_write: Optional[Callable[[str], Any]] = None,
     ):
         self.context = ctx or CompilerContext.create("", "<repl>", options=CompilerOptions())
+        # The REPL's inputs are interactive, as the file -i ran was
+        self.context.env.interactive = redefinition_enabled()
         self.pipeline = default_pipeline()
         self.input_fn = input_fn or read_input_line
         self.stdout_write = stdout_write or sys.stdout.write
@@ -219,12 +229,13 @@ class QuestREPL:
 
             result = self.evaluate(current_buffer)
 
+            # The diagnostics: an input's errors, or the warnings of one that
+            # ran
+            source_map = SourceMap(current_buffer, "<repl>")
+            for diag in result.diagnostics:
+                rendered = DiagnosticRenderer.render_diagnostic(diag, source_map=source_map)
+                self.stderr_write(rendered + "\n")
             if result.has_errors or not result.success:
-                # Render error diagnostics
-                source_map = SourceMap(current_buffer, "<repl>")
-                for diag in result.diagnostics:
-                    rendered = DiagnosticRenderer.render_diagnostic(diag, source_map=source_map)
-                    self.stderr_write(rendered + "\n")
                 continue
 
             # Output evaluated results for all non-ok phrases on this input

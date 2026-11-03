@@ -1004,7 +1004,18 @@ def _define_members(members: tuple[TypedLetValue, ...], values: tuple[QValue, ..
     """Binds the members of a simultaneous value declaration to their values,
     computed beforehand."""
     for member, val in zip(members, values):
-        env.define(member.name, QRef(val) if member.symbol.is_var else val)
+        bind_let(member, val, env)
+
+
+def bind_let(binding: TypedLetValue, val: QValue, env: RuntimeEnvironment) -> None:
+    """Binds a value let's name to its value in env's frame, or, if the let
+    redefines an interactive slot (docs/redefinition.md section 3.2), stores the
+    value where the name is bound, as an assignment does: in the frame that
+    holds it, or into its cell if it is a var."""
+    if binding.redefines:
+        env.assign(binding.name, val)
+    else:
+        env.define(binding.name, QRef(val) if binding.symbol.is_var else val)
 
 
 def make_closure(fun: TypedFun, env: RuntimeEnvironment, binder: Optional[str] = None,
@@ -1101,16 +1112,13 @@ def eval_binding(binding: TypedBinding, env: RuntimeEnvironment) -> QValue:
     """Evaluates a declaration or binding inside a block or top-level
     program."""
     match binding:
-        case TypedLetValue(name=name, value=value, is_rec=is_rec, symbol=symbol):
+        case TypedLetValue(name=name, value=value, is_rec=is_rec):
             if is_rec and isinstance(value, TypedFun):
                 closure = make_closure(value, env, name, name=name)
-                env.define(name, closure)
+                bind_let(binding, closure, env)
                 return closure
             val = eval_bound_value(name, value, env)
-            if symbol.is_var:
-                env.define(name, QRef(val))
-            else:
-                env.define(name, val)
+            bind_let(binding, val, env)
             return val
 
         case TypedLetValueGroup(members=members, is_rec=True):
@@ -1192,16 +1200,22 @@ def eval_scoped_binding(binding: TypedBinding, env: RuntimeEnvironment) -> tuple
     binding that rebinds a name of env's frame gets a frame of its own, so that
     closures built earlier keep the binding they captured (scoping is lexical),
     and so do the members of a simultaneous declaration, so that closures built
-    by their values keep the bindings the members shadow."""
+    by their values keep the bindings the members shadow. A let that redefines
+    an interactive slot rebinds nothing: it stores to the slot (bind_let)."""
     env = make_scope_exceptions(binding, env)
     if isinstance(binding, TypedLetValueGroup) and not binding.is_rec:
         values = tuple(eval_bound_value(member.name, member.value, env) for member in binding.members)
         env = env.push_scope()
         _define_members(binding.members, values, env)
         return QTuple(values, tuple(member.name for member in binding.members)), env
-    if any(declared_name(member) in env.bindings for member in binding_members(binding)):
+    if any(declared_name(member) in env.bindings and not redefines(member) for member in binding_members(binding)):
         env = env.push_scope()
     return eval_binding(binding, env), env
+
+
+def redefines(binding: TypedBinding) -> bool:
+    """Whether a binding is a let that redefines an interactive slot."""
+    return isinstance(binding, TypedLetValue) and binding.redefines
 
 
 def eval_program_phrases(

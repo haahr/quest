@@ -107,7 +107,11 @@ export
         end
         bindImport with items: Array(ImportItem) end
     end
-    and LetValue = Tuple offset: Int name: String value: Expr symbol: symbols.ValueSymbol isRec: Bool end
+    (* redefines: whether the let redefines an interactive slot in place
+     * (docs/redefinition.md) *)
+    and LetValue = Tuple
+        offset: Int name: String value: Expr symbol: symbols.ValueSymbol isRec: Bool redefines: Bool
+    end
     and LetType = Tuple offset: Int name: String symbol: symbols.TypeSymbol end
     and ImportItem = Tuple
         offset: Int
@@ -297,7 +301,7 @@ export
             let letValue(v: LetValue): LetValue =
                 tuple
                     let offset = v.offset let name = v.name let value = mapTypes(v.value f) let symbol = v.symbol
-                    let isRec = v.isRec
+                    let isRec = v.isRec let redefines = v.redefines
                 end
             let bs(xs: Array(Binding)): Array(Binding) = mapArray(:Binding xs fun(x: Binding): Binding mapBindingTypes(x f))
             let form = case b.form

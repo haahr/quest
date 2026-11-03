@@ -7,6 +7,7 @@ parameters of let declarations that are neither recursive nor external."""
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Optional
 
 import quest.syntax.ast as ast
@@ -28,7 +29,7 @@ from quest.types.env import (
     TypeSymbol,
     ValueSymbol,
 )
-from quest.diagnostics import QuestTypeError
+from quest.diagnostics import Diagnostic, QuestTypeError
 from quest.modules.elaboration import (
     elaborate_interface,
     elaborate_module,
@@ -471,6 +472,28 @@ class BindingMixin(Checker):
                 is_var=binding.is_var,
                 function_depth=self.function_depth,
             )
+        return self._declare_let(sym, binding.offset, env)
+
+    def _declare_let(self, sym: ValueSymbol, offset: int, env: Environment) -> ValueSymbol:
+        """Declares the symbol of a value let in env's current scope. At an
+        interactive input's top level (env.interactive, outside any function or
+        block), the symbol is a slot (docs/redefinition.md section 2): the slot of
+        the name's earlier symbol, which it redefines, if that is a slot of an
+        equal type and the same var-ness, and otherwise a new one, which
+        shadows the earlier symbol, with a warning if that was a slot."""
+        if env.interactive and self.function_depth == 0 and env.current_scope is env.global_scope:
+            slot = sym.symbol_id
+            earlier = env.current_scope.lookup_value_local(sym.name)
+            if earlier is not None and earlier.symbol_id in env.slots:
+                if earlier.is_var == sym.is_var and is_type_equal(earlier.type_val, sym.type_val, env):
+                    slot = env.slots[earlier.symbol_id]
+                elif env.sink is not None:
+                    env.sink.emit(Diagnostic.make_warning(
+                        f"'{sym.name}' now has a different type; functions defined earlier keep the earlier "
+                        f"'{sym.name}'",
+                        offset,
+                    ))
+            env.slots[sym.symbol_id] = slot
         return env.current_scope.declare_value(sym)
 
     def _check_rec_value(
@@ -497,6 +520,7 @@ class BindingMixin(Checker):
             value=typed_val,
             symbol=sym,
             is_rec=True,
+            redefines=env.redefines(sym),
             offset=binding.offset,
         )
 
@@ -523,7 +547,8 @@ class BindingMixin(Checker):
                 assert isinstance(typed_member, TypedLetValue)
                 members.append(typed_member)
             for typed_member in members:
-                env.current_scope.declare_value(typed_member.symbol)
+                self._declare_let(typed_member.symbol, typed_member.offset, env)
+            members = [replace(member, redefines=env.redefines(member.symbol)) for member in members]
             return TypedLetValueGroup(members=tuple(members), offset=group.offset)
         syms = [self._declare_rec_value(member, env) for member in group.bindings]
         return TypedLetValueGroup(
@@ -630,7 +655,7 @@ class BindingMixin(Checker):
                     is_var=binding.is_var,
                     function_depth=self.function_depth,
                 )
-                env.current_scope.declare_value(sym)
+                self._declare_let(sym, binding.offset, env)
                 typed_ext = TypedExternal(
                     symbol=binding.value.symbol,
                     type_val=fn_type,
@@ -641,6 +666,7 @@ class BindingMixin(Checker):
                     value=typed_ext,
                     symbol=sym,
                     is_rec=False,
+                    redefines=env.redefines(sym),
                     offset=binding.offset,
                 )
 
@@ -672,12 +698,13 @@ class BindingMixin(Checker):
                     is_var=binding.is_var,
                     function_depth=self.function_depth,
                 )
-                env.current_scope.declare_value(sym)
+                self._declare_let(sym, binding.offset, env)
                 return TypedLetValue(
                     name=binding.name,
                     value=typed_val,
                     symbol=sym,
                     is_rec=binding.is_rec,
+                    redefines=env.redefines(sym),
                     offset=binding.offset,
                 )
 

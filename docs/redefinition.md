@@ -6,7 +6,8 @@ raises `int.error`. That is lexical scoping, which is right for programs, and wr
 fixing a function should fix its callers without redefining each of them. This plan gives the REPL (and the file `-i`
 loads) Python's and Lisp's behavior, redefinition in place, and changes nothing for programs, `-e`, or `quest FILE`.
 
-**Status: decided, not started** (2026-11-02). Section 1 records the decisions, section 7 the steps.
+**Status: step 1 done** (2026-11-02), behind `QUEST_REDEFINE=1`. Section 1 records the decisions, section 7 the
+steps.
 
 ---
 
@@ -83,8 +84,10 @@ the input, not inside a block, function, tuple, or module. A slot has a type and
   a group's members): when `interactive` holds, `functionDepth` is 0, and the current scope is the unit's top-level
   scope, look the name up in that scope. If it is a symbol in `slots`, and `isTypeEqual` holds between its type and
   the new one, and `isVar` agrees, map the new symbol to the same slot and mark the binding; otherwise map it to a
-  new slot (its own id) and, if the name was a slot, report the warning of decision 4 (`diagnostics.warning`, through
-  the channel errors that do not stop elaboration take, `env.report`; the input runs).
+  new slot (its own id) and, if the name was a slot, report the warning of decision 4, which does not stop the input:
+  the checker's `warnings` (typecheck's `Result.warnings`, which the driver and the REPL report as
+  `diagnostics.warningDiagnostic`s), the bootstrap's sink. This is `bindings.declareLet` (`_declare_let`), called
+  for a plain `let`, a `let rec`, an external, and each member of a group.
 - `typedAst.LetValue` gets `redefines: Bool` (the bootstrap's `TypedLetValue.redefines`), false everywhere but the
   marked bindings; the dump shows it (`:redefines`). No interface, `.qi`, or ABI change: slots live in the
   environment, not in `ValueSymbol`.
@@ -162,8 +165,9 @@ output is unchanged: a redefinition echoes as a `let` does.
   leaves the function callable.
 - `tests/repl/redefine_load.quest` with a file in `tests/repl/files/`: a function of the `-i` file redefined, and a
   function of the file that calls it sees the new one.
-- `tests/repl/rollback.quest` changes: `let x = 1; let f(): Int = x; let x = 2; f() + x` becomes 4, and after
-  `let x = 3; 1 / 0` fails, 6, since the redefinition stays.
+- `tests/repl/rollback.quest` changes: after `let a = 99; 1 / 0` fails, `a` is 99, not 10;
+  `let x = 1; let f(): Int = x; let x = 2; f() + x` becomes 4, and after `let x = 3; 1 / 0` fails, 6, since the
+  redefinitions stay.
 - The run goldens through `--backend jit-files` and `tests/eval` through the JIT: unchanged, since neither is
   interactive. Both hosts (`QUEST_BACKEND=c` and `arm64`), as jit.md §5.
 - The cost of decision 3, for the record: jit.md §6's loops (200 million calls of `add1`, 100 million of `twice`)

@@ -514,6 +514,33 @@ export
             vector.toArray(:model.Param formals)
         end
 
+    (* Declares the symbol of a value let in e's current scope. At an
+     * interactive input's top level (e.interactive, outside any function or
+     * block), the symbol is a slot (docs/redefinition.md section 2): the slot
+     * of the name's earlier symbol, which it redefines, if that is a slot of an
+     * equal type and the same var-ness, and otherwise a new one, which shadows
+     * the earlier symbol, with a warning if that was a slot. *)
+    let declareLet(c: checker.T sym: symbols.ValueSymbol offset: Int e: env.T): symbols.ValueSymbol =
+        begin
+            if e.interactive andif {c.functionDepth is 0} andif {e.currentScope is e.globalScope} then
+                let var slot = sym.symbolId
+                let earlier = symbols.lookupValueLocal(e.currentScope sym.name)
+                if maybe.isSome(:symbols.ValueSymbol earlier) andif
+                    hashMap.contains(:Int :Int e.slots maybe.unwrap(:symbols.ValueSymbol earlier).symbolId) then
+                    let old = maybe.unwrap(:symbols.ValueSymbol earlier)
+                    if {old.isVar is sym.isVar} andif subtyping.isTypeEqual(old.type sym.type env.lookupOf(e)) then
+                        slot := maybe.unwrap(:Int hashMap.get(:Int :Int e.slots old.symbolId))
+                    else
+                        vector.append(:diagnostics.CompilerError c.warnings diagnostics.errorAt("'" <> sym.name
+                            <> "' now has a different type; functions defined earlier keep the earlier '" <> sym.name
+                            <> "'" offset))
+                    end
+                end
+                hashMap.insert(:Int :Int e.slots sym.symbolId slot)
+            end
+            symbols.declareValue(e.currentScope sym)
+        end
+
     (* Declares the symbol of a recursive value declaration (let rec) before
      * its value is checked, so that the value, and the other members of its
      * group, can refer to it:
@@ -563,7 +590,7 @@ export
                         symbols.newValueSymbol(x.name elaborateTypes.elaborateType(maybe.unwrap(:ast.TypeExpr x.typeAnnot) e)
                             x.isVar false false c.functionDepth 0)
                     end
-                    symbols.declareValue(e.currentScope sym)
+                    declareLet(c sym offset e)
                 end
             else internal(:symbols.ValueSymbol "a let declaration" b.span.startOffset)
         end
@@ -583,7 +610,7 @@ export
                     end
                     tuple
                         let offset = b.span.startOffset let name = x.name let value = typedVal let symbol = sym
-                        let isRec = true
+                        let isRec = true let redefines = env.redefines(e sym)
                     end
                 end
             else internal(:typedAst.LetValue "a let declaration" b.span.startOffset)
@@ -666,10 +693,10 @@ export
                                 tuple let typed = typed let type = typed.type end
                             end
                             let sym = symbols.newValueSymbol(x.name valued.type x.isVar false false c.functionDepth 0)
-                            symbols.declareValue(e.currentScope sym)
+                            declareLet(c sym offset e)
                             letValueBinding(tuple
                                 let offset = offset let name = x.name let value = valued.typed let symbol = sym
-                                let isRec = x.isRec
+                                let isRec = x.isRec let redefines = env.redefines(e sym)
                             end)
                         end
                     end
@@ -729,13 +756,14 @@ export
                     let formals = annotatedParams(x.params e)
                     let fnType = model.funType(formals elaborateTypes.elaborateType(maybe.unwrap(:ast.TypeExpr x.typeAnnot) e))
                     let sym = symbols.newValueSymbol(x.name fnType x.isVar false false c.functionDepth 0)
-                    symbols.declareValue(e.currentScope sym)
+                    declareLet(c sym offset e)
                     let symbol = case x.value.form when exprExternal with v then v.symbol else "" end
                     let typedExt = typedAst.expr(x.value.span.startOffset fnType option exprExternal of typedAst.ExprForm with
                         let symbol = symbol
                     end)
                     letValueBinding(tuple
                         let offset = offset let name = x.name let value = typedExt let symbol = sym let isRec = false
+                        let redefines = env.redefines(e sym)
                     end)
                 end
             else internal(:typedAst.Binding "a let declaration" b.span.startOffset)
@@ -760,7 +788,14 @@ export
                         else internal(:Ok "a let declaration" member.span.startOffset)
                     end
                 end
-                for i = 0 upto {n - 1} do symbols.declareValue(e.currentScope vector.get(:typedAst.LetValue typed i).symbol) end
+                for i = 0 upto {n - 1} do
+                    let v = vector.get(:typedAst.LetValue typed i)
+                    declareLet(c v.symbol v.offset e)
+                    vector.set(:typedAst.LetValue typed i tuple
+                        let offset = v.offset let name = v.name let value = v.value let symbol = v.symbol
+                        let isRec = v.isRec let redefines = env.redefines(e v.symbol)
+                    end)
+                end
             else
                 let syms = vector.new(:symbols.ValueSymbol)
                 for i = 0 upto {n - 1} do vector.append(:symbols.ValueSymbol syms declareRecValue(c vector.get(:ast.Decl members i) e)) end
