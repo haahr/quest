@@ -6,7 +6,13 @@
  * and in a block their first dominates, with commuted arguments; values in
  * sibling blocks, which neither dominates, kept; invariant loads, one at a
  * pointer addition's address matching one at an offset, across a store and
- * a call; ordinary loads, which this step leaves alone; a comparison that
+ * a call; ordinary loads, repeated, across a store (whose value a load of
+ * its address reads), across a call that may write memory and one of the
+ * runtime's that does not, across a join, and in a try's handler; a word
+ * whose neighbor its block loads, kept for arm64 to load the two as a pair
+ * though an equal is available from another block, and replaced by one in
+ * its own; a
+ * comparison that
  * branches in two blocks, which stays in each, since arm64 fuses a
  * comparison into its block's branch; a copy; a block parameter every jump
  * binds to one value; and the instructions left without uses removed. *)
@@ -83,13 +89,80 @@ show("invariant loads across a store and a call" array of
     "}"
 end);
 
-show("ordinary loads" array of
-    "function ordinary(%0: ptr): int {"
+show("ordinary loads, repeated and across a store" array of
+    "function ordinary(%0: ptr, %1: ptr, %2: int): int {"
+    "b0(%0: ptr, %1: ptr, %2: int):"
+    "  %3: int = load8 %0 + 0"
+    "  %4: int = load8 %0 + 0"
+    "  %5: int = add %3, %4"
+    "  store8 %1 + 8, %2"
+    "  %6: int = load8 %0 + 0"
+    "  %7: int = load8 %1 + 8"
+    "  %8: int = add %6, %7"
+    "  %9: int = add %5, %8"
+    "  return %9"
+    "}"
+end);
+
+show("ordinary loads across calls" array of
+    "function called(%0: ptr): int {"
     "b0(%0: ptr):"
     "  %1: int = load8 %0 + 0"
+    "  %2: int = const 16"
+    "  %3: ptr = call quest_alloc(%2)"
+    "  %4: int = load8 %0 + 0"
+    "  %5: int = call g(%3)"
+    "  %6: int = load8 %0 + 0"
+    "  %7: int = add %1, %4"
+    "  %8: int = add %7, %6"
+    "  %9: int = add %8, %5"
+    "  return %9"
+    "}"
+end);
+
+show("ordinary loads across a join" array of
+    "function joins(%0: ptr, %1: int): int {"
+    "b0(%0: ptr, %1: int):"
     "  %2: int = load8 %0 + 0"
-    "  %3: int = add %1, %2"
-    "  return %3"
+    "  branch %1, b1(), b2()"
+    "b1():"
+    "  %3: int = load8 %0 + 0"
+    "  jump b2()"
+    "b2():"
+    "  %4: int = load8 %0 + 0"
+    "  %5: int = add %2, %4"
+    "  return %5"
+    "}"
+end);
+
+show("an ordinary load in a try's handler" array of
+    "function handled(%0: ptr): int slots [16:8] {"
+    "b0(%0: ptr):"
+    "  %1: int = load8 %0 + 0"
+    "  try slot 0, b1(), handler b2"
+    "b1():"
+    "  %2: int = load8 %0 + 0"
+    "  return %2"
+    "b2():"
+    "  %3: int = load8 %0 + 0"
+    "  %4: int = add %1, %3"
+    "  return %4"
+    "}"
+end);
+
+show("a word whose neighbor its block loads" array of
+    "function pair(%0: ptr): int {"
+    "b0(%0: ptr):"
+    "  %1: int = load8 %0 + 8"
+    "  jump b1()"
+    "b1():"
+    "  %2: int = load8 %0 + 0"
+    "  %3: int = load8 %0 + 8"
+    "  %4: int = load8 %0 + 0"
+    "  %5: int = add %1, %2"
+    "  %6: int = add %3, %4"
+    "  %7: int = add %5, %6"
+    "  return %7"
     "}"
 end);
 

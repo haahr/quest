@@ -4,6 +4,7 @@ module valueNumbers : ValueNumbers
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/cfg : questlang/ssa/Cfg
+    questlang/codegen/runtimeFunctions : questlang/codegen/RuntimeFunctions
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
@@ -12,9 +13,11 @@ import
     stringOp = string : StringOp
 export
     Let Function = ssa.Function
+    (* An address as its base and index, as text, and a constant offset *)
+    Let Address = Tuple base: String offset: Int end
 
-    (* Whether an instruction is numbered: a pure one, or an invariant
-     * load *)
+    (* Whether an instruction is numbered: a pure one, or a load (an
+     * ordinary one only while nothing writes memory) *)
     let numbered(i: ssa.Inst): Bool =
         case i.op
             when opConst, opRealConst, opSymbol, opNull, opSlot, opThreadLocal, opPtrAdd, opAdd, opSub, opMul, opDiv,
@@ -22,7 +25,7 @@ export
                 opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr,
                 opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opToVal, opFromVal then
                 true
-            when opLoad then i.invariant
+            when opLoad then true
             when opStore, opCall, opCallIndirect, opCopy then false
         end
 
@@ -45,6 +48,21 @@ export
         case op
             when opAdd, opMul, opAnd, opOr, opXor, opEq, opNe, opPeq, opPne, opFadd, opFmul, opFeq then true
             else false
+        end
+
+    (* Whether a call may write memory: any but of a runtime function the
+     * effects table says does not (quest_alloc writes only what it makes) *)
+    let writesMemory(i: ssa.Inst): Bool =
+        if ssa.isOp(i ssa.opCallIndirect) then true
+        else
+            let var writes = true
+            for k = 0 upto {extent runtimeFunctions.functions - 1} do
+                let r = runtimeFunctions.functions[k]
+                if stringOp.equal(r.name i.symbol) then
+                    writes := case r.effects.memory when memoryWrites then true else false end
+                end
+            end
+            writes
         end
 
     (* Whether an instruction left without uses can be removed *)
@@ -117,7 +135,7 @@ export
 
             (* An address as a base, an index (or ~1), and a constant offset,
              * through pointer additions *)
-            let addressKey(v: Int offset: Int): String =
+            let address(v: Int offset: Int): Address =
                 begin
                     let var base = find(v)
                     let var index = ~1
@@ -140,61 +158,140 @@ export
                             end
                         end
                     end
-                    conv.int(base) <> " " <> conv.int(index) <> " " <> conv.int(off)
+                    tuple let base = conv.int(base) <> " " <> conv.int(index) let offset = off end
                 end
-            let key(i: ssa.Inst b: Int): String =
+            let addressKey(v: Int offset: Int): String =
+                begin
+                    let a = address(v offset)
+                    a.base <> " " <> conv.int(a.offset)
+                end
+            (* An ordinary load's key, in the memory generation it reads, which
+             * a store of the same address and type makes too *)
+            let loadKey(width: Int signed: Bool t: String address: Int offset: Int memory: Int): String =
+                "load" <> conv.int(width) <> if signed then "s " else " " end <> t <> " " <> addressKey(address offset)
+                    <> " in " <> conv.int(memory)
+            let key(i: ssa.Inst b: Int memory: Int): String =
                 begin
                     let t = ssa.typeName(ssa.typeOf(f i.results[0]))
-                    if ssa.isOp(i ssa.opLoad) then
-                        "load" <> conv.int(i.width) <> if i.signed then "s " else " " end <> t <> " "
+                    if ssa.isOp(i ssa.opLoad) andif i.invariant then
+                        "invariant load" <> conv.int(i.width) <> if i.signed then "s " else " " end <> t <> " "
                             <> addressKey(i.args[0] i.imm)
+                    elsif ssa.isOp(i ssa.opLoad) then loadKey(i.width i.signed t i.args[0] i.imm memory)
                     else
-                        let args = array of(extent i.args 0)
-                        for a = 0 upto {extent i.args - 1} do args[a] := find(i.args[a]) end
-                        if commutative(i.op) andif {extent args is 2} andif {args[0] > args[1]} then
+                        (* Each argument by its number, or a constant by its
+                         * value, since constants are numbered only within a
+                         * block; commutative ones in order *)
+                        let args = array of(extent i.args "")
+                        for a = 0 upto {extent i.args - 1} do
+                            let v = find(i.args[a])
+                            let c = constantOf(v)
+                            args[a] := if maybe.isSome(:Int c) then "#" <> conv.int(maybe.unwrap(:Int c))
+                                else conv.int(v) end
+                        end
+                        if commutative(i.op) andif {extent args is 2} andif stringOp.precedes(args[1] args[0]) then
                             let first = args[0]
                             args[0] := args[1]
                             args[1] := first
                         end
                         let var text = ssa.opcodeName(i.op) <> " " <> t <> " " <> conv.int(i.imm) <> " " <> i.symbol
-                        for a = 0 upto {extent args - 1} do text := text <> " " <> conv.int(args[a]) end
+                        for a = 0 upto {extent args - 1} do text := text <> " " <> args[a] end
                         if local(i.op) then text := text <> " @" <> conv.int(b) end
                         text
                     end
                 end
 
             (* The walk of the dominator tree, in preorder: an entry is
-             * available where its block dominates, and one that does not
-             * is from a subtree already left, and is replaced *)
+             * available where the block it was made in dominates, and one
+             * that does not is from a subtree already left, and is replaced.
+             * Memory is in a generation, which a store or a call that may
+             * write starts anew; a block continues its predecessor's when it
+             * has one and is not a try's handler (which the try's body may
+             * have written before raising), and starts one otherwise *)
             let table = hashMap.new(:String :Int stringOp.equal hash.string)
-            let defBlock = array of(n ~1)
+            let madeIn = hashMap.new(:String :Int stringOp.equal hash.string)
+            let enter(text: String v: Int b: Int): Ok =
+                begin
+                    let ignored = hashMap.insert(:String :Int table text v)
+                    let alsoIgnored = hashMap.insert(:String :Int madeIn text b)
+                end
+            let handler = array of(nBlocks false)
+            for b = 0 upto {nBlocks - 1} do
+                case ssa.block(f b).term when termTry with x then handler[x.handler] := true else ok end
+            end
+            let memoryAtEnd = array of(nBlocks 0)
+            let var generations = 0
             let stack = vector.new(:Int)
             if nBlocks > 0 then vector.append(:Int stack 0) end
             while not(vector.empty(:Int stack)) do
                 let b = vector.pop(:Int stack)
                 let blk = ssa.block(f b)
                 let kept = vector.new(:ssa.Inst)
+                (* The words this block loads, by address: a whole word's
+                 * load whose neighbor it also loads stays, though an equal
+                 * from another block is available, so that arm64 loads the
+                 * two as a pair (codegen.pairs): a lone load of half of a
+                 * pair just stored took psdes-random's loop from 1.39 to
+                 * 1.90 of C's time, as an ldp did not *)
+                let words = hashMap.new(:String :Bool stringOp.equal hash.string)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    if ssa.isOp(i ssa.opLoad) andif {i.width is 8} then
+                        let ignored = hashMap.insert(:String :Bool words addressKey(i.args[0] i.imm) true)
+                    end
+                end
+                let paired(i: ssa.Inst): Bool =
+                    if ssa.isOp(i ssa.opLoad) andif {i.width is 8} then
+                        let a = address(i.args[0] i.imm)
+                        hashMap.contains(:String :Bool words a.base <> " " <> conv.int(a.offset + 8))
+                            orif hashMap.contains(:String :Bool words a.base <> " " <> conv.int(a.offset - 8))
+                    else false end
+                let var memory = 0
+                if {extent g.preds[b] is 1} andif not(handler[b]) then memory := memoryAtEnd[g.preds[b][0]]
+                else
+                    generations := generations + 1
+                    memory := generations
+                end
                 for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
                     let i = vector.get(:ssa.Inst blk.insts k)
                     if ssa.isOp(i ssa.opCopy) then repl[i.results[0]] := find(i.args[0])
                     elsif numbered(i) andif {extent i.results is 1} then
-                        let text = key(i b)
+                        let text = key(i b memory)
                         let found = hashMap.get(:String :Int table text)
-                        if maybe.isSome(:Int found) andif cfg.dominates(g defBlock[maybe.unwrap(:Int found)] b) then
+                        let at = maybe.unwrapOr(:Int hashMap.get(:String :Int madeIn text) ~1)
+                        if maybe.isSome(:Int found) andif cfg.dominates(g at b)
+                                andif {{at is b} orif not(paired(i))} then
                             repl[i.results[0]] := maybe.unwrap(:Int found)
                         else
-                            let ignored = hashMap.insert(:String :Int table text i.results[0])
-                            defBlock[i.results[0]] := b
+                            enter(text i.results[0] b)
                             vector.append(:ssa.Inst kept i)
+                        end
+                    elsif ssa.isOp(i ssa.opStore) then
+                        vector.append(:ssa.Inst kept i)
+                        generations := generations + 1
+                        memory := generations
+                        (* What a whole word's store stores is what a load of
+                         * it reads, until memory is written again *)
+                        if i.width is 8 then
+                            let v = find(i.args[1])
+                            enter(loadKey(8 false ssa.typeName(ssa.typeOf(f v)) i.args[0] i.imm memory) v b)
+                        end
+                    elsif ssa.isCall(i) then
+                        vector.append(:ssa.Inst kept i)
+                        if writesMemory(i) then
+                            generations := generations + 1
+                            memory := generations
                         end
                     else vector.append(:ssa.Inst kept i) end
                 end
+                memoryAtEnd[b] := memory
                 vector.clear(:ssa.Inst blk.insts)
                 for k = 0 upto {vector.length(:ssa.Inst kept) - 1} do
                     vector.append(:ssa.Inst blk.insts vector.get(:ssa.Inst kept k))
                 end
                 let children = g.children[b]
-                for c = 0 upto {extent children - 1} do vector.append(:Int stack children[{extent children - 1} - c]) end
+                for c = 0 upto {extent children - 1} do
+                    vector.append(:Int stack children[{extent children - 1} - c])
+                end
             end
             ssa.replaceUses(f find)
 
@@ -253,7 +350,8 @@ export
                     end
                     vector.clear(:ssa.Inst insts)
                     for k = 0 upto {vector.length(:ssa.Inst kept) - 1} do
-                        vector.append(:ssa.Inst insts vector.get(:ssa.Inst kept {vector.length(:ssa.Inst kept) - 1} - k))
+                        let last = vector.length(:ssa.Inst kept) - 1
+                        vector.append(:ssa.Inst insts vector.get(:ssa.Inst kept last - k))
                     end
                 end
             end
