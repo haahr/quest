@@ -80,11 +80,12 @@ negative values included (decided 2026-11-03).
   arrays or caches. Each operation allocates the most limbs its result can need, bounded from its operands, and
   copies the result into a shorter array when it turns out shorter. The bound may cost a little early work to keep
   it tight: `add` and `sub` take `max(la lb) + 1` limbs, less one when the operands' last limbs show that the last
-  cannot carry; `mul` takes `la + lb`; `neg` and `abs` take `la + 1`, and `quot` `la - lb + 2`, for the one value of each length
-whose negation is a limb longer (-2^(64 la - 1), as `int.minInt` is for one limb); `rem` takes `lb`; a shift by k bits takes `la` plus
-  k's whole limbs plus one. An array made and dropped at once is cheap under a generational collector
-  ([collector.md](collector.md)), which is what this plan counts on; the copy is O(n), against `mul`'s and
-  division's O(n^2).
+  cannot carry; `mul` takes `la + lb`; `neg` and `abs` take `la + 1`, and `quot` `la - lb + 2`, for the one value
+  of each length whose negation is a limb longer (-2^(64 la - 1), as `int.minInt` is for one limb); `rem` takes
+  `lb`; a shift by k bits takes `la` plus k's whole limbs plus one. An array made and dropped at once is cheap under
+  a generational collector ([collector.md](collector.md)), which is what this plan counts on; the copy is O(n),
+  against `mul`'s and division's O(n^2). The collector is still libgc, which is not generational: step 3's times are
+  taken under it and recorded as such, and taken again once the new collector is in (decided 2026-11-03).
 
 ## 4. Primitives
 
@@ -96,11 +97,15 @@ whose negation is a limb longer (-2^(64 la - 1), as `int.minInt` is for one limb
 - both interpreters' builtins;
 - `tools/externals`'s table, and with it a new ABI version.
 
-Two more would help, each measured before it is kept:
+Two more changes would help, each measured before it is kept:
 
-- **`word.zeros(n: Int): Array(T)`**, an array of n zero words allocated with `quest_alloc_atomic`: without it every
-  result is filled by a loop when it is made, and scanned by the collector, to which a limb that looks like a heap
-  address keeps memory alive.
+- **`array of(n init)` without waste**, for every program rather than a primitive of the word module's: today it
+  calls `quest_array_new`, which allocates with `quest_alloc` (zeroed, and scanned by the collector, to which a limb
+  that looks like a heap address keeps memory alive) and then stores `init` into every element. The runtime can
+  skip the stores when `init` is the zero word, as the memory is already zeroed, and the compiler can allocate an
+  array whose elements hold no pointers (`Int`, `Real`, `Bool`, `Char`, `word.T`) with `quest_alloc_atomic`, through
+  a second entry, as [collector.md](collector.md) §1 takes `Array(Int)` to be. `array of(n word.fromInt(0))` is then
+  all a `word.zeros` would have been.
 - **`word.copy(from: Array(T) start: Int to: Array(T) at: Int n: Int): Ok`**, a `memmove` of limbs, for §3's copies,
   which are otherwise loops with a bounds check a limb.
 
@@ -117,7 +122,7 @@ division (arm64 has none, and C's `__udivti3` is slower than the reciprocal), an
 3. **The suite:** pidigits and smith-normal-form import `util/bignum` (their algorithms unchanged: the originals call
    SML's own `IntInf`), `support/intinf` is deleted, and both are timed through C, ssac, and arm64 against §13, in a
    new section of [benchmarks.md](benchmarks.md).
-4. **`word.zeros` and `word.copy`**, each kept if it moves step 3's times.
+4. **Arrays of zeros without waste, and `word.copy`** (§4), each kept if it moves step 3's times.
 
 Then this plan's design moves into a reference document (the library's interface comment and
 [c-representation.md](c-representation.md) §3.4), and this file is deleted.
