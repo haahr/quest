@@ -1,0 +1,753 @@
+module bignum : Bignum
+import
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    word : Word
+    ascii : Ascii
+    conv : Conv
+export
+    (* A value is its two's complement representation in base 2^64, least
+     * significant limb first: every limb but the last is unsigned, and the
+     * last is signed. Its length is canonical (docs/bignum.md section 2): a
+     * value is never empty, and its last limb is never a redundant sign
+     * extension, so every Int is exactly a one-limb array and every value has
+     * one representation. No array is changed once it is returned. *)
+    Let T = Array(word.T)
+    (* A limb, or a limb of a magnitude: unsigned limbs of |t| *)
+    Let L = word.T
+    (* A quotient and its remainder *)
+    Def QR = Tuple q: T r: T end
+
+    let overflow: Exception = exception overflow: Ok end
+    let divide: Exception = exception divide: Ok end
+
+    let zeroW: L = word.fromInt(0)
+    let oneW: L = word.fromInt(1)
+    let onesW: L = word.fromInt(~1)
+
+    (* ======================================================================
+     * 1. Limbs
+     * ====================================================================== *)
+
+    let single(n: Int): T = array of word.fromInt(n) end
+    let bit(b: Bool): L = if b then oneW else zeroW end
+    let highBit(w: L): Bool = word.toInt(w) < 0
+    let negative(t: T): Bool = highBit(t[extent t - 1])
+    let isZero(t: T): Bool = {extent t is 1} andif {t[0] is zeroW}
+    (* The limb that t's representation continues with past its last *)
+    let signWord(t: T): L = if negative(t) then onesW else zeroW end
+    (* Whether a last limb leaves room for a carry: its top two bits are the
+     * same, so that adding another such limb and a carry cannot overflow *)
+    let roomy(w: L): Bool =
+        begin let n = word.toInt(w) {n >= ~4611686018427387904} andif {n < 4611686018427387904} end
+    (* r's first k limbs, in a new array *)
+    let copy(r: T k: Int): T =
+        begin
+            let c = array of(k zeroW)
+            for i = 0 upto k - 1 do c[i] := r[i] end
+            c
+        end
+
+    (* Whether limb k - 1 of r only extends limb k - 2's sign *)
+    let redundant(r: T k: Int): Bool =
+        begin
+            let t = r[k - 1]
+            if highBit(r[k - 2]) then t is onesW else t is zeroW end
+        end
+
+    (* The value whose representation is r's first n limbs: r itself, if they
+     * are r and canonical, or a copy of as many as are *)
+    let finish(r: T n: Int): T =
+        begin
+            let var k = n
+            while {k > 1} andif redundant(r k) do k := k - 1 end
+            if k is extent r then r else copy(r k) end
+        end
+
+    (* r negated in place, modulo 2^(64 extent r) *)
+    let negateInPlace(r: T): Ok =
+        begin
+            let var carry = oneW
+            for i = 0 upto extent r - 1 do
+                let s = word.add(word.notBits(r[i]) carry)
+                carry := bit(word.lt(s carry))
+                r[i] := s
+            end
+        end
+
+    (* |t|'s unsigned limbs, as many as t has: t itself if it is not
+     * negative, otherwise a new array *)
+    let magnitude(t: T): T =
+        if negative(t) then
+            let r = copy(t extent t)
+            negateInPlace(r)
+            r
+        else t
+        end
+
+    (* How many of m's limbs are significant (unsigned, at least one) *)
+    let magnitudeLength(m: T): Int =
+        begin
+            let var k = extent m
+            while {k > 1} andif {m[k - 1] is zeroW} do k := k - 1 end
+            k
+        end
+
+    (* The value of a magnitude m whose last limb is zero, negated if neg; m
+     * is changed *)
+    let signed(m: T neg: Bool): T =
+        begin
+            if neg then negateInPlace(m) end
+            finish(m extent m)
+        end
+
+    (* ======================================================================
+     * 2. Integers, words, and comparison
+     * ====================================================================== *)
+
+    let fromInt(n: Int): T = single(n)
+
+    let toInt(t: T): Int = if extent t is 1 then word.toInt(t[0]) else raise overflow end end
+
+    let fromWord(w: word.T): T = if highBit(w) then array of w zeroW end else array of w end end
+
+    let toWord(t: T): word.T =
+        if {extent t is 1} andif not(highBit(t[0])) then t[0]
+        elsif {extent t is 2} andif {t[1] is zeroW} then t[0]
+        else raise overflow end
+        end
+
+    let sign(t: T): Int = if negative(t) then ~1 elsif isZero(t) then 0 else 1 end
+
+    let compare(a: T b: T): Int =
+        begin
+            let la = extent a
+            let lb = extent b
+            (* The longer is the farther from zero, its canonical length
+             * being more than the other's *)
+            if la > lb then
+                if negative(a) then ~1 else 1 end
+            elsif la < lb then
+                if negative(b) then 1 else ~1 end
+            else
+                let ta = word.toInt(a[la - 1])
+                let tb = word.toInt(b[la - 1])
+                if ta < tb then ~1
+                elsif ta > tb then 1
+                else
+                    let var i = la - 2
+                    while {i >= 0} andif {a[i] is b[i]} do i := i - 1 end
+                    if i < 0 then 0 elsif word.lt(a[i] b[i]) then ~1 else 1 end
+                end
+            end
+        end
+
+    let equal(a: T b: T): Bool =
+        if extent a isnot extent b then false
+        else
+            let var i = extent a - 1
+            while {i >= 0} andif {a[i] is b[i]} do i := i - 1 end
+            i < 0
+        end
+
+    let less(a: T b: T): Bool = compare(a b) < 0
+
+    (* ======================================================================
+     * 3. Addition and subtraction
+     * ====================================================================== *)
+
+    (* x + y, the second limb the sum's sign when it overflows Int *)
+    let addInts(x: Int y: Int): T =
+        begin
+            let s = x + y
+            if {{x < 0} is {y < 0}} andif {{s < 0} isnot {x < 0}} then
+                let high = if x < 0 then onesW else zeroW end
+                array of word.fromInt(s) high end
+            else single(s)
+            end
+        end
+
+    let subInts(x: Int y: Int): T =
+        begin
+            let d = x - y
+            if {{x < 0} isnot {y < 0}} andif {{d < 0} isnot {x < 0}} then
+                let high = if x < 0 then onesW else zeroW end
+                array of word.fromInt(d) high end
+            else single(d)
+            end
+        end
+
+    (* a + b, in as many limbs as the longer, or one more when its last limb
+     * or the other's sign extension leaves no room for a carry *)
+    let addLimbs(a: T b: T): T =
+        begin
+            let la = extent a
+            let lb = extent b
+            let n = if la > lb then la else lb end
+            let sa = signWord(a)
+            let sb = signWord(b)
+            let room = roomy(if la is n then a[n - 1] else sa end) andif roomy(if lb is n then b[n - 1] else sb end)
+            let size = if room then n else n + 1 end
+            let r = array of(size zeroW)
+            let var carry = zeroW
+            for i = 0 upto n - 1 do
+                let x = if i < la then a[i] else sa end
+                let y = if i < lb then b[i] else sb end
+                let s1 = word.add(x y)
+                let s = word.add(s1 carry)
+                carry := word.add(bit(word.lt(s1 x)) bit(word.lt(s s1)))
+                r[i] := s
+            end
+            if not(room) then r[n] := word.add(word.add(sa sb) carry) end
+            finish(r size)
+        end
+
+    let subLimbs(a: T b: T): T =
+        begin
+            let la = extent a
+            let lb = extent b
+            let n = if la > lb then la else lb end
+            let sa = signWord(a)
+            let sb = signWord(b)
+            let room = roomy(if la is n then a[n - 1] else sa end) andif roomy(if lb is n then b[n - 1] else sb end)
+            let size = if room then n else n + 1 end
+            let r = array of(size zeroW)
+            let var borrow = zeroW
+            for i = 0 upto n - 1 do
+                let x = if i < la then a[i] else sa end
+                let y = if i < lb then b[i] else sb end
+                let d1 = word.sub(x y)
+                let d = word.sub(d1 borrow)
+                borrow := word.add(bit(word.lt(x y)) bit(word.lt(d1 borrow)))
+                r[i] := d
+            end
+            if not(room) then r[n] := word.sub(word.sub(sa sb) borrow) end
+            finish(r size)
+        end
+
+    let add(a: T b: T): T =
+        if {extent a is 1} andif {extent b is 1} then addInts(word.toInt(a[0]) word.toInt(b[0]))
+        else addLimbs(a b)
+        end
+
+    let sub(a: T b: T): T =
+        if {extent a is 1} andif {extent b is 1} then subInts(word.toInt(a[0]) word.toInt(b[0]))
+        else subLimbs(a b)
+        end
+
+    let zero: T = single(0)
+    let one: T = single(1)
+
+    let neg(a: T): T = sub(zero a)
+
+    let abs(a: T): T = if negative(a) then neg(a) else a end
+
+    (* ======================================================================
+     * 4. Multiplication
+     * ====================================================================== *)
+
+    (* x * y, in two limbs when it overflows Int: the signed high word of the
+     * product is the unsigned one less each operand that the other's sign
+     * subtracts *)
+    let mulInts(x: Int y: Int): T =
+        begin
+            let wx = word.fromInt(x)
+            let wy = word.fromInt(y)
+            let lo = word.mul(wx wy)
+            let var hi = word.mulHi(wx wy)
+            if x < 0 then hi := word.sub(hi wy) end
+            if y < 0 then hi := word.sub(hi wx) end
+            if hi is {if highBit(lo) then onesW else zeroW end} then array of lo end else array of lo hi end end
+        end
+
+    (* Subtracts b from r's limbs from at on, modulo 2^(64 extent r) *)
+    let subtractAt(r: T at: Int b: T): Ok =
+        begin
+            let var borrow = zeroW
+            for j = 0 upto extent b - 1 do
+                let x = r[at + j]
+                let d1 = word.sub(x b[j])
+                let d = word.sub(d1 borrow)
+                borrow := word.add(bit(word.lt(x b[j])) bit(word.lt(d1 borrow)))
+                r[at + j] := d
+            end
+        end
+
+    (* The product of a and b, schoolbook, in la + lb limbs, which hold any
+     * product of their values: the product of the arrays as unsigned
+     * numbers, less b's shifted by la limbs if a is negative and a's shifted
+     * by lb if b is, modulo 2^(64 (la + lb)) *)
+    let mulLimbs(a: T b: T): T =
+        begin
+            let la = extent a
+            let lb = extent b
+            let r = array of(la + lb zeroW)
+            for i = 0 upto la - 1 do
+                let ai = a[i]
+                if ai isnot zeroW then
+                    let var carry = zeroW
+                    for j = 0 upto lb - 1 do
+                        let bj = b[j]
+                        let lo = word.mul(ai bj)
+                        let t = word.add(lo r[i + j])
+                        let s = word.add(t carry)
+                        carry := word.add(word.mulHi(ai bj) word.add(bit(word.lt(t lo)) bit(word.lt(s t))))
+                        r[i + j] := s
+                    end
+                    r[i + lb] := carry
+                end
+            end
+            if negative(a) then subtractAt(r la b) end
+            if negative(b) then subtractAt(r lb a) end
+            finish(r la + lb)
+        end
+
+    let mul(a: T b: T): T =
+        if {extent a is 1} andif {extent b is 1} then mulInts(word.toInt(a[0]) word.toInt(b[0]))
+        else mulLimbs(a b)
+        end
+
+    (* ======================================================================
+     * 5. Division
+     * ====================================================================== *)
+
+    (* The quotient of the two-limb (u1, u0) by d, for d with its high bit
+     * set and u1 < d, by halves (Hacker's Delight, figure 9-3): only for
+     * reciprocal, once a division *)
+    let divideWords(u1: L u0: L d: L): L =
+        begin
+            let b = word.shift(oneW 32)
+            let mask = word.fromInt(0xFFFFFFFF)
+            let dn1 = word.shift(d ~32)
+            let dn0 = word.andBits(d mask)
+            let un1 = word.shift(u0 ~32)
+            let un0 = word.andBits(u0 mask)
+            (* A half of the quotient, from what is left of the dividend and
+             * its next half, at most one too large for each test it fails *)
+            let half(top: L next: L): L =
+                begin
+                    let var q = word.div(top dn1)
+                    let var rhat = word.sub(top word.mul(q dn1))
+                    while word.lt(rhat b) andif {word.ge(q b) orif word.gt(word.mul(q dn0)
+                            word.add(word.mul(b rhat) next))} do
+                        q := word.sub(q oneW)
+                        rhat := word.add(rhat dn1)
+                    end
+                    q
+                end
+            let q1 = half(u1 un1)
+            let rest = word.sub(word.add(word.mul(u1 b) un1) word.mul(q1 d))
+            let q0 = half(rest un0)
+            word.add(word.mul(q1 b) q0)
+        end
+
+    (* d's reciprocal, floor((2^128 - 1) / d) - 2^64, for d with its high bit
+     * set (Möller and Granlund, Improved division by invariant integers,
+     * 2011) *)
+    let reciprocal(d: L): L = divideWords(word.notBits(d) onesW d)
+
+    (* The quotient of (u1, u0) by d, for d with its high bit set, u1 < d, and
+     * inv d's reciprocal (Möller and Granlund, algorithm 4); the remainder is
+     * u0 - q d, modulo 2^64 *)
+    let quotient(u1: L u0: L d: L inv: L): L =
+        begin
+            let p0 = word.mul(inv u1)
+            let q0 = word.add(p0 u0)
+            let var q1 = word.add(word.add(word.mulHi(inv u1) u1) word.add(oneW bit(word.lt(q0 p0))))
+            let var r = word.sub(u0 word.mul(q1 d))
+            if word.gt(r q0) then
+                q1 := word.sub(q1 oneW)
+                r := word.add(r d)
+            end
+            if word.ge(r d) then q1 := word.add(q1 oneW) end
+            q1
+        end
+
+    (* Divides the magnitude u's first n limbs by d, not zero, into q's first
+     * n limbs (q may be u), and returns the remainder. Each step divides by d
+     * shifted to set its high bit, the dividend shifted with it. *)
+    let divideByWord(u: T n: Int d: L q: T): L =
+        begin
+            let s = word.countLeadingZeros(d)
+            let dn = word.shift(d s)
+            let inv = reciprocal(dn)
+            let var r = zeroW
+            for i = n - 1 downto 0 do
+                let x = u[i]
+                let hi = word.orBits(word.shift(r s) word.shift(x s - 64))
+                let lo = word.shift(x s)
+                let qi = quotient(hi lo dn inv)
+                r := word.shift(word.sub(lo word.mul(qi dn)) 0 - s)
+                q[i] := qi
+            end
+            r
+        end
+
+    (* The magnitude u's first ul limbs divided by v's first vl, v[vl - 1] not
+     * zero and ul >= vl: the quotient in ul - vl + 2 limbs and the remainder
+     * in vl + 1, the last of each zero. Knuth's algorithm D (The Art of
+     * Computer Programming, volume 2, section 4.3.1), each quotient limb
+     * estimated from the dividend's top two limbs by the reciprocal of the
+     * divisor's top limb, shifted to set its high bit. *)
+    let divideMagnitudes(u: T ul: Int v: T vl: Int): QR =
+        if vl is 1 then
+            let q = array of(ul + 1 zeroW)
+            let r = divideByWord(u ul v[0] q)
+            tuple let q = q let r = array of r zeroW end end
+        else
+            let s = word.countLeadingZeros(v[vl - 1])
+            (* v and u shifted left by s, u into one more limb *)
+            let vn = array of(vl zeroW)
+            let un = array of(ul + 1 zeroW)
+            let var spill = zeroW
+            for i = 0 upto vl - 1 do
+                vn[i] := word.orBits(word.shift(v[i] s) spill)
+                spill := word.shift(v[i] s - 64)
+            end
+            spill := zeroW
+            for i = 0 upto ul - 1 do
+                un[i] := word.orBits(word.shift(u[i] s) spill)
+                spill := word.shift(u[i] s - 64)
+            end
+            un[ul] := spill
+            let vTop = vn[vl - 1]
+            let vNext = vn[vl - 2]
+            let inv = reciprocal(vTop)
+            let q = array of({ul - vl} + 2 zeroW)
+            for j = ul - vl downto 0 do
+                let u2 = un[j + vl]
+                let u1 = un[{j + vl} - 1]
+                let u0 = un[{j + vl} - 2]
+                (* The estimate and its remainder, which past 2^64 ends the
+                 * tests against vNext *)
+                let var qhat = onesW
+                let var rhat = zeroW
+                let var big = false
+                if u2 is vTop then
+                    rhat := word.add(u1 vTop)
+                    big := word.lt(rhat u1)
+                else
+                    qhat := quotient(u2 u1 vTop inv)
+                    rhat := word.sub(u1 word.mul(qhat vTop))
+                end
+                loop
+                    if big then exit end
+                    let ph = word.mulHi(qhat vNext)
+                    let pl = word.mul(qhat vNext)
+                    if word.gt(ph rhat) orif {{ph is rhat} andif word.gt(pl u0)} then
+                        qhat := word.sub(qhat oneW)
+                        let next = word.add(rhat vTop)
+                        big := word.lt(next rhat)
+                        rhat := next
+                    else exit
+                    end
+                end
+                (* un[j .. j + vl] less qhat vn *)
+                let var carry = zeroW
+                let var borrow = zeroW
+                for i = 0 upto vl - 1 do
+                    let lo = word.add(word.mul(qhat vn[i]) carry)
+                    carry := word.add(word.mulHi(qhat vn[i]) bit(word.lt(lo carry)))
+                    let x = un[i + j]
+                    let d1 = word.sub(x lo)
+                    let d = word.sub(d1 borrow)
+                    borrow := word.add(bit(word.lt(x lo)) bit(word.lt(d1 borrow)))
+                    un[i + j] := d
+                end
+                let x = un[j + vl]
+                let t1 = word.sub(x carry)
+                let t2 = word.sub(t1 borrow)
+                let under = word.lt(x carry) orif word.lt(t1 borrow)
+                un[j + vl] := t2
+                (* qhat was one too large: add vn back *)
+                if under then
+                    qhat := word.sub(qhat oneW)
+                    let var c = zeroW
+                    for i = 0 upto vl - 1 do
+                        let y = un[i + j]
+                        let s1 = word.add(y vn[i])
+                        let s2 = word.add(s1 c)
+                        c := word.add(bit(word.lt(s1 y)) bit(word.lt(s2 s1)))
+                        un[i + j] := s2
+                    end
+                    un[j + vl] := word.add(un[j + vl] c)
+                end
+                q[j] := qhat
+            end
+            (* The remainder, shifted back *)
+            let r = array of(vl + 1 zeroW)
+            for i = 0 upto vl - 1 do
+                r[i] := word.orBits(word.shift(un[i] 0 - s) word.shift(un[i + 1] 64 - s))
+            end
+            tuple let q = q let r = r end
+        end
+
+    (* a quot b and a rem b, for b not zero and not both one limb *)
+    let divideLimbs(a: T b: T): QR =
+        begin
+            let ma = magnitude(a)
+            let mb = magnitude(b)
+            let ul = magnitudeLength(ma)
+            let vl = magnitudeLength(mb)
+            if ul < vl then tuple let q = zero let r = a end
+            else
+                let qr = divideMagnitudes(ma ul mb vl)
+                tuple let q = signed(qr.q negative(a) isnot negative(b)) let r = signed(qr.r negative(a)) end
+            end
+        end
+
+    (* The one quotient of Ints that is not an Int, int.minInt / ~1 *)
+    let minInt = ~9223372036854775807 - 1
+    let minIntQuotient(x: Int y: Int): Bool = {y is ~1} andif {x is minInt}
+    let minIntNegated: T = array of word.fromInt(minInt) zeroW end
+
+    let quot(a: T b: T): T =
+        if isZero(b) then raise divide end
+        elsif {extent a is 1} andif {extent b is 1} then
+            let x = word.toInt(a[0])
+            let y = word.toInt(b[0])
+            if minIntQuotient(x y) then minIntNegated else single(x / y) end
+        else divideLimbs(a b).q
+        end
+
+    let rem(a: T b: T): T =
+        if isZero(b) then raise divide end
+        elsif {extent a is 1} andif {extent b is 1} then
+            let x = word.toInt(a[0])
+            let y = word.toInt(b[0])
+            if minIntQuotient(x y) then zero else single(x % y) end
+        else divideLimbs(a b).r
+        end
+
+    (* Whether flooring a truncated quotient takes one from it: the operands'
+     * signs differ and the remainder is not zero *)
+    let floors(a: T b: T r: T): Bool = {negative(a) isnot negative(b)} andif not(isZero(r))
+
+    let div(a: T b: T): T =
+        if isZero(b) then raise divide end
+        elsif {extent a is 1} andif {extent b is 1} then
+            let x = word.toInt(a[0])
+            let y = word.toInt(b[0])
+            if minIntQuotient(x y) then minIntNegated
+            else
+                let q = x / y
+                single(if {{x < 0} isnot {y < 0}} andif {{x % y} isnot 0} then q - 1 else q end)
+            end
+        else
+            let qr = divideLimbs(a b)
+            if floors(a b qr.r) then sub(qr.q one) else qr.q end
+        end
+
+    let mod(a: T b: T): T =
+        if isZero(b) then raise divide end
+        elsif {extent a is 1} andif {extent b is 1} then
+            let x = word.toInt(a[0])
+            let y = word.toInt(b[0])
+            if minIntQuotient(x y) then zero
+            else
+                let r = x % y
+                single(if {{x < 0} isnot {y < 0}} andif {r isnot 0} then r + y else r end)
+            end
+        else
+            let r = divideLimbs(a b).r
+            if floors(a b r) then add(r b) else r end
+        end
+
+    let pow(a: T n: Int): T =
+        if n < 0 then
+            if isZero(a) then raise divide end
+            elsif {extent a is 1} andif {a[0] is oneW} then a
+            elsif {extent a is 1} andif {a[0] is onesW} then if {n % 2} is 0 then one else a end
+            else zero
+            end
+        else
+            let var result = one
+            let var base = a
+            let var k = n
+            while k > 0 do
+                if {k % 2} is 1 then result := mul(result base) end
+                k := k / 2
+                if k > 0 then base := mul(base base) end
+            end
+            result
+        end
+
+    let gcd(a: T b: T): T =
+        begin
+            let var x = abs(a)
+            let var y = abs(b)
+            while not(isZero(y)) do
+                let t = rem(x y)
+                x := y
+                y := t
+            end
+            x
+        end
+
+    (* ======================================================================
+     * 6. Decimal
+     * ====================================================================== *)
+
+    (* The chunks toString and fromString convert a limb at a time: 10^18
+     * fits an Int *)
+    let chunk = 1000000000000000000
+    let chunkDigits = 18
+
+    let toString(t: T): String =
+        if extent t is 1 then conv.int(word.toInt(t[0]))
+        else
+            (* |t|, divided by 10^18 in place until it is zero *)
+            let m = if negative(t) then magnitude(t) else copy(t extent t) end
+            let var n = magnitudeLength(m)
+            let chunks = array of({2 * n} + 1 0)
+            let var count = 0
+            while {n > 1} orif {m[0] isnot zeroW} do
+                chunks[count] := word.toInt(divideByWord(m n word.fromInt(chunk) m))
+                count := count + 1
+                while {n > 1} andif {m[n - 1] is zeroW} do n := n - 1 end
+            end
+            let s = stringOp.new({count * chunkDigits} + 1 '0')
+            let var pos = 0
+            if negative(t) then
+                stringOp.setChar(s 0 '~')
+                pos := 1
+            end
+            let first = conv.int(chunks[count - 1])
+            stringOp.setSub(s pos first 0 stringOp.length(first))
+            pos := pos + stringOp.length(first)
+            for k = count - 2 downto 0 do
+                let var c = chunks[k]
+                for i = chunkDigits - 1 downto 0 do
+                    stringOp.setChar(s pos + i ascii.char(ascii.val('0') + {c % 10}))
+                    c := c / 10
+                end
+                pos := pos + chunkDigits
+            end
+            stringOp.getSub(s 0 pos)
+        end
+
+    let fromString(s: String): maybe.T(T) =
+        begin
+            let n = stringOp.length(s)
+            let var i = 0
+            while {i < n} andif strutil.isSpace(stringOp.getChar(s i)) do i := i + 1 end
+            let var neg = false
+            if {i < n} andif {{stringOp.getChar(s i) is '~'} orif {stringOp.getChar(s i) is '-'}} then
+                neg := true
+                i := i + 1
+            elsif {i < n} andif {stringOp.getChar(s i) is '+'} then
+                i := i + 1
+            end
+            let start = i
+            while {i < n} andif strutil.isDigit(stringOp.getChar(s i)) do i := i + 1 end
+            if i is start then maybe.none(:T)
+            else
+                (* The magnitude, times 10^18 and plus each chunk in turn,
+                 * the first the digits past a multiple of 18; 10^19 > 2^64,
+                 * so digits / 19 + 1 limbs hold it, and one more stays zero *)
+                let digits = i - start
+                let m = array of({digits / 19} + 2 zeroW)
+                let var len = 1
+                let var at = start
+                let var width = digits % chunkDigits
+                if width is 0 then width := chunkDigits end
+                while at < i do
+                    let var c = 0
+                    let var scale = 1
+                    for k = at upto {at + width} - 1 do
+                        c := {c * 10} + {ascii.val(stringOp.getChar(s k)) - ascii.val('0')}
+                        scale := scale * 10
+                    end
+                    (* m := m * scale + c *)
+                    let var carry = word.fromInt(c)
+                    let w = word.fromInt(scale)
+                    for k = 0 upto len - 1 do
+                        let lo = word.add(word.mul(m[k] w) carry)
+                        carry := word.add(word.mulHi(m[k] w) bit(word.lt(lo carry)))
+                        m[k] := lo
+                    end
+                    if carry isnot zeroW then
+                        m[len] := carry
+                        len := len + 1
+                    end
+                    at := at + width
+                    width := chunkDigits
+                end
+                maybe.some(:T signed(m neg))
+            end
+        end
+
+    (* ======================================================================
+     * 7. Bits
+     * ====================================================================== *)
+
+    (* f of a's and b's limbs, each sign-extended to the longer's length *)
+    let limbwise(a: T b: T f: All(x: L y: L) L): T =
+        begin
+            let la = extent a
+            let lb = extent b
+            let n = if la > lb then la else lb end
+            let sa = signWord(a)
+            let sb = signWord(b)
+            let r = array of(n zeroW)
+            for i = 0 upto n - 1 do
+                r[i] := f(if i < la then a[i] else sa end if i < lb then b[i] else sb end)
+            end
+            finish(r n)
+        end
+
+    let andBits(a: T b: T): T = limbwise(a b fun(x: L y: L): L word.andBits(x y))
+    let orBits(a: T b: T): T = limbwise(a b fun(x: L y: L): L word.orBits(x y))
+    let xorBits(a: T b: T): T = limbwise(a b fun(x: L y: L): L word.xorBits(x y))
+
+    (* Complementing every limb keeps the length canonical *)
+    let notBits(t: T): T =
+        begin
+            let r = array of(extent t zeroW)
+            for i = 0 upto extent t - 1 do r[i] := word.notBits(t[i]) end
+            r
+        end
+
+    (* t shifted left by k >= 0 bits *)
+    let shiftUp(t: T k: Int): T =
+        if {k is 0} orif isZero(t) then t
+        else
+            let whole = k / 64
+            let bits = k % 64
+            let la = extent t
+            let size = {la + whole} + 1
+            let r = array of(size zeroW)
+            let var prev = zeroW
+            for i = 0 upto la - 1 do
+                r[i + whole] := word.orBits(word.shift(t[i] bits) word.shift(prev bits - 64))
+                prev := t[i]
+            end
+            r[la + whole] := word.orBits(word.shift(signWord(t) bits) word.shift(prev bits - 64))
+            finish(r size)
+        end
+
+    (* t shifted right by k >= 0 bits, arithmetically: the floor of t / 2^k *)
+    let shiftDown(t: T k: Int): T =
+        begin
+            let whole = k / 64
+            let bits = k % 64
+            let la = extent t
+            if whole >= la then
+                if negative(t) then single(~1) else zero end
+            else
+                let size = la - whole
+                let sw = signWord(t)
+                let r = array of(size zeroW)
+                for i = 0 upto size - 1 do
+                    let lo = t[i + whole]
+                    let hi = if {{i + whole} + 1} < la then t[{i + whole} + 1] else sw end
+                    r[i] := if bits is 0 then lo else word.orBits(word.shift(lo 0 - bits) word.shift(hi 64 - bits)) end
+                end
+                finish(r size)
+            end
+        end
+
+    let shiftLeft(t: T count: Int): T = if count < 0 then shiftDown(t 0 - count) else shiftUp(t count) end
+    let shiftRight(t: T count: Int): T = if count < 0 then shiftUp(t 0 - count) else shiftDown(t count) end
+end

@@ -1,0 +1,71 @@
+(* Integers of any size (docs/bignum.md): SML's IntInf, and the word
+ * conversions, shifts, powers, greatest common divisors, and bitwise
+ * operations of two's complement integers. Every operation makes a new value,
+ * and none changes one, so values may be shared freely, across threads too.
+ * A value that fits in an Int costs one small allocation, and its arithmetic
+ * is Int's. *)
+
+interface Bignum
+import
+    util/maybe : util/Maybe
+    word : Word
+export
+    T::TYPE
+
+    (* Raised by toInt and toWord for a value out of their range *)
+    overflow: Exception
+    (* Raised by division by zero, and by pow of zero to a negative power *)
+    divide: Exception
+
+    fromInt(n: Int): T
+    (* n, or raises overflow if t is outside Int's range *)
+    toInt(t: T): Int
+    (* The integer whose value is w's, 0 to 2^64 - 1 *)
+    fromWord(w: word.T): T
+    (* The word whose value is t's, or raises overflow if t is negative or at
+     * least 2^64 *)
+    toWord(t: T): word.T
+
+    (* Decimal, with ~ for negatives, as SML's IntInf.toString *)
+    toString(t: T): String
+    (* An optional sign (~, -, or +) and decimal digits, after any whitespace,
+     * as SML's IntInf.fromString; none if s does not start with them *)
+    fromString(s: String): maybe.T(T)
+
+    add(a: T b: T): T
+    sub(a: T b: T): T
+    mul(a: T b: T): T
+    neg(a: T): T
+    abs(a: T): T
+    (* Truncating division and its remainder (quot, rem), and flooring
+     * division and its modulus (div, mod); each raises divide when b is 0 *)
+    quot(a: T b: T): T
+    rem(a: T b: T): T
+    div(a: T b: T): T
+    mod(a: T b: T): T
+    (* a to the power n; for a negative n, as SML's IntInf.pow: 1 or ~1 when
+     * a is, divide when a is 0, and otherwise 0 *)
+    pow(a: T n: Int): T
+    (* The greatest common divisor of |a| and |b|, by Euclid's algorithm; 0
+     * when both are 0 *)
+    gcd(a: T b: T): T
+
+    equal(a: T b: T): Bool
+    less(a: T b: T): Bool
+    (* ~1, 0, or 1, as a is less than, equal to, or greater than b *)
+    compare(a: T b: T): Int
+    (* ~1, 0, or 1, as t is negative, zero, or positive *)
+    sign(t: T): Int
+
+    (* Bitwise operations on the two's complement representations, infinitely
+     * sign-extended: notBits(t) is ~t - 1 *)
+    andBits(a: T b: T): T
+    orBits(a: T b: T): T
+    xorBits(a: T b: T): T
+    notBits(t: T): T
+    (* t times 2^count; a negative count shifts right *)
+    shiftLeft(t: T count: Int): T
+    (* The floor of t divided by 2^count, an arithmetic shift; a negative count
+     * shifts left *)
+    shiftRight(t: T count: Int): T
+end
