@@ -6,7 +6,8 @@ for its cases without components, rather than as a box. What is done, the langua
 ([c-representation.md](c-representation.md) §5.3), is measured in [benchmarks.md](benchmarks.md) §8.
 
 **Status (2026-11-01): deferred.** Escape analysis ([ssa.md](ssa.md) §4.2) removed most payload tuples; what still
-escapes in peek and zebra is mostly `maybe.some`'s box, which this would remove ([benchmarks.md](benchmarks.md) §9).
+escapes in peek and zebra is mostly `maybe.some`'s box ([benchmarks.md](benchmarks.md) §9). This would not remove it:
+those are options of `Int`, which §2 leaves boxed ([mlton-performance-review.md](mlton-performance-review.md) §3.5).
 If this plan is dropped, the single-word rule of extensions.md is to be undone (its `is` by component in both
 compilers, the runtime, the interpreters, and the tests, and its paragraph in extensions.md), since without the
 representation it costs a comparison of components and buys nothing.

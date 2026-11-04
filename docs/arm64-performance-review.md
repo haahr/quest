@@ -6,6 +6,8 @@ generated machine code does that clang's does not, and what in the back end (`qu
 time, on the six benchmarks near the median (life, ray, hamlet, mlyacc, zebra, nucleic), at `6f7cb100` (options as
 values, and the traceback cache); none is the compiler's own. [arm64.md](arm64.md) §6 records what was found
 before this; this review starts again from the measurements, and some of its conclusions revise §6's.
+[mlton-performance-review.md](mlton-performance-review.md) compares Quest's code with MLton's on the four programs
+furthest from it.
 
 ## 1. Summary
 
