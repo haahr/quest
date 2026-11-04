@@ -7,7 +7,7 @@ conversions' output against MLton's and times both.
 |---|---|
 | `sml/` | The SML originals, from `benchmark/tests` in MLton at commit 5fe943391e539a502699327a6266b6e8e97939e1 |
 | `NAME.quest` | The conversions, one program each |
-| `support/` | Modules the conversions share: SML's lists (`lists`), its real formatting and parsing (`reals`), arbitrary-precision integers (`intinf`), and the count argument (`bench`) |
+| `support/` | Modules the conversions share: SML's lists (`lists`), its real formatting and parsing (`reals`), and the count argument (`bench`) |
 | `DATA/` | The programs' input files |
 | `expected/` | The originals' output, as MLton-compiled programs produce it: standard output and exit status (`NAME.out`), and the path, size, and SHA-256 of each file written (`NAME.files`) |
 | `tools/` | Scripts that transliterated the originals' large data sections and generated tables into Quest |
@@ -71,7 +71,8 @@ exactly what its conversion does. No recorded output depends on those bits.
   explicitly, and `Word32` values are masked to 32 bits.
 - An SML `ref` that a closure captures was a tuple with a `var` field, since closures could not capture `var` locals
   until 2026-10-28; a conversion may still do so.
-- SML's formatting of reals (`Real.toString`, `Real.fmt`) and its `IntInf` come from `support/`, checked against MLton.
+- SML's formatting of reals (`Real.toString`, `Real.fmt`) comes from `support/`, checked against MLton; its `IntInf`
+  is the library's `util/bignum` (docs/bignum.md), as MLton's is its own library's.
 - Where Quest lacks something the original uses, the header says what replaces it. Quest cannot read the clock: zern,
   tensor, and model-elimination, which time their work, read 0.
 
