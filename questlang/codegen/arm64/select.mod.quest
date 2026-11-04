@@ -232,7 +232,7 @@ export
                     opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub,
                     opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
                     opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
-                    opThreadLocal, opToVal, opFromVal then
+                    opThreadLocal, opToVal, opFromVal, opSelect then
                     maybe.none(:Int)
             end
         end
@@ -314,7 +314,7 @@ export
             when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd,
                 opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits,
                 opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal,
-                opToVal, opFromVal then
+                opToVal, opFromVal, opSelect then
                 minst.condEq
         end
     let isComparison(op: ssa.Opcode): Bool =
@@ -325,7 +325,7 @@ export
             when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd,
                 opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits,
                 opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal,
-                opToVal, opFromVal then
+                opToVal, opFromVal, opSelect then
                 false
         end
     let isRealComparison(op: ssa.Opcode): Bool =
@@ -334,7 +334,7 @@ export
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opConst, opRealConst, opSymbol, opNull,
                 opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opFadd,
                 opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opLoad,
-                opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal, opFromVal then
+                opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal, opFromVal, opSelect then
                 false
         end
     (* The bit an and of a constant with one bit set tests, and the value it
@@ -360,7 +360,7 @@ export
                             opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe,
                             opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge,
                             opIsNaN, opRealBits, opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect,
-                            opPtrAdd, opThreadLocal then
+                            opPtrAdd, opThreadLocal, opSelect then
                             a
                     end
                 else a end
@@ -544,6 +544,24 @@ export
                 when opSub then sub(s d i.args[0] i.args[1])
                 when opMul then arith(minst.arithMul)
                 when opMulHiU then arith(minst.arithUmulh)
+                (* csel by the flags of the condition's comparison, fused
+                 * into it when it is the select's alone, else of the
+                 * condition and 0; cset of 1 and 0 (ssa/selects makes the
+                 * selects) *)
+                when opSelect then
+                    let c = i.args[0]
+                    let cond = if s.fused[c] then
+                            let compare = maybe.unwrap(:ssa.Inst s.defs[c])
+                            setFlags(s compare)
+                            condition(compare.op)
+                        else
+                            emit(s minst.cmpImm(r(s c) 0))
+                            minst.condNe
+                        end
+                    if isConst(s i.args[1] 1) andif isConst(s i.args[2] 0) then emit(s minst.cset(cond d))
+                    elsif isConst(s i.args[1] 0) andif isConst(s i.args[2] 1) then
+                        emit(s minst.cset(minst.inverse(cond) d))
+                    else emit(s minst.csel(cond d zeroOr(s i.args[1]) zeroOr(s i.args[2]))) end
                 when opDiv then arith(minst.arithSdiv)
                 (* Fused into the branch on it, as a test of a bit or a
                  * conjunction of comparisons, or with a logical immediate *)
@@ -833,6 +851,17 @@ export
                         end
                     when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then ok
                 end
+                (* And into the selects on them *)
+                let insts = ssa.block(f b).insts
+                for k = 0 upto {vector.length(:ssa.Inst insts) - 1} do
+                    let i = vector.get(:ssa.Inst insts k)
+                    let c = if ssa.isOp(i ssa.opSelect) then i.args[0] else ~1 end
+                    if {c >= 0} andif maybe.isSome(:ssa.Inst defs[c])
+                            andif isComparison(maybe.unwrap(:ssa.Inst defs[c]).op) andif {defBlock[c] is b}
+                            andif {uses[c] is 1} then
+                        fused[c] := true
+                    end
+                end
             end
             (* The addresses folded into loads and stores: a ptrAdd of a
              * base and an index, or of an index times the access's width
@@ -957,9 +986,9 @@ export
                 when opMovConst, opSymbolAddress then true
                 when opAddImm then readsSp
                 when opMovImm, opMovz, opMovk, opTlvAddress, opMov, opArith, opSubImm, opLogicImm, opShiftImm, opMsub,
-                    opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opLoad, opStore, opLdp, opStp,
-                    opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz,
-                    opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                    opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore, opLdp,
+                    opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz,
+                    opTbnz, opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                     false
             end
         end

@@ -100,6 +100,8 @@ export
             when opCmp then "cmp " <> n.full(rs[0]) <> ", " <> n.full(rs[1])
             when opFcmp then "fcmp " <> n.full(rs[0]) <> ", " <> n.full(rs[1])
             when opCset with x then "cset " <> n.full(rs[0]) <> ", " <> condition(x.cond)
+            when opCsel with x then
+                "csel " <> n.full(rs[0]) <> ", " <> n.full(rs[1]) <> ", " <> n.full(rs[2]) <> ", " <> condition(x.cond)
             when opLoad with x then
                 case x.load
                     when load64 then access(n "ldr" "ldur" n.full(rs[0]) rs x.mode 8)
@@ -191,9 +193,9 @@ export
                     vector.append(:minst.Inst code minst.load(minst.load64 target.x(16) d minst.modeBase))
                     vector.append(:minst.Inst code minst.blr(target.x(16)))
                 when opMovImm, opMovz, opMovk, opMov, opArith, opAddImm, opSubImm, opLogicImm, opShiftImm, opMsub,
-                    opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opLoad, opStore, opLdp, opStp,
-                    opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz,
-                    opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                    opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore, opLdp,
+                    opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz,
+                    opTbnz, opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                     vector.append(:minst.Inst code tuple let op = op let regs = rs end)
             end
             vector.toArray(:minst.Inst code)
@@ -204,8 +206,8 @@ export
             when opLabel, opCfiDefCfa, opCfiOffset, opLoc then 0
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                 opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
-                opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr,
-                opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop then
+                opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
+                opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop then
                 extent expansion(op array of 0 end)
         end
 
@@ -214,8 +216,8 @@ export
             when opLabel with x then array of x.label <> ":" end
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                 opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
-                opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr,
-                opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opCfiDefCfa, opCfiOffset, opLoc then
+                opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
+                opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opCfiDefCfa, opCfiOffset, opLoc then
                 let expanded = expansion(op regs)
                 let ls = array of(extent expanded "")
                 for k = 0 upto {extent expanded - 1} do

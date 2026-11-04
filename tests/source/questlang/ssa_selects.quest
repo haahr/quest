@@ -1,0 +1,187 @@
+(* Self-Hosted Quest Compiler: Test Branches Made Selects
+ *
+ * questlang/ssa/selects (docs/ssa.md section 4.1) on units of the SSA written
+ * as text and read by questlang/ssa/parser, each printed before and after the
+ * pass and verified. Converted: arms through empty blocks passing 1 and 0
+ * (a carry), arms going straight to their join, one of each, arms passing
+ * pointers, arms passing the same values (a jump, no select), and arms whose
+ * instructions can run before the branch (an add, a global's load). Left:
+ * arms passing reals, arms with a load through a pointer or a division, an
+ * arm's block reached from elsewhere too, arms going to different blocks,
+ * and arms passing three values differently. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/selects : questlang/ssa/Selects
+    questlang/ssa/verify : questlang/ssa/Verify
+    util/strutil : util/Strutil
+    writer : Writer
+;
+
+let emit(s: String): Ok = writer.putString(writer.output s);
+
+let show(title: String lines: Array(String)): Ok =
+    begin
+        emit("== " <> title <> "\n")
+        let u = parser.readUnit(strutil.joinArray("\n" lines) <> "\n")
+        emit(printer.formatUnit(u))
+        selects.selectUnit(u)
+        emit("-- after selects\n")
+        emit(printer.formatUnit(u))
+        try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
+    end;
+
+show("a carry" array of
+    "function carry(%0: int, %1: int): int {"
+    "b0(%0: int, %1: int):"
+    "  %2: int = add %0, %1"
+    "  %3: int = ult %2, %0"
+    "  %4: int = const 1"
+    "  %5: int = const 0"
+    "  branch %3, b1(), b2()"
+    "b1():"
+    "  jump b3(%4)"
+    "b2():"
+    "  jump b3(%5)"
+    "b3(%6: int):"
+    "  return %6"
+    "}"
+end);
+
+show("arms straight to their join" array of
+    "function least(%0: int, %1: int): int {"
+    "b0(%0: int, %1: int):"
+    "  %2: int = lt %0, %1"
+    "  branch %2, b1(%0), b1(%1)"
+    "b1(%3: int):"
+    "  return %3"
+    "}"
+end);
+
+show("one arm straight, one through a block" array of
+    "function clamp(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 0"
+    "  %2: int = lt %0, %1"
+    "  branch %2, b1(), b2(%0)"
+    "b1():"
+    "  jump b2(%1)"
+    "b2(%3: int):"
+    "  return %3"
+    "}"
+end);
+
+show("pointers, and an argument passed alike" array of
+    "function choose(%0: int, %1: ptr, %2: ptr): ptr {"
+    "b0(%0: int, %1: ptr, %2: ptr):"
+    "  branch %0, b1(), b2()"
+    "b1():"
+    "  jump b3(%1, %0)"
+    "b2():"
+    "  jump b3(%2, %0)"
+    "b3(%3: ptr, %4: int):"
+    "  return %3"
+    "}"
+end);
+
+show("the same arguments: a jump" array of
+    "function same(%0: int, %1: int): int {"
+    "b0(%0: int, %1: int):"
+    "  branch %0, b1(), b2()"
+    "b1():"
+    "  jump b3(%1)"
+    "b2():"
+    "  jump b3(%1)"
+    "b3(%2: int):"
+    "  return %2"
+    "}"
+end);
+
+show("reals" array of
+    "function reals(%0: int, %1: real, %2: real): real {"
+    "b0(%0: int, %1: real, %2: real):"
+    "  branch %0, b1(%1), b1(%2)"
+    "b1(%3: real):"
+    "  return %3"
+    "}"
+end);
+
+show("arms with instructions that can run first: an add, a global's loads" array of
+    "function busy(%0: int, %1: int): int {"
+    "b0(%0: int, %1: int):"
+    "  branch %0, b1(), b2()"
+    "b1():"
+    "  %2: int = add %1, %1"
+    "  jump b3(%2)"
+    "b2():"
+    "  %3: ptr = symbol qm_globals"
+    "  %4: int = load8 %3 + 8"
+    "  jump b3(%4)"
+    "b3(%5: int):"
+    "  return %5"
+    "}"
+end);
+
+show("arms with instructions that cannot: a load through a pointer, a division" array of
+    "function loads(%0: int, %1: ptr, %2: int): int {"
+    "b0(%0: int, %1: ptr, %2: int):"
+    "  branch %0, b1(), b2()"
+    "b1():"
+    "  %3: int = load8 %1 + 0"
+    "  jump b3(%3)"
+    "b2():"
+    "  jump b3(%2)"
+    "b3(%4: int):"
+    "  return %4"
+    "}"
+    "function divides(%0: int, %1: int, %2: int): int {"
+    "b0(%0: int, %1: int, %2: int):"
+    "  branch %0, b1(), b2()"
+    "b1():"
+    "  %3: int = div %1, %2"
+    "  jump b3(%3)"
+    "b2():"
+    "  jump b3(%2)"
+    "b3(%4: int):"
+    "  return %4"
+    "}"
+end);
+
+show("an arm's block reached from elsewhere" array of
+    "function shared(%0: int, %1: int, %2: int): int {"
+    "b0(%0: int, %1: int, %2: int):"
+    "  branch %0, b1(), b2()"
+    "b1():"
+    "  jump b3(%1)"
+    "b2():"
+    "  branch %1, b1(), b4()"
+    "b3(%3: int):"
+    "  return %3"
+    "b4():"
+    "  jump b3(%2)"
+    "}"
+end);
+
+show("arms to different blocks" array of
+    "function apart(%0: int, %1: int): int {"
+    "b0(%0: int, %1: int):"
+    "  branch %0, b1(), b2()"
+    "b1():"
+    "  return %1"
+    "b2():"
+    "  return %0"
+    "}"
+end);
+
+show("three arguments passed differently" array of
+    "function three(%0: int, %1: int, %2: int, %3: int): int {"
+    "b0(%0: int, %1: int, %2: int, %3: int):"
+    "  branch %0, b1(%1, %2, %3), b1(%3, %1, %2)"
+    "b1(%4: int, %5: int, %6: int):"
+    "  %7: int = add %4, %5"
+    "  %8: int = add %7, %6"
+    "  return %8"
+    "}"
+end);

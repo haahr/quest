@@ -34,12 +34,12 @@
  *   - gcd: Euclid's algorithm.
  * Karatsuba multiplication is left until a program's sizes call for it.
  *
- * Carries are bit(word.lt(sum operand)). Through C, clang makes each a
- * conditional select. The arm64 backend makes each a branch, which
- * mispredicts about half the time. A carry computed from the operands' top
- * bits (Hacker's Delight, section 2-13) is branch-free on arm64 but was
- * slower through C (docs/benchmarks.md section 15), so the code keeps the
- * comparison *)
+ * Carries are bit(word.lt(sum operand)), a branch taken as often as not,
+ * which clang (through C) and the SSA's if-conversion (ssa/selects, for
+ * ssac and arm64) make a conditional select rather than a mispredicted
+ * branch. A carry computed from the operands' top bits (Hacker's Delight,
+ * section 2-13) needs no branch either way, but was slower through C
+ * (docs/benchmarks.md section 15) *)
 
 module bignum : Bignum
 import

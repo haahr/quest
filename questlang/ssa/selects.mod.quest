@@ -1,0 +1,140 @@
+(* Quest Self-Hosted Compiler: The SSA's Selects Implementation *)
+
+module selects : Selects
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    Let Function = ssa.Function
+
+    (* The most selects one branch becomes, and the most instructions an arm
+     * may have *)
+    let most = 2
+
+    (* Whether an instruction can run whether or not its arm is taken: it
+     * writes nothing, cannot trap, and reads only what is the same before
+     * the branch as in its arm. That is arithmetic but division (whose
+     * divisor the builder tests first), comparisons, conversions, constants,
+     * and a load of static data at a symbol (a module's global, as
+     * util/bignum's oneW), at most 2 of them an arm *)
+    let speculable(defs: Array(maybe.T(ssa.Inst)) i: ssa.Inst): Bool =
+        case i.op
+            when opConst, opRealConst, opSymbol, opNull, opAdd, opSub, opMul, opMulHiU, opAnd, opOr, opXor, opShl,
+                opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul,
+                opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal,
+                opSext8, opZext8, opCopy, opPtrAdd, opToVal, opFromVal, opSelect then
+                true
+            when opLoad then
+                maybe.isSome(:ssa.Inst defs[i.args[0]])
+                    andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[i.args[0]]) ssa.opSymbol)
+            when opSlot, opDiv, opRem, opStore, opCall, opCallIndirect, opThreadLocal then false
+        end
+
+    (* An arm of a branch: where it goes, and the instructions on its way *)
+    Let Arm = Tuple target: ssa.Target insts: Array(ssa.Inst) end
+
+    (* Where a branch's arm t goes: t's block's own target, when that block
+     * has no parameters, a few instructions that can run before the branch,
+     * only jumps on, and is reached only from the branch (preds); otherwise
+     * t itself *)
+    let through(f: Function defs: Array(maybe.T(ssa.Inst)) preds: Array(Array(Int)) t: ssa.Target): Arm =
+        begin
+            let blk = ssa.block(f t.block)
+            let direct = tuple let target = t let insts = array of :ssa.Inst end end
+            let n = vector.length(:ssa.Inst blk.insts)
+            let var movable = {extent preds[t.block] is 1} andif {vector.length(:Int blk.params) is 0} andif {n <= most}
+            for k = 0 upto {n - 1} do
+                if not(speculable(defs vector.get(:ssa.Inst blk.insts k))) then movable := false end
+            end
+            if movable then
+                case blk.term
+                    when termJump with x then
+                        tuple let target = x.target let insts = vector.toArray(:ssa.Inst blk.insts) end
+                    when termNone, termBranch, termSwitch, termReturn, termTailCall, termTry, termUnreachable then
+                        direct
+                end
+            else direct end
+        end
+
+    (* Whether a branch to the arms yes and no can be a jump with selects:
+     * both go to one block, and the arguments they pass differently are few
+     * and none of them a real *)
+    let convertible(f: Function yes: ssa.Target no: ssa.Target): Bool =
+        if yes.block isnot no.block then false
+        else
+            let params = ssa.block(f yes.block).params
+            let var selects = 0
+            let var words = extent yes.args is extent no.args
+            for k = 0 upto {extent yes.args - 1} do
+                if yes.args[k] isnot no.args[k] then
+                    selects := selects + 1
+                    case ssa.typeOf(f vector.get(:Int params k))
+                        when typeReal then words := false
+                        when typeInt, typePtr, typeVal then ok
+                    end
+                end
+            end
+            words andif {selects <= most}
+        end
+
+    (* Block b's branch on cond made a jump to the arms' block: the arms'
+     * instructions moved into b, then a select for each argument they pass
+     * differently *)
+    let convert(f: Function b: Int cond: Int yes: Arm no: Arm): Ok =
+        begin
+            let blk = ssa.block(f b)
+            for k = 0 upto {extent yes.insts - 1} do vector.append(:ssa.Inst blk.insts yes.insts[k]) end
+            for k = 0 upto {extent no.insts - 1} do vector.append(:ssa.Inst blk.insts no.insts[k]) end
+            let to = yes.target
+            let params = ssa.block(f to.block).params
+            let args = array of(extent to.args 0)
+            for k = 0 upto {extent to.args - 1} do
+                if to.args[k] is no.target.args[k] then args[k] := to.args[k]
+                else
+                    let v = ssa.newValue(f ssa.typeOf(f vector.get(:Int params k)))
+                    let i = ssa.inst(ssa.opSelect array of cond to.args[k] no.target.args[k] end array of v end)
+                    i.loc := blk.termLoc
+                    vector.append(:ssa.Inst blk.insts i)
+                    args[k] := v
+                end
+            end
+            blk.term := option termJump of ssa.Terminator with let target = ssa.target(to.block args) end
+        end
+
+    let selectFunction(f: Function): Ok =
+        begin
+            let g = cfg.graph(f)
+            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let defs = array of(vector.length(:ssa.Type f.types) maybe.none(:ssa.Inst))
+            for b = 0 upto {nBlocks - 1} do
+                let insts = ssa.block(f b).insts
+                for k = 0 upto {vector.length(:ssa.Inst insts) - 1} do
+                    let i = vector.get(:ssa.Inst insts k)
+                    for j = 0 upto {extent i.results - 1} do defs[i.results[j]] := maybe.some(:ssa.Inst i) end
+                end
+            end
+            let var changed = false
+            for b = 0 upto {nBlocks - 1} do
+                if cfg.reached(g b) then
+                    case ssa.block(f b).term
+                        when termBranch with x then
+                            let yes = through(f defs g.preds x.ifTrue)
+                            let no = through(f defs g.preds x.ifFalse)
+                            if convertible(f yes.target no.target) then
+                                convert(f b x.cond yes no)
+                                changed := true
+                            end
+                        when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then ok
+                    end
+                end
+            end
+            if changed then cfg.dropUnreached(f) end
+        end
+
+    let selectUnit(u: ssa.Unit): Ok =
+        for i = 0 upto {vector.length(:Function u.functions) - 1} do
+            selectFunction(vector.get(:Function u.functions i))
+        end
+end

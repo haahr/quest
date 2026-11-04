@@ -1141,8 +1141,8 @@ to 2.58 through ssac, and from 3.63 to 3.48 through arm64.
   which mispredict about half the time, as a carry is about as likely as not. The loop also loads `zeroW` and `oneW`,
   which are module globals, at each use. A carry computed from the operands' top bits instead (Hacker's Delight,
   section 2-13, without a comparison) took arm64's smith-normal-form to 144.6 s but C's to 115.9 s and pidigits'
-  through C to 14.23 s, so the library keeps the comparison. An if-conversion in the arm64 backend, making
-  `if b then 1 else 0` a `cset`, is what it calls for.
+  through C to 14.23 s, so the library keeps the comparison. An if-conversion in the SSA, making
+  `if b then 1 else 0` a `csel` or `cset`, is what it calls for (§15.4).
 - **pidigits spends about 18 percent of its time allocating and collecting** through C (`sample`): `GC_mark_from` 8
   percent, `quest_array_new` 5, zeroing 3, the rest in libgc. Skipping the fill gained 4 to 11 percent; smith-normal-
   form, which allocates far less for its work, did not move.
@@ -1157,3 +1157,26 @@ to 2.58 through ssac, and from 3.63 to 3.48 through arm64.
   leaves it to that.
 - **`word.copy`**, a `memmove` of limbs: the library's copies take linear time against the multiplications' and
   divisions' quadratic time, and the profiles put the time in those loops, so it was not added.
+
+### 15.4. If-conversion
+
+`ssa/selects` ([ssa.md](ssa.md) §4.1) makes a branch whose arms only pass values to one block a `select`, which arm64
+makes a `csel` (or a `cset` of 1 and 0) on the flags of the branch's comparison, and ssac a `?:`. An arm may move up to
+two instructions into the branch's block, if they cannot trap or write: `util/bignum`'s carries load the module's
+globals `oneW` and `zeroW` in their arms, and the pass did nothing to them until loads of static data at a symbol
+could move (smith-normal-form through arm64 took 362.2 s, pidigits 17.97 s). Taken as §15.1, one run each, the load
+3.2 to 4.9, the times in `quest-{ssac,arm64}-selects.jsonl` (the second line of each program):
+
+| Program | Backend | Before (§15.2, without the fill) | With selects | Faster |
+|---|---|--:|--:|--:|
+| pidigits | ssac | 11.52 | 11.24 | 1.02x |
+| | arm64 | 17.61 | 14.41 | 1.22x |
+| smith-normal-form | ssac | 67.20 | 66.89 | 1.00x |
+| | arm64 | 370.97 | 115.95 | 3.20x |
+
+- **arm64's `mulLimbs` loop** has a `cmp` and a `csel` for each carry, and no branch on it. smith-normal-form through
+  arm64 is now 1.7 times C's 70.05 s, from 5.1.
+- **ssac does not move:** clang already made the same branch a `csel`.
+- **What remains of arm64's distance** in the loop is mostly the four loads of `oneW` and `zeroW` an iteration, which
+  C folds (`zeroW` to `xzr`, `oneW` loaded once before the loop). Both loops check `r` for null and its bounds at each
+  access.

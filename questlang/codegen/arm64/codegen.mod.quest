@@ -103,8 +103,8 @@ export
             when opBrk then true
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                 opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
-                opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr,
-                opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
+                opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                 false
         end
 
@@ -401,8 +401,8 @@ export
             when opAdr then option opAdr of minst.Op with let label = l end
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                 opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
-                opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opBSymbol, opBl, opBlr, opBr, opRet, opBrk,
-                opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opBSymbol, opBl, opBlr, opBr,
+                opRet, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                 op
         end
 
@@ -443,8 +443,8 @@ export
             end)
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                 opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm,
-                opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr,
-                opRet, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+                opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
+                opBr, opRet, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                 maybe.none(:Conditional)
         end
 
@@ -469,9 +469,9 @@ export
                         when opLabel with x then put(:String :Int at x.label n)
                         when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith,
                             opAddImm, opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm,
-                            opCcmp, opCcmpImm, opCset, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB,
-                            opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop,
-                            opCfiDefCfa, opCfiOffset, opLoc then
+                            opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore, opLdp, opStp, opAdrp, opAddPageOff,
+                            opAdr, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond,
+                            opBrk, opNop, opCfiDefCfa, opCfiOffset, opLoc then
                             n := n + printer.count(i.op)
                     end
                 end
@@ -542,8 +542,8 @@ export
                     end
                 when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
                     opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp,
-                    opCcmpImm, opCset, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr, opBr,
-                    opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset,
+                    opCcmpImm, opCset, opCsel, opLdp, opStp, opAdrp, opAddPageOff, opAdr, opB, opBSymbol, opBl, opBlr,
+                    opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop, opLabel, opCfiDefCfa, opCfiOffset,
                     opLoc then
                     maybe.none(:Access)
             end
@@ -559,7 +559,7 @@ export
     let crossing(op: minst.Op): Int =
         case op
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opMov, opArith, opAddImm, opSubImm, opLogicImm,
-                opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opAdrp,
+                opShiftImm, opMsub, opSxtb, opSxtw, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opAdrp,
                 opAddPageOff, opAdr, opLoc then
                 registersOnly
             when opLoad with x then

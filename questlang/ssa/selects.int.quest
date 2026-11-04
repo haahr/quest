@@ -1,0 +1,23 @@
+(* Quest Self-Hosted Compiler: The SSA's Selects Interface
+ *
+ * If-conversion (docs/ssa.md section 4.1): a branch whose two arms only pass
+ * values on to one block, each arm directly or through a block of its own
+ * that only jumps on, becomes a jump to that block, each argument the arms
+ * pass differently a select of the two by the branch's condition. A carry in
+ * a loop of arbitrary-precision arithmetic, if b then 1 else 0 for a b as
+ * likely false as true, is such a branch: arm64 makes the select a csel or a
+ * cset, where the branch was mispredicted half the time, and C's compiler
+ * already makes one of the branch. An arm's block may have up to two
+ * instructions that cannot trap or write, and read nothing the branch could
+ * change (arithmetic, comparisons, a load of a module's global), which then
+ * run before the branch whichever arm it takes. Arguments of type real are
+ * left alone (arm64 would need fcsel), and so is a branch that would need
+ * more than two selects. *)
+
+interface Selects
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    selectFunction(f: ssa.Function): Ok
+    selectUnit(u: ssa.Unit): Ok
+end

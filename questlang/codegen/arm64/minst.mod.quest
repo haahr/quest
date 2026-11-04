@@ -44,6 +44,7 @@ export
         opCcmp with nzcv: Int cond: Cond end
         opCcmpImm with imm: Int nzcv: Int cond: Cond end
         opCset with cond: Cond end
+        opCsel with cond: Cond end
         opLoad with load: Load mode: Mode end
         opStore with store: Store mode: Mode end
         opLdp with mode: Mode end
@@ -159,7 +160,7 @@ export
     let results(op: Op): Int =
         case op
             when opMovImm, opMovz, opMovk, opMovConst, opSymbolAddress, opTlvAddress, opMov, opArith, opAddImm,
-                opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCset, opLoad, opAdrp, opAddPageOff,
+                opSubImm, opLogicImm, opShiftImm, opMsub, opSxtb, opSxtw, opCset, opCsel, opLoad, opAdrp, opAddPageOff,
                 opAdr then
                 1
             when opLdp then 2
@@ -172,9 +173,9 @@ export
             when opMovImm, opMovz, opMovConst, opSymbolAddress, opMov, opArith, opAddImm, opSubImm, opLogicImm,
                 opShiftImm, opMsub, opSxtb, opSxtw, opAdrp, opAddPageOff, opAdr then
                 true
-            when opMovk, opTlvAddress, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opLoad, opStore, opLdp,
-                opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk, opNop,
-                opLabel, opCfiDefCfa, opCfiOffset, opLoc then
+            when opMovk, opTlvAddress, opCmp, opFcmp, opCmpImm, opCcmp, opCcmpImm, opCset, opCsel, opLoad, opStore,
+                opLdp, opStp, opB, opBSymbol, opBl, opBlr, opBr, opRet, opCbz, opCbnz, opTbz, opTbnz, opBCond, opBrk,
+                opNop, opLabel, opCfiDefCfa, opCfiOffset, opLoc then
                 false
         end
 
@@ -213,6 +214,8 @@ export
     let cmp(x: Int y: Int): Inst = inst(option opCmp of Op end array of x y end)
     let fcmp(x: Int y: Int): Inst = inst(option opFcmp of Op end array of x y end)
     let cset(c: Cond d: Int): Inst = inst(option opCset of Op with let cond = c end array of d end)
+    let csel(c: Cond d: Int x: Int y: Int): Inst =
+        inst(option opCsel of Op with let cond = c end array of d x y end)
     let load(l: Load t: Int base: Int m: Mode): Inst =
         inst(option opLoad of Op with let load = l let mode = m end array of t base end)
     let store(s: Store t: Int base: Int m: Mode): Inst =

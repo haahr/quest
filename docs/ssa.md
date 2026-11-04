@@ -61,6 +61,7 @@ register allocation) walk the arrays; only the passes that care what an instruct
 | `call` | args → results | a direct call of the symbol |
 | `callIndirect` | `ptr` args → results | a call through a function pointer |
 | `copy` | value → value | the same value (made by the builder; removed by later passes) |
+| `select` | `int` x x → x | the second argument if the first is nonzero, else the third; x is `int`, `ptr`, or `val` (made by `ssa/selects`, §4.1; ssac's `?:`, arm64's `csel` or `cset`) |
 
 ### 2.1. Loads and Stores
 
@@ -189,7 +190,7 @@ registration, and the unit).
 What the builder does not yet build raises `unsupported`, naming the construct; `--stop-after ssa` reports it as an
 internal error.
 
-### 4.1. The Pipeline: Escape Analysis, Promotion, Value Numbering, Accumulation, and Tail Calls
+### 4.1. The Pipeline: Escape Analysis, Promotion, Value Numbering, Selects, Accumulation, and Tail Calls
 
 `questlang/ssa/pipeline` builds a unit and then runs its passes, by name, in order, each on every function:
 
@@ -220,6 +221,15 @@ internal error.
   symbols, and nulls: shared across a function, they were live longer and spilled (hamlet's stack accesses rose from
   8,129 to 10,022, mlyacc's from 4,522 to 5,713, and neither ran faster). The pure instructions and loads then left
   without uses are removed. `ssa_valuenumbers` shows each case.
+- **`ssa/selects`** makes selects of branches (if-conversion): a branch whose two arms only pass values to one block,
+  each arm directly or through a block of its own (one with no parameters, reached only from the branch, that only
+  jumps on), becomes a jump to that block, each argument the arms pass differently a `select` by the branch's
+  condition, at most two of them and none a `real`. An arm's block may have up to two instructions that can run before
+  the branch whichever arm it takes: they write nothing, cannot trap, and read nothing the branch could change
+  (arithmetic but division, comparisons, conversions, constants, and a load of static data at a symbol, a module's
+  global such as `util/bignum`'s `oneW`); they move into the branch's block. A carry in a loop of arbitrary-precision arithmetic (`util/bignum`'s `bit(word.lt(sum operand))`) is such a
+  branch, taken as often as not: arm64 mispredicted half of them, and now makes each a `cset` of the comparison's
+  flags; C's compiler already made it one ([benchmarks.md](benchmarks.md) §15). `ssa_selects` shows each case.
 - **`ssa/accumulate`** makes loops of recursion through an associative operation (LLVM's accumulator recursion
   elimination; [benchmarks.md](benchmarks.md) §14): in a function of one `int` result, from which no slot's address
   escapes, a block whose last instructions are a call of the function itself and an `add`, `mul`, `and`, `or`, or `xor`
@@ -264,7 +274,8 @@ The passes share their analyses: `ssa/cfg` (predecessors, successors, reverse po
 preorder and postorder numbers, dominance frontiers, and loop depths) and `ssa/liveness` (each block's live-in and
 live-out values, which the register allocator uses); `nodes` has the mutators (`targets`, `mapTargets`, `mapBlocks`,
 `replaceUses`). The driver dumps the SSA after the builder (`--dump-after ssa_built`), after each pass (`ssa_escape`,
-`ssa_promote`, `ssa_valueNumbers`, `ssa_accumulate`, `ssa_tailCalls`, `ssa_tailJumps`), and at the end (`ssa`);
+`ssa_promote`, `ssa_valueNumbers`, `ssa_selects`, `ssa_accumulate`, `ssa_tailCalls`, `ssa_tailJumps`), and at the end
+(`ssa`);
 `QUEST_SKIP_PASSES`, a comma-separated list of passes' names, leaves passes out, for a test or a bisection.
 
 ### 4.2. Escape Analysis
@@ -363,7 +374,8 @@ b0(%0: ptr, %1: int):
 `questlang/ssa/parser` reads the text back into a unit, values keeping their numbers, so that printing what it reads
 prints what it read: with `QUEST_CHECK_IR=1` the driver reads back the SSA it prints and reports any difference, so
 every golden is checked to read back as itself. A pass is tested on SSA written as text: the questlang tests
-`ssa_promote`, `ssa_escape`, `ssa_valuenumbers`, `ssa_accumulate`, `ssa_tailcalls`, and `ssa_tailjumps` read small
+`ssa_promote`, `ssa_escape`, `ssa_valuenumbers`, `ssa_selects`, `ssa_accumulate`, `ssa_tailcalls`, and `ssa_tailjumps`
+read small
 functions, run their pass and the verifier, and print the functions before and after; and a program's SSA can be cut
 down to the functions that show a bug.
 
