@@ -1,3 +1,46 @@
+(* Integers of any size, written in Quest on 64-bit limbs; the interface
+ * describes the operations.
+ *
+ * Representation: a value is an Array(word.T) holding its two's complement
+ * in base 2^64, least significant limb first, the last limb signed (T,
+ * below). Its length is canonical, so every Int is exactly a one-limb array.
+ * Each operation therefore uses Int's arithmetic when both operands have one
+ * limb, and the limbwise loops only when they don't or the result overflows.
+ * A shorter operand is read past its end as its sign extension (0 or all
+ * ones) rather than copied to the longer's length.
+ *
+ * No state: the module keeps no scratch arrays or caches, so it is safe on
+ * several processors at once. Each operation allocates the most limbs its
+ * result can need, bounded from its operands' lengths la and lb:
+ *   - add and sub: one more than the longer, unless the last limbs show that
+ *     no carry can reach it (roomy);
+ *   - mul: la + lb;
+ *   - division: la - lb + 2 for the quotient and lb + 1 for the remainder;
+ *   - a left shift: la, plus the shift's whole limbs, plus one.
+ * It fills that array, and copies the result into a shorter one when it turns
+ * out shorter (finish). The copy takes linear time, against multiplication's
+ * and division's quadratic time. The array dropped is meant to be cheap under
+ * a generational collector (docs/collector.md). quest_array_new skips the
+ * fill of an array of zeros, so allocating at the bound costs no stores.
+ *
+ * Algorithms:
+ *   - multiplication: schoolbook, with word.mul and word.mulHi for each limb
+ *     product (a umulh instruction on arm64), treating both operands as
+ *     unsigned and correcting for a negative one (mulLimbs);
+ *   - division: Knuth's algorithm D on magnitudes, each quotient limb taken
+ *     by Möller and Granlund's division by a precomputed reciprocal
+ *     (section 5);
+ *   - decimal: 18 digits at a time (section 6);
+ *   - gcd: Euclid's algorithm.
+ * Karatsuba multiplication is left until a program's sizes call for it.
+ *
+ * Carries are bit(word.lt(sum operand)). Through C, clang makes each a
+ * conditional select. The arm64 backend makes each a branch, which
+ * mispredicts about half the time. A carry computed from the operands' top
+ * bits (Hacker's Delight, section 2-13) is branch-free on arm64 but was
+ * slower through C (docs/benchmarks.md section 15), so the code keeps the
+ * comparison *)
+
 module bignum : Bignum
 import
     util/maybe : util/Maybe
@@ -9,10 +52,11 @@ import
 export
     (* A value is its two's complement representation in base 2^64, least
      * significant limb first: every limb but the last is unsigned, and the
-     * last is signed. Its length is canonical (docs/bignum.md section 2): a
-     * value is never empty, and its last limb is never a redundant sign
-     * extension, so every Int is exactly a one-limb array and every value has
-     * one representation. No array is changed once it is returned. *)
+     * last is signed. Its length is canonical: a value is never empty, and
+     * its last limb is never a redundant sign extension (a 0 after a limb
+     * whose high bit is clear, or all ones after one whose high bit is set),
+     * so every Int is exactly a one-limb array and every value has one
+     * representation. No array is changed once it is returned. *)
     Let T = Array(word.T)
     (* A limb, or a limb of a magnitude: unsigned limbs of |t| *)
     Let L = word.T

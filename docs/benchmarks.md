@@ -13,8 +13,8 @@ Quest has two sets of benchmarks:
 This document describes the MLton suite, records the baseline taken on 2026-10-28, lists what profiling the slowest
 benchmarks found and what could be done about it, compares the C and arm64 backends (§4 to §6), measures the inliner
 (§7), times every backend and the inliner's settings at one commit (§11), measures the Jupyter kernel's interrupt checks
-(§12), times the SSA's backends after the arm64 review (§13), and measures the SSA's loops of accumulated recursion and
-mutual tail calls (§14).
+(§12), times the SSA's backends after the arm64 review (§13), measures the SSA's loops of accumulated recursion and
+mutual tail calls (§14), and times the library's arbitrary-precision integers (§15).
 
 ## 1. The MLton suite
 
@@ -389,7 +389,9 @@ the suite's own bignums in Quest: base 10^9 limbs in arrays of 64-bit `Int`, eve
 smith-normal-form's arithmetic never reaches GMP. The generated loops are already tight (clang divides by the base by
 multiplying by its reciprocal: making `base` a literal changed nothing, tried); the gap is the representation. A
 native bignum in the runtime (GMP, or 32-bit limbs with 64-bit intermediate products) with a small-value fast path
-would close most of it, for these two benchmarks only.
+would close most of it, for these two benchmarks only. *Done* differently (2026-11-04, §15): the library's
+`util/bignum`, in Quest on 64-bit limbs with `word.mulHi`, replaced `support/intinf`, and the two programs take 14 and
+17 times MLton's time through C.
 
 ### 3.8. Not opportunities
 
@@ -1092,3 +1094,66 @@ Each time is the least user time of the five rounds, and the ratio is to C's:
 
 Scaled by these ratios, §13's 8.89 times C's time for fib through arm64 would be about 6.2, and even-odd's 3.36 about
 1.7; the rest of fib's is the count clang hoists. The suite was not retaken, as no other program changed.
+
+## 15. The library's arbitrary-precision integers (2026-11-04)
+
+pidigits and smith-normal-form use `util/bignum` (`lib/util/bignum.mod.quest`) in place of the suite's own
+`support/intinf`, which is deleted (§3.7). The new library holds a value as its two's complement on 64-bit limbs in an
+`Array(word.T)`, does Int arithmetic when both operands have one limb, and multiplies limbs with `word.mulHi`, one
+`umulh` on arm64. The programs' algorithms are unchanged.
+
+### 15.1. How they were taken
+
+`run.py time --scale 0.25 --timeout 1800`, one run each, the two programs alone, with `--backend c` (and `--clean`),
+`ssac`, and `arm64`, each waiting until the load average had been under 4 for two minutes. The collector is still
+libgc, which is not generational. The library allocates each result at its largest possible length and copies it
+when it turns out shorter, counting on a generational collector to make that cheap, so these times are to be taken
+again under the new collector ([collector.md](collector.md)).
+
+- `fd1f5a71`: the library. The load was 2.3 to 4.9.
+- `fd1fedee`: `quest_array_new` skips the fill of an array whose initial word is zero. The memory is zeroed already,
+  and the library allocates every result as such an array. Other worktrees' builds raised the load to 89 during C's
+  smith-normal-form, whose time (141.3 s) is left out, and to 11.9 by the end of arm64's.
+
+The times are in `benchmarks/mlton/baselines/2026-11-04/`, `quest-{c,ssac,arm64}-{fd1f5a71,fd1fedee}.jsonl`.
+
+### 15.2. Times
+
+Seconds, with §13's times at `42ba562c` for the suite's library, and each time over MLton's (pidigits 0.82 s,
+smith-normal-form 4.03 s):
+
+| Program | Backend | `support/intinf` (§13) | `util/bignum` | Faster | / MLton | Without the fill |
+|---|---|--:|--:|--:|--:|--:|
+| pidigits | C | 35.22 | 11.26 | 3.1x | 13.7 | 10.06 |
+| | ssac | 35.20 | 11.98 | 2.9x | 14.6 | 11.52 |
+| | arm64 | 43.63 | 18.26 | 2.4x | 22.3 | 17.61 |
+| smith-normal-form | C | 764.78 | 70.05 | 10.9x | 17.4 | (load) |
+| | ssac | 766.0 | 66.49 | 11.5x | 16.5 | 67.20 |
+| | arm64 | 991.5 | 360.17 | 2.8x | 89.4 | 370.97 |
+
+These two programs alone move §13's geometric means of time over MLton's from 3.47 to about 3.21 through C, from 2.79
+to 2.58 through ssac, and from 3.63 to 3.48 through arm64.
+
+- **smith-normal-form spends 95 percent of its time in `mulLimbs`'s inner loop** (`sample`), through C and arm64
+  alike. The numbers grow to many limbs, and the multiplications are the bulk of the work.
+- **arm64 is 5.1 times slower than C on smith-normal-form,** in the same loop. Each carry is
+  `bit(word.lt(sum operand))`. clang compiles it to `adds` and `csel`; arm64's select makes it a compare and branch,
+  which mispredict about half the time, as a carry is about as likely as not. The loop also loads `zeroW` and `oneW`,
+  which are module globals, at each use. A carry computed from the operands' top bits instead (Hacker's Delight,
+  section 2-13, without a comparison) took arm64's smith-normal-form to 144.6 s but C's to 115.9 s and pidigits'
+  through C to 14.23 s, so the library keeps the comparison. An if-conversion in the arm64 backend, making
+  `if b then 1 else 0` a `cset`, is what it calls for.
+- **pidigits spends about 18 percent of its time allocating and collecting** through C (`sample`): `GC_mark_from` 8
+  percent, `quest_array_new` 5, zeroing 3, the rest in libgc. Skipping the fill gained 4 to 11 percent; smith-normal-
+  form, which allocates far less for its work, did not move.
+
+### 15.3. What the plan left out
+
+- **Atomic allocation of arrays without pointers** (`Array(Int)`, `Array(Real)`, `Array(word.T)`, and the like), which
+  libgc then does not scan: `GC_mark_from`'s 8 percent of pidigits is its ceiling there. Every array is allocated by
+  `quest_array_new` with `quest_alloc`, scanned, and the element type is not known at that call. (No compiler emits
+  `quest_alloc_atomic`, though [collector.md](collector.md) §1 lists `Array(Int)` among its uses.) The collector's
+  step 1, which gives every allocation a layout, is where an array of scalars gets one without pointers; the plan
+  leaves it to that.
+- **`word.copy`**, a `memmove` of limbs: the library's copies take linear time against the multiplications' and
+  divisions' quadratic time, and the profiles put the time in those loops, so it was not added.

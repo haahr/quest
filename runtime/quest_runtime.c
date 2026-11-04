@@ -200,7 +200,7 @@ QArray *quest_array_new(int64_t len, QVal init_val) {
     arr->length = len;
     /* quest_alloc's memory is zeroed already: an array of zeros (0, 0.0,
        false, nil) needs no fill, which an arbitrary-precision number's limbs
-       are, allocated at their largest and filled in (docs/bignum.md) */
+       are, allocated at their largest and filled in (lib/util/bignum) */
     if (init_val.u != 0) {
         for (int64_t i = 0; i < len; ++i) {
             arr->data[i] = init_val;

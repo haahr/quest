@@ -72,7 +72,7 @@ exactly what its conversion does. No recorded output depends on those bits.
 - An SML `ref` that a closure captures was a tuple with a `var` field, since closures could not capture `var` locals
   until 2026-10-28; a conversion may still do so.
 - SML's formatting of reals (`Real.toString`, `Real.fmt`) comes from `support/`, checked against MLton; its `IntInf`
-  is the library's `util/bignum` (docs/bignum.md), as MLton's is its own library's.
+  is the library's `util/bignum` (`lib/util/bignum.mod.quest`), as MLton's is its own library's.
 - Where Quest lacks something the original uses, the header says what replaces it. Quest cannot read the clock: zern,
   tensor, and model-elimination, which time their work, read 0.
 

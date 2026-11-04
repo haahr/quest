@@ -1,5 +1,5 @@
 """Generates tests/source/stdlib/bignum_operations.quest, the test of util/bignum
-(docs/bignum.md), and the output Python's integers say it must print.
+(lib/util/bignum), and the output Python's integers say it must print.
 
 The program prints each value in full with its one-operand results; for each
 two-operand operation and each of a subset of the values as first operand, a
@@ -158,7 +158,7 @@ def program(big):
     }
     ops = "\n".join(f'    {"if" if i == 0 else "elsif"} stringOp.equal(name "{n}") then {calls[n]}'
                     for i, n in enumerate(names)) + '\n    else bignum.fromInt(0) end'
-    return f'''(* Standard library: util/bignum (docs/bignum.md), against Python's integers:
+    return f'''(* Standard library: util/bignum, against Python's integers:
  * each value in full with its one-operand results, then for each two-operand
  * operation and each first operand of a subset a hash of its results with
  * each of the subset as second, parses of strings, and products and
