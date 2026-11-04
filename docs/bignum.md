@@ -58,27 +58,33 @@ two's complement values (decided 2026-11-03), all written in Quest:
 | `toString`, `fromString` | `conv` | Chunks of 19 decimal digits, by 10^19 |
 | `fromInt`, `toInt` | The limb | `overflow` |
 | `fromWord`, `toWord` | The limb, if not negative, else `overflow` | Two limbs, the last 0, else `overflow` |
+
+`toWord` returns the word whose value is the integer's, for 0 to 2^64 - 1, and raises `overflow` for any other,
+negative values included (decided 2026-11-03).
 | `andBits`, `orBits`, `xorBits`, `notBits` | `word`'s | Limbwise, the shorter sign-extended (§2) |
 | `shiftLeft`, `shiftRight` (arithmetic) | `Int` shift, if it fits | Whole limbs, then a bit shift across limbs |
 | `pow` (`Int` exponent) | | Repeated squaring |
-| `gcd` | Euclid on `Int` | Euclid by division (Lehmer's if a program needs it) |
+| `gcd` | Euclid on `Int` | Euclid's algorithm, by `rem` |
 
 - **Signed high words.** `word.mulHi` is unsigned; the signed high word of `a * b` is `mulHi(a b)`, less `b` if `a`
   is negative and less `a` if `b` is.
 - **Multiplication** treats both arrays as unsigned and corrects the product as the signed high word above does: less
   `b` shifted by `extent a` limbs if `a` is negative, less `a` shifted by `extent b` if `b` is. Karatsuba is left
   until a program's sizes call for it.
-- **Division** works on magnitudes: a negative operand is negated into scratch space, and the quotient and remainder
+- **Division** works on magnitudes: a negative operand is negated into a new array, and the quotient and remainder
   negated after, `div` and `mod` adjusted from `quot` and `rem` by the signs. A one-limb divisor divides each limb
   by a precomputed reciprocal (Möller and Granlund, *Improved division by invariant integers*, 2011), which needs
   only `mul`, `mulHi`, `add`, and `lt`; algorithm D normalizes the divisor with `word.countLeadingZeros` and takes
   each quotient limb by the same step.
-- **Result lengths.** An array cannot shrink, so a result made longer than its canonical length is copied:
-  - `add` and `sub` make `max(la lb)` limbs, and copy into one more only when the last limb overflows, or into
-    fewer when cancellation leaves redundant limbs;
-  - `mul` and division compute in a scratch array the module owns and grows, and copy the result at its length (an
-    O(n) copy of O(n^2) work). The scratch array is the module's state, which is safe while Quest programs run on one
-    thread.
+- **Result lengths.** The module keeps no state, so that it is safe on several processors at once: no scratch
+  arrays or caches. Each operation allocates the most limbs its result can need, bounded from its operands, and
+  copies the result into a shorter array when it turns out shorter. The bound may cost a little early work to keep
+  it tight: `add` and `sub` take `max(la lb) + 1` limbs, less one when the operands' last limbs show that the last
+  cannot carry; `mul` takes `la + lb`; `neg` and `abs` take `la + 1`, and `quot` `la - lb + 2`, for the one value of each length
+whose negation is a limb longer (-2^(64 la - 1), as `int.minInt` is for one limb); `rem` takes `lb`; a shift by k bits takes `la` plus
+  k's whole limbs plus one. An array made and dropped at once is cheap under a generational collector
+  ([collector.md](collector.md)), which is what this plan counts on; the copy is O(n), against `mul`'s and
+  division's O(n^2).
 
 ## 4. Primitives
 
