@@ -12,9 +12,10 @@ Xcode; this needs only clang, and works on any backend's binaries.
     python3.11 tools/perf/profile.py --count 2 --runs 5 .build/perf/zebra.ssac
 
 The binary runs as tools/perf/timeit.py runs it, with tools/perf/pcprof.c
-loaded (built into .build/perf/ when it is older than its source). Samples
-in the kernel (the collector's marker threads wait there) are left out of
-the table unless --kernel is given. A program migrates between performance
+loaded (built into .build/perf/ when it is older than its source), which
+samples each running thread every interval. Samples in the kernel (threads
+running a system call) are left out of the table unless --kernel is given;
+a blocked thread is not sampled. A program migrates between performance
 and efficiency cores, so compare where the time goes within a binary, not
 the totals of two runs or two binaries; timeit.py compares those.
 """
@@ -83,7 +84,7 @@ def main() -> int:
     parser.add_argument("--listing", action="store_true", help="the whole function, not only its hottest")
     parser.add_argument("--top", type=int, default=30, help="how many symbols or instructions (default 30)")
     parser.add_argument("--runs", type=int, default=3)
-    parser.add_argument("--interval", type=int, default=1000, help="microseconds of CPU time (default 1000)")
+    parser.add_argument("--interval", type=int, default=1000, help="microseconds between samples (default 1000)")
     parser.add_argument("--scale", type=float, default=DEFAULT_SCALE, help="of the suite's counts (default 1/32)")
     parser.add_argument("--count", type=int, help="the count to run the benchmark at")
     parser.add_argument("--kernel", action="store_true", help="count samples in the kernel too")

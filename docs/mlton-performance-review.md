@@ -58,7 +58,9 @@ are from `benchmarks/mlton/allocations.py --whole-program --backend arm64`, and 
 `tools/perf/profile.py` put 88 percent of wc-scanStream's samples in the kernel, in `__read_nocancel`. That cannot
 be right: the run spends 0.05 s of its 2.9 in the system, whether or not the collector has marker threads
 (`GC_MARKERS=1` changes nothing). macOS's `sample` gave the distribution in §3.2, which agrees with the allocation
-counts. The other three profiles agree with `sample`.
+counts. The other three profiles agree with `sample`. The sampler now reads running threads' program counters
+itself rather than taking `SIGPROF`, whose delivery macOS defers to the next system call's return (profiling.md §4),
+and its profile of wc-scanStream agrees with `sample`'s.
 
 ### 2.2. Time
 

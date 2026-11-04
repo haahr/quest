@@ -55,8 +55,12 @@ in the kernel. On a loaded machine, differences under about 5 percent are noise;
 ## 4. Where the time goes
 
 `sample(1)` attributes time to functions only, and Instruments needs Xcode. `profile.py` loads a small sampler
-(`tools/perf/pcprof.c`, built into `.build/perf/pcprof.dylib`) into the program with `DYLD_INSERT_LIBRARIES`. It
-records the program counter every millisecond of CPU time, and names each sample's image and symbol at exit:
+(`tools/perf/pcprof.c`, built into `.build/perf/pcprof.dylib`) into the program with `DYLD_INSERT_LIBRARIES`. A
+thread of its own wakes every millisecond, records the program counter of each of the program's threads that is
+running, as `sample` does, and names each sample's image and symbol at exit. It does not use `SIGPROF`: macOS posts a
+profiling timer's signal when the thread next returns to user mode, usually from a system call, so a program that
+calls the system now and then had its samples piled on the calls (wc-scanStream showed 88 percent in `read`, where it
+spends 2).
 
 ```bash
 python3.11 tools/perf/profile.py .build/perf/life.arm64
@@ -78,8 +82,11 @@ Reading it:
   memory.
 - **Compare within a binary, not totals across runs.** A process migrates between performance and efficiency cores,
   so the totals of two runs differ by more than their code does; `timeit.py` compares totals.
-- **Kernel samples are left out** unless `--kernel` is given. The collector's marker threads wait in the kernel, and
-  a signal for the process may land on one of them.
+- **Kernel samples are left out** unless `--kernel` is given. A thread blocked in the kernel, such as an idle marker
+  thread of the collector's, is not sampled at all; a kernel sample is of a thread running a system call, at its
+  user program counter in `libsystem_kernel`.
+- **The count of samples is wall time,** a sample a millisecond for each running thread, so a loaded machine, on
+  which the program waits for a core, gives fewer, and the collector's marker threads add theirs while they mark.
 
 ## 5. Instruction mix
 
