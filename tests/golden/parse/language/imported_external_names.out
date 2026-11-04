@@ -1,0 +1,186 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('word') 'Word')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (LetValueBinding
+      :name 'ws'
+      :value (ExprArray
+        :elements (
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'word')
+              :field 'fromInt'
+            )
+            :args (
+              (ExprInt 1 '1')
+            )
+          )
+          (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'word')
+              :field 'fromInt'
+            )
+            :args (
+              (ExprInt 2 '2')
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprFor
+        :var_name 'i'
+        :start (ExprInt 0 '0')
+        :stop (ExprInfix
+          :left (ExprApp
+            :func (ExprId 'extent')
+            :args (
+              (ExprId 'ws')
+            )
+          )
+          :op '-'
+          :right (ExprInt 1 '1')
+        )
+        :body (ExprInfix
+          :left (ExprIndex
+            :target (ExprId 'ws')
+            :index (ExprId 'i')
+          )
+          :op ':='
+          :right (ExprApp
+            :func (ExprSelect
+              :target (ExprId 'word')
+              :field 'add'
+            )
+            :args (
+              (ExprIndex
+                :target (ExprId 'ws')
+                :index (ExprId 'i')
+              )
+              (ExprIndex
+                :target (ExprId 'ws')
+                :index (ExprId 'i')
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'first'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'a'
+            :type_annot (TypeArray
+              :element_type (TypePath ('A'))
+            )
+            :mode VALUE
+          )
+        )
+        :return_type (TypePath ('A'))
+        :body (ExprIndex
+          :target (ExprId 'a')
+          :index (ExprInt 0 '0')
+        )
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindType)
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindType)
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'a'
+            :bound (KindPower
+              :bound (TypeArray
+                :element_type (TypePath ('A'))
+              )
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('A'))
+      )
+    )
+    (LetValueBinding
+      :name 'w'
+      :value (ExprApp
+        :func (ExprId 'first')
+        :args (
+          (ExprId 'ws')
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'annotated'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'word')
+          :field 'mul'
+        )
+        :args (
+          (ExprId 'w')
+          (ExprId 'w')
+        )
+      )
+      :type_annot (TypePath ('word' 'T'))
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'word')
+                    :field 'toInt'
+                  )
+                  :args (
+                    (ExprId 'annotated')
+                  )
+                )
+              )
+            )
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+    )
+  )
+)

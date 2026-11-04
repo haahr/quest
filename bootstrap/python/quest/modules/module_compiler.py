@@ -308,6 +308,7 @@ def compile_module_file(
             stem = mod_path.stem
 
         env = Environment(builtin_registry=BuiltinModuleRegistry)
+        env.compiling_unit = True
         env.units = UnitGraph(resolver=resolver or Resolver())
         env.current_dir = mod_path.parent
         env.include_paths = list(include_paths) if include_paths else []

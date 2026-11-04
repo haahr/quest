@@ -585,8 +585,15 @@ def elaborate_module(
     unit = env.units.unit(UnitKind.MODULE, canon)
     module_export_scope = unit.export_scope
     if module_export_scope is None:
+        # An external type is named as extract_module_external_types names it,
+        # and as runs that type modules through their interfaces have it
+        # (module.T); in a unit file's compile, as its binding names it
         concrete_defs = {
-            name: sym.definition
+            name: (
+                QExternalType(name=f"{decl.name}.{name}", c_type=sym.definition.c_type)
+                if isinstance(sym.definition, QExternalType) and not env.compiling_unit
+                else sym.definition
+            )
             for name, sym in module_internal_scope.types.items()
             if sym.definition is not None
         }

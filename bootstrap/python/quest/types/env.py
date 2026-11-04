@@ -137,6 +137,10 @@ class Environment:
         # Whether the bindings being elaborated are an unsound module's, the
         # only place 'external' may be used (docs/modules.md §4.4)
         self.in_unsound_module = False
+        # Whether a unit file is being compiled alone (-c), in which an
+        # imported module's external types are named as their bindings name
+        # them; elsewhere they are named module.T, as an interface's are
+        self.compiling_unit = False
         # Whether the bindings being elaborated are an interactive input's (the
         # REPL's, or the file -i runs), whose top-level lets make slots that a
         # later let of the same type redefines (docs/repl.md section 6); and the

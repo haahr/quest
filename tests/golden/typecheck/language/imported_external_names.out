@@ -1,0 +1,97 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('word') : 'Word')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedLetValue 'ws' :type Array(word.T)
+      :value (TypedArray :type Array(word.T)
+        :elements (
+          (TypedApp :type word.T
+            :func (TypedSelect 'fromInt' :type Fun(n: Int): word.T
+              :target (TypedVar 'word' :type Module 'word'))
+            :args (
+              (TypedInt 1 :type Int)
+            ))
+          (TypedApp :type word.T
+            :func (TypedSelect 'fromInt' :type Fun(n: Int): word.T
+              :target (TypedVar 'word' :type Module 'word'))
+            :args (
+              (TypedInt 2 :type Int)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInfix '-' :type Int
+          :left (TypedApp :type Int
+            :func (TypedTypeApp [word.T] :type Fun(a: Array(word.T)): Int
+              :func (TypedVar 'extent' :type All(A :: TYPE) Fun(a: Array(A)): Int))
+            :args (
+              (TypedVar 'ws' :type Array(word.T))
+            ))
+          :right (TypedInt 1 :type Int))
+        :body (TypedIndexAssign
+          :target (TypedVar 'ws' :type Array(word.T))
+          :index (TypedVar 'i' :type Int)
+          :value (TypedApp :type word.T
+            :func (TypedSelect 'add' :type Fun(w1: word.T w2: word.T): word.T
+              :target (TypedVar 'word' :type Module 'word'))
+            :args (
+              (TypedIndex :type word.T
+                :target (TypedVar 'ws' :type Array(word.T))
+                :index (TypedVar 'i' :type Int))
+              (TypedIndex :type word.T
+                :target (TypedVar 'ws' :type Array(word.T))
+                :index (TypedVar 'i' :type Int))
+            )))))
+    (TypedLetValue 'first' :type All(A :: TYPE) Fun(a: Array(A)): A
+      :value (TypedFun :params (('a' : Array(A))) :type All(A :: TYPE) Fun(a: Array(A)): A
+        :body (TypedIndex :type A
+          :target (TypedVar 'a' :type Array(A))
+          :index (TypedInt 0 :type Int))))
+    (TypedLetValue 'w' :type word.T
+      :value (TypedApp :type word.T
+        :func (TypedTypeApp [word.T] :type Fun(a: Array(word.T)): word.T
+          :func (TypedVar 'first' :type All(A :: TYPE) Fun(a: Array(A)): A))
+        :args (
+          (TypedVar 'ws' :type Array(word.T))
+        )))
+    (TypedLetValue 'annotated' :type word.T
+      :value (TypedApp :type word.T
+        :func (TypedSelect 'mul' :type Fun(w1: word.T w2: word.T): word.T
+          :target (TypedVar 'word' :type Module 'word'))
+        :args (
+          (TypedVar 'w' :type word.T)
+          (TypedVar 'w' :type word.T)
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedSelect 'output' :type writer.T
+            :target (TypedVar 'writer' :type Module 'writer'))
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedSelect 'toInt' :type Fun(w: word.T): Int
+                    :target (TypedVar 'word' :type Module 'word'))
+                  :args (
+                    (TypedVar 'annotated' :type word.T)
+                  ))
+              ))
+            :right (TypedString '\n' :type String))
+        )))
+  ))

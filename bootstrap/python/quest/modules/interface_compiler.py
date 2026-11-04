@@ -610,6 +610,7 @@ def _compile_interface_file(
         decl = unit_declaration(prog, file_path)
 
         env = Environment(builtin_registry=BuiltinModuleRegistry)
+        env.compiling_unit = True
         env.units = UnitGraph(resolver=resolver)
         env.include_paths = list(include_paths) if include_paths else []
         b_dir = None
