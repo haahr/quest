@@ -135,6 +135,20 @@ export
             when readline.interrupted then model.raiseException(:Value primitives.readlineInterrupted maybe.none(:Int))
             end
 
+    (* The high 64 bits of the unsigned product of a and b, from their 32-bit
+     * halves: word.mulHi, which the release that compiles stage 1 against
+     * its own lib/ (docs/release-compiler.md section 1) does not yet have *)
+    let mulHi(a: word.T b: word.T): word.T =
+        begin
+            let mask = word.fromInt(0xFFFFFFFF)
+            let aLo = word.andBits(a mask) let aHi = word.shift(a ~32)
+            let bLo = word.andBits(b mask) let bHi = word.shift(b ~32)
+            let low = word.mul(aLo bLo)
+            let middle1 = word.add(word.mul(aHi bLo) word.shift(low ~32))
+            let middle2 = word.add(word.mul(aLo bHi) word.andBits(middle1 mask))
+            word.add(word.add(word.mul(aHi bHi) word.shift(middle1 ~32)) word.shift(middle2 ~32))
+        end
+
     (* ======================================================================
      * 2. The table
      * ====================================================================== *)
@@ -433,6 +447,7 @@ export
             fn("quest_word_add" fun(a: Args): Value vWord(word.add(wd(a[0]) wd(a[1]))))
             fn("quest_word_sub" fun(a: Args): Value vWord(word.sub(wd(a[0]) wd(a[1]))))
             fn("quest_word_mul" fun(a: Args): Value vWord(word.mul(wd(a[0]) wd(a[1]))))
+            fn("quest_word_mul_hi" fun(a: Args): Value vWord(mulHi(wd(a[0]) wd(a[1]))))
             fn("quest_word_div_val" fun(a: Args): Value vWord(word.div(wd(a[0]) wd(a[1]))))
             fn("quest_word_mod_val" fun(a: Args): Value vWord(word.mod(wd(a[0]) wd(a[1]))))
             fn("quest_word_to_int" fun(a: Args): Value vInt(word.toInt(wd(a[0]))))

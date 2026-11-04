@@ -1,0 +1,47 @@
+(* Standard library: word.mulHi, the high 64 bits of the unsigned 128-bit
+ * product, at the limits of the operands' ranges, and in a loop, so that a
+ * compiler sees it on values it cannot know *)
+
+import word: Word;
+import conv: Conv;
+import writer: Writer;
+
+let show(w: word.T): Ok =
+    begin
+        writer.putString(writer.output conv.int(word.toInt(w)))
+        writer.putString(writer.output "\n")
+    end;
+
+let zero = word.fromInt(0);
+let one = word.fromInt(1);
+let all = word.notBits(zero);
+let high = word.shift(one 63);
+let half = word.shift(one 32);
+
+show(word.mulHi(zero zero));
+show(word.mulHi(word.fromInt(3) word.fromInt(5)));
+show(word.mulHi(all one));
+show(word.mulHi(all word.fromInt(2)));
+show(word.mulHi(all all));
+show(word.mulHi(high word.fromInt(2)));
+show(word.mulHi(high high));
+show(word.mulHi(half half));
+show(word.mulHi(word.sub(half one) word.sub(half one)));
+show(word.mulHi(word.fromInt(~2) word.fromInt(3)));
+
+(* The 128-bit product's high and low words, summed over the pairs of a
+ * table, each word as a pseudo-random one *)
+let ws = array of
+    word.fromInt(0x123456789ABCDEF) word.fromInt(~1) word.fromInt(0x7FFFFFFFFFFFFFFF) word.fromInt(~0x5DEECE66D)
+    word.fromInt(1103515245) word.fromInt(~9223372036854775807 - 1) word.fromInt(0xDEADBEEF) word.fromInt(42)
+end;
+let var hiSum = zero;
+let var loSum = zero;
+for i = 0 upto 7 do
+    for j = 0 upto 7 do
+        hiSum := word.add(hiSum word.mulHi(ws[i] ws[j]))
+        loSum := word.add(loSum word.mul(ws[i] ws[j]))
+    end
+end;
+show(hiSum);
+show(loSum);

@@ -1,0 +1,20 @@
+(* Quest Self-Hosted Compiler: Files in Memory Interface
+ *
+ * Artifacts kept in memory rather than on disk (docs/jit.md section 3.4.1):
+ * the JIT's build directory is root, a path that is never a real directory,
+ * and the files under it are texts in this process, which modules/paths and
+ * config/abi read and write as they would files. A file in memory is never
+ * stale: within a process a unit, once loaded, stays loaded. *)
+
+interface MemoryFiles
+import
+    util/maybe : util/Maybe
+export
+    (* The directory the files in memory are under *)
+    root: String
+    (* Whether path names a file in memory, under root *)
+    isMemory(path: String): Bool
+    (* The text of the file in memory path, if it has been written *)
+    read(path: String): maybe.T(String)
+    write(path: String text: String): Ok
+end

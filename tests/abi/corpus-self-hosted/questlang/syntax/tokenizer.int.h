@@ -135,6 +135,7 @@ typedef QVal (*quest_sig_questlang__syntax__Tokenizer_new)(QVal sm, QVal bag);
 typedef QTuple_QOption_assign_at_723595ebb1959a6e * (*quest_sig_questlang__syntax__Tokenizer_nextToken)(QVal tok);
 typedef QTuple_QOption_assign_at_723595ebb1959a6e * (*quest_sig_questlang__syntax__Tokenizer_peekToken)(QVal tok);
 typedef QVal (*quest_sig_questlang__syntax__Tokenizer_tokenizeAll)(QVal tok);
+typedef QArray * (*quest_sig_questlang__syntax__Tokenizer_keywordNames)(void);
 typedef QString * (*quest_sig_questlang__syntax__Tokenizer_formatDump)(QVal tokensList, QVal sm, QBool showValues);
 #ifdef __cplusplus
 }

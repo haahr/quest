@@ -1,0 +1,33 @@
+(* Quest Self-Hosted Compiler: The JIT's Loader Interface
+ *
+ * docs/jit.md section 3.6: loads encoded units (codegen/arm64/encode) into
+ * the running driver. A session reserves an arena for code, in which every
+ * bl reaches every other, and a region for data; each unit is placed after
+ * the last, its relocations resolved against its own symbols, the exported
+ * symbols of the units loaded before it, and the driver's own (dlsym). A
+ * call or address of a driver symbol goes through a GOT slot in the data
+ * region, a call through a stub in the arena; a thread-local's slot holds the
+ * driver's own descriptor of it, which dlsym gives. Each unit's data is a root
+ * of the collector, and each function's code is registered, so that frames
+ * in it are attributed. Nothing is freed. *)
+
+unsound interface Loader
+import
+    os/value : os/Value
+    questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
+    collections/hashMap : collections/HashMap
+export
+    T::TYPE
+
+    (* What a unit cannot be loaded for: a symbol that resolves nowhere, or a
+     * region full *)
+    loadError: Exception(String)
+
+    (* A session's loader, with codeBytes of arena and dataBytes of data;
+     * raises value.error where code cannot be mapped *)
+    new(codeBytes: Int dataBytes: Int): T
+
+    (* Loads a unit, returning the addresses of its symbols, its own and
+     * those it exports, which later units see *)
+    load(l: T e: encode.Encoded): hashMap.T(String value.T)
+end

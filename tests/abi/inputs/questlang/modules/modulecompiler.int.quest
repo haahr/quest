@@ -1,0 +1,36 @@
+(* Quest Self-Hosted Compiler: The Module Compiler Interface
+ *
+ * bootstrap/python/quest/modules/module_compiler.py: compiles module files
+ * (.mod.quest) into C (<name>.mod.c, which includes its interface's header and
+ * defines the module's record, initializer, and exported functions), an
+ * object (<name>.o, by the host C compiler), and a manifest (<name>.qm). *)
+
+interface ModuleCompiler
+import
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/codegen/choice : questlang/codegen/Choice
+    questlang/common/location : questlang/common/Location
+    questlang/ir/nodes : questlang/ir/Nodes
+    util/maybe : util/Maybe
+export
+    Def ModuleCompileResult = Tuple c: String o: String qm: String end
+
+    (* Compiles a module file: its artifacts go in outputDir, else under
+     * buildDir, else beside it. programDir is the directory of the program the
+     * module is built for, which names units under no include root; res
+     * resolves its imports (a new resolver if none). backends names the backend
+     * that compiles it, which its manifest records. *)
+    compileModuleFile(file: String outputDir: maybe.T(String) includePaths: Array(String) compiler: maybe.T(String)
+        nogc: Bool extraFlags: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
+        res: maybe.T(graph.Resolver) backends: choice.T): ModuleCompileResult
+
+    (* A module file elaborated as compileModuleFile elaborates it, and lowered
+     * to a unit of the module alone, for the JIT to compile and load
+     * (docs/jit.md section 3.4); with its source, and the module files it
+     * imports (each module's canonical name and source), which are loaded
+     * before it *)
+    Def ModuleImport = Tuple name: String source: String end
+    Def ModuleUnit = Tuple unit: nodes.Unit sourceMap: location.SourceMap imports: Array(ModuleImport) end
+    moduleFileUnit(file: String includePaths: Array(String) buildDir: maybe.T(String) programDir: maybe.T(String)
+        res: maybe.T(graph.Resolver)): ModuleUnit
+end

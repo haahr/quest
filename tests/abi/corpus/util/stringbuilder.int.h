@@ -4,18 +4,27 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-typedef QVal quest_type_util__StringBuilder_T;
-typedef QVal (*quest_sig_util__StringBuilder_new)(void);
-typedef QVal (*quest_sig_util__StringBuilder_newWithCapacity)(QInt capacity);
-typedef void (*quest_sig_util__StringBuilder_append)(QVal b, QString * s);
-typedef void (*quest_sig_util__StringBuilder_appendChar)(QVal b, QChar c);
-typedef void (*quest_sig_util__StringBuilder_appendInt)(QVal b, QInt n);
-typedef void (*quest_sig_util__StringBuilder_appendReal)(QVal b, QReal r);
-typedef void (*quest_sig_util__StringBuilder_appendBool)(QVal b, QBool val);
-typedef void (*quest_sig_util__StringBuilder_appendWord)(QVal b, uint64_t w);
-typedef QInt (*quest_sig_util__StringBuilder_length)(QVal b);
-typedef void (*quest_sig_util__StringBuilder_clear)(QVal b);
-typedef QString * (*quest_sig_util__StringBuilder_toString)(QVal b);
+#ifndef QUEST_TYPE_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d_TYPEDEF
+#define QUEST_TYPE_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d_TYPEDEF
+typedef struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d;
+#endif
+#ifndef QUEST_TYPE_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d_DEFINED
+#define QUEST_TYPE_Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d_DEFINED
+struct Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d {
+    QClosure * _0;
+    QClosure * _1;
+    QClosure * _2;
+    QClosure * _3;
+    QClosure * _4;
+    QClosure * _5;
+    QClosure * _6;
+    QClosure * _7;
+    QClosure * _8;
+    QClosure * _9;
+    QClosure * _10;
+};
+#endif
+typedef Rec0_QTuple_QClosure_QClosure_6fc01f76fda1044d * (*quest_sig_util__StringBuilder_new)(void);
 #ifdef __cplusplus
 }
 #endif

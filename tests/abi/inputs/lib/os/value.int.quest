@@ -1,0 +1,39 @@
+unsound interface Value
+export
+    (* =========================================================================
+     * Arbitrary Values (Value)
+     *
+     * Cardelli's Value interface (Typeful Programming, appendix), with its
+     * signature unchanged: any value as one word, and the words of memory.
+     * Every slot holds one word, the value's slot representation
+     * (docs/c-representation.md, "Slots"), so new and be take a value to its
+     * word and back. Only an unsound module may import it (docs/modules.md
+     * section 4.4), and neither interpreter runs a program that does
+     * (docs/jit.md section 3.11):
+     *
+     *     let t = tuple let a = 1 let b = 2 end;
+     *     value.be(:Int value.fetch(value.new(:Tuple a, b: Int end t) 8))  (* 2 *)
+     * ====================================================================== *)
+
+    (* An arbitrary value: one word *)
+    T::TYPE
+
+    (* Raised when an operation cannot be carried out: a null address, or one
+     * that is not a multiple of length *)
+    error: Exception(Ok)
+
+    (* The size of a T, in bytes: 8 *)
+    length: Int
+
+    (* Any value as a T *)
+    new(A::TYPE a: A): T
+
+    (* A T as a value of any type. Unsound! *)
+    be(A::TYPE v: T): A
+
+    (* The word at addr + displ bytes *)
+    fetch(addr: T displ: Int): T
+
+    (* Store a word at addr + displ bytes. Unsound! *)
+    store(addr: T displ: Int w: T): Ok
+end

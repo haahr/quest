@@ -228,11 +228,11 @@ export
             case i.op
                 when opConst then maybe.some(:Int i.imm)
                 when opNull then maybe.some(:Int 0)
-                when opRealConst, opSymbol, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl,
-                    opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub, opFmul,
-                    opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits, opBitsReal,
-                    opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal,
-                    opFromVal then
+                when opRealConst, opSymbol, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor,
+                    opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFadd, opFsub,
+                    opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN, opIntToPtr, opPtrToInt, opRealBits,
+                    opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd,
+                    opThreadLocal, opToVal, opFromVal then
                     maybe.none(:Int)
             end
         end
@@ -311,10 +311,10 @@ export
             when opFlt then minst.condMi
             when opFle then minst.condLs
             when opIsNaN then minst.condVs
-            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor,
-                opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal,
-                opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal,
-                opFromVal then
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd,
+                opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits,
+                opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal,
+                opToVal, opFromVal then
                 minst.condEq
         end
     let isComparison(op: ssa.Opcode): Bool =
@@ -322,19 +322,19 @@ export
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opFeq, opFlt, opFle, opFgt, opFge,
             opIsNaN then
                 true
-            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor,
-                opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal,
-                opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal,
-                opFromVal then
+            when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd,
+                opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits,
+                opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal,
+                opToVal, opFromVal then
                 false
         end
     let isRealComparison(op: ssa.Opcode): Bool =
         case op
             when opFeq, opFlt, opFle, opFgt, opFge, opIsNaN then true
             when opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq, opPne, opConst, opRealConst, opSymbol, opNull,
-                opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opFadd, opFsub,
-                opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opLoad, opStore,
-                opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal, opFromVal then
+                opSlot, opAdd, opSub, opMul, opMulHiU, opDiv, opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opFadd,
+                opFsub, opFmul, opFdiv, opIntToPtr, opPtrToInt, opRealBits, opBitsReal, opSext8, opZext8, opLoad,
+                opStore, opCall, opCallIndirect, opCopy, opPtrAdd, opThreadLocal, opToVal, opFromVal then
                 false
         end
     (* The bit an and of a constant with one bit set tests, and the value it
@@ -356,10 +356,10 @@ export
                     let d = maybe.unwrap(:ssa.Inst defs[a])
                     case d.op
                         when opIntToPtr, opPtrToInt, opCopy, opToVal, opFromVal then source(d.args[0])
-                        when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opDiv, opRem, opAnd,
-                            opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe, opUlt, opPeq,
-                            opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge, opIsNaN,
-                            opRealBits, opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect,
+                        when opConst, opRealConst, opSymbol, opNull, opSlot, opAdd, opSub, opMul, opMulHiU, opDiv,
+                            opRem, opAnd, opOr, opXor, opShl, opLshr, opAshr, opEq, opNe, opLt, opLe, opGt, opGe,
+                            opUlt, opPeq, opPne, opFadd, opFsub, opFmul, opFdiv, opFeq, opFlt, opFle, opFgt, opFge,
+                            opIsNaN, opRealBits, opBitsReal, opSext8, opZext8, opLoad, opStore, opCall, opCallIndirect,
                             opPtrAdd, opThreadLocal then
                             a
                     end
@@ -543,6 +543,7 @@ export
                 when opAdd, opPtrAdd then add(s d i.args[0] i.args[1])
                 when opSub then sub(s d i.args[0] i.args[1])
                 when opMul then arith(minst.arithMul)
+                when opMulHiU then arith(minst.arithUmulh)
                 when opDiv then arith(minst.arithSdiv)
                 (* Fused into the branch on it, as a test of a bit or a
                  * conjunction of comparisons, or with a logical immediate *)

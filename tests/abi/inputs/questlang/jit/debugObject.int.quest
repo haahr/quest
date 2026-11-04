@@ -1,0 +1,20 @@
+(* Quest Self-Hosted Compiler: The JIT's Debugging Objects Interface
+ *
+ * docs/jit.md section 3.12: what a debugger is told of a unit the JIT loaded,
+ * as an object file in memory that lldb reads through the GDB JIT interface
+ * (os/code's registerDebugObject): a Mach-O arm64 object whose one section of
+ * code is the unit's, at the address it was loaded at, so that nothing is
+ * relocated; a symbol for each function; and DWARF 4, a compile unit with a
+ * subprogram for each function and a line table from the encoder's positions
+ * (codegen/arm64/encode's lines), as codegen/arm64/asm writes them for a
+ * unit assembled to a file (docs/arm64.md section 3.16). *)
+
+interface DebugObject
+import
+    questlang/codegen/arm64/encode : questlang/codegen/arm64/Encode
+export
+    (* The object describing e, whose code was loaded at codeAddress, its
+     * source files the absolute paths files (e's, as the debugger should find
+     * them), as a string of its bytes *)
+    object(e: encode.Encoded codeAddress: Int files: Array(String)): String
+end

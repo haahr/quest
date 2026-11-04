@@ -1,0 +1,40 @@
+(* Quest Self-Hosted Compiler: C Spellings Interface
+ *
+ * bootstrap/python/quest/codegen/c/types.py: C spellings for the C backend:
+ * the C types of representations (codegen/layout), function pointer types,
+ * QVal wrapping and unwrapping, loading from and storing into aggregate slots
+ * (a record or variant boxed), and a descriptor's C expression. How each type
+ * is described at run time, and the names of records and offset tables, are
+ * codegen/staticdata's. *)
+
+interface Types
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/codegen/staticdata : questlang/codegen/StaticData
+export
+    (* The C expression of a descriptor: expr, or the address of
+     * quest_type_<tag> *)
+    cExpr(f: staticdata.DescriptorForm): String
+
+    (* The C type of a value of t: its representation *)
+    qtypeToCType(t: model.Type): String
+
+    (* A value as a QVal word, and back (a value of a bounded type parameter is
+     * a value of its bound) *)
+    qvalWrap(e: String t: model.Type): String
+    shapeQvalWrap(e: String s: shapes.Shape): String
+    qvalUnwrap(e: String t: model.Type): String
+    shapeQvalUnwrap(e: String s: shapes.Shape): String
+    (* A value held in a slot (a record or variant read from its box), and a
+     * value as a slot holds it (a record or variant in a new box) *)
+    shapeSlotLoad(e: String s: shapes.Shape): String
+    shapeSlotStore(e: String s: shapes.Shape): String
+    (* A slot's contents as a QVal word, and back (a box is its QVal form) *)
+    shapeSlotToQval(e: String s: shapes.Shape): String
+    shapeQvalToSlot(e: String s: shapes.Shape): String
+
+    (* The C function pointer type a closure of a (possibly polymorphic)
+     * function type is called through *)
+    closureFnPtrType(t: model.Type): String
+end

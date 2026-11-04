@@ -1,0 +1,46 @@
+(* Quest Self-Hosted Compiler: IR Cloning Interface
+ *
+ * Copies of the IR's functions and bodies, with types substituted: every
+ * variable the copy binds is a fresh one (or one it is bound to), and every
+ * other node is copied, except module references and the free variables it
+ * uses. A relabeling cloner also gives the loops and join points the copy binds
+ * fresh labels, so that a copy can sit beside its original in one function
+ * (inlining); specialize's clones are functions of their own, and keep their
+ * labels. *)
+
+interface Clone
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/nodes : questlang/ir/Nodes
+    collections/hashMap : collections/HashMap
+    util/maybe : util/Maybe
+export
+    (* The count of the fresh labels made in a unit *)
+    Def Labels = Tuple var count: Int end
+    Def Cloner = Tuple
+        subst: model.Subst
+        vars: hashMap.T(Int nodes.Variable)
+        labels: hashMap.T(String String)
+        relabeling: maybe.T(Labels)
+    end
+
+    newCloner(subst: model.Subst): Cloner
+    newRelabelingCloner(subst: model.Subst counter: Labels): Cloner
+    newLabels(): Labels
+
+    (* A type with the substitution applied *)
+    ty(c: Cloner t: model.Type): model.Type
+    tys(c: Cloner ts: Array(model.Type)): Array(model.Type)
+    (* A fresh variable for v, which the copy binds in its place *)
+    fresh(c: Cloner v: nodes.Variable): nodes.Variable
+    (* Has the copy use another variable in v's place *)
+    bindVar(c: Cloner v: nodes.Variable to: nodes.Variable): Ok
+    (* The variable the copy uses in v's place *)
+    var1(c: Cloner v: nodes.Variable): nodes.Variable
+    (* Makes fresh variables (and labels, if the cloner relabels) for every
+     * binder in a body and the functions it binds, before the body is
+     * copied *)
+    bindAll(c: Cloner b: nodes.Body): Ok
+    copyBody(c: Cloner b: nodes.Body): nodes.Body
+    copyFunction(c: Cloner f: nodes.Function): nodes.Function
+end

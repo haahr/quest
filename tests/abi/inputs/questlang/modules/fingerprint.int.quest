@@ -1,0 +1,24 @@
+(* Quest Self-Hosted Compiler: Interface Fingerprints Interface
+ *
+ * What JIT code assumes of a unit linked into its host (docs/jit.md section
+ * 3.3.1): a digest of the unit's interface as its .qi records it, of the
+ * fingerprints of the interfaces it imports, and of the ABI version. Each
+ * module unit exports its interface's fingerprint as the C string
+ * qh_<unit>, and the JIT compares that with the fingerprint of the interface
+ * it compiles against. Comments, layout, declaration order, absolute paths,
+ * the producer, and the module's implementation are left out. *)
+
+interface Fingerprint
+import
+    questlang/types/env : questlang/types/Env
+export
+    (* The fingerprint of an interface: its canonical name (util/Maybe), its
+     * .qi's text, and the fingerprint of each interface it imports, by the
+     * path the .qi records the import by. SHA-256, in hexadecimal. *)
+    ofQi(canonical: String qi: String imported: All(path: String) String): String
+
+    (* The fingerprint of interface name, as imported from e's current
+     * directory, from its .qi, brought up to date as the loader does; an
+     * interface without a .qi (a builtin's) is fingerprinted by its name *)
+    ofInterface(name: String e: env.T): String
+end

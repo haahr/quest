@@ -1,0 +1,309 @@
+(* Quest Self-Hosted Compiler: The SSA's Nodes Interface
+ *
+ * The SSA of docs/ssa.md: a function's values, blocks, and stack slots are
+ * numbered densely from 0 and live in tables of the function (docs/arm64.md
+ * section 3.15), so that passes keep their own tables as arrays indexed by
+ * those numbers. Every instruction has one shape: an opcode, argument and
+ * result values, an immediate, a symbol, and for loads, stores, and calls the
+ * few fields they need. *)
+
+interface Nodes
+import
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    (* A value's type (docs/ssa.md section 1): val is a QVal word, an int or
+     * a ptr as its type descriptor says *)
+    Def Type = Option typeInt typePtr typeReal typeVal end
+
+    (* The opcodes of instructions (docs/ssa.md section 2) *)
+    Def Opcode = Option
+        opConst opRealConst opSymbol opNull opSlot
+        opAdd opSub opMul opDiv opRem
+        opAnd opOr opXor opShl opLshr opAshr
+        opEq opNe opLt opLe opGt opGe opUlt opPeq opPne
+        opFadd opFsub opFmul opFdiv opFeq opFlt opFle opFgt opFge opIsNaN
+        opIntToPtr opPtrToInt opRealBits opBitsReal opSext8 opZext8
+        opLoad opStore opCall opCallIndirect opCopy opPtrAdd opThreadLocal opToVal opFromVal
+        opMulHiU
+    end
+
+    (* How C passes a parameter or a result (docs/ssa.md section 2.2): an
+     * integer or a pointer in a word; a double; the first or the second word
+     * of a 16-byte composite (a pair), in two registers or on the stack; a
+     * byte, a C bool or char, which Darwin's AAPCS64 packs on the stack and
+     * leaves the upper bits of in a register; a C int (main's argc), whose
+     * upper bits are unspecified; or a composite of more than 16 bytes, which
+     * the SSA passes as the address of a copy, as AAPCS64 does *)
+    Def Passed = Option
+        passWord passReal passPair passPairRest passByte passInt32
+        passMemory with bytes: Int end
+    end
+    (* A function's or a call's: how C passes each parameter (each argument of
+     * a call, an indirect call's function a word) and each result *)
+    Def Signature = Tuple params: Array(Passed) results: Array(Passed) end
+
+    (* A source position, for the native code's line table: a file, by its
+     * number in the unit (Unit.files, from 1), a line, and a column; or
+     * none, file 0 *)
+    Def Loc = Tuple file: Int line: Int col: Int end
+
+    (* An instruction. For a load or a store, width is 8, 4, or 1 bytes and
+     * signed says how a narrow load extends; a call has its signature (others
+     * an empty one); loc is the source position it is compiled from. A load
+     * is invariant when nothing writes what it reads once the object it reads
+     * from is made (docs/ssa.md section 2.1), as the builder
+     * knows of a closure's code, say; false for any other instruction. *)
+    Def Inst = Tuple
+        op: Opcode
+        var args: Array(Int)
+        results: Array(Int)
+        var imm: Int
+        symbol: String
+        width: Int
+        signed: Bool
+        var signature: Signature
+        var loc: Loc
+        var invariant: Bool
+    end
+
+    (* A jump's destination: a block, and the values bound to its
+     * parameters *)
+    Def Target = Tuple block: Int var args: Array(Int) end
+
+    Def Terminator = Option
+        (* A block being built has none yet *)
+        termNone
+        termJump with target: Target end
+        termBranch with cond: Int ifTrue: Target ifFalse: Target end
+        termSwitch with value: Int cases: Array(Int) targets: Array(Target) default: Target end
+        termReturn with values: Array(Int) end
+        termTailCall with call: Inst end
+        termTry with slot: Int body: Target handler: Int end
+        termUnreachable
+    end
+
+    Def Block = Tuple
+        params: vector.T(Int)
+        insts: vector.T(Inst)
+        var term: Terminator
+        (* The terminator's source position *)
+        var termLoc: Loc
+    end
+
+    (* A stack slot: its size and alignment in bytes *)
+    Def Slot = Tuple bytes: Int align: Int end
+
+    Def Function = Tuple
+        (* Its C symbol, and whether other units call it *)
+        symbol: String
+        exported: Bool
+        (* The types of its parameters (the entry block's) and results, and
+         * how C passes them (a function of two results returns a pair) *)
+        paramTypes: vector.T(Type)
+        resultTypes: vector.T(Type)
+        var signature: Signature
+        (* The type of each value, by number *)
+        types: vector.T(Type)
+        blocks: vector.T(Block)
+        slots: vector.T(Slot)
+        (* The source position of the instructions and terminators being
+         * built, which append and terminate give those that have none *)
+        var at: Loc
+    end
+
+    (* A word of static data: an integer, or a symbol's address plus a byte
+     * offset *)
+    Def Word = Option
+        wordInt with n: Int end
+        wordSymbol with symbol: String addend: Int end
+    end
+    (* What a datum holds: zero bytes, a C string's bytes and its NUL, or
+     * words *)
+    Def Contents = Option
+        contentsZero with bytes: Int end
+        contentsText with text: String end
+        contentsWords with words: Array(Word) end
+    end
+    (* A unit's static datum (docs/ssa.md section 5): its symbol, whether
+     * other units refer to it, and whether it is written at run time;
+     * aligned to 8 bytes *)
+    Def Data = Tuple symbol: String exported: Bool writable: Bool contents: Contents end
+
+    (* A unit, and the names of the source files its positions are in, by
+     * their numbers less 1 *)
+    Def Unit = Tuple
+        functions: vector.T(Function)
+        data: vector.T(Data)
+        files: vector.T(String)
+    end
+
+    (* The signature of parameters and results of types params and results:
+     * each a word or a real, but 16-byte composites starting at the indices
+     * pairs, bytes at narrow, and two results a pair; empty has neither
+     * parameters nor results *)
+    signature(params: Array(Type) results: Array(Type) pairs: Array(Int) narrow: Array(Int)): Signature
+    emptySignature: Signature
+    passWord: Passed
+    passReal: Passed
+    passPair: Passed
+    passPairRest: Passed
+    passByte: Passed
+    passInt32: Passed
+    (* s with its parameter k passed as passed; with its one result passed as
+     * passed *)
+    withParam(s: Signature k: Int passed: Passed): Signature
+    withResult(s: Signature passed: Passed): Signature
+    (* The indices of the parameters (or results) passed as a pair's first
+     * word, a byte, a C int, or through memory *)
+    pairsOf(ps: Array(Passed)): Array(Int)
+    narrowOf(ps: Array(Passed)): Array(Int)
+    int32Of(ps: Array(Passed)): Array(Int)
+    memoryOf(ps: Array(Passed)): Array(Int)
+
+    (* The types, opcodes, and terminators without payloads, each made once
+     * (docs/arm64.md section 3.15) *)
+    typeInt: Type
+    typePtr: Type
+    typeReal: Type
+    typeVal: Type
+    opConst: Opcode
+    opRealConst: Opcode
+    opSymbol: Opcode
+    opNull: Opcode
+    opSlot: Opcode
+    opAdd: Opcode
+    opSub: Opcode
+    opMul: Opcode
+    opDiv: Opcode
+    opRem: Opcode
+    opAnd: Opcode
+    opOr: Opcode
+    opXor: Opcode
+    opShl: Opcode
+    opLshr: Opcode
+    opAshr: Opcode
+    opEq: Opcode
+    opNe: Opcode
+    opLt: Opcode
+    opLe: Opcode
+    opGt: Opcode
+    opGe: Opcode
+    opUlt: Opcode
+    opPeq: Opcode
+    opPne: Opcode
+    opFadd: Opcode
+    opFsub: Opcode
+    opFmul: Opcode
+    opFdiv: Opcode
+    opFeq: Opcode
+    opFlt: Opcode
+    opFle: Opcode
+    opFgt: Opcode
+    opFge: Opcode
+    opIsNaN: Opcode
+    opIntToPtr: Opcode
+    opPtrToInt: Opcode
+    opRealBits: Opcode
+    opBitsReal: Opcode
+    opSext8: Opcode
+    opZext8: Opcode
+    opLoad: Opcode
+    opStore: Opcode
+    opCall: Opcode
+    opCallIndirect: Opcode
+    opCopy: Opcode
+    opPtrAdd: Opcode
+    opThreadLocal: Opcode
+    opToVal: Opcode
+    opFromVal: Opcode
+    opMulHiU: Opcode
+    termNone: Terminator
+    termUnreachable: Terminator
+
+    newUnit(): Unit
+    (* No source position; whether a position is one, and whether two are the
+     * same *)
+    noLoc: Loc
+    hasLoc(l: Loc): Bool
+    sameLoc(a: Loc b: Loc): Bool
+    (* A datum of words; the bytes of zero or more words *)
+    words(symbol: String exported: Bool writable: Bool ws: Array(Word)): Data
+    wordsBytes(c: Contents): Int
+    (* A new function with an entry block (block 0), whose parameters are of
+     * the types params *)
+    newFunction(symbol: String exported: Bool params: Array(Type) results: Array(Type)): Function
+    newValue(f: Function t: Type): Int
+    newBlock(f: Function): Int
+    addParam(f: Function block: Int t: Type): Int
+    newSlot(f: Function bytes: Int align: Int): Int
+    block(f: Function b: Int): Block
+    typeOf(f: Function v: Int): Type
+    (* The types of values *)
+    valueTypes(f: Function vs: Array(Int)): Array(Type)
+
+    (* Appends an instruction to block b (which has no terminator yet), at
+     * f.at if it has no position *)
+    append(f: Function b: Int inst: Inst): Ok
+    (* An instruction with its other fields at their defaults, not
+     * appended *)
+    inst(op: Opcode args: Array(Int) results: Array(Int)): Inst
+    (* An instruction of every field, not appended *)
+    instruction(op: Opcode args: Array(Int) results: Array(Int) imm: Int symbol: String width: Int signed: Bool
+        s: Signature): Inst
+
+    (* The rest append an instruction to block b and return its results; emit
+     * appends one of one result, of type t *)
+    emit(f: Function b: Int op: Opcode args: Array(Int) t: Type): Int
+    constant(f: Function b: Int n: Int): Int
+    (* A Real of the bits n *)
+    realConstant(f: Function b: Int n: Int): Int
+    null(f: Function b: Int): Int
+    symbolAddress(f: Function b: Int symbol: String): Int
+    (* A symbol's address plus a byte offset *)
+    symbolPlus(f: Function b: Int symbol: String addend: Int): Int
+    (* The address of the thread-local variable symbol, in this thread *)
+    threadLocal(f: Function b: Int symbol: String): Int
+    (* A pointer n bytes past p (n a value) *)
+    ptrAdd(f: Function b: Int p: Int n: Int): Int
+    (* An int or a ptr as a QVal word, and a QVal word as an int or a ptr *)
+    toVal(f: Function b: Int v: Int): Int
+    fromVal(f: Function b: Int v: Int t: Type): Int
+    (* The address of stack slot s *)
+    slotAddress(f: Function b: Int s: Int): Int
+    binary(f: Function b: Int op: Opcode x: Int y: Int): Int
+    load(f: Function b: Int address: Int offset: Int width: Int signed: Bool t: Type): Int
+    (* A load of what is not written once made (Inst.invariant) *)
+    invariantLoad(f: Function b: Int address: Int offset: Int width: Int signed: Bool t: Type): Int
+    store(f: Function b: Int address: Int offset: Int width: Int value: Int): Ok
+    (* A call of symbol (or, with symbol "", of the function pointer that is
+     * the first argument) of signature s: its results, of the types
+     * results *)
+    call(f: Function b: Int symbol: String args: Array(Int) s: Signature results: Array(Type)): Array(Int)
+    (* Terminates block b with a call in tail position *)
+    tailCall(f: Function b: Int symbol: String args: Array(Int) s: Signature results: Array(Type)): Ok
+    terminate(f: Function b: Int t: Terminator): Ok
+    target(block: Int args: Array(Int)): Target
+    isTerminated(f: Function b: Int): Bool
+
+    (* The values a terminator uses, the blocks it may go to, and its
+     * targets, whose arguments can be changed in place *)
+    terminatorUses(t: Terminator): Array(Int)
+    successors(t: Terminator): Array(Int)
+    targets(t: Terminator): Array(Target)
+    (* t with each of its targets replaced by what map makes of it *)
+    mapTargets(t: Terminator map: All(target: Target) Target): Terminator
+    (* t with each block it may go to (its targets', and a try's handler)
+     * replaced by what map makes of it *)
+    mapBlocks(t: Terminator map: All(b: Int) Int): Terminator
+    (* Replaces each use of a value in f, as an instruction's argument or a
+     * terminator's operand, with what replace says *)
+    replaceUses(f: Function replace: All(v: Int) Int): Ok
+    (* Whether an instruction's opcode is op; whether it is a call *)
+    isOp(i: Inst op: Opcode): Bool
+    isCall(i: Inst): Bool
+    typeName(t: Type): String
+    opcodeName(op: Opcode): String
+    (* The opcode of a name, if one has it *)
+    opcodeNamed(name: String): maybe.T(Opcode)
+end

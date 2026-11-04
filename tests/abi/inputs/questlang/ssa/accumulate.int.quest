@@ -1,0 +1,23 @@
+(* Quest Self-Hosted Compiler: The SSA's Accumulation Interface
+ *
+ * Makes a loop of a function's recursion through an associative operation
+ * (docs/ssa.md section 4.1, LLVM's accumulator recursion elimination): in a
+ * function of one int result, from which no stack slot's address escapes, a
+ * block that ends in a call of the function itself and an add, mul, and, or,
+ * or xor of its result and another value, and returns that, jumps instead to
+ * a loop header, with the call's arguments and the accumulator combined with
+ * the other value. The header has the entry's instructions and a parameter
+ * for each of the function's and the accumulator, which the entry passes the
+ * operation's identity; each return combines what it returns with the
+ * accumulator, and each tail call of the function itself becomes a jump to
+ * the header, with the accumulator unchanged. Int arithmetic wraps, so the
+ * five are associative and commutative, and the order they combine in does
+ * not change the result. *)
+
+interface Accumulate
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    accumulateFunction(f: ssa.Function): Ok
+    accumulateUnit(u: ssa.Unit): Ok
+end

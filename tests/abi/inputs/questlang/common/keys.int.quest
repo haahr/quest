@@ -1,0 +1,29 @@
+(* Quest Self-Hosted Compiler: Integer Keys Interface
+ *
+ * Interning keys that are sequences of integers, numbered in the order they
+ * are first interned (0, 1, 2, ...). A key is written into the table's buffer
+ * (start, then int, bool, and str), then looked up (find) or interned
+ * (intern). The buffer is reused, so that looking up a key allocates nothing.
+ * Strings are interned to integers of their own, so equal strings are written
+ * as equal integers. The bootstrap keys its tables by tuples, which Python
+ * hashes; strings built for the purpose made the self-hosted compiler several
+ * times slower. *)
+
+interface Keys
+import
+    util/maybe : util/Maybe
+export
+    T::TYPE
+    new(): T
+    (* Starts a new key in the buffer *)
+    start(k: T): Ok
+    int(k: T n: Int): Ok
+    bool(k: T v: Bool): Ok
+    str(k: T s: String): Ok
+    (* The number of the buffer's key, if it is interned *)
+    find(k: T): maybe.T(Int)
+    (* The number of the buffer's key, interning it if it is new *)
+    intern(k: T): Int
+    (* The number of keys interned *)
+    size(k: T): Int
+end

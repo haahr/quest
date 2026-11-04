@@ -800,6 +800,9 @@ def _word_sub(w1: QWord, w2: QWord) -> QWord:
 def _word_mul(w1: QWord, w2: QWord) -> QWord:
     return QWord((w1.value * w2.value) & 0xFFFF_FFFF_FFFF_FFFF)
 
+def _word_mul_hi(w1: QWord, w2: QWord) -> QWord:
+    return QWord((w1.value * w2.value) >> 64)
+
 def _word_div(w1: QWord, w2: QWord) -> QWord:
     if w2.value == 0:
         raise QuestException(WORD_ERROR_EXC, OK_VALUE)
@@ -1151,6 +1154,7 @@ EXTERNAL_FUNCTIONS: dict[str, Callable[..., QValue]] = {
     "quest_word_add": _word_add,
     "quest_word_sub": _word_sub,
     "quest_word_mul": _word_mul,
+    "quest_word_mul_hi": _word_mul_hi,
     "quest_word_div": _word_div,
     "quest_word_div_val": _word_div,
     "quest_word_mod": _word_mod,

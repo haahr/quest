@@ -1,0 +1,23 @@
+(* Quest Self-Hosted Compiler: The SSA's Value Numbering Interface
+ *
+ * Removes redundant values along the dominator tree (docs/ssa.md
+ * section 4.1), in the manner of Briggs, Cooper, and Simpson: a pure
+ * instruction or a load whose equal (by opcode, immediate, symbol, type, and
+ * arguments' numbers, a constant's by its value, a load's address taken
+ * apart as a base, an index, and a constant offset) dominates it is replaced
+ * by that equal, an ordinary load (not invariant) only while no store or call
+ * that may write memory comes between, and a whole word's store is what a
+ * load of it reads; a copy
+ * by its argument; and a block parameter that every jump binds to one value
+ * by that value. The comparisons, bitwise ands, multiplications, and pointer
+ * additions that arm64's selection fuses into the instruction using them, and
+ * constants, are replaced only by an equal in their own block. The pure
+ * instructions and loads left without uses are then removed. *)
+
+interface ValueNumbers
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    numberFunction(f: ssa.Function): Ok
+    numberUnit(u: ssa.Unit): Ok
+end

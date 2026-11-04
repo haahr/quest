@@ -1,0 +1,58 @@
+(* Quest Self-Hosted Compiler: Modules' Abstract Types Interface
+ *
+ * bootstrap/python/quest/modules/abstract_types.py: the abstract types modules
+ * export, by global name (a module's canonical path, a dot, and the type's
+ * name: "geo/coord.P"), for serializing dynamic values (docs/dynamic.md section
+ * 2.3). Each global name has one opaque type symbol id in the process, so that
+ * every environment that elaborates or imports the module agrees on it. *)
+
+interface AbstractTypes
+import
+    questlang/types/model : questlang/types/Model
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    (* The representation an application of an unlinked module's type (none for
+     * a type) was written with *)
+    Def Instance = Tuple args: Array(model.Type) rep: model.Type end
+    (* An abstract type exported by a module: linked if the program links the
+     * module; rep, its representation, once the module has been elaborated from
+     * its source; and an unlinked type's representations, as dynamic.intern
+     * read them *)
+    Def ModuleAbstractType = Tuple
+        globalName: String
+        typeVar: model.Type
+        linked: Bool
+        var rep: maybe.T(model.Type)
+        instances: vector.T(Instance)
+    end
+
+    abstractTypeSymbolId(globalName: String): Int
+    isAbstractTypeSymbol(symbolId: Int): Bool
+    (* The global name a module abstract type's opaque type has its symbol id
+     * for (abstractTypeSymbolId), if it is one *)
+    abstractTypeGlobalName(symbolId: Int): maybe.T(String)
+    registerExportedAbstractType(globalName: String typeVar: model.Type): Ok
+    registerAbstractTypeRepresentation(globalName: String typeVar: model.Type rep: model.Type): Ok
+    (* Records an abstract type read from a module the program does not link *)
+    registerUnlinkedAbstractType(globalName: String typeVar: model.Type): ModuleAbstractType
+    abstractTypeBySymbol(symbolId: Int): maybe.T(ModuleAbstractType)
+    (* Each abstract type whose representation is known, that has no bound
+     * (which outside its module is seen at its bound), and whose module is not
+     * one compiled apart (registered while registering apart), by its symbol
+     * id, to its representation, as a substitution: in a whole program, the
+     * modules merged into its unit; and how many representations are known,
+     * which grows as modules are elaborated *)
+    representations(): model.Subst
+    (* While on, the representations registered are of a module compiled apart
+     * (a module file, not merged into the unit being compiled) *)
+    setRegisteringApart(on: Bool): Ok
+    (* Whether an abstract type has no bound, and so is laid out as its
+     * representation is in a whole program, if that is known *)
+    unbounded(e: ModuleAbstractType): Bool
+    representationCount(): Int
+    abstractTypeByName(globalName: String): maybe.T(ModuleAbstractType)
+    (* The abstract types the module with canonical name canon exports, with
+     * their representations, by name *)
+    moduleAbstractTypes(canon: String): Array(ModuleAbstractType)
+end

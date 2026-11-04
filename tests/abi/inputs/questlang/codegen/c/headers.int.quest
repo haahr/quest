@@ -1,0 +1,46 @@
+(* Quest Self-Hosted Compiler: Interface Headers Interface
+ *
+ * bootstrap/python/quest/codegen/c/headers.py: the C headers of interfaces
+ * (.int.h): for each interface, its aggregate structs, its types' C
+ * representations, and its members' signatures, which C that uses the
+ * interface includes. A header is written beside its interface's .qi, from the
+ * interface as compiled, when C compilation needs it, and is up to date when
+ * it is at least as new as its .qi (docs/build-process.md section 5). *)
+
+interface Headers
+import
+    questlang/syntax/ast : questlang/syntax/Ast
+    questlang/types/symbols : questlang/types/Symbols
+    questlang/types/env : questlang/types/Env
+    questlang/modules/graph : questlang/modules/Graph
+    questlang/modules/interfaceCompiler : questlang/modules/InterfaceCompiler
+    util/maybe : util/Maybe
+export
+    (* The C header of an interface, its include guard and typedef names
+     * derived from canonicalName, its include-relative path (util/Math) *)
+    compileInterfaceToHeader(decl: ast.InterfaceDecl scope: symbols.Scope canonicalName: String): String
+    (* The header beside an interface's .qi (util/path.qi and
+     * util/path.int.h) *)
+    interfaceHeaderFile(qi: String): String
+    (* Whether a header was written from the interface its .qi describes, after
+     * the .qi *)
+    headerIsCurrent(qi: String header: String): Bool
+    (* Writes a compiled interface's header beside its .qi, and returns it; with
+     * a build directory, the headers of the interfaces it imports are brought
+     * up to date there first *)
+    writeInterfaceHeader(compiled: interfaceCompiler.CompiledInterface buildDir: maybe.T(String)
+        programDir: maybe.T(String) res: graph.Resolver): String
+    (* Compiles an interface file to its .qi and its C header, as quest -c
+     * x.int.quest does, writing the headers of the interfaces compiled because
+     * it imports them too *)
+    Def Artifacts = Tuple header: String qi: String end
+    compileInterfaceWithHeader(file: String outputDir: maybe.T(String) includePaths: Array(String)
+        buildDir: maybe.T(String) programDir: maybe.T(String)): Artifacts
+    (* Brings a resolved interface's .qi and C header under buildDir up to date,
+     * with the headers it includes *)
+    ensureResolvedInterfaceHeader(resolved: graph.Resolved buildDir: String res: graph.Resolver): Artifacts
+    (* Brings the C header of interface name, as e imports it, up to date where
+     * e loads the interface's .qi from, and returns it; none when e
+     * elaborates interfaces from source *)
+    ensureImportedInterfaceHeader(name: String e: env.T): maybe.T(String)
+end

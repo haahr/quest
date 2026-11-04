@@ -27,6 +27,7 @@ typedef void (*quest_sig_questlang__common__DiagBag_add)(QVal bag, QVal d);
 typedef void (*quest_sig_questlang__common__DiagBag_addError)(QVal bag, QTuple_String_Int_Int * sp, QString * msg);
 typedef void (*quest_sig_questlang__common__DiagBag_addWarning)(QVal bag, QTuple_String_Int_Int * sp, QString * msg);
 typedef void (*quest_sig_questlang__common__DiagBag_addFatal)(QVal bag, QTuple_String_Int_Int * sp, QString * msg);
+typedef void (*quest_sig_questlang__common__DiagBag_addStoppingError)(QVal bag, QTuple_String_Int_Int * sp, QString * msg);
 typedef QBool (*quest_sig_questlang__common__DiagBag_hasErrors)(QVal bag);
 typedef QInt (*quest_sig_questlang__common__DiagBag_errorCount)(QVal bag);
 typedef QInt (*quest_sig_questlang__common__DiagBag_warningCount)(QVal bag);

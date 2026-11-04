@@ -137,8 +137,8 @@ Quest provides a standard `Word` module (`lib/word.mod.quest`) for 64-bit unsign
 - **Inline C Runtime Helpers**: Operations in `lib/word.mod.quest` bind via `external` to `static inline` helpers in
   `runtime/quest_runtime.h`:
   - Bitwise and arithmetic: `quest_word_not_bits`, `quest_word_and_bits`, `quest_word_or_bits`, `quest_word_xor_bits`,
-    `quest_word_add`, `quest_word_sub`, `quest_word_mul`, `quest_word_lt`, `quest_word_le`, `quest_word_gt`,
-    `quest_word_ge`.
+    `quest_word_add`, `quest_word_sub`, `quest_word_mul`, `quest_word_mul_hi` (the high word of the 128-bit
+    product), `quest_word_lt`, `quest_word_le`, `quest_word_gt`, `quest_word_ge`.
   - Checked division and modulo: `quest_word_div_val` and `quest_word_mod_val`, raising `word.error` on zero divisors.
   - Shifts, rotations, bitfields, and bit counts: `quest_word_shift_val`, `quest_word_rotate_val`,
     `quest_word_extract_val`, `quest_word_replace_val`, `quest_word_pop_count_val`,

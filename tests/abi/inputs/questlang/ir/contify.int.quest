@@ -1,0 +1,27 @@
+(* Quest Self-Hosted Compiler: Contification Interface
+ *
+ * Local functions made loops of their callers (docs/ir.md section 8.6,
+ * MLton's contification): a function a funs statement binds, of value
+ * parameters and no type parameters, whose every use is a call, one of them
+ * outside its own body and the others in its body (not its functions') tail
+ * calls of itself, becomes a loop at the outside call, if it calls itself or
+ * is recursive through others; any other is left to the inliner, which never
+ * inlines a recursive function. The call's result is a join point's
+ * parameter, whose continuation is the rest of the caller's body;
+ * the function's returns jump to it, its tail calls assign its parameters'
+ * variables and continue the loop, and each iteration binds the parameters to
+ * them, so that the function's own functions capture values as before. *)
+
+interface Contify
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+    questlang/ir/clone : questlang/ir/Clone
+    collections/hashMap : collections/HashMap
+export
+    (* Contifies the functions of the bodies (and the functions they bind) that
+     * can be, other than the pinned ones (by their variables' ids), in place,
+     * with labels counted by labels; whether it contified any. recursive says
+     * which functions name themselves, directly or not (inline.analyze's) *)
+    contify(bodies: Array(nodes.Body) recursive: hashMap.T(Int Bool) pinned: hashMap.T(Int Bool)
+        labels: clone.Labels): Bool
+end

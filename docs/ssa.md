@@ -44,6 +44,7 @@ register allocation) walk the arrays; only the passes that care what an instruct
 | `slot` | → `ptr` | the address of the stack slot numbered by the immediate |
 | `ptrAdd` | `ptr int` → `ptr` | the pointer plus a byte offset: every field's, element's, and slot's address |
 | `add`, `sub`, `mul` | `int int` → `int` | wrapping arithmetic ([type-system.md](type-system.md) §6.3.1) |
+| `mulHiU` | `int int` → `int` | the high 64 bits of the unsigned 128-bit product (`word.mulHi`; arm64's `umulh`) |
 | `div`, `rem` | `int int` → `int` | signed, truncating; the divisor is neither 0 nor -1 (the SSA's builder tests both first) |
 | `and`, `or`, `xor`, `shl`, `lshr`, `ashr` | `int int` → `int` | bitwise; shift counts are 0 to 63 |
 | `eq`, `ne`, `lt`, `le`, `gt`, `ge`, `ult` | `int int` → `int` | comparisons, signed but for `ult` |

@@ -1,0 +1,49 @@
+(* Quest Self-Hosted Compiler: The Interpreter's Primitive Operations Interface
+ *
+ * bootstrap/python/quest/interpreter/primitives.py: the standard library's
+ * error exceptions, and integer and real arithmetic and comparisons with the
+ * semantics compiled code has. Here they are compiled code's own operations: an
+ * operation that raises the library's native exception (intOp.error,
+ * realOp.error) raises the interpreted one. *)
+
+interface Primitives
+import
+    questlang/values/model : questlang/values/Model
+    tm = questlang/types/model : questlang/types/Model
+    util/maybe : util/Maybe
+export
+    (* The standard library's exceptions, which its interpreted modules' error
+     * values are (builtins) *)
+    arrayOpError: model.ExceptionValue
+    writerError: model.ExceptionValue
+    readerError: model.ExceptionValue
+    asciiError: model.ExceptionValue
+    intError: model.ExceptionValue
+    realError: model.ExceptionValue
+    wordError: model.ExceptionValue
+    stringError: model.ExceptionValue
+    systemError: model.ExceptionValue
+    readlineError: model.ExceptionValue
+    readlineEndOfInput: model.ExceptionValue
+    readlineInterrupted: model.ExceptionValue
+    variantError: model.ExceptionValue
+    (* Raised by a call that would make more than maxCallDepth calls active, as
+     * the bootstrap's interpreters raise it (STACK_OVERFLOW_EXC) *)
+    stackOverflow: model.ExceptionValue
+    maxCallDepth: Int
+
+    (* +, -, *, /, mod, and %, raising int.error for a zero divisor *)
+    intArithmetic(op: String a: Int b: Int offset: maybe.T(Int)): Int
+    (* <, <=, >, >= *)
+    intRelational(op: String a: Int b: Int offset: maybe.T(Int)): Bool
+    (* ++, --, **, //, and ^^, raising real.error for a NaN result, a zero
+     * divisor, or a pole *)
+    realArithmetic(op: String a: Real b: Real offset: maybe.T(Int)): Real
+    (* <<, <<=, >>, >>= *)
+    realRelational(op: String a: Real b: Real offset: maybe.T(Int)): Bool
+    (* is at static type t (with its run-time type arguments substituted):
+     * model.same, but options of a case without components at t compare by
+     * case, and those of a single-word option type's case with a component by
+     * their component (docs/extensions.md, Options as Values) *)
+    sameAt(t: tm.Type v1: model.Value v2: model.Value): Bool
+end

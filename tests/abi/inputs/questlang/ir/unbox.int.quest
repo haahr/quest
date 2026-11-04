@@ -1,0 +1,23 @@
+(* Quest Self-Hosted Compiler: Unboxed Tuples Interface
+ *
+ * The tuples a function returns that need not be allocated (docs/ir.md
+ * section 8.7): after closure conversion, a function whose every call
+ * is known (its closures are only called, directly) and whose every return is
+ * of a tuple it makes for the return, to callers that only read the result's
+ * components, returns the components instead (Function.unboxedResult): the
+ * tuples it returns and the results its calls bind are unboxed variables
+ * (Variable.unboxed), whose values are their components, which the backends
+ * hold as they hold any values (a C struct; the SSA's values), never
+ * allocated. The tuple's type is the function's result type, of one or two
+ * components, each an Int, Bool, Char, or String and none var, so that no
+ * conversion, box, or proxy is needed for them, and two words of results fit
+ * every backend's convention. *)
+
+interface Unbox
+import
+    questlang/ir/nodes : questlang/ir/Nodes
+export
+    (* Marks the unit's unboxed results and variables, in place, returning
+     * it *)
+    unboxUnit(unit: nodes.Unit): nodes.Unit
+end

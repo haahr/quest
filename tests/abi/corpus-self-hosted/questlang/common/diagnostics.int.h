@@ -20,6 +20,10 @@ typedef struct QTuple_String_Int_Int QTuple_String_Int_Int;
 #define QUEST_TYPE_QTuple_QTuple_String_Int_Int_end_String_Bool_TYPEDEF
 typedef struct QTuple_QTuple_String_Int_Int_end_String_Bool QTuple_QTuple_String_Int_Int_end_String_Bool;
 #endif
+#ifndef QUEST_TYPE_QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal_TYPEDEF
+#define QUEST_TYPE_QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal_TYPEDEF
+typedef struct QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal;
+#endif
 #ifndef QUEST_TYPE_QOption_error_fatal_info_warning_DEFINED
 #define QUEST_TYPE_QOption_error_fatal_info_warning_DEFINED
 struct QOption_error_fatal_info_warning {
@@ -51,9 +55,34 @@ static_assert(offsetof(struct QTuple_QTuple_String_Int_Int_end_String_Bool, _1) 
 static_assert(offsetof(struct QTuple_QTuple_String_Int_Int_end_String_Bool, _2) == 16, layout_QTuple_QTuple_String_Int_Int_end_String_Bool__2);
 static_assert(sizeof(struct QTuple_QTuple_String_Int_Int_end_String_Bool) == 24, layout_QTuple_QTuple_String_Int_Int_end_String_Bool_size);
 #endif
+#ifndef QUEST_TYPE_QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal_DEFINED
+#define QUEST_TYPE_QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal_DEFINED
+struct QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal {
+    QString * _0;
+    QInt _1;
+    QInt _2;
+    QBoolSlot _3;
+    QVal _4;
+    QVal _5;
+    QVal _6;
+    QBoolSlot _7;
+    QVal _8;
+};
+static_assert(offsetof(struct QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal, _0) == 0, layout_QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal__0);
+static_assert(offsetof(struct QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal, _1) == 8, layout_QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal__1);
+static_assert(offsetof(struct QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal, _2) == 16, layout_QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal__2);
+static_assert(offsetof(struct QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal, _3) == 24, layout_QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal__3);
+static_assert(offsetof(struct QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal, _4) == 32, layout_QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal__4);
+static_assert(offsetof(struct QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal, _5) == 40, layout_QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal__5);
+static_assert(offsetof(struct QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal, _6) == 48, layout_QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal__6);
+static_assert(offsetof(struct QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal, _7) == 56, layout_QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal__7);
+static_assert(offsetof(struct QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal, _8) == 64, layout_QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal__8);
+static_assert(sizeof(struct QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal) == 72, layout_QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal_size);
+#endif
 typedef QOption_error_fatal_info_warning * quest_type_questlang__common__Diagnostics_Severity;
 typedef QTuple_QTuple_String_Int_Int_end_String_Bool * quest_type_questlang__common__Diagnostics_Label;
 typedef QVal quest_type_questlang__common__Diagnostics_Diagnostic;
+typedef QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal * quest_type_questlang__common__Diagnostics_CompilerError;
 typedef QVal (*quest_sig_questlang__common__Diagnostics_make)(QOption_error_fatal_info_warning * sev, QString * msg, QTuple_String_Int_Int * sp);
 typedef QVal (*quest_sig_questlang__common__Diagnostics_fatal)(QString * msg, QTuple_String_Int_Int * sp);
 typedef QVal (*quest_sig_questlang__common__Diagnostics_error)(QString * msg, QTuple_String_Int_Int * sp);
@@ -70,9 +99,24 @@ typedef void (*quest_sig_questlang__common__Diagnostics_addLabel)(QVal d, QTuple
 typedef void (*quest_sig_questlang__common__Diagnostics_addNote)(QVal d, QString * note);
 typedef void (*quest_sig_questlang__common__Diagnostics_setHelp)(QVal d, QString * h);
 typedef void (*quest_sig_questlang__common__Diagnostics_setCode)(QVal d, QString * c);
+typedef void (*quest_sig_questlang__common__Diagnostics_setTrace)(QVal d, QArray * frames);
 typedef QString * (*quest_sig_questlang__common__Diagnostics_severityString)(QOption_error_fatal_info_warning * sev);
+typedef void (*quest_sig_questlang__common__Diagnostics_registerSource)(QVal sm);
 typedef QString * (*quest_sig_questlang__common__Diagnostics_format)(QVal d, QVal sm);
 typedef void (*quest_sig_questlang__common__Diagnostics_render)(QVal d, QVal sm, QWriter * w);
+typedef const QException * quest_sig_questlang__common__Diagnostics_compilerError;
+typedef QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal * (*quest_sig_questlang__common__Diagnostics_errorAt)(QString * message, QInt offset);
+typedef QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal * quest_sig_questlang__common__Diagnostics_silentError;
+typedef QVal (*quest_sig_questlang__common__Diagnostics_raiseError)(const QTypeDescriptor *desc_A, QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal * e);
+typedef QVal (*quest_sig_questlang__common__Diagnostics_fail)(const QTypeDescriptor *desc_A, QString * message, QInt offset);
+typedef QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal * (*quest_sig_questlang__common__Diagnostics_inFile)(QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal * e, QString * file);
+typedef QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal * (*quest_sig_questlang__common__Diagnostics_atImport)(QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal * e, QInt offset, QInt length, QString * file);
+typedef QVal (*quest_sig_questlang__common__Diagnostics_errorDiagnostic)(QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal * e, QString * file);
+typedef QVal (*quest_sig_questlang__common__Diagnostics_warningDiagnostic)(QTuple_String_Int_Int_Bool_QVal_QVal_QVal_Bool_QVal * e, QString * file);
+typedef QString * quest_sig_questlang__common__Diagnostics_mainFrame;
+typedef QString * (*quest_sig_questlang__common__Diagnostics_initFrame)(QString * moduleName);
+typedef QString * (*quest_sig_questlang__common__Diagnostics_frameName)(QString * enclosing, QVal binder);
+typedef QString * (*quest_sig_questlang__common__Diagnostics_pyRepr)(QString * s);
 #ifdef __cplusplus
 }
 #endif

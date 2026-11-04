@@ -1,0 +1,26 @@
+(* Rich output: values shown as HTML, Markdown, or images where the program's
+ * output is shown by something that can (a Jupyter notebook, through the
+ * Quest kernel; docs/jupyter-kernel.md), and as text elsewhere. *)
+
+interface Display export
+    (* One form of a value: its MIME type (text/html, say), and its data, the
+     * bytes of an image *)
+    Def Item = Tuple mimeType: String data: String end
+
+    (* Whether the program runs in a Jupyter kernel's driver (QUEST_KERNEL is
+     * set), where what it shows is displayed in the notebook *)
+    inKernel(): Bool
+
+    (* Shows the forms of one value, after what the program has written: in a
+     * kernel, the notebook shows the richest it can; elsewhere, standard output
+     * gets the text/plain form, if there is one, or else a line naming the
+     * forms. An image's data is encoded in base64 for the notebook. *)
+    bundle(items: Array(Item)): Ok
+
+    (* HTML, Markdown, and SVG, shown as their text outside a kernel *)
+    html(text: String): Ok
+    markdown(text: String): Ok
+    svg(text: String): Ok
+    (* A PNG image, of its bytes *)
+    png(bytes: String): Ok
+end

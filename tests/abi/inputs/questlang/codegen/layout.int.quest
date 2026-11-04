@@ -1,0 +1,159 @@
+(* Quest Self-Hosted Compiler: Layouts of Values Interface
+ *
+ * bootstrap/python/quest/codegen/layout.py: how values are laid out, for every
+ * backend (docs/c-representation.md), computed from shapes and cached per
+ * shape: each type's layout tag (which names its struct and descriptor),
+ * digests and identity keys of types, its representation (the runtime's C type
+ * for it: a scalar, a QVal word, a 16-byte record or variant value, or a
+ * pointer), and its slot representation (as an aggregate slot or a QVal word
+ * holds it: a record or variant as a pointer to an immutable box, a Bool or
+ * Char in a word of its own). Also whether generic code's layout of a type
+ * agrees with the native one, and whether a value of a tuple or option type may
+ * be a proxy. *)
+
+interface Layout
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/shapes : questlang/ir/Shapes
+    util/maybe : util/Maybe
+export
+    (* s, or for a type variable or abstract type bounded by POWER(T), the shape
+     * its bounds resolve to *)
+    resolvedShape(s: shapes.Shape): shapes.Shape
+    (* Whether values of shape s, of a type with a bound, are held viewed at the
+     * bound: a module's abstract type, an abstract type elaborated as such, or
+     * a path type *)
+    heldAtBound(s: shapes.Shape): Bool
+    (* Whether s is a bounded type parameter's shape, whose values generic code
+     * holds at their own view *)
+    ownView(s: shapes.Shape): Bool
+    (* Whether t is Word.T, which is laid out as 64 unsigned bits *)
+    isWordType(t: model.Type): Bool
+
+    (* How a value is represented, whatever its C type: nothing (Ok), a word
+     * (an Int, a Word.T, or a QVal), a byte (a Bool or Char), a Real, a record
+     * or a variant (two words each), or a pointer (or another C word) *)
+    Def Representation = Option
+        repVoid repInt repWord repBool repChar repReal repRecord repVariant repPointer repQVal
+    end
+    representationKind(t: model.Type): Representation
+    shapeRepresentationKind(s: shapes.Shape): Representation
+    (* Whether s is represented as a QVal *)
+    isQVal(s: shapes.Shape): Bool
+    (* The representation of a value of t, named by the runtime's C type for
+     * it *)
+    representation(t: model.Type): String
+    shapeRepresentation(s: shapes.Shape): String
+    (* The C type of a value of t in an aggregate slot or a QVal word *)
+    slotRepresentation(t: model.Type): String
+    shapeSlotRepresentation(s: shapes.Shape): String
+    (* The C type of the location a var or out parameter points to (or a Var
+     * cell is) *)
+    locationRepresentation(t: model.Type): String
+    shapeLocationRepresentation(s: shapes.Shape): String
+
+    (* Whether a value of shape s, a tuple or option, may be a proxy
+     * (docs/c-representation.md section 5.8) *)
+    mayBeProxied(s: shapes.Shape): Bool
+    (* Whether a component of shape s may change view when its tuple or option
+     * is upcast *)
+    changesView(s: shapes.Shape): Bool
+    (* Whether a slot holds values of shape s boxed: records and variants *)
+    isBoxedInSlots(s: shapes.Shape): Bool
+
+    (* How a value is held in a QVal word (as generic code holds a value of a
+     * type parameter, and a slot holds one in its QVal form), which says how
+     * every backend converts between the value and the word (docs/arm64.md
+     * section 7.5) *)
+    Def WordForm = Option
+        (* already a QVal word: a value of a type parameter *)
+        wordItself
+        (* Ok, which has no value: the word 0 *)
+        wordOk
+        (* a record or a variant, 16 bytes: a pointer to an immutable box of
+         * them *)
+        wordRecordBox
+        wordVariantBox
+        (* a Word: its 64 bits *)
+        wordBits
+        (* an Int, Bool, or Char: the integer, extended to 64 bits (a Char
+         * as a QChar, an unsigned byte) *)
+        wordInteger
+        (* a Real: its 64 bits *)
+        wordReal
+        (* any other value, which is a pointer *)
+        wordPointer
+    end
+    (* The word form of values of shape s, as resolved to its bound *)
+    wordForm(s: shapes.Shape): WordForm
+
+    (* The layouts of aggregates' structs (docs/c-representation.md section
+     * 5), in bytes, as C lays them out on a 64-bit target, for backends that
+     * lay them out themselves (docs/arm64.md section 3.3); the C asserts
+     * them. Every slot is one word. *)
+    (* A struct of n slots, which C gives a char of its own when n is 0 *)
+    slotsBytes(n: Int): Int
+    (* A tuple type's struct: its value components, slot i at 8i *)
+    tupleBytes(t: model.Type): Int
+    (* A record type's struct: its header (the layout's descriptor), then
+     * its fields in the order of their names, the k'th at 8 + 8k *)
+    recordBytes(t: model.Type): Int
+    recordFieldOffset(t: model.Type name: String): Int
+    (* An option type's struct: its tag at 0, then the union of its cases'
+     * payloads at 8, each a struct of its components' slots *)
+    optionBytes(t: model.Type): Int
+    (* The bytes of a value of t as a variable holds it (its representation) *)
+    representationBytes(t: model.Type): Int
+
+    (* A deterministic, valid C identifier component for a type, and for the
+     * types of shape s *)
+    typeTag(t: model.Type): String
+    shapeTag(s: shapes.Shape): String
+    tupleStructName(t: model.Type): String
+    optionStructName(t: model.Type): String
+
+    (* A short digest of a type's printed text, telling apart types that typeTag
+     * conflates *)
+    typeDigest(t: model.Type): String
+    (* A key telling types apart where typeTag does not: the tag and a digest of
+     * the canonical type's text *)
+    typeIdentityKey(t: model.Type): String
+    textDigest(text: String): String
+    (* The length of a type's printed text and the SHA-256 of that text (for a
+     * text longer than printedTextLimit, of its outermost node's text with its
+     * parts' digests in place of theirs) *)
+    printedTextLimit: Int
+    printedType(t: model.Type): Tuple length: Int digest: String end
+
+    (* Whether a value of t substituted by subst, laid out natively, is laid out
+     * as generic code lays out t, where each variable in subst is a type
+     * parameter of that code *)
+    genericLayoutAgrees(t: model.Type subst: model.Subst): Bool
+    (* Whether converting a value of t between the generic layout and the native
+     * one at subst would copy mutable data whose layouts differ *)
+    genericLayoutCopiesMutableData(t: model.Type subst: model.Subst): Bool
+    (* An application of a module's abstract type operator whose representation
+     * is known (the module was elaborated from its source): the
+     * representation's body, generic in the operator's parameters, and the
+     * arguments substituted for them. Outside the module, its values are laid
+     * out as the body is by generic code (docs/c-representation.md section
+     * 5.1) *)
+    Def AbstractInstance = Tuple generic: model.Type subst: model.Subst end
+    abstractInstance(t: model.Type): maybe.T(AbstractInstance)
+    (* Whether a value of type t is or holds an application of an abstract type
+     * operator laid out at its arguments otherwise than generically: the
+     * module's code at those arguments and the code outside it lay it out
+     * differently, as a closure whose C signature changes with them *)
+    abstractLayoutsDiffer(t: model.Type): Bool
+    (* The representation of a function type's calls (its result's and
+     * parameters' representations and its number of type parameters), as a key:
+     * closures of types with the same key are called alike *)
+    signatureRepresentation(t: model.Type): String
+
+    (* The human-readable name of a type for runtime diagnostics and printing *)
+    qtypeToNameStr(t: model.Type): String
+
+    (* Whether s and t are records, and s is a subtype of t by width alone: s
+     * has each of t's fields, of an equal type *)
+    isRecordSubtype(s: model.Type t: model.Type): Bool
+end

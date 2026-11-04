@@ -21,6 +21,7 @@ typedef QInt (*quest_sig_Word_countTrailingZeros)(QVal w);
 typedef QVal (*quest_sig_Word_add)(QVal w1, QVal w2);
 typedef QVal (*quest_sig_Word_sub)(QVal w1, QVal w2);
 typedef QVal (*quest_sig_Word_mul)(QVal w1, QVal w2);
+typedef QVal (*quest_sig_Word_mulHi)(QVal w1, QVal w2);
 typedef QVal (*quest_sig_Word_div)(QVal w1, QVal w2);
 typedef QVal (*quest_sig_Word_mod)(QVal w1, QVal w2);
 typedef QInt (*quest_sig_Word_toInt)(QVal w);

@@ -1,0 +1,33 @@
+(* Quest Self-Hosted Compiler: The SSA Builder's Calls Interface
+ *
+ * Primitive operations; calls, of a unit's own function or an imported one
+ * directly, and of a closure, with its environment and the callee's
+ * descriptors, passing arguments as C does; and modules' records and
+ * members. *)
+
+interface Calls
+import
+    questlang/types/model : questlang/types/Model
+    ir = questlang/ir/nodes : questlang/ir/Nodes
+    util/maybe : util/Maybe
+    vals = questlang/ssa/build/values : questlang/ssa/build/Values
+export
+    Def Type = model.Type
+    Def Atom = ir.Atom
+
+    prim(fn: vals.Fn o: ir.OpPrim): Array(Int)
+
+    (* The C signature's results of a function type's result *)
+    resultParts(t: Type): Array(vals.Part)
+    resultsOf(fn: vals.Fn ps: Array(vals.Part) results: Array(Int)): Array(Int)
+    (* Where each 16-byte composite starts among a call's arguments, from the
+     * IR atoms that make them (after leading words) *)
+    pairsOf(lead: Int args: Array(Atom)): Array(Int)
+    callOp(fn: vals.Fn o: ir.OpCall): Array(Int)
+    (* What a call of an external C function that the runtime defines inline
+     * is, as the C compiler compiles it (the word module's operations, and
+     * ascii.val), or none *)
+    inlineExternal(fn: vals.Fn symbol: String args: Array(Atom)): maybe.T(Int)
+    (* A module's record, or one of its members *)
+    moduleMember(fn: vals.Fn r: ir.ModuleRef member: maybe.T(String)): Array(Int)
+end

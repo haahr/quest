@@ -1,0 +1,47 @@
+(* Quest Self-Hosted Compiler: arm64 Assembly Interface
+ *
+ * The spellings of Darwin's arm64 assembly (docs/arm64.md section 3.11), in one
+ * module, so that another object format would replace only it: symbols with
+ * their leading underscore, the sections of code and data, the relocations
+ * that address a symbol (its page and offset in it, through the GOT for one
+ * the unit does not define, through its descriptor for a thread-local), and
+ * data directives. *)
+
+interface Asm
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
+export
+    (* A C symbol as the assembler names it *)
+    symbol(name: String): String
+    (* An Int as the assembler spells it (conv.int spells a negative one
+     * with ~) *)
+    decimal(n: Int): String
+    (* A symbol with a relocation, as an instruction's operand: its page, or
+     * its offset in its page, or its GOT entry's, or its thread-local
+     * descriptor's *)
+    reference(name: String reloc: minst.Reloc pageOffset: Bool): String
+    (* The directives that begin a function's code, and end it *)
+    functionStart(name: String exported: Bool): Array(String)
+    functionEnd: Array(String)
+    (* A datum's directives *)
+    data(d: ssa.Data): Array(String)
+    (* The directives that begin and end a unit *)
+    unitStart: Array(String)
+    unitEnd: Array(String)
+
+    (* The line table's source files (docs/arm64.md section 3.16): a .file
+     * directive for each absolute path, numbered from 1, which minst's loc
+     * instructions name; none for an empty path, a file not known *)
+    files(paths: Array(String)): Array(String)
+    (* A function, for the debugging information: its symbol, and the label
+     * just past its code *)
+    Def DebugFunction = Tuple symbol: String endLabel: String end
+    (* The DWARF sections a debugger reads the line table through, which the
+     * assembler, given .loc directives, does not write itself: a compile unit
+     * for the unit's code, named for its file (an absolute path), with a
+     * subprogram for each function, so that dsymutil and lldb place each
+     * function's lines at its address; and the line table's section, which
+     * the assembler fills from the .loc directives *)
+    debugInfo(file: String functions: Array(DebugFunction)): Array(String)
+end

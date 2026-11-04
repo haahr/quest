@@ -437,6 +437,7 @@ end
   - `notBits`, `andBits`, `orBits`, `xorBits` $\to$ `quest_word_not_bits`, `quest_word_and_bits`,
     `quest_word_or_bits`, `quest_word_xor_bits` (`~`, `&`, `|`, `^`)
   - `add`, `sub`, `mul` $\to$ `quest_word_add`, `quest_word_sub`, `quest_word_mul` (unsigned wrapping modulo $2^{64}$)
+  - `mulHi` $\to$ `quest_word_mul_hi` (the high 64 bits of the unsigned 128-bit product, whose low 64 are `mul`'s)
   - `div`, `mod` $\to$ `quest_word_div_val`, `quest_word_mod_val` (checks for divisor `0` and raises `word.error`)
   - `lt`, `le`, `gt`, `ge` $\to$ `quest_word_lt`, `quest_word_le`, `quest_word_gt`, `quest_word_ge` (unsigned 64-bit
     comparisons)

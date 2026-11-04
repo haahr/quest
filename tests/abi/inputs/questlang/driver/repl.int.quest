@@ -1,0 +1,62 @@
+(* Quest Self-Hosted Compiler: The REPL Interface
+ *
+ * bootstrap/python/quest/repl.py: reads phrases a line at a time through
+ * io/readline, continuing a phrase while its lines leave it incomplete, and
+ * elaborates and runs each input in one environment and frame, rolling back an
+ * input that fails (docs/repl.md). *)
+
+interface Repl
+import
+    questlang/common/location : questlang/common/Location
+    questlang/common/diagnostics : questlang/common/Diagnostics
+    questlang/types/env : questlang/types/Env
+    questlang/common/diagbag : questlang/common/DiagBag
+    questlang/typechecker/typedAst : questlang/typechecker/TypedAst
+    questlang/values/model : questlang/values/Model
+    questlang/jit/session : questlang/jit/Session
+    util/maybe : util/Maybe
+export
+    (* The prompts, and the prefix of a phrase's result *)
+    promptMain: String
+    promptContinue: String
+    prefixResult: String
+
+    (* Whether text needs more lines to complete a phrase: an unclosed comment
+     * or string, or a syntax error at the end of the input
+     * (check_input_completeness) *)
+    incomplete(text: String): Bool
+
+    (* The diagnostic of an error raised while running, in the file whose code
+     * raised it, with its frames (the driver's too) *)
+    runErrorDiagnostic(err: model.RunError mainFile: String): diagnostics.Diagnostic
+
+    (* A session: the environment inputs are elaborated in, the frame the next
+     * input runs in, the source an input's error was raised in, when it is
+     * not the input's own (a function an earlier input made), to render it in,
+     * what the last input that failed failed in (kernelFailure), and with
+     * --jit, the JIT's session, which runs inputs instead of the interpreter
+     * (docs/jit.md) *)
+    Def T = Tuple
+        e: env.T
+        var frame: model.Frame
+        var errorSource: maybe.T(location.SourceMap)
+        var failure: String
+        jit: maybe.T(session.T)
+    end
+    (* A session continuing in e and f, after a file -i ran, say *)
+    new(e: env.T f: model.Frame): T
+    (* A session in e whose inputs the JIT compiles and runs, their programs
+     * seeing args as system.args *)
+    newJit(e: env.T f: model.Frame args: Array(String)): T
+    (* Runs a typed program with the JIT as one input (a file, or one -i
+     * names), printing its last phrase's result, or with echo every phrase's,
+     * as interpret does: whether it ran, its errors in bag if not *)
+    runInput(r: T program: typedAst.Program sm: location.SourceMap bag: diagbag.T echo: Bool): Bool
+    (* Reads, elaborates, and runs inputs until the end of the input, keeping a
+     * history in ~/.quest_history when lines are edited; the exit status *)
+    run(r: T): Int
+    (* Kernel mode (docs/jupyter-kernel.md section 2): reads requests, a JSON
+     * object a line, from descriptor 3, and writes their records to descriptor
+     * 4, until descriptor 3 ends; the exit status *)
+    runKernel(r: T): Int
+end

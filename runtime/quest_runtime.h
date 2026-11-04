@@ -1198,6 +1198,11 @@ Q_INLINE uint64_t quest_word_mul(uint64_t w1, uint64_t w2) {
     return w1 * w2;
 }
 
+/* The high 64 bits of the unsigned 128-bit product (one umulh on arm64) */
+Q_INLINE uint64_t quest_word_mul_hi(uint64_t w1, uint64_t w2) {
+    return (uint64_t)(((unsigned __int128)w1 * w2) >> 64);
+}
+
 Q_INLINE uint64_t quest_word_div_val(uint64_t w1, uint64_t w2) {
     return quest_word_div(w1, w2);
 }
