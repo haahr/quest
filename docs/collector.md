@@ -6,11 +6,12 @@ because it asks nothing of the compilers: no object headers, no stack maps, no w
 largest cost in the benchmark suite (benchmarks.md §3.1: allocation and collection are 50 to 90 percent of the
 samples in half the programs), and it keeps dead data alive through stale stack slots (arm64-performance-review.md
 §3.2). This document designs a collector of Quest's own: precise where the compilers can make it so, generational,
-bump-allocating, moving where it may, and asks what must change to get there.
+bump-allocating, able to move but not obliged to, and asks what must change to get there.
 
-**Status: decided, reviewed, not started** (decided 2026-11-02; reviewed 2026-11-03, every point answered and folded
-in). Section 6 records the decisions, section 7 the risks and the checking modes that catch them, section 8 the
-steps, and section 9 what the review changed.
+**Status: decided, reviewed twice, not started** (decided 2026-11-02; reviewed and reorganized 2026-11-03). Section 6
+records the decisions, section 7 the risks and the checking modes that catch them, section 8 the steps, and section
+9 what the reviews changed. The committed collector is steps 1 to 6 of §8; evacuation and generic layouts (steps 7
+and 8) are designed and taken only on measurement.
 
 ---
 
@@ -102,33 +103,34 @@ What a collector must fit, from `runtime/quest_runtime.h`, `c-representation.md`
 
 In one sentence: an Immix heap with sticky mark bits, a header word before each object naming its layout, bump
 allocation inlined in both backends, a write barrier on the few mutating stores, precise scanning of every word whose
-kind the compiler knew, conservative treatment of the words it did not (the stack, `val` words, the JIT's data),
-pinning what they reach, and evacuation of everything else when it pays.
+kind the compiler knew, conservative treatment of the words it did not (the stack, `val` words, the JIT's data), and
+the right to move reserved: evacuation is designed here (§3.6) and taken only if fragmentation is measured (§8, step
+7), since it is where most of the collector's difficulty lies and least of its gain.
 
 ### 3.1. The heap
 
 - **Blocks and lines:** 32 KB blocks of 128-byte lines, as Immix. A block is free, recyclable (some lines free), or
-  full. Allocation bumps through the next hole of free lines; a 128-byte line is the unit of reclamation and of
-  pinning. A medium object (over a line, up to 8 KB) is allocated from a fresh hole, as Immix's overflow allocator.
-- **A large object space** for objects of 8 KB and up (strings, arrays), page-granular,
-  never moved, marked in a side bitmap, freed when unmarked. The threshold is a parameter to measure (§6).
-- **An immortal space** for runtime metadata that is keyed by address and lives for the process: descriptors,
-  instantiation caches, view maps, record dictionaries, abstract types, adapters, function tables. Bump-allocated,
-  never collected, and never scanned as a whole: immortal data refers to immortal data, static data, and code, never
-  into the collected heap, an invariant the `roots` mode checks (§7). An immortal object that must hold a heap
-  pointer (the audit of §3.5 finds any; `roots` finds the rest) has a header like any other and takes the barrier
-  as an old object; the first time it is logged it joins a permanent *immortal root list*, scanned by layout at
-  every collection, so what is scanned grows with those objects and not with the space. The space grows for as long
-  as the process does: a REPL or Jupyter session, with module rollback and redefinition, keeps making descriptors,
-  dictionaries, and view maps and keeps them, as it keeps JIT code already (decided 2026-11-03). This removes those
-  structures from every collection and from every question of moving.
+  full. Allocation bumps through the next hole of free lines; a 128-byte line is the unit of reclamation. A medium
+  object (over a line, up to 8 KB) is allocated from a fresh hole, as Immix's overflow allocator.
+- **A large object space** for objects of 8 KB and up (strings, arrays), page-granular, never moved, marked in a
+  side bitmap, freed when unmarked. The threshold is a parameter to measure (§6).
+- **Runtime metadata stays in the ordinary heap:** descriptors, instantiation caches, view maps, record dictionaries,
+  abstract types, adapters, allocated as now and reached from the runtime's listed roots (§3.8), so a full collection
+  marks them at a cost proportional to their size, small outside a long JIT session. They are keyed by address, which
+  nothing in the committed collector changes; should evacuation be taken (§3.6), they are allocated pinned at birth
+  into blocks of their own, a third cursor beside the noscan one (§3.9), so that they neither move nor pin lines of
+  other blocks. A REPL or Jupyter session, with module rollback and redefinition, keeps making them and keeps them,
+  as it keeps JIT code already (decided 2026-11-03). An earlier draft put them in an immortal space of their own,
+  never collected and never scanned; it existed to keep them out of the moving question, and went when moving became
+  conditional (2026-11-03).
 - **One reserved virtual range** for all of it (tens of gigabytes reserved, committed as used), so that "is this word
   in the heap" is two comparisons, and the metadata (object-start bitmap, line marks, block table) is indexed by
   address.
 - **Metadata off to the side:** an object-start bitmap (one bit per 8 bytes, as conservative Immix; set by every
-  allocation, §3.4), which validates ambiguous words, finds an object from an interior pointer, and finds objects
+  allocation, §3.4, and intersected with the mark bitmap at the end of every collection, §3.6, so that only live
+  objects validate), which validates ambiguous words, finds an object from an interior pointer, and finds objects
   inside a remembered region; a mark bitmap (one bit per 8 bytes, the truth about liveness, §3.2); line marks (a
-  byte per line); a block table (state, hole cursor, pinned count).
+  byte per line); a block table (state, hole cursor, live lines).
 
 ### 3.2. Objects
 
@@ -138,18 +140,18 @@ pinning what they reach, and evacuation of everything else when it pays.
   payload have no headers of their own: they are words of their allocation, described by its layout, reached by
   interior pointers that the object-start bitmap resolves to the allocation.
 - **The header holds a layout pointer and two bytes of flags:** the pointer to a *layout* (below), 8-byte aligned,
-  in the low 48 bits; the top sixteen (free on a 48-bit address space) are two bytes with one writer each. The
-  collector's byte holds *old* (the barrier's hint that the object has been marked, §3.5), *pinned*, and *forwarded*
-  (written only in a pause); the mutator's byte holds *logged* (for the barrier) and the two hash bits of §3.7. Each
-  side writes its byte with a byte store, so no read-modify-write of the word is shared, and a marker thread (step 9)
-  would need fences but no atomics. The mark bit itself is not in the header: liveness lives in a side mark bitmap
-  per block (§3.1), which a full collection clears a block at a time instead of touching every object, and which
-  keeps the minor collection's test of an old referent, most of what a young object's words point at, in a small hot
-  structure rather than a load of each referent's line. The header's *old* byte is written by the marker as it marks,
-  with *pinned* set or cleared by whether the first reach was ambiguous, and is only a hint for the barrier: a stale
-  value (an object the current cycle has not yet reached) makes the barrier conservative, logging an object that
-  needed no logging, never wrong. Variable-sized objects (arrays, strings' buffers, option payloads) keep their
-  lengths where they are; the layout says where to read them.
+  in the low 48 bits; the top sixteen (free on a 48-bit address space, and layouts are static data or run-time data
+  the collector places below that line) are two bytes with one writer each. The collector's byte holds *old* (the
+  barrier's hint that the object has been marked, §3.5), and, reserved for evacuation, *pinned* and *forwarded*; the
+  mutator's byte holds *logged* (for the barrier) and, reserved likewise, the two hash bits of §3.7. Each side writes
+  its byte with a byte store, so no read-modify-write of the word is shared, and a marker thread (step 9) would need
+  fences but no atomics. The mark bit itself is not in the header: liveness lives in a side mark bitmap per block
+  (§3.1), which a full collection clears a block at a time instead of touching every object, and which keeps the
+  minor collection's test of an old referent, most of what a young object's words point at, in a small hot structure
+  rather than a load of each referent's line. The header's *old* byte is written by the marker as it marks and is
+  only a hint for the barrier: a stale value (an object the current cycle has not yet reached) makes the barrier
+  conservative, logging an object that needed no logging, never wrong. Variable-sized objects (arrays, strings'
+  buffers, option payloads) keep their lengths where they are; the layout says where to read them.
 - **A layout** describes an allocation's words: for each word, pointer, scalar, or *ambiguous* (a `val` word whose
   kind the allocation site did not know, §3.3), plus the size or where to find it. For a record, the layout is its
   existing `QRecordHeader` descriptor's information in this form. Layouts are static data: the describe pass already
@@ -168,45 +170,49 @@ pinning what they reach, and evacuation of everything else when it pays.
   copies of 16-byte structs (`QRecordVal`) use pairs or NEON loads, which on arm64 and x86-64 take any alignment on
   ordinary memory. Boehm's 16-byte alignment was incidental, and nothing relies on it: the proxy tag uses one low
   bit, and the header's flag bits live in the layout pointer, whose static data can be aligned as widely as the bits
-  need. The hash word of §3.7 goes before the header and keeps every object's alignment. If a platform ever needs
-  16-byte objects (a vector type in the runtime, say), the allocator bumps in 16s and the header sits in the 8 bytes
-  before the object, with 8 bytes of padding before that; nothing else changes.
+  need. The hash word of §3.7, should evacuation be taken, goes before the header and keeps every object's
+  alignment. If a platform ever needs 16-byte objects (a vector type in the runtime, say), the allocator bumps in 16s
+  and the header sits in the 8 bytes before the object, with 8 bytes of padding before that; nothing else changes.
 
 ### 3.3. What is a pointer
 
 Three classes of word, decided when the code is compiled:
 
 1. **Precise:** a word whose static type is a pointer type (`ptr` in the SSA), or a scalar. The collector follows or
-   skips it by the layout, and may rewrite it when the object it refers to moves. Interior and tagged pointers are
-   precise too: the collector resolves the allocation through the object-start bitmap, moves it, and rewrites the
+   skips it by the layout, and may rewrite it should the object it refers to move. Interior and tagged pointers are
+   precise too: the collector resolves the allocation through the object-start bitmap, and a move would rewrite the
    word keeping its offset and tag.
 2. **Ambiguous:** a `val` word of an object allocated in generic code (`Tuple A Int end` made by a polymorphic
    function, `Array(A)`'s elements), whose kind depends on a type argument the code did not have. The collector
-   validates it (in the heap range, at or inside an allocated object, or at an object's end: no Quest program can
-   form a pointer one past an array, but clang can from the C backends' output and in the runtime, a loop's end
-   kept with its base dead, so such a word counts for the object it ends and for any that begins there) and, if it
-   is valid, marks the object and **pins** it: the word is never rewritten, so the object never moves. An `Int`
-   that happens to look like a heap address keeps an object alive, as under Boehm today; it is never corrupted.
+   validates it (in the heap range, at or inside a live allocation, or at one's end: no Quest program can form a
+   pointer one past an array, but clang can from the C backends' output and in the runtime, a loop's end kept with
+   its base dead, so such a word counts for the object it ends and for any that begins there) and, if it is valid,
+   marks the object; with evacuation on, it also **pins** it: the word is never rewritten, so the object never moves.
+   An `Int` that happens to look like a heap address keeps an object alive, as under Boehm today; it is never
+   corrupted. Only a live object validates (§3.6), so the precise words of what an ambiguous word reaches are
+   current, and the marker may trust them.
 3. **Roots:** the stack and registers (conservative in both backends, as now, saving the registers to the stack
-   first), the per-unit root tables of §3.8 (precise), the runtime's statics (precise, listed), the immortal root
-   list of §3.1 (precise, by layouts), and the JIT's data regions (ambiguous). Everything an ambiguous root reaches
-   is pinned.
+   first), the per-unit root tables of §3.8 (precise), the runtime's statics (precise, listed), and the JIT's data
+   regions (ambiguous).
 
 So the heap is precise wherever the compiler knows, and nothing is less safe than under Boehm. What ambiguity costs
-is only the right to move: a pinned object stays, and its line is not reclaimed by evacuation. How much is pinned
-depends on the program: the MLton suite's programs are mostly monomorphic; the compiler, whose data lives in
-`vector.T(A)` and `hashMap.T(K V)`, would pin a great deal. Two steps of the plan reduce it, neither needed for
-correctness (§8): **stack maps for the arm64 backend** (step 5; arm64.md §3.13 describes what they need, and the
-frame-pointer walk of jit.md §3.9 already finds the frames), and **layouts for generic allocation sites** (step 7,
-taken on what step 6 measures), which the specializer already removes in part, and which the descriptor-passing
-machinery (`DescriptorParam`) completes: a polymorphic function that allocates an aggregate holding type-parameter
-words takes its arguments' descriptors, as one that builds a descriptor mentioning them does now, and builds the
-layout once per distinct set of arguments, through an inline cache at the site. A frame without a map is scanned
-conservatively, so units compiled through C, by either C backend, need nothing and get nothing: their stacks stay
-conservative by design, since clang emits no maps for ordinary C. A mapped frame's pointer in a callee-saved
-register across a call is precise only when every younger frame that saved that register is mapped too: a C-built
-callee's or the runtime's save slot is in a frame no map describes and cannot be rewritten, so the frame walk treats
-such a register's value as ambiguous, and the conservative scan of the frame that saved it pins what it refers to.
+the committed collector is a validation per ambiguous word and the false retention Boehm has today, both small. What
+it would cost a moving one is the right to move: a pinned object stays, and its line is not reclaimed by evacuation.
+How much would be pinned depends on the program: the MLton suite's programs are mostly monomorphic; the compiler,
+whose data lives in `vector.T(A)` and `hashMap.T(K V)`, would pin a great deal. Two steps reduce it, neither needed
+for correctness (§8): **stack maps for the arm64 backend** (step 5; arm64.md §3.13 describes what they need, and the
+frame-pointer walk of jit.md §3.9 already finds the frames), worth taking for the dead-slot retention they end
+whether or not anything moves; and **layouts for generic allocation sites** (step 8, taken on what step 7 measures),
+which the specializer already removes in part, and which the descriptor-passing machinery (`DescriptorParam`)
+completes: a polymorphic function that allocates an aggregate holding type-parameter words takes its arguments'
+descriptors, as one that builds a descriptor mentioning them does now, and builds the layout once per distinct set
+of arguments, through an inline cache at the site. A frame without a map is scanned conservatively, so units
+compiled through C, by either C backend, need nothing and get nothing: their stacks stay conservative by design,
+since clang emits no maps for ordinary C. A mapped frame's memory-class slots, where escape analysis puts the
+aggregates that do not escape (ssa.md §4.2), are scanned conservatively too, since nothing describes their words.
+A mapped frame's pointer in a callee-saved register across a call is precise only when every younger frame that
+saved that register is mapped too: a C-built callee's or the runtime's save slot is in a frame no map describes and
+cannot be rewritten, so the frame walk treats such a register's value as ambiguous, which matters only to evacuation.
 
 ### 3.4. Allocation
 
@@ -216,10 +222,11 @@ such a register's value as ambiguous, and the conservative scan of the frame tha
   step 3 measures against the call into libgc. The cursor and limit are two words in a global the runtime owns, not
   a register the arm64 backend dedicates: a raise is `_longjmp` (`Q_LONGJMP`), which restores the callee-saved
   registers to their values when the `try` was entered, so a cursor in one would be rolled back and the next
-  allocation would overwrite live objects; and the C-built units and the runtime bump the same words. The slow path,
-  a call into the runtime, finds the next hole or collects, and during an incremental cycle serves every allocation
-  (§3.10). This is the inline allocation path the arm64 review set aside while the collector was Boehm's (arm64.md
-  §6.3, item 2); with Quest's own collector, the dependency is on itself.
+  allocation would overwrite live objects; and the C-built units and the runtime bump the same words. There are two
+  cursor pairs, one per kind of block (§3.9), chosen by the site's layout. The slow path, a call into the runtime,
+  finds the next hole or collects, and during an incremental cycle serves every allocation (§3.10). This is the
+  inline allocation path the arm64 review set aside while the collector was Boehm's (arm64.md §6.3, item 2); with
+  Quest's own collector, the dependency is on itself.
 - **Zeroing:** holes are zeroed when a block is recycled, not per object, so the compilers' assumption that fresh
   memory is zero holds.
 - **Escape analysis is unchanged:** an allocation that does not escape is a stack slot (ssa.md §4.2), and stack slots
@@ -231,67 +238,97 @@ such a register's value as ambiguous, and the conservative scan of the frame tha
 
 - **Sticky mark bits:** an object's mark bit is cleared only by a full collection. A minor collection marks from the
   roots and the remembered objects, and stops at anything already marked, so it visits the young objects only, and
-  "promotion" is being marked where the object lies. Blocks allocated since the last collection are the nursery;
-  after the minor collection their line marks say which holes are free again. A copying nursery would gain locality
-  but requires every reference into it to be rewritable, which §3.3's ambiguous words forbid; the sticky-bit variant
-  was within a few percent of copying in Immix's measurements, and nothing stops a later measurement here.
-- **The write barrier:** on a store of a pointer into an object that already exists, if the header's *old* byte says
-  it has been marked and its *logged* bit is clear, log it (set the bit, push its address). A minor collection scans
-  the logged objects' pointer words by their layouts, then clears the log. A load of the header's flag bytes, a
-  mask, a compare, and a branch on the fast path; nothing on stores of scalars, and nothing on the stores that
-  initialize an object being made (`opMake*`) outside an incremental cycle; inside one the object is logged as it is
-  allocated (§3.10), which covers its initializing stores at once. The same barrier serves incremental marking
-  (§3.10), and a marker thread if one is ever added, as Riptide's does. Large arrays logged whole are rescanned
-  whole; card marking for them is an option if a program shows it.
+  "promotion" is being marked where the object lies. The young objects are the unmarked ones, in the holes allocated
+  into since the last collection, whether in fresh blocks or in recyclable ones; after the minor collection the line
+  marks of those blocks say which holes are free again. A copying nursery would gain locality but requires every
+  reference into it to be rewritable, which §3.3's ambiguous words forbid; the sticky-bit variant was within a few
+  percent of copying in Immix's measurements, and nothing stops a later measurement here.
+- **The write barrier:** on a store of a word that may be a pointer (`ptr` or `val` in the SSA; a `val` store in
+  generic code, an `Array(A)` element or a hash map's bucket, may be one) into an object that already exists, if the
+  header's *old* byte says it has been marked and its *logged* bit is clear, log it (set the bit, push its address).
+  A minor collection scans the logged objects' pointer words by their layouts, then clears the log. A load of the
+  header's flag bytes, a mask, a compare, and a branch on the fast path; nothing on stores of scalars, and nothing on
+  the stores that initialize an object being made (`opMake*`) outside an incremental cycle; inside one the object is
+  logged as it is allocated (§3.10), which covers its initializing stores at once. The same barrier serves
+  incremental marking (§3.10), and a marker thread if one is ever added, as Riptide's does. Large arrays logged
+  whole are rescanned whole; card marking for them is an option if a program shows it. The log lives outside the
+  heap (as do the work list and, should evacuation be taken, the slot log), so the slow path never collects and §1's
+  rule that a collection happens only inside an allocation holds.
+- **Stores through interior pointers** find no header at the address minus 8: a record's `var` field is stored
+  through its payload pointer, and the payload sits after the box when the record was made in it, at the start of
+  its allocation when it is a module's, and elsewhere when `quest_record_box` boxed a viewed record; `sStoreAt`
+  through a `var` or `out` location, and a view's slot, are interior too. The IR marks these forms, and for them the
+  backends emit a call to the slow path in place of the inline test; the slow path checks that the address is in the
+  heap at all (a location is often a stack slot), resolves the allocation through the object-start bitmap (bounded
+  by a block, or the large object space's page table), and applies the ordinary test. These stores are rare in hot
+  code (a vector replacing its array as it grows, not appending to it); step 2's barrier counts say whether they
+  are, and a header of the payload's own, making a record two adjacent objects, is the fallback if they are.
 - **Where the mutating stores are:** the IR's `sStoreField`, `sStoreComponent`, `sStoreElement`, `sStoreAt`, and
   `sAssign` to a captured box; the library's hash maps and vectors are compiled Quest, so their barriers come from
   the IR; and every pointer store into an existing object in the runtime's C, which no list here can name in full
   (`quest_proxy_store`, the proxy caches, the module records' fields written by JIT inputs, a string's buffer
   replaced as it grows, a cache's chain extended), found by an audit of the runtime in step 2 and afterwards by
-  `barriers`. The IR verifier can check that every pointer store into heap memory is one of these.
+  `barriers`. The IR verifier checks that every store of a `ptr` or `val` word into heap memory is one of these.
 
 ### 3.6. Collection
 
 - **A minor collection** stops the mutator (there is one), saves registers, scans roots and logged objects, marks
-  young objects by their layouts, and sweeps line marks of nursery blocks lazily as allocation reaches them. With a
-  nursery of a few megabytes and little surviving it, this is well under a millisecond.
+  young objects by their layouts, and sweeps line marks of the blocks allocated into lazily as allocation reaches
+  them. With a nursery of a few megabytes and little surviving it, this is well under a millisecond.
 - **A full collection** clears the mark bitmaps a block at a time, marks everything, and sweeps every block's lines.
   Marking is a work list over precise and ambiguous words, which incremental marking (§3.10) later cuts into slices.
-- **Evacuation**, in a full collection, after marking and never during it. Candidate blocks are chosen before marking
-  by fragmentation (live lines against free, from the last sweep), as Immix. Marking moves nothing: it pins what
-  ambiguous words reach, and it records in a *slot log* the address of every precise word (in the heap, a root table,
-  a listed root, or the immortal root list) that refers into a candidate block, a log proportional to the references
-  into the candidates, a small part of the heap. When marking is done the live bytes of each candidate are exact, so
-  the collector takes the candidates it can empty into the free blocks it holds, copies their unpinned live objects
-  to fresh holes, marks each old copy forwarded with the new address, and rewrites the logged words: a logged word
-  is rewritten only if it still refers to a forwarded object, and one inside an object that itself moved is
-  rewritten in the copy. If the log reaches its bound, the candidates it does not cover stay in place, so the
-  collection degrades to a non-moving one rather than failing; this is G1's remembered set for its collection set,
-  built during marking. Moving during marking, as Immix proper does and as this document first said, would be
-  unsound here: an ambiguous word found after its referent moved could neither be rewritten (it may be an `Int`) nor
-  have the move undone. The other sound order, two traces (mark and pin, then trace again copying), is simpler and
-  doubles the marking of a defragmenting collection; the log is preferred because evacuation then costs in
-  proportion to what moves. Pinned objects, large objects, and immortal data never move.
+- **Only live objects validate.** At the end of every collection, minor or full, the object-start bitmap is
+  intersected with the mark bitmap, a pass over 1/64 of the heap, so that a dead object's start bit goes with its
+  liveness. Without this a dead object in a live line, which keeps its header, could be validated by an ambiguous
+  word (an `Int` on the stack) and scanned, and its precise words, which the marker trusts, may point into lines the
+  same collection reclaimed and later reused. Boehm is immune because it validates every word; this collector is
+  immune because nothing dead validates. A young object that dies and is resurrected by the stack in a minor
+  collection is harmless, since nothing was reclaimed since it was allocated; its start bit goes at the end of that
+  collection. The `layouts` walk (§7) uses the same intersection.
+- **Evacuation, designed here and taken only on a measurement** (§8, step 7). Fragmentation under Immix is a line
+  matter: a block whose survivors are scattered keeps their lines and recycles the rest, so the cost of never moving
+  is the lines the survivors hold, and the Immix paper found defragmentation worth a few percent on average and more
+  only in tight heaps. Steps 3 and 4 record live lines against live bytes on the suite, the compiler's build, and
+  long REPL sessions; evacuation is taken if that ratio shows holes that recycling does not recover. Its design, so
+  that nothing before it is built in its way: it runs in a full collection, after marking and never during it.
+  Candidate blocks are chosen before marking by fragmentation (live lines against free, from the last sweep), as
+  Immix. Marking moves nothing: it pins what ambiguous words reach, and it records in a *slot log* the address of
+  every precise word (in the heap, a root table, or a listed root) that refers into a candidate block, a log
+  proportional to the references into the candidates, a small part of the heap. When marking is done the live bytes
+  of each candidate are exact, so the collector takes the candidates it can empty into the free blocks it holds,
+  copies their unpinned live objects to fresh holes, marks each old copy forwarded with the new address, rewrites the
+  logged words (a logged word is rewritten only if it still refers to a forwarded object, and one inside an object
+  that itself moved is rewritten in the copy), and clears the mark bits, start bits, and line marks of the old
+  copies, which the trace had set, leaving the pinned objects' lines. If the log reaches its bound, the candidates
+  it does not cover stay in place, so the collection degrades to a non-moving one rather than failing; this is G1's
+  remembered set for its collection set, built during marking. Moving during marking, as Immix proper does and as
+  this document first said, would be unsound here: an ambiguous word found after its referent moved could neither be
+  rewritten (it may be an `Int`) nor have the move undone. The other sound order, two traces (mark and pin, then
+  trace again copying), is simpler and doubles the marking of a defragmenting collection; the log is preferred
+  because evacuation then costs in proportion to what moves. Pinned objects, large objects, and the metadata blocks
+  of §3.1 never move.
 
 ### 3.7. Identity hash
 
-As the question proposes, with the layout of §3.2: the two hash bits are *unhashed*, *hashed*, *moved*. `identityHash`
-of an unhashed object sets *hashed* and returns the mix of its address; of a hashed object, the same; of a moved
-object, the mix of the word at the address minus 16, where the collector put the original address when it copied the
-object (it allocates the copy 8 bytes larger, writes the old address before the header, sets *moved*; a further move
-copies that word along). Pinned objects are never copied, so their addresses stay their hashes. An interior object
-(an embedded box, a record's payload) shares its allocation's header and states, so hashing it sets the allocation's
-state, and its hash after a move is the mix of the allocation's old base plus the object's offset, which a copy
-preserves. `is` needs nothing: it compares current addresses, which the collector keeps consistent by rewriting
-every precise reference and moving nothing an ambiguous one reaches. Options and reals hash by value already, and
-keep doing so.
+In the committed collector nothing moves, so `identityHash` stays the mix of the address, as now, and `is` compares
+addresses. The scheme for a moving collector, as the question proposed, is designed with the header bits of §3.2
+reserved for it and taken with evacuation (step 7): the two hash bits are *unhashed*, *hashed*, *moved*.
+`identityHash` of an unhashed object sets *hashed* and returns the mix of its address; of a hashed object, the same;
+of a moved object, the mix of the word at the address minus 16, where the collector put the original address when
+it copied the object (it allocates the copy 8 bytes larger, writes the old address before the header, sets *moved*;
+a further move copies that word along). Pinned objects are never copied, so their addresses stay their hashes. An
+interior object (an embedded box, a record's payload) shares its allocation's header and states, so hashing it sets
+the allocation's state (found through the object-start bitmap, as §3.5's interior stores find it), and its hash
+after a move is the mix of the allocation's old base plus the object's offset, which a copy preserves. `is` needs
+nothing: it compares current addresses, which the collector keeps consistent by rewriting every precise reference
+and moving nothing an ambiguous one reaches. Options and reals hash by value already, and keep doing so.
 
 Serialization's table keyed by address (`quest_ptr_hash`) must not see an object move while it runs: it allocates
 its output as it walks, and its nodes' `ptr` words are precise, so a move would rewrite them while each node stayed
-in the bucket of the old address. Evacuation is optional in any collection, so the collector keeps a hold count
-(`quest_gc_hold_moves`, released when the walk ends, by a raise included) under which no collection evacuates, and
-serialization takes it for the walk. Keying the table by identity hash, which §3.7 makes stable, would work too and
-is not needed.
+in the bucket of the old address. Evacuation is optional in any collection, so with step 7 the collector keeps a
+hold count (`quest_gc_hold_moves`, released when the walk ends, by a raise included) under which no collection
+evacuates, and serialization takes it for the walk. Keying the table by identity hash, which the scheme makes
+stable, would work too and is not needed.
 
 ### 3.8. Roots and the backends
 
@@ -299,13 +336,10 @@ is not needed.
   heap pointers), registered at initialization as `qr_register_dicts` registers dictionaries today. An ABI change,
   in both backends and the bootstrap's. Until then, the data segment can be scanned conservatively as Boehm scans
   it; the table makes it precise and small.
-- **The runtime's statics** holding heap pointers are enumerated in one place (`quest_gc_roots`), and most of them
-  move to the immortal space anyway.
-- **The immortal root list** (§3.1): the immortal objects that hold heap pointers, each put there by the barrier's
-  slow path the first time it is logged, and scanned by layout at every collection. The immortal space itself is
-  not a root.
+- **The runtime's statics** holding heap pointers are enumerated in one place (`quest_gc_roots`): the descriptor and
+  view-map caches, the dictionaries, the abstract types, the adapters, through which the metadata of §3.1 is reached.
 - **The JIT:** its data regions are ambiguous roots, registered as `GC_add_roots` registers them now; its inputs'
-  module records are reached through them and so pinned, which is right (their addresses are in JIT code's GOT).
+  module records are reached through them, which is right (their addresses are in JIT code's GOT).
 - **Thread-locals** (`quest_current_exception`, the handler chain) are listed roots.
 - **The stack:** conservative in both backends to begin with; the arm64 backend's maps later (§3.3). The frame walk
   is the one exceptions use.
@@ -317,7 +351,8 @@ is not needed.
 - **Pointer-free objects** are marked *noscan* by their layouts and skipped by the marker, and kept in blocks of
   their own (Go's noscan spans): a second allocation cursor, so that a full collection skips whole blocks and string
   buffers do not fragment pointer-bearing blocks. Part of the collector's first version (step 3), brought up with one
-  cursor and measured with two on the string-heavy programs.
+  cursor and measured with two on the string-heavy programs. Should evacuation be taken, the runtime's metadata gets
+  a third cursor the same way (§3.1).
 - **Small objects** are the common case and the design's center: a two- or three-word tuple, a closure and its
   environment, a boxed record, allocated at a rate of hundreds of millions per run in the benchmarks.
 
@@ -325,7 +360,7 @@ is not needed.
 
 With one mutator thread and heaps of tens of megabytes (the compiler's own), stop-the-world collections are short:
 minor ones sub-millisecond, full ones tens of milliseconds at a gigabyte per second of marking. The design starts
-there, and bounds the pauses of full collections by **incremental marking in the mutator thread** (§8, step 8), with
+there, and bounds the pauses of full collections by **incremental marking in the mutator thread** (§8, step 6), with
 the pieces it needs decided now so that the earlier steps do not have to be redone. The runtime has no threads of
 its own (libgc's marker threads are the only ones in a Quest process today, and they go with it), and the design
 keeps it so: a marker thread is the optional last step, not the plan.
@@ -333,25 +368,33 @@ keeps it so: a marker thread is the optional last step, not the plan.
 - **Incremental marking,** as OCaml's major collector, Lua, and V8 before it went concurrent: a full collection's
   mark is cut into slices, and each allocation slow path does a slice proportional to the bytes allocated since the
   last (the pace a tunable, with the slice bounded in time). A cycle starts with a short pause that scans the roots
-  (the stack, registers, root tables, and the log) and ends with one that rescans the stack and drains the log,
-  which bounds it by the stack's size and the number of objects logged since the last slice; between them the
-  mutator runs. An object allocated during a cycle is born marked, with its header saying *old*, and logged, so that
-  a slice scans what it was built from: the stores that initialize it (`opMake*`) have no barrier, and without this
-  an object built during the cycle from a pointer loaded out of an unscanned object, whose field is then
-  overwritten, would be the only holder of that pointer and would never be scanned, and the pointer would be lost
-  (decided 2026-11-03: initializing stores are covered while a cycle runs and cost nothing outside one). The cover
-  costs nothing on the inline path: for the cycle the collector sets the fast path's limit to its cursor, so every
-  allocation takes the slow path, which bumps, marks, writes the header, and logs; the cost is a call per allocation
-  for the cycle's duration, measured in step 8, with a flag word loaded on the inline path (two instructions on
-  every allocation, always) as the fallback. The slices drain the log as well as the work list, rescanning a logged
-  object by its layout as a minor collection would, so the final pause rescans only what was logged since the last
-  slice. Minor collections are suspended while a cycle runs: the mark bitmaps are cleared at its start, so a minor
+  (the stack, registers, root tables, and the log) and ends with one that rescans the stack and drains the log;
+  between them the mutator runs. An object allocated during a cycle is born marked, with its header saying *old*,
+  and logged, so that a slice scans what it was built from: the stores that initialize it (`opMake*`) have no
+  barrier, and without this an object built during the cycle from a pointer loaded out of an unscanned object, whose
+  field is then overwritten, would be the only holder of that pointer and would never be scanned, and the pointer
+  would be lost (decided 2026-11-03: initializing stores are covered while a cycle runs and cost nothing outside
+  one). The cover costs nothing on the inline path: for the cycle the collector sets both cursors' limits to their
+  cursors, so every allocation takes the slow path, which bumps, sets the start bit, marks, writes the header, and
+  logs (a noscan object is marked and not logged); the cost is a call per allocation for the cycle's duration,
+  measured in step 6, with a flag word loaded on the inline path (two instructions on every allocation, always) as
+  the fallback. The slices drain the log as well as the work list, rescanning a logged object by its layout as a
+  minor collection would, so the final pause's log is only what was logged since the last slice.
+- **The final pause is budgeted.** Its rescan of the stack can expose unmarked objects: one loaded out of a grey
+  object before a slice scanned it, whose field was then overwritten, and which the mutator kept only in a register
+  or a slot. Tracing from them is unbounded in principle, so the pause has a budget: if the rescan exposes more work
+  than it, the collector marks that work in further slices and rescans again, as V8 does, with a cap on the retries
+  after which it finishes stop-the-world. No barrier changes for this; the alternative, shading the overwritten value
+  in the slow path during a cycle, closes the window only if every store into an old object takes the slow path for
+  the cycle, which would put a global back on the fast path.
+- **Minor collections are suspended while a cycle runs:** the mark bitmaps are cleared at its start, so a minor
   collection could not tell old from new, and the nursery grows for the cycle's duration, which the pace bounds (a
   cycle finishes within a fixed fraction of the live heap's size in allocation); a mark state with an epoch, telling
-  *old* from *marked in this cycle*, is the alternative kept in reserve should that growth show. Evacuation stays
-  inside the final pause, with the slot log of §3.6 built by the slices and finished by the final rescan. The slices
-  run where a collection may run already, at allocations, so every invariant of the stop-the-world collector holds
-  between them, and a run is deterministic given its allocation sequence, which the suites and the goldens are.
+  *old* from *marked in this cycle*, is the alternative kept in reserve should that growth show. Should evacuation be
+  taken (step 7), it stays inside the final pause, with the slot log of §3.6 built by the slices and finished by the
+  final rescan. The slices run where a collection may run already, at allocations, so every invariant of the
+  stop-the-world collector holds between them, and a run is deterministic given its allocation sequence, which the
+  suites and the goldens are.
 - **The barrier serves both** (§3.5): logging an already-marked object when a pointer is stored into it is what a
   minor collection needs (old objects pointing at young ones) and what an interrupted mark needs (black objects
   written between slices). The fast path reads the header's flag bytes and takes the slow path when the object is
@@ -369,7 +412,7 @@ keeps it so: a marker thread is the optional last step, not the plan.
   (`dmb ish` on arm64, a locked instruction on x86-64, paid only inside the slow path of a running cycle; the
   header's two flag bytes have one writer each, §3.2, so no atomic read-modify-write is needed), plus a protocol for
   the structures both read while the mutator allocates (the object-start and mark bitmaps, the line marks, the log).
-  Go keeps the incremental slices as mutator assists even with its marker threads, so nothing of step 8 is undone.
+  Go keeps the incremental slices as mutator assists even with its marker threads, so nothing of step 6 is undone.
   Taken only if a measured workload shows the mutator paying for marking it could offload.
 - **Not planned:** parallel marking with helper threads inside a pause, the least dangerous use of threads (the heap
   is frozen while they run) but of little use to a generational collector, whose full collections are rare and
@@ -437,17 +480,17 @@ unsound module over a C core of a few hundred lines is a real option, for a plan
 
 | Component | Change |
 |---|---|
-| `runtime/quest_gc.c` (new) | The heap, allocation slow path, barrier slow path, marking, the slot log, sweeping, evacuation, roots and the immortal root list, hash words; replaces `GC_*` |
-| `runtime/quest_runtime.h` | `quest_alloc(size, layout)` returning past the header; `quest_alloc_immortal`; barrier and root macros; layout structs |
-| `runtime/quest_runtime.c` | Its ninety allocations named by layout; metadata to the immortal space; roots enumerated; `quest_identity_hash` by hash state; `quest_proxy_store` barriered |
-| `runtime/quest_serialization.c` | Evacuation held while the sharing table is live |
+| `runtime/quest_gc.c` (new) | The heap, allocation slow path, barrier slow path (interior stores included), marking, sweeping, roots, the statistics; replaces `GC_*`. With step 7: the slot log, evacuation, hash words, the hold count |
+| `runtime/quest_runtime.h` | `quest_alloc(size, layout)` returning past the header; barrier and root macros; layout structs. With step 7: `quest_alloc_pinned` for metadata |
+| `runtime/quest_runtime.c` | Its ninety allocations named by layout; its pointer stores into existing objects audited and barriered (`quest_proxy_store` among them); roots enumerated in `quest_gc_roots`. With step 7: `quest_identity_hash` by hash state, metadata allocated pinned |
+| `runtime/quest_serialization.c` | With step 7: evacuation held while the sharing table is live |
 | `runtime/quest_code.c`, `jit/loader` | Data regions as ambiguous roots through the new API |
 | `ir/describe` (both compilers) | Layouts per allocation site, emitted as static data with the descriptors |
-| `ir/represent`, `ir/lower` (both) | Allocation operations carry their layout; `val` words marked ambiguous in it |
-| `codegen/c/printer`, bootstrap printer | Allocation with header, inline bump fast path (from the header file), barrier on mutating stores, root table per unit |
+| `ir/represent`, `ir/lower` (both) | Allocation operations carry their layout; `val` words marked ambiguous in it; stores marked mutating, and interior where they are |
+| `codegen/c/printer`, bootstrap printer | Allocation with header, inline bump fast path (from the header file), barrier on mutating stores (a call for interior ones), root table per unit |
 | `codegen/arm64/select`, `ssa/build` | Inline bump allocation, barrier sequence, root table; later stack maps from `frameSlots` |
 | `ssa/escape` | Recognize the new allocation form |
-| `ir/verify`, `ssa/verify` | Every pointer store into the heap is a barriered form |
+| `ir/verify`, `ssa/verify` | Every store of a `ptr` or `val` word into the heap is a barriered form |
 | `build`, `tools/release`, docs | No libgc; `--nogc` retired or redefined; runtime-design.md §3, c-representation.md §9, arm64.md §3.13 rewritten |
 | `tools/perf/gcstats.py`, `retention.py` | Read the new collector's statistics |
 
@@ -456,62 +499,73 @@ The interpreters need nothing: they are compiled Quest, and their values are ord
 ## 5. What Changes for Programs
 
 Nothing in the language. Programs see: faster allocation; memory per object up by a word and down by Boehm's
-rounding; `identityHash` stable across moves; collections at the same places (allocations). Programs that held
-pointers in ways Boehm tolerated but the design does not are none: no Quest program can form a pointer one past an
-array's end as a loop bound (arm64.md §3.13 forbids the backends to make one too), and where clang forms one from
-the C backends' output or in the runtime, the conservative scan takes a word at an object's end as that object's
-(§3.3), as Boehm does.
+rounding; `identityHash` unchanged (the address, and stable across moves should evacuation be taken); collections
+at the same places (allocations). Programs that held pointers in ways Boehm tolerated but the design does not are
+none: no Quest program can form a pointer one past an array's end as a loop bound (arm64.md §3.13 forbids the
+backends to make one too), and where clang forms one from the C backends' output or in the runtime, the
+conservative scan takes a word at an object's end as that object's (§3.3), as Boehm does.
 
 ## 6. Decisions
 
-Decided 2026-11-02, with 11 to 13 added after the review of 2026-11-03; the first four shape everything else.
+Decided 2026-11-02, with 11 to 14 added and 2, 7, 8 revised after the reviews of 2026-11-03; the first four shape
+everything else.
 
 1. **Precise heap, conservative stack, pinning for the ambiguous** (§3.3), rather than fully precise (which needs
    stack maps in both backends, a shadow stack for the C one, and layouts for every generic allocation site before
    anything works) or fully conservative (Boehm again). *Recommended:* it is the only one of the three that can be
    built in steps, each correct, and conservative Immix measured the cost at about one percent.
-2. **Immix mark-region with sticky mark bits and opportunistic evacuation** (§3.5, §3.6), rather than a copying
-   nursery with a mark-compact old generation (OCaml, MLton, V8). *Recommended:* copying needs every reference into
-   the nursery rewritable, which decision 1 cannot promise; sticky Immix tolerates pinning at line granularity and
-   still bump-allocates.
+2. **Immix mark-region with sticky mark bits; evacuation designed, and taken only on a measurement** (§3.5, §3.6;
+   revised 2026-11-03 from "opportunistic evacuation" as part of the collector), rather than a copying nursery with
+   a mark-compact old generation (OCaml, MLton, V8). *Recommended:* copying needs every reference into the nursery
+   rewritable, which decision 1 cannot promise; sticky Immix bump-allocates without moving, recovers space by the
+   line, and is where the throughput is; moving is where the difficulty is (the slot log, forwarding, the hash
+   states, pinning that matters), and the Immix paper found it worth a few percent on average.
 3. **A header word at a negative offset, holding a layout pointer and flags** (§3.2), rather than a pointer bitmap
    per span set at allocation (Go) or headers inside the structs. The structs, the offsets, and the bootstrap's
-   generated C stay as they are; forwarding, logging, pinning, and the hash state need bits somewhere; and a layout
-   pointer is 8 bytes either way. Objects stay 8-byte aligned, which is all the backends' loads need (§3.2). The
-   mark bit is the exception: it lives in a side bitmap, and the header keeps the byte the barrier reads (decision
-   12).
+   generated C stay as they are; logging and the *old* hint need bits somewhere, and forwarding, pinning, and the
+   hash state are reserved beside them; and a layout pointer is 8 bytes either way. Objects stay 8-byte aligned,
+   which is all the backends' loads need (§3.2). The mark bit is the exception: it lives in a side bitmap, and the
+   header keeps the byte the barrier reads (decision 12).
 4. **One mutator, stop-the-world first, then incremental marking in the mutator thread; a marker thread optional
-   and last** (§3.10, §8 steps 8 and 9). Throughput is the goal the benchmarks set, so the collector is built and
+   and last** (§3.10, §8 steps 6 and 9). Throughput is the goal the benchmarks set, so the collector is built and
    measured stop-the-world; incremental marking bounds the pauses without a thread, and is designed in now (the
-   barrier, objects born old and logged during a cycle, the pacing) so that nothing earlier is built in its way. The
-   runtime stays single-threaded unless a measurement says the mutator is paying for marking a thread could take;
-   parallel marking inside a pause is not planned (revised 2026-11-02, from "parallel, then concurrent").
+   barrier, objects born old and logged during a cycle, the pacing, the budgeted final pause) so that nothing
+   earlier is built in its way. The runtime stays single-threaded unless a measurement says the mutator is paying
+   for marking a thread could take; parallel marking inside a pause is not planned (revised 2026-11-02, from
+   "parallel, then concurrent").
 5. **The barrier:** object logging through the header (§3.5) rather than card marking. *Recommended* for its
    precision (logged objects are scanned by layout, no card walking) and its reuse for incremental marking; card
-   marking for large arrays is a possible addition.
+   marking for large arrays is a possible addition. Reaffirmed 2026-11-03 against card marking, which would free the
+   barrier from reading the header (and so from the interior-store case) but dirties cards on stores into young
+   objects, the common mutable stores, and rescans them.
 6. **Large objects from 8 KB, in their own space, never moved; pointer-free objects in their own blocks** (§3.9),
    both in the collector's first version; both thresholds are parameters to measure.
-7. **Identity hash by the three-state scheme with a prepended word** (§3.7), as proposed, interior objects hashing
-   by their allocation's old base plus their offset. *Recommended;* the alternative, a hash field in every object,
-   costs a word on every object for the few that are ever hashed.
-8. **Runtime metadata in an immortal space** (§3.1), never scanned except through the root list of the immortal
-   objects that hold heap pointers, and growing with a session for as long as it runs (2026-11-03). *Recommended;*
-   it takes the descriptor caches and dictionaries out of every collection and out of the moving question at once.
+7. **Identity hash stays the address; the three-state scheme with a prepended word is designed and reserved for
+   evacuation** (§3.7; revised 2026-11-03 with decision 2), interior objects hashing by their allocation's old base
+   plus their offset. The alternative, a hash field in every object, costs a word on every object for the few that
+   are ever hashed.
+8. **Runtime metadata stays in the ordinary heap, reached from listed roots** (§3.1, §3.8; revised 2026-11-03 from
+   an immortal space, which existed to keep address-keyed metadata out of the moving question). Should evacuation be
+   taken, metadata is allocated pinned at birth into blocks of its own, simpler than a space of its own with the
+   root list and the invariant that space needed.
 9. **Both compilers emit layouts, barriers, and root tables.** The runtime is shared, so the bootstrap's C must be
    correct under the new collector; the inline fast path and stack maps are self-hosted only (optimizations, by
    the two-compilers policy). *Recommended;* there is no version of this in which the bootstrap's objects lack
    headers.
 10. **libgc goes.** No fallback collector is kept: a second allocator behind `quest_alloc` would keep every
     representation decision hostage to Boehm's. `--nogc` is retired, or becomes "never collect". *Recommended.*
-11. **Evacuation after marking, never during it, through a bounded slot log** (§3.6; added 2026-11-03). Moving as
-    the trace goes, Immix's way, is unsound with ambiguous words inside the heap; two traces are the sound
-    alternative, at twice the marking cost of a defragmenting collection.
+11. **Evacuation, when taken, runs after marking and never during it, through a bounded slot log** (§3.6; added
+    2026-11-03). Moving as the trace goes, Immix's way, is unsound with ambiguous words inside the heap; two traces
+    are the sound alternative, at twice the marking cost of a defragmenting collection.
 12. **Marks in a side bitmap; the header's flags in two bytes with one writer each** (§3.2; added 2026-11-03). A
     full collection clears a block's marks at once instead of touching every object, a minor collection's tests of
     old referents stay in a hot structure, and a marker thread would need no atomics.
-13. **Generic layouts after evacuation, on its measurement** (step 7; added 2026-11-03, revising the order of
-    2026-11-02, which had them second). They are an ABI change whose benefit, less pinning, nothing can measure
-    before step 6; `layouts` counts the ambiguous words from step 1 on.
+13. **Generic layouts after evacuation, on its measurement** (step 8; added 2026-11-03, revising the order of
+    2026-11-02, which had them second; confirmed). They are an ABI change whose benefit, less pinning, nothing can
+    measure before evacuation exists; `layouts` counts the ambiguous words from step 1 on.
+14. **Only live objects validate** (§3.6; added 2026-11-03): the object-start bitmap is intersected with the mark
+    bitmap at the end of every collection, so that the marker may trust the precise words of whatever an ambiguous
+    word reaches.
 
 ## 7. Risks, and the Checking Modes That Catch Them
 
@@ -522,30 +576,33 @@ touches layouts, barriers, roots, or the collector (testing.md §4.1 lists which
 
 | Mode | What it does | Catches |
 |---|---|---|
-| `layouts` | After every collection, walks every allocation by its layout: each precise pointer word is null, outside the heap (static data, code, the immortal space), or points at or into an allocation; each ambiguous word is counted; sizes agree with the lines marked. On Boehm (step 1) the check is against `GC_base`; afterwards against the object-start bitmap | A layout that lies about a word, a size, or a length field |
-| `barriers` | At every minor collection, before the log is used, scans the whole old generation by layouts for pointers into the nursery, and reports any in an object that is not logged | A mutating store without a barrier, in generated code or in the runtime's C |
-| `roots` | At every collection, scans the data segments and thread-locals conservatively and reports a heap pointer that no root table or listed root covers; walks the immortal space by layouts and reports a heap pointer in an object not on the immortal root list | A global pointer slot missing from a unit's root table or `quest_gc_roots`; an immortal object pointing into the heap without the barrier |
-| `stress` | Collects on every allocation (or every Nth), each collection full with every block a candidate and the slot log unbounded, so every object that may move does; the vacated memory is poisoned (filled with a pattern that is never a valid pointer) and, in large runs, unmapped | A stale address kept across an allocation anywhere: generated code, the runtime, serialization, the JIT |
-| `poison` | Every reclaimed line and freed large object is filled with the pattern | A use after reclamation |
-| `incremental` (step 8) | Makes every slice as small as it can be (one object), and at the end of each cycle marks the same heap again stop-the-world and compares the marks | A barrier that let an object escape the cycle, a slice that broke an invariant |
+| `layouts` | After every collection, walks every live allocation (start bits intersected with marks) by its layout: each precise pointer word is null, outside the heap (static data, code), or points at or into a live allocation; each ambiguous word is counted; sizes agree with the lines marked. On Boehm (step 1) the check is against `GC_base`; afterwards against the object-start bitmap | A layout that lies about a word, a size, or a length field |
+| `barriers` | At every minor collection, before the log is used, scans the whole old generation by layouts for pointers into the nursery, and reports any in an object that is not logged | A mutating store without a barrier, in generated code or in the runtime's C, an interior store among them |
+| `roots` | At every collection, scans the data segments and thread-locals conservatively and reports a heap pointer that no root table or listed root covers | A global pointer slot missing from a unit's root table or `quest_gc_roots` |
+| `poison` | Every reclaimed line and freed large object is filled with a pattern that is never a valid pointer | A use after reclamation, a dead object resurrected |
+| `incremental` (step 6) | Makes every slice as small as it can be (one object), and at the end of each cycle marks the same heap again stop-the-world and compares the marks | A barrier that let an object escape the cycle, a slice that broke an invariant |
+| `stress` (step 7) | Collects on every allocation (or every Nth), each collection full with every block a candidate and the slot log unbounded, so every object that may move does; the vacated memory is poisoned and, in large runs, unmapped | A stale address kept across an allocation anywhere: generated code, the runtime, serialization, the JIT |
 | `concurrent` (step 9, if taken) | As `incremental`, with the marker thread forced to yield between objects | A barrier race, a lost mark |
 
-Modes combine (`QUEST_GC_CHECK=layouts,stress`), and `stress` with `barriers` is the one that finds the most. The
-checks are in the runtime, so the bootstrap's C and the JIT's code are checked by the same code as the self-hosted
-backends', and the interpreters' transcripts can run under them too.
+Modes combine (`QUEST_GC_CHECK=layouts,poison`), and, with step 7, `stress` with `barriers` is the one that finds the
+most. The checks are in the runtime, so the bootstrap's C and the JIT's code are checked by the same code as the
+self-hosted backends', and the interpreters' transcripts can run under them too.
 
 The risks themselves:
 
-- **A layout that lies** (a pointer word described as scalar) is memory corruption under evacuation, where under
-  Boehm it was a leak at worst. Step 1 builds `layouts` on Boehm, before any object moves, and `stress` is the
-  first thing step 6 runs.
-- **The barrier missed** on a store the IR did not classify, or one of the runtime's few pointer stores into an
-  existing object, loses a young object. `barriers` finds it by exhaustion, and the IR and SSA verifiers reject a
-  pointer store into heap memory that is not one of the barriered forms.
-- **Pinning in generic-heavy programs** (the compiler) would leave evacuation with little to do, so the compiler's
-  own build would see the allocator's gains but not compaction's. arm64 stack maps (step 5) and generic layouts
-  (step 7) are in the plan for this; the collector's statistics report the pinned fraction, so each step's effect
-  on it is measured.
+- **A layout that lies** (a pointer word described as scalar) is a leak at worst while nothing moves, as under
+  Boehm, and memory corruption under evacuation. Step 1 builds `layouts` on Boehm, and `stress` is the first thing
+  step 7 runs.
+- **The barrier missed** on a store the IR did not classify, an interior store that found the wrong header, or one
+  of the runtime's few pointer stores into an existing object, loses a young object. `barriers` finds it by
+  exhaustion, and the IR and SSA verifiers reject a store of a `ptr` or `val` word into heap memory that is not one
+  of the barriered forms.
+- **A dead object resurrected** by an ambiguous word, its stale precise words followed into reused memory, is the
+  failure decision 14 prevents; `poison` makes it loud if the intersection is ever skipped.
+- **Fragmentation** that line recycling does not recover would leave the heap larger than its live data; steps 3
+  and 4 measure live lines against live bytes, and step 7 is the answer if they show it. **Pinning in generic-heavy
+  programs** (the compiler) would then leave evacuation with little to do; stack maps (step 5) and generic layouts
+  (step 8) are in the plan for this, and the collector's statistics report the pinned fraction.
 - **Linux.** Nothing in the design is Darwin's (§3.10), and nothing in the plan may make it so; the C backend's
   Linux build keeps conservative stacks. There is no Linux machine to test on, so the plan keeps the Linux build
   compiling, by inspection and by the conditionals the runtime has, and leaves running it until one exists.
@@ -558,85 +615,108 @@ The risks themselves:
 ## 8. Steps
 
 Each correct on its own, each measured, each ending with tools/check passing (under the checking modes that apply)
-and its documentation, in the order that retires the risks first.
+and its documentation, in the order that retires the risks first. Steps 1 to 6 are the collector; 7 and 8 are
+taken on what 4 and 7 measure; 9 is optional.
 
 1. **Layouts and headers, on Boehm.** Both compilers' describe passes emit layouts; `quest_alloc(size, layout)` writes
    the header before the object and returns past it; the runtime's allocations name theirs; `QUEST_GC_CHECK=layouts`
    against `GC_base`. *Done when:* every suite passes with `layouts` on through every backend and both compilers, and
    the heap growth from headers is recorded here, translated from Boehm's rounding to the design's (§3.2).
-2. **Barriers and root tables, logging only.** The IR marks mutating stores and its verifier enforces the forms; the
-   runtime's pointer stores into existing objects are audited and marked (§3.5); both backends emit the barrier
-   calls (to a runtime stub that counts) and the per-unit root tables; `roots` checks the tables against a
-   conservative scan. *Done when:* the suites pass under `layouts,roots`, and the barrier counts per benchmark are
-   recorded.
-3. **The collector, stop-the-world, non-generational.** `quest_gc.c`: the heap of §3.1, marking by layouts with
-   pinning (marks in the side bitmap, the header's *old* byte written by the marker alone, §3.2), lazy line
-   sweeping, the large and immortal spaces with the immortal root list, noscan blocks (§3.9, brought up with one
-   cursor and measured with two), the statistics (`tools/perf/gcstats.py` reads them); libgc out of the build;
-   inline allocation in both self-hosted backends, the object-start bit included (§3.4); `poison`. *Done when:* the
-   suites pass on it under `layouts,roots,poison`, the self-hosting fixed point holds, the inline allocation's cost
-   against libgc's call is recorded, and the MLton suite is no slower than on Boehm (expected: much faster, from
-   allocation alone).
-4. **Generations.** Sticky marks, the barrier live, minor collections, `barriers`. *Done when:* the suites pass under
-   `barriers`, and the suite's and the driver's own build times are recorded against step 3.
+2. **Barriers and root tables, logging only.** The IR marks mutating stores of `ptr` and `val` words, and the interior
+   forms among them (§3.5), and its verifier enforces the forms; the runtime's pointer stores into existing objects
+   are audited and marked; both backends emit the barrier calls (to a runtime stub that counts, by form) and the
+   per-unit root tables; `roots` checks the tables against a conservative scan. *Done when:* the suites pass under
+   `layouts,roots`, and the barrier counts per benchmark, interior stores apart, are recorded.
+3. **The collector, stop-the-world, non-generational.** `quest_gc.c`: the heap of §3.1, marking by layouts (marks in
+   the side bitmap, the header's *old* byte written by the marker alone, §3.2), the intersection of start bits with
+   marks (§3.6), lazy line sweeping, the large object space, noscan blocks (§3.9, brought up with one cursor and
+   measured with two), the statistics (`tools/perf/gcstats.py` reads them; live lines against live bytes among
+   them); libgc out of the build; inline allocation in both self-hosted backends, the object-start bit included
+   (§3.4); `poison`. *Done when:* the suites pass on it under `layouts,roots,poison`, the self-hosting fixed point
+   holds, the inline allocation's cost against libgc's call is recorded, and the MLton suite is no slower than on
+   Boehm (expected: much faster, from allocation alone).
+4. **Generations.** Sticky marks, the barrier live (interior stores through the slow path), minor collections,
+   `barriers`. *Done when:* the suites pass under `barriers`, the suite's and the driver's own build times are
+   recorded against step 3, and fragmentation (live lines against live bytes after the compiler's build and after a
+   long REPL session) is recorded for step 7's decision.
 5. **arm64 stack maps** from `codegen.frameSlots` (arm64.md §3.13): at each call, the frame slots holding live
    pointers and the callee-saved registers holding them, with where the function saves each such register, emitted
-   as a table per function the collector finds from the return address. The frame walk scans a mapped frame's slots
-   precisely; finds a register's value in the youngest frame that saved it, precisely when every frame between is
-   mapped and as an ambiguous word otherwise (§3.3); and scans any unmapped frame (a C-built unit's, the runtime's)
-   conservatively. The JIT's units carry maps the same way. This also ends the dead-slot retention of
-   arm64-performance-review.md §3.2 for mapped frames. Nothing of the kind for code compiled through C. *Done when:*
-   the suites pass through the arm64 backend and the JIT under `layouts,roots,barriers`, and the pinned fraction and
-   live data on the compiler's build are recorded against step 4.
-6. **Evacuation and the hash.** Candidates chosen before marking, the slot log and its bound, copying and rewriting
-   after marking (§3.6); the three hash states, interior objects included; serialization holding evacuation off;
-   `stress`. *Done when:* the suites, the transcripts, and the driver's build pass under `stress,barriers`,
-   `identityHash` is stable under a test that forces moves, and fragmentation, the slot log's size, and the pinned
+   as a table per function the collector finds from the return address. The frame walk scans a mapped frame's
+   pointer slots precisely and its memory-class slots conservatively; finds a register's value in the youngest frame
+   that saved it, precisely when every frame between is mapped and as an ambiguous word otherwise (§3.3); and scans
+   any unmapped frame (a C-built unit's, the runtime's) conservatively. The JIT's units carry maps the same way. This
+   ends the dead-slot retention of arm64-performance-review.md §3.2 for mapped frames, which is its gain whether or
+   not anything ever moves. Nothing of the kind for code compiled through C. *Done when:* the suites pass through
+   the arm64 backend and the JIT under `layouts,roots,barriers`, and the live data on the compiler's build is
+   recorded against step 4.
+6. **Incremental marking** (§3.10): the initial pause; every allocation through the slow path for the cycle, born old
+   and logged; the slices paced by allocation and draining the log; minor collections suspended for the cycle; the
+   budgeted final pause with its retries; `incremental`. *Done when:* the suites pass under `incremental,poison`, and
+   the pauses (the final pause's worst case and its retries among them), the throughput, the cost of the slow-path
+   allocation during a cycle (against the flag-word fallback, §3.10), and the nursery's growth during a cycle on the
+   compiler's build and the REPL's inputs are recorded against step 5, with the pace and slice bound that were
+   chosen.
+7. **Evacuation and the hash, taken on step 4's measurement** (§3.6, §3.7): candidates chosen before marking, the
+   slot log and its bound, copying and rewriting after marking, the old copies' bits and lines cleared; metadata
+   allocated pinned at birth into blocks of its own; the three hash states, interior objects included;
+   serialization holding evacuation off; evacuation inside the final pause of a cycle; `stress`. *Done when:* the
+   suites, the transcripts, and the driver's build pass under `stress,barriers,incremental`, `identityHash` is
+   stable under a test that forces moves, and fragmentation before and after, the slot log's size, and the pinned
    fraction after long compiler runs are recorded, the last by what pins it (the stack, the JIT's data, ambiguous
    words in the heap).
-7. **Layouts for generic allocation sites** (§3.3), in both compilers, taken when step 6's pinned fraction on the
+8. **Layouts for generic allocation sites** (§3.3), in both compilers, taken when step 7's pinned fraction on the
    compiler's build shows evacuation held back by ambiguous words in the heap (§3.3 expects it will be; the step
    follows the measurement because it changes the ABI): the analysis that gives a polymorphic function its
    descriptor parameters extends to a function that allocates an aggregate holding type-parameter words, and such a
    site builds its layout from the descriptors through an inline cache (a comparison of the descriptors with the
    last seen, then the cached layout). Descriptors are passed only where an allocation or a descriptor needs them,
    as now; the specializer's clones need none. *Done when:* `layouts` reports the ambiguous words of the compiler's
-   own build and of the suite, before and after, the pinned fraction is recorded against step 6, and the cost of the
+   own build and of the suite, before and after, the pinned fraction is recorded against step 7, and the cost of the
    added descriptor arguments on the MLton suite is recorded.
-8. **Incremental marking** (§3.10): the initial and final pauses; every allocation through the slow path for the
-   cycle, born old and logged; the slices paced by allocation and draining the log; minor collections suspended for
-   the cycle; `incremental`. *Done when:* the suites pass under `incremental,stress`, and the pauses, the throughput,
-   the cost of the slow-path allocation during a cycle (against the flag-word fallback, §3.10), and the nursery's
-   growth during a cycle on the compiler's build and the REPL's inputs are recorded against step 7 (or step 6, if 7
-   was not taken), with the pace and slice bound that were chosen.
 9. **A marker thread, optional** (§3.10): the slices on a thread of their own, the fenced slow path, the protocol for
-   the structures both sides read, `concurrent`. Taken only if step 8's measurement shows the mutator paying for
-   marking a thread could take. *Done when:* the suites pass under `concurrent,stress`, and the throughput and
-   pauses are recorded against step 8.
+   the structures both sides read, `concurrent`. Taken only if step 6's measurement shows the mutator paying for
+   marking a thread could take. *Done when:* the suites pass under `concurrent,incremental`, and the throughput and
+   pauses are recorded against step 6.
 
 A release follows step 1 and step 3, since each changes the ABI (the allocation call, then the runtime's heap).
 
 When the plan is complete, what it found moves into runtime-design.md §3, c-representation.md §9, arm64.md §3.13,
 and profiling.md §6, and this document is deleted.
 
-## 9. Review (2026-11-03)
+## 9. Reviews (2026-11-03)
 
-A review from another session (e3cd1e9a) raised fourteen points after the decisions of §6. Each was answered the same
-day and folded into the section it concerns; this section keeps the record. Two were soundness holes. Evacuating
-during marking, as §3.6 first said, is unsound once ambiguous words are inside the heap, since a word found after
-its referent moved can neither be rewritten nor have the move undone: §3.6 now marks first, logging the slots that
-refer into the candidate blocks, and copies and rewrites afterwards (decision 11). Incremental marking lost an
-object built, during a cycle, from a pointer loaded out of an unscanned object whose field was then overwritten,
-because the initializing stores have no barrier: objects born in a cycle are born old and logged (§3.10; decided by
-the user). Minor collections are suspended during a cycle (§3.10). Of the mechanisms: the mark bit moved to a side
-bitmap and the header's flags into two bytes with one writer each (§3.2, decision 12); a callee-saved register in a
-mapped frame is precise only through mapped frames (§3.3, step 5); the allocation cursor is a global, since
-`_longjmp` would restore a register (§3.4); the object-start bit is set by every allocation and counted in the fast
-path (§3.4); the immortal space grows with a session (decided by the user) and is never scanned as a whole, with a
-root list for the immortal objects that hold heap pointers (§3.1, §3.8); interior objects hash by the old base plus
-their offset (§3.7); serialization holds evacuation off rather than keying by hash (§3.7). Slips fixed: record
-dictionaries are immortal only (§3.1); the object-start bitmap is conservative Immix's, not Riptide's (§2, §3.1);
-`layouts` accepts pointers outside the heap (§7); a word at an object's end is that object's (§3.3, §5); the
-header's cost is half again on a two-word tuple, and step 1's number on Boehm is translated (§3.2); §3.5's list of
-the runtime's mutating stores became an audit. The order changed once: generic layouts moved from step 2 to step 7,
-taken on the pinned fraction step 6 measures (decision 13).
+**First review,** from another session (e3cd1e9a): fourteen points after the decisions of §6, each answered the same
+day and folded into the section it concerns. Two were soundness holes. Evacuating during marking, as §3.6 first
+said, is unsound once ambiguous words are inside the heap, since a word found after its referent moved can neither
+be rewritten nor have the move undone: §3.6 marks first, logging the slots that refer into the candidate blocks, and
+copies and rewrites afterwards (decision 11). Incremental marking lost an object built, during a cycle, from a
+pointer loaded out of an unscanned object whose field was then overwritten, because the initializing stores have no
+barrier: objects born in a cycle are born old and logged (§3.10; decided by the user). Minor collections are
+suspended during a cycle (§3.10). Of the mechanisms: the mark bit moved to a side bitmap and the header's flags into
+two bytes with one writer each (§3.2, decision 12); a callee-saved register in a mapped frame is precise only through
+mapped frames (§3.3, step 5); the allocation cursor is a global, since `_longjmp` would restore a register (§3.4);
+the object-start bit is set by every allocation and counted in the fast path (§3.4); the metadata of a JIT session
+grows with it (decided by the user); interior objects hash by the old base plus their offset (§3.7); serialization
+holds evacuation off rather than keying by hash (§3.7). Slips fixed: record dictionaries are not large objects; the
+object-start bitmap is conservative Immix's, not Riptide's (§2, §3.1); `layouts` accepts pointers outside the heap
+(§7); a word at an object's end is that object's (§3.3, §5); the header's cost is half again on a two-word tuple, and
+step 1's number on Boehm is translated (§3.2); §3.5's list of the runtime's mutating stores became an audit. Generic
+layouts moved from step 2 to after evacuation, taken on its measurement (decision 13; confirmed by the user).
+
+**Second review,** a reread by the authoring session the same day. One soundness hole: a dead object in a live line
+keeps its header and start bit, an ambiguous word can validate it, and its precise words, which the marker trusts,
+may point into reclaimed and reused lines; the start bitmap is now intersected with the mark bitmap at the end of
+every collection (§3.6, decision 14). Two gaps in the barrier: stores through interior pointers (a record's `var`
+field through its payload, `sStoreAt` through a location, a view's slot) find no header at the address minus 8 and
+go through the slow path with a bitmap lookup (§3.5); stores of `val` words may be pointer stores and take the
+barrier (§3.5). The final pause of an incremental cycle was claimed bounded and is not, since the stack's rescan can
+expose unmarked work; it is budgeted and retried, as V8's (§3.10). Evacuated copies' marks and lines are cleared
+(§3.6); the logs live outside the heap (§3.5); both cursors take the slow path during a cycle, and a mapped frame's
+memory-class slots stay conservative. The reread then asked what the fixes had cost in complexity, and the plan was
+reorganized (decisions 2, 7, 8 revised): evacuation, where the slot log, forwarding, the hash states, the hold count,
+and pinning's consequences all live, became a step taken only on a fragmentation measurement, with its design kept
+and the header's bits reserved for it; the immortal space, whose reason was to keep address-keyed metadata out of the
+moving question, went with it, replaced by ordinary heap data reached from listed roots and, should evacuation be
+taken, blocks of metadata pinned at birth. Card marking was weighed against object logging and not taken (decision
+5). The committed collector is sticky-mark Immix with a conservative stack, a precise heap, a header word, object
+logging, noscan blocks, a large object space, and incremental marking: the published design with less in it.
