@@ -1,0 +1,257 @@
+(* Quest Self-Hosted Compiler: The SSA's Constant Globals Implementation *)
+
+module constants : Constants
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    conv : Conv
+    stringOp = string : StringOp
+export
+    Let Function = ssa.Function
+    Let Defs = Array(maybe.T(ssa.Inst))
+
+    (* An instruction's place: its function, block, and index in the block *)
+    Let Site = Tuple function: Int block: Int index: Int end
+
+    (* A global that may be constant: its datum's index in the unit's data,
+     * whether a use rules it out, the stores to it (the one store's site and
+     * value when there is one), and its loads' sites *)
+    Let Candidate = Tuple
+        datum: Int
+        var ruledOut: Bool
+        var stores: Int
+        var store: Site
+        var value: ssa.Word
+        loads: vector.T(Site)
+    end
+
+    let siteKey(s: Site): String = conv.int(s.function) <> " " <> conv.int(s.block) <> " " <> conv.int(s.index)
+
+    (* The instruction defining each value of f, if one does (not a block's
+     * parameter) *)
+    let definitions(f: Function): Defs =
+        begin
+            let defs = array of(vector.length(:ssa.Type f.types) maybe.none(:ssa.Inst))
+            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                let insts = ssa.block(f b).insts
+                for k = 0 upto {vector.length(:ssa.Inst insts) - 1} do
+                    let i = vector.get(:ssa.Inst insts k)
+                    for j = 0 upto {extent i.results - 1} do defs[i.results[j]] := maybe.some(:ssa.Inst i) end
+                end
+            end
+            defs
+        end
+
+    (* The symbol v is the address of plus an addend, if an opSymbol defines
+     * v *)
+    let symbolOf(defs: Defs v: Int): maybe.T(ssa.Inst) =
+        if maybe.isSome(:ssa.Inst defs[v]) andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[v]) ssa.opSymbol) then defs[v]
+        else maybe.none(:ssa.Inst) end
+
+    (* Whether nothing can run before the instruction at site s in function f
+     * that could read the global at symbol, s's store to it aside: no call
+     * (which could reach a function that loads it) and no load of it on any
+     * path from f's entry to s, and s in no loop (which could run s's block
+     * after s, before s again) *)
+    let first(f: Function g: cfg.Graph defs: Defs s: Site symbol: String): Bool =
+        begin
+            let reads(i: ssa.Inst): Bool =
+                ssa.isCall(i) orif {ssa.isOp(i ssa.opLoad) andif begin
+                    let a = symbolOf(defs i.args[0])
+                    maybe.isSome(:ssa.Inst a) andif stringOp.equal(maybe.unwrap(:ssa.Inst a).symbol symbol)
+                end}
+            let blockReads(b: Int before: Int): Bool =
+                begin
+                    let insts = ssa.block(f b).insts
+                    let var any = false
+                    for k = 0 upto {before - 1} do if reads(vector.get(:ssa.Inst insts k)) then any := true end end
+                    any
+                end
+            let var clear = not(blockReads(s.block s.index))
+            (* The blocks from which s's block can be reached *)
+            let seen = array of(vector.length(:ssa.Block f.blocks) false)
+            let stack = vector.new(:Int)
+            vector.append(:Int stack s.block)
+            while not(vector.empty(:Int stack)) do
+                let b = vector.pop(:Int stack)
+                let ps = g.preds[b]
+                for k = 0 upto {extent ps - 1} do
+                    let p = ps[k]
+                    if p is s.block then clear := false
+                    elsif not(seen[p]) andif cfg.reached(g p) then
+                        seen[p] := true
+                        if blockReads(p vector.length(:ssa.Inst ssa.block(f p).insts)) then clear := false end
+                        vector.append(:Int stack p)
+                    end
+                end
+            end
+            clear
+        end
+
+    (* The value a store of v stores, as a word of static data, if an
+     * opConst or an opSymbol defines v *)
+    let wordOf(defs: Defs v: Int): maybe.T(ssa.Word) =
+        if maybe.isNone(:ssa.Inst defs[v]) then maybe.none(:ssa.Word)
+        else
+            let i = maybe.unwrap(:ssa.Inst defs[v])
+            if ssa.isOp(i ssa.opConst) then maybe.some(:ssa.Word option wordInt of ssa.Word with let n = i.imm end)
+            elsif ssa.isOp(i ssa.opSymbol) then
+                maybe.some(:ssa.Word option wordSymbol of ssa.Word with let symbol = i.symbol let addend = i.imm end)
+            else maybe.none(:ssa.Word) end
+        end
+
+    (* The instruction a load of a constant global becomes: the value w as
+     * result, at the load's position *)
+    let valueInst(w: ssa.Word result: Int loc: ssa.Loc): ssa.Inst =
+        begin
+            let i = case w
+                when wordInt with x then
+                    ssa.instruction(ssa.opConst array of :Int end array of result end x.n "" 0 false ssa.emptySignature)
+                when wordSymbol with x then
+                    ssa.instruction(ssa.opSymbol array of :Int end array of result end x.addend x.symbol 0 false
+                        ssa.emptySignature)
+            end
+            i.loc := loc
+            i
+        end
+
+    (* The type a load of a global holding w must have to be replaced by
+     * w *)
+    let typeFits(w: ssa.Word t: ssa.Type): Bool =
+        case w
+            when wordInt then stringOp.equal(ssa.typeName(t) "int")
+            when wordSymbol then stringOp.equal(ssa.typeName(t) "ptr")
+        end
+
+    (* Whether the candidate c, the global at symbol, is constant: stored
+     * once, with nothing that could read it first (first), and loaded only
+     * as the type of its value; graphs are the control-flow graphs of u's
+     * functions, made when first needed *)
+    let constant(u: ssa.Unit allDefs: Array(Defs) graphs: Array(maybe.T(cfg.Graph)) symbol: String c: Candidate): Bool =
+        begin
+            let var fits = not(c.ruledOut) andif {c.stores is 1}
+            for k = 0 upto {vector.length(:Site c.loads) - 1} do
+                let s = vector.get(:Site c.loads k)
+                let f = vector.get(:Function u.functions s.function)
+                let i = vector.get(:ssa.Inst ssa.block(f s.block).insts s.index)
+                if not(typeFits(c.value ssa.typeOf(f i.results[0]))) then fits := false end
+            end
+            if fits then
+                let fi = c.store.function
+                let f = vector.get(:Function u.functions fi)
+                if maybe.isNone(:cfg.Graph graphs[fi]) then graphs[fi] := maybe.some(:cfg.Graph cfg.graph(f)) end
+                first(f maybe.unwrap(:cfg.Graph graphs[fi]) allDefs[fi] c.store symbol)
+            else false end
+        end
+
+    let constantUnit(u: ssa.Unit): Ok =
+        begin
+            let candidates = hashMap.new(:String :Candidate stringOp.equal hash.string)
+            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
+                let d = vector.get(:ssa.Data u.data k)
+                let zeroWord = case d.contents when contentsZero with x then x.bytes is 8 else false end
+                if not(d.exported) andif d.writable andif zeroWord then
+                    let c = tuple
+                        let datum = k let var ruledOut = false let var stores = 0
+                        let var store = tuple let function = ~1 let block = ~1 let index = ~1 end
+                        let var value = option wordInt of ssa.Word with let n = 0 end
+                        let loads = vector.new(:Site)
+                    end
+                    let ignored = hashMap.insert(:String :Candidate candidates d.symbol c)
+                end
+            end
+            let nFunctions = vector.length(:Function u.functions)
+            let allDefs = array of(nFunctions array of :maybe.T(ssa.Inst) end)
+            (* Each use of a candidate's address: a whole word's load or store
+             * at it, or anything else, which rules it out *)
+            for fi = 0 upto {nFunctions - 1} do
+                let f = vector.get(:Function u.functions fi)
+                let defs = definitions(f)
+                allDefs[fi] := defs
+                let candidateAt(v: Int): maybe.T(Candidate) =
+                    begin
+                        let a = symbolOf(defs v)
+                        if maybe.isSome(:ssa.Inst a) then
+                            let c = hashMap.get(:String :Candidate candidates maybe.unwrap(:ssa.Inst a).symbol)
+                            if maybe.isSome(:Candidate c) andif {maybe.unwrap(:ssa.Inst a).imm isnot 0} then
+                                maybe.unwrap(:Candidate c).ruledOut := true
+                            end
+                            c
+                        else maybe.none(:Candidate) end
+                    end
+                for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                    let blk = ssa.block(f b)
+                    for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                        let i = vector.get(:ssa.Inst blk.insts k)
+                        let site = tuple let function = fi let block = b let index = k end
+                        for p = 0 upto {extent i.args - 1} do
+                            let found = candidateAt(i.args[p])
+                            if maybe.isSome(:Candidate found) then
+                                let c = maybe.unwrap(:Candidate found)
+                                let word = {p is 0} andif {i.imm is 0} andif {i.width is 8}
+                                if word andif ssa.isOp(i ssa.opLoad) then vector.append(:Site c.loads site)
+                                elsif word andif ssa.isOp(i ssa.opStore) then
+                                    c.stores := c.stores + 1
+                                    c.store := site
+                                    let w = wordOf(defs i.args[1])
+                                    if maybe.isSome(:ssa.Word w) then c.value := maybe.unwrap(:ssa.Word w)
+                                    else c.ruledOut := true end
+                                else c.ruledOut := true end
+                            end
+                        end
+                    end
+                    let uses = ssa.terminatorUses(blk.term)
+                    for p = 0 upto {extent uses - 1} do
+                        let found = candidateAt(uses[p])
+                        if maybe.isSome(:Candidate found) then maybe.unwrap(:Candidate found).ruledOut := true end
+                    end
+                end
+            end
+            (* The constant ones: their loads replaced, their stores dropped,
+             * and their data given their values *)
+            let graphs = array of(nFunctions maybe.none(:cfg.Graph))
+            let dropped = hashMap.new(:String :Bool stringOp.equal hash.string)
+            for e = 0 upto {vector.length(:ssa.Data u.data) - 1} do
+                let symbol = vector.get(:ssa.Data u.data e).symbol
+                let found = hashMap.get(:String :Candidate candidates symbol)
+                if maybe.isSome(:Candidate found) andif constant(u allDefs graphs symbol maybe.unwrap(:Candidate found)) then
+                    let c = maybe.unwrap(:Candidate found)
+                    for k = 0 upto {vector.length(:Site c.loads) - 1} do
+                        let s = vector.get(:Site c.loads k)
+                        let insts = ssa.block(vector.get(:Function u.functions s.function) s.block).insts
+                        let i = vector.get(:ssa.Inst insts s.index)
+                        vector.set(:ssa.Inst insts s.index valueInst(c.value i.results[0] i.loc))
+                    end
+                    let ignored = hashMap.insert(:String :Bool dropped siteKey(c.store) true)
+                    vector.set(:ssa.Data u.data c.datum ssa.words(symbol false false array of c.value end))
+                end
+            end
+            (* The stores dropped, each block's together, so that the sites
+             * of the others in it stay right until then *)
+            if not(hashMap.empty(:String :Bool dropped)) then
+                for fi = 0 upto {nFunctions - 1} do
+                    let f = vector.get(:Function u.functions fi)
+                    for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                        let insts = ssa.block(f b).insts
+                        let kept = vector.new(:ssa.Inst)
+                        for k = 0 upto {vector.length(:ssa.Inst insts) - 1} do
+                            let site = tuple let function = fi let block = b let index = k end
+                            if not(hashMap.contains(:String :Bool dropped siteKey(site))) then
+                                vector.append(:ssa.Inst kept vector.get(:ssa.Inst insts k))
+                            end
+                        end
+                        if vector.length(:ssa.Inst kept) isnot vector.length(:ssa.Inst insts) then
+                            vector.clear(:ssa.Inst insts)
+                            for k = 0 upto {vector.length(:ssa.Inst kept) - 1} do
+                                vector.append(:ssa.Inst insts vector.get(:ssa.Inst kept k))
+                            end
+                        end
+                    end
+                end
+            end
+        end
+end

@@ -1,0 +1,404 @@
+== an integer, in an initialization guarded by a flag
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g_one
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init() {
+b0():
+  %0: ptr = symbol initialized
+  %1: int = load1 %0 + 0
+  branch %1, b1(), b2()
+b1():
+  return
+b2():
+  %2: int = const 1
+  store1 %0 + 0, %2
+  %3: ptr = symbol g_one
+  store8 %3 + 0, %2
+  %4: int = const 56
+  %5: ptr = call quest_alloc(%4)
+  %6: int = load8 %3 + 0
+  store8 %5 + 0, %6
+  return
+}
+
+data initialized writable zero 8
+data g_one writable zero 8
+-- after constants
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g_one
+  %2: int = const 1
+  %3: int = add %0, %2
+  return %3
+}
+
+function init() {
+b0():
+  %0: ptr = symbol initialized
+  %1: int = load1 %0 + 0
+  branch %1, b1(), b2()
+b1():
+  return
+b2():
+  %2: int = const 1
+  store1 %0 + 0, %2
+  %3: ptr = symbol g_one
+  %4: int = const 56
+  %5: ptr = call quest_alloc(%4)
+  %6: int = const 1
+  store8 %5 + 0, %6
+  return
+}
+
+data initialized writable zero 8
+data g_one words [1]
+== a symbol's address
+function get(): ptr {
+b0():
+  %0: ptr = symbol g_f
+  %1: ptr = load8 %0 + 0
+  return %1
+}
+
+function init() {
+b0():
+  %0: ptr = symbol f_closure
+  %1: ptr = symbol g_f
+  store8 %1 + 0, %0
+  return
+}
+
+data f_closure words [0, 0]
+data g_f writable zero 8
+-- after constants
+function get(): ptr {
+b0():
+  %0: ptr = symbol g_f
+  %1: ptr = symbol f_closure
+  return %1
+}
+
+function init() {
+b0():
+  %0: ptr = symbol f_closure
+  %1: ptr = symbol g_f
+  return
+}
+
+data f_closure words [0, 0]
+data g_f words [f_closure]
+== stored twice
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init() {
+b0():
+  %0: int = const 1
+  %1: ptr = symbol g
+  store8 %1 + 0, %0
+  %2: int = const 2
+  store8 %1 + 0, %2
+  return
+}
+
+data g writable zero 8
+-- after constants
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init() {
+b0():
+  %0: int = const 1
+  %1: ptr = symbol g
+  store8 %1 + 0, %0
+  %2: int = const 2
+  store8 %1 + 0, %2
+  return
+}
+
+data g writable zero 8
+== stored after a call
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init() {
+b0():
+  %0: int = const 5
+  %1: int = call use(%0)
+  %2: int = const 1
+  %3: ptr = symbol g
+  store8 %3 + 0, %2
+  return
+}
+
+data g writable zero 8
+-- after constants
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init() {
+b0():
+  %0: int = const 5
+  %1: int = call use(%0)
+  %2: int = const 1
+  %3: ptr = symbol g
+  store8 %3 + 0, %2
+  return
+}
+
+data g writable zero 8
+== loaded before it is stored, in an earlier block
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init(): int {
+b0():
+  %0: ptr = symbol g
+  %1: int = load8 %0 + 0
+  jump b1()
+b1():
+  %2: int = const 1
+  store8 %0 + 0, %2
+  return %1
+}
+
+data g writable zero 8
+-- after constants
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init(): int {
+b0():
+  %0: ptr = symbol g
+  %1: int = load8 %0 + 0
+  jump b1()
+b1():
+  %2: int = const 1
+  store8 %0 + 0, %2
+  return %1
+}
+
+data g writable zero 8
+== its address passed on
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init() {
+b0():
+  %0: int = const 1
+  %1: ptr = symbol g
+  store8 %1 + 0, %0
+  %2: ptr = call keep(%1)
+  return
+}
+
+data g writable zero 8
+-- after constants
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init() {
+b0():
+  %0: int = const 1
+  %1: ptr = symbol g
+  store8 %1 + 0, %0
+  %2: ptr = call keep(%1)
+  return
+}
+
+data g writable zero 8
+== exported
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init() {
+b0():
+  %0: int = const 1
+  %1: ptr = symbol g
+  store8 %1 + 0, %0
+  return
+}
+
+data g exported writable zero 8
+-- after constants
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init() {
+b0():
+  %0: int = const 1
+  %1: ptr = symbol g
+  store8 %1 + 0, %0
+  return
+}
+
+data g exported writable zero 8
+== stored in a loop
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init(%0: int) {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = const 1
+  jump b1(%0)
+b1(%3: int):
+  store8 %1 + 0, %2
+  %4: int = sub %3, %2
+  branch %4, b1(%4), b2()
+b2():
+  return
+}
+
+data g writable zero 8
+-- after constants
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init(%0: int) {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = const 1
+  jump b1(%0)
+b1(%3: int):
+  store8 %1 + 0, %2
+  %4: int = sub %3, %2
+  branch %4, b1(%4), b2()
+b2():
+  return
+}
+
+data g writable zero 8
+== loaded a byte at a time
+function use(): int {
+b0():
+  %0: ptr = symbol g
+  %1: int = load1 %0 + 0
+  return %1
+}
+
+function init() {
+b0():
+  %0: int = const 1
+  %1: ptr = symbol g
+  store8 %1 + 0, %0
+  return
+}
+
+data g writable zero 8
+-- after constants
+function use(): int {
+b0():
+  %0: ptr = symbol g
+  %1: int = load1 %0 + 0
+  return %1
+}
+
+function init() {
+b0():
+  %0: int = const 1
+  %1: ptr = symbol g
+  store8 %1 + 0, %0
+  return
+}
+
+data g writable zero 8
+== stored a value that is not a constant
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init(%0: int) {
+b0(%0: int):
+  %1: ptr = symbol g
+  store8 %1 + 0, %0
+  return
+}
+
+data g writable zero 8
+-- after constants
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init(%0: int) {
+b0(%0: int):
+  %1: ptr = symbol g
+  store8 %1 + 0, %0
+  return
+}
+
+data g writable zero 8

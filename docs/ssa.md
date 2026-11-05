@@ -205,6 +205,16 @@ internal error.
   left are renumbered. A function that enters a `try` keeps all its slots, since its handler must see what the body
   stored (arm64.md §3.6); a variable captured by a closure is a heap cell, and one passed as a `var` argument keeps
   its slot, its address escaping. `language/mutable_locals` covers each kind.
+- **`ssa/constants`** makes constant the globals bound to constants. A global the unit does not export (another unit
+  could store to one it does), a word of static data that starts as zero, is constant when the unit stores to it once,
+  a whole word that is an `opConst` or a symbol's address, with no call and no load of it on any path from its
+  function's entry to the store and the store in no loop, and otherwise only loads it, a whole word at a time, as the
+  type of that value. Its datum then holds the value from the start, read-only; the store goes, and each load becomes
+  the value, which value numbering then folds into what uses it. A module's member bound to a literal or to what the
+  builder makes a constant (a call of a standard library external it makes an instruction, as `word.fromInt(1)` for
+  `util/bignum`'s `oneW`) is such a global: the module's initialization stores it, guarded by the module's flag, and
+  each use loaded it, in every iteration of a loop that used it. Only a unit's own globals are seen, so only those
+  are folded: another unit loads an exported member as before. `ssa_constants` shows each case.
 - **`ssa/valueNumbers`** removes redundant values along the dominator tree, in the manner of Briggs, Cooper, and
   Simpson: a pure instruction or a load whose equal dominates it becomes that equal, by a key of its opcode, immediate,
   symbol, result type, and arguments' numbers (a constant's by its value; commutative ones ordered; a load's address
@@ -227,7 +237,7 @@ internal error.
   condition, at most two of them and none a `real`. An arm's block may have up to two instructions that can run before
   the branch whichever arm it takes: they write nothing, cannot trap, and read nothing the branch could change
   (arithmetic but division, comparisons, conversions, constants, and a load of static data at a symbol, a module's
-  global such as `util/bignum`'s `oneW`); they move into the branch's block. A carry in a loop of arbitrary-precision arithmetic (`util/bignum`'s `bit(word.lt(sum operand))`) is such a
+  global); they move into the branch's block. A carry in a loop of arbitrary-precision arithmetic (`util/bignum`'s `bit(word.lt(sum operand))`) is such a
   branch, taken as often as not: arm64 mispredicted half of them, and now makes each a `cset` of the comparison's
   flags; C's compiler already made it one ([benchmarks.md](benchmarks.md) §15). `ssa_selects` shows each case.
 - **`ssa/accumulate`** makes loops of recursion through an associative operation (LLVM's accumulator recursion
@@ -274,7 +284,8 @@ The passes share their analyses: `ssa/cfg` (predecessors, successors, reverse po
 preorder and postorder numbers, dominance frontiers, and loop depths) and `ssa/liveness` (each block's live-in and
 live-out values, which the register allocator uses); `nodes` has the mutators (`targets`, `mapTargets`, `mapBlocks`,
 `replaceUses`). The driver dumps the SSA after the builder (`--dump-after ssa_built`), after each pass (`ssa_escape`,
-`ssa_promote`, `ssa_valueNumbers`, `ssa_selects`, `ssa_accumulate`, `ssa_tailCalls`, `ssa_tailJumps`), and at the end
+`ssa_promote`, `ssa_constants`, `ssa_valueNumbers`, `ssa_selects`, `ssa_accumulate`, `ssa_tailCalls`,
+`ssa_tailJumps`), and at the end
 (`ssa`);
 `QUEST_SKIP_PASSES`, a comma-separated list of passes' names, leaves passes out, for a test or a bisection.
 
@@ -374,8 +385,8 @@ b0(%0: ptr, %1: int):
 `questlang/ssa/parser` reads the text back into a unit, values keeping their numbers, so that printing what it reads
 prints what it read: with `QUEST_CHECK_IR=1` the driver reads back the SSA it prints and reports any difference, so
 every golden is checked to read back as itself. A pass is tested on SSA written as text: the questlang tests
-`ssa_promote`, `ssa_escape`, `ssa_valuenumbers`, `ssa_selects`, `ssa_accumulate`, `ssa_tailcalls`, and `ssa_tailjumps`
-read small
+`ssa_promote`, `ssa_escape`, `ssa_constants`, `ssa_valuenumbers`, `ssa_selects`, `ssa_accumulate`, `ssa_tailcalls`,
+and `ssa_tailjumps` read small
 functions, run their pass and the verifier, and print the functions before and after; and a program's SSA can be cut
 down to the functions that show a bug.
 

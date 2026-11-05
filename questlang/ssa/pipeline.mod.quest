@@ -15,11 +15,12 @@ import
     questlang/ssa/valueNumbers : questlang/ssa/ValueNumbers
     questlang/ssa/accumulate : questlang/ssa/Accumulate
     questlang/ssa/selects : questlang/ssa/Selects
+    questlang/ssa/constants : questlang/ssa/Constants
     util/strutil : util/Strutil
     stringOp = string : StringOp
     system : System
 export
-    let passes = array of "escape" "promote" "valueNumbers" "selects" "accumulate" "tailCalls" "tailJumps" end
+    let passes = array of "escape" "promote" "constants" "valueNumbers" "selects" "accumulate" "tailCalls" "tailJumps" end
 
     let settings = tuple let var interruptChecks = false end
     let setInterruptChecks(on: Bool): Ok = settings.interruptChecks := on
@@ -29,6 +30,7 @@ export
     let runPass(name: String u: ssa.Unit): Ok =
         if stringOp.equal(name "escape") then begin let ignored = escape.escapeUnit(u) end
         elsif stringOp.equal(name "promote") then begin let ignored = promote.promoteUnit(u) end
+        elsif stringOp.equal(name "constants") then constants.constantUnit(u)
         elsif stringOp.equal(name "valueNumbers") then valueNumbers.numberUnit(u)
         elsif stringOp.equal(name "selects") then selects.selectUnit(u)
         elsif stringOp.equal(name "accumulate") then accumulate.accumulateUnit(u)
