@@ -10,8 +10,9 @@ between them.
 
 The change is what differs from origin/main: the commits since they diverged,
 and what is not yet committed. A change only to the self-hosted compiler, its
-own goldens and pending lists, or the docs (SELF_HOSTED_ONLY_PATHS) needs the
-self-hosted compiler's suites alone; any other change needs every suite.
+own goldens and pending lists, the docs, or Markdown files anywhere (README.md;
+self_hosted_only_file) needs the self-hosted compiler's suites alone; any other
+change needs every suite.
 
 The self-hosted compiler's suites, run at once: the self-hosting check
 (run_tests.py --self-hosting --seed release, which ends by running the
@@ -68,6 +69,14 @@ PTY_TESTS = "tests/python/test_readline_terminal.py"
 # pending lists, and the docs
 SELF_HOSTED_ONLY_PATHS = ("questlang/", "tests/golden/self-hosted/", "tests/golden/ir_", "tests/golden/ssa/",
                           "tests/self-hosted/", "docs/")
+
+
+def self_hosted_only_file(path: str) -> bool:
+    """Whether a changed file needs no more than the self-hosted compiler's
+    suites: one of its own, or documentation, which no test reads."""
+    return path.startswith(SELF_HOSTED_ONLY_PATHS) or path.endswith(".md")
+
+
 # The IR runs left to run by hand: those between Core and the described stage
 SKIPPED_PHASES = ("run_ir_simplified", "run_ir_specialized", "run_ir_closed", "run_ir_represented")
 # The checks every compiled program the suites run makes (docs/collector.md
@@ -200,7 +209,7 @@ def main() -> int:
         self_hosted_only = args.self_hosted_only
     else:
         changed = changed_files()
-        others = None if changed is None else [f for f in changed if not f.startswith(SELF_HOSTED_ONLY_PATHS)]
+        others = None if changed is None else [f for f in changed if not self_hosted_only_file(f)]
         self_hosted_only = others == []
         if changed is None:
             print("Running every suite: git cannot say what the change is")

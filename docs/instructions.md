@@ -43,7 +43,7 @@ project's purpose and the list of documents, and [roadmap.md](roadmap.md) for wh
   ends with the self-hosted suite), the backends' suite (the self-hosted suite through `ssac` and `arm64`,
   [arm64.md](arm64.md) §4), the bootstrap's suite, and the unit tests, with the cores split between them, and then
   the terminal tests alone. For a change to the self-hosted compiler alone (`questlang/`, its own goldens, and the
-  docs: how it compiles, or a refactoring), it runs only the self-hosting checks and the backends' suite; it decides
+  docs and any Markdown file: how it compiles, or a refactoring), it runs only the self-hosting checks and the backends' suite; it decides
   from the files that differ from `origin/main` (testing.md §4.1), and `--all` overrides it. Anything either
   compiler shares (the language, `lib/`, `runtime/`, what programs do or what errors say, the tests) needs the full
   `tools/check` ([testing.md](testing.md) §4.1).

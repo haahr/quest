@@ -665,8 +665,9 @@ bidirectional matching:
 Which tests a change needs depends on which compilers it changes (section 2.8, and
 [instructions.md](instructions.md) §9). `tools/check` decides from the files that differ from `origin/main`, committed
 or not: a change only to `questlang/`, the self-hosted compiler's own goldens (`tests/golden/self-hosted/`, and its IR
-and SSA dumps, `tests/golden/ir_*/` and `tests/golden/ssa/`), `tests/self-hosted/`, or `docs/` runs the second row's
-suites, and any other change the first's. It says which, and why; `--all` and `--self-hosted-only` choose for it.
+and SSA dumps, `tests/golden/ir_*/` and `tests/golden/ssa/`), `tests/self-hosted/`, `docs/`, or Markdown files
+anywhere (`README.md`) runs the second row's suites, and any other change the first's: documentation never widens
+the check. It says which, and why; `--all` and `--self-hosted-only` choose for it.
 
 | Change | Runs | Takes (10 cores) |
 | :--- | :--- | ---: |
