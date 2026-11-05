@@ -30,6 +30,7 @@ export
         components: hashMap.T(Int Int)
         recursive: hashMap.T(Int Bool)
         closed: hashMap.T(Int Bool)
+        free: hashMap.T(Int Array(Variable))
         callsExternalAtTypes: hashMap.T(Int Bool)
         sizes: hashMap.T(Int Int)
         size: Int
@@ -145,9 +146,10 @@ export
             result
         end
 
-    (* Whether a function names only variables it binds: its parameters, and
-     * the binders of its body and its functions *)
-    let isClosed(f: nodes.Function): Bool =
+    (* The variables a function names and does not bind (its parameters, and
+     * the binders of its body and its functions, are bound), in the order
+     * first named *)
+    let freeVariables(f: nodes.Function): Array(Variable) =
         begin
             let bound = hashMap.new(:Int :Bool intEqual hash.int)
             for i = 0 upto {extent f.params - 1} do hashMap.insert(:Int :Bool bound f.params[i].v.id true) end
@@ -168,18 +170,23 @@ export
                     else ok
                 end
             end
-            let var closed = true
+            let found = vector.new(:Variable)
+            let seen = hashMap.new(:Int :Bool intEqual hash.int)
             for i = 0 upto {vector.length(:Stmt stmts) - 1} do
                 let used = walk.statementUses(vector.get(:Stmt stmts i))
                 for k = 0 upto {extent used - 1} do
                     case used[k]
                         when atomVar with x then
-                            if not(hashMap.contains(:Int :Bool bound x.v.id)) then closed := false end
+                            if not(hashMap.contains(:Int :Bool bound x.v.id))
+                                andif not(hashMap.contains(:Int :Bool seen x.v.id)) then
+                                hashMap.insert(:Int :Bool seen x.v.id true)
+                                vector.append(:Variable found x.v)
+                            end
                         when atomConst then ok
                     end
                 end
             end
-            closed
+            vector.toArray(:Variable found)
         end
 
     (* Whether a function's body, or a function it binds, calls an external
@@ -233,9 +240,12 @@ export
                 hashMap.insert(:Int :Bool recursive f.v.id self)
             end
             let closed = hashMap.new(:Int :Bool intEqual hash.int)
+            let free = hashMap.new(:Int :Array(Variable) intEqual hash.int)
             for i = 0 upto {vector.length(:nodes.Function order) - 1} do
                 let f = vector.get(:nodes.Function order i)
-                hashMap.insert(:Int :Bool closed f.v.id isClosed(f))
+                let named = freeVariables(f)
+                hashMap.insert(:Int :Array(Variable) free f.v.id named)
+                hashMap.insert(:Int :Bool closed f.v.id extent named is 0)
             end
             let externals = hashMap.new(:Int :Bool intEqual hash.int)
             for i = 0 upto {vector.length(:nodes.Function order) - 1} do
@@ -247,6 +257,7 @@ export
                 let components = numbers
                 let recursive = recursive
                 let closed = closed
+                let free = free
                 let callsExternalAtTypes = externals
                 let sizes = sizes
                 let size = total
@@ -281,8 +292,10 @@ export
             counted.n
         end
 
+    Def Read = Tuple v: Variable op: nodes.Op end
+
     let expand(f: nodes.Function typeArgs: Array(model.Type) args: Array(Atom) byRef: Array(maybe.T(Variable))
-        into: maybe.T(Variable) pos: Int rest: Array(Stmt) labels: clone.Labels): Array(Stmt) =
+        reads: Array(Read) into: maybe.T(Variable) pos: Int rest: Array(Stmt) labels: clone.Labels): Array(Stmt) =
         begin
             let subst = model.newSubst()
             for i = 0 upto {extent f.typeParams - 1} do
@@ -302,6 +315,14 @@ export
                     nodes.positionAt(binding pos)
                     vector.append(:Stmt bound binding)
                 end
+            end
+            for i = 0 upto {extent reads - 1} do
+                let v = reads[i].v
+                let local = nodes.newVar(v.hint clone.ty(c v.type) false)
+                clone.bindVar(c v local)
+                let binding = nodes.letStmt(local reads[i].op)
+                nodes.positionAt(binding pos)
+                vector.append(:Stmt bound binding)
             end
             clone.bindAll(c f.body)
             let body = clone.copyBody(c f.body)

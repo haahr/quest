@@ -1,0 +1,168 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+module boxes : Boxes {
+  let empty: Exception = exception empty @21:28
+  let empty.1: Exception = empty @21:28
+  funs {
+    fun full(val: Int): Option empty full with Tuple val: Int end end {
+      let %1: Tuple val: Int end = tuple(val) @23:9
+      let %2: Option empty full with Tuple val: Int end end = option(full, %1) @23:9
+      return %2
+    }
+  }
+  funs {
+    fun unwrap(o: Option empty full with Tuple val: Int end end): Int {
+      switch tag(o) { @25:9
+        case full (x: Tuple val: Int end): {
+          let %3: Int = tuple_field(x, 0) @25:38
+          return %3 @25:9
+        }
+        else: {
+          raise empty.1 @25:49
+        }
+      }
+    }
+  }
+  funs {
+    fun unwrapTwice(o.1: Option empty full with Tuple val: Int end end): Tuple a: Int b: Int end {
+      join inlined1(a: Int) {
+        join inlined2(b: Int) {
+          let %4: Tuple a: Int b: Int end = tuple(a, b) @27:9
+          return %4
+        } in {
+          switch tag(o.1) { @25:9
+            case full (x.1: Tuple val: Int end): {
+              let %5: Int = tuple_field(x.1, 0) @25:38
+              jump inlined2(%5) @25:9
+            }
+            else: {
+              raise empty.1 @25:49
+            }
+          }
+        }
+      } in {
+        switch tag(o.1) { @25:9
+          case full (x.2: Tuple val: Int end): {
+            let %6: Int = tuple_field(x.2, 0) @25:38
+            jump inlined1(%6) @25:9
+          }
+          else: {
+            raise empty.1 @25:49
+          }
+        }
+      }
+    }
+  }
+  funs rec {
+    fun depth(n: Int): Int {
+      let %7: Bool = prim is(n, 0) @28:37
+      if %7 { @28:34
+        return 0 @28:34
+      } else {
+        let %8: Int = prim -(n, 1) @28:66
+        let %9: Int = call depth(%8) @28:60
+        let %10: Int = prim +(1, %9) @28:56
+        return %10 @28:34
+      }
+    }
+  }
+  funs {
+    fun depthTwice(n.1: Int): Int {
+      let %11: Int = call depth(n.1) @29:35
+      let %12: Int = call depth(n.1) @29:46
+      let %13: Int = prim +(%11, %12) @29:35
+      return %13
+    }
+  }
+  let boxes_record: Record empty: Exception full: Fun(val: Int): Option empty full with Tuple val: Int end end unwrap: Fun(o: Option empty full with Tuple val: Int end end): Int unwrapTwice: Fun(o: Option empty full with Tuple val: Int end end): Tuple a: Int b: Int end depth: Fun(n: Int): Int depthTwice: Fun(n: Int): Int end = record(empty = empty.1, full = full, unwrap = unwrap, unwrapTwice = unwrapTwice, depth = depth, depthTwice = depthTwice)
+  export empty = empty.1, full = full, unwrap = unwrap, unwrapTwice = unwrapTwice, depth = depth, depthTwice = depthTwice
+  record boxes_record
+}
+main {
+  let %14: Tuple val: Int end = tuple(5) @23:9
+  let %15: Option empty full with Tuple val: Int end end = option(full, %14) @23:9
+  join inlined3(%16: Int) {
+    let %17: String = call conv.int(%16) @33:16
+    let %18: String = prim <>("1. ", %17) @33:7
+    let %19: writer.T = member writer.output @11:45
+    let %20: String = prim <>(%18, "\n") @11:59
+    let %21: Ok = call writer.putString(%19, %20) @11:28
+    join k3(r: String) {
+      let %22: String = prim <>("2. ", r) @37:7
+      let %23: writer.T = member writer.output @11:45
+      let %24: String = prim <>(%22, "\n") @11:59
+      let %25: Ok = call writer.putString(%23, %24) @11:28
+      let %26: Tuple val: Int end = tuple(4) @23:9
+      let %27: Option empty full with Tuple val: Int end end = option(full, %26) @23:9
+      join inlined7(both: Tuple a: Int b: Int end) {
+        let %28: Int = tuple_field(both, 0) @41:25
+        let %29: Int = tuple_field(both, 1) @41:34
+        let %30: Int = prim +(%28, %29) @41:25
+        let %31: String = call conv.int(%30) @41:16
+        let %32: String = prim <>("3. ", %31) @41:7
+        let %33: writer.T = member writer.output @11:45
+        let %34: String = prim <>(%32, "\n") @11:59
+        let %35: Ok = call writer.putString(%33, %34) @11:28
+        let %36: Int = call boxes.depthTwice(3) @44:25
+        let %37: String = call conv.int(%36) @44:16
+        let %38: String = prim <>("4. ", %37) @44:7
+        let %39: writer.T = member writer.output @11:45
+        let %40: String = prim <>(%38, "\n") @11:59
+        let %41: Ok = call writer.putString(%39, %40) @11:28
+      } in {
+        let empty.2: Exception = member boxes.empty @40:12
+        join inlined1_5(a.1: Int) {
+          join inlined2_6(b.1: Int) {
+            let %42: Tuple a: Int b: Int end = tuple(a.1, b.1) @27:9
+            jump inlined7(%42)
+          } in {
+            switch tag(%27) { @25:9
+              case full (x.3: Tuple val: Int end): {
+                let %43: Int = tuple_field(x.3, 0) @25:38
+                jump inlined2_6(%43) @25:9
+              }
+              else: {
+                raise empty.2 @25:49
+              }
+            }
+          }
+        } in {
+          switch tag(%27) { @25:9
+            case full (x.4: Tuple val: Int end): {
+              let %44: Int = tuple_field(x.4, 0) @25:38
+              jump inlined1_5(%44) @25:9
+            }
+            else: {
+              raise empty.2 @25:49
+            }
+          }
+        }
+      }
+    } in {
+      let %45: Exception = member boxes.empty @37:57
+      try catching (%45) {
+        let empty.3: Exception = member boxes.empty @37:29
+        raise empty.3 @25:49
+      } handle (e: Exception) {
+        let %46: Bool = prim is(e, %45) @37:16
+        if %46 { @37:16
+          jump k3("empty") @37:16
+        } else {
+          reraise e @37:16
+        }
+      }
+    }
+  } in {
+    let empty.4: Exception = member boxes.empty @33:25
+    switch tag(%15) { @25:9
+      case full (x.5: Tuple val: Int end): {
+        let %47: Int = tuple_field(x.5, 0) @25:38
+        jump inlined3(%47) @25:9
+      }
+      else: {
+        raise empty.4 @25:49
+      }
+    }
+  }
+}
+

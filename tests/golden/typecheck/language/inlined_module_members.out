@@ -1,0 +1,189 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedLetValue 'print' :type Fun(s: String): Ok
+      :value (TypedFun :params (('s' : String)) :type Fun(s: String): Ok
+        :body (TypedApp :type Ok
+          :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+            :target (TypedVar 'writer' :type Module 'writer'))
+          :args (
+            (TypedSelect 'output' :type writer.T
+              :target (TypedVar 'writer' :type Module 'writer'))
+            (TypedInfix '<>' :type String
+              :left (TypedVar 's' :type String)
+              :right (TypedString '\n' :type String))
+          ))))
+    (TypedInterface 'Boxes'
+      :signatures ())
+    (TypedModule 'boxes' implements 'Boxes'
+      :bindings (
+        (TypedLetValue 'empty' :type Exception
+          :value (TypedException 'empty' :type Exception))
+        (TypedLetValue 'full' :type Fun(val: Int): Option empty full with Tuple val: Int end end
+          :value (TypedFun :params (('val' : Int)) :type Fun(val: Int): Option empty full with Tuple val: Int end end
+            :body (TypedOption 'full' :type Option empty full with Tuple val: Int end end
+              :payload (TypedTuple :type Tuple val: Int end
+                :elements (
+                  (TypedVar 'val' :type Int)
+                )))))
+        (TypedLetValue 'unwrap' :type Fun(o: Option empty full with Tuple val: Int end end): Int
+          :value (TypedFun :params (('o' : Option empty full with Tuple val: Int end end)) :type Fun(o: Option empty full with Tuple val: Int end end): Int
+            :body (TypedCase :type Int
+              :target (TypedVar 'o' :type Option empty full with Tuple val: Int end end)
+              :branches (
+                (TypedCaseBranch tags=(full) :binder 'x'
+                  :body (TypedSelect 'val' :type Int
+                    :target (TypedVar 'x' :type Tuple val: Int end)))
+              )
+              :else (TypedRaise :type Int
+                :exc (TypedVar 'empty' :type Exception)))))
+        (TypedLetValue 'unwrapTwice' :type Fun(o: Option empty full with Tuple val: Int end end): Tuple a: Int b: Int end
+          :value (TypedFun :params (('o' : Option empty full with Tuple val: Int end end)) :type Fun(o: Option empty full with Tuple val: Int end end): Tuple a: Int b: Int end
+            :body (TypedTuple :type Tuple a: Int b: Int end
+              :elements (
+                (TypedApp :type Int
+                  :func (TypedVar 'unwrap' :type Fun(o: Option empty full with Tuple val: Int end end): Int)
+                  :args (
+                    (TypedVar 'o' :type Option empty full with Tuple val: Int end end)
+                  ))
+                (TypedApp :type Int
+                  :func (TypedVar 'unwrap' :type Fun(o: Option empty full with Tuple val: Int end end): Int)
+                  :args (
+                    (TypedVar 'o' :type Option empty full with Tuple val: Int end end)
+                  ))
+              ))))
+        (TypedLetValue 'depth' :rec :type Fun(n: Int): Int
+          :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+            :body (TypedIf :type Int
+              :cond (TypedInfix 'is' :type Bool
+                :left (TypedVar 'n' :type Int)
+                :right (TypedInt 0 :type Int))
+              :then (TypedInt 0 :type Int)
+              :else (TypedInfix '+' :type Int
+                :left (TypedInt 1 :type Int)
+                :right (TypedApp :type Int
+                  :func (TypedVar 'depth' :type Fun(n: Int): Int)
+                  :args (
+                    (TypedInfix '-' :type Int
+                      :left (TypedVar 'n' :type Int)
+                      :right (TypedInt 1 :type Int))
+                  ))))))
+        (TypedLetValue 'depthTwice' :type Fun(n: Int): Int
+          :value (TypedFun :params (('n' : Int)) :type Fun(n: Int): Int
+            :body (TypedInfix '+' :type Int
+              :left (TypedApp :type Int
+                :func (TypedVar 'depth' :type Fun(n: Int): Int)
+                :args (
+                  (TypedVar 'n' :type Int)
+                ))
+              :right (TypedApp :type Int
+                :func (TypedVar 'depth' :type Fun(n: Int): Int)
+                :args (
+                  (TypedVar 'n' :type Int)
+                )))))
+      ))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString '1. ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedSelect 'unwrap' :type Fun(o: Option empty full with Tuple val: Int end end): Int
+                    :target (TypedVar 'boxes' :type Module 'boxes'))
+                  :args (
+                    (TypedApp :type Option empty full with Tuple val: Int end end
+                      :func (TypedSelect 'full' :type Fun(val: Int): Option empty full with Tuple val: Int end end
+                        :target (TypedVar 'boxes' :type Module 'boxes'))
+                      :args (
+                        (TypedInt 5 :type Int)
+                      ))
+                  ))
+              )))
+        )))
+    (TypedLetValue 'missing' :type Option empty full with Tuple val: Int end end
+      :value (TypedOption 'empty' :type Option empty full with Tuple val: Int end end))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString '2. ' :type String)
+            :right (TypedTry :type String
+              :body (TypedApp :type String
+                :func (TypedSelect 'int' :type Fun(n: Int): String
+                  :target (TypedVar 'conv' :type Module 'conv'))
+                :args (
+                  (TypedApp :type Int
+                    :func (TypedSelect 'unwrap' :type Fun(o: Option empty full with Tuple val: Int end end): Int
+                      :target (TypedVar 'boxes' :type Module 'boxes'))
+                    :args (
+                      (TypedVar 'missing' :type Option empty full with Tuple val: Int end end)
+                    ))
+                ))
+              :branches (
+                (TypedTryBranch
+                  :exc_pattern (TypedSelect 'empty' :type Exception
+                    :target (TypedVar 'boxes' :type Module 'boxes'))
+                  :body (TypedString 'empty' :type String))
+              )))
+        )))
+    (TypedLetValue 'both' :type Tuple a: Int b: Int end
+      :value (TypedApp :type Tuple a: Int b: Int end
+        :func (TypedSelect 'unwrapTwice' :type Fun(o: Option empty full with Tuple val: Int end end): Tuple a: Int b: Int end
+          :target (TypedVar 'boxes' :type Module 'boxes'))
+        :args (
+          (TypedApp :type Option empty full with Tuple val: Int end end
+            :func (TypedSelect 'full' :type Fun(val: Int): Option empty full with Tuple val: Int end end
+              :target (TypedVar 'boxes' :type Module 'boxes'))
+            :args (
+              (TypedInt 4 :type Int)
+            ))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString '3. ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedInfix '+' :type Int
+                  :left (TypedSelect 'a' :type Int
+                    :target (TypedVar 'both' :type Tuple a: Int b: Int end))
+                  :right (TypedSelect 'b' :type Int
+                    :target (TypedVar 'both' :type Tuple a: Int b: Int end)))
+              )))
+        )))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedVar 'print' :type Fun(s: String): Ok)
+        :args (
+          (TypedInfix '<>' :type String
+            :left (TypedString '4. ' :type String)
+            :right (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedApp :type Int
+                  :func (TypedSelect 'depthTwice' :type Fun(n: Int): Int
+                    :target (TypedVar 'boxes' :type Module 'boxes'))
+                  :args (
+                    (TypedInt 3 :type Int)
+                  ))
+              )))
+        )))
+  ))

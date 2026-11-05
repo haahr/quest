@@ -1,0 +1,44 @@
+(* Members of a module the self-hosted compiler's simplifier inlines outside
+ * it (docs/ir.md section 8.6) although they name variables of the module's:
+ * the copy reads each variable as the module's member, which the caller can
+ * name (the ir_simplified golden shows the member read before the raise), and
+ * what it raises is the module's exception, which the caller catches. A
+ * member naming another member's function is left, so that the call it makes
+ * stays a known one. Polymorphic members are inlined so only in a whole
+ * program, which these goldens are not. *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+interface Boxes export
+    empty: Exception
+    full(val: Int): Option empty full with val: Int end end
+    unwrap(o: Option empty full with val: Int end end): Int
+    unwrapTwice(o: Option empty full with val: Int end end): Tuple a: Int b: Int end
+    depthTwice(n: Int): Int
+end;
+module boxes: Boxes export
+    let empty: Exception = exception empty end
+    let full(val: Int): Option empty full with val: Int end end =
+        option full of Option empty full with val: Int end end with let val = val end
+    let unwrap(o: Option empty full with val: Int end end): Int =
+        case o when full with x then x.val else raise empty end end
+    let unwrapTwice(o: Option empty full with val: Int end end): Tuple a: Int b: Int end =
+        tuple let a = unwrap(o) let b = unwrap(o) end
+    let rec depth(n: Int): Int = if n is 0 then 0 else 1 + depth(n - 1) end
+    let depthTwice(n: Int): Int = depth(n) + depth(n)
+end;
+
+(* 1. A member naming its module's exception, inlined *)
+print("1. " <> conv.int(boxes.unwrap(boxes.full(5))));
+
+(* 2. The exception it raises, caught as the module's *)
+let missing = option empty of Option empty full with val: Int end end end;
+print("2. " <> try conv.int(boxes.unwrap(missing)) when boxes.empty then "empty" end);
+
+(* 3. One whose calls of its module's members are inlined in it first *)
+let both = boxes.unwrapTwice(boxes.full(4));
+print("3. " <> conv.int(both.a + both.b));
+
+(* 4. One naming another member's function (a recursive one), left *)
+print("4. " <> conv.int(boxes.depthTwice(3)));

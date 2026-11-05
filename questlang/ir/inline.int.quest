@@ -25,6 +25,10 @@ export
         (* Whether each function names no variable it does not bind itself
          * (none of its module's, for one), so that it can be copied anywhere *)
         closed: hashMap.T(Int Bool)
+        (* The variables each function names and does not bind, in the order
+         * first named: those of its module's, for one, or of the functions
+         * that enclose it *)
+        free: hashMap.T(Int Array(nodes.Variable))
         (* Whether each function calls an external function at type arguments
          * (passing and returning their values as QVal words, which a call at
          * other type arguments would not box) *)
@@ -42,16 +46,22 @@ export
      * holds, a call counting twice *)
     size(b: nodes.Body): Int
 
+    (* A variable f names and does not bind, and what the copy reads in its
+     * place (a module's member, for one of its module's variables named from
+     * outside the module) *)
+    Def Read = Tuple v: nodes.Variable op: nodes.Op end
+
     (* The statements that do what a call of f does and then what rest does:
      * the call's result bound to into (or to a fresh variable), f's body
      * copied with its type parameters substituted by typeArgs, fresh variables
-     * and labels, each value parameter bound to its argument, and each var or
-     * out parameter replaced by the variable whose address is passed for it
-     * (byRef). A body whose only return is its last statement is followed by
-     * rest; any other is a join point's body, whose returns jump to it, and
-     * whose continuation is rest. The parameters' bindings and the result's
-     * are at the call's position, pos; the body keeps its own. *)
+     * and labels, each value parameter bound to its argument, each var or out
+     * parameter replaced by the variable whose address is passed for it
+     * (byRef), and each variable reads names bound first to what it reads. A
+     * body whose only return is its last statement is followed by rest; any
+     * other is a join point's body, whose returns jump to it, and whose
+     * continuation is rest. The parameters' bindings, the reads', and the
+     * result's are at the call's position, pos; the body keeps its own. *)
     expand(f: nodes.Function typeArgs: Array(model.Type) args: Array(nodes.Atom)
-        byRef: Array(maybe.T(nodes.Variable)) into: maybe.T(nodes.Variable) pos: Int rest: Array(nodes.Stmt)
-        labels: clone.Labels): Array(nodes.Stmt)
+        byRef: Array(maybe.T(nodes.Variable)) reads: Array(Read) into: maybe.T(nodes.Variable) pos: Int
+        rest: Array(nodes.Stmt) labels: clone.Labels): Array(nodes.Stmt)
 end

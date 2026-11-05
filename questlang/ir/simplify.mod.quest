@@ -218,13 +218,20 @@ export
         end
 
     (* An option's or variant's tag and payload, made by the operation an atom's
-     * variable is bound to, and whether it is a variant's *)
+     * variable is bound to, directly or through copies (of another type, such
+     * as maybe.T(Int) of T(Int), which copy propagation leaves), and whether
+     * it is a variant's *)
     Let Made = Tuple tag: String payload: maybe.T(Atom) isVariant: Bool end
-    let madeOf(s: Simplifier a: Atom): maybe.T(Made) =
+    let rec madeOf(s: Simplifier a: Atom): maybe.T(Made) =
         begin
             let d = defOf(s a)
             if maybe.isSome(:Op d) then
                 case maybe.unwrap(:Op d)
+                    when opAtom with x then
+                        case x.atom
+                            when atomVar with y then if y.v.isMutable then maybe.none(:Made) else madeOf(s x.atom) end
+                            when atomConst then maybe.none(:Made)
+                        end
                     when opMakeVariant with x then
                         maybe.some(:Made tuple let tag = x.tag let payload = x.payload let isVariant = true end)
                     when opMakeOption with x then
@@ -284,7 +291,10 @@ export
             when opAtom, opExternal, opMakeClosure, opEnvField, opMakeTuple, opTupleField, opMakeRecord, opRecordField,
                 opMakeVariant, opMakeOption, opIsTag, opOrdinal, opMakeArray, opMakeAuto, opMakeException,
                 opExceptionPayload, opAddrVar, opAddrCell, opAddrField, opAddrComponent, opLoad then true
-            when opCall, opTypeApp, opModuleMember, opBuiltin, opCallExternal, opConvert, opPayload, opArrayRep,
+            (* A module's member is read from its record or its global, both
+             * made before any code that names it runs *)
+            when opModuleMember then true
+            when opCall, opTypeApp, opBuiltin, opCallExternal, opConvert, opPayload, opArrayRep,
                 opIndex, opCaughtException, opAddrElement then false
         end
 
@@ -552,9 +562,94 @@ export
             noVariable
         end
 
+    (* Whether a type is a function's, under any type parameters *)
+    let isFunction(t: model.Type): Bool =
+        begin
+            let var sh = shapes.shape(t)
+            while shapes.kindIs(sh shapes.shapeAll) do sh := shapes.body(sh) end
+            shapes.kindIs(sh shapes.shapeFun)
+        end
+
+    (* The name of the member of a module's that a variable of its is, if it is
+     * one: the member's variable, or the variable the module's initialization
+     * copies to it (an exception's, error, which error.1 is bound to) *)
+    let memberName(m: nodes.Module v: Variable): maybe.T(String) =
+        begin
+            let var found = maybe.none(:String)
+            for i = 0 upto {vector.length(:String m.members.names) - 1} do
+                let name = vector.get(:String m.members.names i)
+                let w = nodes.member(m.members name)
+                if maybe.isSome(:Variable w) andif {maybe.unwrap(:Variable w).id is v.id} then
+                    found := maybe.some(:String name)
+                end
+            end
+            if maybe.isNone(:String found) then
+                for i = 0 upto {vector.length(:Stmt m.init.statements) - 1} do
+                    case vector.get(:Stmt m.init.statements i)
+                        when sLet with x then
+                            case x.value
+                                when opAtom with a then
+                                    case a.atom
+                                        when atomVar with y then
+                                            if y.v.id is v.id then
+                                                for k = 0 upto {vector.length(:String m.members.names) - 1} do
+                                                    let name = vector.get(:String m.members.names k)
+                                                    let w = nodes.member(m.members name)
+                                                    if maybe.isSome(:Variable w)
+                                                        andif {maybe.unwrap(:Variable w).id is x.v.id} then
+                                                        found := maybe.some(:String name)
+                                                    end
+                                                end
+                                            end
+                                        when atomConst then ok
+                                    end
+                                else ok
+                            end
+                        else ok
+                    end
+                end
+            end
+            found
+        end
+
+    (* What a copy of a module's function, inlined outside the module, reads in
+     * place of the variables of the module's it names (docs/ir.md section
+     * 8.6): each one's member, if each is a member, immutable, and not a
+     * function (whose calls would no longer be known), and of an exception's
+     * type unless the unit's abstract types are transparent (as a whole
+     * program's are), so that the member's type outside the module is its own
+     * inside it *)
+    let memberReads(free: Array(Variable) ref: nodes.ModuleRef): maybe.T(Array(inline.Read)) =
+        case ref
+            when refModule with r then
+                let reads = vector.new(:inline.Read)
+                let var all = true
+                for i = 0 upto {extent free - 1} do
+                    let v = free[i]
+                    let name = memberName(r.m v)
+                    let sh = shapes.shape(v.type)
+                    let laidOut = shapes.transparentAbstractTypes() orif shapes.kindIs(sh shapes.shapeException)
+                    if v.isMutable orif isFunction(v.type) orif not(laidOut) orif maybe.isNone(:String name) then
+                        all := false
+                    else
+                        vector.append(:inline.Read reads tuple
+                            let v = v
+                            let op = option opModuleMember of Op with
+                                let var moduleRef = ref
+                                let var member = name
+                            end
+                        end)
+                    end
+                end
+                if all then maybe.some(:Array(inline.Read) vector.toArray(:inline.Read reads))
+                else maybe.none(:Array(inline.Read)) end
+            when refImport then maybe.none(:Array(inline.Read))
+        end
+
     (* A call to inline: its function, the variables passed by address for its
-     * var and out parameters, and the function's size *)
-    Let Choice = Tuple function: nodes.Function byRef: Array(maybe.T(Variable)) size: Int end
+     * var and out parameters, what the copy reads for the variables it names
+     * of the function's module, and the function's size *)
+    Let Choice = Tuple function: nodes.Function byRef: Array(maybe.T(Variable)) reads: Array(inline.Read) size: Int end
 
     (* Whether to inline a call, made in a function of the component within
      * (none, outside functions): one of a function the round knows, not
@@ -577,8 +672,9 @@ export
              * called at its interface's type, which may hold the module's
              * abstract types, laid out otherwise outside it, and may name
              * variables of its module's, out of the caller's scope: such a call
-             * is inlined only at the function's own type, and of a closed
-             * function *)
+             * is inlined only at the function's own type, and of a function
+             * that is closed or names only variables of its module's that the
+             * copy can read as members (memberReads) *)
             (* In a whole program, where abstract types are transparent, at a type
              * whose calls are represented as the function's own are *)
             let sameShape = fun(f: nodes.Function): Bool
@@ -587,8 +683,18 @@ export
                     orif {shapes.transparentAbstractTypes()
                         andif eq(layout.signatureRepresentation(maybe.unwrap(:model.Type x.calleeType))
                             layout.signatureRepresentation(f.v.type))}
+            (* The variables of its module's that the function names, read as
+             * the module's members *)
+            let reads = if maybe.isSome(:Variable x.callee) orif maybe.isNone(:nodes.Function found) then
+                maybe.some(:Array(inline.Read) array of :inline.Read end)
+            elsif hashMap.find(:Int :Bool s.analysis.closed maybe.unwrap(:nodes.Function found).v.id) then
+                maybe.some(:Array(inline.Read) array of :inline.Read end)
+            else
+                memberReads(hashMap.find(:Int :Array(Variable) s.analysis.free maybe.unwrap(:nodes.Function found).v.id)
+                    maybe.unwrap(:nodes.ModuleRef x.moduleRef))
+            end
             let atItsType = maybe.isSome(:Variable x.callee) orif {maybe.isSome(:nodes.Function found)
-                andif hashMap.find(:Int :Bool s.analysis.closed maybe.unwrap(:nodes.Function found).v.id)
+                andif maybe.isSome(:Array(inline.Read) reads)
                 andif sameShape(maybe.unwrap(:nodes.Function found))}
             if maybe.isSome(:nodes.Function found) then
                 let f = maybe.unwrap(:nodes.Function found)
@@ -625,7 +731,12 @@ export
                 let once = maybe.unwrap(:Resolved callee).once andif not(pinned(s f.v))
                 let small = {{size - bonus} <= inlineSize} andif {{s.grown + size} <= s.budget}
                 if fits andif {once orif small} then
-                    maybe.some(:Choice tuple let function = f let byRef = byRef let size = size end)
+                    maybe.some(:Choice tuple
+                        let function = f
+                        let byRef = byRef
+                        let reads = maybe.unwrap(:Array(inline.Read) reads)
+                        let size = size
+                    end)
                 else
                     maybe.none(:Choice)
                 end
@@ -634,13 +745,35 @@ export
             end
         end
 
-    (* A statement's call, and the variable a let binds its result to *)
-    let opCallOf(o: Op): maybe.T(nodes.OpCall) =
-        case o when opCall with c then maybe.some(:nodes.OpCall c) else maybe.none(:nodes.OpCall) end
+    (* A statement's call, and the variable a let binds its result to. A type
+     * application whose instance is not a function (maybe.none(:Int)) runs
+     * the function applied, as a call of it without arguments does
+     * (docs/ir.md section 8.1), and is inlined as one: its function, if
+     * inlining finds one, takes no value parameters. One whose instance is a
+     * function makes a closure, and is not a call. *)
+    let opCallOf(o: Op result: maybe.T(Variable)): maybe.T(nodes.OpCall) =
+        case o
+            when opCall with c then maybe.some(:nodes.OpCall c)
+            when opTypeApp with t then
+                if maybe.isSome(:Variable result) andif not(isFunction(maybe.unwrap(:Variable result).type)) then
+                    maybe.some(:nodes.OpCall tuple
+                        let var callee = t.callee
+                        let var typeArgs = t.typeArgs
+                        let var args = array of :Atom end
+                        let var moduleRef = t.moduleRef
+                        let var member = t.member
+                        let var calleeType = t.calleeType
+                        let var descriptors = t.descriptors
+                    end)
+                else
+                    maybe.none(:nodes.OpCall)
+                end
+            else maybe.none(:nodes.OpCall)
+        end
     let callOf(st: Stmt): maybe.T(nodes.OpCall) =
         case st
-            when sLet with x then opCallOf(x.value)
-            when sDo with x then opCallOf(x.value)
+            when sLet with x then opCallOf(x.value maybe.some(:Variable x.v))
+            when sDo with x then opCallOf(x.value maybe.none(:Variable))
             else maybe.none(:nodes.OpCall)
         end
     let intoOf(st: Stmt): maybe.T(Variable) =
@@ -779,7 +912,7 @@ export
                     for k = i + 1 upto {vector.length(:Stmt ss) - 1} do
                         vector.append(:Stmt rest vector.get(:Stmt ss k))
                     end
-                    ss := vector.fromArray(:Stmt inline.expand(ch.function c.typeArgs c.args ch.byRef intoOf(st)
+                    ss := vector.fromArray(:Stmt inline.expand(ch.function c.typeArgs c.args ch.byRef ch.reads intoOf(st)
                         nodes.stmtPos(st) vector.toArray(:Stmt rest) s.labels))
                     (* The copy's variables are used where it uses them (and
                      * those of the rest, counted again, no less) *)

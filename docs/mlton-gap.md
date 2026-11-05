@@ -31,7 +31,10 @@ module reference, member, and callee type, by the same rules (`inlining`) and ex
 `type_app` whose instance is a function (`lists.map(:Int :Int)` as a value) is left: it makes a closure.
 
 *Done when* `language/inlined_calls` (or a new run test) shows `maybe.none(:Int)` and `lists.nil(:Int)` inlined in
-its `ir_simplified` golden, and a switch on the constant they make folds.
+its `ir_simplified` golden, and a switch on the constant they make folds. *Done* with §3:
+`language/inlined_type_applications`. A switch on an option made through a copy of another type (`maybe.T(Int)` of
+`T(Int)`, which copy propagation leaves) now folds too, and a module's member that nothing reads is dropped, as a dead
+`let` is.
 
 ## 3. Members That Name Their Module's Variables (`ir/inline`, `ir/simplify`)
 
@@ -44,9 +47,14 @@ the variable of each exported name). Its expansion at a call from outside the mo
 `let error.2 = member util/maybe.error`, and the copy uses that variable in its place (`clone.bindVar`). Inside the
 module, where the variable is in scope, nothing changes.
 
+Variables that are functions are not read so, since their calls would no longer be known; and outside a whole
+program, where abstract types are opaque, only exceptions are, which are laid out alike inside and outside the module.
+
 *Done when* a run test's `ir_simplified` golden shows `maybe.unwrap(:Int o)` inlined into a main body, with the
 member read before the raise and the raise's behavior unchanged (its output in the shared golden), and peek's and
-zebra's `qf_unwrap` gone from their profiles.
+zebra's `qf_unwrap` gone from their profiles. *Done* with §2: `language/inlined_module_members` (an in-file module's
+monomorphic members, since its goldens are not of a whole program, where a polymorphic member's interface type differs
+from its function's). The profiles are §8's.
 
 ## 4. Scalar Replacement Across Block Parameters (`ssa/escape`)
 

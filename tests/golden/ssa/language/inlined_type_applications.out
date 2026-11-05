@@ -1,0 +1,330 @@
+function qf_length(%0: ptr, %1: ptr, %2: ptr): int {
+b0(%0: ptr, %1: ptr, %2: ptr):
+  @25:44
+  %3: int = ptrToInt %2
+  %4: int = const 1
+  %5: int = and %3, %4
+  branch %5, b1(), b2()
+b1():
+  @25:44
+  %7: int = call quest_proxy_tag(%2)
+  jump b3(%7)
+b2():
+  @25:44
+  %8: int = load8 %2 + 0 invariant
+  jump b3(%8)
+b3(%6: int):
+  @25:44
+  switch %6 [0: b4()] default b5()
+b4():
+  @25:44
+  %10: int = const 1
+  %11: int = and %3, %10
+  branch %11, b6(), b7()
+b5():
+  @25:44
+  %30: int = const 0
+  return %30
+b6():
+  @25:44
+  %13: ptr = call quest_proxy_option_payload(%2)
+  jump b8(%13)
+b7():
+  @25:44
+  %14: int = const 8
+  %15: ptr = ptrAdd %2, %14
+  jump b8(%15)
+b8(%12: ptr):
+  @25:88
+  %16: int = ptrToInt %12
+  %17: int = const 1
+  %18: int = and %16, %17
+  branch %18, b9(), b10()
+b9():
+  @25:88
+  %20: int = const 1
+  %21: val = call quest_proxy_element(%12, %20)
+  %22: ptr = fromVal %21
+  jump b11(%22)
+b10():
+  @25:88
+  %23: int = const 8
+  %24: ptr = ptrAdd %12, %23
+  %25: ptr = load8 %24 + 0
+  jump b11(%25)
+b11(%19: ptr):
+  @25:77
+  %26: ptr = null
+  %27: int = call qf_length(%26, %1, %19)
+  @25:73
+  %28: int = const 1
+  %29: int = add %28, %27
+  @25:44
+  return %29
+}
+
+function qf_twice(%0: ptr, %1: ptr, %2: ptr, %3: val): val {
+b0(%0: ptr, %1: ptr, %2: ptr, %3: val):
+  @30:48
+  %4: ptr = load8 %2 + 0 invariant
+  %5: ptr = load8 %2 + 8 invariant
+  %6: val = callIndirect %4, %5, %3
+  @30:46
+  tail %9: val = callIndirect %4, %5, %6
+}
+
+function qf_f(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  @32:51
+  %2: int = const 3
+  %3: int = mul %1, %2
+  return %3
+}
+
+function qf_qa_type_app(%0: ptr, %1: ptr, %2: int): int {
+b0(%0: ptr, %1: ptr, %2: int):
+  %3: ptr = load8 %0 + 0
+  %4: ptr = load8 %0 + 8 invariant
+  %5: int = const 16
+  %6: ptr = symbol quest_layout_closure
+  %7: ptr = call quest_alloc(%5, %6)
+  %8: ptr = symbol qf_qa_adapt
+  store8 %7 + 0, %8
+  store8 %7 + 8, %1
+  %9: val = toVal %2
+  %10: ptr = load8 %4 + 0 invariant
+  %11: ptr = load8 %4 + 8 invariant
+  %12: val = callIndirect %10, %11, %3, %7, %9
+  %13: int = fromVal %12
+  return %13
+}
+
+function qf_qa_adapt(%0: ptr, %1: val): val {
+b0(%0: ptr, %1: val):
+  %2: int = fromVal %1
+  %3: ptr = load8 %0 + 0 invariant
+  %4: ptr = load8 %0 + 8 invariant
+  %5: int = callIndirect %3, %4, %2
+  %6: val = toVal %5
+  return %6
+}
+
+function qr_register_dicts() {
+b0():
+  %0: ptr = symbol qr_roots
+  call quest_register_roots(%0)
+  %1: ptr = symbol qr_frames
+  call quest_register_frames(%1)
+  %2: ptr = symbol qr_funcs
+  %3: int = const 4
+  tail call quest_register_funcs(%2, %3)
+}
+
+function main exported(%0: int, %1: ptr) int32 [0]: int result int32 {
+b0(%0: int, %1: ptr):
+  call quest_gc_init()
+  call quest_builtins_init(%0, %1) int32 [0]
+  call qr_register_dicts()
+  call qv_mod_writer_init()
+  call qv_mod_conv_init()
+  @13:37
+  %5: int = const 5
+  %9: int = const 1
+  @14:48
+  jump b3()
+b1(%13: int):
+  @18:16
+  %29: ptr = call quest_conv_int(%13)
+  @18:60
+  %30: int = const 7
+  %31: ptr = call quest_conv_int(%30)
+  @18:53
+  %32: ptr = symbol qs_5
+  %33: int = const 1
+  %34: ptr = call quest_string_new(%32, %33)
+  %35: ptr = call quest_string_concat(%34, %31)
+  @18:16
+  %36: ptr = call quest_string_concat(%29, %35)
+  @18:7
+  %37: ptr = symbol qs_6
+  %38: int = const 3
+  %39: ptr = call quest_string_new(%37, %38)
+  %40: ptr = call quest_string_concat(%39, %36)
+  @9:45
+  %41: ptr = symbol qm_writer
+  %42: ptr = load8 %41 + 0
+  %43: ptr = load8 %41 + 8
+  %44: int = load8 %43 + 40
+  %45: ptr = ptrAdd %42, %44
+  %46: ptr = load8 %45 + 0
+  @9:59
+  %47: ptr = symbol qs_7
+  %49: ptr = call quest_string_new(%47, %33)
+  %50: ptr = call quest_string_concat(%40, %49)
+  @9:28
+  call quest_writer_put_string(%46, %50)
+  @19:16
+  %51: int = const 9
+  %52: ptr = call quest_conv_int(%51)
+  @19:7
+  %55: ptr = call quest_string_new(%37, %38)
+  %56: ptr = call quest_string_concat(%55, %52)
+  @9:45
+  %58: ptr = load8 %41 + 0
+  %59: ptr = load8 %41 + 8
+  %60: int = load8 %59 + 40
+  %61: ptr = ptrAdd %58, %60
+  %62: ptr = load8 %61 + 0
+  @9:59
+  %65: ptr = call quest_string_new(%47, %33)
+  %66: ptr = call quest_string_concat(%56, %65)
+  @9:28
+  call quest_writer_put_string(%62, %66)
+  %67: ptr = symbol qf_length_closure
+  %68: ptr = symbol g_length
+  store8 %68 + 0, %67
+  @23:29
+  %69: ptr = symbol qc_Rec0_QOption_cons_QTuple_Int_Self0_end_nil
+  %70: int = const 8
+  %71: ptr = ptrAdd %69, %70
+  @24:49
+  %72: int = const 16
+  %171: int = const 0
+  %172: ptr = null
+  %75: int = const 2
+  %78: int = const 24
+  %79: ptr = symbol quest_layout_Rec0_QOption_cons_QTuple_Int_Self0_end_nil_0
+  %80: ptr = call quest_alloc(%78, %79)
+  store8 %80 + 0, %171
+  %83: ptr = ptrAdd %80, %70
+  store8 %83 + 0, %75
+  %86: ptr = ptrAdd %80, %72
+  store8 %86 + 0, %71
+  %98: ptr = call quest_alloc(%78, %79)
+  store8 %98 + 0, %171
+  %101: ptr = ptrAdd %98, %70
+  store8 %101 + 0, %33
+  %104: ptr = ptrAdd %98, %72
+  store8 %104 + 0, %80
+  @26:25
+  %108: ptr = symbol quest_type_Int
+  %110: int = call qf_length(%172, %108, %98)
+  @26:16
+  %111: ptr = call quest_conv_int(%110)
+  @23:29
+  %112: ptr = symbol qc_Rec0_QOption_cons_QTuple_String_Self0_end_nil
+  %114: ptr = ptrAdd %112, %70
+  @27:17
+  %115: ptr = symbol quest_type_String
+  %117: int = call qf_length(%172, %115, %114)
+  @27:8
+  %118: ptr = call quest_conv_int(%117)
+  @26:81
+  %121: ptr = call quest_string_new(%32, %33)
+  %122: ptr = call quest_string_concat(%121, %118)
+  @26:16
+  %123: ptr = call quest_string_concat(%111, %122)
+  @26:7
+  %124: ptr = symbol qs_8
+  %126: ptr = call quest_string_new(%124, %38)
+  %127: ptr = call quest_string_concat(%126, %123)
+  @9:45
+  %129: ptr = load8 %41 + 0
+  %130: ptr = load8 %41 + 8
+  %131: int = load8 %130 + 40
+  %132: ptr = ptrAdd %129, %131
+  %133: ptr = load8 %132 + 0
+  @9:59
+  %136: ptr = call quest_string_new(%47, %33)
+  %137: ptr = call quest_string_concat(%127, %136)
+  @9:28
+  call quest_writer_put_string(%133, %137)
+  %138: ptr = symbol qf_twice_closure
+  @31:16
+  %140: ptr = symbol quest_layout_env_qf_qa_type_app
+  %141: ptr = call quest_alloc(%72, %140)
+  store8 %141 + 0, %108
+  store8 %141 + 8, %138
+  %146: ptr = symbol qf_qa_type_app
+  %147: ptr = symbol qf_f_closure
+  @32:25
+  %151: int = callIndirect %146, %141, %147, %75
+  @32:16
+  %152: ptr = call quest_conv_int(%151)
+  @32:7
+  %153: ptr = symbol qs_9
+  %155: ptr = call quest_string_new(%153, %38)
+  %156: ptr = call quest_string_concat(%155, %152)
+  @9:45
+  %158: ptr = load8 %41 + 0
+  %159: ptr = load8 %41 + 8
+  %160: int = load8 %159 + 40
+  %161: ptr = ptrAdd %158, %160
+  %162: ptr = load8 %161 + 0
+  @9:59
+  %165: ptr = call quest_string_new(%47, %33)
+  %166: ptr = call quest_string_concat(%156, %165)
+  @9:28
+  call quest_writer_put_string(%162, %166)
+  jump b2()
+b2():
+  @9:28
+  %167: int = const 0
+  return %167
+b3():
+  @14:48
+  jump b4()
+b4():
+  @14:48
+  switch %9 [1: b5()] default b6()
+b5():
+  @14:48
+  jump b7()
+b6():
+  @14:48
+  %28: int = const 0
+  jump b1(%28)
+b7():
+  @14:48
+  jump b8()
+b8():
+  @14:48
+  jump b1(%5)
+}
+
+data qf_length_closure words [qf_length, 0]
+data qf_twice_closure words [qf_twice, 0]
+data qf_f_closure words [qf_f, 0]
+data qf_qa_type_app_closure words [qf_qa_type_app, 0]
+data qf_qa_adapt_closure words [qf_qa_adapt, 0]
+data qs_1 text "length"
+data qs_2 text "twice"
+data qs_3 text "<anon>"
+data qs_4 text "<main>"
+data qr_frames words [0]
+data qr_funcs words [qf_length, qs_1, qf_twice, qs_2, qf_f, qs_3, main, qs_4]
+data qs_5 text " "
+data qs_6 text "1. "
+data qs_7 text "\n"
+data g_length writable zero 8
+data qc_Rec0_QOption_cons_QTuple_Int_Self0_end_nil words [0, 1]
+data qc_Rec0_QOption_cons_QTuple_String_Self0_end_nil words [0, 1]
+data qs_8 text "2. "
+data qs_9 text "3. "
+data qs_10 text "QTuple_Int"
+data qlk_QTuple_Int words [0]
+data quest_layout_QTuple_Int words [qs_10, 4294967296, 8, 4294967296, qlk_QTuple_Int]
+data qs_11 text "QOption_none_some_QTuple_Int_end_1"
+data qlk_QOption_none_some_QTuple_Int_end_1 words [0]
+data quest_layout_QOption_none_some_QTuple_Int_end_1 words [qs_11, 4294967296, 16, 8589934592, qlk_QOption_none_some_QTuple_Int_end_1]
+data qs_12 text "Rec0_QTuple_Int_QOption_cons_Self0_nil_end"
+data qlk_Rec0_QTuple_Int_QOption_cons_Self0_nil_end words [256]
+data quest_layout_Rec0_QTuple_Int_QOption_cons_Self0_nil_end words [qs_12, 0, 16, 8589934592, qlk_Rec0_QTuple_Int_QOption_cons_Self0_nil_end]
+data qs_13 text "Rec0_QOption_cons_QTuple_Int_Self0_end_nil_0"
+data qlk_Rec0_QOption_cons_QTuple_Int_Self0_end_nil_0 words [65536]
+data quest_layout_Rec0_QOption_cons_QTuple_Int_Self0_end_nil_0 words [qs_13, 0, 24, 12884901888, qlk_Rec0_QOption_cons_QTuple_Int_Self0_end_nil_0]
+data qs_14 text "env_qf_qa_type_app"
+data qlk_env_qf_qa_type_app words [257]
+data quest_layout_env_qf_qa_type_app words [qs_14, 0, 16, 8589934592, qlk_env_qf_qa_type_app]
+data qr_roots words [g_length, 1, 0, 0]
+

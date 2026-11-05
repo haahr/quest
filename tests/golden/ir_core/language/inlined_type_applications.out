@@ -1,0 +1,139 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @9:45
+      let %2: String = prim <>(s, "\n") @9:59
+      let %3: Ok = call writer.putString(%1, %2) @9:28
+      return %3
+    }
+  }
+  funs {
+    fun none [A::TYPE](): Opt(A) {
+      let %4: Opt(A) = option(none) @12:29
+      return %4
+    }
+  }
+  funs {
+    fun some [A::TYPE](val: A): Opt(A) {
+      let val.1: A = val @13:74
+      let %5: Tuple val: A end = tuple(val.1) @13:37
+      let %6: Opt(A) = option(some, %5) @13:37
+      return %6
+    }
+  }
+  funs {
+    fun orElse [A::TYPE](o: Opt(A), default: A): A {
+      join k1(r: A) {
+        return r
+      } in {
+        switch tag(o) { @14:48
+          case some (x: Tuple val: A end): {
+            let %7: A = tuple_field(x, 0) @14:77
+            jump k1(%7) @14:48
+          }
+          else: {
+            jump k1(default) @14:48
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun find(n: Int): Opt(Int) {
+      join k2(r.1: Opt(Int)) {
+        return r.1
+      } in {
+        let %8: Bool = prim >(n, 3) @17:33
+        if %8 { @17:30
+          let %9: Opt(Int) = call some [Int](n) @17:44
+          jump k2(%9) @17:30
+        } else {
+          let %10: Opt(Int) = type_app none [Int] @17:63
+          jump k2(%10) @17:30
+        }
+      }
+    }
+  }
+  let %11: Opt(Int) = call find(5) @18:38
+  let %12: Int = call orElse [Int](%11, 0) @18:25
+  let %13: String = call conv.int(%12) @18:16
+  let %14: Opt(Int) = call find(2) @18:82
+  let %15: Int = call orElse [Int](%14, 7) @18:69
+  let %16: String = call conv.int(%15) @18:60
+  let %17: String = prim <>(" ", %16) @18:53
+  let %18: String = prim <>(%13, %17) @18:16
+  let %19: String = prim <>("1. ", %18) @18:7
+  do call print(%19) @18:1
+  let %20: Opt(Int) = type_app none [Int] @19:38
+  let %21: Int = call orElse [Int](%20, 9) @19:25
+  let %22: String = call conv.int(%21) @19:16
+  let %23: String = prim <>("1. ", %22) @19:7
+  do call print(%23) @19:1
+  funs {
+    fun nil [A::TYPE](): List(A) {
+      let %24: List(A) = option(nil) @23:29
+      return %24
+    }
+  }
+  funs {
+    fun cons [A::TYPE](hd: A, tl: List(A)): List(A) {
+      let hd.1: A = hd @24:86
+      let tl.1: List(A) = tl @24:98
+      let %25: Tuple hd: A tl: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end end = tuple(hd.1, tl.1) @24:49
+      let %26: List(A) = option(cons, %25) @24:49
+      return %26
+    }
+  }
+  funs rec {
+    fun length [A::TYPE](l: List(A)): Int {
+      join k3(r.2: Int) {
+        return r.2
+      } in {
+        switch tag(l) { @25:44
+          case cons (c: Tuple hd: A tl: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end end): {
+            let %27: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end = tuple_field(c, 1) @25:88
+            let %28: Int = call length [A](%27) @25:77
+            let %29: Int = prim +(1, %28) @25:73
+            jump k3(%29) @25:44
+          }
+          else: {
+            jump k3(0) @25:44
+          }
+        }
+      }
+    }
+  }
+  let %30: List(Int) = type_app nil [Int] @26:64
+  let %31: List(Int) = call cons [Int](2, %30) @26:51
+  let %32: List(Int) = call cons [Int](1, %31) @26:38
+  let %33: Int = call length [Int](%32) @26:25
+  let %34: String = call conv.int(%33) @26:16
+  let %35: List(String) = type_app nil [String] @27:33
+  let %36: Int = call length [String](%35) @27:17
+  let %37: String = call conv.int(%36) @27:8
+  let %38: String = prim <>(" ", %37) @26:81
+  let %39: String = prim <>(%34, %38) @26:16
+  let %40: String = prim <>("2. ", %39) @26:7
+  do call print(%40) @26:1
+  funs {
+    fun twice [A::TYPE](f: Fun(x: A): A, x.1: A): A {
+      let %41: A = call f(x.1) @30:48
+      let %42: A = call f(%41) @30:46
+      return %42
+    }
+  }
+  let twiceInt: Fun(f: Fun(x: Int): Int x: Int): Int = type_app twice [Int] @31:16
+  funs {
+    fun f.1(x.2: Int): Int {
+      let %43: Int = prim *(x.2, 3) @32:51
+      return %43
+    }
+  }
+  let %44: Int = call twiceInt(f.1, 2) @32:25
+  let %45: String = call conv.int(%44) @32:16
+  let %46: String = prim <>("3. ", %45) @32:7
+  do call print(%46) @32:1
+}
+

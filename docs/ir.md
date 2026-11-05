@@ -628,7 +628,7 @@ at most six, each followed by contification:
 - copy propagation, only between variables of one type, so that no later pass sees a variable's type change;
 - constant propagation (not of Strings, whose identity `is` compares) and folding, with `if` and `switch` on
   constants; `Int` arithmetic wraps, so only division can raise, and a division by zero is not folded;
-- dead `let`s, closures and allocations nothing reads included, and unused `funs`;
+- dead `let`s, closures, allocations, and modules' members nothing reads included, and unused `funs`;
 - a `switch` on an option or variant made in the same function, and `!` of one; a case of a known option that binds
   its payload is left, since the binder shares the option's payload, which compiled code copies from the tuple it was
   made of (a variant's payload is the value itself);
@@ -639,12 +639,14 @@ at most six, each followed by contification:
   returns made a return, which makes a call before a jump to the function's end a tail call.
 
 **Inlining** (`questlang/ir/inline`: the functions, their components, and sizes; a call's expansion; with
-`questlang/ir/clone`, specialize's cloner, which gives a copy's loops and join points fresh labels). A call is
-inlined when its callee is a function a `funs` statement binds (or a copy of one), not recursive, and called once or
-small enough: its size, in IR operations and statements, less its bonuses, at most 30. The bonuses are for what
-inlining at this call removes: 30 for closed type arguments (the largest, since the caller is then left with no
-polymorphic call), 10 for an argument that is a known function the callee calls, 5 for a constant. Each `var` or
-`out` argument must be the address of a variable in scope, which stands for the parameter. Not inlined:
+`questlang/ir/clone`, specialize's cloner, which gives a copy's loops and join points fresh labels). A `type_app` whose
+instance is not a function (`maybe.none(:Int)`, `lists.nil(:A)`) runs its function as a call without arguments would
+(§8.1), and is considered as one. A call is inlined when its callee is a function a `funs` statement binds (or a copy of
+one), not recursive, and called once or small enough: its size, in IR operations and statements, less its bonuses, at
+most 30. The bonuses are for what inlining at this call removes: 30 for closed type arguments (the largest, since the
+caller is then left with no polymorphic call), 10 for an argument that is a known function the callee calls, 5 for a
+constant. Each `var` or `out` argument must be the address of a variable in scope, which stands for the parameter. Not
+inlined:
 
 - a function with a bounded type parameter, whose code sees values at the bound (an option's ordinal counts the
   bound's cases), which a type argument substituted for the parameter would change;
@@ -654,11 +656,15 @@ polymorphic call), 10 for an argument that is a known function the callee calls,
 - past the unit's growth bound: half its size, or 1000, whichever is more. The rounds' bound stands for a caller's
   bound and a depth bound.
 
-A body whose one return is its end is spliced in place; any other becomes a join point's body, whose continuation
-is the rest of the caller's body, its returns jumps to it. In a whole program, a call of one of the unit's modules'
-members (`call m.x`) is inlined as a call of the member's function is, when the function names no variable of its
-module (none is in the caller's scope) and the interface's type for the member is represented as the function's own
-(`layout.signatureRepresentation`), and the simplifier visits the modules' initializations before the main body.
+A body whose one return is its end is spliced in place; any other becomes a join point's body, whose continuation is the
+rest of the caller's body, its returns jumps to it. In a whole program, a call of one of the unit's modules' members
+(`call m.x`) is inlined as a call of the member's function is, when the interface's type for the member is represented
+as the function's own (`layout.signatureRepresentation`), and the simplifier visits the modules' initializations before
+the main body. The variables of its module's that the function names are out of the caller's scope: each must be an
+immutable member that is not a function (whose calls would stop being known), and the copy reads it as the member
+(`let error.2 = member util/maybe.error`) at the call, as `maybe.unwrap`'s copy reads the exception it raises. Outside a
+whole program, where abstract types are opaque, the member must be of an exception's type, which is laid out alike
+inside and outside its module.
 
 **Contification** (`questlang/ir/contify`, MLton's term), after each round: a function of value parameters and no
 type parameters, every use of which is a call, one outside its body and the rest tail calls of itself in its body

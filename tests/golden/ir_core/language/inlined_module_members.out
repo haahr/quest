@@ -1,0 +1,114 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+module boxes : Boxes {
+  let empty: Exception = exception empty @21:28
+  let empty.1: Exception = empty @21:28
+  funs {
+    fun full(val: Int): Option empty full with Tuple val: Int end end {
+      let val.1: Int = val @23:79
+      let %1: Tuple val: Int end = tuple(val.1) @23:9
+      let %2: Option empty full with Tuple val: Int end end = option(full, %1) @23:9
+      return %2
+    }
+  }
+  funs {
+    fun unwrap(o: Option empty full with Tuple val: Int end end): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        switch tag(o) { @25:9
+          case full (x: Tuple val: Int end): {
+            let %3: Int = tuple_field(x, 0) @25:38
+            jump k1(%3) @25:9
+          }
+          else: {
+            raise empty.1 @25:49
+          }
+        }
+      }
+    }
+  }
+  funs {
+    fun unwrapTwice(o.1: Option empty full with Tuple val: Int end end): Tuple a: Int b: Int end {
+      let a: Int = call unwrap(o.1) @27:23
+      let b: Int = call unwrap(o.1) @27:41
+      let %4: Tuple a: Int b: Int end = tuple(a, b) @27:9
+      return %4
+    }
+  }
+  funs rec {
+    fun depth(n: Int): Int {
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        let %5: Bool = prim is(n, 0) @28:37
+        if %5 { @28:34
+          jump k2(0) @28:34
+        } else {
+          let %6: Int = prim -(n, 1) @28:66
+          let %7: Int = call depth(%6) @28:60
+          let %8: Int = prim +(1, %7) @28:56
+          jump k2(%8) @28:34
+        }
+      }
+    }
+  }
+  funs {
+    fun depthTwice(n.1: Int): Int {
+      let %9: Int = call depth(n.1) @29:35
+      let %10: Int = call depth(n.1) @29:46
+      let %11: Int = prim +(%9, %10) @29:35
+      return %11
+    }
+  }
+  let boxes_record: Record empty: Exception full: Fun(val: Int): Option empty full with Tuple val: Int end end unwrap: Fun(o: Option empty full with Tuple val: Int end end): Int unwrapTwice: Fun(o: Option empty full with Tuple val: Int end end): Tuple a: Int b: Int end depth: Fun(n: Int): Int depthTwice: Fun(n: Int): Int end = record(empty = empty.1, full = full, unwrap = unwrap, unwrapTwice = unwrapTwice, depth = depth, depthTwice = depthTwice)
+  export empty = empty.1, full = full, unwrap = unwrap, unwrapTwice = unwrapTwice, depth = depth, depthTwice = depthTwice
+  record boxes_record
+}
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %12: writer.T = member writer.output @11:45
+      let %13: String = prim <>(s, "\n") @11:59
+      let %14: Ok = call writer.putString(%12, %13) @11:28
+      return %14
+    }
+  }
+  let %15: Option empty full with Tuple val: Int end end = call boxes.full(5) @33:38
+  let %16: Int = call boxes.unwrap(%15) @33:25
+  let %17: String = call conv.int(%16) @33:16
+  let %18: String = prim <>("1. ", %17) @33:7
+  do call print(%18) @33:1
+  let missing: Option empty full with Tuple val: Int end end = option(empty) @36:15
+  join k3(r.2: String) {
+    let %19: String = prim <>("2. ", r.2) @37:7
+    do call print(%19) @37:1
+    let %20: Option empty full with Tuple val: Int end end = call boxes.full(4) @40:30
+    let both: Tuple a: Int b: Int end = call boxes.unwrapTwice(%20) @40:12
+    let %21: Int = tuple_field(both, 0) @41:25
+    let %22: Int = tuple_field(both, 1) @41:34
+    let %23: Int = prim +(%21, %22) @41:25
+    let %24: String = call conv.int(%23) @41:16
+    let %25: String = prim <>("3. ", %24) @41:7
+    do call print(%25) @41:1
+    let %26: Int = call boxes.depthTwice(3) @44:25
+    let %27: String = call conv.int(%26) @44:16
+    let %28: String = prim <>("4. ", %27) @44:7
+    do call print(%28) @44:1
+  } in {
+    let %29: Exception = member boxes.empty @37:57
+    try catching (%29) {
+      let %30: Int = call boxes.unwrap(missing) @37:29
+      let %31: String = call conv.int(%30) @37:20
+      jump k3(%31) @37:16
+    } handle (e: Exception) {
+      let %32: Bool = prim is(e, %29) @37:16
+      if %32 { @37:16
+        jump k3("empty") @37:16
+      } else {
+        reraise e @37:16
+      }
+    }
+  }
+}
+

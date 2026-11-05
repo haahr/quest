@@ -1,0 +1,83 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  let %1: Tuple val: Int end = tuple(5) @13:37
+  let %2: Opt(Int) = option(some, %1) @13:37
+  join inlined2(%3: Int) {
+    let %4: String = call conv.int(%3) @18:16
+    let %5: String = call conv.int(7) @18:60
+    let %6: String = prim <>(" ", %5) @18:53
+    let %7: String = prim <>(%4, %6) @18:16
+    let %8: String = prim <>("1. ", %7) @18:7
+    let %9: writer.T = member writer.output @9:45
+    let %10: String = prim <>(%8, "\n") @9:59
+    let %11: Ok = call writer.putString(%9, %10) @9:28
+    let %12: String = call conv.int(9) @19:16
+    let %13: String = prim <>("1. ", %12) @19:7
+    let %14: writer.T = member writer.output @9:45
+    let %15: String = prim <>(%13, "\n") @9:59
+    let %16: Ok = call writer.putString(%14, %15) @9:28
+    funs rec {
+      fun length [A::TYPE](l: List(A)): Int {
+        switch tag(l) { @25:44
+          case cons (c: Tuple hd: A tl: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end end): {
+            let %17: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end = tuple_field(c, 1) @25:88
+            let %18: Int = call length [A](%17) @25:77
+            let %19: Int = prim +(1, %18) @25:73
+            return %19 @25:44
+          }
+          else: {
+            return 0 @25:44
+          }
+        }
+      }
+    }
+    let %20: List(Int) = option(nil) @23:29
+    let %21: Tuple hd: Int tl: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end end = tuple(2, %20) @24:49
+    let %22: List(Int) = option(cons, %21) @24:49
+    let %23: Tuple hd: Int tl: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end end = tuple(1, %22) @24:49
+    let %24: List(Int) = option(cons, %23) @24:49
+    let %25: Int = call length [Int](%24) @26:25
+    let %26: String = call conv.int(%25) @26:16
+    let %27: List(String) = option(nil) @23:29
+    let %28: Int = call length [String](%27) @27:17
+    let %29: String = call conv.int(%28) @27:8
+    let %30: String = prim <>(" ", %29) @26:81
+    let %31: String = prim <>(%26, %30) @26:16
+    let %32: String = prim <>("2. ", %31) @26:7
+    let %33: writer.T = member writer.output @9:45
+    let %34: String = prim <>(%32, "\n") @9:59
+    let %35: Ok = call writer.putString(%33, %34) @9:28
+    funs {
+      fun twice [A::TYPE](f: Fun(x: A): A, x: A): A {
+        let %36: A = call f(x) @30:48
+        let %37: A = call f(%36) @30:46
+        return %37
+      }
+    }
+    let twiceInt: Fun(f: Fun(x: Int): Int x: Int): Int = type_app twice [Int] @31:16
+    funs {
+      fun f.1(x.1: Int): Int {
+        let %38: Int = prim *(x.1, 3) @32:51
+        return %38
+      }
+    }
+    let %39: Int = call twiceInt(f.1, 2) @32:25
+    let %40: String = call conv.int(%39) @32:16
+    let %41: String = prim <>("3. ", %40) @32:7
+    let %42: writer.T = member writer.output @9:45
+    let %43: String = prim <>(%41, "\n") @9:59
+    let %44: Ok = call writer.putString(%42, %43) @9:28
+  } in {
+    switch tag(%2) { @14:48
+      case some (x.2: Tuple val: Int end): {
+        let %45: Int = tuple_field(x.2, 0) @14:77
+        jump inlined2(%45) @14:48
+      }
+      else: {
+        jump inlined2(0) @14:48
+      }
+    }
+  }
+}
+

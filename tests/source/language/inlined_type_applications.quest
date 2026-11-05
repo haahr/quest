@@ -1,0 +1,32 @@
+(* Type applications the self-hosted compiler's simplifier inlines (docs/ir.md
+ * section 8.6): a polymorphic value of no parameters, applied to types alone
+ * (a function's none, a list's nil), runs its function as a call without
+ * arguments would, so it is inlined as one, and a switch on what it makes
+ * folds (the ir_simplified golden shows both). A type application whose
+ * instance is a function makes a closure, and is left. *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+Let Opt = Fun(A::TYPE) Option none some with val: A end end;
+let none(A::TYPE): Opt(A) = option none of Opt(A) end;
+let some(A::TYPE)(val: A): Opt(A) = option some of Opt(A) with let val = val end;
+let orElse(A::TYPE)(o: Opt(A) default: A): A = case o when some with x then x.val else default end;
+
+(* 1. A function's none, and a switch on it *)
+let find(n: Int): Opt(Int) = if n > 3 then some(:Int)(n) else none(:Int) end;
+print("1. " <> conv.int(orElse(:Int)(find(5) 0)) <> " " <> conv.int(orElse(:Int)(find(2) 7)));
+print("1. " <> conv.int(orElse(:Int)(none(:Int) 9)));
+
+(* 2. A list's nil, at two types *)
+Let Rec List(A::TYPE) = Option nil cons with hd: A tl: List(A) end end;
+let nil(A::TYPE): List(A) = option nil of List(A) end;
+let cons(A::TYPE)(hd: A tl: List(A)): List(A) = option cons of List(A) with let hd = hd let tl = tl end;
+let rec length(A::TYPE)(l: List(A)): Int = case l when cons with c then 1 + length(:A)(c.tl) else 0 end;
+print("2. " <> conv.int(length(:Int)(cons(:Int)(1 cons(:Int)(2 nil(:Int))))) <> " "
+    <> conv.int(length(:String)(nil(:String))));
+
+(* 3. A type application whose instance is a function, left *)
+let twice(A::TYPE)(f: All(x: A) A x: A): A = f(f(x));
+let twiceInt = twice(:Int);
+print("3. " <> conv.int(twiceInt(fun(x: Int): Int x * 3 2)));
