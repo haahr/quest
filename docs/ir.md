@@ -405,6 +405,14 @@ parameters (same symbols, so its types need no rewriting), which its closure sup
 refer to the variables being bound; the C printer fills in those captures once all the group's closures are
 allocated, as the IR interpreter does.
 
+**Known closures** (`walk.knownClosures`, the self-hosted compiler's): both backends call a closure's function
+directly when the variable called holds a known closure: one a let makes, a copy of a variable that holds one, or a
+read of a lifted function's environment at an index where every closure made of that function captures a variable
+holding a closure of one function. The last is a local function's call of another it names (zebra's `isConsistent`
+calling `same`), which closure conversion makes a capture; the analysis runs to a fixed point, so a chain of captures
+is known too. The environment passed is read from the closure called, as for any known closure.
+`language/captured_known_calls` shows each case.
+
 `type_app` stays an operation, now on closures: instantiating a polymorphic closure binds its next type
 parameters, which the C printer emits as a runtime instantiation call using descriptor values (§7), converting
 arguments and result by the plans the represent pass records on it (§8.3).
@@ -654,8 +662,9 @@ inlined:
   the parameter's values as `QVal` words, as a type argument's need not be, and nothing would box them;
 - a recursive function at all, rather than only into its own component, so that none is unrolled once per round
   (but one is specialized, below);
-- past the unit's growth bound: half its size, or 1000, whichever is more. The rounds' bound stands for a caller's
-  bound and a depth bound.
+- past the unit's growth bound: half its size, or 1000, whichever is more, each copy counting its size less the
+  call's (2), which it replaces, so that copies no larger than their calls (`maybe.none`'s) do not spend it. The
+  rounds' bound stands for a caller's bound and a depth bound.
 
 A body whose one return is its end is spliced in place; any other becomes a join point's body, whose continuation is the
 rest of the caller's body, its returns jumps to it. In a whole program, a call of one of the unit's modules' members

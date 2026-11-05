@@ -35,6 +35,15 @@ export
      * exports, or record; the rest are locals of the body that binds them,
      * which a backend can keep in registers *)
     globalVariables(unit: nodes.Unit): hashMap.T(Int Bool)
+    (* The closure each variable of a closed unit is known to hold, by the
+     * variable's id, so that a call through it can call the closure's
+     * function directly: a let of the closure, a copy of a variable known to
+     * hold one, and the read of a lifted function's environment (env_field)
+     * at an index where every closure made of that function captures a
+     * variable known to hold a closure of one function (the closure of a
+     * local function another local function names, docs/ir.md section
+     * 8.2) *)
+    knownClosures(unit: nodes.Unit): hashMap.T(Int nodes.OpMakeClosure)
 
     (* Replaces, in place, each variable v that a statement or operation holds
      * in its fields (directly, in arrays, and a let's or do's operation's) by

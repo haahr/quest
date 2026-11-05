@@ -490,4 +490,132 @@ export
             when sSwitch with x then x.viewMap
             else maybe.none(:Variable)
         end
+
+    let knownClosures(unit: nodes.Unit): hashMap.T(Int nodes.OpMakeClosure) =
+        begin
+            let same = fun(a: Int b: Int): Bool a is b
+            let known = hashMap.new(:Int :nodes.OpMakeClosure same hash.int)
+            let bodies = vector.new(:nodes.Body)
+            vector.append(:nodes.Body bodies unit.main)
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                vector.append(:nodes.Body bodies vector.get(:nodes.Module unit.modules i).init)
+            end
+            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                vector.append(:nodes.Body bodies vector.get(:nodes.Function unit.functions i).body)
+            end
+            let stmts = vector.new(:nodes.Stmt)
+            for b = 0 upto {vector.length(:nodes.Body bodies) - 1} do
+                let found = walkStatements(vector.get(:nodes.Body bodies b) false)
+                for k = 0 upto {vector.length(:nodes.Stmt found) - 1} do
+                    vector.append(:nodes.Stmt stmts vector.get(:nodes.Stmt found k))
+                end
+            end
+            (* Each function's closures, by its id *)
+            let closuresOf = hashMap.new(:Int :vector.T(nodes.OpMakeClosure) same hash.int)
+            for k = 0 upto {vector.length(:nodes.Stmt stmts) - 1} do
+                case vector.get(:nodes.Stmt stmts k)
+                    when sLet with x then
+                        case x.value
+                            when opMakeClosure with c then
+                                if not(hashMap.contains(:Int :vector.T(nodes.OpMakeClosure) closuresOf c.code.id)) then
+                                    hashMap.insert(:Int :vector.T(nodes.OpMakeClosure) closuresOf c.code.id
+                                        vector.new(:nodes.OpMakeClosure))
+                                end
+                                vector.append(:nodes.OpMakeClosure
+                                    hashMap.find(:Int :vector.T(nodes.OpMakeClosure) closuresOf c.code.id) c)
+                            else ok
+                        end
+                    else ok
+                end
+            end
+            (* Each read of a lifted function's environment: the variable it
+             * binds, the function, and the index *)
+            Let Read = Tuple v: nodes.Variable function: Int index: Int end
+            let reads = vector.new(:Read)
+            for i = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                let fn = vector.get(:nodes.Function unit.functions i)
+                if maybe.isSome(:nodes.Variable fn.env) then
+                    let env = maybe.unwrap(:nodes.Variable fn.env)
+                    let found = walkStatements(fn.body false)
+                    for k = 0 upto {vector.length(:nodes.Stmt found) - 1} do
+                        case vector.get(:nodes.Stmt found k)
+                            when sLet with x then
+                                case x.value
+                                    when opEnvField with y then
+                                        case y.env
+                                            when atomVar with e then
+                                                if e.v.id is env.id then
+                                                    vector.append(:Read reads tuple
+                                                        let v = x.v let function = fn.id let index = y.index
+                                                    end)
+                                                end
+                                            when atomConst then ok
+                                        end
+                                    else ok
+                                end
+                            else ok
+                        end
+                    end
+                end
+            end
+            let note = fun(v: nodes.Variable c: nodes.OpMakeClosure): Bool
+                if hashMap.contains(:Int :nodes.OpMakeClosure known v.id) then false
+                else begin hashMap.insert(:Int :nodes.OpMakeClosure known v.id c) true end end
+            let var changed = true
+            while changed do
+                changed := false
+                for k = 0 upto {vector.length(:nodes.Stmt stmts) - 1} do
+                    case vector.get(:nodes.Stmt stmts k)
+                        when sLet with x then
+                            case x.value
+                                when opMakeClosure with c then if note(x.v c) then changed := true end
+                                when opAtom with a then
+                                    case a.atom
+                                        when atomVar with y then
+                                            let c = hashMap.get(:Int :nodes.OpMakeClosure known y.v.id)
+                                            if maybe.isSome(:nodes.OpMakeClosure c) then
+                                                if note(x.v maybe.unwrap(:nodes.OpMakeClosure c)) then
+                                                    changed := true
+                                                end
+                                            end
+                                        when atomConst then ok
+                                    end
+                                else ok
+                            end
+                        else ok
+                    end
+                end
+                for r = 0 upto {vector.length(:Read reads) - 1} do
+                    let read = vector.get(:Read reads r)
+                    let cs = hashMap.get(:Int :vector.T(nodes.OpMakeClosure) closuresOf read.function)
+                    if not(hashMap.contains(:Int :nodes.OpMakeClosure known read.v.id))
+                        andif maybe.isSome(:vector.T(nodes.OpMakeClosure) cs) then
+                        let closures = maybe.unwrap(:vector.T(nodes.OpMakeClosure) cs)
+                        (* The closure every one captures at the index, if all
+                         * capture closures of one function *)
+                        let var agreed = maybe.none(:nodes.OpMakeClosure)
+                        let var all = vector.length(:nodes.OpMakeClosure closures) > 0
+                        for k = 0 upto {vector.length(:nodes.OpMakeClosure closures) - 1} do
+                            let c = vector.get(:nodes.OpMakeClosure closures k)
+                            let held = if read.index < extent c.captures then
+                                case c.captures[read.index]
+                                    when atomVar with y then hashMap.get(:Int :nodes.OpMakeClosure known y.v.id)
+                                    when atomConst then maybe.none(:nodes.OpMakeClosure)
+                                end
+                            else maybe.none(:nodes.OpMakeClosure) end
+                            if maybe.isNone(:nodes.OpMakeClosure held) then all := false
+                            elsif maybe.isNone(:nodes.OpMakeClosure agreed) then agreed := held
+                            elsif maybe.unwrap(:nodes.OpMakeClosure agreed).code.id
+                                isnot maybe.unwrap(:nodes.OpMakeClosure held).code.id then
+                                all := false
+                            end
+                        end
+                        if all andif maybe.isSome(:nodes.OpMakeClosure agreed) then
+                            if note(read.v maybe.unwrap(:nodes.OpMakeClosure agreed)) then changed := true end
+                        end
+                    end
+                end
+            end
+            known
+        end
 end

@@ -1,0 +1,42 @@
+(* Calls of local functions that another local function names, which closure
+ * conversion makes captures read from its environment (docs/ir.md section
+ * 8.2): the backends call such a capture's function directly when every
+ * closure made of the function capturing it holds a closure of one function
+ * there (walk.knownClosures; the ssa golden shows the direct calls), through
+ * a chain of captures, and through its closure otherwise, when the closures
+ * made hold different functions. The functions are recursive, so that the
+ * inliner leaves them functions. *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+(* 1. A function calling two it captures *)
+let run(n: Int): Int =
+    begin
+        let rec up(x: Int): Int = if x <= 0 then n else 1 + up(x - 1) end
+        let rec down(x: Int): Int = if x <= 0 then 1 else 2 * down(x - 1) end
+        let rec both(x: Int): Int = if x <= 0 then 0 else up(x) + down(x) + {x * both(x - 1)} end
+        both(6)
+    end;
+print("1. " <> conv.int(run(10)));
+
+(* 2. Through a chain: a function capturing one that captures another *)
+let chain(n: Int): Int =
+    begin
+        let rec inner(x: Int): Int = if x <= 0 then n else x + inner(x - 1) end
+        let rec middle(x: Int): Int = if x <= 0 then 0 else inner(x) + {2 * middle(x - 1)} end
+        let rec outer(x: Int): Int = if x <= 0 then 0 else middle(x) + {3 * outer(x - 1)} end
+        outer(5)
+    end;
+print("2. " <> conv.int(chain(3)));
+
+(* 3. Left: closures of one function holding different functions *)
+let pick(k: Int): All(x: Int) Int =
+    begin
+        let rec inc(x: Int): Int = if x <= 0 then 1 else 1 + inc(x - 1) end
+        let rec dbl(x: Int): Int = if x <= 0 then 0 else 2 + dbl(x - 1) end
+        let f = if k is 0 then inc else dbl end
+        let rec g(x: Int): Int = if x <= 0 then 0 else f(x) + g(x - 1) end
+        g
+    end;
+for k = 0 upto 1 do print("3. " <> conv.int(pick(k)(5))) end;

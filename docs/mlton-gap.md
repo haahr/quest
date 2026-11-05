@@ -148,6 +148,17 @@ are now.
 *Done when* zebra's `qf_isConsistent` has no indirect calls (`blr`) of `same`'s functions, and a run test shows a
 local function calling another it captures directly (its SSA golden).
 
+*Done*: `walk.knownClosures`, used by the C printer and the SSA builder in place of their own copies of the rule for
+lets and copies; `language/captured_known_calls`; [ir.md](ir.md) §8.2. zebra's `isConsistent` makes no indirect call.
+Found on the way, by timing zebra at each step's commit:
+
+- **Steps 2 and 3 made zebra slower** (18.9 s to 20.7 s through C at count 16): the copies of `maybe.none` and
+  `maybe.unwrap` spent the unit's growth bound, counted at their whole size, before the simplifier reached
+  `isConsistent`, whose calls of `smoke`, `pet`, and the rest were then left. With the bound lifted, it took 16.7 s.
+- **The growth bound now counts a copy's size less the call's** (2), which it replaces: zebra takes 18.07 s, and
+  ratio-regions 1.99 s rather than 2.40. The settings benchmarks.md §11.3 kept were measured with the whole size, so
+  §8's suite measures this too.
+
 ## 7. Clears Before a Raise (arm64 `regalloc`, `select`)
 
 In ratio-regions' `preflowPush`, each failed bounds check goes to a block that stores zero to 26 dead slots and then

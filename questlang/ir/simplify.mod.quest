@@ -646,6 +646,12 @@ export
             when refImport then maybe.none(:Array(inline.Read))
         end
 
+    (* What inlining a function of a size grows the unit by: its size less the
+     * call's, which the copy replaces. Counting the whole size spent the
+     * bound on copies no larger than the calls (maybe.none's, a constant)
+     * and left zebra's larger calls, met later, as they were. *)
+    let net(size: Int): Int = if size > inline.callSize then size - inline.callSize else 0 end
+
     (* A call to inline: its function, the variables passed by address for its
      * var and out parameters, what the copy reads for the variables it names
      * of the function's module, the function's size, and, for a recursive
@@ -763,7 +769,7 @@ export
                  * most one at each call of a known function, so the bound on
                  * growth would leave the calls in the largest functions
                  * (ratio-regions' preflowPush, made last) as they were *)
-                let grows = recursive orif {{s.grown + size} <= s.budget}
+                let grows = recursive orif {{s.grown + net(size)} <= s.budget}
                 let small = {{size - bonus} <= inlineSize} andif grows
                 if fits andif {once orif small} then
                     maybe.some(:Choice tuple
@@ -959,7 +965,7 @@ export
                      * those of the rest, counted again, no less) *)
                     countBody(s nodes.bodyOf(vector.toArray(:Stmt ss)))
                     i := 0
-                    s.grown := s.grown + ch.size
+                    s.grown := s.grown + net(ch.size)
                     s.changed := true
                 else
                 case st

@@ -321,23 +321,20 @@ export
                                     if not(hashMap.contains(:Int :ir.OpMakeClosure u.closuresOf c.code.id)) then
                                         vals.put(:Int :ir.OpMakeClosure u.closuresOf c.code.id c)
                                     end
-                                    vals.put(:Int :ir.OpMakeClosure u.closureVars x.v.id c)
-                                (* A copy of a closure's variable is bound to
-                                 * the closure too *)
-                                when opAtom with a then
-                                    case a.atom
-                                        when atomVar with y then
-                                            if hashMap.contains(:Int :ir.OpMakeClosure u.closureVars y.v.id) then
-                                                vals.put(:Int :ir.OpMakeClosure u.closureVars x.v.id
-                                                    hashMap.find(:Int :ir.OpMakeClosure u.closureVars y.v.id))
-                                            end
-                                        when atomConst then ok
-                                    end
                                 else ok
                             end
                         else ok
                     end
                 end
+            end
+            (* The closure each variable is known to hold, for direct calls:
+             * a let's, a copy's, and an environment's read of one
+             * (walk.knownClosures) *)
+            let known = walk.knownClosures(unit)
+            let ids = hashMap.keys(:Int :ir.OpMakeClosure known)
+            for i = 0 upto {vector.length(:Int ids) - 1} do
+                let id = vector.get(:Int ids i)
+                vals.put(:Int :ir.OpMakeClosure u.closureVars id hashMap.find(:Int :ir.OpMakeClosure known id))
             end
             for i = 0 upto {vector.length(:ir.Function unit.functions) - 1} do
                 vector.append(:Function u.built.functions function(u vector.get(:ir.Function unit.functions i)))

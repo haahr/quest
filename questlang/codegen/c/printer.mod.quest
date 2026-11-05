@@ -2997,23 +2997,20 @@ export
                                     if not(hashMap.contains(:Int :nodes.OpMakeClosure closuresOf c.code.id)) then
                                         put(:Int :nodes.OpMakeClosure closuresOf c.code.id c)
                                     end
-                                    put(:Int :nodes.OpMakeClosure p.closures x.v.id c)
-                                (* A copy of a closure's variable is bound to
-                                 * the closure too *)
-                                when opAtom with a then
-                                    case a.atom
-                                        when atomVar with y then
-                                            if hashMap.contains(:Int :nodes.OpMakeClosure p.closures y.v.id) then
-                                                put(:Int :nodes.OpMakeClosure p.closures x.v.id
-                                                    hashMap.find(:Int :nodes.OpMakeClosure p.closures y.v.id))
-                                            end
-                                        when atomConst then ok
-                                    end
                                 else ok
                             end
                         else ok
                     end
                 end
+            end
+            (* The closure each variable is known to hold, for direct calls:
+             * a let's, a copy's, and an environment's read of one
+             * (walk.knownClosures) *)
+            let known = walk.knownClosures(unit)
+            let ids = hashMap.keys(:Int :nodes.OpMakeClosure known)
+            for i = 0 upto {vector.length(:Int ids) - 1} do
+                let id = vector.get(:Int ids i)
+                put(:Int :nodes.OpMakeClosure p.closures id hashMap.find(:Int :nodes.OpMakeClosure known id))
             end
 
             let functions = vector.new(:String)

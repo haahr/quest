@@ -1,0 +1,225 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @11:45
+      let %2: String = prim <>(s, "\n") @11:59
+      let %3: Ok = call writer.putString(%1, %2) @11:28
+      return %3
+    }
+  }
+  funs {
+    fun run(n: Int): Int {
+      funs rec {
+        fun up(x: Int): Int {
+          join k1(r: Int) {
+            return r
+          } in {
+            let %4: Bool = prim <=(x, 0) @16:38
+            if %4 { @16:35
+              jump k1(n) @16:35
+            } else {
+              let %5: Int = prim -(x, 1) @16:64
+              let %6: Int = call up(%5) @16:61
+              let %7: Int = prim +(1, %6) @16:57
+              jump k1(%7) @16:35
+            }
+          }
+        }
+      }
+      funs rec {
+        fun down(x.1: Int): Int {
+          join k2(r.1: Int) {
+            return r.1
+          } in {
+            let %8: Bool = prim <=(x.1, 0) @17:40
+            if %8 { @17:37
+              jump k2(1) @17:37
+            } else {
+              let %9: Int = prim -(x.1, 1) @17:68
+              let %10: Int = call down(%9) @17:63
+              let %11: Int = prim *(2, %10) @17:59
+              jump k2(%11) @17:37
+            }
+          }
+        }
+      }
+      funs rec {
+        fun both(x.2: Int): Int {
+          join k3(r.2: Int) {
+            return r.2
+          } in {
+            let %12: Bool = prim <=(x.2, 0) @18:40
+            if %12 { @18:37
+              jump k3(0) @18:37
+            } else {
+              let %13: Int = call up(x.2) @18:59
+              let %14: Int = call down(x.2) @18:67
+              let %15: Int = prim -(x.2, 1) @18:87
+              let %16: Int = call both(%15) @18:82
+              let %17: Int = prim *(x.2, %16) @18:78
+              let %18: Int = prim +(%14, %17) @18:67
+              let %19: Int = prim +(%13, %18) @18:59
+              jump k3(%19) @18:37
+            }
+          }
+        }
+      }
+      let %20: Int = call both(6) @19:9
+      return %20
+    }
+  }
+  let %21: Int = call run(10) @21:25
+  let %22: String = call conv.int(%21) @21:16
+  let %23: String = prim <>("1. ", %22) @21:7
+  do call print(%23) @21:1
+  funs {
+    fun chain(n.1: Int): Int {
+      funs rec {
+        fun inner(x.3: Int): Int {
+          join k4(r.3: Int) {
+            return r.3
+          } in {
+            let %24: Bool = prim <=(x.3, 0) @26:41
+            if %24 { @26:38
+              jump k4(n.1) @26:38
+            } else {
+              let %25: Int = prim -(x.3, 1) @26:70
+              let %26: Int = call inner(%25) @26:64
+              let %27: Int = prim +(x.3, %26) @26:60
+              jump k4(%27) @26:38
+            }
+          }
+        }
+      }
+      funs rec {
+        fun middle(x.4: Int): Int {
+          join k5(r.4: Int) {
+            return r.4
+          } in {
+            let %28: Bool = prim <=(x.4, 0) @27:42
+            if %28 { @27:39
+              jump k5(0) @27:39
+            } else {
+              let %29: Int = call inner(x.4) @27:61
+              let %30: Int = prim -(x.4, 1) @27:84
+              let %31: Int = call middle(%30) @27:77
+              let %32: Int = prim *(2, %31) @27:73
+              let %33: Int = prim +(%29, %32) @27:61
+              jump k5(%33) @27:39
+            }
+          }
+        }
+      }
+      funs rec {
+        fun outer(x.5: Int): Int {
+          join k6(r.5: Int) {
+            return r.5
+          } in {
+            let %34: Bool = prim <=(x.5, 0) @28:41
+            if %34 { @28:38
+              jump k6(0) @28:38
+            } else {
+              let %35: Int = call middle(x.5) @28:60
+              let %36: Int = prim -(x.5, 1) @28:83
+              let %37: Int = call outer(%36) @28:77
+              let %38: Int = prim *(3, %37) @28:73
+              let %39: Int = prim +(%35, %38) @28:60
+              jump k6(%39) @28:38
+            }
+          }
+        }
+      }
+      let %40: Int = call outer(5) @29:9
+      return %40
+    }
+  }
+  let %41: Int = call chain(3) @31:25
+  let %42: String = call conv.int(%41) @31:16
+  let %43: String = prim <>("2. ", %42) @31:7
+  do call print(%43) @31:1
+  funs {
+    fun pick(k: Int): Fun(x: Int): Int {
+      funs rec {
+        fun inc(x.6: Int): Int {
+          join k7(r.6: Int) {
+            return r.6
+          } in {
+            let %44: Bool = prim <=(x.6, 0) @36:39
+            if %44 { @36:36
+              jump k7(1) @36:36
+            } else {
+              let %45: Int = prim -(x.6, 1) @36:66
+              let %46: Int = call inc(%45) @36:62
+              let %47: Int = prim +(1, %46) @36:58
+              jump k7(%47) @36:36
+            }
+          }
+        }
+      }
+      funs rec {
+        fun dbl(x.7: Int): Int {
+          join k8(r.7: Int) {
+            return r.7
+          } in {
+            let %48: Bool = prim <=(x.7, 0) @37:39
+            if %48 { @37:36
+              jump k8(0) @37:36
+            } else {
+              let %49: Int = prim -(x.7, 1) @37:66
+              let %50: Int = call dbl(%49) @37:62
+              let %51: Int = prim +(2, %50) @37:58
+              jump k8(%51) @37:36
+            }
+          }
+        }
+      }
+      join k9(f: Fun(x: Int): Int) {
+        funs rec {
+          fun g(x.8: Int): Int {
+            join k10(r.8: Int) {
+              return r.8
+            } in {
+              let %52: Bool = prim <=(x.8, 0) @39:37
+              if %52 { @39:34
+                jump k10(0) @39:34
+              } else {
+                let %53: Int = call f(x.8) @39:56
+                let %54: Int = prim -(x.8, 1) @39:65
+                let %55: Int = call g(%54) @39:63
+                let %56: Int = prim +(%53, %55) @39:56
+                jump k10(%56) @39:34
+              }
+            }
+          }
+        }
+        return g
+      } in {
+        let %57: Bool = prim is(k, 0) @38:20
+        if %57 { @38:17
+          jump k9(inc) @38:17
+        } else {
+          jump k9(dbl) @38:17
+        }
+      }
+    }
+  }
+  var k.1: Int = 0 @42:1
+  loop L1 {
+    let %58: Bool = prim <=(k.1, 1) @42:1
+    if %58 { @42:1
+      let k.2: Int = k.1 @42:1
+      let %59: Fun(x: Int): Int = call pick(k.2) @42:45
+      let %60: Int = call %59(5) @42:45
+      let %61: String = call conv.int(%60) @42:36
+      let %62: String = prim <>("3. ", %61) @42:27
+      do call print(%62) @42:21
+      let %63: Int = prim +(k.1, 1) @42:1
+      k.1 := %63 @42:1
+    } else {
+      break L1 @42:1
+    }
+  }
+}
+

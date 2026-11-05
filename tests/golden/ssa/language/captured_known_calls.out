@@ -1,0 +1,473 @@
+function qf_up(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  @16:35
+  %16: int = const 0
+  jump b3(%0, %1, %16)
+b1():
+  @16:35
+  %4: int = const 10
+  %15: int = add %13, %4
+  return %15
+b2():
+  @16:64
+  %5: int = const 1
+  %6: int = sub %12, %5
+  @16:61
+  %7: ptr = null
+  @16:57
+  %14: int = add %13, %5
+  jump b3(%7, %6, %14)
+b3(%11: ptr, %12: int, %13: int):
+  @16:38
+  %2: int = const 0
+  %3: int = le %12, %2
+  @16:35
+  branch %3, b1(), b2()
+}
+
+function qf_down(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  @17:40
+  %2: int = const 0
+  %3: int = le %1, %2
+  @17:37
+  branch %3, b1(), b2()
+b1():
+  @17:37
+  %4: int = const 1
+  return %4
+b2():
+  @17:68
+  %5: int = const 1
+  %6: int = sub %1, %5
+  @17:63
+  %7: ptr = null
+  %8: int = call qf_down(%7, %6)
+  @17:59
+  %9: int = const 2
+  %10: int = mul %9, %8
+  @17:37
+  return %10
+}
+
+function qf_both(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  @18:40
+  %2: int = const 0
+  %3: int = le %1, %2
+  @18:37
+  branch %3, b1(), b2()
+b1():
+  @18:37
+  %4: int = const 0
+  return %4
+b2():
+  @18:59
+  %5: ptr = null
+  %6: int = call qf_up(%5, %1)
+  @18:67
+  %8: int = call qf_down(%5, %1)
+  @18:87
+  %9: int = const 1
+  %10: int = sub %1, %9
+  @18:82
+  %12: int = call qf_both(%5, %10)
+  @18:78
+  %13: int = mul %1, %12
+  @18:67
+  %14: int = add %8, %13
+  @18:59
+  %15: int = add %6, %14
+  @18:37
+  return %15
+}
+
+function qf_inner(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  @26:38
+  %15: int = const 0
+  jump b3(%0, %1, %15)
+b1():
+  @26:38
+  %4: int = const 3
+  %14: int = add %12, %4
+  return %14
+b2():
+  @26:70
+  %5: int = const 1
+  %6: int = sub %11, %5
+  @26:64
+  %7: ptr = null
+  @26:60
+  %13: int = add %12, %11
+  jump b3(%7, %6, %13)
+b3(%10: ptr, %11: int, %12: int):
+  @26:41
+  %2: int = const 0
+  %3: int = le %11, %2
+  @26:38
+  branch %3, b1(), b2()
+}
+
+function qf_middle(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  @27:42
+  %2: int = const 0
+  %3: int = le %1, %2
+  @27:39
+  branch %3, b1(), b2()
+b1():
+  @27:39
+  %4: int = const 0
+  return %4
+b2():
+  @27:61
+  %5: ptr = null
+  %6: int = call qf_inner(%5, %1)
+  @27:84
+  %7: int = const 1
+  %8: int = sub %1, %7
+  @27:77
+  %10: int = call qf_middle(%5, %8)
+  @27:73
+  %11: int = const 2
+  %12: int = mul %11, %10
+  @27:61
+  %13: int = add %6, %12
+  @27:39
+  return %13
+}
+
+function qf_outer(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  @28:41
+  %2: int = const 0
+  %3: int = le %1, %2
+  @28:38
+  branch %3, b1(), b2()
+b1():
+  @28:38
+  %4: int = const 0
+  return %4
+b2():
+  @28:60
+  %5: ptr = null
+  %6: int = call qf_middle(%5, %1)
+  @28:83
+  %7: int = const 1
+  %8: int = sub %1, %7
+  @28:77
+  %10: int = call qf_outer(%5, %8)
+  @28:73
+  %11: int = const 3
+  %12: int = mul %11, %10
+  @28:60
+  %13: int = add %6, %12
+  @28:38
+  return %13
+}
+
+function qf_inc(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  @36:36
+  %17: int = const 0
+  jump b3(%0, %1, %17)
+b1():
+  @36:36
+  %5: int = const 1
+  %16: int = add %14, %5
+  return %16
+b2():
+  @36:66
+  %6: int = const 1
+  %7: int = sub %13, %6
+  @36:62
+  %8: ptr = load8 %2 + 8 invariant
+  @36:58
+  %15: int = add %14, %6
+  jump b3(%8, %7, %15)
+b3(%12: ptr, %13: int, %14: int):
+  %2: ptr = load8 %12 + 0 invariant
+  @36:39
+  %3: int = const 0
+  %4: int = le %13, %3
+  @36:36
+  branch %4, b1(), b2()
+}
+
+function qf_dbl(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  %2: ptr = load8 %0 + 0 invariant
+  @37:39
+  %3: int = const 0
+  %4: int = le %1, %3
+  @37:36
+  branch %4, b1(), b2()
+b1():
+  @37:36
+  %5: int = const 0
+  return %5
+b2():
+  @37:66
+  %6: int = const 1
+  %7: int = sub %1, %6
+  @37:62
+  %8: ptr = load8 %2 + 8 invariant
+  %9: int = call qf_dbl(%8, %7)
+  @37:58
+  %10: int = const 2
+  %11: int = add %10, %9
+  @37:36
+  return %11
+}
+
+function qf_g(%0: ptr, %1: int): int {
+b0(%0: ptr, %1: int):
+  @39:34
+  %20: int = const 0
+  jump b3(%0, %1, %20)
+b1():
+  @39:34
+  %6: int = const 0
+  %19: int = add %17, %6
+  return %19
+b2():
+  @39:56
+  %7: ptr = load8 %2 + 0 invariant
+  %8: ptr = load8 %2 + 8 invariant
+  %9: int = callIndirect %7, %8, %16
+  @39:65
+  %10: int = const 1
+  %11: int = sub %16, %10
+  @39:63
+  %12: ptr = load8 %3 + 8 invariant
+  @39:56
+  %18: int = add %17, %9
+  jump b3(%12, %11, %18)
+b3(%15: ptr, %16: int, %17: int):
+  %2: ptr = load8 %15 + 0 invariant
+  %3: ptr = load8 %15 + 8 invariant
+  @39:37
+  %4: int = const 0
+  %5: int = le %16, %4
+  @39:34
+  branch %5, b1(), b2()
+}
+
+function qr_register_dicts() {
+b0():
+  %0: ptr = symbol qr_roots
+  call quest_register_roots(%0)
+  %1: ptr = symbol qr_frames
+  call quest_register_frames(%1)
+  %2: ptr = symbol qr_funcs
+  %3: int = const 10
+  tail call quest_register_funcs(%2, %3)
+}
+
+function main exported(%0: int, %1: ptr) int32 [0]: int result int32 {
+b0(%0: int, %1: ptr):
+  call quest_gc_init()
+  call quest_builtins_init(%0, %1) int32 [0]
+  call qr_register_dicts()
+  call qv_mod_writer_init()
+  call qv_mod_conv_init()
+  %2: ptr = symbol qf_up_closure
+  %3: ptr = symbol g_up
+  store8 %3 + 0, %2
+  %4: ptr = symbol qf_down_closure
+  %5: ptr = symbol g_down
+  store8 %5 + 0, %4
+  %6: ptr = symbol qf_both_closure
+  %7: ptr = symbol g_both
+  store8 %7 + 0, %6
+  @19:9
+  %8: ptr = null
+  %9: int = const 6
+  %10: int = call qf_both(%8, %9)
+  @21:16
+  %11: ptr = call quest_conv_int(%10)
+  @21:7
+  %12: ptr = symbol qs_11
+  %13: int = const 3
+  %14: ptr = call quest_string_new(%12, %13)
+  %15: ptr = call quest_string_concat(%14, %11)
+  @11:45
+  %16: ptr = symbol qm_writer
+  %17: ptr = load8 %16 + 0
+  %18: ptr = load8 %16 + 8
+  %19: int = load8 %18 + 40
+  %20: ptr = ptrAdd %17, %19
+  %21: ptr = load8 %20 + 0
+  @11:59
+  %22: ptr = symbol qs_12
+  %23: int = const 1
+  %24: ptr = call quest_string_new(%22, %23)
+  %25: ptr = call quest_string_concat(%15, %24)
+  @11:28
+  call quest_writer_put_string(%21, %25)
+  %26: ptr = symbol qf_inner_closure
+  %27: ptr = symbol g_inner
+  store8 %27 + 0, %26
+  %28: ptr = symbol qf_middle_closure
+  %29: ptr = symbol g_middle
+  store8 %29 + 0, %28
+  %30: ptr = symbol qf_outer_closure
+  %31: ptr = symbol g_outer
+  store8 %31 + 0, %30
+  @29:9
+  %33: int = const 5
+  %34: int = call qf_outer(%8, %33)
+  @31:16
+  %35: ptr = call quest_conv_int(%34)
+  @31:7
+  %36: ptr = symbol qs_13
+  %38: ptr = call quest_string_new(%36, %13)
+  %39: ptr = call quest_string_concat(%38, %35)
+  @11:45
+  %41: ptr = load8 %16 + 0
+  %42: ptr = load8 %16 + 8
+  %43: int = load8 %42 + 40
+  %44: ptr = ptrAdd %41, %43
+  %45: ptr = load8 %44 + 0
+  @11:59
+  %48: ptr = call quest_string_new(%22, %23)
+  %49: ptr = call quest_string_concat(%39, %48)
+  @11:28
+  call quest_writer_put_string(%45, %49)
+  @42:1
+  %51: int = const 0
+  jump b1(%51)
+b1(%109: int):
+  @42:1
+  %55: int = const 1
+  %56: int = le %109, %55
+  branch %56, b3(), b4()
+b2():
+  @42:1
+  %108: int = const 0
+  return %108
+b3():
+  @42:1
+  %60: int = const 8
+  %61: ptr = symbol quest_layout_env_qf_inc
+  %62: ptr = call quest_alloc(%60, %61)
+  %63: int = const 16
+  %64: ptr = symbol quest_layout_closure
+  %65: ptr = call quest_alloc(%63, %64)
+  %66: ptr = symbol qf_inc
+  store8 %65 + 0, %66
+  store8 %65 + 8, %62
+  store8 %62 + 0, %65
+  call quest_barrier(%62)
+  %68: ptr = symbol quest_layout_env_qf_dbl
+  %69: ptr = call quest_alloc(%60, %68)
+  %72: ptr = call quest_alloc(%63, %64)
+  %73: ptr = symbol qf_dbl
+  store8 %72 + 0, %73
+  store8 %72 + 8, %69
+  store8 %69 + 0, %72
+  call quest_barrier(%69)
+  @38:20
+  %75: int = const 0
+  %76: int = eq %109, %75
+  @38:17
+  %110: ptr = select %76, %65, %72
+  jump b8(%110)
+b4():
+  @42:1
+  jump b2()
+b5():
+  @42:1
+  jump b1(%106)
+b6():
+  @42:45
+  %84: ptr = load8 %82 + 0 invariant
+  %85: ptr = load8 %82 + 8 invariant
+  %86: int = const 5
+  %87: int = callIndirect %84, %85, %86
+  @42:36
+  %88: ptr = call quest_conv_int(%87)
+  @42:27
+  %89: ptr = symbol qs_14
+  %90: int = const 3
+  %91: ptr = call quest_string_new(%89, %90)
+  %92: ptr = call quest_string_concat(%91, %88)
+  @11:45
+  %93: ptr = symbol qm_writer
+  %94: ptr = load8 %93 + 0
+  %95: ptr = load8 %93 + 8
+  %96: int = load8 %95 + 40
+  %97: ptr = ptrAdd %94, %96
+  %98: ptr = load8 %97 + 0
+  @11:59
+  %99: ptr = symbol qs_12
+  %100: int = const 1
+  %101: ptr = call quest_string_new(%99, %100)
+  %102: ptr = call quest_string_concat(%92, %101)
+  @11:28
+  call quest_writer_put_string(%98, %102)
+  @42:1
+  %106: int = add %109, %100
+  jump b7()
+b7():
+  @42:1
+  jump b5()
+b8(%74: ptr):
+  @38:17
+  %77: int = const 16
+  %78: ptr = symbol quest_layout_env_qf_g
+  %79: ptr = call quest_alloc(%77, %78)
+  store8 %79 + 0, %74
+  %81: ptr = symbol quest_layout_closure
+  %82: ptr = call quest_alloc(%77, %81)
+  %83: ptr = symbol qf_g
+  store8 %82 + 0, %83
+  store8 %82 + 8, %79
+  store8 %79 + 8, %82
+  call quest_barrier(%79)
+  jump b6()
+}
+
+data qf_up_closure words [qf_up, 0]
+data qf_down_closure words [qf_down, 0]
+data qf_both_closure words [qf_both, 0]
+data qf_inner_closure words [qf_inner, 0]
+data qf_middle_closure words [qf_middle, 0]
+data qf_outer_closure words [qf_outer, 0]
+data qf_inc_closure words [qf_inc, 0]
+data qf_dbl_closure words [qf_dbl, 0]
+data qf_g_closure words [qf_g, 0]
+data qs_1 text "run.up"
+data qs_2 text "run.down"
+data qs_3 text "run.both"
+data qs_4 text "chain.inner"
+data qs_5 text "chain.middle"
+data qs_6 text "chain.outer"
+data qs_7 text "pick.inc"
+data qs_8 text "pick.dbl"
+data qs_9 text "pick.g"
+data qs_10 text "<main>"
+data qr_frames words [0]
+data qr_funcs words [qf_up, qs_1, qf_down, qs_2, qf_both, qs_3, qf_inner, qs_4, qf_middle, qs_5, qf_outer, qs_6, qf_inc, qs_7, qf_dbl, qs_8, qf_g, qs_9, main, qs_10]
+data g_up writable zero 8
+data g_down writable zero 8
+data g_both writable zero 8
+data qs_11 text "1. "
+data qs_12 text "\n"
+data g_inner writable zero 8
+data g_middle writable zero 8
+data g_outer writable zero 8
+data qs_13 text "2. "
+data qs_14 text "3. "
+data qs_15 text "env_qf_inc"
+data qlk_env_qf_inc words [1]
+data quest_layout_env_qf_inc words [qs_15, 0, 8, 4294967296, qlk_env_qf_inc]
+data qs_16 text "env_qf_dbl"
+data qlk_env_qf_dbl words [1]
+data quest_layout_env_qf_dbl words [qs_16, 0, 8, 4294967296, qlk_env_qf_dbl]
+data qs_17 text "env_qf_g"
+data qlk_env_qf_g words [257]
+data quest_layout_env_qf_g words [qs_17, 0, 16, 8589934592, qlk_env_qf_g]
+data qr_roots words [g_up, 1, g_down, 1, g_both, 1, g_inner, 1, g_middle, 1, g_outer, 1, 0, 0]
+
