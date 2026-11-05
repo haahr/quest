@@ -1,0 +1,101 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @8:45
+      let %2: String = prim <>(s, "\n") @8:59
+      let %3: Ok = call writer.putString(%1, %2) @8:28
+      return %3
+    }
+  }
+  let n: Int = 0 @11:31
+  let total: Tuple var n: Int end = tuple(n) @11:13
+  funs {
+    fun f(x: Int): Ok {
+      let %4: Int = tuple_field(total, 0) @12:56
+      let %5: Int = prim *(2, x) @12:67
+      let %6: Int = prim +(%4, %5) @12:56
+      store total.#0 := %6 @12:45
+      return ok
+    }
+  }
+  var g: Fun(a: Int): Ok = f @12:1
+  do call g(4) @13:1
+  let %7: Int = tuple_field(total, 0) @14:25
+  let %8: String = call conv.int(%7) @14:16
+  let %9: String = prim <>("1. ", %8) @14:7
+  do call print(%9) @14:1
+  funs {
+    fun f.1(x.1: Int): Ok {
+      let %10: Int = tuple_field(total, 0) @15:33
+      let %11: Int = prim *(10, x.1) @15:44
+      let %12: Int = prim +(%10, %11) @15:33
+      store total.#0 := %12 @15:22
+      return ok
+    }
+  }
+  g := f.1 @15:1
+  do call g(4) @16:1
+  let %13: Int = tuple_field(total, 0) @17:25
+  let %14: String = call conv.int(%13) @17:16
+  let %15: String = prim <>("1. ", %14) @17:7
+  do call print(%15) @17:1
+  funs {
+    fun twice(n.1: Int): Int {
+      funs {
+        fun f.2(x.2: Int): Int {
+          let %16: Int = prim +(x.2, 1) @22:55
+          return %16
+        }
+      }
+      var h: Fun(a: Int): Int = f.2 @22:9
+      let first: Int = call h(n.1) @23:21
+      funs {
+        fun f.3(x.3: Int): Int {
+          let %17: Int = prim *(x.3, 2) @24:31
+          return %17
+        }
+      }
+      h := f.3 @24:9
+      let %18: Int = call h(n.1) @25:17
+      let %19: Int = prim +(first, %18) @25:9
+      return %19
+    }
+  }
+  let %20: Int = call twice(5) @27:25
+  let %21: String = call conv.int(%20) @27:16
+  let %22: String = prim <>("2. ", %21) @27:7
+  do call print(%22) @27:1
+  funs {
+    fun captured(n.2: Int): Int {
+      funs {
+        fun f.4(x.4: Int): Int {
+          return x.4
+        }
+      }
+      let k: Tuple var k: Fun(a: Int): Int end = tuple(f.4) @32:9
+      funs {
+        fun callK(x.5: Int): Int {
+          let %23: Fun(a: Int): Int = tuple_field(k, 0) @33:34
+          let %24: Int = call %23(x.5) @33:34
+          return %24
+        }
+      }
+      funs {
+        fun f.5(x.6: Int): Int {
+          let %25: Int = prim *(x.6, x.6) @34:31
+          return %25
+        }
+      }
+      store k.#0 := f.5 @34:9
+      let %26: Int = call callK(n.2) @35:9
+      return %26
+    }
+  }
+  let %27: Int = call captured(7) @37:25
+  let %28: String = call conv.int(%27) @37:16
+  let %29: String = prim <>("3. ", %28) @37:7
+  do call print(%29) @37:1
+}
+

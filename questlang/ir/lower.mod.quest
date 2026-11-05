@@ -1692,45 +1692,46 @@ export
     and plainLetValue(l: Lowerer lv: typedAst.LetValue show: Bool): Ok =
         begin
             let symbol = lv.symbol
-            case lv.value.form
-                when exprFun then
-                    let v = bindSymbol(l symbol maybe.none(:Type) false)
-                    emit(l option sFuns of Stmt with
-                        let var functions = array of function(l lv.value v maybe.some(:String lv.name)) end
-                        let recursive = lv.isRec
+            (* A var bound to a function is a mutable variable like any other,
+             * initialized from the function's closure *)
+            if lv.value.form?exprFun andif not(symbol.isVar) then
+                let v = bindSymbol(l symbol maybe.none(:Type) false)
+                emit(l option sFuns of Stmt with
+                    let var functions = array of function(l lv.value v maybe.some(:String lv.name)) end
+                    let recursive = lv.isRec
+                end)
+                if show then emit(l funText(lv.name symbol.type)) end
+            else
+                let v = if symbol.isVar andif hashMap.contains(:Int :Bool l.captured symbol.symbolId) then
+                    (* Held in a box that closures capture
+                     * (capturedMutables) *)
+                    let init = value(l lv.value none)
+                    let boxType = model.tupleType(array of
+                        model.tupleField(maybe.some(:String lv.name) symbol.type true)
                     end)
-                    if show then emit(l funText(lv.name symbol.type)) end
+                    let box = letVar(l nodes.makeTuple(array of init end array of :nodes.TypeComponent end) boxType none lv.name)
+                    hashMap.insert(:Int :Variable l.boxes symbol.symbolId box)
+                    box
+                elsif symbol.isVar then
+                    let init = value(l lv.value none)
+                    let mv = bindSymbol(l symbol maybe.none(:Type) true)
+                    emit(l option sVarDecl of Stmt with
+                        let var pos = ~1 let var v = mv let var init = maybe.some(:Atom init)
+                    end)
+                    mv
                 else
-                    let v = if symbol.isVar andif hashMap.contains(:Int :Bool l.captured symbol.symbolId) then
-                        (* Held in a box that closures capture
-                         * (capturedMutables) *)
-                        let init = value(l lv.value none)
-                        let boxType = model.tupleType(array of
-                            model.tupleField(maybe.some(:String lv.name) symbol.type true)
-                        end)
-                        let box = letVar(l nodes.makeTuple(array of init end array of :nodes.TypeComponent end) boxType none lv.name)
-                        hashMap.insert(:Int :Variable l.boxes symbol.symbolId box)
-                        box
-                    elsif symbol.isVar then
-                        let init = value(l lv.value none)
-                        let mv = bindSymbol(l symbol maybe.none(:Type) true)
-                        emit(l option sVarDecl of Stmt with
-                            let var pos = ~1 let var v = mv let var init = maybe.some(:Atom init)
-                        end)
-                        mv
-                    else
-                        if lv.isRec then fail(:Ok "recursive values other than functions") end
-                        (* The value is lowered before the variable is bound, so
-                         * that it refers to any binding it shadows *)
-                        let bound = fresh(symbol.name symbol.type false)
-                        value(l lv.value some(bound))
-                        if hashMap.contains(:Int :Variable l.vars symbol.symbolId) then
-                            fail(:Ok "symbol '" <> lv.name <> "' is bound twice")
-                        end
-                        hashMap.insert(:Int :Variable l.vars symbol.symbolId bound)
-                        bound
+                    if lv.isRec then fail(:Ok "recursive values other than functions") end
+                    (* The value is lowered before the variable is bound, so
+                     * that it refers to any binding it shadows *)
+                    let bound = fresh(symbol.name symbol.type false)
+                    value(l lv.value some(bound))
+                    if hashMap.contains(:Int :Variable l.vars symbol.symbolId) then
+                        fail(:Ok "symbol '" <> lv.name <> "' is bound twice")
                     end
-                    if show then echoBinding(l lv.name symbol v) end
+                    hashMap.insert(:Int :Variable l.vars symbol.symbolId bound)
+                    bound
+                end
+                if show then echoBinding(l lv.name symbol v) end
             end
         end
 

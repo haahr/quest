@@ -995,7 +995,9 @@ class _Lowerer:
             case TypedLetValue(value=value, is_rec=True) if not isinstance(value, TypedFun):
                 self.rec_values((b,), show)
             case TypedLetValue(name=name, value=value, symbol=symbol):
-                if isinstance(value, TypedFun):
+                # A var bound to a function is a mutable variable like any
+                # other, initialized from the function's closure
+                if isinstance(value, TypedFun) and not symbol.is_var:
                     var = self.bind_symbol(symbol)
                     self.emit(ir.Funs((self.function(value, var, name),), recursive=b.is_rec))
                     if show:

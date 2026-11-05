@@ -1,0 +1,37 @@
+(* A var bound to a function is a mutable variable like any other, holding the
+ * function's closure: called, assigned another function, and captured by a
+ * closure (which holds it in a box). Both compilers' lowerings bound it as an
+ * immutable function and read it as a variable, which the self-hosted
+ * compiler's backends crashed on. *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+(* 1. At the top level, called, then assigned and called again *)
+let total = tuple let var n = 0 end;
+let var g: All(a: Int) Ok = fun(x: Int): Ok total.n := total.n + {2 * x};
+g(4);
+print("1. " <> conv.int(total.n));
+g := fun(x: Int): Ok total.n := total.n + {10 * x};
+g(4);
+print("1. " <> conv.int(total.n));
+
+(* 2. In a function, as a local *)
+let twice(n: Int): Int =
+    begin
+        let var h: All(a: Int) Int = fun(x: Int): Int x + 1
+        let first = h(n)
+        h := fun(x: Int): Int x * 2
+        first + h(n)
+    end;
+print("2. " <> conv.int(twice(5)));
+
+(* 3. Captured by a closure, which sees its assignments *)
+let captured(n: Int): Int =
+    begin
+        let var k: All(a: Int) Int = fun(x: Int): Int x
+        let callK(x: Int): Int = k(x)
+        k := fun(x: Int): Int x * x
+        callK(n)
+    end;
+print("3. " <> conv.int(captured(7)));
