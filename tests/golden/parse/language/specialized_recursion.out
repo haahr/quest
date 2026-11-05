@@ -1,0 +1,1419 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (LetValueBinding
+      :name 'print'
+      :value (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprId 's')
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+      :params (
+        (FormalParam
+          :name 's'
+          :type_annot (TypePath ('String'))
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Ok'))
+    )
+    (TypeBinding
+      :name 'List'
+      :type_val (TypeFun
+        :params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindType)
+          )
+        )
+        :body (TypeOption
+          :variants (
+            (OptionFieldSig 'nil' ())
+            (OptionFieldSig
+              :tag 'cons'
+              :payload_sig (
+                (FieldSig
+                  :name 'hd'
+                  :type_sig (TypePath ('A'))
+                  :mode VALUE
+                )
+                (FieldSig
+                  :name 'tl'
+                  :type_sig (TypeApp
+                    :constructor (TypePath ('List'))
+                    :arguments (
+                      (TypePath ('A'))
+                    )
+                  )
+                  :mode VALUE
+                )
+              )
+            )
+          )
+        )
+      )
+      :is_rec True
+    )
+    (LetValueBinding
+      :name 'nil'
+      :value (ExprFun
+        :return_type (TypeApp
+          :constructor (TypePath ('List'))
+          :arguments (
+            (TypePath ('A'))
+          )
+        )
+        :body (ExprOption
+          :tag 'nil'
+          :option_type (TypeApp
+            :constructor (TypePath ('List'))
+            :arguments (
+              (TypePath ('A'))
+            )
+          )
+        )
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindType)
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindType)
+            :mode VALUE
+            :is_type True
+          )
+        )
+        :result_type (TypeApp
+          :constructor (TypePath ('List'))
+          :arguments (
+            (TypePath ('A'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'cons'
+      :value (ExprFun
+        :body (ExprFun
+          :params (
+            (FormalParam
+              :name 'hd'
+              :type_annot (TypePath ('A'))
+              :mode VALUE
+            )
+            (FormalParam
+              :name 'tl'
+              :type_annot (TypeApp
+                :constructor (TypePath ('List'))
+                :arguments (
+                  (TypePath ('A'))
+                )
+              )
+              :mode VALUE
+            )
+          )
+          :return_type (TypeApp
+            :constructor (TypePath ('List'))
+            :arguments (
+              (TypePath ('A'))
+            )
+          )
+          :body (ExprOption
+            :tag 'cons'
+            :option_type (TypeApp
+              :constructor (TypePath ('List'))
+              :arguments (
+                (TypePath ('A'))
+              )
+            )
+            :payload (ExprTuple
+              :fields (
+                (TupleBinding
+                  :name 'hd'
+                  :value (ExprId 'hd')
+                )
+                (TupleBinding
+                  :name 'tl'
+                  :value (ExprId 'tl')
+                )
+              )
+            )
+          )
+        )
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindType)
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindType)
+            :mode VALUE
+            :is_type True
+          )
+        )
+        :result_type (TypeAll
+          :quantifiers (
+            (Quantifier
+              :name 'hd'
+              :bound (KindPower
+                :bound (TypePath ('A'))
+              )
+              :mode VALUE
+            )
+            (Quantifier
+              :name 'tl'
+              :bound (KindPower
+                :bound (TypeApp
+                  :constructor (TypePath ('List'))
+                  :arguments (
+                    (TypePath ('A'))
+                  )
+                )
+              )
+              :mode VALUE
+            )
+          )
+          :result_type (TypeApp
+            :constructor (TypePath ('List'))
+            :arguments (
+              (TypePath ('A'))
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'app'
+      :value (ExprFun
+        :body (ExprFun
+          :params (
+            (FormalParam
+              :name 'f'
+              :type_annot (TypeAll
+                :quantifiers (
+                  (Quantifier
+                    :name 'a'
+                    :bound (KindPower
+                      :bound (TypePath ('A'))
+                    )
+                    :mode VALUE
+                  )
+                )
+                :result_type (TypePath ('Ok'))
+              )
+              :mode VALUE
+            )
+            (FormalParam
+              :name 'l'
+              :type_annot (TypeApp
+                :constructor (TypePath ('List'))
+                :arguments (
+                  (TypePath ('A'))
+                )
+              )
+              :mode VALUE
+            )
+          )
+          :return_type (TypePath ('Ok'))
+          :body (ExprCase
+            :target (ExprId 'l')
+            :branches (
+              (CaseBranch
+                :tags ('cons')
+                :binder 'c'
+                :body (ExprBlock
+                  :bindings (
+                    (ExprStmt
+                      :expr (ExprApp
+                        :func (ExprId 'f')
+                        :args (
+                          (ExprSelect
+                            :target (ExprId 'c')
+                            :field 'hd'
+                          )
+                        )
+                      )
+                    )
+                    (ExprStmt
+                      :expr (ExprApp
+                        :func (ExprApp
+                          :func (ExprId 'app')
+                          :args (
+                            (TypeArgument
+                              :type_val (TypePath ('A'))
+                            )
+                          )
+                        )
+                        :args (
+                          (ExprId 'f')
+                          (ExprSelect
+                            :target (ExprId 'c')
+                            :field 'tl'
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            :else_branch (ExprOk)
+          )
+        )
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindType)
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindType)
+            :mode VALUE
+            :is_type True
+          )
+        )
+        :result_type (TypeAll
+          :quantifiers (
+            (Quantifier
+              :name 'f'
+              :bound (KindPower
+                :bound (TypeAll
+                  :quantifiers (
+                    (Quantifier
+                      :name 'a'
+                      :bound (KindPower
+                        :bound (TypePath ('A'))
+                      )
+                      :mode VALUE
+                    )
+                  )
+                  :result_type (TypePath ('Ok'))
+                )
+              )
+              :mode VALUE
+            )
+            (Quantifier
+              :name 'l'
+              :bound (KindPower
+                :bound (TypeApp
+                  :constructor (TypePath ('List'))
+                  :arguments (
+                    (TypePath ('A'))
+                  )
+                )
+              )
+              :mode VALUE
+            )
+          )
+          :result_type (TypePath ('Ok'))
+        )
+      )
+      :is_rec True
+    )
+    (LetValueBinding
+      :name 'exists'
+      :value (ExprFun
+        :body (ExprFun
+          :params (
+            (FormalParam
+              :name 'f'
+              :type_annot (TypeAll
+                :quantifiers (
+                  (Quantifier
+                    :name 'a'
+                    :bound (KindPower
+                      :bound (TypePath ('A'))
+                    )
+                    :mode VALUE
+                  )
+                )
+                :result_type (TypePath ('Bool'))
+              )
+              :mode VALUE
+            )
+            (FormalParam
+              :name 'l'
+              :type_annot (TypeApp
+                :constructor (TypePath ('List'))
+                :arguments (
+                  (TypePath ('A'))
+                )
+              )
+              :mode VALUE
+            )
+          )
+          :return_type (TypePath ('Bool'))
+          :body (ExprCase
+            :target (ExprId 'l')
+            :branches (
+              (CaseBranch
+                :tags ('cons')
+                :binder 'c'
+                :body (ExprInfix
+                  :left (ExprApp
+                    :func (ExprId 'f')
+                    :args (
+                      (ExprSelect
+                        :target (ExprId 'c')
+                        :field 'hd'
+                      )
+                    )
+                  )
+                  :op 'orif'
+                  :right (ExprApp
+                    :func (ExprApp
+                      :func (ExprId 'exists')
+                      :args (
+                        (TypeArgument
+                          :type_val (TypePath ('A'))
+                        )
+                      )
+                    )
+                    :args (
+                      (ExprId 'f')
+                      (ExprSelect
+                        :target (ExprId 'c')
+                        :field 'tl'
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            :else_branch (ExprBool False)
+          )
+        )
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindType)
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindType)
+            :mode VALUE
+            :is_type True
+          )
+        )
+        :result_type (TypeAll
+          :quantifiers (
+            (Quantifier
+              :name 'f'
+              :bound (KindPower
+                :bound (TypeAll
+                  :quantifiers (
+                    (Quantifier
+                      :name 'a'
+                      :bound (KindPower
+                        :bound (TypePath ('A'))
+                      )
+                      :mode VALUE
+                    )
+                  )
+                  :result_type (TypePath ('Bool'))
+                )
+              )
+              :mode VALUE
+            )
+            (Quantifier
+              :name 'l'
+              :bound (KindPower
+                :bound (TypeApp
+                  :constructor (TypePath ('List'))
+                  :arguments (
+                    (TypePath ('A'))
+                  )
+                )
+              )
+              :mode VALUE
+            )
+          )
+          :result_type (TypePath ('Bool'))
+        )
+      )
+      :is_rec True
+    )
+    (LetValueBinding
+      :name 'foldl'
+      :value (ExprFun
+        :body (ExprFun
+          :params (
+            (FormalParam
+              :name 'f'
+              :type_annot (TypeAll
+                :quantifiers (
+                  (Quantifier
+                    :name 'a'
+                    :bound (KindPower
+                      :bound (TypePath ('A'))
+                    )
+                    :mode VALUE
+                  )
+                  (Quantifier
+                    :name 'b'
+                    :bound (KindPower
+                      :bound (TypePath ('B'))
+                    )
+                    :mode VALUE
+                  )
+                )
+                :result_type (TypePath ('B'))
+              )
+              :mode VALUE
+            )
+            (FormalParam
+              :name 'b'
+              :type_annot (TypePath ('B'))
+              :mode VALUE
+            )
+            (FormalParam
+              :name 'l'
+              :type_annot (TypeApp
+                :constructor (TypePath ('List'))
+                :arguments (
+                  (TypePath ('A'))
+                )
+              )
+              :mode VALUE
+            )
+          )
+          :return_type (TypePath ('B'))
+          :body (ExprCase
+            :target (ExprId 'l')
+            :branches (
+              (CaseBranch
+                :tags ('cons')
+                :binder 'c'
+                :body (ExprApp
+                  :func (ExprApp
+                    :func (ExprId 'foldl')
+                    :args (
+                      (TypeArgument
+                        :type_val (TypePath ('A'))
+                      )
+                      (TypeArgument
+                        :type_val (TypePath ('B'))
+                      )
+                    )
+                  )
+                  :args (
+                    (ExprId 'f')
+                    (ExprApp
+                      :func (ExprId 'f')
+                      :args (
+                        (ExprSelect
+                          :target (ExprId 'c')
+                          :field 'hd'
+                        )
+                        (ExprId 'b')
+                      )
+                    )
+                    (ExprSelect
+                      :target (ExprId 'c')
+                      :field 'tl'
+                    )
+                  )
+                )
+              )
+            )
+            :else_branch (ExprId 'b')
+          )
+        )
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindType)
+          )
+          (TypeFormal
+            :name 'B'
+            :bound (KindType)
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindType)
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'B'
+            :bound (KindType)
+            :mode VALUE
+            :is_type True
+          )
+        )
+        :result_type (TypeAll
+          :quantifiers (
+            (Quantifier
+              :name 'f'
+              :bound (KindPower
+                :bound (TypeAll
+                  :quantifiers (
+                    (Quantifier
+                      :name 'a'
+                      :bound (KindPower
+                        :bound (TypePath ('A'))
+                      )
+                      :mode VALUE
+                    )
+                    (Quantifier
+                      :name 'b'
+                      :bound (KindPower
+                        :bound (TypePath ('B'))
+                      )
+                      :mode VALUE
+                    )
+                  )
+                  :result_type (TypePath ('B'))
+                )
+              )
+              :mode VALUE
+            )
+            (Quantifier
+              :name 'b'
+              :bound (KindPower
+                :bound (TypePath ('B'))
+              )
+              :mode VALUE
+            )
+            (Quantifier
+              :name 'l'
+              :bound (KindPower
+                :bound (TypeApp
+                  :constructor (TypePath ('List'))
+                  :arguments (
+                    (TypePath ('A'))
+                  )
+                )
+              )
+              :mode VALUE
+            )
+          )
+          :result_type (TypePath ('B'))
+        )
+      )
+      :is_rec True
+    )
+    (LetValueBinding
+      :name 'map'
+      :value (ExprFun
+        :body (ExprFun
+          :params (
+            (FormalParam
+              :name 'f'
+              :type_annot (TypeAll
+                :quantifiers (
+                  (Quantifier
+                    :name 'a'
+                    :bound (KindPower
+                      :bound (TypePath ('A'))
+                    )
+                    :mode VALUE
+                  )
+                )
+                :result_type (TypePath ('B'))
+              )
+              :mode VALUE
+            )
+            (FormalParam
+              :name 'l'
+              :type_annot (TypeApp
+                :constructor (TypePath ('List'))
+                :arguments (
+                  (TypePath ('A'))
+                )
+              )
+              :mode VALUE
+            )
+          )
+          :return_type (TypeApp
+            :constructor (TypePath ('List'))
+            :arguments (
+              (TypePath ('B'))
+            )
+          )
+          :body (ExprCase
+            :target (ExprId 'l')
+            :branches (
+              (CaseBranch
+                :tags ('cons')
+                :binder 'c'
+                :body (ExprBlock
+                  :bindings (
+                    (LetValueBinding
+                      :name 'y'
+                      :value (ExprApp
+                        :func (ExprId 'f')
+                        :args (
+                          (ExprSelect
+                            :target (ExprId 'c')
+                            :field 'hd'
+                          )
+                        )
+                      )
+                    )
+                    (ExprStmt
+                      :expr (ExprApp
+                        :func (ExprApp
+                          :func (ExprId 'cons')
+                          :args (
+                            (TypeArgument
+                              :type_val (TypePath ('B'))
+                            )
+                          )
+                        )
+                        :args (
+                          (ExprId 'y')
+                          (ExprApp
+                            :func (ExprApp
+                              :func (ExprId 'map')
+                              :args (
+                                (TypeArgument
+                                  :type_val (TypePath ('A'))
+                                )
+                                (TypeArgument
+                                  :type_val (TypePath ('B'))
+                                )
+                              )
+                            )
+                            :args (
+                              (ExprId 'f')
+                              (ExprSelect
+                                :target (ExprId 'c')
+                                :field 'tl'
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+            :else_branch (ExprApp
+              :func (ExprId 'nil')
+              :args (
+                (TypeArgument
+                  :type_val (TypePath ('B'))
+                )
+              )
+            )
+          )
+        )
+        :type_params (
+          (TypeFormal
+            :name 'A'
+            :bound (KindType)
+          )
+          (TypeFormal
+            :name 'B'
+            :bound (KindType)
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'A'
+            :bound (KindType)
+            :mode VALUE
+            :is_type True
+          )
+          (Quantifier
+            :name 'B'
+            :bound (KindType)
+            :mode VALUE
+            :is_type True
+          )
+        )
+        :result_type (TypeAll
+          :quantifiers (
+            (Quantifier
+              :name 'f'
+              :bound (KindPower
+                :bound (TypeAll
+                  :quantifiers (
+                    (Quantifier
+                      :name 'a'
+                      :bound (KindPower
+                        :bound (TypePath ('A'))
+                      )
+                      :mode VALUE
+                    )
+                  )
+                  :result_type (TypePath ('B'))
+                )
+              )
+              :mode VALUE
+            )
+            (Quantifier
+              :name 'l'
+              :bound (KindPower
+                :bound (TypeApp
+                  :constructor (TypePath ('List'))
+                  :arguments (
+                    (TypePath ('A'))
+                  )
+                )
+              )
+              :mode VALUE
+            )
+          )
+          :result_type (TypeApp
+            :constructor (TypePath ('List'))
+            :arguments (
+              (TypePath ('B'))
+            )
+          )
+        )
+      )
+      :is_rec True
+    )
+    (LetValueBinding
+      :name 'alternate'
+      :value (ExprCase
+        :target (ExprId 'l')
+        :branches (
+          (CaseBranch
+            :tags ('cons')
+            :binder 'c'
+            :body (ExprInfix
+              :left (ExprApp
+                :func (ExprId 'f')
+                :args (
+                  (ExprSelect
+                    :target (ExprId 'c')
+                    :field 'hd'
+                  )
+                )
+              )
+              :op '+'
+              :right (ExprApp
+                :func (ExprId 'alternate')
+                :args (
+                  (ExprId 'g')
+                  (ExprId 'f')
+                  (ExprSelect
+                    :target (ExprId 'c')
+                    :field 'tl'
+                  )
+                )
+              )
+            )
+          )
+        )
+        :else_branch (ExprInt 0 '0')
+      )
+      :params (
+        (FormalParam
+          :name 'f'
+          :type_annot (TypeAll
+            :quantifiers (
+              (Quantifier
+                :name 'n'
+                :bound (KindPower
+                  :bound (TypePath ('Int'))
+                )
+                :mode VALUE
+              )
+            )
+            :result_type (TypePath ('Int'))
+          )
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'g'
+          :type_annot (TypeAll
+            :quantifiers (
+              (Quantifier
+                :name 'n'
+                :bound (KindPower
+                  :bound (TypePath ('Int'))
+                )
+                :mode VALUE
+              )
+            )
+            :result_type (TypePath ('Int'))
+          )
+          :mode VALUE
+        )
+        (FormalParam
+          :name 'l'
+          :type_annot (TypeApp
+            :constructor (TypePath ('List'))
+            :arguments (
+              (TypePath ('Int'))
+            )
+          )
+          :mode VALUE
+        )
+      )
+      :type_annot (TypePath ('Int'))
+      :is_rec True
+    )
+    (LetValueBinding
+      :name 'numbers'
+      :value (ExprApp
+        :func (ExprApp
+          :func (ExprId 'cons')
+          :args (
+            (TypeArgument
+              :type_val (TypePath ('Int'))
+            )
+          )
+        )
+        :args (
+          (ExprInt 1 '1')
+          (ExprApp
+            :func (ExprApp
+              :func (ExprId 'cons')
+              :args (
+                (TypeArgument
+                  :type_val (TypePath ('Int'))
+                )
+              )
+            )
+            :args (
+              (ExprInt 2 '2')
+              (ExprApp
+                :func (ExprApp
+                  :func (ExprId 'cons')
+                  :args (
+                    (TypeArgument
+                      :type_val (TypePath ('Int'))
+                    )
+                  )
+                )
+                :args (
+                  (ExprInt 3 '3')
+                  (ExprApp
+                    :func (ExprApp
+                      :func (ExprId 'cons')
+                      :args (
+                        (TypeArgument
+                          :type_val (TypePath ('Int'))
+                        )
+                      )
+                    )
+                    :args (
+                      (ExprInt 4 '4')
+                      (ExprApp
+                        :func (ExprId 'nil')
+                        :args (
+                          (TypeArgument
+                            :type_val (TypePath ('Int'))
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'total'
+      :value (ExprTuple
+        :fields (
+          (TupleBinding
+            :name 'n'
+            :value (ExprInt 0 '0')
+            :is_var True
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprApp
+          :func (ExprId 'app')
+          :args (
+            (TypeArgument
+              :type_val (TypePath ('Int'))
+            )
+          )
+        )
+        :args (
+          (ExprFun
+            :params (
+              (FormalParam
+                :name 'x'
+                :type_annot (TypePath ('Int'))
+                :mode VALUE
+              )
+            )
+            :return_type (TypePath ('Ok'))
+            :body (ExprInfix
+              :left (ExprSelect
+                :target (ExprId 'total')
+                :field 'n'
+              )
+              :op ':='
+              :right (ExprInfix
+                :left (ExprSelect
+                  :target (ExprId 'total')
+                  :field 'n'
+                )
+                :op '+'
+                :right (ExprId 'x')
+              )
+            )
+          )
+          (ExprId 'numbers')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString '1. ' '"1. "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprSelect
+                  :target (ExprId 'total')
+                  :field 'n'
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString '2. ' '"2. "')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'bool'
+                )
+                :args (
+                  (ExprApp
+                    :func (ExprApp
+                      :func (ExprId 'exists')
+                      :args (
+                        (TypeArgument
+                          :type_val (TypePath ('Int'))
+                        )
+                      )
+                    )
+                    :args (
+                      (ExprFun
+                        :params (
+                          (FormalParam
+                            :name 'x'
+                            :type_annot (TypePath ('Int'))
+                            :mode VALUE
+                          )
+                        )
+                        :return_type (TypePath ('Bool'))
+                        :body (ExprInfix
+                          :left (ExprId 'x')
+                          :op '>'
+                          :right (ExprInt 3 '3')
+                        )
+                      )
+                      (ExprId 'numbers')
+                    )
+                  )
+                )
+              )
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprString ' ' '" "')
+                :op '<>'
+                :right (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'bool'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprApp
+                        :func (ExprId 'exists')
+                        :args (
+                          (TypeArgument
+                            :type_val (TypePath ('Int'))
+                          )
+                        )
+                      )
+                      :args (
+                        (ExprFun
+                          :params (
+                            (FormalParam
+                              :name 'x'
+                              :type_annot (TypePath ('Int'))
+                              :mode VALUE
+                            )
+                          )
+                          :return_type (TypePath ('Bool'))
+                          :body (ExprInfix
+                            :left (ExprId 'x')
+                            :op '>'
+                            :right (ExprInt 9 '9')
+                          )
+                        )
+                        (ExprId 'numbers')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString '3. ' '"3. "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprApp
+                    :func (ExprId 'foldl')
+                    :args (
+                      (TypeArgument
+                        :type_val (TypePath ('Int'))
+                      )
+                      (TypeArgument
+                        :type_val (TypePath ('Int'))
+                      )
+                    )
+                  )
+                  :args (
+                    (ExprFun
+                      :params (
+                        (FormalParam
+                          :name 'x'
+                          :type_annot (TypePath ('Int'))
+                          :mode VALUE
+                        )
+                        (FormalParam
+                          :name 's'
+                          :type_annot (TypePath ('Int'))
+                          :mode VALUE
+                        )
+                      )
+                      :return_type (TypePath ('Int'))
+                      :body (ExprInfix
+                        :left (ExprInfix
+                          :left (ExprId 's')
+                          :op '*'
+                          :right (ExprInt 10 '10')
+                        )
+                        :op '+'
+                        :right (ExprId 'x')
+                      )
+                    )
+                    (ExprInt 0 '0')
+                    (ExprId 'numbers')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'squares'
+      :value (ExprApp
+        :func (ExprApp
+          :func (ExprId 'map')
+          :args (
+            (TypeArgument
+              :type_val (TypePath ('Int'))
+            )
+            (TypeArgument
+              :type_val (TypePath ('Int'))
+            )
+          )
+        )
+        :args (
+          (ExprFun
+            :params (
+              (FormalParam
+                :name 'x'
+                :type_annot (TypePath ('Int'))
+                :mode VALUE
+              )
+            )
+            :return_type (TypePath ('Int'))
+            :body (ExprInfix
+              :left (ExprId 'x')
+              :op '*'
+              :right (ExprId 'x')
+            )
+          )
+          (ExprId 'numbers')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString '4. ' '"4. "')
+            :op '<>'
+            :right (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprApp
+                  :func (ExprApp
+                    :func (ExprId 'foldl')
+                    :args (
+                      (TypeArgument
+                        :type_val (TypePath ('Int'))
+                      )
+                      (TypeArgument
+                        :type_val (TypePath ('Int'))
+                      )
+                    )
+                  )
+                  :args (
+                    (ExprFun
+                      :params (
+                        (FormalParam
+                          :name 'x'
+                          :type_annot (TypePath ('Int'))
+                          :mode VALUE
+                        )
+                        (FormalParam
+                          :name 's'
+                          :type_annot (TypePath ('Int'))
+                          :mode VALUE
+                        )
+                      )
+                      :return_type (TypePath ('Int'))
+                      :body (ExprInfix
+                        :left (ExprId 's')
+                        :op '+'
+                        :right (ExprId 'x')
+                      )
+                    )
+                    (ExprInt 0 '0')
+                    (ExprId 'squares')
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'doubled'
+      :value (ExprTuple
+        :fields (
+          (TupleBinding
+            :name 'n'
+            :value (ExprInt 0 '0')
+            :is_var True
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'g'
+      :value (ExprFun
+        :params (
+          (FormalParam
+            :name 'x'
+            :type_annot (TypePath ('Int'))
+            :mode VALUE
+          )
+        )
+        :return_type (TypePath ('Ok'))
+        :body (ExprInfix
+          :left (ExprSelect
+            :target (ExprId 'doubled')
+            :field 'n'
+          )
+          :op ':='
+          :right (ExprInfix
+            :left (ExprSelect
+              :target (ExprId 'doubled')
+              :field 'n'
+            )
+            :op '+'
+            :right (ExprInfix
+              :left (ExprInt 2 '2')
+              :op '*'
+              :right (ExprId 'x')
+            )
+          )
+        )
+      )
+      :type_annot (TypeAll
+        :quantifiers (
+          (Quantifier
+            :name 'a'
+            :bound (KindPower
+              :bound (TypePath ('Int'))
+            )
+            :mode VALUE
+          )
+        )
+        :result_type (TypePath ('Ok'))
+      )
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprApp
+          :func (ExprId 'app')
+          :args (
+            (TypeArgument
+              :type_val (TypePath ('Int'))
+            )
+          )
+        )
+        :args (
+          (ExprId 'g')
+          (ExprId 'numbers')
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprId 'print')
+        :args (
+          (ExprInfix
+            :left (ExprString '5. ' '"5. "')
+            :op '<>'
+            :right (ExprInfix
+              :left (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'conv')
+                  :field 'int'
+                )
+                :args (
+                  (ExprSelect
+                    :target (ExprId 'doubled')
+                    :field 'n'
+                  )
+                )
+              )
+              :op '<>'
+              :right (ExprInfix
+                :left (ExprString ' ' '" "')
+                :op '<>'
+                :right (ExprApp
+                  :func (ExprSelect
+                    :target (ExprId 'conv')
+                    :field 'int'
+                  )
+                  :args (
+                    (ExprApp
+                      :func (ExprId 'alternate')
+                      :args (
+                        (ExprFun
+                          :params (
+                            (FormalParam
+                              :name 'n'
+                              :type_annot (TypePath ('Int'))
+                              :mode VALUE
+                            )
+                          )
+                          :return_type (TypePath ('Int'))
+                          :body (ExprId 'n')
+                        )
+                        (ExprFun
+                          :params (
+                            (FormalParam
+                              :name 'n'
+                              :type_annot (TypePath ('Int'))
+                              :mode VALUE
+                            )
+                          )
+                          :return_type (TypePath ('Int'))
+                          :body (ExprInfix
+                            :left (ExprInt 0 '0')
+                            :op '-'
+                            :right (ExprId 'n')
+                          )
+                        )
+                        (ExprId 'numbers')
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)

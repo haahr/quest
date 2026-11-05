@@ -1,0 +1,54 @@
+(* Recursive functions the self-hosted compiler's simplifier specializes to a
+ * call (docs/ir.md section 8.6): a function that passes a parameter unchanged
+ * to every call of itself, called with a known function for it, becomes a
+ * local function of its other parameters at the call, whose calls of the
+ * known function are known (the ir_simplified golden shows them inlined),
+ * and which contification makes a loop where its calls of itself are tail
+ * calls (app, exists, foldl), or leaves a local function where not (map). A
+ * call with a function that is not known, or of a function whose parameter
+ * changes, is left. *)
+import writer: Writer;
+import conv: Conv;
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+Let Rec List(A::TYPE) = Option nil cons with hd: A tl: List(A) end end;
+let nil(A::TYPE): List(A) = option nil of List(A) end;
+let cons(A::TYPE)(hd: A tl: List(A)): List(A) = option cons of List(A) with let hd = hd let tl = tl end;
+
+let rec app(A::TYPE)(f: All(a: A) Ok l: List(A)): Ok =
+    case l when cons with c then begin f(c.hd) app(:A)(f c.tl) end else ok end;
+let rec exists(A::TYPE)(f: All(a: A) Bool l: List(A)): Bool =
+    case l when cons with c then f(c.hd) orif exists(:A)(f c.tl) else false end;
+let rec foldl(A::TYPE B::TYPE)(f: All(a: A b: B) B b: B l: List(A)): B =
+    case l when cons with c then foldl(:A :B)(f f(c.hd b) c.tl) else b end;
+let rec map(A::TYPE B::TYPE)(f: All(a: A) B l: List(A)): List(B) =
+    case l when cons with c then begin let y = f(c.hd) cons(:B)(y map(:A :B)(f c.tl)) end else nil(:B) end;
+(* Its function changes from call to call: no parameter is static *)
+let rec alternate(f: All(n: Int) Int g: All(n: Int) Int l: List(Int)): Int =
+    case l when cons with c then f(c.hd) + alternate(g f c.tl) else 0 end;
+
+let numbers = cons(:Int)(1 cons(:Int)(2 cons(:Int)(3 cons(:Int)(4 nil(:Int)))));
+
+(* 1. app of a closure *)
+let total = tuple let var n = 0 end;
+app(:Int)(fun(x: Int): Ok total.n := total.n + x numbers);
+print("1. " <> conv.int(total.n));
+
+(* 2. exists, true and false *)
+print("2. " <> conv.bool(exists(:Int)(fun(x: Int): Bool x > 3 numbers)) <> " "
+    <> conv.bool(exists(:Int)(fun(x: Int): Bool x > 9 numbers)));
+
+(* 3. foldl, its accumulator changing and its function not *)
+print("3. " <> conv.int(foldl(:Int :Int)(fun(x: Int s: Int): Int {s * 10} + x 0 numbers)));
+
+(* 4. map, whose calls of itself are not tail calls *)
+let squares = map(:Int :Int)(fun(x: Int): Int x * x numbers);
+print("4. " <> conv.int(foldl(:Int :Int)(fun(x: Int s: Int): Int s + x 0 squares)));
+
+(* 5. Left: a function that is not known (a mutable variable's), and one whose
+ * parameter changes *)
+let doubled = tuple let var n = 0 end;
+let var g: All(a: Int) Ok = fun(x: Int): Ok doubled.n := doubled.n + {2 * x};
+app(:Int)(g numbers);
+print("5. " <> conv.int(doubled.n) <> " "
+    <> conv.int(alternate(fun(n: Int): Int n fun(n: Int): Int {0 - n} numbers)));

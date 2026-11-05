@@ -1,0 +1,291 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs rec {
+    fun app [A::TYPE](f: Fun(a: A): Ok, l: List(A)): Ok {
+      switch tag(l) { @19:5
+        case cons (c: Tuple hd: A tl: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end end): {
+          let %1: A = tuple_field(c, 0) @19:42
+          do call f(%1) @19:40
+          let %2: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end = tuple_field(c, 1) @19:58
+          do call app [A](f, %2) @19:48
+        }
+        else: {
+        }
+      }
+      return ok
+    }
+  }
+  funs rec {
+    fun exists [A::TYPE](f.1: Fun(a: A): Bool, l.1: List(A)): Bool {
+      switch tag(l.1) { @21:5
+        case cons (c.1: Tuple hd: A tl: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end end): {
+          let %3: A = tuple_field(c.1, 0) @21:36
+          let %4: Bool = call f.1(%3) @21:34
+          if %4 { @21:34
+            return true @21:34
+          } else {
+            let %5: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end = tuple_field(c.1, 1) @21:60
+            let %6: Bool = call exists [A](f.1, %5) @21:47
+            return %6 @21:34
+          }
+        }
+        else: {
+          return false @21:5
+        }
+      }
+    }
+  }
+  funs rec {
+    fun foldl [A::TYPE B::TYPE](f.2: Fun(a: A b: B): B, b: B, l.2: List(A)): B {
+      switch tag(l.2) { @23:5
+        case cons (c.2: Tuple hd: A tl: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end end): {
+          let %7: A = tuple_field(c.2, 0) @23:51
+          let %8: B = call f.2(%7, b) @23:49
+          let %9: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end = tuple_field(c.2, 1) @23:59
+          let %10: B = call foldl [A B](f.2, %8, %9) @23:34
+          return %10 @23:5
+        }
+        else: {
+          return b @23:5
+        }
+      }
+    }
+  }
+  funs rec {
+    fun map [A::TYPE B::TYPE](f.3: Fun(a: A): B, l.3: List(A)): List(B) {
+      switch tag(l.3) { @25:5
+        case cons (c.3: Tuple hd: A tl: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end end): {
+          let %11: A = tuple_field(c.3, 0) @25:50
+          let y: B = call f.3(%11) @25:48
+          let %12: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end = tuple_field(c.3, 1) @25:80
+          let %13: List(B) = call map [A B](f.3, %12) @25:67
+          let %14: Tuple hd: B tl: Rec(List :: TYPE) Option nil cons with Tuple hd: B tl: List end end end = tuple(y, %13) @16:49
+          let %15: List(B) = option(cons, %14) @16:49
+          return %15 @25:5
+        }
+        else: {
+          let %16: List(B) = option(nil) @15:29
+          return %16 @25:5
+        }
+      }
+    }
+  }
+  funs rec {
+    fun alternate(f.4: Fun(n: Int): Int, g: Fun(n: Int): Int, l.4: List(Int)): Int {
+      switch tag(l.4) { @28:5
+        case cons (c.4: Tuple hd: Int tl: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end end): {
+          let %17: Int = tuple_field(c.4, 0) @28:36
+          let %18: Int = call f.4(%17) @28:34
+          let %19: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end = tuple_field(c.4, 1) @28:58
+          let %20: Int = call alternate(g, f.4, %19) @28:44
+          let %21: Int = prim +(%18, %20) @28:34
+          return %21 @28:5
+        }
+        else: {
+          return 0 @28:5
+        }
+      }
+    }
+  }
+  let %22: List(Int) = option(nil) @15:29
+  let %23: Tuple hd: Int tl: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end end = tuple(4, %22) @16:49
+  let %24: List(Int) = option(cons, %23) @16:49
+  let %25: Tuple hd: Int tl: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end end = tuple(3, %24) @16:49
+  let %26: List(Int) = option(cons, %25) @16:49
+  let %27: Tuple hd: Int tl: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end end = tuple(2, %26) @16:49
+  let %28: List(Int) = option(cons, %27) @16:49
+  let %29: Tuple hd: Int tl: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end end = tuple(1, %28) @16:49
+  let %30: List(Int) = option(cons, %29) @16:49
+  let total: Tuple var n: Int end = tuple(0) @33:13
+  join contified2(r: Ok) {
+    let %31: Int = tuple_field(total, 0) @35:25
+    let %32: String = call conv.int(%31) @35:16
+    let %33: String = prim <>("1. ", %32) @35:7
+    let %34: writer.T = member writer.output @12:45
+    let %35: String = prim <>(%33, "\n") @12:59
+    let %36: Ok = call writer.putString(%34, %35) @12:28
+    join contified4(%37: Bool) {
+      let %38: String = call conv.bool(%37) @38:16
+      join contified6(%39: Bool) {
+        let %40: String = call conv.bool(%39) @39:8
+        let %41: String = prim <>(" ", %40) @38:76
+        let %42: String = prim <>(%38, %41) @38:16
+        let %43: String = prim <>("2. ", %42) @38:7
+        let %44: writer.T = member writer.output @12:45
+        let %45: String = prim <>(%43, "\n") @12:59
+        let %46: Ok = call writer.putString(%44, %45) @12:28
+        join contified8(%47: Int) {
+          let %48: String = call conv.int(%47) @42:16
+          let %49: String = prim <>("3. ", %48) @42:7
+          let %50: writer.T = member writer.output @12:45
+          let %51: String = prim <>(%49, "\n") @12:59
+          let %52: Ok = call writer.putString(%50, %51) @12:28
+          funs rec {
+            fun map.1(l.5: List(Int)): List(Int) {
+              switch tag(l.5) { @25:5
+                case cons (c.5: Tuple hd: Int tl: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end end): {
+                  let %53: Int = tuple_field(c.5, 0) @25:50
+                  let %54: Int = prim *(%53, %53) @45:47
+                  let %55: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end = tuple_field(c.5, 1) @25:80
+                  let %56: List(Int) = call map.1(%55) @25:67
+                  let %57: Tuple hd: Int tl: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end end = tuple(%54, %56) @16:49
+                  let %58: List(Int) = option(cons, %57) @16:49
+                  return %58 @25:5
+                }
+                else: {
+                  let %59: List(Int) = option(nil) @15:29
+                  return %59 @25:5
+                }
+              }
+            }
+          }
+          let squares: List(Int) = call map.1(%30) @45:15
+          join contified10(%60: Int) {
+            let %61: String = call conv.int(%60) @46:16
+            let %62: String = prim <>("4. ", %61) @46:7
+            let %63: writer.T = member writer.output @12:45
+            let %64: String = prim <>(%62, "\n") @12:59
+            let %65: Ok = call writer.putString(%63, %64) @12:28
+            let doubled: Tuple var n: Int end = tuple(0) @50:15
+            funs {
+              fun f.5(x: Int): Ok {
+                let %66: Int = tuple_field(doubled, 0) @51:58
+                let %67: Int = prim *(2, x) @51:71
+                let %68: Int = prim +(%66, %67) @51:58
+                store doubled.#0 := %68 @51:45
+                return ok
+              }
+            }
+            var g.1: Fun(a: Int): Ok = f.5 @51:1
+            do call app [Int](g.1, %30) @52:1
+            let %69: Int = tuple_field(doubled, 0) @53:25
+            let %70: String = call conv.int(%69) @53:16
+            funs {
+              fun f.6(n: Int): Int {
+                return n
+              }
+            }
+            funs {
+              fun f.7(n.1: Int): Int {
+                let %71: Int = prim -(0, n.1) @54:64
+                return %71
+              }
+            }
+            let %72: Int = call alternate(f.6, f.7, %30) @54:17
+            let %73: String = call conv.int(%72) @54:8
+            let %74: String = prim <>(" ", %73) @53:39
+            let %75: String = prim <>(%70, %74) @53:16
+            let %76: String = prim <>("5. ", %75) @53:7
+            let %77: writer.T = member writer.output @12:45
+            let %78: String = prim <>(%76, "\n") @12:59
+            let %79: Ok = call writer.putString(%77, %78) @12:28
+          } in {
+            var b.1: Int = 0 @46:25
+            var l.6: List(Int) = squares @46:25
+            loop contified9 {
+              let b.2: Int = b.1
+              let l.7: List(Int) = l.6
+              switch tag(l.7) { @23:5
+                case cons (c.6: Tuple hd: Int tl: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end end): {
+                  let %80: Int = tuple_field(c.6, 0) @23:51
+                  let %81: Int = prim +(b.2, %80) @46:66
+                  let %82: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end = tuple_field(c.6, 1) @23:59
+                  b.1 := %81 @23:34
+                  l.6 := %82 @23:34
+                  continue contified9 @23:34
+                }
+                else: {
+                  jump contified10(b.2) @23:5
+                }
+              }
+            }
+          }
+        } in {
+          var b.3: Int = 0 @42:25
+          var l.8: List(Int) = %30 @42:25
+          loop contified7 {
+            let b.4: Int = b.3
+            let l.9: List(Int) = l.8
+            switch tag(l.9) { @23:5
+              case cons (c.7: Tuple hd: Int tl: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end end): {
+                let %83: Int = tuple_field(c.7, 0) @23:51
+                let %84: Int = prim *(b.4, 10) @42:67
+                let %85: Int = prim +(%84, %83) @42:67
+                let %86: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end = tuple_field(c.7, 1) @23:59
+                b.3 := %85 @23:34
+                l.8 := %86 @23:34
+                continue contified7 @23:34
+              }
+              else: {
+                jump contified8(b.4) @23:5
+              }
+            }
+          }
+        }
+      } in {
+        var l.10: List(Int) = %30 @39:18
+        loop contified5 {
+          let l.11: List(Int) = l.10
+          switch tag(l.11) { @21:5
+            case cons (c.8: Tuple hd: Int tl: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end end): {
+              let %87: Int = tuple_field(c.8, 0) @21:36
+              let %88: Bool = prim >(%87, 9) @39:49
+              if %88 { @21:34
+                jump contified6(true) @21:34
+              } else {
+                let %89: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end = tuple_field(c.8, 1) @21:60
+                l.10 := %89 @21:47
+                continue contified5 @21:47
+              }
+            }
+            else: {
+              jump contified6(false) @21:5
+            }
+          }
+        }
+      }
+    } in {
+      var l.12: List(Int) = %30 @38:26
+      loop contified3 {
+        let l.13: List(Int) = l.12
+        switch tag(l.13) { @21:5
+          case cons (c.9: Tuple hd: Int tl: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end end): {
+            let %90: Int = tuple_field(c.9, 0) @21:36
+            let %91: Bool = prim >(%90, 3) @38:57
+            if %91 { @21:34
+              jump contified4(true) @21:34
+            } else {
+              let %92: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end = tuple_field(c.9, 1) @21:60
+              l.12 := %92 @21:47
+              continue contified3 @21:47
+            }
+          }
+          else: {
+            jump contified4(false) @21:5
+          }
+        }
+      }
+    }
+  } in {
+    var l.14: List(Int) = %30 @34:1
+    loop contified1 {
+      let l.15: List(Int) = l.14
+      switch tag(l.15) { @19:5
+        case cons (c.10: Tuple hd: Int tl: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end end): {
+          let %93: Int = tuple_field(c.10, 0) @19:42
+          let %94: Int = tuple_field(total, 0) @34:38
+          let %95: Int = prim +(%94, %93) @34:38
+          store total.#0 := %95 @34:27
+          let %96: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end = tuple_field(c.10, 1) @19:58
+          l.14 := %96 @19:48
+          continue contified1 @19:48
+        }
+        else: {
+        }
+      }
+      jump contified2(ok)
+    }
+  }
+}
+

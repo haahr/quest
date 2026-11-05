@@ -95,12 +95,27 @@ b5():
   tail %18: int = call qf_isOdd(%17, %16) result narrow
 }
 
-function qf_addStep(%0: ptr, %1: int): int {
-b0(%0: ptr, %1: int):
-  @30:32
-  %2: int = const 3
-  %3: int = add %1, %2
+function qf_repeat(%0: ptr, %1: int, %2: ptr, %3: int): int {
+b0(%0: ptr, %1: int, %2: ptr, %3: int):
+  @28:60
+  %4: int = const 0
+  %5: int = eq %1, %4
+  @28:57
+  branch %5, b1(), b2()
+b1():
+  @28:57
   return %3
+b2():
+  @28:87
+  %6: int = const 1
+  %7: int = sub %1, %6
+  @28:96
+  %8: ptr = load8 %2 + 0 invariant
+  %9: ptr = load8 %2 + 8 invariant
+  %10: int = callIndirect %8, %9, %3
+  @28:79
+  %11: ptr = null
+  tail %12: int = call qf_repeat(%11, %7, %2, %10)
 }
 
 function qr_register_dicts() {
@@ -119,7 +134,7 @@ b0():
 
 function main exported(%0: int, %1: ptr) int32 [0]: int result int32 {
 b0(%0: int, %1: ptr):
-  %600: int = const 0
+  %594: int = const 0
   call quest_gc_init()
   call quest_builtins_init(%0, %1) int32 [0]
   call qr_register_dicts()
@@ -127,10 +142,10 @@ b0(%0: int, %1: ptr):
   call qv_mod_conv_init()
   @16:25
   %4: int = const 100
-  jump b3(%4, %600)
+  jump b3(%4, %594)
 b1():
   @16:16
-  %20: ptr = call quest_conv_int(%563)
+  %20: ptr = call quest_conv_int(%558)
   @16:5
   %21: ptr = symbol qs_9
   %22: int = const 5
@@ -228,19 +243,21 @@ b1():
   %100: ptr = call quest_string_concat(%90, %99)
   @12:26
   call quest_writer_put_string(%96, %100)
-  %101: ptr = symbol qf_addStep_closure
+  %101: ptr = symbol qf_repeat_closure
+  %102: ptr = symbol g_repeat
+  store8 %102 + 0, %101
   @31:28
-  %104: int = const 100
-  %109: int = const 0
-  jump b8(%104, %109)
+  %105: int = const 100
+  %108: int = const 0
+  jump b8(%105, %108)
 b2():
   @12:26
-  %561: int = const 0
-  return %561
-b3(%562: int, %563: int):
+  %556: int = const 0
+  return %556
+b3(%557: int, %558: int):
   @15:40
   %13: int = const 0
-  %14: int = eq %562, %13
+  %14: int = eq %557, %13
   @15:37
   branch %14, b4(), b5()
 b4():
@@ -249,539 +266,538 @@ b4():
 b5():
   @15:66
   %15: int = const 1
-  %16: int = sub %562, %15
+  %16: int = sub %557, %15
   @15:74
-  %17: int = add %563, %562
+  %17: int = add %558, %557
   @15:61
   jump b3(%16, %17)
 b6():
   @31:19
-  %127: ptr = call quest_conv_int(%566)
+  %122: ptr = call quest_conv_int(%560)
   @31:5
-  %128: ptr = symbol qs_15
-  %129: int = const 8
-  %130: ptr = call quest_string_new(%128, %129)
-  %131: ptr = call quest_string_concat(%130, %127)
+  %123: ptr = symbol qs_15
+  %124: int = const 8
+  %125: ptr = call quest_string_new(%123, %124)
+  %126: ptr = call quest_string_concat(%125, %122)
   @12:43
-  %132: ptr = symbol qm_writer
-  %133: ptr = load8 %132 + 0
-  %134: ptr = load8 %132 + 8
-  %135: int = load8 %134 + 40
-  %136: ptr = ptrAdd %133, %135
-  %137: ptr = load8 %136 + 0
+  %127: ptr = symbol qm_writer
+  %128: ptr = load8 %127 + 0
+  %129: ptr = load8 %127 + 8
+  %130: int = load8 %129 + 40
+  %131: ptr = ptrAdd %128, %130
+  %132: ptr = load8 %131 + 0
   @12:57
-  %138: ptr = symbol qs_10
-  %139: int = const 1
-  %140: ptr = call quest_string_new(%138, %139)
-  %141: ptr = call quest_string_concat(%131, %140)
+  %133: ptr = symbol qs_10
+  %134: int = const 1
+  %135: ptr = call quest_string_new(%133, %134)
+  %136: ptr = call quest_string_concat(%126, %135)
   @12:26
-  call quest_writer_put_string(%137, %141)
+  call quest_writer_put_string(%132, %136)
   @35:21
-  %142: int = const 42
-  %143: ptr = call quest_conv_int(%142)
+  %137: int = const 42
+  %138: ptr = call quest_conv_int(%137)
   @35:5
-  %144: ptr = symbol qs_16
-  %145: int = const 10
-  %146: ptr = call quest_string_new(%144, %145)
-  %147: ptr = call quest_string_concat(%146, %143)
+  %139: ptr = symbol qs_16
+  %140: int = const 10
+  %141: ptr = call quest_string_new(%139, %140)
+  %142: ptr = call quest_string_concat(%141, %138)
   @12:43
-  %149: ptr = load8 %132 + 0
-  %150: ptr = load8 %132 + 8
-  %151: int = load8 %150 + 40
-  %152: ptr = ptrAdd %149, %151
-  %153: ptr = load8 %152 + 0
+  %144: ptr = load8 %127 + 0
+  %145: ptr = load8 %127 + 8
+  %146: int = load8 %145 + 40
+  %147: ptr = ptrAdd %144, %146
+  %148: ptr = load8 %147 + 0
   @12:57
-  %156: ptr = call quest_string_new(%138, %139)
-  %157: ptr = call quest_string_concat(%147, %156)
+  %151: ptr = call quest_string_new(%133, %134)
+  %152: ptr = call quest_string_concat(%142, %151)
   @12:26
-  call quest_writer_put_string(%153, %157)
+  call quest_writer_put_string(%148, %152)
   @42:16
-  %158: int = const 40
-  %159: ptr = symbol quest_layout_record_QRecord_a_Int_b_Int_f7991b14405353cc
-  %160: ptr = call quest_alloc(%158, %159)
-  %161: int = const 16
-  %162: ptr = ptrAdd %160, %161
-  %163: ptr = symbol quest_type_QT_record_93291c5791358a47
-  store8 %162 + 0, %163
-  %164: int = const 0
-  %166: ptr = ptrAdd %162, %129
-  store8 %166 + 0, %164
-  %169: ptr = ptrAdd %162, %161
-  store8 %169 + 0, %139
-  %170: ptr = symbol offsetdict_record_93291c5791358a47_record_93291c5791358a47
-  store8 %160 + 0, %162
-  store8 %160 + 8, %170
-  %171: ptr = load8 %160 + 0
+  %153: int = const 40
+  %154: ptr = symbol quest_layout_record_QRecord_a_Int_b_Int_f7991b14405353cc
+  %155: ptr = call quest_alloc(%153, %154)
+  %156: int = const 16
+  %157: ptr = ptrAdd %155, %156
+  %158: ptr = symbol quest_type_QT_record_93291c5791358a47
+  store8 %157 + 0, %158
+  %159: int = const 0
+  %161: ptr = ptrAdd %157, %124
+  store8 %161 + 0, %159
+  %164: ptr = ptrAdd %157, %156
+  store8 %164 + 0, %134
+  %165: ptr = symbol offsetdict_record_93291c5791358a47_record_93291c5791358a47
+  store8 %155 + 0, %157
+  store8 %155 + 8, %165
+  %166: ptr = load8 %155 + 0
   @42:9
-  %176: int = const 30
-  jump b13(%176, %171, %170)
+  %171: int = const 30
+  jump b13(%171, %166, %165)
 b7():
   @12:26
   jump b2()
-b8(%564: int, %566: int):
+b8(%559: int, %560: int):
   @28:60
-  %117: int = const 0
-  %118: int = eq %564, %117
+  %114: int = const 0
+  %115: int = eq %559, %114
   @28:57
-  branch %118, b9(), b10()
+  branch %115, b9(), b10()
 b9():
   @28:57
   jump b6()
 b10():
   @28:87
-  %119: int = const 1
-  %120: int = sub %564, %119
-  @28:96
-  %121: ptr = load8 %101 + 0 invariant
-  %122: ptr = load8 %101 + 8 invariant
-  %123: int = callIndirect %121, %122, %566
+  %116: int = const 1
+  %117: int = sub %559, %116
+  @30:32
+  %118: int = const 3
+  %119: int = add %560, %118
   @28:79
-  jump b8(%120, %123)
+  jump b8(%117, %119)
 b11():
   @43:17
-  %216: int = const 3
-  %219: ptr = symbol qs_17
-  %220: int = const 0
-  %221: ptr = call quest_string_new(%219, %220)
-  jump b18(%216, %221)
+  %211: int = const 3
+  %214: ptr = symbol qs_17
+  %215: int = const 0
+  %216: ptr = call quest_string_new(%214, %215)
+  jump b18(%211, %216)
 b12():
   @12:26
   jump b7()
-b13(%567: int, %568: ptr, %569: ptr):
+b13(%561: int, %562: ptr, %563: ptr):
   @41:40
-  %185: int = const 0
-  %186: int = eq %567, %185
+  %180: int = const 0
+  %181: int = eq %561, %180
   @41:37
-  branch %186, b14(), b15()
+  branch %181, b14(), b15()
 b14():
   @41:37
   jump b11()
 b15():
   @41:64
-  %187: int = const 1
-  %188: int = sub %567, %187
+  %182: int = const 1
+  %183: int = sub %561, %182
   @41:82
-  %189: int = load8 %569 + 8 invariant
-  %190: ptr = ptrAdd %568, %189
-  %191: int = load8 %190 + 0
+  %184: int = load8 %563 + 8 invariant
+  %185: ptr = ptrAdd %562, %184
+  %186: int = load8 %185 + 0
   @41:91
-  %192: int = load8 %569 + 0 invariant
-  %193: ptr = ptrAdd %568, %192
-  %194: int = load8 %193 + 0
-  %198: int = add %194, %191
+  %187: int = load8 %563 + 0 invariant
+  %188: ptr = ptrAdd %562, %187
+  %189: int = load8 %188 + 0
+  %193: int = add %189, %186
   @41:71
-  %199: int = const 40
-  %200: ptr = symbol quest_layout_record_QRecord_a_Int_b_Int_f7991b14405353cc
-  %201: ptr = call quest_alloc(%199, %200)
-  %202: int = const 16
-  %203: ptr = ptrAdd %201, %202
-  %204: ptr = symbol quest_type_QT_record_93291c5791358a47
-  store8 %203 + 0, %204
-  %205: int = const 8
-  %206: ptr = ptrAdd %203, %205
-  store8 %206 + 0, %191
-  %208: ptr = ptrAdd %203, %202
-  store8 %208 + 0, %198
-  %209: ptr = symbol offsetdict_record_93291c5791358a47_record_93291c5791358a47
-  store8 %201 + 0, %203
-  store8 %201 + 8, %209
-  %210: ptr = load8 %201 + 0
+  %194: int = const 40
+  %195: ptr = symbol quest_layout_record_QRecord_a_Int_b_Int_f7991b14405353cc
+  %196: ptr = call quest_alloc(%194, %195)
+  %197: int = const 16
+  %198: ptr = ptrAdd %196, %197
+  %199: ptr = symbol quest_type_QT_record_93291c5791358a47
+  store8 %198 + 0, %199
+  %200: int = const 8
+  %201: ptr = ptrAdd %198, %200
+  store8 %201 + 0, %186
+  %203: ptr = ptrAdd %198, %197
+  store8 %203 + 0, %193
+  %204: ptr = symbol offsetdict_record_93291c5791358a47_record_93291c5791358a47
+  store8 %196 + 0, %198
+  store8 %196 + 8, %204
+  %205: ptr = load8 %196 + 0
   @41:59
-  jump b13(%188, %210, %209)
+  jump b13(%183, %205, %204)
 b16():
   @43:55
-  %239: int = const 3
-  %242: real = realConst 4621819117588971520
-  jump b23(%239, %242)
+  %234: int = const 3
+  %237: real = realConst 4621819117588971520
+  jump b23(%234, %237)
 b17():
   @12:26
   jump b12()
-b18(%570: int, %571: ptr):
+b18(%564: int, %565: ptr):
   @38:45
-  %227: int = const 0
-  %228: int = eq %570, %227
+  %222: int = const 0
+  %223: int = eq %564, %222
   @38:42
-  branch %228, b19(), b20()
+  branch %223, b19(), b20()
 b19():
   @38:42
   jump b16()
 b20():
   @38:70
-  %229: int = const 1
-  %230: int = sub %570, %229
+  %224: int = const 1
+  %225: int = sub %564, %224
   @38:77
-  %231: ptr = symbol qs_18
-  %232: int = const 2
-  %233: ptr = call quest_string_new(%231, %232)
-  %234: ptr = call quest_string_concat(%571, %233)
+  %226: ptr = symbol qs_18
+  %227: int = const 2
+  %228: ptr = call quest_string_new(%226, %227)
+  %229: ptr = call quest_string_concat(%565, %228)
   @38:64
-  jump b18(%230, %234)
+  jump b18(%225, %229)
 b21():
   @43:45
-  %261: ptr = call quest_conv_real(%573)
+  %256: ptr = call quest_conv_real(%567)
   @44:30
-  %262: int = load8 %569 + 0 invariant
-  %263: ptr = ptrAdd %568, %262
-  %264: int = load8 %263 + 0
+  %257: int = load8 %563 + 0 invariant
+  %258: ptr = ptrAdd %562, %257
+  %259: int = load8 %258 + 0
   @44:21
-  %265: ptr = call quest_conv_int(%264)
+  %260: ptr = call quest_conv_int(%259)
   @44:54
-  %266: int = load8 %569 + 8 invariant
-  %267: ptr = ptrAdd %568, %266
-  %268: int = load8 %267 + 0
+  %261: int = load8 %563 + 8 invariant
+  %262: ptr = ptrAdd %562, %261
+  %263: int = load8 %262 + 0
   @44:45
-  %269: ptr = call quest_conv_int(%268)
+  %264: ptr = call quest_conv_int(%263)
   @44:38
-  %270: ptr = symbol qs_20
-  %271: int = const 1
+  %265: ptr = symbol qs_20
+  %266: int = const 1
+  %267: ptr = call quest_string_new(%265, %266)
+  %268: ptr = call quest_string_concat(%267, %264)
+  @44:21
+  %269: ptr = call quest_string_concat(%260, %268)
+  @44:8
+  %270: ptr = symbol qs_21
+  %271: int = const 7
   %272: ptr = call quest_string_new(%270, %271)
   %273: ptr = call quest_string_concat(%272, %269)
-  @44:21
-  %274: ptr = call quest_string_concat(%265, %273)
-  @44:8
-  %275: ptr = symbol qs_21
-  %276: int = const 7
+  @43:45
+  %274: ptr = call quest_string_concat(%256, %273)
+  @43:31
+  %275: ptr = symbol qs_22
+  %276: int = const 8
   %277: ptr = call quest_string_new(%275, %276)
   %278: ptr = call quest_string_concat(%277, %274)
-  @43:45
-  %279: ptr = call quest_string_concat(%261, %278)
-  @43:31
-  %280: ptr = symbol qs_22
-  %281: int = const 8
+  @43:17
+  %279: ptr = call quest_string_concat(%565, %278)
+  @43:5
+  %280: ptr = symbol qs_23
+  %281: int = const 6
   %282: ptr = call quest_string_new(%280, %281)
   %283: ptr = call quest_string_concat(%282, %279)
-  @43:17
-  %284: ptr = call quest_string_concat(%571, %283)
-  @43:5
-  %285: ptr = symbol qs_23
-  %286: int = const 6
-  %287: ptr = call quest_string_new(%285, %286)
-  %288: ptr = call quest_string_concat(%287, %284)
   @12:43
-  %289: ptr = symbol qm_writer
-  %290: ptr = load8 %289 + 0
-  %291: ptr = load8 %289 + 8
-  %292: int = load8 %291 + 40
-  %293: ptr = ptrAdd %290, %292
-  %294: ptr = load8 %293 + 0
+  %284: ptr = symbol qm_writer
+  %285: ptr = load8 %284 + 0
+  %286: ptr = load8 %284 + 8
+  %287: int = load8 %286 + 40
+  %288: ptr = ptrAdd %285, %287
+  %289: ptr = load8 %288 + 0
   @12:57
-  %295: ptr = symbol qs_10
-  %297: ptr = call quest_string_new(%295, %271)
-  %298: ptr = call quest_string_concat(%288, %297)
+  %290: ptr = symbol qs_10
+  %292: ptr = call quest_string_new(%290, %266)
+  %293: ptr = call quest_string_concat(%283, %292)
   @12:26
-  call quest_writer_put_string(%294, %298)
+  call quest_writer_put_string(%289, %293)
   @53:33
-  %301: int = const 27
-  %304: int = const 0
-  jump b32(%301, %304)
+  %296: int = const 27
+  %299: int = const 0
+  jump b32(%296, %299)
 b22():
   @12:26
   jump b17()
-b23(%572: int, %573: real):
+b23(%566: int, %567: real):
   @39:41
-  %248: int = const 0
-  %249: int = eq %572, %248
+  %243: int = const 0
+  %244: int = eq %566, %243
   @39:38
-  branch %249, b24(), b25()
+  branch %244, b24(), b25()
 b24():
   @39:38
   jump b21()
 b25():
   @39:66
-  %250: int = const 1
-  %251: int = sub %572, %250
+  %245: int = const 1
+  %246: int = sub %566, %245
   @39:73
-  %252: real = realConst 4611686018427387904
-  %253: real = realConst 0
-  %254: int = feq %252, %253
-  branch %254, b27(), b26()
+  %247: real = realConst 4611686018427387904
+  %248: real = realConst 0
+  %249: int = feq %247, %248
+  branch %249, b27(), b26()
 b26():
   @39:73
-  %256: real = fdiv %573, %252
-  %257: int = isNaN %256
-  branch %257, b29(), b28()
+  %251: real = fdiv %567, %247
+  %252: int = isNaN %251
+  branch %252, b29(), b28()
 b27():
   @39:73
-  %255: ptr = symbol qs_19
-  call quest_raise_real_error_at(%255)
+  %250: ptr = symbol qs_19
+  call quest_raise_real_error_at(%250)
   unreachable
 b28():
   @39:60
-  jump b23(%251, %256)
+  jump b23(%246, %251)
 b29():
   @39:73
-  %258: ptr = symbol qs_19
-  call quest_raise_real_error_at(%258)
+  %253: ptr = symbol qs_19
+  call quest_raise_real_error_at(%253)
   unreachable
 b30():
   @53:24
-  %345: ptr = call quest_conv_int(%575)
+  %340: ptr = call quest_conv_int(%569)
   @53:5
-  %346: ptr = symbol qs_26
-  %347: int = const 13
-  %348: ptr = call quest_string_new(%346, %347)
-  %349: ptr = call quest_string_concat(%348, %345)
+  %341: ptr = symbol qs_26
+  %342: int = const 13
+  %343: ptr = call quest_string_new(%341, %342)
+  %344: ptr = call quest_string_concat(%343, %340)
   @12:43
-  %350: ptr = symbol qm_writer
-  %351: ptr = load8 %350 + 0
-  %352: ptr = load8 %350 + 8
-  %353: int = load8 %352 + 40
-  %354: ptr = ptrAdd %351, %353
-  %355: ptr = load8 %354 + 0
+  %345: ptr = symbol qm_writer
+  %346: ptr = load8 %345 + 0
+  %347: ptr = load8 %345 + 8
+  %348: int = load8 %347 + 40
+  %349: ptr = ptrAdd %346, %348
+  %350: ptr = load8 %349 + 0
   @12:57
-  %356: ptr = symbol qs_10
-  %357: int = const 1
-  %358: ptr = call quest_string_new(%356, %357)
-  %359: ptr = call quest_string_concat(%349, %358)
+  %351: ptr = symbol qs_10
+  %352: int = const 1
+  %353: ptr = call quest_string_new(%351, %352)
+  %354: ptr = call quest_string_concat(%344, %353)
   @12:26
-  call quest_writer_put_string(%355, %359)
+  call quest_writer_put_string(%350, %354)
   @63:26
-  %362: int = const 100
-  %368: int = const 2
-  %371: int = const 3
-  %374: int = const 4
-  %377: int = const 5
-  %380: int = const 6
-  %383: int = const 7
-  %386: int = const 8
-  %389: int = const 9
-  %392: int = const 10
-  jump b49(%362, %357, %368, %371, %374, %377, %380, %383, %386, %389, %392)
+  %357: int = const 100
+  %363: int = const 2
+  %366: int = const 3
+  %369: int = const 4
+  %372: int = const 5
+  %375: int = const 6
+  %378: int = const 7
+  %381: int = const 8
+  %384: int = const 9
+  %387: int = const 10
+  jump b49(%357, %352, %363, %366, %369, %372, %375, %378, %381, %384, %387)
 b31():
   @12:26
   jump b22()
-b32(%574: int, %575: int):
+b32(%568: int, %569: int):
   @49:20
-  %310: int = const 1
-  %311: int = eq %574, %310
+  %305: int = const 1
+  %306: int = eq %568, %305
   @49:17
-  branch %311, b33(), b34()
+  branch %306, b33(), b34()
 b33():
   @49:17
   jump b30()
 b34():
   @49:45
-  %312: int = const 2
-  %313: int = const 0
-  %314: int = ne %312, %313
-  branch %314, b35(), b36()
+  %307: int = const 2
+  %308: int = const 0
+  %309: int = ne %307, %308
+  branch %309, b35(), b36()
 b35():
   @49:45
-  %316: int = const ~1
-  %317: int = eq %312, %316
-  branch %317, b37(), b38()
+  %311: int = const ~1
+  %312: int = eq %307, %311
+  branch %312, b37(), b38()
 b36():
   @49:45
-  %315: ptr = symbol qs_24
-  call quest_raise_int_error_at(%315)
+  %310: ptr = symbol qs_24
+  call quest_raise_int_error_at(%310)
   unreachable
 b37():
   @49:45
-  %319: int = const 0
-  jump b39(%319)
+  %314: int = const 0
+  jump b39(%314)
 b38():
   @49:45
-  %320: int = rem %574, %312
-  jump b39(%320)
-b39(%318: int):
+  %315: int = rem %568, %307
+  jump b39(%315)
+b39(%313: int):
   @49:45
-  %321: int = const 0
-  %322: int = eq %318, %321
-  branch %322, b40(), b41()
+  %316: int = const 0
+  %317: int = eq %313, %316
+  branch %317, b40(), b41()
 b40():
   @49:71
-  %323: int = const 2
-  %324: int = const 0
-  %325: int = ne %323, %324
-  branch %325, b42(), b43()
+  %318: int = const 2
+  %319: int = const 0
+  %320: int = ne %318, %319
+  branch %320, b42(), b43()
 b41():
   @50:28
-  %337: int = const 3
-  %338: int = mul %337, %574
-  %339: int = const 1
-  %340: int = add %338, %339
+  %332: int = const 3
+  %333: int = mul %332, %568
+  %334: int = const 1
+  %335: int = add %333, %334
   @50:41
-  %342: int = add %575, %339
+  %337: int = add %569, %334
   @50:18
-  jump b32(%340, %342)
+  jump b32(%335, %337)
 b42():
   @49:71
-  %327: int = const ~1
-  %328: int = eq %323, %327
-  branch %328, b44(), b45()
+  %322: int = const ~1
+  %323: int = eq %318, %322
+  branch %323, b44(), b45()
 b43():
   @49:71
-  %326: ptr = symbol qs_25
-  call quest_raise_int_error_at(%326)
+  %321: ptr = symbol qs_25
+  call quest_raise_int_error_at(%321)
   unreachable
 b44():
   @49:71
-  %330: int = const 0
-  %331: int = sub %330, %574
-  jump b46(%331)
+  %325: int = const 0
+  %326: int = sub %325, %568
+  jump b46(%326)
 b45():
   @49:71
-  %332: int = div %574, %323
-  jump b46(%332)
-b46(%329: int):
+  %327: int = div %568, %318
+  jump b46(%327)
+b46(%324: int):
   @49:79
-  %333: int = const 1
-  %334: int = add %575, %333
+  %328: int = const 1
+  %329: int = add %569, %328
   @49:62
-  jump b32(%329, %334)
+  jump b32(%324, %329)
 b47():
   @63:17
-  %510: ptr = call quest_conv_int(%426)
+  %505: ptr = call quest_conv_int(%421)
   @63:5
-  %511: ptr = symbol qs_28
-  %512: int = const 6
-  %513: ptr = call quest_string_new(%511, %512)
-  %514: ptr = call quest_string_concat(%513, %510)
+  %506: ptr = symbol qs_28
+  %507: int = const 6
+  %508: ptr = call quest_string_new(%506, %507)
+  %509: ptr = call quest_string_concat(%508, %505)
   @12:43
-  %515: ptr = symbol qm_writer
-  %516: ptr = load8 %515 + 0
-  %517: ptr = load8 %515 + 8
-  %518: int = load8 %517 + 40
-  %519: ptr = ptrAdd %516, %518
-  %520: ptr = load8 %519 + 0
+  %510: ptr = symbol qm_writer
+  %511: ptr = load8 %510 + 0
+  %512: ptr = load8 %510 + 8
+  %513: int = load8 %512 + 40
+  %514: ptr = ptrAdd %511, %513
+  %515: ptr = load8 %514 + 0
   @12:57
-  %521: ptr = symbol qs_10
-  %522: int = const 1
-  %523: ptr = call quest_string_new(%521, %522)
-  %524: ptr = call quest_string_concat(%514, %523)
+  %516: ptr = symbol qs_10
+  %517: int = const 1
+  %518: ptr = call quest_string_new(%516, %517)
+  %519: ptr = call quest_string_concat(%509, %518)
   @12:26
-  call quest_writer_put_string(%520, %524)
+  call quest_writer_put_string(%515, %519)
   @72:29
-  %527: int = const 100
-  jump b62(%527)
+  %522: int = const 100
+  jump b62(%522)
 b48():
   @12:26
   jump b31()
-b49(%576: int, %577: int, %578: int, %579: int, %580: int, %581: int, %582: int, %583: int, %584: int, %585: int, %586: int):
+b49(%570: int, %571: int, %572: int, %573: int, %574: int, %575: int, %576: int, %577: int, %578: int, %579: int, %580: int):
   @58:8
-  %416: int = const 0
-  %417: int = eq %576, %416
+  %411: int = const 0
+  %412: int = eq %570, %411
   @58:5
-  branch %417, b50(), b51()
+  branch %412, b50(), b51()
 b50():
   @58:52
-  %418: int = add %585, %586
+  %413: int = add %579, %580
   @58:48
-  %419: int = add %584, %418
+  %414: int = add %578, %413
   @58:44
-  %420: int = add %583, %419
+  %415: int = add %577, %414
   @58:40
-  %421: int = add %582, %420
+  %416: int = add %576, %415
   @58:36
-  %422: int = add %581, %421
+  %417: int = add %575, %416
   @58:32
-  %423: int = add %580, %422
+  %418: int = add %574, %417
   @58:28
-  %424: int = add %579, %423
+  %419: int = add %573, %418
   @58:24
-  %425: int = add %578, %424
+  %420: int = add %572, %419
   @58:20
-  %426: int = add %577, %425
+  %421: int = add %571, %420
   @58:5
   jump b47()
 b51():
   @59:12
-  %427: int = const 2
-  %428: int = const 0
-  %429: int = ne %427, %428
-  branch %429, b52(), b53()
+  %422: int = const 2
+  %423: int = const 0
+  %424: int = ne %422, %423
+  branch %424, b52(), b53()
 b52():
   @59:12
-  %431: int = const ~1
-  %432: int = eq %427, %431
-  branch %432, b54(), b55()
+  %426: int = const ~1
+  %427: int = eq %422, %426
+  branch %427, b54(), b55()
 b53():
   @59:12
-  %430: ptr = symbol qs_27
-  call quest_raise_int_error_at(%430)
+  %425: ptr = symbol qs_27
+  call quest_raise_int_error_at(%425)
   unreachable
 b54():
   @59:12
-  %434: int = const 0
-  jump b56(%434)
+  %429: int = const 0
+  jump b56(%429)
 b55():
   @59:12
-  %435: int = rem %576, %427
-  jump b56(%435)
-b56(%433: int):
+  %430: int = rem %570, %422
+  jump b56(%430)
+b56(%428: int):
   @59:12
-  %436: int = const 0
-  %437: int = eq %433, %436
-  branch %437, b57(), b58()
+  %431: int = const 0
+  %432: int = eq %428, %431
+  branch %432, b57(), b58()
 b57():
   @59:35
-  %438: int = const 1
-  %439: int = sub %576, %438
+  %433: int = const 1
+  %434: int = sub %570, %433
   @59:29
-  jump b49(%439, %578, %579, %580, %581, %582, %583, %584, %585, %586, %577)
+  jump b49(%434, %572, %573, %574, %575, %576, %577, %578, %579, %580, %571)
 b58():
   @60:18
-  %451: int = const 1
-  %452: int = sub %576, %451
+  %446: int = const 1
+  %447: int = sub %570, %446
   @60:10
   jump b59()
 b59():
   @62:13
-  %497: int = const 1
-  %498: int = add %578, %497
+  %492: int = const 1
+  %493: int = add %572, %492
   @62:5
-  jump b49(%452, %498, %579, %580, %581, %582, %583, %584, %585, %586, %577)
+  jump b49(%447, %493, %573, %574, %575, %576, %577, %578, %579, %580, %571)
 b60():
   @72:20
-  %546: ptr = call quest_conv_int(%535)
+  %541: ptr = call quest_conv_int(%530)
   @72:5
-  %547: ptr = symbol qs_29
-  %548: int = const 9
-  %549: ptr = call quest_string_new(%547, %548)
-  %550: ptr = call quest_string_concat(%549, %546)
+  %542: ptr = symbol qs_29
+  %543: int = const 9
+  %544: ptr = call quest_string_new(%542, %543)
+  %545: ptr = call quest_string_concat(%544, %541)
   @12:43
-  %551: ptr = symbol qm_writer
-  %552: ptr = load8 %551 + 0
-  %553: ptr = load8 %551 + 8
-  %554: int = load8 %553 + 40
-  %555: ptr = ptrAdd %552, %554
-  %556: ptr = load8 %555 + 0
+  %546: ptr = symbol qm_writer
+  %547: ptr = load8 %546 + 0
+  %548: ptr = load8 %546 + 8
+  %549: int = load8 %548 + 40
+  %550: ptr = ptrAdd %547, %549
+  %551: ptr = load8 %550 + 0
   @12:57
-  %557: ptr = symbol qs_10
-  %558: int = const 1
-  %559: ptr = call quest_string_new(%557, %558)
-  %560: ptr = call quest_string_concat(%550, %559)
+  %552: ptr = symbol qs_10
+  %553: int = const 1
+  %554: ptr = call quest_string_new(%552, %553)
+  %555: ptr = call quest_string_concat(%545, %554)
   @12:26
-  call quest_writer_put_string(%556, %560)
+  call quest_writer_put_string(%551, %555)
   jump b61()
 b61():
   @12:26
   jump b48()
-b62(%598: int):
+b62(%592: int):
   @70:12
-  %533: int = const 0
-  %534: int = eq %598, %533
+  %528: int = const 0
+  %529: int = eq %592, %528
   @70:9
-  branch %534, b63(), b64()
+  branch %529, b63(), b64()
 b63():
   @70:9
-  %535: int = const 0
+  %530: int = const 0
   jump b60()
 b64():
   @66:40
-  %538: int = const 1
-  %539: int = add %598, %538
+  %533: int = const 1
+  %534: int = add %592, %533
   @70:39
-  %543: int = const 2
-  %544: int = sub %539, %543
+  %538: int = const 2
+  %539: int = sub %534, %538
   @70:31
-  jump b62(%544)
+  jump b62(%539)
 }
 
 data qf_swap_closure words [qf_swap, 0]
 data qf_isEven_closure words [qf_isEven, 0]
 data qf_isOdd_closure words [qf_isOdd, 0]
-data qf_addStep_closure words [qf_addStep, 0]
+data qf_repeat_closure words [qf_repeat, 0]
 data qs_1 text "a"
 data qs_2 text "b"
 data qs_3 text "Record a: Int b: Int end"
@@ -791,10 +807,10 @@ data offsetdict_record_93291c5791358a47_record_93291c5791358a47 words [8, 16, 0]
 data qs_4 text "swap"
 data qs_5 text "isEven"
 data qs_6 text "isOdd"
-data qs_7 text "addStep"
+data qs_7 text "repeat"
 data qs_8 text "<main>"
 data qr_frames words [0]
-data qr_funcs words [qf_swap, qs_4, qf_isEven, qs_5, qf_isOdd, qs_6, qf_addStep, qs_7, main, qs_8]
+data qr_funcs words [qf_swap, qs_4, qf_isEven, qs_5, qf_isOdd, qs_6, qf_repeat, qs_7, main, qs_8]
 data qs_9 text "sum: "
 data qs_10 text "\n"
 data g_swap writable zero 8
@@ -804,6 +820,7 @@ data g_isEven writable zero 8
 data g_isOdd writable zero 8
 data qs_13 text ", isOdd(101): "
 data qs_14 text "isEven(101): "
+data g_repeat writable zero 8
 data qs_15 text "repeat: "
 data qs_16 text "callWith: "
 data qs_17 text ""
@@ -822,5 +839,5 @@ data qs_29 text "counted: "
 data qs_30 text "record_QRecord_a_Int_b_Int_f7991b14405353cc"
 data qlk_record_QRecord_a_Int_b_Int_f7991b14405353cc words [65793]
 data quest_layout_record_QRecord_a_Int_b_Int_f7991b14405353cc words [qs_30, 0, 40, 21474836480, qlk_record_QRecord_a_Int_b_Int_f7991b14405353cc]
-data qr_roots words [g_swap, 1, g_isEven, 1, g_isOdd, 1, 0, 0]
+data qr_roots words [g_swap, 1, g_isEven, 1, g_isOdd, 1, g_repeat, 1, 0, 0]
 

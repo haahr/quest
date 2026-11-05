@@ -119,6 +119,18 @@ call rather than the argument's being called through a closure on each element.
 *Done when* `language/inlined_calls` (or a new run test) shows `lists.app` and `lists.exists` of a closure made into
 loops with the closure's body in them, and ratio-regions' `preflowPush` allocates no closure per bucket.
 
+*Done*: `language/specialized_recursion`, and [ir.md](ir.md) §8.6. Found on the way:
+
+- **The growth bound.** In ratio-regions, whole, the unit's growth bound was spent before the simplifier reached
+  `preflowPush`'s calls, which were left as they were. A specialization is now bounded by the threshold alone: it
+  replaces a closure and a call through it on each step, and there is at most one per call of a known function.
+- **A bug in both compilers' lowering,** found by the test: `let var g = fun ...` was bound as a function and read as a
+  variable, which the self-hosted compiler's backends crashed on (`712a5aa9`, `language/mutable_function_variables`).
+
+ratio-regions at count 384 through C, whole, by hand: 7.74 s before (the compiler before step 2), 2.40 s after (0.31;
+the review's hand-made variant was 0.43). With the growth bound lifted for all inlining, the compiler before this step
+took 7.70 s, so the gain is the specialization's. §8's measurements are to follow.
+
 ## 6. Known Calls of Captured Functions (`ir/closure`, the C printer, the SSA builder)
 
 The review's §3.4 is to be corrected: zebra's calls of `same`, `left`, and `adjacent` are already known in the

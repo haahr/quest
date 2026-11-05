@@ -11,6 +11,7 @@ import
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
+    stringOp = string : StringOp
     conv : Conv
 export
     Let Variable = nodes.Variable
@@ -32,6 +33,7 @@ export
         closed: hashMap.T(Int Bool)
         free: hashMap.T(Int Array(Variable))
         callsExternalAtTypes: hashMap.T(Int Bool)
+        static: hashMap.T(Int Array(Bool))
         sizes: hashMap.T(Int Int)
         size: Int
     end
@@ -211,6 +213,87 @@ export
             found
         end
 
+    (* The calls a statement makes of a function, by its variable *)
+    let callOfVariable(st: Stmt v: Variable): maybe.T(nodes.OpCall) =
+        begin
+            let o = case st
+                when sLet with x then maybe.some(:nodes.Op x.value)
+                when sDo with x then maybe.some(:nodes.Op x.value)
+                else maybe.none(:nodes.Op)
+            end
+            if maybe.isSome(:nodes.Op o) then
+                case maybe.unwrap(:nodes.Op o)
+                    when opCall with c then
+                        if maybe.isSome(:Variable c.callee) andif nodes.same(maybe.unwrap(:Variable c.callee) v) then
+                            maybe.some(:nodes.OpCall c)
+                        else maybe.none(:nodes.OpCall) end
+                    else maybe.none(:nodes.OpCall)
+                end
+            else maybe.none(:nodes.OpCall) end
+        end
+
+    (* Whether a type argument is the type parameter itself *)
+    let isParameter(t: model.Type p: nodes.TypeParam): Bool =
+        case t.form
+            when typeVariable with x then x.symbolId is p.symbolId
+            else false
+        end
+
+    (* A function's static parameters: each value parameter that every call it
+     * makes of itself (in its body, or in the functions its body binds) passes
+     * unchanged, at its own type parameters. A use of the function other than
+     * as such a call's callee leaves it none. *)
+    let staticParams(f: nodes.Function): Array(Bool) =
+        begin
+            let static = array of(extent f.params false)
+            for i = 0 upto {extent f.params - 1} do static[i] := stringOp.equal(f.params[i].mode "value") end
+            let var other = false
+            let var any = false
+            let stmts = walk.walkStatements(f.body true)
+            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                let st = vector.get(:Stmt stmts i)
+                let call = callOfVariable(st f.v)
+                if maybe.isSome(:nodes.OpCall call) then
+                    let c = maybe.unwrap(:nodes.OpCall call)
+                    if {extent c.args isnot extent f.params} orif {extent c.typeArgs isnot extent f.typeParams} then
+                        other := true
+                    else
+                        for k = 0 upto {extent f.typeParams - 1} do
+                            if not(isParameter(c.typeArgs[k] f.typeParams[k])) then other := true end
+                        end
+                        for k = 0 upto {extent c.args - 1} do
+                            let same = case c.args[k]
+                                when atomVar with x then nodes.same(x.v f.params[k].v)
+                                when atomConst then false
+                            end
+                            if not(same) then static[k] := false end
+                        end
+                        (* The callee is the call's use of f; any other is a
+                         * use as a value *)
+                        let used = walk.statementUses(st)
+                        let var named = 0
+                        for k = 0 upto {extent used - 1} do
+                            case used[k]
+                                when atomVar with x then if nodes.same(x.v f.v) then named := named + 1 end
+                                when atomConst then ok
+                            end
+                        end
+                        if named > 1 then other := true end
+                        any := true
+                    end
+                else
+                    let used = walk.statementUses(st)
+                    for k = 0 upto {extent used - 1} do
+                        case used[k]
+                            when atomVar with x then if nodes.same(x.v f.v) then other := true end
+                            when atomConst then ok
+                        end
+                    end
+                end
+            end
+            if other orif not(any) then array of :Bool end else static end
+        end
+
     let analyze(all: Array(Body)): Analysis =
         begin
             let order = collect(all)
@@ -247,6 +330,19 @@ export
                 hashMap.insert(:Int :Array(Variable) free f.v.id named)
                 hashMap.insert(:Int :Bool closed f.v.id extent named is 0)
             end
+            (* A function recursive through itself alone may have static
+             * parameters *)
+            let static = hashMap.new(:Int :Array(Bool) intEqual hash.int)
+            for i = 0 upto {vector.length(:nodes.Function order) - 1} do
+                let f = vector.get(:nodes.Function order i)
+                let alone = hashMap.find(:Int :Int members hashMap.find(:Int :Int numbers f.v.id)) is 1
+                if alone andif hashMap.find(:Int :Bool recursive f.v.id) then
+                    let params = staticParams(f)
+                    let var some = false
+                    for k = 0 upto {extent params - 1} do if params[k] then some := true end end
+                    if some then hashMap.insert(:Int :Array(Bool) static f.v.id params) end
+                end
+            end
             let externals = hashMap.new(:Int :Bool intEqual hash.int)
             for i = 0 upto {vector.length(:nodes.Function order) - 1} do
                 let f = vector.get(:nodes.Function order i)
@@ -259,6 +355,7 @@ export
                 let closed = closed
                 let free = free
                 let callsExternalAtTypes = externals
+                let static = static
                 let sizes = sizes
                 let size = total
             end
@@ -359,5 +456,82 @@ export
                     end
                 end
             end
+        end
+
+    let specialize(f: nodes.Function static: Array(Bool) typeArgs: Array(model.Type) args: Array(Atom)
+        reads: Array(Read) into: maybe.T(Variable) pos: Int rest: Array(Stmt) labels: clone.Labels): Array(Stmt) =
+        begin
+            let subst = model.newSubst()
+            for i = 0 upto {extent f.typeParams - 1} do
+                if i < extent typeArgs then
+                    hashMap.insert(:Int :model.Type subst f.typeParams[i].symbolId typeArgs[i])
+                end
+            end
+            let c = clone.newRelabelingCloner(subst labels)
+            let result = maybe.unwrapOr(:Variable into nodes.newVar("r" clone.ty(c f.resultType) false))
+            let bound = vector.new(:Stmt)
+            for i = 0 upto {extent reads - 1} do
+                let v = reads[i].v
+                let local = nodes.newVar(v.hint clone.ty(c v.type) false)
+                clone.bindVar(c v local)
+                let binding = nodes.letStmt(local reads[i].op)
+                nodes.positionAt(binding pos)
+                vector.append(:Stmt bound binding)
+            end
+            (* The local function's parameters, and the arguments it is called
+             * with, the static ones left out *)
+            let params = vector.new(:nodes.ParamEntry)
+            let types = vector.new(:model.Param)
+            let passed = vector.new(:Atom)
+            for i = 0 upto {extent f.params - 1} do
+                let p = f.params[i].v
+                if static[i] then
+                    case args[i]
+                        when atomVar with x then clone.bindVar(c p x.v)
+                        when atomConst then ok
+                    end
+                else
+                    let q = clone.fresh(c p)
+                    vector.append(:nodes.ParamEntry params tuple let v = q let mode = "value" end)
+                    vector.append(:model.Param types tuple
+                        let name = q.hint let type = q.type let isVar = false let isOut = false
+                    end)
+                    vector.append(:Atom passed args[i])
+                end
+            end
+            let resultType = clone.ty(c f.resultType)
+            let inner = nodes.newVar(f.v.hint model.funType(vector.toArray(:model.Param types) resultType) false)
+            clone.bindVar(c f.v inner)
+            clone.bindAll(c f.body)
+            let body = clone.copyBody(c f.body)
+            (* Its calls of itself, on the other arguments *)
+            let stmts = walk.walkStatements(body true)
+            for i = 0 upto {vector.length(:Stmt stmts) - 1} do
+                let call = callOfVariable(vector.get(:Stmt stmts i) inner)
+                if maybe.isSome(:nodes.OpCall call) then
+                    let x = maybe.unwrap(:nodes.OpCall call)
+                    let kept = vector.new(:Atom)
+                    for k = 0 upto {extent x.args - 1} do
+                        if not(static[k]) then vector.append(:Atom kept x.args[k]) end
+                    end
+                    x.args := vector.toArray(:Atom kept)
+                    x.typeArgs := array of :model.Type end
+                    x.calleeType := maybe.none(:model.Type)
+                end
+            end
+            let g = nodes.newFunction(inner array of :nodes.TypeParam end vector.toArray(:nodes.ParamEntry params)
+                resultType body f.traceName)
+            let all = vector.copy(:Stmt bound)
+            let funs = option sFuns of Stmt with
+                let var functions = array of g end
+                let recursive = true
+            end
+            vector.append(:Stmt all funs)
+            let call = nodes.letStmt(result nodes.call(maybe.some(:Variable inner) array of :model.Type end
+                vector.toArray(:Atom passed) maybe.none(:nodes.ModuleRef) maybe.none(:String) maybe.none(:model.Type)))
+            nodes.positionAt(call pos)
+            vector.append(:Stmt all call)
+            for i = 0 upto {extent rest - 1} do vector.append(:Stmt all rest[i]) end
+            vector.toArray(:Stmt all)
         end
 end

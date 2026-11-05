@@ -33,6 +33,12 @@ export
          * (passing and returning their values as QVal words, which a call at
          * other type arguments would not box) *)
         callsExternalAtTypes: hashMap.T(Int Bool)
+        (* Each function's static parameters, by its variable's id, for one
+         * recursive through itself alone: whether each value parameter is
+         * passed unchanged by every call the function makes of itself, at its
+         * own type parameters, and the function names itself only in such
+         * calls (none for any other function, or one with none) *)
+        static: hashMap.T(Int Array(Bool))
         (* Each function's size *)
         sizes: hashMap.T(Int Int)
         (* The size of the unit's bodies and functions *)
@@ -64,4 +70,17 @@ export
     expand(f: nodes.Function typeArgs: Array(model.Type) args: Array(nodes.Atom)
         byRef: Array(maybe.T(nodes.Variable)) reads: Array(Read) into: maybe.T(nodes.Variable) pos: Int
         rest: Array(nodes.Stmt) labels: clone.Labels): Array(nodes.Stmt)
+    (* The statements that do what a call of f, a function with static
+     * parameters, does and then what rest does, with f specialized to the
+     * call's arguments for them (docs/ir.md section 8.6): a funs statement
+     * binding a local function of f's other parameters, whose body is f's
+     * copied with its type parameters substituted by typeArgs, each static
+     * parameter replaced by its argument (a variable), each call of f a call
+     * of the local function on the other arguments, and each variable reads
+     * names bound first to what it reads; then the call's result bound to
+     * into (or to a fresh variable) by a call of the local function on the
+     * call's other arguments; then rest. *)
+    specialize(f: nodes.Function static: Array(Bool) typeArgs: Array(model.Type) args: Array(nodes.Atom)
+        reads: Array(Read) into: maybe.T(nodes.Variable) pos: Int rest: Array(nodes.Stmt) labels: clone.Labels)
+        : Array(nodes.Stmt)
 end

@@ -652,7 +652,8 @@ inlined:
   bound's cases), which a type argument substituted for the parameter would change;
 - a polymorphic function that calls an external at type arguments (`hash.identityHash`, say), which takes and returns
   the parameter's values as `QVal` words, as a type argument's need not be, and nothing would box them;
-- a recursive function at all, rather than only into its own component, so that none is unrolled once per round;
+- a recursive function at all, rather than only into its own component, so that none is unrolled once per round
+  (but one is specialized, below);
 - past the unit's growth bound: half its size, or 1000, whichever is more. The rounds' bound stands for a caller's
   bound and a depth bound.
 
@@ -665,6 +666,19 @@ immutable member that is not a function (whose calls would stop being known), an
 (`let error.2 = member util/maybe.error`) at the call, as `maybe.unwrap`'s copy reads the exception it raises. Outside a
 whole program, where abstract types are opaque, the member must be of an exception's type, which is laid out alike
 inside and outside its module.
+
+**Specialization on a known function.** A function recursive through itself alone has *static parameters*: the
+value parameters that every call it makes of itself passes unchanged, at its own type parameters, when it names itself
+in no other way (`lists.app`'s `f`, `foldl`'s, but not its accumulator). A call of one whose argument for a static
+parameter is a function the round knows is specialized (`inline.specialize`) by the inliner's rules but recursion, its
+size less its bonuses at most the threshold and without the unit's growth bound: a local function of the other
+parameters, whose body is the callee's copied with its type parameters substituted and the static parameters replaced
+by their arguments, its calls of itself calls of the local function, is bound at the call, and called. The known
+function's calls in it are then known, and inlined; and contification makes it a loop where its calls of itself are
+tail calls (`app`, `exists`, `foldl`), or leaves it a local function, whose closure is made once per call (`map`). The
+copy replaces a closure made at the call and a call through it on each step, so the growth bound, which the largest
+functions meet first, does not apply. `language/specialized_recursion` shows each case; ratio-regions takes 0.31 of its
+time ([mlton-gap.md](mlton-gap.md) §5).
 
 **Contification** (`questlang/ir/contify`, MLton's term), after each round: a function of value parameters and no
 type parameters, every use of which is a call, one outside its body and the rest tail calls of itself in its body

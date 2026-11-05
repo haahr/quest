@@ -648,14 +648,24 @@ export
 
     (* A call to inline: its function, the variables passed by address for its
      * var and out parameters, what the copy reads for the variables it names
-     * of the function's module, and the function's size *)
-    Let Choice = Tuple function: nodes.Function byRef: Array(maybe.T(Variable)) reads: Array(inline.Read) size: Int end
+     * of the function's module, the function's size, and, for a recursive
+     * function specialized to the call (inline.specialize), its static
+     * parameters *)
+    Let Choice = Tuple
+        function: nodes.Function
+        byRef: Array(maybe.T(Variable))
+        reads: Array(inline.Read)
+        size: Int
+        static: maybe.T(Array(Bool))
+    end
 
     (* Whether to inline a call, made in a function of the component within
      * (none, outside functions): one of a function the round knows, not
      * recursive, with type arguments for all its type parameters, and a
      * variable in scope for each var or out parameter, called once or small
-     * enough *)
+     * enough. A function recursive through itself alone is specialized to
+     * the call instead, when an argument for one of its static parameters is
+     * a function the round knows, so that its calls in the copy are known *)
     let inlining(s: Simplifier x: nodes.OpCall within: maybe.T(Int)): maybe.T(Choice) =
         begin
             let callee = if maybe.isSome(:Variable x.callee) then
@@ -702,9 +712,27 @@ export
                 let within1 = maybe.isSome(:Int within) andif {maybe.unwrap(:Int within) is component}
                 let size = hashMap.find(:Int :Int s.analysis.sizes f.v.id)
                 let byRef = array of(extent f.params maybe.none(:Variable))
-                let var fits = atItsType andif not(within1)
-                    andif not(hashMap.find(:Int :Bool s.analysis.recursive f.v.id))
+                let static = hashMap.get(:Int :Array(Bool) s.analysis.static f.v.id)
+                let recursive = hashMap.find(:Int :Bool s.analysis.recursive f.v.id)
+                let var fits = atItsType andif not(within1) andif {not(recursive) orif maybe.isSome(:Array(Bool) static)}
                     andif {extent x.typeArgs is extent f.typeParams} andif {extent x.args is extent f.params}
+                if fits andif recursive then
+                    (* A known function for a static parameter *)
+                    let params = maybe.unwrap(:Array(Bool) static)
+                    let var known = false
+                    for i = 0 upto {extent params - 1} do
+                        if params[i] then
+                            case x.args[i]
+                                when atomVar with a then
+                                    if hashMap.contains(:Int :nodes.Function s.analysis.functions resolve(s a.v).v.id) then
+                                        known := true
+                                    end
+                                when atomConst then ok
+                            end
+                        end
+                    end
+                    if not(known) then fits := false end
+                end
                 (* A bounded type parameter's values are seen at its bound (an
                  * option's ordinal counts the bound's cases), which a type
                  * argument substituted for it would change *)
@@ -729,13 +757,21 @@ export
                     end
                 end
                 let once = maybe.unwrap(:Resolved callee).once andif not(pinned(s f.v))
-                let small = {{size - bonus} <= inlineSize} andif {{s.grown + size} <= s.budget}
+                (* A specialization is bounded by the threshold alone, not
+                 * the unit's growth: its copy replaces a closure made at the
+                 * call and a call through it on each step, and there is at
+                 * most one at each call of a known function, so the bound on
+                 * growth would leave the calls in the largest functions
+                 * (ratio-regions' preflowPush, made last) as they were *)
+                let grows = recursive orif {{s.grown + size} <= s.budget}
+                let small = {{size - bonus} <= inlineSize} andif grows
                 if fits andif {once orif small} then
                     maybe.some(:Choice tuple
                         let function = f
                         let byRef = byRef
                         let reads = maybe.unwrap(:Array(inline.Read) reads)
                         let size = size
+                        let static = if recursive then static else maybe.none(:Array(Bool)) end
                     end)
                 else
                     maybe.none(:Choice)
@@ -912,8 +948,13 @@ export
                     for k = i + 1 upto {vector.length(:Stmt ss) - 1} do
                         vector.append(:Stmt rest vector.get(:Stmt ss k))
                     end
-                    ss := vector.fromArray(:Stmt inline.expand(ch.function c.typeArgs c.args ch.byRef ch.reads intoOf(st)
-                        nodes.stmtPos(st) vector.toArray(:Stmt rest) s.labels))
+                    ss := vector.fromArray(:Stmt if maybe.isSome(:Array(Bool) ch.static) then
+                        inline.specialize(ch.function maybe.unwrap(:Array(Bool) ch.static) c.typeArgs c.args ch.reads
+                            intoOf(st) nodes.stmtPos(st) vector.toArray(:Stmt rest) s.labels)
+                    else
+                        inline.expand(ch.function c.typeArgs c.args ch.byRef ch.reads intoOf(st) nodes.stmtPos(st)
+                            vector.toArray(:Stmt rest) s.labels)
+                    end)
                     (* The copy's variables are used where it uses them (and
                      * those of the rest, counted again, no less) *)
                     countBody(s nodes.bodyOf(vector.toArray(:Stmt ss)))

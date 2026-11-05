@@ -1,0 +1,234 @@
+import writer = "writer" : Writer
+import conv = "conv" : Conv
+main {
+  funs {
+    fun print(s: String): Ok {
+      let %1: writer.T = member writer.output @12:45
+      let %2: String = prim <>(s, "\n") @12:59
+      let %3: Ok = call writer.putString(%1, %2) @12:28
+      return %3
+    }
+  }
+  funs {
+    fun nil [A::TYPE](): List(A) {
+      let %4: List(A) = option(nil) @15:29
+      return %4
+    }
+  }
+  funs {
+    fun cons [A::TYPE](hd: A, tl: List(A)): List(A) {
+      let hd.1: A = hd @16:86
+      let tl.1: List(A) = tl @16:98
+      let %5: Tuple hd: A tl: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end end = tuple(hd.1, tl.1) @16:49
+      let %6: List(A) = option(cons, %5) @16:49
+      return %6
+    }
+  }
+  funs rec {
+    fun app [A::TYPE](f: Fun(a: A): Ok, l: List(A)): Ok {
+      switch tag(l) { @19:5
+        case cons (c: Tuple hd: A tl: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end end): {
+          let %7: A = tuple_field(c, 0) @19:42
+          do call f(%7) @19:40
+          let %8: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end = tuple_field(c, 1) @19:58
+          do call app [A](f, %8) @19:48
+        }
+        else: {
+        }
+      }
+      return ok
+    }
+  }
+  funs rec {
+    fun exists [A::TYPE](f.1: Fun(a: A): Bool, l.1: List(A)): Bool {
+      join k1(r: Bool) {
+        return r
+      } in {
+        switch tag(l.1) { @21:5
+          case cons (c.1: Tuple hd: A tl: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end end): {
+            join k2(r.1: Bool) {
+              jump k1(r.1) @21:5
+            } in {
+              let %9: A = tuple_field(c.1, 0) @21:36
+              let %10: Bool = call f.1(%9) @21:34
+              if %10 { @21:34
+                jump k2(true) @21:34
+              } else {
+                let %11: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end = tuple_field(c.1, 1) @21:60
+                let %12: Bool = call exists [A](f.1, %11) @21:47
+                jump k2(%12) @21:34
+              }
+            }
+          }
+          else: {
+            jump k1(false) @21:5
+          }
+        }
+      }
+    }
+  }
+  funs rec {
+    fun foldl [A::TYPE B::TYPE](f.2: Fun(a: A b: B): B, b: B, l.2: List(A)): B {
+      join k3(r.2: B) {
+        return r.2
+      } in {
+        switch tag(l.2) { @23:5
+          case cons (c.2: Tuple hd: A tl: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end end): {
+            let %13: A = tuple_field(c.2, 0) @23:51
+            let %14: B = call f.2(%13, b) @23:49
+            let %15: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end = tuple_field(c.2, 1) @23:59
+            let %16: B = call foldl [A B](f.2, %14, %15) @23:34
+            jump k3(%16) @23:5
+          }
+          else: {
+            jump k3(b) @23:5
+          }
+        }
+      }
+    }
+  }
+  funs rec {
+    fun map [A::TYPE B::TYPE](f.3: Fun(a: A): B, l.3: List(A)): List(B) {
+      join k4(r.3: List(B)) {
+        return r.3
+      } in {
+        switch tag(l.3) { @25:5
+          case cons (c.3: Tuple hd: A tl: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end end): {
+            let %17: A = tuple_field(c.3, 0) @25:50
+            let y: B = call f.3(%17) @25:48
+            let %18: Rec(List :: TYPE) Option nil cons with Tuple hd: A tl: List end end = tuple_field(c.3, 1) @25:80
+            let %19: List(B) = call map [A B](f.3, %18) @25:67
+            let %20: List(B) = call cons [B](y, %19) @25:56
+            jump k4(%20) @25:5
+          }
+          else: {
+            let %21: List(B) = type_app nil [B] @25:96
+            jump k4(%21) @25:5
+          }
+        }
+      }
+    }
+  }
+  funs rec {
+    fun alternate(f.4: Fun(n: Int): Int, g: Fun(n: Int): Int, l.4: List(Int)): Int {
+      join k5(r.4: Int) {
+        return r.4
+      } in {
+        switch tag(l.4) { @28:5
+          case cons (c.4: Tuple hd: Int tl: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end end): {
+            let %22: Int = tuple_field(c.4, 0) @28:36
+            let %23: Int = call f.4(%22) @28:34
+            let %24: Rec(List :: TYPE) Option nil cons with Tuple hd: Int tl: List end end = tuple_field(c.4, 1) @28:58
+            let %25: Int = call alternate(g, f.4, %24) @28:44
+            let %26: Int = prim +(%23, %25) @28:34
+            jump k5(%26) @28:5
+          }
+          else: {
+            jump k5(0) @28:5
+          }
+        }
+      }
+    }
+  }
+  let %27: List(Int) = type_app nil [Int] @30:67
+  let %28: List(Int) = call cons [Int](4, %27) @30:54
+  let %29: List(Int) = call cons [Int](3, %28) @30:41
+  let %30: List(Int) = call cons [Int](2, %29) @30:28
+  let numbers: List(Int) = call cons [Int](1, %30) @30:15
+  let n: Int = 0 @33:31
+  let total: Tuple var n: Int end = tuple(n) @33:13
+  funs {
+    fun f.5(x: Int): Ok {
+      let %31: Int = tuple_field(total, 0) @34:38
+      let %32: Int = prim +(%31, x) @34:38
+      store total.#0 := %32 @34:27
+      return ok
+    }
+  }
+  do call app [Int](f.5, numbers) @34:1
+  let %33: Int = tuple_field(total, 0) @35:25
+  let %34: String = call conv.int(%33) @35:16
+  let %35: String = prim <>("1. ", %34) @35:7
+  do call print(%35) @35:1
+  funs {
+    fun f.6(x.1: Int): Bool {
+      let %36: Bool = prim >(x.1, 3) @38:57
+      return %36
+    }
+  }
+  let %37: Bool = call exists [Int](f.6, numbers) @38:26
+  let %38: String = call conv.bool(%37) @38:16
+  funs {
+    fun f.7(x.2: Int): Bool {
+      let %39: Bool = prim >(x.2, 9) @39:49
+      return %39
+    }
+  }
+  let %40: Bool = call exists [Int](f.7, numbers) @39:18
+  let %41: String = call conv.bool(%40) @39:8
+  let %42: String = prim <>(" ", %41) @38:76
+  let %43: String = prim <>(%38, %42) @38:16
+  let %44: String = prim <>("2. ", %43) @38:7
+  do call print(%44) @38:1
+  funs {
+    fun f.8(x.3: Int, s.1: Int): Int {
+      let %45: Int = prim *(s.1, 10) @42:67
+      let %46: Int = prim +(%45, x.3) @42:67
+      return %46
+    }
+  }
+  let %47: Int = call foldl [Int Int](f.8, 0, numbers) @42:25
+  let %48: String = call conv.int(%47) @42:16
+  let %49: String = prim <>("3. ", %48) @42:7
+  do call print(%49) @42:1
+  funs {
+    fun f.9(x.4: Int): Int {
+      let %50: Int = prim *(x.4, x.4) @45:47
+      return %50
+    }
+  }
+  let squares: List(Int) = call map [Int Int](f.9, numbers) @45:15
+  funs {
+    fun f.10(x.5: Int, s.2: Int): Int {
+      let %51: Int = prim +(s.2, x.5) @46:66
+      return %51
+    }
+  }
+  let %52: Int = call foldl [Int Int](f.10, 0, squares) @46:25
+  let %53: String = call conv.int(%52) @46:16
+  let %54: String = prim <>("4. ", %53) @46:7
+  do call print(%54) @46:1
+  let n.1: Int = 0 @50:33
+  let doubled: Tuple var n: Int end = tuple(n.1) @50:15
+  funs {
+    fun f.11(x.6: Int): Ok {
+      let %55: Int = tuple_field(doubled, 0) @51:58
+      let %56: Int = prim *(2, x.6) @51:71
+      let %57: Int = prim +(%55, %56) @51:58
+      store doubled.#0 := %57 @51:45
+      return ok
+    }
+  }
+  var g.1: Fun(a: Int): Ok = f.11 @51:1
+  do call app [Int](g.1, numbers) @52:1
+  let %58: Int = tuple_field(doubled, 0) @53:25
+  let %59: String = call conv.int(%58) @53:16
+  funs {
+    fun f.12(n.2: Int): Int {
+      return n.2
+    }
+  }
+  funs {
+    fun f.13(n.3: Int): Int {
+      let %60: Int = prim -(0, n.3) @54:64
+      return %60
+    }
+  }
+  let %61: Int = call alternate(f.12, f.13, numbers) @54:17
+  let %62: String = call conv.int(%61) @54:8
+  let %63: String = prim <>(" ", %62) @53:39
+  let %64: String = prim <>(%59, %63) @53:16
+  let %65: String = prim <>("5. ", %64) @53:7
+  do call print(%65) @53:1
+}
+
