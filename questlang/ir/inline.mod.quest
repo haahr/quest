@@ -481,7 +481,9 @@ export
                 vector.append(:Stmt bound binding)
             end
             (* The local function's parameters, and the arguments it is called
-             * with, the static ones left out *)
+             * with, the static ones left out: each of those stands for its
+             * argument, a variable, or one bound to a constant before the
+             * local function *)
             let params = vector.new(:nodes.ParamEntry)
             let types = vector.new(:model.Param)
             let passed = vector.new(:Atom)
@@ -490,7 +492,13 @@ export
                 if static[i] then
                     case args[i]
                         when atomVar with x then clone.bindVar(c p x.v)
-                        when atomConst then ok
+                        when atomConst then
+                            begin
+                                let q = clone.fresh(c p)
+                                let binding = nodes.letStmt(q nodes.opOfAtom(args[i]))
+                                nodes.positionAt(binding pos)
+                                vector.append(:Stmt bound binding)
+                            end
                     end
                 else
                     let q = clone.fresh(c p)

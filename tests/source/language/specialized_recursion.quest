@@ -6,7 +6,7 @@
  * and which contification makes a loop where its calls of itself are tail
  * calls (app, exists, foldl), or leaves a local function where not (map). A
  * call with a function that is not known, or of a function whose parameter
- * changes, is left. *)
+ * changes, is left. A static parameter given a constant is bound to it. *)
 import writer: Writer;
 import conv: Conv;
 let print(s: String): Ok = writer.putString(writer.output s <> "\n");
@@ -52,3 +52,8 @@ let var g: All(a: Int) Ok = fun(x: Int): Ok doubled.n := doubled.n + {2 * x};
 app(:Int)(g numbers);
 print("5. " <> conv.int(doubled.n) <> " "
     <> conv.int(alternate(fun(n: Int): Int n fun(n: Int): Int {0 - n} numbers)));
+
+(* 6. A constant for a static parameter that is not a function *)
+let rec scaled(f: All(n: Int) Int k: Int l: List(Int)): Int =
+    case l when cons with c then {k * f(c.hd)} + scaled(f k c.tl) else 0 end;
+print("6. " <> conv.int(scaled(fun(n: Int): Int n + 1 10 numbers)));
