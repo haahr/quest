@@ -1180,3 +1180,21 @@ could move (smith-normal-form through arm64 took 362.2 s, pidigits 17.97 s). Tak
 - **What remains of arm64's distance** in the loop is mostly the four loads of `oneW` and `zeroW` an iteration, which
   C folds (`zeroW` to `xzr`, `oneW` loaded once before the loop). Both loops check `r` for null and its bounds at each
   access.
+
+### 15.5. Constant globals
+
+`ssa/constants` ([ssa.md](ssa.md) §4.1) makes a global the unit stores once with a constant, before anything that could
+read it, read-only data holding the constant, and each of its loads the constant itself. `util/bignum`'s `oneW`,
+`zeroW`, and `onesW` are such globals: arm64's `bignum.mod.s` loads none of them now, where it loaded them in every
+iteration of each loop using them. The library's initialization calls its imports' initializations and registers its
+types first, which the pass had to know reach none of the library's code. Taken as §15.1, one run each, the load 3.5
+to 5.9, the times in `quest-{ssac,arm64}-constants.jsonl`:
+
+| Program | Backend | With selects (§15.4) | With constants | Faster |
+|---|---|--:|--:|--:|
+| pidigits | ssac | 11.24 | 10.98 | 1.02x |
+| | arm64 | 14.41 | 13.22 | 1.09x |
+| smith-normal-form | ssac | 66.89 | 63.57 | 1.05x |
+| | arm64 | 115.95 | 107.85 | 1.08x |
+
+smith-normal-form through arm64 is 1.5 times C's 70.05 s, from 1.7; through ssac it is now faster than C.

@@ -4,10 +4,12 @@ module constants : Constants
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/ssa/cfg : questlang/ssa/Cfg
+    questlang/codegen/runtimeFunctions : questlang/codegen/RuntimeFunctions
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
     util/maybe : util/Maybe
+    util/strutil : util/Strutil
     conv : Conv
     stringOp = string : StringOp
 export
@@ -52,23 +54,93 @@ export
         if maybe.isSome(:ssa.Inst defs[v]) andif ssa.isOp(maybe.unwrap(:ssa.Inst defs[v]) ssa.opSymbol) then defs[v]
         else maybe.none(:ssa.Inst) end
 
-    (* Whether nothing can run before the instruction at site s in function f
-     * that could read the global at symbol, s's store to it aside: no call
-     * (which could reach a function that loads it) and no load of it on any
-     * path from f's entry to s, and s in no loop (which could run s's block
-     * after s, before s again) *)
-    let first(f: Function g: cfg.Graph defs: Defs s: Site symbol: String): Bool =
+    (* The runtime's functions that write memory but run no Quest code: those
+     * a module's initialization registers its types, functions, and records'
+     * dictionaries with, before it binds its members *)
+    let registrations = array of "quest_register_abstract_type" "quest_register_funcs" "quest_register_record_dict" end
+
+    (* Whether symbol is a module's initialization, which the builder names
+     * qv_mod_<module>_init *)
+    let initialization(symbol: String): Bool =
+        strutil.startsWith(symbol "qv_mod_") andif strutil.endsWith(symbol "_init")
+
+    (* What deciding whether code could read a global needs: the unit, the
+     * definitions of each of its functions' values, its functions by symbol,
+     * the global's symbol, the function storing it, and the functions already
+     * seen, by index *)
+    Let Query = Tuple
+        u: ssa.Unit
+        allDefs: Array(Defs)
+        byName: hashMap.T(String Int)
+        symbol: String
+        storing: Int
+        seen: Array(Bool)
+    end
+
+    (* Whether running instruction i of function fi could read the global:
+     * a load of it, or a call of code that could. A call can run any Quest
+     * code but a call of a function of the unit's own (whose instructions are
+     * looked at in turn), of a runtime function that writes no memory
+     * (runtimeFunctions.callWrites: Quest code is taken to write memory), of
+     * one of the registrations, or, from a module's initialization, of
+     * another's: modules import one another in no cycle (the build engine's
+     * detectModuleCycle), so the modules a module's initialization
+     * initializes reach none of its code *)
+    let rec reads(q: Query fi: Int i: ssa.Inst): Bool =
+        if ssa.isOp(i ssa.opLoad) then
+            let a = symbolOf(q.allDefs[fi] i.args[0])
+            maybe.isSome(:ssa.Inst a) andif stringOp.equal(maybe.unwrap(:ssa.Inst a).symbol q.symbol)
+        elsif ssa.isOp(i ssa.opCallIndirect) then true
+        elsif ssa.isCall(i) then
+            let callee = hashMap.get(:String :Int q.byName i.symbol)
+            let storing = vector.get(:Function q.u.functions q.storing).symbol
+            if stringOp.equal(i.symbol storing) then true
+            elsif initialization(i.symbol) andif initialization(storing) then false
+            elsif maybe.isSome(:Int callee) then functionReads(q maybe.unwrap(:Int callee))
+            else
+                let var registration = false
+                for k = 0 upto {extent registrations - 1} do
+                    if stringOp.equal(registrations[k] i.symbol) then registration := true end
+                end
+                not(registration) andif runtimeFunctions.callWrites(i)
+            end
+        else false end
+
+    (* Whether running function fi could read the global; false if it has
+     * been looked at already, its answer then part of the first look's *)
+    and functionReads(q: Query fi: Int): Bool =
+        if q.seen[fi] then false
+        else
+            q.seen[fi] := true
+            let f = vector.get(:Function q.u.functions fi)
+            let var any = false
+            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    if not(any) andif reads(q fi vector.get(:ssa.Inst blk.insts k)) then any := true end
+                end
+                case blk.term
+                    when termTailCall with x then
+                        if not(any) andif reads(q fi x.call) then any := true end
+                    when termNone, termJump, termBranch, termSwitch, termReturn, termTry, termUnreachable then ok
+                end
+            end
+            any
+        end
+
+    (* Whether nothing that could read the global (reads) runs before its
+     * store at site s, in the function f of control-flow graph g: on no path
+     * from f's entry to s, and s in no loop, which could run s's block after
+     * s, before s again *)
+    let first(q: Query f: Function g: cfg.Graph s: Site): Bool =
         begin
-            let reads(i: ssa.Inst): Bool =
-                ssa.isCall(i) orif {ssa.isOp(i ssa.opLoad) andif begin
-                    let a = symbolOf(defs i.args[0])
-                    maybe.isSome(:ssa.Inst a) andif stringOp.equal(maybe.unwrap(:ssa.Inst a).symbol symbol)
-                end}
             let blockReads(b: Int before: Int): Bool =
                 begin
                     let insts = ssa.block(f b).insts
                     let var any = false
-                    for k = 0 upto {before - 1} do if reads(vector.get(:ssa.Inst insts k)) then any := true end end
+                    for k = 0 upto {before - 1} do
+                        if not(any) andif reads(q s.function vector.get(:ssa.Inst insts k)) then any := true end
+                    end
                     any
                 end
             let var clear = not(blockReads(s.block s.index))
@@ -82,7 +154,7 @@ export
                 for k = 0 upto {extent ps - 1} do
                     let p = ps[k]
                     if p is s.block then clear := false
-                    elsif not(seen[p]) andif cfg.reached(g p) then
+                    elsif clear andif not(seen[p]) andif cfg.reached(g p) then
                         seen[p] := true
                         if blockReads(p vector.length(:ssa.Inst ssa.block(f p).insts)) then clear := false end
                         vector.append(:Int stack p)
@@ -131,7 +203,8 @@ export
      * once, with nothing that could read it first (first), and loaded only
      * as the type of its value; graphs are the control-flow graphs of u's
      * functions, made when first needed *)
-    let constant(u: ssa.Unit allDefs: Array(Defs) graphs: Array(maybe.T(cfg.Graph)) symbol: String c: Candidate): Bool =
+    let constant(u: ssa.Unit allDefs: Array(Defs) byName: hashMap.T(String Int) graphs: Array(maybe.T(cfg.Graph))
+        symbol: String c: Candidate): Bool =
         begin
             let var fits = not(c.ruledOut) andif {c.stores is 1}
             for k = 0 upto {vector.length(:Site c.loads) - 1} do
@@ -144,7 +217,11 @@ export
                 let fi = c.store.function
                 let f = vector.get(:Function u.functions fi)
                 if maybe.isNone(:cfg.Graph graphs[fi]) then graphs[fi] := maybe.some(:cfg.Graph cfg.graph(f)) end
-                first(f maybe.unwrap(:cfg.Graph graphs[fi]) allDefs[fi] c.store symbol)
+                let q = tuple
+                    let u = u let allDefs = allDefs let byName = byName let symbol = symbol let storing = fi
+                    let seen = array of(vector.length(:Function u.functions) false)
+                end
+                first(q f maybe.unwrap(:cfg.Graph graphs[fi]) c.store)
             else false end
         end
 
@@ -214,11 +291,15 @@ export
             (* The constant ones: their loads replaced, their stores dropped,
              * and their data given their values *)
             let graphs = array of(nFunctions maybe.none(:cfg.Graph))
+            let byName = hashMap.new(:String :Int stringOp.equal hash.string)
+            for fi = 0 upto {nFunctions - 1} do
+                let ignored = hashMap.insert(:String :Int byName vector.get(:Function u.functions fi).symbol fi)
+            end
             let dropped = hashMap.new(:String :Bool stringOp.equal hash.string)
             for e = 0 upto {vector.length(:ssa.Data u.data) - 1} do
                 let symbol = vector.get(:ssa.Data u.data e).symbol
                 let found = hashMap.get(:String :Candidate candidates symbol)
-                if maybe.isSome(:Candidate found) andif constant(u allDefs graphs symbol maybe.unwrap(:Candidate found)) then
+                if maybe.isSome(:Candidate found) andif constant(u allDefs byName graphs symbol maybe.unwrap(:Candidate found)) then
                     let c = maybe.unwrap(:Candidate found)
                     for k = 0 upto {vector.length(:Site c.loads) - 1} do
                         let s = vector.get(:Site c.loads k)

@@ -207,14 +207,19 @@ internal error.
   its slot, its address escaping. `language/mutable_locals` covers each kind.
 - **`ssa/constants`** makes constant the globals bound to constants. A global the unit does not export (another unit
   could store to one it does), a word of static data that starts as zero, is constant when the unit stores to it once,
-  a whole word that is an `opConst` or a symbol's address, with no call and no load of it on any path from its
-  function's entry to the store and the store in no loop, and otherwise only loads it, a whole word at a time, as the
-  type of that value. Its datum then holds the value from the start, read-only; the store goes, and each load becomes
-  the value, which value numbering then folds into what uses it. A module's member bound to a literal or to what the
-  builder makes a constant (a call of a standard library external it makes an instruction, as `word.fromInt(1)` for
-  `util/bignum`'s `oneW`) is such a global: the module's initialization stores it, guarded by the module's flag, and
-  each use loaded it, in every iteration of a loop that used it. Only a unit's own globals are seen, so only those
-  are folded: another unit loads an exported member as before. `ssa_constants` shows each case.
+  a whole word that is an `opConst` or a symbol's address, and otherwise only loads it, a whole word at a time, as the
+  type of that value; when nothing that could read it runs on any path from its function's entry to the store; and
+  when the store is in no loop. What could read it is a load of it, or a call of code that could: any call but of a
+  function of the unit's own whose code, looked at in turn, could not; of a runtime function the effects table says
+  writes no memory (Quest code is taken to write memory), as `quest_alloc_exception` for a module's exceptions; of one
+  that registers types, functions, or dictionaries; or, from a module's initialization, of another module's. Modules
+  import one another in no cycle, so the modules a module's initialization initializes first reach none of its code.
+  The datum then holds the value from the start, read-only; the store goes, and each load becomes the value, which
+  value numbering then folds into what uses it. A module's member bound to a literal or to what the builder makes a
+  constant (a call of a standard library external it makes an instruction, as `word.fromInt(1)` for `util/bignum`'s
+  `oneW`) is such a global: the module's initialization stores it, guarded by the module's flag, and each use loaded
+  it, in every iteration of a loop that used it ([benchmarks.md](benchmarks.md) §15.5). Only a unit's own globals are
+  seen, so only those are folded: another unit loads an exported member as before. `ssa_constants` shows each case.
 - **`ssa/valueNumbers`** removes redundant values along the dominator tree, in the manner of Briggs, Cooper, and
   Simpson: a pure instruction or a load whose equal dominates it becomes that equal, by a key of its opcode, immediate,
   symbol, result type, and arguments' numbers (a constant's by its value; commutative ones ordered; a load's address

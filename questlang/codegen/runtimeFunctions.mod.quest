@@ -134,6 +134,18 @@ export
             maybe.unwrap(:Function found)
         end
 
+    let callWrites(i: ssa.Inst): Bool =
+        if ssa.isOp(i ssa.opCallIndirect) then true
+        else
+            let var writes = true
+            for k = 0 upto {extent functions - 1} do
+                if stringOp.equal(functions[k].name i.symbol) then
+                    writes := case functions[k].effects.memory when memoryWrites then true else false end
+                end
+            end
+            writes
+        end
+
     let isPure(f: Function): Bool =
         case f.effects.memory
             when memoryNone then not(f.effects.raises) andif not(f.effects.allocates)

@@ -92,6 +92,242 @@ b0():
 
 data f_closure words [0, 0]
 data g_f words [f_closure]
+== stored after a call of a runtime function that writes no memory
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init() {
+b0():
+  %0: ptr = symbol name
+  %1: ptr = call quest_alloc_exception(%0)
+  %2: int = const 1
+  %3: ptr = symbol g
+  store8 %3 + 0, %2
+  return
+}
+
+data name text "failed"
+data g writable zero 8
+-- after constants
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = const 1
+  %3: int = add %0, %2
+  return %3
+}
+
+function init() {
+b0():
+  %0: ptr = symbol name
+  %1: ptr = call quest_alloc_exception(%0)
+  %2: int = const 1
+  %3: ptr = symbol g
+  return
+}
+
+data name text "failed"
+data g words [1]
+== a module's, stored after registrations and its imports' initialization
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function qv_mod_m_init() {
+b0():
+  %0: ptr = symbol name
+  %1: int = const 0
+  %2: ptr = symbol descriptor
+  call quest_register_abstract_type(%0, %1, %2)
+  call qr_register_dicts()
+  call qv_mod_imported_init()
+  %3: int = const 1
+  %4: ptr = symbol g
+  store8 %4 + 0, %3
+  return
+}
+
+function qr_register_dicts() {
+b0():
+  %0: ptr = symbol dictionary
+  call quest_register_record_dict(%0)
+  return
+}
+
+data name text "T"
+data descriptor words [0]
+data dictionary words [0]
+data g writable zero 8
+-- after constants
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = const 1
+  %3: int = add %0, %2
+  return %3
+}
+
+function qv_mod_m_init() {
+b0():
+  %0: ptr = symbol name
+  %1: int = const 0
+  %2: ptr = symbol descriptor
+  call quest_register_abstract_type(%0, %1, %2)
+  call qr_register_dicts()
+  call qv_mod_imported_init()
+  %3: int = const 1
+  %4: ptr = symbol g
+  return
+}
+
+function qr_register_dicts() {
+b0():
+  %0: ptr = symbol dictionary
+  call quest_register_record_dict(%0)
+  return
+}
+
+data name text "T"
+data descriptor words [0]
+data dictionary words [0]
+data g words [1]
+== stored after a call of a function that calls one that loads it
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function outer(%0: int): int {
+b0(%0: int):
+  %1: int = call use(%0)
+  return %1
+}
+
+function init() {
+b0():
+  %0: int = const 5
+  %1: int = call outer(%0)
+  %2: int = const 1
+  %3: ptr = symbol g
+  store8 %3 + 0, %2
+  return
+}
+
+data g writable zero 8
+-- after constants
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function outer(%0: int): int {
+b0(%0: int):
+  %1: int = call use(%0)
+  return %1
+}
+
+function init() {
+b0():
+  %0: int = const 5
+  %1: int = call outer(%0)
+  %2: int = const 1
+  %3: ptr = symbol g
+  store8 %3 + 0, %2
+  return
+}
+
+data g writable zero 8
+== stored after a call of another unit's function
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init() {
+b0():
+  call elsewhere()
+  %0: int = const 1
+  %1: ptr = symbol g
+  store8 %1 + 0, %0
+  return
+}
+
+data g writable zero 8
+-- after constants
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function init() {
+b0():
+  call elsewhere()
+  %0: int = const 1
+  %1: ptr = symbol g
+  store8 %1 + 0, %0
+  return
+}
+
+data g writable zero 8
+== stored after a call of a module's initialization, not from one
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function main() {
+b0():
+  call qv_mod_m_init()
+  %0: int = const 1
+  %1: ptr = symbol g
+  store8 %1 + 0, %0
+  return
+}
+
+data g writable zero 8
+-- after constants
+function use(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol g
+  %2: int = load8 %1 + 0
+  %3: int = add %0, %2
+  return %3
+}
+
+function main() {
+b0():
+  call qv_mod_m_init()
+  %0: int = const 1
+  %1: ptr = symbol g
+  store8 %1 + 0, %0
+  return
+}
+
+data g writable zero 8
 == stored twice
 function use(%0: int): int {
 b0(%0: int):

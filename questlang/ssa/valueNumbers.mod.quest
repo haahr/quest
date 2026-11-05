@@ -50,21 +50,6 @@ export
             else false
         end
 
-    (* Whether a call may write memory: any but of a runtime function the
-     * effects table says does not (quest_alloc writes only what it makes) *)
-    let writesMemory(i: ssa.Inst): Bool =
-        if ssa.isOp(i ssa.opCallIndirect) then true
-        else
-            let var writes = true
-            for k = 0 upto {extent runtimeFunctions.functions - 1} do
-                let r = runtimeFunctions.functions[k]
-                if stringOp.equal(r.name i.symbol) then
-                    writes := case r.effects.memory when memoryWrites then true else false end
-                end
-            end
-            writes
-        end
-
     (* Whether an instruction left without uses can be removed *)
     let removable(i: ssa.Inst): Bool = numbered(i) orif ssa.isOp(i ssa.opLoad) orif ssa.isOp(i ssa.opCopy)
 
@@ -277,7 +262,7 @@ export
                         end
                     elsif ssa.isCall(i) then
                         vector.append(:ssa.Inst kept i)
-                        if writesMemory(i) then
+                        if runtimeFunctions.callWrites(i) then
                             generations := generations + 1
                             memory := generations
                         end
