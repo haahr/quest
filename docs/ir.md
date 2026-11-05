@@ -403,7 +403,11 @@ A function nested in a polymorphic one takes the enclosing functions' type param
 parameters (same symbols, so its types need no rewriting), which its closure supplies: `closure g {x} [A]` inside
 `f [A]`. Recursive local functions that capture one another (or themselves) are made in a `let rec`, whose closures
 refer to the variables being bound; the C printer fills in those captures once all the group's closures are
-allocated, as the IR interpreter does.
+allocated, as the IR interpreter does. In the self-hosted compiler, a group outside any polymorphic function whose
+functions capture nothing but one another needs no environment: each reads the others as static closures,
+`let g = closure g {}`, and the group's own closures are static too. A local function the simplifier specializes
+(§8.6) is such a group, capturing itself, and would otherwise allocate a closure each time its enclosing function
+runs (boyer's `rewrite`).
 
 **Known closures** (`walk.knownClosures`, the self-hosted compiler's): both backends call a closure's function
 directly when the variable called holds a known closure: one a let makes, a copy of a variable that holds one, or a

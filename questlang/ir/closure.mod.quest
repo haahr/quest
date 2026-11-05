@@ -67,12 +67,50 @@ export
             let var capturesGroup = false
             let group = hashMap.new(:Int :Bool intEqual hash.int)
             for i = 0 upto {extent functions - 1} do hashMap.insert(:Int :Bool group functions[i].v.id true) end
+            let all = array of(extent functions tuple
+                let code = functions[0] let captures = array of :Variable end
+            end)
+            (* Whether the group's functions capture nothing but each other *)
+            let var closed = extent typeParams is 0
+            for i = 0 upto {extent functions - 1} do
+                all[i] := lift(c functions[i] typeParams)
+                for j = 0 upto {extent all[i].captures - 1} do
+                    if hashMap.contains(:Int :Bool group all[i].captures[j].id) then capturesGroup := true
+                    else closed := false end
+                end
+            end
+            if closed andif capturesGroup then
+                (* Then each function's closure is static: what it reads from
+                 * its environment is the static closure of another (as a
+                 * specialized local function's of itself, docs/ir.md section
+                 * 8.6), and none needs one *)
+                let codes = hashMap.new(:Int :nodes.Function intEqual hash.int)
+                for i = 0 upto {extent functions - 1} do
+                    hashMap.insert(:Int :nodes.Function codes functions[i].v.id all[i].code)
+                end
+                for i = 0 upto {extent functions - 1} do
+                    let code = all[i].code
+                    let n = extent all[i].captures
+                    for k = 0 upto {n - 1} do
+                        case vector.get(:Stmt code.body.statements k)
+                            when sLet with x then
+                                x.value := option opMakeClosure of nodes.Op with
+                                    let var code = hashMap.find(:Int :nodes.Function codes all[i].captures[k].id)
+                                    let var captures = array of :nodes.Atom end
+                                    let var typeArgs = array of :model.Type end
+                                    let var descriptors = array of :nodes.Descriptor end
+                                end
+                            else ok
+                        end
+                    end
+                    code.env := maybe.none(:Variable)
+                    all[i] := tuple let code = code let captures = array of :Variable end end
+                end
+                capturesGroup := false
+            end
             for i = 0 upto {extent functions - 1} do
                 let f = functions[i]
-                let lifted = lift(c f typeParams)
-                for j = 0 upto {extent lifted.captures - 1} do
-                    if hashMap.contains(:Int :Bool group lifted.captures[j].id) then capturesGroup := true end
-                end
+                let lifted = all[i]
                 let captures = array of(extent lifted.captures nodes.atomOfVar(f.v))
                 for j = 0 upto {extent lifted.captures - 1} do captures[j] := nodes.atomOfVar(lifted.captures[j]) end
                 vector.append(:Stmt lets nodes.letStmt(f.v option opMakeClosure of nodes.Op with

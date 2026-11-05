@@ -182,12 +182,11 @@ b2():
   %6: int = const 1
   %7: int = sub %13, %6
   @36:62
-  %8: ptr = load8 %2 + 8 invariant
+  %8: ptr = null
   @36:58
   %15: int = add %14, %6
   jump b3(%8, %7, %15)
 b3(%12: ptr, %13: int, %14: int):
-  %2: ptr = load8 %12 + 0 invariant
   @36:39
   %3: int = const 0
   %4: int = le %13, %3
@@ -197,7 +196,6 @@ b3(%12: ptr, %13: int, %14: int):
 
 function qf_dbl(%0: ptr, %1: int): int {
 b0(%0: ptr, %1: int):
-  %2: ptr = load8 %0 + 0 invariant
   @37:39
   %3: int = const 0
   %4: int = le %1, %3
@@ -212,7 +210,7 @@ b2():
   %6: int = const 1
   %7: int = sub %1, %6
   @37:62
-  %8: ptr = load8 %2 + 8 invariant
+  %8: ptr = null
   %9: int = call qf_dbl(%8, %7)
   @37:58
   %10: int = const 2
@@ -338,94 +336,77 @@ b0(%0: int, %1: ptr):
   @42:1
   %51: int = const 0
   jump b1(%51)
-b1(%109: int):
+b1(%97: int):
   @42:1
   %55: int = const 1
-  %56: int = le %109, %55
+  %56: int = le %97, %55
   branch %56, b3(), b4()
 b2():
   @42:1
-  %108: int = const 0
-  return %108
+  %96: int = const 0
+  return %96
 b3():
   @42:1
-  %60: int = const 8
-  %61: ptr = symbol quest_layout_env_qf_inc
-  %62: ptr = call quest_alloc(%60, %61)
-  %63: int = const 16
-  %64: ptr = symbol quest_layout_closure
-  %65: ptr = call quest_alloc(%63, %64)
-  %66: ptr = symbol qf_inc
-  store8 %65 + 0, %66
-  store8 %65 + 8, %62
-  store8 %62 + 0, %65
-  call quest_barrier(%62)
-  %68: ptr = symbol quest_layout_env_qf_dbl
-  %69: ptr = call quest_alloc(%60, %68)
-  %72: ptr = call quest_alloc(%63, %64)
-  %73: ptr = symbol qf_dbl
-  store8 %72 + 0, %73
-  store8 %72 + 8, %69
-  store8 %69 + 0, %72
-  call quest_barrier(%69)
+  %60: ptr = symbol qf_inc_closure
+  %61: ptr = symbol qf_dbl_closure
   @38:20
-  %75: int = const 0
-  %76: int = eq %109, %75
+  %63: int = const 0
+  %64: int = eq %97, %63
   @38:17
-  %110: ptr = select %76, %65, %72
-  jump b8(%110)
+  %98: ptr = select %64, %60, %61
+  jump b8(%98)
 b4():
   @42:1
   jump b2()
 b5():
   @42:1
-  jump b1(%106)
+  jump b1(%94)
 b6():
   @42:45
-  %84: ptr = load8 %82 + 0 invariant
-  %85: ptr = load8 %82 + 8 invariant
-  %86: int = const 5
-  %87: int = callIndirect %84, %85, %86
+  %72: ptr = load8 %70 + 0 invariant
+  %73: ptr = load8 %70 + 8 invariant
+  %74: int = const 5
+  %75: int = callIndirect %72, %73, %74
   @42:36
-  %88: ptr = call quest_conv_int(%87)
+  %76: ptr = call quest_conv_int(%75)
   @42:27
-  %89: ptr = symbol qs_14
-  %90: int = const 3
-  %91: ptr = call quest_string_new(%89, %90)
-  %92: ptr = call quest_string_concat(%91, %88)
+  %77: ptr = symbol qs_14
+  %78: int = const 3
+  %79: ptr = call quest_string_new(%77, %78)
+  %80: ptr = call quest_string_concat(%79, %76)
   @11:45
-  %93: ptr = symbol qm_writer
-  %94: ptr = load8 %93 + 0
-  %95: ptr = load8 %93 + 8
-  %96: int = load8 %95 + 40
-  %97: ptr = ptrAdd %94, %96
-  %98: ptr = load8 %97 + 0
+  %81: ptr = symbol qm_writer
+  %82: ptr = load8 %81 + 0
+  %83: ptr = load8 %81 + 8
+  %84: int = load8 %83 + 40
+  %85: ptr = ptrAdd %82, %84
+  %86: ptr = load8 %85 + 0
   @11:59
-  %99: ptr = symbol qs_12
-  %100: int = const 1
-  %101: ptr = call quest_string_new(%99, %100)
-  %102: ptr = call quest_string_concat(%92, %101)
+  %87: ptr = symbol qs_12
+  %88: int = const 1
+  %89: ptr = call quest_string_new(%87, %88)
+  %90: ptr = call quest_string_concat(%80, %89)
   @11:28
-  call quest_writer_put_string(%98, %102)
+  call quest_writer_put_string(%86, %90)
   @42:1
-  %106: int = add %109, %100
+  %94: int = add %97, %88
   jump b7()
 b7():
   @42:1
   jump b5()
-b8(%74: ptr):
+b8(%62: ptr):
   @38:17
-  %77: int = const 16
-  %78: ptr = symbol quest_layout_env_qf_g
-  %79: ptr = call quest_alloc(%77, %78)
-  store8 %79 + 0, %74
-  %81: ptr = symbol quest_layout_closure
-  %82: ptr = call quest_alloc(%77, %81)
-  %83: ptr = symbol qf_g
-  store8 %82 + 0, %83
-  store8 %82 + 8, %79
-  store8 %79 + 8, %82
-  call quest_barrier(%79)
+  %65: int = const 16
+  %66: ptr = symbol quest_layout_env_qf_g
+  %67: ptr = call quest_alloc(%65, %66)
+  store8 %67 + 0, %62
+  %69: ptr = symbol quest_layout_closure
+  %70: ptr = call quest_alloc(%65, %69)
+  %71: ptr = symbol qf_g
+  store8 %70 + 0, %71
+  store8 %70 + 8, %67
+  store8 %67 + 8, %70
+  call quest_barrier(%67)
   jump b6()
 }
 
@@ -460,14 +441,8 @@ data g_middle writable zero 8
 data g_outer writable zero 8
 data qs_13 text "2. "
 data qs_14 text "3. "
-data qs_15 text "env_qf_inc"
-data qlk_env_qf_inc words [1]
-data quest_layout_env_qf_inc words [qs_15, 0, 8, 4294967296, qlk_env_qf_inc]
-data qs_16 text "env_qf_dbl"
-data qlk_env_qf_dbl words [1]
-data quest_layout_env_qf_dbl words [qs_16, 0, 8, 4294967296, qlk_env_qf_dbl]
-data qs_17 text "env_qf_g"
+data qs_15 text "env_qf_g"
 data qlk_env_qf_g words [257]
-data quest_layout_env_qf_g words [qs_17, 0, 16, 8589934592, qlk_env_qf_g]
+data quest_layout_env_qf_g words [qs_15, 0, 16, 8589934592, qlk_env_qf_g]
 data qr_roots words [g_up, 1, g_down, 1, g_both, 1, g_inner, 1, g_middle, 1, g_outer, 1, 0, 0]
 
