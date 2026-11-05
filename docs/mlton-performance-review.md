@@ -158,12 +158,8 @@ MLton's collector spends 25 ms of a 146 ms run.
 allocation can gain on these four, 0.46 to 0.68 of their time. That leaves them 3 to 25 times MLton's, so the
 allocations themselves (§3.2 to §3.5) matter as much as their price.
 
-An interim step needs no new collector. Boehm's `gc_inline.h` (`GC_MALLOC_WORDS`, `GC_FAST_MALLOC_GRANS`) pops from
-a free list the caller owns and refills it with `GC_generic_malloc_many`. A runtime with one mutator thread can keep
-one free list per size class in globals and inline the pop into `quest_alloc`. That removes the thread-local lookup
-and most of `GC_malloc_kind`, but not marking or `GC_build_fl`. It changes only the runtime, so it keeps to the
-decision against inline allocation in the backends while the collector is Boehm's
-([arm64.md](arm64.md) §6.3, item 2). It is to be measured before it is planned.
+An interim step was considered and dropped: popping from free lists of Boehm's (`gc_inline.h`) inline in
+`quest_alloc`. It would change only the runtime, but it depends on Boehm's internals, and Boehm is to be replaced.
 
 ### 3.2. Allocations through block parameters (wc-scanStream)
 
@@ -329,11 +325,15 @@ arm64-performance-review.md §4.
 | 2 | Scalar replacement across block parameters | `ssa/escape` | 100 to 1,000 | 2 to 3 | wc-scanStream 0.16 of its time; loops that carry tuples |
 | 3 | Specialization of recursive functions on a known function argument | `ir/inline`, `ir/clone`, `ir/contify` | 100 to 1,000 | 2 to 3 | ratio-regions 0.43; every `lists.app` and `exists` of a closure |
 | 4 | Calls of a `let`-bound `fun` as known calls | `ir/simplify`, `ir/inline` | 100 | 1 to 2 | zebra, up to 0.59 |
-| 5 | An inline free-list pop in `quest_alloc` (`gc_inline.h`), as an experiment | `runtime` | 10 to 100 | 1 | part of 0.46 to 0.68 on all four |
-| 5a | No clears on an edge into a raising block; such edges laid out cold (§3.8) | `regalloc`, `select` (`layout`) | 10 to 100 | 1 | a taken branch less per check, in large functions |
+| 5 | No clears on an edge into a raising block; such edges laid out cold (§3.8) | `regalloc`, `select` (`layout`) | 10 to 100 | 1 | a taken branch less per check, in large functions |
 | 6 | The collector, inline bump allocation | [collector.md](collector.md) | — | — | 0.46 to 0.68 on all four, with what 1 to 4 leave |
-| 7 | A generative, extensible type, for peek | the language: for the user | — | — | peek |
-| 8 | Correct option-values.md: its step does not unbox `maybe.T(Int)` | `docs` | — | — | — |
+| 7 | A generative, extensible type, for peek: declined (§3.7) | the language | — | — | peek |
+| 8 | Correct option-values.md: its step does not unbox `maybe.T(Int)` (done) | `docs` | — | — | — |
+
+Items 1 to 5 are to be planned, in that order, in the self-hosted compiler only: they are optimizations, so the
+bootstrap compiler need not follow (two-compilers policy). Item 3 is specialization per call site with a size bound,
+not whole-program defunctionalization. The language is left as it is for peek, and so are options of `Int`, which stay
+boxed (§3.5). An interim inline free-list pop in Boehm (§3.1) is not to be done, since Boehm is to be replaced.
 
 Items 1 to 4 each remove work that MLton does not do, and are independent of the collector. Their gains multiply
 with item 6's, since each removes allocations whose cost item 6 lowers. Items 2 and 3 are measured above by hand;
