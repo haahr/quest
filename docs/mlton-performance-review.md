@@ -26,7 +26,7 @@ the extra instructions do, in order of what they cost:
    peek a million times. Four causes, each a different optimization that is missing:
    - **wc-scanStream:** values passed through a block parameter escape (§3.2).
    - **ratio-regions:** closures passed to recursive library functions are allocated at each call (§3.3).
-   - **zebra:** calls of closures through variables are not known calls (§3.4).
+   - **zebra:** calls of closures captured by another function are not known calls (§3.4).
    - **peek and zebra:** `maybe.T(Int)` is boxed (§3.5).
 
    Removing each by hand in the source takes wc-scanStream to 0.16 of its time, ratio-regions to 0.43, and zebra to
@@ -126,7 +126,7 @@ in the scratchpad (not kept). Each passes its own check (`raise bench.bug` on a 
 - **ratio-regions, loops:** `loop2`'s two `lists.app` calls written as local recursive functions over the list, which
   contification makes loops. This is what specializing `app` for its known argument would make (§3.3).
 - **zebra, `Int`:** `find` returns an `Int`, ~1 for none, rather than a `maybe.T(Int)`. This is what an unboxed option
-  of an `Int` would make. A known call of `same` would let escape analysis remove the boxes instead (§3.4).
+  of an `Int` would make. A known call of `same`, inlined, would let escape analysis remove the boxes instead (§3.4).
 
 | Variant | count | before | after | after, bump | MLton |
 |---|--:|--:|--:|--:|--:|
@@ -234,19 +234,23 @@ The clone is made per call site, so it needs a size bound like the inliner's. `l
 `lists.map`, and folds are the cases that matter, and they are small. The variant with local loops takes
 ratio-regions from 9.96 s to 4.30 s at count 384, and halves its instructions.
 
-### 3.4. Known closures called through variables (zebra)
+### 3.4. Known closures called through captures (zebra)
 
 **What happens.** zebra's `same`, `left`, and `adjacent` are `make(fun ...)`: `make` returns a `fun`, and is inlined,
-so each variable is bound to a known function. Their calls in `isConsistent` are still indirect, through the
-closure: 13 `blr`s remain in `qf_isConsistent` in the `Int` variant, where `find`'s comparisons are inlined. Each
-`find` inlined into `isConsistent` returns a `maybe.some` box (28 calls of `quest_alloc` in the function), and the
-box is an argument of such an indirect call, so it escapes.
+so each variable is bound to a known function, and the simplified IR calls them as such (`call f.11(...)`: 9 calls of
+`same`'s function and 4 of `adjacent`'s in `isConsistent`). Their calls in the code are still indirect: 13 `blr`s
+remain in `qf_isConsistent` in the `Int` variant, where `find`'s comparisons are inlined. `isConsistent` is a local
+function that names them, so closure conversion makes each a capture, read from its environment at its start, and
+the backends call a function directly only through a variable bound to its closure. Each `find` inlined into
+`isConsistent` returns a `maybe.some` box (28 calls of `quest_alloc` in the function), and the box is an argument of
+such a call, so it escapes.
 
-**Recommendation.** In the simplifier, treat a variable bound by `let` to a `fun`, and never assigned, as that function:
-a call of it is a call of a known function, which the inliner and contification can take. With `same`'s body inlined,
-the `maybe.some` boxes are made and read in one function, and escape analysis already removes that case. The `Int`
-variant measures a similar effect (2.45 s to 1.45 s, without the 84 million boxes), but by changing the
-representation; how much of it the known call would recover is to be measured.
+**Recommendation.** Treat a variable read from a closure's environment as a known closure when every closure of that
+function captures, at that index, a known closure of one function, so that the calls through it are direct
+([mlton-gap.md](mlton-gap.md) §6). A direct call still takes the boxes as arguments; they are removed only where the
+inliner then inlines `same`'s function (13 calls of a function larger than its threshold) or where an unboxed
+representation of the option would apply. The `Int` variant measures the larger effect (2.45 s to 1.45 s, without the
+84 million boxes), by changing the representation; how much the direct calls recover is to be measured.
 
 ### 3.5. Options of `Int` are boxed (peek, zebra)
 
@@ -324,16 +328,17 @@ arm64-performance-review.md §4.
 | 1 | Inline type applications, and members naming their module's variables | `ir/inline` | 100 | 1 to 2 | a few percent on peek, ratio-regions, zebra; every user of `maybe` and `lists` |
 | 2 | Scalar replacement across block parameters | `ssa/escape` | 100 to 1,000 | 2 to 3 | wc-scanStream 0.16 of its time; loops that carry tuples |
 | 3 | Specialization of recursive functions on a known function argument | `ir/inline`, `ir/clone`, `ir/contify` | 100 to 1,000 | 2 to 3 | ratio-regions 0.43; every `lists.app` and `exists` of a closure |
-| 4 | Calls of a `let`-bound `fun` as known calls | `ir/simplify`, `ir/inline` | 100 | 1 to 2 | zebra, up to 0.59 |
+| 4 | Calls of captured known closures as known calls | `ir/closure`, the C printer, the SSA builder | 100 | 1 to 2 | zebra, up to 0.59 |
 | 5 | No clears on an edge into a raising block; such edges laid out cold (§3.8) | `regalloc`, `select` (`layout`) | 10 to 100 | 1 | a taken branch less per check, in large functions |
 | 6 | The collector, inline bump allocation | [collector.md](collector.md) | — | — | 0.46 to 0.68 on all four, with what 1 to 4 leave |
 | 7 | A generative, extensible type, for peek: declined (§3.7) | the language | — | — | peek |
 | 8 | Correct option-values.md: its step does not unbox `maybe.T(Int)` (done) | `docs` | — | — | — |
 
-Items 1 to 5 are to be planned, in that order, in the self-hosted compiler only: they are optimizations, so the
-bootstrap compiler need not follow (two-compilers policy). Item 3 is specialization per call site with a size bound,
-not whole-program defunctionalization. The language is left as it is for peek, and so are options of `Int`, which stay
-boxed (§3.5). An interim inline free-list pop in Boehm (§3.1) is not to be done, since Boehm is to be replaced.
+Items 1 to 5 are planned in [mlton-gap.md](mlton-gap.md), in that order, in the self-hosted compiler only: they are
+optimizations, so the bootstrap compiler need not follow (two-compilers policy). Item 3 is specialization per call site
+with a size bound, not whole-program defunctionalization. The language is left as it is for peek, and so are options of
+`Int`, which stay boxed (§3.5). An interim inline free-list pop in Boehm (§3.1) is not to be done, since Boehm is to be
+replaced.
 
 Items 1 to 4 each remove work that MLton does not do, and are independent of the collector. Their gains multiply
 with item 6's, since each removes allocations whose cost item 6 lowers. Items 2 and 3 are measured above by hand;

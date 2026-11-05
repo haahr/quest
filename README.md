@@ -324,6 +324,7 @@ program through every phase, then [docs/type-system.md](docs/type-system.md) and
   `specialize`, `closure`, `represent`, `describe`).
 - [docs/inlining.md](docs/inlining.md): the plan for what remains of the IR optimizer (ir.md §8.6): tuning, and
   workers.
+- [docs/mlton-gap.md](docs/mlton-gap.md): the plan for five optimizations the MLton performance review found missing.
 - [docs/c-representation.md](docs/c-representation.md): the C runtime's ABI: value and slot representations, proxies,
   closures, and arrays.
 - [docs/codegen-c.md](docs/codegen-c.md): how the IR is printed as C99 and compiled.
