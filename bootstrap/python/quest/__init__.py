@@ -1,4 +1,28 @@
-"""Quest Bootstrap Compiler Package."""
+"""The Quest bootstrap compiler, in Python: the secondary compiler, which
+builds stage 1 of the self-hosted compiler in questlang/ (the primary one) when
+there is no release, and which ./questboot runs. Its subpackages and modules
+are imported by name. The re-exports below are kept for their side effect:
+importing the package imports the type checker, which registers its
+binding elaborator with quest.modules.elaboration, which needs it.
+
+- quest.syntax: tokens, the tokenizer, the parser, the AST, and desugaring
+- quest.types: types, kinds, environments, subtyping, and type printing
+- quest.typechecker: type elaboration and the type checker, producing the
+  typed AST
+- quest.modules: modules, interfaces, imports, and separate compilation
+- quest.values, quest.interpreter: values, the tree-walking interpreter, and
+  the IR interpreter
+- quest.ir: the intermediate representation and its passes (docs/ir.md)
+- quest.codegen: layouts and the C backend, which prints the IR as C
+- quest.build: whole-program and multi-module builds
+- quest.config: compiler options and the artifact ABI
+- quest.testing: the golden test runner
+- quest.diagnostics, quest.pipeline, quest.repl: error reporting, the compiler
+  phases (docs/pipeline.md), and the REPL
+
+docs/compiler-organization.md describes the self-hosted compiler's modules and
+the bootstrap module each follows.
+"""
 
 from quest.types import (
     QKind,

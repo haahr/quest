@@ -11,13 +11,25 @@
  * (set by every allocation, by which an interior or ambiguous word finds its
  * object) and one of the marks. An allocation of 8 KB and up takes a run of
  * blocks of its own (section 3.9); pointer-free objects go to blocks of their
- * own, through a cursor of their own (the noscan space). A collection stops
- * the world, marks from the roots by the layouts (precise words followed,
- * ambiguous ones validated against the start bits), sets the line marks of
- * what it marked, and then keeps only live objects' start bits (decision 14)
- * and classifies every block by its free lines, which the next allocations
- * are bumped through, zeroed as each hole is entered. This is step 3 of the
- * plan: stop-the-world and non-generational; the barriers count. */
+ * own, through a cursor of their own (the noscan space). A collection marks
+ * from the roots by the layouts (precise words followed, ambiguous ones
+ * validated against the start bits), sets the line marks of what it marked,
+ * and then keeps only live objects' start bits (decision 14) and classifies
+ * every block by its free lines, which the next allocations are bumped
+ * through, zeroed as each hole is entered.
+ *
+ * Collections are of two kinds (section 3.5). The mark bits are sticky: a
+ * full collection alone clears them, so the objects allocated since the last
+ * collection are the unmarked ones, the young. A minor collection, run once
+ * the nursery's blocks are taken, marks only young objects and sweeps only
+ * the blocks they are in, taking as roots, besides the usual ones, the old
+ * objects the write barrier logged and the cards it marked since (an old
+ * object or slot a pointer was stored into). A full collection stops the
+ * world, except one the heap's growth asks for after a full collection that
+ * took longer than a pause may (QUEST_GC_PAUSE): that one runs as a cycle,
+ * marking in slices between which the program runs (section 3.10). On arm64
+ * the stacks' frames are scanned precisely, by the stack maps each unit
+ * registers (section 3.3); other frames' words are ambiguous. */
 
 #define _GNU_SOURCE
 #include "quest_runtime.h"

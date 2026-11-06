@@ -6,15 +6,18 @@
  * each module lowered from its typed module as a module file is, then its
  * module and functions moved into the program's unit, dependencies first, and
  * every reference to it made a reference to the module the unit now defines.
- * The passes and every backend then see one unit. *)
+ * The passes and every backend then see one unit. A module known only through
+ * its interface (a precompiled module, such as the library's, whose source the
+ * build does not have) is not merged: it stays an import, linked from its
+ * object file. *)
 interface Whole
 import
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/types/env : questlang/types/Env
 export
-    (* unit, a program's, with the modules it imports merged into it; raises
-     * lower.loweringError if one is known only through its interface (a
-     * precompiled module, whose source the build does not have) *)
+    (* unit, a program's, with the modules it imports merged into it, except
+     * those known only through their interfaces (precompiled modules), which
+     * stay in its imports *)
     mergeImports(unit: nodes.Unit e: env.T): nodes.Unit
     (* unit, a whole program's, with only the members of its modules that its
      * code can reach: from its main body, and from what its modules'

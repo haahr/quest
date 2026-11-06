@@ -507,7 +507,7 @@ static void quest_print_live_frames(void) {
  * raise again (§5.4) */
 static const QTrace *quest_capture_trace(void) {
 #ifdef Q_HAVE_UNWIND
-    QTrace *trace = (QTrace *)quest_alloc_bytes(sizeof(QTrace));
+    QTrace *trace = (QTrace *)quest_alloc(sizeof(QTrace), &quest_layout_trace);
     trace->n_runs = 0;
     trace->truncated = false;
     quest_walk_stack(quest_capture_frame, trace);
@@ -3127,7 +3127,6 @@ const QTypeDescriptor *quest_make_array_descriptor(const QTypeDescriptor *elemen
 }
 
 const QTypeDescriptor *quest_make_opaque_descriptor(const char *name) {
-    /* Opaque types use unique pointer identity for encapsulation */
     const char *dup_name = name != NULL ? quest_dup_str(name) : "Opaque";
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_OPAQUE;
@@ -3136,7 +3135,9 @@ const QTypeDescriptor *quest_make_opaque_descriptor(const char *name) {
     desc->alignment = sizeof(QVal);
     desc->is_subtype = quest_is_subtype;
     desc->extra = NULL;
-    /* Do NOT intern: each opaque type creation has unique nominal identity */
+    /* Not interned: each call makes a new descriptor. Its identity is its
+     * name all the same, since quest_is_subtype takes two opaque
+     * descriptors of the same name (and equal arguments) as equal */
     return desc;
 }
 
@@ -4621,17 +4622,17 @@ QClosure qv_sym_gt_closure = { (void *)qv_sym_gt_trampoline, NULL };
 static QBool qv_sym_gt_equals_trampoline(void *env, QInt a, QInt b) { (void)env; return a >= b; }
 QClosure qv_sym_gt_equals_closure = { (void *)qv_sym_gt_equals_trampoline, NULL };
 
-/* Real arithmetic */
-static QReal qv_sym_plus_plus_trampoline(void *env, QReal a, QReal b) { (void)env; return a + b; }
+/* Real arithmetic, raising real.error as the operators do (quest_real_result_at) */
+static QReal qv_sym_plus_plus_trampoline(void *env, QReal a, QReal b) { (void)env; return quest_real_add(a, b); }
 QClosure qv_sym_plus_plus_closure = { (void *)qv_sym_plus_plus_trampoline, NULL };
 
-static QReal qv_sym_minus_minus_trampoline(void *env, QReal a, QReal b) { (void)env; return a - b; }
+static QReal qv_sym_minus_minus_trampoline(void *env, QReal a, QReal b) { (void)env; return quest_real_sub(a, b); }
 QClosure qv_sym_minus_minus_closure = { (void *)qv_sym_minus_minus_trampoline, NULL };
 
-static QReal qv_sym_star_star_trampoline(void *env, QReal a, QReal b) { (void)env; return a * b; }
+static QReal qv_sym_star_star_trampoline(void *env, QReal a, QReal b) { (void)env; return quest_real_mul(a, b); }
 QClosure qv_sym_star_star_closure = { (void *)qv_sym_star_star_trampoline, NULL };
 
-static QReal qv_sym_slash_slash_trampoline(void *env, QReal a, QReal b) { (void)env; return a / b; }
+static QReal qv_sym_slash_slash_trampoline(void *env, QReal a, QReal b) { (void)env; return quest_real_divide(a, b); }
 QClosure qv_sym_slash_slash_closure = { (void *)qv_sym_slash_slash_trampoline, NULL };
 
 static QReal qv_sym_caret_caret_trampoline(void *env, QReal a, QReal b) { (void)env; return quest_real_pow(a, b); }

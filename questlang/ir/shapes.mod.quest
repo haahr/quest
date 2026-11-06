@@ -343,6 +343,35 @@ export
         else maybe.none(:ShapeKind)
         end
 
+    let transparency = tuple let var on = false end
+    let setTransparentAbstractTypes(on: Bool): Ok = transparency.on := on
+    let transparentAbstractTypes(): Bool = transparency.on
+
+    (* The representations of the abstract types whose representations are
+     * known, as a substitution, made again when more are known *)
+    let representations = tuple let var count = ~1 let var subst = model.newSubst() end
+
+    (* A type with the transparent abstract types in it replaced by their
+     * representations (an application of one by its operator's, which the
+     * shape then reduces), until none is left *)
+    let transparent(t0: Type): Type =
+        begin
+            if representations.count isnot abstractTypes.representationCount() then
+                representations.subst := abstractTypes.representations()
+                representations.count := abstractTypes.representationCount()
+            end
+            let var t = t0
+            let var more = true
+            let var rounds = 0
+            while more andif {rounds < 8} do
+                let u = model.substitute(t representations.subst)
+                more := not(model.same(u t))
+                t := u
+                rounds := rounds + 1
+            end
+            t
+        end
+
     (* The shape of t, made once for each type node and cached by its id
      * (built). shape calls it on a type it has stripped of aliases and put in
      * canonical form, and build on the parts of the type it is building,
@@ -374,35 +403,6 @@ export
      * t again at the tail, the lookup finds the placeholder, and the tail
      * points to it. The placeholder is then filled in from the unfolding's
      * shape (fillFrom), keeping t as its type. *)
-    let transparency = tuple let var on = false end
-    let setTransparentAbstractTypes(on: Bool): Ok = transparency.on := on
-    let transparentAbstractTypes(): Bool = transparency.on
-
-    (* The representations of the abstract types whose representations are
-     * known, as a substitution, made again when more are known *)
-    let representations = tuple let var count = ~1 let var subst = model.newSubst() end
-
-    (* A type with the transparent abstract types in it replaced by their
-     * representations (an application of one by its operator's, which the
-     * shape then reduces), until none is left *)
-    let transparent(t0: Type): Type =
-        begin
-            if representations.count isnot abstractTypes.representationCount() then
-                representations.subst := abstractTypes.representations()
-                representations.count := abstractTypes.representationCount()
-            end
-            let var t = t0
-            let var more = true
-            let var rounds = 0
-            while more andif {rounds < 8} do
-                let u = model.substitute(t representations.subst)
-                more := not(model.same(u t))
-                t := u
-                rounds := rounds + 1
-            end
-            t
-        end
-
     let rec shapeOf(t: Type): Shape =
         begin
             let cached = hashMap.get(:Int :Shape built t.id)

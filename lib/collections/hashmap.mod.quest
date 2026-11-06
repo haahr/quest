@@ -15,9 +15,14 @@
  * - Perturbation recurrence for collision resolution:
  *     pert := pert >> 5
  *     i := (5 * i + 1 + pert) & mask
- * - When tombstones accumulate (deletedCount >= count / 2), the dense vectors
- *   are compacted and 'indices' is rebuilt, preserving surviving elements in
- *   exact insertion order.
+ * - A deleted entry stays in the dense vectors, flagged in 'deleted', and its
+ *   slot in 'indices' becomes TOMBSTONE. compactDense drops deleted entries,
+ *   keeping the rest in insertion order, and rebuilds 'indices'. It runs:
+ *     in delete, at the same capacity, when deletedCount > 8 and
+ *       deletedCount >= count;
+ *     in insert (resizeIfNeeded), when the dense vectors reach 2/3 of the
+ *       capacity: at the same capacity if deletedCount > count / 3, else at
+ *       twice it.
  *)
 
 module hashMap : HashMap

@@ -796,8 +796,6 @@ static const QVariantCaseDescriptor *quest_variant_case(const QTypeDescriptor *d
     return c;
 }
 
-/* Finds the records, tuples, and arrays reached more than once, and adds the
- * types of dynamic values to the type graph, in the order they are written */
 /* A value stored as a type parameter (read from its slot in its QVal form, or
  * as a value of the parameter's bound): the value at its own type */
 static const QTypeDescriptor *quest_unstore(const QTypeDescriptor *desc, QVal *val) {
@@ -824,6 +822,8 @@ static const QTypeDescriptor *quest_concrete(const QTypeDescriptor *desc, QVal *
     }
 }
 
+/* Finds the records, tuples, and arrays reached more than once, and adds the
+ * types of dynamic values to the type graph, in the order they are written */
 static void quest_scan_value(const QTypeDescriptor *desc, QVal val, QPtrTable *table, QTypeGraph *g) {
     desc = quest_concrete(desc, &val);
     if (desc == NULL) quest_raise_dynamic_error();
@@ -1665,10 +1665,6 @@ static void quest_check_abstract_desc(QTypeDescriptor *desc) {
     meta->rep = NULL;
 }
 
-/* Builds a descriptor for every node of a type table: first each node's kind
- * (which determines how a component of that type is stored), then the nodes'
- * contents, which may refer to any node, and then checks the representations of
- * abstract types, which may refer to nodes after them */
 /* An auto type: {"bound": TypeRef | null, "components": [[label, TypeRef],
  * ...]}, its components in slots in order, as compiled code lays them out */
 static void quest_fill_auto_desc(const QTypeTable *t, QTypeDescriptor *desc, QJsonValue *body) {
@@ -1697,6 +1693,10 @@ static void quest_fill_auto_desc(const QTypeTable *t, QTypeDescriptor *desc, QJs
     desc->extra = meta;
 }
 
+/* Builds a descriptor for every node of a type table: first each node's kind
+ * (which determines how a component of that type is stored), then the nodes'
+ * contents, which may refer to any node, and then checks the representations of
+ * abstract types, which may refer to nodes after them */
 static QTypeTable *quest_read_type_table(QJsonValue *types) {
     if (types == NULL || types->kind != QJSON_ARRAY) quest_raise_dynamic_error();
     size_t count = types->u.a.count;

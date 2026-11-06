@@ -15,7 +15,9 @@ class TokenKind(Enum):
     STRING_LIT = auto()     # e.g. "hello world", "escaped \" quotes"
 
     # --- Identifiers and Symbolic Operators ---
-    IDENT = auto()          # Alphanumeric: [A-Za-z][A-Za-z0-9_]*
+    # A letter, then letters and digits (str.isalpha, then str.isalnum, so
+    # Latin-1 letters such as é count); _ is a symbolic character, not a letter
+    IDENT = auto()
     SYMBOLIC_INFIX = auto()  # Custom symbolic operator: ++, --, **, <>, +, -, *, /, etc.
 
     # --- Delimiters & Punctuation ---

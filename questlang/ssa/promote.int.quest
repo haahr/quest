@@ -1,13 +1,15 @@
 (* Quest Self-Hosted Compiler: The SSA's Slot Promotion Interface
  *
- * Promotes stack slots to values (docs/ssa.md section 4.1): a slot of one word
- * whose address is used only to load and store the whole word, all of one
- * type, becomes values, with block parameters where the definitions that reach
- * a block differ (Cytron et al.'s placement at the iterated dominance frontier,
- * then renaming along the dominator tree). A load before any store reads zero.
- * The slots left are renumbered. A function that enters a try keeps its slots,
- * since its handler must see what the body stored (docs/arm64.md section
- * 3.6). *)
+ * Promotes stack slots to values (docs/ssa.md section 4.1): a slot of whole
+ * words whose address is used only to load and store a word at a time, or a
+ * word's first byte, becomes values, one variable per word. Each word must
+ * hold values of one type, be stored at one width, and, if stored by byte,
+ * not be loaded whole. Each variable becomes values, with block parameters
+ * where the definitions that reach a block differ (Cytron et al.'s placement
+ * at the iterated dominance frontier, then renaming along the dominator
+ * tree). A load before any store reads zero. The slots left are renumbered.
+ * A function that enters a try keeps its slots, since its handler must see
+ * what the body stored (docs/arm64.md section 3.6). *)
 
 interface Promote
 import

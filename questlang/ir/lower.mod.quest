@@ -165,8 +165,8 @@ export
      *   (--echo) or only the last one's (--print-result), and sourceMap, the
      *   file in which the offsets of nodes that can raise are.
      *
-     * value and effect, the entry points for expressions, are described in
-     * the interface's header comment. *)
+     * value and effect, under Values and Effects below, are the entry points
+     * for expressions. *)
     Let Earlier = Tuple holder: String field: String recordType: Type isVar: Bool boxed: Bool end
 
     Let Lowerer = Tuple
@@ -556,6 +556,11 @@ export
 
     (* Values *)
 
+    (* The atom that holds e's value, with e lowered into the current body at
+     * its offset. With into, the value is bound to that variable and the atom
+     * is it, so that a let binds its own variable rather than a copy; with
+     * none, the atom may be a constant or an existing variable, and a fresh
+     * variable is made only for an operation *)
     let rec value(l: Lowerer e: Expr into: maybe.T(Variable)): Atom =
         at(:Atom l e.offset fun(): Atom valueForm(l e into))
     and valueForm(l: Lowerer e: Expr into: maybe.T(Variable)): Atom =
@@ -1122,6 +1127,9 @@ export
 
     (* Effects *)
 
+    (* e lowered into the current body at its offset for its effects alone,
+     * its value dropped, so that a statement position makes no variable for
+     * it *)
     and effect(l: Lowerer e: Expr): Ok = at(:Ok l e.offset fun(): Ok effectForm(l e))
     and effectForm(l: Lowerer e: Expr): Ok =
         case e.form

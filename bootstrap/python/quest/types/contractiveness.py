@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from quest.diagnostics import QuestCompilerError, TypeRecursionLimitExceeded
+from quest.diagnostics import TypeRecursionLimitExceeded
 from quest.types.kinds import KindError
 from quest.types.model import (
     MAX_TYPE_EXPANSION_DEPTH,
@@ -37,10 +37,6 @@ from quest.types.model import (
     unalias,
 )
 
-
-class ContractivenessError(QuestCompilerError):
-    """Raised when a recursive type definition is not contractive (bare
-    recursion loop)."""
 
 # ============================================================================
 # 11. Recursive Type Contractiveness Verification (C \succ X)

@@ -699,7 +699,12 @@ export
      * lists case by case.
      * ====================================================================== *)
 
-    Let Collector = Tuple found: vector.T(Type) seenTypes: hashMap.T(Int Bool) seenNodes: hashMap.T(Int Bool) end
+    (* The ids seen of types, of IR nodes, and of kinds, apart: kinds take
+     * their ids from the type model's counter and nodes from ir/nodes', so
+     * one set could hold the same id for a kind and a node *)
+    Let Collector = Tuple
+        found: vector.T(Type) seenTypes: hashMap.T(Int Bool) seenNodes: hashMap.T(Int Bool) seenKinds: hashMap.T(Int Bool)
+    end
 
     let add(c: Collector t: Type): Ok =
         if not(hashMap.contains(:Int :Bool c.seenTypes t.id)) then
@@ -715,7 +720,8 @@ export
         else begin hashMap.insert(:Int :Bool c.seenNodes id true) true end end
 
     let rec kindTypes(c: Collector k: model.Kind): Ok =
-        if first(c k.id) then
+        if not(hashMap.contains(:Int :Bool c.seenKinds k.id)) then
+            hashMap.insert(:Int :Bool c.seenKinds k.id true)
             case k.form
                 when kindPower with x then add(c x.bound)
                 when kindAll with x then begin kindTypes(c x.paramKind) kindTypes(c x.resultKind) end
@@ -935,6 +941,7 @@ export
                 let found = vector.new(:Type)
                 let seenTypes = hashMap.new(:Int :Bool intEqual hash.int)
                 let seenNodes = hashMap.new(:Int :Bool intEqual hash.int)
+                let seenKinds = hashMap.new(:Int :Bool intEqual hash.int)
             end
             for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do moduleTypes(c vector.get(:nodes.Module unit.modules i)) end
             bodyTypes(c unit.main)

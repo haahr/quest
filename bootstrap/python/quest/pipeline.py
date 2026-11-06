@@ -1,7 +1,9 @@
 """Quest Compiler Phase Pipeline Framework.
 
 Provides uniform lifecycle management, execution, and artifact inspection across
-compiler phases (tokenize, parse, desugar, typecheck, interpret, codegen).
+compiler phases: tokenize, parse, desugar, typecheck, then either interpret, or
+ir_core and an ir_<stage> phase per IR pass (each of which run_ir_<stage> can
+run in the IR interpreter), codegen_c, and run_c_compiled (docs/pipeline.md).
 """
 
 from __future__ import annotations

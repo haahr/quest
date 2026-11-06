@@ -35,7 +35,7 @@
 
 /* The runtime's inline helpers are static inline in every translation unit that includes this header, except
    quest_inline.c, which defines Q_INLINE as nothing first, so that the runtime also has an external definition of
-   each, under its own name, for code that cannot inline them to call (native code; docs/arm64.md §3.1) */
+   each, under its own name, for code that cannot inline them to call (native code; docs/arm64.md §7.5) */
 #ifndef Q_INLINE
 #  define Q_INLINE static inline
 #endif
@@ -120,13 +120,6 @@ typedef struct QReader {
     bool  is_file;
     bool  is_closed;
 } QReader;
-
-/* Legacy Variant representation: descriptor, tag and single 64-bit value word */
-typedef struct QVariant {
-    const void *descriptor;
-    int64_t     tag;
-    QVal        payload;
-} QVariant;
 
 /* Generic Option header for inspections */
 typedef struct QOptionHeader {
@@ -439,13 +432,10 @@ static_assert(offsetof(QRecordVal, dict) == 8, qrecordval_dict_at_offset_8);
 static_assert(sizeof(QVariantVal)          == 16, qvariantval_must_be_16_bytes);
 static_assert(offsetof(QVariantVal, tag)     == 0,  qvariantval_tag_at_offset_0);
 static_assert(offsetof(QVariantVal, payload) == 8,  qvariantval_payload_at_offset_8);
-static_assert(sizeof(QVariant)      == 24, qvariant_must_be_24_bytes);
 static_assert(sizeof(QException)    == 8, qexception_must_be_8_bytes);
 static_assert(sizeof(QExceptionState) == 48, qexception_state_must_be_48_bytes);
 static_assert(offsetof(QClosure, env) == 8, qclosure_env_at_offset_8);
 static_assert(offsetof(QArray, data)  == 8, qarray_data_at_offset_8);
-static_assert(offsetof(QVariant, tag)     == 8, qvariant_tag_at_offset_8);
-static_assert(offsetof(QVariant, payload) == 16, qvariant_payload_at_offset_16);
 static_assert(offsetof(QOptionHeader, fields) == 8, qoptionheader_fields_at_offset_8);
 static_assert(offsetof(QExceptionState, payload) == 8, qexception_state_payload_at_offset_8);
 
@@ -543,9 +533,9 @@ extern const QLayout quest_layout_ints;            /* a sized allocation of poin
 extern const QLayout quest_layout_pointers;        /* a sized allocation of pointers */
 /* The runtime's own (quest_gc.c), named by what they lay out */
 extern const QLayout quest_layout_string, quest_layout_exception, quest_layout_auto, quest_layout_component,
-    quest_layout_proxy, quest_layout_proxy_cache, quest_layout_raised, quest_layout_writer, quest_layout_reader,
-    quest_layout_process, quest_layout_string_builder, quest_layout_code_region, quest_layout_run_result,
-    quest_layout_file_stats, quest_layout_descriptor, quest_layout_array_descriptor,
+    quest_layout_proxy, quest_layout_proxy_cache, quest_layout_raised, quest_layout_trace, quest_layout_writer,
+    quest_layout_reader, quest_layout_process, quest_layout_string_builder, quest_layout_code_region,
+    quest_layout_run_result, quest_layout_file_stats, quest_layout_descriptor, quest_layout_array_descriptor,
     quest_layout_exception_descriptor, quest_layout_opaque_descriptor, quest_layout_stored_descriptor,
     quest_layout_record_descriptor, quest_layout_tuple_descriptor, quest_layout_variant_descriptor,
     quest_layout_fun_descriptor, quest_layout_auto_descriptor, quest_layout_descriptor_entry,
@@ -567,7 +557,7 @@ extern const QLayout quest_layout_string, quest_layout_exception, quest_layout_a
  * path is the header's load, a mask, and a compare, and the slow path
  * (quest_barrier_log) logs. A tuple bound by a case binder is an option's
  * payload, which shares the option's allocation (docs/c-representation.md
- * section 9): the word before it is the option's tag, a small integer where
+ * section 5.3): the word before it is the option's tag, a small integer where
  * a header holds a layout's address, so a word under 65536 says the header,
  * and the object to log, are one word further back. The slot's barrier
  * marks the slot's card, 512 bytes of the heap, dirty, and the next minor

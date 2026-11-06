@@ -31,7 +31,7 @@ an offset, and a length:
 | :--- | :--- |
 | `TokenizerError` | the tokenizer (`syntax/tokenizer.py`) |
 | `ParserError` | the parser (`syntax/parser.py`) |
-| `KindError`, `ContractivenessError` | kind checking (`types/kinds.py`) and contractiveness (`types/contractiveness.py`) |
+| `KindError` | kind checking (`types/kinds.py`) and contractiveness (`types/contractiveness.py`) |
 | `QuestTypeError` | the type checker; with help text and notes where the checker has them |
 | `TypeRecursionLimitExceeded` | type analysis that exceeds its step limit; a fatal error |
 | `QuestRuntimeError` | the interpreters (`interpreter/primitives.py`), for an uncaught Quest exception or a run-time error |

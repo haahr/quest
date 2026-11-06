@@ -129,7 +129,6 @@ from quest.types.kinds import (
 
 # 4. Contractiveness
 from quest.types.contractiveness import (
-    ContractivenessError,
     check_type_contractive,
     is_type_contractive,
 )

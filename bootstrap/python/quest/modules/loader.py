@@ -248,9 +248,10 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
 
         # All importers share one export scope (docs/modules.md §2.3). Name
         # opaque exported types after the module's declared name, as elaborating
-        # its source does, and give those the module defines as external types
-        # those types, as separately compiled modules have them (raised.T must
-        # be the type of an else binder, docs/raised.md section 3.2).
+        # its source does. An exported type that the module's source defines as
+        # an external type (Let T = external "...") has that definition, as
+        # in a separately compiled module (raised.T must be the type of an else
+        # binder, docs/raised.md section 3.2).
         module_export_scope = unit.export_scope
         if module_export_scope is None:
             module_export_scope = create_module_export_scope(

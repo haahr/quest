@@ -72,7 +72,8 @@ static QString *quest_readline_plain(const QString *prompt) {
  * PROMPT}, on descriptor 4, the driver's records, after the program's output;
  * and the reply a line on descriptor 3, the driver's requests, "L" and the
  * line, or "E" for the end of input. The prompt's bytes are escaped as the
- * driver's strings are, each above 126 as \u00XX. */
+ * driver's strings are: a quote or backslash with a backslash, and a control
+ * character (below 32) or a byte above 126 as \u00XX. */
 static bool quest_readline_in_kernel(void) {
     const char *kernel = getenv("QUEST_KERNEL");
     return kernel != NULL && *kernel != '\0';

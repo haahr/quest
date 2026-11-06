@@ -243,9 +243,12 @@ export
      * Solving is greedy, with no backtracking, so a solution can depend on the
      * order in which goals are posed.
      *
-     * fuel bounds the number of steps in one proof. Subtyping of bounded
-     * polymorphic types is undecidable, so a proof that runs out raises a
-     * fatal diagnostic rather than looping. *)
+     * fuel bounds the depth of a proof, not its size: each goal passes one
+     * less to the goals it poses (quantified passes quantifierFuel less), so
+     * no chain of nested goals is longer than maxSubtypeFuel. Subtyping of
+     * bounded polymorphic types is undecidable, so a goal posed with no fuel
+     * left raises a fatal diagnostic rather than looping; quantified, when
+     * it cannot pay its cost, instead fails the comparison. *)
     and step(sub0: Type sup0: Type env: Env trail: Trail fuel0: Int): Bool =
         begin
             if fuel0 <= 0 then
@@ -308,7 +311,7 @@ export
                             begin solve(sup sub) true end
                         end
                     else
-                        (* 5. Coinductive trail check, again after unfolding
+                        (* 4. Coinductive trail check, again after unfolding
                          *    (step 0 checked the types as written), since a
                          *    goal can recur in either form *)
                         let lazyPair = pairKey(sub sup)
@@ -316,7 +319,7 @@ export
                             true
                         else
                             assume(trail lazyPair sub sup)
-                            (* 6. A type variable's bound *)
+                            (* 5. A type variable's bound *)
                             let bound = if isNamed(sub) then namedBound(sub) else maybe.none(:Type) end
                             if maybe.isSome(:Type bound) andif prove(maybe.unwrap(:Type bound) sup env trail fuel) then
                                 true
@@ -328,7 +331,7 @@ export
                 end
             end
         end
-    (* 7. The rules for pairs of type constructors *)
+    (* 6. The rules for pairs of type constructors *)
     and structural(sub: Type sup: Type env: Env trail: Trail fuel: Int): Bool =
         case sub.form
             when typeTuple with s then
@@ -644,7 +647,8 @@ export
         end
     (* Universal quantifiers: bounds contravariant, body covariant, compared
      * under the supertype's bounds. As in full F<: this is undecidable; fuel
-     * keeps it terminating *)
+     * keeps it terminating. A comparison costs quantifierFuel, and fails
+     * (returns false, with no diagnostic) when fuel0 cannot pay it *)
     and quantified(s: Tuple quantifiers: Array(model.Quantifier) body: Type end
             t: Tuple quantifiers: Array(model.Quantifier) body: Type end env: Env trail: Trail fuel0: Int): Bool =
         if extent s.quantifiers isnot extent t.quantifiers then
