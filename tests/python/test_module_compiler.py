@@ -214,6 +214,7 @@ class TestModuleCompiler(unittest.TestCase):
         runtime_c = self.runtime_dir / "quest_runtime.c"
         serialization_c = self.runtime_dir / "quest_serialization.c"
         gc_c = self.runtime_dir / "quest_gc.c"
+        code_c = self.runtime_dir / "quest_code.c"
 
         cmd = [
             compiler,
@@ -226,6 +227,7 @@ class TestModuleCompiler(unittest.TestCase):
             str(runtime_c),
             str(serialization_c),
             str(gc_c),
+            str(code_c),
             "-o",
             str(bin_file),
         ]

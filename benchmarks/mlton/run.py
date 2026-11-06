@@ -184,26 +184,31 @@ def jitted(name: str, compiler: list[str]) -> list[str]:
 
 
 def run_in_scratch(program: Path | list[str], count: int | str,
-                   timeout: float) -> tuple[str, int, dict[str, bytes], float, str]:
+                   timeout: float) -> tuple[str, int, dict[str, bytes], float, str, float]:
     """Standard output, exit status, the files written or changed, the seconds
-    taken, and standard error, of running program (a binary, or a command) with
-    count in a scratch directory holding a copy of DATA/."""
+    taken, standard error, and the processor seconds taken (user and system),
+    of running program (a binary, or a command) with count in a scratch
+    directory holding a copy of DATA/. The processor time is what tells the
+    program's time from the machine's load."""
     with tempfile.TemporaryDirectory() as d:
         work = Path(d)
         shutil.copytree(DATA_DIR, work / "DATA")
         before = {p.relative_to(work).as_posix(): p.read_bytes() for p in work.rglob("*") if p.is_file()}
         start = time.perf_counter()
+        used = resource.getrusage(resource.RUSAGE_CHILDREN)
         command = [str(program)] if isinstance(program, Path) else program
         proc = subprocess.run([*command, str(count)], cwd=work, stdin=subprocess.DEVNULL, capture_output=True,
                               preexec_fn=deep_stack,
                               timeout=timeout)
         elapsed = time.perf_counter() - start
+        after = resource.getrusage(resource.RUSAGE_CHILDREN)
+        cpu = (after.ru_utime - used.ru_utime) + (after.ru_stime - used.ru_stime)
         written = {}
         for p in sorted(work.rglob("*")):
             rel = p.relative_to(work).as_posix()
             if p.is_file() and before.get(rel) != p.read_bytes():
                 written[rel] = p.read_bytes()
-        return proc.stdout.decode("latin-1"), proc.returncode, written, elapsed, proc.stderr.decode("latin-1")
+        return proc.stdout.decode("latin-1"), proc.returncode, written, elapsed, proc.stderr.decode("latin-1"), cpu
 
 
 def file_digests(written: dict[str, bytes]) -> str:
@@ -237,25 +242,28 @@ def differences(name: str, stdout: str, status: int, written: dict[str, bytes], 
 
 def time_runs(name: str, system: str, program: Path | list[str], count: int, args: argparse.Namespace) -> list[float]:
     """The seconds each of --runs runs of program took, appended to --results
-    if given. A run that times out ends the runs, and is recorded as taking
-    longer than --timeout. A run at count 1 must print what expected/ holds;
-    one that does not is recorded with the first line of its standard error."""
+    if given with the processor seconds of each. A run that times out ends the
+    runs, and is recorded as taking longer than --timeout. A run at count 1
+    must print what expected/ holds; one that does not is recorded with the
+    first line of its standard error."""
     seconds: list[float] = []
+    cpu: list[float] = []
     timed_out = False
     wrong = None
     for _ in range(args.runs):
         try:
-            stdout, status, written, elapsed, stderr = run_in_scratch(program, count, args.timeout)
+            stdout, status, written, elapsed, stderr, used = run_in_scratch(program, count, args.timeout)
         except subprocess.TimeoutExpired:
             timed_out = True
             break
         seconds.append(elapsed)
+        cpu.append(used)
         if count == 1 and differences(name, stdout, status, written):
             errors = [line for line in stderr.splitlines() if "error" in line.lower()]
             wrong = re.sub(r"^\S+:\d+:\d+: ", "", (errors or stderr.splitlines() or ["(no error)"])[0])
             break
     if args.results:
-        entry = {"name": name, "system": system, "count": count, "seconds": seconds}
+        entry = {"name": name, "system": system, "count": count, "seconds": seconds, "cpu": cpu}
         if timed_out:
             entry["timeout"] = args.timeout
         if wrong is not None:
@@ -285,9 +293,9 @@ def ratio_text(r: float) -> str:
 
 def report(paths: list[str], exclude: list[str]) -> int:
     """Prints, for each Quest system, a Markdown table of its median time on
-    each benchmark and MLton's at the same count, the ratio of the two, and the
-    geometric mean of the ratios, over every benchmark and over those not in
-    exclude. A later entry for a benchmark, system, and count replaces an
+    each benchmark and MLton's at the same count, the ratio of the two, its
+    median processor time where the runs recorded one, and the geometric mean
+    of the ratios, over every benchmark and over those not in exclude. A later entry for a benchmark, system, and count replaces an
     earlier one. A run that timed out shows as >TIMEOUT, its ratio a lower
     bound, and makes the means lower bounds. A run that printed the wrong
     output shows as failed, and counts in no mean."""
@@ -298,7 +306,7 @@ def report(paths: list[str], exclude: list[str]) -> int:
                 e = json.loads(line)
                 entries[e["name"], e["system"], e["count"]] = e
     for system in sorted({s for _, s, _ in entries if s != "mlton"}):
-        print(f"| Benchmark | n | MLton | {system} | Ratio |\n|---|--:|--:|--:|--:|")
+        print(f"| Benchmark | n | MLton | {system} | Ratio | CPU |\n|---|--:|--:|--:|--:|--:|")
         ratios: dict[str, float] = {}
         bounded = failed = 0
         for (name, s, count), e in sorted(entries.items(), key=lambda kv: kv[0][0].lower()):
@@ -308,7 +316,7 @@ def report(paths: list[str], exclude: list[str]) -> int:
             m = median(base["seconds"])
             if e.get("wrong") is not None:
                 failed += 1
-                print(f"| {name} | {count} | {m:.2f} | failed: {e['wrong']} | |")
+                print(f"| {name} | {count} | {m:.2f} | failed: {e['wrong']} | | |")
                 continue
             mark = ""
             if e.get("timeout") is not None:
@@ -317,13 +325,14 @@ def report(paths: list[str], exclude: list[str]) -> int:
             else:
                 t = median(e["seconds"])
             ratios[name] = t / m
-            print(f"| {name} | {count} | {m:.2f} | {mark}{t:.2f} | {mark}{ratio_text(t / m)} |")
+            cpu = f"{median(e['cpu']):.2f}" if e.get("cpu") else ""
+            print(f"| {name} | {count} | {m:.2f} | {mark}{t:.2f} | {mark}{ratio_text(t / m)} | {cpu} |")
         mark = ">" if bounded else ""
         if ratios:
-            print(f"| **geometric mean** ({len(ratios)}) | | | | **{mark}{geomean(list(ratios.values())):.2f}** |")
+            print(f"| **geometric mean** ({len(ratios)}) | | | | **{mark}{geomean(list(ratios.values())):.2f}** | |")
             kept = [r for n, r in ratios.items() if n not in exclude]
             if exclude and kept:
-                print(f"| geometric mean without {', '.join(exclude)} ({len(kept)}) | | | | {mark}{geomean(kept):.2f} |")
+                print(f"| geometric mean without {', '.join(exclude)} ({len(kept)}) | | | | {mark}{geomean(kept):.2f} | |")
         if failed:
             print(f"\n{failed} failed")
         print()

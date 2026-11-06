@@ -40,7 +40,9 @@ int64_t quest_int_abs(int64_t n);
 double quest_real_add_at(double a, double b, const char *loc);
 uint64_t quest_word_rotate(uint64_t w, int64_t count);
 bool quest_is_proxy(const void *p);
-void *quest_alloc(size_t size, const void *layout);
+struct QLayout;
+extern const struct QLayout quest_layout_closure;
+void *quest_alloc(size_t size, const struct QLayout *layout);
 
 int main(void) {
     int64_t min = INT64_MIN;
@@ -52,7 +54,7 @@ int main(void) {
     printf("%.1f\n", quest_real_add_at(1.5, 2.0, NULL));
     printf("%llu\n", (unsigned long long)quest_word_rotate(1, 63));
     printf("%d %d\n", (int)quest_is_proxy((const void *)1), (int)quest_is_proxy((const void *)8));
-    int64_t *p = (int64_t *)quest_alloc(16, NULL);
+    int64_t *p = (int64_t *)quest_alloc(16, &quest_layout_closure);
     printf("%d\n", p != NULL && p[0] == 0 && p[1] == 0);
     return 0;
 }
@@ -94,9 +96,8 @@ class TestRuntimeInline(unittest.TestCase):
         self.assertGreater(len(helpers), 80)
 
     def test_every_inline_helper_has_an_external_definition(self) -> None:
-        # With and without the collector, whose allocation helpers differ
-        modes = [True] if detect_gc_flags() == ["-DQUEST_NOGC"] else [True, False]
-        for nogc in modes:
+        # With the collector collecting, and with --nogc
+        for nogc in (False, True):
             with self.subTest(nogc=nogc):
                 objects = runtime_objects(self.compiler, nogc=nogc)
                 inline_obj = next(o for o in objects if Path(o).name == "quest_inline.o")

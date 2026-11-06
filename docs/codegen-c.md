@@ -25,7 +25,7 @@ Typed AST (TypedProgram, or a module file's TypedModule)
            |
            v  (C99 source)
 +-----------------------+
-| c/compiler_runner.py  | <--- Locates clang/gcc, auto-detects Boehm GC, adds -I runtime/
+| c/compiler_runner.py  | <--- Locates clang/gcc, builds the runtime, adds -I runtime/
 +-----------------------+
            |
            v
@@ -60,7 +60,7 @@ The C backend (`codegen/c/`):
   their `.qi` files, up to date when at least as new as the `.qi` ([build-process.md §5.3](build-process.md)).
 - **`types.py`:** C spellings: the C types of representations, function pointer types, `QVal` wrapping, literals,
   record struct and offset table names, and descriptor expressions (`descriptor_form`).
-- **`compiler_runner.py`:** Discovers host compiler, auto-detects Boehm GC, compiles C source, and runs binaries.
+- **`compiler_runner.py`:** Discovers host compiler, builds the runtime's objects, compiles C source, and runs binaries.
 
 Only C compilation's drivers import `codegen/c/` (`tests/python/test_dependencies.py`).
 
@@ -249,7 +249,7 @@ pointer-based field access.
   ordering dependencies.
 
 ### 6.2. Heap Allocation, Embedded Boxes, & Member Initialization
-Tuples and records (`ir.MakeTuple`, `ir.MakeRecord`) are heap-allocated via `quest_alloc` (managed by Boehm GC or
+Tuples and records (`ir.MakeTuple`, `ir.MakeRecord`) are heap-allocated via `quest_alloc` (managed by the collector or
 standard `calloc` in `--nogc` mode), each site naming the layout of the object it makes (a static `QLayout` of the
 unit, `quest_layout_<tag>`, saying which of its words are pointers; [c-representation.md](c-representation.md) §9):
 ```c
@@ -594,25 +594,25 @@ are lowered as follows:
 
 ## 11. Host Compiler Runner (`c/compiler_runner.py`)
 
-The compiler runner manages external C compiler toolchain discovery, Boehm GC flags, and native executable generation:
+The compiler runner manages external C compiler toolchain discovery, the collector's flags, and native executable generation:
 
 ### 11.1. Compiler Discovery
 `find_c_compiler()` searches `PATH` in order:
 1. `clang` (preferred on macOS/Linux for optimal diagnostic output and C99 statement expression support).
 2. `gcc` (fallback).
 
-### 11.2. Boehm GC Auto-Detection & `--nogc`
-`detect_gc_flags(nogc: bool)` locates the Boehm Garbage Collector:
-- Standard paths checked: `/opt/homebrew/opt/bdw-gc` (Apple Silicon), `/usr/local/opt/bdw-gc` (Intel macOS), `/usr`.
-- If found: passes `-I<prefix>/include -L<prefix>/lib -lgc`.
-- If not found or when `--nogc` flag is specified: passes `-DQUEST_NOGC`, using standard libc `calloc`/`malloc`.
+### 11.2. The Collector's Flags & `--nogc`
+`detect_gc_flags(nogc: bool)` gives the collector's flags: none, since the collector is the runtime's own
+(`runtime/quest_gc.c`, [runtime-design.md](runtime-design.md) §3), or `-DQUEST_NOGC` when `--nogc` is specified,
+under which it allocates but never collects.
 
 `detect_readline_flags()` locates the line editor `runtime/quest_readline.c` uses (GNU readline, then libedit, else
 `-DQUEST_NOREADLINE`; `QUEST_READLINE` chooses one), as [new-libraries.md](new-libraries.md) §3.1 describes.
 
 ### 11.3. Compilation Invocation
-The runtime's C files (`quest_runtime.c`, `quest_serialization.c`, `quest_readline.c`, and `quest_inline.c`, which
-gives the header's inline helpers external definitions for native code) are compiled once into objects
+The runtime's C files (`quest_runtime.c`, `quest_serialization.c`, `quest_readline.c`, `quest_code.c`, `quest_gc.c`,
+and `quest_inline.c`, which gives the header's inline helpers external definitions for native code) are compiled
+once into objects
 (`runtime_objects`), kept in `.build/runtime/KEY/` under the checkout (or `$QUEST_RUNTIME_CACHE/KEY/`), where KEY
 hashes the runtime's sources and headers, the compiler and its `--version`, and the compile flags: a change to any of
 them compiles the runtime again, and objects are reused across builds and test runs otherwise. Each object is written

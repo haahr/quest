@@ -150,7 +150,7 @@ def main() -> int:
     # Every compiled program the suites run, the compilers among them, checks
     # its objects' layouts and its units' root tables (docs/collector.md
     # section 7)
-    os.environ["QUEST_GC_CHECK"] = "layouts,roots"
+    os.environ["QUEST_GC_CHECK"] = "layouts,roots,poison"
 
     if self_hosted_only:
         together = [

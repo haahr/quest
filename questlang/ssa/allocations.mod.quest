@@ -1,0 +1,210 @@
+(* Quest Self-Hosted Compiler: The SSA's Inline Allocation Implementation *)
+
+module allocations : Allocations
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/runtimeFunctions : questlang/codegen/RuntimeFunctions
+    collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
+    util/maybe : util/Maybe
+    util/strutil : util/Strutil
+    stringOp = string : StringOp
+    util/hash : util/Hash
+export
+    Let Function = ssa.Function
+
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+
+    (* The runtime's Q_LAYOUT_NOSCAN, in the flags half of a QLayout's second
+     * word (runtime/quest_runtime.h), as the unit's layout data lays it out
+     * (ssa/statics) *)
+    let noscanFlag = 1
+    let high = 4294967296
+
+    (* The space of the objects of each layout the unit lays out, by the
+     * layout's symbol: 1 for a noscan layout, 0 otherwise *)
+    let spaces(u: ssa.Unit): hashMap.T(String Int) =
+        begin
+            let m = hashMap.new(:String :Int eq hash.string)
+            for i = 0 upto {vector.length(:ssa.Data u.data) - 1} do
+                let d = vector.get(:ssa.Data u.data i)
+                case d.contents
+                    when contentsWords with x then
+                        if {extent x.words > 1} andif strutil.startsWith(d.symbol "quest_layout_") then
+                            case x.words[1]
+                                when wordInt with w then
+                                    let flags = w.n / high
+                                    let space = if {flags - flags / 2 * 2} is noscanFlag then 1 else 0 end
+                                    begin let ignored = hashMap.insert(:String :Int m d.symbol space) end
+                                when wordSymbol then ok
+                            end
+                        end
+                    when contentsZero, contentsText then ok
+                end
+            end
+            m
+        end
+
+    (* The constant each value of f is, by number, for those that are
+     * constants *)
+    let constants(f: Function): Tuple isConst: Array(Bool) value: Array(Int) end =
+        begin
+            let n = vector.length(:ssa.Type f.types)
+            let isConst = array of(n false)
+            let value = array of(n 0)
+            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    if ssa.isOp(i ssa.opConst) then
+                        isConst[i.results[0]] := true
+                        value[i.results[0]] := i.imm
+                    end
+                end
+            end
+            tuple let isConst = isConst let value = value end
+        end
+
+    (* The symbol the value v of f is the address of, if an opSymbol defines
+     * it (a layout's address), else "" *)
+    let symbolOf(f: Function v: Int): String =
+        begin
+            let var found = ""
+            for b = 0 upto {vector.length(:ssa.Block f.blocks) - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    if ssa.isOp(i ssa.opSymbol) andif {i.results[0] is v} then found := i.symbol end
+                end
+            end
+            found
+        end
+
+    (* Expands the call of quest_alloc at index k of block b of f, of an
+     * object of sz bytes in space `space`: the block ends with the test, the
+     * fast and slow paths each jump to a new block holding the rest of b,
+     * whose parameter is the allocation's base *)
+    let expand(f: Function b: Int k: Int sz: Int space: Int): Ok =
+        begin
+            let blk = ssa.block(f b)
+            let call = vector.get(:ssa.Inst blk.insts k)
+            let layout = call.args[1]
+            let obj = call.results[0]
+            let at = call.loc
+            f.at := at
+            let total = 8 + {{{sz + 7} / 8} * 8}
+            (* The rest of the block, after the call *)
+            let tail = vector.new(:ssa.Inst)
+            for j = k + 1 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                vector.append(:ssa.Inst tail vector.get(:ssa.Inst blk.insts j))
+            end
+            let term = blk.term
+            let termLoc = blk.termLoc
+            while vector.length(:ssa.Inst blk.insts) > k do begin let ignored = vector.pop(:ssa.Inst blk.insts) end end
+            let put = fun(b2: Int i: ssa.Inst): Ok begin i.loc := at ssa.append(f b2 i) end
+            let value = fun(b2: Int op: ssa.Opcode args: Array(Int) t: ssa.Type imm: Int symbol: String width: Int
+                signed: Bool): Int
+                begin
+                    let v = ssa.newValue(f t)
+                    put(b2 ssa.instruction(op args array of v end imm symbol width signed ssa.emptySignature))
+                    v
+                end
+            let none = array of :Int end
+            let unary = fun(b2: Int op: ssa.Opcode x: Int t: ssa.Type): Int value(b2 op array of x end t 0 "" 0 false)
+            let binary = fun(b2: Int op: ssa.Opcode x: Int y: Int): Int
+                value(b2 op array of x y end ssa.typeInt 0 "" 0 false)
+            let constant = fun(b2: Int n: Int): Int value(b2 ssa.opConst none ssa.typeInt n "" 0 false)
+            let address = fun(b2: Int symbol: String offset: Int): Int
+                value(b2 ssa.opSymbol none ssa.typePtr offset symbol 0 false)
+            let loadWord = fun(b2: Int p: Int t: ssa.Type): Int value(b2 ssa.opLoad array of p end t 0 "" 8 true)
+            let store = fun(b2: Int p: Int v: Int width: Int): Ok
+                put(b2 ssa.instruction(ssa.opStore array of p v end none 0 "" width false ssa.emptySignature))
+            (* The test: a checking mode on, or no room in the hole *)
+            let flags = value(b ssa.opLoad array of address(b "quest_gc_check_flags" 0) end ssa.typeInt 0 "" 4 true)
+            let cursorAt = address(b "quest_gc_cursor" 8 * space)
+            let limitAt = address(b "quest_gc_limit" 8 * space)
+            let cursor = loadWord(b cursorAt ssa.typeInt)
+            let limit = loadWord(b limitAt ssa.typeInt)
+            let bytes = constant(b total)
+            let noRoom = binary(b ssa.opUlt binary(b ssa.opSub limit cursor) bytes)
+            let checking = binary(b ssa.opNe flags constant(b 0))
+            let slowPath = binary(b ssa.opOr noRoom checking)
+            let fast = ssa.newBlock(f)
+            let slow = ssa.newBlock(f)
+            let rest = ssa.newBlock(f)
+            blk.term := option termBranch of ssa.Terminator with
+                let cond = slowPath
+                let ifTrue = ssa.target(slow none)
+                let ifFalse = ssa.target(fast none)
+            end
+            blk.termLoc := at
+            (* The fast path bumps the cursor past the object *)
+            store(fast cursorAt binary(fast ssa.opAdd cursor bytes) 8)
+            let fastBlk = ssa.block(f fast)
+            fastBlk.term := option termJump of ssa.Terminator with let target = ssa.target(rest array of cursor end) end
+            fastBlk.termLoc := at
+            (* The slow path asks the runtime *)
+            let r = runtimeFunctions.function("quest_gc_alloc_slow")
+            let base = ssa.call(f slow "quest_gc_alloc_slow" array of bytes layout end runtimeFunctions.signature(r)
+                runtimeFunctions.resultTypes(r))[0]
+            let baseInt = unary(slow ssa.opPtrToInt base ssa.typeInt)
+            let slowBlk = ssa.block(f slow)
+            slowBlk.term := option termJump of ssa.Terminator with let target = ssa.target(rest array of baseInt end) end
+            slowBlk.termLoc := at
+            (* The rest: the header, the object, and its start bit, then what
+             * followed the call *)
+            let moved = ssa.block(f rest)
+            let baseParam = ssa.newValue(f ssa.typeInt)
+            vector.append(:Int moved.params baseParam)
+            let basePtr = unary(rest ssa.opIntToPtr baseParam ssa.typePtr)
+            store(rest basePtr layout 8)
+            put(rest ssa.instruction(ssa.opPtrAdd array of basePtr constant(rest 8) end array of obj end 0 "" 0 false
+                ssa.emptySignature))
+            let low = loadWord(rest address(rest "quest_gc_heap_lo" 0) ssa.typeInt)
+            let bits = loadWord(rest address(rest "quest_gc_start_bits" 0) ssa.typePtr)
+            let index = binary(rest ssa.opLshr binary(rest ssa.opSub unary(rest ssa.opPtrToInt obj ssa.typeInt) low)
+                constant(rest 3))
+            let byteAt = value(rest ssa.opPtrAdd array of bits binary(rest ssa.opLshr index constant(rest 3)) end
+                ssa.typePtr 0 "" 0 false)
+            let mask = binary(rest ssa.opShl constant(rest 1) binary(rest ssa.opAnd index constant(rest 7)))
+            let old = value(rest ssa.opLoad array of byteAt end ssa.typeInt 0 "" 1 false)
+            store(rest byteAt binary(rest ssa.opOr old mask) 1)
+            for j = 0 upto {vector.length(:ssa.Inst tail) - 1} do
+                vector.append(:ssa.Inst moved.insts vector.get(:ssa.Inst tail j))
+            end
+            moved.term := term
+            moved.termLoc := termLoc
+        end
+
+    let inlineFunction(f: Function spaces: hashMap.T(String Int)): Ok =
+        begin
+            let cs = constants(f)
+            let var b = 0
+            (* The blocks the expansions add hold the rest of a block, and are
+             * reached in turn *)
+            while b < vector.length(:ssa.Block f.blocks) do
+                let blk = ssa.block(f b)
+                let var k = 0
+                let var expanded = false
+                while not(expanded) andif {k < vector.length(:ssa.Inst blk.insts)} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    if ssa.isOp(i ssa.opCall) andif eq(i.symbol "quest_alloc") andif {extent i.args is 2}
+                        andif {extent i.results is 1} andif cs.isConst[i.args[0]] then
+                        let space = hashMap.get(:String :Int spaces symbolOf(f i.args[1]))
+                        expand(f b k cs.value[i.args[0]] maybe.unwrapOr(:Int space 0))
+                        expanded := true
+                    end
+                    k := k + 1
+                end
+                b := b + 1
+            end
+        end
+
+    let inlineUnit(u: ssa.Unit): Ok =
+        begin
+            let m = spaces(u)
+            for i = 0 upto {vector.length(:ssa.Function u.functions) - 1} do
+                inlineFunction(vector.get(:ssa.Function u.functions i) m)
+            end
+        end
+end

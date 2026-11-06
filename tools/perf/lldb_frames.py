@@ -19,16 +19,13 @@ import subprocess
 import lldb
 
 
-def heap_regions(pid: int) -> list[tuple[int, int]]:
-    """The collector's heap: the VM_ALLOCATE regions vmmap lists. Calling
-    GC_base from lldb does not work while the collector holds its lock."""
-    out = subprocess.run(["vmmap", "-interleaved", str(pid)], capture_output=True, text=True).stdout
-    regions = []
-    for line in out.splitlines():
-        m = re.match(r"VM_ALLOCATE\s+([0-9a-f]+)-([0-9a-f]+)", line)
-        if m:
-            regions.append((int(m.group(1), 16), int(m.group(2), 16)))
-    return regions
+def heap_regions(target: lldb.SBTarget) -> list[tuple[int, int]]:
+    """The collector's heap: the range the runtime reserved, between its
+    quest_gc_heap_lo and the blocks it has taken (runtime/quest_gc.c)."""
+    def global_value(name: str) -> int:
+        return target.FindFirstGlobalVariable(name).GetValueAsUnsigned()
+    lo = global_value("quest_gc_heap_lo")
+    return [(lo, lo + global_value("quest_gc_high_water") * 32768)]
 
 
 def in_heap(regions: list[tuple[int, int]], word: int) -> bool:
@@ -57,7 +54,7 @@ def deadroots(debugger, command, result, internal_dict):
         labels[int(address, 16)] = name[1:]
     process = debugger.GetSelectedTarget().GetProcess()
     thread = process.GetSelectedThread()
-    regions = heap_regions(process.GetProcessID())
+    regions = heap_regions(debugger.GetSelectedTarget())
     frames = [thread.GetFrameAtIndex(i) for i in range(thread.GetNumFrames())]
     for i in range(1, len(frames) - 1):
         frame = frames[i]

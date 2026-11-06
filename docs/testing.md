@@ -701,9 +701,10 @@ suites, and any other change the first's. It says which, and why; `--all` and `-
 - **The questlang tests** (`tests/source/questlang/`) need no run of their own: each suite runs them compiled, with its
   own compiler.
 - **The collector's checks:** every compiled program the suites run, the compilers among them, runs with
-  `QUEST_GC_CHECK=layouts,roots` (`tools/check` sets it), so that a layout that lies about an object's words, or a
-  global holding a heap pointer that no root table covers, fails the suite ([collector.md](collector.md) §7). To see
-  the counts per layout and the barrier counts, run a program with `QUEST_GC_CHECK=layouts,report`.
+  `QUEST_GC_CHECK=layouts,roots,poison` (`tools/check` sets it), so that a layout that lies about an object's words, a
+  global holding a heap pointer that no root table covers, or a use of a reclaimed object fails the suite
+  ([collector.md](collector.md) §7). To see the counts per layout and the barrier counts, run a program with
+  `QUEST_GC_CHECK=layouts,report`; `QUEST_GC_STATS=1` prints what the collector did.
 - **The suites do not interfere:** each builds into a temporary directory of its own, the runtime's cached objects
   are written atomically, and only `--update-golden` writes goldens. They compete only for cores, which is why the
   self-hosted suite, the longest, gets most of them, and why the terminal tests (`tests/python/test_readline_terminal.py`),

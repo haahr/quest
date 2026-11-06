@@ -816,7 +816,6 @@ that does little (`thunks` compiles many generic functions and their thunks), an
 does some work (`sort_operations`); a program that runs long would gain what compiled code gains over the
 interpreter. Whether the JIT becomes the default is decided from these (jit.md §7).
 
-
 ## 11. Every backend, and the inliner's settings (2026-11-02)
 
 The whole suite through every backend at one commit, `9a08223f` (ABI 63), after the arm64 performance review's first
@@ -1198,3 +1197,187 @@ to 5.9, the times in `quest-{ssac,arm64}-constants.jsonl`:
 | | arm64 | 115.95 | 107.85 | 1.08x |
 
 smith-normal-form through arm64 is 1.5 times C's 70.05 s, from 1.7; through ssac it is now faster than C.
+
+## 16. The collector (2026-11-04)
+
+The suite on the collector of [collector.md](collector.md) step 3 against §13's Boehm times: the stop-the-world
+mark-region collector of `runtime/quest_gc.c` with its bump allocation, the inline allocation sequence of
+`ssa/allocations` ([ssa.md](ssa.md) §4.1) in the SSA's backends, and the noscan space for layouts of scalars alone.
+
+### 16.1. How they were taken
+
+As §13.1 (`run.py time --clean --scale 0.25 --timeout 1800`, one run each, `--backend c`, `ssac`, and `arm64`, in
+that order), then arm64 again under `QUEST_SKIP_PASSES=inlineAllocation`, which leaves each allocation a call of
+`quest_alloc` for the runtime's slow path. The compiler was `./quest` from the working tree that became step 3's
+commit, stage 2 built by C, with ssac still calling the runtime's `quest_alloc` out of line (§16.2 says what
+inlining it there changed, measured apart). The machine was loaded throughout by another build and its check (load
+averages 4 to 19 at the starts of the runs, against §13's 1.5 to 3.2), so `run.py` now records each run's processor
+time (user and system, from `getrusage` of the child) beside its wall time, and the tables give both. A wall ratio
+divides by §13's wall time under its lighter load; the processor ratio divides the after side's processor time by the
+same before wall time, since §13 recorded none, so the two bracket the truth and the processor one is the fairer
+where they differ. Neither is a clean measurement; the suite is to be retaken on an idle machine after step 4. The
+times are in `benchmarks/mlton/baselines/2026-11-04/`: `quest-c-step3.jsonl`, `quest-ssac-step3.jsonl`,
+`quest-arm64-step3.jsonl`, and `quest-arm64-calls-step3.jsonl`. A wall time under a second is the first run of a
+fresh binary rather than the program (tailfib's 0.23 s is 0.00 s of processor time), so the four small programs'
+wall ratios say nothing, and their processor ratios little.
+
+### 16.2. Programs
+
+The ratio of step 3's time to §13's, by wall time and by processor time, ordered by the best ratio in the row:
+
+| Benchmark | C | C, CPU | ssac | ssac, CPU | arm64 | arm64, CPU |
+|---|--:|--:|--:|--:|--:|--:|
+| wc-scanStream | 0.39 | 0.39 | 0.55 | 0.55 | 0.52 | 0.52 |
+| tensor | 0.40 | 0.40 | 1.05 | 1.03 | 1.01 | 0.99 |
+| barnes-hut | 0.48 | 0.47 | 0.68 | 0.67 | 0.66 | 0.62 |
+| logic | 0.49 | 0.48 | 0.59 | 0.58 | 0.60 | 0.57 |
+| simple | 0.51 | 0.50 | 0.62 | 0.60 | 0.66 | 0.63 |
+| DLXSimulator | 0.53 | 0.52 | 0.70 | 0.68 | 0.74 | 0.72 |
+| ratio-regions | 0.57 | 0.54 | 0.79 | 0.64 | 0.64 | 0.61 |
+| even-odd | 0.98 | 0.79 | 0.99 | 0.81 | 0.57 | 0.50 |
+| vliw | 0.59 | 0.56 | 0.76 | 0.73 | 0.68 | 0.66 |
+| hamlet | 0.60 | 0.58 | 0.74 | 0.71 | 1.11 | 0.76 |
+| tyan | 0.61 | 0.59 | 0.70 | 0.66 | 0.76 | 0.74 |
+| mlyacc | 0.61 | 0.58 | 0.74 | 0.69 | 0.71 | 0.68 |
+| tailmerge | 0.61 | 0.61 | 0.71 | 0.70 | 0.68 | 0.67 |
+| psdes-random | 0.99 | 0.98 | 0.76 | 0.69 | 0.64 | 0.62 |
+| count-graphs | 0.66 | 0.65 | 0.92 | 0.91 | 0.85 | 0.80 |
+| model-elimination | 0.66 | 0.65 | 0.79 | 0.78 | 0.68 | 0.67 |
+| knuth-bendix | 0.67 | 0.66 | 0.78 | 0.77 | 0.71 | 0.70 |
+| boyer | 0.67 | 0.66 | 0.97 | 0.95 | 0.87 | 0.85 |
+| nucleic | 0.69 | 0.66 | 0.82 | 0.77 | 0.80 | 0.77 |
+| zebra | 0.70 | 0.69 | 0.82 | 0.81 | 0.78 | 0.77 |
+| life | 0.72 | 0.70 | 0.85 | 0.83 | 0.84 | 0.82 |
+| ray | 0.72 | 0.70 | 1.01 | 0.95 | 0.95 | 0.92 |
+| raytrace | 0.73 | 0.71 | 0.86 | 0.83 | 0.88 | 0.82 |
+| peek | 0.74 | 0.74 | 0.93 | 0.86 | 0.83 | 0.83 |
+| lexgen | 0.77 | 0.74 | 0.91 | 0.88 | 0.93 | 0.88 |
+| string-concat | 0.98 | 0.94 | 0.80 | 0.64 | 0.85 | 0.77 |
+| tsp | 0.85 | 0.83 | 1.00 | 0.96 | 0.92 | 0.90 |
+| fib | 0.98 | 0.67 | 1.03 | 0.72 | 0.85 | 0.72 |
+| vector-rev | 0.98 | 0.95 | 0.90 | 0.86 | 0.98 | 0.96 |
+| vector32-concat | 0.97 | 0.92 | 0.90 | 0.86 | 1.02 | 0.99 |
+| tailfib | 0.92 | 0.01 | 0.93 | 0.02 | 1.00 | 0.90 |
+| vector64-concat | 0.92 | 0.86 | 1.06 | 0.94 | 1.00 | 0.96 |
+| flat-array | 0.93 | 0.92 | 1.05 | 1.05 | 1.02 | 0.99 |
+| imp-for | 1.85 | 1.81 | 0.94 | 0.01 | 1.68 | 1.11 |
+| zern | 0.96 | 0.92 | 0.97 | 0.92 | 0.99 | 0.95 |
+| tak | 0.97 | 0.70 | 0.97 | 0.70 | 1.02 | 0.97 |
+| pidigits | 0.98 | 0.97 | 0.99 | 0.98 | 0.97 | 0.97 |
+| checksum | 1.00 | 1.00 | 1.08 | 1.04 | 1.52 | 1.10 |
+| mpuz | 1.01 | 0.98 | 1.03 | 0.98 | 1.03 | 1.00 |
+| mandelbrot | 1.01 | 0.96 | 1.04 | 0.99 | 1.08 | 1.01 |
+| output1 | 1.02 | 1.02 | 1.16 | 1.05 | 1.05 | 1.05 |
+| wc-input1 | 1.04 | 1.04 | 1.05 | 1.05 | 1.03 | 1.02 |
+| md5 | 1.03 | 1.01 | 1.03 | 1.01 | 1.03 | 1.02 |
+| smith-normal-form | 1.04 | 1.04 | 1.25 | 1.07 | 1.13 | 1.07 |
+| matrix-multiply | 1.39 | 1.33 | 1.04 | 1.00 | 1.07 | 1.03 |
+| fft | 1.07 | 1.02 | 1.12 | 1.07 | 1.24 | 1.17 |
+| **geometric mean** | **0.79** | **0.69** | **0.89** | **0.69** | **0.88** | **0.82** |
+| against MLton, before → after | 0.69 → 0.54 |  | 0.55 → 0.49 |  | 0.72 → 0.63 |  |
+
+- **The allocation-heavy programs halve on C:** wc-scanStream 0.39, tensor 0.40, barnes-hut 0.48, logic 0.49, simple
+  0.51, DLXSimulator 0.53, and the rest of the eleven that §3.1 found dominated by allocation and collection are at 0.57
+  to 0.74. Against MLton, the suite's geometric mean goes from 0.69 to 0.54 of MLton's time through C, 0.55 to 0.49
+  through ssac, and 0.72 to 0.63 through arm64 (`benchmarks/mlton/baselines/2026-10-28/compiled.jsonl`).
+- **C gained more than the SSA's backends on the same programs** (wc-scanStream 0.39 against ssac's 0.55 and arm64's
+  0.52). ssac's reason was that its printer declares every runtime symbol it calls as an opaque external and so called
+  `quest_alloc` out of line, the header's inline copy in `quest_inline.c`, where C's printer gets the header's inline
+  sequence from clang. The SSA's inline allocation pass now runs before ssac's printer as before arm64's: logic and
+  wc-scanStream through ssac, the calls against the sequence, timed by hand at a quarter of the suite's counts (64 and
+  2,048), twice each, were 10.5 and 10.6 s against 9.5 and 10.2 for logic and 16.7 and 16.8 against 11.6 and 11.7 for
+  wc-scanStream, so 0.93 and 0.70; the ssac column above is without the pass.
+- **Two losses are code placement, the rest the load's.** imp-for (C 1.85, arm64 1.11 by processor time) allocates 1.1
+  billion one-word boxes and little else (collector.md step 1's table), and matrix-multiply (C 1.39) allocates almost
+  nothing (183 MB in 8 s: three collections, 0.6 ms of pauses). Both compile to the same C as before but for the
+  allocation, and timed back to back against the Boehm release compiler's builds of them (`3ad3867e`, the commit before
+  step 1, in its own tree) they took 10.4 s against 5.6 and 7.8 against 5.7. Neither time is the allocation sequence's.
+  Compiled against variants of the header (`quest_alloc` in `runtime/quest_runtime.h`: the test of the checking flags,
+  the cursor and limit of the object's space, the bump, the header's store, and a read-modify-write of the object's
+  start bit), both programs run the same instructions in their inner loops whatever the variant, and their times swing
+  with where clang places `main`'s loops, into which everything is inlined: without the start bit's five instructions,
+  matrix-multiply takes 5.1 s (Boehm's build 5.7) and imp-for 7.4; without the flags' test, imp-for takes 14.7; with
+  every loop aligned to 64 bytes (`-falign-loops=64`), imp-for takes 10.5 to 11.8 with the start bit or without it, and
+  matrix-multiply 8.0 and 5.3 as before, so the loops' own alignment is not the whole of it (the same instructions at
+  other addresses, on the same data, take 0.8 and 1.3 ns per inner iteration); and gathering the collector's five
+  globals into one struct, so that the sequence takes one address instead of five, changes nothing (10.5 and 8.2). So
+  these two ratios measure code placement, which the C backend does not control, and the sequence's own cost against
+  `GC_malloc`'s call is at most what imp-for's best placement shows: 1.8 s more over 1.1 billion allocations, 1.6 ns
+  each, against the collections it buys on the programs above. fft (1.02 to 1.17), checksum (arm64 1.10),
+  smith-normal-form (1.04 to 1.07), and output1 (1.02 to 1.05) are within what the load did to the other programs by
+  processor time, except that fft's arm64 loss is the inline sequence's (below).
+- **Inline against calls on arm64:** the sequence pays where allocation is the cost and costs a few percent where it
+  is not, and the geometric mean over the 46 is 0.99 by processor time (1.02 by wall, three programs hit by the load),
+  so the pass is kept:
+
+| Benchmark | calls (s) | inline (s) | inline / calls, wall | calls, CPU (s) | inline, CPU (s) | inline / calls, CPU |
+|---|--:|--:|--:|--:|--:|--:|
+| tailmerge | 25.71 | 19.89 | 0.77 | 25.47 | 19.59 | 0.77 |
+| psdes-random | 20.50 | 17.20 | 0.84 | 20.26 | 16.75 | 0.83 |
+| zebra | 24.29 | 20.44 | 0.84 | 24.01 | 20.15 | 0.84 |
+| wc-scanStream | 99.34 | 87.77 | 0.88 | 99.00 | 87.41 | 0.88 |
+| ratio-regions | 6.51 | 5.81 | 0.89 | 6.28 | 5.55 | 0.88 |
+| vliw | 7.49 | 6.98 | 0.93 | 7.21 | 6.68 | 0.93 |
+| barnes-hut | 10.75 | 10.32 | 0.96 | 10.45 | 9.70 | 0.93 |
+| DLXSimulator | 12.49 | 11.72 | 0.94 | 12.25 | 11.42 | 0.93 |
+| simple | 10.46 | 10.05 | 0.96 | 10.22 | 9.61 | 0.94 |
+| peek | 142.12 | 135.28 | 0.95 | 141.84 | 134.82 | 0.95 |
+| logic | 11.78 | 11.48 | 0.98 | 11.54 | 10.99 | 0.95 |
+| tyan | 8.14 | 7.80 | 0.96 | 7.91 | 7.57 | 0.96 |
+| pidigits | 43.48 | 42.51 | 0.98 | 43.17 | 42.24 | 0.98 |
+| mlyacc | 8.17 | 8.11 | 0.99 | 7.80 | 7.69 | 0.99 |
+| life | 9.42 | 9.32 | 0.99 | 9.18 | 9.08 | 0.99 |
+| nucleic | 6.70 | 6.50 | 0.97 | 6.32 | 6.26 | 0.99 |
+| vector64-concat | 5.25 | 5.20 | 0.99 | 5.03 | 4.98 | 0.99 |
+| vector-rev | 10.89 | 10.83 | 0.99 | 10.64 | 10.60 | 1.00 |
+| wc-input1 | 80.35 | 80.25 | 1.00 | 80.06 | 79.97 | 1.00 |
+| string-concat | 2.46 | 2.40 | 0.97 | 2.17 | 2.17 | 1.00 |
+| tensor | 16.97 | 16.99 | 1.00 | 16.72 | 16.75 | 1.00 |
+| tak | 6.13 | 6.16 | 1.00 | 5.90 | 5.92 | 1.00 |
+| model-elimination | 18.99 | 19.06 | 1.00 | 18.73 | 18.78 | 1.00 |
+| boyer | 21.24 | 21.57 | 1.02 | 21.02 | 21.08 | 1.00 |
+| zern | 5.52 | 5.54 | 1.00 | 5.29 | 5.31 | 1.00 |
+| tailfib | 2.23 | 2.24 | 1.00 | 2.01 | 2.01 | 1.00 |
+| ray | 11.71 | 11.69 | 1.00 | 11.27 | 11.31 | 1.00 |
+| raytrace | 8.74 | 9.24 | 1.06 | 8.48 | 8.59 | 1.01 |
+| vector32-concat | 7.75 | 7.85 | 1.01 | 7.51 | 7.61 | 1.01 |
+| tsp | 11.37 | 11.55 | 1.02 | 11.09 | 11.31 | 1.02 |
+| fib | 4.96 | 5.72 | 1.15 | 4.71 | 4.83 | 1.03 |
+| md5 | 14.10 | 14.47 | 1.03 | 13.86 | 14.22 | 1.03 |
+| output1 | 53.15 | 54.67 | 1.03 | 52.88 | 54.34 | 1.03 |
+| mpuz | 8.56 | 8.80 | 1.03 | 8.33 | 8.56 | 1.03 |
+| smith-normal-form | 1021.12 | 1119.57 | 1.10 | 1019.40 | 1056.55 | 1.04 |
+| flat-array | 41.96 | 44.30 | 1.06 | 41.72 | 43.27 | 1.04 |
+| mandelbrot | 4.97 | 5.27 | 1.06 | 4.75 | 4.93 | 1.04 |
+| count-graphs | 9.86 | 10.71 | 1.09 | 9.62 | 10.01 | 1.04 |
+| matrix-multiply | 7.10 | 7.44 | 1.05 | 6.87 | 7.19 | 1.05 |
+| even-odd | 2.15 | 2.35 | 1.09 | 1.92 | 2.05 | 1.06 |
+| knuth-bendix | 30.79 | 32.43 | 1.05 | 30.15 | 32.12 | 1.07 |
+| lexgen | 6.81 | 7.34 | 1.08 | 6.48 | 6.96 | 1.07 |
+| checksum | 13.66 | 20.26 | 1.48 | 13.42 | 14.72 | 1.10 |
+| imp-for | 5.50 | 8.89 | 1.62 | 5.27 | 5.89 | 1.12 |
+| hamlet | 8.08 | 12.74 | 1.58 | 7.78 | 8.69 | 1.12 |
+| fft | 5.44 | 6.37 | 1.17 | 5.21 | 6.03 | 1.16 |
+| **geometric mean** (46) | | | **1.02** | | | **0.99** |
+
+### 16.3. The compiler's own build
+
+The driver (`questlang/driver/main.quest`) built from an empty build directory with `-j 8`, twice each, alternating:
+the Boehm release compiler `3ad3867e` in its own tree against `./quest` here, under `/usr/bin/time -l`, at load 3
+to 4.
+
+| Compiler | Wall (s) | User + system (s) | Largest resident set (GB) |
+|---|--:|--:|--:|
+| `3ad3867e`, Boehm | 28.3, 28.0 | 142.8, 141.9 | 1.26 |
+| Step 3 | 23.3, 23.3 | 109.0, 109.6 | 3.77 |
+
+The build takes 0.83 of the wall time and 0.77 of the processor time, and three times the memory. The collector's
+statistics (`QUEST_GC_STATS=1`) of the same build in one process (`-j 1`): 23 collections, 5.0 s of pauses in all
+and 994 ms the longest, 42.2 GB allocated, 9.9 GB the most in blocks at once, 848 MB the most live at once, in 1,784
+MB of lines; 20.3 million objects live at the end, 84 MB of them large. The memory is the trigger's: a block with one
+live line counts as in use, the target is twice the blocks in use after a collection, and after the compiler's
+collections the blocks in use are 3.2 times the live lines and 6.6 times the live bytes (a `-j 8` worker's
+sixteenth: 223 MB live in 458 MB of lines in 1,485 MB of blocks), so a worker's heap reaches 2.2 GB for 223 MB of
+data. Live lines against live bytes, the fragmentation that recycling cannot recover and that step 7 would, is 2.1
+here; step 4 records it again with minor collections, which reclaim the young blocks before they scatter, and
+should count a recyclable block's holes as free when it sets the target.

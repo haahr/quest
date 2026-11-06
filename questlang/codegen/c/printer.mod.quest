@@ -357,8 +357,10 @@ export
                 add(lines "static const uint8_t qlk_" <> l.tag <> "[] = { " <> syntax.comma(kinds) <> " };")
                 let form = case l.form when formFixed then "Q_LAYOUT_FIXED" when formArray then "Q_LAYOUT_ARRAY" end
                 let size = if eq(l.cSize "") then cInt(l.bytes) else l.cSize end
+                let flags = if objectLayout.noscan(l) then "Q_LAYOUT_NOSCAN" else "0" end
                 add(lines "static const QLayout " <> objectLayout.symbol(l) <> " Q_UNUSED = { "
-                    <> syntax.cString(l.tag) <> ", " <> form <> ", 0, " <> size <> ", " <> cInt(l.lengthOffset) <> ", "
+                    <> syntax.cString(l.tag) <> ", " <> form <> ", " <> flags <> ", " <> size <> ", "
+                    <> cInt(l.lengthOffset) <> ", "
                     <> cInt(extent l.element) <> ", " <> cInt(extent l.words) <> ", qlk_" <> l.tag <> " };")
             end
             if not(vector.empty(:String lines)) then add(lines "") end

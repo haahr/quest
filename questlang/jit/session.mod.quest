@@ -401,7 +401,10 @@ export
                 try verify.checkUnit(unit) when verify.verifyError with x then fail(:Ok x) end
             end
             for i = 0 upto {extent unit.imports - 1} do checkImport(s unit.imports[i]) end
-            let encoded = try arm64.encodeUnit(ssaPipeline.build(passes.runPasses(unit)))
+            let encoded = try
+                let built = ssaPipeline.build(passes.runPasses(unit))
+                ssaPipeline.inlineAllocation(built)
+                arm64.encodeUnit(built)
                 when ssaBuild.unsupported with x then fail(:encode.Encoded "ssa: unsupported: " <> x)
                 when ssaVerify.verifyError with x then fail(:encode.Encoded x)
                 when arm64.unsupported with x then fail(:encode.Encoded x)

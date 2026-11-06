@@ -225,19 +225,26 @@ into runtime `QTypeDescriptor` graphs (`runtime/quest_runtime.h`, materialized b
 Quest is a garbage-collected language with mutable references (`var`) and cyclic data structures (such as recursive
 functions, doubly-linked structures, and self-referential records).
 
-1. **Primary Collector: Boehm-Demers-Weiser Conservative GC (`libgc`)**, which scans the heap, the stack, the
-   registers, and the data segments conservatively. Every allocation (`quest_alloc(size, layout)` and its variants,
-   [c-representation.md](c-representation.md) §9) prepends a header word naming the object's **layout**
-   ([collector.md](collector.md) §3.2), which says for each word whether it is a pointer, a scalar, or ambiguous:
-   the first step of the collector that is to replace Boehm, and what `QUEST_GC_CHECK=layouts`
-   (`runtime/quest_gc.c`) checks against the objects, after every 64 MB allocated (`QUEST_GC_CHECK_INTERVAL` sets the
-   bytes; at least four times the heap's size, so that the walks stay a fraction of the run) and at exit;
-   `roots` checks that every heap pointer in the data segment lies in a unit's root table or a root the runtime
-   lists; `report` prints the counts per layout, ambiguous words among them, and the write barriers' counts.
-   - Pointer-free allocations (`quest_alloc_bytes`: `String` character buffers, and the runtime's own byte buffers)
-     route to `GC_MALLOC_ATOMIC`, avoiding conservative pointer scanning inside them.
-2. **Fallback Mode (`--nogc`):** compiling with `--nogc` defines `-DQUEST_NOGC`, routing the allocators to `calloc`
-   and `malloc`, so binaries can be built and tested on hosts without `libgc` installed; nothing is ever collected.
+1. **The collector is the runtime's own** (`runtime/quest_gc.c`, designed in [collector.md](collector.md)): a
+   mark-region heap of 32 KB blocks of 128-byte lines in one reserved range, with its metadata beside it (a block
+   table, a mark byte per line, and bitmaps of the objects' starts and marks). Every allocation
+   (`quest_alloc(size, layout)` and its variants, [c-representation.md](c-representation.md) §9) prepends a header
+   word naming the object's **layout** ([collector.md](collector.md) §3.2), which says for each word whether it is a
+   pointer, a scalar, or ambiguous (a `val` word of generic code), bumps the cursor of the object's space (its
+   layout's: pointer-bearing, or pointer-free, which a collection never scans) through the current hole of free
+   lines, and sets the object's start bit; the slow path finds the next hole, or collects. A collection stops the
+   world when the blocks in use reach their target (twice those in use after the last collection, and at least
+   `QUEST_GC_MIN_HEAP` megabytes, 64 by default), marks from the roots (each unit's root table, the runtime's listed
+   statics and thread-locals, the JIT's data regions, and the stack and registers, conservatively) by the layouts,
+   validating an ambiguous word against the start bits, and keeps only the live objects' start bits (decision 14)
+   before classifying each block by its live lines. Objects never move. `QUEST_GC_STATS=1` prints a summary at exit
+   (`each`, a line per collection too); `QUEST_GC_CHECK=layouts` walks every live object by its layout after each
+   collection, forcing one every 64 MB allocated (`QUEST_GC_CHECK_INTERVAL` sets the bytes; at least four times the
+   heap's size) and at exit; `roots` checks that every heap pointer in the data segment lies in a unit's root table
+   or a root the runtime lists; `poison` fills reclaimed lines with a pattern that is never a pointer; `report`
+   prints the counts per layout, ambiguous words among them, and the write barriers' counts.
+2. **`--nogc`:** compiling with `--nogc` defines `-DQUEST_NOGC`, under which the collector allocates but never
+   collects, for debugging.
 
 ---
 

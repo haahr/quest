@@ -491,9 +491,12 @@ typedef struct QLayout {
 } QLayout;
 
 /* The header word before an object: the layout's address in its low 48 bits,
- * with the top sixteen reserved for the collector's and the mutator's flags
- * (docs/collector.md section 3.2) */
+ * and above them the collector's byte (bits 56 to 63) and the mutator's (48
+ * to 55), each written by its side alone (docs/collector.md section 3.2). The
+ * collector's holds `old`, set when the object is marked, the generational
+ * barrier's hint. */
 #define Q_HEADER_LAYOUT_MASK ((uintptr_t)0x0000FFFFFFFFFFFFu)
+#define Q_HEADER_OLD         ((uintptr_t)1 << 56)
 
 Q_INLINE const QLayout *quest_layout_of(const void *obj) {
     return (const QLayout *)(((const uintptr_t *)obj)[-1] & Q_HEADER_LAYOUT_MASK);
@@ -577,48 +580,70 @@ void     quest_code_roots(QRootVisitor add);
 #define QUEST_GC_CHECK_LAYOUTS 1
 #define QUEST_GC_CHECK_REPORT  2
 #define QUEST_GC_CHECK_ROOTS   4
-extern int    quest_gc_check_flags;
-extern size_t quest_gc_check_pending;  /* bytes allocated since the last check */
-/* Counts an allocation of sz bytes after a header of header bytes, and checks
- * the heap when enough has been allocated since the last check */
-void          quest_gc_check_tick(size_t sz, size_t header);
-/* Reads QUEST_GC_CHECK and starts the collector */
+#define QUEST_GC_CHECK_POISON  8
+#define QUEST_GC_CHECK_COLLECT 16       /* collect every QUEST_GC_CHECK_INTERVAL bytes, checking nothing */
+#define QUEST_GC_CHECK_ALLOCATIONS 32   /* count allocations by their sites, for benchmarks/mlton/allocations.py */
+extern int    quest_gc_check_flags;     /* nonzero sends every allocation through the slow path, which counts it */
+extern size_t quest_gc_check_pending;   /* bytes allocated since the last forced collection */
+/* Reads QUEST_GC_CHECK and the other options, and reserves the heap */
 void          quest_gc_init(void);
+/* Collects now */
+void          quest_gc_collect(void);
+/* Registers [low, high) as a region of ambiguous roots (the JIT's data) */
+void          quest_gc_add_roots(void *low, void *high);
 
-/* Memory allocation: an object of sz bytes laid out as layout says, zeroed,
- * after its header (quest_alloc); the same with its byte count recorded, for
- * a sized layout (quest_alloc_sized); and sz pointer-free bytes, which the
- * collector never scans (quest_alloc_bytes) */
-#ifdef QUEST_NOGC
-#  define Q_GC_MALLOC(sz)        calloc(1, sz)
-#  define Q_GC_MALLOC_ATOMIC(sz) malloc(sz)
-#else
-#  include <gc.h>
-#  define Q_GC_MALLOC(sz)        GC_MALLOC(sz)
-#  define Q_GC_MALLOC_ATOMIC(sz) GC_MALLOC_ATOMIC(sz)
-#endif
+/* Memory allocation (docs/collector.md section 3.4): an object of sz bytes
+ * laid out as layout says, zeroed, after its header (quest_alloc); the same
+ * with its byte count recorded, for a sized layout (quest_alloc_sized); and
+ * sz pointer-free bytes, which the collector never scans (quest_alloc_bytes).
+ * The fast path bumps the cursor of the object's space (pointer-bearing, or
+ * pointer-free by its layout) through the current hole and sets the object's
+ * start bit, by which the collector validates an ambiguous word; the slow
+ * path, which also takes every allocation while a checking mode is on, finds
+ * the next hole, or collects. The SSA's backends select the same sequence
+ * inline (docs/ssa.md section 4.1). */
+extern uintptr_t quest_gc_cursor[2];
+extern uintptr_t quest_gc_limit[2];
+extern uintptr_t quest_gc_heap_lo;
+extern uint8_t  *quest_gc_start_bits;
+void *quest_gc_alloc_slow(size_t total, const QLayout *layout);
+
+Q_INLINE unsigned quest_layout_space(const QLayout *layout) {
+    return (layout->flags & Q_LAYOUT_NOSCAN) != 0 ? 1u : 0u;
+}
+
+Q_INLINE uintptr_t *quest_gc_bump(size_t total, const QLayout *layout) {
+    unsigned space = quest_layout_space(layout);
+    uintptr_t p = quest_gc_cursor[space];
+    if (quest_gc_check_flags != 0 || total > quest_gc_limit[space] - p) {
+        return (uintptr_t *)quest_gc_alloc_slow(total, layout);
+    }
+    quest_gc_cursor[space] = p + total;
+    return (uintptr_t *)p;
+}
+
+Q_INLINE void quest_gc_note_start(const void *obj) {
+    uintptr_t i = ((uintptr_t)obj - quest_gc_heap_lo) >> 3;
+    quest_gc_start_bits[i >> 3] |= (uint8_t)(1u << (i & 7));
+}
 
 Q_INLINE void *quest_alloc(size_t sz, const QLayout *layout) {
-    uintptr_t *base = (uintptr_t *)Q_GC_MALLOC(sz + sizeof(uintptr_t));
+    uintptr_t *base = quest_gc_bump(sizeof(uintptr_t) + ((sz + 7) & ~(size_t)7), layout);
     base[0] = (uintptr_t)layout;
-    if (quest_gc_check_flags != 0) quest_gc_check_tick(sz, sizeof(uintptr_t));
+    quest_gc_note_start(base + 1);
     return base + 1;
 }
 
 Q_INLINE void *quest_alloc_sized(size_t sz, const QLayout *layout) {
-    uintptr_t *base = (uintptr_t *)Q_GC_MALLOC(sz + 2 * sizeof(uintptr_t));
+    uintptr_t *base = quest_gc_bump(2 * sizeof(uintptr_t) + ((sz + 7) & ~(size_t)7), layout);
     base[0] = ((uintptr_t)sz << 1) | 1u;
     base[1] = (uintptr_t)layout;
-    if (quest_gc_check_flags != 0) quest_gc_check_tick(sz, 2 * sizeof(uintptr_t));
+    quest_gc_note_start(base + 2);
     return base + 2;
 }
 
 Q_INLINE void *quest_alloc_bytes(size_t sz) {
-    uintptr_t *base = (uintptr_t *)Q_GC_MALLOC_ATOMIC(sz + 2 * sizeof(uintptr_t));
-    base[0] = ((uintptr_t)sz << 1) | 1u;
-    base[1] = (uintptr_t)&quest_layout_bytes;
-    if (quest_gc_check_flags != 0) quest_gc_check_tick(sz, 2 * sizeof(uintptr_t));
-    return base + 2;
+    return quest_alloc_sized(sz, &quest_layout_bytes);
 }
 
 /* A sized allocation of n words of unknown kind, for the runtime's own

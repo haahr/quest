@@ -220,7 +220,9 @@ def c_definitions(table: Table) -> list[str]:
         kinds = ", ".join(str(k) for k in l.words) or "0"
         size = l.c_size or str(l.bytes)
         lines.append(f"static const uint8_t qlk_{l.tag}[] = {{ {kinds} }};")
-        lines.append(f'static const QLayout {l.symbol} Q_UNUSED = {{ "{l.tag}", Q_LAYOUT_FIXED, 0, {size}, 0, 0, '
+        # A layout of scalars alone is noscan: the collector never scans its objects
+        flags = "Q_LAYOUT_NOSCAN" if all(k == SCALAR for k in l.words) else "0"
+        lines.append(f'static const QLayout {l.symbol} Q_UNUSED = {{ "{l.tag}", Q_LAYOUT_FIXED, {flags}, {size}, 0, 0, '
                      f"{len(l.words)}, qlk_{l.tag} }};")
     if lines:
         lines.append("")

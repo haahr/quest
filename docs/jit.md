@@ -303,8 +303,9 @@ The encoder is checked against the assembler: for every arm64 golden, the encode
   interned by the runtime, so an input's descriptors are the host's when the types are the same. Two inputs may
   declare different modules of the same name (the REPL allows `module m ... end` twice), so a declared module's
   global name includes its input's number.
-- **Collector roots:** the data mapping and the globals are registered with `GC_add_roots`; Boehm scans the host's
-  image and stacks but not memory the JIT maps.
+- **Collector roots:** the data mapping and the globals are registered with `quest_code_add_roots`
+  (`quest_gc_add_roots`), as a region of ambiguous roots; the collector scans the host's root tables and stacks but
+  not memory the JIT maps.
 - **Function ranges:** the loader keeps each JIT function's start, end (its `Lf<k>_end` label), and frame name, for
   attributing frames (§3.9).
 

@@ -257,7 +257,7 @@ Tuples are ordered collections of 64-bit values. In Quest, tuple components can 
   made in its box (its payload follows the box in one allocation), and an aggregate being made allocates after itself
   the boxes of the fields that need new ones (the pass marks them `embedded`; `embedded_boxes` in the printer), so that
   storing a record or variant rarely allocates on its own (the collector recognizes pointers into an allocation's
-  interior, as Boehm GC does by default). The location a
+  interior, through its start bits). The location a
   `var` or `out` parameter of a record or variant type points to holds the value boxed too
   (`location_representation`): the address of a slot is passed as it is, and a local variable whose address is taken
   is held boxed.
@@ -541,7 +541,7 @@ typedef struct QT_T {
   is not made, the option storing its components (when each is a slot value of the case's component shape); and
   `opt!tag.field`, a payload only the next statement reads a component of, reads the component from the option
   after checking the tag. The SSA's backends get the same, and more, from escape analysis ([ssa.md](ssa.md) §4.1);
-  clang cannot remove a `GC_malloc`, so the C printer keeps these while it is the default backend.
+  clang cannot remove an allocation, so the C printer keeps these while it is the default backend.
 
 #### 2. Variant Types (Unordered, First-Class 16-Byte `QVariantVal`, Zero-Allocation Tag Remapping)
 Unlike options, variants are unordered and each branch has **exactly one type** $A_i$ (§6.3):
@@ -731,8 +731,8 @@ typedef struct QProxy {
 - **Seeing through:** `is` and `quest_val_is` compare originals, as `quest_identity_hash` hashes them; printing,
   `quest_convert`, and dynamic serialization read components through proxies (`quest_tuple_element`,
   `quest_option_tag`, `quest_option_element`), and serialization shares a proxy as its original.
-- **Collection:** a tagged pointer points into its proxy's allocation, which the collector keeps alive as Boehm GC
-  recognizes interior pointers (its default).
+- **Collection:** a tagged pointer points into its proxy's allocation, which the collector keeps alive, since it
+  recognizes interior pointers (through its start bits).
 
 ## 6. Closures and Calling Convention
 
@@ -1343,10 +1343,13 @@ listed in a root table (`qr_roots`, `QRootEntry`s ended by a null slot) that `qr
 collector (step 4) the barriers only count (`QUEST_GC_CHECK=report` prints the counts), and
 `QUEST_GC_CHECK=roots` scans the data segment for a heap pointer no table or listed root covers.
 
-- When compiled without flags, Quest links with Boehm GC (`-lgc`): `quest_alloc` is `GC_MALLOC` of the header and the
-  object, `quest_alloc_bytes` `GC_MALLOC_ATOMIC`.
-- When invoked with `--nogc`, the compiler passes `-DQUEST_NOGC` and omits `-lgc`: `calloc` and `malloc` instead, so
-  binaries can be built and tested on hosts without `libgc` installed. Nothing is collected.
+The collector is the runtime's own (`runtime/quest_gc.c`, [runtime-design.md](runtime-design.md) §3): the header's
+`quest_alloc` bumps the cursor of the object's space (`quest_gc_cursor`, `quest_gc_limit`, by the layout's noscan
+flag) through the current hole, writes the header, and sets the object's start bit (`quest_gc_start_bits`); when
+the hole has no room, `quest_gc_alloc_slow` finds the next, or collects. The SSA's backends select the same
+sequence themselves ([ssa.md](ssa.md) §4.1); the inline code compiled into `quest_inline.o` serves the allocations
+left as calls (`QUEST_SKIP_PASSES=inlineAllocation`). With `--nogc`, the compiler passes `-DQUEST_NOGC`, under which the collector
+never collects.
 
 ---
 

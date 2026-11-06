@@ -68,7 +68,9 @@ export
             let high = 4294967296
             let form = case l.form when formFixed then 0 when formArray then 1 end
             put(ws 0 s "name" address(text(l.tag)))
-            put(ws 0 s "form" int(form))
+            (* The flags share the form's word: Q_LAYOUT_NOSCAN for a layout of
+             * scalars alone *)
+            put(ws 0 s "form" int(form + {if objectLayout.noscan(l) then 1 else 0 end} * high))
             put(ws 0 s "size" int(l.bytes + l.lengthOffset * high))
             put(ws 0 s "element_words" int(extent l.element + extent l.words * high))
             put(ws 0 s "kinds" address(kindsSymbol))

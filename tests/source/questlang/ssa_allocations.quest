@@ -1,0 +1,90 @@
+(* Self-Hosted Quest Compiler: Test Inline Allocation
+ *
+ * questlang/ssa/allocations (docs/ssa.md section 4.1, docs/collector.md
+ * section 3.4) on units of the SSA written as text and read by
+ * questlang/ssa/parser, each printed before and after the pass and verified:
+ * an allocation of a layout of the unit's (pointer-bearing, so of the scanned
+ * space), one of a layout of scalars alone (the noscan space), one of a
+ * layout the runtime owns (scanned), two allocations in one block, and a
+ * call whose size is not a constant, which is left. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/allocations : questlang/ssa/Allocations
+    questlang/ssa/verify : questlang/ssa/Verify
+    util/strutil : util/Strutil
+    writer : Writer
+;
+
+let emit(s: String): Ok = writer.putString(writer.output s);
+
+(* The unit's layouts: pair, of a scalar and a pointer, and ints, of two
+ * scalars, whose flags (in the high half of its second word) say noscan *)
+let layouts = array of
+    "data qlk_pair words [256]"
+    "data quest_layout_pair words [0, 0, 16, 2, qlk_pair]"
+    "data qlk_ints words [0]"
+    "data quest_layout_ints words [0, 4294967296, 16, 2, qlk_ints]"
+end;
+
+let show(title: String lines: Array(String)): Ok =
+    begin
+        emit("== " <> title <> "\n")
+        let u = parser.readUnit(strutil.joinArray("\n" layouts) <> "\n" <> strutil.joinArray("\n" lines) <> "\n")
+        emit(printer.formatUnit(u))
+        allocations.inlineUnit(u)
+        emit("-- after inlineAllocation\n")
+        emit(printer.formatUnit(u))
+        try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
+    end;
+
+show("a pair of the unit's, in the scanned space" array of
+    "function pair(%0: int, %1: ptr): ptr {"
+    "b0(%0: int, %1: ptr):"
+    "  %2: int = const 16"
+    "  %3: ptr = symbol quest_layout_pair"
+    "  %4: ptr = call quest_alloc(%2, %3)"
+    "  store8 %4 + 0, %0"
+    "  store8 %4 + 8, %1"
+    "  return %4"
+    "}"
+end);
+
+show("two ints, in the noscan space" array of
+    "function ints(%0: int): ptr {"
+    "b0(%0: int):"
+    "  %1: int = const 16"
+    "  %2: ptr = symbol quest_layout_ints"
+    "  %3: ptr = call quest_alloc(%1, %2)"
+    "  store8 %3 + 0, %0"
+    "  store8 %3 + 8, %0"
+    "  return %3"
+    "}"
+end);
+
+show("a closure, whose layout is the runtime's, and a second allocation after it" array of
+    "function closure(%0: ptr, %1: ptr): ptr {"
+    "b0(%0: ptr, %1: ptr):"
+    "  %2: int = const 16"
+    "  %3: ptr = symbol quest_layout_closure"
+    "  %4: ptr = call quest_alloc(%2, %3)"
+    "  store8 %4 + 0, %0"
+    "  store8 %4 + 8, %1"
+    "  %5: int = const 24"
+    "  %6: ptr = symbol quest_layout_pair"
+    "  %7: ptr = call quest_alloc(%5, %6)"
+    "  store8 %7 + 8, %4"
+    "  return %7"
+    "}"
+end);
+
+show("a size that is not a constant, left to the runtime" array of
+    "function sized(%0: int): ptr {"
+    "b0(%0: int):"
+    "  %1: ptr = symbol quest_layout_pair"
+    "  %2: ptr = call quest_alloc(%0, %1)"
+    "  return %2"
+    "}"
+end)

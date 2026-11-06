@@ -64,8 +64,8 @@ seconds.
   current release to `PREFIX/share/quest/COMMIT`, where a later cut cannot remove it, checks it there as `--verify`
   does, and writes `PREFIX/bin/quest`, a script that runs it with `QUEST_HOME` set to its own `home/`, whatever the
   caller's is. Installing a later release copies it beside the earlier ones, which are kept, and points the script at
-  it; the script is replaced only if `--install` wrote it. The install still needs clang and Homebrew's `bdw-gc`, which
-  the compiler uses to build programs.
+  it; the script is replaced only if `--install` wrote it. The install still needs clang, which the compiler uses to
+  build programs.
 - **When to cut one:** by hand, when the working tree needs something the current release cannot compile (§2), and
   otherwise when convenient, for example after a larger piece of work. A release is never cut automatically by a push.
 

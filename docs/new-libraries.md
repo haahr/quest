@@ -729,7 +729,7 @@ does nothing if the file does not exist, and `writeHistory` writes the history's
 #### The Runtime (`runtime/quest_readline.c`)
 
 - **The line editor.** The readline API, which GNU readline and libedit both provide (`<readline/readline.h>`). The
-  build detects them as it does Boehm GC (`detect_readline_flags` in `codegen/c/compiler_runner.py`, and
+  build detects them (`detect_readline_flags` in `codegen/c/compiler_runner.py`, and
   `codegen/c/compilerrunner` in `questlang/`): GNU readline where it is installed (Homebrew's `readline`, or the
   system's), compiled `-DQUEST_GNU_READLINE`; else libedit (`-ledit`, part of macOS, and `libedit-dev` on Linux); else
   neither, `-DQUEST_NOREADLINE`, when `editing` is false. The runtime keeps the two libraries' differences (signal

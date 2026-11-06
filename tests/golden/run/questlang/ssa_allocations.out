@@ -1,0 +1,294 @@
+== a pair of the unit's, in the scanned space
+function pair(%0: int, %1: ptr): ptr {
+b0(%0: int, %1: ptr):
+  %2: int = const 16
+  %3: ptr = symbol quest_layout_pair
+  %4: ptr = call quest_alloc(%2, %3)
+  store8 %4 + 0, %0
+  store8 %4 + 8, %1
+  return %4
+}
+
+data qlk_pair words [256]
+data quest_layout_pair words [0, 0, 16, 2, qlk_pair]
+data qlk_ints words [0]
+data quest_layout_ints words [0, 4294967296, 16, 2, qlk_ints]
+-- after inlineAllocation
+function pair(%0: int, %1: ptr): ptr {
+b0(%0: int, %1: ptr):
+  %2: int = const 16
+  %3: ptr = symbol quest_layout_pair
+  %5: ptr = symbol quest_gc_check_flags
+  %6: int = load4s %5 + 0
+  %7: ptr = symbol quest_gc_cursor
+  %8: ptr = symbol quest_gc_limit
+  %9: int = load8 %7 + 0
+  %10: int = load8 %8 + 0
+  %11: int = const 24
+  %12: int = sub %10, %9
+  %13: int = ult %12, %11
+  %14: int = const 0
+  %15: int = ne %6, %14
+  %16: int = or %13, %15
+  branch %16, b2(), b1()
+b1():
+  %17: int = add %9, %11
+  store8 %7 + 0, %17
+  jump b3(%9)
+b2():
+  %18: ptr = call quest_gc_alloc_slow(%11, %3)
+  %19: int = ptrToInt %18
+  jump b3(%19)
+b3(%20: int):
+  %21: ptr = intToPtr %20
+  store8 %21 + 0, %3
+  %22: int = const 8
+  %4: ptr = ptrAdd %21, %22
+  %23: ptr = symbol quest_gc_heap_lo
+  %24: int = load8 %23 + 0
+  %25: ptr = symbol quest_gc_start_bits
+  %26: ptr = load8 %25 + 0
+  %27: int = ptrToInt %4
+  %28: int = sub %27, %24
+  %29: int = const 3
+  %30: int = lshr %28, %29
+  %31: int = const 3
+  %32: int = lshr %30, %31
+  %33: ptr = ptrAdd %26, %32
+  %34: int = const 1
+  %35: int = const 7
+  %36: int = and %30, %35
+  %37: int = shl %34, %36
+  %38: int = load1 %33 + 0
+  %39: int = or %38, %37
+  store1 %33 + 0, %39
+  store8 %4 + 0, %0
+  store8 %4 + 8, %1
+  return %4
+}
+
+data qlk_pair words [256]
+data quest_layout_pair words [0, 0, 16, 2, qlk_pair]
+data qlk_ints words [0]
+data quest_layout_ints words [0, 4294967296, 16, 2, qlk_ints]
+== two ints, in the noscan space
+function ints(%0: int): ptr {
+b0(%0: int):
+  %1: int = const 16
+  %2: ptr = symbol quest_layout_ints
+  %3: ptr = call quest_alloc(%1, %2)
+  store8 %3 + 0, %0
+  store8 %3 + 8, %0
+  return %3
+}
+
+data qlk_pair words [256]
+data quest_layout_pair words [0, 0, 16, 2, qlk_pair]
+data qlk_ints words [0]
+data quest_layout_ints words [0, 4294967296, 16, 2, qlk_ints]
+-- after inlineAllocation
+function ints(%0: int): ptr {
+b0(%0: int):
+  %1: int = const 16
+  %2: ptr = symbol quest_layout_ints
+  %4: ptr = symbol quest_gc_check_flags
+  %5: int = load4s %4 + 0
+  %6: ptr = symbol quest_gc_cursor + 8
+  %7: ptr = symbol quest_gc_limit + 8
+  %8: int = load8 %6 + 0
+  %9: int = load8 %7 + 0
+  %10: int = const 24
+  %11: int = sub %9, %8
+  %12: int = ult %11, %10
+  %13: int = const 0
+  %14: int = ne %5, %13
+  %15: int = or %12, %14
+  branch %15, b2(), b1()
+b1():
+  %16: int = add %8, %10
+  store8 %6 + 0, %16
+  jump b3(%8)
+b2():
+  %17: ptr = call quest_gc_alloc_slow(%10, %2)
+  %18: int = ptrToInt %17
+  jump b3(%18)
+b3(%19: int):
+  %20: ptr = intToPtr %19
+  store8 %20 + 0, %2
+  %21: int = const 8
+  %3: ptr = ptrAdd %20, %21
+  %22: ptr = symbol quest_gc_heap_lo
+  %23: int = load8 %22 + 0
+  %24: ptr = symbol quest_gc_start_bits
+  %25: ptr = load8 %24 + 0
+  %26: int = ptrToInt %3
+  %27: int = sub %26, %23
+  %28: int = const 3
+  %29: int = lshr %27, %28
+  %30: int = const 3
+  %31: int = lshr %29, %30
+  %32: ptr = ptrAdd %25, %31
+  %33: int = const 1
+  %34: int = const 7
+  %35: int = and %29, %34
+  %36: int = shl %33, %35
+  %37: int = load1 %32 + 0
+  %38: int = or %37, %36
+  store1 %32 + 0, %38
+  store8 %3 + 0, %0
+  store8 %3 + 8, %0
+  return %3
+}
+
+data qlk_pair words [256]
+data quest_layout_pair words [0, 0, 16, 2, qlk_pair]
+data qlk_ints words [0]
+data quest_layout_ints words [0, 4294967296, 16, 2, qlk_ints]
+== a closure, whose layout is the runtime's, and a second allocation after it
+function closure(%0: ptr, %1: ptr): ptr {
+b0(%0: ptr, %1: ptr):
+  %2: int = const 16
+  %3: ptr = symbol quest_layout_closure
+  %4: ptr = call quest_alloc(%2, %3)
+  store8 %4 + 0, %0
+  store8 %4 + 8, %1
+  %5: int = const 24
+  %6: ptr = symbol quest_layout_pair
+  %7: ptr = call quest_alloc(%5, %6)
+  store8 %7 + 8, %4
+  return %7
+}
+
+data qlk_pair words [256]
+data quest_layout_pair words [0, 0, 16, 2, qlk_pair]
+data qlk_ints words [0]
+data quest_layout_ints words [0, 4294967296, 16, 2, qlk_ints]
+-- after inlineAllocation
+function closure(%0: ptr, %1: ptr): ptr {
+b0(%0: ptr, %1: ptr):
+  %2: int = const 16
+  %3: ptr = symbol quest_layout_closure
+  %8: ptr = symbol quest_gc_check_flags
+  %9: int = load4s %8 + 0
+  %10: ptr = symbol quest_gc_cursor
+  %11: ptr = symbol quest_gc_limit
+  %12: int = load8 %10 + 0
+  %13: int = load8 %11 + 0
+  %14: int = const 24
+  %15: int = sub %13, %12
+  %16: int = ult %15, %14
+  %17: int = const 0
+  %18: int = ne %9, %17
+  %19: int = or %16, %18
+  branch %19, b2(), b1()
+b1():
+  %20: int = add %12, %14
+  store8 %10 + 0, %20
+  jump b3(%12)
+b2():
+  %21: ptr = call quest_gc_alloc_slow(%14, %3)
+  %22: int = ptrToInt %21
+  jump b3(%22)
+b3(%23: int):
+  %24: ptr = intToPtr %23
+  store8 %24 + 0, %3
+  %25: int = const 8
+  %4: ptr = ptrAdd %24, %25
+  %26: ptr = symbol quest_gc_heap_lo
+  %27: int = load8 %26 + 0
+  %28: ptr = symbol quest_gc_start_bits
+  %29: ptr = load8 %28 + 0
+  %30: int = ptrToInt %4
+  %31: int = sub %30, %27
+  %32: int = const 3
+  %33: int = lshr %31, %32
+  %34: int = const 3
+  %35: int = lshr %33, %34
+  %36: ptr = ptrAdd %29, %35
+  %37: int = const 1
+  %38: int = const 7
+  %39: int = and %33, %38
+  %40: int = shl %37, %39
+  %41: int = load1 %36 + 0
+  %42: int = or %41, %40
+  store1 %36 + 0, %42
+  store8 %4 + 0, %0
+  store8 %4 + 8, %1
+  %5: int = const 24
+  %6: ptr = symbol quest_layout_pair
+  %43: ptr = symbol quest_gc_check_flags
+  %44: int = load4s %43 + 0
+  %45: ptr = symbol quest_gc_cursor
+  %46: ptr = symbol quest_gc_limit
+  %47: int = load8 %45 + 0
+  %48: int = load8 %46 + 0
+  %49: int = const 32
+  %50: int = sub %48, %47
+  %51: int = ult %50, %49
+  %52: int = const 0
+  %53: int = ne %44, %52
+  %54: int = or %51, %53
+  branch %54, b5(), b4()
+b4():
+  %55: int = add %47, %49
+  store8 %45 + 0, %55
+  jump b6(%47)
+b5():
+  %56: ptr = call quest_gc_alloc_slow(%49, %6)
+  %57: int = ptrToInt %56
+  jump b6(%57)
+b6(%58: int):
+  %59: ptr = intToPtr %58
+  store8 %59 + 0, %6
+  %60: int = const 8
+  %7: ptr = ptrAdd %59, %60
+  %61: ptr = symbol quest_gc_heap_lo
+  %62: int = load8 %61 + 0
+  %63: ptr = symbol quest_gc_start_bits
+  %64: ptr = load8 %63 + 0
+  %65: int = ptrToInt %7
+  %66: int = sub %65, %62
+  %67: int = const 3
+  %68: int = lshr %66, %67
+  %69: int = const 3
+  %70: int = lshr %68, %69
+  %71: ptr = ptrAdd %64, %70
+  %72: int = const 1
+  %73: int = const 7
+  %74: int = and %68, %73
+  %75: int = shl %72, %74
+  %76: int = load1 %71 + 0
+  %77: int = or %76, %75
+  store1 %71 + 0, %77
+  store8 %7 + 8, %4
+  return %7
+}
+
+data qlk_pair words [256]
+data quest_layout_pair words [0, 0, 16, 2, qlk_pair]
+data qlk_ints words [0]
+data quest_layout_ints words [0, 4294967296, 16, 2, qlk_ints]
+== a size that is not a constant, left to the runtime
+function sized(%0: int): ptr {
+b0(%0: int):
+  %1: ptr = symbol quest_layout_pair
+  %2: ptr = call quest_alloc(%0, %1)
+  return %2
+}
+
+data qlk_pair words [256]
+data quest_layout_pair words [0, 0, 16, 2, qlk_pair]
+data qlk_ints words [0]
+data quest_layout_ints words [0, 4294967296, 16, 2, qlk_ints]
+-- after inlineAllocation
+function sized(%0: int): ptr {
+b0(%0: int):
+  %1: ptr = symbol quest_layout_pair
+  %2: ptr = call quest_alloc(%0, %1)
+  return %2
+}
+
+data qlk_pair words [256]
+data quest_layout_pair words [0, 0, 16, 2, qlk_pair]
+data qlk_ints words [0]
+data quest_layout_ints words [0, 4294967296, 16, 2, qlk_ints]

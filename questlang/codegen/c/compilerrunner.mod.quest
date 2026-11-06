@@ -88,27 +88,7 @@ export
             tracebackFlags(compiler)))
 
     let gcFlags(nogc: Bool): Array(String) =
-        if nogc then
-            array of "-DQUEST_NOGC" end
-        else
-            let prefixes = array of "/opt/homebrew/opt/bdw-gc" "/usr/local/opt/bdw-gc" "/usr" end
-            let var found = maybe.none(:Array(String))
-            for i = 0 upto {extent prefixes - 1} do
-                if maybe.isNone(:Array(String) found) then
-                    let inc = paths.join(prefixes[i] "include")
-                    let lib = paths.join(prefixes[i] "lib")
-                    if system.isFile(paths.join(inc "gc.h")) then
-                        let hasLib = system.isFile(paths.join(lib "libgc.dylib"))
-                            orif system.isFile(paths.join(lib "libgc.so"))
-                            orif system.isFile(paths.join(lib "libgc.a"))
-                        if hasLib then
-                            found := maybe.some(:Array(String) array of "-I" <> inc "-L" <> lib "-lgc" end) end
-                    end
-                end
-            end
-            (* Without it, no collection *)
-            maybe.unwrapOr(:Array(String) found array of "-DQUEST_NOGC" end)
-        end
+        if nogc then array of "-DQUEST_NOGC" end else array of :String end end
 
     (* Whether the system's headers (on macOS, the SDK's) include header *)
     let sdkHas(header: String): Bool =

@@ -220,12 +220,7 @@ QString *quest_code_raise_site(QRaised *r) {
  * ============================================================================ */
 
 void quest_code_add_roots(void *low, void *high) {
-#ifndef QUEST_NOGC
-    GC_add_roots(low, high);
-#else
-    (void)low;
-    (void)high;
-#endif
+    quest_gc_add_roots(low, high);
 }
 
 void quest_code_set_args(QArray *args) {

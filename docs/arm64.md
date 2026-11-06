@@ -439,7 +439,8 @@ jump tables yet; they will need the same care.
 
 ### 3.13. The collector
 
-Boehm's collector scans the stack and registers conservatively, so native code needs no stack maps. It does need:
+The collector scans the stack and registers conservatively ([collector.md](collector.md) §3.3, until its step 5), so
+native code needs no stack maps. It does need:
 
 - no pointer held only in a floating-point register, or in a spill slot the collector cannot see;
 - no derived pointer outside its object while the object is live only through it (a pointer to one past an array,
@@ -705,9 +706,9 @@ after both: life 1.50, ray 1.25, hamlet 1.38, mlyacc 1.54, zebra 1.44, nucleic 1
    branch rather than in a block of its own.
 2. **Allocation's fast path inline:** with benchmarks.md §3.1's per-size free-list cache in the runtime, the
    pop of a free list is a few instructions that the C backend gets from the header and arm64 could select inline.
-   Not part of the arm64/C gap, but the largest cost both share. *Not to be done* (the user's decision,
-   2026-10-31): an allocation path compiled into programs is a deeper dependency on the Boehm collector than Quest
-   should have.
+   Not part of the arm64/C gap, but the largest cost both share. *Not done while the collector was Boehm's* (the
+   user's decision, 2026-10-31: an allocation path compiled into programs was a deeper dependency on it than Quest
+   should have); done with Quest's own collector ([collector.md](collector.md) step 3).
 3. **Then, measured before more is done:**
    - **On the SSA:** copy propagation, constant folding, dead code elimination, value numbering, block merging, and
      jump threading. LLVM's equivalents gain 3 to 5 percent on SSA the IR's passes have simplified (life 13 to 19),
@@ -821,7 +822,7 @@ alignment beyond 8.
 | The function table `qr_funcs` | `funcTableEntries` | data |
 | Exported functions `qv_<mod>_<member>` (without an environment), the module record, and the initializer: what the interface header declares and C importers use | `exportedFunctions`, `headers` | build, abi; names from `symbols` |
 | Globals: a unit's top-level variables as `static` C globals; module records as `QRecordVal` globals | `globalDeclarations` | data |
-| Allocation: `quest_alloc(size, layout)` is `GC_MALLOC` (zeroed) of a header word naming the layout and the object, or `calloc` with `--nogc`; `quest_alloc_bytes` is not zeroed with `--nogc` | `quest_runtime.h` (inline) | runtime, out of line, so that the mode is the runtime's |
+| Allocation: `quest_alloc(size, layout)` bumps the collector's cursor through the current hole (zeroed as it is entered) past a header word naming the layout, and sets the object's start bit; the slow path finds the next hole or collects ([collector.md](collector.md) §3.4) | `quest_runtime.h` (inline) | runtime, out of line, so that the mode is the runtime's |
 
 ### 7.4. What clang Does
 

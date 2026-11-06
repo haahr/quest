@@ -1,0 +1,21 @@
+(* Quest Self-Hosted Compiler: The SSA's Inline Allocation Interface
+ *
+ * Expands each call of quest_alloc into the collector's allocation sequence
+ * (docs/collector.md section 3.4, docs/ssa.md section 4.1), for the SSA's
+ * backends: the arm64 backend and the JIT cannot get it from the runtime's
+ * header as the C printer does, and ssac's printer calls every runtime
+ * function out of line. The cursor and limit of the object's space are loaded,
+ * and unless a checking mode is on or the hole has no room, the cursor is
+ * bumped past the object; else the runtime's slow path (quest_gc_alloc_slow)
+ * is called, which finds the next hole or collects. Either way the header
+ * word naming the layout is stored before the object, and the object's start
+ * bit is set in the collector's bitmap. The space is read from the unit's
+ * layout data (a pointer-free layout's objects go to the noscan space); a
+ * layout the runtime owns puts its objects in the scanned space. *)
+
+interface Allocations
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    inlineUnit(u: ssa.Unit): Ok
+end

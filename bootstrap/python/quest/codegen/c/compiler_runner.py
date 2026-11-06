@@ -45,26 +45,10 @@ def get_runtime_dir() -> Path:
 
 
 def detect_gc_flags(nogc: bool = False) -> list[str]:
-    """Detects Boehm GC include/lib flags, falling back to -DQUEST_NOGC."""
-    if nogc:
-        return ["-DQUEST_NOGC"]
-
-    candidates = [
-        Path("/opt/homebrew/opt/bdw-gc"),
-        Path("/usr/local/opt/bdw-gc"),
-        Path("/usr"),
-    ]
-    for prefix in candidates:
-        inc = prefix / "include"
-        lib = prefix / "lib"
-        if (inc / "gc.h").exists():
-            flags = [f"-I{inc}"]
-            if (lib / "libgc.dylib").exists() or (lib / "libgc.so").exists() or (lib / "libgc.a").exists():
-                flags.extend([f"-L{lib}", "-lgc"])
-                return flags
-
-    # Fallback to nogc if not found
-    return ["-DQUEST_NOGC"]
+    """The collector's flags: none, since the collector is the runtime's own
+    (runtime/quest_gc.c), or -DQUEST_NOGC for --nogc, under which it never
+    collects."""
+    return ["-DQUEST_NOGC"] if nogc else []
 
 
 @functools.cache

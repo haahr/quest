@@ -4,14 +4,14 @@
     allocations.py NAME... [--backend b] [--whole-program] [--scale s | --count n]
 
 builds each conversion as run.py does (into .build/ here, with --compiler or
-./quest), runs it once in a scratch directory with allocations.c interposed on
-the collector's allocators, and prints its allocations and their bytes, in all
-and by function, most first. An allocation the runtime makes for compiled code
-(through quest_alloc, or a quest_ function such as a conversion or a string
-operation) is counted to the compiled function that called it, the runtime's
-function named after it. --sites also lists the allocating call sites.
-
-The counts are the collector's calls; GC_malloc_atomic's are included.
+./quest), runs it once in a scratch directory under the runtime's
+`allocations` mode (QUEST_GC_CHECK=allocations, which counts every allocation
+by the allocating function and its caller), and prints its allocations and
+their bytes, in all and by function, most first. An allocation the runtime
+makes for compiled code (through quest_alloc, or a quest_ function such as a
+conversion or a string operation) is counted to the compiled function that
+called it, the runtime's function named after it. --sites also lists the
+allocating call sites.
 docs/benchmarks.md section 9 records them.
 """
 
@@ -29,29 +29,15 @@ from pathlib import Path
 import run
 
 HERE = Path(__file__).resolve().parent
-SOURCE = HERE / "allocations.c"
-DYLIB = run.BUILD_DIR / "allocations.dylib"
-
-
-def interposer() -> Path:
-    """allocations.c built as a library, rebuilt when it has changed."""
-    if not DYLIB.is_file() or DYLIB.stat().st_mtime < SOURCE.stat().st_mtime:
-        DYLIB.parent.mkdir(parents=True, exist_ok=True)
-        prefix = subprocess.run(["brew", "--prefix", "bdw-gc"], capture_output=True, text=True).stdout.strip()
-        subprocess.run(["clang", "-dynamiclib", "-O2", "-fno-omit-frame-pointer", "-o", str(DYLIB), str(SOURCE),
-                        f"-L{prefix or '/opt/homebrew/opt/bdw-gc'}/lib", "-lgc"], check=True)
-    return DYLIB
-
-
 def counted(binary: Path, count: int, timeout: float) -> list[tuple[str, str, int, int]]:
-    """The interposer's lines from running binary with count in a scratch
+    """The runtime's lines from running binary with count in a scratch
     directory holding a copy of DATA/: two return addresses, a count, and
     bytes."""
     with tempfile.TemporaryDirectory() as d:
         work = Path(d)
         shutil.copytree(run.DATA_DIR, work / "DATA")
         out = work / "allocations.txt"
-        env = dict(os.environ, DYLD_INSERT_LIBRARIES=str(interposer()), QUEST_ALLOCATIONS_OUT=str(out))
+        env = dict(os.environ, QUEST_GC_CHECK="allocations", QUEST_ALLOCATIONS_OUT=str(out))
         subprocess.run([str(binary), str(count)], cwd=work, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                        preexec_fn=run.deep_stack, env=env, timeout=timeout, check=True)
         rows = [line.split() for line in out.read_text().splitlines()]

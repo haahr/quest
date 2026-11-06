@@ -109,12 +109,12 @@ are often free; extra stack loads on the chain are not.
 python3.11 tools/perf/gcstats.py .build/perf/mlyacc.c .build/perf/mlyacc.ssac .build/perf/mlyacc.arm64
 ```
 
-runs each with `GC_PRINT_STATS=1` and summarizes: collections, total marking time, bytes freed, the live pointer
-data at collections (median and largest), and the largest heap. Builds from the same SSA free the same, so when
-their live data differ, the build with more is keeping dead objects alive: the collector scans the stack and
+runs each with `QUEST_GC_STATS=each` and summarizes: collections, the time their pauses took, bytes allocated, the
+live data at collections (median and largest), and the largest heap. Builds from the same SSA allocate the same, so
+when their live data differ, the build with more is keeping dead objects alive: the collector scans the stack and
 registers conservatively, and a stack slot holding a dead value's pointer keeps what it points to. In mlyacc at
-`6f7cb100`, arm64's live data was 3.5 times ssac's, and marking took twice as long. Running at `--count 1` shows
-whether the retention is within one iteration or of earlier ones.
+`6f7cb100` (under the Boehm collector), arm64's live data was 3.5 times ssac's, and marking took twice as long.
+Running at `--count 1` shows whether the retention is within one iteration or of earlier ones.
 
 The live data at the collector's own collections is a poor measure, though: it collects where its heuristics say,
 which depend on what the program keeps alive, so two builds (and two runs of one build: mlyacc's 96 iterations took
@@ -125,10 +125,10 @@ instead:
 python3.11 tools/perf/retention.py live .build/perf/mlyacc.c .build/perf/mlyacc.ssac .build/perf/mlyacc.arm64
 ```
 
-forces a collection every 20,000 allocations (`--every`) with `tools/perf/gcat.c`, which interposes the runtime's
-`GC_malloc` and `GC_malloc_atomic`, and prints the live data there: the median and the largest for each binary, and
-the points where the others differ most from the first. Builds from the same SSA allocate the same, so each point is
-the same point of the program in every build.
+forces a collection every 20,000 allocations (`--every`) with the runtime's `collect` mode (`QUEST_GC_CHECK=collect`
+and `QUEST_GC_COLLECT_EVERY`), and prints the live data there: the median and the largest for each binary, and the
+points where the others differ most from the first. Builds from the same SSA allocate the same, so each point is the
+same point of the program in every build.
 
 To find what keeps it alive at one of those points:
 
@@ -144,8 +144,9 @@ values live across the call are (their slots, as offsets from `sp`, and their re
 its saved registers; the code is the same as without it. A word is DEAD if it is in one of the frame's own slots, and
 SAVED if it is a callee-saved register the frame saved for its caller, whose own annotation says whether it is live.
 The annotated assembly then shows where a DEAD word's slot was written and where its value should have been cleared.
-`tools/perf/lldb_frames.py` has the lldb command (`deadroots`), and the heap is the `VM_ALLOCATE` regions that
-`vmmap PID` lists: calling `GC_base` from lldb does not work there, since the collector holds its lock.
+`tools/perf/lldb_frames.py` has the lldb command (`deadroots`), which stops at the collection
+(`QUEST_GC_COLLECT_TRAP`, a breakpoint on `quest_gc_trap`) and reads the heap's range from the runtime's
+`quest_gc_heap_lo` and `quest_gc_high_water`.
 
 This found the two leaks of arm64-performance-review.md §4's actuals: values dying as a jump's argument were never
 cleared, and a loop header's parameters that nothing reads were stored by the back edge every time round. With them

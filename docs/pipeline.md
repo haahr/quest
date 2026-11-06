@@ -107,7 +107,7 @@ Encapsulates runtime configuration:
 - `show_values: bool`: Controls rendering of parsed literal values in token dumps.
 - `emit_c: bool`: When true, outputs C source code without invoking the host C compiler.
 - `output_path: Optional[Path]`: Output path for binary executable or emitted C source.
-- `nogc: bool`: Forces compilation with `-DQUEST_NOGC`, disabling Boehm GC linkage.
+- `nogc: bool`: Forces compilation with `-DQUEST_NOGC`, under which the collector never collects.
 - `print_result: bool`: When true, compiled binaries print Cardelli-format output for the final top-level phrase.
 - `unit: Optional[str]`: `"interface"` or `"module"` when the source is a unit file, whose phases compile it as the
   unit compilers do (§4.3).
@@ -199,7 +199,7 @@ quest compile file.quest --emit-c
 # Emit C source code to an explicit .c file:
 quest compile file.quest --emit-c -o out.c
 
-# Compile without Boehm GC (uses standard libc malloc/calloc):
+# Compile with the collector never collecting (allocation only):
 quest compile file.quest --nogc -o my_app
 
 # Compile inline code string to native binary:

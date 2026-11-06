@@ -38,7 +38,12 @@ export
                         let contents = option contentsText of ssa.Contents with let text = d.text end
                     end)
                 end
-                if stringOp.equal(backend "ssac") then ssac.printUnit(built) else arm64.assembleUnit(built) end
+                ssaPipeline.inlineAllocation(built)
+                if stringOp.equal(backend "ssac") then
+                    ssac.printUnit(built)
+                else
+                    arm64.assembleUnit(built)
+                end
             when ssaBuild.unsupported with m then raise printer.unsupported with "ssa: unsupported: " <> m end
             when ssaVerify.verifyError with m then raise printer.unsupported with m end
             when ssac.unsupported with m then raise printer.unsupported with m end

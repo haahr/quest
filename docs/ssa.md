@@ -281,6 +281,18 @@ internal error.
   flag at each function's entry and each loop's head (a block a back edge goes to): it splits the block, loading
   `quest_interrupt_pending` and branching to a block that calls `quest_interrupt_raise`, or on to the block's old
   instructions. It isn't in `passes`, so no phase dumps it, and no golden sees it.
+- **Inline allocation** (`ssa/allocations`, `pipeline.inlineAllocation`), run by the SSA's backends after the
+  passes: arm64 and the JIT cannot get the collector's fast path from the runtime's header as the C printer does,
+  and ssac's printer calls every runtime function out of line, `quest_alloc` included (§8), which cost it a third
+  of what C gained on the allocation-heavy programs (benchmarks.md §16.2). Each call of `quest_alloc` of a
+  constant size becomes the sequence of docs/collector.md §3.4. The block is split at the call: it loads `quest_gc_check_flags` and the cursor and limit
+  of the object's space (`quest_gc_cursor`, `quest_gc_limit`; the noscan space's for a layout of scalars alone,
+  read from the unit's layout data) and branches, when a checking mode is on or the hole has no room, to a block
+  that calls `quest_gc_alloc_slow`, else to one that bumps the cursor; both jump to the rest of the block with the
+  allocation's base, which stores the header word (the layout's address), makes the object (`ptrAdd` 8, the call's
+  result), and sets the object's start bit in `quest_gc_start_bits`. `QUEST_SKIP_PASSES=inlineAllocation` leaves
+  the calls, which `quest_inline.o`'s definition of `quest_alloc` serves, for measuring the inline path
+  (docs/collector.md step 3). The questlang test `ssa_allocations` shows functions before and after.
 
 Only value numbering removes values that become dead; parameters no load reads stay, which the trivial allocator gives
 slots, and linear scan none.
@@ -336,7 +348,7 @@ stored and loaded as different types (a type parameter's value stored as a `val`
 promoted and stays a slot, which is still cheaper than the heap, as is one in a function that enters a `try`.
 
 The C printer has its own, narrower forms of this, by pattern ([c-representation.md](c-representation.md) §5.3,
-"Payloads Not Made"), since clang cannot remove a `GC_malloc`; the SSA's pass allocates no more than they do on the
+"Payloads Not Made"), since clang cannot remove an allocation; the SSA's pass allocates no more than they do on the
 benchmarks that need them, and less on zebra. The questlang test `ssa_escape` shows functions before and after the
 pass and after promotion, and `language/escaping_allocations` checks that values survive each kind of escape and
 that fresh tuples and options keep their identity.

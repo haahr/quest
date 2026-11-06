@@ -111,8 +111,6 @@ There are two implementations of Quest in this repository, and a launcher for ea
 - Python 3.11 or later, for the bootstrap and the test runner. The launchers look for Homebrew's Python first; set
   `PYTHON` to use another.
 - Git: the self-hosted compiler's releases live in the clone's git directory.
-- Optional: [Boehm GC](https://github.com/ivmai/bdw-gc) (`brew install bdw-gc`). Without it, or with `--nogc`,
-  compiled programs allocate with libc and never free.
 - Optional: GNU readline (`brew install readline`) for the REPL's line editing; without it the REPL uses libedit's,
   or none.
 
@@ -187,7 +185,7 @@ tools/release --install          # install the current release for use outside t
 `--install` copies the current release to `~/.local/share/quest/COMMIT`, where later cuts cannot remove it, checks
 it there, and writes `~/.local/bin/quest`, which runs it against its own `lib/` and `runtime/`; `--install PREFIX`
 uses `PREFIX/share` and `PREFIX/bin` instead. Installing a later release keeps the earlier ones beside it. An installed
-compiler still needs clang and Homebrew's `bdw-gc` to build programs.
+compiler still needs clang to build programs.
 
 ### Running and Compiling Quest Code
 A Quest source file's suffix says what it holds. An interface, the exported names and types of a module, is in a
@@ -209,7 +207,7 @@ directory first and then on the search path (`-I` and `lib/`; [docs/modules.md](
 # Compile a program to a native binary, by way of C
 ./quest compile program.quest -o my_app
 
-# Write the C instead, or compile without the garbage collector (allocating with malloc, never freeing)
+# Write the C instead, or compile with the collector never collecting
 ./quest compile program.quest --emit-c
 ./quest compile program.quest --nogc -o my_app
 

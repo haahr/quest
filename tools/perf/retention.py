@@ -1,6 +1,7 @@
 """What a program keeps alive, compared at the same points (docs/profiling.md
 section 6). The collector collects where its heuristics say, which differ
-between builds and between runs, so tools/perf/gcat.c forces a collection
+between builds and between runs, so the runtime's `collect` mode
+(QUEST_GC_CHECK=collect with QUEST_GC_COLLECT_EVERY=N) forces a collection
 every N allocations, the same points in every build of one program.
 
     python3.11 tools/perf/retention.py live .build/perf/mlyacc.ssac .build/perf/mlyacc.arm64
@@ -29,33 +30,26 @@ from pathlib import Path
 
 from perfutil import BENCHMARKS, BUILD, DATA, ROOT, run_in_scratch
 
-SOURCE = Path(__file__).resolve().parent / "gcat.c"
 FRAMES = Path(__file__).resolve().parent / "lldb_frames.py"
 
 
-def shim() -> Path:
-    """The forcing library, built if its source is newer"""
-    lib = BUILD / "gcat.dylib"
-    if not lib.exists() or lib.stat().st_mtime < SOURCE.stat().st_mtime:
-        BUILD.mkdir(parents=True, exist_ok=True)
-        prefix = subprocess.run(["brew", "--prefix", "bdw-gc"], capture_output=True, text=True).stdout.strip()
-        subprocess.run(["clang", "-O2", "-Wall", "-dynamiclib", str(SOURCE), "-L" + prefix + "/lib", "-lgc",
-                        "-o", str(lib)], check=True)
-    return lib
+def forcing(every: int, trap: int = 0) -> dict[str, str]:
+    """The environment that forces a collection every `every` allocations,
+    printing FORCED before each, and stops at the trap-th in quest_gc_trap"""
+    return {"QUEST_GC_CHECK": "collect", "QUEST_GC_COLLECT_EVERY": str(every), "QUEST_GC_COLLECT_TRAP": str(trap),
+            "QUEST_GC_STATS": "each"}
 
 
 def series(binary: Path, count: int, every: int) -> dict[int, int]:
-    """The live pointer data, in KiB, after each forced collection"""
-    err = run_in_scratch([str(binary.resolve()), str(count)], capture_stderr=True,
-                         env={"DYLD_INSERT_LIBRARIES": str(shim()), "GCAT_EVERY": str(every),
-                              "GC_PRINT_STATS": "1"}).stderr
+    """The live data, in KB, after each forced collection"""
+    err = run_in_scratch([str(binary.resolve()), str(count)], capture_stderr=True, env=forcing(every)).stderr
     out, forced = {}, None
     for line in err.splitlines():
         m = re.match(r"FORCED (\d+)", line)
         if m:
             forced = int(m.group(1))
             continue
-        m = re.search(r"In-use heap: \d+% \((\d+) KiB pointers", line)
+        m = re.match(r"quest: gc #\d+: live (\d+) KB", line)
         if m and forced is not None:
             out[forced] = int(m.group(1))
             forced = None
@@ -96,9 +90,9 @@ def dead(args: argparse.Namespace) -> int:
     work = Path(tempfile.mkdtemp(prefix="quest-perf-"))
     try:
         shutil.copytree(DATA, work / "DATA")
-        variables = f"DYLD_INSERT_LIBRARIES={shim()} GCAT_EVERY={args.every} GCAT_TRAP={args.at}"
+        variables = " ".join(f"{k}={v}" for k, v in forcing(args.every, args.at).items())
         report = subprocess.run(["lldb", "--batch", "-o", f"command script import {FRAMES}",
-                                 "-o", f"settings set target.env-vars {variables}", "-o", "b gcat_stop",
+                                 "-o", f"settings set target.env-vars {variables}", "-o", "b quest_gc_trap",
                                  "-o", f"process launch -o /dev/null -e /dev/null -- {args.count}",
                                  "-o", f"deadroots {asm} {nm}", "-o", "bt", "-o", "kill", str(binary)],
                                 cwd=work, capture_output=True, text=True).stdout

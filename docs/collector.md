@@ -8,7 +8,7 @@ samples in half the programs), and it keeps dead data alive through stale stack 
 §3.2). This document designs a collector of Quest's own: precise where the compilers can make it so, generational,
 bump-allocating, able to move but not obliged to, and asks what must change to get there.
 
-**Status: step 2 done, 2026-11-04** (decided 2026-11-02; reviewed and reorganized 2026-11-03). Section 6
+**Status: step 3 done, 2026-11-04** (decided 2026-11-02; reviewed and reorganized 2026-11-03). Section 6
 records the decisions, section 7 the risks and the checking modes that catch them, section 8 the steps, and section
 9 what the reviews changed. The committed collector is steps 1 to 6 of §8; evacuation and generic layouts (steps 7
 and 8) are designed and taken only on measurement.
@@ -579,13 +579,16 @@ touches layouts, barriers, roots, or the collector (testing.md §4.1 lists which
 | `layouts` | After every collection, walks every live allocation (start bits intersected with marks) by its layout: each precise pointer word is null, outside the heap (static data, code), or points at or into a live allocation; each ambiguous word is counted; sizes agree with the lines marked. On Boehm (step 1) the check is against `GC_base` after a forced collection, every 64 MB allocated (`QUEST_GC_CHECK_INTERVAL`; at least four times the heap's size, so that the walks stay a fraction of the run) and at exit, and a pointer word to nothing allocated is counted (`dangling`) rather than fatal, since Boehm resurrects a dead object that a stale stack word points at with the words it died with; `report` prints the counts per layout | A layout that lies about a word, a size, or a length field |
 | `barriers` | At every minor collection, before the log is used, scans the whole old generation by layouts for pointers into the nursery, and reports any in an object that is not logged | A mutating store without a barrier, in generated code or in the runtime's C, an interior store among them |
 | `roots` | At every collection, scans the data segments and thread-locals conservatively and reports a heap pointer that no root table or listed root covers | A global pointer slot missing from a unit's root table or `quest_gc_roots` |
-| `poison` | Every reclaimed line and freed large object is filled with a pattern that is never a valid pointer | A use after reclamation, a dead object resurrected |
+| `poison` | Every reclaimed line and freed large object is filled with a pattern that is never a valid pointer (0x5A bytes) | A use after reclamation, a dead object resurrected |
+| `collect` | Forces the collections the other modes would, checking nothing: every `QUEST_GC_CHECK_INTERVAL` bytes, or every `QUEST_GC_COLLECT_EVERY` allocations, with `QUEST_GC_COLLECT_TRAP=k` stopping in `quest_gc_trap` before the kth, for tools/perf/retention.py | Nothing; it makes builds of one program collect at the same points |
+| `allocations` | Counts every allocation and its bytes by the allocating function and its caller, written at exit to `$QUEST_ALLOCATIONS_OUT`, for benchmarks/mlton/allocations.py | Nothing; it says who allocates |
 | `incremental` (step 6) | Makes every slice as small as it can be (one object), and at the end of each cycle marks the same heap again stop-the-world and compares the marks | A barrier that let an object escape the cycle, a slice that broke an invariant |
 | `stress` (step 7) | Collects on every allocation (or every Nth), each collection full with every block a candidate and the slot log unbounded, so every object that may move does; the vacated memory is poisoned and, in large runs, unmapped | A stale address kept across an allocation anywhere: generated code, the runtime, serialization, the JIT |
 | `concurrent` (step 9, if taken) | As `incremental`, with the marker thread forced to yield between objects | A barrier race, a lost mark |
 
 Modes combine (`QUEST_GC_CHECK=layouts,poison`), and, with step 7, `stress` with `barriers` is the one that finds the
-most. The checks are in the runtime, so the bootstrap's C and the JIT's code are checked by the same code as the
+most. Under any mode every allocation takes the slow path, which counts it; `QUEST_GC_STATS=1` (a summary at exit)
+and `each` (a line per collection too) report what the collector did, under a mode or not. The checks are in the runtime, so the bootstrap's C and the JIT's code are checked by the same code as the
 self-hosted backends', and the interpreters' transcripts can run under them too.
 
 The risks themselves:
@@ -708,6 +711,46 @@ taken on what 4 and 7 measure; 9 is optional.
    (§3.4); `poison`. *Done when:* the suites pass on it under `layouts,roots,poison`, the self-hosting fixed point
    holds, the inline allocation's cost against libgc's call is recorded, and the MLton suite is no slower than on
    Boehm (expected: much faster, from allocation alone).
+   *Done 2026-11-04.* `runtime/quest_gc.c` is the collector: one reserved range (64 GB, `QUEST_GC_RESERVE` gigabytes,
+   halved until the system grants it; committed as touched) of 32 KB blocks of 128-byte lines, with a block table, a
+   mark byte per line, and two bitmaps with a bit per 8 bytes (the objects' starts, set by every allocation, and the
+   marks) beside it. The header's `quest_alloc` bumps the cursor of the object's space through the current hole and sets
+   the start bit; `quest_gc_alloc_slow` takes the next hole of the current block, a recyclable block's, or a free
+   block's (zeroing each hole as it is entered, unless the block is fresh), medium objects (over a line) from an
+   overflow cursor of fresh blocks, and large ones (8 KB and up) from runs of blocks; it collects when the blocks in use
+   reach their target (twice those in use after the last collection, at least `QUEST_GC_MIN_HEAP` megabytes, 64 by
+   default). A collection clears the marks and line marks of the blocks in use, marks from the root tables, the
+   runtime's listed roots, the JIT's regions, and the stack (registers spilled by `setjmp`), setting each marked
+   object's lines, then intersects the start bits with the marks, frees dead large runs, and classifies each block. The
+   SSA's backends select the same sequence inline (`ssa/allocations`, ssa.md §4.1): arm64 and the JIT, which cannot get
+   it from the header, and ssac, whose printer calls every runtime function out of line. Learned: C compilers keep the
+   address an allocation returned *before* the header was skipped (clang folds the `+ 8` into every field's offset), so
+   an ambiguous word at an object's header, or at a sized object's byte count, must mark that object, as one at its end
+   must (§3.3 said only the latter). Statistics: `QUEST_GC_STATS=1` (a summary at exit) and `each` (a line per
+   collection); the modes gained `poison` (reclaimed lines filled with 0x5A), `collect` (forced collections only: every
+   `QUEST_GC_CHECK_INTERVAL` bytes, or every `QUEST_GC_COLLECT_EVERY` allocations with `QUEST_GC_COLLECT_TRAP` for a
+   debugger, which `tools/perf/retention.py` uses in place of its Boehm shim), and `allocations` (counts by site, for
+   `benchmarks/mlton/allocations.py`, in place of its interposer); under any mode every allocation takes the slow path,
+   which counts it. `--nogc` is the collector never collecting. libgc is gone from both runners, and from the release's
+   prerequisites. ABI 66.
+   Measured ([benchmarks.md](benchmarks.md) §16, on a loaded machine, wall and processor time both, to be retaken idle
+   after step 4): the MLton suite at scale 0.25 against §13's Boehm times takes 0.79 of the time through C (0.69 by
+   processor time), 0.89 through ssac (0.69), and 0.88 through arm64 (0.82), the allocation-heavy programs halving
+   (wc-scanStream 0.39, tensor 0.40, barnes-hut 0.48, logic 0.49 on C), and against MLton the suite goes from 0.69 to
+   0.54 of its time on C, 0.55 to 0.49 on ssac, and 0.72 to 0.63 on arm64. The inline sequence against the call of the
+   slow path, on arm64, is 0.99 over the suite by processor time and 0.77 to 0.88 on the allocation-heavy programs;
+   ssac's printer had been calling `quest_alloc` out of line, so the pass runs before it too: wc-scanStream through ssac
+   takes 0.70 of its time with the sequence, logic 0.93. Two programs lost: imp-for (1.85 on C), a billion one-word
+   boxes, and matrix-multiply (1.39 on C), which hardly allocates; their inner loops are the same instructions whatever
+   the allocation sequence, and their times swing by 40 percent with where clang places `main`'s loops (matrix-multiply
+   5.1 s without the start bit's five instructions, below Boehm's 5.7), so the ratios measure code placement, and the
+   sequence's own cost against `GC_malloc`'s call is at most 1.6 ns per allocation by imp-for's best placement. The
+   compiler's own build (`-j 8`) takes 0.83 of its wall time and 0.77 of its processor time, and three times the memory:
+   the trigger counts a block with one live line as in use and doubles the blocks in use, which after the compiler's
+   collections are 3.2 times its live lines and 6.6 times its live bytes (live lines against live bytes, step 7's
+   number, is 2.1), and one process building the driver reaches 9.9 GB of blocks for 848 MB live, with 23 collections
+   pausing 5.0 s in all and 994 ms at the longest. Step 4's minor collections change both numbers, and its trigger
+   should count a recyclable block's holes as free.
 4. **Generations.** Sticky marks, the barrier live (interior stores through the slow path), minor collections,
    `barriers`. *Done when:* the suites pass under `barriers`, the suite's and the driver's own build times are
    recorded against step 3, and fragmentation (live lines against live bytes after the compiler's build and after a
