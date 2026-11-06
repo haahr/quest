@@ -73,8 +73,11 @@ exactly what its conversion does. No recorded output depends on those bits.
   until 2026-10-28; a conversion may still do so.
 - SML's formatting of reals (`Real.toString`, `Real.fmt`) comes from `support/`, checked against MLton; its `IntInf`
   is the library's `util/bignum` (`lib/util/bignum.mod.quest`), as MLton's is its own library's.
-- Where Quest lacks something the original uses, the header says what replaces it. Quest cannot read the clock: zern,
-  tensor, and model-elimination, which time their work, read 0.
+- Where Quest lacks something the original uses, the header says what replaces it. Quest cannot read the clock: zern
+  and model-elimination, which time their work, read 0.
+- **tensor's original is changed (2026-11-06):** it used none of its operations' results and printed only their times,
+  so MLton removed the work. It and its conversion now sum an element of each result and print the sums, and no
+  times ([docs/benchmarks.md](../../docs/benchmarks.md) §1.4).
 
 ## Programs not in the suite
 
@@ -85,8 +88,9 @@ exactly what its conversion does. No recorded output depends on those bits.
 
 ## Notes on timings
 
-- tensor's operations produce results nothing uses, and MLton removes the work, so its original runs in milliseconds.
-  The conversion does all the work, so tensor's ratio says nothing about either compiler.
+- tensor's times before 2026-11-06 are of a program whose results nothing used, which MLton ran in milliseconds by
+  removing the work; the conversion did all of it, so those ratios say nothing about either compiler. Take MLton's
+  time again before comparing tensor's.
 - fib, tak, and tailfib compute the same pure function of the same constants each iteration, and clang computes it
   once, outside the loop, so their conversions take the same time at any count.
 - `run.py` raises the stack limit as far as the system allows before each run, since the originals assume MLton's

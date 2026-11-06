@@ -2915,16 +2915,18 @@ end
 fun loop 0 _ = ()
   | loop n f = (f(); loop (n-1) f)
 
-fun test_operator new list_op list_sizes =
+(* Changed for the Quest suite (2026-11-06): each operation's result is used,
+ * its element [1,2] summed and the sum printed, in place of the operation's
+ * average time, which the original printed and nothing else. With the results
+ * unused, MLton removed the work, and the program ran in milliseconds. *)
+fun test_operator element new list_op list_sizes =
     let fun test_many list_op size =
         let fun test_op (times,f) =
             let val a = new size
-            in (EvalTimer.timerOn();
-                loop times (fn _ => f(a,a));
-                let val t = LargeInt.toInt(EvalTimer.timerRead()) div times
-                    val i = StringCvt.padLeft #" " 6 (Int.toString t)
-                in print i
-                end)
+                val sum = ref 0.0
+                val _ = loop times (fn _ => sum := !sum + element (f(a,a)))
+                val i = StringCvt.padLeft #" " 6 (Int.toString (Real.round (!sum)))
+            in print i
             end
         in
             print (Int.toString size);
@@ -2946,7 +2948,7 @@ structure Main =
                   fun constructor size = RTensor.new([size,size],1.0)
                in
                   print "Real tensors: (+, *, /, +*, *+)\n";
-                  test_operator constructor operators [100,200,300,400,500];
+                  test_operator (fn t => RTensor.sub(t,[1,2])) constructor operators [100,200,300,400,500];
                   print "\n\n"
                end
             
@@ -2957,7 +2959,8 @@ structure Main =
             fun constructor size = CTensor.new([size,size],CNumber.one)
          in
             print "Real tensors: (+, *, /, +*, *+)\n";
-            test_operator constructor operators [100,200,300,400,500];
+            test_operator (fn t => let val (r,i) = CNumber.split (CTensor.sub(t,[1,2])) in r + i end)
+                          constructor operators [100,200,300,400,500];
             print "\n\n"
          end
          in ()

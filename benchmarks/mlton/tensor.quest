@@ -9,18 +9,10 @@ import
     support/lists : support/Lists
     stringOp = string : StringOp
     conv : Conv
+    real : RealOp
     writer : Writer
 
 let print(s: String): Ok = writer.putString(writer.output s)
-
-(* The original times each operation with Time.now and prints the average
- * milliseconds, which MLton's code takes too little time to make other than
- * 0. Quest cannot read the clock, so timerRead is always 0. *)
-let timerOn(): Ok = ok
-let timerRead(): Int = 0
-
-(* SML's div *)
-let floorDiv(a: Int b: Int): Int = if {{a % b} isnot 0} andif {{a < 0} isnot {b < 0}} then {a / b} - 1 else a / b end
 
 (* structure Index: a shape is a list of dimensions *)
 
@@ -446,17 +438,21 @@ let padLeft(s: String n: Int): String =
 Let Op(T::TYPE) = Tuple times: Int f: All(a: T b: T) T end
 let op(T::TYPE)(times: Int f: All(a: T b: T) T): Op(T) = tuple let times = times let f = f end
 
-let testOperator(T::TYPE)(new: All(size: Int) T listOp: lists.T(Op(T)) listSizes: lists.T(Int)): Ok =
+(* Each operation's element [1,2], summed over its repetitions, as
+ * sml/tensor.sml prints it: the suite's change to the original (2026-11-06),
+ * which printed each operation's average time and used no result, so that
+ * MLton removed the work *)
+let testOperator(T::TYPE)(element: All(t: T) Real new: All(size: Int) T listOp: lists.T(Op(T))
+        listSizes: lists.T(Int)): Ok =
     begin
         let testMany(size: Int): Ok =
             begin
                 let testOp(o: Op(T)): Ok =
                     begin
                         let a = new(size)
-                        timerOn()
-                        for n = 1 upto o.times do let ignored = o.f(a a) end
-                        let t = floorDiv(timerRead() o.times)
-                        print(padLeft(conv.int(t) 6))
+                        let var sum = 0.0
+                        for n = 1 upto o.times do sum := sum ++ element(o.f(a a)) end
+                        print(padLeft(conv.int(real.round(sum)) 6))
                     end
                 print(conv.int(size))
                 print(" ")
@@ -468,11 +464,13 @@ let testOperator(T::TYPE)(new: All(size: Int) T listOp: lists.T(Op(T)) listSizes
 
 let sizes = lists.fromArray(:Int)(array of 100 200 300 400 500 end)
 let square(size: Int): Shape = lists.fromArray(:Int)(array of size size end)
+let at12 = lists.fromArray(:Int)(array of 1 2 end)
 
 let one(): Ok =
     begin
         print("Real tensors: (+, *, /, +*, *+)\n")
         testOperator(:RTensor)(
+            fun(t: RTensor): Real t.data[t.indexer(at12)]
             fun(size: Int): RTensor rNew(square(size) 1.0)
             lists.fromArray(:Op(RTensor))(array of
                 op(:RTensor)(20 fun(a: RTensor b: RTensor): RTensor rMap2(fun(x: Real y: Real): Real x ++ y a b))
@@ -485,6 +483,7 @@ let one(): Ok =
         print("\n\n")
         print("Real tensors: (+, *, /, +*, *+)\n")
         testOperator(:CTensor)(
+            fun(t: CTensor): Real begin let z = cSub(t.data t.indexer(at12)) z.r ++ z.i end
             fun(size: Int): CTensor cNew(square(size) cOne)
             lists.fromArray(:Op(CTensor))(array of
                 op(:CTensor)(20 fun(a: CTensor b: CTensor): CTensor cMap2(cAdd a b))

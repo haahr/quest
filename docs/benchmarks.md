@@ -16,6 +16,11 @@ benchmarks found and what could be done about it, compares the C and arm64 backe
 (§12), times the SSA's backends after the arm64 review (§13), measures the SSA's loops of accumulated recursion and
 mutual tail calls (§14), and times the library's arbitrary-precision integers (§15).
 
+> **tensor changed on 2026-11-06 (§1.4).** Both its original and its conversion now use each operation's result and
+> no longer print timings. Until then MLton removed the work, so tensor's times before that date, MLton's 0.03 s in
+> the 2026-10-28 baseline above all, measure a different program from the one in the tree, and MLton's must be taken
+> again before tensor's ratio means anything.
+
 ## 1. The MLton suite
 
 `benchmarks/mlton/README.md` describes the suite: where the originals come from, how they were converted, how the
@@ -77,7 +82,24 @@ system, and count replaces an earlier one, so a benchmark can be timed again and
 **The geometric mean, over all the benchmarks, of the ratio of the self-hosted compiler's time to MLton's**, each
 timed at the same count. Lower is better; 1 means as fast as MLton. A geometric mean weights a factor of two the same
 on every benchmark, however long it runs. Four benchmarks' ratios say less about either compiler than about which one
-removed work the other did (§2.3), so the mean without them is reported beside it.
+removed work the other did (§2.3), so the mean without them is reported beside it. tensor was one of them until
+2026-11-06 (§1.4).
+
+### 1.4. Changes to the suite
+
+- **tensor, 2026-11-06: the results are used, and the timings are not printed.** The original (`sml/tensor.sml`)
+  timed each operation, 20 or 4 repetitions of it on a square tensor of 100 to 500 a side, and printed the average
+  milliseconds and nothing else; each result went unused. MLton removed the work: the original took 0.02 s of
+  processor time at the suite's quarter count of 2, and every time it printed was 0. The conversion did all the work,
+  as Quest's compilers do not remove a call whose result is unused, so tensor's ratio was 3,337 in the 2026-10-28 baseline and 554 to 1,234 in the last suite.
+  Both now add each result's element [1,2] to a sum per operation and print the sums in place of the times (40, 20,
+  and 20 for `+`, `*`, and `/`, and 4 times the size for the contractions `+*` and `*+`), and `expected/tensor.out`
+  was recorded again. MLton then takes 7.92 s at count 2 (load 13.7), the contractions about 120 to 150 ms a call at
+  500 a side, as many as before: it does each call, and hoists none out of the loop. Against that, the last suite's
+  Quest times (§19 for C and arm64, §17 for ssac, processor time) put tensor at about 4.1 through C, 1.8 through ssac,
+  and 2.1 through arm64. **Times of tensor before this change, Quest's and MLton's, are of the old program:** compare
+  only times taken after it, and take MLton's again (`run.py time --mlton-only --scale 0.25 tensor`, appended to the
+  results reported, replaces the 2026-10-28 baseline's) before reporting tensor's ratio.
 
 ## 2. Baseline (2026-10-28)
 
@@ -190,6 +212,7 @@ Four ratios measure which compiler removed work rather than how fast either runs
   still faster on fib (0.70 seconds for fib 41 against MLton's 1.78), whose recursion clang partly turns into a loop
   and whose additions MLton checks for overflow.
 - **tensor**: its operations produce results nothing uses, and MLton removes the work; the conversion does all of it.
+  The suite changed tensor on 2026-11-06 so that both use the results (§1.4).
 
 even-odd is genuinely faster in Quest (0.16 seconds an iteration against MLton's 0.64): clang turns the mutual
 recursion into a loop. The time scales with the count.
