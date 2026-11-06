@@ -673,7 +673,8 @@ inlined:
   what its modules' initializers do other than bind a member to a pure operation or a function, through the
   variables each uses and the members it names; the others' bindings are deleted, and a module whose record nothing
   reads as a value has none. So the bound is measured from, and spent on, code that can run: before, copies into
-  library members imp-for never calls spent it before the simplifier reached main ([mlton-gap.md](mlton-gap.md) §8).
+  library members imp-for never calls spent it before the simplifier reached main
+  ([benchmarks.md](benchmarks.md) §20.1).
 
 A body whose one return is its end is spliced in place; any other becomes a join point's body, whose continuation is the
 rest of the caller's body, its returns jumps to it. In a whole program, a call of one of the unit's modules' members
@@ -695,8 +696,8 @@ by their arguments, its calls of itself calls of the local function, is bound at
 function's calls in it are then known, and inlined; and contification makes it a loop where its calls of itself are
 tail calls (`app`, `exists`, `foldl`), or leaves it a local function, whose closure is made once per call (`map`). The
 copy replaces a closure made at the call and a call through it on each step, so the growth bound, which the largest
-functions meet first, does not apply. `language/specialized_recursion` shows each case; ratio-regions takes 0.31 of its
-time ([mlton-gap.md](mlton-gap.md) §5).
+functions meet first, does not apply. `language/specialized_recursion` shows each case; ratio-regions takes about
+half its time ([benchmarks.md](benchmarks.md) §20.1).
 
 **Contification** (`questlang/ir/contify`, MLton's term), after each round: a function of value parameters and no
 type parameters, every use of which is a call, one outside its body and the rest tail calls of itself in its body

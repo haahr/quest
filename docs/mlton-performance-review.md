@@ -247,8 +247,8 @@ such a call, so it escapes.
 
 **Recommendation.** Treat a variable read from a closure's environment as a known closure when every closure of that
 function captures, at that index, a known closure of one function, so that the calls through it are direct
-([mlton-gap.md](mlton-gap.md) §6). A direct call still takes the boxes as arguments; they are removed only where the
-inliner then inlines `same`'s function (13 calls of a function larger than its threshold) or where an unboxed
+(done: [benchmarks.md](benchmarks.md) §20.1). A direct call still takes the boxes as arguments; they are removed only
+where the inliner then inlines `same`'s function (13 calls of a function larger than its threshold) or where an unboxed
 representation of the option would apply. The `Int` variant measures the larger effect (2.45 s to 1.45 s, without the
 84 million boxes), by changing the representation; how much the direct calls recover is to be measured.
 
@@ -334,7 +334,7 @@ arm64-performance-review.md §4.
 | 7 | A generative, extensible type, for peek: declined (§3.7) | the language | — | — | peek |
 | 8 | Correct option-values.md: its step does not unbox `maybe.T(Int)` (done) | `docs` | — | — | — |
 
-Items 1 to 5 are planned in [mlton-gap.md](mlton-gap.md), in that order, in the self-hosted compiler only: they are
+Items 1 to 5 were done in that order ([benchmarks.md](benchmarks.md) §20), in the self-hosted compiler only: they are
 optimizations, so the bootstrap compiler need not follow (two-compilers policy). Item 3 is specialization per call site
 with a size bound, not whole-program defunctionalization. The language is left as it is for peek, and so are options of
 `Int`, which stay boxed (§3.5). An interim inline free-list pop in Boehm (§3.1) is not to be done, since Boehm is to be
@@ -342,5 +342,5 @@ replaced.
 
 Items 1 to 4 each remove work that MLton does not do, and are independent of the collector. Their gains multiply
 with item 6's, since each removes allocations whose cost item 6 lowers. Items 2 and 3 are measured above by hand;
-item 4's is to be measured. Each should be measured alone, on these four and on the suite
-(`run.py time --clean --whole-program`), with `allocations.py` before and after.
+each was measured on these four and on the suite, in [benchmarks.md](benchmarks.md) §20: under the collector,
+through arm64, whole, wc-scanStream takes 0.34 of its time, ratio-regions 0.45, zebra 0.83, and the suite 0.913.

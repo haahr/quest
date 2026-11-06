@@ -17,7 +17,7 @@ slower by 1.6 to 6 percent.
 
 `QUEST_INLINE` overrides them for measuring, as a list of `name=value` separated by commas, read by `ir/simplify`
 when the compiler starts: `size` (30), `polymorphic` (30), `function` (10), `constant` (5), `growth` (the percent of
-the unit it may grow by, 75 since 2026-11-05, [mlton-gap.md](mlton-gap.md) §8), `budget` (the least growth, 1000),
+the unit it may grow by, 75 since 2026-11-05, [benchmarks.md](benchmarks.md) §20.1), `budget` (the least growth, 1000),
 and `rounds` (6). A build's workers inherit it, so `QUEST_INLINE=size=60 run.py time --clean` measures the suite with
 that setting.
 

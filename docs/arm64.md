@@ -335,7 +335,7 @@ the SSA's values, and it reads no register's name: a target (`codegen/target`) g
   dead pointer keeps nothing, and arm64's `Lowering` asks for no clears; `rewrite` still makes them for a target that
   asks (the allocator's test target does). For such a target, a value that dies at a branch, on the path that falls
   through, is cleared only if a call may follow on that path, not on the branch's target's, and a cold block's call
-  is not one that may follow (2026-11-05, [mlton-gap.md](mlton-gap.md) §7): under frames scanned whole, a failed
+  is not one that may follow (2026-11-05, [benchmarks.md](benchmarks.md) §20.1): under frames scanned whole, a failed
   bounds check's path cleared every pointer live into the passing one before jumping to the raise, 1,541 clears in
   ratio-regions' `preflowPush` rather than 33. Since arm64 asks for none, this changes none of its code;
   `regalloc_scan` case 14 shows it.

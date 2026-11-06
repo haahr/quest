@@ -1815,3 +1815,195 @@ on an idle machine (load 1.8), by `./quest` from the replayed step 6 (ABI 73), a
 `ssa/constants` makes as many globals constant with the collector as without (123 globals stay writable in the SSA
 goldens on both trees), now that it takes the registrations of roots and frame tables and the barriers as running no
 Quest code, and `ssa/selects` makes the same 32 selects there.
+
+## 20. Closing part of the gap to MLton (2026-11-06)
+
+Five changes from [mlton-performance-review.md](mlton-performance-review.md) §4, items 1 to 5, and one the suite
+called for, each removing work MLton does not do on peek, wc-scanStream, ratio-regions, or zebra, made as the steps of
+a plan (`docs/mlton-gap.md`, retired into this section; its step 1 was the plan itself, `83827cce`). They are the
+self-hosted compiler's alone: optimizations, not fixes, so the bootstrap does not follow ([testing.md](testing.md)
+§2.8). They were made and first measured under Boehm, then replayed onto the collector of §16 to §19; every time
+below was taken after the replay, under the collector.
+
+### 20.1. The steps
+
+Decided on 2026-11-04: specialization per call site, bounded by the inliner's size, not whole-program
+defunctionalization; peek left as it is (no extensible type, options of `Int` boxed in a field); no interim free-list
+pop in Boehm. Each step was measured on the four before the next was begun.
+
+2. **Type applications** (`1505c50c`, [ir.md](ir.md) §8.6): a `type_app` whose instance is not a function
+   (`maybe.none(:A)`, `lists.nil(:A)`) is inlined as a call of the function without arguments would be.
+   `language/inlined_type_applications`.
+3. **Members that name their module's variables** (`1505c50c`, ir.md §8.6): a whole program inlines a member's
+   function from outside its module when each variable of its module that it names is an immutable exported member
+   that is not a function; the copy reads it as the member (`let error.2 = member util/maybe.error`).
+   `language/inlined_module_members`.
+4. **Scalar replacement across block parameters** (`17613817`, `ssa/scalars`, [ssa.md](ssa.md) §4.3): run after
+   promotion rather than in escape analysis, since wc-scanStream's loop carries its stream in a stack slot until
+   promotion makes it a block parameter. It splits groups (an option holding a tuple nests the tuple's layout), takes
+   a no-payload option's constant in the unit's static data as an object, drops the dead parameters promotion leaves
+   (which kept the stream whole), and replaces single objects escape analysis left. Replayed onto the collector, it
+   recognizes `quest_alloc` with its layout, and treats a write barrier as escape analysis does, as no use of the
+   object, dropping it with the object (`ssa_scalars`' case with barriers; `ssa/barriers` finds none owed after it).
+   It runs before `ssa/constants`.
+5. **Specialization on a known function argument** (`1906c59c`, ir.md §8.6): `language/specialized_recursion`. Found
+   on the way:
+   - the unit's growth bound was spent before the simplifier reached `preflowPush`'s calls, so a specialization is
+     bounded by the threshold alone;
+   - `let var g = fun ...` was bound as a function and read as a variable, in both compilers' lowering (`d04c2f1d`,
+     `language/mutable_function_variables`);
+   - a static parameter given a constant was left unbound, so mlyacc and vliw did not build (`26e8a9b1`), found by the
+     suite, which tools/check does not build;
+   - a local function whose closure captures only itself (map's, specialized in boyer's `rewrite`) allocated it each
+     time its enclosing function ran; such a group's closures are now static (`13826a80`, ir.md §8.2), read-only data
+     that need no entry in the root tables.
+6. **Known calls of captured functions** (`fbff0279`, `walk.knownClosures`, ir.md §8.2): the review's §3.4 was
+   corrected, since zebra's calls of `same`, `left`, and `adjacent` were known in the simplified IR and indirect only
+   because closure conversion made them captures. `language/captured_known_calls`. Found on the way: steps 2 and 3
+   made zebra slower, their copies of `maybe.none` and `maybe.unwrap`, counted at their whole size, spending the
+   growth bound before `isConsistent`; the bound now counts a copy's size less the call's (2). §11.3's settings were
+   measured with the whole size, so the suite below measures this too.
+7. **Clears at a branch** (`250c480e`, [arm64.md](arm64.md) §3.8, `regalloc_scan` case 14): for a target that asks
+   for clears, a value dying at a branch, on the path that falls through, is cleared only if a call may follow on
+   that path, and a cold block's call is not one. Under Boehm, whose frames were scanned whole, a failed bounds
+   check's path cleared every pointer live into the passing one, and `preflowPush` had 1,541 clears rather than 33.
+   Under the collector, a frame's map says which slots are live, arm64 asks for no clears, and **this step changes no
+   arm64 code**: it measures as noise below, and is kept for the targets that ask.
+8. **Unreachable members of a whole program** (`97dd6562`, `whole.dropUnreachable`, ir.md §8.6), added on 2026-11-05
+   when the suite found imp-for through arm64 1.87 times slower after steps 2 to 7 (under Boehm): steps 2 and 3 made
+   more of the library inlinable, and copies into members imp-for never calls spent nearly all the growth bound
+   before main's calls of `forLoop`. A whole program now keeps only the members it can reach, and the growth bound
+   was raised from half the unit's size to three quarters (or 1000, if more). A module whose record nothing reads
+   has none, and so no entry in the root tables (`unit.mod.quest`, the C printer's `qr_roots`).
+
+Then arm64's functions were aligned to 16 bytes rather than 4 (`eb7a20e2`, `asm.functionStart`, and the JIT's
+encoder, which pads between functions to match): under Boehm, step 8 made fib and tak 12 and 15 percent slower by
+moving their unchanged code to worse addresses, and 16-byte alignment gave them their old times back.
+
+The four after each step, through C and arm64, whole programs, at `--scale 0.25`, one run each (2026-11-06, each
+phase begun after a minute with the load average below 5; it was 1.9 to 3.2):
+
+| Commit | peek C | arm64 | wc-scanStream C | arm64 | ratio-regions C | arm64 | zebra C | arm64 |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|
+| `b9ca7cb2` (before) | 69.11 | 80.73 | 49.40 | 82.39 | 4.10 | 5.21 | 12.79 | 13.59 |
+| `1505c50c` (2, 3) | 71.34 | 92.74 | 50.62 | 82.59 | 5.11 | 5.90 | 14.17 | 14.33 |
+| `17613817` (4) | 71.25 | 91.68 | 49.78 | 27.95 | 5.02 | 5.88 | 13.97 | 14.15 |
+| `1906c59c` (5) | 71.19 | 91.35 | 49.36 | 27.55 | 2.46 | 2.74 | 13.95 | 29.51 |
+| `fbff0279` (6) | 66.12 | 78.12 | 49.29 | 27.59 | 2.01 | 2.35 | 12.55 | 13.46 |
+| `250c480e` (7) | 65.38 | 77.81 | 49.47 | 27.57 | 2.01 | 2.36 | 12.55 | 13.43 |
+| `13826a80` (5, static closures) | 65.59 | 77.95 | 49.31 | 27.49 | 2.04 | 2.34 | 12.64 | 13.38 |
+| `97dd6562` (8) | 64.67 | 76.85 | 49.46 | 27.52 | 2.11 | 2.34 | 10.27 | 11.06 |
+| `eb7a20e2` (alignment) | 65.58 | 77.15 | 49.73 | 27.77 | 2.15 | 2.36 | 10.42 | 11.22 |
+
+As they now measure:
+
+- **Steps 2 and 3 cost on their own:** every one of the four is slower after them, peek through arm64 by 15 percent,
+  ratio-regions by a quarter through C, zebra by a tenth. They pay only with the steps after them (§20.4).
+- **Step 4** takes wc-scanStream through arm64 to 0.34 of its time. Through C it does not move: `ssa/scalars` is a
+  pass of the SSA, which the C backend does not use.
+- **Step 5** halves ratio-regions, but doubles zebra through arm64 (14.15 s to 29.51), which step 6 more than undoes,
+  with peek's cost from steps 2 and 3. Steps 5 and 6 go together.
+- **Step 7** changes nothing, as above; nor do the static closures on the four (but see §20.4).
+- **Step 8** takes zebra to about 0.8 of its time through both backends.
+- **The alignment** changes none of the four by more than noise.
+
+### 20.2. The four, before and after
+
+At `b9ca7cb2` and `eb7a20e2`, from the table above:
+
+| Program | C before | C after | arm64 before | arm64 after |
+|---|--:|--:|--:|--:|
+| peek | 69.11 s | 65.58 (0.95) | 80.73 s | 77.15 (0.96) |
+| wc-scanStream | 49.40 s | 49.73 (1.01) | 82.39 s | 27.77 (0.34) |
+| ratio-regions | 4.10 s | 2.15 (0.52) | 5.21 s | 2.36 (0.45) |
+| zebra | 12.79 s | 10.42 (0.81) | 13.59 s | 11.22 (0.83) |
+
+Their allocations through arm64 (`allocations.py --clean`):
+
+| Program | Before | After |
+|---|--:|--:|
+| peek | 9,600,002,430 | 9,600,001,837 |
+| wc-scanStream | 16,394,076,198 | 8,060,947 |
+| ratio-regions | 781,856,080 | 75,821,979 |
+| zebra | 1,121,286,121 | 875,030,710 |
+
+These are the counts the steps gave under Boehm: the replay changed what the steps remove not at all. wc-scanStream's
+bytes go from 467 GB to 8.4 GB, ratio-regions' from 20.7 GB to 1.9 GB. zebra's `isConsistent` makes 426 million
+allocations rather than 672 million: the `maybe.some` boxes of the calls step 6 made direct and the inliner then took.
+peek's are its options of `Int`, left as they are.
+
+Under the collector the gains are smaller than under Boehm (wc-scanStream through arm64 0.34 rather than 0.17,
+ratio-regions 0.45 rather than 0.27), since each allocation the steps remove costs less under the collector than it
+did under Boehm (§16).
+
+### 20.3. The suite
+
+The 46 programs through arm64, whole, at `b9ca7cb2`, `97dd6562` (step 8), and `eb7a20e2`, each begun after a minute
+with the load average below 5 (it was 2.0 to 2.9). The geometric mean of the time ratios, after to before, is
+**0.913** in wall time and **0.910** in processor time; 845 s of wall time in all becomes 751 s. Step 8 to the
+alignment is 0.998 in both. Those that moved by 5 percent or more, all faster:
+
+| Program | Before | After step 8 | After | Ratio |
+|---|--:|--:|--:|--:|
+| wc-scanStream | 80.63 s | 27.44 s | 27.43 s | 0.34 |
+| ratio-regions | 5.15 s | 2.33 s | 2.32 s | 0.45 |
+| model-elimination | 19.68 s | 13.32 s | 13.22 s | 0.67 |
+| knuth-bendix | 35.20 s | 24.60 s | 24.52 s | 0.70 |
+| simple | 9.26 s | 7.49 s | 7.16 s | 0.77 |
+| zebra | 14.07 s | 11.01 s | 11.02 s | 0.78 |
+| psdes-random | 16.37 s | 13.00 s | 13.03 s | 0.80 |
+| mlyacc | 7.13 s | 6.26 s | 6.28 s | 0.88 |
+| boyer | 21.54 s | 19.24 s | 19.19 s | 0.89 |
+| zern | 5.33 s | 4.80 s | 4.77 s | 0.89 |
+| ray | 11.52 s | 10.48 s | 10.45 s | 0.91 |
+| mpuz | 8.56 s | 8.11 s | 8.09 s | 0.94 |
+| peek | 80.13 s | 76.44 s | 75.99 s | 0.95 |
+
+None is slower by more than 4 percent (mandelbrot, 1.04). imp-for takes 5.32 s (5.34 before). fib and tak take 4.85
+and 6.00 s, against 4.86 and 6.11 before and 4.86 and 6.07 after step 8: on this tree step 8 did not move them to
+worse addresses, and the alignment neither helps nor hurts them. It is kept so that a function's loops stay where
+they are as the code before it changes.
+
+tensor through arm64 takes 16.54 s (16.28 s of processor time) after, 16.68 s before. MLton's, taken again with
+`run.py time --mlton-only --scale 0.25 tensor` on the program as §1.4 changed it, takes 7.48 s (7.15 s of processor
+time; load 1.4), so tensor's ratio through arm64 is **2.21** in wall time and 2.28 in processor time.
+
+### 20.4. Steps measured by leaving them out
+
+Two of the steps measured as costs or not at all in §20.1, so the tip was measured without each, the four and the
+suite through arm64 as above (load 1.3 to 2.7):
+
+- **Steps 2 and 3 off,** switched off where they apply (`memberReads` always none, and no `type_app` taken as a
+  call), since step 5's `inline.specialize` takes step 3's reads, and the commit does not revert alone. The suite is
+  **1.027** of the tip's wall time (1.025 processor): zebra 1.17, boyer 1.14, simple 1.13, lexgen 1.11,
+  matrix-multiply and ratio-regions 1.10, peek 1.06, imp-for 1.06, model-elimination and nucleic 1.05; none faster
+  than hamlet's 0.98. Of the four: peek 73.14 s through C and 80.97 through arm64, ratio-regions 2.38 and 2.56, zebra
+  11.88 and 12.99, wc-scanStream unchanged. So what steps 2 and 3 cost alone, the later steps more than recover with
+  them.
+- **The static closures reverted** (`13826a80`, which reverts cleanly): the four are unchanged, but the suite is
+  **1.026** of the tip's (1.026 processor): knuth-bendix 1.19, boyer 1.10, mlyacc and vliw 1.06, fft 1.05, simple
+  1.04.
+
+All the steps are kept.
+
+### 20.5. The growth bound
+
+How often the unit's growth bound refuses a call the threshold allows, at the tip, counted by a trace not kept (one
+line for each refusal, so a call refused in each of the six rounds counts six times): 22 of the 46 programs reach it.
+hamlet 5,414, nucleic 4,160, model-elimination 3,065, logic 1,657, mlyacc 1,502, simple 1,317, boyer 1,316, vliw
+1,060, DLXSimulator 796, lexgen 209, life 200, knuth-bendix 192, smith-normal-form 164, raytrace 162, count-graphs
+111, tsp 109, ratio-regions 94, tensor 64, tyan 51, ray 48, zebra 31, barnes-hut 11.
+
+With the bound lifted (`QUEST_INLINE=growth=100000`), the 17 of these that take less than a minute (all but
+smith-normal-form, tensor, tyan, ray, and barnes-hut, which reach it least or take longest) take **1.000** of their
+time (geometric mean): simple 0.84, life 0.95, hamlet, nucleic, and logic 0.97, but zebra 1.11, mlyacc and
+knuth-bendix 1.06, and model-elimination 1.04. Builds take longer: hamlet 39.4 s, boyer 40.6 s (20.1 and 33.0 with
+the bound). So the bound is reached often, but lifting it gains nothing overall; a bound for each function, in
+proportion to its size, would want simple's gain without zebra's loss, and is not done.
+
+### 20.6. Compile times
+
+The compiler's driver, built through C from an empty build directory, twice each: 65.60 and 65.66 s before, 67.76
+and 67.73 s after (3.2 percent longer), from §20.1's steps 2, 3, and 5 inlining more. A whole program's own build takes
+less time than before (through arm64, wc-scanStream 0.7 s to 0.3 s, ratio-regions 1.1 to 0.7), its unreachable
+members no longer compiled.
