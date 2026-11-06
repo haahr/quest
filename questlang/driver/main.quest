@@ -621,8 +621,9 @@ let finish(bag: diagbag.T sm: location.SourceMap): Ok =
 let lowered(program: typedAst.Program e: env.T sm: location.SourceMap printResult: Bool stage: String): nodes.Unit =
     begin
         let var unit = lower.lowerProgram(program e maybe.some(:location.SourceMap sm) options.echo printResult)
-        (* A whole program is one unit, its modules merged into it *)
-        if options.wholeProgram then unit := whole.mergeImports(unit e) end
+        (* A whole program is one unit, its modules merged into it, with only
+         * the members it can reach *)
+        if options.wholeProgram then unit := whole.dropUnreachable(whole.mergeImports(unit e)) end
         let check = fun(u: nodes.Unit at: String): Ok
             begin
                 if verify.irChecksEnabled() then verify.checkUnit(u) end

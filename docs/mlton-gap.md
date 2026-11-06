@@ -19,7 +19,7 @@ collector ([collector.md](collector.md)), whose bump allocation would make what 
 - **peek is left as it is:** no extensible type, and options of `Int` stay boxed in a field.
 - **No allocation in Boehm's internals.** The interim free-list pop the review considered is not done, since Boehm is
   to be replaced.
-- **Each step measured alone** (§8), on the four and on the suite, before the next is begun.
+- **Each step measured alone** (§9), on the four and on the suite, before the next is begun.
 
 ## 2. Type Applications (`ir/simplify`)
 
@@ -54,7 +54,7 @@ program, where abstract types are opaque, only exceptions are, which are laid ou
 member read before the raise and the raise's behavior unchanged (its output in the shared golden), and peek's and
 zebra's `qf_unwrap` gone from their profiles. *Done* with §2: `language/inlined_module_members` (an in-file module's
 monomorphic members, since its goldens are not of a whole program, where a polymorphic member's interface type differs
-from its function's). The profiles are §8's.
+from its function's). The profiles are §9's.
 
 ## 4. Scalar Replacement Across Block Parameters (`ssa/scalars`)
 
@@ -91,7 +91,7 @@ makes it a block parameter. Found on the way:
   slot) is replaced as well.
 
 wc-scanStream at count 256 through arm64, by hand on an idle machine: 5.48 s before, 1.14 s after (0.21; the
-flattened variant was 0.16). Its loop no longer allocates; what is left is a chunk per 4096 characters. §8's
+flattened variant was 0.16). Its loop no longer allocates; what is left is a chunk per 4096 characters. §9's
 measurements are to follow.
 
 ## 5. Specialization on a Known Function Argument (`ir/inline`, `ir/simplify`)
@@ -126,10 +126,15 @@ loops with the closure's body in them, and ratio-regions' `preflowPush` allocate
   replaces a closure and a call through it on each step, and there is at most one per call of a known function.
 - **A bug in both compilers' lowering,** found by the test: `let var g = fun ...` was bound as a function and read as a
   variable, which the self-hosted compiler's backends crashed on (`712a5aa9`, `language/mutable_function_variables`).
+- **A static parameter given a constant** was left unbound in the local function, so mlyacc and vliw did not build
+  (`39cf3625`); it is now bound to the constant. Found by §9's suite, which tools/check does not build.
+- **A local function whose closure captures only itself** (map's, specialized in boyer's `rewrite`) allocated that
+  closure each time its enclosing function ran, which made boyer 13 percent slower; closure conversion now makes the
+  closures of a group that captures only itself static (`407b3922`, [ir.md](ir.md) §8.2).
 
 ratio-regions at count 384 through C, whole, by hand: 7.74 s before (the compiler before step 2), 2.40 s after (0.31;
 the review's hand-made variant was 0.43). With the growth bound lifted for all inlining, the compiler before this step
-took 7.70 s, so the gain is the specialization's. §8's measurements are to follow.
+took 7.70 s, so the gain is the specialization's. §9's measurements are to follow.
 
 ## 6. Known Calls of Captured Functions (`ir/closure`, the C printer, the SSA builder)
 
@@ -157,7 +162,7 @@ Found on the way, by timing zebra at each step's commit:
   `isConsistent`, whose calls of `smoke`, `pet`, and the rest were then left. With the bound lifted, it took 16.7 s.
 - **The growth bound now counts a copy's size less the call's** (2), which it replaces: zebra takes 18.07 s, and
   ratio-regions 1.99 s rather than 2.40. The settings benchmarks.md §11.3 kept were measured with the whole size, so
-  §8's suite measures this too.
+  §9's suite measures this too.
 
 ## 7. Clears Before a Raise (arm64 `regalloc`, `select`)
 
@@ -180,7 +185,26 @@ the path it dies on, and no cold block's call, leaves the failing path a lone ju
 already folds into the branch: `b.hs` to the raise, falling through when the check passes. `preflowPush` has 33 clears
 rather than 1,541 and is 22% shorter; ratio-regions and life through arm64 are about 1% faster.
 
-## 8. Measurement
+## 8. Unreachable Members of a Whole Program (`ir/whole`, `ir/simplify`)
+
+Measuring steps 2 to 7 on the suite found imp-for through arm64 twice as slow (5.5 s to 10 s): steps 2 and 3 made more
+of the library's calls inlinable, and in a whole program every module's members are compiled, called or not, so
+copies into members imp-for never calls (`vector.append`'s, `strutil`'s, `conv`'s) spent nearly all of the unit's
+growth bound before the simplifier reached main's calls of `forLoop`, which it left. With the bound lifted, imp-for
+took 5.65 s. Decided on 2026-11-05:
+
+- **A whole program keeps only the members it can reach,** before simplifying: from its main body and from what its
+  modules' initializers do other than bind a member to a pure operation or a function, through the variables each
+  uses and the members it names. The others' bindings are deleted, they leave their modules' members and exports,
+  and a module whose record nothing reads as a value has none. The growth bound is then spent on code that can run,
+  and is measured from it.
+- **The growth bound is three quarters of the unit's size, not half** (or 1000, if more).
+- **Not a bound for each function:** after this step, §9's suite shows how often the unit's bound is reached; if
+  often, that is the case for one.
+
+*Done when* imp-for through arm64, whole, takes its time before step 2, and the suite passes whole through C and arm64.
+
+## 9. Measurement
 
 After each step, before the next:
 
@@ -192,14 +216,14 @@ After each step, before the next:
 
 The results are recorded here as each step finishes, and at the end in [benchmarks.md](benchmarks.md).
 
-## 9. Testing
+## 10. Testing
 
 - Each step's run tests (shared behavior goldens, written by the bootstrap) and the self-hosted goldens they change
   (`ir_simplified`, `ssa`), regenerated with `--self-hosted --update-golden` and read.
 - `ssa_scalars` for §4; the arm64 suite for §7.
 - `tools/check` before each step's commit.
 
-## 10. Steps
+## 11. Steps
 
 1. This plan, and the review's §3.4 corrected.
 2. Type applications (§2).
@@ -208,4 +232,5 @@ The results are recorded here as each step finishes, and at the end in [benchmar
 5. Specialization on a known function argument (§5).
 6. Known calls of captured functions (§6).
 7. Clears before a raise (§7).
-8. The measurements recorded in benchmarks.md, and this plan retired into ir.md, ssa.md, and arm64.md.
+8. Unreachable members of a whole program, and a growth bound of three quarters (§8).
+9. The measurements recorded in benchmarks.md, and this plan retired into ir.md, ssa.md, and arm64.md.

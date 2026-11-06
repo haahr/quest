@@ -348,8 +348,12 @@ export
                     let symbol = symbols.moduleRecordIdent(clean) let exported = exported let writable = true
                     let contents = option contentsZero of ssa.Contents with let bytes = 16 end
                 end)
-                vector.append(:vals.RootEntry u.roots tuple
-                    let symbol = symbols.moduleRecordIdent(clean) let words = 2 end)
+                (* A record is a root, but not one a whole program's module
+                 * is left without (whole.dropUnreachable), which stays zero *)
+                if maybe.isSome(:Variable m.recordVar) then
+                    vector.append(:vals.RootEntry u.roots tuple
+                        let symbol = symbols.moduleRecordIdent(clean) let words = 2 end)
+                end
                 addData(u tuple
                     let symbol = initialized let exported = false let writable = true
                     let contents = option contentsZero of ssa.Contents with let bytes = 8 end

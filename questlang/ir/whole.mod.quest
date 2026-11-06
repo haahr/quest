@@ -5,6 +5,7 @@ import
     questlang/ir/nodes : questlang/ir/Nodes
     questlang/ir/lower : questlang/ir/Lower
     questlang/ir/walk : questlang/ir/Walk
+    questlang/ir/simplify : questlang/ir/Simplify
     questlang/types/env : questlang/types/Env
     questlang/typechecker/typedAst : questlang/typechecker/TypedAst
     questlang/modules/graph : questlang/modules/Graph
@@ -142,6 +143,147 @@ export
             unit.modules := order
             unit.functions := functions
             unit.imports := vector.toArray(:nodes.Import kept)
+            unit
+        end
+
+    let dropUnreachable(unit: nodes.Unit): nodes.Unit =
+        begin
+            let same = fun(a: Int b: Int): Bool a is b
+            (* The statement of an initializer's top level that binds each
+             * variable a module may drop, by the variable's id: a let of a
+             * pure operation, or a function of a funs statement *)
+            let binding = hashMap.new(:Int :nodes.Stmt same hash.int)
+            let roots = vector.new(:nodes.Stmt)
+            for k = 0 upto {vector.length(:Module unit.modules) - 1} do
+                let init = vector.get(:Module unit.modules k).init
+                for j = 0 upto {vector.length(:nodes.Stmt init.statements) - 1} do
+                    let st = vector.get(:nodes.Stmt init.statements j)
+                    case st
+                        when sLet with x then
+                            if simplify.pure(x.value) then begin hashMap.insert(:Int :nodes.Stmt binding x.v.id st) ok end
+                            else vector.append(:nodes.Stmt roots st) end
+                        when sFuns with x then
+                            for i = 0 upto {extent x.functions - 1} do
+                                begin hashMap.insert(:Int :nodes.Stmt binding x.functions[i].v.id st) ok end
+                            end
+                        else vector.append(:nodes.Stmt roots st)
+                    end
+                end
+            end
+            vector.append(:nodes.Stmt roots option sLetRec of nodes.Stmt with
+                let var vars = array of :nodes.Variable end let var body = unit.main
+            end)
+            for k = 0 upto {vector.length(:nodes.Function unit.functions) - 1} do
+                vector.append(:nodes.Stmt roots option sLetRec of nodes.Stmt with
+                    let var vars = array of :nodes.Variable end
+                    let var body = vector.get(:nodes.Function unit.functions k).body
+                end)
+            end
+            (* The variables reached, by id, and the modules whose records are
+             * read, by their ids *)
+            let reached = hashMap.new(:Int :Bool same hash.int)
+            let records = hashMap.new(:Int :Bool same hash.int)
+            let pending = vector.new(:nodes.Stmt)
+            let reach = fun(v: nodes.Variable): Ok
+                if not(hashMap.contains(:Int :Bool reached v.id)) then
+                    begin
+                        hashMap.insert(:Int :Bool reached v.id true)
+                        let st = hashMap.get(:Int :nodes.Stmt binding v.id)
+                        if maybe.isSome(:nodes.Stmt st) then vector.append(:nodes.Stmt pending maybe.unwrap(:nodes.Stmt st)) end
+                    end
+                end
+            let named = fun(r: maybe.T(nodes.ModuleRef) member: maybe.T(String)): Ok
+                if maybe.isSome(:nodes.ModuleRef r) then
+                    case maybe.unwrap(:nodes.ModuleRef r)
+                        when refModule with x then
+                            if maybe.isSome(:String member) then
+                                let v = nodes.member(x.m.members maybe.unwrap(:String member))
+                                if maybe.isSome(:nodes.Variable v) then reach(maybe.unwrap(:nodes.Variable v)) end
+                            elsif not(hashMap.contains(:Int :Bool records x.m.id)) then
+                                hashMap.insert(:Int :Bool records x.m.id true)
+                                if maybe.isSome(:nodes.Variable x.m.recordVar) then
+                                    reach(maybe.unwrap(:nodes.Variable x.m.recordVar))
+                                end
+                            end
+                        when refImport then ok
+                    end
+                end
+            let visit = fun(st: nodes.Stmt): Ok
+                begin
+                    let all = walk.walkStatements(nodes.bodyOf(array of st end) true)
+                    for i = 0 upto {vector.length(:nodes.Stmt all) - 1} do
+                        let s = vector.get(:nodes.Stmt all i)
+                        let used = walk.statementUses(s)
+                        for j = 0 upto {extent used - 1} do
+                            case used[j]
+                                when atomVar with x then reach(x.v)
+                                when atomConst then ok
+                            end
+                        end
+                        let op = case s
+                            when sLet with x then maybe.some(:nodes.Op x.value)
+                            when sDo with x then maybe.some(:nodes.Op x.value)
+                            else maybe.none(:nodes.Op)
+                        end
+                        if maybe.isSome(:nodes.Op op) then
+                            case maybe.unwrap(:nodes.Op op)
+                                when opCall with x then named(x.moduleRef x.member)
+                                when opTypeApp with x then named(x.moduleRef x.member)
+                                when opModuleMember with x then named(maybe.some(:nodes.ModuleRef x.moduleRef) x.member)
+                                else ok
+                            end
+                        end
+                    end
+                end
+            for k = 0 upto {vector.length(:nodes.Stmt roots) - 1} do visit(vector.get(:nodes.Stmt roots k)) end
+            (* A funs statement is visited once, whichever function reaches
+             * it, and reaches all its functions *)
+            let visited = hashMap.new(:Int :Bool same hash.int)
+            while not(vector.empty(:nodes.Stmt pending)) do
+                let st = vector.pop(:nodes.Stmt pending)
+                let key = case st
+                    when sLet with x then x.v.id
+                    when sFuns with x then x.functions[0].v.id
+                    else 0
+                end
+                if not(hashMap.contains(:Int :Bool visited key)) then
+                    hashMap.insert(:Int :Bool visited key true)
+                    visit(st)
+                end
+            end
+            let kept = fun(ms: nodes.Members): nodes.Members
+                begin
+                    let result = nodes.newMembers()
+                    for i = 0 upto {vector.length(:String ms.names) - 1} do
+                        let name = vector.get(:String ms.names i)
+                        let v = hashMap.find(:String :nodes.Variable ms.vars name)
+                        if hashMap.contains(:Int :Bool reached v.id) orif not(hashMap.contains(:Int :nodes.Stmt binding v.id))
+                            then nodes.addMember(result name v)
+                        end
+                    end
+                    result
+                end
+            for k = 0 upto {vector.length(:Module unit.modules) - 1} do
+                let m = vector.get(:Module unit.modules k)
+                let left = vector.new(:nodes.Stmt)
+                for j = 0 upto {vector.length(:nodes.Stmt m.init.statements) - 1} do
+                    let st = vector.get(:nodes.Stmt m.init.statements j)
+                    let live = case st
+                        when sLet with x then
+                            hashMap.contains(:Int :Bool reached x.v.id)
+                                orif not(hashMap.contains(:Int :nodes.Stmt binding x.v.id))
+                        when sFuns with x then hashMap.contains(:Int :Bool visited x.functions[0].v.id)
+                        else true
+                    end
+                    if live then vector.append(:nodes.Stmt left st) end
+                end
+                m.init.statements := left
+                m.members := kept(m.members)
+                if maybe.isSome(:nodes.Members m.exports) then
+                    m.exports := maybe.some(:nodes.Members kept(maybe.unwrap(:nodes.Members m.exports)))
+                end
+                if not(hashMap.contains(:Int :Bool records m.id)) then m.recordVar := maybe.none(:nodes.Variable) end
+            end
             unit
         end
 end

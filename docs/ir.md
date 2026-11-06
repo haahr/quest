@@ -666,9 +666,14 @@ inlined:
   the parameter's values as `QVal` words, as a type argument's need not be, and nothing would box them;
 - a recursive function at all, rather than only into its own component, so that none is unrolled once per round
   (but one is specialized, below);
-- past the unit's growth bound: half its size, or 1000, whichever is more, each copy counting its size less the
-  call's (2), which it replaces, so that copies no larger than their calls (`maybe.none`'s) do not spend it. The
-  rounds' bound stands for a caller's bound and a depth bound.
+- past the unit's growth bound: three quarters of its size, or 1000, whichever is more, each copy counting its size
+  less the call's (2), which it replaces, so that copies no larger than their calls (`maybe.none`'s) do not spend it.
+  The rounds' bound stands for a caller's bound and a depth bound. A whole program's unit holds only the members of
+  its modules that its code can reach (`whole.dropUnreachable`, before the simplifier): from its main body and from
+  what its modules' initializers do other than bind a member to a pure operation or a function, through the
+  variables each uses and the members it names; the others' bindings are deleted, and a module whose record nothing
+  reads as a value has none. So the bound is measured from, and spent on, code that can run: before, copies into
+  library members imp-for never calls spent it before the simplifier reached main ([mlton-gap.md](mlton-gap.md) §8).
 
 A body whose one return is its end is spliced in place; any other becomes a join point's body, whose continuation is the
 rest of the caller's body, its returns jumps to it. In a whole program, a call of one of the unit's modules' members

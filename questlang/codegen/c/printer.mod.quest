@@ -2964,9 +2964,12 @@ export
                 end
             end
             addAll(res top.lines)
-            (* The record the initializer made last *)
-            add(res "    " <> symbols.moduleRecordIdent(clean) <> " = "
-                <> varAtom(p maybe.unwrap(:Variable m.recordVar)) <> ";")
+            (* The record the initializer made last, if it has one (a whole
+             * program's module whose record nothing reads has none) *)
+            if maybe.isSome(:Variable m.recordVar) then
+                add(res "    " <> symbols.moduleRecordIdent(clean) <> " = "
+                    <> varAtom(p maybe.unwrap(:Variable m.recordVar)) <> ";")
+            end
             add(res "}")
             add(res "")
             if exported then addAll(res exportedFunctions(p m)) end
@@ -3072,9 +3075,13 @@ export
                 let g = vector.get(:GlobalDecl globalDecls i)
                 if g.words > 0 then add(res "    { (void *)&" <> g.name <> ", " <> cInt(g.words) <> " },") end
             end
+            (* Not the record of a whole program's module left without one
+             * (whole.dropUnreachable), which stays zero *)
             for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
-                let clean = symbols.mangleModuleName(vector.get(:nodes.Module unit.modules i).name)
-                add(res "    { (void *)&" <> symbols.moduleRecordIdent(clean) <> ", 2 },")
+                let m = vector.get(:nodes.Module unit.modules i)
+                if maybe.isSome(:Variable m.recordVar) then
+                    add(res "    { (void *)&" <> symbols.moduleRecordIdent(symbols.mangleModuleName(m.name)) <> ", 2 },")
+                end
             end
             add(res "    { NULL, 0 },")
             add(res "};")
