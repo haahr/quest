@@ -1,0 +1,32 @@
+(* Quest Self-Hosted Compiler: The SSA's Scalar Replacement Interface
+ *
+ * Objects that are made, read, and passed through block parameters without
+ * leaving a function, replaced by the values of their words (docs/ssa.md
+ * section 4.3): a loop that carries a tuple carries its components, and a
+ * join of options made in several places (or one of them a constant of the
+ * unit's static data) joins their tags and components. Escape analysis
+ * (section 4.2) removes an allocation that is only ever one value; this pass,
+ * after promotion has made the variables a loop carries its parameters,
+ * removes those that a block parameter merges with others, which it cannot,
+ * and those promotion exposes. *)
+
+interface Scalars
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    (* An origin of an object: the value that makes it (an allocation's, or a
+     * constant's address), whether it is a constant, and whether it is left
+     * as it is, and if so why *)
+    Def Verdict = Tuple value: Int constant: Bool left: Bool reason: String end
+
+    (* The origins of f's objects, in the order they are made, without
+     * changing f (replaceFunction first drops the parameters nothing uses,
+     * which can keep objects whole) *)
+    analyze(u: ssa.Unit f: ssa.Function): Array(Verdict)
+
+    (* Replaces f's merged objects by their words, the static data of u giving
+     * the words of its constants; returns the number of objects (allocations
+     * and constants) replaced *)
+    replaceFunction(u: ssa.Unit f: ssa.Function): Int
+    replaceUnit(u: ssa.Unit): Int
+end

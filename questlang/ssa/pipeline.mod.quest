@@ -8,6 +8,7 @@ import
     collections/vector : collections/Vector
     questlang/ssa/verify : questlang/ssa/Verify
     questlang/ssa/barriers : questlang/ssa/Barriers
+    questlang/ssa/scalars : questlang/ssa/Scalars
     questlang/ssa/escape : questlang/ssa/Escape
     questlang/ssa/promote : questlang/ssa/Promote
     questlang/ssa/tailCalls : questlang/ssa/TailCalls
@@ -22,7 +23,9 @@ import
     stringOp = string : StringOp
     system : System
 export
-    let passes = array of "escape" "promote" "constants" "valueNumbers" "selects" "accumulate" "tailCalls" "tailJumps" end
+    let passes = array of
+        "escape" "promote" "scalars" "constants" "valueNumbers" "selects" "accumulate" "tailCalls" "tailJumps"
+    end
 
     let settings = tuple let var interruptChecks = false end
     let setInterruptChecks(on: Bool): Ok = settings.interruptChecks := on
@@ -30,7 +33,8 @@ export
     let unknownPass: Exception(String) = exception unknownPass: String end
 
     let runPass(name: String u: ssa.Unit): Ok =
-        if stringOp.equal(name "escape") then begin let ignored = escape.escapeUnit(u) end
+        if stringOp.equal(name "scalars") then begin let ignored = scalars.replaceUnit(u) end
+        elsif stringOp.equal(name "escape") then begin let ignored = escape.escapeUnit(u) end
         elsif stringOp.equal(name "promote") then begin let ignored = promote.promoteUnit(u) end
         elsif stringOp.equal(name "constants") then constants.constantUnit(u)
         elsif stringOp.equal(name "valueNumbers") then valueNumbers.numberUnit(u)

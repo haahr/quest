@@ -1,0 +1,1049 @@
+(* Quest Self-Hosted Compiler: The SSA's Scalar Replacement Implementation *)
+
+module scalars : Scalars
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/cfg : questlang/ssa/Cfg
+    questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
+    collections/vector : collections/Vector
+    collections/hashMap : collections/HashMap
+    util/hash : util/Hash
+    util/maybe : util/Maybe
+    stringOp = string : StringOp
+export
+    Let Function = ssa.Function
+    Def Verdict = Tuple value: Int constant: Bool left: Bool reason: String end
+
+    let intEqual(a: Int b: Int): Bool = a is b
+    let proxyTag(): Int = runtimeLayout.constant("QUEST_PROXY_TAG")
+
+    let typeCode(t: ssa.Type): Int =
+        case t when typeInt then 0 when typePtr then 1 when typeReal then 2 when typeVal then 3 end
+
+    let typeOfCode(code: Int): ssa.Type =
+        if code is 1 then ssa.typePtr elsif code is 2 then ssa.typeReal elsif code is 3 then ssa.typeVal
+        else ssa.typeInt end
+
+    (* A word of a group's layout: nothing known of it (no member stores it
+     * and nothing loads it), a value of one type, or a pointer to an object
+     * of another group, at an offset, whose own words it stands for *)
+    let wordNone = 0
+    let wordScalar = 1
+    let wordNested = 2
+
+    (* What the pass knows of a function. An origin is what makes an object:
+     * a quest_alloc of a constant size, or the address of a word of the
+     * unit's static data that is never written (a constant option, say).
+     * Origins whose pointers meet at a block parameter, or one of whose words
+     * holds another's pointer, are in one group, whose objects are replaced
+     * by their words together. *)
+    Let State = Tuple
+        f: Function
+        defBlock: Array(Int)
+        defIndex: Array(Int)
+        isConst: Array(Bool)
+        constant: Array(Int)
+        (* Each origin: the value it makes, whether it is static data, its
+         * size in words, the static words from its address on, and for an
+         * allocation, the value each word is stored by the stores that
+         * initialize it (~1 for none), and the index in its block of the last
+         * of them (its own index if none) *)
+        originValue: vector.T(Int)
+        originDatum: vector.T(Bool)
+        originWords: vector.T(Int)
+        originData: vector.T(Array(ssa.Word))
+        stores: vector.T(Array(Int))
+        lastStore: vector.T(Int)
+        (* The origin each value makes (~1 for none), and the allocation a
+         * value points into directly, derived from its value by constant
+         * offsets (~1 for none), at what offset *)
+        originOf: Array(Int)
+        exact: Array(Int)
+        exactOff: Array(Int)
+        (* The origins' groups (a union-find forest), and whether each origin
+         * is left alone, and why *)
+        var parent: Array(Int)
+        var dead: Array(Bool)
+        var reasons: Array(String)
+        (* The origin each value points into (~1 for none), and its offset *)
+        ptr: Array(Int)
+        off: Array(Int)
+        (* The blocks reached once proxy tests of the groups' pointers fold *)
+        reach: Array(Bool)
+    end
+
+    let defOf(s: State v: Int): ssa.Inst = vector.get(:ssa.Inst ssa.block(s.f s.defBlock[v]).insts s.defIndex[v])
+    let definedBy(s: State v: Int op: ssa.Opcode): Bool =
+        {v >= 0} andif {s.defBlock[v] >= 0} andif ssa.isOp(defOf(s v) op)
+    let isConstant(s: State v: Int n: Int): Bool = s.isConst[v] andif {s.constant[v] is n}
+
+    let rec find(s: State a: Int): Int =
+        if s.parent[a] is a then a
+        else begin let r = find(s s.parent[a]) s.parent[a] := r r end end
+
+    let union(s: State a: Int b: Int): Bool =
+        begin
+            let x = find(s a)
+            let y = find(s b)
+            if x is y then false
+            else begin
+                if x < y then s.parent[y] := x else s.parent[x] := y end
+                true
+            end end
+        end
+
+    (* A write barrier (collector.md section 3.5) keeps no pointer, so passing
+     * it one of a group's pointers is no use of the object, and the barrier
+     * goes with the object, as in ssa/escape *)
+    let isBarrier(symbol: String): Bool =
+        stringOp.equal(symbol "quest_barrier") orif stringOp.equal(symbol "quest_barrier_slot")
+
+    let kill(s: State a: Int reason: String): Ok =
+        if not(s.dead[a]) then begin s.dead[a] := true s.reasons[a] := reason end end
+
+    (* Kills every origin of a's group *)
+    let killGroup(s: State a: Int reason: String): Ok =
+        begin
+            let g = find(s a)
+            for o = 0 upto {extent s.parent - 1} do if find(s o) is g then kill(s o reason) end end
+        end
+
+    let live(s: State v: Int): Bool = {v >= 0} andif {s.ptr[v] >= 0} andif not(s.dead[s.ptr[v]])
+
+    (* Whether v tests one of the groups' pointers for being a proxy:
+     * and(ptrToInt(p), QUEST_PROXY_TAG) *)
+    let isProxyTest(s: State v: Int): Bool =
+        if definedBy(s v ssa.opAnd) then
+            let i = defOf(s v)
+            let test(x: Int c: Int): Bool =
+                isConstant(s c proxyTag()) andif definedBy(s x ssa.opPtrToInt) andif live(s defOf(s x).args[0])
+            test(i.args[0] i.args[1]) orif test(i.args[1] i.args[0])
+        else false end
+
+    let reachable(s: State): Ok =
+        begin
+            let n = vector.length(:ssa.Block s.f.blocks)
+            for b = 0 upto {n - 1} do s.reach[b] := false end
+            let work = vector.new(:Int)
+            let visit(b: Int): Ok = if not(s.reach[b]) then begin s.reach[b] := true vector.append(:Int work b) end end
+            if n > 0 then visit(0) end
+            while not(vector.empty(:Int work)) do
+                let term = ssa.block(s.f vector.pop(:Int work)).term
+                let folded =
+                    case term
+                        when termBranch with x then
+                            if isProxyTest(s x.cond) then begin visit(x.ifFalse.block) true end else false end
+                        when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then
+                            false
+                    end
+                if not(folded) then
+                    let succs = ssa.successors(term)
+                    for k = 0 upto {extent succs - 1} do visit(succs[k]) end
+                end
+            end
+        end
+
+    let takenTargets(s: State term: ssa.Terminator): Array(ssa.Target) =
+        case term
+            when termBranch with x then
+                if isProxyTest(s x.cond) then array of :ssa.Target x.ifFalse end else ssa.targets(term) end
+            when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then
+                ssa.targets(term)
+        end
+
+    (* The word an access at offset base + imm of width bytes is, ~1 if it is
+     * not a whole aligned word *)
+    let wordOf(base: Int imm: Int width: Int): Int =
+        begin
+            let o = base + imm
+            if {width is 8} andif {o >= 0} andif {{o % 8} is 0} then o / 8 else ~1 end
+        end
+
+    (* ======================================================================
+     * Origins
+     * ====================================================================== *)
+
+    (* The static data's words of a symbol that is never written *)
+    let constantWords(u: ssa.Unit): hashMap.T(String Array(ssa.Word)) =
+        begin
+            let found = hashMap.new(:String :Array(ssa.Word) stringOp.equal hash.string)
+            for i = 0 upto {vector.length(:ssa.Data u.data) - 1} do
+                let d = vector.get(:ssa.Data u.data i)
+                if not(d.writable) then
+                    case d.contents
+                        when contentsWords with x then
+                            begin hashMap.insert(:String :Array(ssa.Word) found d.symbol x.words) ok end
+                        else ok
+                    end
+                end
+            end
+            found
+        end
+
+    let addOrigin(s: State v: Int datum: Bool words: Int data: Array(ssa.Word)): Ok =
+        begin
+            s.originOf[v] := vector.length(:Int s.originValue)
+            vector.append(:Int s.originValue v)
+            vector.append(:Bool s.originDatum datum)
+            vector.append(:Int s.originWords words)
+            vector.append(:Array(ssa.Word) s.originData data)
+            vector.append(:Array(Int) s.stores array of(words ~1))
+            vector.append(:Int s.lastStore s.defIndex[v])
+        end
+
+    (* The words of a static datum from byte addend on *)
+    let wordsFrom(ws: Array(ssa.Word) addend: Int): Array(ssa.Word) =
+        begin
+            let start = addend / 8
+            let n = if extent ws > start then extent ws - start else 0 end
+            let result = array of(n option wordInt of ssa.Word with let n = 0 end)
+            for k = 0 upto {n - 1} do result[k] := ws[start + k] end
+            result
+        end
+
+    let newState(u: ssa.Unit f: Function): State =
+        begin
+            let nValues = vector.length(:ssa.Type f.types)
+            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let s = tuple
+                let f = f
+                let defBlock = array of(nValues ~1) let defIndex = array of(nValues ~1)
+                let isConst = array of(nValues false) let constant = array of(nValues 0)
+                let originValue = vector.new(:Int) let originDatum = vector.new(:Bool)
+                let originWords = vector.new(:Int) let originData = vector.new(:Array(ssa.Word))
+                let stores = vector.new(:Array(Int)) let lastStore = vector.new(:Int)
+                let originOf = array of(nValues ~1)
+                let exact = array of(nValues ~1) let exactOff = array of(nValues 0)
+                let var parent = array of(0 0) let var dead = array of(0 false) let var reasons = array of(0 "")
+                let ptr = array of(nValues ~1) let off = array of(nValues 0)
+                let reach = array of(nBlocks true)
+            end
+            for b = 0 upto {nBlocks - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    for r = 0 upto {extent i.results - 1} do
+                        s.defBlock[i.results[r]] := b
+                        s.defIndex[i.results[r]] := k
+                    end
+                    if ssa.isOp(i ssa.opConst) then
+                        s.isConst[i.results[0]] := true
+                        s.constant[i.results[0]] := i.imm
+                    end
+                end
+            end
+            let constants = constantWords(u)
+            let datumAt(v: Int): maybe.T(Tuple symbol: String addend: Int end) =
+                if definedBy(s v ssa.opSymbol) andif hashMap.contains(:String :Array(ssa.Word) constants defOf(s v).symbol)
+                then maybe.some(:Tuple symbol: String addend: Int end tuple
+                    let symbol = defOf(s v).symbol let addend = defOf(s v).imm end)
+                else maybe.none(:Tuple symbol: String addend: Int end) end
+            for b = 0 upto {nBlocks - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    if ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol "quest_alloc") andif {extent i.args is 2}
+                        andif {extent i.results is 1} andif s.isConst[i.args[0]] andif {s.constant[i.args[0]] > 0} then
+                        addOrigin(s i.results[0] false {{s.constant[i.args[0]] + 7} / 8} array of :ssa.Word end)
+                    elsif ssa.isOp(i ssa.opSymbol) andif {{i.imm % 8} is 0} andif {i.imm >= 0}
+                        andif hashMap.contains(:String :Array(ssa.Word) constants i.symbol) then
+                        let ws = wordsFrom(hashMap.find(:String :Array(ssa.Word) constants i.symbol) i.imm)
+                        addOrigin(s i.results[0] true extent ws ws)
+                    elsif ssa.isOp(i ssa.opPtrAdd) andif s.isConst[i.args[1]] then
+                        (* A constant's address plus an offset is another
+                         * constant's (a case's, in a table of them) *)
+                        let d = datumAt(i.args[0])
+                        if maybe.isSome(:Tuple symbol: String addend: Int end d) then
+                            let at = maybe.unwrap(:Tuple symbol: String addend: Int end d)
+                            let addend = at.addend + s.constant[i.args[1]]
+                            if {addend >= 0} andif {{addend % 8} is 0} then
+                                let ws = wordsFrom(hashMap.find(:String :Array(ssa.Word) constants at.symbol) addend)
+                                addOrigin(s i.results[0] true extent ws ws)
+                            end
+                        end
+                    end
+                end
+            end
+            let n = vector.length(:Int s.originValue)
+            s.parent := array of(n 0)
+            for a = 0 upto {n - 1} do s.parent[a] := a end
+            s.dead := array of(n false)
+            s.reasons := array of(n "")
+            (* The pointers derived from each allocation's value directly *)
+            let var changed = true
+            for a = 0 upto {n - 1} do
+                if not(vector.get(:Bool s.originDatum a)) then s.exact[vector.get(:Int s.originValue a)] := a end
+            end
+            while changed do
+                changed := false
+                for b = 0 upto {nBlocks - 1} do
+                    let blk = ssa.block(f b)
+                    for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                        let i = vector.get(:ssa.Inst blk.insts k)
+                        if ssa.isOp(i ssa.opPtrAdd) andif {s.exact[i.args[0]] >= 0} andif s.isConst[i.args[1]]
+                            andif {s.exact[i.results[0]] < 0} then
+                            s.exact[i.results[0]] := s.exact[i.args[0]]
+                            s.exactOff[i.results[0]] := s.exactOff[i.args[0]] + s.constant[i.args[1]]
+                            changed := true
+                        end
+                    end
+                end
+            end
+            (* Each allocation's initializing stores: in its block, through
+             * its own pointers, each word at most once, none read through
+             * them before the last *)
+            for b = 0 upto {nBlocks - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    if {ssa.isOp(i ssa.opStore) orif ssa.isOp(i ssa.opLoad)} andif {s.exact[i.args[0]] >= 0} then
+                        let a = s.exact[i.args[0]]
+                        let v = vector.get(:Int s.originValue a)
+                        let w = wordOf(s.exactOff[i.args[0]] i.imm i.width)
+                        let ws = vector.get(:Array(Int) s.stores a)
+                        if {w < 0} orif {w >= extent ws} then kill(s a "accessed other than by whole words")
+                        elsif ssa.isOp(i ssa.opStore) then
+                            if s.defBlock[v] isnot b then kill(s a "stored to after it is made")
+                            elsif ws[w] >= 0 then kill(s a "a word stored twice")
+                            else begin ws[w] := i.args[1] vector.set(:Int s.lastStore a k) end end
+                        end
+                    end
+                end
+            end
+            for b = 0 upto {nBlocks - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    if ssa.isOp(i ssa.opLoad) andif {s.exact[i.args[0]] >= 0} then
+                        let a = s.exact[i.args[0]]
+                        if {s.defBlock[vector.get(:Int s.originValue a)] is b} andif {k < vector.get(:Int s.lastStore a)}
+                        then kill(s a "read before it is initialized") end
+                    end
+                end
+            end
+            (* An object's values are known at its last initializing store, so
+             * an allocation it holds must be initialized before it *)
+            for a = 0 upto {n - 1} do
+                let ws = vector.get(:Array(Int) s.stores a)
+                for w = 0 upto {extent ws - 1} do
+                    let v = ws[w]
+                    if {v >= 0} andif {s.exact[v] >= 0} then
+                        let h = s.exact[v]
+                        let here = s.defBlock[vector.get(:Int s.originValue a)]
+                        if {s.defBlock[vector.get(:Int s.originValue h)] is here}
+                            andif {vector.get(:Int s.lastStore h) > vector.get(:Int s.lastStore a)} then
+                            kill(s a "initialized before an object it holds")
+                        end
+                    end
+                end
+            end
+            s
+        end
+
+    (* ======================================================================
+     * Analysis
+     * ====================================================================== *)
+
+    (* Whether v points into a's group at offset, adding it there if it points
+     * nowhere yet; two groups it points into are one, and two offsets kill
+     * them *)
+    let setPointer(s: State v: Int a: Int offset: Int): Bool =
+        if s.ptr[v] < 0 then begin s.ptr[v] := a s.off[v] := offset true end
+        else begin
+            let joined = union(s s.ptr[v] a)
+            if s.off[v] isnot offset then begin
+                killGroup(s a "its pointers met at two offsets")
+                false
+            end else joined end
+        end end
+
+    (* The pointers into the live origins' objects, and their groups, to a
+     * fixed point over the blocks reached *)
+    let pointers(s: State): Ok =
+        begin
+            let f = s.f
+            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let n = extent s.parent
+            for v = 0 upto {extent s.ptr - 1} do s.ptr[v] := ~1 end
+            for a = 0 upto {n - 1} do s.parent[a] := a end
+            for a = 0 upto {n - 1} do
+                if not(s.dead[a]) then begin s.ptr[vector.get(:Int s.originValue a)] := a s.off[vector.get(:Int s.originValue a)] := 0 end end
+            end
+            let var changed = true
+            while changed do
+                changed := false
+                let bound = array of(extent s.ptr ~1)
+                for b = 0 upto {nBlocks - 1} do
+                    if s.reach[b] then
+                        let blk = ssa.block(f b)
+                        for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                            let i = vector.get(:ssa.Inst blk.insts k)
+                            if ssa.isOp(i ssa.opPtrAdd) then
+                                let p = i.args[0]
+                                if live(s p) andif s.isConst[i.args[1]] andif {s.originOf[i.results[0]] < 0} then
+                                    if setPointer(s i.results[0] s.ptr[p] {s.off[p] + s.constant[i.args[1]]}) then
+                                        changed := true
+                                    end
+                                end
+                            elsif ssa.isOp(i ssa.opLoad) andif live(s i.args[0]) then
+                                (* A word that the group's allocations store
+                                 * pointers in holds a pointer of theirs *)
+                                let p = i.args[0]
+                                let w = wordOf(s.off[p] i.imm i.width)
+                                if w >= 0 then
+                                    let g = find(s s.ptr[p])
+                                    for a = 0 upto {n - 1} do
+                                        if not(s.dead[a]) andif {find(s a) is g} andif not(vector.get(:Bool s.originDatum a))
+                                            andif {w < vector.get(:Int s.originWords a)} then
+                                            let v = vector.get(:Array(Int) s.stores a)[w]
+                                            if live(s v) then
+                                                if setPointer(s i.results[0] s.ptr[v] s.off[v]) then changed := true end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                        let ts = takenTargets(s blk.term)
+                        for k = 0 upto {extent ts - 1} do
+                            let t = ts[k]
+                            let params = ssa.block(f t.block).params
+                            for j = 0 upto {extent t.args - 1} do
+                                let p = vector.get(:Int params j)
+                                if bound[p] is ~1 then
+                                    bound[p] := if live(s t.args[j]) then t.args[j] else ~2 end
+                                elsif {bound[p] >= 0} andif not(live(s t.args[j])) then bound[p] := ~2
+                                end
+                            end
+                        end
+                    end
+                end
+                (* A parameter that every taken edge binds to a pointer joins
+                 * their groups *)
+                for b = 0 upto {nBlocks - 1} do
+                    if s.reach[b] then
+                        let ts = takenTargets(s ssa.block(f b).term)
+                        for k = 0 upto {extent ts - 1} do
+                            let t = ts[k]
+                            let params = ssa.block(f t.block).params
+                            for j = 0 upto {extent t.args - 1} do
+                                let p = vector.get(:Int params j)
+                                let v = t.args[j]
+                                if {bound[p] >= 0} andif live(s v) then
+                                    if setPointer(s p s.ptr[v] s.off[v]) then changed := true end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+
+    (* Kills the groups whose pointers are used other than to read their words,
+     * initialize them, make other pointers, be tested for being proxies, and
+     * be passed to block parameters of their own *)
+    let check(s: State): Ok =
+        begin
+            let f = s.f
+            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let onlyProxyTests(v: Int): Bool =
+                begin
+                    let var only = true
+                    for b = 0 upto {nBlocks - 1} do
+                        if s.reach[b] then
+                            let blk = ssa.block(f b)
+                            for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                                let i = vector.get(:ssa.Inst blk.insts k)
+                                for j = 0 upto {extent i.args - 1} do
+                                    if {i.args[j] is v} andif
+                                        {{extent i.results is 0} orif not(isProxyTest(s i.results[0]))}
+                                    then only := false end
+                                end
+                            end
+                            let uses = ssa.terminatorUses(blk.term)
+                            for j = 0 upto {extent uses - 1} do if uses[j] is v then only := false end end
+                        end
+                    end
+                    only
+                end
+            for b = 0 upto {nBlocks - 1} do
+                if s.reach[b] then
+                    let blk = ssa.block(f b)
+                    for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                        let i = vector.get(:ssa.Inst blk.insts k)
+                        for j = 0 upto {extent i.args - 1} do
+                            let v = i.args[j]
+                            if live(s v) then
+                                let a = s.ptr[v]
+                                if ssa.isOp(i ssa.opLoad) andif {j is 0} then
+                                    if wordOf(s.off[v] i.imm i.width) < 0 then killGroup(s a "read other than by words")
+                                    end
+                                elsif ssa.isOp(i ssa.opStore) andif {j is 0} then
+                                    (* Only an allocation's initializing
+                                     * stores *)
+                                    let e = s.exact[v]
+                                    let w = wordOf(s.exactOff[v] i.imm i.width)
+                                    let initializes = {e >= 0} andif {w >= 0} andif
+                                        {w < extent vector.get(:Array(Int) s.stores e)} andif
+                                        {vector.get(:Array(Int) s.stores e)[w] is i.args[1]} andif
+                                        {s.defBlock[vector.get(:Int s.originValue e)] is b}
+                                    if not(initializes) then killGroup(s a "stored to") end
+                                elsif ssa.isOp(i ssa.opStore) andif {j is 1} then
+                                    (* Into another of the groups' objects, as
+                                     * it is initialized *)
+                                    if not(live(s i.args[0])) orif {s.exact[i.args[0]] < 0} then
+                                        killGroup(s a "stored")
+                                    end
+                                elsif ssa.isOp(i ssa.opPtrAdd) andif {j is 0} andif s.isConst[i.args[1]] then
+                                    (* A constant's address plus an offset
+                                     * is another constant's, which needs
+                                     * the address if it is left *)
+                                    let o = s.originOf[i.results[0]]
+                                    if {o >= 0} andif s.dead[o] then killGroup(s a "makes a constant left as it is")
+                                    end
+                                elsif ssa.isOp(i ssa.opPtrToInt) then
+                                    if not(onlyProxyTests(i.results[0])) then
+                                        killGroup(s a "converted to an integer")
+                                    end
+                                elsif ssa.isCall(i) andif isBarrier(i.symbol) then ok
+                                elsif ssa.isCall(i) then killGroup(s a "passed to " <> i.symbol)
+                                else killGroup(s a "used by " <> ssa.opcodeName(i.op)) end
+                            end
+                        end
+                    end
+                    let ts = takenTargets(s blk.term)
+                    for k = 0 upto {extent ts - 1} do
+                        let t = ts[k]
+                        let params = ssa.block(f t.block).params
+                        for j = 0 upto {extent t.args - 1} do
+                            let v = t.args[j]
+                            if live(s v) then
+                                let p = vector.get(:Int params j)
+                                if not(live(s p)) orif {find(s s.ptr[p]) isnot find(s s.ptr[v])}
+                                    orif {s.off[p] isnot s.off[v]} then
+                                    killGroup(s s.ptr[v] "passed to a parameter bound to other values")
+                                end
+                            end
+                        end
+                    end
+                    let other(uses: Array(Int) reason: String): Ok =
+                        for j = 0 upto {extent uses - 1} do
+                            if live(s uses[j]) then killGroup(s s.ptr[uses[j]] reason) end
+                        end
+                    case blk.term
+                        when termBranch with x then other(array of x.cond end "used by a branch")
+                        when termSwitch with x then other(array of x.value end "used by a switch")
+                        when termReturn with x then other(x.values "returned")
+                        when termTailCall with x then other(x.call.args "passed to " <> x.call.symbol)
+                        when termNone, termJump, termTry, termUnreachable then ok
+                    end
+                end
+            end
+        end
+
+    (* ======================================================================
+     * Layouts
+     * ====================================================================== *)
+
+    (* A group's words: each one's kind, and its type code (a value's) or
+     * group and offset (a nested object's) *)
+    Let Layout = Tuple
+        kind: Array(Int)
+        code: Array(Int)
+        group: Array(Int)
+        offset: Array(Int)
+        var valid: Bool
+    end
+
+    let newLayout(n: Int): Layout =
+        tuple
+            let kind = array of(n wordNone) let code = array of(n 0) let group = array of(n ~1)
+            let offset = array of(n 0) let var valid = true
+        end
+
+    (* Adds what one member or load says of word w *)
+    let note(l: Layout w: Int kind: Int code: Int group: Int offset: Int): Ok =
+        if l.kind[w] is wordNone then begin
+            l.kind[w] := kind l.code[w] := code l.group[w] := group l.offset[w] := offset
+        end elsif {l.kind[w] isnot kind} orif {{kind is wordScalar} andif {l.code[w] isnot code}}
+            orif {{kind is wordNested} andif {{l.group[w] isnot group} orif {l.offset[w] isnot offset}}} then
+            l.valid := false
+        end
+
+    (* The layouts of the live groups, by their roots *)
+    let layouts(s: State): hashMap.T(Int Layout) =
+        begin
+            let f = s.f
+            let n = extent s.parent
+            let size = hashMap.new(:Int :Int intEqual hash.int)
+            let grow(g: Int words: Int): Ok =
+                if words > maybe.unwrapOr(:Int hashMap.get(:Int :Int size g) 0) then hashMap.insert(:Int :Int size g words) end
+            for a = 0 upto {n - 1} do
+                if not(s.dead[a]) then
+                    grow(find(s a) if vector.get(:Bool s.originDatum a) then 0 else vector.get(:Int s.originWords a) end)
+                end
+            end
+            let nBlocks = vector.length(:ssa.Block f.blocks)
+            for b = 0 upto {nBlocks - 1} do
+                if s.reach[b] then
+                    let blk = ssa.block(f b)
+                    for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                        let i = vector.get(:ssa.Inst blk.insts k)
+                        if ssa.isOp(i ssa.opLoad) andif live(s i.args[0]) then
+                            let w = wordOf(s.off[i.args[0]] i.imm i.width)
+                            if w >= 0 then grow(find(s s.ptr[i.args[0]]) w + 1) end
+                        end
+                    end
+                end
+            end
+            let result = hashMap.new(:Int :Layout intEqual hash.int)
+            for a = 0 upto {n - 1} do
+                let g = find(s a)
+                if not(s.dead[a]) andif not(hashMap.contains(:Int :Layout result g)) then
+                    hashMap.insert(:Int :Layout result g newLayout(maybe.unwrapOr(:Int hashMap.get(:Int :Int size g) 0)))
+                end
+            end
+            let valueNote(l: Layout w: Int v: Int): Ok =
+                if live(s v) then note(l w wordNested 0 find(s s.ptr[v]) s.off[v])
+                else note(l w wordScalar typeCode(ssa.typeOf(f v)) ~1 0) end
+            for a = 0 upto {n - 1} do
+                if not(s.dead[a]) then
+                    let l = hashMap.find(:Int :Layout result find(s a))
+                    if vector.get(:Bool s.originDatum a) then
+                        let ws = vector.get(:Array(ssa.Word) s.originData a)
+                        for w = 0 upto {extent l.kind - 1} do
+                            if w < extent ws then
+                                case ws[w]
+                                    when wordInt then note(l w wordScalar 0 ~1 0)
+                                    when wordSymbol then note(l w wordScalar 1 ~1 0)
+                                end
+                            end
+                        end
+                    else
+                        let ws = vector.get(:Array(Int) s.stores a)
+                        for w = 0 upto {extent ws - 1} do if ws[w] >= 0 then valueNote(l w ws[w]) end end
+                    end
+                end
+            end
+            for b = 0 upto {nBlocks - 1} do
+                if s.reach[b] then
+                    let blk = ssa.block(f b)
+                    for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                        let i = vector.get(:ssa.Inst blk.insts k)
+                        if ssa.isOp(i ssa.opLoad) andif live(s i.args[0]) then
+                            let w = wordOf(s.off[i.args[0]] i.imm i.width)
+                            if w >= 0 then valueNote(hashMap.find(:Int :Layout result find(s s.ptr[i.args[0]])) w i.results[0]) end
+                        end
+                    end
+                end
+            end
+            result
+        end
+
+    (* The number of values a group's object is replaced by: its words', a
+     * nested object's own; ~1 if a group nests in itself *)
+    let rec leafCount(ls: hashMap.T(Int Layout) g: Int visiting: hashMap.T(Int Bool)): Int =
+        if hashMap.contains(:Int :Bool visiting g) then ~1
+        else begin
+            let ignored = hashMap.insert(:Int :Bool visiting g true)
+            let l = hashMap.find(:Int :Layout ls g)
+            let var n = 0
+            for w = 0 upto {extent l.kind - 1} do
+                if n >= 0 then
+                    if l.kind[w] is wordScalar then n := n + 1
+                    elsif l.kind[w] is wordNested then
+                        let m = if hashMap.contains(:Int :Layout ls l.group[w]) then leafCount(ls l.group[w] visiting)
+                            else ~1 end
+                        n := if m < 0 then ~1 else n + m end
+                    end
+                end
+            end
+            hashMap.delete(:Int :Bool visiting g)
+            n
+        end end
+
+    (* The analysis: the origins replaced are those left alive *)
+    let solve(u: ssa.Unit f: Function): State =
+        begin
+            let s = newState(u f)
+            let n = extent s.parent
+            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let countDead(): Int =
+                begin
+                    let var c = 0
+                    for a = 0 upto {n - 1} do if s.dead[a] then c := c + 1 end end
+                    c
+                end
+            let var before = ~1
+            while {n > 0} andif {before isnot countDead()} do
+                before := countDead()
+                for b = 0 upto {nBlocks - 1} do s.reach[b] := true end
+                let var settled = false
+                while not(settled) do
+                    pointers(s)
+                    let old = array of(nBlocks false)
+                    for b = 0 upto {nBlocks - 1} do old[b] := s.reach[b] end
+                    reachable(s)
+                    settled := true
+                    for b = 0 upto {nBlocks - 1} do if old[b] isnot s.reach[b] then settled := false end end
+                end
+                check(s)
+                if countDead() is before then
+                    let ls = layouts(s)
+                    for a = 0 upto {n - 1} do
+                        let g = find(s a)
+                        if not(s.dead[a]) then
+                            let l = hashMap.find(:Int :Layout ls g)
+                            if not(l.valid) then kill(s a "its objects' words differ")
+                            elsif leafCount(ls g hashMap.new(:Int :Bool intEqual hash.int)) < 0 then
+                                kill(s a "it holds a pointer of its own group")
+                            end
+                        end
+                    end
+                end
+            end
+            s
+        end
+
+    let analyze(u: ssa.Unit f: Function): Array(Verdict) =
+        begin
+            let s = solve(u f)
+            let n = extent s.parent
+            let verdicts = array of(n tuple let value = 0 let constant = false let left = false let reason = "" end)
+            for a = 0 upto {n - 1} do
+                verdicts[a] := tuple
+                    let value = vector.get(:Int s.originValue a) let constant = vector.get(:Bool s.originDatum a)
+                    let left = s.dead[a] let reason = s.reasons[a]
+                end
+            end
+            verdicts
+        end
+
+    (* ======================================================================
+     * Dead parameters
+     * ====================================================================== *)
+
+    (* Drops the parameters of f's blocks (but its entry's) that nothing uses
+     * but jumps to blocks whose parameters nothing uses, and their arguments.
+     * Promotion leaves them where a variable's slot is live across a loop its
+     * value is not (the last of a loop's tuples, carried round an outer loop
+     * from a null at the entry); bound to a pointer and to other values, they
+     * would keep the pointer's objects whole. Returns the number dropped. *)
+    let dropDeadParams(f: Function): Int =
+        begin
+            let nValues = vector.length(:ssa.Type f.types)
+            let nBlocks = vector.length(:ssa.Block f.blocks)
+            let used = array of(nValues false)
+            let isParam = array of(nValues false)
+            for b = 1 upto {nBlocks - 1} do
+                let params = ssa.block(f b).params
+                for j = 0 upto {vector.length(:Int params) - 1} do isParam[vector.get(:Int params j)] := true end
+            end
+            for b = 0 upto {nBlocks - 1} do
+                let blk = ssa.block(f b)
+                for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    for j = 0 upto {extent i.args - 1} do used[i.args[j]] := true end
+                end
+                let operands = case blk.term
+                    when termBranch with x then array of x.cond end
+                    when termSwitch with x then array of x.value end
+                    when termReturn with x then x.values
+                    when termTailCall with x then x.call.args
+                    when termNone, termJump, termTry, termUnreachable then array of :Int end
+                end
+                for j = 0 upto {extent operands - 1} do used[operands[j]] := true end
+            end
+            (* An argument for a used parameter is used *)
+            let var changed = true
+            while changed do
+                changed := false
+                for b = 0 upto {nBlocks - 1} do
+                    let ts = ssa.targets(ssa.block(f b).term)
+                    for k = 0 upto {extent ts - 1} do
+                        let params = ssa.block(f ts[k].block).params
+                        for j = 0 upto {extent ts[k].args - 1} do
+                            let p = vector.get(:Int params j)
+                            let a = ts[k].args[j]
+                            if {used[p] orif not(isParam[p])} andif not(used[a]) then
+                                used[a] := true
+                                changed := true
+                            end
+                        end
+                    end
+                end
+            end
+            let var dropped = 0
+            for b = 0 upto {nBlocks - 1} do
+                let ts = ssa.targets(ssa.block(f b).term)
+                for k = 0 upto {extent ts - 1} do
+                    let params = ssa.block(f ts[k].block).params
+                    let args = vector.new(:Int)
+                    for j = 0 upto {extent ts[k].args - 1} do
+                        let p = vector.get(:Int params j)
+                        if used[p] orif not(isParam[p]) then vector.append(:Int args ts[k].args[j]) end
+                    end
+                    ts[k].args := vector.toArray(:Int args)
+                end
+            end
+            for b = 1 upto {nBlocks - 1} do
+                let params = ssa.block(f b).params
+                let kept = vector.new(:Int)
+                for j = 0 upto {vector.length(:Int params) - 1} do
+                    let p = vector.get(:Int params j)
+                    if used[p] then vector.append(:Int kept p) else dropped := dropped + 1 end
+                end
+                vector.clear(:Int params)
+                for j = 0 upto {vector.length(:Int kept) - 1} do vector.append(:Int params vector.get(:Int kept j)) end
+            end
+            dropped
+        end
+
+    (* ======================================================================
+     * Replacement
+     * ====================================================================== *)
+
+    let zeroOf(f: Function insts: vector.T(ssa.Inst) t: ssa.Type loc: ssa.Loc): Int =
+        begin
+            let v = ssa.newValue(f t)
+            let add(op: ssa.Opcode args: Array(Int) result: Int): Ok =
+                begin
+                    let i = ssa.inst(op args array of result end)
+                    i.loc := loc
+                    vector.append(:ssa.Inst insts i)
+                end
+            case t
+                when typeInt then add(ssa.opConst array of :Int end v)
+                when typePtr then add(ssa.opNull array of :Int end v)
+                when typeReal then add(ssa.opRealConst array of :Int end v)
+                when typeVal then
+                    let z = ssa.newValue(f ssa.typeInt)
+                    add(ssa.opConst array of :Int end z)
+                    add(ssa.opToVal array of z end v)
+            end
+            v
+        end
+
+    (* The types of a group's values, in order *)
+    let rec leafTypes(ls: hashMap.T(Int Layout) g: Int into: vector.T(ssa.Type)): Ok =
+        begin
+            let l = hashMap.find(:Int :Layout ls g)
+            for w = 0 upto {extent l.kind - 1} do
+                if l.kind[w] is wordScalar then vector.append(:ssa.Type into typeOfCode(l.code[w]))
+                elsif l.kind[w] is wordNested then leafTypes(ls l.group[w] into)
+                end
+            end
+        end
+
+    (* The index of word w's first value among its group's *)
+    let leafStart(ls: hashMap.T(Int Layout) g: Int w: Int): Int =
+        begin
+            let l = hashMap.find(:Int :Layout ls g)
+            let var n = 0
+            for k = 0 upto {w - 1} do
+                if l.kind[k] is wordScalar then n := n + 1
+                elsif l.kind[k] is wordNested then
+                    n := n + leafCount(ls l.group[k] hashMap.new(:Int :Bool intEqual hash.int))
+                end
+            end
+            n
+        end
+
+    let slice(vs: Array(Int) start: Int n: Int): Array(Int) =
+        begin
+            let r = array of(n 0)
+            for k = 0 upto {n - 1} do r[k] := vs[start + k] end
+            r
+        end
+
+    let replaceFunction(u: ssa.Unit f: Function): Int =
+        begin
+            let ignored = dropDeadParams(f)
+            let s = solve(u f)
+            let n = extent s.parent
+            let var replaced = 0
+            for a = 0 upto {n - 1} do if not(s.dead[a]) then replaced := replaced + 1 end end
+            if replaced > 0 then
+                let ls = layouts(s)
+                let nValues = extent s.ptr
+                let nBlocks = vector.length(:ssa.Block f.blocks)
+                let isPointer(v: Int): Bool = {v < nValues} andif live(s v)
+                let groupOf(v: Int): Int = find(s s.ptr[v])
+                let countOf(g: Int): Int = leafCount(ls g hashMap.new(:Int :Bool intEqual hash.int))
+                (* Each pointer's values (its object's, from the word its
+                 * offset is at), by the value whose object it is; each value
+                 * replaced, by what replaces it *)
+                let values = hashMap.new(:Int :Array(Int) intEqual hash.int)
+                let base = array of(nValues ~1)
+                let renamed = array of(nValues ~1)
+                let rec resolve(v: Int): Int = if {v < nValues} andif {renamed[v] >= 0} then resolve(renamed[v]) else v end
+                let valuesOf(v: Int): Array(Int) = hashMap.find(:Int :Array(Int) values base[v])
+                let proxyTest = array of(nValues false)
+                for v = 0 upto {nValues - 1} do proxyTest[v] := isProxyTest(s v) end
+                (* The parameters: each pointer one becomes its object's
+                 * values *)
+                let oldParams = array of(nBlocks array of :Int end)
+                for b = 0 upto {nBlocks - 1} do
+                    let params = ssa.block(f b).params
+                    oldParams[b] := vector.toArray(:Int params)
+                    if s.reach[b] then
+                        vector.clear(:Int params)
+                        for j = 0 upto {extent oldParams[b] - 1} do
+                            let p = oldParams[b][j]
+                            if isPointer(p) then
+                                let types = vector.new(:ssa.Type)
+                                leafTypes(ls groupOf(p) types)
+                                let vs = array of(vector.length(:ssa.Type types) 0)
+                                for k = 0 upto {extent vs - 1} do
+                                    vs[k] := ssa.newValue(f vector.get(:ssa.Type types k))
+                                    vector.append(:Int params vs[k])
+                                end
+                                base[p] := p
+                                hashMap.insert(:Int :Array(Int) values p vs)
+                                ok
+                            else
+                                vector.append(:Int params p)
+                            end
+                        end
+                    end
+                end
+                (* An object's values from its words: an allocation's stored
+                 * values and zeros, a constant's words *)
+                let made = fun(o: Int insts: vector.T(ssa.Inst) loc: ssa.Loc): Ok
+                    begin
+                        let v = vector.get(:Int s.originValue o)
+                        let g = find(s o)
+                        let l = hashMap.find(:Int :Layout ls g)
+                        let result = vector.new(:Int)
+                        let zeros = fun(h: Int): Ok
+                            begin
+                                let types = vector.new(:ssa.Type)
+                                leafTypes(ls h types)
+                                for k = 0 upto {vector.length(:ssa.Type types) - 1} do
+                                    vector.append(:Int result zeroOf(f insts vector.get(:ssa.Type types k) loc))
+                                end
+                            end
+                        let datum = vector.get(:Bool s.originDatum o)
+                        let ws = vector.get(:Array(ssa.Word) s.originData o)
+                        let stored = vector.get(:Array(Int) s.stores o)
+                        for w = 0 upto {extent l.kind - 1} do
+                            if l.kind[w] is wordScalar then
+                                let t = typeOfCode(l.code[w])
+                                if datum andif {w < extent ws} then
+                                    let r = ssa.newValue(f t)
+                                    let i = case ws[w]
+                                        when wordInt with x then
+                                            ssa.instruction(ssa.opConst array of :Int end array of r end x.n "" 0 false
+                                                ssa.emptySignature)
+                                        when wordSymbol with x then
+                                            ssa.instruction(ssa.opSymbol array of :Int end array of r end x.addend x.symbol 0
+                                                false ssa.emptySignature)
+                                    end
+                                    i.loc := loc
+                                    vector.append(:ssa.Inst insts i)
+                                    vector.append(:Int result r)
+                                elsif not(datum) andif {w < extent stored} andif {stored[w] >= 0} then
+                                    vector.append(:Int result stored[w])
+                                else
+                                    vector.append(:Int result zeroOf(f insts t loc))
+                                end
+                            elsif l.kind[w] is wordNested then
+                                if not(datum) andif {w < extent stored} andif {stored[w] >= 0} then
+                                    let nested = valuesOf(stored[w])
+                                    for k = 0 upto {extent nested - 1} do vector.append(:Int result nested[k]) end
+                                else zeros(l.group[w]) end
+                            end
+                        end
+                        base[v] := v
+                        hashMap.insert(:Int :Array(Int) values v vector.toArray(:Int result))
+                        ok
+                    end
+                let g = cfg.graph(f)
+                for r = 0 upto {extent g.order - 1} do
+                    let b = g.order[r]
+                    if s.reach[b] then
+                        let blk = ssa.block(f b)
+                        let kept = vector.new(:ssa.Inst)
+                        for k = 0 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                            let i = vector.get(:ssa.Inst blk.insts k)
+                            let result = if extent i.results > 0 then i.results[0] else ~1 end
+                            let origin = if result >= 0 then s.originOf[result] else ~1 end
+                            if {origin >= 0} andif not(s.dead[origin]) then
+                                (* An allocation's values are its stores',
+                                 * known after the last of them *)
+                                if vector.get(:Bool s.originDatum origin) orif {vector.get(:Int s.lastStore origin) is k} then
+                                    made(origin kept i.loc)
+                                end
+                            elsif ssa.isOp(i ssa.opStore) andif isPointer(i.args[0]) then
+                                let a = s.exact[i.args[0]]
+                                if vector.get(:Int s.lastStore a) is k then made(a kept i.loc) end
+                            elsif ssa.isOp(i ssa.opPtrAdd) andif isPointer(i.args[0]) andif {s.originOf[result] < 0} then
+                                base[result] := base[i.args[0]]
+                            elsif ssa.isOp(i ssa.opLoad) andif isPointer(i.args[0]) then
+                                let p = i.args[0]
+                                let w = wordOf(s.off[p] i.imm i.width)
+                                let start = leafStart(ls groupOf(p) w)
+                                let vs = valuesOf(p)
+                                if isPointer(result) then
+                                    base[result] := result
+                                    hashMap.insert(:Int :Array(Int) values result
+                                        slice(vs start countOf(groupOf(result))))
+                                    ok
+                                else
+                                    renamed[result] := vs[start]
+                                end
+                            elsif ssa.isOp(i ssa.opPtrToInt) andif isPointer(i.args[0]) then ok
+                            elsif ssa.isCall(i) andif isBarrier(i.symbol) andif isPointer(i.args[0]) then ok
+                            elsif {result >= 0} andif proxyTest[result] then
+                                let zero = ssa.instruction(ssa.opConst array of :Int end i.results 0 "" 0 false
+                                    ssa.emptySignature)
+                                zero.loc := i.loc
+                                vector.append(:ssa.Inst kept zero)
+                            else vector.append(:ssa.Inst kept i) end
+                        end
+                        vector.clear(:ssa.Inst blk.insts)
+                        for k = 0 upto {vector.length(:ssa.Inst kept) - 1} do
+                            vector.append(:ssa.Inst blk.insts vector.get(:ssa.Inst kept k))
+                        end
+                        case blk.term
+                            when termBranch with x then
+                                if {x.cond < nValues} andif proxyTest[x.cond] then
+                                    blk.term := option termJump of ssa.Terminator with let target = x.ifFalse end
+                                end
+                            when termNone, termJump, termSwitch, termReturn, termTailCall, termTry, termUnreachable then ok
+                        end
+                    end
+                end
+                (* Each edge passes a pointer's values for its parameter's *)
+                for b = 0 upto {nBlocks - 1} do
+                    if s.reach[b] then
+                        let ts = ssa.targets(ssa.block(f b).term)
+                        for k = 0 upto {extent ts - 1} do
+                            let t = ts[k]
+                            let params = oldParams[t.block]
+                            let args = vector.new(:Int)
+                            for j = 0 upto {extent t.args - 1} do
+                                if isPointer(params[j]) then
+                                    let vs = valuesOf(t.args[j])
+                                    for x = 0 upto {extent vs - 1} do vector.append(:Int args vs[x]) end
+                                else vector.append(:Int args t.args[j]) end
+                            end
+                            t.args := vector.toArray(:Int args)
+                        end
+                    end
+                end
+                ssa.replaceUses(f resolve)
+                cfg.dropUnreached(f)
+            end
+            replaced
+        end
+
+    let replaceUnit(u: ssa.Unit): Int =
+        begin
+            let var count = 0
+            for i = 0 upto {vector.length(:Function u.functions) - 1} do
+                count := count + replaceFunction(u vector.get(:Function u.functions i))
+            end
+            count
+        end
+end

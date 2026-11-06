@@ -190,7 +190,7 @@ registration, and the unit).
 What the builder does not yet build raises `unsupported`, naming the construct; `--stop-after ssa` reports it as an
 internal error.
 
-### 4.1. The Pipeline: Escape Analysis, Promotion, Value Numbering, Selects, Accumulation, and Tail Calls
+### 4.1. The Pipeline: Escape Analysis, Promotion, Scalars, Constants, Value Numbering, Selects, and Tail Calls
 
 `questlang/ssa/pipeline` builds a unit and then runs its passes, by name, in order, each on every function:
 
@@ -205,6 +205,9 @@ internal error.
   left are renumbered. A function that enters a `try` keeps all its slots, since its handler must see what the body
   stored (arm64.md §3.6); a variable captured by a closure is a heap cell, and one passed as a `var` argument keeps
   its slot, its address escaping. `language/mutable_locals` covers each kind.
+- **`ssa/scalars`** replaces the objects that block parameters merge, which escape analysis leaves, by the values of
+  their words (§4.3): a loop that carries a tuple carries its components. It runs after promotion, which makes the
+  variables a loop carries its parameters, and before `ssa/constants`.
 - **`ssa/constants`** makes constant the globals bound to constants. A global the unit does not export (another unit
   could store to one it does), a word of static data that starts as zero, is constant when the unit stores to it once,
   a whole word that is an `opConst` or a symbol's address, and otherwise only loads it, a whole word at a time, as the
@@ -362,6 +365,41 @@ The C printer has its own, narrower forms of this, by pattern ([c-representation
 benchmarks that need them, and less on zebra. The questlang test `ssa_escape` shows functions before and after the
 pass and after promotion, and `language/escaping_allocations` checks that values survive each kind of escape and
 that fresh tuples and options keep their identity.
+
+### 4.3. Scalar Replacement
+
+`ssa/scalars` replaces by the values of their words the objects that escape analysis leaves because a block parameter
+merges them: wc-scanStream's loop carries its stream, a tuple of a chunk and a position, as a parameter bound to a new
+tuple on every edge, and its reader's inlined returns join an allocated option and a constant one, a datum of the
+unit's static data, at another ([mlton-performance-review.md](mlton-performance-review.md) §3.2). MLton's SSA passes
+tuples flattened (its `localFlatten` and `deepFlatten` passes); LLVM's SROA splits only allocas, which do not flow
+through phis.
+
+**Origins and groups.** An *origin* makes an object: a `quest_alloc` of a constant size and a layout, or the address of
+a datum that is never written (`symbol`, plus a constant offset into a table of constants). A value points into an
+origin's object when it is the origin's, a `ptrAdd` of a constant to such a value, a word's load whose objects store
+pointers there, or a block parameter that every edge taken binds to such values, at one offset. Origins whose pointers
+meet are in one *group* (a union-find forest), whose objects have one layout: each word holds values of one type, or
+pointers into another group's objects, which it stands for in turn (an option holding a tuple is replaced by the
+option's tag and the tuple's words). A word some objects do not store, or a constant does not reach, is a zero there.
+
+**What is left.** An allocation's words must be stored once, in its block, through its own pointers, and not read
+through them before its last store; a constant's never. A group's pointers may only be loaded from by whole words,
+offset, tested for being a proxy (which folds, as in §4.2), stored into another group's object as it is made, passed
+to parameters of their own group, and passed to a write barrier (`quest_barrier`, `quest_barrier_slot`), which keeps no
+pointer and goes with the object, as in §4.2. Anything else leaves the whole group: a call, a return, a comparison, a
+store after the object is made (a `var` field's), a parameter also bound to another value, words of different types, or
+a group nesting in itself (a list's cells), whose values would have no end. The analysis repeats until none more is
+left, the blocks reached depending on which proxy tests fold, as in §4.2.
+
+**The replacement.** Each pointer parameter becomes its group's values; each edge passes the values of the pointer it
+bound; each load becomes the word's value, or, for a nested pointer, its object's values; an allocation's values are
+its stored ones (and zeros for the rest), known at its last store; a constant's are its datum's words. The objects,
+their stores, offsets, loads, and proxy tests go, and the blocks only a proxy's arm reached are dropped. First, the
+parameters nothing uses but jumps to parameters nothing uses are dropped: promotion leaves them where a variable's slot
+is live across a loop its value is not (the last of a loop's tuples, carried round an outer loop from a null at the
+entry), and such a parameter, bound to a pointer and to a null, would leave its group whole. The questlang test
+`ssa_scalars` shows each case.
 
 ## 5. Functions and Units
 

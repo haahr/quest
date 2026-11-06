@@ -1,0 +1,318 @@
+(* Self-Hosted Quest Compiler: Test Scalar Replacement
+ *
+ * questlang/ssa/scalars (docs/ssa.md section 4.3) on units of the SSA written
+ * as text and read by questlang/ssa/parser, each function printed before and
+ * after the pass, and verified: a loop that carries a tuple; a join of an
+ * allocated option and a constant one of the unit's static data, behind the
+ * proxy tests that reading them makes; an option holding a tuple, both
+ * replaced; a tuple carried round an outer loop by a parameter nothing uses,
+ * which is dropped; a carried tuple holding a pointer, whose write barriers
+ * go with it; and what is left: objects passed to a call, stored to once
+ * made, joined with another value, or holding a pointer of their own
+ * group. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/scalars : questlang/ssa/Scalars
+    questlang/ssa/verify : questlang/ssa/Verify
+    questlang/ssa/barriers : questlang/ssa/Barriers
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    util/strutil : util/Strutil
+    collections/vector : collections/Vector
+    writer : Writer
+    conv : Conv
+;
+
+let emit(s: String): Ok = writer.putString(writer.output s);
+
+let show(title: String lines: Array(String)): Ok =
+    begin
+        emit("== " <> title <> "\n")
+        let u = parser.readUnit(strutil.joinArray("\n" lines) <> "\n")
+        for k = 0 upto {vector.length(:ssa.Function u.functions) - 1} do
+            let f = vector.get(:ssa.Function u.functions k)
+            emit(printer.formatFunction(f))
+            let replaced = scalars.replaceFunction(u f)
+            emit("-- after scalars: " <> conv.int(replaced) <> " replaced\n")
+            if replaced > 0 then
+                emit(printer.formatFunction(f))
+                let problems = verify.functionProblems(f)
+                for j = 0 upto {extent problems - 1} do emit("!! " <> problems[j] <> "\n") end
+                let owed = barriers.functionProblems(f)
+                for j = 0 upto {extent owed - 1} do emit("!! " <> owed[j] <> "\n") end
+            end
+        end
+    end;
+
+(* A pair (n, sum) carried round a loop, a new one each time *)
+show("a loop carrying a tuple" array of
+    "function sum(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 16"
+    "  %100: ptr = symbol quest_layout_t"
+    "  %2: ptr = call quest_alloc(%1, %100)"
+    "  store8 %2 + 0, %0"
+    "  %3: int = const 0"
+    "  %4: int = const 8"
+    "  %5: ptr = ptrAdd %2, %4"
+    "  store8 %5 + 0, %3"
+    "  jump b1(%2)"
+    "b1(%6: ptr):"
+    "  %7: int = load8 %6 + 0"
+    "  %8: int = load8 %6 + 8"
+    "  %9: int = const 0"
+    "  %10: int = eq %7, %9"
+    "  branch %10, b3(), b2()"
+    "b2():"
+    "  %11: int = const 1"
+    "  %12: int = sub %7, %11"
+    "  %13: int = add %8, %7"
+    "  %14: int = const 16"
+    "  %101: ptr = symbol quest_layout_t"
+    "  %15: ptr = call quest_alloc(%14, %101)"
+    "  store8 %15 + 0, %12"
+    "  store8 %15 + 8, %13"
+    "  jump b1(%15)"
+    "b3():"
+    "  return %8"
+    "}"
+end);
+
+(* A pair (p, n) carried round a loop, its first word a pointer: each store of
+ * it is followed by a barrier, of the object or of the slot, which keeps no
+ * pointer, so the pair is still replaced, and its barriers go with it *)
+show("a loop carrying a tuple, with its barriers" array of
+    "function walk(%0: ptr, %1: int): ptr {"
+    "b0(%0: ptr, %1: int):"
+    "  %2: int = const 16"
+    "  %100: ptr = symbol quest_layout_t"
+    "  %3: ptr = call quest_alloc(%2, %100)"
+    "  store8 %3 + 0, %0"
+    "  call quest_barrier(%3)"
+    "  store8 %3 + 8, %1"
+    "  jump b1(%3)"
+    "b1(%4: ptr):"
+    "  %5: ptr = load8 %4 + 0"
+    "  %6: int = load8 %4 + 8"
+    "  %7: int = const 0"
+    "  %8: int = eq %6, %7"
+    "  branch %8, b3(), b2()"
+    "b2():"
+    "  %9: int = const 1"
+    "  %10: int = sub %6, %9"
+    "  %11: ptr = call next(%5)"
+    "  %12: int = const 16"
+    "  %101: ptr = symbol quest_layout_t"
+    "  %13: ptr = call quest_alloc(%12, %101)"
+    "  store8 %13 + 0, %11"
+    "  call quest_barrier_slot(%13)"
+    "  %14: int = const 8"
+    "  %15: ptr = ptrAdd %13, %14"
+    "  store8 %15 + 0, %10"
+    "  jump b1(%13)"
+    "b3():"
+    "  return %5"
+    "}"
+end);
+
+(* An option some(c) made, or none, a constant of the static data, joined, then
+ * its tag switched on and its payload read through the proxy tests reading
+ * an option makes *)
+show("a join of an option and a constant" array of
+    "function pick(%0: int, %1: int): int {"
+    "b0(%0: int, %1: int):"
+    "  branch %0, b1(), b2()"
+    "b1():"
+    "  %2: int = const 16"
+    "  %100: ptr = symbol quest_layout_t"
+    "  %3: ptr = call quest_alloc(%2, %100)"
+    "  %4: int = const 1"
+    "  store8 %3 + 0, %4"
+    "  store8 %3 + 8, %1"
+    "  jump b3(%3)"
+    "b2():"
+    "  %5: ptr = symbol qc_none"
+    "  jump b3(%5)"
+    "b3(%6: ptr):"
+    "  %7: int = ptrToInt %6"
+    "  %8: int = const 1"
+    "  %9: int = and %7, %8"
+    "  branch %9, b4(), b5()"
+    "b4():"
+    "  %10: int = call quest_proxy_tag(%6)"
+    "  jump b6(%10)"
+    "b5():"
+    "  %11: int = load8 %6 + 0 invariant"
+    "  jump b6(%11)"
+    "b6(%12: int):"
+    "  switch %12 [1: b7()] default b8()"
+    "b7():"
+    "  %13: int = load8 %6 + 8"
+    "  return %13"
+    "b8():"
+    "  %14: int = const 0"
+    "  return %14"
+    "}"
+    "data qc_none words [0, 1]"
+end);
+
+(* An option some(c, s) holding a pair s, as a stream's reader returns, or
+ * none; the pair's words are read from the option's *)
+show("an option holding a tuple" array of
+    "function next(%0: int, %1: int): int {"
+    "b0(%0: int, %1: int):"
+    "  branch %0, b1(), b2()"
+    "b1():"
+    "  %2: int = const 16"
+    "  %100: ptr = symbol quest_layout_t"
+    "  %3: ptr = call quest_alloc(%2, %100)"
+    "  store8 %3 + 0, %1"
+    "  store8 %3 + 8, %0"
+    "  %4: int = const 24"
+    "  %101: ptr = symbol quest_layout_t"
+    "  %5: ptr = call quest_alloc(%4, %101)"
+    "  %6: int = const 1"
+    "  store8 %5 + 0, %6"
+    "  store8 %5 + 8, %1"
+    "  store8 %5 + 16, %3"
+    "  jump b3(%5)"
+    "b2():"
+    "  %7: ptr = symbol qc_none"
+    "  jump b3(%7)"
+    "b3(%8: ptr):"
+    "  %9: int = load8 %8 + 0"
+    "  switch %9 [1: b4()] default b5()"
+    "b4():"
+    "  %10: ptr = load8 %8 + 16"
+    "  %11: int = load8 %10 + 8"
+    "  %12: int = load8 %8 + 8"
+    "  %13: int = add %11, %12"
+    "  return %13"
+    "b5():"
+    "  %14: int = const 0"
+    "  return %14"
+    "}"
+    "data qc_none words [0, 1]"
+end);
+
+show("one value; left: passed to a call, stored to, joined with another value" array of
+    "function single(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: int = const 8"
+    "  %100: ptr = symbol quest_layout_t"
+    "  %2: ptr = call quest_alloc(%1, %100)"
+    "  store8 %2 + 0, %0"
+    "  %3: int = load8 %2 + 0"
+    "  return %3"
+    "}"
+    "function passed(%0: int, %1: ptr): int {"
+    "b0(%0: int, %1: ptr):"
+    "  branch %0, b1(), b2()"
+    "b1():"
+    "  %2: int = const 8"
+    "  %100: ptr = symbol quest_layout_t"
+    "  %3: ptr = call quest_alloc(%2, %100)"
+    "  store8 %3 + 0, %0"
+    "  jump b3(%3)"
+    "b2():"
+    "  %4: int = const 8"
+    "  %101: ptr = symbol quest_layout_t"
+    "  %5: ptr = call quest_alloc(%4, %101)"
+    "  store8 %5 + 0, %0"
+    "  jump b3(%5)"
+    "b3(%6: ptr):"
+    "  call quest_keep(%6)"
+    "  %7: int = load8 %6 + 0"
+    "  return %7"
+    "}"
+    "function stored(%0: int): int {"
+    "b0(%0: int):"
+    "  branch %0, b1(), b2()"
+    "b1():"
+    "  %2: int = const 8"
+    "  %100: ptr = symbol quest_layout_t"
+    "  %3: ptr = call quest_alloc(%2, %100)"
+    "  store8 %3 + 0, %0"
+    "  jump b3(%3)"
+    "b2():"
+    "  %4: int = const 8"
+    "  %101: ptr = symbol quest_layout_t"
+    "  %5: ptr = call quest_alloc(%4, %101)"
+    "  store8 %5 + 0, %0"
+    "  jump b3(%5)"
+    "b3(%6: ptr):"
+    "  store8 %6 + 0, %0"
+    "  %7: int = load8 %6 + 0"
+    "  return %7"
+    "}"
+    "function mixed(%0: int, %1: ptr): int {"
+    "b0(%0: int, %1: ptr):"
+    "  branch %0, b1(), b2()"
+    "b1():"
+    "  %2: int = const 8"
+    "  %100: ptr = symbol quest_layout_t"
+    "  %3: ptr = call quest_alloc(%2, %100)"
+    "  store8 %3 + 0, %0"
+    "  jump b3(%3)"
+    "b2():"
+    "  jump b3(%1)"
+    "b3(%6: ptr):"
+    "  %7: int = load8 %6 + 0"
+    "  return %7"
+    "}"
+end);
+
+(* The last of an inner loop's tuples carried round an outer loop, as
+ * promotion leaves a variable's slot, by a parameter nothing uses but its
+ * own jumps, bound to a null at the entry *)
+show("a parameter nothing uses" array of
+    "function outer(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: ptr = null"
+    "  jump b1(%0, %1)"
+    "b1(%2: int, %3: ptr):"
+    "  %4: int = const 0"
+    "  %5: int = eq %2, %4"
+    "  branch %5, b3(), b2()"
+    "b2():"
+    "  %6: int = const 8"
+    "  %100: ptr = symbol quest_layout_t"
+    "  %7: ptr = call quest_alloc(%6, %100)"
+    "  store8 %7 + 0, %2"
+    "  %8: int = load8 %7 + 0"
+    "  %9: int = const 1"
+    "  %10: int = sub %8, %9"
+    "  jump b1(%10, %7)"
+    "b3():"
+    "  return %2"
+    "}"
+end);
+
+(* A list's cells, each holding the next, round a loop: a group that holds
+ * its own pointers, which its values cannot stand for *)
+show("left: holding a pointer of its own group" array of
+    "function cells(%0: int): int {"
+    "b0(%0: int):"
+    "  %1: ptr = symbol qc_nil"
+    "  jump b1(%0, %1)"
+    "b1(%2: int, %3: ptr):"
+    "  %4: int = const 0"
+    "  %5: int = eq %2, %4"
+    "  branch %5, b3(), b2()"
+    "b2():"
+    "  %6: int = const 16"
+    "  %100: ptr = symbol quest_layout_t"
+    "  %7: ptr = call quest_alloc(%6, %100)"
+    "  store8 %7 + 0, %2"
+    "  store8 %7 + 8, %3"
+    "  %8: int = const 1"
+    "  %9: int = sub %2, %8"
+    "  jump b1(%9, %7)"
+    "b3():"
+    "  %10: int = load8 %3 + 0"
+    "  return %10"
+    "}"
+    "data qc_nil words [0]"
+end);

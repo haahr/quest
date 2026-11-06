@@ -1,0 +1,365 @@
+== a loop carrying a tuple
+function sum(%0: int): int {
+b0(%0: int):
+  %1: int = const 16
+  %100: ptr = symbol quest_layout_t
+  %2: ptr = call quest_alloc(%1, %100)
+  store8 %2 + 0, %0
+  %3: int = const 0
+  %4: int = const 8
+  %5: ptr = ptrAdd %2, %4
+  store8 %5 + 0, %3
+  jump b1(%2)
+b1(%6: ptr):
+  %7: int = load8 %6 + 0
+  %8: int = load8 %6 + 8
+  %9: int = const 0
+  %10: int = eq %7, %9
+  branch %10, b3(), b2()
+b2():
+  %11: int = const 1
+  %12: int = sub %7, %11
+  %13: int = add %8, %7
+  %14: int = const 16
+  %101: ptr = symbol quest_layout_t
+  %15: ptr = call quest_alloc(%14, %101)
+  store8 %15 + 0, %12
+  store8 %15 + 8, %13
+  jump b1(%15)
+b3():
+  return %8
+}
+-- after scalars: 2 replaced
+function sum(%0: int): int {
+b0(%0: int):
+  %1: int = const 16
+  %100: ptr = symbol quest_layout_t
+  %3: int = const 0
+  %4: int = const 8
+  jump b1(%0, %3)
+b1(%102: int, %103: int):
+  %9: int = const 0
+  %10: int = eq %102, %9
+  branch %10, b3(), b2()
+b2():
+  %11: int = const 1
+  %12: int = sub %102, %11
+  %13: int = add %103, %102
+  %14: int = const 16
+  %101: ptr = symbol quest_layout_t
+  jump b1(%12, %13)
+b3():
+  return %103
+}
+== a loop carrying a tuple, with its barriers
+function walk(%0: ptr, %1: int): ptr {
+b0(%0: ptr, %1: int):
+  %2: int = const 16
+  %100: ptr = symbol quest_layout_t
+  %3: ptr = call quest_alloc(%2, %100)
+  store8 %3 + 0, %0
+  call quest_barrier(%3)
+  store8 %3 + 8, %1
+  jump b1(%3)
+b1(%4: ptr):
+  %5: ptr = load8 %4 + 0
+  %6: int = load8 %4 + 8
+  %7: int = const 0
+  %8: int = eq %6, %7
+  branch %8, b3(), b2()
+b2():
+  %9: int = const 1
+  %10: int = sub %6, %9
+  %11: ptr = call next(%5)
+  %12: int = const 16
+  %101: ptr = symbol quest_layout_t
+  %13: ptr = call quest_alloc(%12, %101)
+  store8 %13 + 0, %11
+  call quest_barrier_slot(%13)
+  %14: int = const 8
+  %15: ptr = ptrAdd %13, %14
+  store8 %15 + 0, %10
+  jump b1(%13)
+b3():
+  return %5
+}
+-- after scalars: 2 replaced
+function walk(%0: ptr, %1: int): ptr {
+b0(%0: ptr, %1: int):
+  %2: int = const 16
+  %100: ptr = symbol quest_layout_t
+  jump b1(%0, %1)
+b1(%102: ptr, %103: int):
+  %7: int = const 0
+  %8: int = eq %103, %7
+  branch %8, b3(), b2()
+b2():
+  %9: int = const 1
+  %10: int = sub %103, %9
+  %11: ptr = call next(%102)
+  %12: int = const 16
+  %101: ptr = symbol quest_layout_t
+  %14: int = const 8
+  jump b1(%11, %10)
+b3():
+  return %102
+}
+== a join of an option and a constant
+function pick(%0: int, %1: int): int {
+b0(%0: int, %1: int):
+  branch %0, b1(), b2()
+b1():
+  %2: int = const 16
+  %100: ptr = symbol quest_layout_t
+  %3: ptr = call quest_alloc(%2, %100)
+  %4: int = const 1
+  store8 %3 + 0, %4
+  store8 %3 + 8, %1
+  jump b3(%3)
+b2():
+  %5: ptr = symbol qc_none
+  jump b3(%5)
+b3(%6: ptr):
+  %7: int = ptrToInt %6
+  %8: int = const 1
+  %9: int = and %7, %8
+  branch %9, b4(), b5()
+b4():
+  %10: int = call quest_proxy_tag(%6)
+  jump b6(%10)
+b5():
+  %11: int = load8 %6 + 0 invariant
+  jump b6(%11)
+b6(%12: int):
+  switch %12 [1: b7()] default b8()
+b7():
+  %13: int = load8 %6 + 8
+  return %13
+b8():
+  %14: int = const 0
+  return %14
+}
+-- after scalars: 2 replaced
+function pick(%0: int, %1: int): int {
+b0(%0: int, %1: int):
+  branch %0, b1(), b2()
+b1():
+  %2: int = const 16
+  %100: ptr = symbol quest_layout_t
+  %4: int = const 1
+  jump b3(%4, %1)
+b2():
+  %103: int = const 0
+  %104: int = const 1
+  jump b3(%103, %104)
+b3(%101: int, %102: int):
+  %8: int = const 1
+  %9: int = const 0
+  jump b4()
+b4():
+  jump b5(%101)
+b5(%12: int):
+  switch %12 [1: b6()] default b7()
+b6():
+  return %102
+b7():
+  %14: int = const 0
+  return %14
+}
+== an option holding a tuple
+function next(%0: int, %1: int): int {
+b0(%0: int, %1: int):
+  branch %0, b1(), b2()
+b1():
+  %2: int = const 16
+  %100: ptr = symbol quest_layout_t
+  %3: ptr = call quest_alloc(%2, %100)
+  store8 %3 + 0, %1
+  store8 %3 + 8, %0
+  %4: int = const 24
+  %101: ptr = symbol quest_layout_t
+  %5: ptr = call quest_alloc(%4, %101)
+  %6: int = const 1
+  store8 %5 + 0, %6
+  store8 %5 + 8, %1
+  store8 %5 + 16, %3
+  jump b3(%5)
+b2():
+  %7: ptr = symbol qc_none
+  jump b3(%7)
+b3(%8: ptr):
+  %9: int = load8 %8 + 0
+  switch %9 [1: b4()] default b5()
+b4():
+  %10: ptr = load8 %8 + 16
+  %11: int = load8 %10 + 8
+  %12: int = load8 %8 + 8
+  %13: int = add %11, %12
+  return %13
+b5():
+  %14: int = const 0
+  return %14
+}
+-- after scalars: 3 replaced
+function next(%0: int, %1: int): int {
+b0(%0: int, %1: int):
+  branch %0, b1(), b2()
+b1():
+  %2: int = const 16
+  %100: ptr = symbol quest_layout_t
+  %4: int = const 24
+  %101: ptr = symbol quest_layout_t
+  %6: int = const 1
+  jump b3(%6, %1, %1, %0)
+b2():
+  %106: int = const 0
+  %107: int = const 1
+  %108: int = const 0
+  %109: int = const 0
+  jump b3(%106, %107, %108, %109)
+b3(%102: int, %103: int, %104: int, %105: int):
+  switch %102 [1: b4()] default b5()
+b4():
+  %13: int = add %105, %103
+  return %13
+b5():
+  %14: int = const 0
+  return %14
+}
+== one value; left: passed to a call, stored to, joined with another value
+function single(%0: int): int {
+b0(%0: int):
+  %1: int = const 8
+  %100: ptr = symbol quest_layout_t
+  %2: ptr = call quest_alloc(%1, %100)
+  store8 %2 + 0, %0
+  %3: int = load8 %2 + 0
+  return %3
+}
+-- after scalars: 1 replaced
+function single(%0: int): int {
+b0(%0: int):
+  %1: int = const 8
+  %100: ptr = symbol quest_layout_t
+  return %0
+}
+function passed(%0: int, %1: ptr): int {
+b0(%0: int, %1: ptr):
+  branch %0, b1(), b2()
+b1():
+  %2: int = const 8
+  %100: ptr = symbol quest_layout_t
+  %3: ptr = call quest_alloc(%2, %100)
+  store8 %3 + 0, %0
+  jump b3(%3)
+b2():
+  %4: int = const 8
+  %101: ptr = symbol quest_layout_t
+  %5: ptr = call quest_alloc(%4, %101)
+  store8 %5 + 0, %0
+  jump b3(%5)
+b3(%6: ptr):
+  call quest_keep(%6)
+  %7: int = load8 %6 + 0
+  return %7
+}
+-- after scalars: 0 replaced
+function stored(%0: int): int {
+b0(%0: int):
+  branch %0, b1(), b2()
+b1():
+  %2: int = const 8
+  %100: ptr = symbol quest_layout_t
+  %3: ptr = call quest_alloc(%2, %100)
+  store8 %3 + 0, %0
+  jump b3(%3)
+b2():
+  %4: int = const 8
+  %101: ptr = symbol quest_layout_t
+  %5: ptr = call quest_alloc(%4, %101)
+  store8 %5 + 0, %0
+  jump b3(%5)
+b3(%6: ptr):
+  store8 %6 + 0, %0
+  %7: int = load8 %6 + 0
+  return %7
+}
+-- after scalars: 0 replaced
+function mixed(%0: int, %1: ptr): int {
+b0(%0: int, %1: ptr):
+  branch %0, b1(), b2()
+b1():
+  %2: int = const 8
+  %100: ptr = symbol quest_layout_t
+  %3: ptr = call quest_alloc(%2, %100)
+  store8 %3 + 0, %0
+  jump b3(%3)
+b2():
+  jump b3(%1)
+b3(%6: ptr):
+  %7: int = load8 %6 + 0
+  return %7
+}
+-- after scalars: 0 replaced
+== a parameter nothing uses
+function outer(%0: int): int {
+b0(%0: int):
+  %1: ptr = null
+  jump b1(%0, %1)
+b1(%2: int, %3: ptr):
+  %4: int = const 0
+  %5: int = eq %2, %4
+  branch %5, b3(), b2()
+b2():
+  %6: int = const 8
+  %100: ptr = symbol quest_layout_t
+  %7: ptr = call quest_alloc(%6, %100)
+  store8 %7 + 0, %2
+  %8: int = load8 %7 + 0
+  %9: int = const 1
+  %10: int = sub %8, %9
+  jump b1(%10, %7)
+b3():
+  return %2
+}
+-- after scalars: 1 replaced
+function outer(%0: int): int {
+b0(%0: int):
+  %1: ptr = null
+  jump b1(%0)
+b1(%2: int):
+  %4: int = const 0
+  %5: int = eq %2, %4
+  branch %5, b3(), b2()
+b2():
+  %6: int = const 8
+  %100: ptr = symbol quest_layout_t
+  %9: int = const 1
+  %10: int = sub %2, %9
+  jump b1(%10)
+b3():
+  return %2
+}
+== left: holding a pointer of its own group
+function cells(%0: int): int {
+b0(%0: int):
+  %1: ptr = symbol qc_nil
+  jump b1(%0, %1)
+b1(%2: int, %3: ptr):
+  %4: int = const 0
+  %5: int = eq %2, %4
+  branch %5, b3(), b2()
+b2():
+  %6: int = const 16
+  %100: ptr = symbol quest_layout_t
+  %7: ptr = call quest_alloc(%6, %100)
+  store8 %7 + 0, %2
+  store8 %7 + 8, %3
+  %8: int = const 1
+  %9: int = sub %2, %8
+  jump b1(%9, %7)
+b3():
+  %10: int = load8 %3 + 0
+  return %10
+}
+-- after scalars: 0 replaced

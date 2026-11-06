@@ -56,7 +56,7 @@ zebra's `qf_unwrap` gone from their profiles. *Done* with §2: `language/inlined
 monomorphic members, since its goldens are not of a whole program, where a polymorphic member's interface type differs
 from its function's). The profiles are §8's.
 
-## 4. Scalar Replacement Across Block Parameters (`ssa/escape`)
+## 4. Scalar Replacement Across Block Parameters (`ssa/scalars`)
 
 The review's §3.2 gives the shape: wc-scanStream's loop carries its `Stream` tuple as a block parameter bound to a
 new allocation on every edge, and `input1`'s inlined returns join an option's allocation at a block parameter. Today
@@ -76,6 +76,23 @@ a parameter that is one of an allocation's pointers must be bound to that one va
 
 *Done when* `ssa_escape` shows a loop carrying a tuple and a join of two options split, and wc-scanStream's
 allocations (allocations.py) drop to about the flattened variant's.
+
+*Done* as a pass of its own, `ssa/scalars` ([ssa.md](ssa.md) §4.3), shown by `ssa_scalars`, and run after promotion
+rather than in escape analysis: wc-scanStream's loop carries its stream in a variable, a stack slot until promotion
+makes it a block parameter. Found on the way:
+
+- **Groups, not single parameters.** An option holding a tuple (wc-scanStream's `some(c, s)`) is replaced by its tag,
+  its character, and the tuple's words, so each group's layout may nest another's.
+- **Constants as objects.** A no-payload option is a constant of the unit's static data (`symbol qc_...`, plus a
+  case's offset), whose words are known; it joins the allocated options it meets.
+- **Dead parameters.** Promotion leaves parameters that only carry a variable's last value round an outer loop, from a
+  null at the entry; bound to a pointer and to the null, they kept the stream whole. The pass drops them first.
+- **Single objects too.** After promotion, an object only ever one value that escape analysis left (it passed through a
+  slot) is replaced as well.
+
+wc-scanStream at count 256 through arm64, by hand on an idle machine: 5.48 s before, 1.14 s after (0.21; the
+flattened variant was 0.16). Its loop no longer allocates; what is left is a chunk per 4096 characters. §8's
+measurements are to follow.
 
 ## 5. Specialization on a Known Function Argument (`ir/inline`, `ir/simplify`)
 
@@ -149,7 +166,7 @@ The results are recorded here as each step finishes, and at the end in [benchmar
 
 - Each step's run tests (shared behavior goldens, written by the bootstrap) and the self-hosted goldens they change
   (`ir_simplified`, `ssa`), regenerated with `--self-hosted --update-golden` and read.
-- `ssa_escape` for §4; the arm64 suite for §7.
+- `ssa_scalars` for §4; the arm64 suite for §7.
 - `tools/check` before each step's commit.
 
 ## 10. Steps
