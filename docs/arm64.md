@@ -178,7 +178,11 @@ proxy's slow path is not followed into), then first in the builder's order; the 
 come last (arm64-performance-review.md §3.3). Last, loads (or stores) of 8 bytes off one base, at offsets 8 apart,
 are merged into an `ldp` (`stp`): a load's partner moved up to it, a store moved down to its partner, across up to 16
 instructions that touch only registers, and none that branch or store (nor, for a store, load) or that write the
-base or the moved access's register (arm64-performance-review.md §3.5).
+base or the moved access's register (arm64-performance-review.md §3.5). Two stores are left apart when the code
+that runs next (up to 12 instructions on, following jumps, until a call or a write of the base) loads one of their two
+words alone, with no load of the other within four instructions to make a pair of: a lone load does not forward from
+half of a pair's store, which cost psdes-random a fifth of its time once a tuple's two stores had one base
+(benchmarks.md §18.2).
 
 ### 3.6. Exceptions
 

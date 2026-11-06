@@ -688,8 +688,10 @@ export
                 andif not(written[a.base]) andif free
         end
 
-    (* How many instructions after a load or store its pair is looked for *)
+    (* How many instructions after a load or store its pair is looked for,
+     * and how many after a pair of stores a lone load of one of its words *)
     let pairWindow = 16
+    let forwardWindow = 12
 
     (* A function's code with loads (and stores) of 8 bytes off one base, at
      * offsets 8 apart, merged into ldp (stp) where the instructions between
@@ -698,7 +700,12 @@ export
      * store; a store is moved down to its partner, across instructions that
      * write neither its base nor its register, nor load or store. Tuples,
      * list cells, and options' payloads are adjacent words, and so are a
-     * frame's slots, so this is AArch64LoadStoreOptimizer's main pattern *)
+     * frame's slots, so this is AArch64LoadStoreOptimizer's main pattern.
+     * Two stores are left apart when the code that runs just after loads
+     * one of their two words alone: a load does not forward from half of a
+     * pair's store, and waits for the store to reach the cache
+     * (psdes-random's loop, which makes a tuple and reads a component of it
+     * at once, took 1.22 of its time so: docs/benchmarks.md section 17.2) *)
     let pairs(code: Code): Code =
         begin
             let n = vector.length(:minst.Inst code)
@@ -711,6 +718,62 @@ export
             let paired = array of(n false)
             let written = array of(65 false)
             let read = array of(65 false)
+            (* Each label's place in the code *)
+            let labelAt = hashMap.new(:String :Int eq hash.string)
+            for k = 0 upto {n - 1} do
+                case vector.get(:minst.Inst code k).op
+                    when opLabel with x then put(:String :Int labelAt x.label k)
+                    else ok
+                end
+            end
+            (* Whether the code that runs after index from loads one of the
+             * two words at low and low + 8 off base alone: the first load
+             * of either within forwardWindow instructions, following jumps,
+             * until a call, a return, or a write of the base, with no load
+             * of the other in the four instructions after it (two loads so
+             * close become a pair's, which forwards from a pair's store) *)
+            let halfLoaded(from: Int base: Int low: Int): Bool =
+                begin
+                    let var hazard = false
+                    let var k = from
+                    let var steps = 0
+                    let var going = true
+                    while going andif {k < n} andif {steps < forwardWindow} do
+                        let next = vector.get(:minst.Inst code k)
+                        let var to = k + 1
+                        if maybe.isSome(:Access accesses[k]) then
+                            let x = maybe.unwrap(:Access accesses[k])
+                            if x.load andif {x.base is base} andif {{x.offset is low} orif {x.offset is {low + 8}}} then
+                                let other = if x.offset is low then low + 8 else low end
+                                let var partnered = false
+                                for d = 1 upto 4 do
+                                    if {{k + d} < n} andif maybe.isSome(:Access accesses[k + d]) then
+                                        let y = maybe.unwrap(:Access accesses[k + d])
+                                        if y.load andif {y.base is base} andif {y.offset is other} then
+                                            partnered := true
+                                        end
+                                    end
+                                end
+                                hazard := not(partnered)
+                                going := false
+                            end
+                        end
+                        case next.op
+                            when opB with x then
+                                let target = hashMap.get(:String :Int labelAt x.label)
+                                if maybe.isSome(:Int target) then to := maybe.unwrap(:Int target)
+                                else going := false end
+                            when opBSymbol, opBl, opBlr, opBr, opRet, opBrk then going := false
+                            else ok
+                        end
+                        for r = 0 upto {minst.results(next.op) - 1} do
+                            if next.regs[r] is base then going := false end
+                        end
+                        k := to
+                        steps := steps + 1
+                    end
+                    hazard
+                end
             for i = 0 upto {n - 1} do
                 if maybe.isSome(:Access accesses[i]) andif not(paired[i]) then
                     let a = maybe.unwrap(:Access accesses[i])
@@ -725,8 +788,11 @@ export
                     while looking andif {j < n} andif {j <= {i + pairWindow}} do
                         let next = vector.get(:minst.Inst code j)
                         let c = crossing(next.op)
-                        let partner = maybe.isSome(:Access accesses[j]) andif not(paired[j])
+                        let fits = maybe.isSome(:Access accesses[j]) andif not(paired[j])
                             andif pairable(a maybe.unwrap(:Access accesses[j]) written read)
+                        let partner = fits andif {a.load orif not(halfLoaded(j + 1 a.base
+                            if a.offset < maybe.unwrap(:Access accesses[j]).offset then a.offset
+                            else maybe.unwrap(:Access accesses[j]).offset end))}
                         if partner then
                             let b = maybe.unwrap(:Access accesses[j])
                             let lowFirst = a.offset < b.offset

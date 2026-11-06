@@ -1614,7 +1614,8 @@ processor time:
   both of a tuple's stores (collector.md step 5: the allocation's base is no longer a pointer), the backend's pairing
   merges them into one `stp`, where step 4 had two stores from two bases, and the loop that follows loads one of the two
   words alone, which the processor does not forward from a pair's store. ssa.md §4.1 records the same hazard from the
-  loads' side, on the same program. The pairing is the commit after this one's to fix.
+  loads' side, on the same program. The commit after this one leaves such a pair of stores apart ([arm64.md](arm64.md)
+  §3.5), and psdes-random takes 16.3 s.
 
 ### 18.3. The compiler's own build
 
