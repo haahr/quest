@@ -1,0 +1,46 @@
+(* Quest Self-Hosted Compiler: The SSA's Barrier Check Interface
+ *
+ * Checks, in the SSA the pipeline leaves, the rule that keeps the collector's
+ * generations sound (docs/collector.md section 3.5): after a store of a word
+ * that may be a pointer into an object that a collection may have seen, the
+ * object's barrier (quest_barrier) or the slot's (quest_barrier_slot) comes
+ * before the next call that may collect, and before the function returns or
+ * tail-calls. A minor collection scans the old objects the barriers logged
+ * and no others, so a store the rule misses leaves a young object reachable
+ * only through an old one the collection does not look at, and the young
+ * object is freed while in use: a fault the checking modes find only when a
+ * collection happens to fall between the store and the next barrier.
+ *
+ * The stores covered are of a ptr, other than a symbol's address or null, and
+ * of a val made from one (toVal). A val made from an int is no pointer; any
+ * other val, a parameter or a load's or a call's result, is a pointer or
+ * not by a type the SSA does not have, so its stores are the builder's to
+ * judge and are not checked. The object stored into is the value the store's address
+ * comes from, through ptrAdd and copy. A store needs no barrier when that
+ * value is a stack slot's address, a symbol's (a unit's globals are roots),
+ * or a thread-local's; or when it is a quest_alloc's result with no call that
+ * may collect on any path since, since the object is then young, and a minor
+ * collection scans every young object it reaches. A call may collect if it
+ * is a function's of the program, or a runtime function's that allocates
+ * (codegen/runtimeFunctions). The object's barrier answers every store into
+ * it so far; the slot's answers the stores at its address. A try's handler is
+ * entered with nothing owed, every call that raises being one that may
+ * collect.
+ *
+ * This is the builder's own rule (ssa/build/values: a store's barrier
+ * follows it, and an object being initialized is logged before each call
+ * after the first and after its last store), checked after the passes that
+ * move and remove instructions. *)
+
+interface Barriers
+import
+    questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    barrierError: Exception(String)
+    (* The stores of a function that a barrier does not follow in time, each
+     * described; none if it keeps the rule *)
+    functionProblems(f: nodes.Function): Array(String)
+    (* Raises barrierError, listing the problems, if a function of the unit
+     * does not keep the rule *)
+    checkUnit(u: nodes.Unit): Ok
+end

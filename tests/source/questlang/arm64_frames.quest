@@ -1,13 +1,16 @@
-(* Self-Hosted Quest Compiler: Test the arm64 Backend's Frame Slots
+(* Self-Hosted Quest Compiler: Test the arm64 Backend's Frame Slots and Maps
  *
  * codegen.frameSlots (docs/arm64.md section 3.13) on functions of the
  * SSA built by hand: each slot of a frame with its offset, its size, and its
  * class, the SSA type of a value in memory (a ptr, an int, a val, a QVal word
  * whose pointer-ness its descriptor says, or a real) or no type for a stack
- * slot's memory, from which a precise collector's stack maps would be made.
- * More values live across a call than there are callee-saved registers of
- * their class are spilled, each to a slot of its type; a constant, computed
- * again, has none; a value kept in a register has none. *)
+ * slot's memory. More values live across a call than there are callee-saved
+ * registers of their class are spilled, each to a slot of its type; a
+ * constant, computed again, has none; a value kept in a register has none.
+ * Then codegen.frameMaps: the frame as the unit's frame table gives it to
+ * the collector, and what each call has live across it, in callee-saved
+ * registers and in the frame's words: a ptr as a pointer, an int or a val
+ * as an ambiguous word, a real not at all, and nothing that is dead. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
@@ -36,6 +39,8 @@ let show(title: String f: ssa.Function): Ok =
                     ssa.typeName(maybe.unwrap(:ssa.Type s.type)) <> " %" <> conv.int(s.id)
                 else "memory, slot " <> conv.int(s.id) end)
         end
+        let maps = codegen.frameMaps(f)
+        for k = 0 upto {extent maps - 1} do emit(maps[k]) end
     end;
 
 (* 1. Twelve pointers, twelve integers, four QVal words, and ten reals live

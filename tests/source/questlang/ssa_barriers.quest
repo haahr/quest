@@ -1,0 +1,139 @@
+(* Self-Hosted Quest Compiler: Test the SSA's Barrier Check
+ *
+ * Builds small functions of the SSA (questlang/ssa/nodes, docs/ssa.md section
+ * 7) by hand and prints the stores that questlang/ssa/barriers finds without
+ * a write barrier in time: a store into an object a collection may have seen
+ * is owed the object's barrier or the slot's before the next call that may
+ * collect, a return, or a tail call; a store into an allocation no call has
+ * followed, into a stack slot, or of a word that is no heap pointer is owed
+ * none. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/ssa/barriers : questlang/ssa/Barriers
+    collections/vector : collections/Vector
+    writer : Writer
+;
+
+let emit(s: String): Ok = begin writer.putString(writer.output s) writer.putString(writer.output "\n") end;
+
+let tInt = ssa.typeInt;
+let tPtr = ssa.typePtr;
+let none = array of :Int end;
+let noTypes = array of :ssa.Type end;
+let call(f: ssa.Function b: Int symbol: String args: Array(Int) results: Array(ssa.Type)): Array(Int) =
+    ssa.call(f b symbol args ssa.signature(ssa.valueTypes(f args) results none none) results);
+let alloc(f: ssa.Function b: Int): Int =
+    call(f b "quest_alloc" array of ssa.constant(f b 16) ssa.symbolAddress(f b "layout") end array of tPtr end)[0];
+let ret(f: ssa.Function b: Int): Ok =
+    ssa.terminate(f b option termReturn of ssa.Terminator with let values = none end);
+let jumpTo(f: ssa.Function b: Int to: Int): Ok =
+    ssa.terminate(f b option termJump of ssa.Terminator with let target = ssa.target(to none) end);
+let params(f: ssa.Function): Array(Int) = vector.toArray(:Int ssa.block(f 0).params);
+let new(name: String): ssa.Function = ssa.newFunction(name false array of tPtr tPtr tInt end noTypes);
+
+let show(title: String f: ssa.Function): Ok =
+    begin
+        emit("== " <> title)
+        let problems = barriers.functionProblems(f)
+        if extent problems is 0 then emit("keeps the rule") end
+        for i = 0 upto {extent problems - 1} do emit("problem: " <> problems[i]) end
+    end;
+
+(* 1. A field assigned, then the object's barrier *)
+let assigned = new("assigned");
+let a = params(assigned);
+ssa.store(assigned 0 a[0] 8 8 a[1]);
+let ignored1 = call(assigned 0 "quest_barrier" array of a[0] end noTypes);
+ret(assigned 0);
+show("a store, then its object's barrier" assigned);
+
+(* 2. The barrier before the store, the stored value's call between them *)
+let early = new("early");
+let e = params(early);
+let ignored2 = call(early 0 "quest_barrier" array of e[0] end noTypes);
+let made = call(early 0 "make" none array of tPtr end);
+ssa.store(early 0 e[0] 8 8 made[0]);
+ret(early 0);
+show("the barrier before the store" early);
+
+(* 3. A call that may collect between a store and its barrier; one that may
+ * not (a runtime function that does not allocate) is no matter *)
+let late = new("late");
+let l = params(late);
+ssa.store(late 0 l[0] 8 8 l[1]);
+let ignored3 = call(late 0 "quest_register_roots" array of l[1] end noTypes);
+let ignored4 = call(late 0 "f" none noTypes);
+let ignored5 = call(late 0 "quest_barrier" array of l[0] end noTypes);
+ret(late 0);
+show("a call between a store and its barrier" late);
+
+(* 4. An allocation's first stores need none; after a call, they do, and the
+ * object's barrier answers them all *)
+let fresh = new("fresh");
+let p = params(fresh);
+let x = alloc(fresh 0);
+ssa.store(fresh 0 x 0 8 p[0]);
+ssa.store(fresh 0 x 8 8 p[1]);
+ret(fresh 0);
+show("stores into a new allocation" fresh);
+
+let logged = new("logged");
+let q = params(logged);
+let y = alloc(logged 0);
+ssa.store(logged 0 y 0 8 q[0]);
+let ignored6 = call(logged 0 "f" none noTypes);
+ssa.store(logged 0 y 8 8 q[1]);
+let ignored7 = call(logged 0 "quest_barrier" array of y end noTypes);
+ret(logged 0);
+show("an allocation's stores across a call, logged" logged);
+
+let unlogged = new("unlogged");
+let r = params(unlogged);
+let z = alloc(unlogged 0);
+let ignored8 = call(unlogged 0 "f" none noTypes);
+ssa.store(unlogged 0 z 8 8 r[1]);
+ret(unlogged 0);
+show("an allocation's store after a call, not logged" unlogged);
+
+(* 5. The slot's barrier answers the store at its address, not another *)
+let slots = new("slots");
+let s = params(slots);
+let at16 = ssa.ptrAdd(slots 0 s[0] ssa.constant(slots 0 16));
+ssa.store(slots 0 at16 0 8 s[1]);
+let ignored9 = call(slots 0 "quest_barrier_slot" array of at16 end noTypes);
+let at24 = ssa.ptrAdd(slots 0 s[0] ssa.constant(slots 0 24));
+ssa.store(slots 0 at24 0 8 s[1]);
+let ignored10 = call(slots 0 "quest_barrier_slot" array of at16 end noTypes);
+ret(slots 0);
+show("slot barriers" slots);
+
+(* 6. An allocation is young at a join only if it is on every path there *)
+let joined = new("joined");
+let j = params(joined);
+let w = alloc(joined 0);
+let quiet = ssa.newBlock(joined);
+let calls = ssa.newBlock(joined);
+let after = ssa.newBlock(joined);
+ssa.terminate(joined 0 option termBranch of ssa.Terminator with
+    let cond = j[2] let ifTrue = ssa.target(quiet none) let ifFalse = ssa.target(calls none)
+end);
+jumpTo(joined quiet after);
+let ignored11 = call(joined calls "f" none noTypes);
+jumpTo(joined calls after);
+ssa.store(joined after w 0 8 j[1]);
+ret(joined after);
+show("a store after a join, a call on one path" joined);
+
+(* 7. Stores owed nothing: into a stack slot, of an integer, of a symbol's
+ * address, of null *)
+let exempt = new("exempt");
+let m = params(exempt);
+let cell = ssa.slotAddress(exempt 0 ssa.newSlot(exempt 16 8));
+ssa.store(exempt 0 cell 0 8 m[1]);
+ssa.store(exempt 0 m[0] 0 8 m[2]);
+ssa.store(exempt 0 m[0] 8 8 ssa.symbolAddress(exempt 0 "table"));
+ssa.store(exempt 0 m[0] 16 8 ssa.null(exempt 0));
+ret(exempt 0);
+show("stores that need no barrier" exempt);

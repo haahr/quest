@@ -309,6 +309,9 @@ The encoder is checked against the assembler: for every arm64 golden, the encode
   interned by the runtime, so an input's descriptors are the host's when the types are the same. Two inputs may
   declare different modules of the same name (the REPL allows `module m ... end` twice), so a declared module's
   global name includes its input's number.
+- **Frame tables:** a unit's frame table (arm64.md §3.13), by which the collector scans its frames' live words
+  alone, goes in the arena after the unit's code, its first word set to the code's address less its own, under the
+  unit's symbol `qr_frames`; the unit's `qr_register_dicts` registers it, as compiled code's does.
 - **Collector roots:** the data mapping and the globals are registered with `quest_code_add_roots`
   (`quest_gc_add_roots`), as a region of ambiguous roots; the collector scans the host's root tables and stacks but
   not memory the JIT maps.

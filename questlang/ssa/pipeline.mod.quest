@@ -7,6 +7,7 @@ import
     ssaBuild = questlang/ssa/build : questlang/ssa/Build
     collections/vector : collections/Vector
     questlang/ssa/verify : questlang/ssa/Verify
+    questlang/ssa/barriers : questlang/ssa/Barriers
     questlang/ssa/escape : questlang/ssa/Escape
     questlang/ssa/promote : questlang/ssa/Promote
     questlang/ssa/tailCalls : questlang/ssa/TailCalls
@@ -53,17 +54,24 @@ export
         begin
             let checks = stringOp.equal(system.getEnv("QUEST_CHECK_IR") "1")
             let u = ssaBuild.buildUnit(unit)
-            if checks then verify.checkUnit(u) end
+            if checks then
+                verify.checkUnit(u)
+                barriers.checkUnit(u)
+            end
             after("built" u)
             for i = 0 upto {extent passes - 1} do
                 if not(skipped(passes[i])) then
                     runPass(passes[i] u)
-                    if checks then verify.checkUnit(u) end
+                    if checks then
+                        verify.checkUnit(u)
+                        barriers.checkUnit(u)
+                    end
                 end
                 after(passes[i] u)
             end
             if settings.interruptChecks andif not(skipped("interrupts")) then interrupts.checkUnit(u) end
             verify.checkUnit(u)
+            barriers.checkUnit(u)
             u
         end
 

@@ -58,6 +58,21 @@ export
 
     Let FrameSlot = Tuple offset: Int bytes: Int type: maybe.T(ssa.Type) id: Int end
 
+    (* What a collection inside a call scans of the caller's frame (section
+     * 3.13): the callee-saved registers that hold values live across the
+     * call, two bits each from x19 (1 for a ptr, a pointer; 2 for an int or a
+     * val, an ambiguous word), and the frame's words that do, each as twice
+     * its index from sp, plus 1 for an ambiguous word *)
+    Let CallMap = Tuple registers: Int slots: Array(Int) end
+    (* A function's frame for the unit's frame table: the words from sp to
+     * the frame record, the pairs of callee-saved registers saved (a bit
+     * each, by their indices in savedFirsts), the words at sp that nothing
+     * describes (the outgoing arguments and the stack slots), and each call's
+     * return address, in instructions from the function's start, with its
+     * map *)
+    Let CallSite = Tuple offset: Int map: CallMap end
+    Let Frame = Tuple below: Int saved: Int undescribed: Int calls: Array(CallSite) end
+
     Let Compiled = Tuple
         selection: select.Selection
         (* The frame's size below the saved registers, and its slots *)
@@ -70,6 +85,9 @@ export
         (* With QUEST_LIVE_SLOTS=1, for each block's calls in order, where
          * the values live across each are: their slots and registers *)
         liveAtCalls: Array(Array(String))
+        (* For each block's calls in order, the map of each; none for a
+         * function that enters a try, whose frame is scanned whole *)
+        maps: Array(Array(CallMap))
     end
 
     (* The callee-saved registers a function saves, in pairs, in the order it
@@ -207,6 +225,90 @@ export
             described
         end
 
+    (* How a collection takes a live value of an SSA type: a ptr as a pointer
+     * (1); an int or a val as an ambiguous word (2), a val because its
+     * descriptor, not its type, says whether it is a pointer, and an int
+     * because a pointer's bits may be in one (ptrToInt) with the pointer
+     * itself dead; a real not at all (0) *)
+    let wordClass(t: ssa.Type): Int =
+        case t when typePtr then 1 when typeInt, typeVal then 2 when typeReal then 0 end
+
+    (* For each block's calls, in order, the map of each (docs/arm64.md
+     * section 3.13), by the backward walk of describeLive: a value live
+     * across the call that has a slot is taken from the slot, which holds it
+     * wherever it is live, and one that has none from its register, which is
+     * callee-saved, since a call leaves no other with a value in it (a
+     * rematerialized one is in neither: it is a constant or an address that
+     * is not the heap's) *)
+    let callMaps(s: select.Selection a: regalloc.Allocation spillAt: Array(Int)): Array(Array(CallMap)) =
+        begin
+            let m = s.f
+            let nBlocks = vector.length(:machine.Block m.blocks)
+            let n = machine.virtuals(m)
+            let live = machine.live(m)
+            let maps = array of(nBlocks array of :CallMap end)
+            for b = 0 upto {nBlocks - 1} do
+                if a.blockStart[b] >= 0 then
+                    let insts = machine.block(m b).insts
+                    let cur = bitset.new(n)
+                    bitset.assign(cur live.liveOut[b])
+                    let found = vector.new(:CallMap)
+                    for j = {vector.length(:machine.Inst insts) - 1} downto 0 do
+                        let i = vector.get(:machine.Inst insts j)
+                        for k = 0 upto {extent i.operands - 1} do
+                            let o = i.operands[k]
+                            if machine.isVirtual(m o.reg) andif o.defines then
+                                begin let ignored = bitset.remove(cur machine.index(m o.reg)) end
+                            end
+                        end
+                        if machine.isKind(i machine.kindCall) then
+                            let p = a.blockStart[b] + {2 * {j + 1}}
+                            let classes = array of(10 0)
+                            let slots = vector.new(:Int)
+                            let vs = bitset.elements(cur)
+                            for k = 0 upto {extent vs - 1} do
+                                let v = vs[k]
+                                let class = wordClass(vector.get(:ssa.Type s.types v))
+                                if class > 0 then
+                                    if regalloc.needsSlot(a v) then
+                                        vector.append(:Int slots {2 * {spillAt[v] / 8}} + {class - 1})
+                                    else
+                                        let h = regalloc.home(a v p + 1)
+                                        if h isnot regalloc.memory then
+                                            let var r = ~1
+                                            for x = 0 upto 9 do if h is target.x(19 + x) then r := x end end
+                                            if r < 0 then
+                                                raise unsupported with "a value live across a call in " <>
+                                                    target.description.registers[h].name
+                                                end
+                                            end
+                                            if class > classes[r] then classes[r] := class end
+                                        end
+                                    end
+                                end
+                            end
+                            let var registers = 0
+                            for x = 9 downto 0 do registers := {4 * registers} + classes[x] end
+                            vector.append(:CallMap found tuple
+                                let registers = registers let slots = vector.toArray(:Int slots)
+                            end)
+                        end
+                        for k = 0 upto {extent i.operands - 1} do
+                            let o = i.operands[k]
+                            if machine.isVirtual(m o.reg) andif not(o.defines) then
+                                begin let ignored = bitset.insert(cur machine.index(m o.reg)) end
+                            end
+                        end
+                    end
+                    let backward = vector.toArray(:CallMap found)
+                    let r = array of(extent backward tuple let registers = 0 let slots = array of :Int end end)
+                    for k = 0 upto {extent backward - 1} do r[k] := backward[{extent backward - 1} - k] end
+                    maps[b] := r
+                end
+            end
+            maps
+        end
+
     (* A function that enters a try saves every callee-saved pair. A raise
      * resumes in it with the registers as the function that raised left
      * them, not as the functions in between restored them, so it must restore
@@ -239,17 +341,14 @@ export
                     frameAccess(s spillAt[machine.index(m v)] fun(base: Int mode: minst.Mode): minst.Inst
                         minst.store(minst.store64 src base mode))
                 let scratch = array of array of x9 x10 x11 end array of target.d(30) target.d(31) end end
-                (* A dead value's slot is cleared if it may hold a pointer: an
-                 * integer's, since a pointer may be converted to one, but not
-                 * a Real's. Not in a function that enters a try: its handler
-                 * reloads what it uses from slots, after a raise from anywhere
-                 * in the try's body, where liveness does not see the
-                 * handler's uses *)
-                let clears = fun(v: Int): Bool
-                    not(s.entersTry) andif case vector.get(:ssa.Type s.types machine.index(m v))
-                        when typeInt, typePtr, typeVal then true
-                        when typeReal then false
-                    end
+                (* No dead value's slot is cleared: a collection scans, of
+                 * this frame, the slots the call's map says are live (section
+                 * 3.13), so a dead pointer in one keeps nothing. (A function
+                 * that enters a try has no maps, and its handler reloads
+                 * what it uses from slots, after a raise from anywhere in the
+                 * try's body, where liveness does not see the handler's
+                 * uses, so its slots could not be cleared either.) *)
+                let clears = fun(v: Int): Bool false
                 let clear = fun(v: Int): Array(machine.Inst)
                     frameAccess(s spillAt[machine.index(m v)] fun(base: Int mode: minst.Mode): minst.Inst
                         minst.store(minst.store64 target.xzr base mode))
@@ -292,6 +391,8 @@ export
             let liveAtCalls = if stringOp.equal(system.getEnv("QUEST_LIVE_SLOTS") "1") then
                 describeLive(s a spillAt)
             else array of(vector.length(:machine.Block m.blocks) array of :String end) end
+            let maps = if s.entersTry then array of(vector.length(:machine.Block m.blocks) array of :CallMap end)
+                else callMaps(s a spillAt) end
             regalloc.rewrite(m a lowering)
             let savedList = vector.new(:Int)
             for k = 0 upto {extent savedFirsts - 1} do
@@ -300,7 +401,7 @@ export
             end
             tuple
                 let selection = s let size = alignUp(at 16) let slots = vector.toArray(:FrameSlot slots)
-                let saved = vector.toArray(:Int savedList) let liveAtCalls = liveAtCalls
+                let saved = vector.toArray(:Int savedList) let liveAtCalls = liveAtCalls let maps = maps
             end
         end
 
@@ -742,8 +843,12 @@ export
     (* The label just past the code of the unit's function numbered index *)
     let endLabel(index: Int): String = "Lf" <> conv.int(index) <> "_end"
 
-    (* A function's machine code, after branch relaxation *)
-    let machineCode(f: Function index: Int defined: hashMap.T(String Bool)): Code =
+    (* A function's machine code, after branch relaxation, and its frame for
+     * the unit's frame table, if its calls have maps. A label after each
+     * such call (prefix_mN) keeps the call's place through pairing and
+     * relaxation, and is then dropped, its offset noted *)
+    Let Machined = Tuple code: Code frame: maybe.T(Frame) end
+    let machineCode(f: Function index: Int defined: hashMap.T(String Bool)): Machined =
         begin
             let c = compile(f index defined)
             let s = c.selection
@@ -777,6 +882,8 @@ export
             for k = 0 upto {extent order - 1} do vector.append(:Int printed order[k]) end
             prologue(e)
             let var liveLabels = 0
+            let marker = s.prefix <> "_m"
+            let mapped = vector.new(:CallMap)
             (* The line table: the source position before each instruction
              * whose position differs from the last one given. A constant or an
              * address made again where it is used keeps its definition's
@@ -790,6 +897,7 @@ export
                 let count = vector.length(:machine.Inst insts)
                 let var inverted = false
                 let var calls = 0
+                let var mappedCalls = 0
                 for j = 0 upto {count - 1} do
                     let i = vector.get(:machine.Inst insts j)
                     let regs = array of(extent i.operands 0)
@@ -823,6 +931,11 @@ export
                             emit(e tuple let op = op let regs = regs end)
                         end
                     end
+                    if machine.isKind(i machine.kindCall) andif {mappedCalls < extent e.c.maps[b]} then
+                        emit(e minst.label(marker <> conv.int(vector.length(:CallMap mapped))))
+                        vector.append(:CallMap mapped e.c.maps[b][mappedCalls])
+                        mappedCalls := mappedCalls + 1
+                    end
                     (* With QUEST_LIVE_SLOTS=1, a symbol at the return address,
                      * by which a debugger can find what is live across the
                      * call, which a comment gives with the size of the frame
@@ -839,7 +952,78 @@ export
                     end
                 end
             end
-            relaxBranches(pairs(e.code) s.prefix branchReach)
+            let relaxed = relaxBranches(pairs(e.code) s.prefix branchReach)
+            let code = vector.new(:minst.Inst)
+            let sites = vector.new(:CallSite)
+            let var at = 0
+            for k = 0 upto {vector.length(:minst.Inst relaxed) - 1} do
+                let i = vector.get(:minst.Inst relaxed k)
+                case i.op
+                    when opLabel with x then
+                        if strutil.startsWith(x.label marker) then
+                            vector.append(:CallSite sites tuple
+                                let offset = at let map = vector.get(:CallMap mapped vector.length(:CallSite sites))
+                            end)
+                        else vector.append(:minst.Inst code i) end
+                    else
+                        at := at + printer.count(i.op)
+                        vector.append(:minst.Inst code i)
+                end
+            end
+            let var savedMask = 0
+            for k = {extent c.saved - 1} downto 0 do
+                let var bit = 1
+                for x = 1 upto c.saved[k] do bit := 2 * bit end
+                savedMask := savedMask + bit
+            end
+            tuple
+                let code = code
+                let frame = if s.entersTry then maybe.none(:Frame) else maybe.some(:Frame tuple
+                    let below = {{16 * extent c.saved} + c.size} / 8 let saved = savedMask
+                    let undescribed = s.slotsEnd / 8 let calls = vector.toArray(:CallSite sites)
+                end) end
+            end
+        end
+
+    let frameMaps(f: Function): Array(String) =
+        begin
+            let made = machineCode(f 0 hashMap.new(:String :Bool eq hash.string))
+            let lines = vector.new(:String)
+            if maybe.isSome(:Frame made.frame) then
+                let frame = maybe.unwrap(:Frame made.frame)
+                let pairs = vector.new(:String)
+                let var mask = frame.saved
+                for k = 0 upto {extent savedFirsts - 1} do
+                    if {mask % 2} is 1 then
+                        vector.append(:String pairs target.description.registers[savedFirsts[k]].name <> "/"
+                            <> target.description.registers[savedSeconds[k]].name)
+                    end
+                    mask := mask / 2
+                end
+                vector.append(:String lines "frame: " <> conv.int(frame.below) <> " words below the record, saves "
+                    <> if vector.empty(:String pairs) then "nothing" else strutil.join(" " pairs) end <> ", "
+                    <> conv.int(frame.undescribed) <> " words not described")
+                let className(class: Int): String = if class is 1 then "ptr" else "word" end
+                for c = 0 upto {extent frame.calls - 1} do
+                    let site = frame.calls[c]
+                    let parts = vector.new(:String)
+                    let var registers = site.map.registers
+                    for x = 0 upto 9 do
+                        if {registers % 4} > 0 then
+                            vector.append(:String parts "x" <> conv.int(19 + x) <> " " <> className(registers % 4))
+                        end
+                        registers := registers / 4
+                    end
+                    for k = 0 upto {extent site.map.slots - 1} do
+                        let slot = site.map.slots[k]
+                        vector.append(:String parts
+                            "sp+" <> conv.int(8 * {slot / 2}) <> " " <> className(1 + {slot % 2}))
+                    end
+                    vector.append(:String lines "call returning at " <> conv.int(site.offset) <> ": "
+                        <> if vector.empty(:String parts) then "nothing live" else strutil.join(", " parts) end)
+                end
+            end
+            vector.toArray(:String lines)
         end
 
     let function(f: Function index: Int code: Code): Lines =
@@ -898,6 +1082,80 @@ export
             defined
         end
 
+    (* The unit's frame table's symbol, a placeholder of which the SSA's
+     * builder makes (ssa/build/unit), with the call that registers it: the
+     * backend writes the table in the placeholder's place *)
+    let framesSymbol = "qr_frames"
+    let hasFrames(u: ssa.Unit): Bool =
+        begin
+            let var found = false
+            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
+                if eq(vector.get(:ssa.Data u.data k).symbol framesSymbol) then found := true end
+            end
+            found
+        end
+    let dataBesidesFrames(u: ssa.Unit): Array(ssa.Data) =
+        begin
+            let kept = vector.new(:ssa.Data)
+            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
+                let d = vector.get(:ssa.Data u.data k)
+                if not(eq(d.symbol framesSymbol)) then vector.append(:ssa.Data kept d) end
+            end
+            vector.toArray(:ssa.Data kept)
+        end
+
+    (* An unsigned LEB128 number's bytes *)
+    let leb(bytes: vector.T(Int) n: Int): Ok =
+        begin
+            let var rest = n
+            let var more = true
+            while more do
+                let low = rest % 128
+                rest := rest / 128
+                if rest is 0 then
+                    vector.append(:Int bytes low)
+                    more := false
+                else
+                    vector.append(:Int bytes low + 128)
+                end
+            end
+        end
+
+    (* The unit's frame table before its addresses are known (docs/arm64.md
+     * section 3.13; runtime/quest_gc.c has the form): the functions with
+     * calls that have maps, each with its description: the words from sp to
+     * its frame record, the pairs it saves, the words at sp with no
+     * description, its calls' number, and each call's return address (in
+     * instructions from the call before's), registers, and slots *)
+    let frameTable(frames: Array(maybe.T(Frame))): encode.Frames =
+        begin
+            let listed = vector.new(:encode.Listed)
+            let bytes = vector.new(:Int)
+            for k = 0 upto {extent frames - 1} do
+                if maybe.isSome(:Frame frames[k]) andif {extent maybe.unwrap(:Frame frames[k]).calls > 0} then
+                    let f = maybe.unwrap(:Frame frames[k])
+                    vector.append(:encode.Listed listed
+                        tuple let index = k let description = vector.length(:Int bytes) end)
+                    leb(bytes f.below)
+                    leb(bytes f.saved)
+                    leb(bytes f.undescribed)
+                    leb(bytes extent f.calls)
+                    let var last = 0
+                    for c = 0 upto {extent f.calls - 1} do
+                        let site = f.calls[c]
+                        leb(bytes site.offset - last)
+                        last := site.offset
+                        leb(bytes site.map.registers)
+                        leb(bytes extent site.map.slots)
+                        for x = 0 upto {extent site.map.slots - 1} do leb(bytes site.map.slots[x]) end
+                    end
+                end
+            end
+            tuple
+                let listed = vector.toArray(:encode.Listed listed) let descriptions = vector.toArray(:Int bytes)
+            end
+        end
+
     let assembleUnit(u: ssa.Unit): String =
         begin
             let defined = definedSymbols(u)
@@ -914,20 +1172,36 @@ export
             let machines = array of(vector.length(:Function u.functions) tuple
                 let symbol = "" let exported = false let code = vector.new(:minst.Inst) let endLabel = ""
             end)
+            let frames = array of(vector.length(:Function u.functions) maybe.none(:Frame))
             for k = 0 upto {vector.length(:Function u.functions) - 1} do
                 let f = vector.get(:Function u.functions k)
+                let made = machineCode(f k defined)
                 machines[k] := tuple
-                    let symbol = f.symbol let exported = f.exported let code = machineCode(f k defined)
-                    let endLabel = endLabel(k)
+                    let symbol = f.symbol let exported = f.exported let code = made.code let endLabel = endLabel(k)
                 end
+                frames[k] := made.frame
                 let fl = function(f k machines[k].code)
                 for j = 0 upto {vector.length(:String fl) - 1} do
                     vector.append(:String lines vector.get(:String fl j))
                 end
             end
-            for k = 0 upto {vector.length(:ssa.Data u.data) - 1} do
-                let dl = asm.data(vector.get(:ssa.Data u.data k))
+            let data = dataBesidesFrames(u)
+            for k = 0 upto {extent data - 1} do
+                let dl = asm.data(data[k])
                 for j = 0 upto {extent dl - 1} do vector.append(:String lines dl[j]) end
+            end
+            let table = if hasFrames(u) then maybe.some(:encode.Frames frameTable(frames))
+                else maybe.none(:encode.Frames) end
+            if maybe.isSome(:encode.Frames table) then
+                let t = maybe.unwrap(:encode.Frames table)
+                let listed = array of(extent t.listed tuple let symbol = "" let description = 0 end)
+                for k = 0 upto {extent listed - 1} do
+                    listed[k] := tuple
+                        let symbol = machines[t.listed[k].index].symbol let description = t.listed[k].description
+                    end
+                end
+                appendAll(asm.frames(framesSymbol if extent machines > 0 then machines[0].symbol else "" end listed
+                    t.descriptions))
             end
             if debugged then
                 let functions = array of(vector.length(:Function u.functions)
@@ -944,8 +1218,7 @@ export
              * the unit, as comments, which tests/self-hosted/encoder.py
              * compares with what the assembler makes of the rest *)
             if stringOp.equal(system.getEnv("QUEST_CHECK_ENCODING") "1") then
-                let described = encode.describe(encode.unit(machines vector.toArray(:ssa.Data u.data)
-                        vector.toArray(:String u.files)))
+                let described = encode.describe(encode.unit(machines data vector.toArray(:String u.files) table))
                 for k = 0 upto {extent described - 1} do vector.append(:String lines "// encoded " <> described[k]) end
             end
             strutil.join("\n" lines) <> "\n"
@@ -957,13 +1230,17 @@ export
             let machines = array of(vector.length(:Function u.functions) tuple
                 let symbol = "" let exported = false let code = vector.new(:minst.Inst) let endLabel = ""
             end)
+            let frames = array of(vector.length(:Function u.functions) maybe.none(:Frame))
             for k = 0 upto {vector.length(:Function u.functions) - 1} do
                 let f = vector.get(:Function u.functions k)
+                let made = machineCode(f k defined)
                 machines[k] := tuple
-                    let symbol = f.symbol let exported = f.exported let code = machineCode(f k defined)
-                    let endLabel = endLabel(k)
+                    let symbol = f.symbol let exported = f.exported let code = made.code let endLabel = endLabel(k)
                 end
+                frames[k] := made.frame
             end
-            encode.unit(machines vector.toArray(:ssa.Data u.data) vector.toArray(:String u.files))
+            encode.unit(machines dataBesidesFrames(u) vector.toArray(:String u.files)
+                if hasFrames(u) then maybe.some(:encode.Frames frameTable(frames))
+                else maybe.none(:encode.Frames) end)
         end
 end

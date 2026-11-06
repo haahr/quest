@@ -610,6 +610,11 @@ typedef struct QRootEntry {
     size_t  words;
 } QRootEntry;
 void     quest_register_roots(const QRootEntry *roots);
+/* Frame tables (section 3.3; quest_gc.c has the form): what each frame of a
+ * unit's arm64 code holds across each of its calls, by which a collection
+ * scans those frames' live words alone. A unit registers its table, qr_frames,
+ * when it is initialized; a unit compiled through C registers an empty one */
+void     quest_register_frames(const void *table);
 typedef void (*QRootVisitor)(void *slot, size_t words);
 void     quest_runtime_roots(QRootVisitor add);
 void     quest_code_roots(QRootVisitor add);

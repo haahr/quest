@@ -39,10 +39,20 @@ export
      * memory, of its SSA type (a ptr is a pointer and an int is not, though an
      * int may be a QVal word, whose pointer-ness its type descriptor says), id
      * being its index (an SSA value's own number); or with no type, a stack
-     * slot's memory, whose words have no class here, id being the slot. What a
-     * precise collector's stack maps would be made from; nothing emits them
-     * yet. *)
+     * slot's memory, whose words have no class here, id being the slot. What
+     * the frame table's maps are made from. *)
     Def FrameSlot = Tuple offset: Int bytes: Int type: maybe.T(ssa.Type) id: Int end
     (* The slots of the frame f is compiled with, in order of their offsets *)
     frameSlots(f: ssa.Function): Array(FrameSlot)
+    (* The frame f is compiled with as the unit's frame table describes it to
+     * the collector (docs/arm64.md section 3.13; runtime/quest_gc.c has the
+     * table's form), as text: a line for the frame (the words from sp to its
+     * frame record, the pairs of callee-saved registers it saves, and the
+     * words at sp that nothing describes), then one for each call, in the
+     * order of the code: its return address, in instructions from the
+     * function's start, and what is live across it, each callee-saved
+     * register and each word of the frame (by its offset from sp) as a ptr
+     * or as an ambiguous word. None for a function that enters a try, whose
+     * frame is scanned whole. *)
+    frameMaps(f: ssa.Function): Array(String)
 end

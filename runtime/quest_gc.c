@@ -972,11 +972,165 @@ static void quest_gc_mark_root(void *slot, size_t words) {
     quest_gc_scan_range((const uintptr_t *)slot, (const uintptr_t *)slot + words);
 }
 
-/* The stack, conservatively, from here to its base, the registers first
- * spilled into a jmp_buf on it */
+/* ---------------------------------------------------------------------------
+ * Stack maps (section 3.3)
+ * ------------------------------------------------------------------------ */
+
+/* A unit's frame table, as the arm64 backend writes it (qr_frames;
+ * docs/arm64.md section 3.13), which the unit registers when it starts:
+ *
+ *     int32   the unit's first function, in bytes from the table
+ *     uint32  the functions listed, n
+ *     n of    uint32 the function's start, in bytes from the first function's
+ *             uint32 its description, in bytes from the table
+ *
+ * in the order of their code, then the descriptions, each a sequence of
+ * unsigned LEB128 numbers:
+ *
+ *     the words from the frame's lowest address to its frame record
+ *     the pairs of callee-saved registers the prologue saves, a bit each, in
+ *         the order it pushes them below the record (x20 and x19 first)
+ *     the words at the frame's lowest addresses with no description (the
+ *         outgoing arguments and the stack slots), scanned as ambiguous
+ *     the calls listed, then for each, in the order of their code:
+ *         its return address, in instructions from the call before's (the
+ *             first's from the function's start)
+ *         the callee-saved registers live across it, two bits each from x19
+ *             (1 a pointer, 2 an ambiguous word)
+ *         the frame's words live across it, their number and then each as
+ *             twice its index from the frame's lowest address, plus 1 for an
+ *             ambiguous word
+ *
+ * A function that enters a try is not listed: its handler reads slots where
+ * liveness does not see it, so its frame is scanned whole, like C's. A table
+ * of no functions is the placeholder a unit compiled through C registers. */
+typedef struct QFrameUnit { uintptr_t text; const uint32_t *table; } QFrameUnit;
+static QFrameUnit *quest_gc_frame_units = NULL;
+static size_t      quest_gc_frame_unit_n = 0, quest_gc_frame_unit_cap = 0;
+static bool        quest_gc_frame_units_sorted = true;
+static bool        quest_gc_use_maps = true;      /* QUEST_GC_MAPS=0 scans every frame whole */
+static uint64_t    quest_gc_frames_mapped = 0, quest_gc_frames_unmapped = 0;
+
+void quest_register_frames(const void *table) {
+    const uint32_t *t = (const uint32_t *)table;
+    if (t[1] == 0) return;
+    if (quest_gc_frame_unit_n == quest_gc_frame_unit_cap) {
+        size_t cap = quest_gc_frame_unit_cap > 0 ? 2 * quest_gc_frame_unit_cap : 64;
+        QFrameUnit *grown = (QFrameUnit *)realloc(quest_gc_frame_units, cap * sizeof *grown);
+        if (grown == NULL) quest_gc_fatal("out of memory registering frame tables");
+        quest_gc_frame_units = grown;
+        quest_gc_frame_unit_cap = cap;
+    }
+    QFrameUnit *u = &quest_gc_frame_units[quest_gc_frame_unit_n++];
+    u->text = (uintptr_t)table + (uintptr_t)(intptr_t)(int32_t)t[0];
+    u->table = t;
+    quest_gc_frame_units_sorted = false;
+}
+
+static int quest_gc_frame_unit_order(const void *a, const void *b) {
+    uintptr_t x = ((const QFrameUnit *)a)->text, y = ((const QFrameUnit *)b)->text;
+    return x < y ? -1 : x > y;
+}
+
+static inline uint64_t quest_gc_leb(const uint8_t **p) {
+    uint64_t n = 0;
+    unsigned shift = 0;
+    for (;;) {
+        uint8_t b = *(*p)++;
+        n |= (uint64_t)(b & 0x7f) << shift;
+        if ((b & 0x80) == 0) return n;
+        shift += 7;
+    }
+}
+
+/* What a frame holds across the call that returns to `ra`: the bytes from
+ * its lowest address to its frame record, the pairs it saved, the words at
+ * its lowest addresses to scan as ambiguous, the callee-saved registers live
+ * across the call, and its live words (as the table has them) */
+typedef struct QFrameMap {
+    size_t         below;
+    unsigned       saved;
+    size_t         ambiguous_words;
+    uint32_t       registers;
+    size_t         slot_n;
+    const uint8_t *slots;
+} QFrameMap;
+
+/* The map of the call that returns to ra, if a registered table lists it */
+static bool quest_gc_frame_map(uintptr_t ra, QFrameMap *m) {
+    if (!quest_gc_frame_units_sorted) {
+        qsort(quest_gc_frame_units, quest_gc_frame_unit_n, sizeof *quest_gc_frame_units, quest_gc_frame_unit_order);
+        quest_gc_frame_units_sorted = true;
+    }
+    /* The last unit that starts at or before ra, then its last such function */
+    size_t lo = 0, hi = quest_gc_frame_unit_n;
+    while (lo < hi) {
+        size_t mid = lo + (hi - lo) / 2;
+        if (quest_gc_frame_units[mid].text <= ra) lo = mid + 1; else hi = mid;
+    }
+    if (lo == 0) return false;
+    const QFrameUnit *u = &quest_gc_frame_units[lo - 1];
+    uintptr_t at = ra - u->text;
+    if (at > UINT32_MAX) return false;
+    const uint32_t *functions = u->table + 2;
+    size_t flo = 0, fhi = u->table[1];
+    while (flo < fhi) {
+        size_t mid = flo + (fhi - flo) / 2;
+        if (functions[2 * mid] <= at) flo = mid + 1; else fhi = mid;
+    }
+    if (flo == 0) return false;
+    uint64_t target = (at - functions[2 * (flo - 1)]) / 4;
+    const uint8_t *p = (const uint8_t *)u->table + functions[2 * (flo - 1) + 1];
+    m->below = (size_t)quest_gc_leb(&p) * 8;
+    m->saved = (unsigned)quest_gc_leb(&p);
+    m->ambiguous_words = (size_t)quest_gc_leb(&p);
+    uint64_t calls = quest_gc_leb(&p), offset = 0;
+    for (uint64_t i = 0; i < calls; ++i) {
+        offset += quest_gc_leb(&p);
+        if (offset > target) return false;
+        uint32_t registers = (uint32_t)quest_gc_leb(&p);
+        size_t n = (size_t)quest_gc_leb(&p);
+        if (offset == target) {
+            m->registers = registers;
+            m->slot_n = n;
+            m->slots = p;
+            return true;
+        }
+        for (size_t k = 0; k < n; ++k) (void)quest_gc_leb(&p);
+    }
+    return false;
+}
+
+/* The callee-saved registers whose owners are not known yet, marked as
+ * ambiguous words where they were last saved (below) */
+static void quest_gc_flush_saved(const uintptr_t **saved) {
+    for (unsigned r = 0; r < 10; ++r) {
+        if (saved[r] != NULL) quest_gc_mark_word(*saved[r], true);
+        saved[r] = NULL;
+    }
+}
+
+/* The stack from here to its base, the registers first spilled into a
+ * jmp_buf on it. The frame records are walked from this function's (a
+ * record is the caller's frame pointer and the return address into the
+ * caller, and on arm64 every function that calls keeps one): a caller whose
+ * call a frame table lists is a mapped frame, of which only the words the
+ * table gives are scanned, as pointers or as ambiguous words; everything
+ * else, C's frames, the frames of functions that enter a try, and this
+ * walk's own, is scanned conservatively, as the whole stack was before the
+ * tables. A callee-saved register live across a mapped frame's call is
+ * where the youngest frame after it saved it: `saved` has that place for
+ * each of x19 to x28 while every frame since is mapped, the mapped frames'
+ * prologues being described; past an unmapped frame, which may have saved a
+ * register anywhere in its frame or not at all, the places known so far are
+ * scanned as ambiguous words and forgotten, the frame itself being scanned
+ * whole, so a register's value is always seen, precisely when the frames
+ * between are mapped. A register no mapped frame has live is not scanned
+ * where a mapped frame saved it, nor is a dead slot: the retention the tables
+ * end (docs/arm64-performance-review.md section 3.2). */
 static void quest_gc_scan_stack(void) {
     jmp_buf regs;
-    setjmp(regs);
+    _setjmp(regs);
     uintptr_t base;
 #if defined(__APPLE__)
     base = (uintptr_t)pthread_get_stackaddr_np(pthread_self());
@@ -991,8 +1145,53 @@ static void quest_gc_scan_stack(void) {
     }
     if (base == 0) quest_gc_fatal("the collector cannot find the stack's base");
 #endif
-    const uintptr_t *from = (const uintptr_t *)((uintptr_t)&regs & ~(uintptr_t)7);
-    quest_gc_scan_range(from, (const uintptr_t *)(base & ~(uintptr_t)7));
+    base &= ~(uintptr_t)7;
+    uintptr_t cursor = (uintptr_t)&regs & ~(uintptr_t)7;
+#if defined(__aarch64__)
+    if (quest_gc_use_maps && quest_gc_frame_unit_n > 0) {
+        const uintptr_t *saved[10] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
+        uintptr_t fp = (uintptr_t)__builtin_frame_address(0);
+        while ((fp & 7) == 0 && fp >= cursor && fp + 16 <= base) {
+            uintptr_t caller = ((const uintptr_t *)fp)[0], ra = ((const uintptr_t *)fp)[1];
+            if ((caller & 7) != 0 || caller <= fp || caller + 16 > base) break;
+            QFrameMap m;
+            if (quest_gc_frame_map(ra, &m) && caller - fp >= m.below + 16) {
+                quest_gc_frames_mapped++;
+                const uintptr_t *sp = (const uintptr_t *)(caller - m.below);
+                quest_gc_scan_range((const uintptr_t *)cursor, sp + m.ambiguous_words);
+                const uint8_t *p = m.slots;
+                for (size_t k = 0; k < m.slot_n; ++k) {
+                    uint64_t slot = quest_gc_leb(&p);
+                    quest_gc_mark_word(sp[slot >> 1], (slot & 1) != 0);
+                }
+                for (unsigned r = 0; r < 10; ++r) {
+                    unsigned kind = (m.registers >> (2 * r)) & 3;
+                    if (kind != 0 && saved[r] != NULL) quest_gc_mark_word(*saved[r], kind == 2);
+                }
+                /* The kth pair the prologue saved is 16 * (k + 1) bytes
+                 * below the record, its even register (x20 of x20 and x19)
+                 * first; pairs from the sixth on are d8 to d15 */
+                const uintptr_t *record = (const uintptr_t *)caller;
+                unsigned k = 0;
+                for (unsigned pair = 0; pair < 9; ++pair) {
+                    if ((m.saved & (1u << pair)) == 0) continue;
+                    if (pair < 5) {
+                        saved[2 * pair + 1] = record - 2 * (k + 1);
+                        saved[2 * pair] = record - 2 * (k + 1) + 1;
+                    }
+                    k++;
+                }
+                cursor = caller;
+            } else {
+                quest_gc_frames_unmapped++;
+                quest_gc_flush_saved(saved);
+            }
+            fp = caller;
+        }
+        quest_gc_flush_saved(saved);
+    }
+#endif
+    quest_gc_scan_range((const uintptr_t *)cursor, (const uintptr_t *)base);
 }
 
 static void quest_gc_mark_roots(void) {
@@ -1730,6 +1929,9 @@ static void quest_gc_skip_own(void) {
     quest_gc_cover(&quest_gc_allocated_blocks, 1);
     quest_gc_cover(&quest_gc_hole_bytes, 1);
     quest_gc_cover(&quest_gc_holes, 1);
+    quest_gc_cover(&quest_gc_frames_mapped, 1);
+    quest_gc_cover(&quest_gc_frames_unmapped, 1);
+    quest_gc_cover(&quest_gc_frame_unit_cap, 1);
     quest_gc_cover(&quest_gc_live_bytes, 1);
     quest_gc_cover(&quest_gc_live_bytes_max, 1);
     quest_gc_cover(&quest_gc_live_objects, 1);
@@ -1926,6 +2128,10 @@ static void quest_gc_print_stats(void) {
             " objects), logged %" PRIu64 " objects, %" PRIu64 " cards\n", quest_gc_minors,
             (double)quest_gc_minor_pause_ns / 1e6, (double)quest_gc_minor_pause_max_ns / 1e6,
             quest_gc_survived_bytes >> 10, quest_gc_survived_objects, quest_gc_logged, quest_gc_cards_dirtied);
+    if (quest_gc_frame_unit_n > 0) {
+        fprintf(stderr, "quest: gc frames: %" PRIu64 " scanned by their tables, %" PRIu64 " whole, of %zu units' "
+                "tables\n", quest_gc_frames_mapped, quest_gc_frames_unmapped, quest_gc_frame_unit_n);
+    }
     if ((quest_gc_check_flags & QUEST_GC_CHECK_STRESS) != 0) {
         fprintf(stderr, "quest: gc stress: %" PRIu64 " collections forced, the last every %" PRIu64 " allocations of %"
                 PRIu64 "\n", quest_gc_stress_forced, quest_gc_stress_every, quest_gc_allocated_objects);
@@ -1972,7 +2178,8 @@ static void quest_gc_at_exit(void) {
  * that count doubles), QUEST_GC_TRAP (the collection quest_gc_trap is called
  * before), QUEST_GC_STATS (1 for a summary at exit, `each` for a line per
  * collection too), QUEST_GC_MIN_HEAP (megabytes), QUEST_GC_NURSERY (megabytes
- * between minor collections; 0 for full collections alone), and
+ * between minor collections; 0 for full collections alone), QUEST_GC_MAPS
+ * (0 to scan every frame whole, the frame tables unread), and
  * QUEST_GC_CHECK_CHILDREN (the modes of the programs this one runs) */
 static void quest_gc_read_options(void) {
     const char *modes = getenv("QUEST_GC_CHECK");
@@ -2032,6 +2239,9 @@ static void quest_gc_read_options(void) {
         quest_gc_nursery_adapted = quest_gc_nursery_blocks;
     }
     if (getenv("QUEST_GC_NEVER") != NULL) quest_gc_never_collect = true;
+    /* QUEST_GC_MAPS=0: every frame scanned whole, the frame tables unread */
+    const char *maps = getenv("QUEST_GC_MAPS");
+    if (maps != NULL && maps[0] == '0') quest_gc_use_maps = false;
     /* QUEST_GC_CHECK_CHILDREN: the modes of the programs this one runs, in
      * place of its own, so that a compiler can run under the plain checks
      * and the program it builds and runs under `stress` (tools/check) */

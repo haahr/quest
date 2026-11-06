@@ -30,6 +30,8 @@ export
     Let Symbol = Tuple name: String offset: Int size: Int exported: Bool end
     Let Function = Tuple symbol: String exported: Bool code: vector.T(minst.Inst) endLabel: String end
     Let Line = Tuple offset: Int file: Int line: Int column: Int end
+    Let Listed = Tuple index: Int description: Int end
+    Let Frames = Tuple listed: Array(Listed) descriptions: Array(Int) end
     Let Encoded = Tuple
         code: Array(Int)
         codeRelocs: Array(Reloc)
@@ -39,6 +41,7 @@ export
         dataSymbols: Array(Symbol)
         lines: Array(Line)
         files: Array(String)
+        frames: Array(Int)
     end
 
     let unencodable: Exception(String) = exception unencodable: String end
@@ -370,7 +373,8 @@ export
 
     let eq(a: String b: String): Bool = stringOp.equal(a b)
 
-    let unit(functions: Array(Function) data: Array(ssa.Data) files: Array(String)): Encoded =
+    let unit(functions: Array(Function) data: Array(ssa.Data) files: Array(String) frames: maybe.T(Frames)):
+            Encoded =
         begin
             (* Each label's offset: its function's instructions laid out one
              * after another, each function 4-byte aligned, which they all
@@ -474,12 +478,38 @@ export
                     let exported = d.exported
                 end)
             end
+            (* The frame table, as runtime/quest_gc.c reads it: the code's
+             * address, left to the loader; the functions listed, each by its
+             * offset in the code and its description's in the table; and the
+             * descriptions *)
+            let frameWords = vector.new(:Int)
+            if maybe.isSome(:Frames frames) then
+                let t = maybe.unwrap(:Frames frames)
+                let n = extent t.listed
+                vector.append(:Int frameWords 0)
+                vector.append(:Int frameWords n)
+                for k = 0 upto {n - 1} do
+                    vector.append(:Int frameWords vector.get(:Symbol symbols t.listed[k].index).offset)
+                    vector.append(:Int frameWords {8 + {8 * n}} + t.listed[k].description)
+                end
+                let var next = 0
+                while next < extent t.descriptions do
+                    let var w = 0
+                    for b = 3 downto 0 do
+                        w := {256 * w}
+                            + if {next + b} < extent t.descriptions then t.descriptions[next + b] else 0 end
+                    end
+                    vector.append(:Int frameWords w)
+                    next := next + 4
+                end
+            end
             tuple
                 let code = code let codeRelocs = vector.toArray(:Reloc codeRelocs)
                 let functions = vector.toArray(:Symbol symbols)
                 let data = vector.toArray(:Int bytes) let dataRelocs = vector.toArray(:Reloc dataRelocs)
                 let dataSymbols = vector.toArray(:Symbol dataSymbols)
                 let lines = vector.toArray(:Line lines) let files = files
+                let frames = vector.toArray(:Int frameWords)
             end
         end
 
@@ -525,6 +555,11 @@ export
                 let b = vector.new(:String)
                 for i = s.offset upto {s.offset + s.size - 1} do vector.append(:String b hex(e.data[i] 2)) end
                 vector.append(:String lines "data " <> s.name <> " " <> conv.int(s.offset) <> " " <> strutil.join("" b))
+            end
+            if extent e.frames > 0 then
+                let b = vector.new(:String)
+                for k = 0 upto {extent e.frames - 1} do vector.append(:String b hex(e.frames[k] 8)) end
+                vector.append(:String lines "frames " <> strutil.join(" " b))
             end
             vector.toArray(:String lines)
         end

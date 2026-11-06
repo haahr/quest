@@ -235,7 +235,9 @@ functions, doubly-linked structures, and self-referential records).
    bit; the slow path finds the next hole, or collects. A collection stops the world when the blocks in use reach their
    target (twice those in use after the last collection, and at least `QUEST_GC_MIN_HEAP` megabytes, 64 by default),
    marks from the roots (each unit's root table, the runtime's listed statics and thread-locals, the JIT's data regions,
-   and the stack and registers, conservatively) by the layouts, validating an ambiguous word against the start bits, and
+   and the stack and registers: a frame of arm64 code by its map of the words live across its call, from the unit's
+   frame table, [arm64.md](arm64.md) §3.13, and every other frame conservatively) by the layouts, validating an
+   ambiguous word against the start bits, and
    keeps only the live objects' start bits (decision 14) before classifying each block by its live lines. Objects never
    move. The collector is generational by sticky mark bits ([collector.md](collector.md) §3.5): a full collection clears
    every mark; a *minor* one, every `QUEST_GC_NURSERY` megabytes of blocks taken (64 by default; 0 for full collections

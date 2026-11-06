@@ -157,6 +157,10 @@ export
             let dataBytes = alignUp(extent e.data 8)
             let dataOffset = allocateData(l if dataBytes > 0 then dataBytes else 8 end)
             let dataAt = dataBase(l) + dataOffset
+            (* The frame table goes in the code's region, so that its first
+             * word, the code's address less its own, fits 32 bits; the unit
+             * registers it by its symbol (docs/arm64.md section 3.13) *)
+            let framesAt = if extent e.frames > 0 then codeBase(l) + allocateCode(l 4 * extent e.frames) else 0 end
             (* The unit's own symbols, then the exported ones of the units
              * before it, then the driver's *)
             let own = hashMap.new(:String :Int eq hash.string)
@@ -166,6 +170,7 @@ export
             for k = 0 upto {extent e.dataSymbols - 1} do
                 hashMap.insert(:String :Int own e.dataSymbols[k].name dataAt + e.dataSymbols[k].offset)
             end
+            if extent e.frames > 0 then begin hashMap.insert(:String :Int own "qr_frames" framesAt) ok end end
             let loaded(name: String): maybe.T(Int) =
                 begin
                     let mine = hashMap.get(:String :Int own name)
@@ -219,6 +224,12 @@ export
             end
             if extent data > 0 then code.write64(l.data dataOffset data) end
             if extent text > 0 then code.write32(l.code codeOffset text) end
+            if extent e.frames > 0 then
+                let table = array of(extent e.frames 0)
+                for k = 0 upto {extent e.frames - 1} do table[k] := e.frames[k] end
+                table[0] := field(codeAt - framesAt 32)
+                code.write32(l.code framesAt - codeBase(l) table)
+            end
             (* The collector scans the data, and frames in the functions are
              * attributed *)
             if extent data > 0 then code.addRoots(pointer(dataAt) pointer(dataAt + dataBytes)) end

@@ -1569,3 +1569,72 @@ A REPL session, the transcripts of `tests/repl` replayed twenty times through `.
 22 minor collections pausing 38.5 ms in all and 8 full ones pausing 14.7 ms, 3.4 ms the longest of either; 13.1 MB live
 at the end in 28.5 MB of lines, 2.2 to one; 241 MB the most in blocks. With the 8 MB nursery it had 184 minor
 collections pausing 166 ms and 2 full ones, in 121 MB.
+
+## 18. Stack maps (2026-11-05)
+
+The arm64 backend on the collector of [collector.md](collector.md) step 5 against §17's step 4: each frame of native
+code scanned by the map of its call, the words live across it and no others ([arm64.md](arm64.md) §3.13), and dead
+values' slots no longer cleared.
+
+### 18.1. How they were taken
+
+As §17.1, `--backend arm64` alone (the change is the arm64 backend's and the collector's stack scan; C's code and its
+frames, scanned whole, are as they were), by `./quest` from the working tree that became step 5's commit (ABI 72), after
+`tools/check` had passed on it. The machine was idle (load averages 1.7 to 2.1). The times are in
+`benchmarks/mlton/baselines/2026-11-05/quest-arm64-step5.jsonl`.
+
+### 18.2. Programs
+
+The ratio of step 5's time to step 4's through arm64, for the programs at 0.98 or under and at 1.03 or over by
+processor time:
+
+| Benchmark | step 4 (s) | step 5 (s) | step 5 / step 4, wall | step 4, CPU (s) | step 5, CPU (s) | step 5 / step 4, CPU |
+|---|--:|--:|--:|--:|--:|--:|
+| zebra | 25.04 | 20.44 | 0.82 | 24.71 | 20.12 | 0.81 |
+| mpuz | 8.39 | 7.62 | 0.91 | 8.14 | 7.37 | 0.91 |
+| barnes-hut | 9.80 | 9.41 | 0.96 | 9.52 | 9.14 | 0.96 |
+| life | 8.87 | 8.65 | 0.98 | 8.61 | 8.40 | 0.98 |
+| hamlet | 7.64 | 7.48 | 0.98 | 7.37 | 7.19 | 0.98 |
+| wc-scanStream | 85.29 | 83.50 | 0.98 | 84.94 | 83.15 | 0.98 |
+| fft | 5.46 | 5.38 | 0.98 | 5.20 | 5.12 | 0.98 |
+| tailfib | 2.25 | 2.47 | 1.10 | 1.99 | 2.22 | 1.11 |
+| psdes-random | 16.42 | 19.98 | 1.22 | 16.16 | 19.72 | 1.22 |
+| **geometric mean** (46) | | | **1.00** | | | **1.00** |
+
+- **Level with step 4:** the geometric mean over the 46 is 1.00 by either time, and the 37 programs not shown are within
+  0.99 to 1.02. The maps cost a running program nothing, being read only at a collection, and what the backend no longer
+  does, clearing a dead value's slot, was a store in a few loops: mpuz, a fifth of whose `assign` samples were those
+  stores (arm64-performance-review.md §4), takes 0.91 of its time. zebra's 0.82 is step 4's run at the slower of its two
+  speeds (§17.2). tailfib's 1.11 is two seconds of a loop whose code is the same, twelve bytes further on (the three
+  instructions that register the frame table come before it in the unit): built by both compilers and run twice each, it
+  took 2.96 and 2.99 s against 3.04 and 3.22.
+
+- **psdes-random's 1.22 is a pair of stores.** The same binary takes 19.8 to 20.2 s run after run, and step 4's
+  compiler's code for it 16.1 s against the same runtime, so it is the code. With the object's own address the base of
+  both of a tuple's stores (collector.md step 5: the allocation's base is no longer a pointer), the backend's pairing
+  merges them into one `stp`, where step 4 had two stores from two bases, and the loop that follows loads one of the two
+  words alone, which the processor does not forward from a pair's store. ssa.md §4.1 records the same hazard from the
+  loads' side, on the same program. The pairing is the commit after this one's to fix.
+
+### 18.3. The compiler's own build
+
+The compiler built by the arm64 backend (`./quest compile --backend arm64 questlang/driver/main.quest`), building the
+driver in one process (`-j 1`) under `QUEST_GC_STATS=1`: step 4's, step 5's, and step 5's with the tables unread
+(`QUEST_GC_MAPS=0`), which scans every frame whole and has no clears either:
+
+| Compiler | Wall (s) | Live at most (MB) | Largest resident set (GB) |
+|---|--:|--:|--:|
+| Step 4's | 70.0 | 1,083 | 2.87 |
+| Step 5's | 70.4, 69.7 | 1,063, 1,061 | 2.85, 2.84 |
+| Step 5's, tables unread | 69.7, 69.7 | 1,145, 1,136 | 2.90, 2.88 |
+
+- **The live data is 2 percent less than with step 4's clears, and 7 percent less than whole frames without them,**
+  which is what the maps are worth to this program's memory: its frames held few dead pointers once step 4's backend
+  cleared the slots, and the maps do a little better than the clears did (a dead register's saved copy and a slot dead
+  across this call but stored later are skipped too). The time is the same. Each run scans about 8,400 frames by their
+  tables and 3,450 whole (the runtime's and the collector's own, and the functions that enter a `try`), 16 and 6 a
+  collection.
+
+- **The tables are 822 KB, 13 percent of the code's size,** in `__TEXT,__const` (2.10 MB to 2.92 MB), and the code is
+  125 KB smaller without the clears (6.47 MB to 6.35 MB), so the binary grows 3.5 percent (21.5 MB to 22.3 MB). Nothing
+  reads the tables until a collection walks a frame of their unit.

@@ -3,9 +3,10 @@ against the assembler: a self-hosted driver compiles the run goldens' programs
 with --backend arm64 into one build directory (or prints the assembly of one
 that declares modules), with QUEST_CHECK_ENCODING=1, so that each unit's
 assembly ends with the encoder's code and data for it, as comments. clang -c assembles each unit, and the encoder's words must be the
-object's __text, its functions where the object's symbols put them, and its
-data the bytes of the object's data symbols; a relocated field is compared
-apart from its immediate, and the relocations by offset, kind, and symbol.
+object's __text, its functions where the object's symbols put them, its
+data the bytes of the object's data symbols, and its frame table the object's
+qr_frames; a relocated field is compared apart from its immediate, and the
+relocations by offset, kind, and symbol.
 run_tests.py --self-hosted runs it (docs/testing.md).
 
     python tests/self-hosted/encoder.py DRIVER
@@ -161,6 +162,35 @@ def check_unit(assembly: Path, scratch: Path) -> list[str]:
             mine[o:o + 8] = bytes(8)
         if actual != mine:
             fail(f"datum {item[1]} is {bytes(mine).hex()}, the object's {bytes(actual).hex()}")
+    # The frame table (docs/arm64.md section 3.13): the encoder's words are the object's qr_frames, but for the
+    # first function's address, which the loader sets, and each listed function's, which the linker does; the
+    # encoder's offset for each such function is where the object's symbols put it
+    for item in lines:
+        if item[0] != "frames":
+            continue
+        table = [int(word, 16) for word in item[1:]]
+        if "_qr_frames" not in macho.symbols:
+            fail("the frame table is not in the object")
+            continue
+        nsect, value = macho.symbols["_qr_frames"]
+        addr, contents, relocs = macho.sections[macho.section_numbers[nsect]]
+        start = value - addr
+        actual = contents[start:start + 4 * len(table)].ljust(4 * len(table), b"\0")
+        count = table[1]
+        # (the first function's distance from itself is a constant, 0, which the assembler writes)
+        linked = ({0} if count else set()) | {8 + 8 * k for k in range(count) if table[2 + 2 * k] != 0}
+        theirs = {a - start for a, _, _ in relocs if start <= a < start + 4 * len(table)}
+        if theirs != linked:
+            fail(f"the frame table's relocations are at {sorted(theirs)}, its functions at {sorted(linked)}")
+        for at, rtype, symbol in relocs:
+            if rtype == 0 and at - start in linked and at - start >= 8 and symbol in macho.symbols:
+                offset = macho.symbols[symbol][1] - text_addr
+                if table[(at - start) // 4] != offset:
+                    fail(f"the frame table has {strip(symbol)} at {table[(at - start) // 4]}, the object at {offset}")
+        for k, word in enumerate(table):
+            if 4 * k not in linked and struct.unpack_from("<I", actual, 4 * k)[0] != word:
+                fail(f"the frame table's word {k} is {word:08x}, the object's "
+                     f"{struct.unpack_from('<I', actual, 4 * k)[0]:08x}")
     return problems
 
 

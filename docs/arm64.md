@@ -323,18 +323,13 @@ the SSA's values, and it reads no register's name: a target (`codegen/target`) g
 - **Rematerialization** is of an instruction that reads no virtual register: a constant, a symbol's address, or an
   address in the frame.
 - **The frame** is the outgoing arguments' area, the stack slots, then a slot for each register stored in memory.
-- **Dead values' slots cleared** (2026-11-01, arm64-performance-review.md §3.2). The collector scans frames
-  conservatively, so a slot that still holds a dead value's pointer keeps what it points to alive: in mlyacc, whose
-  whole program is `main`, hundreds of them did. Where a value with a slot dies (after the instruction that last reads
-  it, or at the start of a branch's target it is not live into), `rewrite` stores zero to its slot, if a call, where a
-  collection can happen, may follow before the function returns, and if the target's `Lowering` says the value may
-  be a pointer: arm64 clears integers' and pointers' slots, not Reals', and none in a function that enters a `try`,
-  whose handler reloads from slots what liveness in the try's body does not see it use. A value that dies as a jump's
-  argument is cleared after the edge's moves, unless it is one of the target's own parameters (a loop's invariant
-  passed back to its header), which the edge has just stored again (fixed 2026-11-01: the jump's own target was not
-  counted among the places a call may follow, so no value dying at a jump was cleared).
-  Nothing is cleared in a cold block, from which every path raises (arm64-performance-review.md §3.3): the raise
-  ends the function soon after.
+- **Dead values' slots are left as they are** (2026-11-05; they were cleared from 2026-11-01,
+  arm64-performance-review.md §3.2). While the collector scanned frames whole, a slot that still held a dead value's
+  pointer kept what it pointed to alive (in mlyacc, whose whole program is `main`, hundreds of them did), so
+  `rewrite` stored zero to a slot where its value died, if a call might follow and the target's `Lowering` said the
+  value might be a pointer. A collection now scans, of a frame, the slots its call's map says are live (§3.13), so a
+  dead pointer keeps nothing, and arm64's `Lowering` asks for no clears; `rewrite` still makes them for a target that
+  asks (the allocator's test target does).
 - **A value never read is never stored** (2026-11-01). Its piece may be in memory, a loop header's parameter that
   only the back edge defines when the header has more parameters than registers, say; but nothing would read its slot,
   and since it dies at no read, nothing would clear it, so the back edge stored a dead pointer each time round, as in
@@ -343,8 +338,9 @@ the SSA's values, and it reads no register's name: a target (`codegen/target`) g
   gives values of one kind (for arm64, one SSA type: `int`, `ptr`, `val`, or `real`) one slot where their lifetimes,
   from first position to last, do not overlap, so a frame holds the most values in memory at once rather than every
   one ever there. A lifetime is stretched over the two places `rewrite` writes a slot outside it: a parameter's on
-  each jump into its block, and a clear after its value dies. A function that enters a `try` keeps a slot for each
-  value, for the clears' reason.
+  each jump into its block, and a clear after its value dies, where the target asks for clears. A function that
+  enters a `try` keeps a slot for each value: its handler reloads from slots what liveness in the try's body does
+  not see it use.
 - **A block a raise enters,** beside its `try`, which jumps to the handler, has every register dead at its start;
   the handler may then have what it uses in registers, loaded by that jump's moves.
 
@@ -439,25 +435,57 @@ jump tables yet; they will need the same care.
 
 ### 3.13. The collector
 
-The collector scans the stack and registers conservatively ([collector.md](collector.md) §3.3, until its step 5), so
-native code needs no stack maps. It does need:
+The collector scans a frame of native code by its **map** ([collector.md](collector.md) §3.3 and §8, step 5): the
+words live across the call the frame is in, and no others. What that asks of the backend:
 
-- no pointer held only in a floating-point register, or in a spill slot the collector cannot see;
-- no derived pointer outside its object while the object is live only through it (a pointer to one past an array,
-  kept as a loop's end). Nothing in the backend makes one; optimizations must not;
-- interior pointers to be recognized, as for C now (a proxy is its original's address plus one).
+- every value live across a call is in a callee-saved register or in a slot of the frame, and the map says which:
+  the allocator keeps no value in a caller-saved register across a call, a value with a piece in memory is stored to
+  its slot where it is defined, and a rematerialized value has neither (it is a constant, or an address that is not
+  the heap's);
+- no pointer held only in a floating-point register;
+- no derived pointer outside its object while the object is live only through it. A pointer into an object, or to
+  its end (an empty array's elements), is found by the collector's start bits; nothing in the backend makes one
+  further out, and optimizations must not.
 
-The SSA's `ptr` type costs little and keeps stack maps, and so a precise or moving collector, possible later. What
-such a collector needs, precisely: at each call, every live pointer, so every value live across a call is either in a
-callee-saved register, whose class the allocation knows from the value's SSA type, or in a frame slot whose class is
-that type, which no value of another type shares; and a word that may or may not be a pointer is resolved through its
-type descriptor. So the allocator keeps a value's type through allocation (each interval is one value's); a value in
-memory has a slot at a fixed offset (rematerialized ones have none: they hold no pointer the collector must see, or
-one to static data), shared only with values of its type whose lifetimes do not overlap (§3.8); a derived pointer is
-a `ptr` throughout (`ptrAdd`); and a `QVal` word is a `val` ([ssa.md](ssa.md) §1). `codegen.frameSlots` returns each
-slot of a function's frame with its offset, its size, and its class, a value's SSA type or, for a stack slot,
-memory, whose words nothing describes yet; `questlang/arm64_frames` prints them for functions that spill pointers,
-integers, reals, and `val`s across a call. Nothing emits stack maps.
+**A call's map** gives each live value by its SSA type ([ssa.md](ssa.md) §1): a `ptr` is a pointer; a `val` is an
+ambiguous word, since its descriptor, not its type, says whether it is a pointer; an `int` is an ambiguous word
+too, since `ptrToInt` puts a pointer's bits in one, which may outlive the pointer (a proxy's test); a `real` is
+left out. The collector marks a pointer's object and validates an ambiguous word first, so an integer that is not
+an address costs a range test. A value with a slot is taken from the slot, which holds it wherever it is live, and
+one without from its callee-saved register. `codegen.callMaps` computes the maps from the allocation by a backward
+walk of each block from its live-out set; a live value found in any other register is an error of the allocator's,
+which the walk reports rather than leave to a collection.
+
+**The frame table** is what a unit gives the collector: for each function with mapped calls, the words from `sp` to
+its frame record, the pairs of callee-saved registers its prologue saves (§3.10), the words at `sp` that nothing
+describes (the outgoing arguments' area and the stack slots, where escape analysis puts aggregates, ssa.md §4.2:
+scanned as ambiguous words), and for each call its return address, in instructions from the function's start, with
+its map. `runtime/quest_gc.c` has the bytes' form. The return addresses come from labels put after the calls, which
+keep their places through pairing and branch relaxation and are then dropped; each instruction is four bytes, as
+the encoder relies on too. The table is the unit's `qr_frames`, in `__TEXT,__const`: the SSA's builder makes a
+placeholder of that name, an empty table, and the call that registers it (`quest_register_frames`) in the unit's
+`qr_register_dicts`, and the backend writes the table in the placeholder's place, so `ssac`, which prints the
+placeholder, registers nothing. Addresses in it are differences (the first function's from the table, each listed
+function's from the first), which the linker resolves, so the table needs no fixing up when the program starts. The
+JIT's loader puts a unit's table in the code's region, sets its first word, and the unit registers it the same way
+([jit.md](jit.md) §3.6).
+
+**A function that enters a `try` has no maps,** and is not listed: its handler reloads from slots what liveness in
+the try's body does not see it use, so its frame is scanned whole, as C's frames are.
+
+**The collector's walk** follows the frame records from its own frame (every function that calls keeps one). A
+record's return address names the call its caller is in: if a table lists it, the caller's frame is scanned by the
+map, and otherwise whole. A callee-saved register live across a mapped call is where the youngest frame after it
+saved it, which the walk knows while every frame since is mapped, their prologues being described; past a frame
+that is not, the places known so far are scanned as ambiguous words, and that frame whole, so a register's value is
+always seen, and seen as what its owner says when the frames between are mapped. A register no mapped frame has
+live is not scanned where a mapped frame saved it. `QUEST_GC_MAPS=0` scans every frame whole, and `QUEST_GC_STATS`
+counts the frames scanned each way.
+
+`codegen.frameSlots` returns each slot of a function's frame with its offset, its size, and its class, and
+`codegen.frameMaps` the frame and each call's map as text; `questlang/arm64_frames` prints both for functions that
+spill pointers, integers, reals, and `val`s across a call. `QUEST_LIVE_SLOTS=1` names what is live across each call
+in the assembly ([profiling.md](profiling.md) §6).
 
 ### 3.14. The SSA-to-C printer
 

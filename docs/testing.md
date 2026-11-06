@@ -232,8 +232,8 @@ across backends and directories, be the digest of the units' `.qi` files, ignore
 change with an exported type and with a manifest type an interface imports. `self-hosted/encoder`
 (`tests/self-hosted/encoder.py`) compiles the run goldens' programs with `--backend arm64` and
 `QUEST_CHECK_ENCODING=1`, which appends the encoder's code and data to each unit's assembly as comments
-([jit.md](jit.md) §3.5): `clang -c` assembles each unit, and the encoder's words, function offsets, data, and
-relocations must be the object's, relocated fields apart. `self-hosted/jit_hosts` (`tests/self-hosted/jit_hosts.py`)
+([jit.md](jit.md) §3.5): `clang -c` assembles each unit, and the encoder's words, function offsets, data, frame
+table ([arm64.md](arm64.md) §3.13), and relocations must be the object's, relocated fields apart. `self-hosted/jit_hosts` (`tests/self-hosted/jit_hosts.py`)
 checks the JIT's imports ([jit.md](jit.md) §3.3, §3.4): with a copy of `lib/` as `QUEST_HOME`, an import is refused
 when the copy changes the module's interface and not otherwise; inputs importing the user's own modules, one
 importing another, show what the interpreter shows;

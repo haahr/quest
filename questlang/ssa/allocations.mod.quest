@@ -156,10 +156,16 @@ export
             let moved = ssa.block(f rest)
             let baseParam = ssa.newValue(f ssa.typeInt)
             vector.append(:Int moved.params baseParam)
-            let basePtr = unary(rest ssa.opIntToPtr baseParam ssa.typePtr)
-            store(rest basePtr layout 8)
-            put(rest ssa.instruction(ssa.opPtrAdd array of basePtr constant(rest 8) end array of obj end 0 "" 0 false
-                ssa.emptySignature))
+            (* The address the bump gives, the header word's, stays an int:
+             * the object's own is the first ptr, and the header is stored
+             * through it. A ptr at the header would be live wherever the
+             * object is used (selection folds the object's offsets into
+             * it), and the collector takes a ptr in a frame for the object
+             * it is at, inside, or at the end of (docs/arm64.md section
+             * 3.13): the one before this one *)
+            put(rest ssa.instruction(ssa.opIntToPtr array of binary(rest ssa.opAdd baseParam constant(rest 8)) end
+                array of obj end 0 "" 0 false ssa.emptySignature))
+            put(rest ssa.instruction(ssa.opStore array of obj layout end none ~8 "" 8 false ssa.emptySignature))
             let low = loadWord(rest address(rest "quest_gc_heap_lo" 0) ssa.typeInt)
             let bits = loadWord(rest address(rest "quest_gc_start_bits" 0) ssa.typePtr)
             let index = binary(rest ssa.opLshr binary(rest ssa.opSub unary(rest ssa.opPtrToInt obj ssa.typeInt) low)

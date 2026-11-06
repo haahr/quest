@@ -289,8 +289,11 @@ internal error.
   of the object's space (`quest_gc_cursor`, `quest_gc_limit`; the noscan space's for a layout of scalars alone,
   read from the unit's layout data) and branches, when a checking mode is on or the hole has no room, to a block
   that calls `quest_gc_alloc_slow`, else to one that bumps the cursor; both jump to the rest of the block with the
-  allocation's base, which stores the header word (the layout's address), makes the object (`ptrAdd` 8, the call's
-  result), and sets the object's start bit in `quest_gc_start_bits`. `QUEST_SKIP_PASSES=inlineAllocation` leaves
+  allocation's base, an `int`, which makes the object (`intToPtr` of the base plus 8, the call's result), stores the
+  header word (the layout's address) through it at -8, and sets the object's start bit in `quest_gc_start_bits`. The
+  base is never a `ptr`: selection folds the object's offsets into whatever pointer they come from, so a `ptr` at
+  the header would be the value live across later calls, and the collector takes a `ptr` in a frame for the object
+  it is at, inside, or at the end of, which for the header's address is the object before (arm64.md §3.13). `QUEST_SKIP_PASSES=inlineAllocation` leaves
   the calls, which `quest_inline.o`'s definition of `quest_alloc` serves, for measuring the inline path
   (docs/collector.md step 3). The questlang test `ssa_allocations` shows functions before and after.
 
@@ -427,6 +430,21 @@ distinct; that returns and tail calls give the function's results; that each blo
 `try`'s handler has the `try`'s block as its only predecessor and no parameters; and that slots and blocks referred
 to exist. The questlang test `ssa_verify` builds well-formed and malformed functions by hand and checks the problems
 it reports.
+
+**The barrier check** (`ssa/barriers`) runs with the verifier. The collector's generations need a write barrier
+after every store of a pointer into an object a collection may have seen, before the next call that may collect
+([collector.md](collector.md) §3.5), and the builder emits them so (§4): a store's barrier follows it, and an object
+still being initialized when a call intervenes is logged before each later call and after its last store. The
+check holds the passes to that, by a forward dataflow over each function with stores: the allocations still young
+(a `quest_alloc`'s result, until a call that may collect: a function's of the program, or a runtime function's that
+allocates), met by intersection, and the stores owed a barrier, met by union. A store of a `ptr` or a `val` that is
+not a symbol's address or null, at an address that comes (through `ptrAdd` and `copy`) from a value that is neither
+young nor a slot's, a symbol's, or a thread-local's address, is owed one; the object's barrier on that value
+answers every store into it, the slot's the stores at its address; and a store still owed at a call that may
+collect, a return, or a tail call is a problem, reported with its block and instruction. A missed barrier otherwise
+shows only when a collection falls between the store and the next barrier, which the `stress` mode makes likely
+and this makes certain, at compile time, for every function compiled. The questlang test `ssa_barriers` checks the
+problems it reports on functions built by hand.
 
 ## 8. The C Printer
 

@@ -16,6 +16,7 @@ import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/codegen/arm64/minst : questlang/codegen/arm64/Minst
     collections/vector : collections/Vector
+    util/maybe : util/Maybe
 export
     (* What an instruction's or a data word's relocation fills in: a bl's or
      * b's target (branch26); adrp's page, and the offset in it of an add or a
@@ -39,9 +40,19 @@ export
      * it *)
     Def Line = Tuple offset: Int file: Int line: Int column: Int end
 
+    (* A unit's frame table before its addresses are known (docs/arm64.md
+     * section 3.13; runtime/quest_gc.c has the form): the functions it
+     * lists, in the order of their code, each by its index in the unit and
+     * where its description starts in descriptions, the descriptions' bytes *)
+    Def Listed = Tuple index: Int description: Int end
+    Def Frames = Tuple listed: Array(Listed) descriptions: Array(Int) end
+
     (* A unit encoded: its code as 32-bit words, its data as bytes, each
-     * datum aligned to 8 bytes as asm places it, and its code's positions,
-     * in the absolute paths of its source files (ssa.Unit.files) *)
+     * datum aligned to 8 bytes as asm places it, its code's positions, in
+     * the absolute paths of its source files (ssa.Unit.files), and its frame
+     * table as 32-bit words (none if it has none), which the loader puts
+     * within 2 GB of the code and whose first word it sets to the code's
+     * address less the table's *)
     Def Encoded = Tuple
         code: Array(Int)
         codeRelocs: Array(Reloc)
@@ -51,6 +62,7 @@ export
         dataSymbols: Array(Symbol)
         lines: Array(Line)
         files: Array(String)
+        frames: Array(Int)
     end
 
     (* What cannot be encoded, naming it *)
@@ -65,11 +77,11 @@ export
     word(op: minst.Op regs: Array(Int) at: Int labelOffset: All(label: String) Int
         localFunction: All(symbol: String) Int relocs: vector.T(Reloc)): Int
 
-    unit(functions: Array(Function) data: Array(ssa.Data) files: Array(String)): Encoded
+    unit(functions: Array(Function) data: Array(ssa.Data) files: Array(String) frames: maybe.T(Frames)): Encoded
 
     (* An Encoded as text, one item a line, for the encoder's check
      * (tests/self-hosted/encoder.py): "code OFFSET WORD", "reloc SECTION
      * OFFSET KIND SYMBOL ADDEND", "function NAME OFFSET SIZE", "data NAME
-     * OFFSET BYTES" (words and bytes in hexadecimal) *)
+     * OFFSET BYTES", "frames WORDS" (words and bytes in hexadecimal) *)
     describe(e: Encoded): Array(String)
 end

@@ -90,6 +90,35 @@ export
             vector.toArray(:String lines)
         end
 
+    Let FrameFunction = Tuple symbol: String description: Int end
+    let frames(name: String first: String listed: Array(FrameFunction) descriptions: Array(Int)): Array(String) =
+        begin
+            let lines = vector.new(:String)
+            let n = extent listed
+            vector.append(:String lines ".section __TEXT,__const")
+            vector.append(:String lines ".p2align 2")
+            vector.append(:String lines symbol(name) <> ":")
+            vector.append(:String lines
+                if n > 0 then ".long " <> symbol(first) <> "-" <> symbol(name) else ".long 0" end)
+            vector.append(:String lines ".long " <> conv.int(n))
+            for k = 0 upto {n - 1} do
+                vector.append(:String lines ".long " <> symbol(listed[k].symbol) <> "-" <> symbol(first))
+                vector.append(:String lines ".long " <> conv.int({8 + {8 * n}} + listed[k].description))
+            end
+            let var at = 0
+            while at < extent descriptions do
+                let row = vector.new(:String)
+                let var k = at
+                while {k < extent descriptions} andif {k < {at + 16}} do
+                    vector.append(:String row conv.int(descriptions[k]))
+                    k := k + 1
+                end
+                vector.append(:String lines ".byte " <> strutil.join(", " row))
+                at := at + 16
+            end
+            vector.toArray(:String lines)
+        end
+
     let unitStart = array of ".section __TEXT,__text,regular,pure_instructions" end
     let unitEnd = array of ".subsections_via_symbols" end
 

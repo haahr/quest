@@ -8,7 +8,7 @@ samples in half the programs), and it keeps dead data alive through stale stack 
 §3.2). This document designs a collector of Quest's own: precise where the compilers can make it so, generational,
 bump-allocating, able to move but not obliged to, and asks what must change to get there.
 
-**Status: step 4 done, 2026-11-05** (decided 2026-11-02; reviewed and reorganized 2026-11-03). Section 6
+**Status: step 5 done, 2026-11-05** (decided 2026-11-02; reviewed and reorganized 2026-11-03). Section 6
 records the decisions, section 7 the risks and the checking modes that catch them, section 8 the steps, and section
 9 what the reviews changed. The committed collector is steps 1 to 6 of §8; evacuation and generic layouts (steps 7
 and 8) are designed and taken only on measurement.
@@ -194,9 +194,10 @@ Three classes of word, decided when the code is compiled:
    An `Int` that happens to look like a heap address keeps an object alive, as under Boehm today; it is never
    corrupted. Only a live object validates (§3.6), so the precise words of what an ambiguous word reaches are
    current, and the marker may trust them.
-3. **Roots:** the stack and registers (conservative in both backends, as now, saving the registers to the stack
-   first), the per-unit root tables of §3.8 (precise), the runtime's statics (precise, listed), and the JIT's data
-   regions (ambiguous).
+3. **Roots:** the stack and registers (the registers saved to the stack first; a frame of arm64 code by its map,
+   the words live across its call, a `ptr` precise and an `int` or a `val` ambiguous, since step 5; every other
+   frame conservatively, as now), the per-unit root tables of §3.8 (precise), the runtime's statics (precise,
+   listed), and the JIT's data regions (ambiguous).
 
 So the heap is precise wherever the compiler knows, and nothing is less safe than under Boehm. What ambiguity costs
 the committed collector is a validation per ambiguous word and the false retention Boehm has today, both small. What
@@ -373,8 +374,9 @@ stable, would work too and is not needed.
 - **The JIT:** its data regions are ambiguous roots, registered as `GC_add_roots` registers them now; its inputs'
   module records are reached through them, which is right (their addresses are in JIT code's GOT).
 - **Thread-locals** (`quest_current_exception`, the handler chain) are listed roots.
-- **The stack:** conservative in both backends to begin with; the arm64 backend's maps later (§3.3). The frame walk
-  is the one exceptions use.
+- **The stack:** conservative in both backends to begin with; by the arm64 backend's maps since step 5 (§3.3;
+  arm64.md §3.13 has the maps, the frame table, and the walk of the frame records, which are those exceptions'
+  tracebacks follow).
 
 ### 3.9. Large and pointer-free objects
 
@@ -907,6 +909,37 @@ taken on what 4 and 7 measure; 9 is optional.
    not anything ever moves. Nothing of the kind for code compiled through C. *Done when:* the suites pass through
    the arm64 backend and the JIT under `layouts,roots,barriers`, and the live data on the compiler's build is
    recorded against step 4.
+   *Done 2026-11-05.* Each unit compiled by the arm64 backend, and each the JIT loads, registers a frame table
+   (`qr_frames`, arm64.md §3.13): per function the words from `sp` to its frame record, the pairs of callee-saved
+   registers it saves, and the words at `sp` that nothing describes, and per call the return address with a map of the
+   callee-saved registers and frame words live across it, a `ptr` as a pointer and an `int` or a `val` as an ambiguous
+   word (`ptrToInt` puts a pointer's bits in an `int`, which may outlive the pointer). `quest_gc_scan_stack` walks the
+   frame records from its own: a caller whose call a table lists is scanned by the map, every other frame whole; a
+   callee-saved register live across a mapped call is read where the youngest frame after it saved it, known while every
+   frame since is mapped, and past an unmapped frame the places known so far are scanned as ambiguous words and
+   forgotten. A function that enters a `try` has no maps, since its handler reads slots where liveness does not see it.
+   The backend no longer clears dead values' slots, which the maps make harmless (arm64-performance-review.md §3.2). The
+   table is in `__TEXT,__const`, its addresses differences the linker resolves, so it costs nothing at startup; the
+   SSA's builder makes a placeholder and the registering call, and the backend writes the table in the placeholder's
+   place, so ssac registers an empty one. Learned: the stress tier's arm64 suite, on its first run under the maps,
+   failed one test of 275 with a freed object in use. The inline allocation sequence kept the bump's address, the header
+   word's, as a `ptr` and made the object from it by `ptrAdd`; selection folds the object's offsets into the pointer
+   they come from, so the value live across later calls pointed one word before its object, which a precise scan takes
+   for the end of the object before (the conservative scan had taken it for both). The base is an `int` now and the
+   object's address the first `ptr`, and arm64.md §3.13 states what a `ptr` in a frame may point at. The static check
+   promised with this step is `ssa/barriers` (ssa.md §7): after the pipeline it holds every function to step 4's rule,
+   that a store of a pointer into an object a collection may have seen is followed by its barrier before the next call
+   that may collect, by a forward dataflow over the young allocations and the stores owed a barrier. It covers a `ptr`
+   and a `val` made from one; a `val` of unknown kind is the builder's to judge, since the SSA has not the type that
+   says. On the compiler's whole source it reports nothing (its first run reported 65 stores, all of one shape, a
+   barrier that is its function's tail call, which it now reads). The maps themselves have no check of their own but
+   `stress` with `poison`, which found the fault above at its first collection; a live value in a caller-saved register
+   across a call is refused when the maps are computed. Measured ([benchmarks.md](benchmarks.md) §18): through arm64 the
+   suite is level with step 4 (geometric mean 1.00), mpuz at 0.91 without the clears and psdes-random at 1.22 by a pair
+   of stores the object's base now lets the backend merge, which the loop after reads half of (the next commit's to
+   fix); the compiler built by arm64 and building itself keeps 1,062 MB live at most against step 4's 1,083 (0.98) and
+   1,140 with the tables unread (0.93), in the same time; the tables are 822 KB, 13 percent of the code, and the code
+   125 KB smaller without the clears.
 6. **Incremental marking** (§3.10): the initial pause; every allocation through the slow path for the cycle, born old
    and logged; the slices paced by allocation and draining the log; minor collections suspended for the cycle; the
    budgeted final pause with its retries; `incremental`. *Done when:* the suites pass under `incremental,poison`, and
