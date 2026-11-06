@@ -2019,3 +2019,92 @@ The compiler's driver, built through C from an empty build directory, twice each
 and 67.73 s after (3.2 percent longer), from §20.1's steps 2, 3, and 5 inlining more. A whole program's own build takes
 less time than before (through arm64, wc-scanStream 0.7 s to 0.3 s, ratio-regions 1.1 to 0.7), its unreachable
 members no longer compiled.
+
+## 21. The C and arm64 backends, for programs and for the compiler (2026-11-06)
+
+Whether arm64 should become the default backend (decided as C in [arm64.md](arm64.md) §1, from §5): the compiler as
+each backend builds it, and the suite through C at the tip, beside §20.3's suite through arm64. Each phase began after
+three minutes with the load average below 5, at `9d3b08d6` (§20's code; no compiler change since `eb7a20e2`).
+
+The data are in `benchmarks/mlton/baselines/2026-11-06/`: the script (`compiler-timings.sh`), `/usr/bin/time -l` of the
+stage 2 builds (`compiler-stage2-c-9d3b08d6.txt`, `compiler-stage2-arm64-9d3b08d6.txt`) and of the driver builds
+(`compiler-driver-c-built-9d3b08d6.txt`, `compiler-driver-arm64-built-9d3b08d6.txt`), and the suite through C
+(`quest-c-whole-9d3b08d6.jsonl`); the suite through arm64 is §20.3's `quest-arm64-whole-eb7a20e2.jsonl`.
+
+### 21.1. Building the compiler
+
+Stage 1 (the release's) compiling the driver with `-j 8 --backend c` or `--backend arm64` into an empty build
+directory, twice each, alternating:
+
+| Backend | Wall | User | Maximum resident |
+|---|--:|--:|--:|
+| C | 26.62, 27.73 s | 116.3, 121.0 s | 1.39, 1.52 GB |
+| arm64 | 22.47, 24.10 s | 96.7, 98.2 s | 1.27, 1.25 GB |
+
+arm64 takes 0.86 of C's time, having no clang to run.
+
+### 21.2. The compiler each backend builds
+
+Each stage 2 compiling the driver (output through C) from an empty build directory, three rounds alternating
+between the compilers and between `-j 8` and `-j 1`. The third round was slower for both, the machine likely busier,
+but the ratio held:
+
+| | C-built | arm64-built | arm64 / C (means) |
+|---|--:|--:|--:|
+| `-j 8` wall | 23.76, 23.72, 27.74 s | 26.39, 26.64, 30.55 s | 1.11 |
+| `-j 1` wall | 73.80, 72.52, 75.60 s | 77.56, 77.44, 79.63 s | 1.06 |
+| `-j 1` user | 67.21, 66.56, 68.78 s | 71.39, 71.42, 73.30 s | 1.06 |
+| `-j 1` maximum resident | 3.11 GB | 3.13 GB | 1.01 |
+
+On 2026-10-30 (§5.1) the arm64-built compiler took 1.58 to 2.24 times as long; now 1.06 to 1.11. The times include
+clang compiling the driver's C, the same for both, so the compilers' own ratio is somewhat higher; it was not
+separated. Where the rest goes is not profiled; the suite's call-bound programs (§21.3) suggest calls.
+
+### 21.3. Programs
+
+The suite, whole program, `--scale 0.25`, arm64 against C, geometric means over the 46 programs: **1.045** wall,
+1.169 processor. Without fib, tak, tailfib, and even-odd, which clang turns into loops (3.0 to 9.3 times as long
+through arm64; tailfib's processor time 492 times, clang leaving almost nothing): **0.884** wall, 0.891 processor,
+arm64 faster on 30 of the 42.
+
+| Program | arm64 / C | Program | arm64 / C | Program | arm64 / C |
+|---|--:|---|--:|---|--:|
+| imp-for | 0.47 | matrix-multiply | 0.86 | tsp | 1.01 |
+| wc-scanStream | 0.49 | lexgen | 0.87 | mandelbrot | 1.02 |
+| tensor | 0.50 | tyan | 0.88 | fft | 1.07 |
+| checksum | 0.59 | hamlet | 0.89 | ratio-regions | 1.09 |
+| tailmerge | 0.59 | boyer | 0.92 | zern | 1.09 |
+| string-concat | 0.63 | barnes-hut | 0.97 | md5 | 1.12 |
+| psdes-random | 0.64 | output1 | 0.97 | peek | 1.15 |
+| logic | 0.71 | life | 0.97 | pidigits | 1.31 |
+| knuth-bendix | 0.72 | raytrace | 0.97 | smith-normal-form | 1.47 |
+| flat-array | 0.73 | vliw | 0.98 | vector64-concat | 1.52 |
+| zebra | 0.75 | nucleic | 0.98 | vector32-concat | 1.54 |
+| ray | 0.79 | vector-rev | 0.98 | even-odd | 3.03 |
+| mpuz | 0.80 | wc-input1 | 0.99 | fib | 6.54 |
+| mlyacc | 0.80 | simple | 0.99 | tak | 7.41 |
+| DLXSimulator | 0.82 | count-graphs | 1.00 | tailfib | 9.33 |
+| model-elimination | 0.86 |  |  |  |  |
+
+The arm64 run is §20.3's, earlier the same day; the C run is this section's.
+
+### 21.4. What follows
+
+The user leans to arm64 as the default for building the compiler as well as for programs (2026-11-06); nothing is
+switched yet, and arm64.md §1's decision stands until the checks below pass and the user decides. What is left:
+
+1. **Releases from an arm64-built stage 2.** `tools/release` runs `run_tests.py --self-hosting --seed ...`, which
+   builds stages 2 and 3 through C; it has no backend option. Give it one (passing `--stage-backend arm64`, which
+   `tools/check`'s `self-hosting-arm64` already uses with `--fixed-point-only`), run the full self-hosted suite with
+   that stage 2 (the JIT, REPL, and pty tests included, since the JIT then runs in an arm64-built host, jit.md §1),
+   record the backend in `release.json`, and check `--verify`, `--rollback`, and `--install` on such a release.
+2. **The stage caches.** `./quest` keeps C's stages in `.build/quest-stages` and another backend's in
+   `.build/quest-stages-BACKEND`, with `QUEST_BACKEND` defaulting to `c` (`quest`, line 21). Decide where the default's
+   stages live after the switch, and check that a tree whose cache was built by the old default rebuilds stage 2 rather
+   than reusing it (and see the ABI trap: a stale stage 2 after a codegen change).
+3. **The default for programs.** The driver's `--backend` defaults to C (`questlang/driver/main.quest`, its usage
+   text and its option's default). Survey the tests and goldens that run without a backend and so assume C, `-c`'s
+   outputs, `tools/check`'s choice of suites, and the bootstrap, which has no arm64 backend and stays C.
+4. **Documents:** arm64.md §1's decision, README.md, release-compiler.md, and roadmap.md where they name C as the
+   default.
+5. **Optional:** profile the arm64-built compiler compiling the driver for §21.2's 6 to 11 percent, likely calls.

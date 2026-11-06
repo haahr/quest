@@ -35,7 +35,8 @@ The code says **arm64** in directory, module, and option names; this document sa
 - **The default backend is C,** for programs, for building the compiler, and for releases, the user's decision from
   the measurements of [benchmarks.md](benchmarks.md) §5 (2026-10-30), which recommended it. No such decision is
   final: as arm64's code improves (§6), it becomes the more likely choice, and the question is reopened whenever
-  benchmarks.md records a significant change.
+  benchmarks.md records a significant change. Reopened by [benchmarks.md](benchmarks.md) §21 (2026-11-06): the user
+  leans to arm64 for both, pending the checks of §21.4.
 - **One SSA-based C backend in the end** (§5): the tree-walking C printer is a second, hand-written
   implementation of every operation's access sequence (§3.1), kept in agreement with the SSA's builder only by tests.
   Once the SSA's code is good enough, `ssac` replaces it as the self-hosted compiler's C backend, so that each
