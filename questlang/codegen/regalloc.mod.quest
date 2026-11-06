@@ -1093,15 +1093,22 @@ export
             (* Whether a call may come after a block's jth instruction, before
              * the function returns: in the block, or in a block it may go to
              * from there (the jth's own target among them, as for the jump that
-             * ends the block), to a fixed point *)
+             * ends the block, but not a branch's, whose values die on the path
+             * that falls through), to a fixed point. A cold block's call does
+             * not count: it raises, which ends the function soon, so a failed
+             * check's path clears nothing on its way to the raise *)
             let callIn = array of(nBlocks false)
             let callsAfter(b: Int j: Int): Bool =
                 begin
                     let insts = machine.block(f b).insts
                     let var found = false
+                    (* A branch's target is not on the path its values die
+                     * on, which falls through to what follows it *)
                     if j >= 0 then
                         let i = vector.get(:machine.Inst insts j)
-                        if {i.target >= 0} andif callIn[i.target] then found := true end
+                        if {i.target >= 0} andif callIn[i.target] andif not(machine.isKind(i machine.kindBranch)) then
+                            found := true
+                        end
                     end
                     for k = {j + 1} upto {vector.length(:machine.Inst insts) - 1} do
                         let i = vector.get(:machine.Inst insts k)
@@ -1115,7 +1122,7 @@ export
             while changed do
                 changed := false
                 for b = 0 upto {nBlocks - 1} do
-                    if not(callIn[b]) andif {a.blockStart[b] >= 0} andif callsAfter(b ~1) then
+                    if not(callIn[b]) andif {a.blockStart[b] >= 0} andif not(cold(b)) andif callsAfter(b ~1) then
                         callIn[b] := true
                         changed := true
                     end

@@ -173,6 +173,13 @@ every check that passes takes a branch over it.
 *Done when* `preflowPush`'s bounds checks branch away on failure with no clears on the way, and the arm64 suite
 passes.
 
+*Done* in the allocator alone (`regalloc`'s clears), `regalloc_scan` case 14, [arm64.md](arm64.md). The clears were not
+the raising block's (already none, since `5f74f6c4`) but the failing path's: a value that dies at a branch, on the path
+that falls through, was cleared when a call might follow on the branch's own target, the passing path. Counting only
+the path it dies on, and no cold block's call, leaves the failing path a lone jump to the raise, which the layout
+already folds into the branch: `b.hs` to the raise, falling through when the check passes. `preflowPush` has 33 clears
+rather than 1,541 and is 22% shorter; ratio-regions and life through arm64 are about 1% faster.
+
 ## 8. Measurement
 
 After each step, before the next:

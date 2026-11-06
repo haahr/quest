@@ -456,3 +456,24 @@ call(raisingCold cRaise);
 put(raisingCold cRaise machine.kindReturn "brk" none);
 ret(raisingCold cOn c0);
 showCold("the same block, cold" raisingCold fun(b: Int): Bool b is cRaise);
+
+(* 14. A value in memory that dies on a branch's fall-through: its slot is
+ * cleared there when a call follows on that path, and not when none does
+ * (the branch's own target calls, in both, which is not the path it dies on:
+ * case 13's first function shows the second) *)
+let fallsToCall = machine.newFunction(extent toy.registers);
+let f0 = entry(fallsToCall);
+let fOn = machine.newBlock(fallsToCall);
+let fCall = machine.newBlock(fallsToCall);
+let f1 = fresh(fallsToCall);
+let f2 = fresh(fallsToCall);
+add(fallsToCall 0 f1 f0 f0);
+call(fallsToCall 0);
+branch(fallsToCall 0 f1 fOn);
+jump(fallsToCall 0 fCall noArgs);
+add(fallsToCall fOn f2 f1 f0);
+call(fallsToCall fOn);
+ret(fallsToCall fOn f0);
+call(fallsToCall fCall);
+ret(fallsToCall fCall f0);
+show("a value dying on a fall-through followed by a call" fallsToCall);
