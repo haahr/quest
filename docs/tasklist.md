@@ -5,6 +5,32 @@ it, where to start, and when it is done. Remove a task when the work lands.
 
 ---
 
+## The self-hosted compiler loses the messages of errors in imported modules
+
+**Problem.** When a module that a program imports fails to compile, `./quest` reports the error at the module's first
+line with no message (`x.mod.quest:1:1: error:` and nothing after it), so its text, its location, and the "imported
+here" note are all lost. `./questboot` reports the same error in full, and `./quest` does too when given the module
+itself. It was met while writing the MLton-gap plan's passes, where a type error in an edited compiler module showed
+only as `simplify.mod.quest:1:1: error:`.
+
+**Reproduce.** In an empty directory, `x.int.quest` (`interface X export f(n: Int): Int end`), `x.mod.quest` (`module
+x : X export let f(n: Int): Int = n + true end`), and `p.quest` (`import x : X; x.f(1)`). `./quest --build-dir b
+p.quest` prints `x.mod.quest:1:1: error:` with an empty message; `./questboot --build-dir b2 p.quest` prints
+`x.mod.quest:3:30: error: Type mismatch: synthesized type 'Bool' is not a subtype of expected type 'Int'`, the line
+and caret, and `p.quest:1:10 ... note: imported here`; `./quest --build-dir b3 --stop-after typecheck x.mod.quest`
+prints the error in full.
+
+**Where to start.** The path an error takes out of an imported unit's compilation: `questlang/types/env.mod.quest`,
+which relocates it with `diagnostics.inFile` and `diagnostics.atImport` (around lines 298–333), and those functions in
+`questlang/common/diagnostics.mod.quest`; then `questlang/build/engine.mod.quest`, if the error comes back from a
+unit the build engine compiled. Compare the bootstrap's `at_import` in `bootstrap/python/quest/diagnostics.py`. The
+lost text suggests the error is rebuilt from a value that has no message or offset, rather than passed on.
+
+**Done when.** `./quest` reports the error in an imported module as `./questboot` does (message, location, and the
+"imported here" note), and an error test under `tests/` (with its `tests/golden/self-hosted/errors/` golden) shows it.
+
+---
+
 ## Objects compiled with and without the collector share a build directory
 
 **Problem.** A build's staleness check (`unit_staleness`) compares an object with its sources and imports, but not
