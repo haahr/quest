@@ -1639,3 +1639,134 @@ driver in one process (`-j 1`) under `QUEST_GC_STATS=1`: step 4's, step 5's, and
 - **The tables are 822 KB, 13 percent of the code's size,** in `__TEXT,__const` (2.10 MB to 2.92 MB), and the code is
   125 KB smaller without the clears (6.47 MB to 6.35 MB), so the binary grows 3.5 percent (21.5 MB to 22.3 MB). Nothing
   reads the tables until a collection walks a frame of their unit.
+
+## 19. Incremental marking (2026-11-05)
+
+The collector of [collector.md](collector.md) step 6 against §18's step 5: a full collection that the heap's growth asks
+for marks in slices between which the program runs, and allocations during it take the slow path.
+
+### 19.1. How they were taken
+
+As §17.1, `--backend c` and `--backend arm64`, by `./quest` from the working tree that became step 6's commit (ABI 73),
+after `tools/check` had passed on it. The machine was idle but for another session's single benchmark run (load averages
+1.6 to 2.9). The suite was taken twice: the first taking, with every full collection the heap asked for a cycle, is what
+§19.2's second paragraph comes from, and it added the condition the second was taken with. The times are in
+`benchmarks/mlton/baselines/2026-11-05/`: `quest-c-step6.jsonl` and `quest-arm64-step6.jsonl`, and the first taking's
+with `-every` in their names. Step 5 changed nothing of C's, so C's column is against §17's step 4.
+
+### 19.2. Programs
+
+Through C, step 6's time against step 4's, for the programs at 0.97 or under and at 1.03 or over by processor time:
+
+| Benchmark | step 4 (s) | step 6 (s) | step 6 / step 4, wall | step 4, CPU (s) | step 6, CPU (s) | step 6 / step 4, CPU |
+|---|--:|--:|--:|--:|--:|--:|
+| imp-for | 10.30 | 9.01 | 0.87 | 10.05 | 8.75 | 0.87 |
+| life | 8.79 | 8.54 | 0.97 | 8.53 | 8.29 | 0.97 |
+| even-odd | 1.22 | 1.20 | 0.99 | 0.97 | 0.94 | 0.97 |
+| peek | 77.05 | 80.89 | 1.05 | 76.78 | 80.57 | 1.05 |
+| **geometric mean** (46) | | | **1.00** | | | **1.00** |
+
+Through arm64, against step 5's:
+
+| Benchmark | step 5 (s) | step 6 (s) | step 6 / step 5, wall | step 5, CPU (s) | step 6, CPU (s) | step 6 / step 5, CPU |
+|---|--:|--:|--:|--:|--:|--:|
+| psdes-random | 19.98 | 16.26 | 0.81 | 19.72 | 16.00 | 0.81 |
+| tailfib | 2.47 | 2.34 | 0.95 | 2.22 | 2.06 | 0.93 |
+| ray | 11.83 | 11.62 | 0.98 | 11.32 | 11.03 | 0.97 |
+| mlyacc | 7.70 | 7.93 | 1.03 | 7.28 | 7.48 | 1.03 |
+| **geometric mean** (46) | | | **0.99** | | | **0.99** |
+
+- **Level with what came before:** 1.00 by either time through C over the 46 programs, and 0.99 through arm64. A program
+  whose full collections take under 10 ms has none of them as cycles (below), which is nearly every program here, so
+  what the suite measures of this step is the allocation path's change, the header word stored by whichever path
+  allocates: nothing. imp-for's 0.87 is its placement again (§16.2; it was 1.06 in the first taking below, of the same
+  code). arm64's psdes-random (0.81) and tailfib (0.93) are not this step's: the commit between the two leaves a pair of
+  stores apart when the loop after reads half of it (§18.2), and tailfib's twelve bytes have moved again.
+
+- **The first taking, with every full collection the heap asked for a cycle, lost 2 percent through C**
+  (`quest-c-step6-every.jsonl`, `quest-arm64-step6-every.jsonl`; 1.00 through arm64 with psdes-random's gain in it), and
+  the same programs through both backends. Through C, those at 1.04 or over:
+
+| Benchmark | step 4 (s) | every one a cycle (s) | every one a cycle / step 4, wall | step 4, CPU (s) | every one a cycle, CPU (s) | every one a cycle / step 4, CPU |
+|---|--:|--:|--:|--:|--:|--:|
+| vliw | 6.86 | 7.05 | 1.03 | 6.53 | 6.77 | 1.04 |
+| logic | 12.28 | 12.76 | 1.04 | 12.02 | 12.50 | 1.04 |
+| DLXSimulator | 13.10 | 13.76 | 1.05 | 12.79 | 13.44 | 1.05 |
+| imp-for | 10.30 | 10.91 | 1.06 | 10.05 | 10.64 | 1.06 |
+| hamlet | 9.08 | 9.65 | 1.06 | 8.76 | 9.33 | 1.06 |
+| ratio-regions | 5.11 | 5.69 | 1.11 | 4.86 | 5.42 | 1.11 |
+| tailmerge | 32.33 | 37.86 | 1.17 | 32.07 | 37.61 | 1.17 |
+| **geometric mean** (46) | | | **1.02** | | | **1.02** |
+
+tailmerge shows why. Its live data is 15 MB in the heap's least size, 64 MB, and it has 1,535 full collections in 19 s,
+5 ms each and 21 ms at the longest: the same binary through arm64, at the suite's count, with the cycles' pace and the
+allocation between slices varied (`QUEST_GC_PACE`, `QUEST_GC_SLICE`):
+
+| Full collections | Wall (s) | Their pauses in all (s) | Longest pause (ms) | Born marked (MB) |
+|---|--:|--:|--:|--:|
+| stopping the world | 18.8 | 8.4 | 21.1 | – |
+| cycles, pace 4, slices 32 KB apart | 21.8 | 10.3 | 1.4 | 4,365 |
+| pace 16 | 19.9 | 9.3 | 0.4 | 1,103 |
+| pace 16, slices 8 KB apart | 19.9 | 9.3 | 0.2 | 1,091 |
+| pace 64, slices 8 KB apart | 19.5 | 9.1 | 1.2 | 275 |
+
+As cycles, those collections cost the slow path's call for each allocation made while one runs and a scan of every
+object born then (4.4 GB of the 75 GB allocated at pace 4), and what they buy is a pause of 1.4 ms in place of one of
+21. A faster pace shortens the cycles and shrinks the loss without removing it. So a full collection is a cycle only
+when the last one took longer than a pause may, 10 ms (`QUEST_GC_PAUSE`; 0 makes every one a cycle, as in this taking),
+and tailmerge has its old time: 18.5 s.
+
+### 19.3. The compiler's own build, and a REPL session
+
+The driver built from an empty build directory with `-j 8` under `/usr/bin/time -l`, three times each way, alternating,
+with full collections in cycles and with `QUEST_GC_INCREMENTAL=0`, which stops the world for each:
+
+| Full collections | Wall (s) | User + system (s) | Largest resident set (GB) |
+|---|--:|--:|--:|
+| in cycles (when the last took over 10 ms) | 21.1, 21.1, 21.3 | 108.3, 109.1, 108.7 | 1.54, 1.54, 1.35 |
+| stopping the world | 21.0, 21.4, 21.1 | 108.4, 109.8, 108.2 | 1.37, 1.37, 1.39 |
+
+The same build in one process (`-j 1`), and the REPL session of §17.3 (the transcripts of `tests/repl` replayed twenty
+times), by `QUEST_GC_STATS`:
+
+| | Build, cycles | Build, stopping the world | REPL, cycles | REPL, stopping the world |
+|---|--:|--:|--:|--:|
+| Wall (s) | 65.7 | 65.2 | 2.25 | 2.25 |
+| Full collections | 9, 6 of them cycles | 9 | 9, all cycles | 9 |
+| their pauses in all (ms) | 2,202 | 1,360 | 20.5 | 17.1 |
+| the longest (ms) | 11.6 | 660 | 0.65 | 3.75 |
+| a cycle's first pause, longest (ms) | 1.3 | | 0.65 | |
+| slices | 7,013 | | 77 | |
+| a slice, longest (ms) | 2.5 | | 0.44 | |
+| a cycle's last pause, longest (ms) | 2.3 | | 0.36 | |
+| last pauses that gave up | 0 | | 0 | |
+| allocated during cycles (MB) | 247 | | 2 | |
+| Minor collections | 271 | 276 | 22 | 22 |
+| their pauses in all (ms) | 2,266 | 2,358 | 41 | 41 |
+| the longest (ms) | 29.7 | 24.0 | 3.7 | 3.7 |
+| Most in blocks (MB) | 2,894 | 2,817 | 247 | 245 |
+| Largest resident set (GB) | 3.15 | 3.08 | 0.29 | 0.28 |
+
+- **The longest pause of a full collection goes from 660 ms to 12 ms on the build,** and that one is a collection that
+  stopped the world and ran over, after which the rest are cycles: within the cycles the longest first pause is 1.3 ms,
+  the longest slice 2.5 ms, and the longest last pause 2.3 ms, none of which gave its work back. The build takes the
+  same time either way, in one process and in eight. Marking in slices is 1.6 times the work of marking at once (2.2 s
+  against 1.4), since the slices also scan the 247 MB born while they ran and what the barriers logged, and since 7,000
+  starts are colder than nine; it is 3 percent of the build's time.
+
+- **The slow path during a cycle costs nothing that shows:** 247 MB of the build's 43.5 GB, 0.6 percent, is allocated
+  while a cycle runs, 41 MB a cycle, which is also how far the heap passes its target and the nursery its size before
+  the cycle's sweep (the most in blocks rises 3 percent, the resident set 2; with eight workers the largest resident set
+  was 0.17 GB more in two runs of three). The fallback the design kept, a flag word on the inline path of every
+  allocation, is not needed.
+
+- **A slice is bounded:** it marks 4 bytes for each byte allocated since the last, a megabyte at most, the rest of a
+  large allocation's share left to the slices that follow; before the bound a slice after a 4 MB table's allocation took
+  16 ms. An object over 128 KB is scanned a piece at a time; before that a slice that met a large table took 13 ms.
+
+- **The REPL session's full collections are 2 ms each and stop the world;** the cycles' column is with
+  `QUEST_GC_PAUSE=0`, which makes each a cycle, to show them: no pause over 0.65 ms.
+
+- **The longest pause of any kind is now a minor collection's,** 30 ms on the build (9 ms on average), where the nursery
+  has adapted to 160 MB a collection and 6 MB survive each. That, not the full collections, is what is left of the
+  collector's latency.

@@ -656,10 +656,14 @@ void          quest_gc_add_roots(void *low, void *high);
  * with its byte count recorded, for a sized layout (quest_alloc_sized); and
  * sz pointer-free bytes, which the collector never scans (quest_alloc_bytes).
  * The fast path bumps the cursor of the object's space (pointer-bearing, or
- * pointer-free by its layout) through the current hole and sets the object's
- * start bit, by which the collector validates an ambiguous word; the slow
- * path, which also takes every allocation while a checking mode is on, finds
- * the next hole, or collects. The SSA's backends select the same sequence
+ * pointer-free by its layout) through the current hole and stores the
+ * header word, the layout's address; the slow path, which also takes every
+ * allocation while a checking mode is on or a full collection is marking
+ * (it hides the limits for that), finds the next hole, or collects, and
+ * stores the header word itself, with the flags of an object born while a
+ * collection marks (section 3.10), which the caller must leave as they are.
+ * Either way the object's start bit, by which the collector validates an
+ * ambiguous word, is set after. The SSA's backends select the same sequence
  * inline (docs/ssa.md section 4.1). */
 extern uintptr_t quest_gc_cursor[2];
 extern uintptr_t quest_gc_limit[2];
@@ -670,13 +674,16 @@ Q_INLINE unsigned quest_layout_space(const QLayout *layout) {
     return (layout->flags & Q_LAYOUT_NOSCAN) != 0 ? 1u : 0u;
 }
 
-Q_INLINE uintptr_t *quest_gc_bump(size_t total, const QLayout *layout) {
+/* `total` bytes for an object of the layout, its header word, the one
+ * numbered `header`, stored */
+Q_INLINE uintptr_t *quest_gc_bump(size_t total, const QLayout *layout, size_t header) {
     unsigned space = quest_layout_space(layout);
     uintptr_t p = quest_gc_cursor[space];
     if (quest_gc_check_flags != 0 || total > quest_gc_limit[space] - p) {
         return (uintptr_t *)quest_gc_alloc_slow(total, layout);
     }
     quest_gc_cursor[space] = p + total;
+    ((uintptr_t *)p)[header] = (uintptr_t)layout;
     return (uintptr_t *)p;
 }
 
@@ -686,16 +693,14 @@ Q_INLINE void quest_gc_note_start(const void *obj) {
 }
 
 Q_INLINE void *quest_alloc(size_t sz, const QLayout *layout) {
-    uintptr_t *base = quest_gc_bump(sizeof(uintptr_t) + ((sz + 7) & ~(size_t)7), layout);
-    base[0] = (uintptr_t)layout;
+    uintptr_t *base = quest_gc_bump(sizeof(uintptr_t) + ((sz + 7) & ~(size_t)7), layout, 0);
     quest_gc_note_start(base + 1);
     return base + 1;
 }
 
 Q_INLINE void *quest_alloc_sized(size_t sz, const QLayout *layout) {
-    uintptr_t *base = quest_gc_bump(2 * sizeof(uintptr_t) + ((sz + 7) & ~(size_t)7), layout);
+    uintptr_t *base = quest_gc_bump(2 * sizeof(uintptr_t) + ((sz + 7) & ~(size_t)7), layout, 1);
     base[0] = ((uintptr_t)sz << 1) | 1u;
-    base[1] = (uintptr_t)layout;
     quest_gc_note_start(base + 2);
     return base + 2;
 }

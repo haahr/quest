@@ -703,9 +703,12 @@ suites, and any other change the first's. It says which, and why; `--all` and `-
 - **The collector's checks:** every compiled program the suites run, the compilers among them, runs with
   `QUEST_GC_CHECK=layouts,roots,poison,barriers` (`tools/check` sets it), so that a layout that lies about an object's
   words, a global holding a heap pointer that no root table covers, a use of a reclaimed object, or a pointer store
-  into an old object without a barrier fails the suite ([collector.md](collector.md) §7). To see the counts per
-  layout and the objects logged, run a program with `QUEST_GC_CHECK=layouts,report`; `QUEST_GC_STATS=1` prints what
-  the collector did.
+  into an old object without a barrier fails the suite ([collector.md](collector.md) §7). The backends' suite runs
+  the tests its compilers build under `incremental` too (`QUEST_GC_CHECK_CHILDREN`, the compilers themselves under
+  the four above): a full collection's marking is always under way in slices of one object, and each cycle's marks
+  are checked against a stop-the-world marking of the same heap, so an object that incremental marking would lose is
+  reported at the end of the cycle that lost it. To see the counts per layout and the objects logged, run a program
+  with `QUEST_GC_CHECK=layouts,report`; `QUEST_GC_STATS=1` prints what the collector did.
 - **The stress tier** runs first, and the suites only if it passes (`--no-stress` leaves it out, `--stress` runs it
   alone, about 10 minutes with another check sharing the machine): the compiled tests under
   `QUEST_GC_CHECK=layouts,roots,poison,barriers,stress,sites` with `QUEST_GC_STRESS_BUDGET=1024`, through `./quest`'s

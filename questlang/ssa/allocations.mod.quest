@@ -138,8 +138,11 @@ export
                 let ifFalse = ssa.target(fast none)
             end
             blk.termLoc := at
-            (* The fast path bumps the cursor past the object *)
+            (* The fast path bumps the cursor past the object, and stores
+             * the header word, which the slow path stores itself (with the
+             * collector's flags, while a collection marks: quest_gc.c) *)
             store(fast cursorAt binary(fast ssa.opAdd cursor bytes) 8)
+            store(fast unary(fast ssa.opIntToPtr cursor ssa.typePtr) layout 8)
             let fastBlk = ssa.block(f fast)
             fastBlk.term := option termJump of ssa.Terminator with let target = ssa.target(rest array of cursor end) end
             fastBlk.termLoc := at
@@ -151,21 +154,20 @@ export
             let slowBlk = ssa.block(f slow)
             slowBlk.term := option termJump of ssa.Terminator with let target = ssa.target(rest array of baseInt end) end
             slowBlk.termLoc := at
-            (* The rest: the header, the object, and its start bit, then what
-             * followed the call *)
+            (* The rest: the object and its start bit, then what followed the
+             * call *)
             let moved = ssa.block(f rest)
             let baseParam = ssa.newValue(f ssa.typeInt)
             vector.append(:Int moved.params baseParam)
-            (* The address the bump gives, the header word's, stays an int:
-             * the object's own is the first ptr, and the header is stored
-             * through it. A ptr at the header would be live wherever the
-             * object is used (selection folds the object's offsets into
-             * it), and the collector takes a ptr in a frame for the object
-             * it is at, inside, or at the end of (docs/arm64.md section
-             * 3.13): the one before this one *)
+            (* The address the bump gives, the header word's, stays an int
+             * here: the object's own is the first ptr the rest of the block
+             * has. A ptr at the header would be live wherever the object is
+             * used (selection folds the object's offsets into it), and the
+             * collector takes a ptr in a frame for the object it is at,
+             * inside, or at the end of (docs/arm64.md section 3.13): the
+             * one before this one *)
             put(rest ssa.instruction(ssa.opIntToPtr array of binary(rest ssa.opAdd baseParam constant(rest 8)) end
                 array of obj end 0 "" 0 false ssa.emptySignature))
-            put(rest ssa.instruction(ssa.opStore array of obj layout end none ~8 "" 8 false ssa.emptySignature))
             let low = loadWord(rest address(rest "quest_gc_heap_lo" 0) ssa.typeInt)
             let bits = loadWord(rest address(rest "quest_gc_start_bits" 0) ssa.typePtr)
             let index = binary(rest ssa.opLshr binary(rest ssa.opSub unary(rest ssa.opPtrToInt obj ssa.typeInt) low)

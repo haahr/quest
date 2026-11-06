@@ -281,21 +281,24 @@ internal error.
   flag at each function's entry and each loop's head (a block a back edge goes to): it splits the block, loading
   `quest_interrupt_pending` and branching to a block that calls `quest_interrupt_raise`, or on to the block's old
   instructions. It isn't in `passes`, so no phase dumps it, and no golden sees it.
-- **Inline allocation** (`ssa/allocations`, `pipeline.inlineAllocation`), run by the SSA's backends after the
-  passes: arm64 and the JIT cannot get the collector's fast path from the runtime's header as the C printer does,
-  and ssac's printer calls every runtime function out of line, `quest_alloc` included (§8), which cost it a third
-  of what C gained on the allocation-heavy programs (benchmarks.md §16.2). Each call of `quest_alloc` of a
-  constant size becomes the sequence of docs/collector.md §3.4. The block is split at the call: it loads `quest_gc_check_flags` and the cursor and limit
-  of the object's space (`quest_gc_cursor`, `quest_gc_limit`; the noscan space's for a layout of scalars alone,
-  read from the unit's layout data) and branches, when a checking mode is on or the hole has no room, to a block
-  that calls `quest_gc_alloc_slow`, else to one that bumps the cursor; both jump to the rest of the block with the
-  allocation's base, an `int`, which makes the object (`intToPtr` of the base plus 8, the call's result), stores the
-  header word (the layout's address) through it at -8, and sets the object's start bit in `quest_gc_start_bits`. The
-  base is never a `ptr`: selection folds the object's offsets into whatever pointer they come from, so a `ptr` at
-  the header would be the value live across later calls, and the collector takes a `ptr` in a frame for the object
-  it is at, inside, or at the end of, which for the header's address is the object before (arm64.md §3.13). `QUEST_SKIP_PASSES=inlineAllocation` leaves
-  the calls, which `quest_inline.o`'s definition of `quest_alloc` serves, for measuring the inline path
-  (docs/collector.md step 3). The questlang test `ssa_allocations` shows functions before and after.
+- **Inline allocation** (`ssa/allocations`, `pipeline.inlineAllocation`), run by the SSA's backends after the passes:
+  arm64 and the JIT cannot get the collector's fast path from the runtime's header as the C printer does, and ssac's
+  printer calls every runtime function out of line, `quest_alloc` included (§8), which cost it a third of what C gained
+  on the allocation-heavy programs (benchmarks.md §16.2). Each call of `quest_alloc` of a constant size becomes the
+  sequence of docs/collector.md §3.4. The block is split at the call: it loads `quest_gc_check_flags` and the cursor and
+  limit of the object's space (`quest_gc_cursor`, `quest_gc_limit`; the noscan space's for a layout of scalars alone,
+  read from the unit's layout data) and branches, when a checking mode is on or the hole has no room, to a block that
+  calls `quest_gc_alloc_slow`, else to one that bumps the cursor and stores the header word (the layout's address) where
+  the cursor was; both jump to the rest of the block with the allocation's base, an `int`, which makes the object
+  (`intToPtr` of the base plus 8, the call's result) and sets its start bit in `quest_gc_start_bits`. The slow path
+  stores the header word itself, since while a full collection marks in slices it takes every allocation (the limits are
+  hidden) and the word carries the collector's flags (collector.md §3.10). The base is never a `ptr` the rest of the
+  block has: selection folds the object's offsets into whatever pointer they come from, so a `ptr` at the header would
+  be the value live across later calls, and the collector takes a `ptr` in a frame for the object it is at, inside, or
+  at the end of, which for the header's address is the object before (arm64.md §3.13).
+  `QUEST_SKIP_PASSES=inlineAllocation` leaves the calls, which `quest_inline.o`'s definition of `quest_alloc` serves,
+  for measuring the inline path (docs/collector.md step 3). The questlang test `ssa_allocations` shows functions before
+  and after.
 
 Only value numbering removes values that become dead; parameters no load reads stay, which the trivial allocator gives
 slots, and linear scan none.

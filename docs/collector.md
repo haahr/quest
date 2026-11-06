@@ -8,7 +8,7 @@ samples in half the programs), and it keeps dead data alive through stale stack 
 §3.2). This document designs a collector of Quest's own: precise where the compilers can make it so, generational,
 bump-allocating, able to move but not obliged to, and asks what must change to get there.
 
-**Status: step 5 done, 2026-11-05** (decided 2026-11-02; reviewed and reorganized 2026-11-03). Section 6
+**Status: step 6 done, 2026-11-05** (decided 2026-11-02; reviewed and reorganized 2026-11-03). Section 6
 records the decisions, section 7 the risks and the checking modes that catch them, section 8 the steps, and section
 9 what the reviews changed. The committed collector is steps 1 to 6 of §8; evacuation and generic layouts (steps 7
 and 8) are designed and taken only on measurement.
@@ -399,28 +399,40 @@ the pieces it needs decided now so that the earlier steps do not have to be redo
 its own (libgc's marker threads are the only ones in a Quest process today, and they go with it), and the design
 keeps it so: a marker thread is the optional last step, not the plan.
 
-- **Incremental marking,** as OCaml's major collector, Lua, and V8 before it went concurrent: a full collection's
-  mark is cut into slices, and each allocation slow path does a slice proportional to the bytes allocated since the
-  last (the pace a tunable, with the slice bounded in time). A cycle starts with a short pause that scans the roots
-  (the stack, registers, root tables, and the log) and ends with one that rescans the stack and drains the log;
-  between them the mutator runs. An object allocated during a cycle is born marked, with its header saying *old*,
-  and logged, so that a slice scans what it was built from: the stores that initialize it (`opMake*`) have no
-  barrier, and without this an object built during the cycle from a pointer loaded out of an unscanned object, whose
-  field is then overwritten, would be the only holder of that pointer and would never be scanned, and the pointer
-  would be lost (decided 2026-11-03: initializing stores are covered while a cycle runs and cost nothing outside
-  one). The cover costs nothing on the inline path: for the cycle the collector sets both cursors' limits to their
-  cursors, so every allocation takes the slow path, which bumps, sets the start bit, marks, writes the header, and
-  logs (a noscan object is marked and not logged); the cost is a call per allocation for the cycle's duration,
-  measured in step 6, with a flag word loaded on the inline path (two instructions on every allocation, always) as
-  the fallback. The slices drain the log as well as the work list, rescanning a logged object by its layout as a
-  minor collection would, so the final pause's log is only what was logged since the last slice.
-- **The final pause is budgeted.** Its rescan of the stack can expose unmarked objects: one loaded out of a grey
-  object before a slice scanned it, whose field was then overwritten, and which the mutator kept only in a register
-  or a slot. Tracing from them is unbounded in principle, so the pause has a budget: if the rescan exposes more work
-  than it, the collector marks that work in further slices and rescans again, as V8 does, with a cap on the retries
-  after which it finishes stop-the-world. No barrier changes for this; the alternative, shading the overwritten value
-  in the slow path during a cycle, closes the window only if every store into an old object takes the slow path for
-  the cycle, which would put a global back on the fast path.
+- **Incremental marking,** as OCaml's major collector, Lua, and V8 before it went concurrent: a full collection's mark
+  is cut into slices, and each allocation slow path does a slice proportional to the bytes allocated since the last (the
+  pace a tunable, with the slice bounded in time). A cycle starts with a short pause that scans the roots (the stack,
+  registers, root tables, and the log) and ends with one that rescans the stack and drains the log; between them the
+  mutator runs. An object allocated during a cycle is born marked, with its header saying *old*, and logged, so that a
+  slice scans what it was built from: the stores that initialize it (`opMake*`) have no barrier, and without this an
+  object built during the cycle from a pointer loaded out of an unscanned object, whose field is then overwritten, would
+  be the only holder of that pointer and would never be scanned, and the pointer would be lost (decided 2026-11-03:
+  initializing stores are covered while a cycle runs and cost nothing outside one). The cover costs nothing on the
+  inline path: for the cycle the collector sets both cursors' limits to their cursors (it keeps the limits itself), so
+  every allocation takes the slow path, which bumps, sets the start bit, marks, writes the header, and logs (a noscan
+  object is marked and not logged; one over 128 KB goes to the work list instead, to be scanned in pieces); the cost is
+  a call per allocation for the cycle's duration, measured in step 6 (§8), with a flag word loaded on the inline path
+  (two instructions on every allocation, always) as the fallback not taken. So that the header's flags stand, the slow
+  path stores the header word whenever it allocates, and the inline path only for what it bumps itself (ssa.md §4.1).
+  The line marks, by which the allocator finds a block's holes, are cleared at the cycle's start and are the marker's
+  until its sweep, so during a cycle allocation finishes the holes it is in and then takes free blocks alone, and the
+  heap passes its target by what the pace lets the program allocate. The slices drain the log and the dirty cards as
+  well as the work list, rescanning a logged object by its layout and a card's marked objects as a minor collection
+  would, so the final pause's log is only what was logged since the last slice. A slice runs once 32 KB has been
+  allocated since the last (`QUEST_GC_SLICE`, in kilobytes) and marks 4 bytes for each byte allocated (`QUEST_GC_PACE`),
+  a megabyte at most (the rest of a large allocation's share is left to the slices after), an object over 128 KB a piece
+  at a time; none runs while collections are held off (§3.5). A full collection is a cycle only when the last one took
+  longer than a pause may (`QUEST_GC_PAUSE`, 10 ms; 0 makes every one a cycle): a small heap's full collections are a
+  few milliseconds each and stop the world, since a cycle's own costs, the call for every allocation while it runs and
+  the scan of every object born in it, are paid at each of them and buy nothing there (§8, step 6).
+- **The final pause is budgeted.** It rescans the roots, the stack and registers and the root tables and the JIT's data
+  too, since a store into a global has no barrier. The rescan can expose unmarked objects: one loaded out of a grey
+  object before a slice scanned it, whose field was then overwritten, and which the mutator kept only in a register, a
+  slot, or a global. Tracing from them is unbounded in principle, so the pause has a budget: if the rescan exposes more
+  work than it, the collector marks that work in further slices and rescans again, as V8 does, with a cap on the retries
+  after which it finishes stop-the-world. No barrier changes for this; the alternative, shading the overwritten value in
+  the slow path during a cycle, closes the window only if every store into an old object takes the slow path for the
+  cycle, which would put a global back on the fast path.
 - **Minor collections are suspended while a cycle runs:** the mark bitmaps are cleared at its start, so a minor
   collection could not tell old from new, and the nursery grows for the cycle's duration, which the pace bounds (a
   cycle finishes within a fixed fraction of the live heap's size in allocation); a mark state with an epoch, telling
@@ -618,7 +630,7 @@ touches layouts, barriers, roots, or the collector (testing.md §4.1 lists which
 | `poison` | Every reclaimed line and freed large object is filled with a pattern that is never a valid pointer (0x5A bytes) | A use after reclamation, a dead object resurrected |
 | `collect` | Forces the collections the other modes would, checking nothing: every `QUEST_GC_CHECK_INTERVAL` bytes, or every `QUEST_GC_COLLECT_EVERY` allocations, with `QUEST_GC_COLLECT_TRAP=k` stopping in `quest_gc_trap` before the kth, for tools/perf/retention.py | Nothing; it makes builds of one program collect at the same points |
 | `allocations` | Counts every allocation and its bytes by the allocating function and its caller, written at exit to `$QUEST_ALLOCATIONS_OUT`, for benchmarks/mlton/allocations.py | Nothing; it says who allocates |
-| `incremental` (step 6) | Makes every slice as small as it can be (one object), and at the end of each cycle marks the same heap again stop-the-world and compares the marks | A barrier that let an object escape the cycle, a slice that broke an invariant |
+| `incremental` | Keeps a cycle always under way, with a slice of one object (or one piece of a large one) before every allocation and a final pause that gives up after one, and at the end of each cycle's marking marks the same heap again from the same roots with the world stopped: an object that marking reaches and the cycle did not mark is reported, with its allocating functions under `sites`. The cycle's own marks are put back for the sweep. As `stress`, thinned by `QUEST_GC_STRESS_BUDGET`: once the cycles have walked that much heap, a gap of allocations (1024, then doubling) is left between one and the next | A barrier that let an object escape the cycle, an initializing store the log missed, a slice that broke an invariant, at the end of the cycle that lost the object and not when its memory is used again |
 | `stress` | Collects before every allocation (`QUEST_GC_STRESS=n`: every nth), minor collections with each sixteenth full, running the other modes' checks at each. The count between collections doubles each time the collections at the current count have walked `QUEST_GC_STRESS_BUDGET` megabytes of heap (256; a collection counts as the heap in use), so a small program is checked at every allocation and the compiler at its first few hundred and then at a thinning sample. The collections fall by count, so a failure repeats; a failing check gives its collection's number, and `QUEST_GC_TRAP=k` calls `quest_gc_trap` before the kth for a debugger. With step 7, each full collection also takes every block as a candidate with the slot log unbounded, so every object that may move does, and the vacated memory is poisoned and, in large runs, unmapped | A store without a barrier, a barrier with an allocation between it and its store, an initializing store after a collection, a root left out (a global now, a stack map's slot with step 5), each within a few allocations of the fault, in generated code, the runtime, serialization, and the JIT; with step 7, a stale address kept across an allocation |
 | `sites` | Keeps, by each object's address, the three functions above its allocation (from the frame records, in a table outside the heap), and a failing check names them for its object and for the object its word points at | Nothing; it says which code made the objects a report is about |
 | `concurrent` (step 9, if taken) | As `incremental`, with the marker thread forced to yield between objects | A barrier race, a lost mark |
@@ -947,6 +959,40 @@ taken on what 4 and 7 measure; 9 is optional.
    allocation during a cycle (against the flag-word fallback, §3.10), and the nursery's growth during a cycle on the
    compiler's build and the REPL's inputs are recorded against step 5, with the pace and slice bound that were
    chosen.
+   *Done 2026-11-05.* A full collection that the heap's growth asks for is a cycle (§3.10): a first pause clears the
+   marks and marks the roots; slices in the allocation slow path, one each 32 KB allocated, scan what the barriers
+   logged and the cards they marked and mark 4 bytes for each byte allocated, a megabyte at most, a large object in
+   pieces of 128 KB; and a last pause scans the log and the cards, marks the roots again, finishes, and sweeps, giving
+   its work back to the slices if the roots expose more than 2 MB of it (three times at most). A full collection is a
+   cycle only when the last one took over 10 ms (`QUEST_GC_PAUSE`); one asked for outright still stops the world, and
+   finishes a cycle under way; `QUEST_GC_INCREMENTAL=0` makes them all stop it. During a cycle the limits the inline
+   allocation reads are hidden, every allocation takes the slow path and is born marked, old, and logged, minor
+   collections wait, and allocation takes free blocks, the line marks being the marker's. What the design had not fixed:
+   the header word. The inline path stored it after the slow path returned, which would have wiped a born object's
+   flags, so the slow path stores it now and the inline path only for what it bumps itself (`quest_alloc` in the header,
+   the SSA's allocation pass); this is the call per allocation for a cycle's duration, and the flag-word fallback (two
+   instructions on every allocation, always) was not needed: 0.6 percent of the compiler's build's allocation is made
+   while a cycle runs, and the build takes the same time with cycles as without. And the last pause marks the root
+   tables and the JIT's data again as well as the stack, since a store into a global has no barrier. `incremental` (§7)
+   keeps a cycle always under way with a slice of one object before every allocation and checks each cycle's marks
+   against a stop-the-world marking of the same heap from the same roots; tools/check runs the backends' suite's test
+   programs under it. It passed on its first run; what failed, in the stress tier, was `roots`, which found the two new
+   statics of the piecewise scan holding heap addresses unlisted. The pause's condition came from the suite's first
+   taking, with every full collection the heap asked for a cycle: 1.02 of step 4's time through C over the 46 programs,
+   and 1.17 on tailmerge, whose 15 MB of live data in the least heap are marked 1,535 times, 5 ms a time: as cycles
+   those collections cost the call for each of the 4.4 GB allocated while they ran and a scan of every object born then,
+   and bought pauses of 1.4 ms for pauses of 21. A faster pace only shrinks the loss (1.06 at 16, 1.04 at 64), so a heap
+   whose full collections are short has them stop the world, and tailmerge takes its old time. Measured
+   ([benchmarks.md](benchmarks.md) §19): the suite is level with what came before (1.00 through C against step 4, 0.99
+   through arm64 against step 5); the compiler's own build takes the same time in one process and in eight, with 3
+   percent more in blocks at the most; its longest full collection's pause goes from 660 ms to 12 ms, the 12 being the
+   last collection that stopped the world, with first pauses of 1.3 ms at most, slices of 2.5 ms, and last pauses of 2.3
+   ms, none retried; 41 MB is allocated in a cycle, which is the nursery's growth during one; a REPL session's full
+   collections are 2 ms and stop the world, and as cycles have no pause over 0.65 ms. The pace (4 bytes marked for a
+   byte allocated), the allocation between slices (32 KB), a slice's most (1 MB), and a piece (128 KB) are those the
+   first numbers were taken with, and the two bounds came from them: a slice that met a table of a million words took 13
+   ms, and one that followed a 4 MB allocation 16 ms. What is left of the collector's latency is the minor collections':
+   30 ms at the longest on the compiler's build, where the nursery adapts to 160 MB.
 7. **Evacuation and the hash, taken on step 4's measurement** (§3.6, §3.7): candidates chosen before marking, the
    slot log and its bound, copying and rewriting after marking, the old copies' bits and lines cleared; metadata
    allocated pinned at birth into blocks of its own; the three hash states, interior objects included;

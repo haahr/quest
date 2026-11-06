@@ -22,7 +22,10 @@ backend (stage 2's whole-program build writes stage 2's whole-program code), and
 the backends' suite (the self-hosted suite's compiled tests through the SSA's C
 printer, ssac, for every unit; through the native arm64 backend, for every unit,
 and for the program's alone; and whole programs through C and arm64:
-docs/arm64.md section 4). Every suite adds, at once, the bootstrap's
+docs/arm64.md section 4), whose compiled tests run under the collector's
+`incremental` mode (a full collection's marking always under way in slices of
+one object, each cycle's marks checked against a stop-the-world marking:
+docs/collector.md section 7). Every suite adds, at once, the bootstrap's
 suite and the unit tests but those that drive a terminal, and then, alone, the
 terminal tests, which time out under load.
 
@@ -80,6 +83,9 @@ STRESS_ENVIRONMENT = {"QUEST_GC_CHECK": STRESS, "QUEST_GC_STRESS_BUDGET": "1024"
 STRESS_PROGRAMS_ENVIRONMENT = {"QUEST_GC_CHECK": CHECKS, "QUEST_GC_CHECK_CHILDREN": STRESS,
                                "QUEST_GC_STRESS_BUDGET": "1024"}
 STRESS_JIT_ENVIRONMENT = {"QUEST_GC_CHECK": STRESS, "QUEST_GC_STRESS_BUDGET": "256"}
+# The backends' suite: its compilers under the suites' checks, the tests they build and run under `incremental`
+INCREMENTAL_PROGRAMS_ENVIRONMENT = {"QUEST_GC_CHECK_CHILDREN": CHECKS + ",incremental,sites",
+                                    "QUEST_GC_STRESS_BUDGET": "1024"}
 
 
 class Suite:
@@ -232,7 +238,7 @@ def main() -> int:
     if self_hosted_only:
         together = [
             Suite("self-hosting", [*self_hosting, "-j", str(min(8, cores))]),
-            Suite("backends", [*backends, "-j", str(max(1, cores // 4))]),
+            Suite("backends", [*backends, "-j", str(max(1, cores // 4))], INCREMENTAL_PROGRAMS_ENVIRONMENT),
             *fixed_points,
         ]
         after: list[Suite] = []
@@ -241,7 +247,7 @@ def main() -> int:
         # gets most of the cores (docs/testing.md section 5.1)
         together = [
             Suite("self-hosting", [*self_hosting, "-j", str(max(1, cores * 5 // 10))]),
-            Suite("backends", [*backends, "-j", str(max(1, cores * 2 // 10))]),
+            Suite("backends", [*backends, "-j", str(max(1, cores * 2 // 10))], INCREMENTAL_PROGRAMS_ENVIRONMENT),
             *fixed_points,
             Suite("bootstrap", [*run_tests, "-j", str(max(1, cores * 3 // 10))]),
             Suite("unit", [*unit, "discover", "-s", "tests/python"], {**unit_environment, "QUEST_SKIP_PTY_TESTS": "1"}),

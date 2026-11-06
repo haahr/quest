@@ -218,6 +218,39 @@ static bool quest_gc_never_collect = false;
 #endif
 static bool quest_gc_collecting = false;
 
+/* Incremental marking (section 3.10): a full collection the heap's growth
+ * asks for marks in slices, between which the program runs (a cycle), if
+ * the last full collection took longer than a pause may; one asked for
+ * outright (quest_gc_collect, a checking mode's) stops the world, and
+ * finishes a cycle that is under way. A small heap's full collections stop
+ * the world, then: they are a few milliseconds each, and a cycle's cost, a
+ * call for every allocation while it runs and a scan of every object born
+ * in it, is paid at each of them (tailmerge, whose 15 MB are marked 1,500
+ * times, took 1.16 of its time with every one a cycle). While a cycle runs the inline
+ * allocation's limits equal its cursors, so every allocation takes the slow
+ * path, which does the cycle's next slice and makes the object marked; the
+ * limits themselves are kept here */
+static bool      quest_gc_incremental = true;      /* QUEST_GC_INCREMENTAL=0: every full collection stops the world */
+/* QUEST_GC_PAUSE, in milliseconds: after a full collection that took longer,
+ * the next is a cycle */
+static uint64_t  quest_gc_pause_goal_ns = 10 * 1000000;
+static uint64_t  quest_gc_last_full_ns = 0;        /* what the last full collection took, its marking and its sweep */
+static bool      quest_gc_cycle = false;
+static uintptr_t quest_gc_hidden_limit[2] = { 0, 0 };
+static uint64_t  quest_gc_cycle_debt = 0;          /* bytes allocated in the cycle since its last slice */
+static size_t    quest_gc_pace = 4;                /* bytes marked per byte allocated (QUEST_GC_PACE) */
+static size_t    quest_gc_slice_bytes = 32 << 10;  /* bytes allocated between slices (QUEST_GC_SLICE, in KB) */
+static uint64_t  quest_gc_slice_most = 1 << 20;    /* bytes a slice marks at most: a large allocation's share is spread */
+static uint64_t  quest_gc_final_budget = 2 << 20;  /* bytes the final pause marks before it gives the rest to slices */
+static unsigned  quest_gc_cycle_retries = 0;       /* final pauses of this cycle that gave up */
+#define Q_GC_FINAL_RETRIES 3
+#define Q_GC_SCAN_PIECE ((size_t)128 << 10)        /* a larger object is scanned by a cycle in pieces of this */
+static uintptr_t quest_gc_piece = 0;               /* such an object, part scanned, and where its next piece is */
+static uintptr_t quest_gc_piece_at = 0;
+static uint64_t  quest_gc_cycle_ns = 0;            /* this cycle's pauses so far */
+static uint64_t  quest_gc_cycle_slices = 0;
+static uint64_t  quest_gc_cycle_first_ns = 0;
+
 /* The statistics (QUEST_GC_STATS) */
 static uint64_t quest_gc_collections = 0;
 static uint64_t quest_gc_pause_ns = 0, quest_gc_pause_max_ns = 0;
@@ -235,6 +268,11 @@ static uint64_t quest_gc_young_bytes = 0;          /* hole bytes entered since t
 static uint64_t quest_gc_survived_bytes = 0, quest_gc_survived_objects = 0;   /* by minor collections, in all */
 static uint64_t quest_gc_logged = 0;               /* objects logged, in all */
 static uint64_t quest_gc_cards_dirtied = 0;        /* cards marked, in all */
+static uint64_t quest_gc_cycles = 0;               /* full collections that marked in slices */
+static uint64_t quest_gc_slices = 0, quest_gc_slice_ns = 0, quest_gc_slice_max_ns = 0;
+static uint64_t quest_gc_final_ns = 0, quest_gc_final_max_ns = 0, quest_gc_first_ns = 0, quest_gc_first_max_ns = 0;
+static uint64_t quest_gc_final_retried = 0;        /* final pauses that gave their work back to slices */
+static uint64_t quest_gc_born_bytes = 0;           /* allocated while a cycle marked, and so born marked */
 static int      quest_gc_stats = 0;                /* 1: a summary at exit; 2: a line per collection too */
 
 /* The checking modes */
@@ -427,7 +465,8 @@ static void quest_gc_adapt_nursery(uint64_t young, uint64_t survived) {
  * target, or the nursery is full; something was allocated since the last
  * collection (else the live data needs the growth); and collection is on */
 static bool quest_gc_should_collect(size_t n) {
-    if (quest_gc_never_collect || quest_gc_held != 0 || quest_gc_collecting || quest_gc_taken_since_collection == 0) {
+    if (quest_gc_never_collect || quest_gc_held != 0 || quest_gc_collecting || quest_gc_cycle ||
+        quest_gc_taken_since_collection == 0) {
         return false;
     }
     return quest_gc_used + n > quest_gc_target ||
@@ -436,10 +475,16 @@ static bool quest_gc_should_collect(size_t n) {
 
 /* Collects before taking n blocks: a minor collection when the heap is under
  * its target, and a full one when it is not, or when the minor one left it
- * so */
+ * so. The full one starts a cycle, which the allocations after this one
+ * carry on (they take free blocks until it ends, so the heap passes its
+ * target by what the cycle's pace lets the program allocate meanwhile) */
+static void quest_gc_cycle_start(void);
 static void quest_gc_collect_before(size_t n) {
     if (quest_gc_nursery_blocks != 0 && quest_gc_used + n <= quest_gc_target) quest_gc_collect_kind(true);
-    if (quest_gc_used + n > quest_gc_target) quest_gc_collect_kind(false);
+    if (quest_gc_used + n > quest_gc_target) {
+        if (quest_gc_incremental && quest_gc_last_full_ns >= quest_gc_pause_goal_ns) quest_gc_cycle_start();
+        else quest_gc_collect_kind(false);
+    }
 }
 
 static void quest_gc_took(size_t n) {
@@ -614,11 +659,36 @@ static inline __attribute__((always_inline)) void *quest_gc_alloc_slow_body(size
     }
 }
 
+static void quest_gc_cycle_step(size_t bytes);
+static void quest_gc_born(uintptr_t base, size_t total, const QLayout *layout, size_t prefix);
+
 /* The body is inline here so that the frame above the slow path's is still
- * the allocating function's, which `allocations` and `sites` read */
+ * the allocating function's, which `allocations` and `sites` read. The
+ * header word is stored here, the inline path's caller storing it only for
+ * what it bumps itself (quest_runtime.h): an object allocated while a cycle
+ * marks has the collector's flags in it. A cycle's slice comes first, and
+ * may end the cycle; while one runs, the limits are shown to the body and
+ * hidden again after, so that the next allocation comes here too */
 void *quest_gc_alloc_slow(size_t total, const QLayout *layout) {
+    if (quest_gc_cycle) {
+        quest_gc_cycle_step(total);
+        if (quest_gc_cycle) {
+            quest_gc_limit[0] = quest_gc_hidden_limit[0];
+            quest_gc_limit[1] = quest_gc_hidden_limit[1];
+        }
+    }
     void *p = quest_gc_alloc_slow_body(total, layout);
-    if ((quest_gc_check_flags & QUEST_GC_CHECK_SITES) != 0) quest_gc_note_site((uintptr_t)p + quest_gc_prefix_of(layout));
+    size_t prefix = quest_gc_prefix_of(layout);
+    if (quest_gc_cycle) {
+        quest_gc_born((uintptr_t)p, total, layout, prefix);
+        for (unsigned k = 0; k < 2; ++k) {
+            quest_gc_hidden_limit[k] = quest_gc_limit[k];
+            quest_gc_limit[k] = quest_gc_cursor[k];
+        }
+    } else {
+        ((uintptr_t *)p)[prefix / sizeof(uintptr_t) - 1] = (uintptr_t)layout;
+    }
+    if ((quest_gc_check_flags & QUEST_GC_CHECK_SITES) != 0) quest_gc_note_site((uintptr_t)p + prefix);
     return p;
 }
 
@@ -628,6 +698,17 @@ void *quest_gc_alloc_slow(size_t total, const QLayout *layout) {
 
 static uintptr_t quest_gc_start_before(size_t b, uintptr_t a);
 static uintptr_t quest_gc_large_object(size_t b);
+
+static void quest_gc_log_push(uintptr_t obj) {
+    if (quest_gc_log_n == quest_gc_log_cap) {
+        size_t cap = quest_gc_log_cap > 0 ? 2 * quest_gc_log_cap : 4096;
+        uintptr_t *grown = (uintptr_t *)realloc(quest_gc_log, cap * sizeof *grown);
+        if (grown == NULL) quest_gc_fatal("out of memory in the collector's log");
+        quest_gc_log = grown;
+        quest_gc_log_cap = cap;
+    }
+    quest_gc_log[quest_gc_log_n++] = obj;
+}
 
 /* The barrier's slow path: logs the object if a collection has marked it and
  * nothing has logged it since (the inline fast path tests the same, so a
@@ -642,14 +723,7 @@ void quest_barrier_log(void *obj) {
     if (!quest_gc_in_heap((uintptr_t)obj)) return;
     ((uint8_t *)h)[6] |= 1u;    /* the mutator's byte of the header: Q_HEADER_LOGGED */
     quest_gc_logged++;
-    if (quest_gc_log_n == quest_gc_log_cap) {
-        size_t cap = quest_gc_log_cap > 0 ? 2 * quest_gc_log_cap : 4096;
-        uintptr_t *grown = (uintptr_t *)realloc(quest_gc_log, cap * sizeof *grown);
-        if (grown == NULL) quest_gc_fatal("out of memory in the collector's log");
-        quest_gc_log = grown;
-        quest_gc_log_cap = cap;
-    }
-    quest_gc_log[quest_gc_log_n++] = (uintptr_t)obj;
+    quest_gc_log_push((uintptr_t)obj);
 }
 
 /* The slot barrier's slow path: marks the slot's card and lists it for the
@@ -1394,9 +1468,16 @@ static void quest_gc_check_roots(void);
  * A full collection clears every mark and marks everything; a minor one keeps
  * the marks, so marking from the roots and the log stops at every old object
  * and visits the young ones alone, and sweeps the young blocks alone. */
+static bool quest_gc_cycle_finish(bool force);
 static void quest_gc_collect_kind(bool minor) {
     if (!quest_gc_ready) quest_gc_setup();
     if (quest_gc_collecting || quest_gc_held != 0) return;
+    if (quest_gc_cycle) {
+        /* A minor collection waits for the cycle (its marks are being made
+         * again); a full one is the cycle's, finished now */
+        if (!minor) quest_gc_cycle_finish(true);
+        return;
+    }
     quest_gc_collecting = true;
     quest_gc_minor = minor;
     if (quest_gc_trap_at != 0 && quest_gc_collections + quest_gc_minors + 1 == quest_gc_trap_at) quest_gc_trap();
@@ -1437,6 +1518,7 @@ static void quest_gc_collect_kind(bool minor) {
         quest_gc_adapt_nursery(young, quest_gc_live_bytes - before_bytes);
     } else {
         quest_gc_pause_ns += pause;
+        quest_gc_last_full_ns = pause;
         if (pause > quest_gc_pause_max_ns) quest_gc_pause_max_ns = pause;
         if (quest_gc_nursery_adapted == Q_GC_NO_NURSERY && ++quest_gc_fulls_without_nursery % 8 == 0) {
             quest_gc_nursery_adapted = quest_gc_nursery_cap();
@@ -1471,6 +1553,221 @@ static void quest_gc_collect_kind(bool minor) {
 
 /* A full collection now */
 void quest_gc_collect(void) { quest_gc_collect_kind(false); }
+
+/* ---------------------------------------------------------------------------
+ * Incremental marking (section 3.10)
+ * ------------------------------------------------------------------------ */
+
+#define QUEST_GC_CHECK_INCREMENTAL 512
+static void quest_gc_check_cycle(void);
+static void quest_gc_incremental_done(void);
+
+/* A cycle's first pause: a full collection's start (the marks cleared, the
+ * log and the cards emptied), then the roots marked, their objects left on
+ * the work list for the slices. Until the cycle's sweep the line marks are
+ * the marker's, so allocation takes no hole they would show: the current
+ * holes are kept, being free already, and after them only free blocks */
+static void quest_gc_cycle_start(void) {
+    if (quest_gc_collecting || quest_gc_held != 0 || quest_gc_cycle || quest_gc_never_collect) return;
+    quest_gc_collecting = true;
+    if (quest_gc_trap_at != 0 && quest_gc_collections + quest_gc_minors + 1 == quest_gc_trap_at) quest_gc_trap();
+    uint64_t t0 = quest_gc_now_ns();
+    quest_gc_collections++;
+    quest_gc_cycles++;
+    quest_gc_live_bytes = 0;
+    quest_gc_live_objects = 0;
+    quest_gc_large_live = 0;
+    quest_gc_drain_log(false);
+    quest_gc_drain_cards(false);
+    quest_gc_clear_marks();
+    for (unsigned k = 0; k < 2; ++k) {
+        quest_gc_current[k] = Q_GC_NO_BLOCK;
+        quest_gc_recyclable_next[k] = quest_gc_recyclable_n[k];
+        quest_gc_hidden_limit[k] = quest_gc_limit[k];
+    }
+    quest_gc_work_n = 0;
+    quest_gc_piece = 0;
+    quest_gc_mark_roots();
+    quest_gc_cycle = true;
+    quest_gc_cycle_debt = 0;
+    quest_gc_cycle_retries = 0;
+    quest_gc_cycle_slices = 0;
+    uint64_t pause = quest_gc_now_ns() - t0;
+    quest_gc_cycle_ns = pause;
+    quest_gc_cycle_first_ns = pause;
+    quest_gc_first_ns += pause;
+    if (pause > quest_gc_first_max_ns) quest_gc_first_max_ns = pause;
+    if (pause > quest_gc_pause_max_ns) quest_gc_pause_max_ns = pause;
+    quest_gc_collecting = false;
+}
+
+/* An object allocated while a cycle marks is born marked, with its header
+ * saying old, and, unless it holds no pointers, logged: the stores that
+ * initialize it have no barriers, so the next slice scans it from the log,
+ * by which time they are made or the compilers' barriers have logged it
+ * again (section 3.5), and without that a pointer loaded from an object the
+ * marker has not reached, stored here, and overwritten there would be
+ * missed. The header word is stored here, flags and all */
+static void quest_gc_born(uintptr_t base, size_t total, const QLayout *layout, size_t prefix) {
+    uintptr_t obj = base + prefix;
+    bool scanned = (layout->flags & Q_LAYOUT_NOSCAN) == 0;
+    /* A large one goes to the work list, not the log, to be scanned in
+     * pieces as the marker's own large objects are */
+    bool logged = scanned && total <= Q_GC_SCAN_PIECE;
+    ((uintptr_t *)obj)[-1] = (uintptr_t)layout | Q_HEADER_OLD | (logged ? Q_HEADER_LOGGED : 0);
+    uintptr_t i = (obj - quest_gc_heap_lo) >> 3;
+    quest_gc_start_bits[i >> 3] |= (uint8_t)(1u << (i & 7));
+    quest_gc_marks[i >> 3] |= (uint8_t)(1u << (i & 7));
+    size_t b = quest_gc_block_of(obj);
+    if (quest_gc_blocks[b].state == QB_SMALL) {
+        uintptr_t from = (base - quest_gc_heap_lo) >> Q_GC_LINE_BITS;
+        uintptr_t to = (base + total - 1 - quest_gc_heap_lo) >> Q_GC_LINE_BITS;
+        for (uintptr_t ln = from; ln <= to; ++ln) quest_gc_lines[ln] = 1;
+    } else {
+        quest_gc_large_live += total;
+        memset(quest_gc_block_lines(b), 1, (size_t)quest_gc_blocks[b].run * Q_GC_BLOCK_LINES);
+    }
+    quest_gc_live_bytes += total;
+    quest_gc_live_objects++;
+    quest_gc_born_bytes += total;
+    if (logged) quest_gc_log_push(obj);
+    else if (scanned) quest_gc_push_work(obj);
+}
+
+/* Marks from the work list until `budget` bytes of objects are scanned (at
+ * least one object, or one piece of a large one), or the list is empty and
+ * no object is left part scanned. A large object is scanned a piece at a
+ * time, so that a table of a million words is not one pause: what a later
+ * piece holds is read when the piece is scanned, and a store into an earlier
+ * one finds the object marked, and so logs it or marks its card */
+static void quest_gc_mark_some(uint64_t budget) {
+    uint64_t done = 0;
+    while (quest_gc_piece != 0 || quest_gc_work_n > 0) {
+        if (quest_gc_piece == 0) {
+            uintptr_t obj = quest_gc_work[--quest_gc_work_n];
+            size_t size = quest_gc_object_bytes(obj, quest_layout_of((const void *)obj));
+            if (size <= Q_GC_SCAN_PIECE) {
+                quest_gc_scan_object(obj);
+                done += size;
+                if (done >= budget) break;
+                continue;
+            }
+            quest_gc_piece = obj;
+            quest_gc_piece_at = obj;
+        }
+        uintptr_t end = quest_gc_piece +
+                        quest_gc_object_bytes(quest_gc_piece, quest_layout_of((const void *)quest_gc_piece));
+        uintptr_t hi = end - quest_gc_piece_at > Q_GC_SCAN_PIECE ? quest_gc_piece_at + Q_GC_SCAN_PIECE : end;
+        quest_gc_scan_object_range(quest_gc_piece, quest_gc_piece_at, hi);
+        done += hi - quest_gc_piece_at;
+        quest_gc_piece_at = hi;
+        if (hi == end) quest_gc_piece = 0;
+        if (done >= budget) break;
+    }
+}
+
+/* A slice, from the allocation slow path: once the program has allocated a
+ * slice's worth since the last, what the barriers logged and the cards they
+ * marked are scanned, as a minor collection scans them, and the work list is
+ * marked from, the pace's bytes for each byte allocated, a megabyte at
+ * most. Under `incremental`
+ * every allocation has a slice, of one object. Not while collections are held
+ * off (the stores a hold covers have no barriers). When the list is empty the
+ * cycle tries to end */
+static void quest_gc_cycle_step(size_t bytes) {
+    quest_gc_cycle_debt += bytes;
+    if (quest_gc_held != 0 || quest_gc_collecting) return;
+    bool checking = (quest_gc_check_flags & QUEST_GC_CHECK_INCREMENTAL) != 0;
+    if (!checking && quest_gc_cycle_debt < quest_gc_slice_bytes) return;
+    /* What the allocation since the last slice has earned, up to a slice's
+     * most: the rest of a large allocation's is left owing, so the slices
+     * after this one, one at each allocation until it is paid, mark it */
+    uint64_t budget = checking ? 0 : quest_gc_cycle_debt * quest_gc_pace;
+    if (budget > quest_gc_slice_most) {
+        budget = quest_gc_slice_most;
+        quest_gc_cycle_debt -= quest_gc_slice_most / quest_gc_pace;
+    } else {
+        quest_gc_cycle_debt = 0;
+    }
+    quest_gc_collecting = true;
+    uint64_t t0 = quest_gc_now_ns();
+    quest_gc_drain_log(true);
+    quest_gc_drain_cards(true);
+    quest_gc_mark_some(budget);
+    uint64_t pause = quest_gc_now_ns() - t0;
+    quest_gc_cycle_ns += pause;
+    quest_gc_cycle_slices++;
+    quest_gc_slices++;
+    quest_gc_slice_ns += pause;
+    if (pause > quest_gc_slice_max_ns) quest_gc_slice_max_ns = pause;
+    if (pause > quest_gc_pause_max_ns) quest_gc_pause_max_ns = pause;
+    quest_gc_collecting = false;
+    if (quest_gc_work_n == 0 && quest_gc_piece == 0) quest_gc_cycle_finish(false);
+}
+
+/* A cycle's last pause: the log and the cards scanned, the roots marked
+ * again (the stack and the registers, where the program may have put a
+ * pointer it loaded from an object the marker had not reached and then
+ * overwrote, and the root tables, whose stores have no barriers), and the
+ * marking finished; then the sweep and the rest of a full collection. What
+ * the roots expose is unbounded in principle, so unless forced the pause
+ * marks its budget and, if work is left, gives it back to the slices and
+ * tries again when they have emptied the list, a few times at most before it
+ * finishes whatever is left. Whether the cycle ended */
+static bool quest_gc_cycle_finish(bool force) {
+    if (quest_gc_collecting || quest_gc_held != 0) return false;
+    quest_gc_collecting = true;
+    bool checking = (quest_gc_check_flags & QUEST_GC_CHECK_INCREMENTAL) != 0;
+    uint64_t t0 = quest_gc_now_ns();
+    quest_gc_drain_log(true);
+    quest_gc_drain_cards(true);
+    quest_gc_mark_roots();
+    if (!force && quest_gc_cycle_retries < Q_GC_FINAL_RETRIES) {
+        quest_gc_mark_some(checking ? 0 : quest_gc_final_budget);
+        if (quest_gc_work_n > 0 || quest_gc_piece != 0) {
+            quest_gc_cycle_retries++;
+            quest_gc_final_retried++;
+            uint64_t pause = quest_gc_now_ns() - t0;
+            quest_gc_cycle_ns += pause;
+            quest_gc_final_ns += pause;
+            if (pause > quest_gc_final_max_ns) quest_gc_final_max_ns = pause;
+            if (pause > quest_gc_pause_max_ns) quest_gc_pause_max_ns = pause;
+            quest_gc_collecting = false;
+            return false;
+        }
+    }
+    quest_gc_mark_some(UINT64_MAX);
+    if (checking) quest_gc_check_cycle();
+    quest_gc_cycle = false;
+    quest_gc_sweep();
+    quest_gc_young_bytes = 0;
+    uint64_t pause = quest_gc_now_ns() - t0;
+    quest_gc_cycle_ns += pause;
+    quest_gc_final_ns += pause;
+    if (pause > quest_gc_final_max_ns) quest_gc_final_max_ns = pause;
+    if (pause > quest_gc_pause_max_ns) quest_gc_pause_max_ns = pause;
+    quest_gc_pause_ns += quest_gc_cycle_ns;
+    quest_gc_last_full_ns = quest_gc_cycle_ns;
+    if (quest_gc_nursery_adapted == Q_GC_NO_NURSERY && ++quest_gc_fulls_without_nursery % 8 == 0) {
+        quest_gc_nursery_adapted = quest_gc_nursery_cap();
+    }
+    if (quest_gc_live_bytes > quest_gc_live_bytes_max) quest_gc_live_bytes_max = quest_gc_live_bytes;
+    if (quest_gc_live_lines > quest_gc_live_lines_max) quest_gc_live_lines_max = quest_gc_live_lines;
+    if (quest_gc_stats >= 2) {
+        fprintf(stderr, "quest: gc #%" PRIu64 ": live %" PRIu64 " KB in %" PRIu64 " KB of lines, heap %zu KB, %.2f ms"
+                " in a cycle: first pause %.2f ms, %" PRIu64 " slices, last pause %.2f ms, %u retries\n",
+                quest_gc_collections, quest_gc_live_bytes >> 10, (quest_gc_live_lines * Q_GC_LINE) >> 10,
+                (quest_gc_used * Q_GC_BLOCK) >> 10, (double)quest_gc_cycle_ns / 1e6,
+                (double)quest_gc_cycle_first_ns / 1e6, quest_gc_cycle_slices, (double)pause / 1e6,
+                quest_gc_cycle_retries);
+    }
+    if ((quest_gc_check_flags & QUEST_GC_CHECK_LAYOUTS) != 0) quest_gc_check_heap();
+    if ((quest_gc_check_flags & QUEST_GC_CHECK_ROOTS) != 0) quest_gc_check_roots();
+    quest_gc_young_n = 0;
+    quest_gc_collecting = false;
+    if (checking) quest_gc_incremental_done();
+    return true;
+}
 
 /* ---------------------------------------------------------------------------
  * The checking modes
@@ -1889,6 +2186,9 @@ static void quest_gc_scan_segment(const char *name, const uintptr_t *low, const 
 static void quest_gc_skip_own(void) {
     quest_gc_cover(quest_gc_cursor, 2);
     quest_gc_cover(quest_gc_limit, 2);
+    quest_gc_cover(quest_gc_hidden_limit, 2);
+    quest_gc_cover(&quest_gc_piece, 1);
+    quest_gc_cover(&quest_gc_piece_at, 1);
     quest_gc_cover(quest_gc_over_cursor, 2);
     quest_gc_cover(quest_gc_over_limit, 2);
     quest_gc_cover(&quest_gc_heap_lo, 1);
@@ -2080,6 +2380,61 @@ static void quest_gc_stress_tick(void) {
     quest_gc_collect_kind(quest_gc_nursery_blocks != 0 && quest_gc_stress_forced % 16 != 0);
 }
 
+/* The `incremental` mode: a cycle is always under way, its slices one object
+ * each, one before every allocation, and each cycle's marks are checked
+ * against a stop-the-world marking of the same heap (quest_gc_check_cycle),
+ * so that an object a barrier let slip past the marker is reported at the
+ * end of the cycle that lost it, not when its memory is used again. As
+ * `stress`, the cost is bounded by thinning: once the cycles have walked
+ * QUEST_GC_STRESS_BUDGET megabytes of heap (each walks it twice), a gap of
+ * allocations is left between a cycle and the next, 1024 and then doubling */
+static uint64_t quest_gc_incremental_gap = 0, quest_gc_incremental_since = 0, quest_gc_incremental_walked = 0;
+
+static void quest_gc_incremental_tick(void) {
+    if (quest_gc_cycle || quest_gc_never_collect || quest_gc_held != 0 || quest_gc_collecting) return;
+    if (quest_gc_incremental_since++ < quest_gc_incremental_gap) return;
+    quest_gc_incremental_since = 0;
+    quest_gc_cycle_start();
+}
+
+static void quest_gc_incremental_done(void) {
+    quest_gc_incremental_walked += 2 * (quest_gc_used + 1);
+    if (quest_gc_stress_budget != 0 && quest_gc_incremental_walked >= quest_gc_stress_budget) {
+        quest_gc_incremental_walked = 0;
+        quest_gc_incremental_gap = quest_gc_incremental_gap == 0 ? 1024 : 2 * quest_gc_incremental_gap;
+    }
+}
+
+/* At the end of a cycle's marking, under `incremental`: the same heap is
+ * marked again from the same roots with the world stopped, and an object
+ * that marking reaches and the cycle did not mark is one the cycle would
+ * have freed in use. The cycle's own marks, which may hold more (what died
+ * while it ran), are put back for the sweep */
+static void quest_gc_check_cycle(void) {
+    size_t bytes = quest_gc_high_water * Q_GC_BLOCK_BITMAP;
+    uint8_t *cycle = (uint8_t *)malloc(bytes > 0 ? bytes : 1);
+    if (cycle == NULL) quest_gc_fatal("out of memory checking a cycle's marks");
+    memcpy(cycle, quest_gc_marks, bytes);
+    uint64_t live_bytes = quest_gc_live_bytes, live_objects = quest_gc_live_objects, large = quest_gc_large_live;
+    memset(quest_gc_marks, 0, bytes);
+    quest_gc_work_n = 0;
+    quest_gc_mark_roots();
+    while (quest_gc_work_n > 0) quest_gc_scan_object(quest_gc_work[--quest_gc_work_n]);
+    for (size_t i = 0; i < bytes; ++i) {
+        unsigned lost = quest_gc_marks[i] & (unsigned)~cycle[i] & 0xffu;
+        if (lost != 0) {
+            uintptr_t obj = quest_gc_heap_lo + (((uintptr_t)i * 8 + (unsigned)__builtin_ctz(lost)) << 3);
+            quest_gc_check_fail(quest_layout_of((const void *)obj), (const void *)obj,
+                                "reached from the roots, but not marked by the cycle that just ended", (size_t)-1, 0);
+        }
+    }
+    memcpy(quest_gc_marks, cycle, bytes);
+    free(cycle);
+    quest_gc_live_bytes = live_bytes;
+    quest_gc_live_objects = live_objects;
+    quest_gc_large_live = large;
+}
+
 /* Called by the slow path before each allocation while a mode is on: counts
  * it, and forces a collection (which runs the checks) when enough has been
  * allocated since the last. Not inline, so that its frame record is one
@@ -2095,6 +2450,7 @@ __attribute__((noinline)) static void quest_gc_check_tick(size_t sz, size_t head
         quest_gc_site_read(frame != NULL ? (void **)frame[0] : NULL);
     }
     if ((quest_gc_check_flags & QUEST_GC_CHECK_STRESS) != 0) quest_gc_stress_tick();
+    if ((quest_gc_check_flags & QUEST_GC_CHECK_INCREMENTAL) != 0) quest_gc_incremental_tick();
     quest_gc_allocated_bytes += sz;
     quest_gc_allocated_headers += header;
     if ((quest_gc_check_flags & QUEST_GC_CHECK_ALLOCATIONS) != 0) {
@@ -2128,6 +2484,13 @@ static void quest_gc_print_stats(void) {
             " objects), logged %" PRIu64 " objects, %" PRIu64 " cards\n", quest_gc_minors,
             (double)quest_gc_minor_pause_ns / 1e6, (double)quest_gc_minor_pause_max_ns / 1e6,
             quest_gc_survived_bytes >> 10, quest_gc_survived_objects, quest_gc_logged, quest_gc_cards_dirtied);
+    if (quest_gc_cycles > 0) {
+        fprintf(stderr, "quest: gc cycles: %" PRIu64 ", first pauses %.1f ms (max %.2f ms), %" PRIu64 " slices %.1f ms "
+                "(max %.2f ms), last pauses %.1f ms (max %.2f ms), %" PRIu64 " retried, %" PRIu64 " MB born marked\n",
+                quest_gc_cycles, (double)quest_gc_first_ns / 1e6, (double)quest_gc_first_max_ns / 1e6, quest_gc_slices,
+                (double)quest_gc_slice_ns / 1e6, (double)quest_gc_slice_max_ns / 1e6, (double)quest_gc_final_ns / 1e6,
+                (double)quest_gc_final_max_ns / 1e6, quest_gc_final_retried, quest_gc_born_bytes >> 20);
+    }
     if (quest_gc_frame_unit_n > 0) {
         fprintf(stderr, "quest: gc frames: %" PRIu64 " scanned by their tables, %" PRIu64 " whole, of %zu units' "
                 "tables\n", quest_gc_frames_mapped, quest_gc_frames_unmapped, quest_gc_frame_unit_n);
@@ -2200,6 +2563,7 @@ static void quest_gc_read_options(void) {
             else if (n == 8 && strncmp(p, "barriers", 8) == 0) quest_gc_check_flags |= QUEST_GC_CHECK_BARRIERS;
             else if (n == 6 && strncmp(p, "stress", 6) == 0) quest_gc_check_flags |= QUEST_GC_CHECK_STRESS;
             else if (n == 5 && strncmp(p, "sites", 5) == 0) quest_gc_check_flags |= QUEST_GC_CHECK_SITES;
+            else if (n == 11 && strncmp(p, "incremental", 11) == 0) quest_gc_check_flags |= QUEST_GC_CHECK_INCREMENTAL;
             else if (n > 0) {
                 fprintf(stderr, "quest: QUEST_GC_CHECK: unknown mode '%.*s'\n", (int)n, p);
                 exit(70);
@@ -2224,6 +2588,21 @@ static void quest_gc_read_options(void) {
     if (budget != NULL && budget[0] != '\0') {
         quest_gc_stress_budget = strtoull(budget, NULL, 10) * ((1u << 20) / Q_GC_BLOCK);
     }
+    /* QUEST_GC_INCREMENTAL=0: full collections stop the world; QUEST_GC_PAUSE:
+     * the milliseconds a full collection may take stopping the world before
+     * the next is a cycle (0: every one the heap asks for is a cycle);
+     * QUEST_GC_PACE: bytes a cycle marks per byte allocated; QUEST_GC_SLICE:
+     * kilobytes allocated between a cycle's slices */
+    const char *incremental = getenv("QUEST_GC_INCREMENTAL");
+    if (incremental != NULL && incremental[0] == '0') quest_gc_incremental = false;
+    const char *goal = getenv("QUEST_GC_PAUSE");
+    if (goal != NULL && goal[0] != '\0') quest_gc_pause_goal_ns = strtoull(goal, NULL, 10) * 1000000;
+    const char *pace = getenv("QUEST_GC_PACE");
+    if (pace != NULL && pace[0] != '\0' && strtoull(pace, NULL, 10) > 0) {
+        quest_gc_pace = (size_t)strtoull(pace, NULL, 10);
+    }
+    const char *slice = getenv("QUEST_GC_SLICE");
+    if (slice != NULL && slice[0] != '\0') quest_gc_slice_bytes = (size_t)strtoull(slice, NULL, 10) << 10;
     const char *trap_at = getenv("QUEST_GC_TRAP");
     if (trap_at != NULL && trap_at[0] != '\0') quest_gc_trap_at = strtoull(trap_at, NULL, 10);
     const char *stats = getenv("QUEST_GC_STATS");
