@@ -528,6 +528,9 @@ typedef struct QT_T {
   the original's payload, viewed at the proxy's payload type for the case (`quest_proxy_option_payload`: the payload
   itself where no component changes view, else a proxy of it); through a bounded type parameter's view map, at the
   bound's (`quest_view_option_payload`). `opt!tag` is a new tuple: its ordinal, then copies of the components.
+  A store into a binder's component is a store into the option, whose header is two words before the payload, not
+  one: the write barrier (§9) reads the word before the tuple, and when it is under 65536, an option's tag where a
+  header holds a layout's address, takes the word before that, and logs the option.
 - **Cases Without Components Are Constants** (the self-hosted compiler; [extensions.md](extensions.md), "Options as
   Values"): each unit has a read-only table per option struct, one object of each tag (`qc_QT_T[n] = { { .tag = 0 },
   ... }` in C; in the SSA, a datum of words, each a tag). Making an option of a case without components is the
@@ -1332,15 +1335,32 @@ runtime's (`quest_layout_closure`, `quest_layout_adapter_env`, and `quest_layout
 `quest_array_new(len, init, layout)` takes the array's.
 
 **Write barriers and root tables** (docs/collector.md §3.5, §3.8). A store of a word that may be a pointer (`ptr` or
-`val`) into an object that already exists is preceded by `quest_barrier(obj)`, with the object's address where the
-site has it (a tuple's component, an array's element, a closure environment filled after a `let rec`'s body), or
-`quest_barrier_slot(slot)` where it does not (a record's field through its payload, a `var` or `out` location,
-which may be on the stack, a view's slot). The stores that make an object (`opMake*`) need none, and neither does
-the runtime's C when nothing allocates between an object's allocation and its stores, which the runtime keeps to
-where it can and barriers otherwise. Each unit's globals that may hold pointers, and its module records, are
-listed in a root table (`qr_roots`, `QRootEntry`s ended by a null slot) that `qr_register_dicts` registers with
-`quest_register_roots`; the runtime lists its own statics (`quest_runtime_roots`). Until the generational
-collector (step 4) the barriers only count (`QUEST_GC_CHECK=report` prints the counts), and
+`val`) into an object that already exists is followed by `quest_barrier(obj)`, with the object's address where the
+site has it (a tuple's component, a closure environment filled after a `let rec`'s body), or
+`quest_barrier_slot(slot)` with the slot's address where the object may be large or has no header at a fixed
+distance (an array's element, a record's field through its payload, a `var` or `out` location, which may be on the
+stack, a view's slot). The barrier follows the store, with nothing called between the two, since the value stored
+may be a call (a string literal's `quest_string_new`, a function's result assigned to a `var` parameter) in which
+a collection forgets a barrier that came before it. The stores that make an object (`opMake*`) need none while
+nothing is called between its allocation and a store, since the object is young; from the first call on (a string
+literal's allocation, a `quest_convert`, a descriptor's instantiation) a collection may have marked it old, so the
+printers log the object with `quest_barrier(obj)` before each later call and after the last store (`begin_init`,
+`beginInit`), and the SSA's builder does the same for the calls that may collect (the program's functions and the
+runtime's that allocate). The runtime's C computes a stored value before the barrier and the store, and around an
+operation that builds many objects with stores between their allocations (a descriptor's instance, a dynamic
+value's reading and writing, a directory's listing) holds collections off instead (`quest_gc_hold`,
+`quest_gc_release`; a raise releases every hold). Each
+unit's globals that may hold pointers, and its module records, are listed in a root table
+(`qr_roots`, `QRootEntry`s ended by a null slot) that `qr_register_dicts` registers with `quest_register_roots`;
+the runtime lists its own statics (`quest_runtime_roots`). Both barriers' fast paths are inline in
+`quest_runtime.h`. `quest_barrier`: the header's old byte says a collection has marked the object, its logged byte
+that it is in the log already, and an old object not yet logged goes to `quest_barrier_log`, which logs it for the
+next minor collection to scan whole. `quest_barrier_slot`: a slot in the heap whose line is marked (an old object's;
+a young object's lines are not, and its stores need no barrier) has a card (512 bytes, a byte each in a table
+beside the heap), and a clean card goes to `quest_barrier_card`, which marks it and lists it for the next minor
+collection to scan by the layouts of the old objects in it, so that a store into a table of a million entries
+costs the table one card's scan rather than its own. `QUEST_GC_CHECK=report` prints the objects logged and the
+cards marked, `QUEST_GC_CHECK=barriers` finds a store without a barrier at the next minor collection, and
 `QUEST_GC_CHECK=roots` scans the data segment for a heap pointer no table or listed root covers.
 
 The collector is the runtime's own (`runtime/quest_gc.c`, [runtime-design.md](runtime-design.md) §3): the header's

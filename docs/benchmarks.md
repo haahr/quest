@@ -1381,3 +1381,191 @@ sixteenth: 223 MB live in 458 MB of lines in 1,485 MB of blocks), so a worker's 
 data. Live lines against live bytes, the fragmentation that recycling cannot recover and that step 7 would, is 2.1
 here; step 4 records it again with minor collections, which reclaim the young blocks before they scatter, and
 should count a recyclable block's holes as free when it sets the target.
+
+## 17. Generations (2026-11-05)
+
+The suite on the collector of [collector.md](collector.md) step 4 against §16's step 3 times: sticky mark bits, minor
+collections every nursery of blocks taken (64 MB, adapting to what survives), the object barrier logging and the slot
+barrier marking cards, and the full collections as before.
+
+### 17.1. How they were taken
+
+As §16.1 (`run.py time --clean --scale 0.25 --timeout 1800`, one run each, `--backend c`, `ssac`, and `arm64`, in that
+order), by `./quest` from the working tree that became step 4's commit, stage 2 built by C from a clean stage build (ABI
+70), after `tools/check` had passed on the same tree. The machine was idle but for another session's single benchmark
+run (load averages 1.2 to 3.5 at the starts of the runs); both wall and processor times are given, and the ratios of
+each to §16's own, which were taken under a heavier load: where the two differ by much (imp-for, hamlet, and checksum
+through arm64), it is §16's wall time that the load stretched, and the processor ratio is the one to read. The suite was
+taken twice. The first taking, with the nursery at 8 MB, is what §17.2's second paragraph and its table come from, and
+it changed the default to 64 MB; the table below is the second, at 64 MB. The times are in
+`benchmarks/mlton/baselines/2026-11-05/`: `quest-c-step4.jsonl`, `quest-ssac-step4.jsonl`, and
+`quest-arm64-step4.jsonl`; the first taking's are beside them as `-step4-nursery8.jsonl`, and ssac's with its
+allocations left as calls (`QUEST_SKIP_PASSES=inlineAllocation`) as `quest-ssac-calls-step4.jsonl`. The ssac column
+carries the inline allocation sequence too, which §16.2 measured apart from the suite on two programs, since ssac's
+suite in §16 was taken without it; §17.2's last paragraph separates the two.
+
+### 17.2. Programs
+
+The ratio of step 4's time to step 3's, by wall time and by processor time, ordered by the best ratio in the row:
+
+| Benchmark | C | C, CPU | ssac | ssac, CPU | arm64 | arm64, CPU |
+|---|--:|--:|--:|--:|--:|--:|
+| hamlet | 1.06 | 1.06 | 1.14 | 1.15 | 0.60 | 0.85 |
+| imp-for | 0.94 | 0.95 | 1.07 | – | 0.61 | 0.88 |
+| checksum | 0.97 | 0.97 | 0.94 | 0.95 | 0.66 | 0.89 |
+| wc-scanStream | 0.97 | 0.97 | 0.68 | 0.68 | 0.97 | 0.97 |
+| ratio-regions | 1.04 | 1.04 | 0.74 | 0.86 | 1.01 | 1.01 |
+| smith-normal-form | 0.96 | 0.96 | 0.80 | 0.93 | 0.89 | 0.94 |
+| peek | 0.97 | 0.97 | 0.81 | 0.87 | 0.85 | 0.85 |
+| tailmerge | 0.96 | 0.96 | 0.84 | 0.84 | 0.95 | 0.95 |
+| fib | 1.04 | 1.03 | 1.01 | 1.00 | 0.85 | 0.96 |
+| output1 | 0.98 | 0.98 | 0.85 | 0.93 | 0.96 | 0.96 |
+| tsp | 0.99 | 0.99 | 0.85 | 0.87 | 0.98 | 0.98 |
+| simple | 0.98 | 0.98 | 0.86 | 0.85 | 0.96 | 0.98 |
+| fft | 1.01 | 1.00 | 0.99 | 0.98 | 0.86 | 0.86 |
+| DLXSimulator | 0.99 | 0.99 | 0.86 | 0.85 | 0.95 | 0.95 |
+| logic | 0.98 | 0.98 | 0.87 | 0.86 | 0.92 | 0.94 |
+| nucleic | 0.98 | 0.97 | 0.87 | 0.88 | 0.97 | 0.96 |
+| count-graphs | 1.01 | 1.00 | 1.04 | 1.03 | 0.87 | 0.90 |
+| barnes-hut | 1.07 | 1.07 | 0.88 | 0.87 | 0.95 | 0.98 |
+| mlyacc | 0.99 | 0.98 | 0.89 | 0.87 | 0.95 | 0.94 |
+| tyan | 0.98 | 0.98 | 0.89 | 0.90 | 0.98 | 0.98 |
+| vector64-concat | 1.00 | 0.99 | 0.89 | 0.93 | 0.98 | 0.98 |
+| life | 0.99 | 0.98 | 0.90 | 0.89 | 0.95 | 0.95 |
+| ray | 0.98 | 0.97 | 0.90 | 0.92 | 0.99 | 0.98 |
+| even-odd | 1.02 | 1.01 | 1.01 | 0.98 | 0.91 | 0.93 |
+| raytrace | 0.98 | 0.98 | 0.97 | 0.96 | 0.92 | 0.95 |
+| lexgen | 0.99 | 0.99 | 0.99 | 0.98 | 0.93 | 0.91 |
+| mandelbrot | 0.99 | 0.98 | 0.96 | 0.95 | 0.93 | 0.95 |
+| matrix-multiply | 0.97 | 0.98 | 0.96 | 0.96 | 0.94 | 0.94 |
+| vector-rev | 0.95 | 0.95 | 1.00 | 1.00 | 0.94 | 0.93 |
+| flat-array | 0.98 | 0.98 | 0.94 | 0.94 | 0.94 | 0.96 |
+| model-elimination | 0.97 | 0.97 | 1.33 | 1.33 | 0.95 | 0.95 |
+| wc-input1 | 0.96 | 0.96 | 0.95 | 0.95 | 0.97 | 0.97 |
+| md5 | 0.97 | 0.97 | 0.99 | 0.99 | 0.95 | 0.95 |
+| mpuz | 0.98 | 0.97 | 0.98 | 0.97 | 0.95 | 0.95 |
+| psdes-random | 0.97 | 0.97 | 1.22 | 1.33 | 0.95 | 0.97 |
+| knuth-bendix | 0.96 | 0.96 | 1.00 | 1.00 | 0.95 | 0.96 |
+| vector32-concat | 1.02 | 0.99 | 0.96 | 0.94 | 0.96 | 0.95 |
+| zebra | 0.96 | 0.96 | 1.08 | 1.08 | 1.23 | 1.23 |
+| tensor | 0.98 | 0.98 | 0.96 | 0.96 | 0.98 | 0.98 |
+| string-concat | 0.96 | 0.96 | 1.01 | 0.98 | 1.02 | 0.98 |
+| pidigits | 0.97 | 0.97 | 0.98 | 0.98 | 0.98 | 0.98 |
+| zern | 0.97 | 0.97 | 0.98 | 0.98 | 0.99 | 0.98 |
+| tak | 1.05 | 1.03 | 1.04 | 1.01 | 0.98 | 0.98 |
+| boyer | 0.99 | 0.99 | 1.05 | 1.06 | 0.98 | 0.97 |
+| vliw | 1.00 | 0.98 | 1.14 | 1.15 | 0.99 | 0.99 |
+| tailfib | 1.10 | – | 1.14 | – | 1.00 | 0.99 |
+| **geometric mean** | **0.99** | **0.98** | **0.95** | **0.96** | **0.93** | **0.95** |
+| against MLton, before → after | 0.54 → 0.54 |  | 0.49 → 0.47 |  | 0.63 → 0.59 |  |
+
+- **Level with step 3 through C, ahead of it through the SSA's backends.** The geometric means are 0.99 by wall time and
+  0.98 by processor time through C, 0.95 and 0.96 through ssac, and 0.93 and 0.95 through arm64; against MLton the suite
+  goes from 0.54 to 0.54 of MLton's time through C, 0.49 to 0.47 through ssac, and 0.63 to 0.59 through arm64. Some of
+  the gain is step 3's load (C's code is the same but for the barriers, and its processor ratio of 0.98 is about what
+  that load cost), and arm64's three best wall ratios (hamlet, imp-for, checksum, 0.60 to 0.66) are 0.85 to 0.89 by
+  processor time. Two programs still lose through C, barnes-hut (1.07) and hamlet (1.06), for the reason of the next
+  paragraph, less of it. arm64's zebra (1.23) is one run's: the same binary run three more times took 20.2, 24.9, and
+  20.7 s, so it has two speeds, by where a run's stack and heap land, and the faster is 0.99 of step 3's.
+
+- **The nursery's size is what the first taking measured.** With the 8 MB the design gave it, the suite lost to step 3
+  through C: 1.03 by both times over the 46 (`quest-c-step4-nursery8.jsonl`; 0.97 and 0.95 through ssac and arm64), and
+  1.10 to 1.17 on the programs that allocate most. The same binaries of the ten that lost most, run again at other sizes
+  and with minor collections off (`QUEST_GC_NURSERY`; processor seconds, one run each, the 8 MB column the mean of two):
+
+| Benchmark | 8 MB (s) | 16 MB | 32 MB | 64 MB | none | 64 MB / 8 MB | none / 8 MB |
+|---|--:|--:|--:|--:|--:|--:|--:|
+| barnes-hut | 10.52 | 9.89 | 9.99 | 10.06 | 9.07 | 0.96 | 0.86 |
+| mlyacc | 8.56 | 8.00 | 7.53 | 7.46 | 7.48 | 0.87 | 0.87 |
+| DLXSimulator | 14.74 | 14.31 | 13.28 | 13.02 | 12.91 | 0.88 | 0.88 |
+| boyer | 24.49 | 23.82 | 23.02 | 22.14 | 21.98 | 0.90 | 0.90 |
+| tailmerge | 36.17 | 36.30 | 36.34 | 32.97 | 32.61 | 0.91 | 0.90 |
+| wc-scanStream | 54.74 | 54.38 | 53.27 | 50.25 | 49.90 | 0.92 | 0.91 |
+| vliw | 7.21 | 6.96 | 7.36 | 6.71 | 6.61 | 0.93 | 0.92 |
+| tyan | 7.77 | 7.69 | 7.56 | 7.31 | 7.19 | 0.94 | 0.92 |
+| hamlet | 9.32 | 8.96 | 8.66 | 8.99 | 8.99 | 0.96 | 0.96 |
+| ratio-regions | 5.34 | 5.35 | 5.06 | 5.42 | 5.37 | 1.01 | 1.01 |
+| **geometric mean, against 8 MB** | | **0.97** | **0.95** | **0.93** | **0.91** | | |
+
+The loss is the minor collections', not the barriers', and it is not their pauses: barnes-hut's collections pause 0.40 s
+in all at 8 MB (1,725 minor, 12 full) and 0.33 s with full ones alone (89), of 10 s. It is where allocation goes
+afterwards. A minor collection leaves its survivors where they are, one or two percent of the nursery's bytes in small
+objects scattered over nearly every block it filled, and the marks are sticky until the next full collection, so
+allocation, which takes a block's holes before a free block, hops between ever smaller holes: barnes-hut's 34 GB went
+into 32.7 million holes of 1.0 KB on average at 8 MB, 12.9 million of 2.7 KB at 64 MB, and 2.1 million of 16 KB with
+full collections alone (`QUEST_GC_STATS` counts the holes), and by a profile (`profile.py`) the slow path took four
+times the samples at 8 MB that it took with none, and the program's two hot functions 13 and 8 percent more. What full
+collections alone cost instead is memory: barnes-hut's heap reaches 451 MB for 3 MB of live data, since a block with one
+live line counts as in use and the target is twice the blocks in use, against 67 MB at 8 MB and 211 MB at 64. The
+default is now 64 MB, the heap's least size (so a heap whose blocks in use stay under half of that has full collections
+alone), which takes most of the loss back here and all of it on the compiler's build (§17.3). The rest is what moving
+the young survivors would recover ([collector.md](collector.md) step 7).
+
+- **ssac's losses are the inline allocation sequence's, and so are its gains.** model-elimination (1.33) and
+  psdes-random (1.22) do not move with the nursery, and a profile shows no barrier in them. ssac's suite has the
+  sequence for the first time here, and against its own build with the allocations left as calls
+  (`QUEST_SKIP_PASSES=inlineAllocation`), by processor time:
+
+| Benchmark | calls (s) | inline (s) | inline / calls, wall | calls, CPU (s) | inline, CPU (s) | inline / calls, CPU |
+|---|--:|--:|--:|--:|--:|--:|
+| wc-scanStream | 65.80 | 45.33 | 0.69 | 65.14 | 44.96 | 0.69 |
+| simple | 8.56 | 7.41 | 0.87 | 8.31 | 7.15 | 0.86 |
+| peek | 95.86 | 83.06 | 0.87 | 95.59 | 82.79 | 0.87 |
+| logic | 11.03 | 9.60 | 0.87 | 10.76 | 9.34 | 0.87 |
+| tailmerge | 19.33 | 17.05 | 0.88 | 19.04 | 16.78 | 0.88 |
+| DLXSimulator | 11.56 | 10.32 | 0.89 | 11.26 | 9.98 | 0.89 |
+| ratio-regions | 5.56 | 5.03 | 0.90 | 5.30 | 4.77 | 0.90 |
+| barnes-hut | 9.92 | 8.99 | 0.91 | 9.63 | 8.71 | 0.90 |
+| mlyacc | 6.94 | 6.44 | 0.93 | 6.49 | 5.92 | 0.91 |
+| nucleic | 5.93 | 5.49 | 0.93 | 5.67 | 5.24 | 0.92 |
+| life | 7.98 | 7.43 | 0.93 | 7.74 | 7.19 | 0.93 |
+| md5 | 12.35 | 12.95 | 1.05 | 12.11 | 12.70 | 1.05 |
+| count-graphs | 30.52 | 33.54 | 1.10 | 30.23 | 33.03 | 1.09 |
+| zebra | 17.32 | 19.17 | 1.11 | 17.03 | 18.88 | 1.11 |
+| boyer | 49.26 | 55.23 | 1.12 | 48.99 | 54.67 | 1.12 |
+| hamlet | 8.21 | 9.57 | 1.17 | 7.90 | 9.27 | 1.17 |
+| vliw | 7.39 | 8.81 | 1.19 | 7.05 | 8.50 | 1.21 |
+| model-elimination | 26.81 | 37.22 | 1.39 | 26.55 | 36.93 | 1.39 |
+| psdes-random | 13.96 | 19.34 | 1.39 | 13.70 | 19.09 | 1.39 |
+| **geometric mean** (46) | | | **1.00** | | | **1.00** |
+
+The other 25 are within 0.94 to 1.04, and the geometric mean over the 46 is 1.00 by either time. The sequence is the
+same SSA that arm64 compiles to a gain on these programs (§16.2: psdes-random 0.83, model-elimination 1.00), printed as
+C with every load and store through a `char *` and compiled without strict aliasing, and what clang makes of it varies
+as it did for C's own allocation in §16.2 (psdes-random takes 19 s through C too, and 14 s through ssac with calls);
+marking the slow path's branch unlikely changes nothing. ssac keeps the pass: it costs nothing on the whole, and it is
+the path arm64 and the JIT take, which ssac is there to test.
+
+### 17.3. The compiler's own build
+
+The driver (`questlang/driver/main.quest`) built from an empty build directory with `-j 8` under `/usr/bin/time -l`,
+twice at each nursery, alternating, on an idle machine (load 1.2); §16.3's step 3 line (full collections alone) for
+comparison:
+
+| Collector | Wall (s) | User + system (s) | Largest resident set (GB) |
+|---|--:|--:|--:|
+| Step 3 (§16.3) | 23.3, 23.3 | 109.0, 109.6 | 3.77 |
+| Step 4, nursery 8 MB | 24.6, 24.5 | 117.5, 116.8 | 1.22 |
+| 32 MB | 23.5, 23.4 | 111.9, 111.3 | 1.34 |
+| 64 MB, the default | 22.6, 22.6 | 106.6, 106.4 | 1.39 |
+| 128 MB | 21.9, 21.9 | 102.8, 102.9 | 1.65 |
+| no minor collections | 22.6, 22.6 | 106.1, 106.3 | 3.50 |
+
+At the default the build takes 0.97 of step 3's wall time and processor time in 0.37 of its memory; at 8 MB it took 1.05
+and 1.07 in 0.32, which is what the first taking found, and with no minor collections it is step 3's collector but for
+the barriers, which cost it nothing that shows. The times fall steadily as the nursery grows, for the reason §17.2
+gives, and the memory rises past 64 MB, so the default is there.
+
+The collector's statistics (`QUEST_GC_STATS=each`) of the same build in one process (`-j 1`) at the default: 9 full
+collections, pausing 1.75 s in all and 876 ms at the longest; 271 minor collections, pausing 2.32 s in all and 27 ms at
+the longest (the nursery adapts upward on the compiler: 160 MB a minor collection, on average), with 1.75 GB surviving
+them of the 43.4 GB allocated, 4.0 percent; 247,000 objects logged and 589,000 cards marked; 2.57 GB the most in blocks
+at once (step 3: 9.9 GB); and 1,067 MB live at the end in 2,259 MB of lines, 2.1 bytes of lines for a live byte, as in
+step 3. The allocation went into 87 million holes, half a kilobyte each. With the 8 MB nursery the same build had 1,949
+minor collections pausing 3.06 s (10 ms the longest) and 9 full ones pausing 2.30 s. The longest pause is still a full
+collection's, most of a second, which is step 6's to shorten.
+
+A REPL session, the transcripts of `tests/repl` replayed twenty times through `./quest -i` (4.4 GB allocated in 2.1 s):
+22 minor collections pausing 38.5 ms in all and 8 full ones pausing 14.7 ms, 3.4 ms the longest of either; 13.1 MB live
+at the end in 28.5 MB of lines, 2.2 to one; 241 MB the most in blocks. With the 8 MB nursery it had 184 minor
+collections pausing 166 ms and 2 full ones, in 121 MB.

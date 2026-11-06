@@ -51,7 +51,11 @@ void *quest_value_fetch(void *addr, int64_t displ) {
 }
 
 void quest_value_store(void *addr, int64_t displ, void *w) {
-    *quest_value_word(addr, displ) = w;
+    void **slot = quest_value_word(addr, displ);
+    *slot = w;
+    /* The slot may be an old object's: a JIT session stores the program's
+       arguments into the system module's record */
+    quest_barrier_slot(slot);
 }
 
 /* ============================================================================
@@ -63,6 +67,26 @@ struct QCodeRegion {
     int64_t size;
     bool    executable;
 };
+
+/* Where the next region is asked for. The code in a region reaches its
+   data region's slots, and the binary's symbols, by adrp, within 4 GB of
+   itself (jit/loader's page), and mmap takes the address as the start of its
+   search for free pages: so the first region is asked for just above the
+   runtime's own text, and each later one just after the last. The pages
+   after the last may be taken (Darwin's shared cache begins 2 GB above the
+   binary, and a region that ended just under it sent the next one 7 GB
+   away, in three runs of a hundred while the collector's tables filled the
+   pages between), so a region that lands out of reach is asked for again
+   from the first address, where the search finds any gap below. */
+static char *quest_code_next = NULL;
+
+/* Whether a region is within reach: above the runtime's text and ending
+   within 3.5 GB of it, so that any two such regions, and the binary, are
+   within adrp's 4 GB of each other */
+static bool quest_code_near(void *p, int64_t size) {
+    uintptr_t text = (uintptr_t)&quest_code_reserve, a = (uintptr_t)p;
+    return a >= text && a + (uintptr_t)size - text <= (uintptr_t)0xE0000000;
+}
 
 QCodeRegion *quest_code_reserve(int64_t size, bool executable) {
     int prot = PROT_READ | PROT_WRITE;
@@ -76,8 +100,21 @@ QCodeRegion *quest_code_reserve(int64_t size, bool executable) {
 #endif
     }
     if (size <= 0) quest_value_fail();
-    void *p = mmap(NULL, (size_t)size, prot, flags, -1, 0);
+    uintptr_t align = (uintptr_t)1 << 28;
+    char *first = (char *)(((uintptr_t)&quest_code_reserve + align) & ~(align - 1));
+    if (quest_code_next == NULL) quest_code_next = first;
+    void *p = mmap(quest_code_next, (size_t)size, prot, flags, -1, 0);
     if (p == MAP_FAILED) quest_value_fail();
+    if (!quest_code_near(p, size) && quest_code_next != first) {
+        void *q = mmap(first, (size_t)size, prot, flags, -1, 0);
+        if (q != MAP_FAILED && quest_code_near(q, size)) {
+            munmap(p, (size_t)size);
+            p = q;
+        } else if (q != MAP_FAILED) {
+            munmap(q, (size_t)size);
+        }
+    }
+    quest_code_next = (char *)p + (((uintptr_t)size + 4095) & ~(uintptr_t)4095);
     QCodeRegion *r = (QCodeRegion *)quest_alloc(sizeof(QCodeRegion), &quest_layout_code_region);
     r->base = (char *)p;
     r->size = size;

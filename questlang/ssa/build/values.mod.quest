@@ -175,6 +175,12 @@ export
         u: UnitBuilder
         f: Function
         var cur: Int
+        (* The calls emitted so far that may collect, and the objects whose
+         * initializing stores are being emitted, outermost first, each with
+         * the calls emitted before its allocation ended (beginInit) *)
+        var calls: Int
+        initObjects: vector.T(Int)
+        initMarks: vector.T(Int)
         (* How each variable is held, by variable id *)
         bindings: hashMap.T(Int Binding)
         joins: hashMap.T(String Int)
@@ -273,6 +279,23 @@ export
     let invariantWord(fn: Fn address: Int offset: Int t: ssa.Type): Int =
         ssa.invariantLoad(fn.f fn.cur address offset 8 false t)
     let store(fn: Fn address: Int offset: Int width: Int value: Int): Ok = ssa.store(fn.f fn.cur address offset width value)
+    let barrierOn(fn: Fn obj: Int): Ok =
+        begin
+            let r = runtimeFunctions.function("quest_barrier")
+            ssa.call(fn.f fn.cur "quest_barrier" array of obj end runtimeFunctions.signature(r)
+                runtimeFunctions.resultTypes(r))
+            ok
+        end
+    (* Before a call that may collect: logs each object being initialized
+     * that an earlier such call may have left old, for the stores since
+     * (beginInit), and counts the call *)
+    let mayCollect(fn: Fn): Ok =
+        begin
+            for i = 0 upto {vector.length(:Int fn.initObjects) - 1} do
+                if fn.calls > vector.get(:Int fn.initMarks i) then barrierOn(fn vector.get(:Int fn.initObjects i)) end
+            end
+            fn.calls := fn.calls + 1
+        end
     (* A call of the runtime's function name (codegen/runtimeFunctions), at
      * its signature: its results; its one result; none *)
     let runtime(fn: Fn name: String args: Array(Int)): Array(Int) =
@@ -286,14 +309,30 @@ export
                         <> ssa.typeName(ssa.typeOf(fn.f args[k])) <> ", not " <> ssa.typeName(types[k]) end
                 end
             end
+            if r.effects.allocates then mayCollect(fn) end
             ssa.call(fn.f fn.cur name args runtimeFunctions.signature(r) runtimeFunctions.resultTypes(r))
         end
     let call1(fn: Fn name: String args: Array(Int)): Int = runtime(fn name args)[0]
     let callVoid(fn: Fn name: String args: Array(Int)): Ok = begin runtime(fn name args) ok end
+    let beginInit(fn: Fn obj: Int): Int =
+        begin
+            vector.append(:Int fn.initObjects obj)
+            vector.append(:Int fn.initMarks fn.calls)
+            fn.calls
+        end
+    let endInit(fn: Fn mark: Int obj: Int): Ok =
+        begin
+            let var found = false
+            while not(found) andif not(vector.empty(:Int fn.initObjects)) do
+                vector.pop(:Int fn.initMarks)
+                found := vector.pop(:Int fn.initObjects) is obj
+            end
+            if fn.calls > mark then barrierOn(fn obj) else ok end
+        end
     (* A call of a function of the unit, or another unit's, of no parameters
      * and no results *)
     let callOwn(fn: Fn symbol: String): Ok =
-        begin ssa.call(fn.f fn.cur symbol noValues ssa.emptySignature noValuesTypes) ok end
+        begin mayCollect(fn) ssa.call(fn.f fn.cur symbol noValues ssa.emptySignature noValuesTypes) ok end
     let typesOfValues(fn: Fn vs: Array(Int)): Array(ssa.Type) =
         begin
             let ts = array of(extent vs tInt)
@@ -313,7 +352,10 @@ export
      * symbol "", of the code pointer args[0]), its results *)
     let callQuest(fn: Fn symbol: String args: Array(Int) pairs: Array(Int) narrow: Array(Int) results: Array(Part))
         : Array(Int) =
-        ssa.call(fn.f fn.cur symbol args signatureOf(typesOfValues(fn args) pairs narrow results) typesOf(results))
+        begin
+            mayCollect(fn)
+            ssa.call(fn.f fn.cur symbol args signatureOf(typesOfValues(fn args) pairs narrow results) typesOf(results))
+        end
     let terminate(fn: Fn t: ssa.Terminator): Ok = ssa.terminate(fn.f fn.cur t)
     let terminated(fn: Fn): Bool = ssa.isTerminated(fn.f fn.cur)
     let jump(fn: Fn b: Int args: Array(Int)): Ok =
@@ -483,8 +525,8 @@ export
             else
                 case maybe.unwrap(:Binding b)
                     when bindPointer with x then
-                        if holdsPointer(v.type) then callVoid(fn "quest_barrier_slot" array of x.address end) end
                         writeParts(fn x.address locationParts(v.type) values)
+                        if holdsPointer(v.type) then callVoid(fn "quest_barrier_slot" array of x.address end) end
                     when bindGlobal then writeParts(fn symbolAt(fn globalSymbol(fn.u v)) varParts(v) values)
                     when bindSlot then writeParts(fn slotOf(fn v) varParts(v) values)
                     when bindValues then bindToValues(fn v values)
@@ -837,7 +879,8 @@ export
 
     let newFn(u: UnitBuilder f: Function closure: maybe.T(ir.OpMakeClosure)): Fn =
         tuple
-            let u = u let f = f let var cur = 0
+            let u = u let f = f let var cur = 0 let var calls = 0
+            let initObjects = vector.new(:Int) let initMarks = vector.new(:Int)
             let bindings = hashMap.new(:Int :Binding intEqual hash.int)
             let joins = hashMap.new(:String :Int eq hash.string)
             let joinParts = hashMap.new(:String :Array(Int) eq hash.string)

@@ -1,0 +1,240 @@
+(Program
+  :phrases (
+    (ImportPhrase
+      :items (
+        (ImportItem ('writer') 'Writer')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('conv') 'Conv')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('string') 'StringOp')
+      )
+    )
+    (ImportPhrase
+      :items (
+        (ImportItem ('maybe') 'Maybe' ('util/maybe') 'util/Maybe')
+      )
+    )
+    (TypeBinding
+      :name 'Pair'
+      :type_val (TypeRecord
+        :fields (
+          (RecordFieldSig
+            :name 'first'
+            :type_sig (TypePath ('String'))
+          )
+          (RecordFieldSig
+            :name 'second'
+            :type_sig (TypePath ('String'))
+          )
+        )
+      )
+    )
+    (LetValueBinding
+      :name 'total'
+      :value (ExprInt 0 '0')
+      :is_var True
+    )
+    (ExprStmt
+      :expr (ExprFor
+        :var_name 'i'
+        :start (ExprInt 0 '0')
+        :stop (ExprInt 99999 '99999')
+        :body (ExprBlock
+          :bindings (
+            (LetValueBinding
+              :name 't'
+              :value (ExprTuple
+                :fields (
+                  (TupleBinding
+                    :name 'x'
+                    :value (ExprString 'alpha' '"alpha"')
+                  )
+                  (TupleBinding
+                    :name 'y'
+                    :value (ExprString 'beta' '"beta"')
+                  )
+                )
+              )
+            )
+            (LetValueBinding
+              :name 'r'
+              :value (ExprRecord
+                :fields (
+                  (RecordBinding
+                    :name 'first'
+                    :value (ExprString 'gamma' '"gamma"')
+                  )
+                  (RecordBinding
+                    :name 'second'
+                    :value (ExprString 'delta' '"delta"')
+                  )
+                )
+              )
+              :type_annot (TypePath ('Pair'))
+            )
+            (LetValueBinding
+              :name 'a'
+              :value (ExprArray
+                :elements (
+                  (ExprString 'epsilon' '"epsilon"')
+                  (ExprString 'zeta' '"zeta"')
+                )
+              )
+            )
+            (LetValueBinding
+              :name 'o'
+              :value (ExprApp
+                :func (ExprSelect
+                  :target (ExprId 'maybe')
+                  :field 'some'
+                )
+                :args (
+                  (TypeArgument
+                    :type_val (TypePath ('String'))
+                  )
+                  (ExprString 'eta' '"eta"')
+                )
+              )
+            )
+            (LetValueBinding
+              :name 'f'
+              :value (ExprFun
+                :return_type (TypePath ('String'))
+                :body (ExprInfix
+                  :left (ExprString 'theta' '"theta"')
+                  :op '<>'
+                  :right (ExprSelect
+                    :target (ExprId 't')
+                    :field 'x'
+                  )
+                )
+              )
+            )
+            (ExprStmt
+              :expr (ExprInfix
+                :left (ExprId 'total')
+                :op ':='
+                :right (ExprInfix
+                  :left (ExprId 'total')
+                  :op '+'
+                  :right (ExprInfix
+                    :left (ExprApp
+                      :func (ExprSelect
+                        :target (ExprId 'string')
+                        :field 'length'
+                      )
+                      :args (
+                        (ExprSelect
+                          :target (ExprId 't')
+                          :field 'y'
+                        )
+                      )
+                    )
+                    :op '+'
+                    :right (ExprInfix
+                      :left (ExprApp
+                        :func (ExprSelect
+                          :target (ExprId 'string')
+                          :field 'length'
+                        )
+                        :args (
+                          (ExprSelect
+                            :target (ExprId 'r')
+                            :field 'second'
+                          )
+                        )
+                      )
+                      :op '+'
+                      :right (ExprInfix
+                        :left (ExprApp
+                          :func (ExprSelect
+                            :target (ExprId 'string')
+                            :field 'length'
+                          )
+                          :args (
+                            (ExprIndex
+                              :target (ExprId 'a')
+                              :index (ExprInt 1 '1')
+                            )
+                          )
+                        )
+                        :op '+'
+                        :right (ExprInfix
+                          :left (ExprApp
+                            :func (ExprSelect
+                              :target (ExprId 'string')
+                              :field 'length'
+                            )
+                            :args (
+                              (ExprApp
+                                :func (ExprSelect
+                                  :target (ExprId 'maybe')
+                                  :field 'unwrap'
+                                )
+                                :args (
+                                  (TypeArgument
+                                    :type_val (TypePath ('String'))
+                                  )
+                                  (ExprId 'o')
+                                )
+                              )
+                            )
+                          )
+                          :op '+'
+                          :right (ExprApp
+                            :func (ExprSelect
+                              :target (ExprId 'string')
+                              :field 'length'
+                            )
+                            :args (
+                              (ExprApp
+                                :func (ExprId 'f')
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+    (ExprStmt
+      :expr (ExprApp
+        :func (ExprSelect
+          :target (ExprId 'writer')
+          :field 'putString'
+        )
+        :args (
+          (ExprSelect
+            :target (ExprId 'writer')
+            :field 'output'
+          )
+          (ExprInfix
+            :left (ExprApp
+              :func (ExprSelect
+                :target (ExprId 'conv')
+                :field 'int'
+              )
+              :args (
+                (ExprId 'total')
+              )
+            )
+            :op '<>'
+            :right (ExprString '\n' '"\\n"')
+          )
+        )
+      )
+    )
+  )
+)

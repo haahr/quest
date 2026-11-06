@@ -1,0 +1,131 @@
+(TypedProgram
+  :phrases (
+    (TypedImport
+      :items (
+        (TypedImportItem ('writer') : 'Writer')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('conv') : 'Conv')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('string') : 'StringOp')
+      ))
+    (TypedImport
+      :items (
+        (TypedImportItem ('maybe') : 'Maybe')
+      ))
+    (TypedLetType 'Pair' :kind TYPE)
+    (TypedLetValue 'total' :type Int
+      :value (TypedInt 0 :type Int))
+    (TypedExprStmt
+      :expr (TypedFor 'i' :upto
+        :start (TypedInt 0 :type Int)
+        :stop (TypedInt 99999 :type Int)
+        :body (TypedBlock :type Ok
+          :bindings (
+            (TypedLetValue 't' :type Tuple x: String y: String end
+              :value (TypedTuple :type Tuple x: String y: String end
+                :elements (
+                  (TypedString 'alpha' :type String)
+                  (TypedString 'beta' :type String)
+                )))
+            (TypedLetValue 'r' :type Pair
+              :value (TypedRecord :type Record first: String second: String end
+                :fields (
+                  (TypedRecordField 'first'
+                    :value (TypedString 'gamma' :type String))
+                  (TypedRecordField 'second'
+                    :value (TypedString 'delta' :type String))
+                )))
+            (TypedLetValue 'a' :type Array(String)
+              :value (TypedArray :type Array(String)
+                :elements (
+                  (TypedString 'epsilon' :type String)
+                  (TypedString 'zeta' :type String)
+                )))
+            (TypedLetValue 'o' :type maybe.T(String)
+              :value (TypedApp :type maybe.T(String)
+                :func (TypedTypeApp [String] :type Fun(val: String): maybe.T(String)
+                  :func (TypedSelect 'some' :type All(A :: TYPE) Fun(val: A): maybe.T(A)
+                    :target (TypedVar 'maybe' :type Module 'maybe')))
+                :args (
+                  (TypedString 'eta' :type String)
+                )))
+            (TypedLetValue 'f' :type Fun(): String
+              :value (TypedFun :params () :type Fun(): String
+                :body (TypedInfix '<>' :type String
+                  :left (TypedString 'theta' :type String)
+                  :right (TypedSelect 'x' :type String
+                    :target (TypedVar 't' :type Tuple x: String y: String end)))))
+          )
+          :result (TypedAssign
+            :target (TypedVar 'total' :type Var(Int))
+            :value (TypedInfix '+' :type Int
+              :left (TypedDerefCell :type Int
+                :target (TypedVar 'total' :type Var(Int)))
+              :right (TypedInfix '+' :type Int
+                :left (TypedApp :type Int
+                  :func (TypedSelect 'length' :type Fun(string: String): Int
+                    :target (TypedVar 'string' :type Module 'string'))
+                  :args (
+                    (TypedSelect 'y' :type String
+                      :target (TypedVar 't' :type Tuple x: String y: String end))
+                  ))
+                :right (TypedInfix '+' :type Int
+                  :left (TypedApp :type Int
+                    :func (TypedSelect 'length' :type Fun(string: String): Int
+                      :target (TypedVar 'string' :type Module 'string'))
+                    :args (
+                      (TypedSelect 'second' :type String
+                        :target (TypedVar 'r' :type Pair))
+                    ))
+                  :right (TypedInfix '+' :type Int
+                    :left (TypedApp :type Int
+                      :func (TypedSelect 'length' :type Fun(string: String): Int
+                        :target (TypedVar 'string' :type Module 'string'))
+                      :args (
+                        (TypedIndex :type String
+                          :target (TypedVar 'a' :type Array(String))
+                          :index (TypedInt 1 :type Int))
+                      ))
+                    :right (TypedInfix '+' :type Int
+                      :left (TypedApp :type Int
+                        :func (TypedSelect 'length' :type Fun(string: String): Int
+                          :target (TypedVar 'string' :type Module 'string'))
+                        :args (
+                          (TypedApp :type String
+                            :func (TypedTypeApp [String] :type Fun(o: maybe.T(String)): String
+                              :func (TypedSelect 'unwrap' :type All(A :: TYPE) Fun(o: maybe.T(A)): A
+                                :target (TypedVar 'maybe' :type Module 'maybe')))
+                            :args (
+                              (TypedVar 'o' :type maybe.T(String))
+                            ))
+                        ))
+                      :right (TypedApp :type Int
+                        :func (TypedSelect 'length' :type Fun(string: String): Int
+                          :target (TypedVar 'string' :type Module 'string'))
+                        :args (
+                          (TypedApp :type String
+                            :func (TypedVar 'f' :type Fun(): String)
+                            :args ())
+                        )))))))))))
+    (TypedExprStmt
+      :expr (TypedApp :type Ok
+        :func (TypedSelect 'putString' :type Fun(writer: writer.T string: String): Ok
+          :target (TypedVar 'writer' :type Module 'writer'))
+        :args (
+          (TypedSelect 'output' :type writer.T
+            :target (TypedVar 'writer' :type Module 'writer'))
+          (TypedInfix '<>' :type String
+            :left (TypedApp :type String
+              :func (TypedSelect 'int' :type Fun(n: Int): String
+                :target (TypedVar 'conv' :type Module 'conv'))
+              :args (
+                (TypedDerefCell :type Int
+                  :target (TypedVar 'total' :type Var(Int)))
+              ))
+            :right (TypedString '\n' :type String))
+        )))
+  ))

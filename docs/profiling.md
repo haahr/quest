@@ -109,8 +109,8 @@ are often free; extra stack loads on the chain are not.
 python3.11 tools/perf/gcstats.py .build/perf/mlyacc.c .build/perf/mlyacc.ssac .build/perf/mlyacc.arm64
 ```
 
-runs each with `QUEST_GC_STATS=each` and summarizes: collections, the time their pauses took, bytes allocated, the
-live data at collections (median and largest), and the largest heap. Builds from the same SSA allocate the same, so
+runs each with `QUEST_GC_STATS=each` and summarizes: full and minor collections, the time each kind's pauses
+took, bytes allocated, the live data at full collections (median and largest), and the largest heap. Builds from the same SSA allocate the same, so
 when their live data differ, the build with more is keeping dead objects alive: the collector scans the stack and
 registers conservatively, and a stack slot holding a dead value's pointer keeps what it points to. In mlyacc at
 `6f7cb100` (under the Boehm collector), arm64's live data was 3.5 times ssac's, and marking took twice as long.

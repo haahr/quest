@@ -5,6 +5,8 @@ between them.
     tools/check                    the suites the change needs, from the files it changes
     tools/check --self-hosted-only the self-hosted compiler's suites alone, whatever the change
     tools/check --all              every suite, whatever the change
+    tools/check --stress           the stress tier alone
+    tools/check --no-stress        the suites without the stress tier before them
 
 The change is what differs from origin/main: the commits since they diverged,
 and what is not yet committed. A change only to the self-hosted compiler, its
@@ -23,6 +25,15 @@ and for the program's alone; and whole programs through C and arm64:
 docs/arm64.md section 4). Every suite adds, at once, the bootstrap's
 suite and the unit tests but those that drive a terminal, and then, alone, the
 terminal tests, which time out under load.
+
+Before the suites, the stress tier (docs/testing.md section 4.1): the compiled
+tests alone, under the collector's `stress` mode (a collection at every
+allocation, thinning as a program's heap grows: docs/collector.md section 7)
+with the other checks and `sites`, through ./quest's stage 2 and the arm64
+backend, the C backend, and the JIT, and through the bootstrap's C. It takes
+minutes, and finds a store without a barrier or a root left out within a few
+allocations of the fault, which the suites' collections, megabytes apart,
+reach only by chance; when it fails, the suites are not run.
 
 Left to run by hand (docs/testing.md section 4.1): ssac's other modes and its
 fixed points, since arm64 tests the SSA they share and the plain mode keeps
@@ -56,6 +67,19 @@ SELF_HOSTED_ONLY_PATHS = ("questlang/", "tests/golden/self-hosted/", "tests/gold
                           "tests/self-hosted/", "docs/")
 # The IR runs left to run by hand: those between Core and the described stage
 SKIPPED_PHASES = ("run_ir_simplified", "run_ir_specialized", "run_ir_closed", "run_ir_represented")
+# The checks every compiled program the suites run makes (docs/collector.md
+# section 7), and the stress tier's: a collection at every allocation too,
+# until 1024 MB of heap has been walked at each rate, and the allocating
+# functions kept for a failure's report. Where a compiler builds a test and
+# runs it, the test alone is under stress (QUEST_GC_CHECK_CHILDREN), since
+# the compiler under it takes ten times as long; the JIT's suite, where the
+# two are one process, is where the compiler is, at a quarter of the budget
+CHECKS = "layouts,roots,poison,barriers"
+STRESS = CHECKS + ",stress,sites"
+STRESS_ENVIRONMENT = {"QUEST_GC_CHECK": STRESS, "QUEST_GC_STRESS_BUDGET": "1024"}
+STRESS_PROGRAMS_ENVIRONMENT = {"QUEST_GC_CHECK": CHECKS, "QUEST_GC_CHECK_CHILDREN": STRESS,
+                               "QUEST_GC_STRESS_BUDGET": "1024"}
+STRESS_JIT_ENVIRONMENT = {"QUEST_GC_CHECK": STRESS, "QUEST_GC_STRESS_BUDGET": "256"}
 
 
 class Suite:
@@ -76,12 +100,13 @@ class Suite:
         self.finished = time.monotonic() - start
 
     def summary(self) -> list[str]:
-        """The lines of its output that sum it up: run_tests.py's summary, or
-        unittest's count and verdict."""
+        """The lines of its output that sum it up: run_tests.py's summary and
+        the tests that failed, or unittest's count and verdict."""
         lines = self.output.read_text(encoding="utf-8", errors="replace").splitlines()
         picked = [line for line in lines if line.startswith(("Summary:", "  Golden tests:", "  Error tests:", "Ran ",
                                                              "OK", "FAILED", "Fixed point", "Whole-program fixed point",
-                                                             "Bootstrappable", "Stages 2 and 3", "=== Backend"))]
+                                                             "Bootstrappable", "Stages 2 and 3", "=== Backend",
+                                                             "  [FAIL]"))]
         return picked or lines[-3:]
 
 
@@ -91,6 +116,48 @@ def run_at_once(suites: list[Suite], start: float) -> None:
         thread.start()
     for thread in threads:
         thread.join()
+
+
+def report(suites: list[Suite], start: float) -> list[str]:
+    """Prints each suite's verdict and summary; the names of those that failed."""
+    failed = []
+    for suite in suites:
+        verdict = "passed" if suite.returncode == 0 else f"FAILED (exit {suite.returncode})"
+        print(f"== {suite.name}: {verdict}, finished at {suite.finished:.0f}s")
+        for line in suite.summary():
+            print(f"   {line}")
+        if suite.returncode != 0:
+            failed.append(suite.name)
+    print(f"Elapsed {time.monotonic() - start:.0f}s"
+          + (f"; failed: {', '.join(failed)} (see {OUTPUT_DIR.relative_to(ROOT_DIR)}/)" if failed else "; all passed"),
+          flush=True)
+    return failed
+
+
+def stress_tier(python: str, cores: int, self_hosted_only: bool) -> bool:
+    """Runs the stress tier; whether it passed. The driver is ./quest's stage
+    2, built first without the checks (the launcher builds what is stale)."""
+    environment = {name: value for name, value in os.environ.items() if not name.startswith("QUEST_GC_")}
+    build = subprocess.run([str(ROOT_DIR / "quest"), "-e", "ok"], cwd=ROOT_DIR, env=environment, capture_output=True,
+                           text=True)
+    if build.returncode != 0:
+        print(f"The stress tier's driver did not build:\n{build.stdout}{build.stderr}")
+        return False
+    driver = ROOT_DIR / ".build" / "quest-stages" / "stage2" / "quest"
+    run_tests = [python, str(ROOT_DIR / "run_tests.py"), "--timeout", "120", "-j", str(max(1, cores // 3))]
+    self_hosted = [*run_tests, "--self-hosted", "--self-hosted-driver", str(driver)]
+    suites = [
+        Suite("stress-arm64", [*self_hosted, "--backend", "arm64"], STRESS_PROGRAMS_ENVIRONMENT),
+        Suite("stress-c", [*self_hosted, "--phase", "run_c_compiled"], STRESS_PROGRAMS_ENVIRONMENT),
+        Suite("stress-jit", [*self_hosted, "--backend", "jit-files"], STRESS_JIT_ENVIRONMENT),
+    ]
+    if not self_hosted_only:
+        suites.append(Suite("stress-bootstrap", [*run_tests, "--phase", "run_c_compiled"], STRESS_ENVIRONMENT))
+    start = time.monotonic()
+    print(f"Running the stress tier ({', '.join(suite.name for suite in suites)}) at once; output in "
+          f"{OUTPUT_DIR.relative_to(ROOT_DIR)}/", flush=True)
+    run_at_once(suites, start)
+    return not report(suites, start)
 
 
 def changed_files() -> list[str] | None:
@@ -115,6 +182,9 @@ def main() -> int:
     which.add_argument("--self-hosted-only", action="store_true",
                        help="the self-hosted compiler's suites alone, whatever the change")
     which.add_argument("--all", action="store_true", help="every suite, whatever the change")
+    stress = parser.add_mutually_exclusive_group()
+    stress.add_argument("--stress", action="store_true", help="the stress tier alone (minutes)")
+    stress.add_argument("--no-stress", action="store_true", help="the suites without the stress tier before them")
     parser.add_argument("--seed", choices=("release", "bootstrap"), default="release",
                         help="what builds the self-hosting check's stage 1 (default: the current release; the "
                         "bootstrap past a gap, docs/instructions.md section 6.1)")
@@ -150,7 +220,14 @@ def main() -> int:
     # Every compiled program the suites run, the compilers among them, checks
     # its objects' layouts and its units' root tables (docs/collector.md
     # section 7)
-    os.environ["QUEST_GC_CHECK"] = "layouts,roots,poison"
+    os.environ["QUEST_GC_CHECK"] = CHECKS
+
+    if not args.no_stress:
+        if not stress_tier(python, cores, self_hosted_only):
+            print("The stress tier failed: the suites were not run")
+            return 1
+        if args.stress:
+            return 0
 
     if self_hosted_only:
         together = [
@@ -179,17 +256,7 @@ def main() -> int:
     for suite in after:
         suite.run(start)
 
-    failed = []
-    for suite in [*together, *after]:
-        verdict = "passed" if suite.returncode == 0 else f"FAILED (exit {suite.returncode})"
-        print(f"== {suite.name}: {verdict}, finished at {suite.finished:.0f}s")
-        for line in suite.summary():
-            print(f"   {line}")
-        if suite.returncode != 0:
-            failed.append(suite.name)
-    print(f"Elapsed {time.monotonic() - start:.0f}s"
-          + (f"; failed: {', '.join(failed)} (see {OUTPUT_DIR.relative_to(ROOT_DIR)}/)" if failed else "; all passed"))
-    return 1 if failed else 0
+    return 1 if report([*together, *after], start) else 0
 
 
 if __name__ == "__main__":

@@ -292,7 +292,13 @@ The encoder is checked against the assembler: for every arm64 golden, the encode
 - **The arena:** one region reserved with `mmap(MAP_JIT)` at the session's start (128 MB, so that every `bl` within
   it reaches), filled from its start. Writing toggles `pthread_jit_write_protect_np` and ends with
   `sys_icache_invalidate`. The data section goes in a separate, non-executable mapping (64 MB), with the GOT slots;
-  the stubs go in the arena. Nothing is freed: an input that fails leaves its code behind, unused.
+  the stubs go in the arena. Both are asked of `mmap` by address (`quest_code_reserve`): the first just above the
+  runtime's own text, each later one just after the last, since `adrp` from the arena must reach the GOT slots and
+  the host's image. The kernel's own placement was beyond 4 GB in three runs of a hundred: the collector's tables
+  filled the pages above the binary, the arena landed just under Darwin's shared cache (2 GB above the binary), and
+  the data went past the cache, 7 GB away. So the collector maps its tables beside its heap (collector.md §3.1), and a
+  region that still lands out of reach (not above the text and ending within 3.5 GB of it) is asked for again from
+  the first address, where the search finds any gap below. Nothing is freed: an input that fails leaves its code behind, unused.
 - **Symbols** (`jit/loader`): a unit's own symbols resolve first, then those the units before it export (the entries,
   the records), then the driver's (`dlsym`). A unit's other symbols (`qr_register_dicts`, its functions' names) are
   its own, so that units do not collide. A thread-local's slot holds the driver's own descriptor of it, which is what

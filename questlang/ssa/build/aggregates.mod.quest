@@ -83,6 +83,7 @@ export
                         else extent plan.fields end
                     let tup = vals.alloc(fn 8 * {if n is 0 then 1 else n end}
                         objectLayout.register(fn.u.layouts objectLayout.tuplePrefixLayout(targetS n)))
+                    let mark = vals.beginInit(fn tup)
                     for i = 0 upto {n - 1} do
                         let tc = vals.componentShape(targetS i)
                         let sc = vals.componentShape(sourceS i)
@@ -106,6 +107,7 @@ export
                         end
                         vals.writeSlot(fn vals.offsetPtr(fn tup 8 * i) tc.type converted)
                     end
+                    vals.endInit(fn mark tup)
                     array of tup end
             end
         end
@@ -171,7 +173,9 @@ export
             let boxes = embeddedShapes(x.args types x.embedded)
             let tup = vals.alloc(fn structBytes + 16 * extent boxes
                 objectLayout.register(fn.u.layouts objectLayout.tupleLayout(rs "" boxes)))
+            let mark = vals.beginInit(fn tup)
             storeFields(fn tup offsets x.args types x.embedded structBytes)
+            vals.endInit(fn mark tup)
             array of tup end
         end
 
@@ -271,6 +275,7 @@ export
             let boxes = embeddedShapes(args types embeddedArray)
             let box = vals.alloc(fn 16 + structBytes + 16 * extent boxes
                 objectLayout.register(fn.u.layouts objectLayout.recordLayout(concrete "" boxes)))
+            let mark = vals.beginInit(fn box)
             let payload = vals.offsetPtr(fn box 16)
             vals.store(fn payload runtimeLayout.offset("QRecordHeader" "descriptor") 8 descriptors.maybeDescriptor(fn o.descriptor))
             storeFields(fn payload offsets args types embeddedArray structBytes)
@@ -283,6 +288,7 @@ export
             end
             vals.store(fn box runtimeLayout.offset("QRecordVal" "val") 8 payload)
             vals.store(fn box runtimeLayout.offset("QRecordVal" "dict") 8 dict)
+            vals.endInit(fn mark box)
             if result.boxed then array of box end else array of payload dict end end
         end
 
@@ -342,6 +348,7 @@ export
         begin
             let opt = vals.alloc(fn layout.optionBytes(os.structure)
                 objectLayout.register(fn.u.layouts objectLayout.optionLayout(os "" o.tag)))
+            let mark = vals.beginInit(fn opt)
             let var tag = o.tag
             if maybe.isSome(:Atom o.ordinalAtom) then
                 (* The ordinal counts in the type's cases as written; the tag
@@ -384,6 +391,7 @@ export
                     vals.writeSlot(fn vals.offsetPtr(fn opt 8) st pv)
                 end
             end
+            vals.endInit(fn mark opt)
             array of opt end
         end
 
@@ -431,6 +439,7 @@ export
             let n = extent ts.components
             let tup = vals.alloc(fn 8 * {if n is 0 then 1 else n end}
                 objectLayout.register(fn.u.layouts objectLayout.tupleLayout(ts "" noBoxes)))
+            let mark = vals.beginInit(fn tup)
             let pt = caseShape(os tag)
             if offset > 0 then vals.store(fn tup 0 8 vals.constant(fn ordinalValue)) end
             if maybe.isSome(:shapes.Shape pt) andif shapes.kindIs(maybe.unwrap(:shapes.Shape pt) shapes.shapeTuple) then
@@ -450,6 +459,7 @@ export
                 let comp = vals.componentShape(ts offset)
                 vals.writeSlot(fn vals.offsetPtr(fn tup 8 * offset) comp.type vals.optionComponent(fn opt os tag ~1 access[0]))
             end
+            vals.endInit(fn mark tup)
             tup
         end
 
@@ -496,6 +506,7 @@ export
                         let n = extent tupleS.components
                         let tup = vals.alloc(fn 8 * {if n is 0 then 1 else n end}
                             objectLayout.register(fn.u.layouts objectLayout.tupleLayout(tupleS "" noBoxes)))
+                        let mark = vals.beginInit(fn tup)
                         let var count = 0
                         if maybe.isSome(:shapes.Shape cs) then
                             let pt = maybe.unwrap(:shapes.Shape cs)
@@ -509,6 +520,7 @@ export
                             let comp = vals.componentShape(tupleS j + offset)
                             vals.writeSlot(fn vals.offsetPtr(fn tup 8 * {j + offset}) comp.type vals.slotFromWord(fn w comp.type))
                         end
+                        vals.endInit(fn mark tup)
                         array of tup end
                     end
             end
@@ -572,10 +584,12 @@ export
             let n = extent args
             let arr = vals.alloc(fn runtimeLayout.offset("QArray" "data") + 8 * n
                 objectLayout.arraySymbol(objectLayout.slotKind(elem)))
+            let mark = vals.beginInit(fn arr)
             vals.store(fn arr runtimeLayout.offset("QArray" "length") 8 vals.constant(fn n))
             for i = 0 upto {n - 1} do
                 vals.store(fn arr runtimeLayout.offset("QArray" "data") + 8 * i 8 vals.slotToWord(fn vals.atom(fn args[i]) elem.type))
             end
+            vals.endInit(fn mark arr)
             array of arr end
         end
 

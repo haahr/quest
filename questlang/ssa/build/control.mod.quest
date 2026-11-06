@@ -253,6 +253,7 @@ export
                 let words = vector.length(:objectLayout.Kind kinds)
                 let env = vals.alloc(fn 8 * words objectLayout.register(fn.u.layouts
                     objectLayout.envLayout(code vector.toArray(:objectLayout.Kind kinds) 8 * words "")))
+                let mark = vals.beginInit(fn env)
                 let descs = descriptors.descriptors(fn x.descriptors)
                 for i = 0 upto {extent descs - 1} do vals.store(fn env 8 * i 8 descs[i]) end
                 let var at = extent descs
@@ -276,6 +277,7 @@ export
                         end
                     end
                 end
+                vals.endInit(fn mark env)
                 let clos = vals.alloc(fn runtimeLayout.offset("QClosure" "env") + 8 objectLayout.closureSymbol)
                 vals.store(fn clos runtimeLayout.offset("QClosure" "fn") 8 vals.symbolAt(fn code))
                 vals.store(fn clos runtimeLayout.offset("QClosure" "env") 8 env)
@@ -433,28 +435,33 @@ export
                     vals.terminate(fn option termReturn of ssa.Terminator with let values = values end)
                 when sUnreachable then vals.terminate(fn ssa.termUnreachable)
                 when sStoreAt with x then
+                    (* A store's barrier follows it, here and below: lowering
+                     * the value, or boxing it for its slot, may emit a call
+                     * (an allocation, a string literal's among them) that
+                     * collects, after which a barrier before it has been
+                     * forgotten *)
                     let address = vals.atom1(fn x.address)
+                    vals.writeLocation(fn address ir.atomType(x.value) vals.atom(fn x.value))
                     if vals.holdsPointer(ir.atomType(x.value)) then
                         vals.callVoid(fn "quest_barrier_slot" array of address end)
                     end
-                    vals.writeLocation(fn address ir.atomType(x.value) vals.atom(fn x.value))
                 when sStoreField with x then
                     let rs = vals.heldShape(ir.atomType(x.base) shapes.shapeRecord)
                     let slot = aggregates.recordSlot(fn vals.atom(fn x.base) rs x.name x.viewMap)
+                    vals.writeSlot(fn slot aggregates.fieldShape(rs x.name).type vals.atom(fn x.value))
                     if vals.holdsPointer(ir.atomType(x.value)) then
                         vals.callVoid(fn "quest_barrier_slot" array of slot end)
                     end
-                    vals.writeSlot(fn slot aggregates.fieldShape(rs x.name).type vals.atom(fn x.value))
                 when sStoreComponent with x then
                     if maybe.isSome(:Variable x.viewMap) then
                         let comp = vals.componentShape(layout.resolvedShape(shapes.shape(ir.atomType(x.base))) x.index)
                         let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable x.viewMap)))
                         let slot = vals.call1(fn "quest_view_tuple_slot" array of vals.atom1(fn x.base) vm
                             vals.constant(fn x.index) end)
+                        vals.writeSlot(fn slot comp.type vals.atom(fn x.value))
                         if vals.holdsPointer(ir.atomType(x.value)) then
                             vals.callVoid(fn "quest_barrier_slot" array of slot end)
                         end
-                        vals.writeSlot(fn slot comp.type vals.atom(fn x.value))
                     else
                         let ts = shapes.shape(ir.atomType(x.base))
                         let comp = vals.componentShape(ts x.index)
@@ -464,8 +471,8 @@ export
                         case x.access
                             when original then
                                 let o = vals.unproxy(fn b)
-                                if barrier then vals.callVoid(fn "quest_barrier" array of o end) end
                                 vals.writeSlot(fn vals.offsetPtr(fn o 8 * x.index) comp.type v)
+                                if barrier then vals.callVoid(fn "quest_barrier" array of o end) end
                             (* A var component of a proxy is the original's,
                              * which quest_proxy_store barriers itself *)
                             when proxy then
@@ -478,22 +485,22 @@ export
                                         end
                                     fun(): Array(Int)
                                         begin
-                                            if barrier then vals.callVoid(fn "quest_barrier" array of b end) end
                                             vals.writeSlot(fn vals.offsetPtr(fn b 8 * x.index) comp.type v)
+                                            if barrier then vals.callVoid(fn "quest_barrier" array of b end) end
                                             vals.noValues
                                         end)
                                 ok
                             when direct then
-                                if barrier then vals.callVoid(fn "quest_barrier" array of b end) end
                                 vals.writeSlot(fn vals.offsetPtr(fn b 8 * x.index) comp.type v)
+                                if barrier then vals.callVoid(fn "quest_barrier" array of b end) end
                         end
                     end
                 when sStoreElement with x then
                     let arr = vals.atom1(fn x.base)
                     let elem = aggregates.elementShape(x.base)
                     let address = aggregates.elementAddress(fn arr vals.atom1(fn x.index) x.offset)
-                    if vals.holdsPointer(elem.type) then vals.callVoid(fn "quest_barrier" array of arr end) end
                     vals.store(fn address 0 8 vals.slotToWord(fn vals.atom(fn x.value) elem.type))
+                    if vals.holdsPointer(elem.type) then vals.callVoid(fn "quest_barrier_slot" array of address end) end
                 when sSwitch with x then switch(fn x)
                 when sTry with x then tryStatement(fn x)
                 when sInspect with x then inspectAuto(fn x)
@@ -512,10 +519,10 @@ export
                         let c = vector.get(:vals.DeferredCapture d.captures i)
                         let vs = vals.atom(fn c.a)
                         (* The environment was made before the body ran *)
+                        for k = 0 upto {extent vs - 1} do vals.store(fn c.env c.offset + 8 * k 8 vs[k]) end
                         if vals.holdsPointer(ir.atomType(c.a)) then
                             vals.callVoid(fn "quest_barrier" array of c.env end)
                         end
-                        for k = 0 upto {extent vs - 1} do vals.store(fn c.env c.offset + 8 * k 8 vs[k]) end
                     end
                     fn.deferred := saved
                 when sEcho with x then
@@ -762,6 +769,7 @@ export
             if extent armFields < n then n := extent armFields end
             let a = vals.alloc(fn 8 * {if extent armFields is 0 then 1 else extent armFields end}
                 objectLayout.register(fn.u.layouts objectLayout.tupleLayout(shapes.shape(armType) "" noBoxes)))
+            let mark = vals.beginInit(fn a)
             for i = 0 upto {n - 1} do
                 let src = vals.loadWord(fn stored 8 * i vals.tVal)
                 let pair = arm.descriptors[i]
@@ -774,6 +782,7 @@ export
                     vals.store(fn a 8 * i 8 w)
                 end
             end
+            vals.endInit(fn mark a)
             a
         end
 

@@ -31,8 +31,12 @@ export
             effects(memoryNone false true false))
         fn("quest_auto_new" "QAuto *"
             array of "const QTypeDescriptor *" "QVal" end effects(memoryNone false true false))
-        fn("quest_barrier" "void" array of "const void *" end effects(memoryWrites false false false))
-        fn("quest_barrier_slot" "void" array of "const void *" end effects(memoryWrites false false false))
+        (* The barriers write only an object's header word, the collector's
+         * log, and the card table, none of which compiled code loads, so
+         * value numbering keeps its loads across them; reads keeps them
+         * from counting as pure *)
+        fn("quest_barrier" "void" array of "const void *" end effects(memoryReads false false false))
+        fn("quest_barrier_slot" "void" array of "const void *" end effects(memoryReads false false false))
         fn("quest_builtins_init" "void" array of "int" "char **" end effects(memoryWrites false false false))
         fn("quest_convert" "QVal"
             array of "QVal" "const QTypeDescriptor *" "const QTypeDescriptor *" end effects(memoryReads true true

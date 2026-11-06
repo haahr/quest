@@ -701,10 +701,25 @@ suites, and any other change the first's. It says which, and why; `--all` and `-
 - **The questlang tests** (`tests/source/questlang/`) need no run of their own: each suite runs them compiled, with its
   own compiler.
 - **The collector's checks:** every compiled program the suites run, the compilers among them, runs with
-  `QUEST_GC_CHECK=layouts,roots,poison` (`tools/check` sets it), so that a layout that lies about an object's words, a
-  global holding a heap pointer that no root table covers, or a use of a reclaimed object fails the suite
-  ([collector.md](collector.md) §7). To see the counts per layout and the barrier counts, run a program with
-  `QUEST_GC_CHECK=layouts,report`; `QUEST_GC_STATS=1` prints what the collector did.
+  `QUEST_GC_CHECK=layouts,roots,poison,barriers` (`tools/check` sets it), so that a layout that lies about an object's
+  words, a global holding a heap pointer that no root table covers, a use of a reclaimed object, or a pointer store
+  into an old object without a barrier fails the suite ([collector.md](collector.md) §7). To see the counts per
+  layout and the objects logged, run a program with `QUEST_GC_CHECK=layouts,report`; `QUEST_GC_STATS=1` prints what
+  the collector did.
+- **The stress tier** runs first, and the suites only if it passes (`--no-stress` leaves it out, `--stress` runs it
+  alone, about 10 minutes with another check sharing the machine): the compiled tests under
+  `QUEST_GC_CHECK=layouts,roots,poison,barriers,stress,sites` with `QUEST_GC_STRESS_BUDGET=1024`, through `./quest`'s
+  stage 2 (built first if stale, without the checks) and the arm64 backend, the C backend, and the JIT (`run_tests.py
+  --self-hosted --self-hosted-driver .build/quest-stages/stage2/quest` with `--backend arm64`, `--phase run_c_compiled`,
+  and `--backend jit-files`), and, for a change beyond the self-hosted compiler, through the bootstrap's C
+  (`run_tests.py --phase run_c_compiled`). For arm64 and C the modes are the tests' alone (`QUEST_GC_CHECK_CHILDREN`,
+  with the compiler under the suites' own checks), since the compiler under `stress` takes ten times as long and the
+  JIT's suite, where compiler and test are one process, already runs it so. The suites' collections come megabytes
+  apart, so a store whose barrier is wrong only when a collection falls inside one particular call passes them by
+  chance: three passing runs of the whole check left dozens of such stores in the compilers and the runtime
+  (collector.md step 4), which `stress`, a collection before every allocation, reports within a few hundred collections,
+  with the allocating functions named by `sites`. A failure repeats: run the test's binary with the same variables, and
+  `QUEST_GC_TRAP=k` under a debugger stops before the collection the report numbers.
 - **The suites do not interfere:** each builds into a temporary directory of its own, the runtime's cached objects
   are written atomically, and only `--update-golden` writes goldens. They compete only for cores, which is why the
   self-hosted suite, the longest, gets most of them, and why the terminal tests (`tests/python/test_readline_terminal.py`),

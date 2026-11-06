@@ -113,6 +113,13 @@ export
             end
         else false end
 
+    (* A write barrier (collector.md section 3.5) only logs the object or
+     * marks the slot's card: it keeps no pointer, so passing one of an
+     * allocation's pointers to it is no escape, and an allocation made a
+     * slot needs none (a slot is a root and has no header word), so the
+     * transformation drops them *)
+    let isBarrier(symbol: String): Bool =
+        stringOp.equal(symbol "quest_barrier") orif stringOp.equal(symbol "quest_barrier_slot")
     let escapes(s: State a: Int reason: String): Ok =
         if s.alive[a] then begin s.alive[a] := false s.reasons[a] := reason end end
 
@@ -265,6 +272,7 @@ export
                                 elsif ssa.isOp(i ssa.opPtrAdd) andif {j is 0} andif s.isConst[i.args[1]] then ok
                                 elsif ssa.isOp(i ssa.opPtrToInt) then
                                     if not(onlyProxyTests(i.results[0])) then escapes(s a "converted to an integer") end
+                                elsif ssa.isCall(i) andif isBarrier(i.symbol) then ok
                                 elsif ssa.isCall(i) then escapes(s a "passed to " <> i.symbol)
                                 else escapes(s a "used by " <> ssa.opcodeName(i.op)) end
                             end
@@ -522,6 +530,7 @@ export
                             elsif {result >= 0} andif isPointer(result) then ok
                             elsif ssa.isOp(i ssa.opStore) andif isPointer(i.args[1]) then ok
                             elsif ssa.isOp(i ssa.opPtrToInt) andif isPointer(i.args[0]) then ok
+                            elsif ssa.isCall(i) andif isBarrier(i.symbol) andif isPointer(i.args[0]) then ok
                             elsif {result >= 0} andif proxyTest[result] then
                                 let zero = ssa.instruction(ssa.opConst array of :Int end i.results 0 "" 0 false
                                     ssa.emptySignature)

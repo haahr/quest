@@ -146,6 +146,11 @@ static QVal quest_dynamic_component(const QAuto *a) {
 static const QTypeDescriptor *quest_witnesses[Q_MAX_BOUND_VARS];
 static size_t quest_witness_count = 0;
 
+/* This file's global roots, for the collector and its roots check */
+void quest_serialization_roots(QRootVisitor add) {
+    add(quest_witnesses, Q_MAX_BOUND_VARS);
+}
+
 static void quest_push_witness(const QTypeDescriptor *witness) {
     if (witness == NULL || quest_witness_count == Q_MAX_BOUND_VARS) quest_raise_dynamic_error();
     quest_witnesses[quest_witness_count++] = witness;
@@ -1086,7 +1091,18 @@ static void quest_emit_value(
 /* Public Serialization Interface                                            */
 /* ------------------------------------------------------------------------- */
 
+/* Writing and reading a dynamic value build a type graph, tables by address,
+ * a parsed tree, and descriptors, each of many objects stored into one
+ * another between allocations, all of them live until the operation ends: no
+ * collection runs meanwhile (quest_gc_hold) */
+static void quest_dynamic_extern_held(QWriter *wr, const QAuto *d);
 void quest_dynamic_extern(QWriter *wr, const QAuto *d) {
+    quest_gc_hold();
+    quest_dynamic_extern_held(wr, d);
+    quest_gc_release();
+}
+
+static void quest_dynamic_extern_held(QWriter *wr, const QAuto *d) {
     if (wr == NULL || wr->is_closed || wr->file == NULL || d == NULL || d->type_desc == NULL) {
         quest_raise_dynamic_error();
     }
@@ -2066,7 +2082,15 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
 /* Public Deserialization Interface                                          */
 /* ------------------------------------------------------------------------- */
 
+static QAuto *quest_dynamic_intern_held(QReader *rd);
 QAuto *quest_dynamic_intern(QReader *rd) {
+    quest_gc_hold();
+    QAuto *read = quest_dynamic_intern_held(rd);
+    quest_gc_release();
+    return read;
+}
+
+static QAuto *quest_dynamic_intern_held(QReader *rd) {
     if (rd == NULL || rd->is_closed) {
         quest_raise_dynamic_error();
     }

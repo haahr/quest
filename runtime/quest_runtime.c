@@ -597,6 +597,9 @@ void quest_reraise(QExceptionState state) {
             break;
     }
     quest_current_exception = state;
+    /* A raise leaves every operation of the runtime's that held collections
+     * off */
+    quest_gc_release_all();
     if (quest_current_exception_handler->resume != NULL) quest_resume_native(quest_current_exception_handler);
     Q_LONGJMP(quest_current_exception_handler->env_jmp, 1);
 }
@@ -1376,9 +1379,12 @@ static void quest_record_dicts_insert(const QTypeDescriptor *view, const QTypeDe
     }
     QRecordDictEntry *e = quest_record_dict_slot(view, layout);
     if (e->view == NULL) {
-        quest_barrier(quest_record_dicts);
+        /* Each slot's own barrier: the entry may lie across two cards */
+        quest_barrier_slot(&e->view);
         e->view = view;
+        quest_barrier_slot(&e->layout);
         e->layout = layout;
+        quest_barrier_slot(&e->dict);
         e->dict = dict;
         quest_record_dicts_count++;
     }
@@ -1436,6 +1442,7 @@ static const void *quest_build_record_dict(const QTypeDescriptor *view, const QT
             stored_types[j] = lf->type;
         }
     }
+    quest_barrier(dict);    /* old by now if the stored types' allocation collected */
     *(QRecordStoredTypes *)(dict + slots) = (QRecordStoredTypes)stored_types;
     return dict;
 }
@@ -1504,7 +1511,7 @@ static QVal quest_proxy_cached(const void *p, size_t i, size_t n, QVal v, const 
     }
     if (!proxy->cached[i]) {
         QVal converted = quest_convert(v, from, to);
-        quest_barrier(proxy->cache);
+        quest_barrier_slot(&proxy->cache[i]);
         proxy->cache[i] = converted;
         proxy->cached[i] = 1;
     }
@@ -1760,9 +1767,12 @@ static QVal quest_copy_viewed(QVal v, const QTypeDescriptor *from, const QTypeDe
         const QTupleTypeDescriptor *t_meta = (const QTupleTypeDescriptor *)to->extra;
         for (size_t i = 0; f_meta != NULL && i < t_meta->element_count && i < f_meta->element_count; ++i) {
             if (t_meta->elements[i].is_var) quest_layout_conversion_error(from, to);
-            QVal e = quest_tuple_element(v.p, from, i);
-            quest_slot_write(dst + t_meta->elements[i].offset,
-                             quest_convert(e, f_meta->elements[i].type, t_meta->elements[i].type));
+            /* The conversion may allocate, and so collect and leave the copy
+             * old: its value first, then the barrier and the store */
+            QVal e = quest_convert(quest_tuple_element(v.p, from, i), f_meta->elements[i].type,
+                                   t_meta->elements[i].type);
+            quest_barrier(dst);
+            quest_slot_write(dst + t_meta->elements[i].offset, e);
         }
         return (QVal){ .p = dst };
     }
@@ -1788,9 +1798,10 @@ static QVal quest_copy_viewed(QVal v, const QTypeDescriptor *from, const QTypeDe
             if (tc->payload_type->kind == QTYPE_KIND_TUPLE) {
                 slot += ((const QTupleTypeDescriptor *)tc->payload_type->extra)->elements[i].offset;
             }
-            QVal e = quest_option_element(v.p, from, i);
-            quest_slot_write((void *)slot, quest_convert(e, quest_payload_element_type(fc->payload_type, i),
-                                                         quest_payload_element_type(tc->payload_type, i)));
+            QVal e = quest_convert(quest_option_element(v.p, from, i), quest_payload_element_type(fc->payload_type, i),
+                                   quest_payload_element_type(tc->payload_type, i));
+            quest_barrier(dst);
+            quest_slot_write((void *)slot, e);
         }
     }
     return (QVal){ .p = dst };
@@ -2294,7 +2305,7 @@ static void quest_inst_collect(void *cx, const QTypeDescriptor *d) {
         w->nodes = nodes;
         w->capacity = capacity;
     }
-    quest_barrier(w->nodes);
+    quest_barrier_slot(&w->nodes[w->count]);
     w->nodes[w->count++] = (QInstNode){ d, NULL, d->kind == QTYPE_KIND_HOLE };
     quest_desc_children(d, quest_inst_collect, cx);
 }
@@ -2686,6 +2697,9 @@ const QTypeDescriptor *quest_instantiate_descriptor(
         }
     }
 
+    /* The instance's descriptors point at each other and at their names and
+     * metadata, allocated between them: no collection until all are filled */
+    quest_gc_hold();
     QInstWork w = { NULL, 0, 0 };
     quest_inst_collect(&w, template_desc);
     /* Which nodes reach a hole: iterate to a fixed point, since templates may
@@ -2703,7 +2717,10 @@ const QTypeDescriptor *quest_instantiate_descriptor(
         }
     }
     for (size_t i = 0; i < w.count; ++i) {
-        if (w.nodes[i].has_hole) w.nodes[i].inst = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
+        if (!w.nodes[i].has_hole) continue;
+        QTypeDescriptor *inst = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
+        quest_barrier_slot(&w.nodes[i].inst);    /* the table may be old by now: the allocations may have collected */
+        w.nodes[i].inst = inst;
     }
     QInstContext cx = { &w, args, arg_count };
     for (size_t i = 0; i < w.count; ++i) {
@@ -2721,6 +2738,7 @@ const QTypeDescriptor *quest_instantiate_descriptor(
     e->inst = inst;
     e->next = quest_inst_cache[bucket];
     quest_inst_cache[bucket] = e;
+    quest_gc_release();
     return inst;
 }
 
@@ -3334,11 +3352,19 @@ QArray *quest_system_args = NULL;
 
 void quest_system_init(int argc, char **argv) {
     if (argc < 0) argc = 0;
-    quest_system_args = quest_array_new(argc, (QVal){ .p = NULL }, &quest_layout_array_pointer);
+    /* No collection between the strings and the array: the strings are held
+     * outside the heap meanwhile, and the array's stores have no barrier */
+    quest_gc_hold();
+    QString **strings = (QString **)malloc((size_t)(argc > 0 ? argc : 1) * sizeof(QString *));
+    if (strings == NULL) quest_raise_system_error();
     for (int i = 0; i < argc; i++) {
         const char *arg = (argv != NULL && argv[i] != NULL) ? argv[i] : "";
-        quest_system_args->data[i].p = quest_string_new(arg, (int64_t)strlen(arg));
+        strings[i] = quest_string_new(arg, (int64_t)strlen(arg));
     }
+    quest_system_args = quest_array_new(argc, (QVal){ .p = NULL }, &quest_layout_array_pointer);
+    for (int i = 0; i < argc; i++) quest_system_args->data[i].p = strings[i];
+    free(strings);
+    quest_gc_release();
 }
 
 /* Interrupts in a Jupyter kernel's driver (docs/jupyter-kernel.md section 5):
@@ -3512,6 +3538,9 @@ QArray *quest_system_list_directory(const QString *path) {
         closedir(dir);
         quest_raise_system_error();
     }
+    /* No collection until the array is filled: the names are held outside
+     * the heap meanwhile, and the array's stores have no barrier */
+    quest_gc_hold();
 
     struct dirent *entry;
     while ((entry = readdir(dir)) != NULL) {
@@ -3541,6 +3570,7 @@ QArray *quest_system_list_directory(const QString *path) {
         res->data[i].p = entries[i];
     }
     free(entries);
+    quest_gc_release();
     return res;
 }
 
@@ -4223,7 +4253,7 @@ static void quest_sb_add_chunk(QStringBuilder *b, char *data, int64_t len) {
     chunk->length = len;
     chunk->capacity = len;
     chunk->data = data;
-    quest_barrier(b->chunks);
+    quest_barrier_slot(&b->chunks[b->chunk_count]);
     b->chunks[b->chunk_count++] = chunk;
 }
 

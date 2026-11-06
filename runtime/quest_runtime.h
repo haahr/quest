@@ -496,7 +496,8 @@ typedef struct QLayout {
  * collector's holds `old`, set when the object is marked, the generational
  * barrier's hint. */
 #define Q_HEADER_LAYOUT_MASK ((uintptr_t)0x0000FFFFFFFFFFFFu)
-#define Q_HEADER_OLD         ((uintptr_t)1 << 56)
+#define Q_HEADER_OLD         ((uintptr_t)1 << 56)   /* the collector's byte: marked by some collection */
+#define Q_HEADER_LOGGED      ((uintptr_t)1 << 48)   /* the mutator's byte: in the log since the last collection */
 
 Q_INLINE const QLayout *quest_layout_of(const void *obj) {
     return (const QLayout *)(((const uintptr_t *)obj)[-1] & Q_HEADER_LAYOUT_MASK);
@@ -551,15 +552,54 @@ extern const QLayout quest_layout_string, quest_layout_exception, quest_layout_a
     quest_layout_record_dict_entries, quest_layout_inst_nodes, quest_layout_inst_cache_entry,
     quest_layout_view_map_entry, quest_layout_variant_adapter_entry, quest_layout_abstract_type_entry;
 
-/* Write barriers (docs/collector.md section 3.5), called before a store of a
- * word that may be a pointer into an object that already exists: with the
- * object, when the store site has its address (a tuple, an array, a box), or
- * with the slot's address when it does not (a record's field through its
- * payload, a var or out location, which may be on the stack, a view's slot).
- * Stores that initialize an object being made need neither. Until the
- * generational collector (step 4), they only count. */
-void     quest_barrier(const void *obj);
-void     quest_barrier_slot(const void *slot);
+/* Write barriers (docs/collector.md section 3.5), called after a store of a
+ * word that may be a pointer into an object that already exists, with no call
+ * that may collect between the two: with the object, when the store site has
+ * its address (a tuple, a box), or with the slot's address when it does not
+ * (an array's element, a record's field through its payload, a var or out
+ * location, which may be on the stack, a view's slot). Stores that initialize
+ * an object being made need neither until a call that may collect has come
+ * since its allocation; the compilers log such an object before each later
+ * call and after its last store.
+ * The object's barrier logs an object a collection has marked (its header's
+ * old byte) and that is not in the log already, so that the next minor
+ * collection scans it for the young objects it may now point at: the fast
+ * path is the header's load, a mask, and a compare, and the slow path
+ * (quest_barrier_log) logs. A tuple bound by a case binder is an option's
+ * payload, which shares the option's allocation (docs/c-representation.md
+ * section 9): the word before it is the option's tag, a small integer where
+ * a header holds a layout's address, so a word under 65536 says the header,
+ * and the object to log, are one word further back. The slot's barrier
+ * marks the slot's card, 512 bytes of the heap, dirty, and the next minor
+ * collection scans the dirty cards' words by their old objects' layouts, so
+ * that a store into a large table costs the table one card's scan, not its
+ * own (docs/collector.md section 3.5): the fast path is a range check and
+ * two bytes' loads, the slot's line mark (a slot in an unmarked line is a
+ * young object's, whose stores need no barrier: an old object's lines are
+ * marked, a run's as a whole) and its card, and the slow path
+ * (quest_barrier_card) marks and lists the card; a slot outside the heap is
+ * a stack or static slot. */
+#define Q_BARRIER_TAG_LIMIT ((uintptr_t)1 << 16)
+#define Q_GC_LINE_BITS 7
+#define Q_GC_CARD_BITS 9
+extern uintptr_t quest_gc_heap_lo, quest_gc_heap_hi;
+extern uint8_t  *quest_gc_lines;    /* a mark byte per line of the reserve, by (address - heap_lo) >> Q_GC_LINE_BITS */
+extern uint8_t  *quest_gc_cards;    /* a byte per card of the reserve, by (address - heap_lo) >> Q_GC_CARD_BITS */
+void     quest_barrier_log(void *obj);
+void     quest_barrier_card(uint8_t *card);
+Q_INLINE void quest_barrier(const void *obj) {
+    const uintptr_t *p = (const uintptr_t *)obj;
+    uintptr_t h = p[-1];
+    if (h < Q_BARRIER_TAG_LIMIT) h = p[-2];
+    if ((h & (Q_HEADER_OLD | Q_HEADER_LOGGED)) == Q_HEADER_OLD) quest_barrier_log((void *)obj);
+}
+Q_INLINE void quest_barrier_slot(const void *slot) {
+    uintptr_t off = (uintptr_t)slot - quest_gc_heap_lo;
+    if (off < quest_gc_heap_hi - quest_gc_heap_lo && quest_gc_lines[off >> Q_GC_LINE_BITS] != 0) {
+        uint8_t *card = quest_gc_cards + (off >> Q_GC_CARD_BITS);
+        if (*card == 0) quest_barrier_card(card);
+    }
+}
 
 /* Root tables (section 3.8): the global slots of a unit that hold heap
  * pointers, each by its address and its words, ending with a null slot,
@@ -573,6 +613,7 @@ void     quest_register_roots(const QRootEntry *roots);
 typedef void (*QRootVisitor)(void *slot, size_t words);
 void     quest_runtime_roots(QRootVisitor add);
 void     quest_code_roots(QRootVisitor add);
+void     quest_serialization_roots(QRootVisitor add);
 
 /* The checking modes of QUEST_GC_CHECK (docs/collector.md section 7), as bits
  * of quest_gc_check_flags, and the allocation hook of those that count
@@ -583,12 +624,25 @@ void     quest_code_roots(QRootVisitor add);
 #define QUEST_GC_CHECK_POISON  8
 #define QUEST_GC_CHECK_COLLECT 16       /* collect every QUEST_GC_CHECK_INTERVAL bytes, checking nothing */
 #define QUEST_GC_CHECK_ALLOCATIONS 32   /* count allocations by their sites, for benchmarks/mlton/allocations.py */
+#define QUEST_GC_CHECK_BARRIERS 64      /* at every minor collection, find the old objects' pointers at young ones */
 extern int    quest_gc_check_flags;     /* nonzero sends every allocation through the slow path, which counts it */
 extern size_t quest_gc_check_pending;   /* bytes allocated since the last forced collection */
 /* Reads QUEST_GC_CHECK and the other options, and reserves the heap */
 void          quest_gc_init(void);
 /* Collects now */
 void          quest_gc_collect(void);
+/* Holds collections off until the matching release, for an operation of the
+ * runtime's that builds a structure of many objects with stores between its
+ * allocations (a descriptor's instance, a serialized value's graph): while
+ * nothing collects, every object the operation allocates stays young, so the
+ * stores among them need no barriers, and a pointer it keeps outside the
+ * heap and the stack for a while is not lost. Only a store into an object
+ * older than the hold still needs its barrier. The operation must be bounded
+ * by its result's size, and must not run the program's code, whose handlers
+ * would outlive a raise's release of every hold (quest_reraise) */
+void          quest_gc_hold(void);
+void          quest_gc_release(void);
+void          quest_gc_release_all(void);
 /* Registers [low, high) as a region of ambiguous roots (the JIT's data) */
 void          quest_gc_add_roots(void *low, void *high);
 
@@ -604,7 +658,6 @@ void          quest_gc_add_roots(void *low, void *high);
  * inline (docs/ssa.md section 4.1). */
 extern uintptr_t quest_gc_cursor[2];
 extern uintptr_t quest_gc_limit[2];
-extern uintptr_t quest_gc_heap_lo;
 extern uint8_t  *quest_gc_start_bits;
 void *quest_gc_alloc_slow(size_t total, const QLayout *layout);
 

@@ -226,23 +226,41 @@ Quest is a garbage-collected language with mutable references (`var`) and cyclic
 functions, doubly-linked structures, and self-referential records).
 
 1. **The collector is the runtime's own** (`runtime/quest_gc.c`, designed in [collector.md](collector.md)): a
-   mark-region heap of 32 KB blocks of 128-byte lines in one reserved range, with its metadata beside it (a block
-   table, a mark byte per line, and bitmaps of the objects' starts and marks). Every allocation
-   (`quest_alloc(size, layout)` and its variants, [c-representation.md](c-representation.md) §9) prepends a header
-   word naming the object's **layout** ([collector.md](collector.md) §3.2), which says for each word whether it is a
-   pointer, a scalar, or ambiguous (a `val` word of generic code), bumps the cursor of the object's space (its
-   layout's: pointer-bearing, or pointer-free, which a collection never scans) through the current hole of free
-   lines, and sets the object's start bit; the slow path finds the next hole, or collects. A collection stops the
-   world when the blocks in use reach their target (twice those in use after the last collection, and at least
-   `QUEST_GC_MIN_HEAP` megabytes, 64 by default), marks from the roots (each unit's root table, the runtime's listed
-   statics and thread-locals, the JIT's data regions, and the stack and registers, conservatively) by the layouts,
-   validating an ambiguous word against the start bits, and keeps only the live objects' start bits (decision 14)
-   before classifying each block by its live lines. Objects never move. `QUEST_GC_STATS=1` prints a summary at exit
-   (`each`, a line per collection too); `QUEST_GC_CHECK=layouts` walks every live object by its layout after each
-   collection, forcing one every 64 MB allocated (`QUEST_GC_CHECK_INTERVAL` sets the bytes; at least four times the
-   heap's size) and at exit; `roots` checks that every heap pointer in the data segment lies in a unit's root table
-   or a root the runtime lists; `poison` fills reclaimed lines with a pattern that is never a pointer; `report`
-   prints the counts per layout, ambiguous words among them, and the write barriers' counts.
+   mark-region heap of 32 KB blocks of 128-byte lines in one reserved range, with its metadata beside it (a block table,
+   a mark byte per line, and bitmaps of the objects' starts and marks). Every allocation (`quest_alloc(size, layout)`
+   and its variants, [c-representation.md](c-representation.md) §9) prepends a header word naming the object's
+   **layout** ([collector.md](collector.md) §3.2), which says for each word whether it is a pointer, a scalar, or
+   ambiguous (a `val` word of generic code), bumps the cursor of the object's space (its layout's: pointer-bearing, or
+   pointer-free, which a collection never scans) through the current hole of free lines, and sets the object's start
+   bit; the slow path finds the next hole, or collects. A collection stops the world when the blocks in use reach their
+   target (twice those in use after the last collection, and at least `QUEST_GC_MIN_HEAP` megabytes, 64 by default),
+   marks from the roots (each unit's root table, the runtime's listed statics and thread-locals, the JIT's data regions,
+   and the stack and registers, conservatively) by the layouts, validating an ambiguous word against the start bits, and
+   keeps only the live objects' start bits (decision 14) before classifying each block by its live lines. Objects never
+   move. The collector is generational by sticky mark bits ([collector.md](collector.md) §3.5): a full collection clears
+   every mark; a *minor* one, every `QUEST_GC_NURSERY` megabytes of blocks taken (64 by default; 0 for full collections
+   alone; doubled while more than a quarter of the young bytes survive a minor collection, up to a quarter of the heap's
+   target and then off, with one minor collection every eighth full one to see whether that still holds, and halved back
+   while under a sixteenth survives), keeps them, so that marking from the roots stops at every old object and visits
+   the young ones alone, and sweeps only the blocks allocated into since the last collection. The write barriers the
+   backends emit after a pointer store into an existing object, both inline in `quest_runtime.h`, are the object's
+   (`quest_barrier`: the header's old byte says a collection has marked the object, and its logged byte that it is in
+   the log already; the object is logged) and the slot's (`quest_barrier_slot`, for an array's element or a slot whose
+   object has no header at a fixed distance: when the slot's line is marked, an old object's, its card, 512 bytes of the
+   heap, is marked dirty); the minor collection scans the logged objects whole and the dirty cards' old objects' words
+   as roots. The stores that initialize an object need none, unless a call between its allocation and its stores may
+   have collected, after which the backends log it before each later call and after its last store; the runtime's own
+   operations that build many objects hold collections off meanwhile (`quest_gc_hold`); the JIT's raw word store
+   (`quest_value_store`) marks the slot's card. `QUEST_GC_STATS=1` prints a summary at exit (`each`, a line per
+   collection too, a minor one's with its phases' times); `QUEST_GC_CHECK=layouts` walks every live object by its layout
+   after each full collection, and the young blocks' after each minor one, forcing a full one every 64 MB allocated
+   (`QUEST_GC_CHECK_INTERVAL` sets the bytes; at least four times the heap's size) and at exit; `roots` checks that
+   every heap pointer in the data segment lies in a unit's root table or a root the runtime lists; `poison` fills
+   reclaimed lines with a pattern that is never a pointer; `barriers` scans every old object that is not logged before
+   each minor collection, and reports a pointer at a young object as a store without a barrier; `stress` collects before
+   every allocation, thinning as the heap grows, so that those checks run a few allocations after a fault, and `sites`
+   names the functions that allocated the objects a failing check reports ([collector.md](collector.md) §7); `report`
+   prints the counts per layout, ambiguous words among them, the objects logged, and the cards marked.
 2. **`--nogc`:** compiling with `--nogc` defines `-DQUEST_NOGC`, under which the collector allocates but never
    collects, for debugging.
 

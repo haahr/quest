@@ -1,0 +1,31 @@
+(* Language: aggregates whose components are string literals. A literal is allocated where it is used, after its
+   container, so a collection during its allocation ages the container before the stores that initialize it, which
+   then need the barrier (docs/collector.md section 3.5); the loop makes enough of them for the checking modes to find
+   a store without one. The IR's interpreters take seconds over the loop, and more on a busy machine, so the
+   timeout is raised. *)
+(* @timeout: 180.0 *)
+
+import writer: Writer;
+import conv: Conv;
+import string: StringOp;
+import util/maybe: util/Maybe;
+
+Let Pair = Record
+    first: String
+    second: String
+end;
+
+let var total = 0;
+for i = 0 upto 99999 do
+    let t = tuple let x = "alpha" let y = "beta" end
+    let r: Pair = record
+        first = "gamma"
+        second = "delta"
+    end
+    let a = array of "epsilon" "zeta" end
+    let o = maybe.some(:String "eta")
+    let f = fun(): String "theta" <> t.x
+    total := total + string.length(t.y) + string.length(r.second) + string.length(a[1])
+        + string.length(maybe.unwrap(:String o)) + string.length(f())
+end;
+writer.putString(writer.output conv.int(total) <> "\n")

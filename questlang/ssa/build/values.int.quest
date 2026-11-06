@@ -107,6 +107,12 @@ export
         u: UnitBuilder
         f: Function
         var cur: Int
+        (* The calls emitted so far that may collect, and the objects whose
+         * initializing stores are being emitted, outermost first, each with
+         * the calls emitted before its allocation ended (beginInit) *)
+        var calls: Int
+        initObjects: vector.T(Int)
+        initMarks: vector.T(Int)
         (* How each variable is held, by variable id *)
         bindings: hashMap.T(Int Binding)
         joins: hashMap.T(String Int)
@@ -146,6 +152,16 @@ export
     runtime(fn: Fn name: String args: Array(Int)): Array(Int)
     call1(fn: Fn name: String args: Array(Int)): Int
     callVoid(fn: Fn name: String args: Array(Int)): Ok
+    (* Around an object's initializing stores, which have no barrier, as a
+     * young object's need none. The object stays young until a call that
+     * may collect (one of the program's functions, or one of the runtime's
+     * that allocates), which may mark it old (collector.md section 3.5),
+     * and the stores after that call must be logged before the next
+     * collection: so from the second such call on, the object's barrier is
+     * emitted before the call, and endInit emits it after the last store if
+     * there was a call at all. beginInit's result is endInit's mark *)
+    beginInit(fn: Fn obj: Int): Int
+    endInit(fn: Fn mark: Int obj: Int): Ok
     (* A call of a function of the unit, or another unit's, of no parameters
      * and no results *)
     callOwn(fn: Fn symbol: String): Ok

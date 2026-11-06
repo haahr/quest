@@ -140,6 +140,9 @@ export
      * ====================================================================== *)
 
     Let Local = Tuple cType: String name: String end
+    (* An object whose initializing stores are being printed, and the calls
+     * printed before its allocation ended (beginInit) *)
+    Let Init = Tuple obj: String mark: Int end
     (* What printing one C function needs: its locals and the labels and
      * handlers in scope *)
     Let FnState = Tuple
@@ -158,6 +161,8 @@ export
          * next statement makes: printed as the option's components instead,
          * by variable (fusedTuples) *)
         var fused: hashMap.T(Int nodes.Stmt)
+        (* The objects being initialized, outermost first (beginInit) *)
+        inits: vector.T(Init)
     end
     let newFnState(f: maybe.T(nodes.Function)): FnState =
         tuple
@@ -169,6 +174,7 @@ export
             let joinParams = hashMap.new(:String :Array(Variable) eq hash.string)
             let var volatile = hashMap.new(:Int :Bool intEqual hash.int)
             let var fused = hashMap.new(:Int :nodes.Stmt intEqual hash.int)
+            let inits = vector.new(:Init)
         end
 
     (* A field of an aggregate being made: its C expression, a record or
@@ -214,6 +220,8 @@ export
         var lines: Lines
         var indent: Int
         var tmp: Int
+        (* The lines printed that call a function (beginInit) *)
+        var calls: Int
         var pending: maybe.T(Pending)
         var deferred: maybe.T(Deferred)
         var emitter: maybe.T(declarations.Emitter)
@@ -273,7 +281,68 @@ export
             n
         end
 
-    let emit(p: P line: String): Ok = add(p.lines stringOp.new(4 * p.indent ' ') <> line)
+    (* Whether a line of C calls a function (an identifier right before a
+     * parenthesis; sizeof aside): a call may allocate, and so collect *)
+    let callsFunction(line: String): Bool =
+        begin
+            let n = stringOp.length(line)
+            let var found = false
+            let var i = 1
+            while {i < n} andif not(found) do
+                if stringOp.getChar(line i) is '(' then
+                    let c = stringOp.getChar(line {i - 1})
+                    let separator = {c is ' '} orif {c is '('} orif {c is ')'} orif {c is '*'} orif {c is '{'}
+                        orif {c is '='} orif {c is ','} orif {c is '&'} orif {c is '!'} orif {c is '-'} orif {c is '+'}
+                        orif {c is '"'}
+                    if not(separator) andif not({i >= 6} andif stringOp.equalSub(line {i - 6} 6 "sizeof" 0 6)) then
+                        found := true
+                    end
+                end
+                i := i + 1
+            end
+            found
+        end
+
+    let emit(p: P line: String): Ok =
+        begin
+            if callsFunction(line) andif not(strutil.startsWith(line "quest_barrier")) then
+                (* A call may collect. An object being initialized that an
+                 * earlier call may have left old is logged first, for the
+                 * stores since that call (beginInit) *)
+                for i = 0 upto {vector.length(:Init p.fs.inits) - 1} do
+                    let init = vector.get(:Init p.fs.inits i)
+                    if p.calls > init.mark then
+                        add(p.lines stringOp.new(4 * p.indent ' ') <> "quest_barrier(" <> init.obj <> ");")
+                    end
+                end
+                p.calls := p.calls + 1
+            end
+            add(p.lines stringOp.new(4 * p.indent ' ') <> line)
+        end
+
+    (* Before an object's initializing stores, which have no barrier, as a
+     * young object's need none: the object stays young until a call, in
+     * which a collection may run and mark it old (collector.md section 3.5),
+     * and the stores after that call must be logged before the next
+     * collection. So from the second call on, emit logs the object before
+     * the call, and initBarrier logs it after the last store. The mark is
+     * what initBarrier takes *)
+    let beginInit(p: P obj: String): Int =
+        begin
+            vector.append(:Init p.fs.inits tuple let obj = obj let mark = p.calls end)
+            p.calls
+        end
+
+    (* After the initializing stores beginInit began: logs the object if a
+     * call was printed since its allocation *)
+    let initBarrier(p: P mark: Int obj: String): Ok =
+        begin
+            let var found = false
+            while not(found) andif not(vector.empty(:Init p.fs.inits)) do
+                found := stringOp.equal(vector.pop(:Init p.fs.inits).obj obj)
+            end
+            if p.calls > mark then emit(p "quest_barrier(" <> obj <> ");") else ok end
+        end
 
     (* =========================================================================
      * Types
@@ -623,6 +692,7 @@ export
                         let tmp = temp(p struct <> " *")
                         emit(p tmp <> " = (" <> struct <> " *)quest_alloc(sizeof(" <> struct <> "), "
                             <> layoutRef(p objectLayout.tupleLayout(tupleS struct noBoxes)) <> ");")
+                        let mark = beginInit(p tmp)
                         let comps = vector.new(:Shape)
                         if maybe.isSome(:Shape cs) then
                             let pt = maybe.unwrap(:Shape cs)
@@ -646,6 +716,7 @@ export
                             let slot = types.shapeQvalToSlot(word componentShape(tupleS j + offset))
                             emit(p tmp <> "->_" <> cInt(j + offset) <> " = " <> slot <> ";")
                         end
+                        initBarrier(p mark tmp)
                         tmp
                     end
             end
@@ -748,10 +819,12 @@ export
             let sized = embeddedBoxes(p tmp "sizeof(" <> struct <> ")" fields)
             emit(p tmp <> " = (" <> struct <> " *)quest_alloc(" <> sized.size <> ", "
                 <> layoutRef(p objectLayout.tupleLayout(shapeOf(t) struct boxShapes(fields))) <> ");")
+            let mark = beginInit(p tmp)
             let values = fillEmbedded(p sized.fields)
             for i = 0 upto {vector.length(:String values) - 1} do
                 emit(p tmp <> "->_" <> cInt(i) <> " = " <> vector.get(:String values i) <> ";")
             end
+            initBarrier(p mark tmp)
             tmp
         end
 
@@ -892,8 +965,10 @@ export
                     end
                     let clos = temp(p "QClosure *")
                     emit(p clos <> " = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
+                    let mark = beginInit(p clos)
                     emit(p clos <> "->fn = (void *)" <> codeName(p maybe.unwrap(:nodes.Function plan.thunk)) <> ";")
                     emit(p clos <> "->env = (void *)(" <> c <> ");")
+                    initBarrier(p mark clos)
                     clos
                 when planRuntime then
                     let l = maybe.unwrap(:nodes.PlanLayout plan.layout)
@@ -987,6 +1062,7 @@ export
             let sized = embeddedBoxes(p payload "sizeof(QRecordVal) + sizeof(" <> struct <> ")" values)
             emit(p box <> " = (QRecordVal *)quest_alloc(" <> sized.size <> ", "
                 <> layoutRef(p objectLayout.recordLayout(concrete struct boxShapes(values))) <> ");")
+            let mark = beginInit(p box)
             emit(p payload <> " = (" <> struct <> " *)(" <> box <> " + 1);")
             emit(p payload <> "->header.descriptor = " <> maybeDescriptor(p o.descriptor) <> ";")
             let filled = fillEmbedded(p sized.fields)
@@ -1002,6 +1078,7 @@ export
                 "(const void *)&" <> staticdata.offsetDictInstanceName(p.ctx table.view table.layout)
             end
             emit(p "*" <> box <> " = (QRecordVal){ .val = (void *)" <> payload <> ", .dict = " <> dictExpr <> " };")
+            initBarrier(p mark box)
             if result.boxed then box else "(*" <> box <> ")" end
         end
 
@@ -1176,6 +1253,7 @@ export
             let tmp = temp(p struct <> " *")
             emit(p tmp <> " = (" <> struct <> " *)quest_alloc(sizeof(" <> struct <> "), "
                 <> layoutRef(p objectLayout.optionLayout(os struct o.tag)) <> ");")
+            let mark = beginInit(p tmp)
             let var tag = o.tag
             if maybe.isSome(:Atom o.ordinalAtom) then
                 (* The ordinal counts in the type's cases as written; the tag
@@ -1240,6 +1318,7 @@ export
                     emit(p tmp <> "->u.qo_" <> tagName <> ".val = " <> pv <> ";")
                 end
             end
+            initBarrier(p mark tmp)
             tmp
         end
 
@@ -1322,6 +1401,7 @@ export
             let tmp = temp(p struct <> " *")
             emit(p tmp <> " = (" <> struct <> " *)quest_alloc(sizeof(" <> struct <> "), "
                 <> layoutRef(p objectLayout.tupleLayout(ts struct noBoxes)) <> ");")
+            let mark = beginInit(p tmp)
             let pt = caseShape(os tag)
             if offset > 0 then emit(p tmp <> "->_0 = " <> lit(ordinalValue) <> ";") end
             if maybe.isSome(:Shape pt) andif shapes.kindIs(maybe.unwrap(:Shape pt) shapes.shapeTuple) then
@@ -1337,6 +1417,7 @@ export
                 emit(p tmp <> "->_" <> cInt(offset) <> " = "
                     <> optionComponent(p opt os tag maybe.none(:Int) access[0]) <> ";")
             end
+            initBarrier(p mark tmp)
             tmp
         end
 
@@ -1452,9 +1533,11 @@ export
             let arr = temp(p cType(t))
             emit(p arr <> " = (QArray *)quest_alloc(sizeof(QArray) + (size_t)(" <> lit(n) <> ") * sizeof(QVal), &"
                 <> objectLayout.arraySymbol(objectLayout.slotKind(shapes.element(shapeOf(t)))) <> ");")
+            let mark = beginInit(p arr)
             emit(p arr <> "->length = " <> lit(n) <> ";")
             for i = 0 upto {n - 1} do emit(p arr <> "->data[" <> lit(i) <> "] = " <> vector.get(:String elements i)
                 <> ";") end
+            initBarrier(p mark arr)
             arr
         end
 
@@ -1668,6 +1751,7 @@ export
                 let env = temp(p "struct QEnv_" <> code <> " *")
                 emit(p env <> " = (struct QEnv_" <> code <> " *)quest_alloc(sizeof(struct QEnv_" <> code <> "), "
                     <> layoutRef(p envLayoutOf(code o)) <> ");")
+                let mark = beginInit(p env)
                 for i = 0 upto {extent o.descriptors - 1} do
                     emit(p env <> "->d" <> cInt(i) <> " = " <> descriptor(p o.descriptors[i]) <> ";")
                 end
@@ -1686,6 +1770,7 @@ export
                     end
                     if not(isDeferred) then emit(p env <> "->c" <> cInt(i) <> " = " <> atom(p a) <> ";") end
                 end
+                initBarrier(p mark env)
                 let clos = temp(p "QClosure *")
                 emit(p clos <> " = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
                 emit(p clos <> "->fn = (void *)" <> code <> ";")
@@ -1937,8 +2022,12 @@ export
         else
             let pointer = v.isMutable andif isPointerParam(p v)
             let target = if pointer then "(*" <> name(p v) <> ")" else name(p v) end
-            if pointer andif holdsPointer(v.type) then emit(p "quest_barrier_slot(" <> name(p v) <> ");") end
+            (* A store's barrier follows it, here and in statement: the value
+             * stored may be a call (an allocation, a string literal's among
+             * them) that collects, after which a barrier before it has been
+             * forgotten *)
             emit(p target <> " = " <> value <> ";")
+            if pointer andif holdsPointer(v.type) then emit(p "quest_barrier_slot(" <> name(p v) <> ");") end
         end
 
     (* Pops the try handlers entered since depth, for a jump out of them *)
@@ -1994,6 +2083,7 @@ export
             let a = temp(p armStruct <> " *")
             emit(p a <> " = (" <> armStruct <> " *)quest_alloc(sizeof(" <> armStruct <> "), "
                 <> layoutRef(p objectLayout.tupleLayout(shapeOf(armType) armStruct noBoxes)) <> ");")
+            let mark = beginInit(p a)
             let storedFields = case storedType.form
                 when typeTuple with x then model.tupleValueFields(x.fields)
                 else vector.toArray(:model.ValueField vector.new(:model.ValueField))
@@ -2023,6 +2113,7 @@ export
                         <> ";")
                 end
             end
+            initBarrier(p mark a)
             a
         end
 
@@ -2039,20 +2130,20 @@ export
                 if maybe.isSome(:Atom x.init) then assign(p x.v atom(p maybe.unwrap(:Atom x.init))) end
             when sAssign with x then assign(p x.v atom(p x.value))
             when sStoreAt with x then
-                if holdsPointer(atomType(x.value)) then emit(p "quest_barrier_slot(" <> atom(p x.address) <> ");") end
                 emit(p "*" <> atom(p x.address) <> " = " <> atom(p x.value) <> ";")
+                if holdsPointer(atomType(x.value)) then emit(p "quest_barrier_slot(" <> atom(p x.address) <> ");") end
             when sStoreField with x then
                 let slot = recordSlot(p atom(p x.base) held(atomType(x.base) shapes.shapeRecord) x.name x.viewMap)
-                if holdsPointer(atomType(x.value)) then emit(p "quest_barrier_slot(" <> slot.ptr <> ");") end
                 emit(p "*" <> slot.ptr <> " = " <> atom(p x.value) <> ";")
+                if holdsPointer(atomType(x.value)) then emit(p "quest_barrier_slot(" <> slot.ptr <> ");") end
             when sStoreComponent with x then
                 if maybe.isSome(:Variable x.viewMap) then
                     let component = componentShape(layout.resolvedShape(shapeOf(atomType(x.base))) x.index)
                     let slot = "quest_view_tuple_slot(" <> atom(p x.base) <> ", "
                         <> name(p maybe.unwrap(:Variable x.viewMap)) <> ", "
                         <> cInt(x.index) <> ")"
-                    if holdsPointer(atomType(x.value)) then emit(p "quest_barrier_slot(" <> slot <> ");") end
                     emit(p "*((" <> slotCType(component) <> " *)" <> slot <> ") = " <> atom(p x.value) <> ";")
+                    if holdsPointer(atomType(x.value)) then emit(p "quest_barrier_slot(" <> slot <> ");") end
                 else
                     let ts = shapeOf(atomType(x.base))
                     let component = componentShape(ts x.index)
@@ -2062,9 +2153,9 @@ export
                     case x.access
                         (* Stored into the original as it is *)
                         when original then
-                            if barrier then emit(p "quest_barrier(quest_unproxy(" <> b <> "));") end
                             emit(p "((" <> cType(ts.type) <> ")quest_unproxy(" <> b <> "))->_" <> cInt(x.index) <> " = "
                                 <> v <> ";")
+                            if barrier then emit(p "quest_barrier(quest_unproxy(" <> b <> "));") end
                         (* A var component of a proxy is the original's, which
                          * quest_proxy_store barriers itself *)
                         when proxy then
@@ -2072,14 +2163,14 @@ export
                                 <> ", "
                                 <> types.shapeSlotToQval(v component) <> ");")
                             if barrier then
-                                emit(p "else { quest_barrier(" <> b <> "); " <> b <> "->_" <> cInt(x.index) <> " = "
-                                    <> v <> "; }")
+                                emit(p "else { " <> b <> "->_" <> cInt(x.index) <> " = " <> v <> "; quest_barrier(" <> b
+                                    <> "); }")
                             else
                                 emit(p "else " <> b <> "->_" <> cInt(x.index) <> " = " <> v <> ";")
                             end
                         when direct then
-                            if barrier then emit(p "quest_barrier(" <> b <> ");") end
                             emit(p b <> "->_" <> cInt(x.index) <> " = " <> v <> ";")
+                            if barrier then emit(p "quest_barrier(" <> b <> ");") end
                     end
                 end
             when sStoreElement with x then
@@ -2087,8 +2178,8 @@ export
                 let idx = atom(p x.index)
                 let elem = elementShape(x.base)
                 emit(p "quest_check_array_bounds_at(" <> arr <> ", " <> idx <> ", " <> site(p x.offset) <> ");")
-                if holdsPointer(elem.type) then emit(p "quest_barrier(" <> arr <> ");") end
                 emit(p arr <> "->data[" <> idx <> "] = " <> arrayElement(p x.value elem) <> ";")
+                if holdsPointer(elem.type) then emit(p "quest_barrier_slot(&" <> arr <> "->data[" <> idx <> "]);") end
             when sSwitch with x then switch(p x)
             when sInspect with x then inspectAuto(p x)
             when sLetRec with x then
@@ -2101,8 +2192,8 @@ export
                 for i = 0 upto {vector.length(:DeferredCapture d.captures) - 1} do
                     let c = vector.get(:DeferredCapture d.captures i)
                     (* The environment was made before the body ran *)
-                    if holdsPointer(atomType(c.a)) then emit(p "quest_barrier(" <> c.env <> ");") end
                     emit(p c.env <> "->c" <> cInt(c.index) <> " = " <> atom(p c.a) <> ";")
+                    if holdsPointer(atomType(c.a)) then emit(p "quest_barrier(" <> c.env <> ");") end
                 end
                 p.deferred := saved
             when sIf with x then
@@ -3082,6 +3173,7 @@ export
             let var lines = vector.new(:String)
             let var indent = 1
             let var tmp = 0
+            let var calls = 0
             let var pending = maybe.none(:Pending)
             let var deferred = maybe.none(:Deferred)
             let var emitter = maybe.none(:declarations.Emitter)

@@ -8,7 +8,7 @@ samples in half the programs), and it keeps dead data alive through stale stack 
 §3.2). This document designs a collector of Quest's own: precise where the compilers can make it so, generational,
 bump-allocating, able to move but not obliged to, and asks what must change to get there.
 
-**Status: step 3 done, 2026-11-04** (decided 2026-11-02; reviewed and reorganized 2026-11-03). Section 6
+**Status: step 4 done, 2026-11-05** (decided 2026-11-02; reviewed and reorganized 2026-11-03). Section 6
 records the decisions, section 7 the risks and the checking modes that catch them, section 8 the steps, and section
 9 what the reviews changed. The committed collector is steps 1 to 6 of §8; evacuation and generic layouts (steps 7
 and 8) are designed and taken only on measurement.
@@ -125,7 +125,10 @@ the right to move reserved: evacuation is designed here (§3.6) and taken only i
   conditional (2026-11-03).
 - **One reserved virtual range** for all of it (tens of gigabytes reserved, committed as used), so that "is this word
   in the heap" is two comparisons, and the metadata (object-start bitmap, line marks, block table) is indexed by
-  address.
+  address. The range is asked for at 2^46, above any integer a program is likely to hold, since an ambiguous word
+  holding an integer equal to an object's address keeps the object (and reads as a store without a barrier to the
+  `barriers` check); the system may decline the hint and place it lower. The tables are mapped after the range, not
+  where the system would put them, just above the binary, which the JIT's regions need (jit.md §3.6).
 - **Metadata off to the side:** an object-start bitmap (one bit per 8 bytes, as conservative Immix; set by every
   allocation, §3.4, and intersected with the mark bitmap at the end of every collection, §3.6, so that only live
   objects validate), which validates ambiguous words, finds an object from an interior pointer, and finds objects
@@ -231,6 +234,8 @@ cannot be rewritten, so the frame walk treats such a register's value as ambiguo
   memory is zero holds.
 - **Escape analysis is unchanged:** an allocation that does not escape is a stack slot (ssa.md §4.2), and stack slots
   have no headers, which is fine since nothing in the heap refers to them and the stack is scanned conservatively.
+  A barrier call is not an escape: it keeps no pointer, and the pass drops the barriers of an allocation it makes a
+  slot, which needs none (a slot is a root) and has no header word for the object barrier to read.
 - **`--nogc`** becomes the collector with collection disabled (allocation only), for debugging, or goes; libgc is no
   longer a prerequisite.
 
@@ -248,21 +253,42 @@ cannot be rewritten, so the frame walk treats such a register's value as ambiguo
   header's *old* byte says it has been marked and its *logged* bit is clear, log it (set the bit, push its address).
   A minor collection scans the logged objects' pointer words by their layouts, then clears the log. A load of the
   header's flag bytes, a mask, a compare, and a branch on the fast path; nothing on stores of scalars, and nothing on
-  the stores that initialize an object being made (`opMake*`) outside an incremental cycle; inside one the object is
-  logged as it is allocated (§3.10), which covers its initializing stores at once. The same barrier serves
-  incremental marking (§3.10), and a marker thread if one is ever added, as Riptide's does. Large arrays logged
-  whole are rescanned whole; card marking for them is an option if a program shows it. The log lives outside the
-  heap (as do the work list and, should evacuation be taken, the slot log), so the slow path never collects and §1's
-  rule that a collection happens only inside an allocation holds.
+  the stores that initialize an object being made (`opMake*`) outside an incremental cycle, unless a call is printed
+  between its allocation and its last store (a string literal's allocation, a conversion, a descriptor's
+  instantiation), in which a collection may run and mark it old: the printers and the SSA's builder keep the objects
+  being initialized, and from the first such call on log each through the barrier before every later call and after
+  its last store, so that no collection finds one old with a store since its last logging; inside a cycle the
+  object is logged as it is allocated (§3.10), which covers its initializing stores at once. *The barrier follows
+  its store*, with no call between the two: a barrier before the store is forgotten by a collection inside the
+  stored value's own computation (`r.name := "literal"`, a `var` parameter assigned a call's result, a slot whose
+  value is boxed), which logs nothing for the store that follows it. The runtime's C does the same by hand (the
+  value into a local, then the barrier and the store), and where an operation builds many objects with stores
+  between their allocations (a descriptor's instance, a dynamic value's reading and writing, a directory's
+  listing, the program's arguments) it holds collections off for the operation (`quest_gc_hold`,
+  `quest_gc_release`): everything it allocates stays young, so only its stores into older objects need barriers,
+  and a pointer it parks outside the heap and the stack is not lost. A hold is for an operation bounded by its
+  result's size that runs none of the program's code; a raise releases every hold. The same barrier serves
+  incremental marking (§3.10), and a marker thread if one is ever added, as Riptide's does. Stores by a slot's address
+  (an array's element, and the interior stores below) mark a *card* instead, 512 bytes of the heap with a byte each
+  in a table beside it: the fast path is a range check and two bytes' loads, the slot's line mark (a slot in an
+  unmarked line is a young object's, whose stores need no barrier; a large run's lines are marked with it) and its
+  card, the slow path marks the card and lists it, and a minor collection scans the dirty cards' words by the
+  layouts of the old objects in them (the one that starts before the card and reaches into it, by the start bits,
+  and those that start in it; a young object's words are left to marking, since scanning a dead one's would keep
+  what it points at alive). Added 2026-11-04 (step 4), when the
+  compiler's build showed its tables logged whole: the log's scan was 17.5 s of the build's 20.5 s of minor pauses,
+  a hundred logged objects taking 26 ms late in the build. The log and the dirty list live outside the heap (as do
+  the work list and, should evacuation be taken, the slot log), so the slow paths never collect and §1's rule that a
+  collection happens only inside an allocation holds.
 - **Stores through interior pointers** find no header at the address minus 8: a record's `var` field is stored
   through its payload pointer, and the payload sits after the box when the record was made in it, at the start of
   its allocation when it is a module's, and elsewhere when `quest_record_box` boxed a viewed record; `sStoreAt`
   through a `var` or `out` location, and a view's slot, are interior too. The IR marks these forms, and for them the
-  backends emit a call to the slow path in place of the inline test; the slow path checks that the address is in the
-  heap at all (a location is often a stack slot), resolves the allocation through the object-start bitmap (bounded
-  by a block, or the large object space's page table), and applies the ordinary test. These stores are rare in hot
-  code (a vector replacing its array as it grows, not appending to it); step 2's barrier counts say whether they
-  are, and a header of the payload's own, making a record two adjacent objects, is the fallback if they are.
+  backends emit the slot's barrier, which checks that the address is in the heap at all (a location is often a
+  stack slot) and marks its card, so no header is read and no allocation resolved. (Before card marking, the slot's
+  barrier resolved the allocation through the object-start bitmap and logged it; a tuple bound by a case binder, an
+  option's payload, keeps the object barrier, which takes a word under 65536 before the tuple for the option's tag
+  and the header one word further back.)
 - **Where the mutating stores are:** the IR's `sStoreField`, `sStoreComponent`, `sStoreElement`, `sStoreAt`, and
   `sAssign` to a captured box; the library's hash maps and vectors are compiled Quest, so their barriers come from
   the IR; and every pointer store into an existing object in the runtime's C, which no list here can name in full
@@ -272,9 +298,15 @@ cannot be rewritten, so the frame walk treats such a register's value as ambiguo
 
 ### 3.6. Collection
 
-- **A minor collection** stops the mutator (there is one), saves registers, scans roots and logged objects, marks
-  young objects by their layouts, and sweeps line marks of the blocks allocated into lazily as allocation reaches
-  them. With a nursery of a few megabytes and little surviving it, this is well under a millisecond.
+- **A minor collection** stops the mutator (there is one), saves registers, scans roots, logged objects, and dirty
+  cards, marks young objects by their layouts, and sweeps the line marks of the blocks allocated into. Its pause is what
+  survives and the roots: 8.6 ms on average on the compiler's build, whose nursery adapts upward, 27 ms at the longest,
+  and 1.8 ms on a REPL session (§8, step 4). The nursery (`QUEST_GC_NURSERY`, 64 MB by default, the heap's least size,
+  chosen on step 4's measurements of 4 to 128) adapts to what survives: doubled while more than a quarter of the young
+  bytes survive a minor collection (a program building a structure it keeps, whose minor collections would mark what the
+  next full one marks again, as tailmerge's do), up to a quarter of the heap's target and then off, with one minor
+  collection at that size every eighth full one to see whether the program still keeps what it allocates, and halved
+  back toward the configured size while under a sixteenth survives.
 - **A full collection** clears the mark bitmaps a block at a time, marks everything, and sweeps every block's lines.
   Marking is a work list over precise and ambiguous words, which incremental marking (§3.10) later cuts into slices.
 - **Only live objects validate.** At the end of every collection, minor or full, the object-start bitmap is
@@ -537,7 +569,9 @@ everything else.
    precision (logged objects are scanned by layout, no card walking) and its reuse for incremental marking; card
    marking for large arrays is a possible addition. Reaffirmed 2026-11-03 against card marking, which would free the
    barrier from reading the header (and so from the interior-store case) but dirties cards on stores into young
-   objects, the common mutable stores, and rescans them.
+   objects, the common mutable stores, and rescans them. Taken up in part 2026-11-04 (step 4): the slot's barrier
+   (an array's element, a record's field, a location) marks a card, the object's logs as before, after the
+   compiler's build showed its tables rescanned whole at every minor collection (§3.5).
 6. **Large objects from 8 KB, in their own space, never moved; pointer-free objects in their own blocks** (§3.9),
    both in the collector's first version; both thresholds are parameters to measure.
 7. **Identity hash stays the address; the three-state scheme with a prepended word is designed and reserved for
@@ -583,13 +617,17 @@ touches layouts, barriers, roots, or the collector (testing.md §4.1 lists which
 | `collect` | Forces the collections the other modes would, checking nothing: every `QUEST_GC_CHECK_INTERVAL` bytes, or every `QUEST_GC_COLLECT_EVERY` allocations, with `QUEST_GC_COLLECT_TRAP=k` stopping in `quest_gc_trap` before the kth, for tools/perf/retention.py | Nothing; it makes builds of one program collect at the same points |
 | `allocations` | Counts every allocation and its bytes by the allocating function and its caller, written at exit to `$QUEST_ALLOCATIONS_OUT`, for benchmarks/mlton/allocations.py | Nothing; it says who allocates |
 | `incremental` (step 6) | Makes every slice as small as it can be (one object), and at the end of each cycle marks the same heap again stop-the-world and compares the marks | A barrier that let an object escape the cycle, a slice that broke an invariant |
-| `stress` (step 7) | Collects on every allocation (or every Nth), each collection full with every block a candidate and the slot log unbounded, so every object that may move does; the vacated memory is poisoned and, in large runs, unmapped | A stale address kept across an allocation anywhere: generated code, the runtime, serialization, the JIT |
+| `stress` | Collects before every allocation (`QUEST_GC_STRESS=n`: every nth), minor collections with each sixteenth full, running the other modes' checks at each. The count between collections doubles each time the collections at the current count have walked `QUEST_GC_STRESS_BUDGET` megabytes of heap (256; a collection counts as the heap in use), so a small program is checked at every allocation and the compiler at its first few hundred and then at a thinning sample. The collections fall by count, so a failure repeats; a failing check gives its collection's number, and `QUEST_GC_TRAP=k` calls `quest_gc_trap` before the kth for a debugger. With step 7, each full collection also takes every block as a candidate with the slot log unbounded, so every object that may move does, and the vacated memory is poisoned and, in large runs, unmapped | A store without a barrier, a barrier with an allocation between it and its store, an initializing store after a collection, a root left out (a global now, a stack map's slot with step 5), each within a few allocations of the fault, in generated code, the runtime, serialization, and the JIT; with step 7, a stale address kept across an allocation |
+| `sites` | Keeps, by each object's address, the three functions above its allocation (from the frame records, in a table outside the heap), and a failing check names them for its object and for the object its word points at | Nothing; it says which code made the objects a report is about |
 | `concurrent` (step 9, if taken) | As `incremental`, with the marker thread forced to yield between objects | A barrier race, a lost mark |
 
-Modes combine (`QUEST_GC_CHECK=layouts,poison`), and, with step 7, `stress` with `barriers` is the one that finds the
-most. Under any mode every allocation takes the slow path, which counts it; `QUEST_GC_STATS=1` (a summary at exit)
-and `each` (a line per collection too) report what the collector did, under a mode or not. The checks are in the runtime, so the bootstrap's C and the JIT's code are checked by the same code as the
-self-hosted backends', and the interpreters' transcripts can run under them too.
+Modes combine (`QUEST_GC_CHECK=layouts,poison`), and `stress` with `barriers`, `roots`, and `poison` is the one that
+finds the most: tools/check runs the compiled tests under it, with `sites`, before its suites (testing.md §4.1).
+`QUEST_GC_CHECK_CHILDREN` gives the modes of the programs a program runs, in place of its own, so that a compiler runs
+under the plain checks and the test it builds and runs under `stress`. Under any mode every allocation takes the slow
+path, which counts it; `QUEST_GC_STATS=1` (a summary at exit) and `each` (a line per collection too) report what the
+collector did, under a mode or not. The checks are in the runtime, so the bootstrap's C and the JIT's code are checked
+by the same code as the self-hosted backends', and the interpreters' transcripts can run under them too.
 
 The risks themselves:
 
@@ -755,6 +793,110 @@ taken on what 4 and 7 measure; 9 is optional.
    `barriers`. *Done when:* the suites pass under `barriers`, the suite's and the driver's own build times are
    recorded against step 3, and fragmentation (live lines against live bytes after the compiler's build and after a
    long REPL session) is recorded for step 7's decision.
+   *Done 2026-11-05.* The mark bits are sticky (§3.5): a full collection clears them, a minor one keeps them, so that
+   marking from the roots, the log, and the dirty cards stops at every old object and visits the young ones alone, those
+   in the holes allocated into since the last collection. Their blocks are listed as their holes are entered (`young` in
+   the block table), and a minor collection sweeps those alone: only live objects validate there, the live lines are
+   recounted, a young block or large run with nothing live is freed, and the old recyclable blocks not yet allocated
+   into keep their holes. A minor collection runs every nursery of blocks taken (`QUEST_GC_NURSERY`, 64 MB by default; 0
+   leaves full collections alone), a full one when the blocks in use reach their target, or when the minor one leaves
+   them there; the nursery adapts to what survives (§3.6). The barrier is live in both forms: `quest_barrier`, inline in
+   `quest_runtime.h`, loads the header word and calls `quest_barrier_log` when the collector's *old* byte is set and the
+   mutator's *logged* byte (bit 48) is not, and a minor collection scans each logged object whole; `quest_barrier_slot`,
+   inline too, for an array's element, a record's field, a location, and a view's slot, reads the slot's line mark
+   (unmarked: a young object's, nothing to do) and its card's byte (512-byte cards, a byte each beside the heap), and
+   `quest_barrier_card` marks and lists a clean one, which the minor collection scans by the layouts of the old objects
+   in it. Learned, first: a case binder's tuple is an option's payload, which shares the option's allocation
+   (c-representation.md §9), so the word before it is the option's tag, not a header, and the object barrier on it
+   logged nothing; `barriers` found this on the compiler's first build under it (an `opCall`'s `args` replaced by
+   `ir/walk`), and the barrier now takes a word under 65536 for a tag and the header one word further back, logging the
+   option, so §3.5's "interior stores through the slow path" needed no IR marking. Second, the compiler's build logged
+   its tables (arrays of a million entries) at every minor collection and rescanned them whole, 17.5 s of 20.5 s of
+   minor pauses in one process, which is what the cards are for; the first cards scanned every object in a dirty card,
+   young ones too, and so kept what dead young vectors pointed at, survival rising to 42 percent and the heap to 8.9 GB,
+   until the scan was confined to old objects; and the barrier then marked a card for every store into a young vector,
+   22,000 cards a minor collection, until the line mark's test. Third, the runtime's startup allocated the argument
+   array and then its strings, with no barrier between, which a checking mode's early collection caught in two tests;
+   the strings come first now. Fourth, from the check's first full run: the printers allocate a string literal where it
+   is used, inside the store that initializes a record's field or an array's element, after the container, and the SSA's
+   builder lowers an aggregate's component atoms in its store loop likewise, so a minor collection during the literal's
+   allocation aged the container and the store had no barrier (three compiled tests); the printers and the builder log
+   the object through the barrier after such stores (`tests/source/language/aggregate_literals.quest` makes a hundred
+   thousand such aggregates; the rule's final form is under Eighth). Fifth, the JIT: a session stores the program's
+   arguments into the driver's `system` record through `value.store`, the raw word store, which now marks the slot's
+   card; and the loader's code and data regions, two anonymous mappings, were more than 4 GB apart (adrp's reach) in
+   three runs of a hundred: the collector's tables, which the system put just above the binary, pushed the code region
+   up under Darwin's shared cache, and the data region past it, 7 GB away. `quest_code_reserve` asks for the first just
+   above the runtime's text and each later one after the last, and again from the first address when one lands out of
+   reach, and the collector maps its tables after its heap; of 400 runs then, every region was where it was asked for.
+   Sixth, the barrier after the stores was a call with the object as its argument, which the SSA's escape pass took for
+   an escape: regenerating the SSA goldens showed fifteen tests losing stack slots (`auto_types` 38 of its 54 slot
+   uses), and the proxy folds with them; a barrier call keeps no pointer, so the pass now passes over it, and drops the
+   barriers of an allocation it makes a slot (ssa.md §4.2), and the barriers are declared as reading memory rather than
+   writing it, since they write only the header word, the log, and the cards, none of which compiled code loads, so
+   value numbering keeps its loads across them. Seventh, the heap's address: the system placed the reserve at
+   0x70_0000_0000, where the compiler's packed source locations (a file's number above bit 32) are addresses once the
+   heap passes 4 GB, and the whole-program build, the only one that large, stored one (file 113, offset 2752) in a
+   generic `some`, an ambiguous word, that equaled a young object's address, which `barriers` reported as a store
+   without a barrier (a debugger's watchpoint on the word showed its one store, before the object was old); the reserve
+   is now asked for at 2^46, where such integers do not reach, which also spares the objects they would have kept alive.
+   Eighth, what three passing runs of the whole check had not reached. The check's collections are megabytes apart, so a
+   store that needs two of them a few instructions apart, or one inside a particular call, is found only by chance; the
+   `stress` mode (§7; a collection before every allocation, thinning as the heap grows) was built before the commit and
+   failed 30 of the bootstrap's 275 compiled tests and 17 of arm64's on its first runs, each within a few hundred
+   collections, and `sites` named the allocating functions. What it found: (a) an aggregate with two literals: the
+   barrier after the stores came one collection late, the first literal's store unlogged when the second literal's
+   allocation collected, so the object is now logged before every call after the first as well as at the end
+   (`begin_init`, `beginInit`; the builder counts only the calls that may collect); (b) every mutating store had its
+   barrier before it, and the stored value computed between the two (`r.name := "literal"` in the compiler's own
+   `newUnit` records, a `var` parameter assigned a call's result, a slot whose value is boxed): the barrier now follows
+   the store in both printers and the builder; (c) the runtime's C had the same two shapes throughout its descriptor and
+   serialization code (`out->name = quest_inst_name(...)` after `quest_barrier(out)`, a type graph's labels, a record
+   dictionary's stored types, a viewed copy's converted components), fixed by hand where values are converted, and by
+   holding collections off (`quest_gc_hold`, §3.5) around a descriptor's instantiation and a dynamic value's reading and
+   writing; (d) the fix to the startup's arguments above had parked their strings in `malloc`ed memory, which no
+   collection scans, as a directory's listing always had (under Boehm too): both hold collections off; (e) a
+   record-dictionary entry of three words took one slot barrier and lay across two cards; (f) the serializer's witness
+   stack, a global array, was in no root list (`quest_serialization_roots`); (g) the `allocations` mode's frame walk was
+   one frame off wherever the compiler had inlined the check's tick, which is now kept out of line. tools/check runs the
+   compiled tests under `stress` first, and its suites only if they pass (testing.md §4.1): arm64, the C backend, the
+   JIT, and the bootstrap's C, 1,111 runs in about ten minutes beside another session's check, with the tests alone
+   under it where a compiler builds and runs them (`QUEST_GC_CHECK_CHILDREN`; the compiler under `stress` for every test
+   took the tier to 43 minutes). The `barriers` check reports an old unlogged object's pointer at a young object in a
+   clean card, and an ambiguous word only at a young object's start or payload, since a packed integer (a location's)
+   fell inside one. `layouts` after a minor collection walks the young blocks alone; under a checking mode the nursery
+   is at least a quarter of the heap. tools/check sets `layouts,roots,poison,barriers`. The statistics count minor
+   collections, their pauses, what survived them, the objects logged and the cards marked, with each minor collection's
+   phases under `each` (`gcstats.py` reads the lines); `report` adds the objects and bytes logged per layout. The SSA's
+   backends still call both barriers out of line; no profile here shows the calls. Ninth, the nursery's size. The
+   suite's first taking, with the 8 MB the design gave the nursery, lost 3 percent to step 3 through C (the geometric
+   mean; 10 to 17 percent on the programs that allocate most), and the compiler's build 5 percent, for a third of step
+   3's memory. The loss is the minor collections', not the barriers': with them off the same binaries run about as fast
+   as step 3's. Nor is it their pauses, which on barnes-hut come to the same third of a second either way: it is where
+   allocation goes after them. A minor collection leaves its survivors where they are, one or two percent of the
+   nursery's bytes, small objects scattered over nearly every block it filled, and their marks are sticky until the next
+   full collection, so allocation, which takes a block's holes before a free block, hops between ever smaller holes:
+   barnes-hut's 34 GB went into 32.7 million holes, 1.0 KB each on average, against 2.1 million of 16 KB with full
+   collections alone; the slow path took four times the samples, and the program's own two hot functions a tenth more. A
+   larger nursery dilutes this (2.7 KB a hole at 64 MB), and the ten programs that lost most gain steadily with it (0.97
+   of their time at 16 MB, 0.95 at 32, 0.93 at 64, 0.91 with no minor collections; benchmarks.md §17.2), while the
+   compiler's build at 64 MB is as fast as with none, in 1.39 GB against 3.66. So the default is 64 MB, the heap's least
+   size: a heap whose blocks in use stay under half of that has full collections alone, which for so small a heap are as
+   cheap. This is evidence for step 7 that the fragmentation ratio below does not show: the lines the survivors hold are
+   few, but they are everywhere, and only moving the young survivors would give the blocks back whole. Tenth, ssac's
+   column: its two worst programs against step 3 (model-elimination 1.38, psdes-random 1.26) are not generations' doing
+   but the inline allocation sequence's, which ssac's suite has for the first time here: with allocations left as calls
+   the same programs take 26.8 s against 37.2 and 14.0 against 19.3, and over the whole suite the sequence against the
+   calls is 1.00, from 0.69 (wc-scanStream) to 1.39, so ssac keeps it: it is the path arm64 takes, which ssac is there
+   to test, and the swings are clang's. Measured ([benchmarks.md](benchmarks.md) §17): through C the suite is level with
+   step 3 (geometric mean 0.99 by wall time and 0.98 by processor time), through ssac 0.95 and 0.96, and through arm64
+   0.93 and 0.95, which is 0.54, 0.47, and 0.59 of MLton's time; the compiler's own build takes 22.6 s against 23.3
+   (0.97) in 1.39 GB against 3.77 (0.37), and in one process has 271 minor collections pausing 2.3 s in all and 27 ms at
+   the longest, and 9 full ones pausing 1.75 s in all and 876 ms at the longest, which is step 6's to shorten.
+   Fragmentation, for step 7: live lines against live bytes is 2.1 (1,067 MB in 2,259 MB of lines) after the compiler's
+   build (-j 1) and 2.2 after a REPL session of the transcripts of `tests/repl` replayed twenty times (4.4 GB allocated;
+   22 minor collections pausing 38 ms in all and 8 full ones pausing 15 ms, 3.4 ms the longest of either; 13.1 MB live
+   in 28.5 MB of lines).
 5. **arm64 stack maps** from `codegen.frameSlots` (arm64.md §3.13): at each call, the frame slots holding live
    pointers and the callee-saved registers holding them, with where the function saves each such register, emitted
    as a table per function the collector finds from the return address. The frame walk scans a mapped frame's

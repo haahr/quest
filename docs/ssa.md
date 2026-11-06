@@ -324,18 +324,22 @@ exceptions, and the runtime's other allocators are not. Its result is one of *it
 - a block's parameter that every edge taken binds to that one value (as the merge after a folded proxy test is).
 
 The allocation does not escape when every use of each of its pointers is the address of a load or store at a constant
-offset within its size, such a store into a word holding its pointer, or a proxy test (`vals.isProxy`:
-`and(ptrToInt(p), QUEST_PROXY_TAG)`). A fresh allocation is never a proxy, so the test folds to zero, and the branches
-`vals.unproxy` and the tuple and option readers make on it go to their direct arm; the fold is the pass's own, since
-nothing else in the SSA knows that `quest_alloc` returns an aligned pointer. Anything else is an escape: an argument to
-a call (the runtime's included: `quest_option_is`, `quest_val_is`, a conversion), a value stored elsewhere, a return,
+offset within its size, such a store into a word holding its pointer, a proxy test (`vals.isProxy`:
+`and(ptrToInt(p), QUEST_PROXY_TAG)`), or an argument to a write barrier (`quest_barrier` among and after an
+aggregate's initializing stores when a call came between them and its allocation, `quest_barrier_slot` after a pointer
+store into a field or element; [collector.md](collector.md) §3.5), which keeps no pointer. A fresh allocation is never a proxy, so
+the test folds to zero, and the branches `vals.unproxy` and the tuple and option readers make on it go to their direct
+arm; the fold is the pass's own, since nothing else in the SSA knows that `quest_alloc` returns an aligned pointer.
+Anything else is an escape: an argument to any other call (the runtime's included: `quest_option_is`, `quest_val_is`,
+a conversion), a value stored elsewhere, a return,
 a parameter bound to other values too, a comparison (`peq`, which could fold but does not yet), a `toVal`, any other
 `ptrToInt`, or an access of part of a word holding a pointer. Since the folds decide which blocks are reached, and a
 parameter's binding depends on the edges reached, the analysis starts with every candidate thought not to escape,
 finds its pointers and the blocks reached to a fixed point, drops those that escape, and repeats until none more does.
 `analyze` reports each candidate's verdict without changing the function.
 
-**The transformation.** Each allocation that does not escape becomes a stack slot of its size, in whole words. Where
+**The transformation.** Each allocation that does not escape becomes a stack slot of its size, in whole words, and
+its barriers are dropped: a slot is a root, and has no header word for `quest_barrier` to read. Where
 the call was, each of its words is stored zero, as `quest_alloc`'s memory is, each zero of the type its word is stored
 (or else loaded) as, so that promotion sees one type, and one byte wide if only its first byte is accessed. Its
 accesses go through the slot's address, its derived pointers' offsets added to their own; its derived pointers, the
@@ -365,7 +369,7 @@ table, the layouts of the objects the unit allocates: a `quest_layout_<tag>` and
 eight to a word, laid out by `ssa/statics` from `codegen/objectLayout`, docs/collector.md §3.2, and the unit's root
 table `qr_roots`: the address and words of each global that may hold a pointer and of each module record, ended by
 a null slot, which `qr_register_dicts` registers). A store of a `ptr` or `val` word into an existing object is
-preceded by a call of `quest_barrier` or `quest_barrier_slot` (docs/collector.md §3.5). Words lay out the runtime's structs on a little-endian target, a narrow field in the low bytes of its word.
+followed by a call of `quest_barrier` or `quest_barrier_slot`, with no other call between the two (docs/collector.md §3.5). Words lay out the runtime's structs on a little-endian target, a narrow field in the low bytes of its word.
 
 The builder makes, besides the IR's functions and the module initializers and `main`:
 

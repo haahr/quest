@@ -35,6 +35,7 @@ ABI other units link against.
 from __future__ import annotations
 
 import dataclasses
+import re
 from typing import Any, Optional
 
 from quest.codegen.c.declarations import (
@@ -120,6 +121,11 @@ def _type_parameter_count(t: QType) -> int:
     return count
 
 
+# A line of C that calls a function (an identifier before a parenthesis,
+# sizeof aside): a call may allocate, and so collect
+_CALL_RE = re.compile(r"\b(?!sizeof\b)[A-Za-z_]\w*\(")
+
+
 @dataclasses.dataclass
 class _FreshBox:
     """A record or variant (an unboxed value) to be stored into a slot of an
@@ -144,6 +150,10 @@ class _FunctionState:
         self.label_depth: dict[str, int] = {}
         self.join_params: dict[str, tuple[ir.Var, ...]] = {}
         self.volatile: set[int] = set()
+        # The objects whose initializing stores are being printed, outermost
+        # first, each with the calls printed before it was allocated
+        # (begin_init)
+        self.inits: list[tuple[str, int]] = []
 
 
 class CPrinter:
@@ -173,6 +183,8 @@ class CPrinter:
         self.lines: list[str] = []
         self.indent = 1
         self.tmp = 0
+        # The lines printed that call a function (begin_init)
+        self.calls = 0
         # The thunks printed (adapters and type applications), by what they
         # convert
         self.thunks: dict[tuple, Any] = {}
@@ -281,6 +293,7 @@ class CPrinter:
         tmp = self.temp(f"{struct} *")
         self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}), "
                   f"{self.layout_ref(objectlayout.tuple_layout(tuple_s, struct, []))});")
+        mark = self.begin_init(tmp)
         pt = case.shape if case is not None else None
         comps = [c.shape for c in pt.components] if pt is not None and pt.kind == "tuple" else [pt] if pt else []
         offset = len(tuple_s.components) - len(comps)
@@ -290,6 +303,7 @@ class CPrinter:
             word = f"quest_view_option_component({v}, {vm}, {c_int(b)}, {c_int(j)})"
             slot = shape_qval_to_slot(word, tuple_s.components[j + offset].shape)
             self.emit(f"{tmp}->_{c_int(j + offset)} = {slot};")
+        self.init_barrier(tmp, mark)
         return tmp
 
     @staticmethod
@@ -506,7 +520,34 @@ class CPrinter:
     # Output
 
     def emit(self, line: str) -> None:
+        if _CALL_RE.search(line) and not line.startswith("quest_barrier"):
+            # A call may collect. An object being initialized that an earlier
+            # call may have left old is logged first, for the stores since
+            # that call (begin_init)
+            for obj, mark in self.fs.inits:
+                if self.calls > mark:
+                    self.lines.append("    " * self.indent + f"quest_barrier({obj});")
+            self.calls += 1
         self.lines.append("    " * self.indent + line)
+
+    def begin_init(self, obj: str) -> int:
+        """Before an object's initializing stores, which have no barrier, as
+        a young object's need none: the object stays young until a call, in
+        which a collection may run and mark it old (collector.md §3.5), and
+        the stores after that call must be logged before the next collection.
+        So from the second call on, emit logs the object before the call, and
+        init_barrier logs it after the last store. Returns the mark to end
+        with."""
+        self.fs.inits.append((obj, self.calls))
+        return self.calls
+
+    def init_barrier(self, obj: str, mark: int) -> None:
+        """After the initializing stores begin_init began: logs the object if
+        a call was printed since its allocation."""
+        while self.fs.inits and self.fs.inits.pop()[0] != obj:
+            pass
+        if self.calls > mark:
+            self.emit(f"quest_barrier({obj});")
 
     # Atoms and operations
 
@@ -751,8 +792,10 @@ class CPrinter:
                 thunk = self.adapter(plan)
                 clos = self.temp("QClosure *")
                 self.emit(f"{clos} = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
+                mark = self.begin_init(clos)
                 self.emit(f"{clos}->fn = (void *){thunk};")
                 self.emit(f"{clos}->env = (void *)({c});")
+                self.init_barrier(clos, mark)
                 return clos
             case "runtime":
                 instantiation, to_generic = plan.layout
@@ -913,9 +956,11 @@ class CPrinter:
         env_layout = objectlayout.env_layout(env_struct, [objectlayout.POINTER] * (1 + max(len(descs), 1)),
                                              8 * (1 + max(len(descs), 1)), f"sizeof({env_struct})")
         self.emit(f"{env} = ({env_struct} *)quest_alloc(sizeof({env_struct}), {self.layout_ref(env_layout)});")
+        mark = self.begin_init(env)
         self.emit(f"{env}->orig = {clos};")
         for i, d in enumerate(descs):
             self.emit(f"{env}->desc[{c_int(i)}] = {d};")
+        self.init_barrier(env, mark)
         c = self.temp("QClosure *")
         self.emit(f"{c} = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
         self.emit(f"{c}->fn = (void *){thunk};")
@@ -971,8 +1016,10 @@ class CPrinter:
         size, fields = self.embedded_boxes(tmp, f"sizeof({struct})", fields)
         self.emit(f"{tmp} = ({struct} *)quest_alloc({size}, "
                   f"{self.layout_ref(objectlayout.tuple_layout(shape(t), struct, boxes))});")
+        mark = self.begin_init(tmp)
         for i, c in enumerate(self.fill_embedded(fields)):
             self.emit(f"{tmp}->_{c_int(i)} = {c};")
+        self.init_barrier(tmp, mark)
         return tmp
 
     def make_record(self, o: ir.MakeRecord, result: ir.Var) -> str:
@@ -994,6 +1041,7 @@ class CPrinter:
         size, values = self.embedded_boxes(payload, f"sizeof(QRecordVal) + sizeof({struct})", fresh)
         self.emit(f"{box} = (QRecordVal *)quest_alloc({size}, "
                   f"{self.layout_ref(objectlayout.record_layout(concrete, struct, boxes))});")
+        mark = self.begin_init(box)
         self.emit(f"{payload} = ({struct} *)({box} + 1);")
         self.emit(f"{payload}->header.descriptor = {self.descriptor(o.descriptor)};")
         for (_, n, _), value in zip(stored, self.fill_embedded(values)):
@@ -1003,6 +1051,7 @@ class CPrinter:
         else:
             dict_expr = f"(const void *)&{self.ctx.offset_dict_instance_name(o.offsets.view, o.offsets.layout)}"
         self.emit(f"*{box} = (QRecordVal){{ .val = (void *){payload}, .dict = {dict_expr} }};")
+        self.init_barrier(box, mark)
         return box if result.boxed else f"(*{box})"
 
     def record_slot(self, rec: str, rs: Shape, name: str, view_map: Optional[ir.Var] = None) -> tuple[str, Shape]:
@@ -1056,6 +1105,7 @@ class CPrinter:
         tmp = self.temp(f"{struct} *")
         self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}), "
                   f"{self.layout_ref(objectlayout.option_layout(os, struct, tag))});")
+        mark = self.begin_init(tmp)
         if ordinal is not None:
             # The ordinal counts in the type's cases as written; the tag numbers
             # the shape's, ordered by name
@@ -1081,6 +1131,7 @@ class CPrinter:
                     self.emit(f"{tmp}->u.qo_{tag}._{c_int(i)} = {self.tuple_component(p, ps, i, o.access[i])};")
             else:
                 self.emit(f"{tmp}->u.qo_{tag}.val = {p};")
+        self.init_barrier(tmp, mark)
         return tmp
 
     def option_field(self, src: str, stored_payload: Optional[Shape], index: int, wanted: Shape) -> str:
@@ -1106,6 +1157,7 @@ class CPrinter:
         tmp = self.temp(f"{struct} *")
         self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}), "
                   f"{self.layout_ref(objectlayout.tuple_layout(ts, struct, []))});")
+        mark = self.begin_init(tmp)
         case = os.case(tag)
         pt = case.shape if case is not None else None
         if offset:
@@ -1118,6 +1170,7 @@ class CPrinter:
                     self.emit(f"{tmp}->_{c_int(i + offset)} = {src};")
         elif pt is not None:
             self.emit(f"{tmp}->_{c_int(offset)} = {self.option_component(opt, os, tag, None, access[0])};")
+        self.init_barrier(tmp, mark)
         return tmp
 
     def option_case_payload(self, opt: str, tuple_t: QType, tag_access: str, access: tuple[str, ...]) -> str:
@@ -1182,9 +1235,11 @@ class CPrinter:
         elem_layout = objectlayout.ARRAY_SYMBOLS[objectlayout.slot_kind(shape(t).element)]
         self.emit(f"{arr} = (QArray *)quest_alloc(sizeof(QArray) + (size_t)({c_int_literal(n)}) * sizeof(QVal), "
                   f"&{elem_layout});")
+        mark = self.begin_init(arr)
         self.emit(f"{arr}->length = {c_int_literal(n)};")
         for i, c in enumerate(elements):
             self.emit(f"{arr}->data[{c_int_literal(i)}] = {c};")
+        self.init_barrier(arr, mark)
         return arr
 
     def site(self, offset: Optional[int]) -> str:
@@ -1332,6 +1387,7 @@ class CPrinter:
         env = self.temp(f"struct QEnv_{code} *")
         self.emit(f"{env} = (struct QEnv_{code} *)quest_alloc(sizeof(struct QEnv_{code}), "
                   f"{self.layout_ref(self.env_layout_of(code, o))});")
+        mark = self.begin_init(env)
         for i, d in enumerate(o.descriptors):
             self.emit(f"{env}->d{c_int(i)} = {self.descriptor(d)};")
         for i, a in enumerate(o.captures):
@@ -1341,6 +1397,7 @@ class CPrinter:
                 self.deferred[1].append((env, i, a))
                 continue
             self.emit(f"{env}->c{c_int(i)} = {self.atom(a)};")
+        self.init_barrier(env, mark)
         clos = self.temp("QClosure *")
         self.emit(f"{clos} = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
         self.emit(f"{clos}->fn = (void *){code};")
@@ -1369,9 +1426,12 @@ class CPrinter:
             return
         pointer = var.mutable and self.is_pointer_param(var)
         target = f"(*{self.name(var)})" if pointer else self.name(var)
+        # A store's barrier follows it, here and in statement(): the value
+        # stored may be a call (an allocation, a string literal's among them)
+        # that collects, after which a barrier before it has been forgotten
+        self.emit(f"{target} = {value};")
         if pointer and self.holds_pointer(var.type):
             self.emit(f"quest_barrier_slot({self.name(var)});")
-        self.emit(f"{target} = {value};")
 
     def leave_to(self, depth: int) -> None:
         """Pops the try handlers entered since depth, for a jump out of them."""
@@ -1393,21 +1453,21 @@ class CPrinter:
             case ir.Assign(var=var, value=value):
                 self.assign(var, self.atom(value))
             case ir.StoreAt(value=value, address=address):
+                self.emit(f"*{self.atom(address)} = {self.atom(value)};")
                 if self.holds_pointer(self.atom_type(value)):
                     self.emit(f"quest_barrier_slot({self.atom(address)});")
-                self.emit(f"*{self.atom(address)} = {self.atom(value)};")
             case ir.StoreField(value=value, base=base, name=name):
                 ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name,
                                               s.view_map)
+                self.emit(f"*{ptr} = {self.atom(value)};")
                 if self.holds_pointer(self.atom_type(value)):
                     self.emit(f"quest_barrier_slot({ptr});")
-                self.emit(f"*{ptr} = {self.atom(value)};")
             case ir.StoreComponent(value=value, base=base, index=index) if s.view_map is not None:
                 component = resolved_shape(shape(self.atom_type(base))).components[index].shape
                 slot = f"quest_view_tuple_slot({self.atom(base)}, {self.name(s.view_map)}, {c_int(index)})"
+                self.emit(f"*(({self.slot_c_type(component)} *){slot}) = {self.atom(value)};")
                 if self.holds_pointer(self.atom_type(value)):
                     self.emit(f"quest_barrier_slot({slot});")
-                self.emit(f"*(({self.slot_c_type(component)} *){slot}) = {self.atom(value)};")
             case ir.StoreComponent(value=value, base=base, index=index, access=access):
                 ts = shape(self.atom_type(base))
                 component = ts.components[index].shape
@@ -1415,29 +1475,29 @@ class CPrinter:
                 barrier = self.holds_pointer(self.atom_type(value))
                 if access == ir.ORIGINAL:
                     # Stored into the original as it is
+                    self.emit(f"(({self.c_type(ts.type)})quest_unproxy({b}))->_{c_int(index)} = {v};")
                     if barrier:
                         self.emit(f"quest_barrier(quest_unproxy({b}));")
-                    self.emit(f"(({self.c_type(ts.type)})quest_unproxy({b}))->_{c_int(index)} = {v};")
                 elif access == ir.PROXY:
                     # A var component of a proxy is the original's, which
                     # quest_proxy_store barriers itself
                     self.emit(f"if (quest_is_proxy({b})) quest_proxy_store({b}, {c_int(index)}, "
                               f"{shape_slot_to_qval(v, component)});")
                     if barrier:
-                        self.emit(f"else {{ quest_barrier({b}); {b}->_{c_int(index)} = {v}; }}")
+                        self.emit(f"else {{ {b}->_{c_int(index)} = {v}; quest_barrier({b}); }}")
                     else:
                         self.emit(f"else {b}->_{c_int(index)} = {v};")
                 else:
+                    self.emit(f"{b}->_{c_int(index)} = {v};")
                     if barrier:
                         self.emit(f"quest_barrier({b});")
-                    self.emit(f"{b}->_{c_int(index)} = {v};")
             case ir.StoreElement(value=value, base=base, index=index, offset=offset):
                 arr, idx = self.atom(base), self.atom(index)
                 elem = self.element_shape(base)
                 self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
-                if self.holds_pointer(elem.type):
-                    self.emit(f"quest_barrier({arr});")
                 self.emit(f"{arr}->data[{idx}] = {self.array_element(value, elem)};")
+                if self.holds_pointer(elem.type):
+                    self.emit(f"quest_barrier_slot(&{arr}->data[{idx}]);")
             case ir.Switch(value=value, cases=cases, else_body=else_body, access=access):
                 self.switch(value, cases, else_body, access, s.view_map)
             case ir.Inspect(value=value, cases=cases, else_body=else_body, auto_type=auto_t, offset=offset):
@@ -1448,9 +1508,9 @@ class CPrinter:
                 self.body(body)
                 for env, i, var in self.deferred[1]:
                     # The environment was made before the body ran
+                    self.emit(f"{env}->c{c_int(i)} = {self.atom(var)};")
                     if self.holds_pointer(var.type):
                         self.emit(f"quest_barrier({env});")
-                    self.emit(f"{env}->c{c_int(i)} = {self.atom(var)};")
                 self.deferred = saved
             case ir.If(cond=cond, then_body=then_body, else_body=else_body):
                 self.emit(f"if ({self.atom(cond)}) {{")
@@ -1646,6 +1706,7 @@ class CPrinter:
         arm = self.temp(f"{arm_struct} *")
         self.emit(f"{arm} = ({arm_struct} *)quest_alloc(sizeof({arm_struct}), "
                   f"{self.layout_ref(objectlayout.tuple_layout(shape(arm_t), arm_struct, []))});")
+        mark = self.begin_init(arm)
         for i, (pair, stored_f, arm_f) in enumerate(zip(arm_plan.descriptors, stored_t.value_fields,
                                                         arm_t.value_fields)):
             src = f"{stored}->_{c_int(i)}"
@@ -1655,6 +1716,7 @@ class CPrinter:
             from_desc, to_desc = (self.descriptor(d) for d in pair)
             viewed = f"quest_convert({shape_slot_to_qval(src, shape(stored_f.type_val))}, {from_desc}, {to_desc})"
             self.emit(f"{arm}->_{c_int(i)} = {shape_qval_to_slot(viewed, shape(arm_f.type_val))};")
+        self.init_barrier(arm, mark)
         return arm
 
     def inspect(self, value: ir.Atom, cases, else_body: Optional[ir.Body], auto_t: QAutoType,

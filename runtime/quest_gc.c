@@ -125,7 +125,6 @@ Q_FIXED(quest_layout_abstract_type_entry, "QAbstractTypeEntry", 32, P, S, P, P);
  * The heap's geometry and its parameters
  * ------------------------------------------------------------------------ */
 
-#define Q_GC_LINE_BITS       7
 #define Q_GC_LINE            ((size_t)1 << Q_GC_LINE_BITS)                 /* 128 bytes */
 #define Q_GC_BLOCK_BITS      15
 #define Q_GC_BLOCK           ((size_t)1 << Q_GC_BLOCK_BITS)                /* 32 KB */
@@ -135,6 +134,7 @@ Q_FIXED(quest_layout_abstract_type_entry, "QAbstractTypeEntry", 32, P, S, P, P);
 #define Q_GC_LARGE           ((size_t)8 << 10)  /* an allocation of 8 KB and up is large: a run of blocks */
 #define Q_GC_MIN_HEAP        ((size_t)64 << 20) /* the heap's size before the first collection, and its least */
 #define Q_GC_GROWTH          2                  /* the heap may grow to this times the blocks in use after a collection */
+#define Q_GC_NURSERY         ((size_t)64 << 20) /* blocks taken between minor collections (QUEST_GC_NURSERY megabytes) */
 #define Q_GC_RESERVE_DEFAULT ((size_t)64 << 30) /* the virtual range reserved, halved until the system grants it */
 #define Q_GC_POISON          0x5A               /* the byte a reclaimed line is filled with under `poison` */
 
@@ -150,7 +150,7 @@ typedef struct QBlock {
     uint8_t  state;
     uint8_t  space;      /* QB_SMALL, QB_LARGE_HEAD: which cursor's objects it holds */
     uint8_t  fresh;      /* never allocated into since it was mapped, so zero already */
-    uint8_t  pad;
+    uint8_t  young;      /* allocated into since the last collection (a run's head for the run) */
     uint32_t run;        /* QB_LARGE_HEAD: the blocks of its run; QB_LARGE_TAIL: the blocks back to its head */
     uint32_t live_lines; /* QB_SMALL: after the last collection */
     uint32_t pad2;
@@ -159,12 +159,14 @@ typedef struct QBlock {
 /* The reserve, and the metadata beside it; the first two are what the
  * header's inline allocation reads */
 uintptr_t        quest_gc_heap_lo = 0;
+uintptr_t        quest_gc_heap_hi = 0;
 uint8_t         *quest_gc_start_bits = NULL;   /* a bit per 8 bytes of the reserve, by (address - heap_lo) >> 3 */
-static uintptr_t quest_gc_heap_hi = 0;
+uint8_t         *quest_gc_cards = NULL;        /* a byte per card (Q_GC_CARD_BITS), set by the slot barrier */
 static size_t    quest_gc_block_n = 0;         /* blocks in the reserve */
 static size_t    quest_gc_high_water = 0;      /* blocks ever taken; those beyond are fresh */
 static QBlock   *quest_gc_blocks = NULL;
-static uint8_t  *quest_gc_lines = NULL;        /* a mark byte per line, by (address - heap_lo) >> 7 */
+uint8_t         *quest_gc_lines = NULL;        /* a mark byte per line, by (address - heap_lo) >> 7; the slot
+                                                  barrier reads it: a slot in an unmarked line is a young object's */
 static uint8_t  *quest_gc_marks = NULL;        /* a bit per 8 bytes, as the start bits */
 static bool      quest_gc_ready = false;
 
@@ -186,6 +188,23 @@ static size_t *quest_gc_recyclable[2] = { NULL, NULL };
 static size_t  quest_gc_recyclable_n[2] = { 0, 0 }, quest_gc_recyclable_cap[2] = { 0, 0 };
 static size_t  quest_gc_recyclable_next[2] = { 0, 0 };
 
+/* Generations (section 3.5): the mark bits are sticky, cleared by a full
+ * collection alone, so the young objects are the unmarked ones, in the holes
+ * allocated into since the last collection. The young blocks are those holes'
+ * blocks, which a minor collection sweeps; the log holds the old objects the
+ * barrier saw a pointer stored into since the last collection, which a minor
+ * collection scans as roots; the nursery is the blocks taken between minor
+ * collections (QUEST_GC_NURSERY megabytes, 0 for full collections alone) */
+static size_t    *quest_gc_young = NULL;
+static size_t     quest_gc_young_n = 0, quest_gc_young_cap = 0;
+static uintptr_t *quest_gc_log = NULL;
+static size_t     quest_gc_log_n = 0, quest_gc_log_cap = 0;
+static size_t    *quest_gc_dirty = NULL;      /* the cards the slot barrier marked since the last collection */
+static size_t     quest_gc_dirty_n = 0, quest_gc_dirty_cap = 0;
+static size_t     quest_gc_nursery_blocks = Q_GC_NURSERY / Q_GC_BLOCK;
+static size_t     quest_gc_nursery_adapted = Q_GC_NURSERY / Q_GC_BLOCK;   /* the nursery now (below) */
+static bool       quest_gc_minor = false;     /* the collection in progress is a minor one */
+
 /* Sizing: blocks in use, the target they may grow to before a collection,
  * and what has been taken since the last one */
 static size_t quest_gc_used = 0;
@@ -204,16 +223,28 @@ static uint64_t quest_gc_collections = 0;
 static uint64_t quest_gc_pause_ns = 0, quest_gc_pause_max_ns = 0;
 static uint64_t quest_gc_allocated_blocks = 0;     /* blocks taken over the run, small and large */
 static uint64_t quest_gc_hole_bytes = 0;           /* bytes of the holes entered: allocation's volume, about */
+static uint64_t quest_gc_holes = 0;                /* the holes entered, a large object's run counting as one */
 static size_t   quest_gc_used_max = 0;
 static uint64_t quest_gc_live_bytes = 0, quest_gc_live_bytes_max = 0;   /* at the last collection, headers included */
 static uint64_t quest_gc_live_objects = 0;
 static uint64_t quest_gc_live_lines = 0, quest_gc_live_lines_max = 0;   /* lines marked, large runs' included */
 static uint64_t quest_gc_large_live = 0;
+static uint64_t quest_gc_minors = 0;               /* minor collections; quest_gc_collections counts the full ones */
+static uint64_t quest_gc_minor_pause_ns = 0, quest_gc_minor_pause_max_ns = 0;
+static uint64_t quest_gc_young_bytes = 0;          /* hole bytes entered since the last collection */
+static uint64_t quest_gc_survived_bytes = 0, quest_gc_survived_objects = 0;   /* by minor collections, in all */
+static uint64_t quest_gc_logged = 0;               /* objects logged, in all */
+static uint64_t quest_gc_cards_dirtied = 0;        /* cards marked, in all */
 static int      quest_gc_stats = 0;                /* 1: a summary at exit; 2: a line per collection too */
 
 /* The checking modes */
 int    quest_gc_check_flags = 0;
 size_t quest_gc_check_pending = 0;
+/* QUEST_GC_TRAP=k: quest_gc_trap is called, for a debugger's breakpoint,
+ * before the kth collection of either kind, the number a check's report
+ * gives */
+static uint64_t quest_gc_trap_at = 0;
+__attribute__((noinline, used)) void quest_gc_trap(void) { __asm__ volatile(""); }
 
 Q_NORETURN static void quest_gc_fatal(const char *what) {
     fprintf(stderr, "quest: %s\n", what);
@@ -268,10 +299,34 @@ static inline size_t quest_gc_object_bytes(uintptr_t obj, const QLayout *l) {
  * The reserve and its metadata
  * ------------------------------------------------------------------------ */
 
-static void *quest_gc_map(size_t bytes) {
-    void *p = mmap(NULL, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+static void *quest_gc_map_at(void *hint, size_t bytes) {
+    void *p = mmap(hint, bytes, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
     return p == MAP_FAILED ? NULL : p;
 }
+
+/* Where the next of the collector's ranges is asked for: the heap's tables
+ * follow the heap, which leaves the pages above the binary, where the system
+ * would have put them, to what must be near it (the JIT's regions, within
+ * adrp's 4 GB of the runtime: quest_code_reserve) */
+static uintptr_t quest_gc_map_next = 0;
+
+static void *quest_gc_map(size_t bytes) {
+    void *p = quest_gc_map_at((void *)quest_gc_map_next, bytes);
+    if (p != NULL && quest_gc_map_next != 0) {
+        quest_gc_map_next = ((uintptr_t)p + bytes + ((uintptr_t)1 << 20) - 1) & ~(((uintptr_t)1 << 20) - 1);
+    }
+    return p;
+}
+
+/* Where the heap is asked for (a hint, which the system may decline): high
+ * in the address space, above any integer a program is likely to hold. An
+ * ambiguous word (a QVal of a type parameter, a stack word) that holds an
+ * integer equal to an object's address keeps that object alive, and under
+ * QUEST_GC_CHECK=barriers reads as a store without a barrier when the
+ * object is young. Where the system places a range by itself (0x70_0000_0000
+ * on Darwin), the compiler's packed source locations, a file's number above
+ * bit 32, were such integers once its heap passed 4 GB. */
+#define Q_GC_HEAP_HINT ((uintptr_t)1 << 46)
 
 /* Reserves the heap (QUEST_GC_RESERVE gigabytes, 64 by default, halved until
  * the system grants it) and maps its metadata, all committed only as touched */
@@ -285,11 +340,12 @@ static void quest_gc_setup(void) {
     }
     void *heap = NULL;
     while (reserve >= ((size_t)1 << 30)) {
-        heap = quest_gc_map(reserve);
+        heap = quest_gc_map_at((void *)Q_GC_HEAP_HINT, reserve);
         if (heap != NULL) break;
         reserve /= 2;
     }
     if (heap == NULL) quest_gc_fatal("out of memory: no range can be reserved for the heap");
+    quest_gc_map_next = (uintptr_t)heap + reserve;
     /* The first block starts at a block boundary */
     uintptr_t lo = ((uintptr_t)heap + Q_GC_BLOCK - 1) & ~(uintptr_t)(Q_GC_BLOCK - 1);
     quest_gc_heap_lo = lo;
@@ -299,7 +355,9 @@ static void quest_gc_setup(void) {
     quest_gc_lines = (uint8_t *)quest_gc_map(quest_gc_block_n * Q_GC_BLOCK_LINES);
     quest_gc_marks = (uint8_t *)quest_gc_map(quest_gc_block_n * Q_GC_BLOCK_BITMAP);
     quest_gc_start_bits = (uint8_t *)quest_gc_map(quest_gc_block_n * Q_GC_BLOCK_BITMAP);
-    if (quest_gc_blocks == NULL || quest_gc_lines == NULL || quest_gc_marks == NULL || quest_gc_start_bits == NULL) {
+    quest_gc_cards = (uint8_t *)quest_gc_map(quest_gc_block_n * (Q_GC_BLOCK >> Q_GC_CARD_BITS));
+    if (quest_gc_blocks == NULL || quest_gc_lines == NULL || quest_gc_marks == NULL || quest_gc_start_bits == NULL ||
+        quest_gc_cards == NULL) {
         quest_gc_fatal("out of memory: the heap's metadata cannot be mapped");
     }
     quest_gc_target = quest_gc_min_heap_blocks;
@@ -323,12 +381,65 @@ static void quest_gc_push(size_t **list, size_t *n, size_t *cap, size_t b) {
 
 void quest_gc_collect(void);
 
+static void quest_gc_collect_kind(bool minor);
+
+/* Holds collections off until the matching release (quest_runtime.h): the
+ * holds in force. While one is, nothing collects, so every object allocated
+ * since the first stays young, and the stores among them need no barriers */
+static unsigned quest_gc_held = 0;
+void quest_gc_hold(void) { quest_gc_held++; }
+void quest_gc_release(void) { if (quest_gc_held > 0) quest_gc_held--; }
+void quest_gc_release_all(void) { quest_gc_held = 0; }
+
+/* The nursery: the configured blocks, doubled while more than a quarter of
+ * the young bytes survive a minor collection (a program building a structure
+ * it keeps, whose minor collections would mark what the next full one marks
+ * again), up to a quarter of the heap's target, beyond which minor
+ * collections stop (every eighth full collection then runs one at that
+ * largest size to see whether the program has changed its ways); and halved
+ * back toward the configured blocks while under a sixteenth survives. Under
+ * a checking mode at least a quarter of the heap, so that the walks a minor
+ * collection makes (the young blocks', and under `barriers` the old
+ * generation's) stay a fraction of the run */
+#define Q_GC_NO_NURSERY ((size_t)-1)
+static unsigned quest_gc_fulls_without_nursery = 0;
+static size_t quest_gc_nursery_now(void) {
+    size_t n = quest_gc_nursery_adapted;
+    if (quest_gc_check_flags != 0 && n != Q_GC_NO_NURSERY && quest_gc_used / 4 > n) n = quest_gc_used / 4;
+    return n;
+}
+
+static size_t quest_gc_nursery_cap(void) {
+    size_t cap = quest_gc_target / 4;
+    return cap < quest_gc_nursery_blocks ? quest_gc_nursery_blocks : cap;
+}
+
+static void quest_gc_adapt_nursery(uint64_t young, uint64_t survived) {
+    size_t cap = quest_gc_nursery_cap();
+    if (survived * 4 > young) {
+        quest_gc_nursery_adapted = quest_gc_nursery_adapted * 2 <= cap ? quest_gc_nursery_adapted * 2 : Q_GC_NO_NURSERY;
+    } else if (survived * 16 < young && quest_gc_nursery_adapted / 2 >= quest_gc_nursery_blocks) {
+        quest_gc_nursery_adapted /= 2;
+    }
+}
+
 /* Whether taking n more blocks should collect first: the heap has reached its
- * target, something was allocated since the last collection (else the live
- * data needs the growth), and collection is on */
+ * target, or the nursery is full; something was allocated since the last
+ * collection (else the live data needs the growth); and collection is on */
 static bool quest_gc_should_collect(size_t n) {
-    return !quest_gc_never_collect && !quest_gc_collecting && quest_gc_taken_since_collection > 0 &&
-           quest_gc_used + n > quest_gc_target;
+    if (quest_gc_never_collect || quest_gc_held != 0 || quest_gc_collecting || quest_gc_taken_since_collection == 0) {
+        return false;
+    }
+    return quest_gc_used + n > quest_gc_target ||
+           (quest_gc_nursery_blocks != 0 && quest_gc_taken_since_collection >= quest_gc_nursery_now());
+}
+
+/* Collects before taking n blocks: a minor collection when the heap is under
+ * its target, and a full one when it is not, or when the minor one left it
+ * so */
+static void quest_gc_collect_before(size_t n) {
+    if (quest_gc_nursery_blocks != 0 && quest_gc_used + n <= quest_gc_target) quest_gc_collect_kind(true);
+    if (quest_gc_used + n > quest_gc_target) quest_gc_collect_kind(false);
 }
 
 static void quest_gc_took(size_t n) {
@@ -382,7 +493,10 @@ static size_t quest_gc_take_run(unsigned space, size_t n) {
         blk->fresh = fresh ? 1 : blk->fresh;
         blk->run = (uint32_t)(i == 0 ? n : i);
         blk->live_lines = 0;
+        blk->young = 0;
     }
+    quest_gc_blocks[b].young = 1;
+    quest_gc_push(&quest_gc_young, &quest_gc_young_n, &quest_gc_young_cap, b);
     quest_gc_took(n);
     return b;
 }
@@ -397,9 +511,15 @@ static void quest_gc_enter_hole(uintptr_t *cursor, uintptr_t *limit, unsigned k,
     uintptr_t start = quest_gc_block_start(b) + ((uintptr_t)a << Q_GC_LINE_BITS);
     size_t bytes = n << Q_GC_LINE_BITS;
     if (!quest_gc_blocks[b].fresh) memset((void *)start, 0, bytes);
+    if (!quest_gc_blocks[b].young) {
+        quest_gc_blocks[b].young = 1;
+        quest_gc_push(&quest_gc_young, &quest_gc_young_n, &quest_gc_young_cap, b);
+    }
     cursor[k] = start;
     limit[k] = start + bytes;
     quest_gc_hole_bytes += bytes;
+    quest_gc_holes++;
+    quest_gc_young_bytes += bytes;
 }
 
 /* Moves the small cursor of space k to the next hole of at least `need`
@@ -425,11 +545,13 @@ static bool quest_gc_next_hole(unsigned k, size_t need) {
 
 static void *quest_gc_alloc_large(size_t total, unsigned k) {
     size_t n = (total + Q_GC_BLOCK - 1) >> Q_GC_BLOCK_BITS;
-    if (quest_gc_should_collect(n)) quest_gc_collect();
+    if (quest_gc_should_collect(n)) quest_gc_collect_before(n);
     size_t b = quest_gc_take_run(k, n);
     uintptr_t start = quest_gc_block_start(b);
     if (!quest_gc_blocks[b].fresh) memset((void *)start, 0, total);
     quest_gc_hole_bytes += total;
+    quest_gc_holes++;
+    quest_gc_young_bytes += total;
     return (void *)start;
 }
 
@@ -438,7 +560,7 @@ static void *quest_gc_alloc_large(size_t total, unsigned k) {
  * for want of room */
 static void *quest_gc_alloc_medium(size_t total, unsigned k) {
     if (total > quest_gc_over_limit[k] - quest_gc_over_cursor[k]) {
-        if (quest_gc_should_collect(1)) quest_gc_collect();
+        if (quest_gc_should_collect(1)) quest_gc_collect_before(1);
         size_t b = quest_gc_take_free_block(k, QB_SMALL);
         quest_gc_enter_hole(quest_gc_over_cursor, quest_gc_over_limit, k, b, 0, Q_GC_BLOCK_LINES);
     }
@@ -448,13 +570,18 @@ static void *quest_gc_alloc_medium(size_t total, unsigned k) {
 }
 
 static void quest_gc_check_tick(size_t sz, size_t header);
+static void quest_gc_note_site(uintptr_t obj);
+/* The checking modes only the collector reads, with quest_runtime.h's:
+ * `stress` (quest_gc_stress_tick) and `sites` (quest_gc_note_site) */
+#define QUEST_GC_CHECK_STRESS 128
+#define QUEST_GC_CHECK_SITES  256
 
 /* `total` zeroed bytes (headers included) for an object of the layout, when
  * the inline fast path's hole has no room, or a checking mode is on, which
  * counts the allocation first (and may collect then): the next hole, a
  * recyclable block's, a free block's, or, for medium and large allocations,
  * their own paths; collecting first when the heap has reached its target */
-void *quest_gc_alloc_slow(size_t total, const QLayout *layout) {
+static inline __attribute__((always_inline)) void *quest_gc_alloc_slow_body(size_t total, const QLayout *layout) {
     if (!quest_gc_ready) quest_gc_setup();
     unsigned k = quest_layout_space(layout);
     if (quest_gc_check_flags != 0) {
@@ -479,7 +606,7 @@ void *quest_gc_alloc_slow(size_t total, const QLayout *layout) {
             continue;
         }
         if (quest_gc_should_collect(1)) {
-            quest_gc_collect();
+            quest_gc_collect_before(1);
             continue;
         }
         quest_gc_current[k] = quest_gc_take_free_block(k, QB_SMALL);
@@ -487,15 +614,132 @@ void *quest_gc_alloc_slow(size_t total, const QLayout *layout) {
     }
 }
 
+/* The body is inline here so that the frame above the slow path's is still
+ * the allocating function's, which `allocations` and `sites` read */
+void *quest_gc_alloc_slow(size_t total, const QLayout *layout) {
+    void *p = quest_gc_alloc_slow_body(total, layout);
+    if ((quest_gc_check_flags & QUEST_GC_CHECK_SITES) != 0) quest_gc_note_site((uintptr_t)p + quest_gc_prefix_of(layout));
+    return p;
+}
+
 /* ---------------------------------------------------------------------------
  * Write barriers and roots
  * ------------------------------------------------------------------------ */
 
-/* How many times each barrier was called: with an object, and with a slot */
-static uint64_t quest_barrier_counts[2];
+static uintptr_t quest_gc_start_before(size_t b, uintptr_t a);
+static uintptr_t quest_gc_large_object(size_t b);
 
-void quest_barrier(const void *obj)   { (void)obj;  quest_barrier_counts[0]++; }
-void quest_barrier_slot(const void *slot) { (void)slot; quest_barrier_counts[1]++; }
+/* The barrier's slow path: logs the object if a collection has marked it and
+ * nothing has logged it since (the inline fast path tests the same, so a
+ * call from native code, which cannot inline it, is complete here); an
+ * option's payload is logged as its option */
+void quest_barrier_log(void *obj) {
+    uintptr_t *p = (uintptr_t *)obj;
+    if (p[-1] < Q_BARRIER_TAG_LIMIT) p -= 1;
+    obj = p;
+    uintptr_t *h = p - 1;
+    if ((*h & (Q_HEADER_OLD | Q_HEADER_LOGGED)) != Q_HEADER_OLD) return;
+    if (!quest_gc_in_heap((uintptr_t)obj)) return;
+    ((uint8_t *)h)[6] |= 1u;    /* the mutator's byte of the header: Q_HEADER_LOGGED */
+    quest_gc_logged++;
+    if (quest_gc_log_n == quest_gc_log_cap) {
+        size_t cap = quest_gc_log_cap > 0 ? 2 * quest_gc_log_cap : 4096;
+        uintptr_t *grown = (uintptr_t *)realloc(quest_gc_log, cap * sizeof *grown);
+        if (grown == NULL) quest_gc_fatal("out of memory in the collector's log");
+        quest_gc_log = grown;
+        quest_gc_log_cap = cap;
+    }
+    quest_gc_log[quest_gc_log_n++] = (uintptr_t)obj;
+}
+
+/* The slot barrier's slow path: marks the slot's card and lists it for the
+ * next minor collection, which scans the dirty cards' words (the inline fast
+ * path tests the card first, so a call from native code is complete here) */
+void quest_barrier_card(uint8_t *card) {
+    if (*card != 0) return;
+    *card = 1;
+    quest_gc_cards_dirtied++;
+    quest_gc_push(&quest_gc_dirty, &quest_gc_dirty_n, &quest_gc_dirty_cap, (size_t)(card - quest_gc_cards));
+}
+
+/* Counts per layout, for the report */
+typedef struct QLayoutCount {
+    const QLayout *layout;
+    uint64_t       objects;
+    uint64_t       ambiguous;         /* ambiguous words */
+    uint64_t       suspicious;        /* scalar words that are addresses of heap objects */
+    uint64_t       ambiguous_heap;    /* ambiguous words that are addresses of heap objects */
+    uint64_t       logged;            /* objects of the layout the log held at minor collections */
+    uint64_t       logged_bytes;      /* their bytes, scanned whole */
+} QLayoutCount;
+static QLayoutCount *quest_gc_count_of(const QLayout *layout);
+
+/* Empties the log: each logged object's bit is cleared, and, in a minor
+ * collection, its words are scanned, since the pointers stored into it since
+ * the last collection may be the only ones at young objects */
+static void quest_gc_scan_object(uintptr_t obj);
+static void quest_gc_drain_log(bool scan) {
+    for (size_t i = 0; i < quest_gc_log_n; ++i) {
+        uintptr_t obj = quest_gc_log[i];
+        ((uint8_t *)obj)[-2] &= (uint8_t)~1u;    /* byte 6 of the header word, which is at obj - 8 */
+        const QLayout *l = quest_layout_of((const void *)obj);
+        if (scan && (quest_gc_check_flags & QUEST_GC_CHECK_REPORT) != 0) {
+            QLayoutCount *c = quest_gc_count_of(l);
+            c->logged++;
+            c->logged_bytes += quest_gc_object_bytes(obj, l);
+        }
+        if (scan && (l->flags & Q_LAYOUT_NOSCAN) == 0) quest_gc_scan_object(obj);
+    }
+    quest_gc_log_n = 0;
+}
+
+/* Scans the words of the object at obj that lie in [lo, hi), by its layout */
+static void quest_gc_scan_object_range(uintptr_t obj, uintptr_t lo, uintptr_t hi);
+
+/* Scans a card's words by the old objects they belong to: the object that
+ * starts at or before the card and reaches into it, and those that start in
+ * it. A young object's words are left to marking: the barrier marks a card
+ * whatever the age of the slot's object, and scanning a dead young object's
+ * would keep what it points at alive */
+static void quest_gc_scan_card(size_t card) {
+    uintptr_t lo = quest_gc_heap_lo + (card << Q_GC_CARD_BITS), hi = lo + ((uintptr_t)1 << Q_GC_CARD_BITS);
+    size_t b = quest_gc_block_of(lo);
+    const QBlock *blk = &quest_gc_blocks[b];
+    if (blk->state == QB_FREE) return;
+    if (blk->state == QB_LARGE_TAIL) {
+        b -= blk->run;
+        blk = &quest_gc_blocks[b];
+    }
+    if (blk->state == QB_LARGE_HEAD) {
+        uintptr_t obj = quest_gc_large_object(b);
+        if (obj != 0 && quest_gc_bit(quest_gc_marks, obj)) quest_gc_scan_object_range(obj, lo, hi);
+        return;
+    }
+    uintptr_t obj = quest_gc_start_before(b, lo);
+    if (obj != 0 && quest_gc_bit(quest_gc_marks, obj)) quest_gc_scan_object_range(obj, lo, hi);
+    uintptr_t first = (lo - quest_gc_heap_lo) >> 3;     /* the card's first word's index */
+    for (size_t i = 0; i < ((size_t)1 << Q_GC_CARD_BITS) / 64; ++i) {
+        unsigned m = quest_gc_start_bits[(first >> 3) + i] & quest_gc_marks[(first >> 3) + i];
+        if (i == 0) m &= ~1u;                            /* the object at lo was scanned above */
+        while (m != 0) {
+            unsigned bit = (unsigned)__builtin_ctz(m);
+            m &= m - 1;
+            quest_gc_scan_object_range(quest_gc_heap_lo + ((first + i * 8 + bit) << 3), lo, hi);
+        }
+    }
+}
+
+/* Empties the dirty cards: in a minor collection each is scanned first, since
+ * the pointers stored into it since the last collection may be the only ones
+ * at young objects */
+static void quest_gc_drain_cards(bool scan) {
+    for (size_t i = 0; i < quest_gc_dirty_n; ++i) {
+        size_t card = quest_gc_dirty[i];
+        quest_gc_cards[card] = 0;
+        if (scan) quest_gc_scan_card(card);
+    }
+    quest_gc_dirty_n = 0;
+}
 
 /* The root tables registered, and the ambiguous regions (the JIT's data),
  * outside the collected heap */
@@ -593,6 +837,8 @@ static void quest_gc_mark_object(uintptr_t obj) {
         for (uintptr_t ln = from; ln <= to; ++ln) quest_gc_lines[ln] = 1;
     } else {
         quest_gc_large_live += prefix + size;
+        /* The run's lines, for the slot barrier's test */
+        memset(quest_gc_block_lines(b), 1, (size_t)quest_gc_blocks[b].run * Q_GC_BLOCK_LINES);
     }
     if ((l->flags & Q_LAYOUT_NOSCAN) == 0) quest_gc_push_work(obj);
 }
@@ -685,6 +931,41 @@ static void quest_gc_scan_range(const uintptr_t *p, const uintptr_t *end) {
     for (; p < end; ++p) quest_gc_mark_word(*p, true);
 }
 
+static void quest_gc_scan_object_range(uintptr_t obj, uintptr_t lo, uintptr_t hi) {
+    const QLayout *l = quest_layout_of((const void *)obj);
+    if ((l->flags & Q_LAYOUT_NOSCAN) != 0) return;
+    uintptr_t end = obj + quest_gc_object_bytes(obj, l);
+    if (lo < obj) lo = obj;
+    if (hi > end) hi = end;
+    if (lo >= hi) return;
+    const uintptr_t *words = (const uintptr_t *)obj;
+    size_t from = (lo - obj) >> 3, to = (hi - obj) >> 3;
+    switch (l->form) {
+    case Q_LAYOUT_FIXED:
+        for (size_t i = from; i < to; ++i) {
+            if (l->kinds[i] == Q_WORD_POINTER) quest_gc_mark_word(words[i], false);
+            else if (l->kinds[i] == Q_WORD_AMBIGUOUS) quest_gc_mark_word(words[i], true);
+        }
+        break;
+    case Q_LAYOUT_ARRAY: {
+        size_t elements = l->size / 8;
+        for (size_t i = from; i < to; ++i) {
+            uint8_t kind = i < elements ? l->kinds[i] : l->kinds[l->words + (i - elements) % l->element_words];
+            if (kind == Q_WORD_POINTER) quest_gc_mark_word(words[i], false);
+            else if (kind == Q_WORD_AMBIGUOUS) quest_gc_mark_word(words[i], true);
+        }
+        break;
+    }
+    default:
+        for (size_t i = from; i < to; ++i) {
+            uint8_t kind = l->kinds[i % l->element_words];
+            if (kind == Q_WORD_POINTER) quest_gc_mark_word(words[i], false);
+            else if (kind == Q_WORD_AMBIGUOUS) quest_gc_mark_word(words[i], true);
+        }
+        break;
+    }
+}
+
 /* A root slot of `words` words, scanned as ambiguous: a root table's entry
  * may be a global of generic code, and validation costs nothing wrong */
 static void quest_gc_mark_root(void *slot, size_t words) {
@@ -720,6 +1001,7 @@ static void quest_gc_mark_roots(void) {
     }
     quest_runtime_roots(quest_gc_mark_root);
     quest_code_roots(quest_gc_mark_root);
+    quest_serialization_roots(quest_gc_mark_root);
     for (size_t i = 0; i < quest_gc_region_n; ++i) {
         quest_gc_scan_range((const uintptr_t *)quest_gc_regions[i].low, (const uintptr_t *)quest_gc_regions[i].high);
     }
@@ -748,7 +1030,7 @@ static void quest_gc_clear_marks(void) {
         const QBlock *blk = &quest_gc_blocks[b];
         if (blk->state == QB_FREE) continue;
         memset(quest_gc_block_bits(quest_gc_marks, b), 0, Q_GC_BLOCK_BITMAP);
-        if (blk->state == QB_SMALL) memset(quest_gc_block_lines(b), 0, Q_GC_BLOCK_LINES);
+        memset(quest_gc_block_lines(b), 0, Q_GC_BLOCK_LINES);
     }
 }
 
@@ -781,6 +1063,7 @@ static void quest_gc_sweep(void) {
             uint32_t live = 0;
             for (size_t i = 0; i < Q_GC_BLOCK_LINES; ++i) live += lm[i];
             blk->fresh = 0;
+            blk->young = 0;
             blk->live_lines = live;
             if (live == 0) {
                 blk->state = QB_FREE;
@@ -800,6 +1083,7 @@ static void quest_gc_sweep(void) {
         case QB_LARGE_HEAD: {
             size_t run = blk->run;
             uintptr_t obj = quest_gc_large_object(b);
+            blk->young = 0;
             if (obj != 0 && quest_gc_bit(quest_gc_marks, obj)) {
                 quest_gc_used += run;
                 quest_gc_live_lines += run * Q_GC_BLOCK_LINES;
@@ -829,40 +1113,165 @@ static void quest_gc_sweep(void) {
     size_t target = Q_GC_GROWTH * quest_gc_used;
     quest_gc_target = target > quest_gc_min_heap_blocks ? target : quest_gc_min_heap_blocks;
     quest_gc_taken_since_collection = 0;
+    quest_gc_young_n = 0;
+}
+
+/* After a minor collection's marking: the young blocks alone are swept, as a
+ * full sweep sweeps every block (only live objects validate, the live lines
+ * recounted, each block classified), the old recyclable blocks not yet
+ * allocated into keep their holes, and the cursors start over. The young
+ * list is kept for the checks, and emptied by the collection's end. */
+static void quest_gc_sweep_young(void) {
+    /* The free list keeps the blocks the last full collection left; the dead young blocks join it */
+    for (unsigned k = 0; k < 2; ++k) {
+        size_t rest = quest_gc_recyclable_n[k] - quest_gc_recyclable_next[k];
+        memmove(quest_gc_recyclable[k], quest_gc_recyclable[k] + quest_gc_recyclable_next[k], rest * sizeof(size_t));
+        quest_gc_recyclable_n[k] = rest;
+        quest_gc_recyclable_next[k] = 0;
+        quest_gc_cursor[k] = quest_gc_limit[k] = 0;
+        quest_gc_over_cursor[k] = quest_gc_over_limit[k] = 0;
+        quest_gc_current[k] = Q_GC_NO_BLOCK;
+        quest_gc_current_line[k] = 0;
+    }
+    for (size_t i = 0; i < quest_gc_young_n; ++i) {
+        size_t b = quest_gc_young[i];
+        QBlock *blk = &quest_gc_blocks[b];
+        blk->young = 0;
+        switch (blk->state) {
+        case QB_SMALL: {
+            uint64_t *starts = (uint64_t *)quest_gc_block_bits(quest_gc_start_bits, b);
+            const uint64_t *marks = (const uint64_t *)quest_gc_block_bits(quest_gc_marks, b);
+            for (size_t j = 0; j < Q_GC_BLOCK_BITMAP / 8; ++j) starts[j] &= marks[j];
+            const uint8_t *lm = quest_gc_block_lines(b);
+            uint32_t live = 0;
+            for (size_t j = 0; j < Q_GC_BLOCK_LINES; ++j) live += lm[j];
+            quest_gc_live_lines -= blk->live_lines;
+            quest_gc_live_lines += live;
+            blk->fresh = 0;
+            blk->live_lines = live;
+            if (live == 0) {
+                blk->state = QB_FREE;
+                quest_gc_used--;
+                if (quest_gc_poison) memset((void *)quest_gc_block_start(b), Q_GC_POISON, Q_GC_BLOCK);
+                quest_gc_push(&quest_gc_free, &quest_gc_free_n, &quest_gc_free_cap, b);
+            } else if (live < Q_GC_BLOCK_LINES) {
+                unsigned k = blk->space;
+                quest_gc_push(&quest_gc_recyclable[k], &quest_gc_recyclable_n[k], &quest_gc_recyclable_cap[k], b);
+                if (quest_gc_poison) quest_gc_poison_block(b);
+            }
+            break;
+        }
+        case QB_LARGE_HEAD: {
+            size_t run = blk->run;
+            uintptr_t obj = quest_gc_large_object(b);
+            if (obj != 0 && quest_gc_bit(quest_gc_marks, obj)) {
+                quest_gc_live_lines += run * Q_GC_BLOCK_LINES;
+                blk->fresh = 0;
+            } else {
+                if (obj != 0) quest_gc_clear_bit(quest_gc_start_bits, obj);
+                if (quest_gc_poison) memset((void *)quest_gc_block_start(b), Q_GC_POISON, run * Q_GC_BLOCK);
+                for (size_t j = 0; j < run; ++j) {
+                    quest_gc_blocks[b + j].state = QB_FREE;
+                    quest_gc_blocks[b + j].fresh = 0;
+                    quest_gc_push(&quest_gc_free, &quest_gc_free_n, &quest_gc_free_cap, b + j);
+                }
+                quest_gc_used -= run;
+            }
+            break;
+        }
+        default:
+            quest_gc_fatal("the collector found a young block that is neither small nor a run's head");
+        }
+    }
+    quest_gc_taken_since_collection = 0;
 }
 
 static void quest_gc_check_heap(void);
+static void quest_gc_check_young(void);
+static void quest_gc_check_barriers(void);
 static void quest_gc_check_roots(void);
 
-/* Stops the world (there is one mutator, and it is here), marks, and sweeps */
-void quest_gc_collect(void) {
+/* Stops the world (there is one mutator, and it is here), marks, and sweeps.
+ * A full collection clears every mark and marks everything; a minor one keeps
+ * the marks, so marking from the roots and the log stops at every old object
+ * and visits the young ones alone, and sweeps the young blocks alone. */
+static void quest_gc_collect_kind(bool minor) {
     if (!quest_gc_ready) quest_gc_setup();
-    if (quest_gc_collecting) return;
+    if (quest_gc_collecting || quest_gc_held != 0) return;
     quest_gc_collecting = true;
+    quest_gc_minor = minor;
+    if (quest_gc_trap_at != 0 && quest_gc_collections + quest_gc_minors + 1 == quest_gc_trap_at) quest_gc_trap();
     uint64_t t0 = quest_gc_now_ns();
-    quest_gc_collections++;
-    quest_gc_live_bytes = 0;
-    quest_gc_live_objects = 0;
-    quest_gc_large_live = 0;
+    uint64_t before_bytes = quest_gc_live_bytes, before_objects = quest_gc_live_objects;
+    uint64_t young = quest_gc_young_bytes;
+    size_t logged = quest_gc_log_n, dirty = quest_gc_dirty_n;
     quest_gc_work_n = 0;
-    quest_gc_clear_marks();
+    if (minor) {
+        quest_gc_minors++;
+        if ((quest_gc_check_flags & QUEST_GC_CHECK_BARRIERS) != 0) quest_gc_check_barriers();
+        t0 = quest_gc_now_ns();
+        quest_gc_drain_log(true);
+        quest_gc_drain_cards(true);
+    } else {
+        quest_gc_collections++;
+        quest_gc_live_bytes = 0;
+        quest_gc_live_objects = 0;
+        quest_gc_large_live = 0;
+        quest_gc_drain_log(false);
+        quest_gc_drain_cards(false);
+        quest_gc_clear_marks();
+    }
+    uint64_t t1 = quest_gc_now_ns();
     quest_gc_mark_roots();
+    uint64_t t2 = quest_gc_now_ns();
     while (quest_gc_work_n > 0) quest_gc_scan_object(quest_gc_work[--quest_gc_work_n]);
-    quest_gc_sweep();
-    uint64_t pause = quest_gc_now_ns() - t0;
-    quest_gc_pause_ns += pause;
-    if (pause > quest_gc_pause_max_ns) quest_gc_pause_max_ns = pause;
+    uint64_t t3 = quest_gc_now_ns();
+    if (minor) quest_gc_sweep_young(); else quest_gc_sweep();
+    quest_gc_young_bytes = 0;
+    uint64_t t4 = quest_gc_now_ns();
+    uint64_t pause = t4 - t0;
+    if (minor) {
+        quest_gc_minor_pause_ns += pause;
+        if (pause > quest_gc_minor_pause_max_ns) quest_gc_minor_pause_max_ns = pause;
+        quest_gc_survived_bytes += quest_gc_live_bytes - before_bytes;
+        quest_gc_survived_objects += quest_gc_live_objects - before_objects;
+        quest_gc_adapt_nursery(young, quest_gc_live_bytes - before_bytes);
+    } else {
+        quest_gc_pause_ns += pause;
+        if (pause > quest_gc_pause_max_ns) quest_gc_pause_max_ns = pause;
+        if (quest_gc_nursery_adapted == Q_GC_NO_NURSERY && ++quest_gc_fulls_without_nursery % 8 == 0) {
+            quest_gc_nursery_adapted = quest_gc_nursery_cap();
+        }
+    }
     if (quest_gc_live_bytes > quest_gc_live_bytes_max) quest_gc_live_bytes_max = quest_gc_live_bytes;
     if (quest_gc_live_lines > quest_gc_live_lines_max) quest_gc_live_lines_max = quest_gc_live_lines;
     if (quest_gc_stats >= 2) {
-        fprintf(stderr, "quest: gc #%" PRIu64 ": live %" PRIu64 " KB in %" PRIu64 " KB of lines, heap %zu KB, "
-                "%.2f ms\n", quest_gc_collections, quest_gc_live_bytes >> 10, (quest_gc_live_lines * Q_GC_LINE) >> 10,
-                (quest_gc_used * Q_GC_BLOCK) >> 10, (double)pause / 1e6);
+        if (minor) {
+            fprintf(stderr, "quest: gc minor #%" PRIu64 ": young %" PRIu64 " KB, survived %" PRIu64 " KB (%" PRIu64
+                    " objects), logged %zu, cards %zu, %.2f ms, roots %.2f ms, mark %.2f ms, sweep %.2f ms, nursery "
+                    "%zu KB, heap %zu KB, %.2f ms\n", quest_gc_minors, young >> 10,
+                    (quest_gc_live_bytes - before_bytes) >> 10, quest_gc_live_objects - before_objects, logged, dirty,
+                    (double)(t1 - t0) / 1e6, (double)(t2 - t1) / 1e6, (double)(t3 - t2) / 1e6, (double)(t4 - t3) / 1e6,
+                    quest_gc_nursery_adapted == Q_GC_NO_NURSERY ? (size_t)0 : (quest_gc_nursery_adapted * Q_GC_BLOCK) >> 10,
+                    (quest_gc_used * Q_GC_BLOCK) >> 10,
+                    (double)pause / 1e6);
+        } else {
+            fprintf(stderr, "quest: gc #%" PRIu64 ": live %" PRIu64 " KB in %" PRIu64 " KB of lines, heap %zu KB, "
+                    "%.2f ms\n", quest_gc_collections, quest_gc_live_bytes >> 10,
+                    (quest_gc_live_lines * Q_GC_LINE) >> 10, (quest_gc_used * Q_GC_BLOCK) >> 10, (double)pause / 1e6);
+        }
     }
-    if ((quest_gc_check_flags & QUEST_GC_CHECK_LAYOUTS) != 0) quest_gc_check_heap();
+    if ((quest_gc_check_flags & QUEST_GC_CHECK_LAYOUTS) != 0) {
+        if (minor) quest_gc_check_young(); else quest_gc_check_heap();
+    }
     if ((quest_gc_check_flags & QUEST_GC_CHECK_ROOTS) != 0) quest_gc_check_roots();
+    quest_gc_young_n = 0;
+    quest_gc_minor = false;
     quest_gc_collecting = false;
 }
+
+/* A full collection now */
+void quest_gc_collect(void) { quest_gc_collect_kind(false); }
 
 /* ---------------------------------------------------------------------------
  * The checking modes
@@ -872,14 +1281,6 @@ void quest_gc_collect(void) {
  * the default, and QUEST_GC_CHECK_INTERVAL in bytes */
 static size_t quest_gc_check_interval = 64u << 20;
 
-/* Counts per layout, for the report */
-typedef struct QLayoutCount {
-    const QLayout *layout;
-    uint64_t       objects;
-    uint64_t       ambiguous;         /* ambiguous words */
-    uint64_t       suspicious;        /* scalar words that are addresses of heap objects */
-    uint64_t       ambiguous_heap;    /* ambiguous words that are addresses of heap objects */
-} QLayoutCount;
 
 static QLayoutCount *quest_gc_counts = NULL;
 static size_t        quest_gc_count_n = 0;
@@ -910,8 +1311,75 @@ static QLayoutCount *quest_gc_count_of(const QLayout *layout) {
     return c;
 }
 
+/* The `sites` mode: which code allocated each object, for a failing check's
+ * report. The slow path's three callers (the allocating function, a runtime
+ * function or compiled code, and the two above it) are read from the frame
+ * records before each allocation and kept by the object's address in a
+ * direct-mapped table outside the heap, where a later object at an address
+ * that shares the slot replaces an earlier one's; a report names the
+ * functions by dladdr, so compiled code's are its C or assembly symbols */
+#define Q_GC_SITE_SLOTS ((size_t)1 << 20)
+#define Q_GC_SITE_DEPTH 3
+typedef struct QSite {
+    uintptr_t obj;
+    uintptr_t ra[Q_GC_SITE_DEPTH];
+} QSite;
+static QSite    *quest_gc_sites = NULL;
+static uintptr_t quest_gc_site_pending[Q_GC_SITE_DEPTH];
+
+/* Called from the slow path's frame, before the allocation */
+static inline __attribute__((always_inline)) void quest_gc_site_read(void **slow) {
+    void **frame = slow;
+    for (size_t i = 0; i < Q_GC_SITE_DEPTH; ++i) {
+        quest_gc_site_pending[i] = frame != NULL ? (uintptr_t)frame[1] : 0;
+        frame = frame != NULL ? (void **)frame[0] : NULL;
+        /* A frame record chain rises; anything else is not one */
+        if (frame != NULL && ((uintptr_t)frame & 7) != 0) frame = NULL;
+    }
+}
+
+static void quest_gc_note_site(uintptr_t obj) {
+    if (quest_gc_sites == NULL) {
+        quest_gc_sites = (QSite *)calloc(Q_GC_SITE_SLOTS, sizeof(QSite));
+        if (quest_gc_sites == NULL) quest_gc_fatal("gc check: out of memory");
+    }
+    QSite *site = &quest_gc_sites[(obj >> 4) & (Q_GC_SITE_SLOTS - 1)];
+    site->obj = obj;
+    memcpy(site->ra, quest_gc_site_pending, sizeof site->ra);
+}
+
+/* Prints what allocated the object at w, or the object w points into (an
+ * option's payload, a string's or an array's data), if `sites` kept it */
+static void quest_gc_print_site(const char *what, uintptr_t w) {
+    if (quest_gc_sites == NULL) return;
+    for (uintptr_t obj = w; obj + 32 >= w && obj != 0; obj -= 8) {
+        const QSite *site = &quest_gc_sites[(obj >> 4) & (Q_GC_SITE_SLOTS - 1)];
+        if (site->obj != obj) continue;
+        fprintf(stderr, "quest: gc check: %s %#" PRIxPTR " was allocated", what, obj);
+        for (size_t i = 0; i < Q_GC_SITE_DEPTH && site->ra[i] != 0; ++i) {
+            const char *symbol = "?";
+#if defined(__APPLE__) || defined(__linux__)
+            Dl_info info;
+            if (dladdr((const void *)site->ra[i], &info) != 0 && info.dli_sname != NULL) symbol = info.dli_sname;
+#endif
+            fprintf(stderr, "%s %s", i == 0 ? " by" : ", called by", symbol);
+        }
+        fputc('\n', stderr);
+        return;
+    }
+}
+
+/* Which collection a failing check ran at: under `stress` the collections
+ * fall by the count of allocations, so the number names the same one in the
+ * next run (QUEST_GC_TRAP) */
+static void quest_gc_check_where(void) {
+    fprintf(stderr, "quest: gc check: at collection %" PRIu64 " (%s)\n", quest_gc_collections + quest_gc_minors,
+            quest_gc_minor ? "minor" : "full");
+}
+
 Q_NORETURN static void quest_gc_check_fail(const QLayout *layout, const void *obj, const char *what, size_t word,
                                            uintptr_t value) {
+    quest_gc_check_where();
     fprintf(stderr, "quest: gc check: layout %s: object %p: %s", layout->name, obj, what);
     if (word != (size_t)-1) fprintf(stderr, " at word %zu (value %#" PRIxPTR ")", word, value);
     fputc('\n', stderr);
@@ -921,6 +1389,8 @@ Q_NORETURN static void quest_gc_check_fail(const QLayout *layout, const void *ob
     fprintf(stderr, "quest: gc check: words:");
     for (size_t i = 0; i < n; ++i) fprintf(stderr, " %#" PRIxPTR, ((const uintptr_t *)obj)[i]);
     fputc('\n', stderr);
+    quest_gc_print_site("the object", (uintptr_t)obj);
+    if (word != (size_t)-1) quest_gc_print_site("the word's object", value);
     fflush(stderr);
     abort();
 }
@@ -972,6 +1442,7 @@ static uintptr_t quest_gc_check_object(uintptr_t obj, uintptr_t prev_end, bool s
     const QLayout *layout = quest_layout_of((const void *)obj);
     const uintptr_t *words = (const uintptr_t *)obj;
     if (layout == NULL || quest_gc_in_heap((uintptr_t)layout) || layout->form > Q_LAYOUT_SIZED) {
+        quest_gc_check_where();
         fprintf(stderr, "quest: gc check: object %p: a header naming no layout (%#" PRIxPTR ")\n", (const void *)obj,
                 words[-1]);
         fflush(stderr);
@@ -1051,6 +1522,123 @@ static void quest_gc_check_heap(void) {
     }
 }
 
+/* After a minor collection: walks the young blocks' live objects, which are
+ * the ones that collection changed (the old blocks' were walked after the
+ * last full collection, and a logged object's words were validated as it was
+ * scanned) */
+static void quest_gc_check_young(void) {
+    quest_gc_checks++;
+    for (size_t i = 0; i < quest_gc_young_n; ++i) {
+        size_t b = quest_gc_young[i];
+        const QBlock *blk = &quest_gc_blocks[b];
+        if (blk->state == QB_LARGE_HEAD) {
+            uintptr_t obj = quest_gc_large_object(b);
+            if (obj != 0) quest_gc_check_object(obj, quest_gc_block_start(b), false);
+            continue;
+        }
+        if (blk->state != QB_SMALL) continue;
+        const uint8_t *starts = quest_gc_block_bits(quest_gc_start_bits, b);
+        uintptr_t prev_end = quest_gc_block_start(b);
+        for (size_t j = 0; j < Q_GC_BLOCK_BITMAP; ++j) {
+            unsigned m = starts[j];
+            while (m != 0) {
+                unsigned bit = (unsigned)__builtin_ctz(m);
+                m &= m - 1;
+                uintptr_t obj = quest_gc_block_start(b) + (((uintptr_t)j * 8 + bit) << 3);
+                prev_end = quest_gc_check_object(obj, prev_end, true);
+            }
+        }
+    }
+}
+
+/* The `barriers` check, before a minor collection uses the log: the object w
+ * is the address of or into, if it is young (unmarked); then every old object
+ * that is not logged is scanned by its layout, and a pointer of its at a young
+ * object, or an ambiguous word at one's start or payload, in a card that is
+ * not dirty, is a store no barrier logged or marked */
+static uintptr_t quest_gc_young_target(uintptr_t w) {
+    if (!quest_gc_in_heap(w)) return 0;
+    uintptr_t a = w & ~(uintptr_t)7;
+    size_t b = quest_gc_block_of(a);
+    const QBlock *blk = &quest_gc_blocks[b];
+    if (blk->state == QB_FREE) return 0;
+    if (blk->state == QB_LARGE_TAIL) {
+        b -= blk->run;
+        blk = &quest_gc_blocks[b];
+    }
+    uintptr_t obj = blk->state == QB_LARGE_HEAD ? quest_gc_large_object(b) : quest_gc_start_before(b, a);
+    if (obj == 0 || a < obj || a >= obj + quest_gc_object_bytes(obj, quest_layout_of((const void *)obj))) return 0;
+    return quest_gc_bit(quest_gc_marks, obj) ? 0 : obj;
+}
+
+static void quest_gc_check_barrier_word(const QLayout *layout, uintptr_t obj, size_t word, uint8_t kind) {
+    if (kind != Q_WORD_POINTER && kind != Q_WORD_AMBIGUOUS) return;
+    uintptr_t w = ((const uintptr_t *)obj)[word];
+    if (w == 0) return;
+    uintptr_t target = quest_gc_young_target(w);
+    if (target == 0) return;
+    /* An ambiguous word may be an integer (a packed location, say) that
+     * happens to fall in a young object; a pointer in one is at an object or
+     * at its payload (the word after its tag, or after its byte count and
+     * descriptor), so only those are reported */
+    if (kind == Q_WORD_AMBIGUOUS && w != target && w != target + 8 && w != target + 16) return;
+    if (quest_gc_cards[(obj + word * 8 - quest_gc_heap_lo) >> Q_GC_CARD_BITS] != 0) return;    /* the card is dirty */
+    quest_gc_check_fail(layout, (const void *)obj, kind == Q_WORD_POINTER ?
+                        "an old object, not logged, with a pointer at a young object in a clean card: a store without "
+                        "a barrier" :
+                        "an old object, not logged, with an ambiguous word at a young object in a clean card: a store "
+                        "without a barrier",
+                        word, w);
+}
+
+static void quest_gc_check_barrier_object(uintptr_t obj) {
+    const QLayout *l = quest_layout_of((const void *)obj);
+    if (!quest_gc_bit(quest_gc_marks, obj)) return;                         /* young: scanned by the collection */
+    if ((((const uintptr_t *)obj)[-1] & Q_HEADER_LOGGED) != 0) return;      /* logged: scanned by the collection */
+    if ((l->flags & Q_LAYOUT_NOSCAN) != 0) return;
+    switch (l->form) {
+    case Q_LAYOUT_FIXED:
+        for (size_t i = 0; i < l->words; ++i) quest_gc_check_barrier_word(l, obj, i, l->kinds[i]);
+        break;
+    case Q_LAYOUT_ARRAY: {
+        for (size_t i = 0; i < l->words; ++i) quest_gc_check_barrier_word(l, obj, i, l->kinds[i]);
+        int64_t n = *(const int64_t *)(obj + l->length_offset);
+        size_t word = l->size / 8;
+        for (int64_t e = 0; e < n; ++e) {
+            for (size_t k = 0; k < l->element_words; ++k) quest_gc_check_barrier_word(l, obj, word++, l->kinds[l->words + k]);
+        }
+        break;
+    }
+    default: {
+        size_t n = quest_sized_bytes((const void *)obj) / 8;
+        for (size_t i = 0; i < n; ++i) quest_gc_check_barrier_word(l, obj, i, l->kinds[i % l->element_words]);
+        break;
+    }
+    }
+}
+
+static void quest_gc_check_barriers(void) {
+    for (size_t b = 0; b < quest_gc_high_water; ++b) {
+        const QBlock *blk = &quest_gc_blocks[b];
+        if (blk->state == QB_LARGE_HEAD) {
+            uintptr_t obj = quest_gc_large_object(b);
+            if (obj != 0) quest_gc_check_barrier_object(obj);
+            b += blk->run - 1;
+            continue;
+        }
+        if (blk->state != QB_SMALL) continue;
+        const uint8_t *starts = quest_gc_block_bits(quest_gc_start_bits, b);
+        for (size_t i = 0; i < Q_GC_BLOCK_BITMAP; ++i) {
+            unsigned m = starts[i];
+            while (m != 0) {
+                unsigned bit = (unsigned)__builtin_ctz(m);
+                m &= m - 1;
+                quest_gc_check_barrier_object(quest_gc_block_start(b) + (((uintptr_t)i * 8 + bit) << 3));
+            }
+        }
+    }
+}
+
 /* The roots check: every word of the program's data segment that is the
  * address of (or into) a heap object must lie in a registered root table or
  * in a root the runtime lists, or the collector would not know it. The
@@ -1108,7 +1696,23 @@ static void quest_gc_skip_own(void) {
     quest_gc_cover(&quest_gc_heap_hi, 1);
     quest_gc_cover(&quest_gc_check_pending, 1);
     quest_gc_cover(&quest_gc_check_interval, 1);
-    quest_gc_cover(quest_barrier_counts, 2);
+    quest_gc_cover(&quest_gc_cards_dirtied, 1);
+    quest_gc_cover(&quest_gc_dirty_n, 1);
+    quest_gc_cover(&quest_gc_dirty_cap, 1);
+    quest_gc_cover(&quest_gc_logged, 1);
+    quest_gc_cover(&quest_gc_log_n, 1);
+    quest_gc_cover(&quest_gc_log_cap, 1);
+    quest_gc_cover(&quest_gc_young_n, 1);
+    quest_gc_cover(&quest_gc_young_cap, 1);
+    quest_gc_cover(&quest_gc_nursery_blocks, 1);
+    quest_gc_cover(&quest_gc_nursery_adapted, 1);
+    quest_gc_cover(&quest_gc_fulls_without_nursery, 1);
+    quest_gc_cover(&quest_gc_minors, 1);
+    quest_gc_cover(&quest_gc_minor_pause_ns, 1);
+    quest_gc_cover(&quest_gc_minor_pause_max_ns, 1);
+    quest_gc_cover(&quest_gc_young_bytes, 1);
+    quest_gc_cover(&quest_gc_survived_bytes, 1);
+    quest_gc_cover(&quest_gc_survived_objects, 1);
     quest_gc_cover(&quest_gc_checks, 1);
     quest_gc_cover(&quest_gc_objects_checked, 1);
     quest_gc_cover(&quest_gc_allocated_objects, 1);
@@ -1125,6 +1729,7 @@ static void quest_gc_skip_own(void) {
     quest_gc_cover(&quest_gc_pause_max_ns, 1);
     quest_gc_cover(&quest_gc_allocated_blocks, 1);
     quest_gc_cover(&quest_gc_hole_bytes, 1);
+    quest_gc_cover(&quest_gc_holes, 1);
     quest_gc_cover(&quest_gc_live_bytes, 1);
     quest_gc_cover(&quest_gc_live_bytes_max, 1);
     quest_gc_cover(&quest_gc_live_objects, 1);
@@ -1142,6 +1747,7 @@ static void quest_gc_check_roots(void) {
     }
     quest_runtime_roots(quest_gc_cover);
     quest_code_roots(quest_gc_cover);
+    quest_serialization_roots(quest_gc_cover);
 #if defined(__APPLE__)
     unsigned long size = 0;
     const uint8_t *data = getsegmentdata(&_mh_execute_header, "__DATA", &size);
@@ -1228,8 +1834,6 @@ static void quest_gc_dump_allocations(void) {
  * forcing after it */
 static uint64_t quest_gc_collect_every = 0, quest_gc_collect_trap = 0, quest_gc_forced = 0;
 
-__attribute__((noinline, used)) void quest_gc_trap(void) { __asm__ volatile(""); }
-
 static void quest_gc_force_by_count(void) {
     if (quest_gc_collect_every == 0 || quest_gc_allocated_objects % quest_gc_collect_every != 0) return;
     if (quest_gc_collect_trap != 0 && quest_gc_forced >= quest_gc_collect_trap) return;
@@ -1239,15 +1843,56 @@ static void quest_gc_force_by_count(void) {
     quest_gc_collect();
 }
 
+/* The `stress` mode: a collection before every allocation, with what the
+ * other modes check at each, so that an object is old one allocation after
+ * its own and whatever the roots miss is reclaimed (and under `poison`
+ * overwritten) at once: a store without a barrier, an initializing store with
+ * an allocation before it, and a pointer a stack map or a root table leaves
+ * out all fail within a few allocations of the fault, in a test of a few
+ * lines. The collections are minor but for each sixteenth, a full one, which
+ * is the one that reclaims an old object the roots miss.
+ *
+ * What bounds the cost: QUEST_GC_STRESS is how many allocations pass between
+ * collections (1 by default), and that count doubles each time the
+ * collections since the last doubling have walked QUEST_GC_STRESS_BUDGET
+ * megabytes of heap (256 by default; 0 never doubles it), a collection
+ * counted as the heap in use. So a test of a few thousand allocations is
+ * checked at every one, and the compiler, with a heap of tens of megabytes,
+ * at its first few hundred and then at a thinning sample, for a second or
+ * two in all. The collections fall
+ * by count, so a failure repeats, and a check's report gives its collection's
+ * number (QUEST_GC_TRAP stops before it) */
+static uint64_t quest_gc_stress_every = 1, quest_gc_stress_budget = 256 * ((1u << 20) / Q_GC_BLOCK);
+static uint64_t quest_gc_stress_since = 0, quest_gc_stress_forced = 0, quest_gc_stress_walked = 0;
+
+static void quest_gc_stress_tick(void) {
+    if (quest_gc_never_collect || quest_gc_held != 0 || quest_gc_collecting) return;
+    if (++quest_gc_stress_since < quest_gc_stress_every) return;
+    quest_gc_stress_since = 0;
+    quest_gc_stress_forced++;
+    quest_gc_stress_walked += quest_gc_used + 1;
+    if (quest_gc_stress_budget != 0 && quest_gc_stress_walked >= quest_gc_stress_budget) {
+        quest_gc_stress_walked = 0;
+        quest_gc_stress_every *= 2;
+    }
+    quest_gc_collect_kind(quest_gc_nursery_blocks != 0 && quest_gc_stress_forced % 16 != 0);
+}
+
 /* Called by the slow path before each allocation while a mode is on: counts
  * it, and forces a collection (which runs the checks) when enough has been
- * allocated since the last */
-static void quest_gc_check_tick(size_t sz, size_t header) {
+ * allocated since the last. Not inline, so that its frame record is one
+ * below the slow path's, as `allocations` and `sites` take it to be */
+__attribute__((noinline)) static void quest_gc_check_tick(size_t sz, size_t header) {
     quest_gc_allocated_objects++;
     if ((quest_gc_check_flags & QUEST_GC_CHECK_COLLECT) != 0 && quest_gc_collect_every != 0) {
         quest_gc_force_by_count();
         return;
     }
+    if ((quest_gc_check_flags & QUEST_GC_CHECK_SITES) != 0) {
+        void **frame = (void **)__builtin_frame_address(0);
+        quest_gc_site_read(frame != NULL ? (void **)frame[0] : NULL);
+    }
+    if ((quest_gc_check_flags & QUEST_GC_CHECK_STRESS) != 0) quest_gc_stress_tick();
     quest_gc_allocated_bytes += sz;
     quest_gc_allocated_headers += header;
     if ((quest_gc_check_flags & QUEST_GC_CHECK_ALLOCATIONS) != 0) {
@@ -1262,7 +1907,7 @@ static void quest_gc_check_tick(size_t sz, size_t header) {
                                  allocating != NULL ? (uintptr_t)allocating[1] : 0, sz + header);
     }
     quest_gc_check_pending += sz;
-    if (quest_gc_check_pending >= quest_gc_check_due()) {
+    if (quest_gc_check_pending >= quest_gc_check_due() && quest_gc_held == 0) {
         quest_gc_check_pending = 0;
         if (!quest_gc_never_collect) quest_gc_collect();
     }
@@ -1270,12 +1915,21 @@ static void quest_gc_check_tick(size_t sz, size_t header) {
 
 static void quest_gc_print_stats(void) {
     fprintf(stderr, "quest: gc stats: collections %" PRIu64 ", pauses %.1f ms (max %.2f ms), allocated %" PRIu64
-            " MB, heap max %zu MB, live max %" PRIu64 " KB in %" PRIu64 " KB of lines, live now %" PRIu64 " KB in %"
-            PRIu64 " KB of lines (%" PRIu64 " objects, %" PRIu64 " KB large)\n",
+            " MB in %" PRIu64 " holes, heap max %zu MB, live max %" PRIu64 " KB in %" PRIu64 " KB of lines, live now %"
+            PRIu64 " KB in %" PRIu64 " KB of lines (%" PRIu64 " objects, %" PRIu64 " KB large)\n",
             quest_gc_collections, (double)quest_gc_pause_ns / 1e6, (double)quest_gc_pause_max_ns / 1e6,
-            quest_gc_hole_bytes >> 20, (quest_gc_used_max * Q_GC_BLOCK) >> 20, quest_gc_live_bytes_max >> 10,
+            quest_gc_hole_bytes >> 20, quest_gc_holes, (quest_gc_used_max * Q_GC_BLOCK) >> 20,
+            quest_gc_live_bytes_max >> 10,
             (quest_gc_live_lines_max * Q_GC_LINE) >> 10, quest_gc_live_bytes >> 10,
             (quest_gc_live_lines * Q_GC_LINE) >> 10, quest_gc_live_objects, quest_gc_large_live >> 10);
+    fprintf(stderr, "quest: gc minors: %" PRIu64 ", pauses %.1f ms (max %.2f ms), survived %" PRIu64 " KB (%" PRIu64
+            " objects), logged %" PRIu64 " objects, %" PRIu64 " cards\n", quest_gc_minors,
+            (double)quest_gc_minor_pause_ns / 1e6, (double)quest_gc_minor_pause_max_ns / 1e6,
+            quest_gc_survived_bytes >> 10, quest_gc_survived_objects, quest_gc_logged, quest_gc_cards_dirtied);
+    if ((quest_gc_check_flags & QUEST_GC_CHECK_STRESS) != 0) {
+        fprintf(stderr, "quest: gc stress: %" PRIu64 " collections forced, the last every %" PRIu64 " allocations of %"
+                PRIu64 "\n", quest_gc_stress_forced, quest_gc_stress_every, quest_gc_allocated_objects);
+    }
     fflush(stderr);
 }
 
@@ -1291,28 +1945,35 @@ static void quest_gc_at_exit(void) {
     if (quest_gc_stats != 0) quest_gc_print_stats();
     if ((quest_gc_check_flags & QUEST_GC_CHECK_ALLOCATIONS) != 0) quest_gc_dump_allocations();
     if ((quest_gc_check_flags & QUEST_GC_CHECK_REPORT) == 0) return;
-    fprintf(stderr, "quest: gc barriers: %" PRIu64 " on objects, %" PRIu64 " on slots\n", quest_barrier_counts[0],
-            quest_barrier_counts[1]);
+    fprintf(stderr, "quest: gc barriers: %" PRIu64 " objects logged, %" PRIu64 " cards marked\n", quest_gc_logged,
+            quest_gc_cards_dirtied);
     fprintf(stderr, "quest: gc check: %" PRIu64 " checks, %" PRIu64 " objects\n", quest_gc_checks,
             quest_gc_objects_checked);
     fprintf(stderr, "quest: gc allocated: %" PRIu64 " objects, %" PRIu64 " bytes, %" PRIu64 " header bytes\n",
             quest_gc_allocated_objects, quest_gc_allocated_bytes, quest_gc_allocated_headers);
     if (quest_gc_count_n == 0) return;
-    fprintf(stderr, "%12s %12s %12s %12s  %s\n", "objects", "ambiguous", "amb.heap", "suspicious", "layout");
+    fprintf(stderr, "%12s %12s %12s %12s %12s %12s  %s\n", "objects", "ambiguous", "amb.heap", "suspicious", "logged",
+            "logged KB", "layout");
     for (size_t i = 0; i < quest_gc_count_n; ++i) {
         const QLayoutCount *c = &quest_gc_counts[i];
-        fprintf(stderr, "%12" PRIu64 " %12" PRIu64 " %12" PRIu64 " %12" PRIu64 "  %s\n", c->objects, c->ambiguous,
-                c->ambiguous_heap, c->suspicious, c->layout->name);
+        fprintf(stderr, "%12" PRIu64 " %12" PRIu64 " %12" PRIu64 " %12" PRIu64 " %12" PRIu64 " %12" PRIu64 "  %s\n",
+                c->objects, c->ambiguous, c->ambiguous_heap, c->suspicious, c->logged, c->logged_bytes >> 10,
+                c->layout->name);
     }
     fflush(stderr);
 }
 
 /* Reads QUEST_GC_CHECK, a comma-separated list of modes (`layouts`, `roots`,
  * `poison`, `collect`, which only forces the collections the others would, or
- * one every QUEST_GC_COLLECT_EVERY allocations, `allocations`, and `report`,
- * which prints the counts at exit), QUEST_GC_CHECK_INTERVAL, QUEST_GC_STATS (1
- * for a summary at exit, `each` for a line per collection too), and
- * QUEST_GC_MIN_HEAP (megabytes) */
+ * one every QUEST_GC_COLLECT_EVERY allocations, `allocations`, `barriers`,
+ * `stress`, `sites`, and `report`, which prints the counts at exit),
+ * QUEST_GC_CHECK_INTERVAL, QUEST_GC_STRESS (allocations between a stress
+ * collection and the next), QUEST_GC_STRESS_BUDGET (megabytes walked before
+ * that count doubles), QUEST_GC_TRAP (the collection quest_gc_trap is called
+ * before), QUEST_GC_STATS (1 for a summary at exit, `each` for a line per
+ * collection too), QUEST_GC_MIN_HEAP (megabytes), QUEST_GC_NURSERY (megabytes
+ * between minor collections; 0 for full collections alone), and
+ * QUEST_GC_CHECK_CHILDREN (the modes of the programs this one runs) */
 static void quest_gc_read_options(void) {
     const char *modes = getenv("QUEST_GC_CHECK");
     if (modes != NULL) {
@@ -1329,6 +1990,9 @@ static void quest_gc_read_options(void) {
             }
             else if (n == 7 && strncmp(p, "collect", 7) == 0) quest_gc_check_flags |= QUEST_GC_CHECK_COLLECT;
             else if (n == 11 && strncmp(p, "allocations", 11) == 0) quest_gc_check_flags |= QUEST_GC_CHECK_ALLOCATIONS;
+            else if (n == 8 && strncmp(p, "barriers", 8) == 0) quest_gc_check_flags |= QUEST_GC_CHECK_BARRIERS;
+            else if (n == 6 && strncmp(p, "stress", 6) == 0) quest_gc_check_flags |= QUEST_GC_CHECK_STRESS;
+            else if (n == 5 && strncmp(p, "sites", 5) == 0) quest_gc_check_flags |= QUEST_GC_CHECK_SITES;
             else if (n > 0) {
                 fprintf(stderr, "quest: QUEST_GC_CHECK: unknown mode '%.*s'\n", (int)n, p);
                 exit(70);
@@ -1345,6 +2009,16 @@ static void quest_gc_read_options(void) {
     if (every != NULL && every[0] != '\0') quest_gc_collect_every = strtoull(every, NULL, 10);
     const char *trap = getenv("QUEST_GC_COLLECT_TRAP");
     if (trap != NULL && trap[0] != '\0') quest_gc_collect_trap = strtoull(trap, NULL, 10);
+    const char *stress = getenv("QUEST_GC_STRESS");
+    if (stress != NULL && stress[0] != '\0' && strtoull(stress, NULL, 10) > 0) {
+        quest_gc_stress_every = strtoull(stress, NULL, 10);
+    }
+    const char *budget = getenv("QUEST_GC_STRESS_BUDGET");
+    if (budget != NULL && budget[0] != '\0') {
+        quest_gc_stress_budget = strtoull(budget, NULL, 10) * ((1u << 20) / Q_GC_BLOCK);
+    }
+    const char *trap_at = getenv("QUEST_GC_TRAP");
+    if (trap_at != NULL && trap_at[0] != '\0') quest_gc_trap_at = strtoull(trap_at, NULL, 10);
     const char *stats = getenv("QUEST_GC_STATS");
     if (stats != NULL && stats[0] != '\0') quest_gc_stats = strcmp(stats, "each") == 0 ? 2 : 1;
     const char *min_heap = getenv("QUEST_GC_MIN_HEAP");
@@ -1352,7 +2026,20 @@ static void quest_gc_read_options(void) {
         unsigned long long mb = strtoull(min_heap, NULL, 10);
         if (mb > 0) quest_gc_min_heap_blocks = (size_t)(mb << 20) / Q_GC_BLOCK;
     }
+    const char *nursery = getenv("QUEST_GC_NURSERY");
+    if (nursery != NULL && nursery[0] != '\0') {
+        quest_gc_nursery_blocks = (size_t)(strtoull(nursery, NULL, 10) << 20) / Q_GC_BLOCK;
+        quest_gc_nursery_adapted = quest_gc_nursery_blocks;
+    }
     if (getenv("QUEST_GC_NEVER") != NULL) quest_gc_never_collect = true;
+    /* QUEST_GC_CHECK_CHILDREN: the modes of the programs this one runs, in
+     * place of its own, so that a compiler can run under the plain checks
+     * and the program it builds and runs under `stress` (tools/check) */
+    const char *children = getenv("QUEST_GC_CHECK_CHILDREN");
+    if (children != NULL) {
+        setenv("QUEST_GC_CHECK", children, 1);
+        unsetenv("QUEST_GC_CHECK_CHILDREN");
+    }
     if (quest_gc_check_flags != 0 || quest_gc_stats != 0) atexit(quest_gc_at_exit);
 }
 
