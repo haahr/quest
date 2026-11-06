@@ -1968,6 +1968,13 @@ tensor through arm64 takes 16.54 s (16.28 s of processor time) after, 16.68 s be
 `run.py time --mlton-only --scale 0.25 tensor` on the program as §1.4 changed it, takes 7.48 s (7.15 s of processor
 time; load 1.4), so tensor's ratio through arm64 is **2.21** in wall time and 2.28 in processor time.
 
+MLton's other times were not taken again. Against §2's (2026-10-28, the least of three runs), with tensor's from
+above, the suite through arm64, whole, takes **2.22** times as long as MLton's at the tip (geometric mean of wall time
+over the 46; 2.46 without fib, tailfib, and tak), against 2.43 before. Coarse, since one side is a single run and the
+other a week older: by program, from fib's 0.34, tak's 0.47, and even-odd's 0.57 to zebra's 4.4, wc-scanStream's 5.2,
+pidigits' 15.5, smith-normal-form's 24.6, and peek's 34.1. Unit by unit, from §19's times (before these steps, and
+without tensor, which §19 timed as the old program), C's take 2.38 times as long and arm64's 2.62.
+
 ### 20.4. Steps measured by leaving them out
 
 Two of the steps measured as costs or not at all in §20.1, so the tip was measured without each, the four and the

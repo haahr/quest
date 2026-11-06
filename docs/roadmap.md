@@ -23,7 +23,7 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
 |  [Step 3] Tree-Walking Interpreter & Interactive REPL [COMPLETE]                  |
 |       │                                                                           |
 |       ▼                                                                           |
-|  [Step 4] Bootstrap C Compiler (Typed AST -> IR -> C99 + Boehm GC) [COMPLETE]     |
+|  [Step 4] Bootstrap C Compiler (Typed AST -> IR -> C99 + collector) [COMPLETE]    |
 +-----------------------------------------------------------------------------------+
         │
         ▼
@@ -34,10 +34,10 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
 |       │   • Compile self-hosted Quest using Python bootstrap C emitter            |
 |       │   • Achieve self-compilation loop: Quest compiles Quest                   |
 |       ▼                                                                           |
-|  [Step 6] Self-Hosted Native AArch64 Compiler (Nanopass Pipeline)                 |
-|       │   • Direct code generation replacing C emission (linked with Boehm GC)    |
+|  [Step 6] Self-Hosted Native AArch64 Compiler (Nanopass Pipeline) [COMPLETE]      |
+|       │   • Direct code generation, an alternative to C emission                  |
 |       ▼                                                                           |
-|  [Step 7] Native AArch64 JIT & Interactive Incremental Runtime                    |
+|  [Step 7] Native AArch64 JIT & Interactive Incremental Runtime [COMPLETE]         |
 |           • In-process dynamic code emission and execution for REPL               |
 +-----------------------------------------------------------------------------------+
 ```
@@ -99,10 +99,11 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   1-word boxed aggregate slots (`slot_representation`), tagged `QProxy` views on depth-upcast tuples and options,
   native pointer lowering (`T *`) for `var`/`out` parameters, runtime type descriptors (`QTypeDescriptor`), and
   portable C99 emission (`codegen/c/`).
-- **Runtime & Separate Compilation (`runtime/`, `quest/modules/`, `quest/build/`):** C99 runtime linked with Boehm GC
-  (`libgc`) or libc (`--nogc`), `setjmp`/`longjmp` exceptions with `<unwind.h>` native stack tracebacks, JSOG dynamic
-  graph serialization (`dynamic.extern` / `dynamic.intern`), separate compilation of interfaces (`.int.h`, `.qi`) and
-  modules (`.mod.c`, `.o`, `.qm`), and incremental build/dependency resolution (`BuildEngine`).
+- **Runtime & Separate Compilation (`runtime/`, `quest/modules/`, `quest/build/`):** C99 runtime with a garbage
+  collector (Boehm's until 2026-11, now Quest's own, [collector.md](collector.md); `--nogc` never collects),
+  `setjmp`/`longjmp` exceptions with `<unwind.h>` native stack tracebacks, JSOG dynamic graph serialization
+  (`dynamic.extern` / `dynamic.intern`), separate compilation of interfaces (`.int.h`, `.qi`) and modules (`.mod.c`,
+  `.o`, `.qm`), and incremental build/dependency resolution (`BuildEngine`).
 - Specifications: [runtime-design.md](runtime-design.md), [ir.md](ir.md), [c-representation.md](c-representation.md),
   [codegen-c.md](codegen-c.md), [modules.md](modules.md), [build-process.md](build-process.md), and
   [extensions.md](extensions.md).
@@ -126,17 +127,19 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   `--emit-c`, `--nogc`, and `-c`), separate compilation of units, and every phase's `--stop-after` and `--dump-after`.
   `self-hosted/compile_command` checks that the two drivers' commands do the same.
 
-### Step 6: Native AArch64 Code Generator (Written in Quest)
+### Step 6: Native AArch64 Code Generator (Written in Quest) — *Complete*
 - A native arm64 backend for Darwin, an alternative to C emission whose objects link with the C backend's, unit by
   unit; the plan is [arm64.md](arm64.md):
   1. *Shared lowering and layout, taken out of the C printer*
   2. *Low-level SSA with block arguments, and an SSA-to-C printer as an oracle*
   3. *Instruction selection (machine SSA over virtual registers)*
   4. *Register allocation (a trivial allocator, then linear scan on SSA)*
-  5. *Frames, tail calls, exceptions, and assembly emission (linked with `libgc`)*
+  5. *Frames, tail calls, exceptions, and assembly emission*
 - Follows the evidence-passing object model and AAPCS64 register conventions in [runtime-design.md](runtime-design.md).
+- Done: every step of arm64.md, which is now the backend's reference. C stays the default backend, the user's decision
+  (arm64.md §1), reopened whenever the benchmarks change significantly.
 
-### Step 7: Native AArch64 JIT & Interactive Incremental Runtime
+### Step 7: Native AArch64 JIT & Interactive Incremental Runtime — *Complete*
 - In-process dynamic code emission and execution for the REPL, and later for files and `-e`, with the interpreters'
   semantics: interactive code redefines a name of the same type in place ([repl.md](repl.md) §6), and otherwise a
   rebinding shadows (no hot-swapping).
@@ -145,7 +148,8 @@ native **AArch64 (ARM64)** machine code and providing a **JIT compiler** for int
   step 4, interface fingerprints in every module unit (`qh_`); step 5, the arm64 encoder;
   step 6, the REPL on `--jit`; step 7, imports and `-i`;
   step 8, files and `-e` ([benchmarks.md](benchmarks.md) §10 has the times). Since 2026-11-01 the REPL, `-e`, and
-  files run on it by default, and it compiles the user's own modules.
+  files run on it by default, and it compiles the user's own modules. What jit.md leaves for later (inlining
+  across inputs, redefinition with another type, surviving faults) goes beyond this step.
 
 ---
 

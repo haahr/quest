@@ -74,10 +74,10 @@ The compilers were built in steps ([docs/roadmap.md](docs/roadmap.md)):
 | **1** | Python | Front end: lexer, PEG parser, and syntax tree | Complete |
 | **2** | Python | Type checker: $F_{<:}^\omega$ subtyping, recursive types, elaboration | Complete |
 | **3** | Python | Tree-walking interpreter and REPL | Complete |
-| **4** | Python | Compiler to C99, through an IR, with the Boehm garbage collector | Complete |
+| **4** | Python | Compiler to C99, through an IR, with a garbage-collected runtime | Complete |
 | **5** | Quest | Self-hosted front end, interpreter, and compiler to C | Complete |
-| **6** | Quest | Native arm64 backend | Working; C is still the default backend |
-| **7** | Quest | arm64 JIT compiler and incremental runtime | Begun ([docs/jit.md](docs/jit.md)): all 8 steps done |
+| **6** | Quest | Native arm64 backend | Complete; C stays the default backend, by choice |
+| **7** | Quest | arm64 JIT compiler and incremental runtime | Complete ([docs/jit.md](docs/jit.md)) |
 
 ### Implementation Notes
 - **Representation:** polymorphism, structural subtyping, and mutable state together make data layout the subtle
@@ -90,9 +90,13 @@ The compilers were built in steps ([docs/roadmap.md](docs/roadmap.md)):
 - **Compilation:** the typed syntax tree is lowered to an A-normal-form IR and refined by small passes
   ([docs/ir.md](docs/ir.md)); the arm64 backend goes through an SSA form with linear-scan register allocation
   ([docs/arm64.md](docs/arm64.md)).
-- **Performance:** on the MLton benchmark suite, translated from Standard ML, programs from the C backend take 3.7
-  times as long as MLton's, and from the arm64 backend 7.8 times (geometric means;
-  [docs/benchmarks.md](docs/benchmarks.md) §7).
+- **Memory:** both compilers' programs allocate through a collector of Quest's own, precise, generational, and
+  incremental, with stack maps and write barriers ([docs/collector.md](docs/collector.md)); it replaced the Boehm
+  collector in 2026-11.
+- **Performance:** on the MLton benchmark suite, translated from Standard ML, programs compiled as whole programs by
+  the arm64 backend take about 2.2 times as long as MLton's (geometric mean, 2026-11-06, against MLton's times of
+  2026-10-28; [docs/benchmarks.md](docs/benchmarks.md) §20.3), from 0.34 (fib) to 34 (peek). Compiled unit by unit,
+  before §20's optimizations, the C backend's took 2.4 times as long and arm64's 2.6 (§19).
 
 ---
 
