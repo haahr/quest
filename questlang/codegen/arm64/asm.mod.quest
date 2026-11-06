@@ -23,10 +23,14 @@ export
             when relocPage then "@PAGE" when relocGot then "@GOTPAGE" when relocTlv then "@TLVPPAGE"
         end <> if pageOffset then "OFF" else "" end
 
+    (* A function starts on a 16-byte boundary. At 4 bytes, the alignment
+     * of a function's loops moved with every change to the code before it:
+     * fib and tak took 12 and 15 percent longer where a smaller program put
+     * them (benchmarks.md section 20) *)
     let functionStart(name: String exported: Bool): Array(String) =
         begin
             let lines = vector.new(:String)
-            vector.append(:String lines ".p2align 2")
+            vector.append(:String lines ".p2align 4")
             if exported then vector.append(:String lines ".globl " <> symbol(name)) end
             vector.append(:String lines symbol(name) <> ":")
             vector.append(:String lines ".cfi_startproc")

@@ -377,13 +377,15 @@ export
             Encoded =
         begin
             (* Each label's offset: its function's instructions laid out one
-             * after another, each function 4-byte aligned, which they all
-             * are *)
+             * after another, each function starting on a 16-byte boundary,
+             * as asm.functionStart aligns them, after nops to it, as the
+             * assembler pads; a function's size is its own code's *)
             let labels = hashMap.new(:String :Int eq hash.string)
             let symbols = vector.new(:Symbol)
             let var at = 0
             for k = 0 upto {extent functions - 1} do
                 let f = functions[k]
+                while {at % 16} isnot 0 do at := at + 4 end
                 let start = at
                 for j = 0 upto {vector.length(:minst.Inst f.code) - 1} do
                     let i = vector.get(:minst.Inst f.code j)
@@ -418,6 +420,10 @@ export
             for k = 0 upto {extent functions - 1} do
                 let f = functions[k]
                 current := maybe.some(:Symbol vector.get(:Symbol symbols k))
+                while {pc % 16} isnot 0 do
+                    code[pc / 4] := 0xD503201F
+                    pc := pc + 4
+                end
                 for j = 0 upto {vector.length(:minst.Inst f.code) - 1} do
                     let i = vector.get(:minst.Inst f.code j)
                     case i.op
