@@ -826,7 +826,7 @@ static Q_UNUSED QTuple_Int_String * qf_argmax_spec(void *_raw_env, QArray * l_a_
     l_index_2 = l_best_2;
     quest_check_array_bounds_at(l_a_2, l_best_2, "examples/argmax/argmax.quest:26:46");
     l_element_2 = ((QString *)((l_a_2->data[l_best_2]).p));
-    _t2 = (QTuple_Int_String *)quest_alloc(sizeof(QTuple_Int_String));
+    _t2 = (QTuple_Int_String *)quest_alloc(sizeof(QTuple_Int_String), &quest_layout_QTuple_Int_String);
     _t2->_0 = l_index_2;
     _t2->_1 = l_element_2;
     l_t_18 = _t2;
@@ -848,7 +848,8 @@ It follows the IR line for line. Some details:
   cast to the function's C type, which the closure's Quest type fixes: `key` is called as a function from a string
   to an integer.
 - The result tuple is allocated with `quest_alloc`, which allocates garbage-collected memory: as in Python, memory
-  is reclaimed automatically when nothing refers to it any more.
+  is reclaimed automatically when nothing refers to it any more. The second argument names the object's layout, which
+  says which of its words are pointers ([c-representation.md](c-representation.md) §9).
 
 `main` runs the top-level phrases in order. The two calls go straight to the copies, with `NULL` for the
 environment, since the closures capture nothing. `scoring.score` is read from the module `scoring`, which is a record
@@ -890,7 +891,7 @@ static Q_UNUSED QVal qa_adapt(void *_raw_env, QVal qa_0) {
     return ((QVal){ .i = (int64_t)(_t2) });
 }
 ...
-    _t3 = (QClosure *)quest_alloc(sizeof(QClosure));
+    _t3 = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);
     _t3->fn = (void *)qa_adapt;
     _t3->env = (void *)(g_t);
     g_t_3 = _t3;

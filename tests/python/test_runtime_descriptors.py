@@ -167,7 +167,7 @@ class TestRuntimeDescriptors(unittest.TestCase):
             quest_gc_init();
 
             /* A dynamic value's one component is stored as a QVal */
-            QVal *component = (QVal *)quest_alloc(sizeof(QVal));
+            QVal *component = (QVal *)quest_alloc_sized(sizeof(QVal), &quest_layout_words);
             component->i = 42LL;
             QAuto *d = quest_auto_new(&quest_type_Int, (QVal){ .p = component });
             assert(d != NULL);
@@ -210,7 +210,7 @@ class TestRuntimeDescriptors(unittest.TestCase):
                 { .name = "y", .type = &quest_type_Int, .offset = offsetof(struct Ry, qf_y), .is_var = false } };
             const QTypeDescriptor *x_desc = quest_make_record_descriptor("Record x: Int end", sizeof(struct Rx), 8, 1, x_fields);
             const QTypeDescriptor *y_desc = quest_make_record_descriptor("Record y: Int end", sizeof(struct Ry), 8, 1, y_fields);
-            struct Rx *payload = (struct Rx *)quest_alloc(sizeof(struct Rx));
+            struct Rx *payload = (struct Rx *)quest_alloc_sized(sizeof(struct Rx), &quest_layout_words);
             payload->header.descriptor = x_desc;
             QRecordVal rec = { .val = payload, .dict = quest_record_dict(x_desc, x_desc) };
 
@@ -288,7 +288,7 @@ class TestRuntimeDescriptors(unittest.TestCase):
             assert(!quest_is_subtype(small_desc, big_desc));
 
             /* Allocate big record payload */
-            struct BigRec *b = (struct BigRec *)quest_alloc(sizeof(struct BigRec));
+            struct BigRec *b = (struct BigRec *)quest_alloc_sized(sizeof(struct BigRec), &quest_layout_words);
             b->header.descriptor = big_desc;
             b->qf_x = 100;
             b->qf_y = 200;
@@ -425,7 +425,7 @@ class TestRuntimeDescriptors(unittest.TestCase):
 
             /* A Real stored as a QVal is laid out as a native Real: the value is used as it is */
             assert(quest_layout_equivalent(at_real, &real_tuple));
-            Generic *g = (Generic *)quest_alloc(sizeof(Generic));
+            Generic *g = (Generic *)quest_alloc_sized(sizeof(Generic), &quest_layout_words);
             g->_0 = (QVal){ .r = 2.5 };
             g->_1 = 7;
             QVal same = quest_convert((QVal){ .p = g }, at_real, &real_tuple);
@@ -436,11 +436,11 @@ class TestRuntimeDescriptors(unittest.TestCase):
             const QTypeDescriptor *args_obj[1] = { &obj };
             const QTypeDescriptor *at_obj = quest_instantiate_descriptor(&tmpl, 1, args_obj);
             assert(quest_layout_equivalent(at_obj, &rec_tuple));
-            void *payload = quest_alloc(sizeof(QRecordHeader) + sizeof(QInt));
+            void *payload = quest_alloc_sized(sizeof(QRecordHeader) + sizeof(QInt), &quest_layout_words);
             ((QRecordHeader *)payload)->descriptor = &obj;
             *(QInt *)((char *)payload + sizeof(QRecordHeader)) = 42;
             QRecordVal r = quest_record_view((QRecordVal){ .val = payload, .dict = NULL }, &obj);
-            Generic *h = (Generic *)quest_alloc(sizeof(Generic));
+            Generic *h = (Generic *)quest_alloc_sized(sizeof(Generic), &quest_layout_words);
             h->_0 = (QVal){ .p = quest_record_box(r) };
             h->_1 = 3;
             QVal native = quest_convert((QVal){ .p = h }, at_obj, &rec_tuple);

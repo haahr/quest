@@ -26,10 +26,10 @@ QString *quest_string_new(const char *src, int64_t len) {
     if (len < 0 && src != NULL) {
         len = (int64_t)strlen(src);
     }
-    QString *s = (QString *)quest_alloc(sizeof(QString));
+    QString *s = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
     s->length = len;
     s->capacity = len;
-    s->data = (char *)quest_alloc_atomic(len + 1);
+    s->data = (char *)quest_alloc_bytes(len + 1);
     if (len > 0 && src != NULL) {
         memcpy(s->data, src, (size_t)len);
     }
@@ -43,10 +43,10 @@ QString *quest_string_concat(const QString *s1, const QString *s2) {
     if (s2 == NULL) return quest_string_new(s1->data, s1->length);
 
     int64_t total = s1->length + s2->length;
-    QString *res = (QString *)quest_alloc(sizeof(QString));
+    QString *res = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
     res->length = total;
     res->capacity = total;
-    res->data = (char *)quest_alloc_atomic(total + 1);
+    res->data = (char *)quest_alloc_bytes(total + 1);
     if (s1->length > 0) {
         memcpy(res->data, s1->data, (size_t)s1->length);
     }
@@ -100,7 +100,7 @@ QString *quest_string_alloc(int64_t size, QChar init) {
     if (size < 0) {
         quest_raise_string_error();
     }
-    char *buf = (char *)quest_alloc((size_t)size + 1);
+    char *buf = (char *)quest_alloc_bytes((size_t)size + 1);
     memset(buf, (int)init, (size_t)size);
     buf[size] = '\0';
     return quest_string_new(buf, size);
@@ -122,7 +122,7 @@ QString *quest_string_cat_sub(const QString *s1, int64_t st1, int64_t sz1,
         quest_raise_string_error();
     }
     int64_t total = sz1 + sz2;
-    char *buf = (char *)quest_alloc((size_t)total + 1);
+    char *buf = (char *)quest_alloc_bytes((size_t)total + 1);
     if (sz1 > 0) memcpy(buf, s1->data + st1, (size_t)sz1);
     if (sz2 > 0) memcpy(buf + sz1, s2->data + st2, (size_t)sz2);
     buf[total] = '\0';
@@ -140,7 +140,7 @@ QString *quest_string_conc(const QArray *strings) {
             total += part->length;
         }
     }
-    char *buf = (char *)quest_alloc((size_t)total + 1);
+    char *buf = (char *)quest_alloc_bytes((size_t)total + 1);
     int64_t offset = 0;
     for (int64_t i = 0; i < strings->length; ++i) {
         const QString *part = (const QString *)strings->data[i].p;
@@ -192,11 +192,11 @@ bool quest_string_precedes_sub(const QString *s1, int64_t st1, int64_t sz1,
     return sz1 <= sz2;
 }
 
-QArray *quest_array_new(int64_t len, QVal init_val) {
+QArray *quest_array_new(int64_t len, QVal init_val, const QLayout *layout) {
     if (len < 0) {
         quest_raise_array_error();
     }
-    QArray *arr = (QArray *)quest_alloc(sizeof(QArray) + (size_t)len * sizeof(QVal));
+    QArray *arr = (QArray *)quest_alloc(sizeof(QArray) + (size_t)len * sizeof(QVal), layout);
     arr->length = len;
     /* quest_alloc's memory is zeroed already: an array of zeros (0, 0.0,
        false, nil) needs no fill, which an arbitrary-precision number's limbs
@@ -246,7 +246,7 @@ const QException quest_exc_word_error    = { "word.error" };
 const QException quest_exc_system_error  = { "system.error" };
 
 const QException *quest_alloc_exception(const char *name) {
-    QException *exc = (QException *)quest_alloc(sizeof(QException));
+    QException *exc = (QException *)quest_alloc(sizeof(QException), &quest_layout_exception);
     exc->name = name ? name : "Exception";
     return exc;
 }
@@ -512,7 +512,7 @@ static void quest_print_live_frames(void) {
  * raise again (§5.4) */
 static const QTrace *quest_capture_trace(void) {
 #ifdef Q_HAVE_UNWIND
-    QTrace *trace = (QTrace *)quest_alloc_atomic(sizeof(QTrace));
+    QTrace *trace = (QTrace *)quest_alloc_bytes(sizeof(QTrace));
     trace->n_runs = 0;
     trace->truncated = false;
     quest_walk_stack(quest_capture_frame, trace);
@@ -620,7 +620,7 @@ void quest_raise(const QException *exc, QVal payload) {
 }
 
 QRaised *quest_raised_capture(const QExceptionState *state) {
-    QRaised *r = quest_alloc(sizeof(QRaised));
+    QRaised *r = quest_alloc(sizeof(QRaised), &quest_layout_raised);
     r->state = *state;
     return r;
 }
@@ -1032,7 +1032,7 @@ static void quest_init_type_intern_table(void) {
     for (int i = 0; base_descs[i] != NULL; ++i) {
         const QTypeDescriptor *d = base_descs[i];
         uint64_t h = quest_hash_string(d->name) % Q_TYPE_INTERN_TABLE_SIZE;
-        QTypeDescriptorEntry *entry = (QTypeDescriptorEntry *)quest_alloc(sizeof(QTypeDescriptorEntry));
+        QTypeDescriptorEntry *entry = (QTypeDescriptorEntry *)quest_alloc(sizeof(QTypeDescriptorEntry), &quest_layout_descriptor_entry);
         entry->desc = d;
         entry->next = quest_type_intern_buckets[h];
         quest_type_intern_buckets[h] = entry;
@@ -1055,7 +1055,7 @@ const QTypeDescriptor *quest_intern_type_descriptor(const QTypeDescriptor *desc)
     }
 
     /* Not found: insert into bucket */
-    QTypeDescriptorEntry *entry = (QTypeDescriptorEntry *)quest_alloc(sizeof(QTypeDescriptorEntry));
+    QTypeDescriptorEntry *entry = (QTypeDescriptorEntry *)quest_alloc(sizeof(QTypeDescriptorEntry), &quest_layout_descriptor_entry);
     entry->desc = desc;
     entry->next = quest_type_intern_buckets[h];
     quest_type_intern_buckets[h] = entry;
@@ -1065,7 +1065,7 @@ const QTypeDescriptor *quest_intern_type_descriptor(const QTypeDescriptor *desc)
 static char *quest_dup_str(const char *s) {
     if (s == NULL) return NULL;
     size_t len = strlen(s);
-    char *copy = (char *)quest_alloc_atomic(len + 1);
+    char *copy = (char *)quest_alloc_bytes(len + 1);
     memcpy(copy, s, len + 1);
     return copy;
 }
@@ -1373,7 +1373,7 @@ static void quest_record_dicts_insert(const QTypeDescriptor *view, const QTypeDe
         QRecordDictEntry *old = quest_record_dicts;
         size_t old_capacity = quest_record_dicts_capacity;
         quest_record_dicts_capacity = old_capacity ? 2 * old_capacity : 64;
-        quest_record_dicts = (QRecordDictEntry *)quest_alloc(sizeof(QRecordDictEntry) * quest_record_dicts_capacity);
+        quest_record_dicts = (QRecordDictEntry *)quest_alloc_sized(sizeof(QRecordDictEntry) * quest_record_dicts_capacity, &quest_layout_record_dict_entries);
         memset(quest_record_dicts, 0, sizeof(QRecordDictEntry) * quest_record_dicts_capacity);
         for (size_t i = 0; i < old_capacity; ++i) {
             if (old[i].view != NULL) *quest_record_dict_slot(old[i].view, old[i].layout) = old[i];
@@ -1414,7 +1414,7 @@ static const void *quest_build_record_dict(const QTypeDescriptor *view, const QT
     size_t n = v_meta != NULL ? v_meta->field_count : 0;
     size_t slots = n > 0 ? n : 1;
     /* Offsets, then the stored types pointer (see QRecordStoredTypes) */
-    size_t *dict = (size_t *)quest_alloc(sizeof(size_t) * slots + sizeof(QRecordStoredTypes));
+    size_t *dict = (size_t *)quest_alloc_words(slots + 1);
     const QTypeDescriptor **stored_types = NULL;
     dict[0] = 0;
     for (size_t j = 0; j < n; ++j) {
@@ -1433,7 +1433,8 @@ static const void *quest_build_record_dict(const QTypeDescriptor *view, const QT
              * the view stores it */
             if (v_meta->fields[j].is_var) quest_layout_conversion_error(layout, view);
             if (stored_types == NULL) {
-                stored_types = (const QTypeDescriptor **)quest_alloc(sizeof(const QTypeDescriptor *) * n);
+                stored_types = (const QTypeDescriptor **)quest_alloc_sized(sizeof(const QTypeDescriptor *) * n,
+                                                                           &quest_layout_pointers);
                 memset((void *)stored_types, 0, sizeof(const QTypeDescriptor *) * n);
             }
             stored_types[j] = lf->type;
@@ -1468,7 +1469,7 @@ void *quest_make_proxy(const void *v, const QTypeDescriptor *from, const QTypeDe
     from = quest_proxied_type(from);
     to = quest_proxied_type(to);
     if (from == to || (quest_layout_equivalent(from, to) && quest_proxies_agree(from, to))) return (void *)orig;
-    QProxy *proxy = (QProxy *)quest_alloc(sizeof(QProxy));
+    QProxy *proxy = (QProxy *)quest_alloc(sizeof(QProxy), &quest_layout_proxy);
     proxy->orig = orig;
     proxy->stored = from;
     proxy->view = to;
@@ -1476,7 +1477,7 @@ void *quest_make_proxy(const void *v, const QTypeDescriptor *from, const QTypeDe
         const QVariantTypeDescriptor *f_meta = (const QVariantTypeDescriptor *)from->extra;
         const QVariantTypeDescriptor *t_meta = (const QVariantTypeDescriptor *)to->extra;
         size_t n = f_meta != NULL ? f_meta->case_count : 0;
-        int64_t *tags = (int64_t *)quest_alloc(sizeof(int64_t) * (n > 0 ? n : 1));
+        int64_t *tags = (int64_t *)quest_alloc_sized(sizeof(int64_t) * (n > 0 ? n : 1), &quest_layout_ints);
         for (size_t i = 0; i < n; ++i) {
             tags[i] = -1;
             for (size_t j = 0; t_meta != NULL && j < t_meta->case_count; ++j) {
@@ -1499,7 +1500,7 @@ static QVal quest_proxy_cached(const void *p, size_t i, size_t n, QVal v, const 
     if (from == to) return v;
     QProxy *proxy = (QProxy *)quest_proxy_of(p);
     if (proxy->cache == NULL) {
-        proxy->cache = (QVal *)quest_alloc(sizeof(QVal) * n + n);
+        proxy->cache = (QVal *)quest_alloc_sized(sizeof(QVal) * n + n, &quest_layout_proxy_cache);
         proxy->cached = (uint8_t *)(proxy->cache + n);
     }
     if (!proxy->cached[i]) {
@@ -1750,7 +1751,7 @@ static bool quest_proxies_agree(const QTypeDescriptor *from, const QTypeDescript
  * does not share updates of var components, so a tuple with any is a fatal
  * error. */
 static QVal quest_copy_viewed(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *to) {
-    char *dst = (char *)quest_alloc(to->size > 0 ? to->size : sizeof(void *));
+    char *dst = (char *)quest_alloc_sized(to->size > 0 ? to->size : sizeof(void *), &quest_layout_words);
     if (to->kind == QTYPE_KIND_TUPLE) {
         const QTupleTypeDescriptor *f_meta = (const QTupleTypeDescriptor *)from->extra;
         const QTupleTypeDescriptor *t_meta = (const QTupleTypeDescriptor *)to->extra;
@@ -1893,7 +1894,8 @@ static QVal quest_convert_auto(QVal v, const QTypeDescriptor *from, const QTypeD
     const QAutoTypeDescriptor *f_meta = (const QAutoTypeDescriptor *)from->extra;
     const QAutoTypeDescriptor *t_meta = (const QAutoTypeDescriptor *)to->extra;
     if (a == NULL || f_meta == NULL || t_meta == NULL) return v;
-    char *payload = (char *)quest_alloc(t_meta->payload_size > 0 ? t_meta->payload_size : sizeof(QVal));
+    char *payload = (char *)quest_alloc_sized(t_meta->payload_size > 0 ? t_meta->payload_size : sizeof(QVal),
+                                              &quest_layout_words);
     for (size_t i = 0; i < t_meta->component_count && i < f_meta->component_count; ++i) {
         const QAutoComponentDescriptor *fc = &f_meta->components[i];
         const QAutoComponentDescriptor *tc = &t_meta->components[i];
@@ -2284,7 +2286,7 @@ static void quest_inst_collect(void *cx, const QTypeDescriptor *d) {
     if (d == NULL || quest_inst_find(w, d) != NULL) return;
     if (w->count == w->capacity) {
         size_t capacity = w->capacity ? 2 * w->capacity : 16;
-        QInstNode *nodes = (QInstNode *)quest_alloc(sizeof(QInstNode) * capacity);
+        QInstNode *nodes = (QInstNode *)quest_alloc_sized(sizeof(QInstNode) * capacity, &quest_layout_inst_nodes);
         if (w->count > 0) memcpy(nodes, w->nodes, sizeof(QInstNode) * w->count);
         w->nodes = nodes;
         w->capacity = capacity;
@@ -2330,7 +2332,7 @@ static const char *quest_inst_name(const QInstContext *cx, const char *name) {
     }
     for (const char *c = name; *c; ++c) holes += (*c == '?');
     size_t cap = strlen(name) + 1 + holes * longest + 3;
-    char *out = (char *)quest_alloc(cap);
+    char *out = (char *)quest_alloc_bytes(cap);
     for (const char *c = name; *c;) {
         if (*c == '?' && c[1] >= '0' && c[1] <= '9') {
             char *end = NULL;
@@ -2362,7 +2364,7 @@ static const QTypeDescriptor *quest_inst_of(const QInstContext *cx, const QTypeD
 }
 
 static void *quest_copy_block(const void *src, size_t size) {
-    void *copy = quest_alloc(size);
+    void *copy = quest_alloc_sized(size, &quest_layout_words);
     memcpy(copy, src, size);
     return copy;
 }
@@ -2409,7 +2411,7 @@ static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
             break;
         }
         case QTYPE_KIND_ARRAY: {
-            QArrayTypeDescriptor *c = (QArrayTypeDescriptor *)quest_alloc(sizeof(QArrayTypeDescriptor));
+            QArrayTypeDescriptor *c = (QArrayTypeDescriptor *)quest_alloc(sizeof(QArrayTypeDescriptor), &quest_layout_array_descriptor);
             c->element_type = quest_inst_of(cx, ((const QArrayTypeDescriptor *)d->extra)->element_type);
             out->extra = c;
             break;
@@ -2424,7 +2426,8 @@ static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
             c->result_type = quest_inst_of(cx, m->result_type);
             if (m->quantifier_bounds != NULL && m->quantifier_count > 0) {
                 const QTypeDescriptor **bounds =
-                    (const QTypeDescriptor **)quest_alloc(sizeof(QTypeDescriptor *) * m->quantifier_count);
+                    (const QTypeDescriptor **)quest_alloc_sized(sizeof(QTypeDescriptor *) * m->quantifier_count,
+                                                                &quest_layout_pointers);
                 for (size_t i = 0; i < m->quantifier_count; ++i) bounds[i] = quest_inst_of(cx, m->quantifier_bounds[i]);
                 c->quantifier_bounds = bounds;
             }
@@ -2444,15 +2447,16 @@ static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
             break;
         }
         case QTYPE_KIND_EXCEPTION: {
-            QExceptionTypeDescriptor *c = (QExceptionTypeDescriptor *)quest_alloc(sizeof(QExceptionTypeDescriptor));
+            QExceptionTypeDescriptor *c = (QExceptionTypeDescriptor *)quest_alloc(sizeof(QExceptionTypeDescriptor), &quest_layout_exception_descriptor);
             c->payload_type = quest_inst_of(cx, ((const QExceptionTypeDescriptor *)d->extra)->payload_type);
             out->extra = c;
             break;
         }
         case QTYPE_KIND_OPAQUE: {
             const QOpaqueTypeDescriptor *m = (const QOpaqueTypeDescriptor *)d->extra;
-            QOpaqueTypeDescriptor *c = (QOpaqueTypeDescriptor *)quest_alloc(sizeof(QOpaqueTypeDescriptor));
-            const QTypeDescriptor **args = (const QTypeDescriptor **)quest_alloc(sizeof(QTypeDescriptor *) * (m->arg_count + 1));
+            QOpaqueTypeDescriptor *c = (QOpaqueTypeDescriptor *)quest_alloc(sizeof(QOpaqueTypeDescriptor), &quest_layout_opaque_descriptor);
+            const QTypeDescriptor **args = (const QTypeDescriptor **)quest_alloc_sized(sizeof(QTypeDescriptor *) * (m->arg_count + 1),
+                                                                                   &quest_layout_pointers);
             for (size_t i = 0; i < m->arg_count; ++i) args[i] = quest_inst_of(cx, m->args[i]);
             c->arg_count = m->arg_count;
             c->args = args;
@@ -2462,7 +2466,7 @@ static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
         }
         case QTYPE_KIND_HOLE: {
             const QHoleDescriptor *h = (const QHoleDescriptor *)d->extra;
-            QStoredDescriptor *c = (QStoredDescriptor *)quest_alloc(sizeof(QStoredDescriptor));
+            QStoredDescriptor *c = (QStoredDescriptor *)quest_alloc(sizeof(QStoredDescriptor), &quest_layout_stored_descriptor);
             c->type = cx->args[h->index];
             c->storage = quest_inst_of(cx, h->storage);
             c->viewed = false;
@@ -2525,9 +2529,9 @@ static void quest_fill_view_map(QViewMap *m) {
         const QRecordTypeDescriptor *ra = (const QRecordTypeDescriptor *)a->extra;
         const QRecordTypeDescriptor *rb = (const QRecordTypeDescriptor *)b->extra;
         size_t n = rb != NULL ? rb->field_count : 0;
-        int64_t *index = (int64_t *)quest_alloc(sizeof(int64_t) * (n ? n : 1));
-        const QTypeDescriptor **from = (const QTypeDescriptor **)quest_alloc(sizeof(void *) * (n ? n : 1));
-        const QTypeDescriptor **to = (const QTypeDescriptor **)quest_alloc(sizeof(void *) * (n ? n : 1));
+        int64_t *index = (int64_t *)quest_alloc_sized(sizeof(int64_t) * (n ? n : 1), &quest_layout_ints);
+        const QTypeDescriptor **from = (const QTypeDescriptor **)quest_alloc_sized(sizeof(void *) * (n ? n : 1), &quest_layout_pointers);
+        const QTypeDescriptor **to = (const QTypeDescriptor **)quest_alloc_sized(sizeof(void *) * (n ? n : 1), &quest_layout_pointers);
         for (size_t k = 0; k < n; ++k) {
             index[k] = -1;
             to[k] = rb->fields[k].type;
@@ -2551,8 +2555,8 @@ static void quest_fill_view_map(QViewMap *m) {
         const QTupleTypeDescriptor *ta = (const QTupleTypeDescriptor *)a->extra;
         const QTupleTypeDescriptor *tb = (const QTupleTypeDescriptor *)b->extra;
         size_t n = tb != NULL ? tb->element_count : 0;
-        const QTypeDescriptor **from = (const QTypeDescriptor **)quest_alloc(sizeof(void *) * (n ? n : 1));
-        const QTypeDescriptor **to = (const QTypeDescriptor **)quest_alloc(sizeof(void *) * (n ? n : 1));
+        const QTypeDescriptor **from = (const QTypeDescriptor **)quest_alloc_sized(sizeof(void *) * (n ? n : 1), &quest_layout_pointers);
+        const QTypeDescriptor **to = (const QTypeDescriptor **)quest_alloc_sized(sizeof(void *) * (n ? n : 1), &quest_layout_pointers);
         for (size_t k = 0; k < n; ++k) {
             to[k] = tb->elements[k].type;
             from[k] = ta != NULL && k < ta->element_count ? quest_view_from(ta->elements[k].type, to[k]) : NULL;
@@ -2565,7 +2569,7 @@ static void quest_fill_view_map(QViewMap *m) {
         const QVariantTypeDescriptor *va = (const QVariantTypeDescriptor *)a->extra;
         const QVariantTypeDescriptor *vb = (const QVariantTypeDescriptor *)b->extra;
         size_t na = va != NULL ? va->case_count : 0, nb = vb != NULL ? vb->case_count : 0;
-        int64_t *index = (int64_t *)quest_alloc(sizeof(int64_t) * (na ? na : 1));
+        int64_t *index = (int64_t *)quest_alloc_sized(sizeof(int64_t) * (na ? na : 1), &quest_layout_ints);
         for (size_t i = 0; i < na; ++i) {
             const QVariantCaseDescriptor *c = quest_case_named(vb, va->cases[i].name);
             if (c == NULL) quest_raise_dynamic_error();
@@ -2573,8 +2577,8 @@ static void quest_fill_view_map(QViewMap *m) {
         }
         m->index = index;
         if (a->kind == QTYPE_KIND_VARIANT) {
-            const QTypeDescriptor **from = (const QTypeDescriptor **)quest_alloc(sizeof(void *) * (nb ? nb : 1));
-            const QTypeDescriptor **to = (const QTypeDescriptor **)quest_alloc(sizeof(void *) * (nb ? nb : 1));
+            const QTypeDescriptor **from = (const QTypeDescriptor **)quest_alloc_sized(sizeof(void *) * (nb ? nb : 1), &quest_layout_pointers);
+            const QTypeDescriptor **to = (const QTypeDescriptor **)quest_alloc_sized(sizeof(void *) * (nb ? nb : 1), &quest_layout_pointers);
             for (size_t k = 0; k < nb; ++k) {
                 const QVariantCaseDescriptor *c = quest_case_named(va, vb->cases[k].name);
                 to[k] = vb->cases[k].payload_type;
@@ -2586,7 +2590,7 @@ static void quest_fill_view_map(QViewMap *m) {
         }
         /* An option's cases' components, flattened (a payload that is not a
          * tuple is one) */
-        size_t *start = (size_t *)quest_alloc(sizeof(size_t) * (nb + 1));
+        size_t *start = (size_t *)quest_alloc_sized(sizeof(size_t) * (nb + 1), &quest_layout_ints);
         size_t total = 0;
         for (size_t k = 0; k < nb; ++k) {
             start[k] = total;
@@ -2598,8 +2602,8 @@ static void quest_fill_view_map(QViewMap *m) {
             }
         }
         start[nb] = total;
-        const QTypeDescriptor **from = (const QTypeDescriptor **)quest_alloc(sizeof(void *) * (total ? total : 1));
-        const QTypeDescriptor **to = (const QTypeDescriptor **)quest_alloc(sizeof(void *) * (total ? total : 1));
+        const QTypeDescriptor **from = (const QTypeDescriptor **)quest_alloc_sized(sizeof(void *) * (total ? total : 1), &quest_layout_pointers);
+        const QTypeDescriptor **to = (const QTypeDescriptor **)quest_alloc_sized(sizeof(void *) * (total ? total : 1), &quest_layout_pointers);
         for (size_t k = 0; k < nb; ++k) {
             const QTypeDescriptor *pb = vb->cases[k].payload_type;
             const QVariantCaseDescriptor *c = quest_case_named(va, vb->cases[k].name);
@@ -2635,7 +2639,7 @@ const QViewMap *quest_view_map(const QTypeDescriptor *actual, const QTypeDescrip
     for (QViewMapEntry *e = quest_view_maps[bucket]; e != NULL; e = e->next) {
         if (e->map.actual == actual && e->map.bound == bound) return &e->map;
     }
-    QViewMapEntry *e = (QViewMapEntry *)quest_alloc(sizeof(QViewMapEntry));
+    QViewMapEntry *e = (QViewMapEntry *)quest_alloc(sizeof(QViewMapEntry), &quest_layout_view_map_entry);
     e->map.actual = actual;
     e->map.bound = bound;
     quest_fill_view_map(&e->map);
@@ -2676,7 +2680,7 @@ const QTypeDescriptor *quest_instantiate_descriptor(
         }
     }
     for (size_t i = 0; i < w.count; ++i) {
-        if (w.nodes[i].has_hole) w.nodes[i].inst = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor));
+        if (w.nodes[i].has_hole) w.nodes[i].inst = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     }
     QInstContext cx = { &w, args, arg_count };
     for (size_t i = 0; i < w.count; ++i) {
@@ -2684,10 +2688,11 @@ const QTypeDescriptor *quest_instantiate_descriptor(
     }
     const QTypeDescriptor *inst = quest_inst_of(&cx, template_desc);
 
-    QInstCacheEntry *e = (QInstCacheEntry *)quest_alloc(sizeof(QInstCacheEntry));
+    QInstCacheEntry *e = (QInstCacheEntry *)quest_alloc(sizeof(QInstCacheEntry), &quest_layout_inst_cache_entry);
     e->tmpl = template_desc;
     e->arg_count = arg_count;
-    e->args = (const QTypeDescriptor **)quest_alloc(sizeof(QTypeDescriptor *) * (arg_count + 1));
+    e->args = (const QTypeDescriptor **)quest_alloc_sized(sizeof(QTypeDescriptor *) * (arg_count + 1),
+                                                          &quest_layout_pointers);
     if (arg_count > 0) memcpy((void *)e->args, args, sizeof(QTypeDescriptor *) * arg_count);
     e->inst = inst;
     e->next = quest_inst_cache[bucket];
@@ -3002,7 +3007,7 @@ QVariantVal quest_variant_adapt(const QTypeDescriptor *sub_desc, const QTypeDesc
     }
 
     if (cached == NULL) {
-        int64_t *tagmap = (int64_t *)quest_alloc(sizeof(int64_t) * s_meta->case_count);
+        int64_t *tagmap = (int64_t *)quest_alloc_sized(sizeof(int64_t) * s_meta->case_count, &quest_layout_ints);
         for (size_t i = 0; i < s_meta->case_count; ++i) {
             const QVariantCaseDescriptor *sc = &s_meta->cases[i];
             int64_t target_idx = -1;
@@ -3014,7 +3019,7 @@ QVariantVal quest_variant_adapt(const QTypeDescriptor *sub_desc, const QTypeDesc
             }
             tagmap[i] = target_idx >= 0 ? target_idx : 0;
         }
-        cached = (QVariantAdapterCacheEntry *)quest_alloc(sizeof(QVariantAdapterCacheEntry));
+        cached = (QVariantAdapterCacheEntry *)quest_alloc(sizeof(QVariantAdapterCacheEntry), &quest_layout_variant_adapter_entry);
         cached->sub_desc = sub_desc;
         cached->super_desc = super_desc;
         cached->tagmap = tagmap;
@@ -3051,7 +3056,7 @@ const QTypeDescriptor *quest_make_array_descriptor(const QTypeDescriptor *elemen
 
     const char *elem_name = (element_desc && element_desc->name) ? element_desc->name : "Unknown";
     size_t name_len = strlen("Array()") + strlen(elem_name) + 1;
-    char *arr_name = (char *)quest_alloc_atomic(name_len);
+    char *arr_name = (char *)quest_alloc_bytes(name_len);
     snprintf(arr_name, name_len, "Array(%s)", elem_name);
 
     /* Check if already interned */
@@ -3063,14 +3068,14 @@ const QTypeDescriptor *quest_make_array_descriptor(const QTypeDescriptor *elemen
     }
 
     /* Allocate array descriptor */
-    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor));
+    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_ARRAY;
     desc->name = arr_name;
     desc->size = sizeof(void *);
     desc->alignment = sizeof(void *);
     desc->is_subtype = quest_is_subtype;
 
-    QArrayTypeDescriptor *arr_meta = (QArrayTypeDescriptor *)quest_alloc(sizeof(QArrayTypeDescriptor));
+    QArrayTypeDescriptor *arr_meta = (QArrayTypeDescriptor *)quest_alloc(sizeof(QArrayTypeDescriptor), &quest_layout_array_descriptor);
     arr_meta->element_type = element_desc;
     desc->extra = arr_meta;
 
@@ -3079,7 +3084,7 @@ const QTypeDescriptor *quest_make_array_descriptor(const QTypeDescriptor *elemen
 
 const QTypeDescriptor *quest_make_opaque_descriptor(const char *name) {
     /* Opaque types use unique pointer identity for encapsulation */
-    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor));
+    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_OPAQUE;
     desc->name = name != NULL ? quest_dup_str(name) : "Opaque";
     desc->size = sizeof(QVal);
@@ -3108,7 +3113,7 @@ static QAbstractTypeEntry *quest_find_abstract_type(const char *name) {
 
 void quest_register_abstract_type(const char *name, size_t arity, const QTypeDescriptor *rep) {
     if (quest_find_abstract_type(name) != NULL) return;
-    QAbstractTypeEntry *e = (QAbstractTypeEntry *)quest_alloc(sizeof(QAbstractTypeEntry));
+    QAbstractTypeEntry *e = (QAbstractTypeEntry *)quest_alloc(sizeof(QAbstractTypeEntry), &quest_layout_abstract_type_entry);
     e->name = name;
     e->arity = arity;
     e->rep = rep;
@@ -3145,7 +3150,7 @@ const QTypeDescriptor *quest_make_record_descriptor(
         }
     }
 
-    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor));
+    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_RECORD;
     desc->name = quest_dup_str(rec_name);
     desc->size = size;
@@ -3153,7 +3158,7 @@ const QTypeDescriptor *quest_make_record_descriptor(
     desc->is_subtype = quest_is_subtype;
 
     size_t meta_size = sizeof(QRecordTypeDescriptor) + sizeof(QRecordFieldDescriptor) * field_count;
-    QRecordTypeDescriptor *meta = (QRecordTypeDescriptor *)quest_alloc(meta_size);
+    QRecordTypeDescriptor *meta = (QRecordTypeDescriptor *)quest_alloc(meta_size, &quest_layout_record_descriptor);
     meta->field_count = field_count;
     if (fields != NULL && field_count > 0) {
         memcpy((void *)meta->fields, fields, sizeof(QRecordFieldDescriptor) * field_count);
@@ -3176,7 +3181,7 @@ const QTypeDescriptor *quest_make_tuple_descriptor(
         }
     }
 
-    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor));
+    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_TUPLE;
     desc->name = quest_dup_str(tup_name);
     desc->size = size;
@@ -3184,7 +3189,7 @@ const QTypeDescriptor *quest_make_tuple_descriptor(
     desc->is_subtype = quest_is_subtype;
 
     size_t meta_size = sizeof(QTupleTypeDescriptor) + sizeof(QTupleElementDescriptor) * element_count;
-    QTupleTypeDescriptor *meta = (QTupleTypeDescriptor *)quest_alloc(meta_size);
+    QTupleTypeDescriptor *meta = (QTupleTypeDescriptor *)quest_alloc(meta_size, &quest_layout_tuple_descriptor);
     meta->element_count = element_count;
     if (elements != NULL && element_count > 0) {
         memcpy((void *)meta->elements, elements, sizeof(QTupleElementDescriptor) * element_count);
@@ -3206,7 +3211,7 @@ const QTypeDescriptor *quest_make_variant_descriptor(
         }
     }
 
-    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor));
+    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_VARIANT;
     desc->name = quest_dup_str(var_name);
     desc->size = size > 0 ? size : sizeof(QVariantVal);
@@ -3214,7 +3219,7 @@ const QTypeDescriptor *quest_make_variant_descriptor(
     desc->is_subtype = quest_is_subtype;
 
     size_t meta_size = sizeof(QVariantTypeDescriptor) + sizeof(QVariantCaseDescriptor) * case_count;
-    QVariantTypeDescriptor *meta = (QVariantTypeDescriptor *)quest_alloc(meta_size);
+    QVariantTypeDescriptor *meta = (QVariantTypeDescriptor *)quest_alloc(meta_size, &quest_layout_variant_descriptor);
     meta->case_count = case_count;
     if (cases != NULL && case_count > 0) {
         memcpy((void *)meta->cases, cases, sizeof(QVariantCaseDescriptor) * case_count);
@@ -3236,7 +3241,7 @@ const QTypeDescriptor *quest_make_fun_descriptor(
         }
     }
 
-    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor));
+    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_FUN;
     desc->name = quest_dup_str(fn_name);
     desc->size = sizeof(QClosure);
@@ -3244,7 +3249,7 @@ const QTypeDescriptor *quest_make_fun_descriptor(
     desc->is_subtype = quest_is_subtype;
 
     size_t meta_size = sizeof(QFunTypeDescriptor) + sizeof(QFunParamDescriptor) * param_count;
-    QFunTypeDescriptor *meta = (QFunTypeDescriptor *)quest_alloc(meta_size);
+    QFunTypeDescriptor *meta = (QFunTypeDescriptor *)quest_alloc(meta_size, &quest_layout_fun_descriptor);
     meta->param_count = param_count;
     meta->result_type = result_type;
     meta->adapt = NULL;
@@ -3259,7 +3264,7 @@ const QTypeDescriptor *quest_make_fun_descriptor(
 }
 
 QAuto *quest_auto_new(const QTypeDescriptor *type_desc, QVal payload) {
-    QAuto *a = (QAuto *)quest_alloc(sizeof(QAuto));
+    QAuto *a = (QAuto *)quest_alloc(sizeof(QAuto), &quest_layout_auto);
     a->type_desc = type_desc;
     a->payload = payload;
     return a;
@@ -3269,7 +3274,7 @@ QAuto *quest_dynamic_copy(const QAuto *d) {
     if (d == NULL || d->type_desc == NULL) {
         quest_raise_dynamic_error();
     }
-    QVal *component = (QVal *)quest_alloc(sizeof(QVal));
+    QVal *component = (QVal *)quest_alloc(sizeof(QVal), &quest_layout_component);
     *component = *(const QVal *)d->payload.p;
     return quest_auto_new(d->type_desc, (QVal){ .p = component });
 }
@@ -3294,7 +3299,7 @@ QArray *quest_system_args = NULL;
 
 void quest_system_init(int argc, char **argv) {
     if (argc < 0) argc = 0;
-    quest_system_args = quest_array_new(argc, (QVal){ .p = NULL });
+    quest_system_args = quest_array_new(argc, (QVal){ .p = NULL }, &quest_layout_array_pointer);
     for (int i = 0; i < argc; i++) {
         const char *arg = (argv != NULL && argv[i] != NULL) ? argv[i] : "";
         quest_system_args->data[i].p = quest_string_new(arg, (int64_t)strlen(arg));
@@ -3496,7 +3501,7 @@ QArray *quest_system_list_directory(const QString *path) {
         qsort(entries, count, sizeof(QString *), quest_strcmp_qsort);
     }
 
-    QArray *res = quest_array_new((int64_t)count, (QVal){ .p = NULL });
+    QArray *res = quest_array_new((int64_t)count, (QVal){ .p = NULL }, &quest_layout_array_pointer);
     for (size_t i = 0; i < count; i++) {
         res->data[i].p = entries[i];
     }
@@ -3619,7 +3624,7 @@ void *quest_system_run(const QArray *args) {
 
     /* Laid out as Tuple code: Int stdout: String stderr: String end; a child killed
      * by a signal has its negated number as its code, as in Python */
-    QVal *result = (QVal *)quest_alloc(3 * sizeof(QVal));
+    QVal *result = (QVal *)quest_alloc(3 * sizeof(QVal), &quest_layout_run_result);
     result[0].i = WIFEXITED(status) ? WEXITSTATUS(status) : WIFSIGNALED(status) ? -WTERMSIG(status) : -1;
     result[1].p = quest_string_new(out.data != NULL ? out.data : "", (int64_t)out.len);
     result[2].p = quest_string_new(err.data != NULL ? err.data : "", (int64_t)err.len);
@@ -3632,7 +3637,7 @@ void *quest_system_run(const QArray *args) {
 void *quest_filestats_stat(const QString *path, bool follow) {
     if (path == NULL || path->data == NULL) quest_raise_system_error();
     struct stat st;
-    QVal *result = (QVal *)quest_alloc(9 * sizeof(QVal));
+    QVal *result = (QVal *)quest_alloc(9 * sizeof(QVal), &quest_layout_file_stats);
     if ((follow ? stat(path->data, &st) : lstat(path->data, &st)) != 0) {
         if (errno != ENOENT && errno != ENOTDIR) quest_raise_system_error();
         result[0].i = -1;
@@ -3736,7 +3741,7 @@ static QProcess *quest_process_spawn_with(const QArray *args, const QString *dir
         quest_raise_system_error();
     }
 
-    QProcess *p = (QProcess *)quest_alloc(sizeof(QProcess));
+    QProcess *p = (QProcess *)quest_alloc(sizeof(QProcess), &quest_layout_process);
     p->pid = pid;
     p->done = false;
     p->status = 0;
@@ -3812,7 +3817,7 @@ void *quest_process_wait(QProcess *p) {
     /* Laid out as Tuple code: Int stdout: String stderr: String end, as
      * system.run's result is */
     int status = p->status;
-    QVal *result = (QVal *)quest_alloc(3 * sizeof(QVal));
+    QVal *result = (QVal *)quest_alloc(3 * sizeof(QVal), &quest_layout_run_result);
     result[0].i = WIFEXITED(status) ? WEXITSTATUS(status) : WIFSIGNALED(status) ? -WTERMSIG(status) : -1;
     result[1].p = quest_string_new(out.data != NULL ? out.data : "", (int64_t)out.len);
     result[2].p = quest_string_new(err.data != NULL ? err.data : "", (int64_t)err.len);
@@ -3885,7 +3890,7 @@ QWriter *quest_writer_file(const QString *name) {
     if (f == NULL) {
         quest_raise_writer_error();
     }
-    QWriter *w = (QWriter *)quest_alloc(sizeof(QWriter));
+    QWriter *w = (QWriter *)quest_alloc(sizeof(QWriter), &quest_layout_writer);
     w->file = f;
     w->is_file = true;
     w->is_closed = false;
@@ -3971,7 +3976,7 @@ QReader *quest_reader_file(const QString *name) {
     if (f == NULL) {
         quest_raise_reader_error();
     }
-    QReader *r = (QReader *)quest_alloc(sizeof(QReader));
+    QReader *r = (QReader *)quest_alloc(sizeof(QReader), &quest_layout_reader);
     r->file = f;
     r->peek_char = -1;
     r->is_file = true;
@@ -4025,7 +4030,7 @@ QString *quest_reader_get_string(QReader *r, int64_t size) {
     if (size == 0) {
         return quest_string_new("", 0);
     }
-    char *buf = (char *)quest_alloc_atomic((size_t)size + 1);
+    char *buf = (char *)quest_alloc_bytes((size_t)size + 1);
     int64_t count = 0;
     if (r->peek_char != -1) {
         buf[count++] = (char)r->peek_char;
@@ -4036,7 +4041,7 @@ QString *quest_reader_get_string(QReader *r, int64_t size) {
         count += (int64_t)n;
     }
     buf[count] = 0;
-    QString *res = (QString *)quest_alloc(sizeof(QString));
+    QString *res = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
     res->length = count;
     res->capacity = count;
     res->data = buf;
@@ -4135,8 +4140,8 @@ double quest_strutil_to_real(const QString *s) {
 
 /* StringBuilder native buffer (see quest_runtime.h) */
 QStringBuilder *quest_sb_new(void) {
-    QStringBuilder *b = (QStringBuilder *)quest_alloc(sizeof(QStringBuilder));
-    b->buffer = (char *)quest_alloc_atomic(QUEST_SB_BUFFER_SIZE);
+    QStringBuilder *b = (QStringBuilder *)quest_alloc(sizeof(QStringBuilder), &quest_layout_string_builder);
+    b->buffer = (char *)quest_alloc_bytes(QUEST_SB_BUFFER_SIZE);
     return b;
 }
 
@@ -4144,12 +4149,12 @@ QStringBuilder *quest_sb_new(void) {
 static void quest_sb_add_chunk(QStringBuilder *b, char *data, int64_t len) {
     if (b->chunk_count == b->chunk_capacity) {
         int64_t capacity = b->chunk_capacity ? b->chunk_capacity * 2 : 8;
-        QString **chunks = (QString **)quest_alloc((size_t)capacity * sizeof(QString *));
+        QString **chunks = (QString **)quest_alloc_sized((size_t)capacity * sizeof(QString *), &quest_layout_pointers);
         if (b->chunk_count > 0) memcpy(chunks, b->chunks, (size_t)b->chunk_count * sizeof(QString *));
         b->chunks = chunks;
         b->chunk_capacity = capacity;
     }
-    QString *chunk = (QString *)quest_alloc(sizeof(QString));
+    QString *chunk = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
     chunk->length = len;
     chunk->capacity = len;
     chunk->data = data;
@@ -4160,7 +4165,7 @@ static void quest_sb_add_chunk(QStringBuilder *b, char *data, int64_t len) {
 static void quest_sb_flush(QStringBuilder *b) {
     if (b->used == 0) return;
     quest_sb_add_chunk(b, b->buffer, b->used);
-    b->buffer = (char *)quest_alloc_atomic(QUEST_SB_BUFFER_SIZE);
+    b->buffer = (char *)quest_alloc_bytes(QUEST_SB_BUFFER_SIZE);
     b->used = 0;
 }
 
@@ -4169,7 +4174,7 @@ static void quest_sb_append_bytes(QStringBuilder *b, const char *data, int64_t l
     b->length += len;
     if (len > QUEST_SB_LONG_APPEND) {
         quest_sb_flush(b);
-        char *copy = (char *)quest_alloc_atomic((size_t)len);
+        char *copy = (char *)quest_alloc_bytes((size_t)len);
         memcpy(copy, data, (size_t)len);
         quest_sb_add_chunk(b, copy, len);
         return;
@@ -4254,10 +4259,10 @@ int64_t quest_sb_length(const QStringBuilder *b) {
 }
 
 QString *quest_sb_to_string(const QStringBuilder *b) {
-    QString *s = (QString *)quest_alloc(sizeof(QString));
+    QString *s = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
     s->length = b->length;
     s->capacity = b->length;
-    s->data = (char *)quest_alloc_atomic((size_t)b->length + 1);
+    s->data = (char *)quest_alloc_bytes((size_t)b->length + 1);
     int64_t offset = 0;
     for (int64_t i = 0; i < b->chunk_count; ++i) {
         memcpy(s->data + offset, b->chunks[i]->data, (size_t)b->chunks[i]->length);
@@ -4348,7 +4353,7 @@ QString *quest_real_format(double r, QChar style, int64_t digits) {
     char spec[8];
     snprintf(spec, sizeof spec, "%%.%d%c", (int)digits, (char)style);
     int n = snprintf(NULL, 0, spec, r);
-    char *buf = (char *)quest_alloc_atomic((size_t)n + 1);
+    char *buf = (char *)quest_alloc_bytes((size_t)n + 1);
     snprintf(buf, (size_t)n + 1, spec, r);
     return quest_string_new(buf, n);
 }
@@ -4422,6 +4427,9 @@ static void quest_on_fault(int sig, siginfo_t *info, void *context) {
         addr < quest_stack_low + Q_STACK_REACH_ABOVE) {
         fflush(stdout);
         fprintf(stderr, "Exception: stack.overflow\n");
+        /* Nothing to check at exit: the handler's stack is not the one the
+         * collector would scan */
+        quest_gc_check_flags = 0;
 #ifdef Q_FRAME_POINTER_WALK
         /* The handler runs on a stack of its own, so the frames are walked
          * from the faulting function's: its pc, then its x29's chain */

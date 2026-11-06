@@ -1038,12 +1038,12 @@ class CDeclarationEmitter:
                 f"static QClosure *quest_adapt_{tag}(const QClosure *orig, const QTypeDescriptor *from, "
                 f"const QTypeDescriptor *to) {{"
             )
-            lines.append("    QFunAdapterEnv *e = (QFunAdapterEnv *)quest_alloc(sizeof(QFunAdapterEnv));")
+            lines.append("    QFunAdapterEnv *e = (QFunAdapterEnv *)quest_alloc(sizeof(QFunAdapterEnv), &quest_layout_adapter_env);")
             lines.append("    e->orig = orig;")
             lines.append("    e->from = from;")
             lines.append("    e->to = to;")
             lines.append("    e->direct = quest_fun_signature_equivalent(from, to);")
-            lines.append("    QClosure *adapted = (QClosure *)quest_alloc(sizeof(QClosure));")
+            lines.append("    QClosure *adapted = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
             lines.append(f"    adapted->fn = (void *){thunk};")
             lines.append("    adapted->env = e;")
             lines.append("    return adapted;")

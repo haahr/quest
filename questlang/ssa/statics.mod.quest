@@ -4,6 +4,7 @@ module statics : Statics
 import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/codegen/staticdata : questlang/codegen/StaticData
+    questlang/codegen/objectLayout : questlang/codegen/ObjectLayout
     questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
     collections/vector : collections/Vector
     util/maybe : util/Maybe
@@ -49,6 +50,29 @@ export
             let ws = vector.new(:ssa.Word)
             padTo(ws bytes(structName))
             ws
+        end
+
+    (* The layout's uint32_t fields are pairs in one word each: form and
+     * flags, size and length_offset, element_words and words *)
+    let layoutData(l: objectLayout.Layout text: All(s: String) String): Array(ssa.Data) =
+        begin
+            let kindsSymbol = "qlk_" <> l.tag
+            let all = vector.new(:objectLayout.Kind)
+            for i = 0 upto {extent l.words - 1} do vector.append(:objectLayout.Kind all l.words[i]) end
+            for i = 0 upto {extent l.element - 1} do vector.append(:objectLayout.Kind all l.element[i]) end
+            let packed = objectLayout.packedKinds(vector.toArray(:objectLayout.Kind all))
+            let kws = vector.new(:ssa.Word)
+            for i = 0 upto {extent packed - 1} do add(kws int(packed[i])) end
+            let s = "QLayout"
+            let ws = struct(s)
+            let high = 4294967296
+            let form = case l.form when formFixed then 0 when formArray then 1 end
+            put(ws 0 s "name" address(text(l.tag)))
+            put(ws 0 s "form" int(form))
+            put(ws 0 s "size" int(l.bytes + l.lengthOffset * high))
+            put(ws 0 s "element_words" int(extent l.element + extent l.words * high))
+            put(ws 0 s "kinds" address(kindsSymbol))
+            array of datum(kindsSymbol kws) datum(objectLayout.symbol(l) ws) end
         end
 
     let descriptorData(d: staticdata.Descriptor text: All(s: String) String): Array(ssa.Data) =

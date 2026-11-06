@@ -44,6 +44,7 @@ from quest.codegen.c.declarations import (
     module_function_arguments,
     module_function_signature,
 )
+from quest.codegen import objectlayout
 from quest.codegen.syntax import (
     c_char,
     c_int,
@@ -72,6 +73,7 @@ from quest.codegen.c.types import (
     shape_slot_to_qval,
 )
 from quest.codegen.layout import (
+    layout_of,
     qtype_to_name_str,
     resolved_shape,
     shape_location_representation,
@@ -172,6 +174,9 @@ class CPrinter:
         self.thunks: dict[tuple, Any] = {}
         self.thunk_decls: list[str] = []
         self.thunk_defs: list[str] = []
+        # The layouts of the objects the unit allocates (docs/collector.md
+        # §3.2), each defined once
+        self.layouts = objectlayout.Table()
 
     # Names
 
@@ -269,7 +274,8 @@ class CPrinter:
             return shape_qval_unwrap(f"quest_view_option_component({v}, {vm}, {b}, 0)", tuple_s)
         struct = shape_tag(tuple_s)
         tmp = self.temp(f"{struct} *")
-        self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
+        self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}), "
+                  f"{self.layout_ref(objectlayout.tuple_layout(tuple_s, struct, []))});")
         pt = case.shape if case is not None else None
         comps = [c.shape for c in pt.components] if pt is not None and pt.kind == "tuple" else [pt] if pt else []
         offset = len(tuple_s.components) - len(comps)
@@ -313,6 +319,52 @@ class CPrinter:
         (embedded_boxes)."""
         return [_FreshBox(self.atom(a), s) if i in embedded else self.atom(a)
                 for i, (a, s) in enumerate(zip(args, shapes))]
+
+    def layout_ref(self, layout: objectlayout.Layout) -> str:
+        """The address of a layout of the unit, registering it."""
+        return "&" + self.layouts.register(layout)
+
+    @staticmethod
+    def box_shapes(fields: list) -> list[Shape]:
+        """The shapes of the fields boxed in an aggregate's allocation (the
+        _FreshBoxes), in order."""
+        return [f.shape for f in fields if isinstance(f, _FreshBox)]
+
+    def env_layout_of(self, code: str, o: ir.MakeClosure) -> objectlayout.Layout:
+        """The layout of a closure's environment, struct QEnv_<code>, whose
+        fields C lays out: a Bool or Char capture is a byte, every other field
+        a word or two, aligned to a word."""
+        kinds: list[int] = []
+        offset = 0
+
+        def word_at(i: int, k: int) -> None:
+            while len(kinds) <= i:
+                kinds.append(objectlayout.SCALAR)
+            kinds[i] = k
+
+        def words(ks: list[int]) -> None:
+            nonlocal offset
+            offset = (offset + 7) // 8 * 8
+            for k in ks:
+                word_at(offset // 8, k)
+                offset += 8
+
+        for _ in o.type_args:
+            words([objectlayout.POINTER])
+        for a in o.captures:
+            t = a.type if isinstance(a, ir.Var) else a.shape.type
+            if self.is_ok(t):
+                words([objectlayout.SCALAR])
+                continue
+            rep = layout_of(shape(t)).representation
+            if rep in ("QBool", "QChar"):
+                word_at(offset // 8, objectlayout.SCALAR)
+                offset += 1
+            else:
+                words(objectlayout.representation_kinds(shape(t)))
+        if not kinds:
+            kinds.append(objectlayout.SCALAR)
+        return objectlayout.env_layout(code, kinds, 8 * len(kinds), f"sizeof(struct QEnv_{code})")
 
     def embedded_boxes(self, block: str, size: str, fields: list) -> tuple[str, list[str]]:
         """The size of an aggregate's allocation with room after it (size, at
@@ -605,7 +657,9 @@ class CPrinter:
                 return self.make_array([self.array_element(a, elem) for a in args], result.type)
             case ir.ArrayRep(count=count, init=init, offset=offset):
                 n = f"quest_check_array_count_at({self.atom(count)}, {self.site(offset)})"
-                return f"quest_array_new({n}, {self.array_element(init, shape(result.type).element)})"
+                elem = shape(result.type).element
+                return (f"quest_array_new({n}, {self.array_element(init, elem)}, "
+                        f"&{objectlayout.ARRAY_SYMBOLS[objectlayout.slot_kind(elem)]})")
             case ir.TypeApp():
                 return self.type_app(o, result)
             case ir.MakeAuto(auto_type=auto_t, payload=payload):
@@ -685,7 +739,7 @@ class CPrinter:
             case "adapt":
                 thunk = self.adapter(plan)
                 clos = self.temp("QClosure *")
-                self.emit(f"{clos} = (QClosure *)quest_alloc(sizeof(QClosure));")
+                self.emit(f"{clos} = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
                 self.emit(f"{clos}->fn = (void *){thunk};")
                 self.emit(f"{clos}->env = (void *)({c});")
                 return clos
@@ -845,12 +899,14 @@ class CPrinter:
             return called if p is None else self.convert(called, p)
         thunk, env_struct = self.type_app_thunk(orig_t, result.type, o)
         env = self.temp(f"{env_struct} *")
-        self.emit(f"{env} = ({env_struct} *)quest_alloc(sizeof({env_struct}));")
+        env_layout = objectlayout.env_layout(env_struct, [objectlayout.POINTER] * (1 + max(len(descs), 1)),
+                                             8 * (1 + max(len(descs), 1)), f"sizeof({env_struct})")
+        self.emit(f"{env} = ({env_struct} *)quest_alloc(sizeof({env_struct}), {self.layout_ref(env_layout)});")
         self.emit(f"{env}->orig = {clos};")
         for i, d in enumerate(descs):
             self.emit(f"{env}->desc[{c_int(i)}] = {d};")
         c = self.temp("QClosure *")
-        self.emit(f"{c} = (QClosure *)quest_alloc(sizeof(QClosure));")
+        self.emit(f"{c} = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
         self.emit(f"{c}->fn = (void *){thunk};")
         self.emit(f"{c}->env = (void *){env};")
         return c
@@ -900,8 +956,10 @@ class CPrinter:
         struct = shape_tag(shape(t))
         self.c_type(t)
         tmp = self.temp(f"{struct} *")
+        boxes = self.box_shapes(fields)
         size, fields = self.embedded_boxes(tmp, f"sizeof({struct})", fields)
-        self.emit(f"{tmp} = ({struct} *)quest_alloc({size});")
+        self.emit(f"{tmp} = ({struct} *)quest_alloc({size}, "
+                  f"{self.layout_ref(objectlayout.tuple_layout(shape(t), struct, boxes))});")
         for i, c in enumerate(self.fill_embedded(fields)):
             self.emit(f"{tmp}->_{c_int(i)} = {c};")
         return tmp
@@ -919,11 +977,12 @@ class CPrinter:
         box = self.temp("QRecordVal *")
         payload = self.temp(f"{struct} *")
         stored = [(i, n, a) for i, (n, a, _) in enumerate(fields) if not self.is_ok(self.atom_type(a))]
-        size, values = self.embedded_boxes(
-            payload, f"sizeof(QRecordVal) + sizeof({struct})",
-            [_FreshBox(self.atom(a), shape(self.atom_type(a))) if i in o.embedded else self.atom(a) for i, _, a in stored],
-        )
-        self.emit(f"{box} = (QRecordVal *)quest_alloc({size});")
+        fresh = [_FreshBox(self.atom(a), shape(self.atom_type(a))) if i in o.embedded else self.atom(a)
+                 for i, _, a in stored]
+        boxes = self.box_shapes(fresh)
+        size, values = self.embedded_boxes(payload, f"sizeof(QRecordVal) + sizeof({struct})", fresh)
+        self.emit(f"{box} = (QRecordVal *)quest_alloc({size}, "
+                  f"{self.layout_ref(objectlayout.record_layout(concrete, struct, boxes))});")
         self.emit(f"{payload} = ({struct} *)({box} + 1);")
         self.emit(f"{payload}->header.descriptor = {self.descriptor(o.descriptor)};")
         for (_, n, _), value in zip(stored, self.fill_embedded(values)):
@@ -984,7 +1043,8 @@ class CPrinter:
         os = self.held(t, "option")
         struct = shape_tag(os)
         tmp = self.temp(f"{struct} *")
-        self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
+        self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}), "
+                  f"{self.layout_ref(objectlayout.option_layout(os, struct, tag))});")
         if ordinal is not None:
             # The ordinal counts in the type's cases as written; the tag numbers
             # the shape's, ordered by name
@@ -1033,7 +1093,8 @@ class CPrinter:
         struct = shape_tag(ts)
         self.c_type(tuple_t)
         tmp = self.temp(f"{struct} *")
-        self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}));")
+        self.emit(f"{tmp} = ({struct} *)quest_alloc(sizeof({struct}), "
+                  f"{self.layout_ref(objectlayout.tuple_layout(ts, struct, []))});")
         case = os.case(tag)
         pt = case.shape if case is not None else None
         if offset:
@@ -1107,7 +1168,9 @@ class CPrinter:
     def make_array(self, elements: list[str], t: QType) -> str:
         n = len(elements)
         arr = self.temp(self.c_type(t))
-        self.emit(f"{arr} = (QArray *)quest_alloc(sizeof(QArray) + (size_t)({c_int_literal(n)}) * sizeof(QVal));")
+        elem_layout = objectlayout.ARRAY_SYMBOLS[objectlayout.slot_kind(shape(t).element)]
+        self.emit(f"{arr} = (QArray *)quest_alloc(sizeof(QArray) + (size_t)({c_int_literal(n)}) * sizeof(QVal), "
+                  f"&{elem_layout});")
         self.emit(f"{arr}->length = {c_int_literal(n)};")
         for i, c in enumerate(elements):
             self.emit(f"{arr}->data[{c_int_literal(i)}] = {c};")
@@ -1256,7 +1319,8 @@ class CPrinter:
         if not o.captures and not o.type_args:
             return f"(&{code}_closure)"
         env = self.temp(f"struct QEnv_{code} *")
-        self.emit(f"{env} = (struct QEnv_{code} *)quest_alloc(sizeof(struct QEnv_{code}));")
+        self.emit(f"{env} = (struct QEnv_{code} *)quest_alloc(sizeof(struct QEnv_{code}), "
+                  f"{self.layout_ref(self.env_layout_of(code, o))});")
         for i, d in enumerate(o.descriptors):
             self.emit(f"{env}->d{c_int(i)} = {self.descriptor(d)};")
         for i, a in enumerate(o.captures):
@@ -1267,7 +1331,7 @@ class CPrinter:
                 continue
             self.emit(f"{env}->c{c_int(i)} = {self.atom(a)};")
         clos = self.temp("QClosure *")
-        self.emit(f"{clos} = (QClosure *)quest_alloc(sizeof(QClosure));")
+        self.emit(f"{clos} = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
         self.emit(f"{clos}->fn = (void *){code};")
         self.emit(f"{clos}->env = (void *){env};")
         return clos
@@ -1547,7 +1611,8 @@ class CPrinter:
         others copied), by the descriptors the describe pass gave the arm."""
         arm_struct = tuple_struct_name(arm_t)
         arm = self.temp(f"{arm_struct} *")
-        self.emit(f"{arm} = ({arm_struct} *)quest_alloc(sizeof({arm_struct}));")
+        self.emit(f"{arm} = ({arm_struct} *)quest_alloc(sizeof({arm_struct}), "
+                  f"{self.layout_ref(objectlayout.tuple_layout(shape(arm_t), arm_struct, []))});")
         for i, (pair, stored_f, arm_f) in enumerate(zip(arm_plan.descriptors, stored_t.value_fields,
                                                         arm_t.value_fields)):
             src = f"{stored}->_{c_int(i)}"
@@ -1845,6 +1910,9 @@ class CPrinter:
                 out.append(f"void qv_mod_{clean}_init(void);")
         out.append("")
         out.extend(self.thunk_decls)
+        # The layouts of the objects the unit allocates, after the thunks'
+        # environment structs they size
+        out.extend(objectlayout.c_definitions(self.layouts))
         out.append("")
         # The unit's functions with frames in tracebacks (docs/exceptions.md
         # §5.2)

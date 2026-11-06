@@ -303,7 +303,7 @@ pass is local and conservative, one function at a time with no summaries of othe
 repeating it. `benchmarks/mlton/allocations.py` counts a program's allocations by function, to see what it removes
 and what still escapes ([benchmarks.md](benchmarks.md) §9).
 
-**What escapes.** A candidate is a call of `quest_alloc` with a constant size (`vals.alloc`); `quest_array_new`,
+**What escapes.** A candidate is a call of `quest_alloc` with a constant size and a layout's address (`vals.alloc`); `quest_array_new`,
 exceptions, and the runtime's other allocators are not. Its result is one of *its pointers*, and so is:
 
 - a `ptrAdd` of one of them by a constant;
@@ -349,12 +349,14 @@ functions and its **data**: each datum a symbol, whether other units refer to it
 its contents, 8-byte aligned: zeros (a global, a module's record and its initialized flag), a C string's text and its
 NUL (a literal, a name in a descriptor or the function table), or words, each an integer or a symbol's address plus a
 byte offset (a descriptor and what its extra field points at, an offset table, a tag map, a static closure, the function
-table). Words lay out the runtime's structs on a little-endian target, a narrow field in the low bytes of its word.
+table, and the layouts of the objects the unit allocates: a `quest_layout_<tag>` and its kinds `qlk_<tag>`, packed
+eight to a word, laid out by `ssa/statics` from `codegen/objectLayout`, docs/collector.md §3.2). Words lay out the runtime's structs on a little-endian target, a narrow field in the low bytes of its word.
 
 The builder makes, besides the IR's functions and the module initializers and `main`:
 
 - the data of `ir.StaticData`'s descriptors (`ssa/statics`, from `codegen/staticdata`'s descriptions), offset
-  tables, and tag maps, as the C printer's declarations define them;
+  tables, and tag maps, as the C printer's declarations define them, and of the layouts the unit's allocations
+  registered (`objectLayout.Table` in the unit builder), added once every function is built;
 - each function type's adapter, thunk, and invoker (`quest_adapt_<tag>`, `quest_thunk_<tag>`, `quest_invoke_<tag>`),
   as `codegen/c/declarations` writes them in C;
 - a module file's exported functions (`qv_<module>_<member>`), at its interface's C signatures;

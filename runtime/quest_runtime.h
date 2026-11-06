@@ -454,17 +454,154 @@ static_assert(offsetof(QExceptionState, payload) == 8, qexception_state_payload_
 #define Q_TRUE_VAL  ((QVal){ .i = 1 })
 #define Q_FALSE_VAL ((QVal){ .i = 0 })
 
-/* Memory allocation abstraction */
+/* Object layouts (docs/collector.md section 3.2). Every allocation is
+ * preceded by a header word naming the layout of its words: for each word,
+ * whether it is a pointer, a scalar, or ambiguous (a QVal of generic code,
+ * whose kind the allocation site did not know), so that a precise collector
+ * can scan it, and so that QUEST_GC_CHECK=layouts (runtime/quest_gc.c) can
+ * check what the compilers and the runtime say against what the objects hold.
+ * A layout has one of three forms. A fixed layout describes an object of a
+ * known size, word by word. An array layout describes a header of known size
+ * followed by elements, their count an int64_t at length_offset in the header,
+ * each element element_words words of the kinds after the header's. A sized
+ * layout describes an allocation of a size known only at the call: the
+ * allocation records its byte count in the word before the header (shifted
+ * left one bit, with the low bit set, which tells the two prefixes apart), and
+ * the layout describes a pattern of element_words words that repeats over it.
+ * A noscan layout's words are all scalars, so the collector does not scan it. */
+#define Q_WORD_SCALAR    0
+#define Q_WORD_POINTER   1
+#define Q_WORD_AMBIGUOUS 2
+
+#define Q_LAYOUT_FIXED 0
+#define Q_LAYOUT_ARRAY 1
+#define Q_LAYOUT_SIZED 2
+
+#define Q_LAYOUT_NOSCAN 1u
+
+typedef struct QLayout {
+    const char    *name;
+    uint32_t       form;
+    uint32_t       flags;
+    uint32_t       size;          /* fixed: the object's bytes; array: the bytes before its elements; sized: 0 */
+    uint32_t       length_offset; /* array: the offset of the int64_t count of elements */
+    uint32_t       element_words; /* array, sized: the words of each element */
+    uint32_t       words;         /* the fixed words kinds describes: the object's (fixed) or the header's (array) */
+    const uint8_t *kinds;         /* the kind of each fixed word, then of each word of an element */
+} QLayout;
+
+/* The header word before an object: the layout's address in its low 48 bits,
+ * with the top sixteen reserved for the collector's and the mutator's flags
+ * (docs/collector.md section 3.2) */
+#define Q_HEADER_LAYOUT_MASK ((uintptr_t)0x0000FFFFFFFFFFFFu)
+
+Q_INLINE const QLayout *quest_layout_of(const void *obj) {
+    return (const QLayout *)(((const uintptr_t *)obj)[-1] & Q_HEADER_LAYOUT_MASK);
+}
+
+/* The byte count a sized allocation records before its header */
+Q_INLINE size_t quest_sized_bytes(const void *obj) {
+    return (size_t)(((const uintptr_t *)obj)[-2] >> 1);
+}
+
+/* Defines a layout and its kinds (a runtime file's own, with linkage
+ * `static`, or one the header declares, with none): fixed, of bytes described
+ * word by word; an array, of a header of header_bytes followed by elements of
+ * element_words words each, counted by the int64_t at length_offset, the
+ * header's kinds then the element's; sized, of a repeating element; and
+ * noscan, of pointer-free bytes */
+#define Q_LAYOUT_DEF(linkage, cname, text, form, flags, size, length_offset, element_words, ...) \
+    static const uint8_t cname##_kinds[] = { __VA_ARGS__ }; \
+    linkage const QLayout cname = { text, form, flags, size, length_offset, element_words, \
+                                    (form) == Q_LAYOUT_SIZED ? 0 : sizeof cname##_kinds - (element_words), \
+                                    cname##_kinds }
+#define Q_LAYOUT_FIXED_DEF(linkage, cname, text, bytes, ...) \
+    Q_LAYOUT_DEF(linkage, cname, text, Q_LAYOUT_FIXED, 0, bytes, 0, 0, __VA_ARGS__)
+#define Q_LAYOUT_ARRAY_DEF(linkage, cname, text, header_bytes, length_offset, element_words, ...) \
+    Q_LAYOUT_DEF(linkage, cname, text, Q_LAYOUT_ARRAY, 0, header_bytes, length_offset, element_words, __VA_ARGS__)
+#define Q_LAYOUT_SIZED_DEF(linkage, cname, text, ...) \
+    Q_LAYOUT_DEF(linkage, cname, text, Q_LAYOUT_SIZED, 0, 0, 0, sizeof cname##_kinds, __VA_ARGS__)
+#define Q_LAYOUT_NOSCAN_DEF(linkage, cname, text, bytes) \
+    linkage const QLayout cname = { text, Q_LAYOUT_FIXED, Q_LAYOUT_NOSCAN, bytes, 0, 0, 0, NULL }
+
+/* The runtime's own layouts (quest_gc.c), the ones generated code and the
+ * header's inline helpers allocate with */
+extern const QLayout quest_layout_record_box;      /* a QRecordVal: its payload and dictionary */
+extern const QLayout quest_layout_variant_box;     /* a QVariantVal: its tag and payload */
+extern const QLayout quest_layout_closure;         /* a QClosure */
+extern const QLayout quest_layout_adapter_env;     /* a QFunAdapterEnv */
+extern const QLayout quest_layout_array_pointer;   /* a QArray whose elements are pointers */
+extern const QLayout quest_layout_array_scalar;    /* a QArray whose elements are scalars */
+extern const QLayout quest_layout_array_ambiguous; /* a QArray whose elements are QVals of unknown kind */
+extern const QLayout quest_layout_bytes;           /* a sized allocation of pointer-free bytes */
+extern const QLayout quest_layout_words;           /* a sized allocation of words of unknown kind */
+extern const QLayout quest_layout_ints;            /* a sized allocation of pointer-free words, zeroed */
+extern const QLayout quest_layout_pointers;        /* a sized allocation of pointers */
+/* The runtime's own (quest_gc.c), named by what they lay out */
+extern const QLayout quest_layout_string, quest_layout_exception, quest_layout_auto, quest_layout_component,
+    quest_layout_proxy, quest_layout_proxy_cache, quest_layout_raised, quest_layout_writer, quest_layout_reader,
+    quest_layout_process, quest_layout_string_builder, quest_layout_code_region, quest_layout_run_result,
+    quest_layout_file_stats, quest_layout_descriptor, quest_layout_array_descriptor,
+    quest_layout_exception_descriptor, quest_layout_opaque_descriptor, quest_layout_stored_descriptor,
+    quest_layout_record_descriptor, quest_layout_tuple_descriptor, quest_layout_variant_descriptor,
+    quest_layout_fun_descriptor, quest_layout_auto_descriptor, quest_layout_descriptor_entry,
+    quest_layout_record_dict_entries, quest_layout_inst_nodes, quest_layout_inst_cache_entry,
+    quest_layout_view_map_entry, quest_layout_variant_adapter_entry, quest_layout_abstract_type_entry;
+
+/* The checking modes of QUEST_GC_CHECK (docs/collector.md section 7), as bits
+ * of quest_gc_check_flags, and the allocation hook of those that count
+ * allocations */
+#define QUEST_GC_CHECK_LAYOUTS 1
+#define QUEST_GC_CHECK_REPORT  2
+extern int    quest_gc_check_flags;
+extern size_t quest_gc_check_pending;  /* bytes allocated since the last check */
+/* Counts an allocation of sz bytes after a header of header bytes, and checks
+ * the heap when enough has been allocated since the last check */
+void          quest_gc_check_tick(size_t sz, size_t header);
+/* Reads QUEST_GC_CHECK and starts the collector */
+void          quest_gc_init(void);
+
+/* Memory allocation: an object of sz bytes laid out as layout says, zeroed,
+ * after its header (quest_alloc); the same with its byte count recorded, for
+ * a sized layout (quest_alloc_sized); and sz pointer-free bytes, which the
+ * collector never scans (quest_alloc_bytes) */
 #ifdef QUEST_NOGC
-Q_INLINE void *quest_alloc(size_t sz)        { return calloc(1, sz); }
-Q_INLINE void *quest_alloc_atomic(size_t sz) { return malloc(sz); }
-Q_INLINE void  quest_gc_init(void)           { /* no-op */ }
+#  define Q_GC_MALLOC(sz)        calloc(1, sz)
+#  define Q_GC_MALLOC_ATOMIC(sz) malloc(sz)
 #else
 #  include <gc.h>
-Q_INLINE void *quest_alloc(size_t sz)        { return GC_MALLOC(sz); }
-Q_INLINE void *quest_alloc_atomic(size_t sz) { return GC_MALLOC_ATOMIC(sz); }
-Q_INLINE void  quest_gc_init(void)           { GC_INIT(); }
+#  define Q_GC_MALLOC(sz)        GC_MALLOC(sz)
+#  define Q_GC_MALLOC_ATOMIC(sz) GC_MALLOC_ATOMIC(sz)
 #endif
+
+Q_INLINE void *quest_alloc(size_t sz, const QLayout *layout) {
+    uintptr_t *base = (uintptr_t *)Q_GC_MALLOC(sz + sizeof(uintptr_t));
+    base[0] = (uintptr_t)layout;
+    if (quest_gc_check_flags != 0) quest_gc_check_tick(sz, sizeof(uintptr_t));
+    return base + 1;
+}
+
+Q_INLINE void *quest_alloc_sized(size_t sz, const QLayout *layout) {
+    uintptr_t *base = (uintptr_t *)Q_GC_MALLOC(sz + 2 * sizeof(uintptr_t));
+    base[0] = ((uintptr_t)sz << 1) | 1u;
+    base[1] = (uintptr_t)layout;
+    if (quest_gc_check_flags != 0) quest_gc_check_tick(sz, 2 * sizeof(uintptr_t));
+    return base + 2;
+}
+
+Q_INLINE void *quest_alloc_bytes(size_t sz) {
+    uintptr_t *base = (uintptr_t *)Q_GC_MALLOC_ATOMIC(sz + 2 * sizeof(uintptr_t));
+    base[0] = ((uintptr_t)sz << 1) | 1u;
+    base[1] = (uintptr_t)&quest_layout_bytes;
+    if (quest_gc_check_flags != 0) quest_gc_check_tick(sz, 2 * sizeof(uintptr_t));
+    return base + 2;
+}
+
+/* A sized allocation of n words of unknown kind, for the runtime's own
+ * structures that hold values of any type */
+Q_INLINE void *quest_alloc_words(size_t n) {
+    return quest_alloc_sized(n * sizeof(uintptr_t), &quest_layout_words);
+}
 
 /* Runtime helper prototypes */
 QString *quest_string_new(const char *src, int64_t len);
@@ -486,7 +623,7 @@ bool     quest_string_precedes(const QString *s1, const QString *s2);
 bool     quest_string_precedes_sub(const QString *s1, int64_t st1, int64_t sz1,
                                    const QString *s2, int64_t st2, int64_t sz2);
 
-QArray  *quest_array_new(int64_t len, QVal init_val);
+QArray  *quest_array_new(int64_t len, QVal init_val, const QLayout *layout);
 int64_t  quest_array_size(const QArray *a);
 double   quest_real_pow(double base, double exp);
 const QException *quest_alloc_exception(const char *name);
@@ -939,13 +1076,13 @@ void                   quest_layout_conversion_error(const QTypeDescriptor *from
 QVal                   quest_record_field_value(QRecordVal rec, const QTypeDescriptor *view, size_t i);
 
 Q_INLINE QRecordVal *quest_record_box(QRecordVal rec) {
-    QRecordVal *box = (QRecordVal *)quest_alloc(sizeof(QRecordVal));
+    QRecordVal *box = (QRecordVal *)quest_alloc(sizeof(QRecordVal), &quest_layout_record_box);
     *box = rec;
     return box;
 }
 
 Q_INLINE QVariantVal *quest_variant_box(QVariantVal var) {
-    QVariantVal *box = (QVariantVal *)quest_alloc(sizeof(QVariantVal));
+    QVariantVal *box = (QVariantVal *)quest_alloc(sizeof(QVariantVal), &quest_layout_variant_box);
     *box = var;
     return box;
 }

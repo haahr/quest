@@ -8,7 +8,7 @@ samples in half the programs), and it keeps dead data alive through stale stack 
 §3.2). This document designs a collector of Quest's own: precise where the compilers can make it so, generational,
 bump-allocating, able to move but not obliged to, and asks what must change to get there.
 
-**Status: decided, reviewed twice, not started** (decided 2026-11-02; reviewed and reorganized 2026-11-03). Section 6
+**Status: step 1 done, 2026-11-03** (decided 2026-11-02; reviewed and reorganized 2026-11-03). Section 6
 records the decisions, section 7 the risks and the checking modes that catch them, section 8 the steps, and section
 9 what the reviews changed. The committed collector is steps 1 to 6 of §8; evacuation and generic layouts (steps 7
 and 8) are designed and taken only on measurement.
@@ -576,7 +576,7 @@ touches layouts, barriers, roots, or the collector (testing.md §4.1 lists which
 
 | Mode | What it does | Catches |
 |---|---|---|
-| `layouts` | After every collection, walks every live allocation (start bits intersected with marks) by its layout: each precise pointer word is null, outside the heap (static data, code), or points at or into a live allocation; each ambiguous word is counted; sizes agree with the lines marked. On Boehm (step 1) the check is against `GC_base`; afterwards against the object-start bitmap | A layout that lies about a word, a size, or a length field |
+| `layouts` | After every collection, walks every live allocation (start bits intersected with marks) by its layout: each precise pointer word is null, outside the heap (static data, code), or points at or into a live allocation; each ambiguous word is counted; sizes agree with the lines marked. On Boehm (step 1) the check is against `GC_base` after a forced collection, every 64 MB allocated (`QUEST_GC_CHECK_INTERVAL`; at least four times the heap's size, so that the walks stay a fraction of the run) and at exit, and a pointer word to nothing allocated is counted (`dangling`) rather than fatal, since Boehm resurrects a dead object that a stale stack word points at with the words it died with; `report` prints the counts per layout | A layout that lies about a word, a size, or a length field |
 | `barriers` | At every minor collection, before the log is used, scans the whole old generation by layouts for pointers into the nursery, and reports any in an object that is not logged | A mutating store without a barrier, in generated code or in the runtime's C, an interior store among them |
 | `roots` | At every collection, scans the data segments and thread-locals conservatively and reports a heap pointer that no root table or listed root covers | A global pointer slot missing from a unit's root table or `quest_gc_roots` |
 | `poison` | Every reclaimed line and freed large object is filled with a pattern that is never a valid pointer | A use after reclamation, a dead object resurrected |
@@ -622,6 +622,45 @@ taken on what 4 and 7 measure; 9 is optional.
    the header before the object and returns past it; the runtime's allocations name theirs; `QUEST_GC_CHECK=layouts`
    against `GC_base`. *Done when:* every suite passes with `layouts` on through every backend and both compilers, and
    the heap growth from headers is recorded here, translated from Boehm's rounding to the design's (§3.2).
+   *Done 2026-11-03.* The layouts are computed from shapes by `codegen/objectLayout` (the bootstrap's
+   `quest/codegen/objectlayout.py`), registered per unit by both C printers and the SSA's builder, and laid out as
+   static data (`quest_layout_<tag>`, its kinds `qlk_<tag>`); the runtime's own are in `runtime/quest_gc.c`, with
+   the `layouts` and `report` modes. Three forms of layout were needed, not two: a *sized* one for the allocations
+   whose size is known only at the call and recorded nowhere else (string buffers, the runtime's tables), which
+   record their byte count in the word before the header. The runtime's generic copies of values (`quest_convert`'s,
+   serialization's) and its tables of mixed words take a layout of ambiguous words for now. What the headers cost,
+   measured by the runtime's counters (`QUEST_GC_CHECK=report`) over the allocation-heavy MLton benchmarks at scale
+   0.25, with the design's growth as 8 bytes per object (16 per sized one) and Boehm's as its 16-byte granules
+   with the header against without:
+
+   | Benchmark | Objects (M) | Bytes without headers (GB) | Average object (bytes) | Design | Boehm |
+   |---|--:|--:|--:|--:|--:|
+   | tailmerge | 4,916 | 98.3 | 20.0 | +40% | +33% |
+   | ratio-regions | 811 | 26.2 | 32.3 | +25% | +30% |
+   | logic | 2,213 | 43.3 | 19.6 | +41% | +33% |
+   | zebra | 1,376 | 24.4 | 17.7 | +45% | +63% |
+   | hamlet | 806 | 24.8 | 30.8 | +26% | +31% |
+   | barnes-hut | 1,253 | 25.9 | 20.7 | +39% | +26% |
+   | knuth-bendix | 3,645 | 54.8 | 15.0 | +64% | +43% |
+   | boyer | 1,687 | 32.4 | 19.2 | +44% | +37% |
+   | imp-for | 1,138 | 9.1 | 8.0 | +100% | +0% |
+   | count-graphs | 1,249 | 26.2 | 21.0 | +38% | +53% |
+   | wc-scanStream | 16,396 | 336.1 | 20.5 | +39% | +33% |
+   | all eleven | 35,489 | 701.5 | 19.8 | +41% | +34% |
+   | the compiler, on `ir/lower.mod.quest` | 127 | 5.9 | 46.7 | +20% | +13% |
+
+   The benchmarks' objects are small (a cons cell is 16 bytes, two words), so the header is a third to half again
+   on them, where §3.2's estimate said "half again on the commonest object"; the compiler's are larger, and its
+   growth a fifth. Under Boehm the growth is what the granules make of it, between nothing (imp-for's 8-byte
+   objects were already rounded to 16) and 63 percent (zebra's 24-byte objects become 32 after rounding to 48).
+   Two things learned for the later steps: Boehm enumerates its own internal objects as reachable, without
+   headers, which the check skips and counts as foreign; and a stale stack word resurrects a dead object with the
+   words it died with, so a pointer to a freed object is not proof of a lying layout on Boehm (one in fifty
+   million words on the compiler's own build), which is why decision 14 matters to the collector of step 3. One
+   failure remains unexplained: the backends' suite once reported an array (`QArray(QVal)`, at the start of a
+   block) whose element count its allocation could not hold, in the arm64 build of `language/option_identity`,
+   which neither the runner's rerun nor sixty runs of the binary under the check at varied intervals repeated;
+   the check now prints the object's first words, for the next time.
 2. **Barriers and root tables, logging only.** The IR marks mutating stores of `ptr` and `val` words, and the interior
    forms among them (§3.5), and its verifier enforces the forms; the runtime's pointer stores into existing objects
    are audited and marked; both backends emit the barrier calls (to a runtime stub that counts, by form) and the

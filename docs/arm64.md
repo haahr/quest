@@ -110,7 +110,7 @@ after it has goldens, since machine code changes with almost any backend change.
   - the unit's static data (descriptors and their payloads, offset tables): `codegen/staticdata`, asserted after
     each;
   - the runtime's own structs that generated code touches (`QClosure`, `QArray`, `QString`, `QExceptionState`,
-    `QViewMap`, every descriptor struct, ...) and its constants (`QTypeKind`'s, `Q_CATCH_ALL`, ...):
+    `QViewMap`, `QLayout`, every descriptor struct, ...) and its constants (`QTypeKind`'s, `Q_CATCH_ALL`, ...):
     `codegen/runtimeLayout`, a table that the questlang test `codegen_runtime_layout` prints as C assertions and
     `tests/python/test_runtime_layout.py` compiles against `quest_runtime.h`.
 
@@ -821,7 +821,7 @@ alignment beyond 8.
 | The function table `qr_funcs` | `funcTableEntries` | data |
 | Exported functions `qv_<mod>_<member>` (without an environment), the module record, and the initializer: what the interface header declares and C importers use | `exportedFunctions`, `headers` | build, abi; names from `symbols` |
 | Globals: a unit's top-level variables as `static` C globals; module records as `QRecordVal` globals | `globalDeclarations` | data |
-| Allocation: `quest_alloc` is `GC_MALLOC` (zeroed), or `calloc` with `--nogc`; `quest_alloc_atomic` is not zeroed with `--nogc` | `quest_runtime.h` (inline) | runtime, out of line, so that the mode is the runtime's |
+| Allocation: `quest_alloc(size, layout)` is `GC_MALLOC` (zeroed) of a header word naming the layout and the object, or `calloc` with `--nogc`; `quest_alloc_bytes` is not zeroed with `--nogc` | `quest_runtime.h` (inline) | runtime, out of line, so that the mode is the runtime's |
 
 ### 7.4. What clang Does
 

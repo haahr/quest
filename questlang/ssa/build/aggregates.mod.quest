@@ -9,6 +9,7 @@ import
     questlang/codegen/layout : questlang/codegen/Layout
     questlang/codegen/symbols : questlang/codegen/Symbols
     questlang/codegen/staticdata : questlang/codegen/StaticData
+    questlang/codegen/objectLayout : questlang/codegen/ObjectLayout
     questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
     collections/vector : collections/Vector
     util/maybe : util/Maybe
@@ -69,7 +70,7 @@ export
                     if maybe.isNone(:ir.Function plan.thunk) then
                         raise vals.unsupported with "an adapt plan without its adapter" end
                     end
-                    let clos = vals.alloc(fn 16)
+                    let clos = vals.alloc(fn 16 objectLayout.closureSymbol)
                     let code = vals.symbolAt(fn vals.codeName(fn.u maybe.unwrap(:ir.Function plan.thunk)))
                     vals.store(fn clos runtimeLayout.offset("QClosure" "fn") 8 code)
                     vals.store(fn clos runtimeLayout.offset("QClosure" "env") 8 vs[0])
@@ -80,7 +81,8 @@ export
                     let targetS = shapes.shape(plan.target)
                     let n = if extent targetS.components < extent plan.fields then extent targetS.components
                         else extent plan.fields end
-                    let tup = vals.alloc(fn 8 * {if n is 0 then 1 else n end})
+                    let tup = vals.alloc(fn 8 * {if n is 0 then 1 else n end}
+                        objectLayout.register(fn.u.layouts objectLayout.tuplePrefixLayout(targetS n)))
                     for i = 0 upto {n - 1} do
                         let tc = vals.componentShape(targetS i)
                         let sc = vals.componentShape(sourceS i)
@@ -140,27 +142,35 @@ export
             end
         end
 
-    let embeddedCount(args: Array(Atom) embedded: Array(Int)): Int =
+    (* The shapes of the args the represent pass embedded, in order: the
+     * boxes after the aggregate's struct *)
+    let embeddedShapes(args: Array(Atom) types: Array(Type) embedded: Array(Int)): Array(shapes.Shape) =
         begin
-            let var n = 0
+            let res = vector.new(:shapes.Shape)
             for i = 0 upto {extent args - 1} do
-                for j = 0 upto {extent embedded - 1} do if embedded[j] is i then n := n + 1 end end
+                for j = 0 upto {extent embedded - 1} do
+                    if embedded[j] is i then vector.append(:shapes.Shape res shapes.shape(types[i])) end
+                end
             end
-            n
+            vector.toArray(:shapes.Shape res)
         end
+
+    let noBoxes = array of :shapes.Shape end
 
     let makeTuple(fn: vals.Fn x: ir.OpMakeTuple t: Type): Array(Int) =
         begin
             let rs = shapes.shape(t)
             let n = extent rs.components
             let structBytes = 8 * {if n is 0 then 1 else n end}
-            let tup = vals.alloc(fn structBytes + 16 * embeddedCount(x.args x.embedded))
             let offsets = array of(extent x.args 0)
             let types = array of(extent x.args model.okType)
             for i = 0 upto {extent x.args - 1} do
                 offsets[i] := 8 * i
                 types[i] := if i < n then vals.componentShape(rs i).type else ir.atomType(x.args[i]) end
             end
+            let boxes = embeddedShapes(x.args types x.embedded)
+            let tup = vals.alloc(fn structBytes + 16 * extent boxes
+                objectLayout.register(fn.u.layouts objectLayout.tupleLayout(rs "" boxes)))
             storeFields(fn tup offsets x.args types x.embedded structBytes)
             array of tup end
         end
@@ -258,7 +268,9 @@ export
             let types = vector.toArray(:Type typeList)
             let offsets = vector.toArray(:Int offsetList)
             let embeddedArray = vector.toArray(:Int embedded)
-            let box = vals.alloc(fn 16 + structBytes + 16 * extent embeddedArray)
+            let boxes = embeddedShapes(args types embeddedArray)
+            let box = vals.alloc(fn 16 + structBytes + 16 * extent boxes
+                objectLayout.register(fn.u.layouts objectLayout.recordLayout(concrete "" boxes)))
             let payload = vals.offsetPtr(fn box 16)
             vals.store(fn payload runtimeLayout.offset("QRecordHeader" "descriptor") 8 descriptors.maybeDescriptor(fn o.descriptor))
             storeFields(fn payload offsets args types embeddedArray structBytes)
@@ -328,7 +340,8 @@ export
 
     let makeAllocatedOption(fn: vals.Fn o: ir.OpMakeOption t: Type os: shapes.Shape): Array(Int) =
         begin
-            let opt = vals.alloc(fn layout.optionBytes(os.structure))
+            let opt = vals.alloc(fn layout.optionBytes(os.structure)
+                objectLayout.register(fn.u.layouts objectLayout.optionLayout(os "" o.tag)))
             let var tag = o.tag
             if maybe.isSome(:Atom o.ordinalAtom) then
                 (* The ordinal counts in the type's cases as written; the tag
@@ -416,7 +429,8 @@ export
         begin
             let ts = shapes.shape(tupleType)
             let n = extent ts.components
-            let tup = vals.alloc(fn 8 * {if n is 0 then 1 else n end})
+            let tup = vals.alloc(fn 8 * {if n is 0 then 1 else n end}
+                objectLayout.register(fn.u.layouts objectLayout.tupleLayout(ts "" noBoxes)))
             let pt = caseShape(os tag)
             if offset > 0 then vals.store(fn tup 0 8 vals.constant(fn ordinalValue)) end
             if maybe.isSome(:shapes.Shape pt) andif shapes.kindIs(maybe.unwrap(:shapes.Shape pt) shapes.shapeTuple) then
@@ -480,7 +494,8 @@ export
                             array of vs[0] vm vals.constant(fn b) vals.constant(fn 0) end) t)
                     else
                         let n = extent tupleS.components
-                        let tup = vals.alloc(fn 8 * {if n is 0 then 1 else n end})
+                        let tup = vals.alloc(fn 8 * {if n is 0 then 1 else n end}
+                            objectLayout.register(fn.u.layouts objectLayout.tupleLayout(tupleS "" noBoxes)))
                         let var count = 0
                         if maybe.isSome(:shapes.Shape cs) then
                             let pt = maybe.unwrap(:shapes.Shape cs)
@@ -555,7 +570,8 @@ export
         begin
             let elem = shapes.element(shapes.shape(t))
             let n = extent args
-            let arr = vals.alloc(fn runtimeLayout.offset("QArray" "data") + 8 * n)
+            let arr = vals.alloc(fn runtimeLayout.offset("QArray" "data") + 8 * n
+                objectLayout.arraySymbol(objectLayout.slotKind(elem)))
             vals.store(fn arr runtimeLayout.offset("QArray" "length") 8 vals.constant(fn n))
             for i = 0 upto {n - 1} do
                 vals.store(fn arr runtimeLayout.offset("QArray" "data") + 8 * i 8 vals.slotToWord(fn vals.atom(fn args[i]) elem.type))

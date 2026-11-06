@@ -46,6 +46,23 @@ typedef struct QPtrTable {
     QPtrNode *buckets[Q_PTR_TABLE_SIZE];
 } QPtrTable;
 
+/* The layouts of serialization's own structures (docs/collector.md section
+ * 3.2): a QPtrNode, a QTypeNode, a QJsonValue (whose union's first word is a
+ * pointer or a scalar as the kind says), its key-value pairs, a QTypeTable,
+ * and a QIdEntry */
+#define QS Q_WORD_SCALAR
+#define QP Q_WORD_POINTER
+#define QA Q_WORD_AMBIGUOUS
+Q_LAYOUT_FIXED_DEF(static, quest_layout_ptr_node, "QPtrNode", 24, QP, QS, QP);
+Q_LAYOUT_SIZED_DEF(static, quest_layout_type_nodes, "QTypeNode", QS, QS, QP, QP, QS, QP);
+Q_LAYOUT_FIXED_DEF(static, quest_layout_json_value, "QJsonValue", 32, QS, QP, QA, QS);
+Q_LAYOUT_SIZED_DEF(static, quest_layout_json_pairs, "QJsonKeyValue", QP, QP);
+Q_LAYOUT_FIXED_DEF(static, quest_layout_type_table, "QTypeTable", 24, QS, QP, QP);
+Q_LAYOUT_FIXED_DEF(static, quest_layout_id_entry, "QIdEntry", 32, QS, QP, QP, QP);
+#undef QS
+#undef QP
+#undef QA
+
 static uint64_t quest_ptr_hash(const void *ptr) {
     uintptr_t val = (uintptr_t)ptr;
     return (uint64_t)((val >> 3) ^ (val >> 16)) % Q_PTR_TABLE_SIZE;
@@ -69,7 +86,7 @@ static QPtrNode *quest_ptr_insert_or_inc(QPtrTable *table, const void *ptr) {
             return cur;
         }
     }
-    QPtrNode *node = (QPtrNode *)quest_alloc(sizeof(QPtrNode));
+    QPtrNode *node = (QPtrNode *)quest_alloc(sizeof(QPtrNode), &quest_layout_ptr_node);
     node->ptr = ptr;
     node->count = 1;
     node->id = 0;
@@ -313,7 +330,7 @@ static const char *quest_var_label(const char *name, bool is_var) {
     if (!is_var) return name;
     if (name[0] == '\0') return "var";
     size_t len = strlen(name);
-    char *label = (char *)quest_alloc_atomic(len + 5);
+    char *label = (char *)quest_alloc_bytes(len + 5);
     memcpy(label, "var ", 4);
     memcpy(label + 4, name, len + 1);
     return label;
@@ -324,7 +341,7 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d);
 static int quest_tg_new_node(QTypeGraph *g, const QTypeDescriptor *d) {
     if (g->count == g->cap) {
         size_t cap = g->cap ? g->cap * 2 : 16;
-        QTypeNode *nodes = (QTypeNode *)quest_alloc(sizeof(QTypeNode) * cap);
+        QTypeNode *nodes = (QTypeNode *)quest_alloc_sized(sizeof(QTypeNode) * cap, &quest_layout_type_nodes);
         if (g->count) memcpy(nodes, g->nodes, sizeof(QTypeNode) * g->count);
         g->nodes = nodes;
         g->cap = cap;
@@ -383,7 +400,7 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
             const QRecordTypeDescriptor *meta = (const QRecordTypeDescriptor *)d->extra;
             size_t n = meta ? meta->field_count : 0;
             /* Fields by name (insertion sort of their indexes) */
-            size_t *by_name = (size_t *)quest_alloc(sizeof(size_t) * (n ? n : 1));
+            size_t *by_name = (size_t *)quest_alloc_sized(sizeof(size_t) * (n ? n : 1), &quest_layout_ints);
             for (size_t i = 0; i < n; ++i) {
                 size_t j = i;
                 while (j > 0 && strcmp(meta->fields[by_name[j - 1]].name, meta->fields[i].name) > 0) {
@@ -392,8 +409,8 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
                 }
                 by_name[j] = i;
             }
-            labels = (const char **)quest_alloc(sizeof(char *) * (n ? n : 1));
-            children = (int *)quest_alloc(sizeof(int) * (n ? n : 1));
+            labels = (const char **)quest_alloc_sized(sizeof(char *) * (n ? n : 1), &quest_layout_pointers);
+            children = (int *)quest_alloc_sized(sizeof(int) * (n ? n : 1), &quest_layout_ints);
             for (size_t i = 0; i < n; ++i) {
                 const QRecordFieldDescriptor *f = &meta->fields[by_name[i]];
                 labels[i] = quest_var_label(f->name, f->is_var);
@@ -406,8 +423,8 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
         case QTYPE_KIND_TUPLE: {
             const QTupleTypeDescriptor *meta = (const QTupleTypeDescriptor *)d->extra;
             size_t n = meta ? meta->element_count : 0;
-            labels = (const char **)quest_alloc(sizeof(char *) * (n ? n : 1));
-            children = (int *)quest_alloc(sizeof(int) * (n ? n : 1));
+            labels = (const char **)quest_alloc_sized(sizeof(char *) * (n ? n : 1), &quest_layout_pointers);
+            children = (int *)quest_alloc_sized(sizeof(int) * (n ? n : 1), &quest_layout_ints);
             for (size_t i = 0; i < n; ++i) {
                 labels[i] = quest_var_label(meta->elements[i].name, meta->elements[i].is_var);
                 children[i] = quest_tg_ref(g, meta->elements[i].type);
@@ -420,9 +437,9 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
         case QTYPE_KIND_OPTION: {
             const QVariantTypeDescriptor *meta = (const QVariantTypeDescriptor *)d->extra;
             size_t n = meta ? meta->case_count : 0;
-            labels = (const char **)quest_alloc(sizeof(char *) * (n ? n : 1));
-            has_payload = (bool *)quest_alloc(sizeof(bool) * (n ? n : 1));
-            children = (int *)quest_alloc(sizeof(int) * (n ? n : 1));
+            labels = (const char **)quest_alloc_sized(sizeof(char *) * (n ? n : 1), &quest_layout_pointers);
+            has_payload = (bool *)quest_alloc_sized(sizeof(bool) * (n ? n : 1), &quest_layout_ints);
+            children = (int *)quest_alloc_sized(sizeof(int) * (n ? n : 1), &quest_layout_ints);
             for (size_t i = 0; i < n; ++i) {
                 const QVariantCaseDescriptor *c = &meta->cases[i];
                 labels[i] = d->kind == QTYPE_KIND_VARIANT ? quest_var_label(c->name, c->is_var) : c->name;
@@ -436,7 +453,7 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
         case QTYPE_KIND_ARRAY: {
             const QArrayTypeDescriptor *meta = (const QArrayTypeDescriptor *)d->extra;
             if (meta == NULL) quest_raise_dynamic_error();
-            children = (int *)quest_alloc(sizeof(int));
+            children = (int *)quest_alloc_sized(sizeof(int), &quest_layout_ints);
             children[0] = quest_tg_ref(g, meta->element_type);
             kind = QTN_ARRAY;
             child_count = 1;
@@ -446,8 +463,8 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
             const QFunTypeDescriptor *meta = (const QFunTypeDescriptor *)d->extra;
             if (meta == NULL || meta->quantifier_count > 0) quest_raise_dynamic_error();
             size_t n = meta->param_count;
-            labels = (const char **)quest_alloc(sizeof(char *) * (n ? n : 1));
-            children = (int *)quest_alloc(sizeof(int) * (n + 1));
+            labels = (const char **)quest_alloc_sized(sizeof(char *) * (n ? n : 1), &quest_layout_pointers);
+            children = (int *)quest_alloc_sized(sizeof(int) * (n + 1), &quest_layout_ints);
             for (size_t i = 0; i < n; ++i) {
                 const QFunParamDescriptor *p = &meta->params[i];
                 labels[i] = p->is_var ? "var" : p->is_out ? "out" : "";
@@ -461,14 +478,14 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
         }
         case QTYPE_KIND_EXCEPTION: {
             const QExceptionTypeDescriptor *meta = (const QExceptionTypeDescriptor *)d->extra;
-            children = (int *)quest_alloc(sizeof(int));
+            children = (int *)quest_alloc_sized(sizeof(int), &quest_layout_ints);
             children[0] = quest_tg_ref(g, meta != NULL ? meta->payload_type : &quest_type_Ok);
             kind = QTN_EXCEPTION;
             child_count = 1;
             break;
         }
         case QTYPE_KIND_OPAQUE: {
-            labels = (const char **)quest_alloc(sizeof(char *));
+            labels = (const char **)quest_alloc_sized(sizeof(char *), &quest_layout_pointers);
             label_count = 1;
             if (quest_is_word_type(d)) {
                 labels[0] = "uint64_t";
@@ -480,7 +497,7 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
             const QOpaqueTypeDescriptor *meta = (const QOpaqueTypeDescriptor *)d->extra;
             size_t n = meta != NULL ? meta->arg_count : 0;
             labels[0] = d->name;
-            children = (int *)quest_alloc(sizeof(int) * (n + 1));
+            children = (int *)quest_alloc_sized(sizeof(int) * (n + 1), &quest_layout_ints);
             for (size_t i = 0; i < n; ++i) children[i] = quest_tg_ref(g, meta->args[i]);
             children[n] = quest_tg_ref(g, quest_abstract_type_rep(d));
             kind = QTN_ABSTRACT;
@@ -493,8 +510,8 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
             const QAutoTypeDescriptor *meta = (const QAutoTypeDescriptor *)d->extra;
             if (meta == NULL) quest_raise_dynamic_error();
             size_t n = meta->component_count, b = meta->bound != NULL ? 1 : 0;
-            labels = (const char **)quest_alloc(sizeof(char *) * (n ? n : 1));
-            children = (int *)quest_alloc(sizeof(int) * (n + b ? n + b : 1));
+            labels = (const char **)quest_alloc_sized(sizeof(char *) * (n ? n : 1), &quest_layout_pointers);
+            children = (int *)quest_alloc_sized(sizeof(int) * (n + b ? n + b : 1), &quest_layout_ints);
             if (b) children[0] = quest_tg_ref(g, meta->bound);
             for (size_t i = 0; i < n; ++i) {
                 labels[i] = quest_var_label(meta->components[i].name, meta->components[i].is_var);
@@ -506,9 +523,9 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
             break;
         }
         case QTYPE_KIND_BOUND_VAR: {
-            char *index = (char *)quest_alloc_atomic(24);
+            char *index = (char *)quest_alloc_bytes(24);
             snprintf(index, 24, "%zu", (size_t)(d - quest_type_bound_vars));
-            labels = (const char **)quest_alloc(sizeof(char *));
+            labels = (const char **)quest_alloc_sized(sizeof(char *), &quest_layout_pointers);
             labels[0] = index;
             kind = QTN_PARAM;
             label_count = 1;
@@ -530,7 +547,7 @@ static int quest_tg_ref(QTypeGraph *g, const QTypeDescriptor *d) {
 static void quest_tg_add_root(QTypeGraph *g, int ref) {
     if (g->root_count == g->root_cap) {
         size_t cap = g->root_cap ? g->root_cap * 2 : 8;
-        int *roots = (int *)quest_alloc(sizeof(int) * cap);
+        int *roots = (int *)quest_alloc_sized(sizeof(int) * cap, &quest_layout_ints);
         if (g->root_count) memcpy(roots, g->roots, sizeof(int) * g->root_count);
         g->roots = roots;
         g->root_cap = cap;
@@ -564,7 +581,7 @@ static void quest_tg_visit(QTypeGraph *g, int ref) {
  * walk from the roots first reaches them */
 static void quest_tg_canonicalize(QTypeGraph *g) {
     size_t n = g->count;
-    int *cls = (int *)quest_alloc(sizeof(int) * (n ? n : 1));
+    int *cls = (int *)quest_alloc_sized(sizeof(int) * (n ? n : 1), &quest_layout_ints);
     int classes = 0;
     for (size_t i = 0; i < n; ++i) {
         cls[i] = -1;
@@ -574,7 +591,7 @@ static void quest_tg_canonicalize(QTypeGraph *g) {
         if (cls[i] < 0) cls[i] = classes++;
     }
     while (true) {
-        int *next = (int *)quest_alloc(sizeof(int) * (n ? n : 1));
+        int *next = (int *)quest_alloc_sized(sizeof(int) * (n ? n : 1), &quest_layout_ints);
         int next_classes = 0;
         for (size_t i = 0; i < n; ++i) {
             next[i] = -1;
@@ -594,9 +611,9 @@ static void quest_tg_canonicalize(QTypeGraph *g) {
         classes = next_classes;
     }
     g->cls = cls;
-    g->number = (int *)quest_alloc(sizeof(int) * (classes ? classes : 1));
+    g->number = (int *)quest_alloc_sized(sizeof(int) * (classes ? classes : 1), &quest_layout_ints);
     for (int c = 0; c < classes; ++c) g->number[c] = -1;
-    g->order = (int *)quest_alloc(sizeof(int) * (classes ? classes : 1));
+    g->order = (int *)quest_alloc_sized(sizeof(int) * (classes ? classes : 1), &quest_layout_ints);
     g->order_count = 0;
     for (size_t r = 0; r < g->root_count; ++r) quest_tg_visit(g, g->roots[r]);
 }
@@ -1065,8 +1082,8 @@ void quest_dynamic_extern(QWriter *wr, const QAuto *d) {
     QVal value = quest_dynamic_component(d);
     quest_witness_count = 0;
 
-    QPtrTable *table = (QPtrTable *)quest_alloc(sizeof(QPtrTable));
-    QTypeGraph *g = (QTypeGraph *)quest_alloc(sizeof(QTypeGraph));
+    QPtrTable *table = (QPtrTable *)quest_alloc_sized(sizeof(QPtrTable), &quest_layout_pointers);
+    QTypeGraph *g = (QTypeGraph *)quest_alloc_words(sizeof(QTypeGraph) / sizeof(uintptr_t));
     memset(table, 0, sizeof(*table));
     memset(g, 0, sizeof(*g));
 
@@ -1164,7 +1181,7 @@ static QJsonValue *quest_parse_json_string(QJsonReader *jr) {
     quest_json_next(jr); /* consume opening quote */
     size_t cap = 32;
     size_t len = 0;
-    char *buf = (char *)quest_alloc_atomic(cap);
+    char *buf = (char *)quest_alloc_bytes(cap);
 
     while (1) {
         int ch = quest_json_next(jr);
@@ -1202,14 +1219,14 @@ static QJsonValue *quest_parse_json_string(QJsonReader *jr) {
         }
         if (len + 1 >= cap) {
             cap *= 2;
-            char *nb = (char *)quest_alloc_atomic(cap);
+            char *nb = (char *)quest_alloc_bytes(cap);
             memcpy(nb, buf, len);
             buf = nb;
         }
         buf[len++] = (char)ch;
     }
     buf[len] = '\0';
-    QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue));
+    QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue), &quest_layout_json_value);
     val->kind = QJSON_STRING;
     val->u.s.str = buf;
     val->u.s.len = len;
@@ -1238,7 +1255,7 @@ static QJsonValue *quest_parse_json_number(QJsonReader *jr) {
         }
     }
     buf[len] = '\0';
-    QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue));
+    QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue), &quest_layout_json_value);
     char *endptr = NULL;
     if (is_real) {
         val->kind = QJSON_REAL;
@@ -1246,7 +1263,7 @@ static QJsonValue *quest_parse_json_number(QJsonReader *jr) {
     } else {
         val->kind = QJSON_INT;
         val->u.i = (int64_t)strtoll(buf, &endptr, 10);
-        char *text = (char *)quest_alloc_atomic(len + 1);
+        char *text = (char *)quest_alloc_bytes(len + 1);
         memcpy(text, buf, len + 1);
         val->text = text;
     }
@@ -1258,12 +1275,12 @@ static QJsonValue *quest_parse_json_object(QJsonReader *jr) {
     quest_json_next(jr); /* consume '{' */
     size_t cap = 8;
     size_t count = 0;
-    QJsonKeyValue *entries = (QJsonKeyValue *)quest_alloc(sizeof(QJsonKeyValue) * cap);
+    QJsonKeyValue *entries = (QJsonKeyValue *)quest_alloc_sized(sizeof(QJsonKeyValue) * cap, &quest_layout_json_pairs);
 
     quest_json_skip_ws(jr);
     if (quest_json_peek(jr) == '}') {
         quest_json_next(jr);
-        QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue));
+        QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue), &quest_layout_json_value);
         val->kind = QJSON_OBJECT;
         val->u.o.entries = entries;
         val->u.o.count = 0;
@@ -1281,7 +1298,7 @@ static QJsonValue *quest_parse_json_object(QJsonReader *jr) {
 
         if (count >= cap) {
             cap *= 2;
-            QJsonKeyValue *ne = (QJsonKeyValue *)quest_alloc(sizeof(QJsonKeyValue) * cap);
+            QJsonKeyValue *ne = (QJsonKeyValue *)quest_alloc_sized(sizeof(QJsonKeyValue) * cap, &quest_layout_json_pairs);
             memcpy(ne, entries, sizeof(QJsonKeyValue) * count);
             entries = ne;
         }
@@ -1296,7 +1313,7 @@ static QJsonValue *quest_parse_json_object(QJsonReader *jr) {
         quest_raise_dynamic_error();
     }
 
-    QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue));
+    QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue), &quest_layout_json_value);
     val->kind = QJSON_OBJECT;
     val->u.o.entries = entries;
     val->u.o.count = count;
@@ -1307,12 +1324,12 @@ static QJsonValue *quest_parse_json_array(QJsonReader *jr) {
     quest_json_next(jr); /* consume '[' */
     size_t cap = 8;
     size_t count = 0;
-    QJsonValue **items = (QJsonValue **)quest_alloc(sizeof(QJsonValue *) * cap);
+    QJsonValue **items = (QJsonValue **)quest_alloc_sized(sizeof(QJsonValue *) * cap, &quest_layout_pointers);
 
     quest_json_skip_ws(jr);
     if (quest_json_peek(jr) == ']') {
         quest_json_next(jr);
-        QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue));
+        QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue), &quest_layout_json_value);
         val->kind = QJSON_ARRAY;
         val->u.a.items = items;
         val->u.a.count = 0;
@@ -1324,7 +1341,7 @@ static QJsonValue *quest_parse_json_array(QJsonReader *jr) {
         QJsonValue *item = quest_parse_json_value(jr);
         if (count >= cap) {
             cap *= 2;
-            QJsonValue **ni = (QJsonValue **)quest_alloc(sizeof(QJsonValue *) * cap);
+            QJsonValue **ni = (QJsonValue **)quest_alloc_sized(sizeof(QJsonValue *) * cap, &quest_layout_pointers);
             memcpy(ni, items, sizeof(QJsonValue *) * count);
             items = ni;
         }
@@ -1337,7 +1354,7 @@ static QJsonValue *quest_parse_json_array(QJsonReader *jr) {
         quest_raise_dynamic_error();
     }
 
-    QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue));
+    QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue), &quest_layout_json_value);
     val->kind = QJSON_ARRAY;
     val->u.a.items = items;
     val->u.a.count = count;
@@ -1359,7 +1376,7 @@ static QJsonValue *quest_parse_json_value(QJsonReader *jr) {
         for (int i = 0; t[i]; ++i) {
             if (quest_json_next(jr) != t[i]) quest_raise_dynamic_error();
         }
-        QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue));
+        QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue), &quest_layout_json_value);
         val->kind = QJSON_BOOL;
         val->u.b = true;
         return val;
@@ -1369,7 +1386,7 @@ static QJsonValue *quest_parse_json_value(QJsonReader *jr) {
         for (int i = 0; f[i]; ++i) {
             if (quest_json_next(jr) != f[i]) quest_raise_dynamic_error();
         }
-        QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue));
+        QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue), &quest_layout_json_value);
         val->kind = QJSON_BOOL;
         val->u.b = false;
         return val;
@@ -1379,7 +1396,7 @@ static QJsonValue *quest_parse_json_value(QJsonReader *jr) {
         for (int i = 0; n[i]; ++i) {
             if (quest_json_next(jr) != n[i]) quest_raise_dynamic_error();
         }
-        QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue));
+        QJsonValue *val = (QJsonValue *)quest_alloc(sizeof(QJsonValue), &quest_layout_json_value);
         val->kind = QJSON_NULL;
         return val;
     }
@@ -1444,7 +1461,8 @@ static void quest_fill_record_desc(const QTypeTable *t, QTypeDescriptor *desc, Q
     if (body->kind != QJSON_OBJECT) quest_raise_dynamic_error();
     size_t n = body->u.o.count;
     QRecordTypeDescriptor *meta =
-        (QRecordTypeDescriptor *)quest_alloc(sizeof(QRecordTypeDescriptor) + sizeof(QRecordFieldDescriptor) * n);
+        (QRecordTypeDescriptor *)quest_alloc(sizeof(QRecordTypeDescriptor) + sizeof(QRecordFieldDescriptor) * n,
+                                             &quest_layout_record_descriptor);
     QRecordFieldDescriptor *fields = (QRecordFieldDescriptor *)meta->fields;
     /* Fields in name order (insertion sort) */
     for (size_t i = 0; i < n; ++i) {
@@ -1472,7 +1490,8 @@ static void quest_fill_tuple_desc(const QTypeTable *t, QTypeDescriptor *desc, QJ
     if (body->kind != QJSON_ARRAY) quest_raise_dynamic_error();
     size_t n = body->u.a.count;
     QTupleTypeDescriptor *meta =
-        (QTupleTypeDescriptor *)quest_alloc(sizeof(QTupleTypeDescriptor) + sizeof(QTupleElementDescriptor) * n);
+        (QTupleTypeDescriptor *)quest_alloc(sizeof(QTupleTypeDescriptor) + sizeof(QTupleElementDescriptor) * n,
+                                            &quest_layout_tuple_descriptor);
     QTupleElementDescriptor *elems = (QTupleElementDescriptor *)meta->elements;
     for (size_t i = 0; i < n; ++i) {
         QJsonValue *pair = body->u.a.items[i];
@@ -1497,7 +1516,8 @@ static void quest_fill_variant_desc(const QTypeTable *t, QTypeDescriptor *desc, 
     if (body->kind != QJSON_OBJECT) quest_raise_dynamic_error();
     size_t n = body->u.o.count;
     QVariantTypeDescriptor *meta =
-        (QVariantTypeDescriptor *)quest_alloc(sizeof(QVariantTypeDescriptor) + sizeof(QVariantCaseDescriptor) * n);
+        (QVariantTypeDescriptor *)quest_alloc(sizeof(QVariantTypeDescriptor) + sizeof(QVariantCaseDescriptor) * n,
+                                              &quest_layout_variant_descriptor);
     QVariantCaseDescriptor *cases = (QVariantCaseDescriptor *)meta->cases;
     for (size_t i = 0; i < n; ++i) {
         bool is_var = false;
@@ -1534,7 +1554,8 @@ static void quest_fill_fun_desc(const QTypeTable *t, QTypeDescriptor *desc, QJso
     if (params == NULL || params->kind != QJSON_ARRAY || result == NULL) quest_raise_dynamic_error();
     size_t n = params->u.a.count;
     QFunTypeDescriptor *meta =
-        (QFunTypeDescriptor *)quest_alloc(sizeof(QFunTypeDescriptor) + sizeof(QFunParamDescriptor) * n);
+        (QFunTypeDescriptor *)quest_alloc(sizeof(QFunTypeDescriptor) + sizeof(QFunParamDescriptor) * n,
+                                          &quest_layout_fun_descriptor);
     QFunParamDescriptor *ps = (QFunParamDescriptor *)meta->params;
     for (size_t i = 0; i < n; ++i) {
         QJsonValue *pair = params->u.a.items[i];
@@ -1570,13 +1591,13 @@ static QTypeDescriptor *quest_new_abstract_desc(QJsonValue *node) {
         (args != NULL && (args->kind != QJSON_ARRAY || args->u.a.count == 0))) {
         quest_raise_dynamic_error();
     }
-    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor));
+    QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_OPAQUE;
     desc->name = name->u.s.str;
     desc->size = sizeof(QVal);
     desc->alignment = sizeof(QVal);
     desc->is_subtype = quest_is_subtype;
-    desc->extra = quest_alloc(sizeof(QOpaqueTypeDescriptor));
+    desc->extra = quest_alloc(sizeof(QOpaqueTypeDescriptor), &quest_layout_opaque_descriptor);
     return desc;
 }
 
@@ -1584,7 +1605,8 @@ static void quest_fill_abstract_desc(const QTypeTable *t, QTypeDescriptor *desc,
     QOpaqueTypeDescriptor *meta = (QOpaqueTypeDescriptor *)desc->extra;
     QJsonValue *args = quest_json_obj_get(node, "args");
     size_t n = args != NULL ? args->u.a.count : 0;
-    const QTypeDescriptor **arg_descs = (const QTypeDescriptor **)quest_alloc(sizeof(QTypeDescriptor *) * (n + 1));
+    const QTypeDescriptor **arg_descs = (const QTypeDescriptor **)quest_alloc_sized(sizeof(QTypeDescriptor *) * (n + 1),
+                                                                                 &quest_layout_pointers);
     for (size_t i = 0; i < n; ++i) arg_descs[i] = quest_table_ref(t, args->u.a.items[i]);
     meta->arg_count = n;
     meta->args = arg_descs;
@@ -1619,7 +1641,8 @@ static void quest_fill_auto_desc(const QTypeTable *t, QTypeDescriptor *desc, QJs
     if (bound == NULL || comps == NULL || comps->kind != QJSON_ARRAY) quest_raise_dynamic_error();
     size_t n = comps->u.a.count;
     QAutoTypeDescriptor *meta =
-        (QAutoTypeDescriptor *)quest_alloc(sizeof(QAutoTypeDescriptor) + sizeof(QAutoComponentDescriptor) * n);
+        (QAutoTypeDescriptor *)quest_alloc(sizeof(QAutoTypeDescriptor) + sizeof(QAutoComponentDescriptor) * n,
+                                           &quest_layout_auto_descriptor);
     meta->bound = bound->kind == QJSON_NULL ? NULL : quest_table_ref(t, bound);
     meta->payload_size = sizeof(QVal) * n;
     meta->component_count = n;
@@ -1638,10 +1661,11 @@ static void quest_fill_auto_desc(const QTypeTable *t, QTypeDescriptor *desc, QJs
 
 static QTypeTable *quest_read_type_table(QJsonValue *types) {
     if (types == NULL || types->kind != QJSON_ARRAY) quest_raise_dynamic_error();
-    QTypeTable *t = (QTypeTable *)quest_alloc(sizeof(QTypeTable));
+    QTypeTable *t = (QTypeTable *)quest_alloc(sizeof(QTypeTable), &quest_layout_type_table);
     t->count = types->u.a.count;
     t->nodes = types->u.a.items;
-    t->descs = (QTypeDescriptor **)quest_alloc(sizeof(QTypeDescriptor *) * (t->count ? t->count : 1));
+    t->descs = (QTypeDescriptor **)quest_alloc_sized(sizeof(QTypeDescriptor *) * (t->count ? t->count : 1),
+                                                     &quest_layout_pointers);
     static const QTypeKind kinds[Q_TYPE_NODE_KIND_COUNT] = {
         QTYPE_KIND_RECORD, QTYPE_KIND_TUPLE, QTYPE_KIND_VARIANT, QTYPE_KIND_OPTION,
         QTYPE_KIND_ARRAY, QTYPE_KIND_FUN, QTYPE_KIND_EXCEPTION,
@@ -1665,7 +1689,7 @@ static QTypeTable *quest_read_type_table(QJsonValue *types) {
             continue;
         }
         if (strcmp(entry->key, "auto") == 0) {
-            QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor));
+            QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
             desc->kind = QTYPE_KIND_AUTO;
             desc->name = "Auto";
             desc->size = sizeof(QAuto *);
@@ -1686,7 +1710,7 @@ static QTypeTable *quest_read_type_table(QJsonValue *types) {
         int k = 0;
         while (k < Q_TYPE_NODE_KIND_COUNT && strcmp(quest_type_node_names[k], key) != 0) ++k;
         if (k == Q_TYPE_NODE_KIND_COUNT) quest_raise_dynamic_error();
-        QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor));
+        QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
         desc->kind = kinds[k];
         desc->name = display_names[k];
         desc->size = sizeof(void *);
@@ -1714,14 +1738,14 @@ static QTypeTable *quest_read_type_table(QJsonValue *types) {
             case QTYPE_KIND_OPTION: quest_fill_variant_desc(t, desc, body); break;
             case QTYPE_KIND_FUN: quest_fill_fun_desc(t, desc, body); break;
             case QTYPE_KIND_ARRAY: {
-                QArrayTypeDescriptor *meta = (QArrayTypeDescriptor *)quest_alloc(sizeof(QArrayTypeDescriptor));
+                QArrayTypeDescriptor *meta = (QArrayTypeDescriptor *)quest_alloc(sizeof(QArrayTypeDescriptor), &quest_layout_array_descriptor);
                 meta->element_type = quest_table_ref(t, body);
                 desc->extra = meta;
                 break;
             }
             default: {
                 QExceptionTypeDescriptor *meta =
-                    (QExceptionTypeDescriptor *)quest_alloc(sizeof(QExceptionTypeDescriptor));
+                    (QExceptionTypeDescriptor *)quest_alloc(sizeof(QExceptionTypeDescriptor), &quest_layout_exception_descriptor);
                 meta->payload_type = quest_table_ref(t, body);
                 desc->extra = meta;
                 break;
@@ -1763,7 +1787,7 @@ static QIdEntry *quest_id_find(QReadContext *cx, int64_t id) {
  * references inside it can reach it */
 static void quest_id_insert(QReadContext *cx, const QJsonValue *id_val, void *ptr, const void *dict) {
     if (id_val->kind != QJSON_INT || quest_id_find(cx, id_val->u.i) != NULL) quest_raise_dynamic_error();
-    QIdEntry *entry = (QIdEntry *)quest_alloc(sizeof(QIdEntry));
+    QIdEntry *entry = (QIdEntry *)quest_alloc(sizeof(QIdEntry), &quest_layout_id_entry);
     entry->id = id_val->u.i;
     entry->ptr = ptr;
     entry->dict = dict;
@@ -1782,7 +1806,8 @@ static QIdEntry *quest_read_ref(QReadContext *cx, const QJsonValue *node) {
 }
 
 static void *quest_alloc_array(int64_t len) {
-    QArray *arr = (QArray *)quest_alloc(sizeof(int64_t) + sizeof(QVal) * (size_t)(len > 0 ? len : 1));
+    QArray *arr = (QArray *)quest_alloc(sizeof(int64_t) + sizeof(QVal) * (size_t)(len > 0 ? len : 1),
+                                        &quest_layout_array_ambiguous);
     arr->length = len;
     return arr;
 }
@@ -1791,7 +1816,7 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
 
 static QAuto *quest_read_dynamic(QReadContext *cx, QJsonValue *type_ref, QJsonValue *value) {
     const QTypeDescriptor *witness = quest_table_ref(cx->types, type_ref);
-    QVal *component = (QVal *)quest_alloc(sizeof(QVal));
+    QVal *component = (QVal *)quest_alloc(sizeof(QVal), &quest_layout_component);
     *component = quest_read_value(cx, value, witness);
     return quest_auto_new(witness, (QVal){ .p = component });
 }
@@ -1870,7 +1895,8 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
             const QTypeDescriptor *witness = quest_table_ref(cx->types, t_node);
             if (meta->bound != NULL && !quest_is_subtype(witness, meta->bound)) quest_raise_dynamic_error();
             if (v_node->kind != QJSON_ARRAY || v_node->u.a.count != meta->component_count) quest_raise_dynamic_error();
-            char *payload = (char *)quest_alloc(meta->payload_size > 0 ? meta->payload_size : sizeof(QVal));
+            char *payload = (char *)quest_alloc_sized(meta->payload_size > 0 ? meta->payload_size : sizeof(QVal),
+                                              &quest_layout_words);
             quest_push_witness(witness);
             for (size_t i = 0; i < meta->component_count; ++i) {
                 const QAutoComponentDescriptor *c = &meta->components[i];
@@ -1890,7 +1916,7 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
             const QRecordTypeDescriptor *meta = (const QRecordTypeDescriptor *)desc->extra;
             QJsonValue *id_val = quest_json_obj_get(node, "@id");
             if (node->u.o.count != meta->field_count + (id_val != NULL ? 1 : 0)) quest_raise_dynamic_error();
-            void *buf = quest_alloc(desc->size > 0 ? desc->size : sizeof(void *));
+            void *buf = quest_alloc_sized(desc->size > 0 ? desc->size : sizeof(void *), &quest_layout_words);
             ((QRecordHeader *)buf)->descriptor = desc;
             const void *dict = quest_record_dict(desc, desc);
             if (id_val != NULL) quest_id_insert(cx, id_val, buf, dict);
@@ -1929,7 +1955,7 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
             const QTupleTypeDescriptor *meta = (const QTupleTypeDescriptor *)desc->extra;
             size_t n = meta != NULL ? meta->element_count : 0;
             if (items->u.a.count != n) quest_raise_dynamic_error();
-            void *tup = quest_alloc(desc->size > 0 ? desc->size : sizeof(void *));
+            void *tup = quest_alloc_sized(desc->size > 0 ? desc->size : sizeof(void *), &quest_layout_words);
             if (id_val != NULL) quest_id_insert(cx, id_val, tup, NULL);
             for (size_t i = 0; i < n; ++i) {
                 const QTupleElementDescriptor *elem = &meta->elements[i];
@@ -1971,7 +1997,7 @@ static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDesc
                     const QTypeDescriptor *p = meta->cases[j].payload_type;
                     if (p != NULL && p->kind == QTYPE_KIND_TUPLE && p->size > size) size = p->size;
                 }
-                char *opt = (char *)quest_alloc(sizeof(int64_t) + size);
+                char *opt = (char *)quest_alloc_sized(sizeof(int64_t) + size, &quest_layout_words);
                 *(int64_t *)opt = c->tag_index;
                 if (!bare) {
                     const QTupleTypeDescriptor *comps = (const QTupleTypeDescriptor *)c->payload_type->extra;

@@ -7,6 +7,7 @@ import
     questlang/ir/shapes : questlang/ir/Shapes
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/codegen/layout : questlang/codegen/Layout
+    questlang/codegen/objectLayout : questlang/codegen/ObjectLayout
     questlang/codegen/symbols : questlang/codegen/Symbols
     questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
     collections/hashMap : collections/HashMap
@@ -24,6 +25,7 @@ export
     Let Type = model.Type
     Let Variable = ir.Variable
     Let Atom = ir.Atom
+    let noBoxes = array of :shapes.Shape end
 
     (* =========================================================================
      * Operations
@@ -172,7 +174,7 @@ export
                 vals.check(fn vals.binary(fn ssa.opLt n vals.constant(fn 0)) false "quest_raise_array_error_at"
                     fun(): Array(Int) array of vals.site(fn x.offset) end)
                 array of vals.call1(fn "quest_array_new" array of n vals.slotToWord(fn vals.atom(fn x.init) elem.type)
-                    end) end
+                    vals.symbolAt(fn objectLayout.arraySymbol(objectLayout.slotKind(elem))) end) end
             when opIndex with x then
                 let address = aggregates.elementAddress(fn vals.atom1(fn x.arr) vals.atom1(fn x.index) x.offset)
                 vals.slotFromWord(fn vals.loadWord(fn address 0 vals.tVal) aggregates.elementShape(x.arr).type)
@@ -237,12 +239,20 @@ export
             else
                 (* The environment: the descriptors of the type arguments, then
                  * the captures, a word for each of their values *)
-                let var words = extent x.descriptors
-                for i = 0 upto {extent x.captures - 1} do
-                    words := words + extent vals.parts(ir.atomType(x.captures[i]))
+                let kinds = vector.new(:objectLayout.Kind)
+                for i = 0 upto {extent x.descriptors - 1} do
+                    vector.append(:objectLayout.Kind kinds option kindPointer of objectLayout.Kind end)
                 end
-                let env = vals.call1(fn "quest_alloc" array of vals.constant(fn 8 * {if words is 0 then 1 else words
-                    end}) end)
+                for i = 0 upto {extent x.captures - 1} do
+                    let ks = objectLayout.representationKinds(shapes.shape(ir.atomType(x.captures[i])))
+                    for j = 0 upto {extent ks - 1} do vector.append(:objectLayout.Kind kinds ks[j]) end
+                end
+                if vector.length(:objectLayout.Kind kinds) is 0 then
+                    vector.append(:objectLayout.Kind kinds option kindScalar of objectLayout.Kind end)
+                end
+                let words = vector.length(:objectLayout.Kind kinds)
+                let env = vals.alloc(fn 8 * words objectLayout.register(fn.u.layouts
+                    objectLayout.envLayout(code vector.toArray(:objectLayout.Kind kinds) 8 * words "")))
                 let descs = descriptors.descriptors(fn x.descriptors)
                 for i = 0 upto {extent descs - 1} do vals.store(fn env 8 * i 8 descs[i]) end
                 let var at = extent descs
@@ -266,8 +276,7 @@ export
                         end
                     end
                 end
-                let clos = vals.call1(fn "quest_alloc" array of vals.constant(fn runtimeLayout.offset("QClosure"
-                    "env") + 8) end)
+                let clos = vals.alloc(fn runtimeLayout.offset("QClosure" "env") + 8 objectLayout.closureSymbol)
                 vals.store(fn clos runtimeLayout.offset("QClosure" "fn") 8 vals.symbolAt(fn code))
                 vals.store(fn clos runtimeLayout.offset("QClosure" "env") 8 env)
                 array of clos end
@@ -720,7 +729,8 @@ export
             let var n = extent arm.descriptors
             if extent storedFields < n then n := extent storedFields end
             if extent armFields < n then n := extent armFields end
-            let a = vals.alloc(fn 8 * {if extent armFields is 0 then 1 else extent armFields end})
+            let a = vals.alloc(fn 8 * {if extent armFields is 0 then 1 else extent armFields end}
+                objectLayout.register(fn.u.layouts objectLayout.tupleLayout(shapes.shape(armType) "" noBoxes)))
             for i = 0 upto {n - 1} do
                 let src = vals.loadWord(fn stored 8 * i vals.tVal)
                 let pair = arm.descriptors[i]

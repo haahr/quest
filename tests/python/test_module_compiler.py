@@ -213,6 +213,7 @@ class TestModuleCompiler(unittest.TestCase):
         bin_file = self.dir_path / "test_driver_bin"
         runtime_c = self.runtime_dir / "quest_runtime.c"
         serialization_c = self.runtime_dir / "quest_serialization.c"
+        gc_c = self.runtime_dir / "quest_gc.c"
 
         cmd = [
             compiler,
@@ -224,6 +225,7 @@ class TestModuleCompiler(unittest.TestCase):
             str(o_file),
             str(runtime_c),
             str(serialization_c),
+            str(gc_c),
             "-o",
             str(bin_file),
         ]

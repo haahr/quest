@@ -1,0 +1,271 @@
+(* Quest Self-Hosted Compiler: Object Layouts Implementation *)
+
+module objectLayout : ObjectLayout
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/shapes : questlang/ir/Shapes
+    questlang/codegen/layout : questlang/codegen/Layout
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+    util/hash : util/Hash
+    stringOp = string : StringOp
+    conv : Conv
+export
+    Def Kind = Option kindScalar kindPointer kindAmbiguous end
+    Def Form = Option formFixed formArray end
+    Def Layout = Tuple
+        tag: String
+        form: Form
+        words: Array(Kind)
+        element: Array(Kind)
+        lengthOffset: Int
+        bytes: Int
+        cSize: String
+    end
+    Def Table = Tuple byTag: hashMap.T(String Layout) order: vector.T(String) end
+
+    let mismatch: Exception(String) = exception mismatch: String end
+
+    let eq(a: String b: String): Bool = stringOp.equal(a b)
+    let scalar = option kindScalar of Kind end
+    let pointer = option kindPointer of Kind end
+    let ambiguous = option kindAmbiguous of Kind end
+
+    let kindCode(k: Kind): Int = case k when kindScalar then 0 when kindPointer then 1 when kindAmbiguous then 2 end
+    let kindLetter(k: Kind): String =
+        case k when kindScalar then "s" when kindPointer then "p" when kindAmbiguous then "a" end
+    let sameKind(a: Kind b: Kind): Bool = kindCode(a) is kindCode(b)
+
+    let slotKind(s: shapes.Shape): Kind =
+        case layout.wordForm(s)
+            when wordItself then ambiguous
+            when wordOk, wordBits, wordInteger, wordReal then scalar
+            when wordRecordBox, wordVariantBox, wordPointer then pointer
+        end
+
+    let representationKinds(s: shapes.Shape): Array(Kind) =
+        case layout.shapeRepresentationKind(s)
+            when repVoid then array of :Kind end
+            when repInt, repWord, repBool, repChar, repReal then array of scalar end
+            when repQVal then array of ambiguous end
+            when repRecord then array of pointer pointer end
+            when repVariant then array of scalar ambiguous end
+            when repPointer then array of pointer end
+        end
+
+    (* A box holds the value's representation: two words *)
+    let boxKinds(s: shapes.Shape): Array(Kind) =
+        case layout.shapeRepresentationKind(s)
+            when repVariant then array of scalar ambiguous end
+            when repVoid, repInt, repWord, repBool, repChar, repReal, repQVal, repRecord, repPointer then
+                array of pointer pointer end
+        end
+
+    let symbol(l: Layout): String = "quest_layout_" <> l.tag
+    let closureSymbol = "quest_layout_closure"
+    let adapterEnvSymbol = "quest_layout_adapter_env"
+    let arraySymbol(k: Kind): String =
+        case k
+            when kindScalar then "quest_layout_array_scalar"
+            when kindPointer then "quest_layout_array_pointer"
+            when kindAmbiguous then "quest_layout_array_ambiguous"
+        end
+
+    let componentShape(c: shapes.Component): shapes.Shape = maybe.unwrap(:shapes.Shape c.shape)
+
+    (* The kinds of the boxes, after the object's words, and the tag's suffix
+     * naming them (none without boxes) *)
+    let withBoxes(words: vector.T(Kind) boxes: Array(shapes.Shape)): String =
+        begin
+            let var suffix = ""
+            for i = 0 upto {extent boxes - 1} do
+                let ks = boxKinds(boxes[i])
+                for j = 0 upto {extent ks - 1} do vector.append(:Kind words ks[j]) end
+                suffix := suffix <> kindLetter(ks[1])
+            end
+            if extent boxes is 0 then "" else "_b" <> suffix end
+        end
+
+    let fixed(tag: String words: vector.T(Kind) bytes: Int cSize: String): Layout =
+        tuple
+            let tag = tag
+            let form = option formFixed of Form end
+            let words = vector.toArray(:Kind words)
+            let element = array of :Kind end
+            let lengthOffset = 0
+            let bytes = bytes
+            let cSize = cSize
+        end
+
+    (* A C size of a struct plus n boxes *)
+    let cSizeOf(struct: String n: Int): String =
+        if eq(struct "") then ""
+        elsif n is 0 then "sizeof(" <> struct <> ")"
+        else "sizeof(" <> struct <> ") + " <> conv.int(n) <> " * sizeof(QRecordVal)"
+        end
+
+    let tupleLayout(ts: shapes.Shape struct: String boxes: Array(shapes.Shape)): Layout =
+        begin
+            let words = vector.new(:Kind)
+            let n = extent ts.components
+            for i = 0 upto {n - 1} do vector.append(:Kind words slotKind(componentShape(ts.components[i]))) end
+            (* A struct of no slots has a char of its own, one word's worth *)
+            if n is 0 then vector.append(:Kind words scalar) end
+            let suffix = withBoxes(words boxes)
+            fixed(layout.shapeTag(ts) <> suffix words layout.slotsBytes(n) + 16 * extent boxes
+                cSizeOf(struct extent boxes))
+        end
+
+    let tuplePrefixLayout(ts: shapes.Shape n: Int): Layout =
+        begin
+            let words = vector.new(:Kind)
+            for i = 0 upto {n - 1} do vector.append(:Kind words slotKind(componentShape(ts.components[i]))) end
+            if n is 0 then vector.append(:Kind words scalar) end
+            fixed(layout.shapeTag(ts) <> "_" <> conv.int(n) words layout.slotsBytes(n) "")
+        end
+
+    let recordLayout(t: model.Type struct: String boxes: Array(shapes.Shape)): Layout =
+        begin
+            let words = vector.new(:Kind)
+            (* The box: the payload and the dictionary; the payload's header:
+             * its descriptor; then its fields in the order of their names *)
+            vector.append(:Kind words pointer)
+            vector.append(:Kind words pointer)
+            vector.append(:Kind words pointer)
+            let rs = shapes.shape(t)
+            let fields = shapes.sortedComponents(rs)
+            for i = 0 upto {extent fields - 1} do vector.append(:Kind words slotKind(componentShape(fields[i]))) end
+            (* A record of no fields has a word of padding after its header *)
+            if extent fields is 0 then vector.append(:Kind words scalar) end
+            let suffix = withBoxes(words boxes)
+            let cSize = if eq(struct "") then "" else "sizeof(QRecordVal) + " <> cSizeOf(struct extent boxes) end
+            (* Named by the struct where the unit names one (two aliases of
+             * one record type name two structs, each sized as itself), and
+             * otherwise by the type *)
+            let tag = if eq(struct "") then "record_" <> layout.typeTag(t) <> "_" <> layout.typeDigest(t) else struct end
+            fixed(tag <> suffix words 16 + layout.recordBytes(t) + 16 * extent boxes cSize)
+        end
+
+    (* The kinds of the words of case c (its tag, then its components) *)
+    let caseKinds(c: shapes.Component): vector.T(Kind) =
+        begin
+            let words = vector.new(:Kind)
+            vector.append(:Kind words scalar)
+            if maybe.isSome(:shapes.Shape c.shape) then
+                let cs = maybe.unwrap(:shapes.Shape c.shape)
+                if shapes.kindIs(cs shapes.shapeTuple) orif shapes.kindIs(cs shapes.shapeRecord) then
+                    for i = 0 upto {extent cs.components - 1} do
+                        vector.append(:Kind words slotKind(componentShape(cs.components[i])))
+                    end
+                else
+                    vector.append(:Kind words slotKind(cs))
+                end
+            end
+            words
+        end
+
+    let optionLayout(os: shapes.Shape struct: String tag: maybe.T(String)): Layout =
+        begin
+            let bytes = layout.optionBytes(os.structure)
+            let n = {bytes + 7} / 8
+            let words = vector.new(:Kind)
+            for i = 0 upto {n - 1} do vector.append(:Kind words scalar) end
+            let var suffix = "_any"
+            if maybe.isSome(:String tag) then
+                let name = maybe.unwrap(:String tag)
+                let c = maybe.unwrap(:shapes.Component shapes.caseOf(os name))
+                let ks = caseKinds(c)
+                for i = 0 upto {vector.length(:Kind ks) - 1} do
+                    if i < n then vector.set(:Kind words i vector.get(:Kind ks i)) end
+                end
+                let var index = 0
+                for i = 0 upto {extent os.cases - 1} do
+                    if maybe.isSome(:String os.cases[i].name) andif eq(maybe.unwrap(:String os.cases[i].name) name) then
+                        index := i
+                    end
+                end
+                suffix := "_" <> conv.int(index)
+            else
+                (* Each word the kind its cases agree on; ambiguous where a
+                 * word is a pointer in one case and a scalar in another (a
+                 * case that lacks the word leaves it zero, which suits any) *)
+                let set = array of(n false)
+                for k = 0 upto {extent os.cases - 1} do
+                    let ks = caseKinds(os.cases[k])
+                    for i = 0 upto {vector.length(:Kind ks) - 1} do
+                        if i < n then
+                            let kind = vector.get(:Kind ks i)
+                            if not(set[i]) then
+                                set[i] := true
+                                vector.set(:Kind words i kind)
+                            elsif not(sameKind(vector.get(:Kind words i) kind)) then
+                                vector.set(:Kind words i ambiguous)
+                            end
+                        end
+                    end
+                end
+            end
+            fixed(layout.shapeTag(os) <> suffix words bytes cSizeOf(struct 0))
+        end
+
+    let envLayout(code: String kinds: Array(Kind) bytes: Int cSize: String): Layout =
+        begin
+            let words = vector.new(:Kind)
+            for i = 0 upto {extent kinds - 1} do vector.append(:Kind words kinds[i]) end
+            fixed("env_" <> code words bytes cSize)
+        end
+
+    let newTable(): Table =
+        tuple let byTag = hashMap.new(:String :Layout eq hash.string) let order = vector.new(:String) end
+
+    let sameLayout(a: Layout b: Layout): Bool =
+        begin
+            let var same = {extent a.words is extent b.words} andif {extent a.element is extent b.element}
+                andif {a.bytes is b.bytes} andif eq(a.cSize b.cSize)
+            if same then
+                for i = 0 upto {extent a.words - 1} do
+                    if not(sameKind(a.words[i] b.words[i])) then same := false end
+                end
+                for i = 0 upto {extent a.element - 1} do
+                    if not(sameKind(a.element[i] b.element[i])) then same := false end
+                end
+            end
+            same
+        end
+
+    let register(t: Table l: Layout): String =
+        begin
+            let found = hashMap.get(:String :Layout t.byTag l.tag)
+            if maybe.isSome(:Layout found) then
+                if not(sameLayout(maybe.unwrap(:Layout found) l)) then
+                    raise mismatch with "two layouts named " <> l.tag end
+                end
+            else
+                hashMap.insert(:String :Layout t.byTag l.tag l)
+                vector.append(:String t.order l.tag)
+            end
+            symbol(l)
+        end
+
+    let layouts(t: Table): Array(Layout) =
+        begin
+            let res = array of(vector.length(:String t.order) fixed("" vector.new(:Kind) 0 ""))
+            for i = 0 upto {vector.length(:String t.order) - 1} do
+                res[i] := hashMap.find(:String :Layout t.byTag vector.get(:String t.order i))
+            end
+            res
+        end
+
+    let packedKinds(kinds: Array(Kind)): Array(Int) =
+        begin
+            let n = {extent kinds + 7} / 8
+            let res = array of({if n is 0 then 1 else n end} 0)
+            for i = 0 upto {extent kinds - 1} do
+                let var shifted = kindCode(kinds[i])
+                for j = 1 upto {i % 8} do shifted := shifted * 256 end
+                res[i / 8] := res[i / 8] + shifted
+            end
+            res
+        end
+end

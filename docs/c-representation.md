@@ -1310,29 +1310,31 @@ supports auto values with one component.
 
 ## 9. Memory Management Abstraction & `--nogc` Support
 
-All heap allocations route through two runtime allocator functions:
-- `quest_alloc(size_t bytes)`: Allocates memory that may contain pointers (scanned by GC).
-- `quest_alloc_atomic(size_t bytes)`: Allocates memory guaranteed not to contain pointers (e.g., string buffers,
-  atomic raw bytes).
+Every heap allocation goes through the runtime's allocators (`runtime/quest_runtime.h`), and every allocation names
+the **layout** of the object it makes (docs/collector.md §3.2): a static `QLayout` saying, for each word, whether it
+is a pointer, a scalar, or ambiguous (a `QVal` of generic code, whose kind the site does not know), which a precise
+collector scans by and which `QUEST_GC_CHECK=layouts` checks against the objects (runtime/quest_gc.c). The allocator
+writes a header word naming the layout before the object and returns the address after it, so the structs of this
+document are unchanged.
 
-```c
-/* runtime/quest_runtime.h */
+- `quest_alloc(size_t bytes, const QLayout *layout)`: an object of a fixed or array layout, zeroed.
+- `quest_alloc_sized(size_t bytes, const QLayout *layout)`: an object of a sized layout (a repeating element over a
+  size known only at the call), zeroed, with its byte count recorded in the word before the header.
+- `quest_alloc_bytes(size_t bytes)`: pointer-free bytes (string buffers), which the collector never scans and which
+  are not zeroed.
+- `quest_alloc_words(size_t n)`: n words of unknown kind, for the runtime's structures that hold values of any type.
 
-#ifdef QUEST_NOGC
-#  include <stdlib.h>
-   static inline void *quest_alloc(size_t sz)        { return calloc(1, sz); }
-   static inline void *quest_alloc_atomic(size_t sz) { return malloc(sz); }
-   static inline void  quest_gc_init(void)           { /* no-op */ }
-#else
-#  include <gc.h>
-   static inline void *quest_alloc(size_t sz)        { return GC_MALLOC(sz); }
-   static inline void *quest_alloc_atomic(size_t sz) { return GC_MALLOC_ATOMIC(sz); }
-   static inline void  quest_gc_init(void)           { GC_INIT(); }
-#endif
-```
+A compiler's allocation site names a layout the unit defines (`quest_layout_<tag>`, computed by
+`codegen/objectLayout` in the self-hosted compiler and `quest/codegen/objectlayout.py` in the bootstrap: a tuple's or
+a record's struct with the boxes embedded after it, an option's case, a closure's environment) or one of the
+runtime's (`quest_layout_closure`, `quest_layout_adapter_env`, and `quest_layout_array_pointer`, `_scalar`, and
+`_ambiguous` for arrays by their elements' kind); the runtime's own allocations name theirs (`runtime/quest_gc.c`).
+`quest_array_new(len, init, layout)` takes the array's.
 
-- When compiled without flags, Quest links with Boehm GC (`-lgc`).
-- When invoked with `--nogc`, the compiler passes `-DQUEST_NOGC` and omits `-lgc`.
+- When compiled without flags, Quest links with Boehm GC (`-lgc`): `quest_alloc` is `GC_MALLOC` of the header and the
+  object, `quest_alloc_bytes` `GC_MALLOC_ATOMIC`.
+- When invoked with `--nogc`, the compiler passes `-DQUEST_NOGC` and omits `-lgc`: `calloc` and `malloc` instead, so
+  binaries can be built and tested on hosts without `libgc` installed. Nothing is collected.
 
 ---
 

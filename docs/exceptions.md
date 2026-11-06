@@ -313,7 +313,7 @@ Frames are printed as they are walked, with repeats collapsed (§2.3), so there 
 
 When an exception might be caught (§5.1), the raise captures its frames before `longjmp`: the function starts of
 §5.3, already collapsed into runs, as `(start, count)` pairs, up to `Q_MAX_TRACE_RUNS` (64) runs, with a flag when
-there were more. The capture is allocated with `quest_alloc_atomic` and referenced from `QExceptionState`
+there were more. The capture is allocated with `quest_alloc_bytes` and referenced from `QExceptionState`
 (`const QTrace *trace`), so a handler's copy of the caught exception keeps it, even if the handler raises and catches
 other exceptions before re-raising. The runs are attributed to names when they are printed. When truncated, the
 output ends with `  ... (traceback truncated)`.

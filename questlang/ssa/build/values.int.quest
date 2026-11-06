@@ -15,6 +15,7 @@ import
     ssa = questlang/ssa/nodes : questlang/ssa/Nodes
     questlang/codegen/layout : questlang/codegen/Layout
     questlang/codegen/staticdata : questlang/codegen/StaticData
+    questlang/codegen/objectLayout : questlang/codegen/ObjectLayout
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/maybe : util/Maybe
@@ -76,6 +77,9 @@ export
         (* Names records and their offset tables as the unit's static data
          * does *)
         naming: staticdata.RecordNaming
+        (* The layouts of the objects the unit allocates (docs/collector.md
+         * section 3.2), laid out as its static data *)
+        layouts: objectLayout.Table
     end
     Def LoopTargets = Tuple head: Int after: Int end
     (* A capture of a variable a let rec binds, stored once the let rec's body
@@ -252,7 +256,7 @@ export
      * payload of the option at o, in its slot form, read as access says *)
     optionComponent(fn: Fn o: Int os: shapes.Shape tag: String i: Int access: ir.Access): Array(Int)
     (* A new object of n bytes, zeroed by the collector *)
-    alloc(fn: Fn bytes: Int): Int
+    alloc(fn: Fn bytes: Int layout: String): Int
 
     (* Functions being built *)
     newFn(u: UnitBuilder f: Function closure: maybe.T(ir.OpMakeClosure)): Fn

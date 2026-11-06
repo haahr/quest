@@ -250,10 +250,11 @@ pointer-based field access.
 
 ### 6.2. Heap Allocation, Embedded Boxes, & Member Initialization
 Tuples and records (`ir.MakeTuple`, `ir.MakeRecord`) are heap-allocated via `quest_alloc` (managed by Boehm GC or
-standard `calloc` in `--nogc` mode):
+standard `calloc` in `--nogc` mode), each site naming the layout of the object it makes (a static `QLayout` of the
+unit, `quest_layout_<tag>`, saying which of its words are pointers; [c-representation.md](c-representation.md) §9):
 ```c
 /* origin = tuple let x = 0 let y = 0.0 end */
-g_origin = (QTuple_Int_Real *)quest_alloc(sizeof(QTuple_Int_Real));
+g_origin = (QTuple_Int_Real *)quest_alloc(sizeof(QTuple_Int_Real), &quest_layout_QTuple_Int_Real);
 g_origin->_0 = 0LL;
 g_origin->_1 = 0.0;
 ```
@@ -312,9 +313,9 @@ Closure conversion ([ir.md §8.3](ir.md)) decides what each closure captures: th
 parameters its types mention.
 - **Capturing closures** get an environment struct, allocated with the closure where the closure is made:
   ```c
-  _t1 = (struct QEnv_qf_h *)quest_alloc(sizeof(struct QEnv_qf_h));
+  _t1 = (struct QEnv_qf_h *)quest_alloc(sizeof(struct QEnv_qf_h), &quest_layout_env_qf_h);
   _t1->c0 = l_x;
-  _t2 = (QClosure *)quest_alloc(sizeof(QClosure));
+  _t2 = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);
   _t2->fn = (void *)qf_h;
   _t2->env = (void *)_t1;
   ```
@@ -348,10 +349,10 @@ static_assert(offsetof(QArray, data) == 8, qarray_data_at_offset_8);
 
 ### 8.2. Allocation and Construction
 - **Explicit Element Lists (`ir.MakeArray`):**
-  Allocates the structure (`quest_alloc_atomic` for scalar elements, `quest_alloc` for pointer/boxed elements) and
-  populates each 8-byte slot:
+  Allocates the structure (with the runtime's array layout for the elements' kind: `quest_layout_array_scalar`,
+  `_pointer`, or `_ambiguous`) and populates each 8-byte slot:
   ```c
-  l_arr = (QArray *)quest_alloc_atomic(sizeof(QArray) + (size_t)(4LL) * sizeof(QVal));
+  l_arr = (QArray *)quest_alloc(sizeof(QArray) + (size_t)(4LL) * sizeof(QVal), &quest_layout_array_scalar);
   l_arr->length = 4LL;
   ((QInt *)l_arr->data)[0LL] = 10LL;
   ...

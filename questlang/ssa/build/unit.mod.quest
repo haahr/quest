@@ -13,6 +13,7 @@ import
     questlang/modules/paths : questlang/modules/Paths
     questlang/codegen/symbols : questlang/codegen/Symbols
     questlang/codegen/staticdata : questlang/codegen/StaticData
+    questlang/codegen/objectLayout : questlang/codegen/ObjectLayout
     collections/hashMap : collections/HashMap
     collections/vector : collections/Vector
     util/hash : util/Hash
@@ -284,6 +285,7 @@ export
                 let var stringCount = 0
                 let optionTables = hashMap.new(:String :String vals.eq hash.string)
                 let naming = staticdata.newRecordNaming()
+                let layouts = objectLayout.newTable()
             end
             (* The source files, by the IR's numbers plus 1: the unit's own,
              * then those merged into it, as absolute paths, or empty if not
@@ -469,6 +471,13 @@ export
                     end
                 fun(fn: vals.Fn): Ok vals.terminate(fn option termReturn of ssa.Terminator with let values = array of vals.constant(fn 0) end end)
                 array of vals.tInt end array of vals.tInt vals.tPtr end true))) end
+            (* The layouts of the objects the unit's code allocates, which
+             * every function above has registered *)
+            let ls = objectLayout.layouts(u.layouts)
+            for i = 0 upto {extent ls - 1} do
+                let ds = statics.layoutData(ls[i] fun(s: String): String vals.stringSymbol(u s))
+                for j = 0 upto {extent ds - 1} do addData(u ds[j]) end
+            end
             u.built
         end
 end

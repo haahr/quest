@@ -10,6 +10,7 @@ import
     questlang/codegen/layout : questlang/codegen/Layout
     questlang/codegen/symbols : questlang/codegen/Symbols
     questlang/codegen/staticdata : questlang/codegen/StaticData
+    questlang/codegen/objectLayout : questlang/codegen/ObjectLayout
     questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
     questlang/codegen/runtimeFunctions : questlang/codegen/RuntimeFunctions
     collections/hashMap : collections/HashMap
@@ -137,6 +138,7 @@ export
         (* Names records and their offset tables as the unit's static data
          * does *)
         naming: staticdata.RecordNaming
+        layouts: objectLayout.Table
     end
 
     Def LoopTargets = Tuple head: Int after: Int end
@@ -805,8 +807,10 @@ export
             end
         end
 
-    (* A new object of n bytes, zeroed by the collector *)
-    let alloc(fn: Fn bytes: Int): Int = call1(fn "quest_alloc" array of constant(fn bytes) end)
+    (* A new object of n bytes, zeroed by the collector, laid out as the
+     * layout at the symbol says *)
+    let alloc(fn: Fn bytes: Int layout: String): Int =
+        call1(fn "quest_alloc" array of constant(fn bytes) symbolAt(fn layout) end)
 
     (* =========================================================================
      * Functions being built

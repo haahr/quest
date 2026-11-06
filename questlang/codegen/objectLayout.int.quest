@@ -1,0 +1,96 @@
+(* Quest Self-Hosted Compiler: Object Layouts Interface
+ *
+ * bootstrap/python/quest/codegen/objectlayout.py: the layouts of the objects
+ * generated code allocates (docs/collector.md section 3.2), for every backend.
+ * Each allocation names a layout, a static QLayout of the unit, which says
+ * for each word of the object whether it is a pointer, a scalar, or ambiguous
+ * (a QVal of generic code, whose kind the site does not know), so that a
+ * precise collector can scan the object and QUEST_GC_CHECK=layouts can check
+ * what the compilers say. The kinds come from the shapes the slots hold
+ * (codegen/layout): a slot's word form, or a value's representation for a
+ * closure environment's captures. A unit's layouts are collected in a table
+ * by tag, and the C printer and the SSA's builder lay them out as static data
+ * (quest_layout_<tag>); the runtime defines the common ones (a closure, an
+ * array, an adapter's environment), which generated code names by symbol. *)
+
+interface ObjectLayout
+import
+    questlang/types/model : questlang/types/Model
+    questlang/ir/shapes : questlang/ir/Shapes
+    collections/hashMap : collections/HashMap
+    collections/vector : collections/Vector
+    util/maybe : util/Maybe
+export
+    (* The kind of a word: a scalar, a pointer (an object's address, or into
+     * one, or outside the heap), or ambiguous *)
+    Def Kind = Option kindScalar kindPointer kindAmbiguous end
+    (* A kind as the runtime numbers them (Q_WORD_SCALAR, ...) *)
+    kindCode(k: Kind): Int
+    (* A kind's letter, for a layout's tag *)
+    kindLetter(k: Kind): String
+    (* The kind of the word an aggregate slot holds a value of shape s in *)
+    slotKind(s: shapes.Shape): Kind
+    (* The kinds of the words of a value of shape s in its representation, as
+     * a closure environment holds a capture: none for an Ok, a pointer and a
+     * pointer for a record, a scalar and an ambiguous word for a variant (its
+     * tag and its payload), and one word otherwise *)
+    representationKinds(s: shapes.Shape): Array(Kind)
+    (* The kinds of a QVariantVal or QRecordVal box embedded in an aggregate's
+     * allocation (docs/c-representation.md section 5.1) *)
+    boxKinds(s: shapes.Shape): Array(Kind)
+
+    (* The forms of a layout: a fixed object, described word by word, or an
+     * array, a header followed by elements counted by an int64_t in the
+     * header *)
+    Def Form = Option formFixed formArray end
+    (* A layout: its tag (its symbol is quest_layout_<tag>), its form, the
+     * kinds of its words (an array's header's), an array's element's kinds
+     * and the offset of its count, its bytes as a backend laying objects out
+     * itself counts them (a fixed object's, or an array's header's), and its
+     * size as C spells it, when that is not the bytes (sizeof a struct the C
+     * backend declares, so that the two agree by construction) *)
+    Def Layout = Tuple
+        tag: String
+        form: Form
+        words: Array(Kind)
+        element: Array(Kind)
+        lengthOffset: Int
+        bytes: Int
+        cSize: String
+    end
+    symbol(l: Layout): String
+    (* The runtime's layouts generated code names: a QClosure's, a
+     * QFunAdapterEnv's, and a QArray's whose elements are of kind k *)
+    closureSymbol: String
+    adapterEnvSymbol: String
+    arraySymbol(k: Kind): String
+
+    (* A tuple of shape ts, whose struct C names `struct`, with the boxes of
+     * the fields of shapes `boxes` embedded after it *)
+    tupleLayout(ts: shapes.Shape struct: String boxes: Array(shapes.Shape)): Layout
+    (* The first n components of a tuple of shape ts, as a copy of them is
+     * laid out *)
+    tuplePrefixLayout(ts: shapes.Shape n: Int): Layout
+    (* A record made in its box (docs/c-representation.md section 5.1): the
+     * QRecordVal, then the payload of record type t, whose struct C names
+     * `struct`, then the embedded boxes *)
+    recordLayout(t: model.Type struct: String boxes: Array(shapes.Shape)): Layout
+    (* An option of shape os, whose struct C names `struct`, of the case named
+     * tag, or of any case (none): then each word is the kinds its cases give
+     * it, ambiguous where they differ *)
+    optionLayout(os: shapes.Shape struct: String tag: maybe.T(String)): Layout
+    (* A closure's environment (struct QEnv_<code>) of the given words *)
+    envLayout(code: String kinds: Array(Kind) bytes: Int cSize: String): Layout
+
+    (* A unit's layouts, by tag and in the order first registered *)
+    Def Table = Tuple byTag: hashMap.T(String Layout) order: vector.T(String) end
+    newTable(): Table
+    (* Registers l, returning its symbol; a layout registered before under
+     * the same tag must be the same *)
+    mismatch: Exception(String)
+    register(t: Table l: Layout): String
+    layouts(t: Table): Array(Layout)
+    (* kinds packed eight to a word, the first in the low byte, as a backend
+     * that lays data out in words writes a layout's kinds *)
+    packedKinds(kinds: Array(Kind)): Array(Int)
+end

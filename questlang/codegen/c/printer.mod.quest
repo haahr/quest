@@ -18,6 +18,7 @@ import
     questlang/codegen/symbols : questlang/codegen/Symbols
     questlang/codegen/externals : questlang/codegen/Externals
     questlang/codegen/staticdata : questlang/codegen/StaticData
+    questlang/codegen/objectLayout : questlang/codegen/ObjectLayout
     questlang/codegen/c/types : questlang/codegen/c/Types
     questlang/codegen/c/declarations : questlang/codegen/c/Declarations
     collections/hashMap : collections/HashMap
@@ -193,6 +194,9 @@ export
          * (docs/c-representation.md section 5.3) *)
         optionTables: hashMap.T(String String)
         optionTableDecls: vector.T(String)
+        (* The layouts of the objects the unit allocates (docs/collector.md
+         * section 3.2), each defined once *)
+        layouts: objectLayout.Table
         var fs: FnState
         var lines: Lines
         var indent: Int
@@ -263,6 +267,91 @@ export
      * ====================================================================== *)
 
     let cType(t: Type): String = types.qtypeToCType(t)
+
+    (* The address of a layout of the unit, registering it *)
+    let layoutRef(p: P l: objectLayout.Layout): String = "&" <> objectLayout.register(p.layouts l)
+
+    (* The shapes of the fields boxed in an aggregate's allocation, in
+     * order *)
+    let boxShapes(fields: vector.T(Field)): Array(Shape) =
+        begin
+            let res = vector.new(:Shape)
+            for i = 0 upto {vector.length(:Field fields) - 1} do
+                case vector.get(:Field fields i)
+                    when fieldFresh with x then vector.append(:Shape res x.shape)
+                    else ok
+                end
+            end
+            vector.toArray(:Shape res)
+        end
+
+    let noBoxes = array of :Shape end
+
+    (* The layout of a closure's environment, struct QEnv_<code>, whose
+     * fields C lays out: a Bool or Char capture is a byte, every other
+     * field a word or two, aligned to a word *)
+    let envLayoutOf(code: String o: nodes.OpMakeClosure): objectLayout.Layout =
+        begin
+            let kinds = vector.new(:objectLayout.Kind)
+            let scalar = option kindScalar of objectLayout.Kind end
+            let var offset = 0
+            let wordAt(i: Int k: objectLayout.Kind): Ok =
+                begin
+                    while vector.length(:objectLayout.Kind kinds) <= i do
+                        vector.append(:objectLayout.Kind kinds scalar)
+                    end
+                    vector.set(:objectLayout.Kind kinds i k)
+                end
+            let words(ks: Array(objectLayout.Kind)): Ok =
+                begin
+                    offset := {{offset + 7} / 8} * 8
+                    for j = 0 upto {extent ks - 1} do
+                        wordAt(offset / 8 ks[j])
+                        offset := offset + 8
+                    end
+                end
+            for i = 0 upto {extent o.typeArgs - 1} do words(array of option kindPointer of objectLayout.Kind end end) end
+            for i = 0 upto {extent o.captures - 1} do
+                let t = atomType(o.captures[i])
+                if isOk(t) then words(array of scalar end)
+                else
+                    case layout.representationKind(t)
+                        when repBool, repChar then
+                            wordAt(offset / 8 scalar)
+                            offset := offset + 1
+                        when repVoid, repInt, repWord, repReal, repRecord, repVariant, repPointer, repQVal then
+                            words(objectLayout.representationKinds(shapeOf(t)))
+                    end
+                end
+            end
+            if vector.length(:objectLayout.Kind kinds) is 0 then wordAt(0 scalar) end
+            objectLayout.envLayout(code vector.toArray(:objectLayout.Kind kinds)
+                8 * vector.length(:objectLayout.Kind kinds) "sizeof(struct QEnv_" <> code <> ")")
+        end
+
+    (* The definitions of the unit's layouts, after every function has been
+     * printed *)
+    let layoutDefinitions(p: P): Lines =
+        begin
+            let lines = vector.new(:String)
+            let ls = objectLayout.layouts(p.layouts)
+            for i = 0 upto {extent ls - 1} do
+                let l = ls[i]
+                let kinds = vector.new(:String)
+                for j = 0 upto {extent l.words - 1} do add(kinds cInt(objectLayout.kindCode(l.words[j]))) end
+                for j = 0 upto {extent l.element - 1} do add(kinds cInt(objectLayout.kindCode(l.element[j]))) end
+                if vector.empty(:String kinds) then add(kinds "0") end
+                add(lines "static const uint8_t qlk_" <> l.tag <> "[] = { " <> syntax.comma(kinds) <> " };")
+                let form = case l.form when formFixed then "Q_LAYOUT_FIXED" when formArray then "Q_LAYOUT_ARRAY" end
+                let size = if eq(l.cSize "") then cInt(l.bytes) else l.cSize end
+                add(lines "static const QLayout " <> objectLayout.symbol(l) <> " Q_UNUSED = { "
+                    <> syntax.cString(l.tag) <> ", " <> form <> ", 0, " <> size <> ", " <> cInt(l.lengthOffset) <> ", "
+                    <> cInt(extent l.element) <> ", " <> cInt(extent l.words) <> ", qlk_" <> l.tag <> " };")
+            end
+            if not(vector.empty(:String lines)) then add(lines "") end
+            lines
+        end
+
     let slotCType(s: Shape): String = layout.shapeSlotRepresentation(s)
     let locationCType(t: Type): String = layout.shapeLocationRepresentation(shapeOf(t))
 
@@ -517,7 +606,8 @@ export
                     else
                         let struct = layout.shapeTag(tupleS)
                         let tmp = temp(p struct <> " *")
-                        emit(p tmp <> " = (" <> struct <> " *)quest_alloc(sizeof(" <> struct <> "));")
+                        emit(p tmp <> " = (" <> struct <> " *)quest_alloc(sizeof(" <> struct <> "), "
+                            <> layoutRef(p objectLayout.tupleLayout(tupleS struct noBoxes)) <> ");")
                         let comps = vector.new(:Shape)
                         if maybe.isSome(:Shape cs) then
                             let pt = maybe.unwrap(:Shape cs)
@@ -641,7 +731,8 @@ export
             cType(t)
             let tmp = temp(p struct <> " *")
             let sized = embeddedBoxes(p tmp "sizeof(" <> struct <> ")" fields)
-            emit(p tmp <> " = (" <> struct <> " *)quest_alloc(" <> sized.size <> ");")
+            emit(p tmp <> " = (" <> struct <> " *)quest_alloc(" <> sized.size <> ", "
+                <> layoutRef(p objectLayout.tupleLayout(shapeOf(t) struct boxShapes(fields))) <> ");")
             let values = fillEmbedded(p sized.fields)
             for i = 0 upto {vector.length(:String values) - 1} do
                 emit(p tmp <> "->_" <> cInt(i) <> " = " <> vector.get(:String values i) <> ";")
@@ -785,7 +876,7 @@ export
                         raise unsupported with "C printing of an adapt plan without its adapter" end
                     end
                     let clos = temp(p "QClosure *")
-                    emit(p clos <> " = (QClosure *)quest_alloc(sizeof(QClosure));")
+                    emit(p clos <> " = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
                     emit(p clos <> "->fn = (void *)" <> codeName(p maybe.unwrap(:nodes.Function plan.thunk)) <> ";")
                     emit(p clos <> "->env = (void *)(" <> c <> ");")
                     clos
@@ -879,7 +970,8 @@ export
                 end)
             end
             let sized = embeddedBoxes(p payload "sizeof(QRecordVal) + sizeof(" <> struct <> ")" values)
-            emit(p box <> " = (QRecordVal *)quest_alloc(" <> sized.size <> ");")
+            emit(p box <> " = (QRecordVal *)quest_alloc(" <> sized.size <> ", "
+                <> layoutRef(p objectLayout.recordLayout(concrete struct boxShapes(values))) <> ");")
             emit(p payload <> " = (" <> struct <> " *)(" <> box <> " + 1);")
             emit(p payload <> "->header.descriptor = " <> maybeDescriptor(p o.descriptor) <> ";")
             let filled = fillEmbedded(p sized.fields)
@@ -1067,7 +1159,8 @@ export
     let makeAllocatedOption(p: P o: nodes.OpMakeOption os: Shape struct: String): String =
         begin
             let tmp = temp(p struct <> " *")
-            emit(p tmp <> " = (" <> struct <> " *)quest_alloc(sizeof(" <> struct <> "));")
+            emit(p tmp <> " = (" <> struct <> " *)quest_alloc(sizeof(" <> struct <> "), "
+                <> layoutRef(p objectLayout.optionLayout(os struct o.tag)) <> ");")
             let var tag = o.tag
             if maybe.isSome(:Atom o.ordinalAtom) then
                 (* The ordinal counts in the type's cases as written; the tag
@@ -1212,7 +1305,8 @@ export
             let struct = layout.shapeTag(ts)
             cType(tupleType)
             let tmp = temp(p struct <> " *")
-            emit(p tmp <> " = (" <> struct <> " *)quest_alloc(sizeof(" <> struct <> "));")
+            emit(p tmp <> " = (" <> struct <> " *)quest_alloc(sizeof(" <> struct <> "), "
+                <> layoutRef(p objectLayout.tupleLayout(ts struct noBoxes)) <> ");")
             let pt = caseShape(os tag)
             if offset > 0 then emit(p tmp <> "->_0 = " <> lit(ordinalValue) <> ";") end
             if maybe.isSome(:Shape pt) andif shapes.kindIs(maybe.unwrap(:Shape pt) shapes.shapeTuple) then
@@ -1341,7 +1435,8 @@ export
         begin
             let n = vector.length(:String elements)
             let arr = temp(p cType(t))
-            emit(p arr <> " = (QArray *)quest_alloc(sizeof(QArray) + (size_t)(" <> lit(n) <> ") * sizeof(QVal));")
+            emit(p arr <> " = (QArray *)quest_alloc(sizeof(QArray) + (size_t)(" <> lit(n) <> ") * sizeof(QVal), &"
+                <> objectLayout.arraySymbol(objectLayout.slotKind(shapes.element(shapeOf(t)))) <> ");")
             emit(p arr <> "->length = " <> lit(n) <> ";")
             for i = 0 upto {n - 1} do emit(p arr <> "->data[" <> lit(i) <> "] = " <> vector.get(:String elements i)
                 <> ";") end
@@ -1556,7 +1651,8 @@ export
                 "(&" <> code <> "_closure)"
             else
                 let env = temp(p "struct QEnv_" <> code <> " *")
-                emit(p env <> " = (struct QEnv_" <> code <> " *)quest_alloc(sizeof(struct QEnv_" <> code <> "));")
+                emit(p env <> " = (struct QEnv_" <> code <> " *)quest_alloc(sizeof(struct QEnv_" <> code <> "), "
+                    <> layoutRef(p envLayoutOf(code o)) <> ");")
                 for i = 0 upto {extent o.descriptors - 1} do
                     emit(p env <> "->d" <> cInt(i) <> " = " <> descriptor(p o.descriptors[i]) <> ";")
                 end
@@ -1576,7 +1672,7 @@ export
                     if not(isDeferred) then emit(p env <> "->c" <> cInt(i) <> " = " <> atom(p a) <> ";") end
                 end
                 let clos = temp(p "QClosure *")
-                emit(p clos <> " = (QClosure *)quest_alloc(sizeof(QClosure));")
+                emit(p clos <> " = (QClosure *)quest_alloc(sizeof(QClosure), &quest_layout_closure);")
                 emit(p clos <> "->fn = (void *)" <> code <> ";")
                 emit(p clos <> "->env = (void *)" <> env <> ";")
                 clos
@@ -1800,9 +1896,9 @@ export
                 makeArray(p elements maybe.unwrap(:Variable result).type)
             when opArrayRep with x then
                 let n = "quest_check_array_count_at(" <> atom(p x.count) <> ", " <> site(p x.offset) <> ")"
-                "quest_array_new(" <> n <> ", "
-                    <> arrayElement(p x.init shapes.element(shapeOf(maybe.unwrap(:Variable result).type)))
-                    <> ")"
+                let elem = shapes.element(shapeOf(maybe.unwrap(:Variable result).type))
+                "quest_array_new(" <> n <> ", " <> arrayElement(p x.init elem) <> ", &"
+                    <> objectLayout.arraySymbol(objectLayout.slotKind(elem)) <> ")"
             when opTypeApp with x then typeApp(p x maybe.unwrap(:Variable result))
             when opMakeAuto with x then makeAuto(p x.descriptor x.autoType x.payload)
             when opIndex with x then
@@ -1880,7 +1976,8 @@ export
         begin
             let armStruct = layout.tupleStructName(armType)
             let a = temp(p armStruct <> " *")
-            emit(p a <> " = (" <> armStruct <> " *)quest_alloc(sizeof(" <> armStruct <> "));")
+            emit(p a <> " = (" <> armStruct <> " *)quest_alloc(sizeof(" <> armStruct <> "), "
+                <> layoutRef(p objectLayout.tupleLayout(shapeOf(armType) armStruct noBoxes)) <> ");")
             let storedFields = case storedType.form
                 when typeTuple with x then model.tupleValueFields(x.fields)
                 else vector.toArray(:model.ValueField vector.new(:model.ValueField))
@@ -2837,6 +2934,7 @@ export
                 if maybe.isSome(:nodes.Members m.exports) then add(res "void qv_mod_" <> clean <> "_init(void);") end
             end
             add(res "")
+            addAll(res layoutDefinitions(p))
             (* The unit's functions with frames in tracebacks
              * (docs/exceptions.md section 5.2) *)
             let funcs = funcTableEntries(p)
@@ -2922,6 +3020,7 @@ export
             let tupleCasts = hashMap.new(:String :declarations.Pair eq hash.string)
             let optionTables = hashMap.new(:String :String eq hash.string)
             let optionTableDecls = vector.new(:String)
+            let layouts = objectLayout.newTable()
             let var fs = newFnState(maybe.none(:nodes.Function))
             let var lines = vector.new(:String)
             let var indent = 1

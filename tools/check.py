@@ -147,6 +147,9 @@ def main() -> int:
                 "ssac,arm64,arm64-program,c-whole,arm64-whole,jit,jit-files"]
     unit = [python, "-m", "unittest"]
     unit_environment = {"PYTHONPATH": str(ROOT_DIR / "bootstrap" / "python")}
+    # Every compiled program the suites run, the compilers among them, checks
+    # its objects' layouts (docs/collector.md section 7)
+    os.environ["QUEST_GC_CHECK"] = "layouts"
 
     if self_hosted_only:
         together = [

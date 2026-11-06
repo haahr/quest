@@ -67,7 +67,7 @@ static const QTypeDescriptor pair_mid_desc = { .kind = QTYPE_KIND_TUPLE, .name =
     .size = sizeof(PairBig), .alignment = sizeof(void *), .is_subtype = quest_is_subtype, .extra = &pair_mid_meta };
 
 static Big *new_big(void) {
-    Big *b = (Big *)quest_alloc(sizeof(Big));
+    Big *b = (Big *)quest_alloc_sized(sizeof(Big), &quest_layout_words);
     b->header.descriptor = &big_desc;
     b->qf_a = 1; b->qf_b = 2; b->qf_c = 3;
     return b;
@@ -119,7 +119,7 @@ class TestRecordDicts(unittest.TestCase):
         self.assertIn("OK", self.run_c(r"""
     /* Distinct descriptor copies make distinct keys with equal tables */
     enum { N = 500 };
-    QTypeDescriptor *views = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor) * N);
+    QTypeDescriptor *views = (QTypeDescriptor *)quest_alloc_sized(sizeof(QTypeDescriptor) * N, &quest_layout_words);
     const void *dicts[N];
     for (int i = 0; i < N; ++i) {
         views[i] = mid_desc;
@@ -134,7 +134,7 @@ class TestRecordDicts(unittest.TestCase):
 
     def test_record_layout_reads_the_header(self) -> None:
         self.assertIn("OK", self.run_c(r"""
-    Big *payload = (Big *)quest_alloc(sizeof(Big));
+    Big *payload = (Big *)quest_alloc_sized(sizeof(Big), &quest_layout_words);
     payload->header.descriptor = &big_desc;
     QRecordVal r = { .val = payload, .dict = quest_record_dict(&mid_desc, &big_desc) };
     assert(quest_record_layout(r) == &big_desc);
@@ -146,7 +146,7 @@ class TestRecordDicts(unittest.TestCase):
     QRecordVal mid_self = { .val = NULL, .dict = quest_record_dict(&mid_desc, &big_desc) };
     assert(quest_record_stored_types(mid_self, 2) == NULL);
     /* OuterMid viewing an OuterBig payload: field inner (index 0) is stored as Big */
-    OuterBig *o = (OuterBig *)quest_alloc(sizeof(OuterBig));
+    OuterBig *o = (OuterBig *)quest_alloc_sized(sizeof(OuterBig), &quest_layout_words);
     o->header.descriptor = &outer_big_desc;
     o->qf_inner = quest_record_box((QRecordVal){ .val = new_big(), .dict = quest_record_dict(&big_desc, &big_desc) });
     o->qf_n = 7;
@@ -162,7 +162,7 @@ class TestRecordDicts(unittest.TestCase):
 
     def test_convert_views_tuples_through_proxies(self) -> None:
         self.assertIn("OK", self.run_c(r"""
-    PairBig *pair = (PairBig *)quest_alloc(sizeof(PairBig));
+    PairBig *pair = (PairBig *)quest_alloc_sized(sizeof(PairBig), &quest_layout_words);
     pair->_0 = quest_record_box((QRecordVal){ .val = new_big(), .dict = quest_record_dict(&big_desc, &big_desc) });
     pair->_1 = 5;
     /* A proxy of the pair, whose elements are converted as they are read */

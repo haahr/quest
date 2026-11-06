@@ -78,7 +78,7 @@ QCodeRegion *quest_code_reserve(int64_t size, bool executable) {
     if (size <= 0) quest_value_fail();
     void *p = mmap(NULL, (size_t)size, prot, flags, -1, 0);
     if (p == MAP_FAILED) quest_value_fail();
-    QCodeRegion *r = (QCodeRegion *)quest_alloc(sizeof(QCodeRegion));
+    QCodeRegion *r = (QCodeRegion *)quest_alloc(sizeof(QCodeRegion), &quest_layout_code_region);
     r->base = (char *)p;
     r->size = size;
     r->executable = executable;

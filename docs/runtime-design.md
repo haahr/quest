@@ -225,15 +225,17 @@ into runtime `QTypeDescriptor` graphs (`runtime/quest_runtime.h`, materialized b
 Quest is a garbage-collected language with mutable references (`var`) and cyclic data structures (such as recursive
 functions, doubly-linked structures, and self-referential records).
 
-1. **Primary Collector: Boehm-Demers-Weiser Conservative GC (`libgc`)**
-   - Pointer allocations (`quest_alloc(size)`) route to `GC_MALLOC(size)`, which zero-initializes memory and scans it
-     for outgoing pointers.
-   - Pointer-free leaf allocations (`quest_alloc_atomic(size)`—used for `String` character buffers, primitive arrays
-     `Array(Int)` / `Array(Real)` / `Array(Bool)` / `Array(Char)`, and captured exception stack traces) route to
-     `GC_MALLOC_ATOMIC(size)`, avoiding conservative pointer scanning inside binary/string payloads.
-2. **Fallback Mode (`--nogc`):**
-   - Compiling with `--nogc` defines `-DQUEST_NOGC`, routing `quest_alloc` and `quest_alloc_atomic` to standard
-     `calloc(1, size)` so binaries can be built and tested on hosts without `libgc` installed.
+1. **Primary Collector: Boehm-Demers-Weiser Conservative GC (`libgc`)**, which scans the heap, the stack, the
+   registers, and the data segments conservatively. Every allocation (`quest_alloc(size, layout)` and its variants,
+   [c-representation.md](c-representation.md) §9) prepends a header word naming the object's **layout**
+   ([collector.md](collector.md) §3.2), which says for each word whether it is a pointer, a scalar, or ambiguous:
+   the first step of the collector that is to replace Boehm, and what `QUEST_GC_CHECK=layouts`
+   (`runtime/quest_gc.c`) checks against the objects, after every 64 MB allocated (`QUEST_GC_CHECK_INTERVAL` sets the
+   bytes; at least four times the heap's size, so that the walks stay a fraction of the run) and at exit; `report` in the list prints the counts per layout, ambiguous words among them.
+   - Pointer-free allocations (`quest_alloc_bytes`: `String` character buffers, and the runtime's own byte buffers)
+     route to `GC_MALLOC_ATOMIC`, avoiding conservative pointer scanning inside them.
+2. **Fallback Mode (`--nogc`):** compiling with `--nogc` defines `-DQUEST_NOGC`, routing the allocators to `calloc`
+   and `malloc`, so binaries can be built and tested on hosts without `libgc` installed; nothing is ever collected.
 
 ---
 
