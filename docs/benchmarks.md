@@ -1825,6 +1825,11 @@ self-hosted compiler's alone: optimizations, not fixes, so the bootstrap does no
 §2.8). They were made and first measured under Boehm, then replayed onto the collector of §16 to §19; every time
 below was taken after the replay, under the collector.
 
+The times are in `benchmarks/mlton/baselines/2026-11-06/`: the four at each commit through C and arm64
+(`quest-c-whole-four-COMMIT.jsonl`, `quest-arm64-whole-four-COMMIT.jsonl`), the suite through arm64
+(`quest-arm64-whole-COMMIT.jsonl`), §20.4's two left out (`-without-steps-2-3`, `-without-static-closures`), §20.5's
+bound lifted (`quest-arm64-whole-growth-100000-eb7a20e2.jsonl`), and MLton's tensor (`mlton-tensor.jsonl`).
+
 ### 20.1. The steps
 
 Decided on 2026-11-04: specialization per call site, bounded by the inliner's size, not whole-program
