@@ -8,10 +8,10 @@ samples in half the programs), and it keeps dead data alive through stale stack 
 §3.2). This document designs a collector of Quest's own: precise where the compilers can make it so, generational,
 bump-allocating, able to move but not obliged to, and asks what must change to get there.
 
-**Status: step 6 done, 2026-11-05** (decided 2026-11-02; reviewed and reorganized 2026-11-03). Section 6
-records the decisions, section 7 the risks and the checking modes that catch them, section 8 the steps, and section
-9 what the reviews changed. The committed collector is steps 1 to 6 of §8; evacuation and generic layouts (steps 7
-and 8) are designed and taken only on measurement.
+**Status: step 6 done, 2026-11-05, and replayed onto the main branch 2026-11-06** (decided 2026-11-02; reviewed and
+reorganized 2026-11-03). Section 6 records the decisions, section 7 the risks and the checking modes that catch them,
+section 8 the steps, and section 9 what the reviews changed. The committed collector is steps 1 to 6 of §8; evacuation
+and generic layouts (steps 7 and 8) are designed and taken only on measurement.
 
 ---
 

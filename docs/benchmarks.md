@@ -1770,3 +1770,25 @@ times), by `QUEST_GC_STATS`:
 - **The longest pause of any kind is now a minor collection's,** 30 ms on the build (9 ms on average), where the nursery
   has adapted to 160 MB a collection and 6 MB survive each. That, not the full collections, is what is left of the
   collector's latency.
+
+### 19.4. On the tree with §15's changes (2026-11-06)
+
+§16 to §19 were measured on trees without §15's changes (the library's integers, `ssa/selects`, and `ssa/constants`),
+which reached the main branch while the collector was being written. The collector's commits were then replayed onto
+them, and the ABI numbers and section numbers in these sections are the replayed ones. The suite was not retaken. The
+compiler's own build was, as in §19.3 with full collections in cycles, three times with `-j 8` and once with `-j 1`,
+on an idle machine (load 1.8), by `./quest` from the replayed step 6 (ABI 73), and it is as it was:
+
+| | Step 6 (§19.3) | Replayed |
+|---|--:|--:|
+| Wall, `-j 8` (s) | 21.1, 21.1, 21.3 | 21.0, 21.2, 21.1 |
+| User + system (s) | 108.3, 109.1, 108.7 | 109.5, 109.6, 109.8 |
+| Largest resident set (GB) | 1.54, 1.54, 1.35 | 1.55, 1.55, 1.44 |
+| Wall, `-j 1` (s) | 65.7 | 66.2 |
+| A full collection's pause, longest (ms) | 11.6 | 10.8 |
+| A slice, longest (ms) | 2.5 | 3.6 |
+| A minor collection's pause, longest (ms) | 29.7 | 27.7 |
+
+`ssa/constants` makes as many globals constant with the collector as without (123 globals stay writable in the SSA
+goldens on both trees), now that it takes the registrations of roots and frame tables and the barriers as running no
+Quest code, and `ssa/selects` makes the same 32 selects there.
