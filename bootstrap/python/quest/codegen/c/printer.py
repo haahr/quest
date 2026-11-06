@@ -100,6 +100,10 @@ from quest.types import (
     QType,
 )
 
+# The words of a QExceptionState (runtime/quest_runtime.h), a handler's
+# variable, all listed by the root table of a unit that holds one as a global
+EXCEPTION_STATE_WORDS = 6
+
 _INT_OPS = {"+": "+", "-": "-", "*": "*", "<": "<", "<=": "<=", ">": ">", ">=": ">="}
 _REAL_OPS = {"++": "quest_real_add", "--": "quest_real_sub", "**": "quest_real_mul", "//": "quest_real_divide"}
 _REAL_RELATIONS = {"<<": "<", "<<=": "<=", ">>": ">", ">>=": ">="}
@@ -177,6 +181,7 @@ class CPrinter:
         # The layouts of the objects the unit allocates (docs/collector.md
         # §3.2), each defined once
         self.layouts = objectlayout.Table()
+        self.global_words: dict[int, int] = {}
 
     # Names
 
@@ -319,6 +324,12 @@ class CPrinter:
         (embedded_boxes)."""
         return [_FreshBox(self.atom(a), s) if i in embedded else self.atom(a)
                 for i, (a, s) in enumerate(zip(args, shapes))]
+
+    def holds_pointer(self, t: QType) -> bool:
+        """Whether a value of type t holds a word that may be a pointer, which
+        a store of it into an existing object must barrier (docs/collector.md
+        §3.5)."""
+        return any(k != objectlayout.SCALAR for k in objectlayout.representation_kinds(shape(t)))
 
     def layout_ref(self, layout: objectlayout.Layout) -> str:
         """The address of a layout of the unit, registering it."""
@@ -1358,6 +1369,8 @@ class CPrinter:
             return
         pointer = var.mutable and self.is_pointer_param(var)
         target = f"(*{self.name(var)})" if pointer else self.name(var)
+        if pointer and self.holds_pointer(var.type):
+            self.emit(f"quest_barrier_slot({self.name(var)});")
         self.emit(f"{target} = {value};")
 
     def leave_to(self, depth: int) -> None:
@@ -1380,33 +1393,50 @@ class CPrinter:
             case ir.Assign(var=var, value=value):
                 self.assign(var, self.atom(value))
             case ir.StoreAt(value=value, address=address):
+                if self.holds_pointer(self.atom_type(value)):
+                    self.emit(f"quest_barrier_slot({self.atom(address)});")
                 self.emit(f"*{self.atom(address)} = {self.atom(value)};")
             case ir.StoreField(value=value, base=base, name=name):
                 ptr, field = self.record_slot(self.atom(base), self.held(self.atom_type(base), "record"), name,
                                               s.view_map)
+                if self.holds_pointer(self.atom_type(value)):
+                    self.emit(f"quest_barrier_slot({ptr});")
                 self.emit(f"*{ptr} = {self.atom(value)};")
             case ir.StoreComponent(value=value, base=base, index=index) if s.view_map is not None:
                 component = resolved_shape(shape(self.atom_type(base))).components[index].shape
                 slot = f"quest_view_tuple_slot({self.atom(base)}, {self.name(s.view_map)}, {c_int(index)})"
+                if self.holds_pointer(self.atom_type(value)):
+                    self.emit(f"quest_barrier_slot({slot});")
                 self.emit(f"*(({self.slot_c_type(component)} *){slot}) = {self.atom(value)};")
             case ir.StoreComponent(value=value, base=base, index=index, access=access):
                 ts = shape(self.atom_type(base))
                 component = ts.components[index].shape
                 b, v = self.atom(base), self.atom(value)
+                barrier = self.holds_pointer(self.atom_type(value))
                 if access == ir.ORIGINAL:
                     # Stored into the original as it is
+                    if barrier:
+                        self.emit(f"quest_barrier(quest_unproxy({b}));")
                     self.emit(f"(({self.c_type(ts.type)})quest_unproxy({b}))->_{c_int(index)} = {v};")
                 elif access == ir.PROXY:
-                    # A var component of a proxy is the original's
+                    # A var component of a proxy is the original's, which
+                    # quest_proxy_store barriers itself
                     self.emit(f"if (quest_is_proxy({b})) quest_proxy_store({b}, {c_int(index)}, "
                               f"{shape_slot_to_qval(v, component)});")
-                    self.emit(f"else {b}->_{c_int(index)} = {v};")
+                    if barrier:
+                        self.emit(f"else {{ quest_barrier({b}); {b}->_{c_int(index)} = {v}; }}")
+                    else:
+                        self.emit(f"else {b}->_{c_int(index)} = {v};")
                 else:
+                    if barrier:
+                        self.emit(f"quest_barrier({b});")
                     self.emit(f"{b}->_{c_int(index)} = {v};")
             case ir.StoreElement(value=value, base=base, index=index, offset=offset):
                 arr, idx = self.atom(base), self.atom(index)
                 elem = self.element_shape(base)
                 self.emit(f"quest_check_array_bounds_at({arr}, {idx}, {self.site(offset)});")
+                if self.holds_pointer(elem.type):
+                    self.emit(f"quest_barrier({arr});")
                 self.emit(f"{arr}->data[{idx}] = {self.array_element(value, elem)};")
             case ir.Switch(value=value, cases=cases, else_body=else_body, access=access):
                 self.switch(value, cases, else_body, access, s.view_map)
@@ -1417,6 +1447,9 @@ class CPrinter:
                 self.deferred = ({id(v) for v in vars_}, [])
                 self.body(body)
                 for env, i, var in self.deferred[1]:
+                    # The environment was made before the body ran
+                    if self.holds_pointer(var.type):
+                        self.emit(f"quest_barrier({env});")
                     self.emit(f"{env}->c{c_int(i)} = {self.atom(var)};")
                 self.deferred = saved
             case ir.If(cond=cond, then_body=then_body, else_body=else_body):
@@ -1899,7 +1932,8 @@ class CPrinter:
             code = self.code_name(f)
             out.append(f"static Q_UNUSED QClosure {code}_closure = {{ (void *){code}, NULL }};")
         out.append("")
-        for v_id, name, c_t in self.global_declarations():
+        globals_ = self.global_declarations()
+        for v_id, name, c_t in globals_:
             out.append(f"static {c_t} {name};")
         for m in self.unit.modules:
             clean = mangle_module_name(m.name)
@@ -1909,6 +1943,17 @@ class CPrinter:
             if m.exports is not None:
                 out.append(f"void qv_mod_{clean}_init(void);")
         out.append("")
+        # The unit's root table: its globals that may hold pointers, and its
+        # module records (docs/collector.md §3.8)
+        out.append("static const QRootEntry qr_roots[] = {")
+        for v_id, name, c_t in globals_:
+            words = self.global_words[v_id]
+            if words > 0:
+                out.append(f"    {{ (void *)&{name}, {words} }},")
+        for m in self.unit.modules:
+            out.append(f"    {{ (void *)&{module_record_ident(mangle_module_name(m.name))}, 2 }},")
+        out.append("    { NULL, 0 },")
+        out.append("};")
         out.extend(self.thunk_decls)
         # The layouts of the objects the unit allocates, after the thunks'
         # environment structs they size
@@ -1930,6 +1975,7 @@ class CPrinter:
         # The offset tables of the records the unit views at supertypes,
         # registered for dynamic values, and its function table
         out.append("static void qr_register_dicts(void) {")
+        out.append("    quest_register_roots(qr_roots);")
         if funcs:
             out.append("    quest_register_funcs(qr_funcs, sizeof qr_funcs / sizeof qr_funcs[0]);")
         registered: set[str] = set()
@@ -1970,6 +2016,16 @@ class CPrinter:
                     if id(v) in self.globals and id(v) not in seen and not self.is_ok(v.type):
                         seen.add(id(v))
                         found.append((id(v), self.name(v), self.var_c_type(v)))
+                        # The words of it a root table lists: all of them if
+                        # any may be a pointer, else none; a handler's variable
+                        # is a copy of the exception state, whose every word
+                        # may be one
+                        if id(v) in self.handler_vars:
+                            self.global_words[id(v)] = EXCEPTION_STATE_WORDS
+                        elif self.holds_pointer(v.type):
+                            self.global_words[id(v)] = len(objectlayout.representation_kinds(shape(v.type)))
+                        else:
+                            self.global_words[id(v)] = 0
         return found
 
     def func_table_entries(self) -> list[tuple[str, str]]:

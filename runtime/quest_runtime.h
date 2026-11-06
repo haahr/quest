@@ -548,11 +548,35 @@ extern const QLayout quest_layout_string, quest_layout_exception, quest_layout_a
     quest_layout_record_dict_entries, quest_layout_inst_nodes, quest_layout_inst_cache_entry,
     quest_layout_view_map_entry, quest_layout_variant_adapter_entry, quest_layout_abstract_type_entry;
 
+/* Write barriers (docs/collector.md section 3.5), called before a store of a
+ * word that may be a pointer into an object that already exists: with the
+ * object, when the store site has its address (a tuple, an array, a box), or
+ * with the slot's address when it does not (a record's field through its
+ * payload, a var or out location, which may be on the stack, a view's slot).
+ * Stores that initialize an object being made need neither. Until the
+ * generational collector (step 4), they only count. */
+void     quest_barrier(const void *obj);
+void     quest_barrier_slot(const void *slot);
+
+/* Root tables (section 3.8): the global slots of a unit that hold heap
+ * pointers, each by its address and its words, ending with a null slot,
+ * registered when the unit is initialized; and the runtime's own, which each
+ * runtime file lists through a callback for the roots check */
+typedef struct QRootEntry {
+    void   *slot;
+    size_t  words;
+} QRootEntry;
+void     quest_register_roots(const QRootEntry *roots);
+typedef void (*QRootVisitor)(void *slot, size_t words);
+void     quest_runtime_roots(QRootVisitor add);
+void     quest_code_roots(QRootVisitor add);
+
 /* The checking modes of QUEST_GC_CHECK (docs/collector.md section 7), as bits
  * of quest_gc_check_flags, and the allocation hook of those that count
  * allocations */
 #define QUEST_GC_CHECK_LAYOUTS 1
 #define QUEST_GC_CHECK_REPORT  2
+#define QUEST_GC_CHECK_ROOTS   4
 extern int    quest_gc_check_flags;
 extern size_t quest_gc_check_pending;  /* bytes allocated since the last check */
 /* Counts an allocation of sz bytes after a header of header bytes, and checks

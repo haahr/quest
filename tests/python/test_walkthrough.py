@@ -19,6 +19,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -47,6 +48,7 @@ def excerpt_pattern(body: str) -> re.Pattern[str]:
 class TestWalkthrough(unittest.TestCase):
 
     outputs: dict[tuple[str, ...], str] = {}
+    build_dir = tempfile.TemporaryDirectory(prefix="quest-walkthrough-")
 
     def output_of(self, spec: tuple[str, ...]) -> str:
         if spec not in self.outputs:
@@ -54,11 +56,13 @@ class TestWalkthrough(unittest.TestCase):
             if what == "source":
                 text = (ROOT_DIR / path).read_text(encoding="utf-8")
             else:
+                # A build directory of its own, so that no unit cached in the
+                # tree's .build by an earlier compiler is linked
                 environment = os.environ.copy()
                 environment["PYTHONPATH"] = str(ROOT_DIR / "bootstrap" / "python")
                 process = subprocess.run(
                     [sys.executable, str(ROOT_DIR / "bootstrap" / "python" / "quest_driver.py"),
-                     "--stop-after", what, *options, path],
+                     "--stop-after", what, "--build-dir", self.build_dir.name, *options, path],
                     capture_output=True, text=True, cwd=ROOT_DIR, env=environment, timeout=120,
                 )
                 self.assertEqual(process.returncode, 0, process.stderr)

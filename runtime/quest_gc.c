@@ -14,6 +14,15 @@
 #ifndef QUEST_NOGC
 #  include <gc/gc_mark.h>
 #endif
+#if defined(__APPLE__)
+#  include <dlfcn.h>
+#  include <mach-o/getsect.h>
+#  include <mach-o/ldsyms.h>
+#elif defined(__linux__)
+#  include <dlfcn.h>
+extern char __data_start[];
+extern char _end[];
+#endif
 
 /* ---------------------------------------------------------------------------
  * The runtime's layouts
@@ -94,6 +103,32 @@ Q_FIXED(quest_layout_abstract_type_entry, "QAbstractTypeEntry", 32, P, S, P, P);
 
 int    quest_gc_check_flags = 0;
 size_t quest_gc_check_pending = 0;
+
+/* ---------------------------------------------------------------------------
+ * Write barriers and root tables
+ * ------------------------------------------------------------------------ */
+
+/* How many times each barrier was called: with an object, and with a slot */
+static uint64_t quest_barrier_counts[2];
+
+void quest_barrier(const void *obj)   { (void)obj;  quest_barrier_counts[0]++; }
+void quest_barrier_slot(const void *slot) { (void)slot; quest_barrier_counts[1]++; }
+
+/* The root tables registered, outside the collected heap */
+static const QRootEntry **quest_gc_root_tables = NULL;
+static size_t             quest_gc_root_table_n = 0;
+static size_t             quest_gc_root_table_cap = 0;
+
+void quest_register_roots(const QRootEntry *roots) {
+    if (quest_gc_root_table_n == quest_gc_root_table_cap) {
+        size_t cap = quest_gc_root_table_cap > 0 ? 2 * quest_gc_root_table_cap : 64;
+        const QRootEntry **grown = (const QRootEntry **)realloc((void *)quest_gc_root_tables, cap * sizeof *grown);
+        if (grown == NULL) { fprintf(stderr, "quest: out of memory registering roots\n"); exit(70); }
+        quest_gc_root_tables = grown;
+        quest_gc_root_table_cap = cap;
+    }
+    quest_gc_root_tables[quest_gc_root_table_n++] = roots;
+}
 
 /* How many bytes are allocated between checks of the heap: the default, and
  * QUEST_GC_CHECK_INTERVAL in bytes */
@@ -287,9 +322,98 @@ void quest_gc_check_heap(void) {
     GC_call_with_alloc_lock(quest_gc_enumerate, NULL);
 }
 
+/* The roots check: every word of the program's data segment that is the
+ * address of (or into) a heap object must lie in a registered root table or
+ * in a root the runtime lists, or the collector of step 3 would not know it.
+ * The covered slots are gathered on each check (a few hundred); an uncovered
+ * word is reported with its symbol, and the program fails at exit. */
+typedef struct QRootSlot { uintptr_t low, high; } QRootSlot;
+static QRootSlot *quest_gc_covered = NULL;
+static size_t     quest_gc_covered_n = 0, quest_gc_covered_cap = 0;
+static uint64_t   quest_gc_uncovered = 0;
+
+static void quest_gc_cover(void *slot, size_t words) {
+    if (quest_gc_covered_n == quest_gc_covered_cap) {
+        size_t cap = quest_gc_covered_cap > 0 ? 2 * quest_gc_covered_cap : 256;
+        QRootSlot *grown = (QRootSlot *)realloc(quest_gc_covered, cap * sizeof *grown);
+        if (grown == NULL) { fprintf(stderr, "quest: gc check: out of memory\n"); exit(70); }
+        quest_gc_covered = grown;
+        quest_gc_covered_cap = cap;
+    }
+    quest_gc_covered[quest_gc_covered_n].low = (uintptr_t)slot;
+    quest_gc_covered[quest_gc_covered_n].high = (uintptr_t)slot + 8 * words;
+    quest_gc_covered_n++;
+}
+
+static bool quest_gc_is_covered(uintptr_t address) {
+    for (size_t i = 0; i < quest_gc_covered_n; ++i) {
+        if (address >= quest_gc_covered[i].low && address < quest_gc_covered[i].high) return true;
+    }
+    return false;
+}
+
+/* The words of one segment of static data */
+static void quest_gc_scan_segment(const char *name, const uintptr_t *low, const uintptr_t *high) {
+    for (const uintptr_t *p = low; p < high; ++p) {
+        uintptr_t w = *p;
+        if (w == 0 || !quest_gc_in_heap(w) || !quest_gc_is_object(w)) continue;
+        if (quest_gc_is_covered((uintptr_t)p)) continue;
+        quest_gc_uncovered++;
+        const char *symbol = "?";
+        Dl_info info;
+        if (dladdr((const void *)p, &info) != 0 && info.dli_sname != NULL) symbol = info.dli_sname;
+        fprintf(stderr, "quest: gc check: root %p (%s, in %s) holds the heap pointer %#" PRIxPTR
+                " but no root table or listed root covers it\n", (const void *)p, symbol, name, w);
+    }
+}
+
+/* The checker's own counters, whose values can look like heap addresses, so
+ * that the scan passes over them as it does a covered root */
+static void quest_gc_skip_own_counters(void) {
+    quest_gc_cover(&quest_gc_check_pending, 1);
+    quest_gc_cover(&quest_gc_check_interval, 1);
+    quest_gc_cover(quest_barrier_counts, 2);
+    quest_gc_cover(&quest_gc_checks, 1);
+    quest_gc_cover(&quest_gc_objects_checked, 1);
+    quest_gc_cover(&quest_gc_foreign, 1);
+    quest_gc_cover(&quest_gc_allocated_objects, 1);
+    quest_gc_cover(&quest_gc_allocated_bytes, 1);
+    quest_gc_cover(&quest_gc_allocated_headers, 1);
+    quest_gc_cover(&quest_gc_granules_with, 1);
+    quest_gc_cover(&quest_gc_granules_without, 1);
+    quest_gc_cover(&quest_gc_uncovered, 1);
+    quest_gc_cover(&quest_gc_count_n, 1);
+    quest_gc_cover(&quest_gc_count_cap, 1);
+    quest_gc_cover(&quest_gc_root_table_n, 1);
+    quest_gc_cover(&quest_gc_root_table_cap, 1);
+    quest_gc_cover(&quest_gc_covered_n, 1);
+    quest_gc_cover(&quest_gc_covered_cap, 1);
+}
+
+static void quest_gc_check_roots(void) {
+    quest_gc_covered_n = 0;
+    quest_gc_skip_own_counters();
+    for (size_t i = 0; i < quest_gc_root_table_n; ++i) {
+        for (const QRootEntry *e = quest_gc_root_tables[i]; e->slot != NULL; ++e) quest_gc_cover(e->slot, e->words);
+    }
+    quest_runtime_roots(quest_gc_cover);
+    quest_code_roots(quest_gc_cover);
+#if defined(__APPLE__)
+    unsigned long size = 0;
+    const uint8_t *data = getsegmentdata(&_mh_execute_header, "__DATA", &size);
+    if (data != NULL) {
+        quest_gc_scan_segment("__DATA", (const uintptr_t *)data, (const uintptr_t *)(data + size - size % 8));
+    }
+#elif defined(__linux__)
+    quest_gc_scan_segment("data", (const uintptr_t *)__data_start, (const uintptr_t *)_end);
+#endif
+}
+
 #else  /* QUEST_NOGC: nothing enumerates the heap, so nothing is checked */
 
 void quest_gc_check_heap(void) { quest_gc_checks++; }
+static void quest_gc_check_roots(void) {}
+static uint64_t quest_gc_uncovered = 0;
 
 #endif
 
@@ -315,13 +439,24 @@ void quest_gc_check_tick(size_t sz, size_t header) {
     if (quest_gc_check_pending >= quest_gc_check_due()) {
         quest_gc_check_pending = 0;
         if ((quest_gc_check_flags & QUEST_GC_CHECK_LAYOUTS) != 0) quest_gc_check_heap();
+        if ((quest_gc_check_flags & QUEST_GC_CHECK_ROOTS) != 0) quest_gc_check_roots();
     }
 }
 
 /* At exit: a last check, and with `report`, the counts per layout */
 static void quest_gc_check_at_exit(void) {
     if ((quest_gc_check_flags & QUEST_GC_CHECK_LAYOUTS) != 0) quest_gc_check_heap();
+    if ((quest_gc_check_flags & QUEST_GC_CHECK_ROOTS) != 0) {
+        quest_gc_check_roots();
+        if (quest_gc_uncovered > 0) {
+            fprintf(stderr, "quest: gc check: %" PRIu64 " roots uncovered\n", quest_gc_uncovered);
+            fflush(stderr);
+            abort();
+        }
+    }
     if ((quest_gc_check_flags & QUEST_GC_CHECK_REPORT) == 0) return;
+    fprintf(stderr, "quest: gc barriers: %" PRIu64 " on objects, %" PRIu64 " on slots\n", quest_barrier_counts[0],
+            quest_barrier_counts[1]);
     fprintf(stderr, "quest: gc check: %" PRIu64 " checks, %" PRIu64 " objects, %" PRIu64 " foreign\n",
             quest_gc_checks, quest_gc_objects_checked, quest_gc_foreign);
     fprintf(stderr, "quest: gc allocated: %" PRIu64 " objects, %" PRIu64 " bytes, %" PRIu64 " header bytes; "
@@ -350,6 +485,7 @@ static void quest_gc_read_options(void) {
         size_t n = end != NULL ? (size_t)(end - p) : strlen(p);
         if (n == 7 && strncmp(p, "layouts", 7) == 0) quest_gc_check_flags |= QUEST_GC_CHECK_LAYOUTS;
         else if (n == 6 && strncmp(p, "report", 6) == 0) quest_gc_check_flags |= QUEST_GC_CHECK_REPORT;
+        else if (n == 5 && strncmp(p, "roots", 5) == 0) quest_gc_check_flags |= QUEST_GC_CHECK_ROOTS;
         else if (n > 0) {
             fprintf(stderr, "quest: QUEST_GC_CHECK: unknown mode '%.*s'\n", (int)n, p);
             exit(70);

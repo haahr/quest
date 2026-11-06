@@ -349,8 +349,11 @@ functions and its **data**: each datum a symbol, whether other units refer to it
 its contents, 8-byte aligned: zeros (a global, a module's record and its initialized flag), a C string's text and its
 NUL (a literal, a name in a descriptor or the function table), or words, each an integer or a symbol's address plus a
 byte offset (a descriptor and what its extra field points at, an offset table, a tag map, a static closure, the function
-table, and the layouts of the objects the unit allocates: a `quest_layout_<tag>` and its kinds `qlk_<tag>`, packed
-eight to a word, laid out by `ssa/statics` from `codegen/objectLayout`, docs/collector.md §3.2). Words lay out the runtime's structs on a little-endian target, a narrow field in the low bytes of its word.
+table, the layouts of the objects the unit allocates: a `quest_layout_<tag>` and its kinds `qlk_<tag>`, packed
+eight to a word, laid out by `ssa/statics` from `codegen/objectLayout`, docs/collector.md §3.2, and the unit's root
+table `qr_roots`: the address and words of each global that may hold a pointer and of each module record, ended by
+a null slot, which `qr_register_dicts` registers). A store of a `ptr` or `val` word into an existing object is
+preceded by a call of `quest_barrier` or `quest_barrier_slot` (docs/collector.md §3.5). Words lay out the runtime's structs on a little-endian target, a narrow field in the low bytes of its word.
 
 The builder makes, besides the IR's functions and the module initializers and `main`:
 

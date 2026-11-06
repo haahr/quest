@@ -21,6 +21,7 @@ C_PROGRAM = r"""
 
 static const char *file_name;
 static QReader *rd;
+static const QRootEntry roots[] = { { (void *)&rd, 1 }, { NULL, 0 } };
 
 static void check(const char *what, bool ok) { printf("%s: %s\n", what, ok ? "ok" : "wrong"); }
 
@@ -72,6 +73,7 @@ static bool extern_writes(const char *document) {
 
 int main(int argc, char **argv) {
     quest_gc_init();
+    quest_register_roots(roots);
     quest_builtins_init(argc, argv);
     file_name = argv[1];
 

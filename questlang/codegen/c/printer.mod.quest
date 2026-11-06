@@ -19,6 +19,7 @@ import
     questlang/codegen/externals : questlang/codegen/Externals
     questlang/codegen/staticdata : questlang/codegen/StaticData
     questlang/codegen/objectLayout : questlang/codegen/ObjectLayout
+    questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
     questlang/codegen/c/types : questlang/codegen/c/Types
     questlang/codegen/c/declarations : questlang/codegen/c/Declarations
     collections/hashMap : collections/HashMap
@@ -69,6 +70,18 @@ export
         end
     let shapeOf(t: Type): Shape = shapes.shape(t)
     let isOk(t: Type): Bool = shapes.kindIs(shapeOf(t) shapes.shapeOk)
+    (* Whether a value of type t holds a word that may be a pointer, which a
+     * store of it into an existing object must barrier (docs/collector.md
+     * section 3.5) *)
+    let holdsPointer(t: Type): Bool =
+        begin
+            let ks = objectLayout.representationKinds(shapeOf(t))
+            let var found = false
+            for i = 0 upto {extent ks - 1} do
+                case ks[i] when kindScalar then ok else found := true end
+            end
+            found
+        end
     let componentShape(s: Shape i: Int): Shape = maybe.unwrap(:Shape s.components[i].shape)
     let atomType(a: Atom): Type = nodes.atomType(a)
     let atomVar(a: Atom): maybe.T(Variable) = nodes.atomVarOf(a)
@@ -1922,6 +1935,7 @@ export
         else
             let pointer = v.isMutable andif isPointerParam(p v)
             let target = if pointer then "(*" <> name(p v) <> ")" else name(p v) end
+            if pointer andif holdsPointer(v.type) then emit(p "quest_barrier_slot(" <> name(p v) <> ");") end
             emit(p target <> " = " <> value <> ";")
         end
 
@@ -2022,9 +2036,12 @@ export
             when sVarDecl with x then
                 if maybe.isSome(:Atom x.init) then assign(p x.v atom(p maybe.unwrap(:Atom x.init))) end
             when sAssign with x then assign(p x.v atom(p x.value))
-            when sStoreAt with x then emit(p "*" <> atom(p x.address) <> " = " <> atom(p x.value) <> ";")
+            when sStoreAt with x then
+                if holdsPointer(atomType(x.value)) then emit(p "quest_barrier_slot(" <> atom(p x.address) <> ");") end
+                emit(p "*" <> atom(p x.address) <> " = " <> atom(p x.value) <> ";")
             when sStoreField with x then
                 let slot = recordSlot(p atom(p x.base) held(atomType(x.base) shapes.shapeRecord) x.name x.viewMap)
+                if holdsPointer(atomType(x.value)) then emit(p "quest_barrier_slot(" <> slot.ptr <> ");") end
                 emit(p "*" <> slot.ptr <> " = " <> atom(p x.value) <> ";")
             when sStoreComponent with x then
                 if maybe.isSome(:Variable x.viewMap) then
@@ -2032,24 +2049,35 @@ export
                     let slot = "quest_view_tuple_slot(" <> atom(p x.base) <> ", "
                         <> name(p maybe.unwrap(:Variable x.viewMap)) <> ", "
                         <> cInt(x.index) <> ")"
+                    if holdsPointer(atomType(x.value)) then emit(p "quest_barrier_slot(" <> slot <> ");") end
                     emit(p "*((" <> slotCType(component) <> " *)" <> slot <> ") = " <> atom(p x.value) <> ";")
                 else
                     let ts = shapeOf(atomType(x.base))
                     let component = componentShape(ts x.index)
                     let b = atom(p x.base)
                     let v = atom(p x.value)
+                    let barrier = holdsPointer(atomType(x.value))
                     case x.access
                         (* Stored into the original as it is *)
                         when original then
+                            if barrier then emit(p "quest_barrier(quest_unproxy(" <> b <> "));") end
                             emit(p "((" <> cType(ts.type) <> ")quest_unproxy(" <> b <> "))->_" <> cInt(x.index) <> " = "
                                 <> v <> ";")
-                        (* A var component of a proxy is the original's *)
+                        (* A var component of a proxy is the original's, which
+                         * quest_proxy_store barriers itself *)
                         when proxy then
                             emit(p "if (quest_is_proxy(" <> b <> ")) quest_proxy_store(" <> b <> ", " <> cInt(x.index)
                                 <> ", "
                                 <> types.shapeSlotToQval(v component) <> ");")
-                            emit(p "else " <> b <> "->_" <> cInt(x.index) <> " = " <> v <> ";")
-                        when direct then emit(p b <> "->_" <> cInt(x.index) <> " = " <> v <> ";")
+                            if barrier then
+                                emit(p "else { quest_barrier(" <> b <> "); " <> b <> "->_" <> cInt(x.index) <> " = "
+                                    <> v <> "; }")
+                            else
+                                emit(p "else " <> b <> "->_" <> cInt(x.index) <> " = " <> v <> ";")
+                            end
+                        when direct then
+                            if barrier then emit(p "quest_barrier(" <> b <> ");") end
+                            emit(p b <> "->_" <> cInt(x.index) <> " = " <> v <> ";")
                     end
                 end
             when sStoreElement with x then
@@ -2057,6 +2085,7 @@ export
                 let idx = atom(p x.index)
                 let elem = elementShape(x.base)
                 emit(p "quest_check_array_bounds_at(" <> arr <> ", " <> idx <> ", " <> site(p x.offset) <> ");")
+                if holdsPointer(elem.type) then emit(p "quest_barrier(" <> arr <> ");") end
                 emit(p arr <> "->data[" <> idx <> "] = " <> arrayElement(p x.value elem) <> ";")
             when sSwitch with x then switch(p x)
             when sInspect with x then inspectAuto(p x)
@@ -2069,6 +2098,8 @@ export
                 body(p x.body)
                 for i = 0 upto {vector.length(:DeferredCapture d.captures) - 1} do
                     let c = vector.get(:DeferredCapture d.captures i)
+                    (* The environment was made before the body ran *)
+                    if holdsPointer(atomType(c.a)) then emit(p "quest_barrier(" <> c.env <> ");") end
                     emit(p c.env <> "->c" <> cInt(c.index) <> " = " <> atom(p c.a) <> ";")
                 end
                 p.deferred := saved
@@ -2686,7 +2717,11 @@ export
             lines
         end
 
-    Let GlobalDecl = Tuple name: String cType: String end
+    (* A global's declaration, and the words of it a root table lists: all
+     * of them if any may be a pointer, else none; a handler's variable is a
+     * copy of the exception state (QExceptionState), whose every word may be
+     * one *)
+    Let GlobalDecl = Tuple name: String cType: String words: Int end
     let globalDeclarations(p: P): vector.T(GlobalDecl) =
         begin
             let found = vector.new(:GlobalDecl)
@@ -2705,7 +2740,13 @@ export
                         if hashMap.contains(:Int :Bool p.globals v.id) andif not(hashMap.contains(:Int :Bool seen v.id))
                             andif not(isOk(v.type)) then
                             put(:Int :Bool seen v.id true)
-                            vector.append(:GlobalDecl found tuple let name = name(p v) let cType = varCType(p v) end)
+                            let words =
+                                if hashMap.contains(:Int :Bool p.handlerVars v.id) then
+                                    maybe.unwrap(:runtimeLayout.Struct runtimeLayout.struct("QExceptionState")).bytes / 8
+                                elsif holdsPointer(v.type) then extent objectLayout.representationKinds(shapeOf(v.type))
+                                else 0 end
+                            vector.append(:GlobalDecl found tuple
+                                let name = name(p v) let cType = varCType(p v) let words = words end)
                         end
                     end
                 end
@@ -2934,6 +2975,19 @@ export
                 if maybe.isSome(:nodes.Members m.exports) then add(res "void qv_mod_" <> clean <> "_init(void);") end
             end
             add(res "")
+            (* The unit's root table: its globals that may hold pointers, and
+             * its module records (docs/collector.md section 3.8) *)
+            add(res "static const QRootEntry qr_roots[] = {")
+            for i = 0 upto {vector.length(:GlobalDecl globalDecls) - 1} do
+                let g = vector.get(:GlobalDecl globalDecls i)
+                if g.words > 0 then add(res "    { (void *)&" <> g.name <> ", " <> cInt(g.words) <> " },") end
+            end
+            for i = 0 upto {vector.length(:nodes.Module unit.modules) - 1} do
+                let clean = symbols.mangleModuleName(vector.get(:nodes.Module unit.modules i).name)
+                add(res "    { (void *)&" <> symbols.moduleRecordIdent(clean) <> ", 2 },")
+            end
+            add(res "    { NULL, 0 },")
+            add(res "};")
             addAll(res layoutDefinitions(p))
             (* The unit's functions with frames in tracebacks
              * (docs/exceptions.md section 5.2) *)
@@ -2957,6 +3011,7 @@ export
             (* The offset tables of the records the unit views at supertypes,
              * registered for dynamic values, and its function table *)
             add(res "static void qr_register_dicts(void) {")
+            add(res "    quest_register_roots(qr_roots);")
             if not(vector.empty(:FuncEntry funcs)) then
                 add(res "    quest_register_funcs(qr_funcs, sizeof qr_funcs / sizeof qr_funcs[0]);")
             end

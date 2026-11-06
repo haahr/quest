@@ -168,6 +168,10 @@ void *quest_code_tlv_getter(void) {
 
 static Q_THREAD_LOCAL QRaised *quest_code_raised = NULL;
 
+void quest_code_roots(QRootVisitor add) {
+    add(&quest_code_raised, 1);
+}
+
 /* Calls entry under a handler that catches every exception with its frames,
    as a try whose else branch names the exception does: whatever backend built
    the code that raises, the handler's resume is null, so the raise jumps to

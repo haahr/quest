@@ -26,10 +26,15 @@ QString *quest_string_new(const char *src, int64_t len) {
     if (len < 0 && src != NULL) {
         len = (int64_t)strlen(src);
     }
+    /* The buffer first: nothing allocates between an object's allocation
+     * and the stores that make it, so that they need no write barrier
+     * (docs/collector.md section 3.5); the runtime keeps to that order, and
+     * barriers the stores that cannot */
+    char *data = (char *)quest_alloc_bytes(len + 1);
     QString *s = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
     s->length = len;
     s->capacity = len;
-    s->data = (char *)quest_alloc_bytes(len + 1);
+    s->data = data;
     if (len > 0 && src != NULL) {
         memcpy(s->data, src, (size_t)len);
     }
@@ -43,10 +48,11 @@ QString *quest_string_concat(const QString *s1, const QString *s2) {
     if (s2 == NULL) return quest_string_new(s1->data, s1->length);
 
     int64_t total = s1->length + s2->length;
+    char *data = (char *)quest_alloc_bytes(total + 1);
     QString *res = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
     res->length = total;
     res->capacity = total;
-    res->data = (char *)quest_alloc_bytes(total + 1);
+    res->data = data;
     if (s1->length > 0) {
         memcpy(res->data, s1->data, (size_t)s1->length);
     }
@@ -1381,6 +1387,7 @@ static void quest_record_dicts_insert(const QTypeDescriptor *view, const QTypeDe
     }
     QRecordDictEntry *e = quest_record_dict_slot(view, layout);
     if (e->view == NULL) {
+        quest_barrier(quest_record_dicts);
         e->view = view;
         e->layout = layout;
         e->dict = dict;
@@ -1487,6 +1494,7 @@ void *quest_make_proxy(const void *v, const QTypeDescriptor *from, const QTypeDe
                 }
             }
         }
+        quest_barrier(proxy);
         proxy->tags = tags;
     }
     return (void *)((uintptr_t)proxy + QUEST_PROXY_TAG);
@@ -1500,11 +1508,15 @@ static QVal quest_proxy_cached(const void *p, size_t i, size_t n, QVal v, const 
     if (from == to) return v;
     QProxy *proxy = (QProxy *)quest_proxy_of(p);
     if (proxy->cache == NULL) {
-        proxy->cache = (QVal *)quest_alloc_sized(sizeof(QVal) * n + n, &quest_layout_proxy_cache);
-        proxy->cached = (uint8_t *)(proxy->cache + n);
+        QVal *cache = (QVal *)quest_alloc_sized(sizeof(QVal) * n + n, &quest_layout_proxy_cache);
+        quest_barrier(proxy);
+        proxy->cache = cache;
+        proxy->cached = (uint8_t *)(cache + n);
     }
     if (!proxy->cached[i]) {
-        proxy->cache[i] = quest_convert(v, from, to);
+        QVal converted = quest_convert(v, from, to);
+        quest_barrier(proxy->cache);
+        proxy->cache[i] = converted;
         proxy->cached[i] = 1;
     }
     return proxy->cache[i];
@@ -1535,7 +1547,9 @@ void quest_proxy_store(const void *p, size_t i, QVal v) {
     const QProxy *proxy = quest_proxy_of(p);
     const QTupleElementDescriptor *fe = &((const QTupleTypeDescriptor *)proxy->stored->extra)->elements[i];
     const QTupleElementDescriptor *te = &((const QTupleTypeDescriptor *)proxy->view->extra)->elements[i];
-    quest_slot_write((char *)proxy->orig + fe->offset, fe->type == te->type ? v : quest_convert(v, te->type, fe->type));
+    QVal stored = fe->type == te->type ? v : quest_convert(v, te->type, fe->type);
+    quest_barrier_slot((char *)proxy->orig + fe->offset);
+    quest_slot_write((char *)proxy->orig + fe->offset, stored);
 }
 
 int64_t quest_proxy_tag(const void *p) {
@@ -2291,6 +2305,7 @@ static void quest_inst_collect(void *cx, const QTypeDescriptor *d) {
         w->nodes = nodes;
         w->capacity = capacity;
     }
+    quest_barrier(w->nodes);
     w->nodes[w->count++] = (QInstNode){ d, NULL, d->kind == QTYPE_KIND_HOLE };
     quest_desc_children(d, quest_inst_collect, cx);
 }
@@ -2374,6 +2389,7 @@ static void *quest_copy_block(const void *src, size_t size) {
 static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
     const QTypeDescriptor *d = n->tmpl;
     QTypeDescriptor *out = n->inst;
+    quest_barrier(out);
     *out = *d;
     /* An opaque descriptor is compared by its name, an abstract type operator's
      * (its arguments are filled below) */
@@ -2386,6 +2402,7 @@ static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
             for (size_t i = 0; i < m->element_count; ++i) {
                 ((QTupleElementDescriptor *)&c->elements[i])->type = quest_inst_of(cx, m->elements[i].type);
             }
+            quest_barrier(out);
             out->extra = c;
             break;
         }
@@ -2396,6 +2413,7 @@ static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
             for (size_t i = 0; i < m->field_count; ++i) {
                 ((QRecordFieldDescriptor *)&c->fields[i])->type = quest_inst_of(cx, m->fields[i].type);
             }
+            quest_barrier(out);
             out->extra = c;
             break;
         }
@@ -2407,12 +2425,14 @@ static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
             for (size_t i = 0; i < m->case_count; ++i) {
                 ((QVariantCaseDescriptor *)&c->cases[i])->payload_type = quest_inst_of(cx, m->cases[i].payload_type);
             }
+            quest_barrier(out);
             out->extra = c;
             break;
         }
         case QTYPE_KIND_ARRAY: {
             QArrayTypeDescriptor *c = (QArrayTypeDescriptor *)quest_alloc(sizeof(QArrayTypeDescriptor), &quest_layout_array_descriptor);
             c->element_type = quest_inst_of(cx, ((const QArrayTypeDescriptor *)d->extra)->element_type);
+            quest_barrier(out);
             out->extra = c;
             break;
         }
@@ -2429,8 +2449,10 @@ static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
                     (const QTypeDescriptor **)quest_alloc_sized(sizeof(QTypeDescriptor *) * m->quantifier_count,
                                                                 &quest_layout_pointers);
                 for (size_t i = 0; i < m->quantifier_count; ++i) bounds[i] = quest_inst_of(cx, m->quantifier_bounds[i]);
+                quest_barrier(c);
                 c->quantifier_bounds = bounds;
             }
+            quest_barrier(out);
             out->extra = c;
             break;
         }
@@ -2443,12 +2465,14 @@ static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
                 QAutoComponentDescriptor *comp = (QAutoComponentDescriptor *)&c->components[i];
                 comp->type = quest_inst_of(cx, m->components[i].type);
             }
+            quest_barrier(out);
             out->extra = c;
             break;
         }
         case QTYPE_KIND_EXCEPTION: {
             QExceptionTypeDescriptor *c = (QExceptionTypeDescriptor *)quest_alloc(sizeof(QExceptionTypeDescriptor), &quest_layout_exception_descriptor);
             c->payload_type = quest_inst_of(cx, ((const QExceptionTypeDescriptor *)d->extra)->payload_type);
+            quest_barrier(out);
             out->extra = c;
             break;
         }
@@ -2458,9 +2482,11 @@ static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
             const QTypeDescriptor **args = (const QTypeDescriptor **)quest_alloc_sized(sizeof(QTypeDescriptor *) * (m->arg_count + 1),
                                                                                    &quest_layout_pointers);
             for (size_t i = 0; i < m->arg_count; ++i) args[i] = quest_inst_of(cx, m->args[i]);
+            quest_barrier(c);
             c->arg_count = m->arg_count;
             c->args = args;
             c->rep = m->rep;
+            quest_barrier(out);
             out->extra = c;
             break;
         }
@@ -2470,9 +2496,11 @@ static void quest_inst_fill(const QInstContext *cx, QInstNode *n) {
             c->type = cx->args[h->index];
             c->storage = quest_inst_of(cx, h->storage);
             c->viewed = false;
+            quest_barrier(out);
             out->kind = QTYPE_KIND_STORED;
             out->name = c->type != NULL ? c->type->name : d->name;
             out->size = sizeof(QVal);
+            quest_barrier(out);
             out->extra = c;
             break;
         }
@@ -2544,6 +2572,7 @@ static void quest_fill_view_map(QViewMap *m) {
             }
             if (index[k] < 0) quest_raise_dynamic_error();
         }
+        quest_barrier(m);
         m->index = index;
         m->from = from;
         m->to = to;
@@ -2561,6 +2590,7 @@ static void quest_fill_view_map(QViewMap *m) {
             to[k] = tb->elements[k].type;
             from[k] = ta != NULL && k < ta->element_count ? quest_view_from(ta->elements[k].type, to[k]) : NULL;
         }
+        quest_barrier(m);
         m->from = from;
         m->to = to;
         return;
@@ -2575,6 +2605,7 @@ static void quest_fill_view_map(QViewMap *m) {
             if (c == NULL) quest_raise_dynamic_error();
             index[va->cases[i].tag_index] = c->tag_index;
         }
+        quest_barrier(m);
         m->index = index;
         if (a->kind == QTYPE_KIND_VARIANT) {
             const QTypeDescriptor **from = (const QTypeDescriptor **)quest_alloc_sized(sizeof(void *) * (nb ? nb : 1), &quest_layout_pointers);
@@ -2584,6 +2615,7 @@ static void quest_fill_view_map(QViewMap *m) {
                 to[k] = vb->cases[k].payload_type;
                 from[k] = c != NULL ? quest_view_from(c->payload_type, to[k]) : NULL;
             }
+            quest_barrier(m);
             m->from = from;
             m->to = to;
             return;
@@ -2623,6 +2655,7 @@ static void quest_fill_view_map(QViewMap *m) {
                 from[start[k] + j] = quest_view_from(aj, tb->elements[j].type);
             }
         }
+        quest_barrier(m);
         m->from = from;
         m->to = to;
         m->component_start = start;
@@ -2643,6 +2676,7 @@ const QViewMap *quest_view_map(const QTypeDescriptor *actual, const QTypeDescrip
     e->map.actual = actual;
     e->map.bound = bound;
     quest_fill_view_map(&e->map);
+    quest_barrier(e);
     e->next = quest_view_maps[bucket];
     quest_view_maps[bucket] = e;
     return &e->map;
@@ -2688,12 +2722,13 @@ const QTypeDescriptor *quest_instantiate_descriptor(
     }
     const QTypeDescriptor *inst = quest_inst_of(&cx, template_desc);
 
+    const QTypeDescriptor **own_args = (const QTypeDescriptor **)quest_alloc_sized(
+        sizeof(QTypeDescriptor *) * (arg_count + 1), &quest_layout_pointers);
+    if (arg_count > 0) memcpy((void *)own_args, args, sizeof(QTypeDescriptor *) * arg_count);
     QInstCacheEntry *e = (QInstCacheEntry *)quest_alloc(sizeof(QInstCacheEntry), &quest_layout_inst_cache_entry);
     e->tmpl = template_desc;
     e->arg_count = arg_count;
-    e->args = (const QTypeDescriptor **)quest_alloc_sized(sizeof(QTypeDescriptor *) * (arg_count + 1),
-                                                          &quest_layout_pointers);
-    if (arg_count > 0) memcpy((void *)e->args, args, sizeof(QTypeDescriptor *) * arg_count);
+    e->args = own_args;
     e->inst = inst;
     e->next = quest_inst_cache[bucket];
     quest_inst_cache[bucket] = e;
@@ -2740,6 +2775,7 @@ static bool quest_print_enter(const void *p, const char *opening) {
 
 static void quest_print_leave(void) {
     --quest_print_depth;
+    if (quest_print_depth < Q_PRINT_NESTING_MAX) quest_print_nesting[quest_print_depth] = NULL;
 }
 
 static void quest_put_value(QVal v, const QTypeDescriptor *t, const QTypeDescriptor *witness);
@@ -3077,6 +3113,7 @@ const QTypeDescriptor *quest_make_array_descriptor(const QTypeDescriptor *elemen
 
     QArrayTypeDescriptor *arr_meta = (QArrayTypeDescriptor *)quest_alloc(sizeof(QArrayTypeDescriptor), &quest_layout_array_descriptor);
     arr_meta->element_type = element_desc;
+    quest_barrier(desc);
     desc->extra = arr_meta;
 
     return quest_intern_type_descriptor(desc);
@@ -3084,9 +3121,10 @@ const QTypeDescriptor *quest_make_array_descriptor(const QTypeDescriptor *elemen
 
 const QTypeDescriptor *quest_make_opaque_descriptor(const char *name) {
     /* Opaque types use unique pointer identity for encapsulation */
+    const char *dup_name = name != NULL ? quest_dup_str(name) : "Opaque";
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_OPAQUE;
-    desc->name = name != NULL ? quest_dup_str(name) : "Opaque";
+    desc->name = dup_name;
     desc->size = sizeof(QVal);
     desc->alignment = sizeof(QVal);
     desc->is_subtype = quest_is_subtype;
@@ -3150,9 +3188,10 @@ const QTypeDescriptor *quest_make_record_descriptor(
         }
     }
 
+    const char *dup_name = quest_dup_str(rec_name);
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_RECORD;
-    desc->name = quest_dup_str(rec_name);
+    desc->name = dup_name;
     desc->size = size;
     desc->alignment = alignment > 0 ? alignment : sizeof(void *);
     desc->is_subtype = quest_is_subtype;
@@ -3163,6 +3202,7 @@ const QTypeDescriptor *quest_make_record_descriptor(
     if (fields != NULL && field_count > 0) {
         memcpy((void *)meta->fields, fields, sizeof(QRecordFieldDescriptor) * field_count);
     }
+    quest_barrier(desc);
     desc->extra = meta;
     return quest_intern_type_descriptor(desc);
 }
@@ -3181,9 +3221,10 @@ const QTypeDescriptor *quest_make_tuple_descriptor(
         }
     }
 
+    const char *dup_name = quest_dup_str(tup_name);
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_TUPLE;
-    desc->name = quest_dup_str(tup_name);
+    desc->name = dup_name;
     desc->size = size;
     desc->alignment = alignment > 0 ? alignment : sizeof(void *);
     desc->is_subtype = quest_is_subtype;
@@ -3194,6 +3235,7 @@ const QTypeDescriptor *quest_make_tuple_descriptor(
     if (elements != NULL && element_count > 0) {
         memcpy((void *)meta->elements, elements, sizeof(QTupleElementDescriptor) * element_count);
     }
+    quest_barrier(desc);
     desc->extra = meta;
     return quest_intern_type_descriptor(desc);
 }
@@ -3211,9 +3253,10 @@ const QTypeDescriptor *quest_make_variant_descriptor(
         }
     }
 
+    const char *dup_name = quest_dup_str(var_name);
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_VARIANT;
-    desc->name = quest_dup_str(var_name);
+    desc->name = dup_name;
     desc->size = size > 0 ? size : sizeof(QVariantVal);
     desc->alignment = alignment > 0 ? alignment : sizeof(void *);
     desc->is_subtype = quest_is_subtype;
@@ -3224,6 +3267,7 @@ const QTypeDescriptor *quest_make_variant_descriptor(
     if (cases != NULL && case_count > 0) {
         memcpy((void *)meta->cases, cases, sizeof(QVariantCaseDescriptor) * case_count);
     }
+    quest_barrier(desc);
     desc->extra = meta;
     return quest_intern_type_descriptor(desc);
 }
@@ -3241,9 +3285,10 @@ const QTypeDescriptor *quest_make_fun_descriptor(
         }
     }
 
+    const char *dup_name = quest_dup_str(fn_name);
     QTypeDescriptor *desc = (QTypeDescriptor *)quest_alloc(sizeof(QTypeDescriptor), &quest_layout_descriptor);
     desc->kind = QTYPE_KIND_FUN;
-    desc->name = quest_dup_str(fn_name);
+    desc->name = dup_name;
     desc->size = sizeof(QClosure);
     desc->alignment = sizeof(void *);
     desc->is_subtype = quest_is_subtype;
@@ -3259,6 +3304,7 @@ const QTypeDescriptor *quest_make_fun_descriptor(
     if (params != NULL && param_count > 0) {
         memcpy((void *)meta->params, params, sizeof(QFunParamDescriptor) * param_count);
     }
+    quest_barrier(desc);
     desc->extra = meta;
     return quest_intern_type_descriptor(desc);
 }
@@ -3624,10 +3670,12 @@ void *quest_system_run(const QArray *args) {
 
     /* Laid out as Tuple code: Int stdout: String stderr: String end; a child killed
      * by a signal has its negated number as its code, as in Python */
+    QString *out_s = quest_string_new(out.data != NULL ? out.data : "", (int64_t)out.len);
+    QString *err_s = quest_string_new(err.data != NULL ? err.data : "", (int64_t)err.len);
     QVal *result = (QVal *)quest_alloc(3 * sizeof(QVal), &quest_layout_run_result);
     result[0].i = WIFEXITED(status) ? WEXITSTATUS(status) : WIFSIGNALED(status) ? -WTERMSIG(status) : -1;
-    result[1].p = quest_string_new(out.data != NULL ? out.data : "", (int64_t)out.len);
-    result[2].p = quest_string_new(err.data != NULL ? err.data : "", (int64_t)err.len);
+    result[1].p = out_s;
+    result[2].p = err_s;
     free(out.data);
     free(err.data);
     return result;
@@ -3677,6 +3725,28 @@ struct QProcess {
 
 static QProcess *quest_process_live = NULL;
 
+/* The runtime's statics and thread-locals that hold heap pointers
+ * (docs/collector.md section 3.8); QUEST_GC_CHECK=roots scans the data
+ * segment for any this list misses */
+void quest_runtime_roots(QRootVisitor add) {
+    add(&quest_current_exception, sizeof(QExceptionState) / sizeof(void *));
+    add(&quest_current_exception_handler, 1);
+    add(&quest_func_tables, 1);
+    add(&quest_function_ranges, 1);
+    add(&quest_echo_buffer, 1);
+    add(quest_type_intern_buckets, Q_TYPE_INTERN_TABLE_SIZE);
+    add(quest_subtyping_trail, 2 * Q_SUBTYPE_TRAIL_MAX);
+    add(quest_equiv_trail, 2 * Q_EQUIV_TRAIL_MAX);
+    add(&quest_record_dicts, 1);
+    add(quest_inst_cache, Q_INST_CACHE_SIZE);
+    add(quest_view_maps, Q_VIEW_MAP_CACHE_SIZE);
+    add(&quest_variant_adapter_cache, 1);
+    add(&quest_abstract_types, 1);
+    add(quest_print_nesting, Q_PRINT_NESTING_MAX);
+    add(&quest_system_args, 1);
+    add(&quest_process_live, 1);
+}
+
 static int quest_process_temp_file(void) {
     const char *dir = getenv("TMPDIR");
     if (dir == NULL || dir[0] == '\0') dir = "/tmp";
@@ -3696,6 +3766,7 @@ static void quest_process_reaped(QProcess *p, int status) {
     p->status = status;
     for (QProcess **link = &quest_process_live; *link != NULL; link = &(*link)->next_live) {
         if (*link == p) {
+            quest_barrier_slot(link);
             *link = p->next_live;
             break;
         }
@@ -3817,12 +3888,15 @@ void *quest_process_wait(QProcess *p) {
     /* Laid out as Tuple code: Int stdout: String stderr: String end, as
      * system.run's result is */
     int status = p->status;
+    QString *out_s = quest_string_new(out.data != NULL ? out.data : "", (int64_t)out.len);
+    QString *err_s = quest_string_new(err.data != NULL ? err.data : "", (int64_t)err.len);
     QVal *result = (QVal *)quest_alloc(3 * sizeof(QVal), &quest_layout_run_result);
     result[0].i = WIFEXITED(status) ? WEXITSTATUS(status) : WIFSIGNALED(status) ? -WTERMSIG(status) : -1;
-    result[1].p = quest_string_new(out.data != NULL ? out.data : "", (int64_t)out.len);
-    result[2].p = quest_string_new(err.data != NULL ? err.data : "", (int64_t)err.len);
+    result[1].p = out_s;
+    result[2].p = err_s;
     free(out.data);
     free(err.data);
+    quest_barrier(p);
     p->result = result;
     return result;
 }
@@ -4140,8 +4214,9 @@ double quest_strutil_to_real(const QString *s) {
 
 /* StringBuilder native buffer (see quest_runtime.h) */
 QStringBuilder *quest_sb_new(void) {
+    char *buffer = (char *)quest_alloc_bytes(QUEST_SB_BUFFER_SIZE);
     QStringBuilder *b = (QStringBuilder *)quest_alloc(sizeof(QStringBuilder), &quest_layout_string_builder);
-    b->buffer = (char *)quest_alloc_bytes(QUEST_SB_BUFFER_SIZE);
+    b->buffer = buffer;
     return b;
 }
 
@@ -4151,6 +4226,7 @@ static void quest_sb_add_chunk(QStringBuilder *b, char *data, int64_t len) {
         int64_t capacity = b->chunk_capacity ? b->chunk_capacity * 2 : 8;
         QString **chunks = (QString **)quest_alloc_sized((size_t)capacity * sizeof(QString *), &quest_layout_pointers);
         if (b->chunk_count > 0) memcpy(chunks, b->chunks, (size_t)b->chunk_count * sizeof(QString *));
+        quest_barrier(b);
         b->chunks = chunks;
         b->chunk_capacity = capacity;
     }
@@ -4158,6 +4234,7 @@ static void quest_sb_add_chunk(QStringBuilder *b, char *data, int64_t len) {
     chunk->length = len;
     chunk->capacity = len;
     chunk->data = data;
+    quest_barrier(b->chunks);
     b->chunks[b->chunk_count++] = chunk;
 }
 
@@ -4165,7 +4242,9 @@ static void quest_sb_add_chunk(QStringBuilder *b, char *data, int64_t len) {
 static void quest_sb_flush(QStringBuilder *b) {
     if (b->used == 0) return;
     quest_sb_add_chunk(b, b->buffer, b->used);
-    b->buffer = (char *)quest_alloc_bytes(QUEST_SB_BUFFER_SIZE);
+    char *buffer = (char *)quest_alloc_bytes(QUEST_SB_BUFFER_SIZE);
+    quest_barrier(b);
+    b->buffer = buffer;
     b->used = 0;
 }
 
@@ -4259,10 +4338,11 @@ int64_t quest_sb_length(const QStringBuilder *b) {
 }
 
 QString *quest_sb_to_string(const QStringBuilder *b) {
+    char *data = (char *)quest_alloc_bytes((size_t)b->length + 1);
     QString *s = (QString *)quest_alloc(sizeof(QString), &quest_layout_string);
     s->length = b->length;
     s->capacity = b->length;
-    s->data = (char *)quest_alloc_bytes((size_t)b->length + 1);
+    s->data = data;
     int64_t offset = 0;
     for (int64_t i = 0; i < b->chunk_count; ++i) {
         memcpy(s->data + offset, b->chunks[i]->data, (size_t)b->chunks[i]->length);

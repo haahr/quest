@@ -16,6 +16,7 @@ b0(%0: ptr, %1: ptr):
   store8 %4 + 0, %6
   store8 %4 + 8, %11
   @10:33
+  call quest_barrier_slot(%1)
   store8 %1 + 0, %4
   @10:55
   %14: ptr = symbol g_t
@@ -51,6 +52,7 @@ b0(%0: ptr, %1: ptr):
   %4: val = toVal %2
   %5: ptr = call quest_variant_box(%2, %4) pairs [0]
   @12:34
+  call quest_barrier_slot(%1)
   store8 %1 + 0, %5
   @12:68
   %6: ptr = symbol g_t
@@ -81,6 +83,7 @@ b3(%11: ptr):
 function qf_setG(%0: ptr, %1: ptr, %2: ptr, %3: val) {
 b0(%0: ptr, %1: ptr, %2: ptr, %3: val):
   @17:39
+  call quest_barrier_slot(%2)
   store8 %2 + 0, %3
   return
 }
@@ -91,23 +94,27 @@ b0(%0: ptr, %1: ptr, %2: ptr, %3: ptr):
   %4: val = load8 %2 + 0
   @25:59
   %5: val = load8 %3 + 0
+  call quest_barrier_slot(%2)
   store8 %2 + 0, %5
   @25:66
+  call quest_barrier_slot(%3)
   store8 %3 + 0, %4
   return
 }
 
 function qr_register_dicts() {
 b0():
-  %0: ptr = symbol qr_funcs
-  %1: int = const 5
-  call quest_register_funcs(%0, %1)
-  %2: ptr = symbol quest_type_QT_record_11d3e04b1dd1d0c8
-  %4: ptr = symbol offsetdict_record_11d3e04b1dd1d0c8_record_11d3e04b1dd1d0c8
-  call quest_register_record_dict(%2, %2, %4)
-  %5: ptr = symbol quest_type_QT_record_4e2ffbf5e45a08c4
-  %7: ptr = symbol offsetdict_record_4e2ffbf5e45a08c4_record_4e2ffbf5e45a08c4
-  tail call quest_register_record_dict(%5, %5, %7)
+  %0: ptr = symbol qr_roots
+  call quest_register_roots(%0)
+  %1: ptr = symbol qr_funcs
+  %2: int = const 5
+  call quest_register_funcs(%1, %2)
+  %3: ptr = symbol quest_type_QT_record_11d3e04b1dd1d0c8
+  %5: ptr = symbol offsetdict_record_11d3e04b1dd1d0c8_record_11d3e04b1dd1d0c8
+  call quest_register_record_dict(%3, %3, %5)
+  %6: ptr = symbol quest_type_QT_record_4e2ffbf5e45a08c4
+  %8: ptr = symbol offsetdict_record_4e2ffbf5e45a08c4_record_4e2ffbf5e45a08c4
+  tail call quest_register_record_dict(%6, %6, %8)
 }
 
 function main exported(%0: int, %1: ptr) int32 [0]: int result int32 {
@@ -666,4 +673,5 @@ data quest_layout_QTuple_QRecord_a_Int_end_QVariant_p_Int_q_Bool_end_ba words [q
 data qs_20 text "record_QRecord_r_QRecord_a_Int_end_f60c888f4e743282"
 data qlk_record_QRecord_r_QRecord_a_Int_end_f60c888f4e743282 words [16843009]
 data quest_layout_record_QRecord_r_QRecord_a_Int_end_f60c888f4e743282 words [qs_20, 0, 32, 17179869184, qlk_record_QRecord_r_QRecord_a_Int_end_f60c888f4e743282]
+data qr_roots words [g_t, 1, 0, 0]
 

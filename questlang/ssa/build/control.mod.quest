@@ -432,25 +432,42 @@ export
                     leaveTo(fn 0)
                     vals.terminate(fn option termReturn of ssa.Terminator with let values = values end)
                 when sUnreachable then vals.terminate(fn ssa.termUnreachable)
-                when sStoreAt with x then vals.writeLocation(fn vals.atom1(fn x.address) ir.atomType(x.value) vals.atom(fn x.value))
+                when sStoreAt with x then
+                    let address = vals.atom1(fn x.address)
+                    if vals.holdsPointer(ir.atomType(x.value)) then
+                        vals.callVoid(fn "quest_barrier_slot" array of address end)
+                    end
+                    vals.writeLocation(fn address ir.atomType(x.value) vals.atom(fn x.value))
                 when sStoreField with x then
                     let rs = vals.heldShape(ir.atomType(x.base) shapes.shapeRecord)
-                    vals.writeSlot(fn aggregates.recordSlot(fn vals.atom(fn x.base) rs x.name x.viewMap) aggregates.fieldShape(rs x.name).type vals.atom(fn x.value))
+                    let slot = aggregates.recordSlot(fn vals.atom(fn x.base) rs x.name x.viewMap)
+                    if vals.holdsPointer(ir.atomType(x.value)) then
+                        vals.callVoid(fn "quest_barrier_slot" array of slot end)
+                    end
+                    vals.writeSlot(fn slot aggregates.fieldShape(rs x.name).type vals.atom(fn x.value))
                 when sStoreComponent with x then
                     if maybe.isSome(:Variable x.viewMap) then
                         let comp = vals.componentShape(layout.resolvedShape(shapes.shape(ir.atomType(x.base))) x.index)
                         let vm = vals.atom1(fn ir.atomOfVar(maybe.unwrap(:Variable x.viewMap)))
                         let slot = vals.call1(fn "quest_view_tuple_slot" array of vals.atom1(fn x.base) vm
                             vals.constant(fn x.index) end)
+                        if vals.holdsPointer(ir.atomType(x.value)) then
+                            vals.callVoid(fn "quest_barrier_slot" array of slot end)
+                        end
                         vals.writeSlot(fn slot comp.type vals.atom(fn x.value))
                     else
                         let ts = shapes.shape(ir.atomType(x.base))
                         let comp = vals.componentShape(ts x.index)
                         let b = vals.atom1(fn x.base)
                         let v = vals.atom(fn x.value)
+                        let barrier = vals.holdsPointer(ir.atomType(x.value))
                         case x.access
-                            when original then vals.writeSlot(fn vals.offsetPtr(fn vals.unproxy(fn b) 8 * x.index) comp.type v)
-                            (* A var component of a proxy is the original's *)
+                            when original then
+                                let o = vals.unproxy(fn b)
+                                if barrier then vals.callVoid(fn "quest_barrier" array of o end) end
+                                vals.writeSlot(fn vals.offsetPtr(fn o 8 * x.index) comp.type v)
+                            (* A var component of a proxy is the original's,
+                             * which quest_proxy_store barriers itself *)
                             when proxy then
                                 vals.choose(fn vals.isProxy(fn b) vals.noValuesTypes
                                     fun(): Array(Int)
@@ -459,14 +476,24 @@ export
                                                 array of b vals.constant(fn x.index) vals.slotToWord(fn v comp.type) end)
                                             vals.noValues
                                         end
-                                    fun(): Array(Int) begin vals.writeSlot(fn vals.offsetPtr(fn b 8 * x.index) comp.type v) vals.noValues end)
+                                    fun(): Array(Int)
+                                        begin
+                                            if barrier then vals.callVoid(fn "quest_barrier" array of b end) end
+                                            vals.writeSlot(fn vals.offsetPtr(fn b 8 * x.index) comp.type v)
+                                            vals.noValues
+                                        end)
                                 ok
-                            when direct then vals.writeSlot(fn vals.offsetPtr(fn b 8 * x.index) comp.type v)
+                            when direct then
+                                if barrier then vals.callVoid(fn "quest_barrier" array of b end) end
+                                vals.writeSlot(fn vals.offsetPtr(fn b 8 * x.index) comp.type v)
                         end
                     end
                 when sStoreElement with x then
-                    let address = aggregates.elementAddress(fn vals.atom1(fn x.base) vals.atom1(fn x.index) x.offset)
-                    vals.store(fn address 0 8 vals.slotToWord(fn vals.atom(fn x.value) aggregates.elementShape(x.base).type))
+                    let arr = vals.atom1(fn x.base)
+                    let elem = aggregates.elementShape(x.base)
+                    let address = aggregates.elementAddress(fn arr vals.atom1(fn x.index) x.offset)
+                    if vals.holdsPointer(elem.type) then vals.callVoid(fn "quest_barrier" array of arr end) end
+                    vals.store(fn address 0 8 vals.slotToWord(fn vals.atom(fn x.value) elem.type))
                 when sSwitch with x then switch(fn x)
                 when sTry with x then tryStatement(fn x)
                 when sInspect with x then inspectAuto(fn x)
@@ -484,6 +511,10 @@ export
                     for i = 0 upto {vector.length(:vals.DeferredCapture d.captures) - 1} do
                         let c = vector.get(:vals.DeferredCapture d.captures i)
                         let vs = vals.atom(fn c.a)
+                        (* The environment was made before the body ran *)
+                        if vals.holdsPointer(ir.atomType(c.a)) then
+                            vals.callVoid(fn "quest_barrier" array of c.env end)
+                        end
                         for k = 0 upto {extent vs - 1} do vals.store(fn c.env c.offset + 8 * k 8 vs[k]) end
                     end
                     fn.deferred := saved

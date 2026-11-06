@@ -56,6 +56,8 @@ export
     typesOf(ps: Array(Part)): Array(ssa.Type)
 
     (* The unit's builder and each function's *)
+    (* An entry of a unit's root table: a global's symbol and its words *)
+    Def RootEntry = Tuple symbol: String words: Int end
     Def UnitBuilder = Tuple
         unit: ir.Unit
         built: ssa.Unit
@@ -80,6 +82,9 @@ export
         (* The layouts of the objects the unit allocates (docs/collector.md
          * section 3.2), laid out as its static data *)
         layouts: objectLayout.Table
+        (* The unit's root table (section 3.8): its globals that may hold
+         * pointers and its module records, each symbol with its words *)
+        roots: vector.T(RootEntry)
     end
     Def LoopTargets = Tuple head: Int after: Int end
     (* A capture of a variable a let rec binds, stored once the let rec's body
@@ -257,6 +262,10 @@ export
     optionComponent(fn: Fn o: Int os: shapes.Shape tag: String i: Int access: ir.Access): Array(Int)
     (* A new object of n bytes, zeroed by the collector *)
     alloc(fn: Fn bytes: Int layout: String): Int
+    (* Whether a value of type t has a word that may be a pointer, which a
+     * store of it into an existing object must barrier (docs/collector.md
+     * section 3.5) *)
+    holdsPointer(t: Type): Bool
 
     (* Functions being built *)
     newFn(u: UnitBuilder f: Function closure: maybe.T(ir.OpMakeClosure)): Fn

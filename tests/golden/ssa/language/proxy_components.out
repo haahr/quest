@@ -22,12 +22,14 @@ b3(%6: ptr):
 
 function qr_register_dicts() {
 b0():
-  %0: ptr = symbol qr_funcs
-  %1: int = const 2
-  call quest_register_funcs(%0, %1)
-  %2: ptr = symbol quest_type_QT_record_93291c5791358a47
-  %4: ptr = symbol offsetdict_record_93291c5791358a47_record_93291c5791358a47
-  tail call quest_register_record_dict(%2, %2, %4)
+  %0: ptr = symbol qr_roots
+  call quest_register_roots(%0)
+  %1: ptr = symbol qr_funcs
+  %2: int = const 2
+  call quest_register_funcs(%1, %2)
+  %3: ptr = symbol quest_type_QT_record_93291c5791358a47
+  %5: ptr = symbol offsetdict_record_93291c5791358a47_record_93291c5791358a47
+  tail call quest_register_record_dict(%3, %3, %5)
 }
 
 function main exported(%0: int, %1: ptr) int32 [0]: int result int32 {
@@ -1089,8 +1091,15 @@ b132(%714: ptr):
   store8 %752 + 0, %747
   %754: val = toVal %69
   store8 %752 + 8, %754
+  @52:33
+  %755: int = const 8
+  %756: ptr = symbol quest_layout_QTuple_QTuple_String_Int_end
+  %757: ptr = call quest_alloc(%755, %756)
+  store8 %757 + 0, %36
   @53:1
-  jump b136()
+  %758: int = ptrToInt %757
+  %760: int = and %758, %747
+  branch %760, b136(), b137()
 b133():
   @8:28
   jump b21()
@@ -1131,24 +1140,31 @@ b135():
   jump b132(%735)
 b136():
   @53:1
-  jump b137()
+  %761: int = const 0
+  call quest_proxy_store(%757, %761, %754)
+  jump b138()
 b137():
+  @53:1
+  call quest_barrier(%757)
+  store8 %757 + 0, %69
+  jump b138()
+b138():
   @54:26
   %763: int = const 0
   %764: ptr = null
   %765: int = peq %752, %764
-  branch %765, b139(), b138()
-b138():
+  branch %765, b140(), b139()
+b139():
   @54:26
   %767: int = load8 %752 + 0 invariant
   %768: int = ult %763, %767
-  branch %768, b140(), b141()
-b139():
+  branch %768, b141(), b142()
+b140():
   @54:26
   %766: ptr = symbol qs_57
   call quest_raise_array_error_at(%766)
   unreachable
-b140():
+b141():
   @54:26
   %770: int = const 8
   %771: int = mul %763, %770
@@ -1170,9 +1186,12 @@ b140():
   %785: ptr = call quest_string_concat(%784, %781)
   @17:27
   %786: ptr = call quest_string_concat(%777, %785)
-  %788: ptr = load8 %69 + 0
+  @54:49
+  %787: ptr = load8 %757 + 0
+  @17:27
+  %788: ptr = load8 %787 + 0
   @17:50
-  %790: ptr = ptrAdd %69, %770
+  %790: ptr = ptrAdd %787, %770
   %791: int = load8 %790 + 0
   @17:41
   %792: ptr = call quest_conv_int(%791)
@@ -1185,22 +1204,22 @@ b140():
   %798: int = const 0
   %799: ptr = null
   %800: int = peq %752, %799
-  branch %800, b143(), b142()
-b141():
+  branch %800, b144(), b143()
+b142():
   @54:26
   %769: ptr = symbol qs_57
   call quest_raise_array_error_at(%769)
   unreachable
-b142():
+b143():
   @54:77
   %803: int = ult %798, %767
-  branch %803, b144(), b145()
-b143():
+  branch %803, b145(), b146()
+b144():
   @54:77
   %801: ptr = symbol qs_58
   call quest_raise_array_error_at(%801)
   unreachable
-b144():
+b145():
   @54:77
   %805: int = const 8
   %806: int = mul %798, %805
@@ -1242,23 +1261,23 @@ b144():
   call quest_writer_put_string(%833, %837)
   @55:43
   %840: int = and %358, %815
-  branch %840, b146(), b147()
-b145():
+  branch %840, b147(), b148()
+b146():
   @54:77
   %804: ptr = symbol qs_58
   call quest_raise_array_error_at(%804)
   unreachable
-b146():
+b147():
   @55:43
   %842: int = const 0
   %843: val = call quest_proxy_element(%357, %842)
   %844: ptr = fromVal %843
-  jump b148(%844)
-b147():
+  jump b149(%844)
+b148():
   @55:43
   %845: ptr = load8 %357 + 0
-  jump b148(%845)
-b148(%841: ptr):
+  jump b149(%845)
+b149(%841: ptr):
   @17:27
   %846: ptr = load8 %841 + 0
   @17:50
@@ -1276,18 +1295,18 @@ b148(%841: ptr):
   %855: ptr = call quest_string_concat(%846, %854)
   @55:43
   %858: int = and %358, %852
-  branch %858, b149(), b150()
-b149():
+  branch %858, b150(), b151()
+b150():
   @55:43
   %860: int = const 0
   %861: val = call quest_proxy_element(%357, %860)
   %862: ptr = fromVal %861
-  jump b151(%862)
-b150():
+  jump b152(%862)
+b151():
   @55:43
   %863: ptr = load8 %357 + 0
-  jump b151(%863)
-b151(%859: ptr):
+  jump b152(%863)
+b152(%859: ptr):
   @57:63
   %864: int = peq %859, %36
   @57:53
@@ -1339,15 +1358,15 @@ b151(%859: ptr):
   %901: ptr = call qf_firstB(%887, %899, %352)
   %902: int = ptrToInt %901
   %904: int = and %902, %867
-  branch %904, b152(), b153()
-b152():
-  @60:68
-  %906: ptr = load8 %901 + ~1 invariant
-  jump b154(%906)
+  branch %904, b153(), b154()
 b153():
   @60:68
-  jump b154(%901)
-b154(%905: ptr):
+  %906: ptr = load8 %901 + ~1 invariant
+  jump b155(%906)
+b154():
+  @60:68
+  jump b155(%901)
+b155(%905: ptr):
   @17:27
   %907: ptr = load8 %905 + 0
   @17:50
@@ -1597,4 +1616,5 @@ data quest_layout_QTuple_Int_QOption_some_QTuple_QTuple_String_Int_end_end_end w
 data qs_75 text "QTuple_QTuple_String_Int_end"
 data qlk_QTuple_QTuple_String_Int_end words [1]
 data quest_layout_QTuple_QTuple_String_Int_end words [qs_75, 0, 8, 4294967296, qlk_QTuple_QTuple_String_Int_end]
+data qr_roots words [0, 0]
 

@@ -239,6 +239,7 @@ export
                 entry("main" diagnostics.mainFrame)
             end
             let fn = adapters.newFunction(u "qr_register_dicts" false adapters.pointers(0) array of :vals.Part end)
+            vals.callVoid(fn "quest_register_roots" array of vals.symbolAt(fn "qr_roots") end)
             if not(vector.empty(:ssa.Word entries)) then
                 addData(u ssa.words("qr_funcs" false false vector.toArray(:ssa.Word entries)))
                 vals.callVoid(fn "quest_register_funcs"
@@ -286,6 +287,7 @@ export
                 let optionTables = hashMap.new(:String :String vals.eq hash.string)
                 let naming = staticdata.newRecordNaming()
                 let layouts = objectLayout.newTable()
+                let roots = vector.new(:vals.RootEntry)
             end
             (* The source files, by the IR's numbers plus 1: the unit's own,
              * then those merged into it, as absolute paths, or empty if not
@@ -345,6 +347,8 @@ export
                     let symbol = symbols.moduleRecordIdent(clean) let exported = exported let writable = true
                     let contents = option contentsZero of ssa.Contents with let bytes = 16 end
                 end)
+                vector.append(:vals.RootEntry u.roots tuple
+                    let symbol = symbols.moduleRecordIdent(clean) let words = 2 end)
                 addData(u tuple
                     let symbol = initialized let exported = false let writable = true
                     let contents = option contentsZero of ssa.Contents with let bytes = 8 end
@@ -478,6 +482,18 @@ export
                 let ds = statics.layoutData(ls[i] fun(s: String): String vals.stringSymbol(u s))
                 for j = 0 upto {extent ds - 1} do addData(u ds[j]) end
             end
+            (* The root table (docs/collector.md section 3.8): the globals
+             * that may hold pointers, which every function above has named,
+             * and the module records, ended by a null slot *)
+            let rootWords = vector.new(:ssa.Word)
+            for i = 0 upto {vector.length(:vals.RootEntry u.roots) - 1} do
+                let e = vector.get(:vals.RootEntry u.roots i)
+                vector.append(:ssa.Word rootWords addressWord(e.symbol))
+                vector.append(:ssa.Word rootWords wordOf(e.words))
+            end
+            vector.append(:ssa.Word rootWords wordOf(0))
+            vector.append(:ssa.Word rootWords wordOf(0))
+            addData(u ssa.words("qr_roots" false false vector.toArray(:ssa.Word rootWords)))
             u.built
         end
 end

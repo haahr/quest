@@ -231,7 +231,9 @@ functions, doubly-linked structures, and self-referential records).
    ([collector.md](collector.md) §3.2), which says for each word whether it is a pointer, a scalar, or ambiguous:
    the first step of the collector that is to replace Boehm, and what `QUEST_GC_CHECK=layouts`
    (`runtime/quest_gc.c`) checks against the objects, after every 64 MB allocated (`QUEST_GC_CHECK_INTERVAL` sets the
-   bytes; at least four times the heap's size, so that the walks stay a fraction of the run) and at exit; `report` in the list prints the counts per layout, ambiguous words among them.
+   bytes; at least four times the heap's size, so that the walks stay a fraction of the run) and at exit;
+   `roots` checks that every heap pointer in the data segment lies in a unit's root table or a root the runtime
+   lists; `report` prints the counts per layout, ambiguous words among them, and the write barriers' counts.
    - Pointer-free allocations (`quest_alloc_bytes`: `String` character buffers, and the runtime's own byte buffers)
      route to `GC_MALLOC_ATOMIC`, avoiding conservative pointer scanning inside them.
 2. **Fallback Mode (`--nogc`):** compiling with `--nogc` defines `-DQUEST_NOGC`, routing the allocators to `calloc`

@@ -77,6 +77,16 @@ export
     (* The parts of a value of t in an aggregate's slot or a QVal word: one
      * word, a record or variant as a pointer to its box (layout.isBoxedInSlots),
      * a Bool or Char widened to the word *)
+    (* Whether a value of type t has a word that may be a pointer *)    let partsHoldPointer(ps: Array(Part)): Bool =
+        begin
+            let var found = false
+            for i = 0 upto {extent ps - 1} do
+                case ps[i].type when typePtr, typeVal then found := true when typeInt, typeReal then ok end
+            end
+            found
+        end
+    let holdsPointer(t: Type): Bool = partsHoldPointer(parts(t))
+
     let slotParts(t: Type): Array(Part) =
         if layout.isBoxedInSlots(shapes.shape(t)) then array of wordPart(tPtr) end
         else
@@ -119,6 +129,7 @@ export
      * The unit's builder and each function's
      * ====================================================================== *)
 
+    Def RootEntry = Tuple symbol: String words: Int end
     Def UnitBuilder = Tuple
         unit: ir.Unit
         built: ssa.Unit
@@ -139,6 +150,7 @@ export
          * does *)
         naming: staticdata.RecordNaming
         layouts: objectLayout.Table
+        roots: vector.T(RootEntry)
     end
 
     Def LoopTargets = Tuple head: Int after: Int end
@@ -208,11 +220,15 @@ export
                 let bare = if strutil.startsWith(base "qv_") then stringOp.getSub(base 3 {stringOp.length(base) - 3}) else base end
                 let symbol = freshName(u "g_" <> bare)
                 put(:Int :String u.globalSymbols v.id symbol)
-                let n = extent varParts(v)
+                let ps = varParts(v)
+                let n = extent ps
                 vector.append(:ssa.Data u.built.data tuple
                     let symbol = symbol let exported = false let writable = true
                     let contents = option contentsZero of ssa.Contents with let bytes = 8 * {if n > 0 then n else 1 end} end
                 end)
+                if partsHoldPointer(ps) then
+                    vector.append(:RootEntry u.roots tuple let symbol = symbol let words = n end)
+                end
             end
             hashMap.find(:Int :String u.globalSymbols v.id)
         end
@@ -466,7 +482,9 @@ export
                 if v.isMutable then writeParts(fn slotOf(fn v) varParts(v) values) else bindToValues(fn v values) end
             else
                 case maybe.unwrap(:Binding b)
-                    when bindPointer with x then writeParts(fn x.address locationParts(v.type) values)
+                    when bindPointer with x then
+                        if holdsPointer(v.type) then callVoid(fn "quest_barrier_slot" array of x.address end) end
+                        writeParts(fn x.address locationParts(v.type) values)
                     when bindGlobal then writeParts(fn symbolAt(fn globalSymbol(fn.u v)) varParts(v) values)
                     when bindSlot then writeParts(fn slotOf(fn v) varParts(v) values)
                     when bindValues then bindToValues(fn v values)
@@ -811,6 +829,7 @@ export
      * layout at the symbol says *)
     let alloc(fn: Fn bytes: Int layout: String): Int =
         call1(fn "quest_alloc" array of constant(fn bytes) symbolAt(fn layout) end)
+
 
     (* =========================================================================
      * Functions being built

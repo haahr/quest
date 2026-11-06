@@ -8,7 +8,7 @@ samples in half the programs), and it keeps dead data alive through stale stack 
 §3.2). This document designs a collector of Quest's own: precise where the compilers can make it so, generational,
 bump-allocating, able to move but not obliged to, and asks what must change to get there.
 
-**Status: step 1 done, 2026-11-03** (decided 2026-11-02; reviewed and reorganized 2026-11-03). Section 6
+**Status: step 2 done, 2026-11-04** (decided 2026-11-02; reviewed and reorganized 2026-11-03). Section 6
 records the decisions, section 7 the risks and the checking modes that catch them, section 8 the steps, and section
 9 what the reviews changed. The committed collector is steps 1 to 6 of §8; evacuation and generic layouts (steps 7
 and 8) are designed and taken only on measurement.
@@ -666,6 +666,40 @@ taken on what 4 and 7 measure; 9 is optional.
    are audited and marked; both backends emit the barrier calls (to a runtime stub that counts, by form) and the
    per-unit root tables; `roots` checks the tables against a conservative scan. *Done when:* the suites pass under
    `layouts,roots`, and the barrier counts per benchmark, interior stores apart, are recorded.
+   *Done 2026-11-04.* No IR change was needed: the IR's five store statements are the only stores of words into
+   memory, so the backends barrier a store by its form and the stored word's kind (`holdsPointer`), with
+   `quest_barrier(obj)` where the site has the object (a tuple's component, an array's element, a closure
+   environment filled after a `let rec`'s body) and `quest_barrier_slot(slot)` where it has only the slot (a
+   record's field through its payload, a `var` or `out` location, a view's slot). The runtime's own stores were
+   audited by a rule rather than a list: a pointer store into an object needs no barrier only when nothing can
+   have allocated since the object was made, so the runtime allocates an object's parts before the object where
+   it can (strings and their buffers, descriptors and their metadata) and barriers the rest (proxy caches, the
+   string builder's chunks, the instantiation and view-map caches, serialization's tables as they are filled).
+   The root tables list each unit's globals that may hold a pointer and its module records, ended by a null slot;
+   the runtime lists its own statics and thread-locals, and `roots` scans the executable's data segment
+   (`getsegmentdata` on Darwin, `__data_start` to `_end` on Linux) for a heap pointer nothing covers, naming the
+   symbol. The JIT never unmaps a unit's data, so its tables stay registered. The barriers, as counting stubs, on
+   the allocation-heavy MLton benchmarks at scale 0.25 (`QUEST_GC_CHECK=report`): every one was on an object; no
+   benchmark stores a pointer through a slot, and the compiler's own build makes 160 million object barriers
+   compiling `ir/lower.mod.quest` and none through a slot.
+
+   | Benchmark | Barriers (M) | Objects allocated (M) | Barriers per 100 allocations |
+   |---|--:|--:|--:|
+   | tailmerge | 0.006 | 4,916 | 0 |
+   | ratio-regions | 340 | 811 | 42 |
+   | logic | 248 | 2,213 | 11 |
+   | zebra | 140 | 1,376 | 10 |
+   | hamlet | 72 | 806 | 9 |
+   | barnes-hut | 11 | 1,253 | 1 |
+   | knuth-bendix | 798 | 3,645 | 22 |
+   | boyer | 2.9 | 1,687 | 0.2 |
+   | imp-for | 0 | 1,138 | 0 |
+   | count-graphs | 4.4 | 1,249 | 0.4 |
+   | wc-scanStream | 2.0 | 16,396 | 0 |
+   | the compiler, on `ir/lower.mod.quest` | 160 | 127 | 126 |
+
+   So the barrier's fast path matters to the compiler and to the array-heavy benchmarks, and the generational
+   collector of step 4 will log few objects on the rest.
 3. **The collector, stop-the-world, non-generational.** `quest_gc.c`: the heap of §3.1, marking by layouts (marks in
    the side bitmap, the header's *old* byte written by the marker alone, §3.2), the intersection of start bits with
    marks (§3.6), lazy line sweeping, the large object space, noscan blocks (§3.9, brought up with one cursor and

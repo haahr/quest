@@ -1331,6 +1331,18 @@ runtime's (`quest_layout_closure`, `quest_layout_adapter_env`, and `quest_layout
 `_ambiguous` for arrays by their elements' kind); the runtime's own allocations name theirs (`runtime/quest_gc.c`).
 `quest_array_new(len, init, layout)` takes the array's.
 
+**Write barriers and root tables** (docs/collector.md §3.5, §3.8). A store of a word that may be a pointer (`ptr` or
+`val`) into an object that already exists is preceded by `quest_barrier(obj)`, with the object's address where the
+site has it (a tuple's component, an array's element, a closure environment filled after a `let rec`'s body), or
+`quest_barrier_slot(slot)` where it does not (a record's field through its payload, a `var` or `out` location,
+which may be on the stack, a view's slot). The stores that make an object (`opMake*`) need none, and neither does
+the runtime's C when nothing allocates between an object's allocation and its stores, which the runtime keeps to
+where it can and barriers otherwise. Each unit's globals that may hold pointers, and its module records, are
+listed in a root table (`qr_roots`, `QRootEntry`s ended by a null slot) that `qr_register_dicts` registers with
+`quest_register_roots`; the runtime lists its own statics (`quest_runtime_roots`). Until the generational
+collector (step 4) the barriers only count (`QUEST_GC_CHECK=report` prints the counts), and
+`QUEST_GC_CHECK=roots` scans the data segment for a heap pointer no table or listed root covers.
+
 - When compiled without flags, Quest links with Boehm GC (`-lgc`): `quest_alloc` is `GC_MALLOC` of the header and the
   object, `quest_alloc_bytes` `GC_MALLOC_ATOMIC`.
 - When invoked with `--nogc`, the compiler passes `-DQUEST_NOGC` and omits `-lgc`: `calloc` and `malloc` instead, so
