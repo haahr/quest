@@ -175,19 +175,47 @@ export
     end
 
     (* The static descriptor of a type that mentions no type parameter in scope,
-     * or of a template *)
+     * or of a template, a type with holes (descriptors.holeVar) that stand for
+     * type parameters and are filled in at run time (descInstantiate); a
+     * backend emits it as a constant. echo: the descriptor echo writes a value
+     * of the closed type by, which writes its type components by their alias
+     * names, rather than the one shared by every type of its shape *)
     and StaticDescriptor = Tuple id: Int type: Type echo: Bool end
-    (* A descriptor operand (after the describe pass) *)
+    (* A descriptor operand (after the describe pass, docs/ir.md section 8.4):
+     * a type parameter's descriptor variable, a static descriptor, or a
+     * template instantiated with the descriptors of its holes, in order. The
+     * operands are small pure expressions rather than variables bound by let,
+     * so a backend evaluates each where it is used *)
     and Descriptor = Option
         descVar with v: Variable end
         descStatic with d: StaticDescriptor end
         descInstantiate with template: Type args: Array(Descriptor) end
     end
+    (* A descriptor variable v bound for a type parameter (see descriptorType).
+     * symbols are the ids the type parameter is named by in the types it
+     * describes: one for a function's, but a thunk's type parameter is named
+     * both in the closure's type and in the type it is adapted to *)
     and DescriptorParam = Tuple v: Variable symbols: Array(Int) end
+    (* A view map variable v (see viewMapType) for the type parameter named
+     * symbol, computed where its function begins from descriptor, the type
+     * parameter's descriptor variable, and bound, its bound's descriptor *)
     and ViewMapParam = Tuple v: Variable symbol: Int descriptor: Variable bound: Descriptor end
+    (* An offset table's two types' static descriptors, by which the runtime
+     * finds the table for a dynamic value *)
     and Registered = Tuple view: StaticDescriptor layout: StaticDescriptor end
+    (* A static offset table (docs/c-representation.md section 5.2): where each
+     * field of the record type view is in a record laid out as the record
+     * type layout. registered is set when both types are closed. id is view's
+     * shape's id, by which the verifier checks that a table is listed *)
     and OffsetTable = Tuple id: Int view: Type layout: Type var registered: maybe.T(Registered) end
+    (* A static table that maps a variant's tags from source's numbering to
+     * that of its supertype target, for a variantTags plan; id is target's
+     * shape's id *)
     and TagMap = Tuple id: Int target: Type source: Type end
+    (* The static descriptors and tables a unit's operations refer to (after the
+     * describe pass), which a backend emits, each listed once; and types, the
+     * types whose aggregates (tuples, records, options, variants, and those
+     * inside them) a backend declares (docs/ir.md section 8.4) *)
     and StaticData = Tuple
         descriptors: vector.T(StaticDescriptor)
         offsetTables: vector.T(OffsetTable)
@@ -200,7 +228,27 @@ export
      * (its symbols in the order they were bound, as the bootstrap's dictionary
      * keeps them), and whether the value goes to the generic layout *)
     and PlanLayout = Tuple subst: model.Subst keys: vector.T(Int) toGeneric: Bool end
-    (* How convert changes a value's representation (docs/ir.md section 8.3) *)
+    (* How convert changes a value's representation from source's to target's
+     * (docs/ir.md section 8.3, which lists the kinds). The represent pass sets
+     * the fields after kind, source, and target, and the describe pass the
+     * descriptors and tables:
+     * - fields: a copy's plan for each component of the new tuple, or an
+     *   adapt plan's for each of the closure's parameters (none for var and
+     *   out ones), then its result's; none where a value is used as it is;
+     * - layout: for a runtime plan, the polymorphic callee's layout the value
+     *   goes to or comes from (an adapt plan has its call's, by which its
+     *   fields convert; a view plan of an abstract type's value, the layout
+     *   its module's generic code gives the type's representation);
+     * - access: how a copy reads each component of the source tuple;
+     * - thunkSymbols: for each of an adapt plan's thunk's type parameters, the
+     *   symbols it is named by in the plans of fields (the target's and the
+     *   source's);
+     * - descriptors: the descriptors the plan converts by: a recordView's,
+     *   the target record's; a view's or a runtime's, those of the two
+     *   representations it converts from and to;
+     * - thunkParams: an adapt plan's thunk's descriptor variables, which the
+     *   descriptors of its fields use;
+     * - tagMap: a variantTags plan's table *)
     and Plan = Tuple
         id: Int
         kind: PlanKind
@@ -413,9 +461,16 @@ export
         opLoad with var address: Atom end
     end
 
+    (* A parameter and its mode: "value", "var", or "out" *)
     and ParamEntry = Tuple v: Variable mode: String end
     (* A function: v names it; after closure conversion, a function is one of
-     * the unit's, and env, if any, is the environment of the closure it runs *)
+     * the unit's, and env, if any, is the environment of the closure it runs,
+     * from which its body reads the values it captured (opEnvField).
+     * traceName is its frame's name in tracebacks (docs/exceptions.md section
+     * 2.3), none for the thunks the passes make. The describe pass sets
+     * descriptorParams, a descriptor variable for each of its type
+     * parameters, in order, and viewMaps, those its body reads values of
+     * bounded type parameters through (see viewMapType) *)
     and Function = Tuple
         id: Int
         var v: Variable
@@ -431,10 +486,33 @@ export
          * components *)
         var unboxedResult: Bool
     end
+    (* A case of a switch: the tags it matches, its body, and the variable
+     * bound to the payload, if any. An option's payload is a new tuple of the
+     * case's components, read as components says (set by the represent
+     * pass) *)
     and Case = Tuple tags: Array(String) var body: Body var binder: maybe.T(Variable) var components: Array(Access) end
     and DescriptorPair = Tuple source: Descriptor target: Descriptor end
     (* How an inspect case of an auto value obtains its components from the
-     * payload *)
+     * payload, which is stored in the auto type's witness-independent layout
+     * (docs/c-representation.md section 8.1): its signature's layout with the
+     * type component an abstract type, the same whatever type the witness
+     * is. Decided by the represent pass.
+     *
+     * converted says, for each component, how a new tuple of the case's
+     * components gets it: none, copied as it is; "component", a value of the
+     * type component itself, converted from the value's witness to the
+     * case's type; "mentions", a component whose type mentions the type
+     * component, converted from its stored type at the witness. descriptors
+     * (set by the describe pass) are the descriptors each converted
+     * component converts from and to.
+     *
+     * For an exact case (exact), the code checks at run time whether the
+     * stored layout is the case's (quest_layout_equivalent): if it is, the
+     * stored payload serves, as it is (shared: the layouts agree statically,
+     * so var components are shared too) or converted by plan; if not, the
+     * components are converted as for any case, after raising a layout error
+     * (layoutError) when the auto type has var components, whose updates a
+     * copy would not share *)
     and InspectArm = Tuple
         converted: Array(maybe.T(String))
         exact: Bool

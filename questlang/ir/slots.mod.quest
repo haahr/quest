@@ -459,6 +459,15 @@ export
             else false
         end
 
+    (* The statements that replace a let s: s, after the lets that put the
+     * records and variants its operation stores into their boxes (see
+     * operation). When the operation yields a record or variant in its slot
+     * form, a box, s binds a new boxed variable instead, and a let after it
+     * reads the value from the box into s's variable; st remembers the box
+     * as that variable's, so that storing the value again reuses the box. A
+     * let of a copy shares its source's remembered box and freshness, and a
+     * let of a tuple or option being made marks its variable fresh (not a
+     * proxy) *)
     let letStatement(st: SlotState s: Stmt): Array(Stmt) =
         case s
             when sLet with x then
@@ -505,6 +514,13 @@ export
             else array of s end
         end
 
+    (* The statements that replace s (a let's are letStatement's): s, after
+     * the lets that box the records and variants it stores into slots (a
+     * boxed variable's initial or assigned value, a store's value, a raise's
+     * payload, an echoed value); with how a store writes a tuple's component
+     * and a switch reads an option's tag and payload decided, and a switch
+     * case's binder of a boxed payload bound to the payload's box (from
+     * which a let at the case's start reads the value) *)
     let statement(st: SlotState s: Stmt): Array(Stmt) =
         begin
             let before = vector.new(:Stmt)
@@ -563,6 +579,8 @@ export
             end
         end
 
+    (* Decides the slots of b's statements, in place: those of the bodies in
+     * each statement first, then the statement's own *)
     let rec body(st: SlotState b: Body): Ok =
         begin
             let statements = vector.new(:Stmt)

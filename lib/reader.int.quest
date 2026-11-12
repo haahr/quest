@@ -5,19 +5,29 @@ interface Reader export
     error: Exception
     (* Standard input stream reader *)
     input: T
-    (* Open a reader stream for the file with the given name *)
+    (* Open a reader stream for the file with the given name; raises error if
+     * it cannot be opened *)
     file(name: String): T
-    (* Test whether there are more characters available to read *)
+    (* Whether a character is left to read, false at end of stream. It reads
+     * one character ahead to know, so it can block; raises error if reader
+     * is closed *)
     more(reader: T): Bool
     (* 1 if more(reader), else 0 (at end of stream); like more, it reads a
      * character ahead to know, so it can block *)
     ready(reader: T): Int
-    (* Read the next character from the reader stream *)
+    (* Read the next character from the reader stream; raises error at end of
+     * stream or if reader is closed *)
     getChar(reader: T): Char
-    (* Read a string of the given length from the reader stream *)
+    (* Read up to size characters, as a new string, shorter than size only at
+     * end of stream ("" there); raises error if size < 0 or reader is
+     * closed *)
     getString(reader: T size: Int): String
-    (* Read characters into a destination string buffer at start offset *)
+    (* Read exactly size characters into string, in place, at offsets start to
+     * start + size - 1. Raises error if that range is not within string, if
+     * reader is closed, or at end of stream before size characters, having
+     * stored those it read *)
     getSubString(reader: T string: String start: Int size: Int): Ok
-    (* Close the reader stream *)
+    (* Close the reader stream; closing it again does nothing. Every other
+     * operation on a closed reader raises error *)
     close(reader: T): Ok
 end

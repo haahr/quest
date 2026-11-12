@@ -1,6 +1,8 @@
-"""Quest Type-Checking Environments: the scope stack, the builtins, and the
+"""Type-checking environments: the scope stack, the builtins, and the
 interfaces, modules, and units in scope. Symbols and scopes are
-quest.types.symbols's (and are re-exported here)."""
+quest.types.symbols's (and are re-exported here).
+
+The self-hosted counterpart is questlang/types/env."""
 
 from __future__ import annotations
 

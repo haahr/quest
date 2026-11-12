@@ -1,4 +1,13 @@
-"""Quest Tokenizer (Lexical Analyzer)."""
+"""The tokenizer: splits a source file's text into tokens (syntax/tokens.py)
+for the parser, skipping whitespace and nested (* ... *) comments.
+
+Callers take the whole file at once (Tokenizer(text, file).tokenize_all(), a
+list ending with an EOF token) and hand it to the parser. The first malformed
+input (an unterminated literal or comment, an unknown escape, an out-of-range
+integer, an unexpected character) raises TokenizerError, with the offset and
+length of the bad text. The self-hosted counterpart,
+questlang/syntax/tokenizer, instead reports every error to a diagnostic bag and
+goes on. docs/syntax.md §2 gives the lexical rules."""
 
 from __future__ import annotations
 

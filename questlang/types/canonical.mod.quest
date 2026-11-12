@@ -1,5 +1,19 @@
 (* Quest Self-Hosted Compiler: Reduced and Canonical Forms of Types
- * Implementation *)
+ * Implementation
+ *
+ * The module has two halves, both serving the IR and the C backend rather
+ * than the checker. The first exposes a type's outermost constructor:
+ * betaReduceHead applies type operators to their arguments (Fun(A) T applied
+ * to U is T with U for A), unfolding and unfoldRecursive* unfold recursive
+ * types, normalizeType combines the two and caches the result, and
+ * resolveTypeBound, optionCaseNames, and optionIdentity look through bounded
+ * variables and abstract types. The second, from the banner "Canonical forms
+ * of recursive types", computes canonicalType: a type containing recursion
+ * as a graph, minimized and written back as a type, so that equal recursive
+ * types get one C struct and one run-time descriptor (the comment on Graph
+ * gives the steps). The counterpart is bootstrap/python/quest/types/
+ * canonical.py; docs/type-system.md §2.2 says why only the backend
+ * canonicalizes. *)
 
 module canonical : Canonical
 import
@@ -117,6 +131,13 @@ export
     (* Reduced forms by the id of the type node *)
     let normalized = hashMap.new(:Int :Type intEqual hash.int)
 
+    (* normalizeType's work: aliases stripped, then a recursive type unfolded
+     * as far as its outermost node is neither recursive nor an application.
+     * An application becomes its unfolding if that is a constructed type
+     * (unfoldRecursive), else its beta-reduction if that has a constructor
+     * at its head, else its lazy evaluation if that is a tuple or record
+     * type; if none of these, as for an application of an abstract type
+     * operator (m.T(Int)), it stays as it is *)
     let normalizeUncached(t0: Type): Type =
         begin
             let t = model.stripAliases(t0)
@@ -245,6 +266,11 @@ export
         begin
             let var curr = normalizeType(t)
             let var stuck = false
+            (* Each round looks through one layer: the module abstract types
+             * free in curr replaced by their representations, or else curr's
+             * bound. A representation may itself be bounded, or mention
+             * another abstract type, so rounds repeat until an option shows
+             * or nothing changes *)
             while not(stuck) andif not(curr.form?typeOption) do
                 let reps = model.newSubst()
                 for i = 0 upto {extent curr.fv - 1} do
@@ -356,9 +382,9 @@ export
     (* =========================================================================
      * Canonical forms of recursive types
      *
-     * As types/canonical.py describes them: the graph of a type's nodes,
-     * minimized by partition refinement, written back as a type whose recursion
-     * variables and binders' parameters have reserved ids.
+     * The graph of a type's nodes, minimized by partition refinement, written
+     * back as a type whose recursion variables and binders' parameters have
+     * reserved ids (the comment on Graph explains).
      * ====================================================================== *)
 
     let maxCanonicalNodes = 100000
@@ -947,27 +973,40 @@ export
      * type node can mean different things under different binders, a graph
      * node is the type together with the binder nodes its free variables
      * refer to. Written back, parameters get reserved ids numbered by depth,
-     * so that no binder captures another's. *)
+     * so that no binder captures another's.
+     *
+     * A Graph holds the results of steps 1 and 2, and step 3's memos. Three
+     * numberings index its arrays: nodes (step 1), classes (step 2), and the
+     * strongly connected components of the quotient, the sets of classes
+     * that reach one another (a component of one class with no edge to
+     * itself is not a cycle). *)
     Let Graph = Tuple
-        (* The structure of each node, whether its free variables are all free
-         * in the root, and the root's node *)
+        (* By node: its structure, and whether none of its free variables is
+         * bound by a binder inside the graph (so that its canonical form
+         * does not depend on where it is reached from); and the root's
+         * class, none if the root is a leaf *)
         objects: Array(Node)
         closed: Array(Bool)
         root: maybe.T(Int)
-        (* Each node's class *)
+        (* By node: its class *)
         cls: Array(Int)
-        (* The quotient graph, one node per class *)
+        (* By class, the quotient graph: the class's shape, its edges (to a
+         * class or a leaf), and for an occurrence of a parameter its binder's
+         * class (else -1) *)
         shapes: Array(Shape)
         children: Array(Array(Ref))
         scope: Array(Int)
-        (* The strongly connected components *)
+        (* By class, its component; by component, whether it is a cycle,
+         * whether it reaches one, and the binder classes it or what it
+         * reaches refers to (as a set) *)
         component: Array(Int)
         cyclic: Array(Bool)
         reachesCycle: Array(Bool)
         refers: Array(hashMap.T(Int Bool))
+        (* Step 3's memos: by class, its canonical form (term); by the number
+         * of its key (a class and the context it is built in), a node built
+         * (build); by component, aggregateCycles's answer *)
         terms: hashMap.T(Int maybe.T(Node))
-        (* The nodes built, by the numbers of their keys (a node and its
-         * context) *)
         built: keys.T
         builtNodes: vector.T(maybe.T(Node))
         aggregateMemo: hashMap.T(Int Bool)

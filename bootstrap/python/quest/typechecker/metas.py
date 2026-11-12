@@ -1,4 +1,8 @@
-"""Metavariable Resolution over Typed ASTs."""
+"""A typed AST with its solved metavariables (the placeholders for inferred
+type arguments, QTypeMeta) replaced by their solutions, so that later phases
+never meet one.
+
+The self-hosted counterpart is questlang/typechecker/metas."""
 
 from __future__ import annotations
 

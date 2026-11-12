@@ -25,6 +25,8 @@ at the source as written (docs/syntax.md §5, docs/pipeline.md §2).
 The rewrite is bottom up and returns its input unchanged (the same object) when
 there is nothing to desugar, so it can be applied to any AST node, including a
 phrase, a type, or a kind.
+
+The self-hosted counterpart is questlang/syntax/desugar.
 """
 
 from __future__ import annotations

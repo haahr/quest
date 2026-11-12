@@ -2,7 +2,12 @@
  *
  * The check of bootstrap/python/quest/types/contractiveness.py that a recursive
  * type is contractive in its variables (C succ X, Cardelli and Longo 1991): a
- * recursive variable must be guarded by a type constructor. *)
+ * recursive variable must be guarded by a type constructor. Rec(L) Tuple
+ * head: Int tail: L end is contractive, Rec(X) X and Let Rec A = B and B = A
+ * are not. A type that is not has no unique meaning, and unfolding it never
+ * reaches a constructor, which evaluateLazily relies on doing. The
+ * elaboration of recursive type declarations calls it; docs/type-system.md
+ * §3.3 gives the rule. *)
 
 interface Contractiveness
 import
@@ -14,7 +19,7 @@ export
     (* Whether t is contractive in the ids (a set: the map's keys). Raises
      * diagnostics.compilerError (fatal) past the expansion depth limit. *)
     isTypeContractive(t: model.Type ids: hashMap.T(Int Bool) e: maybe.T(env.T)): Bool
-    (* Raises the bootstrap's KindError for varName, at offset, if t is not
-     * contractive in the ids *)
+    (* Raises a diagnostics error (not fatal) naming varName, at offset, if t
+     * is not contractive in the ids; the bootstrap raises a KindError *)
     checkTypeContractive(t: model.Type ids: hashMap.T(Int Bool) varName: String offset: Int e: maybe.T(env.T)): Ok
 end

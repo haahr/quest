@@ -4,7 +4,9 @@ function, value, or exception (resolve_external_symbol), and system.args is set
 from the driver's arguments (set_system_args). A character is a byte, as in C,
 so files, the standard streams (use_byte_streams), and strings from the OS are
 read and written a byte per character. The library's interfaces and modules,
-which the type checker loads, are quest.modules.stdlib's."""
+which the type checker loads, are quest.modules.stdlib's.
+
+The self-hosted counterpart is questlang/interpreter/builtins."""
 
 from __future__ import annotations
 
@@ -860,6 +862,17 @@ def _quest_hash_combine(h1: QWord, h2: QWord) -> QWord:
     return QWord(combined)
 
 def _quest_identity_hash(v: QValue) -> QWord:
+    """util/hash's identityHash (quest_identity_hash in the runtime): a hash
+    of v consistent with is (qvalue_is), so that values is finds the same hash
+    alike, as a hash table keyed by identity needs.
+
+    Scalars hash by value, a Real by its bits with ~0.0 as 0.0. An option
+    whose payload has no components or one hashes by its case's name and that
+    component, which covers the options is compares by content at any type
+    (docs/extensions.md, Options as Values). Anything else hashes by its
+    object's identity. The result is mixed by splitmix64, as the runtime's is,
+    but the hashes are not the runtime's: tags are hashed by name, and
+    identities are Python objects', not addresses."""
     match v:
         case QInt(value=val) | QWord(value=val):
             raw = val & 0xFFFF_FFFF_FFFF_FFFF

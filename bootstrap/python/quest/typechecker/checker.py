@@ -8,6 +8,8 @@ expression forms (`check_expr`, `synth_expr`), which is `typecheck`'s, through
 the methods declared here. The families call each other in one direction:
 `exceptions` and `auto_values` are used by `bindings` and `application`, and
 `bindings` by `aggregates` and `control`.
+
+The self-hosted counterpart is questlang/typechecker/checker.
 """
 
 from __future__ import annotations

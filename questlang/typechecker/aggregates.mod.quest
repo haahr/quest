@@ -211,6 +211,15 @@ export
     let newLabel(c: checker.T name: String t: Type isVar: Bool): symbols.ValueSymbol =
         symbols.newValueSymbol(name t isVar false false c.functionDepth 0)
 
+    (* Steps 2 and 3 of elaborateTupleComponents, run in the scope it opens
+     * for the tuple: the typed tuple of items, step 1's flattened components,
+     * elaborated in order. typeGroups, recGroupsAst, simGroups, and
+     * kindsBefore are step 1's too. Checking, expectedTuple holds the
+     * expected type's components, which items match one for one, and the
+     * tuple has that type, expectedTupleType. Synthesizing, both are none, and
+     * the tuple's type is built from its components' (a type component
+     * becomes a manifest one, Let A = T). Raises diagnostics errors on a
+     * mismatch *)
     let tupleScope(
         c: checker.T x0: ast.Expr items: vector.T(Item) typeGroups: vector.T(TypeGroup) recGroupsAst: vector.T(RecGroup)
         simGroups: vector.T(vector.T(ast.TupleFieldBinding)) kindsBefore: hashMap.T(Int vector.T(KindDecl))
@@ -955,7 +964,11 @@ export
             end
         end
 
-    (* Checks a payload expression against a case's signature type *)
+    (* The payload of an option construction (with let x = ... end), checked
+     * against expected, its case's payload type. That is a tuple type for an
+     * option type as declared; when it is not, a payload of exactly one value
+     * component is checked as that component's value alone, as the
+     * bootstrap's _check_option_payload does *)
     let checkOptionPayload(c: checker.T payload: ast.Expr expected: Type e: env.T loopDepth: Int): typedAst.Expr =
         begin
             let expectedLazy = evaluate(expected)
@@ -983,6 +996,12 @@ export
             end
         end
 
+    (* option tag of T [with payload] end, or option ordinal(n) of T ... end,
+     * which picks the case by a number computed at run time. The result has
+     * type T as written. A payload is required exactly when the case has
+     * one; construction by ordinal requires every case to have the same
+     * signature, so that the payload fits whichever is chosen
+     * (docs/type-system.md §6.8) *)
     let synthOption(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
         case x0.form
             when exprOption with x then
@@ -1106,6 +1125,12 @@ export
             else internal(:typedAst.Expr "a variant check" x0)
         end
 
+    (* target!tag, which fails at run time unless target has that tag. For a
+     * variant its type is the tag's payload type (Ok if it has none); for an
+     * option, a new tuple Tuple :Int ... end, its ordinal in target's static
+     * type followed by the payload's components (a payload that is not a
+     * tuple is one component). docs/type-system.md §6.8 says why options
+     * differ *)
     let synthVariantAssert(c: checker.T x0: ast.Expr e: env.T loopDepth: Int): typedAst.Expr =
         case x0.form
             when exprVariantAssert with x then

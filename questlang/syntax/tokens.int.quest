@@ -1,4 +1,13 @@
-(* Quest Self-Hosted Compiler: Lexical Tokens Interface *)
+(* Quest Self-Hosted Compiler: Lexical Tokens Interface
+ *
+ * The tokens the tokenizer produces and the parser consumes. A token is its
+ * kind, its lexeme (the exact source text: "a\n" with its quotes and
+ * backslash, ~3 with its tilde), a literal's value (the two characters a and
+ * newline; the Int -3), and its span in the file.
+ * The kinds' names (tokenKindName) are those of the bootstrap's TokenKind,
+ * bootstrap/python/quest/syntax/tokens.py, because the tokenize phase's golden
+ * output and the parser's error messages print them, and both compilers must
+ * print the same text. docs/syntax.md §2 gives the lexical rules *)
 
 interface Tokens
 import
@@ -117,7 +126,8 @@ export
         kwWith
     end
 
-    (* Typed value payload for literal tokens *)
+    (* The value of a literal token, with its escapes decoded and its sign
+     * applied; none for every other kind *)
     Def TokenValue = Option
         none
         intVal with val: Int end
@@ -126,7 +136,7 @@ export
         stringVal with val: String end
     end
 
-    (* Lexical token structure *)
+    (* A token: lexeme is the source text the span covers *)
     Def Token = Tuple
         kind: TokenKind
         lexeme: String
@@ -144,13 +154,16 @@ export
     valChar(c: Char): TokenValue
     valString(s: String): TokenValue
 
-    (* Construct an EOF token at given file and offset *)
+    (* The end-of-input token: an empty lexeme at offset in file *)
     eofToken(file: String offset: Int): Token
 
-    (* Canonical uppercase name matching Python's TokenKind.name *)
+    (* The kind's name as the bootstrap's TokenKind spells it (KW_LET for
+     * kwLet), for golden output and error messages *)
     tokenKindName(kind: TokenKind): String
 
-    (* Predicates *)
+    (* The groups of kinds the comments in TokenKind name. isDelimiter is the
+     * brackets, comma, and semicolon; dot counts as punctuation, though the
+     * tokenizer, like the delimiters, never lexes it as part of an operator *)
     isKeyword(kind: TokenKind): Bool
     isLiteral(kind: TokenKind): Bool
     isDelimiter(kind: TokenKind): Bool

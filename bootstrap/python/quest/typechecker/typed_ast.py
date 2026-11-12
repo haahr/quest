@@ -1,4 +1,22 @@
-"""Quest Typed Core Abstract Syntax Tree (Typed AST) Definitions."""
+"""The typed AST: what the type checker (typecheck.py and its construct
+families) elaborates a program into, and what the interpreters and the IR's
+lowering read.
+
+Nodes are frozen dataclasses: a TypedExpr has its type (type_val), and a
+TypedBinding (a declaration, a statement, an import, an interface, or a module)
+has none; every node has the offset of the syntax it was elaborated from. Names
+are resolved: a variable refers to its symbol (types/symbols.py), and later
+passes identify binders by symbol, never by name. The sections, by their
+banners, follow the forms: literals and variables, functions and applications,
+aggregates, mutable references, variants and options, control flow,
+exceptions, and declarations and programs.
+
+The module also holds the typed AST's printer, the typecheck phase's output
+(each node's dump_header and dump_children, and typed_ast_dump), and its one
+traversal, with a case for each class (typed_fields, rebuild_typed). The
+self-hosted counterparts are questlang/typechecker/typedast and its printer,
+questlang/typechecker/typedastprint, which prints the same text.
+docs/type-system.md §6 describes the elaboration."""
 
 from __future__ import annotations
 
@@ -945,6 +963,16 @@ class TypedModule(TypedBinding):
 
 @dataclass(frozen=True)
 class TypedImportItem(TypedNode):
+    """One item of an import, elaborated. `c1 = p1, c2 = p2 : I` binds each
+    local name ci to the module at the path pi, which implements the interface
+    I; `: I`, with no names, imports I's types and kinds alone
+    (docs/modules.md §4.3).
+
+    names are the local names, and interface_name the interface's.
+    module_paths and interface_path are the paths as written, None where they
+    are the names themselves (`import counter: Counter`); the effective_
+    properties give the paths in either case. The interpreters and the
+    lowering find the modules by these paths."""
     names: tuple[str, ...]
     interface_name: str
     module_paths: Optional[tuple[str, ...]] = None

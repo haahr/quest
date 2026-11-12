@@ -3,7 +3,16 @@
  *
  * The checks of bootstrap/python/quest/typechecker/escape.py: that abstract
  * path types rooted at local variables do not escape their scope, and that
- * types used at run time do not mention package values' abstract types. *)
+ * types used at run time do not mention package values' abstract types.
+ *
+ * A path type x.A names the hidden type component A of a value x (a
+ * package). It means something only where x is in scope: the result of
+ * let f(p: Pkg) = p.origin would have type p.Point outside f, where no p
+ * exists, so such a type is rejected where it would leave the scope of its
+ * root (docs/type-system.md §4.5). And x.A has no identity at run time,
+ * since what it hides is known only to the code that made x, so it cannot be
+ * the type of a dynamic value or of an inspect branch (the section Dynamic
+ * Typing and Narrowing, under Types at run time). *)
 
 interface Escape
 import

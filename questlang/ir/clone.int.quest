@@ -17,6 +17,11 @@ import
 export
     (* The count of the fresh labels made in a unit *)
     Def Labels = Tuple var count: Int end
+    (* A copy in progress: subst, the substitution applied to the copy's
+     * types (type parameters' symbols to types); vars, the variable the copy
+     * uses in place of each of the original's, by id; labels, the fresh label
+     * of each label the copy binds; and relabeling, the unit's label count,
+     * if the cloner relabels *)
     Def Cloner = Tuple
         subst: model.Subst
         vars: hashMap.T(Int nodes.Variable)
@@ -41,6 +46,13 @@ export
      * binder in a body and the functions it binds, before the body is
      * copied *)
     bindAll(c: Cloner b: nodes.Body): Ok
+    (* A copy of b, using the variables and labels bindAll made for those it
+     * binds; any other variable stays as it is *)
     copyBody(c: Cloner b: nodes.Body): nodes.Body
+    (* A copy of f, with the variables bindAll made for f and its parameters
+     * and a copy of its body. Its type parameters are f's, unchanged, and the
+     * fields that closure conversion and later passes set (env,
+     * descriptorParams, viewMaps, unboxedResult) are left unset: cloning is
+     * for the inliner and specialize, which run before closure conversion *)
     copyFunction(c: Cloner f: nodes.Function): nodes.Function
 end

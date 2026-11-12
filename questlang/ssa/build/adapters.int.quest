@@ -1,8 +1,26 @@
 (* Quest Self-Hosted Compiler: The SSA Builder's Adapters Interface
  *
- * The unit's functions that are not its IR functions: a module file's
- * exported functions, and function types' adapters, thunks, and
- * invokers. *)
+ * The unit's functions that are not its IR functions, which the builder
+ * makes from types and interfaces rather than from code:
+ *
+ * - a module file's exported functions, C entry points that call its
+ *   members' closures;
+ * - for each function type the unit describes at run time, the three
+ *   functions its descriptor points to, by which the runtime's quest_convert
+ *   changes a closure's type, as dynamic.be and a field stored at a subtype
+ *   need (docs/c-representation.md section 6.4.4, "Functions"). A closure's
+ *   type fixes its C signature (how each argument is passed), so a closure
+ *   used at another type must be wrapped. The adapter does that: it returns
+ *   a new closure of this type whose code is the thunk and whose
+ *   environment holds the original and both types' descriptors. The thunk,
+ *   called at this type's signature, converts each argument to the
+ *   original's type and calls it, at this signature directly when the two
+ *   signatures agree, else through the original type's invoker; it then
+ *   converts the result back. The invoker calls a closure of this type
+ *   with its arguments as uniform QVal words, and returns the result as
+ *   one, which lets a thunk call a closure whose signature it does not know.
+ *
+ * The C backend writes the same functions in C (codegen/c/declarations). *)
 
 interface Adapters
 import

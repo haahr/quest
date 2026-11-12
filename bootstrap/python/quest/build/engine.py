@@ -1,4 +1,9 @@
-"""Queue-driven build engine for Quest programs and modules."""
+"""The build engine: builds a program by separate compilation, each unit
+compiled on its own and only the stale ones again (BuildEngine, whose docstring
+describes the algorithm; docs/build-process.md §7), and compiles a unit file
+alone, as `quest -c` does (compile_unit_file).
+
+The self-hosted counterpart is questlang/build/engine."""
 
 from __future__ import annotations
 

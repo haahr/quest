@@ -1,4 +1,7 @@
-"""Quest Semantic Types, Kinds, Substitution, Subtyping, and Pretty Printing.
+"""The type checker's semantic types and kinds, and what is computed on them:
+substitution, kinds, subtyping, contractiveness, printing, and canonical forms
+(docs/type-system.md; the self-hosted counterpart is questlang/types).
+Importing the package also makes == on any type raise (the loop at the end).
 
 This package provides:
 - quest.types.model: QType, QKind, primitive and composite type representations.
@@ -156,7 +159,9 @@ from quest.types.env import (
 _SUBTYPE_CACHE = SUBTYPE_CACHE
 _unfold_head = unfold_head
 
-# Enforce reference equality guard on all QType subclasses
+# == on types raises (QType.__eq__): types are compared with is (they are
+# interned) or is_type_equal. Every subclass's __eq__, whether its own or the
+# one @dataclass generates, is replaced by QType's
 for _cls in list(globals().values()):
     if isinstance(_cls, type) and issubclass(_cls, QType) and _cls is not QType:
         _cls.__eq__ = QType.__eq__

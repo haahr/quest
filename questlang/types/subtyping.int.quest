@@ -3,7 +3,11 @@
  * The subtyping of bootstrap/python/quest/types/subtyping.py: equi-recursive
  * subtyping proofs, with coinductive assumptions for recursive types and fuel
  * for bounded quantification, type equivalence, subkinding, and the cache of
- * proofs' results. *)
+ * proofs' results. Equi-recursive means a recursive type equals its
+ * unfolding, with no explicit fold or unfold; a coinductive assumption is a
+ * pair under proof taken as true when it recurs, which lets a proof about
+ * infinite unfoldings end. docs/type-system.md §3.1 gives the subkinding and
+ * quantifier rules, §3.2 the proofs and the cache. *)
 
 interface Subtyping
 import
@@ -16,7 +20,14 @@ export
     Def Env = maybe.T(model.Lookup)
 
     (* sub <: sup. A failed proof that runs out of steps raises
-     * diagnostics.compilerError (fatal). *)
+     * diagnostics.compilerError (fatal).
+     *
+     * It solves metavariables as a side effect: a goal ?A <: T or T <: ?A,
+     * ?A unsolved, sets ?A's instance to T and succeeds. Solutions are kept
+     * even when the proof as a whole fails, so a caller inferring type
+     * arguments may call it only for the solutions and ignore the answer
+     * (inferredTypeApp in typechecker/application does). Pairs involving a
+     * metavariable are never cached. *)
     isSubtype(sub: model.Type sup: model.Type env: Env): Bool
     (* Both ways, as one proof *)
     isTypeEqual(a: model.Type b: model.Type env: Env): Bool

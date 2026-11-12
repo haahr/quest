@@ -1,4 +1,17 @@
-"""Path-Type Escape Analysis and Closedness Validation."""
+"""Two checks on the abstract types of packages, and helpers for auto values.
+
+A package is a value of an existential tuple type, `Tuple T::TYPE x: T end`,
+whose type component is hidden. Bound to an immutable variable p, its
+component is the path type p.T (QPathType), distinct from every other
+package's (docs/type-system.md §4.4). Two things may not mention one:
+
+- a type that leaves p's scope, such as the result type of a function taking
+  p as a parameter (check_no_escaping_path_types, §4.5), since outside the
+  scope p.T names nothing;
+- a type used at run time, such as a dynamic value's or an inspect branch's
+  (check_no_package_types), since p.T has no run-time identity to compare.
+
+The self-hosted counterpart is questlang/typechecker/escape."""
 
 from __future__ import annotations
 

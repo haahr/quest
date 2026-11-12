@@ -39,6 +39,8 @@ statically (its components hidden), becomes an echo of its text.
 Descriptor operands are small pure expressions over descriptor variables, not
 values named by lets: where a backend evaluates them is its own business (the C
 printer evaluates each where it is used, as before this pass existed).
+
+The self-hosted counterpart is questlang/ir/describe.
 """
 
 from __future__ import annotations

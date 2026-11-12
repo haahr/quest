@@ -15,6 +15,9 @@ bisimulation), and numbers the remaining nodes in the order a depth-first walk
 from the roots first reaches them. Values are decoded by following their type,
 and objects reached more than once are written once, with @id, and then as
 {"@ref": n}.
+
+The self-hosted counterpart is questlang/values/dynamicjson, with the JSON text
+itself in questlang/values/json.
 """
 
 from __future__ import annotations
@@ -603,6 +606,23 @@ class _Writer:
             self.scan(child, child_ref)
 
     def encode(self, val: QValue, ref: TypeRef) -> Any:
+        """The JSON (a Python value for json.dumps) of val written at the type
+        ref, a built-in type's name or a node of the graph; scan must have
+        walked the whole document's value first, so that shared objects are
+        known. Raises dynamic.error (_fail) for a value that cannot be written,
+        such as a function, or one that does not match its type.
+
+        - A record is an object of its fields, and a tuple or array an array;
+          a shared one has an "@id" where it is first written ({"@id": n,
+          "@items": [...]} for a tuple or array) and is {"@ref": n} after.
+        - A variant or option is its case's name when the case has no
+          payload, and otherwise {case: payload}: an option's payload an
+          array of its components, written in place and never shared.
+        - An auto value or a Dynamic is {"@type": witness, "@value": ...}, its
+          components at their types with the witness for the type parameter.
+          The witness is a root of the type table.
+        - An external type's value is its word, and a built-in type's value as
+          _encode_builtin writes it (a Real's infinities as strings)."""
         val = self._deref(val)
         ref = self._concrete(ref)
         if isinstance(ref, str):
@@ -1000,6 +1020,15 @@ class _Reader:
         return None, None, data
 
     def value(self, data: Any, ref: TypeRef) -> QValue:
+        """The value the JSON data denotes at the type ref, the reverse of
+        _Writer.encode; raises dynamic.error (_fail) when data does not have
+        the form ref's type gives it.
+
+        A record, tuple, or array with an "@id" is recorded in objects before
+        its components are read, so that a {"@ref": n} within it (a cycle) or
+        after it returns the same object. An auto value's witness must be a
+        subtype of the auto type's bound, and its components are read with
+        the witness for the type parameter."""
         ref = self.concrete(ref)
         if isinstance(ref, str):
             return self._builtin_value(data, ref)

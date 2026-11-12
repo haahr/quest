@@ -187,15 +187,42 @@ export
     end
     let text(s: String): Field = option fieldText of Field with let s = s end
 
+    (* An aggregate allocation with room for embedded boxes (embeddedBoxes)
+     * whose statement has not been printed yet: boxes, the temporary that is
+     * to point at the room, and block, the temporary the allocation is
+     * assigned to. The room starts right after block's struct, so once the
+     * allocation is printed, fillEmbedded sets boxes to block + 1 *)
     Let Pending = Tuple boxes: String block: String end
+    (* A let rec's closures capture the let rec's own variables, whose values
+     * do not exist until every closure of it is made. So while its body is
+     * printed (statement's sLetRec), Deferred holds those variables, by id,
+     * and makeClosure leaves a capture of one of them unstored, recording in
+     * captures the environment, the index of the capture in it, and the atom.
+     * After the body, the deferred captures are stored (with their barriers),
+     * tying the knot. For example, in
+     *
+     *     let rec even(n: Int): Bool = ... odd(n - 1) ...
+     *     and odd(n: Int): Bool = ... even(n - 1) ...
+     *
+     * even's environment is made before odd's closure exists, and its
+     * capture of odd is stored once both are made *)
     Let DeferredCapture = Tuple env: String index: Int a: Atom end
     Let Deferred = Tuple vars: hashMap.T(Int Bool) captures: vector.T(DeferredCapture) end
 
+    (* The state of printing one unit (printC) *)
     Let P = Tuple
         unit: nodes.Unit
+        (* The path of the unit's interface header, which the C includes *)
         interfaceHeader: maybe.T(String)
         ctx: staticdata.RecordNaming
+        (* The variables that are C globals, named g_, by id: those of the
+         * main body and the modules' initializers that a function or another
+         * of those bodies names, or that are a module's members, exports, or
+         * record (walk.globalVariables) *)
         globals: hashMap.T(Int Bool)
+        (* The C name of each variable, by id, and of each function's code
+         * (codeNames, by function id); every name given (usedNames), and for
+         * each base name the count its next fresh name starts at (freshName) *)
         names: hashMap.T(Int String)
         usedNames: hashMap.T(String Bool)
         nameCounts: hashMap.T(String Int)
@@ -203,6 +230,8 @@ export
         (* Closures bound by lets (by variable), whose calls call their
          * functions directly *)
         closures: hashMap.T(Int nodes.OpMakeClosure)
+        (* The variables that hold a caught exception (a try's exc), by id,
+         * which C declares as the whole exception state, QExceptionState *)
         handlerVars: hashMap.T(Int Bool)
         (* The pairs of tuple types converted by casts (whose layouts agree,
          * which the C asserts), in the order first cast *)
@@ -216,6 +245,9 @@ export
         (* The layouts of the objects the unit allocates (docs/collector.md
          * section 3.2), each defined once *)
         layouts: objectLayout.Table
+        (* The function (or top level) being printed: its state, the lines of
+         * its body printed so far, their indentation in units of four
+         * spaces, and the count temporaries (_tN) are numbered by *)
         var fs: FnState
         var lines: Lines
         var indent: Int
@@ -224,6 +256,8 @@ export
         var calls: Int
         var pending: maybe.T(Pending)
         var deferred: maybe.T(Deferred)
+        (* The declarations' printer, made by declarationLines, which
+         * importDeclarations uses too *)
         var emitter: maybe.T(declarations.Emitter)
     end
 
@@ -846,9 +880,7 @@ export
             if eq(slot c) then ptr else "((" <> c <> " *)" <> ptr <> ")" end
         end
 
-    (* The address of the slot of a field of a record of shape rs, through its
-     * offset table (and for a bounded type parameter's value, the view map of
-     * its type argument at the bound rs), and the field's shape *)
+    (* A field's slot: a C pointer to it, and the field's shape *)
     Let Slot = Tuple ptr: String shape: Shape end
     let fieldIndex(rs: Shape field: String): Int =
         begin
@@ -859,6 +891,17 @@ export
             end
             index
         end
+    (* The slot of field in the record recC, a QRecordVal (a pointer to the
+     * record's payload, val, and its offset table, dict) seen at shape rs:
+     * what recordField reads, a store into a var field writes, and & of a
+     * field takes. Code that sees a record at a supertype cannot know where
+     * its creator put a field, so it finds the field through the offset
+     * table, a struct of one byte offset per field of the type it is seen at
+     * (docs/c-representation.md section 5.2). A value of a type parameter
+     * bounded by rs is held at its type argument's view, with that type's
+     * table, whose fields are not rs's; there viewMap, which the function's
+     * prologue fetched from the runtime, gives the index of rs's field among
+     * the argument's (docs/codegen-c.md section 10.4) *)
     let recordSlot(p: P recC: String rs: Shape field: String viewMap: maybe.T(Variable)): Slot =
         begin
             let fields = shapes.sortedComponents(rs)
@@ -1248,6 +1291,16 @@ export
             values
         end
 
+    (* A new option of shape os, allocated as its C struct, struct: makeOption's
+     * case for an option whose case has components (options of cases without
+     * any are entries of a static table). The tag stored is the case's index
+     * in os, whose cases are ordered by name; for option ordinal(n) of T end,
+     * it is computed at run time, from n checked to be in range, through a
+     * table from T's order of cases to os's when they differ. The payload's
+     * components go into the case's member of the struct's union, u.qo_<tag>:
+     * those of a fused tuple (fusedTuples), the payload tuple never made, or
+     * else read from the payload tuple as o.access says, or for a case whose
+     * payload is not a tuple, the payload itself, in .val *)
     let makeAllocatedOption(p: P o: nodes.OpMakeOption os: Shape struct: String): String =
         begin
             let tmp = temp(p struct <> " *")
@@ -1468,6 +1521,14 @@ export
             else "/* not a payload */ 0"
         end
 
+    (* v!tag, of type t: the payload of the variant or option o.value, after
+     * a check of its tag that raises the runtime's variant error (at o's
+     * site) if it is another case. A variant's payload is its payload word,
+     * in its slot form. An option's is a new tuple, its ordinal (the case's
+     * index in the option's type as written) then copies of the case's
+     * components (docs/c-representation.md section 5.3). For a value of a
+     * type parameter bounded by a variant or option type, the tag is mapped
+     * and the payload read through the view map o.viewMap (see recordSlot) *)
     let payload(p: P o: nodes.OpPayload t: Type): String =
         begin
             let ts = tagShape(atomType(o.value))
@@ -1705,6 +1766,16 @@ export
             end
         end
 
+    (* The C for a module, its record, or with member, the member's value.
+     * A module of this unit names its record's global and its members'
+     * variables directly. An imported module's record is the extern global
+     * qm_<module> its own unit defines (importDeclarations); its members are
+     * fields of that record, read through the record's offset table
+     * (recordSlot), since this unit knows only the record's type, the
+     * module's interface, and not how the module's unit lays the record out.
+     * (A call of an imported module's function does not come here: callOp
+     * calls the C function the module exports.) Raises unsupported for a
+     * member of an import whose interface is unknown *)
     let moduleMember(p: P r: nodes.ModuleRef member: maybe.T(String)): String =
         case r
             when refModule with x then
@@ -2117,6 +2188,22 @@ export
             a
         end
 
+    (* Prints the IR statement s as C statements (docs/codegen-c.md section
+     * 4). The IR's control is structured, so each statement maps to C
+     * directly: an if to if, a loop to for (;;) with labels for its breaks
+     * and continues, a join point to a block, its label, and its continuation,
+     * which a jump reaches by assigning the join point's parameters and a
+     * goto. A try is a QExceptionHandler pushed onto
+     * quest_current_exception_handler and entered with setjmp; any jump out
+     * of tries (a break, continue, jump, or return) first pops the handlers
+     * it leaves (leaveTo). A store that may write a pointer into an existing
+     * object is followed by a write barrier, quest_barrier or
+     * quest_barrier_slot, which tells the collector that an older object may
+     * now point at a younger one (docs/collector.md section 3.5). A let of a
+     * closure is remembered, so that calls of the variable call its function
+     * directly; a let rec's captures of its own variables are stored after its
+     * body (Deferred). The Funs of the SSA backends are not C's: they raise
+     * unsupported *)
     let rec statement(p: P s: nodes.Stmt): Ok =
         case s
             when sLet with x then
@@ -2618,6 +2705,20 @@ export
             "static Q_UNUSED " <> ret <> " " <> syntax.call(codeName(p f) params)
         end
 
+    (* The C definition of the lifted function f: its signature
+     * (functionSignature: the raw environment, then its own type parameters'
+     * descriptors, then its parameters), a prologue, the declarations of its
+     * variables and temporaries, and its body. The prologue casts _raw_env to
+     * what f's closure carries (a struct QEnv_<f> of its captures, or for an
+     * adapter, the closure it adapts), loads the descriptors of the type
+     * parameters the closure supplies rather than the caller, and fetches the
+     * view map of each type parameter whose values the body reads through
+     * its bound (codegen-c.md section 10.4). Every variable is declared at
+     * the top, as an IR variable may be read outside the C block that binds
+     * it (a join point's parameters are assigned in one block and read in
+     * another); and the body is printed before the declarations are, since
+     * printing it makes the temporaries. The (void) casts keep the C
+     * compiler from warning of parameters the body does not use *)
     let function(p: P f: nodes.Function): Lines =
         begin
             p.fs := newFnState(maybe.some(:nodes.Function f))

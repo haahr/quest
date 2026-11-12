@@ -31,6 +31,8 @@ have types as written, with their alias names, which the IR prints (docs/ir.md
 written (written_structure), and the signatures of function types as written,
 whose type parameters' symbols are those the call's type arguments and the
 callee's parts refer to (a shape's are its canonical form's, named afresh).
+
+The self-hosted counterpart is questlang/ir/represent.
 """
 
 from __future__ import annotations

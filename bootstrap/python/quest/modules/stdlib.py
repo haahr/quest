@@ -1,7 +1,9 @@
 """The standard library's modules and interfaces, as the type checker and the
 compilers see them: their names, and their interfaces and module scopes, loaded
 on demand. Their implementations are elsewhere: C (runtime/, lib/) for compiled
-code, and Python (quest.interpreter.builtins) for the interpreters."""
+code, and Python (quest.interpreter.builtins) for the interpreters.
+
+The self-hosted counterpart is questlang/modules/stdlib."""
 
 from __future__ import annotations
 

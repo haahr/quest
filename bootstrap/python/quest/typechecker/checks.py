@@ -1,4 +1,9 @@
-"""Kind Bound, Distinct Name, Type Join, and Subtype Assertion Checks."""
+"""Checks the type checker's construct families share: distinct names in a
+group of declarations, type arguments' kinds, joins of the types of branches,
+and subtype assertions. A failed check raises QuestTypeError (KindError for
+a type argument's kind) at the offset given.
+
+The self-hosted counterpart is questlang/typechecker/checks."""
 
 from __future__ import annotations
 

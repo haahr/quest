@@ -8,8 +8,8 @@
  *   - tracebacks and raises: function tables, walking the stack, and raising
  *     (docs/exceptions.md §5);
  *   - printing values for echo, and formatting reals;
- *   - the base types' descriptors, descriptor interning, and subtyping on
- *     descriptors (quest_is_subtype);
+ *   - the base types' descriptors, and subtyping on descriptors
+ *     (quest_is_subtype);
  *   - record offset tables, the dict of a record value
  *     (docs/c-representation.md §5.2);
  *   - proxies, views of tuples and options at a supertype (§5.8);
@@ -1858,12 +1858,17 @@ QVal quest_option_element(const void *opt, const QTypeDescriptor *t, size_t i) {
 }
 
 /* ============================================================================
- * Options as values (docs/extensions.md, Options as Values)
+ * Options as values (docs/extensions.md, Options as Values), and conversion
+ * between layouts (quest_convert)
  *
  * is compares options of a case without components by their case, and those of
  * a single-word option type's case with a component (an option type with one
  * case with components, which has one, not var) by their component; an
  * abstract type's values as its representation's.
+ *
+ * Then quest_convert, which converts a value from the view and layout of one
+ * descriptor to another's (its comment in the header has the cases), with
+ * quest_convert_auto, its case for auto values.
  * ========================================================================= */
 
 const QTypeDescriptor *quest_identity_type(const QTypeDescriptor *t) {
@@ -4081,6 +4086,9 @@ QReader *quest_reader_file(const QString *name) {
     return r;
 }
 
+/* Whether r has a character left before its end: one already peeked, or the
+ * next, read and kept as the peeked character. Blocks until a character or
+ * the end arrives */
 bool quest_reader_more(QReader *r) {
     if (r == NULL || r->is_closed || r->file == NULL) {
         quest_raise_reader_error();
@@ -4096,6 +4104,8 @@ bool quest_reader_more(QReader *r) {
     return true;
 }
 
+/* reader.ready: the same as quest_reader_more, so it too may block; there is
+ * no test for a character that can be read without waiting */
 bool quest_reader_ready(QReader *r) {
     if (r == NULL || r->is_closed || r->file == NULL) {
         quest_raise_reader_error();
@@ -4589,7 +4599,9 @@ void quest_builtins_init(int argc, char **argv) {
 }
 
 /* ============================================================================
- * Built-in Operator Trampolines & Closures (Cardelli §4.2)
+ * Built-in operators as values (see qv_sym_plus_closure in the header): for
+ * each, a trampoline, a C function of the closure calling convention whose
+ * environment is unused, and the static closure of it
  * ============================================================================
  */
 

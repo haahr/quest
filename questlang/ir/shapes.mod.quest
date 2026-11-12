@@ -353,7 +353,11 @@ export
 
     (* A type with the transparent abstract types in it replaced by their
      * representations (an application of one by its operator's, which the
-     * shape then reduces), until none is left *)
+     * shape then reduces), until none is left. Each round replaces one layer,
+     * since a representation may name another module's abstract type (a
+     * set's representation a map's, say). The rounds are bounded, at 8, so
+     * that a representation that names its own abstract type cannot loop for
+     * ever; past the bound, the abstract types left keep their opaque shapes *)
     let transparent(t0: Type): Type =
         begin
             if representations.count isnot abstractTypes.representationCount() then

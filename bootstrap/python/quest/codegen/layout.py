@@ -11,7 +11,9 @@ and generic layouts agree in memory. Representations are named by the runtime's
 C types, which a native backend lays out as C does, to share the runtime and
 link with C units. Also whether generic code's layout of a type agrees with the
 native one (generic_layout_agrees), and whether a value of a tuple or option
-type may be a proxy, a view of an object of a subtype (may_be_proxied)."""
+type may be a proxy, a view of an object of a subtype (may_be_proxied).
+
+The self-hosted counterpart is questlang/codegen/layout."""
 
 from __future__ import annotations
 

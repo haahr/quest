@@ -1,6 +1,8 @@
 """Elaboration of aggregates: records, tuples (with their type components and
 labels), member selection, options, variants and their tag queries and
-assertions, arrays, and indexing."""
+assertions, arrays, and indexing.
+
+The self-hosted counterpart is questlang/typechecker/aggregates."""
 
 from __future__ import annotations
 

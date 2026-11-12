@@ -38,6 +38,8 @@ directly.
 The step also decides how a record's field is read (through the offset table's
 stored types, when a subtype's payload may store it at another type) and whether
 a record literal's offset table is known statically.
+
+The self-hosted counterpart is questlang/ir/slots.
 """
 
 from __future__ import annotations

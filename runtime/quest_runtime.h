@@ -100,17 +100,26 @@ typedef union QVal {
     uint64_t u;   /* 64-bit raw unsigned word for identity checks */
 } QVal;
 
-/* String representation: length-prefixed, null-terminated */
+/* A string (docs/c-representation.md §3.2): a header holding its length and a pointer to its bytes, a separate
+ * pointer-free allocation of length + 1 bytes ending in a NUL, so that data can be passed to C as it is (a string may
+ * also hold NULs of its own). Strings are mutable in place (string.setChar, string.setSub) but never change length,
+ * so every string literal is a fresh quest_string_new at each evaluation, not shared static data. capacity is always
+ * equal to length, and nothing reads it. */
 typedef struct QString {
     int64_t length;
     int64_t capacity;
     char   *data;
 } QString;
 
-/* First-class closure representation: function pointer and environment */
+/* A closure (docs/c-representation.md §6.1, §6.2), passed by pointer. fn is a C function whose first parameter is
+ * env, followed by the descriptors of the function type's type parameters, then its value parameters in their C
+ * types (var and out parameters as pointers); its result is the result type's C type, or void for Ok. A closure is
+ * called through a cast of fn to that signature, as ((R (*)(void *, ...))c->fn)(c->env, ...). env points to a
+ * struct of the captured variables, or is NULL for a function that captures none, whose closure is a static
+ * singleton. */
 typedef struct QClosure {
-    void *fn;   /* C function pointer */
-    void *env;  /* Captured environment pointer or NULL */
+    void *fn;
+    void *env;
 } QClosure;
 
 /* Array representation: length-prefixed buffer of 64-bit QVal words */
@@ -124,7 +133,13 @@ typedef struct QRecordHeader {
     const struct QTypeDescriptor *descriptor;
 } QRecordHeader;
 
-/* First-class 16-byte record value: payload pointer and evidence dictionary */
+/* A record value, 16 bytes passed by value (in a register pair on arm64; docs/c-representation.md §5.2). val is the
+ * payload: a QRecordHeader followed by the fields, sorted by name, one slot each. dict is the offset table of the
+ * type the value is viewed at: the byte offset in the payload of each of that type's fields, in name order (see
+ * quest_record_dict). A field cannot have one offset for every record type that has it, since a record of one type
+ * may be used at any of its supertypes, which drop fields; so code reads field i at val + dict[i]. Viewing a
+ * record at a supertype changes dict only, never copying the payload. In a slot (a tuple component, record field,
+ * option payload, array element, or auto component) a record is a pointer to a box holding its QRecordVal. */
 typedef struct QRecordVal {
     void       *val;
     const void *dict;
@@ -150,13 +165,16 @@ typedef struct QReader {
     bool  is_closed;
 } QReader;
 
-/* Generic Option header for inspections */
+/* An option object (docs/c-representation.md §5.3): its tag, the index of its case among the option type's cases
+ * ordered by name, followed in place by the case's components, laid out as a tuple of them */
 typedef struct QOptionHeader {
     int64_t tag;
     QVal    fields[];
 } QOptionHeader;
 
-/* First-class generative exception descriptor */
+/* An exception (docs/c-representation.md §7.1), identified by its address: each evaluation of an exception
+ * declaration makes a new one (quest_alloc_exception), so two exceptions of the same name are distinct. name is
+ * only for display. */
 typedef struct QException {
     const char *name;
 } QException;
@@ -218,6 +236,8 @@ typedef struct QArrayTypeDescriptor {
     const QTypeDescriptor *element_type;
 } QArrayTypeDescriptor;
 
+/* A field of a record type: its name, its type, its byte offset in a payload laid out as this record type (after
+ * the QRecordHeader), and whether it is var (mutable) */
 typedef struct QRecordFieldDescriptor {
     const char            *name;
     const QTypeDescriptor *type;
@@ -225,6 +245,8 @@ typedef struct QRecordFieldDescriptor {
     bool                   is_var;
 } QRecordFieldDescriptor;
 
+/* A record type's fields, sorted by name, the order in which compiled code lays out payloads and offset tables: entry
+ * i of an offset table for viewing a value at this type is the offset of fields[i] (quest_record_field_offset) */
 typedef struct QRecordTypeDescriptor {
     size_t                       field_count;
     const QRecordFieldDescriptor fields[];
@@ -251,10 +273,13 @@ typedef struct QTupleTypeDescriptor {
     const QTupleElementDescriptor        elements[];
 } QTupleTypeDescriptor;
 
+/* A case of a variant or option type. A variant case's payload_type is its one type (Ok, or NULL, for a case
+ * without a value); an option case's is the tuple type of its components, or NULL. tag_index is the case's tag in
+ * this type's numbering, which is also its index in cases. */
 typedef struct QVariantCaseDescriptor {
-    const char            *name;       /* Case tag identifier */
-    const QTypeDescriptor *payload_type; /* NULL for parameterless / Ok payload */
-    int64_t                tag_index;  /* Concrete integer discriminant */
+    const char            *name;
+    const QTypeDescriptor *payload_type;
+    int64_t                tag_index;
     bool                   is_var;
 } QVariantCaseDescriptor;
 
@@ -441,6 +466,12 @@ void quest_register_funcs(const QFuncEntry *entries, size_t count);
 QRaised *quest_raised_capture(const QExceptionState *state);
 Q_NORETURN QVal quest_raised_reraise(const QTypeDescriptor *a, QRaised *r);
 
+/* The state every try and raise share (docs/c-representation.md §7, docs/arm64.md §3.6). The handler is the
+   innermost try's, the top of a stack linked through prev. A try pushes its handler (its prev the old top) and, in C,
+   calls Q_SETJMP; leaving its body, normally or by a jump or return out of it, pops it. A raise (quest_reraise) does
+   not pop: it sets quest_current_exception and transfers to the top handler, which pops itself, reads
+   quest_current_exception, and raises it again if none of its patterns match. Both are roots of the collector, since
+   a payload may point into the heap. */
 extern Q_THREAD_LOCAL QExceptionHandler *quest_current_exception_handler;
 extern Q_THREAD_LOCAL QExceptionState    quest_current_exception;
 
@@ -753,7 +784,13 @@ Q_INLINE void *quest_alloc_words(size_t n) {
     return quest_alloc_sized(n * sizeof(uintptr_t), &quest_layout_words);
 }
 
-/* Runtime helper prototypes */
+/* Strings and arrays: the primitives behind the string and stringOp modules, string literals, <>, and arrays.
+ * quest_string_new copies len bytes of src (strlen(src) when len is negative) into a new string. A substring is
+ * given by its start and size; an index or substring outside its string, or a negative size, raises string.error,
+ * and a negative length given to quest_array_new raises arrayOp.error. Every function that returns a string
+ * returns a new one; set_char and set_sub write into their string in place. precedes and precedes_sub are <=
+ * by bytes, compared as unsigned. quest_array_new's layout says whether its elements are pointers, scalars, or
+ * QVals of unknown kind, for the collector (quest_layout_array_pointer and its siblings). */
 QString *quest_string_new(const char *src, int64_t len);
 QString *quest_string_alloc(int64_t size, QChar init);
 bool     quest_string_is_empty(const QString *s);
@@ -776,6 +813,7 @@ bool     quest_string_precedes_sub(const QString *s1, int64_t st1, int64_t sz1,
 QArray  *quest_array_new(int64_t len, QVal init_val, const QLayout *layout);
 int64_t  quest_array_size(const QArray *a);
 double   quest_real_pow(double base, double exp);
+/* A new exception named name, distinct from every other: an exception declaration's value */
 const QException *quest_alloc_exception(const char *name);
 /* Raises: generated code passes the raise site (docs/exceptions.md §3.3); the runtime's primitives raise with none */
 Q_NORETURN void quest_raise(const QException *exc, QVal payload);
@@ -783,6 +821,10 @@ Q_NORETURN void quest_raise_at(const QException *exc, QVal payload, const char *
 /* A raise with a payload of a type other than Ok: the payload's type's descriptor, and the type as written */
 Q_NORETURN void quest_raise_typed_at(const QException *exc, QVal payload, const QTypeDescriptor *type, const char *text,
                                      const char *loc);
+/* Raises the exception state describes, the end of every raise, first or again (a handler none of whose patterns
+   match, raised.reraise): passes it to the innermost handler, or, when no handler will catch it, reports it and exits
+   with status 1. Keeps state's frames if it has some, so that a traceback shows where the exception was first raised
+   (quest_runtime.c has the details; docs/exceptions.md §5.1) */
 Q_NORETURN void quest_reraise(QExceptionState state);
 /* Writes the exception as an uncaught one is reported: its name, and with a payload of a type other than Ok, " with ",
    the payload, ":", and its type, as the interpreters write them */
@@ -992,13 +1034,19 @@ QString *quest_real_format(double r, QChar style, int64_t digits);
 double   quest_word_to_real_val(uint64_t w);
 uint64_t quest_word_from_real_val(double r);
 
-/* Global standard library initialization */
+/* Initializes the runtime's part of the standard library, once, from a compiled program's main after quest_gc_init
+ * and before any unit's initialization (docs/extensions.md, Runtime Initialization Contract): the standard writers
+ * and reader (stdout made line-buffered when QUEST_LINE_BUFFERED is set and nonempty), system.args from argc and
+ * argv, and, where the platform has it, the guard that reports a stack overflow (docs/exceptions.md §6) */
 void quest_builtins_init(int argc, char **argv);
 
-/* Run-time subtyping of descriptors, and descriptors made at run time, for the runtime's tests (tests/python):
- * each quest_make_*_descriptor call makes a new descriptor, equal to another of the same type as quest_is_subtype
- * compares them, not by address */
+/* Whether the type sub describes is a subtype of super_type's, compared by structure, not by address (dynamic.be,
+ * inspect, and the runtime's own checks) */
 bool                   quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_type);
+/* Descriptors made at run time, for the runtime's tests (tests/python); compiled code never calls these, and emits
+ * its descriptors statically. Each call makes a new descriptor, equal to another of the same type as
+ * quest_is_subtype compares them. The record, tuple, variant, and function constructors follow the abstract types
+ * below. */
 const QTypeDescriptor *quest_make_array_descriptor(const QTypeDescriptor *element_desc);
 const QTypeDescriptor *quest_make_opaque_descriptor(const char *name);
 
@@ -1012,6 +1060,7 @@ const QTypeDescriptor *quest_registered_abstract_rep(
     const char *name, size_t arg_count, const QTypeDescriptor *const *args, bool *registered);
 /* The representation of an opaque descriptor that is a module abstract type (or an application of one), or NULL */
 const QTypeDescriptor *quest_abstract_type_rep(const QTypeDescriptor *desc);
+/* More descriptors made at run time for the tests (see quest_make_array_descriptor) */
 const QTypeDescriptor *quest_make_record_descriptor(
     const char *name, size_t size, size_t alignment, size_t field_count, const QRecordFieldDescriptor *fields);
 const QTypeDescriptor *quest_make_tuple_descriptor(
@@ -1020,6 +1069,12 @@ const QTypeDescriptor *quest_make_variant_descriptor(
     const char *name, size_t size, size_t alignment, size_t case_count, const QVariantCaseDescriptor *cases);
 const QTypeDescriptor *quest_make_fun_descriptor(
     const char *name, size_t param_count, const QFunParamDescriptor *params, const QTypeDescriptor *result_type);
+/* The variant value that payload points to (a boxed QVariantVal of type sub_desc) viewed at variant type
+ * super_desc, a supertype: its tag renumbered to super_desc's tag for the case of the same name, since each variant
+ * type numbers its cases on its own (docs/c-representation.md §5.3), and its payload converted (quest_convert) when
+ * the two cases' payload types differ. The tag maps are cached by the pair of descriptors' addresses. A NULL payload
+ * gives tag 0, and so does a case super_desc lacks, silently: the caller must pass a true supertype, which has every
+ * case of sub_desc. */
 QVariantVal            quest_variant_adapt(
     const QTypeDescriptor *sub_desc, const QTypeDescriptor *super_desc, QVal payload);
 QAuto                 *quest_auto_new(const QTypeDescriptor *type_desc, QVal payload);
@@ -1129,9 +1184,10 @@ Q_INLINE void quest_slot_write(void *slot, QVal v) {
 }
 
 /* Converts v, the QVal form of a value laid out as `from` describes, to its subtype view laid out as `to` describes:
- * records get the offset table for the view, variants and options their tags in `to`, tuples and auto values are
- * copied with their elements converted, and functions are wrapped by `to`'s adapter. A value whose layout already
- * suits `to` (quest_layout_equivalent) is returned as it is; an array, a tuple with var components, or an exception
+ * records get the offset table for the view, variants their tags in `to` (quest_variant_adapt), tuples and options
+ * a proxy (quest_make_proxy) where values of `to` may be proxies and otherwise a copy with their components
+ * converted, auto values a copy, and functions are wrapped by `to`'s adapter. A value whose layout already suits
+ * `to` (quest_layout_equivalent) is returned as it is; an array, a copied tuple with var components, or an exception
  * whose layout does not is a fatal error, since a copy would not share its updates. */
 QVal                   quest_convert(QVal v, const QTypeDescriptor *from, const QTypeDescriptor *to);
 
@@ -1523,7 +1579,10 @@ Q_INLINE bool quest_word_ge(uint64_t w1, uint64_t w2) {
     return w1 >= w2;
 }
 
-/* Hash utilities & SplitMix64 */
+/* Hashing, for lib/util/hash: quest_hash_mix64 is SplitMix64's finalizer, which spreads every input bit over the
+ * output (quest_hash_mix, hash.mix, calls it); quest_hash_combine folds h2 into h1 in the manner of Boost's
+ * hash_combine; quest_identity_hash (hash.identityHash) hashes x at type t so that values is takes as equal hash
+ * equally (quest_val_is), most values by their bits (an object's are its address) */
 Q_INLINE uint64_t quest_hash_mix64(uint64_t z) {
     z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
     z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
@@ -1534,7 +1593,10 @@ uint64_t quest_hash_mix(uint64_t w);
 uint64_t quest_hash_combine(uint64_t h1, uint64_t h2);
 uint64_t quest_identity_hash(const QTypeDescriptor *t, QVal x);
 
-/* Built-in operator closures (Cardelli §4.2) */
+/* The built-in operators as values, when a program uses one other than by applying it (passing + to a fold): static
+ * closures with no environment, named as codegen/symbols mangles the operator's name (qv_sym_ and the names of its
+ * characters, or qv_mod for mod) followed by _closure, which compiled code refers to as &qv_sym_plus_closure. Each
+ * computes what the operator applied directly does, raising int.error or real.error where it does (quest_runtime.c) */
 extern QClosure qv_sym_plus_closure;
 extern QClosure qv_sym_minus_closure;
 extern QClosure qv_sym_star_closure;

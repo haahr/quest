@@ -15,12 +15,26 @@ import
     questlang/modules/graph : questlang/modules/Graph
     util/maybe : util/Maybe
 export
-    (* Loads, validates, and elaborates interface name, as imported from e's
-     * current directory *)
+    (* The scope of interface name, as imported from e's current directory:
+     * one already loaded, else from a .qi or its source (loader.mod's comment
+     * on loadInterface gives the order). Raises a CompilerError
+     * (diagnostics.fail) if no file is found, if the file declares another
+     * name, or on a cycle of interface imports, and passes on any error in
+     * elaborating it *)
     loadInterface(name: String e: env.T): symbols.Scope
-    (* Loads, validates, and elaborates module name, which implements
-     * expectedInterface *)
+    (* The typed module name, which the importer expects to implement
+     * expectedInterface, elaborated from its source once per canonical name
+     * and shared by later importers. A module that is precompiled (found only
+     * as a .o, or hierarchical when compiling C, whose object the build makes)
+     * gets a binding without code, typed against its interface. Raises a
+     * CompilerError if neither a source nor an object is found, on a cycle of
+     * module imports, or if the file is not one module declaration whose
+     * name matches the file's and whose header names expectedInterface (or
+     * the same last segment, as Ast for questlang/syntax/Ast); and passes on
+     * any error in elaborating it *)
     loadModule(name: String expectedInterface: String e: env.T): typedAst.Binding
+    (* Sets elaboration.hooks to loadInterface and loadModule, which
+     * elaboration cannot import, since this module imports it *)
     install(): Ok
     (* Where an interface's artifacts are written and read: the build
      * directory; when compiling C without one, beside its source; else none,

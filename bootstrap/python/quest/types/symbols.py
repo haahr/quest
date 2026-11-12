@@ -1,4 +1,4 @@
-"""Quest Symbols and Lexical Scopes.
+"""Symbols and scopes.
 
 Symbols name values, types, and kinds; a scope holds the symbols declared in it,
 in declaration order. Symbol ids are unique for the life of the process
@@ -6,6 +6,8 @@ in declaration order. Symbol ids are unique for the life of the process
 its id, globally. This module is below subtyping and the unit graph, which need
 symbols and scopes but not the type-checking environment (types.env), which
 holds them.
+
+The self-hosted counterpart is questlang/types/symbols.
 """
 
 from __future__ import annotations

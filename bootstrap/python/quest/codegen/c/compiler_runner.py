@@ -1,4 +1,9 @@
-"""Host C Compiler Driver and Binary Execution Runner."""
+"""The host C compiler: finding it (clang, else gcc), the flags C units are
+compiled with (the runtime's headers, the collector's and the line editor's),
+the runtime's objects, compiled once and cached, and compiling, linking, and
+running a program's C (docs/codegen-c.md §11).
+
+The self-hosted counterpart is questlang/codegen/c/compilerrunner."""
 
 from __future__ import annotations
 

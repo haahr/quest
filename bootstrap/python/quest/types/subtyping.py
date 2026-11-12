@@ -1,4 +1,25 @@
-"""Quest Equi-Recursive Subtyping and Type Equivalence."""
+"""Subtyping (is_subtype, sub <: sup), type equality (is_type_equal), and
+subkinding (is_subkind), which the type checker asks of the semantic types of
+types/model.py.
+
+Subtyping is structural, and equi-recursive: a recursive type Rec(X) T equals
+its unfolding, T with the Rec type put in for X, with no explicit fold or
+unfold, so a proof about recursive types can meet its own goal again. A proof
+therefore keeps a trail (SubtypeTrail) of the goals it is proving, and a goal
+that recurs on the trail counts as proved: a coinductive proof.
+_prove_subtype_step, which decides one goal, explains the rules with an
+example. Each step costs fuel, since subtyping of bounded quantified types is
+undecidable; a proof that runs out raises TypeRecursionLimitExceeded.
+
+is_subtype also solves type inference's metavariables (?A) as a side effect:
+a goal ?A <: T, with ?A unsolved, sets ?A to T. The results of goals without
+metavariables are cached by the types' identities (types are interned); the
+comment on the cache says why a result is cached only once the proof it is
+part of has finished.
+
+The section number continues types/model.py's. The self-hosted counterpart is
+questlang/types/subtyping; docs/type-system.md §3.1 gives the subkinding and
+quantifier rules, and §3.2 the proofs and the cache."""
 
 from __future__ import annotations
 

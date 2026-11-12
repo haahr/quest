@@ -22,7 +22,14 @@ export
 
     (* An import path resolved from a directory: the unit it names (its source
      * file, if it has one, or for an interface without one, the first .qi on
-     * the search path, a binary distribution's) *)
+     * the search path, a binary distribution's).
+     *
+     * path is the path as imported (util/Counter), fromDir the importing
+     * directory, and roots the rest of what the resolution depended on.
+     * source is the unit's .int.quest or .mod.quest, none if not found, and
+     * prebuilt the .qi found instead (only for an interface without a
+     * source). canonical and ifaceName are canonicalName's and
+     * interfaceName's results, computed on first use *)
     Def Resolved = Tuple
         kind: units.UnitKind
         path: String
@@ -49,8 +56,15 @@ export
      * else its source (or prebuilt .qi) *)
     freshInterfaceQi(r: Resolved): maybe.T(String)
 
+    (* The resolutions made so far, by kind, path, directory, and roots: each
+     * import is searched for on disk once, and every importer of a path from
+     * one directory shares one Resolved (and so its names). newSession
+     * forgets them *)
     Def Resolver = Tuple memo: hashMap.T(String Resolved) end
     newResolver(): Resolver
+    (* The unit an import of path from fromDir names, searched for in fromDir,
+     * then roots.searchPaths, then $QUEST_LIB and the library (docs/modules.md
+     * §2.2); found or not, the result is memoized *)
     resolveInterface(res: Resolver path: String fromDir: maybe.T(String) roots: Roots): Resolved
     resolveModule(res: Resolver path: String fromDir: maybe.T(String) roots: Roots): Resolved
     (* The unit in a file given directly, rather than imported *)
@@ -87,6 +101,9 @@ export
         var scope: maybe.T(symbols.Scope)
         var typedModule: maybe.T(typedAst.Binding)
         var exportScope: maybe.T(symbols.Scope)
+        (* A module whose object is built apart (a prebuilt object, or one
+         * the build compiles separately), so importers are typed against its
+         * interface and its source is not elaborated *)
         var precompiled: Bool
     end
 

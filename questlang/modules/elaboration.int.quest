@@ -23,6 +23,9 @@ import
     collections/hashMap : collections/HashMap
     util/maybe : util/Maybe
 export
+    (* The loader's and the type checker's functions, which elaboration calls
+     * but cannot import, as they import it; loader.install and
+     * typecheck.newChecker set them *)
     Def Hooks = Tuple
         var loadInterface: All(name: String e: env.T) symbols.Scope
         var loadModule: All(name: String expectedInterface: String e: env.T) typedAst.Binding
@@ -40,6 +43,8 @@ export
     (* The interface an import names, bound to localName (and the path) *)
     importInterface(ifacePath: String localName: String e: env.T): symbols.Scope
 
+    (* The interface decl, elaborated into its scope (a bindInterface) and
+     * registered in e under its name *)
     elaborateInterface(decl: ast.InterfaceDecl offset: Int e: env.T): typedAst.Binding
     (* The export scope of a module known only through its interface: its own
      * opaque copies of the interface's abstract types *)
@@ -53,6 +58,14 @@ export
     (* The external types (Let T = external "...") a module's source file
      * declares, by name, if src is one *)
     extractModuleExternalTypes(src: maybe.T(String)): hashMap.T(String model.Type)
+    (* The module decl, elaborated in a scope that sees only its imports,
+     * checked against its interface, and declared in e's current scope as a
+     * record of its exports, whose abstract types are opaque (a bindModule;
+     * elaboration.mod explains the steps). Raises a CompilerError if the
+     * module does not conform; members that fail are reported as they fail,
+     * and then raise a silent one *)
     elaborateModule(decl: ast.ModuleDecl offset: Int e: env.T): typedAst.Binding
+    (* A program's import phrase, its interfaces and modules bound in e's
+     * current scope under their local names (a bindImport) *)
     elaborateImport(phrase: ast.ImportPhrase offset: Int e: env.T): typedAst.Binding
 end

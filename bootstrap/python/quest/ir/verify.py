@@ -45,6 +45,8 @@ descriptors and tables operations refer to are the unit's static data.
 
 verify_unit returns the problems found; check_unit raises if there are any. The
 verifier runs when QUEST_CHECK_IR=1, which the test runners set.
+
+The self-hosted counterpart is questlang/ir/verify.
 """
 
 from __future__ import annotations

@@ -35,6 +35,13 @@
 /* Pointer Tables                                                            */
 /* ------------------------------------------------------------------------- */
 
+/* A hash table keyed by address, with a fixed number of chained buckets.
+ * Writing uses two: the objects of the value being written, where count is
+ * how many times the first pass reached an object and id the "@id" the
+ * second pass gives it when it is reached more than once (0 until then); and
+ * a type graph's index of descriptors (QTypeGraph.index), where id is the
+ * descriptor's node plus 1. Keys are compared by address alone, so a table
+ * relies on nothing moving while it is in use. */
 typedef struct QPtrNode {
     const void      *ptr;
     int              count;
@@ -930,6 +937,19 @@ static bool quest_emit_shared(const void *obj, QPtrTable *table, int *next_id, Q
     return false;
 }
 
+/* Writes val, the QVal form of a value of type desc, to wr as JSON
+ * (docs/dynamic.md §2.4): the second pass, after quest_scan_value has counted
+ * in table the objects reached more than once and added to g the types of the
+ * auto values inside. Base values are JSON scalars (a Char a one-character
+ * string, Ok null, a word.T an unsigned integer); a record is an object of its
+ * fields; a tuple or array an array of its elements; a variant or option case
+ * without a payload its name, and one with a payload {name: payload}; an auto
+ * value {"@type": type ref, "@value": v}, where v is the packaged value of a
+ * dynamic value and the array of the components of any other. A record, tuple,
+ * or array reached more than once is written in full at its first occurrence,
+ * with an "@id" (a tuple or array wrapped as {"@id": n, "@items": [...]}), and
+ * as {"@ref": n} at the others, which keeps shared structure shared and makes
+ * cycles finite. next_id is the next "@id" to give. */
 static void quest_emit_value(
     const QTypeDescriptor *desc, QVal val, QPtrTable *table, const QTypeGraph *g, int *next_id, QWriter *wr
 ) {
@@ -1868,6 +1888,16 @@ static QAuto *quest_read_dynamic(QReadContext *cx, QJsonValue *type_ref, QJsonVa
     return quest_auto_new(witness, (QVal){ .p = component });
 }
 
+/* The value that the parsed JSON node denotes at type desc, in its QVal form,
+ * built from new objects: the inverse of quest_emit_value. desc comes from the
+ * document's type table; within an auto value's components, its type parameter
+ * stands for the value's witness (quest_push_witness). A record, tuple, or
+ * array with an "@id" is entered in cx before its contents are read, so that an
+ * "@ref" to it inside it (a cycle) finds it, as later ones do. A record is laid
+ * out as its type desc and viewed at it; an option is its tag followed by its
+ * case's components. Raises dynamic.error when the node does not fit desc: the
+ * wrong JSON kind, a missing or extra field or component, an unknown case, an
+ * undefined "@ref", or an "@id" given twice. */
 static QVal quest_read_value(QReadContext *cx, QJsonValue *node, const QTypeDescriptor *desc) {
     if (node == NULL || desc == NULL) quest_raise_dynamic_error();
 

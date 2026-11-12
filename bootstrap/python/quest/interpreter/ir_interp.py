@@ -23,6 +23,8 @@ inspect cases' types), so that a descriptor made wrong fails here too: a
 descriptor variable is its type parameter's type argument, a static descriptor
 its type, and an instantiated template its type with the holes replaced by the
 arguments'.
+
+The self-hosted counterpart is questlang/interpreter/irinterp.
 """
 
 from __future__ import annotations

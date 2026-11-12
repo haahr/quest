@@ -1,7 +1,9 @@
 """Runtime type descriptors' type-level forms, for every backend
 (docs/c-representation.md §6.4): the placeholders for bound type parameters and
 template holes, the canonical forms of function and auto types that descriptors
-compare, and descriptor tags."""
+compare, and descriptor tags.
+
+The self-hosted counterpart is questlang/codegen/descriptors."""
 
 from __future__ import annotations
 

@@ -1,9 +1,14 @@
-"""Quest Compiler Phase Pipeline Framework.
+"""The compiler's phases and the pipelines that run them in order: tokenize,
+parse, desugar, typecheck, then either interpret, or ir_core and an ir_<stage>
+phase per IR pass (each of which run_ir_<stage> can run in the IR
+interpreter), codegen_c, and run_c_compiled (docs/pipeline.md).
 
-Provides uniform lifecycle management, execution, and artifact inspection across
-compiler phases: tokenize, parse, desugar, typecheck, then either interpret, or
-ir_core and an ir_<stage> phase per IR pass (each of which run_ir_<stage> can
-run in the IR interpreter), codegen_c, and run_c_compiled (docs/pipeline.md).
+Each phase (Phase) takes the previous one's output and gives its own, which
+the driver can print (--stop-after, --dump-after) in the canonical text the
+golden tests compare; the phases share a CompilerContext, which holds the
+environment, the options, and the diagnostics. A pipeline stops after the
+first phase that reports an error. The self-hosted counterpart is the driver,
+questlang/driver/main, which runs the same phases.
 """
 
 from __future__ import annotations

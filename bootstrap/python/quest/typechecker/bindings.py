@@ -2,7 +2,9 @@
 their parameters, let declarations (external, recursive, and simultaneous), type
 and kind bindings, and the declarations of interfaces and modules met inside
 blocks. Desugaring (quest/syntax/desugar.py) has made function values of the
-parameters of let declarations that are neither recursive nor external."""
+parameters of let declarations that are neither recursive nor external.
+
+The self-hosted counterpart is questlang/typechecker/bindings."""
 
 from __future__ import annotations
 

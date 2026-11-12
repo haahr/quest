@@ -12,6 +12,8 @@ uses look the variable up by symbol. A use of a variable whose binder is not in
 the unit (an imported module, a module's member) is a module reference or a
 module member, and a use of a built-in value is a constant or a built-in
 function.
+
+The self-hosted counterpart is questlang/ir/lower.
 """
 
 from __future__ import annotations

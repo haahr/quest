@@ -74,10 +74,8 @@ export
             when repInt, repWord, repBool, repChar, repReal, repRecord, repVariant, repPointer then false
         end
 
-    (* The parts of a value of t in an aggregate's slot or a QVal word: one
-     * word, a record or variant as a pointer to its box (layout.isBoxedInSlots),
-     * a Bool or Char widened to the word *)
-    (* Whether a value of type t has a word that may be a pointer *)    let partsHoldPointer(ps: Array(Part)): Bool =
+    (* Whether a value of parts ps has a word that may be a pointer *)
+    let partsHoldPointer(ps: Array(Part)): Bool =
         begin
             let var found = false
             for i = 0 upto {extent ps - 1} do
@@ -87,6 +85,9 @@ export
         end
     let holdsPointer(t: Type): Bool = partsHoldPointer(parts(t))
 
+    (* The parts of a value of t in an aggregate's slot or a QVal word: one
+     * word, a record or variant as a pointer to its box
+     * (layout.isBoxedInSlots), a Bool or Char widened to the word *)
     let slotParts(t: Type): Array(Part) =
         if layout.isBoxedInSlots(shapes.shape(t)) then array of wordPart(tPtr) end
         else
@@ -131,10 +132,16 @@ export
 
     Def RootEntry = Tuple symbol: String words: Int end
     Def UnitBuilder = Tuple
+        (* The IR unit being built, and the SSA unit it is built into *)
         unit: ir.Unit
         built: ssa.Unit
+        (* The unit's global variables, by id (walk.globalVariables): those its
+         * top-level bodies bind that functions or other bodies name, which
+         * live in static data rather than in values or slots *)
         globals: hashMap.T(Int Bool)
-        (* The symbols of the unit's global variables and functions, by id *)
+        (* The symbols of the unit's global variables and functions, by id,
+         * each made the first time it is asked for (globalSymbol, codeName),
+         * and every symbol so far made, so that a fresh one is unique *)
         globalSymbols: hashMap.T(Int String)
         codeNames: hashMap.T(Int String)
         usedNames: hashMap.T(String Bool)
@@ -142,7 +149,8 @@ export
          * the closures variables are bound to, by variable id *)
         closuresOf: hashMap.T(Int ir.OpMakeClosure)
         closureVars: hashMap.T(Int ir.OpMakeClosure)
-        (* String literals, as symbols *)
+        (* String literals' symbols, by text, and how many there are, which
+         * numbers the next *)
         strings: hashMap.T(String String)
         var stringCount: Int
         optionTables: hashMap.T(String String)
@@ -153,10 +161,16 @@ export
         roots: vector.T(RootEntry)
     end
 
+    (* The blocks of a loop: its head, where continue jumps, and the block
+     * after it, where break jumps *)
     Def LoopTargets = Tuple head: Int after: Int end
     (* A capture of a variable a let rec binds, stored once the let rec's body
      * has run: the environment, the capture's offset in it, and the atom *)
     Def DeferredCapture = Tuple env: Int offset: Int a: Atom end
+    (* The let rec being built: the variables it binds, by id, and the
+     * captures of them made so far. A closure of a let rec captures
+     * variables that the let rec has not bound yet (its own, or a sibling's),
+     * so the environment's words for them are stored after the body *)
     Def Deferred = Tuple vars: hashMap.T(Int Bool) captures: vector.T(DeferredCapture) end
 
     (* How a variable of the function being built is held: as SSA values (an
@@ -174,6 +188,7 @@ export
     Def Fn = Tuple
         u: UnitBuilder
         f: Function
+        (* The block instructions are emitted into *)
         var cur: Int
         (* The calls emitted so far that may collect, and the objects whose
          * initializing stores are being emitted, outermost first, each with
@@ -183,13 +198,19 @@ export
         initMarks: vector.T(Int)
         (* How each variable is held, by variable id *)
         bindings: hashMap.T(Int Binding)
+        (* Each join point's block, by its label, and how many parts (block
+         * parameters) each of the join's parameters takes. A join point is
+         * the IR's sJoin: a labelled continuation that a jump in its body
+         * enters with arguments, like a local function called only in tail
+         * position *)
         joins: hashMap.T(String Int)
-        (* The parts of each join point's parameters, by its label *)
         joinParts: hashMap.T(String Array(Int))
+        (* The blocks of each loop, by its label *)
         loops: hashMap.T(String LoopTargets)
         (* The function's IR closure (its environment's layout), if it is a
          * lifted function's *)
         closure: maybe.T(ir.OpMakeClosure)
+        (* The innermost let rec being built, if any *)
         var deferred: maybe.T(Deferred)
         (* The handler records of the trys entered, innermost last, and for
          * each loop and join point the number entered where it is defined *)
@@ -209,6 +230,7 @@ export
             name
         end
 
+    (* The symbol of f's code, made unique in the unit the first time *)
     let codeName(u: UnitBuilder f: ir.Function): String =
         begin
             if not(hashMap.contains(:Int :String u.codeNames f.id)) then
@@ -219,6 +241,8 @@ export
             hashMap.find(:Int :String u.codeNames f.id)
         end
 
+    (* The symbol of global v; the first time, also its zeroed storage in the
+     * unit's static data, and its root entry if it may hold a pointer *)
     let globalSymbol(u: UnitBuilder v: Variable): String =
         begin
             if not(hashMap.contains(:Int :String u.globalSymbols v.id)) then
@@ -239,6 +263,7 @@ export
             hashMap.find(:Int :String u.globalSymbols v.id)
         end
 
+    (* The symbol of the C string s; the first time, also its static data *)
     let stringSymbol(u: UnitBuilder s: String): String =
         begin
             if not(hashMap.contains(:String :String u.strings s)) then

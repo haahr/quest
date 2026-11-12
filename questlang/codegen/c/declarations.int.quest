@@ -61,8 +61,20 @@ export
      * type *)
     Def ModuleRecord = Tuple name: String recordType: maybe.T(model.Type) end
     emitPrecompiledModuleDeclarations(e: Emitter modules: vector.T(ModuleRecord)): vector.T(String)
+    (* The C struct of each tuple, record, and option type in aggregates *)
     emitAggregateStructs(e: Emitter aggregates: vector.T(Aggregate)): vector.T(String)
+    (* The offset tables ("evidence dictionaries") of the record types: for a
+     * record seen at a type, a struct of the byte offset of each of that
+     * type's fields in the record's own struct, which code that knows only
+     * the type it sees reads fields through (docs/c-representation.md section
+     * 5.2). Defines the table struct of each record type in aggregates, and
+     * the static table of each (view, layout) pair in needed *)
     emitEvidenceDictionaries(e: Emitter aggregates: vector.T(Aggregate) needed: vector.T(Pair)): vector.T(String)
+    (* What lets a value be used at a supertype without a copy, for the pairs
+     * the unit's code converts between: for tuple pairs, static assertions
+     * that the supertype's components are at the same offsets in both
+     * structs, so that a pointer may be cast; for variant pairs, tables that
+     * renumber the subtype's tags as the supertype's *)
     emitCoercionTables(e: Emitter tuples: vector.T(Pair) variants: vector.T(Pair)): vector.T(String)
     (* The static descriptors of types (and those that echo uses for
      * echoTypes), each with the descriptors of its parts, for those that have

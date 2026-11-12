@@ -1025,6 +1025,14 @@ export
             vector.toArray(:String linked)
         end
 
+    (* Builds the program in mainFile into a binary at output, else at its
+     * artifacts' base in the build directory (buildMain, which writes the log
+     * this leaves unflushed). The main unit is compiled first if stale, since
+     * its manifest lists the modules it imports, which unflushedBuildModules
+     * then brings up to date. The objects are linked in the order
+     * eng.extraObjects, the main unit's .o, then the modules' .o files in
+     * queue order. Raises buildError if mainFile does not exist, and passes
+     * on the errors of compiling and linking *)
     let unflushedBuildMain(eng: T mainFile: String output: maybe.T(String)): Ok =
         begin
             let main = paths.absolute(mainFile)

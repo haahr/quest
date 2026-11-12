@@ -1,7 +1,9 @@
 """The declarations of the C the IR's printer writes (c/printer.py) and of
 interfaces' C headers (c/headers.py): aggregate structs, offset tables, coercion
 tables, type descriptors, function type adapters, and modules' exported
-functions."""
+functions.
+
+The self-hosted counterpart is questlang/codegen/c/declarations."""
 
 from __future__ import annotations
 

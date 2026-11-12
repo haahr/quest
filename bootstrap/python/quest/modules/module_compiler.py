@@ -1,15 +1,18 @@
-"""Quest Module Compiler (Phase 4.16 Step 2).
+"""The module compiler: compiles a module file (.mod.quest) on its own, against
+the interfaces it imports, into
 
-Compiles Quest module implementation files (.mod.quest) into:
-1. Standard C99 source (<name>.mod.c) including the interface header and
-   defining direct C functions (qv_<mod>_<func>), closure trampolines, module
-   record (QRecordVal qm_<mod>), and idempotent initialization
-   (qv_mod_<mod>_init).
-2. Native relocatable object file (<name>.o) via the host C compiler.
+1. C (<name>.mod.c), which includes its interface's header and defines the
+   module's exported functions (qv_<mod>_<func>), its record (qm_<mod>), and
+   its initializer (qv_mod_<mod>_init), which runs the module's body once;
+2. an object file (<name>.o), by the host C compiler;
+3. a manifest (<name>.qm, modules/manifest.py), from which the build engine
+   decides when to compile it again (docs/modules.md §9.2).
 
 Generated file names keep the .int/.mod of their sources' names, so that the
 header of an interface named like a C standard header (math.int.h, not math.h)
 cannot shadow it (<math.h>) on the C compiler's include path.
+
+The self-hosted counterpart is questlang/modules/modulecompiler.
 """
 
 from __future__ import annotations

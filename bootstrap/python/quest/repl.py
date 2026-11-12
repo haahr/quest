@@ -1,6 +1,6 @@
-"""Quest Interactive REPL (Read-Eval-Print Loop).
+"""The REPL (docs/repl.md), which the driver starts without a program, or
+after one with -i:
 
-Implements Phase 3.6 of the Quest bootstrap compiler:
 - Persistent CompilerContext (Environment and RuntimeEnvironment).
 - Semicolon-optional multi-line input buffering with unexpected-EOF continuation
   detection.
@@ -11,6 +11,8 @@ Implements Phase 3.6 of the Quest bootstrap compiler:
   code's do (docs/new-libraries.md §3.1).
 - Clean rollback of environment state, units included, on typecheck error or
   runtime exception (QuestREPL.evaluate).
+
+The self-hosted counterpart is questlang/driver/repl.
 """
 
 from __future__ import annotations

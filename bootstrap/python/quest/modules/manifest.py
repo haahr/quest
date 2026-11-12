@@ -1,7 +1,12 @@
-"""Quest Module Manifest (.qm) serialization and deserialization.
+"""Module manifests (.qm files): the build metadata of a module file
+(.mod.quest) or a program (.quest), written when it is compiled. A manifest
+records the unit's source and object, the modules and interfaces it imports
+with the sources they were found in, and the ABI version and compiler of its
+artifacts, from which the build engine decides whether the unit is stale
+(is_manifest_stale, unit_staleness; docs/build-process.md §4.3, §5).
 
-A .qm file records the build metadata for an implementation module (.mod.quest)
-or main routine (.quest), tracking imported modules and interface dependencies.
+The self-hosted counterpart is questlang/modules/manifest, which reads and
+writes the same JSON, so that each compiler can read the other's.
 """
 
 from __future__ import annotations

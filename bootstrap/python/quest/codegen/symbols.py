@@ -1,6 +1,8 @@
 """The names of what units link against: values, functions, and modules, mangled
 into identifiers (docs/name-mangling.md). Every backend's units use them, so
-that they link with one another and with the C runtime."""
+that they link with one another and with the C runtime.
+
+The self-hosted counterpart is questlang/codegen/symbols."""
 
 from __future__ import annotations
 

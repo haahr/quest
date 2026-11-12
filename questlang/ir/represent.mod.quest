@@ -278,6 +278,12 @@ export
     let planning = hashMap.new(:String :Bool stringOp.equal hash.string)
     let adapting = hashMap.new(:String :Bool stringOp.equal hash.string)
 
+    (* lay's part of a key of planning: "-" for none, or its substitution's
+     * identity (the bootstrap's id) and its direction. Identity suffices, as
+     * the key only has to tell apart the layouts of the plans in progress,
+     * whose substitutions are live, distinct objects (a nested plan passes
+     * its layout on as it is, so a recursive type's pair meets the same one
+     * again) *)
     let layoutKey(lay: Layout): String =
         if maybe.isNone(:nodes.PlanLayout lay) then
             "-"
@@ -498,6 +504,11 @@ export
             end
         end
 
+    (* The plan from source to target, of shapes ss and ts and C
+     * representations cs and ct, by plan's tests 4 to 10 (boxing, bounded
+     * type parameters' views, records, variants, options, tuples, and the
+     * rest), where neither a function's adapter nor a polymorphic callee's
+     * layout decided it *)
     and viewPlan(source: Type target: Type ss: Shape ts: Shape cs: String ct: String): maybe.T(Plan) =
         (* A value of a type parameter, held as a QVal word: a scalar or pointer
          * in its bits, a record or variant boxed *)
@@ -819,8 +830,16 @@ export
      * The pass
      * ====================================================================== *)
 
+    (* A polymorphic call's result, which comes in the callee's generic
+     * layout: the callee's result type as written (generic), that type at the
+     * call's type arguments (instantiated), and the instantiation, by which
+     * statement converts the result from the one to the other *)
     Def GenericResult = Tuple generic: Type instantiated: Type instantiation: Instantiation end
 
+    (* The pass's state: joins, each join point's parameters by label, for
+     * the jumps to it, which pass their arguments at the parameters' types;
+     * and genericResults, which call leaves empty, or holding the
+     * GenericResult of the polymorphic call it converted, for statement *)
     Let Representer = Tuple
         unit: nodes.Unit
         joins: hashMap.T(String Array(Variable))
@@ -1166,6 +1185,15 @@ export
             c.body.statements := lets
         end
 
+    (* The statements that replace s: s, its atoms converted to the
+     * representations its uses require (docs/ir.md section 8.3), after the
+     * conversions of its operands and before those of its result (and a
+     * call's copies out of temporaries for var and out arguments, see
+     * refArgument). A polymorphic call's result converts in two steps: from
+     * the callee's generic layout to its type at the type arguments, then to
+     * the let's type. function is the function whose body holds s, if any,
+     * whose result type a return converts to; an inspect's cases get their
+     * arms *)
     let statement(r: Representer s: Stmt function: maybe.T(nodes.Function)): Array(Stmt) =
         begin
             let before = vector.new(:Stmt)

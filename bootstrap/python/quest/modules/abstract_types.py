@@ -11,6 +11,8 @@ representation, so that dynamic.extern can write a value of the type at its
 representation, and dynamic.intern can check a recorded representation against
 the module's. dynamic.intern also records the types of modules the program does
 not link, as opaque types with the representations they were written with.
+
+The self-hosted counterpart is questlang/modules/abstracttypes.
 """
 
 from __future__ import annotations

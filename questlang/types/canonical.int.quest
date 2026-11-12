@@ -4,7 +4,9 @@
  * reduced, recursive types unfolded, an option type's cases in order, and the
  * canonical form of a type containing recursion, its minimal graph, so that
  * equal types have one representation however they are written (which the IR's
- * shapes are built from). *)
+ * shapes are built from). The checker keeps types as written and does not use
+ * canonical forms (docs/type-system.md §2.2); docs/c-representation.md §5.7
+ * describes the C side. *)
 
 interface Canonical
 import
@@ -14,12 +16,16 @@ export
     (* t with the type operator applications at its head beta-reduced, without
      * unfolding recursive types *)
     betaReduceHead(t: model.Type): model.Type
-    (* The unfolding of a recursive type (or an application reducing to one)
-     * when it is neither recursive nor an application (unfold_recursive with
-     * kinds None) *)
+    (* t with recursive types at its head unfolded, and type operator
+     * applications there reduced, until its outermost node is neither; none
+     * if that does not happen, as for an application of an abstract type
+     * operator, or after a limit of 1000 steps. A type that is neither is
+     * itself *)
     unfoldRecursiveAny(t: model.Type): maybe.T(model.Type)
-    (* The unfolding when it is a constructed type, as values are represented
-     * (unfold_recursive's default kinds) *)
+    (* That unfolding only when it is a type whose values are represented the
+     * same as the recursive type's (a tuple, record, variant, option, array,
+     * Var, Out, auto, function, All, or exception type); none for anything
+     * else, such as Int or a type variable *)
     unfoldRecursive(t: model.Type): maybe.T(model.Type)
     (* t with its outermost constructor exposed: aliases stripped, a recursive
      * type unfolded, an application reduced *)

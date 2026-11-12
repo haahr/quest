@@ -19,6 +19,8 @@ The nodes that can raise an exception (checked operations, raise) keep the
 source offset of the expression they were lowered from, in the unit's source
 file, so that every backend reports where an uncaught exception was raised
 (docs/exceptions.md §3).
+
+The self-hosted counterpart is questlang/ir/nodes.
 """
 
 from __future__ import annotations

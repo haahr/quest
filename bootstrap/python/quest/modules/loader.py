@@ -1,14 +1,16 @@
-"""Quest Module and Interface File Loader.
+"""The loader of interfaces and modules from their files, for the compilers
+and the type checker, sharing each loaded unit among its importers by
+canonical name. (The interpreter evaluates the modules it loads,
+load_module_for_interpreter in quest.interpreter.treewalk.)
 
-Implements file-based loading of interfaces and modules for the Quest compiler
-and the type checker (the interpreter evaluates the modules it loads,
-load_module_for_interpreter in quest.interpreter.treewalk):
 - Resolves interface files as <name.lower()>.int.quest or <name.lower()>.qi
 - Resolves module files as <name.lower()>.mod.quest
 - Search order: current file directory first, then include paths (-I)
 - Verifies single top-level interface/module declaration matching filename
 - Enforces interface conformance and case normalization
 - Prevents cyclic dependencies with cycle detection
+
+The self-hosted counterpart is questlang/modules/loader.
 """
 
 from __future__ import annotations
@@ -242,6 +244,13 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
         )
 
     def _synthesize_precompiled_module() -> TypedModule:
+        """The typed module of a module whose body is not elaborated here: a
+        prebuilt object, a module separate C compilation builds on its own, or
+        one with fresh artifacts in a typecheck-only run (the cases below). It
+        has no bindings (is_precompiled), only an export scope made from its
+        interface, loaded if need be, which is registered under the module's
+        canonical name and the name imported, and recorded on the unit so that
+        every importer shares it."""
         target_interface_scope = env.lookup_interface(expected_interface)
         if target_interface_scope is None:
             target_interface_scope = load_interface(expected_interface, env)

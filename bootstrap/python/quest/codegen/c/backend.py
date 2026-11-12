@@ -1,6 +1,8 @@
 """The C backend's entry points: a typed program or module file lowered to the
 IR, the IR's passes run (codegen/backend.py), and the described IR printed as C
-(c/printer.py)."""
+(c/printer.py).
+
+The self-hosted counterpart is questlang/codegen/c/backend."""
 
 from __future__ import annotations
 

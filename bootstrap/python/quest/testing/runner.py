@@ -1007,6 +1007,17 @@ def with_pending(
 
 
 def main() -> int:
+    """The test runner's command line (run_tests.py): runs the tests the
+    options select and returns the exit status, run_all_tests's (0 if every
+    test passed or is pending). docs/testing.md §2.3 describes the options.
+
+    C phases build in --build-dir, or else in a fresh temporary directory,
+    removed at the end, so that results never depend on artifacts an earlier
+    compiler wrote. --backend may name several modes, separated by commas,
+    which needs --self-hosted or --self-hosting: one self-hosted driver then
+    serves every mode (with --self-hosting, the stage 2 that the fixed-point
+    check, run once, built; else --self-hosted-driver or one compiled here),
+    and each mode's tests run in turn, the status the worst of theirs."""
     available_phases = [
         "tokenize",
         "parse",

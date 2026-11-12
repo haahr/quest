@@ -13,6 +13,8 @@ module's function is also a member of the module, so that calls from outside the
 module can name it. Clones are specialized in turn, and specializations are
 shared by function and type arguments (by symbol and type identity, never by
 name).
+
+The self-hosted counterpart is questlang/ir/specialize.
 """
 
 from __future__ import annotations
@@ -171,6 +173,18 @@ class _Specializer:
                         self.body(b, enclosing)
 
     def call(self, call: ir.Call, enclosing: frozenset[int]) -> None:
+        """Redirects call to a clone for its type arguments, when it is to be
+        specialized, and drops its type arguments; enclosing holds the symbol
+        ids of the type parameters of the functions around it.
+
+        It is left alone, generic, unless all of these hold: it calls one of
+        this unit's functions (by variable, or as a member of one of the unit's
+        modules) with a type argument for each type parameter; the arguments
+        are closed (they mention nothing in enclosing); should_specialize says
+        the arguments call for it; a call of a module's member does not cross
+        its abstract types' layouts (_crosses_abstract_layouts); and clone
+        makes or finds a clone (none past MAX_DEPTH). A module member's clone
+        is called by its member name."""
         if not call.type_args:
             return
         if call.callee is not None:

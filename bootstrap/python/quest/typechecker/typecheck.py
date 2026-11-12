@@ -1,4 +1,4 @@
-"""Quest Term Elaboration and Bidirectional Typechecker (Phases 2, 3, 4 & 5).
+"""The bidirectional type checker's dispatch, and its entry points.
 
 `TypeElaborator` checks (`check_expr`) and synthesizes (`synth_expr`) the types
 of expressions and elaborates bindings, phrases, and programs into the typed
@@ -8,7 +8,9 @@ elaboration, and the module-level entry points. The checker's state and shared
 helpers are `checker.Checker`'s; the constructs are elaborated by construct
 families, one module each, built on it: `bindings` (functions and bindings),
 `application`, `aggregates`, `control`, `exceptions`, and `auto_values` (auto
-values and inspect)."""
+values and inspect).
+
+The self-hosted counterpart is questlang/typechecker/typecheck."""
 
 from __future__ import annotations
 

@@ -1,4 +1,8 @@
-"""Build logging infrastructure for Quest compiler driver and build engine."""
+"""The build engine's log: one timestamped, tagged line per event (POP QUEUE,
+COMPILE MAIN, ...), appended to build.log in the build directory and, when
+verbose (-v), written to standard error (docs/build-process.md §9).
+
+The self-hosted counterpart is questlang/build/logger."""
 
 from __future__ import annotations
 

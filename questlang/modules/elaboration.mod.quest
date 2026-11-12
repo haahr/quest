@@ -195,11 +195,12 @@ export
             exportScope
         end
 
-    (* The external type declarations (Let T = external "...") of a module's
-     * source file: for a module in lib/, as the compiler has them built in
-     * (questlang/codegen/externals), without reading the module *)
+    (* extractModuleExternalTypes's results by the text of the module it read,
+     * so that a module that each of its importers asks about is parsed once *)
     let externalsByText = hashMap.new(:String :hashMap.T(String Type) stringOp.equal hash.string)
 
+    (* The external types of the lib/ module at modulePath (os/process),
+     * as the compiler has them built in (questlang/codegen/externals) *)
     let libraryExternalTypes(modulePath: String): hashMap.T(String Type) =
         begin
             let defs = hashMap.new(:String :Type stringOp.equal hash.string)
@@ -212,6 +213,11 @@ export
             defs
         end
 
+    (* The external type declarations (Let T = external "C type") of the
+     * module in src, by type name, each a type named module.T. A module in
+     * lib/ is not read, as the compiler has its external types built in.
+     * Another is parsed, if its text mentions external, but not type checked;
+     * one that cannot be read or parsed has none, as does no src *)
     let extractModuleExternalTypes(src: maybe.T(String)): hashMap.T(String Type) =
         if maybe.isSome(:String src) andif maybe.isSome(:String paths.libModulePath(maybe.unwrap(:String src))) then
             libraryExternalTypes(maybe.unwrap(:String paths.libModulePath(maybe.unwrap(:String src))))
@@ -313,6 +319,25 @@ export
      * Interfaces
      * ====================================================================== *)
 
+    (* Elaborates interface decl into a scope of its own, registered in e under
+     * decl.name and returned in a bindInterface binding (whose signatures are
+     * empty: the scope holds them).
+     *
+     * 1. Its imports go into an import scope just above the interface's, seen
+     *    by its signatures but not exported. The exception is an import of an
+     *    interface alone that does not rename it (import :Counter): its types
+     *    and kinds are declared in the interface itself, which so inherits
+     *    them. An imported module is loaded if its source or object can be
+     *    found; otherwise, or if loading it fails with an error that is not
+     *    fatal (reported through e.report), it is known by its interface
+     *    alone (separatelyCompiledModuleScope).
+     * 2. The signatures are elaborated in order into the interface's scope:
+     *    an abstract type T::K becomes a type symbol without a definition.
+     *    external is refused, as everywhere but in an unsound module
+     *    (docs/modules.md §4.4).
+     *
+     * The bootstrap counterpart is elaborate_interface in
+     * bootstrap/python/quest/modules/elaboration.py *)
     let elaborateInterface(decl: ast.InterfaceDecl offset: Int e: env.T): typedAst.Binding =
         begin
             let importScope = symbols.newScope(maybe.some(:Scope e.currentScope) "interface_imports_" <> decl.name)
@@ -743,6 +768,18 @@ export
      * Imports
      * ====================================================================== *)
 
+    (* Elaborates a program's import phrase into e's current scope. Each
+     * item's interface is loaded and bound to its local name; an unsound one
+     * is refused, as the top level is sound (docs/modules.md §4.4). An
+     * interface imported alone (import :Counter) declares its types and kinds
+     * in the current scope. Each module is bound to its local name as a
+     * record value whose type comes from its interface, through an export
+     * scope that has the opaque types every importer shares
+     * (separatelyCompiledModuleScope). Unless compiling to C, where the
+     * module is built apart, its source is first loaded and elaborated, once
+     * (loadModule), for the program to include its code. The result, a
+     * bindImport, records each item's canonical paths and the symbol ids of
+     * the values it declared *)
     let elaborateImport(phrase: ast.ImportPhrase offset: Int e: env.T): typedAst.Binding =
         begin
             let items = vector.new(:typedAst.ImportItem)

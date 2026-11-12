@@ -1,35 +1,47 @@
-"""The C printer (docs/ir.md §8.5): prints a described IR unit as C, the IR's
-backend.
+"""The C printer (docs/ir.md §8.5): prints a described IR unit as C. It is
+the C backend's last step, and makes no decisions about representations: it
+prints those the passes made, and decides only how to spell them in C (such as
+the C signatures of thunks and of a module's exported functions).
 
-It prints what the passes decided: each IR function is a C function taking its
-closure's environment first (and its own type parameters' descriptors, then its
-parameters), each closure a QClosure of one (a static one when it captures
-nothing), each variable a C variable of its type's representation (globals for
-the variables the top levels bind outside loops, declared at file scope), and
-each structured statement a C statement: join points and loop exits are labels,
-and try regions setjmp handlers, popped on every way out. Conversions are
-`convert` operations, printed as their plans say, and every other representation
-decision is the represent pass's, recorded in the IR (docs/ir.md §8.3, §8.5):
-aggregate slots hold records and variants boxed (slot_representation), as the
-locations var and out parameters point to do, and the IR's boxed variables,
-slot_box and slot_unbox conversions, and embedded components say where boxes are
-made, reused, and read; a tuple or option whose type may be proxied
-(docs/c-representation.md §5.8) may be a view of an object of a subtype, and
-each read of a component records whether it goes through a proxy check, the
-original, or neither; inspect cases record their arms, and type applications
-their thunks' plans. Descriptors are the describe pass's (ir/describe.py,
-docs/ir.md §8.4): every run-time use of a type carries its descriptor operand (a
-descriptor variable, which the printer names: a function's descriptor parameter,
-a thunk's, or an inspected auto value's type component; a static descriptor,
-which it declares; or a template instantiated at run time), and the unit's
-static data lists the static descriptors, offset tables, and tag maps the
-printer declares. The declarations of the types it uses (structs, descriptors,
-offset tables, function type adapters) are c/declarations.py's, and the
-representations codegen/layout.py's, spelled in C by c/types.py
-(docs/c-representation.md). A module file's unit exports its interface's
-members: its record (`qm_<module>`), initializer (`qv_mod_<module>_init`), and a
-function for each function or polymorphic value (`qv_<module>_<member>`), the
-ABI other units link against.
+Program structure:
+
+- Each IR function is a C function taking its closure's environment first,
+  then its own type parameters' descriptors, then its parameters.
+- Each closure is a QClosure of one (a static one when it captures nothing).
+- Each variable is a C variable of its type's representation; the variables
+  the top levels bind outside loops are globals, declared at file scope.
+- Each structured statement is a C statement: join points and loop exits are
+  labels, and try regions are setjmp handlers, popped on every way out.
+
+Representations are the represent pass's, recorded in the IR (docs/ir.md
+§8.3):
+
+- Conversions are `convert` operations, printed as their plans say.
+- Aggregate slots hold records and variants boxed (slot_representation), as do
+  the locations that var and out parameters point to. The IR's boxed
+  variables, slot_box and slot_unbox conversions, and embedded components say
+  where boxes are made, reused, and read.
+- A tuple or option whose type may be proxied (docs/c-representation.md §5.8)
+  may be a view of an object of a subtype, and each read of a component
+  records whether it goes through a proxy check, the original, or neither.
+- Inspect cases record their arms, and type applications their thunks' plans.
+
+Descriptors are the describe pass's (ir/describe.py, docs/ir.md §8.4). Every
+run-time use of a type carries its descriptor operand: a descriptor variable,
+which the printer names (a function's descriptor parameter, a thunk's, or an
+inspected auto value's type component); a static descriptor, which it
+declares; or a template instantiated at run time. The unit's static data lists
+the static descriptors, offset tables, and tag maps the printer declares.
+
+The declarations of the types the C uses (structs, descriptors, offset tables,
+function type adapters) are c/declarations.py's, and the representations
+codegen/layout.py's, spelled in C by c/types.py (docs/c-representation.md). A
+module file's unit exports its interface's members, the ABI other units link
+against: its record (`qm_<module>`), its initializer (`qv_mod_<module>_init`),
+and a function for each function or polymorphic value
+(`qv_<module>_<member>`).
+
+The self-hosted counterpart is questlang/codegen/c/printer.
 """
 
 from __future__ import annotations

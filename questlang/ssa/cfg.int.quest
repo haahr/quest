@@ -1,13 +1,27 @@
 (* Quest Self-Hosted Compiler: The SSA's Control Flow Graph Interface
  *
- * A function's blocks as a graph (docs/ssa.md section 4.1):
- * each block's predecessors and successors, the blocks the entry reaches in
- * reverse postorder, the dominator tree (Cooper, Harvey, and Kennedy), with
- * each block's preorder and postorder numbers in it, so that whether one
- * block dominates another is two comparisons, and on demand, dominance
- * frontiers and loop depths. A graph describes the function as it was when it
- * was made; a pass that changes the blocks or their terminators makes it
- * again. *)
+ * A function's blocks as a graph (docs/ssa.md section 4.1), with the facts
+ * about it that the passes ask for:
+ *
+ * - each block's predecessors and successors;
+ * - the blocks the entry reaches in reverse postorder, an order in which a
+ *   block comes before its successors except along a loop's back edge, so
+ *   that a forward pass sees a block's definitions before their uses;
+ * - the dominator tree (by Cooper, Harvey, and Kennedy's algorithm). Block a
+ *   dominates block b when every path from the entry to b passes through a;
+ *   a value defined in a may then be used in b, which is what the verifier
+ *   checks. Each block's preorder and postorder numbers in the tree make
+ *   "does a dominate b" two comparisons;
+ * - on demand, dominance frontiers, where promotion (ssa/promote) puts the
+ *   block parameters that merge a variable's values: b's frontier is the
+ *   blocks that b does not strictly dominate (dominate and differ from) but
+ *   one of whose predecessors it does dominate: the joins where a value
+ *   stored in b may meet another;
+ * - on demand, loop depths, by which the register allocator and the arm64
+ *   block layout estimate how often a block runs.
+ *
+ * A graph describes the function as it was when it was made; a pass that
+ * changes the blocks or their terminators makes it again. *)
 
 interface Cfg
 import

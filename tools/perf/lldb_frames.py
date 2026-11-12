@@ -46,6 +46,18 @@ def annotations(path: str) -> dict[str, tuple[int, set[int]]]:
 
 
 def deadroots(debugger, command, result, internal_dict):
+    """The deadroots command (see the module docstring): command is "ASM NM".
+
+    Walks the selected thread's stack, skipping the innermost frame, which is
+    stopped where the user stopped it rather than at a call, and the
+    outermost, which has no caller frame to bound it. Every other frame's PC is
+    a return address; when NM names it as a _live_ label that ASM annotates,
+    the frame's words, from its SP up to its caller's SP, are checked. A word
+    that points into the heap (heap_regions) at an offset the annotation does
+    not list as live is printed: as DEAD if it is below the annotated frame
+    size, else as SAVED. A word is only a candidate: an integer that happens
+    to look like a heap address is printed too. result is unused; the lines
+    go to standard output."""
     asm, nm = command.split()
     live = annotations(asm)
     labels = {}

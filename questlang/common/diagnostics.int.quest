@@ -87,7 +87,22 @@ export
     (* The source maps of the files diagnostics may be in, besides the one
      * format is given (units the program imports), by file name *)
     registerSource(sm: location.SourceMap): Ok
+    (* d as the user sees it, in lines that each end with a newline: its
+     * location, severity, and message; the source line with carets under its
+     * span (at least one, and none past the end of the line); each secondary
+     * label, as ::: file:line:col, its line, and dashes under it; the notes,
+     * the help, and an uncaught exception's frames. For example
+     *
+     *     two.quest:1:14: error: Type mismatch: ...
+     *         let x: Int = "a"
+     *                      ^
+     *
+     * The source comes from the map registered for d's file, else sm. A
+     * diagnostic without a location (no file, or a negative offset) has
+     * neither the location nor the source line. The code (setCode) is not
+     * printed. docs/diagnostics.md §5 describes the layout *)
     format(d: Diagnostic sm: location.SourceMap): String
+    (* Writes format(d sm) to w *)
     render(d: Diagnostic sm: location.SourceMap w: writer.T): Ok
 
     (* =========================================================================

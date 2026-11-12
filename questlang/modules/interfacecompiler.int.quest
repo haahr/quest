@@ -82,8 +82,18 @@ export
         targetDir: String
         searchPaths: Array(String)
     end
-    (* Rebuilds the .qi of a resolved interface under buildDir if it is
-     * stale *)
+    (* Where the .qi of a resolved interface is, made current first
+     * (docs/build-process.md §5: the staleness rules, and §5.1, what is done
+     * about a stale one). A .qi is current if it records this compiler's ABI
+     * version (§5.2) and this source, is at least as new as the source, and
+     * no interface it depends on is newer or would now resolve to another
+     * source. The one in its directory under buildDir is used if current,
+     * else a current one elsewhere on the search path (beside its source,
+     * from a standalone compilation); if neither is, the source is compiled
+     * into buildDir, the interfaces it imports first, and onCompiled is
+     * called for each interface compiled. An interface without a source (a
+     * binary distribution's) is taken as found, but raises a CompilerError if
+     * its .qi has another ABI version; so does an error compiling one *)
     ensureResolvedInterfaceArtifacts(resolved: graph.Resolved buildDir: String onCompiled: maybe.T(OnCompiled)
         res: graph.Resolver): InterfaceArtifacts
 

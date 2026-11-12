@@ -11,6 +11,8 @@ operations and plans that use them (`of d`); descriptor variables are declared
 where they are bound (a function's before its parameters, a thunk's after its
 plan, an inspect's witness after its value), and the unit's static data is
 listed first.
+
+The self-hosted counterpart is questlang/ir/printer.
 """
 
 from __future__ import annotations

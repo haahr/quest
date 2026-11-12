@@ -2,7 +2,9 @@
 applications reduced (beta_reduce_head), recursive types unfolded
 (unfold_recursive), and the canonical form of a recursive type, its minimal
 graph (canonical_type), so that equal types have one representation however they
-are written."""
+are written.
+
+The self-hosted counterpart is questlang/types/canonical."""
 
 from __future__ import annotations
 

@@ -1,4 +1,13 @@
-"""Quest Recursive Type Contractiveness Verification (C \succ X)."""
+"""The check that a recursive type is contractive in its variables (C succ X,
+after Cardelli and Longo): each use of a recursive variable is guarded by a
+type constructor. Rec(L) Tuple head: Int tail: L end is contractive, Rec(X) X
+and Let Rec A = B and B = A are not. A type that is not has no unique meaning,
+and unfolding it never reaches a constructor, which evaluate_lazily relies on.
+Elaborating a recursive type declaration calls check_type_contractive, which
+raises KindError.
+
+The self-hosted counterpart is questlang/types/contractiveness;
+docs/type-system.md §3.3 gives the rule."""
 
 from __future__ import annotations
 

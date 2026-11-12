@@ -7,6 +7,8 @@ or c_int_literal), and lists of C are joined only here. This keeps each line of
 the backend a line of Quest when it is ported, where text is concatenated with
 `<>` and a number is never spelled by `conv.int` alone (which writes negative
 numbers with `~`).
+
+The self-hosted counterpart is questlang/codegen/syntax.
 """
 
 from __future__ import annotations

@@ -56,6 +56,17 @@ export
             b.statements := statements
         end
 
+    (* The statements that replace a funs statement binding functions (a let
+     * rec when recursive), nested in functions whose type parameters,
+     * outermost first, are typeParams: a let of each function's closure, of
+     * its lifted code and its captures, passing typeParams to the code as its
+     * leading type arguments. When a closure captures one of the group, the
+     * lets are in a let rec, so that each closure can hold the others. But
+     * when the group captures nothing but its own functions and no
+     * polymorphic function encloses it, no closure needs an environment: each
+     * code reads the others as closures without captures (docs/ir.md section
+     * 8.2), which are static, rather than allocated each time the enclosing
+     * function runs *)
     and funs(c: Converter functions: Array(nodes.Function) recursive: Bool typeParams: Array(nodes.TypeParam)): Array(Stmt) =
         begin
             let typeArgs = array of(extent typeParams model.okType)

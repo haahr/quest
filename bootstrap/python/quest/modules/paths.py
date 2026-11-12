@@ -1,12 +1,13 @@
-"""Quest Module and Interface File Path Resolution and Canonicalization.
+"""Unit files' paths: finding the files of interfaces (<name>.int.quest, or a
+fresh .qi), modules (<name>.mod.quest), and objects (<name>.o) on the search
+path (the importing unit's directory, then -I, QUEST_LIB, and lib/;
+docs/modules.md §2.2), and the canonical names of units, their paths relative
+to the search roots (§2.3), whose components must be letters and digits.
 
-Provides file-based path discovery, canonical hierarchical root calculations,
-name mangling, and artifact freshness checking:
-- Resolves interface files as <name.lower()>.int.quest or <name.lower()>.qi
-- Resolves module files as <name.lower()>.mod.quest
-- Resolves object files as <name.lower()>.o
-- Canonical roots and paths relative to search roots (-I, QUEST_LIB, lib/)
-- Enforces valid ASCII alphanumeric path component naming
+It also reads what is recorded in a .qi (its dependencies, to decide whether
+it is stale) and tells which options compile C (is_c_compilation_mode).
+
+The self-hosted counterpart is questlang/modules/paths.
 """
 
 from __future__ import annotations

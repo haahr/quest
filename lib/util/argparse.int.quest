@@ -73,7 +73,24 @@ export
      *)
     parse(p: Parser args: Array(String)): Results
 
-    (* Parse a vector of argument strings *)
+    (* Parse a vector of argument strings, as parse does an array. The
+     * arguments, taken in order:
+     *
+     *   --              every later argument goes to targetArgs
+     *   --name=value    a long option with its value
+     *   --name value    a long option, its value the next argument
+     *   --name          a long flag
+     *   -x              a short flag or option, its value the next argument
+     *   -xvalue         a short option with its value attached (-Ipath)
+     *   -xyz            short flags bundled, each of x, y, z a flag
+     *   anything else   a positional argument, "-" included
+     *
+     * A value that is the next argument is taken even if it starts with "-".
+     * A flag given =value ignores the value. An unknown option, a missing
+     * value, a bad integer or choice, or a bundled option that takes a value
+     * writes a message to writer.err and raises error. Options not given get
+     * their defaults, except that a string or choice default of "" leaves the
+     * option unset (getString gives none) *)
     parseVector(p: Parser args: vector.T(String)): Results
 
     (* Format and print help message to specified writer *)

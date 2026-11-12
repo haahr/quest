@@ -1,11 +1,18 @@
-"""Quest Interface Compiler (Phase 4.16 Step 1).
+"""The interface compiler: compiles interface files (.int.quest) to .qi
+files, from which importers load interfaces without elaborating their sources
+(load_interface_from_qi_file), and keeps them up to date (docs/build-process.md
+§4.2, §5).
 
-Compiles interface files (.int.quest) to .qi files: portable, cycle-safe
-JSON/JSOG metadata encoded using shadow Quest record types compatible with
-dynamic.extern / dynamic.intern, from which importers load interfaces, and keeps
-them up to date (docs/build-process.md §5). An interface's C header (.int.h) is
-the C backend's: it is written from the compiled interface by
-quest.codegen.c.headers, when C compilation needs it.
+A .qi is a dynamic value in the format of dynamic.extern (docs/dynamic.md §2):
+JSON in which an object reached twice is written once and then referred to by
+id, which the code calls JSOG (JSON Object Graph). Its value is a "shadow"
+record, a Quest record describing the interface (QI_SCHEMA_TYPE_STR), whose
+types and signatures are strings of Quest type syntax. An interface's C header
+(.int.h) is the C backend's: quest.codegen.c.headers writes it from the
+compiled interface when C compilation needs it.
+
+The self-hosted counterpart is questlang/modules/interfacecompiler; docs/
+modules.md §9.1 describes interface compilation.
 """
 
 from __future__ import annotations
@@ -353,8 +360,17 @@ def compile_interface_to_qi(
     source: Optional[Path] = None,
     deps: Optional[list[InterfaceDependency]] = None,
 ) -> str:
-    """Serializes interface declarations to portable JSON/JSOG .qi format using
-    shadow Quest records.
+    """The text of the .qi of the interface decl, whose elaborated scope is
+    iface_scope.
+
+    The .qi's value is a record of the type QI_SCHEMA_TYPE_STR: the ABI version
+    and producer (config/abi.py), the imports as written, each type member's
+    kind and, for a manifest type, its definition (a member of a recursive
+    group with the group's number), and each value member's type. Types and
+    kinds are written as Quest type syntax (format_type_for_qi), keeping alias
+    names, and are parsed and elaborated again when the .qi is loaded, since
+    symbol ids mean nothing outside the process that made them. jsog_encode
+    (values/dynamic_json.py) writes the record as a dynamic value.
 
     source is the .int.quest the interface was compiled from; it is recorded
     (resolved) so that a .qi is used only for the source it was built from
@@ -596,6 +612,17 @@ def _compile_interface_file(
     on_compiled: Optional[OnCompiled],
     resolver: Resolver,
 ) -> CompiledInterface:
+    """compile_interface_file's work, inside its check for import cycles: the
+    interface at file_path parsed, its imports brought up to date in the build
+    directory (when there is one), the interface elaborated in an environment
+    of its own, and its .qi written when write_qi holds.
+
+    The .qi goes in output_dir if given; else, with a build directory, in the
+    interface's artifact directory there (unit_artifact_dir, by its canonical
+    name); else beside the source. Errors (QuestTypeError, or the parser's and
+    elaborator's own) are located in this file, and one raised while bringing
+    an import up to date is labeled with that import (docs/diagnostics.md
+    §4.4)."""
     try:
         source_text = read_source(file_path)
     except OSError as err:

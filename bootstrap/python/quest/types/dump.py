@@ -1,4 +1,9 @@
-"""Quest Canonical S-Expression Pretty Printer and Compact Type Formatter."""
+"""Printing types and kinds: the compact formatter that error messages and the
+typed AST dump use (format_type_compact), the canonical S-expression dump
+(qtype_dump), and the short names of runtime type descriptors
+(short_type_name).
+
+The self-hosted counterpart is questlang/types/dump."""
 
 from __future__ import annotations
 

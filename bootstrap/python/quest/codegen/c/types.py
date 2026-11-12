@@ -1,7 +1,9 @@
 """C spellings for the C backend: the C types of representations
 (codegen/layout.py), function pointer types, QVal wrapping and unwrapping,
 loading from and storing into aggregate slots (a record or variant boxed),
-literals, record struct and offset table names, and descriptor expressions."""
+literals, record struct and offset table names, and descriptor expressions.
+
+The self-hosted counterpart is questlang/codegen/c/types."""
 
 from __future__ import annotations
 

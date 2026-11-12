@@ -1,6 +1,8 @@
 """What every backend does with a unit before writing its code (docs/ir.md): the
 IR's passes after lowering, and the modules a unit uses without importing them.
-The C backend is quest.codegen.c (c/backend.py)."""
+The C backend is quest.codegen.c (c/backend.py).
+
+The self-hosted counterpart is questlang/codegen/backend."""
 
 from __future__ import annotations
 

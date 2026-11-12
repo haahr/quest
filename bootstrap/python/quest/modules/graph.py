@@ -32,6 +32,8 @@ in one way:
 - **Artifacts** (`unit_artifact_dir`, `ModuleArtifacts`, `interface_qi_file`):
   where a unit's .qi, .qm, .mod.c, and .o are under a build directory. Their
   staleness rules are in interface_compiler (interfaces) and manifest (modules).
+
+The self-hosted counterpart is questlang/modules/graph.
 """
 
 from __future__ import annotations

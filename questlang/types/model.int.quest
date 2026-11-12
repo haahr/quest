@@ -12,7 +12,8 @@
  * equal (same). A node containing a metavariable is not hash-consed, since a
  * metavariable is mutable. The components of types (fields, parameters,
  * quantifiers, ...) are plain tuples; their identity is that of the types they
- * hold. *)
+ * hold. docs/type-system.md §2 lists the forms, and §2.2 says how types are
+ * shared and why the checker keeps them as written. *)
 
 interface Model
 import
@@ -32,6 +33,28 @@ export
      * their use, times 2**32, plus an index within that use.
      * ====================================================================== *)
 
+    (* The uses of reserved ids, in prefix order (dynamicParam is prefix 1), so
+     * ids of different uses never coincide; metavariables, below 2**32 in
+     * magnitude, have prefix 0. What each use's index counts:
+     *
+     *   dynamicParam         Dynamic's type parameter (index 0 only)
+     *   boundVar             a bound type parameter of a polymorphic function
+     *                        type in a C descriptor, by de Bruijn index (how
+     *                        many binders lie between it and its own)
+     *   canonicalQuantifier  a quantifier of a polymorphic function type in
+     *                        canonical form, by position
+     *   recSelf              a recursion variable in the C tag of a recursive
+     *                        type, by nesting depth (canonical.recSelfVar)
+     *   canonicalRec         a recursion variable of a recursive type in
+     *                        canonical form, by position
+     *   canonicalBinder      a binder's type parameter in canonical form, by
+     *                        the number of parameters enclosing it
+     *   hole                 a type parameter of generic code in a C
+     *                        descriptor template, by position among the
+     *                        template's holes
+     *
+     * Fixed ids make these variables the same wherever they are made, so that
+     * equal types in canonical form or in descriptors are equal nodes *)
     Def ReservedSymbolUse = Option
         dynamicParam
         boundVar
@@ -94,8 +117,12 @@ export
          * sorted *)
         fv: Array(Int)
         hasMeta: Bool
-        (* A recursive type's, or an alias of one's, unfolding, computed once; a
-         * group binding's siblings *)
+        (* Caches, set on first use and not part of the node's structure: the
+         * unfolding of a recursive type or of an alias of one (unfoldLazily),
+         * and, for a typeRecGroup node, the nodes of every binding of its
+         * group, one array shared by all of them (siblings). Sharing them
+         * keeps repeated unfolding within one finite graph of nodes. Both are
+         * empty until computed *)
         var unfolded: maybe.T(Type)
         var siblings: Array(Type)
     end
@@ -110,6 +137,9 @@ export
         typeException with payload: Type end
         typeExternal with name: String cType: String end
         typeTuple with fields: Array(TupleComponent) end
+        (* provenance names the module or interface a module's record type
+         * comes from, so that it prints as Module 'name' rather than as all
+         * its members (docs/type-system.md §2.1); none for other records *)
         typeRecord with fields: Array(RecordField) provenance: maybe.T(String) end
         typeVariant with variants: Array(VariantField) end
         typeOption with options: Array(OptionField) end
@@ -118,10 +148,18 @@ export
         typeArray with element: Type end
         typeOut with element: Type end
         typeAll with quantifiers: Array(Quantifier) body: Type end
+        (* Auto A::K with S end: typeParam is A, symbolId A's symbol,
+         * kindBound K, and signature S, the components an auto value has
+         * besides its type (docs/type-system.md §6.11) *)
         typeAuto with typeParam: String symbolId: Int kindBound: Kind signature: Array(RecordField) end
         typeOperator with params: Array(TypeFormal) body: Type end
         typeApp with constructor: Type arguments: Array(Type) end
         typeRec with varName: String symbolId: Int bound: Kind body: Type end
+        (* One type of a group declared together, Let Rec A = ... and B =
+         * ...: bindings holds the whole group, in declaration order, and
+         * activeIndex the binding this node stands for; a binding's body
+         * refers to the others by their symbol ids (docs/type-system.md
+         * §3.4) *)
         typeRecGroup with bindings: Array(RecBinding) activeIndex: Int end
         (* Five forms stand for a type by name rather than by structure. They
          * differ in where they come from and in what evaluateLazily, and so
@@ -153,6 +191,10 @@ export
         typeAlias with name: String symbolId: Int target: Type end
         typeMeta with meta: Meta end
     end
+    (* A kind classifies types as a type classifies values: TYPE, the kind of
+     * every proper type; POWER(B), the subtypes of B; ALL(X::K1) K2, a type
+     * operator taking a type of kind K1 to one of kind K2; and a kind
+     * variable. Kinds are nodes like types, hash-consed the same way *)
     and Kind = Tuple
         id: Int
         form: KindForm
@@ -165,6 +207,13 @@ export
         kindAll with paramName: String paramId: Int paramKind: Kind resultKind: Kind end
         kindVar with name: String symbolId: Int end
     end
+    (* A component of a tuple type, in order, since later components may
+     * refer to earlier type components (docs/type-system.md §4.1):
+     * - tupleField, a value component, named or not (x: T, or :T);
+     * - tupleTypeFormal, an abstract type component A::K, known outside only
+     *   by its bound, which makes the tuple an existential package;
+     * - tupleTypeBinding, a manifest type component, Let A = T, transparent
+     *   to code that selects it; a bound of none means TYPE *)
     and TupleComponent = Option
         tupleField with name: maybe.T(String) type: Type isVar: Bool end
         tupleTypeFormal with name: String symbolId: Int bound: Kind end
@@ -257,10 +306,18 @@ export
      * until its outermost constructor shows *)
     evaluateLazily(t: Type env: Lookup): Type
     evaluateKindLazily(k: Kind env: Lookup): Kind
-    (* Rec(X) T unfolded to T[Rec(X) T/X] (or, for an alias of a recursive type
-     * or a group binding, as model.py describes), computed once *)
+    (* One step of unfolding t, computed once and kept on t:
+     * - Rec(X) T unfolds to T[Rec(X) T/X];
+     * - a group binding to its body, with each binding's variable replaced by
+     *   that binding's node (siblings);
+     * - an alias of a recursive type through the alias: the recursive
+     *   occurrences become the alias, so they keep its name, and for a group
+     *   the other bindings become aliases qualified as this one is (m.Forest
+     *   unfolds with m.Tree).
+     * Any other type is itself *)
     unfoldLazily(t: Type): Type
-    (* The nodes of a recursive group's bindings, shared by all of them *)
+    (* For a typeRecGroup node, the nodes of its group's bindings, in order,
+     * made once and shared by all of them; empty for other types *)
     siblings(t: Type): Array(Type)
 
     (* ======================================================================

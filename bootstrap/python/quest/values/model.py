@@ -11,6 +11,8 @@ The value hierarchy (QValue) and its operational semantics:
 - Auto values (including dynamic values) and exception values (QAutoVal,
   QExceptionVal)
 - Cardelli 'is'/'isnot' identity predicate and recursive structural equality.
+
+The self-hosted counterpart is questlang/values/model.
 """
 
 from __future__ import annotations

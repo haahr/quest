@@ -18,7 +18,8 @@ export
     stringCompare(a: String b: String): Int
 
     (* Standard floating-point comparator: returns ~1 if a < b, 0 if a == b, 1
-     * if a > b *)
+     * if a > b. A NaN compares 0, equal, with every number, so an array
+     * holding one has no consistent order to sort into *)
     realCompare(a: Real b: Real): Int
 
     (* Inverts any comparator to sort or search in descending order *)
@@ -103,25 +104,32 @@ export
      * Sorting Algorithms
      * ====================================================================== *)
 
-    (* In-place 3-way quicksort on Array(A) *)
+    (* Sorts arr in place into ascending order by cmp. cmp(a b) must be
+     * negative, 0, or positive as a precedes, equals, or follows b, and
+     * consistently so (an order in which equal is transitive); with any other
+     * cmp, arr ends in some permutation of its elements. Not stable: elements
+     * that cmp makes equal may change places. A 3-way quicksort, pivoting on
+     * the middle element: O(n log n) comparisons on most inputs, O(n * n) at
+     * worst *)
     sort: All(A::TYPE) All(
         arr: Array(A)
         cmp: All(a: A b: A) Int
     ) Ok
 
-    (* In-place sort on vector.T(A) *)
+    (* Sorts v in place, as sort does an array *)
     sortVector: All(A::TYPE) All(
         v: vector.T(A)
         cmp: All(a: A b: A) Int
     ) Ok
 
-    (* Non-destructive sort returning a newly allocated sorted Array *)
+    (* A new array of arr's elements, sorted as sort does; arr is
+     * unchanged *)
     sorted: All(A::TYPE) All(
         arr: Array(A)
         cmp: All(a: A b: A) Int
     ) Array(A)
 
-    (* Non-destructive sort returning a newly allocated sorted Vector *)
+    (* A new vector of v's elements, sorted as sort does; v is unchanged *)
     sortedVector: All(A::TYPE) All(
         v: vector.T(A)
         cmp: All(a: A b: A) Int

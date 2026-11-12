@@ -59,10 +59,16 @@ export
     (* An entry of a unit's root table: a global's symbol and its words *)
     Def RootEntry = Tuple symbol: String words: Int end
     Def UnitBuilder = Tuple
+        (* The IR unit being built, and the SSA unit it is built into *)
         unit: ir.Unit
         built: ssa.Unit
+        (* The unit's global variables, by id (walk.globalVariables): those its
+         * top-level bodies bind that functions or other bodies name, which
+         * live in static data rather than in values or slots *)
         globals: hashMap.T(Int Bool)
-        (* The symbols of the unit's global variables and functions, by id *)
+        (* The symbols of the unit's global variables and functions, by id,
+         * each made the first time it is asked for (globalSymbol, codeName),
+         * and every symbol so far made, so that a fresh one is unique *)
         globalSymbols: hashMap.T(Int String)
         codeNames: hashMap.T(Int String)
         usedNames: hashMap.T(String Bool)
@@ -70,7 +76,8 @@ export
          * the closures variables are bound to, by variable id *)
         closuresOf: hashMap.T(Int ir.OpMakeClosure)
         closureVars: hashMap.T(Int ir.OpMakeClosure)
-        (* String literals, as symbols *)
+        (* String literals' symbols, by text, and how many there are, which
+         * numbers the next *)
         strings: hashMap.T(String String)
         var stringCount: Int
         (* The tables of options of cases without components, by option
@@ -86,10 +93,16 @@ export
          * pointers and its module records, each symbol with its words *)
         roots: vector.T(RootEntry)
     end
+    (* The blocks of a loop: its head, where continue jumps, and the block
+     * after it, where break jumps *)
     Def LoopTargets = Tuple head: Int after: Int end
     (* A capture of a variable a let rec binds, stored once the let rec's body
      * has run: the environment, the capture's offset in it, and the atom *)
     Def DeferredCapture = Tuple env: Int offset: Int a: Atom end
+    (* The let rec being built: the variables it binds, by id, and the
+     * captures of them made so far. A closure of a let rec captures
+     * variables that the let rec has not bound yet (its own, or a sibling's),
+     * so the environment's words for them are stored after the body *)
     Def Deferred = Tuple vars: hashMap.T(Int Bool) captures: vector.T(DeferredCapture) end
     (* How a variable of the function being built is held: as SSA values (an
      * immutable variable), in a stack slot (a mutable one), at the location a
@@ -106,6 +119,7 @@ export
     Def Fn = Tuple
         u: UnitBuilder
         f: Function
+        (* The block instructions are emitted into *)
         var cur: Int
         (* The calls emitted so far that may collect, and the objects whose
          * initializing stores are being emitted, outermost first, each with
@@ -115,21 +129,35 @@ export
         initMarks: vector.T(Int)
         (* How each variable is held, by variable id *)
         bindings: hashMap.T(Int Binding)
+        (* Each join point's block, by its label, and how many parts (block
+         * parameters) each of the join's parameters takes. A join point is
+         * the IR's sJoin: a labelled continuation that a jump in its body
+         * enters with arguments, like a local function called only in tail
+         * position *)
         joins: hashMap.T(String Int)
-        (* The parts of each join point's parameters, by its label *)
         joinParts: hashMap.T(String Array(Int))
+        (* The blocks of each loop, by its label *)
         loops: hashMap.T(String LoopTargets)
         (* The function's IR closure (its environment's layout), if it is a
          * lifted function's *)
         closure: maybe.T(ir.OpMakeClosure)
+        (* The innermost let rec being built, if any *)
         var deferred: maybe.T(Deferred)
         (* The handler records of the trys entered, innermost last, and for
          * each loop and join point the number entered where it is defined *)
         handlers: vector.T(Int)
         labelDepth: hashMap.T(String Int)
     end
+    (* The symbol of f's code, qf_ and its name, made unique in the unit the
+     * first time it is asked for *)
     codeName(u: UnitBuilder f: ir.Function): String
+    (* The symbol of the global variable v, g_ and its name. The first time it
+     * is asked for, this also adds v's storage to the unit's static data,
+     * writable and zeroed, a word for each part (at least one), and to the
+     * root table if a part may be a pointer, so that the collector sees it *)
     globalSymbol(u: UnitBuilder v: Variable): String
+    (* The symbol of the read-only C string s, qs_ and a number, added to the
+     * unit's static data the first time s is asked for *)
     stringSymbol(u: UnitBuilder s: String): String
     (* The symbol of a read-only table of count words, word i i: as option
      * struct key's option of tag i, for cases without components, which only
@@ -209,12 +237,23 @@ export
     handlerState(fn: Fn v: Variable): Int
     (* The address of a mutable variable's slot (made the first time) *)
     slotOf(fn: Fn v: Variable): Int
+    (* A value of type t at an address, read or stored a part to a word, with
+     * no barrier. A location (a cell, or what a var or out parameter points
+     * to) holds a record or variant as its box's pointer
+     * (layout.shapeLocationRepresentation); writeValue stores the value
+     * itself, as a box or a global record holds it. A store to a location of
+     * no parts (an Ok's) stores nothing, whatever values it is given; else a
+     * count of values other than the parts' raises unsupported *)
     readLocation(fn: Fn address: Int t: Type): Array(Int)
     writeValue(fn: Fn address: Int t: Type values: Array(Int)): Ok
     writeLocation(fn: Fn address: Int t: Type values: Array(Int)): Ok
     (* The values a variable holds now *)
     read(fn: Fn v: Variable): Array(Int)
-    (* Binds or assigns a variable *)
+    (* Binds or assigns a variable: rebinds an immutable one to the values,
+     * and stores a mutable one's into its slot (made the first time), a
+     * global's into static data, or a var or out parameter's through its
+     * pointer, then with a barrier if the value may hold a pointer; raises
+     * unsupported for a handler's variable *)
     write(fn: Fn v: Variable values: Array(Int)): Ok
 
     (* Atoms *)

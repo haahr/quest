@@ -896,6 +896,14 @@ export
             end
         end
 
+    (* A call, e (into as for value). The type arguments of f(:A)(:B)(x) are
+     * gathered into one list, A then B, since the backend passes all of a
+     * function's type arguments at once. A call of a built-in function such
+     * as (+) or not is its primitive operation, and one of ordinal an
+     * opOrdinal; a call of a member of the standard library's arrayOp is the
+     * array operation itself (arrayOperation); any other is an opCall of its
+     * callee, a variable or a module's member, whose type as the call sees it
+     * the call records (calleeType) *)
     and call(l: Lowerer e: Expr into: maybe.T(Variable)): Atom =
         case e.form
             when exprApp with app then
@@ -1216,6 +1224,17 @@ export
             else begin value(l e none) ok end
         end
 
+    (* Lowers target := v, by what target is:
+     * - a variable held in a box (a var variable a closure captures, or a
+     *   phrase unit's slot): a store to the box's one component;
+     * - a mutable variable: an assignment;
+     * - an earlier input's var, in a phrase unit: a store to the field of
+     *   that input's record;
+     * - a tuple's var component or a record's var field: a store to it;
+     * - any other target, whose value is a location's address (an array's
+     *   element, say): a store at the address.
+     * In the last two, target's record, tuple, or address is evaluated
+     * before v *)
     and assign(l: Lowerer target: Expr v: Expr): Ok =
         begin
             let bound = boundVar(l target)
@@ -1280,6 +1299,17 @@ export
             end
         end
 
+    (* Lowers for i = start upto stop do body end (or downto) as a loop over
+     * a mutable counter. start and stop are evaluated once, before it; each
+     * iteration breaks when the counter has passed stop, binds i anew to the
+     * counter's value (an immutable variable, which closures in the body may
+     * capture), runs the body, and steps the counter by 1 (unless the body
+     * ended in a terminator). The loop's label is the one an exit in the
+     * body breaks to:
+     *     var c := start
+     *     loop L {
+     *       if c <= stop { let i = c; body; c := c + 1 } else { break L }
+     *     } *)
     and forLoop(l: Lowerer e: Expr): Ok =
         case e.form
             when exprFor with x then
@@ -1686,6 +1716,10 @@ export
             end
         end
 
+    (* Lowers the binding lv, echoing it if show: in a phrase unit, a slot's
+     * binding stores its value into the slot's box (boxesSlot), a recursive
+     * function's as a group of one (recSlots); any other binds a variable
+     * (plainLetValue) *)
     and letValue(l: Lowerer lv: typedAst.LetValue show: Bool): Ok =
         if boxedLet(l lv) andif lv.isRec andif lv.value.form?exprFun then
             recSlots(l array of lv end show)

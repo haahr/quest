@@ -1,32 +1,44 @@
 (* Quest Self-Hosted Compiler: Driver
  *
- * Runs the self-hosted compiler's phases on a Quest file, as the bootstrap
- * driver (bootstrap/python/quest_driver.py) runs the bootstrap's: `main
- * --stop-after PHASE FILE` prints the dump of PHASE (tokenize, parse, desugar,
- * or typecheck) in the bootstrap's format on standard output, and the
- * diagnostics on standard error, exiting with 1 if there are errors. The
- * interpret phase, the default, runs the program and prints its last phrase's
- * result (or, with --echo, every phrase's): compiled and run by the JIT
- * (questlang/jit), unless --no-jit, an interpreter's option (--stop-after
- * itself among them), or a driver that cannot host it asks for the tree-walking
- * interpreter; `-e PROGRAM` runs a program given as a string. The arguments
- * after FILE are the program's, as are those after a `--` (which is how `-e`
- * gets any). The codegen_c phase prints the program's C (with --print-result, a
- * C program that prints its last phrase's result, as compiled runs do), and
- * codegen_arm64 its arm64 assembly. A unit
- * file given without --stop-after is compiled alone: an interface file to its
- * .qi and C header, under --build-dir, else beside -o, else beside the file
- * (-c, which says so, is optional for a unit file). `-i` enters the REPL
- * (questlang/driver/repl) after running FILE, in its environment and frame;
- * with neither FILE nor `-e`, the driver enters the REPL when standard input is
- * a terminal, and otherwise runs the program standard input holds, as it does
- * for a FILE of `-`; the REPL's inputs run as programs do. `main compile FILE`
- * compiles the program to a binary (FILE without its .quest, or -o), as the
- * bootstrap's `quest compile` does: with --emit-c it writes the program's C
- * instead (to -o, else standard output), with --nogc it compiles without the
- * collector, and with -c it compiles the program into the build directory
- * without linking it. run_tests.py --self-hosted compiles it and checks it
- * against the bootstrap's goldens (docs/testing.md section 2.3). *)
+ * The quest command: it runs a program, prints a phase's output, compiles a
+ * unit file alone, builds a binary, or enters the REPL, as the command line
+ * asks (usageText lists the forms and options; the bootstrap counterpart is
+ * bootstrap/python/quest_driver.py). The forms:
+ *
+ * Running a program (FILE, -e PROGRAM, or - for standard input): the program
+ * is compiled and run by the JIT (questlang/jit), or by the tree-walking
+ * interpreter with --no-jit, an option only the interpreter has (such as
+ * --stop-after), or a driver that cannot host the JIT. It prints the last
+ * phrase's result, or every phrase's with --echo. The arguments after FILE,
+ * or after a --, are the program's (system.args). With neither FILE nor -e,
+ * the REPL (questlang/driver/repl) starts at a terminal, and otherwise
+ * standard input holds the program; -i enters the REPL after running FILE,
+ * in its environment and frame.
+ *
+ * Phases (--stop-after PHASE, --dump-after PHASE): the driver runs the
+ * phases through PHASE and prints its output (tokenize, parse, desugar, and
+ * typecheck in the bootstrap's format; the IR at a stage, or run; the SSA
+ * after a pass; the program's C or arm64 assembly; or the compiled program
+ * run) on standard output, and diagnostics on standard error, exiting with 1
+ * if there are errors. run_tests.py --self-hosted checks these outputs
+ * against the bootstrap's goldens (docs/testing.md section 2.3).
+ *
+ * A unit file (.int.quest, .mod.quest) given without a phase or -e is
+ * compiled alone (compileUnitFile; -c, which says so, is optional): an
+ * interface to its .qi and C header, a module to its C, object, and .qm,
+ * beside -o, else under --build-dir, else beside the file.
+ *
+ * Building (quest compile FILE, or a program with -o): the build engine
+ * (questlang/build) compiles the program and its modules separately, each
+ * only if stale, and links a binary, FILE without .quest or -o's; with -c it
+ * compiles them without linking. compile --emit-c writes the program's C
+ * (to -o, else standard output) instead, and --whole-program compiles the
+ * program and its modules as one unit, both without the engine. Object files
+ * given on the command line are linked with the program, which then runs
+ * compiled (run_c_compiled) unless a phase or -o is given.
+ *
+ * A worker of a parallel build is this program too, run with a worker's
+ * command line (build/workers) *)
 
 import
     questlang/common/location : questlang/common/Location
@@ -1167,6 +1179,19 @@ let compileUnitFile(): Ok =
         finish(bag sm)
     end;
 
+(* Runs the program given (a file, -e's, or standard input) through the
+ * pipeline's phases, as far as the command line asks (reaches), dumping each
+ * phase it shows. Each phase runs only if the ones before it found no errors:
+ * the tokenizer's errors stop it before parsing, a syntax error (raised as
+ * diagbag.fatalError) at once, and type errors before any backend. A program
+ * that type checks then goes to one of: the C or arm64 backend (codegen_c
+ * and the phases after it), the IR interpreter (run_ir_STAGE), the IR's
+ * dump alone (ir_STAGE), the JIT, or the tree-walking interpreter, which may
+ * go on into the REPL. The environment is set up for the backend: compiled
+ * code, and the JIT's, know imported modules through their interfaces
+ * (unless the whole program is one unit), with the build directory's
+ * artifacts (the JIT's in memory without --build-dir). finish prints the
+ * diagnostics and exits *)
 let run(): Ok =
     begin
         let source = if maybe.isSome(:String options.code) then
@@ -1287,7 +1312,12 @@ let buildProgram(): Ok =
         finish(bag sm)
     end;
 
-(* A worker of a parallel build compiles one module (build/workers) *)
+(* A worker of a parallel build compiles one module (build/workers). A
+ * program goes to the build engine when it is to be built into a binary
+ * (compile, or -o) and nothing asks for another path: no whole program, no
+ * phase or dump, no --echo, no compile --emit-c or --print-result, and a file
+ * rather than -e or standard input; anything else is run. A unit file is
+ * compiled alone unless a phase or -e asks for it to be run *)
 if workers.isUnitMode(system.args) then
     workers.unitMain(system.args)
 else

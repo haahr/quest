@@ -7,6 +7,8 @@ imports (load_module_for_interpreter). Primitive operations and the standard
 library's runtime errors are quest.interpreter.primitives', and printing values
 by their types quest.interpreter.formatting's; the IR interpreter
 (quest.interpreter.ir_interp) shares them.
+
+The self-hosted counterpart is questlang/interpreter/treewalk.
 """
 
 from __future__ import annotations

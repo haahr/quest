@@ -72,6 +72,12 @@ export
             maybe.unwrap(:Array(Int) found)
         end
 
+    (* The values of o, emitted at fn.cur, in the form the variable result
+     * holds them (vals.varParts: a boxed record or variant as its box's
+     * pointer, an unboxed tuple as its components). result is the variable a
+     * let binds, or none for a do, whose value is dropped. Many operations
+     * (making a record, an option, or an array, say) take the type of their
+     * value, and whether it is boxed, from result, and so require one *)
     let rec operation(fn: vals.Fn o: ir.Op result: maybe.T(Variable)): Array(Int) =
         case o
             when opAtom with x then vals.atom(fn x.atom)
@@ -334,6 +340,10 @@ export
             end
         end
 
+    (* Emits s at fn.cur, leaving fn.cur at the block where control goes on
+     * after it, which is terminated if s cannot fall through (a return, a
+     * jump, a raise). A statement after a terminator is unreachable, and
+     * emits nothing *)
     let rec statement(fn: vals.Fn s: ir.Stmt): Ok =
         if vals.terminated(fn) then
             (* Code after a terminator is unreachable *)
@@ -379,6 +389,14 @@ export
                     leaveTo(fn labelDepth(fn x.label))
                     vals.jump(fn hashMap.find(:String :vals.LoopTargets fn.loops x.label).head vals.noValues)
                 when sJoin with x then
+                    (* A join point (ir.sJoin) is a block k with a block
+                     * parameter for each part of each of its parameters: the
+                     * values each jump to it passes, which it receives as a
+                     * function receives arguments. The body is built first,
+                     * where a jump to the label goes to k (sJump, below); then
+                     * the continuation at k. Both fall through to after. The
+                     * number of trys entered here is kept, so that a jump
+                     * from inside a try in the body leaves that try first *)
                     let k = newBlock(fn)
                     let received = array of(extent x.params vals.noValues)
                     let counts = array of(extent x.params 0)

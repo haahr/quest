@@ -4,9 +4,9 @@ import
     writer: Writer
 export
     (* A value packaged with its type (Cardelli, Typeful Programming section
-       9.1). His appendix writes the component unnamed (Auto A::TYPE with :A
-       end), but an unnamed component cannot be selected, so this follows
-       section 9.1 *)
+     * 9.1). His appendix writes the component unnamed (Auto A::TYPE with :A
+     * end), but an unnamed component cannot be selected, so this follows
+     * section 9.1 *)
     Def T = Auto A::TYPE with a: A end
     (* Exception raised by be on a type mismatch, and by copy, intern, and
      * extern when they fail *)
@@ -16,10 +16,21 @@ export
     (* The value packaged in d, if its type is a subtype of A; otherwise raise
      * error *)
     be(A::TYPE d: T): A
-    (* Make a copy of a dynamic object *)
+    (* A new dynamic value with d's type and d's value. The copy is shallow:
+     * a mutable value inside (a record, an array) is shared with d, not
+     * copied *)
     copy(d: T): T
-    (* Read a dynamic object from an input reader stream *)
+    (* Read a dynamic value from rd, as one JSON document that extern wrote
+     * (docs/dynamic.md section 2), with the sharing and cycles it had when
+     * written (section 2.5). Raises error if the document is malformed or its
+     * types or values do not fit (section 2.6) *)
     intern(rd: reader.T): T
-    (* Write a representation of a dynamic object to an output writer stream *)
+    (* Write d to wr as one JSON document holding its type and its value
+     * (docs/dynamic.md section 2), which intern reads back. Objects reached
+     * more than once are written once, so sharing and cycles within d are
+     * kept (section 2.5), but not across separate calls. Raises error if d
+     * holds a value that cannot be written: a function, reader, writer, or
+     * exception, or a value of a type the format cannot encode (section
+     * 2.6) *)
     extern(wr: writer.T d: T): Ok
 end

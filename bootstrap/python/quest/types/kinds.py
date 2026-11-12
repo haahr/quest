@@ -1,4 +1,12 @@
-"""Quest Kind Synthesis, Checking, Well-Kindedness, and Operator Signatures."""
+"""Kinds: the well-formedness of kinds, kind synthesis and checking of types,
+and the resolution of a type to the record, variant, option, or tuple type it
+is bounded by (resolve_record_bound, ...). A kind is the type of a type (TYPE,
+POWER(B) for the subtypes of B, or ALL(X::K1) K2 for a type operator), and
+kind checking rejects, say, Int(Bool), or a type argument outside its
+parameter's bound. A kind error raises KindError.
+
+The self-hosted counterpart is questlang/types/kinds; docs/type-system.md §3.1
+gives subkinding."""
 
 from __future__ import annotations
 

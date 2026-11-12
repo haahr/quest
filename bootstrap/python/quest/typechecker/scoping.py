@@ -19,6 +19,8 @@ What it checks:
 - **Type parameters.** A polymorphic function's type_param_ids are the
   quantifiers of its own type, and a type mentioning a function's type parameter
   occurs only inside that function.
+
+The self-hosted counterpart is questlang/typechecker/scoping.
 """
 
 from __future__ import annotations

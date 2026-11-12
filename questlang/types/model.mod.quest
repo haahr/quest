@@ -1052,7 +1052,13 @@ export
      * 7. Unfolding recursive types, and lazy evaluation
      * ====================================================================== *)
 
-    (* The nodes of a recursive group's bindings, shared by all of them *)
+    (* The nodes of a recursive group's bindings, shared by all of them. The
+     * nodes are hash-consed, so recGroupType(bindings i) is the same node
+     * whichever member asks; the first member to be asked stores one array in
+     * every member's siblings, and a member that asks later finds it there, or
+     * on the group's first node. t is stored to as well, for a t that is not
+     * hash-consed (it contains a metavariable) and so is not among the
+     * nodes *)
     let siblings(t: Type): Array(Type) =
         case t.form
             when typeRecGroup with x then

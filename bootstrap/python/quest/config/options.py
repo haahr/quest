@@ -1,4 +1,9 @@
-"""Compiler configuration options and settings."""
+"""The options of one run of the compiler's pipeline (quest/pipeline.py),
+which the driver (quest_driver.py) makes from its command line.
+
+The self-hosted compiler has no counterpart: its driver and build engine take
+their options directly (docs/compiler-organization.md §2). docs/pipeline.md
+§3.1 lists the options."""
 
 from __future__ import annotations
 
@@ -9,27 +14,56 @@ from typing import Any, Optional
 
 @dataclass
 class CompilerOptions:
-    """Compilation configuration options passed to compiler phases."""
+    """The options of one run of the pipeline, read by its phases (through
+    CompilerContext.options) and by the loaders and compilers they call
+    (through Environment.options). CompilerContext.create fills in build_dir,
+    current_dir, and program_dir when the driver leaves them unset."""
 
+    # The phase to stop after, whose output is printed (--stop-after)
     stop_after: Optional[str] = None
+    # Phases whose output is printed as the pipeline goes on (--dump-after)
     dump_after: set[str] = field(default_factory=set)
+    # Directories searched for imported units (-I; docs/modules.md §2.2)
     include_paths: list[Path] = field(default_factory=list)
+    # Print each top-level binding's signature and value, as the REPL does
     echo: bool = False
+    # Print source offsets in AST dumps, and literals' values in token dumps
     show_offsets: bool = False
     show_values: bool = False
+    # The grammar target the parse phase starts from (syntax/grammar.py,
+    # resolve_syntax_target); None for a program
     target: Optional[Any] = None
+    # Write C rather than a binary (--emit-c), and the file written (-o); both
+    # mark the run as C compilation (is_c_compilation_mode)
     emit_c: bool = False
     output_path: Optional[Path] = None
+    # Compile C with -DQUEST_NOGC, under which the collector never collects
     nogc: bool = False
+    # Compiled code and the IR interpreter print the last phrase's result, as
+    # the source interpreter does
     print_result: bool = False
+    # What run_c_compiled runs the binary with: its arguments, the exit status
+    # expected of it (any other is an error), its environment, and its
+    # standard input (nothing sets the last two, so the binary inherits the
+    # driver's)
     target_args: list[str] = field(default_factory=list)
     expected_exit: int = 0
     target_env: Optional[dict[str, str]] = None
     target_stdin: Optional[str] = None
+    # Objects (.o) named on the command line, linked into the binary
     extra_objects: list[Path] = field(default_factory=list)
+    # Where interface and module artifacts are built and reused
+    # (docs/build-process.md §3); it is searched first for imports
     build_dir: Optional[Path] = None
+    # Compile every module from source into the program's C (--whole-program;
+    # docs/build-process.md §1.2), rather than separately
     whole_program: bool = False
+    # Read by nothing: the driver passes --emit-deps to compile_unit_file
+    # itself
     emit_deps: bool = False
+    # The directory of the program's main file, against which unit names under
+    # no search root are made canonical (docs/modules.md §2.3), and the
+    # directory of the file being compiled
     program_dir: Optional[Path] = None
     current_dir: Optional[Path] = None
     # 'interface' or 'module' when the source is a unit file, whose phases

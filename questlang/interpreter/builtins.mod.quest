@@ -32,6 +32,9 @@ export
      * 1. Arguments and results
      * ====================================================================== *)
 
+    (* Raises an internal error for an argument v that is not of the runtime
+     * type named what (QString, QInt, ...): a builtin called with a value of
+     * the wrong type, which a checked program never does *)
     let wrong(A::TYPE what: String v: Value): A =
         model.internalError(:A "Expected argument of type " <> what <> ", got " <> model.typeName(v) maybe.none(:Int))
 
@@ -298,6 +301,9 @@ export
     let dynamicIntern(r: reader.T): Value =
         dynamicJson.decode(try readDocument(r) when reader.error then dynamicFailure(:String) end)
 
+    (* Fills table, when this module initializes, with the externals the
+     * interpreter provides, keyed by C symbol: all but quest_system_args,
+     * which resolveExternal makes when asked. The name is never read *)
     let filled =
         begin
             (* Writer *)

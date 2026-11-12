@@ -1,4 +1,21 @@
-"""Quest Compiler Error and Diagnostic Test Runner Framework."""
+"""The error tests (tests/errors/<phase>/, docs/testing.md §3): programs that
+must fail in one phase with the diagnostics they expect. run_error_test runs
+one, for testing/runner.py:
+
+1. The phases before the test's must succeed without diagnostics, so that a
+   test cannot pass on an error it was not written for (§3.4).
+2. The test's phase must fail. The driver's diagnostics, parsed from standard
+   error, are then matched against the test's golden .error file, lines of
+   patterns each of which must appear, if there is one; and otherwise against
+   the inline expectations, comments `(* ERROR: regexp *)` on the lines the
+   diagnostics are expected on, in the test or in the units beside it that it
+   imports (§3.3). Every expectation must match a diagnostic of its severity
+   on its line and in its file, and every diagnostic an expectation (§3.5).
+
+With the self-hosted driver, which can report several errors (docs/
+diagnostics.md §4.5), the first diagnostic is the one matched, and the others
+are checked against a file of further errors; a test of several errors
+(tests/self-hosted/errors) matches them all against its inline expectations."""
 
 from __future__ import annotations
 

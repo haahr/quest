@@ -4,6 +4,8 @@ tree-walking interpreter (quest.interpreter.treewalk), the IR interpreter
 (quest.interpreter.builtins): integer and real arithmetic and comparisons with
 the semantics compiled code has (C-style truncating division, real.error for NaN
 results), and the standard library's error exceptions.
+
+The self-hosted counterpart is questlang/interpreter/primitives.
 """
 
 from __future__ import annotations

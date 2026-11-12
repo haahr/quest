@@ -1,4 +1,10 @@
-"""L-Value and Reference Parameter Validation."""
+"""The check on the destination of a var or out argument (@x, @r.f, @a[i], or
+var(e)), the location a reference parameter reads and writes: Var(T) is
+invariant, since the callee both reads and writes T there, and Out(T) only
+writes, so any location of a supertype of T will do (docs/type-system.md
+§6.2.1, §6.5).
+
+The self-hosted counterpart is questlang/typechecker/lvalues."""
 
 from __future__ import annotations
 

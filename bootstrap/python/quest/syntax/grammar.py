@@ -1,4 +1,16 @@
-"""Quest Language Grammar Specification and AST Builders."""
+"""The Quest grammar, which the packrat engine of syntax/parser.py runs, and
+the helpers its rules' actions build AST nodes (syntax/ast.py) with.
+
+The module has three sections, by their banners: the syntax targets (the
+nonterminals, named as syntax errors show them: "expected: Type"); the helpers
+of the actions; and build_quest_grammar, which adds every target's rules when
+the module is imported. parse_quest_program parses a token list from a start
+target (resolve_syntax_target names them: program, phrase, type, ...).
+
+The self-hosted compiler splits this module in two: questlang/syntax/parser/
+grammar has the rules, in the same order and with the same targets' names, and
+questlang/syntax/parser/actions the actions. docs/syntax.md §3 describes the
+grammar."""
 
 from __future__ import annotations
 
@@ -331,6 +343,18 @@ def _build_curried_value_decl(
     return_type: Optional[ast.Type],
     val_expr: ast.Expr,
 ) -> ast.LetValueBinding:
+    """The binding of a value declaration `[var] f (g1) ... (gN) [: T] = e`
+    with N parameter groups, N possibly 0.
+
+    - With no groups, f is bound to e, annotated T.
+    - With one group of value parameters alone (`let f(x: Int): Int = e`), the
+      binding keeps the parameters and T: desugaring (syntax/desugar.py) turns
+      it into a function unless it is recursive or external, whose parameters
+      declare f's type.
+    - Otherwise (several groups, a group with type parameters, or `f()`), f is
+      bound to nested functions, one per group (`fun(A::TYPE) fun(x: A): T e`)
+      with T on the innermost, and annotated with the whole curried type
+      `All(g1) ... All(gN) T` when T is given."""
     def binding(value: ast.Expr, params: tuple[ast.FormalParam, ...], type_annot: Optional[ast.Type]):
         return ast.LetValueBinding(
             name=ident_token.lexeme,
@@ -477,6 +501,17 @@ def _module_import(entries: tuple[tuple[str, str], ...], colon_token: Token, ifa
 # ============================================================================
 
 def build_quest_grammar() -> None:
+    """Adds the rules of every syntax target, clearing any it had, so that
+    calling it again rebuilds the same grammar. The module calls it once, when
+    it is imported.
+
+    The subsections follow the levels: identifiers and paths, kinds, types,
+    signatures, values, bindings, declarations, branches, the type and kind
+    annotations (HasType, HasKind), and phrases and programs. Within a target,
+    the rules' order is part of the grammar (Parser tries them in order and
+    takes the first that matches), and each rule's comment gives its form.
+    T(kind) is a token passed to the action, and P(kind) one that is matched
+    but not passed."""
     for target in ALL_SYNTAX_TARGETS:
         target.rules.clear()
 

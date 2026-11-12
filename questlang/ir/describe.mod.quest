@@ -47,12 +47,18 @@ export
                     orif maybe.isSome(:String maybe.unwrap(:canonical.OptionIdentity rule).single)}
         end
 
+    (* The shape at which a value of t is held, if it is of kind: t's own, or
+     * for a type parameter (or abstract type) bounded by POWER(T), the shape
+     * the bound resolves to (layout.resolvedShape), since a value of a bounded
+     * type parameter is read through its bound's structure *)
     let heldShape(t: Type kind: shapes.ShapeKind): maybe.T(Shape) =
         begin
             let h = layout.resolvedShape(shapes.shape(t))
             if shapes.sameKind(h.kind kind) then maybe.some(:Shape h) else maybe.none(:Shape) end
         end
 
+    (* The structure of heldShape(t kind), raising unsupportedDescriptor if t
+     * is not held at a shape of kind *)
     let heldStructure(t: Type kind: shapes.ShapeKind): Type =
         begin
             let h = heldShape(t kind)
@@ -174,6 +180,10 @@ export
     let descVar(v: Variable): Descriptor = option descVar of Descriptor with let v = v end
     let descStatic(d: nodes.StaticDescriptor): Descriptor = option descStatic of Descriptor with let d = d end
 
+    (* The pass's state for a unit: the static data it lists, with the keys
+     * by which each descriptor and table is listed only once (see static,
+     * tagMap, and offsetTable), and the scope of the function, thunk, or
+     * inspect arm being described *)
     Let Describer = Tuple
         unit: nodes.Unit
         data: nodes.StaticData
@@ -196,8 +206,13 @@ export
 
     let newScope(): hashMap.T(Int Variable) = hashMap.new(:Int :Variable intEqual hash.int)
 
-    (* The static descriptor of t (a closed type, or a template), listed in the
-     * unit's static data *)
+    (* A static descriptor operand for t (a closed type, or a template), whose
+     * descriptor is listed once in the unit's static data. Types of one shape
+     * share one listed descriptor (keyed "s" and the shape's id), but an
+     * echo descriptor writes the alias names the type was written with, so
+     * each type has its own (keyed "e" and the type's id). The operand is a
+     * new node, apart from the one listed: a backend finds the listed one by
+     * the operand's type, as the bootstrap's describe does *)
     let static(d: Describer t: Type echo: Bool): nodes.StaticDescriptor =
         begin
             let key = if echo then "e" <> conv.int(t.id) else "s" <> conv.int(shapes.opaqueShape(t).id) end
@@ -317,6 +332,9 @@ export
 
     (* Static tables *)
 
+    (* The tag map from the variant type source's tag numbering to its
+     * supertype target's, listed once in the unit's static data for each pair
+     * of shapes and shared by the plans that use it *)
     let tagMap(d: Describer target: Type source: Type): nodes.TagMap =
         begin
             let key = conv.int(shapes.shape(target).id) <> "," <> conv.int(shapes.shape(source).id)
@@ -331,6 +349,11 @@ export
             end
         end
 
+    (* The offset table of a record laid out as lay viewed at view, listed
+     * once in the unit's static data for each pair of shapes. With registered
+     * (both types are closed), the table also gets its types' static
+     * descriptors, by which the runtime finds it for a dynamic value; a table
+     * once registered stays so for every literal that shares it *)
     let offsetTable(d: Describer view: Type lay: Type registered: Bool): nodes.OffsetTable =
         begin
             let key = conv.int(shapes.shape(view).id) <> "," <> conv.int(shapes.shape(lay).id)
@@ -614,6 +637,10 @@ export
             b.statements := statements
         end
 
+    (* s, given the descriptors and view maps it needs (as operation says
+     * for its operation), as are the statements in it, in place; or the
+     * statement that replaces it: an echo of a package, whose line its type
+     * gives, becomes the text echoed *)
     and statement(d: Describer s: Stmt): Stmt =
         begin
             let var replaced = maybe.none(:Stmt)

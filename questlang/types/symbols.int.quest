@@ -7,7 +7,9 @@
  * found by its id, globally. Value symbol ids come from a counter of their own
  * (newValueSymbol), so a value id can equal a type or kind id. This module is
  * below subtyping and the unit graph, which need symbols and scopes but not
- * the type-checking environment (types/env), which holds them. *)
+ * the type-checking environment (types/env), which holds them.
+ * docs/type-system.md §5 describes symbols and scopes, and §2.2 (Symbols
+ * resolve globally) the lookup by id. *)
 
 interface Symbols
 import
@@ -30,6 +32,13 @@ export
         type: model.Type
         isVar: Bool
         isOut: Bool
+        (* Whether it is a function's parameter, and the number of functions
+         * enclosing its declaration (a parameter counts its own function).
+         * They decide what a function body may use (docs/type-system.md
+         * §6.2.3): a closure may not capture a var or out parameter of an
+         * enclosing function, the address of its caller's location, and no
+         * function may use a top-level var directly
+         * (checker.checkCapturable) *)
         isParam: Bool
         functionDepth: Int
         symbolId: Int

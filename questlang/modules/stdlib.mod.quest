@@ -91,6 +91,13 @@ export
             if not(replaced) then vector.append(:graph.NamedScope into from[i]) end
         end
 
+    (* The scope of the standard interface name (StringOp, stringop, or its
+     * module's name, string), now registered in e under its own name and
+     * name; none if name is not a standard one. The first request in the
+     * process elaborates the interface in a fresh environment with no
+     * registry, so that the scope depends on no requester and can be cached
+     * for all; each requester then adopts the units that loading it loaded
+     * (its imports), sharing them rather than loading them again *)
     let ensureInterface(name: String e: env.T): maybe.T(Scope) =
         begin
             let target = hashMap.get(:String :String interfaceNames name)
@@ -115,6 +122,13 @@ export
             end
         end
 
+    (* The export scope of the standard module name (string), with its
+     * interface, now registered in e, and the module's record value declared
+     * in e's global scope, so that string.length works without an import;
+     * none if name is not a standard module. A standard module is never
+     * elaborated from source, as its code is the native library: its scope is
+     * made from its interface (elaboration.separatelyCompiledModuleScope),
+     * once for the process *)
     let ensureModule(name: String e: env.T): maybe.T(Scope) =
         begin
             let norm = hashMap.get(:String :String moduleNames name)
@@ -145,6 +159,8 @@ export
             end
         end
 
+    (* The registry an environment asks for a name it cannot find
+     * (env.lookupInterface, lookupModule, and lookupValue) *)
     let registry: env.Registry = tuple let ensureInterface = ensureInterface let ensureModule = ensureModule end
 
     let install(): Ok = env.setDefaultRegistry(maybe.some(:env.Registry registry))

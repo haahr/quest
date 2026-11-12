@@ -1,6 +1,8 @@
 """Printing values by their types, for the interpreters: a value as its static
 type shows it (Cardelli §5.3), as compiled code prints it from the type's
 descriptor, and a top-level phrase's result in interactive style.
+
+The self-hosted counterpart is questlang/interpreter/formatting.
 """
 
 from __future__ import annotations

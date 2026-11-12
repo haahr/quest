@@ -1,4 +1,9 @@
-"""Quest Source Position Tracking and Source Maps."""
+"""Source text and positions: reading source files a character per byte
+(BYTE_ENCODING), and SourceMap, which turns the 0-indexed character offsets
+that tokens, syntax, and errors carry into lines and columns, when an error is
+printed (docs/diagnostics.md §1).
+
+The self-hosted counterpart is questlang/common/location."""
 
 from __future__ import annotations
 

@@ -1,4 +1,23 @@
-"""Quest Diagnostic, Error, and Warning Reporting Pipeline."""
+"""The compiler's two forms of error, and how they are reported and printed.
+
+- An error is an exception, QuestCompilerError or a subclass (QuestTypeError,
+  and others' TokenizerError, ParserError, KindError, ...), carrying a message
+  and the offset and length of the text it is about. Code that finds an error
+  raises it, which stops the work it was part of. As it propagates out of an
+  imported unit, in_unit and at_import record the file it was raised in and
+  the imports that led there, since the raiser usually does not know them.
+- A Diagnostic is what the user sees: a severity, a message, labels marking
+  places in source files, notes, help, and an uncaught exception's frames.
+  diagnostic_of makes an error's. Each pipeline phase catches what its work
+  raised and emits the diagnostic to the compilation's DiagnosticSink, and the
+  driver prints them with DiagnosticRenderer: the location, the message, and
+  the source line with carets under the text.
+
+The module also names the frames of an uncaught exception's traceback
+(frame_name, trace_lines; docs/exceptions.md §2.3). The self-hosted
+counterparts are questlang/common/diagnostics and questlang/common/diagbag (the
+sink). docs/diagnostics.md §2 describes the two forms, §3 their reporting, and
+§5 the rendering."""
 
 from __future__ import annotations
 

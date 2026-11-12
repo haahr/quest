@@ -1,4 +1,6 @@
-"""Elaboration of exceptions: exception declarations, raise, and try."""
+"""Elaboration of exceptions: exception declarations, raise, and try.
+
+The self-hosted counterpart is questlang/typechecker/exceptions."""
 
 from __future__ import annotations
 

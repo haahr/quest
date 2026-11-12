@@ -1,4 +1,14 @@
-"""Generic, Data-Driven PEG / Packrat Parser Engine."""
+"""The parser engine: a generic packrat parser, which runs the Quest grammar
+(syntax/grammar.py) over a token list.
+
+The engine knows nothing of Quest; the grammar is data. It provides the grammar
+constructs (MatchToken, Optional, Repeated, Sequence, SepBy), SyntaxTarget, a
+nonterminal with its ordered Rules, and Parser, which parses a target and
+raises ParserError at the farthest token any construct reached when no parse
+consumes all the tokens. Parser's docstring explains the algorithm.
+
+The self-hosted counterpart is questlang/syntax/parser/engine. docs/syntax.md
+§3.1 describes the constructs."""
 
 from __future__ import annotations
 

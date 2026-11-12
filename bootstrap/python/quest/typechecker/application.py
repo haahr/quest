@@ -1,6 +1,8 @@
 """Elaboration of function application: monomorphic calls, polymorphic calls
 with explicit or inferred type arguments, and the lvalue arguments of var and
-out parameters."""
+out parameters.
+
+The self-hosted counterpart is questlang/typechecker/application."""
 
 from __future__ import annotations
 

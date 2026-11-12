@@ -790,6 +790,10 @@ class QTupleType(QType):
                 return f
         return None
 
+    # Never called: quest/types/__init__.py replaces every QType subclass's
+    # __eq__ with QType's, which raises, and this one's comparisons of
+    # components' types would raise too. Types are compared with is (they are
+    # interned) or is_type_equal.
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, QTupleType):
             return False
@@ -1208,7 +1212,16 @@ _REBUILD_TYPE[QAllType] = lambda node, values: QAllType(quantifiers=values[0], b
 
 @dataclass(frozen=True)
 class QAutoType(QType):
-    """Existential / automorphic type: Auto X::K with ... end."""
+    """An auto type, `Auto X::K with sig end` (or `Auto X <: B with ...`),
+    the type of auto values (docs/TypefulProgramming.md §4.6): each is a
+    witness type for X, of kind kind_bound, packed with values of the
+    signature's fields at that witness. It is existential: code using such a
+    value knows X only by its bound, except in an inspect branch, which is
+    chosen by comparing the value's type with the branch's at run time.
+
+    type_param and symbol_id are X's name and symbol id; X is bound in the
+    signature, so substitution leaves it alone there. The payload's tuple type
+    at a witness, or at no particular one, is auto_payload_type's."""
     type_param: str
     symbol_id: int
     kind_bound: QKind
@@ -1513,7 +1526,11 @@ _REBUILD_TYPE[QRecGroupType] = lambda node, values: QRecGroupType(bindings=value
 
 @dataclass(frozen=True)
 class QTypeVar(QType):
-    """Named type variable with unique symbol identity."""
+    """A name referring to a type symbol by its id: a type parameter, a
+    tuple type's type component, or an interface's abstract type (the comment
+    above lists the five kinds of named type). bound is its kind, when known.
+    Given an environment in which the symbol has a definition, evaluate_lazily
+    expands it to that definition."""
     name: str
     symbol_id: int
     bound: Optional[QKind] = None
@@ -1541,7 +1558,10 @@ _REBUILD_TYPE[QTypeVar] = lambda node, values: QTypeVar(name=values[0], symbol_i
 
 @dataclass(frozen=True)
 class QAbstractType(QType):
-    """An abstract type bounded by a kind."""
+    """A type known only by its bound, a kind, and never expanded: an auto
+    type's type parameter in the layout that stores auto values' payloads
+    whatever their witnesses (auto_payload_type). Unlike a QTypeVar, it has no
+    symbol in any environment to look up."""
     name: str
     symbol_id: int
     bound: QKind
@@ -1572,6 +1592,10 @@ class QPathType(QType):
     def __post_init__(self) -> None:
         _init_free_vars(self, self.bound)
 
+    # Not a symbol id: a hash of the root's symbol id and the field's name,
+    # which could equal a real one. Code that identifies path types keys them
+    # by (root_symbol_id, field_name), as SubtypeTrail.key does, or by
+    # identity, as kinds.py and canonical.py do.
     @property
     def symbol_id(self) -> int:
         return hash((self.root_symbol_id, self.field_name))

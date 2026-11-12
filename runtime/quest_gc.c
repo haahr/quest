@@ -903,6 +903,25 @@ static uintptr_t quest_gc_large_object(size_t b) {
     return 0;
 }
 
+/* Marks the object at obj (its first word, after its header) live, if it is
+ * not marked already, and queues it to have its words scanned. Because mark
+ * bits are sticky (only a full collection clears them), an old object is
+ * already marked during a minor collection, so this returns at once for it,
+ * and a minor collection marks young objects alone. Marking an object also:
+ *
+ *   - sets its header's old bit, which the object barrier tests
+ *     (quest_barrier), since an object that survives a collection is old;
+ *   - counts it in the live bytes and objects, the statistics, of which a
+ *     minor collection's increase, the young bytes that survived, sizes the
+ *     nursery (quest_gc_adapt_nursery);
+ *   - marks the lines it covers (128-byte units, the granularity at which
+ *     free memory is reused), header included, as in use: allocation
+ *     bumps only through lines that are not, and the slot barrier tests them
+ *     to tell an old object's slot from a young one's (for a large object,
+ *     every line of its run of blocks is marked).
+ *
+ * A pointer-free object (Q_LAYOUT_NOSCAN) is not queued, as it has nothing to
+ * scan. */
 static void quest_gc_mark_object(uintptr_t obj) {
     uintptr_t i = (obj - quest_gc_heap_lo) >> 3;
     uint8_t *mb = &quest_gc_marks[i >> 3];
@@ -1195,24 +1214,50 @@ static void quest_gc_flush_saved(const uintptr_t **saved) {
     }
 }
 
-/* The stack from here to its base, the registers first spilled into a
- * jmp_buf on it. The frame records are walked from this function's (a
- * record is the caller's frame pointer and the return address into the
- * caller, and on arm64 every function that calls keeps one): a caller whose
- * call a frame table lists is a mapped frame, of which only the words the
- * table gives are scanned, as pointers or as ambiguous words; everything
- * else, C's frames, the frames of functions that enter a try, and this
- * walk's own, is scanned conservatively, as the whole stack was before the
- * tables. A callee-saved register live across a mapped frame's call is
- * where the youngest frame after it saved it: `saved` has that place for
- * each of x19 to x28 while every frame since is mapped, the mapped frames'
- * prologues being described; past an unmapped frame, which may have saved a
- * register anywhere in its frame or not at all, the places known so far are
- * scanned as ambiguous words and forgotten, the frame itself being scanned
- * whole, so a register's value is always seen, precisely when the frames
- * between are mapped. A register no mapped frame has live is not scanned
- * where a mapped frame saved it, nor is a dead slot: the retention the tables
- * end (docs/arm64-performance-review.md section 3.2). */
+/* Marks from the stack, from this function's frame to the stack's base, the
+ * registers spilled into a jmp_buf on it first, so that a pointer held only
+ * in a register is seen too.
+ *
+ * Without frame tables (any platform but arm64, QUEST_GC_MAPS=0, or no unit
+ * compiled by the arm64 backend) the whole range is scanned conservatively:
+ * every word is an ambiguous root, marked if it may point at an object.
+ *
+ * With them, the walk follows the frame records up the stack. A frame record
+ * is the pair of words a function's prologue pushes: its caller's frame
+ * pointer (the caller's record's address) and its return address into the
+ * caller; on arm64 every function that calls keeps one, and x29 points to
+ * the innermost. For each caller, the return address identifies the call:
+ *
+ *   - Mapped frame (the call is listed in a registered frame table, written
+ *     by the arm64 backend): everything from the end of the last scan up to
+ *     this frame's undescribed low words (outgoing arguments, stack slots)
+ *     is scanned conservatively, then only the frame's words the table says
+ *     are live across the call, each as a pointer or an ambiguous word.
+ *     Dead slots are skipped, so a stale pointer in one keeps nothing alive
+ *     (docs/arm64-performance-review.md section 3.2).
+ *   - Unmapped frame (C, the runtime, this walk, and an arm64 function that
+ *     enters a try, whose handler reads slots liveness does not see): left
+ *     to the conservative scan of the next range, which covers it whole.
+ *
+ * Callee-saved registers (x19 to x28, which a function that uses one saves
+ * in its prologue and restores before returning) need care: the value a
+ * mapped frame has in one across its call is not in its own frame but where
+ * the nearest of the younger frames below it that saved the register saved
+ * it, or, if none did, still in the register. `saved` holds, for each
+ * register, the address of that place, as the walk upward learns it from
+ * each mapped frame's prologue description; a mapped frame's live registers
+ * are marked from there (where no frame saved one, it is still in the
+ * register, and so in the jmp_buf, which is scanned conservatively). An
+ * unmapped frame may save a register anywhere in its frame, or not at all,
+ * so past one the places known so far are marked as ambiguous words and
+ * forgotten; the unmapped frame itself is scanned whole, so wherever the
+ * value is, it is seen. A register is thus marked precisely when every frame
+ * between is mapped, and conservatively otherwise.
+ *
+ * A broken chain of records (one not aligned, not moving toward the base, or
+ * outside the stack) ends the walk; the rest of the stack, from the last
+ * mapped frame on, is scanned conservatively. Section 3.3 has the design;
+ * the frame table's form is above. */
 static void quest_gc_scan_stack(void) {
     jmp_buf regs;
     _setjmp(regs);
@@ -2543,18 +2588,38 @@ static void quest_gc_at_exit(void) {
     fflush(stderr);
 }
 
-/* Reads QUEST_GC_CHECK, a comma-separated list of modes (`layouts`, `roots`,
- * `poison`, `collect`, which only forces the collections the others would, or
- * one every QUEST_GC_COLLECT_EVERY allocations, `allocations`, `barriers`,
- * `stress`, `sites`, and `report`, which prints the counts at exit),
- * QUEST_GC_CHECK_INTERVAL, QUEST_GC_STRESS (allocations between a stress
- * collection and the next), QUEST_GC_STRESS_BUDGET (megabytes walked before
- * that count doubles), QUEST_GC_TRAP (the collection quest_gc_trap is called
- * before), QUEST_GC_STATS (1 for a summary at exit, `each` for a line per
- * collection too), QUEST_GC_MIN_HEAP (megabytes), QUEST_GC_NURSERY (megabytes
- * between minor collections; 0 for full collections alone), QUEST_GC_MAPS
- * (0 to scan every frame whole, the frame tables unread), and
- * QUEST_GC_CHECK_CHILDREN (the modes of the programs this one runs) */
+/* Reads the collector's options from the environment:
+ *
+ *   QUEST_GC_CHECK           a comma-separated list of checking modes:
+ *                            `layouts`, `roots`, `poison`, `collect` (which
+ *                            only forces the collections the others would,
+ *                            or one every QUEST_GC_COLLECT_EVERY
+ *                            allocations), `allocations`, `barriers`,
+ *                            `stress`, `sites`, `incremental` (a cycle's
+ *                            slice at every allocation, and its marks
+ *                            checked at its end, quest_gc_check_cycle), and
+ *                            `report` (the counts printed at exit); an
+ *                            unknown mode exits with status 70
+ *   QUEST_GC_CHECK_INTERVAL  bytes between the modes' forced collections
+ *   QUEST_GC_COLLECT_EVERY,  `collect`'s forcing by count (see
+ *   QUEST_GC_COLLECT_TRAP    quest_gc_collect_every)
+ *   QUEST_GC_STRESS          allocations between a stress collection and the
+ *                            next
+ *   QUEST_GC_STRESS_BUDGET   megabytes walked before that count doubles
+ *   QUEST_GC_INCREMENTAL,    whether and how full collections run as cycles
+ *   QUEST_GC_PAUSE,          (below)
+ *   QUEST_GC_PACE,
+ *   QUEST_GC_SLICE
+ *   QUEST_GC_TRAP            the collection quest_gc_trap is called before
+ *   QUEST_GC_STATS           1 for a summary at exit, `each` for a line per
+ *                            collection too
+ *   QUEST_GC_MIN_HEAP        megabytes
+ *   QUEST_GC_NURSERY         megabytes between minor collections; 0 for full
+ *                            collections alone
+ *   QUEST_GC_NEVER           set: never collect
+ *   QUEST_GC_MAPS            0 to scan every frame whole, the frame tables
+ *                            unread
+ *   QUEST_GC_CHECK_CHILDREN  the modes of the programs this one runs */
 static void quest_gc_read_options(void) {
     const char *modes = getenv("QUEST_GC_CHECK");
     if (modes != NULL) {

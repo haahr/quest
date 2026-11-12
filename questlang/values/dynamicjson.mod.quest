@@ -288,6 +288,12 @@ export
 
     let refs(n: Int): Array(Ref) = array of(n builtin("Ok"))
 
+    (* How the table refers to t (see Graph), adding the nodes of t and its
+     * parts to g the first time they are met. A type parameter of an enclosing
+     * auto type is a param node of its depth; any other type is keyed by the
+     * id of its structure and, if it mentions enclosing auto types'
+     * parameters, by which ones at which depths. Raises dynamic.error (fail)
+     * for a type the format cannot encode, or when g reaches maxTypeNodes *)
     let rec ref(g: Graph t: Type): Ref =
         begin
             let s = structure(t)
@@ -324,6 +330,11 @@ export
                 end
             end
         end
+    (* The ref of g's node for key, made the first time key is met: from
+     * structure s by makeNode if isStructure, else a param node of depth. The
+     * node's index is taken, holding a placeholder, before makeNode visits
+     * the parts, so that a part that leads back to s (a recursive type) finds
+     * the index and refers to it, which ends the walk *)
     and add(g: Graph key: String s: Type isStructure: Bool depth: Int): Ref =
         begin
             let existing = hashMap.get(:String :Int g.index key)
@@ -1079,12 +1090,21 @@ export
      * it is made, so that a later {"@ref": n} returns that same object, shared
      * as it was when written. *)
     Let Reader = Tuple
+        (* The type table's entries, by node index *)
         table: Array(json.Value)
+        (* The type of each node made so far, by index, kept only when it
+         * mentions no recursive type's binder and no enclosing auto type's
+         * parameter (a type that does is made again wherever it is reached) *)
         types: hashMap.T(Int Type)
+        (* The nodes whose types are being made, and those of them reached
+         * again while being made, which become recursive types *)
         active: hashMap.T(Int Bool)
         recursive: hashMap.T(Int Bool)
+        (* A fresh symbol id for each node, the binder of its recursive type
+         * if it becomes one, and the same ids as a set *)
         binderIds: Array(Int)
         binderIdSet: hashMap.T(Int Bool)
+        (* The objects read so far, by their @id *)
         objects: hashMap.T(Int Value)
         (* The type parameters of the auto types being built, innermost last,
          * which param nodes refer to; and the witnesses of the auto values
@@ -1278,6 +1298,12 @@ export
             end
         end
 
+    (* The ref that a value of type r0 is written at: r0 itself, unless it is
+     * an abstract node, which is followed to its representation, or a param
+     * node, which is followed to the witness of the auto value it is inside
+     * (from witnesses, by depth). Raises dynamic.error (fail) for a param
+     * with no such auto value, and for a chain longer than the table and the
+     * witnesses, which can only be a cycle *)
     let concreteRef(rd: Reader r0: Ref): Ref =
         begin
             let var r = r0

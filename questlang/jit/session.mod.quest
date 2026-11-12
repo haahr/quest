@@ -450,7 +450,11 @@ export
 
     (* A module a later input may name: an imported one, by its record, as
      * the unit imported it; a declared one, by its record, which the unit
-     * exported *)
+     * exported. Its entry in s.earlier, under the module's symbol, has an
+     * empty field: the module's value is its holder's whole record, not a
+     * field of it. rememberImport records each module an import item names
+     * whose record the unit imported; rememberModule records the module
+     * moduleName the unit declared *)
     let remember(s: T symbolId: Int holder: String recordType: tm.Type): Ok =
         begin
             hashMap.insert(:Int :lower.Earlier s.earlier symbolId tuple
@@ -495,6 +499,21 @@ export
             vector.toArray(:String shown)
         end
 
+    (* run's work, without its rollback of loaded modules. The input gets the
+     * next number N: its code is the module qj_N, and its source is kept
+     * under the name <repl>#N, which its code records in the sites of its
+     * raises, so that located can map a site back to this input's text. It
+     * is lowered against the bindings of the inputs that ran before it
+     * (s.earlier), the modules it imports that the driver does not link are
+     * loaded, and its unit is compiled and loaded. Its entry, qj_N_entry, runs
+     * under os/code's call, which catches any exception it raises; the
+     * exception becomes a raised outcome, and the input's bindings are not
+     * recorded. If it returns, each of its top-level bindings (but a
+     * redefinition's, which stores into an earlier input's box) and each
+     * module it declares or imports is recorded in s.earlier, as a field of
+     * qj_N's record or a module's own record, for later inputs to name. With
+     * capture, what its phrases showed is read from its qj_N_echo string.
+     * Raises unsupported for what cannot be lowered, compiled or loaded *)
     let runInput(s: T program: typedAst.Program sourceMap: location.SourceMap echo: Bool printResult: Bool
         capture: Bool): Outcome =
         begin

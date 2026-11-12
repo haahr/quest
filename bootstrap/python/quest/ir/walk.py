@@ -2,7 +2,9 @@
 statement contains, the variables it binds, the atoms it uses, and the global
 variables of a unit; and the IR's explicit traversal, which every walker of
 nodes' fields uses (fields_of and rebuild, contents, replace_vars, view_map_of),
-with a case for each class of node."""
+with a case for each class of node.
+
+The self-hosted counterpart is questlang/ir/walk."""
 
 from __future__ import annotations
 

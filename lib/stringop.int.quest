@@ -1,33 +1,44 @@
 interface StringOp export
     (* Exception raised on string manipulation errors *)
     error: Exception
-    (* Allocate a new string of given size initialized with character init *)
+    (* Allocate a new string of given size initialized with character init;
+     * raises error if size < 0 *)
     new(size: Int init: Char): String
     (* Test whether a string is empty (length 0) *)
     isEmpty(string: String): Bool
     (* Return the byte length of a string *)
     length(string: String): Int
-    (* Extract the character at 0-based index from string *)
+    (* Extract the character at 0-based index from string; raises error
+     * unless 0 <= index < length(string) *)
     getChar(string: String index: Int): Char
-    (* Update the character at 0-based index in string *)
+    (* Update the character at 0-based index in string, in place; raises
+     * error unless 0 <= index < length(string) *)
     setChar(string: String index: Int char: Char): Ok
-    (* Extract substring starting at start offset of given size *)
+    (* A new string of the size characters of source from offset start;
+     * raises error if size < 0 or the range is not within source *)
     getSub(source: String start: Int size: Int): String
-    (* Copy substring from source into dest buffer at destStart *)
+    (* Copy sourceSize characters of source from sourceStart into dest, in
+     * place, from destStart (the two may be the same string, overlapping);
+     * raises error if sourceSize < 0 or either range is not within its
+     * string *)
     setSub(dest: String destStart: Int source: String sourceStart: Int sourceSize: Int): Ok
     (* Concatenate two strings *)
     cat(s1: String s2: String): String
-    (* Concatenate substrings of two strings *)
+    (* Concatenate substrings of two strings, each given by start and size;
+     * raises error if a size is negative or a range is not within its
+     * string *)
     catSub(s1: String start1: Int size1: Int s2: String start2: Int size2: Int): String
     (* Concatenate an array of strings into a single string *)
     conc(a: Array(String)): String
     (* Test if two strings have equal contents *)
     equal(s1: String s2: String): Bool
-    (* Test if two substrings have equal contents *)
+    (* Test if two substrings have equal contents; raises error as catSub
+     * does *)
     equalSub(s1: String start1: Int size1: Int s2: String start2: Int size2: Int): Bool
-    (* Test if string s1 lexicographically precedes or equals s2 *)
+    (* Test if string s1 precedes or equals s2, comparing bytes as unsigned
+     * numbers, a prefix before the longer string *)
     precedes(s1: String s2: String): Bool
-    (* Test if substring of s1 lexicographically precedes or equals substring of
-     * s2 *)
+    (* Test if substring of s1 precedes or equals substring of s2, as
+     * precedes compares; raises error as catSub does *)
     precedesSub(s1: String start1: Int size1: Int s2: String start2: Int size2: Int): Bool
 end

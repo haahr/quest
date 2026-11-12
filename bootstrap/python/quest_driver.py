@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Quest Compiler Unified CLI Driver.
+"""The bootstrap compiler's command-line driver, which ./questboot runs.
 
-Executes compiler phases sequentially, supporting early exit (--stop-after),
-intermediate inspection (--dump-after), inline execution (-e), and include paths
-(-I).
+run_driver interprets a program, compiles and runs it, dumps its phases
+(--stop-after, --dump-after), or starts the REPL; run_compile (`questboot
+compile`) compiles a program to a binary or to C. The self-hosted counterpart
+is questlang/driver/main; docs/pipeline.md §4 describes the command line.
 """
 
 from __future__ import annotations
@@ -527,8 +528,28 @@ def run_driver(args: list[str]) -> int:
 
 
 def run_compile(args: list[str]) -> int:
-    """Executes the compile subcommand: translates Quest to C and invokes host
-    compiler."""
+    """Runs `questboot compile` on its arguments args (the command line after
+    `compile`), which compiles a program to a binary or to C, and returns the
+    exit status. docs/pipeline.md §4.2 describes the command line.
+
+    - Files ending in .o, .a, .dylib, or .so are objects to link; at most one
+      other file is the source, or the -e code, or standard input (`-`, or no
+      file when standard input is not a terminal). An interface or module file
+      goes to run_unit_file, which compiles it alone.
+    - A program file without --whole-program, --emit-c, --stop-after,
+      --dump-after, --echo, or --print-result is built by the BuildEngine with
+      separate compilation (docs/build-process.md §1.1); with -c it is
+      compiled to an object but not linked.
+    - Otherwise the compile pipeline translates the whole program to C, and
+      prints the dumps asked for and the diagnostics. Unless it stopped after
+      a phase, the C is written (--emit-c: to -o, or to standard output), or
+      compiled by the host C compiler and linked with the modules it imports,
+      built as separate compilation builds them, and the objects given.
+
+    The binary is -o, or the source's name without .quest (a.out for -e code
+    or standard input). The status is 0 on success, 70 (EX_SOFTWARE) for an
+    internal compiler error, and 1 for any other error. Unlike run_driver, it
+    never runs the program."""
     pipeline = compile_pipeline()
     available_phases = pipeline.phase_names()
 

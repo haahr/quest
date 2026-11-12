@@ -21,6 +21,8 @@ type's structure, which this module exposes:
 
 The passes and the C printer use these and shapes, not the type checker's
 normalizing functions.
+
+The self-hosted counterpart is questlang/ir/written.
 """
 
 from __future__ import annotations

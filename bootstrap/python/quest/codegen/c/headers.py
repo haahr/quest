@@ -8,6 +8,8 @@ by C compilation when it needs it: compiling an interface file
 interface's header (ensure_imported_interface_header). A header is up to date
 when it is at least as new as its .qi, which is rebuilt whenever the interface's
 source or an interface it depends on changes (docs/build-process.md §5).
+
+The self-hosted counterpart is questlang/codegen/c/headers.
 """
 
 from __future__ import annotations

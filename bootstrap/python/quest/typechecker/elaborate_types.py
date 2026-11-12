@@ -1,4 +1,16 @@
-"""Quest Syntactic AST to Semantic Type and Kind Elaboration."""
+"""Elaboration of types and kinds: types and kinds as written (ast.Type,
+ast.Kind) become the checker's semantic ones (QType, QKind, types/model.py),
+with every name resolved to its symbol, and type and kind declarations become
+symbols in the environment's current scope.
+
+The sections, by their banners: kinds (elaborate_kind); types (elaborate_type,
+whose docstring describes the walk); and declarations, among them simultaneous
+and mutually recursive groups (elaborate_type_binding_group,
+elaborate_mutual_rec_type_group, elaborate_rec_type_operators;
+docs/type-system.md §3.4). An error raises QuestTypeError or KindError at the
+syntax at fault.
+
+The self-hosted counterpart is questlang/typechecker/elaboratetypes."""
 
 from __future__ import annotations
 

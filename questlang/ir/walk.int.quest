@@ -29,11 +29,16 @@ export
     (* Every statement in body and the bodies it contains (and in the functions
      * funs statements bind, if intoFunctions), in order *)
     walkStatements(body: nodes.Body intoFunctions: Bool): vector.T(nodes.Stmt)
-    (* The variables (by id) a unit's main body and its modules' initializers
-     * bind outside loops and functions that are named elsewhere (by a
-     * function, or by another of those bodies) or are a module's members,
-     * exports, or record; the rest are locals of the body that binds them,
-     * which a backend can keep in registers *)
+    (* The variables (by id) that are globals: those that a unit's main body
+     * or a module's initializer binds, outside any loop or function, and that
+     * are named elsewhere (by a function, or by another of those bodies) or
+     * are a module's members, exports, or record. Functions read globals
+     * directly rather than capture them (questlang/ir/closure). The rest are
+     * locals of the body that binds them, which a backend can keep in
+     * registers. A variable bound in a loop is a local even at the top level:
+     * it is bound anew on each iteration, and the closures made in different
+     * iterations capture different values, where a global would hold only
+     * the last *)
     globalVariables(unit: nodes.Unit): hashMap.T(Int Bool)
     (* The closure each variable of a closed unit is known to hold, by the
      * variable's id, so that a call through it can call the closure's

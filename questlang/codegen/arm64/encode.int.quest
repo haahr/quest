@@ -68,12 +68,16 @@ export
     (* What cannot be encoded, naming it *)
     unencodable: Exception(String)
 
-    (* An instruction's word (one the printer writes as one line: not a
-     * pseudo-instruction, a label, or a directive) at offset at in the code,
-     * given each label's offset, and the offset of a symbol a call or branch
-     * reaches directly (~1 for one it does not), as the assembler resolves
-     * it: a function's call of itself, if it is not exported; a relocation
-     * it needs is added to relocs *)
+    (* The 32-bit word encoding the instruction op on registers regs at byte
+     * offset at in the code. op is one the printer writes as one line: not a
+     * pseudo-instruction (printer.expansion splits those first), a label, or
+     * a directive. labelOffset gives each label's offset in the code.
+     * localFunction gives the offset of a function that a call or branch to
+     * its symbol reaches with no relocation, ~1 for any other: as the
+     * assembler resolves calls, that is only a function's call of itself, if
+     * it is not exported. Each relocation the word needs (a call of another
+     * symbol, an adrp's page, a page offset) is appended to relocs, its field
+     * in the word left 0. Raises unencodable for a form with no encoding *)
     word(op: minst.Op regs: Array(Int) at: Int labelOffset: All(label: String) Int
         localFunction: All(symbol: String) Int relocs: vector.T(Reloc)): Int
 

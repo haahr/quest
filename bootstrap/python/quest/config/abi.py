@@ -8,11 +8,11 @@ mangling and calling conventions, and the runtime interface
 (runtime/quest_runtime.h). Bump it whenever any of these change incompatibly;
 tests/python/test_abi_corpus.py fails until you do.
 
-The self-hosted compiler declares the same constant, bumped when either
-compiler's contract changes (tests/python/test_abi_version.py checks that they
-agree), but each compiler uses only the artifacts it wrote (PRODUCER,
-has_current_abi). If the self-hosted compiler gains a Makefile, it should
-generate its copy from this file.
+The self-hosted compiler declares the same constant (questlang/config/abi),
+bumped when either compiler's contract changes (tests/python/test_abi_version.py
+checks that they agree), but each compiler uses only the artifacts it wrote
+(PRODUCER, has_current_abi). If the self-hosted compiler gains a Makefile, it
+should generate its copy from this file.
 """
 
 from __future__ import annotations

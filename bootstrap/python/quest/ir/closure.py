@@ -17,6 +17,8 @@ what the closures it makes capture. A closure that captures another of its own
 recursive group (or itself) is made in a let rec, whose closures refer to the
 variables being bound, so that the C printer fills in such captures once all the
 group's closures exist.
+
+The self-hosted counterpart is questlang/ir/closure.
 """
 
 from __future__ import annotations

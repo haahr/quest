@@ -12,8 +12,9 @@ import
     collections/vector : collections/Vector
     util/maybe : util/Maybe
 export
-    (* The representation an application of an unlinked module's type (none for
-     * a type) was written with *)
+    (* For a module the program does not link, the representation a
+     * serialized value gave one use of its type: rep is what the type applied
+     * to args (no args for a type that is not an operator) stands for *)
     Def Instance = Tuple args: Array(model.Type) rep: model.Type end
     (* An abstract type exported by a module: linked if the program links the
      * module; rep, its representation, once the module has been elaborated from
@@ -27,22 +28,33 @@ export
         instances: vector.T(Instance)
     end
 
+    (* The symbol id of globalName's opaque type, allocated on first use and
+     * the same for the rest of the process *)
     abstractTypeSymbolId(globalName: String): Int
+    (* Whether abstractTypeSymbolId allocated symbolId *)
     isAbstractTypeSymbol(symbolId: Int): Bool
     (* The global name a module abstract type's opaque type has its symbol id
      * for (abstractTypeSymbolId), if it is one *)
     abstractTypeGlobalName(symbolId: Int): maybe.T(String)
+    (* Records that a linked module exports globalName with opaque type
+     * typeVar, as each elaboration of its export scope does; the
+     * representation is unknown until the next function gives it *)
     registerExportedAbstractType(globalName: String typeVar: model.Type): Ok
+    (* Records rep as the representation of globalName, opaque type typeVar,
+     * once its module has been elaborated from source; marks it as a module
+     * compiled apart's while setRegisteringApart is on *)
     registerAbstractTypeRepresentation(globalName: String typeVar: model.Type rep: model.Type): Ok
     (* Records an abstract type read from a module the program does not link *)
     registerUnlinkedAbstractType(globalName: String typeVar: model.Type): ModuleAbstractType
+    (* The entry for an opaque type's symbol id *)
     abstractTypeBySymbol(symbolId: Int): maybe.T(ModuleAbstractType)
-    (* Each abstract type whose representation is known, that has no bound
-     * (which outside its module is seen at its bound), and whose module is not
-     * one compiled apart (registered while registering apart), by its symbol
-     * id, to its representation, as a substitution: in a whole program, the
-     * modules merged into its unit; and how many representations are known,
-     * which grows as modules are elaborated *)
+    (* A substitution from abstract types' opaque types, by symbol id, to
+     * their representations, with which a whole program sees through the
+     * abstract types of the modules merged into its unit (shapes.transparent
+     * lays such a type out as its representation). It holds each type whose
+     * representation is known, that has no bound (a bounded type is seen at
+     * its bound outside its module), and whose module was not compiled apart
+     * (registered while setRegisteringApart was on) *)
     representations(): model.Subst
     (* While on, the representations registered are of a module compiled apart
      * (a module file, not merged into the unit being compiled) *)
@@ -50,7 +62,11 @@ export
     (* Whether an abstract type has no bound, and so is laid out as its
      * representation is in a whole program, if that is known *)
     unbounded(e: ModuleAbstractType): Bool
+    (* How many representations have been registered: a caller that caches
+     * representations() (shapes.transparent) makes it again only when this
+     * has changed *)
     representationCount(): Int
+    (* The entry for a global name *)
     abstractTypeByName(globalName: String): maybe.T(ModuleAbstractType)
     (* The abstract types the module with canonical name canon exports, with
      * their representations, by name *)

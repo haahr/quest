@@ -150,8 +150,19 @@ export
         size: Size
         payload: Payload
     end
-    (* The descriptor of form f, its parts' references made by partOf (the
-     * static descriptor of a closed type), as C names structs *)
+    (* The contents of the static descriptor quest_type_<tag> for the
+     * descriptor form f (one of collectDescriptors' forms), as data both kinds
+     * of backend use: codegen/c/declarations prints it as a C initializer, and
+     * ssa/build/unit lays it out as bytes. It gives the descriptor's
+     * QTypeKind, its name (for most kinds, dump.shortTypeName of the type),
+     * the size of a value of the type as a variable holds it, and a payload
+     * with what the kind needs: a function type's parameters and result, a
+     * record's fields with their offsets, a variant's cases, and so on.
+     * Each part's descriptor is the one partOf gives for the part's type
+     * (callers pass descriptorForm, the shared descriptor), except that an
+     * echo-only form (one with display) refers to its parts' echo-only
+     * descriptors where they have them. Sizes and offsets are spelled with
+     * the struct names C gives them (see Size) *)
     describeDescriptor(f: DescriptorForm ctx: maybe.T(RecordNaming) partOf: All(t: model.Type) DescriptorForm): Descriptor
     (* ======================================================================
      * Offset tables and tag maps

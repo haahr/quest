@@ -1,9 +1,20 @@
 (* Quest Self-Hosted Compiler: The C Backend's Entry Points Interface
  *
- * bootstrap/python/quest/codegen/c/backend.py: a module file lowered to the IR,
- * the IR's passes run (codegen/backend), and the described IR printed as C, by
- * the C printer (codegen/c/printer) or, for a unit the ssac backend compiles
- * (codegen/choice), by the SSA's (questlang/ssa, codegen/ssac). *)
+ * The one place the driver, the build engine and the module compiler turn a
+ * typed program or module file into code, whichever backend compiles it. Each
+ * entry lowers the typed AST to the IR (ir/lower), runs the IR's passes
+ * (codegen/backend) and hands the unit to the backend named by its backend
+ * argument (codegen/choice):
+ *
+ *   c      the C printer (codegen/c/printer) prints the IR as C
+ *   ssac   the IR is built into SSA form (ssa/pipeline) and printed as C by
+ *          codegen/ssac
+ *   arm64  the same SSA is compiled to assembly (codegen/arm64/codegen)
+ *
+ * Each SSA backend has exceptions of its own for what it cannot compile; they
+ * are raised again as codegen/c/printer's unsupported, so that a caller
+ * handles one exception whatever the backend. The bootstrap's counterpart is
+ * bootstrap/python/quest/codegen/c/backend.py. *)
 
 interface Backend
 import
@@ -13,10 +24,10 @@ import
     questlang/ir/nodes : questlang/ir/Nodes
     util/maybe : util/Maybe
 export
-    (* A described unit's C, as the backend prints it (the arm64 backend's
-     * assembly): the C printer's includes the interface's header, if there is
-     * one. What a backend cannot compile raises codegen/c/printer's
-     * unsupported. *)
+    (* The code backend prints for a unit whose IR passes have run: C, or
+     * assembly for arm64. The C printer's output includes interfaceHeader, the
+     * path of the unit's interface header, if there is one. What the backend
+     * cannot compile raises codegen/c/printer's unsupported *)
     unitToC(unit: nodes.Unit interfaceHeader: maybe.T(String) backend: String): String
     (* The flags a backend's C is compiled with, besides the C compiler's
      * usual ones *)

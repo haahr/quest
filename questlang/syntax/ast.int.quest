@@ -59,8 +59,17 @@ export
      * ====================================================================== *)
 
     (* Components have the offset the bootstrap gives the corresponding node *)
+
+    (* A type parameter, X::K or X <: B; bound is always a kind, so X <: B is
+     * stored as X::POWER(B). An anonymous one (::K) is named _ *)
     Def TypeFormalOf(T::TYPE) = Tuple offset: Int name: String bound: T end
+    (* One parameter of All(...): a type parameter (isType) bounded as in
+     * TypeFormalOf, or a value parameter [var | out] x: T, bounded by POWER(T)
+     * and named _ if anonymous. So All(A::TYPE x: A) A has two quantifiers *)
     Def QuantifierOf(T::TYPE) = Tuple offset: Int name: String bound: T mode: ParamMode isType: Bool end
+    (* A value field of a tuple type, an interface, or an Auto type's
+     * signature: [var | out] x: T, or the anonymous :T (name none). The
+     * parser always gives typeSig; it is a maybe as in the bootstrap *)
     Def FieldSigOf(T::TYPE) = Tuple offset: Int name: maybe.T(String) typeSig: maybe.T(T) mode: ParamMode end
     Def RecordFieldSigOf(T::TYPE) = Tuple offset: Int name: String typeSig: T isVar: Bool end
     Def VariantFieldSigOf(T::TYPE) = Tuple offset: Int tag: String typeSig: T isVar: Bool end
@@ -90,36 +99,61 @@ export
 
     Def Rec TypeForm = Option
         (* Level 2: Kinds *)
+        (* TYPE, the kind of every type *)
         kindType
+        (* POWER(B), the kind of the subtypes of B *)
         kindPower with bound: Node(TypeForm) end
+        (* ALL(X::K) K', the kind of a type operator; the parser curries
+         * ALL(X::K Y::K) into one parameter per kindAll *)
         kindAll with paramName: String paramKind: Node(TypeForm) bodyKind: Node(TypeForm) end
+        (* A kind named by a DEF *)
         kindId with name: String end
+        (* I_K: the kind K of the interface imported as I *)
         kindManifest with interfaceName: String kindName: String end
 
         (* Level 1: Types *)
+        (* A named type, possibly qualified: Int is [Int], m.T is [m, T] *)
         typePath with path: vector.T(String) end
+        (* All(quantifiers) resultType: a function type, or a polymorphic one
+         * if a quantifier is a type. f(x: Int)(y: Int): Int has the type
+         * All(x: Int) All(y: Int) Int, one typeAll per parameter group *)
         typeAll with quantifiers: vector.T(QuantifierOf(Node(TypeForm))) resultType: Node(TypeForm) end
         typeTuple with fields: vector.T(SignatureOf(Node(TypeForm))) end
         typeRecord with fields: vector.T(RecordFieldSigOf(Node(TypeForm))) end
         typeOption with variants: vector.T(OptionFieldSigOf(Node(TypeForm))) end
         typeVariant with fields: vector.T(VariantFieldSigOf(Node(TypeForm))) end
+        (* Auto [A] HasKind with signature end, the type of an auto value (an
+         * existential: a hidden type component and values that use it,
+         * docs/syntax.md §3.9); typeParam is A, none if unnamed *)
         typeAuto with
             typeParam: maybe.T(String)
             kindBound: Node(TypeForm)
             signature: vector.T(FieldSigOf(Node(TypeForm)))
         end
+        (* Fun(X::K ...) [::K'] body, a type operator *)
         typeFun with
             params: vector.T(TypeFormalOf(Node(TypeForm)))
             resultKind: maybe.T(Node(TypeForm))
             body: Node(TypeForm)
         end
+        (* Rec(X HasKind) body, the recursive type body in which X stands for
+         * the whole *)
         typeRec with varName: String bound: Node(TypeForm) body: Node(TypeForm) end
+        (* T(A B), a type operator applied to arguments *)
         typeApp with constructor: Node(TypeForm) arguments: vector.T(Node(TypeForm)) end
+        (* left op right; the type checker accepts only -> (a one-parameter
+         * function type) and rejects any other operator *)
         typeInfix with left: Node(TypeForm) op: String right: Node(TypeForm) end
         typeArray with elementType: Node(TypeForm) end
+        (* Var(T), a mutable cell of T, and Out(T), a cell that may only be
+         * written (docs/type-system.md §6.5) *)
         typeVar with elementType: Node(TypeForm) end
         typeOut with elementType: Node(TypeForm) end
+        (* M_T: the type T of the interface or module imported as M (Counter_T
+         * after import counter : Counter) *)
         typeManifest with moduleName: String typeName: String end
+        (* external "C type", an opaque C type, allowed only in an unsound
+         * module (docs/syntax.md §3.8) *)
         typeExternal with cType: String end
     end
 
@@ -135,6 +169,8 @@ export
     Def TypeBinding = TypeBindingOf(TypeExpr)
     Def Signature = SignatureOf(TypeExpr)
 
+    (* A function's value parameter, [var | out] x: T; the parser always gives
+     * typeAnnot *)
     Def FormalParam = Tuple
         offset: Int
         name: String
@@ -142,6 +178,8 @@ export
         mode: ParamMode
     end
 
+    (* A name an inspect branch binds to a component of the auto value, with
+     * the supertype given for it, if any *)
     Def InspectBinder = Tuple
         name: String
         typeAnnot: maybe.T(TypeExpr)
@@ -149,7 +187,17 @@ export
 
     (* An import, which a program holds at its top level, and which the
      * bootstrap's parser also accepts as a declaration anywhere else (a block,
-     * a tuple, an argument, a module body), for its type checker to reject *)
+     * a tuple, an argument, a module body), for its type checker to reject.
+     *
+     * names are the local names of the modules imported (empty for an
+     * interface alone) and interfaceName the local name of the interface.
+     * modulePaths and interfacePath are the files' paths, or none, meaning
+     * the path is the local name itself (as for ascii : Ascii). For example
+     *
+     *     cnt : Cnt = util/counter : util/Counter
+     *
+     * has names [cnt], interfaceName Cnt, modulePaths [util/counter], and
+     * interfacePath util/Counter; docs/modules.md §4.3 lists the forms *)
     Def ImportItem = Tuple
         offset: Int
         names: vector.T(String)
@@ -186,6 +234,8 @@ export
         fieldDecl with val: E end
     end
     Def RecordBindingOf(E::TYPE) = Tuple offset: Int name: String value: E isVar: Bool end
+    (* when tags [with binder [: T]] then body, a branch for one or more
+     * tags; binder names the payload *)
     Def CaseBranchOf(E::TYPE) = Tuple
         offset: Int
         tags: vector.T(String)
@@ -194,6 +244,8 @@ export
         body: E
     end
     Def InspectBranchOf(E::TYPE) = Tuple offset: Int matchType: TypeExpr binders: vector.T(InspectBinder) body: E end
+    (* when exc [with binder [: T]] then body: excPattern is an expression
+     * for the exception caught, binder names its payload *)
     Def TryBranchOf(E::TYPE) = Tuple
         offset: Int
         excPattern: E
@@ -203,7 +255,7 @@ export
     end
 
     Def Rec ExprForm = Option
-        (* Literals *)
+        (* Literals, each with its value and its source text (~3 for -3) *)
         exprInt with value: Int lexeme: String end
         exprReal with value: Real lexeme: String end
         exprChar with value: Char lexeme: String end
@@ -213,11 +265,17 @@ export
 
         (* Identifiers & Arguments *)
         exprId with name: String end
+        (* external "symbol", a C symbol's value, in an unsound module
+         * (docs/syntax.md §3.8) *)
         exprExternal with symbol: String end
+        (* :T and ::K, a type or kind argument among a call's arguments (as in
+         * f(:Int x)) or a tuple's components *)
         typeArg with typeVal: TypeExpr end
         kindArg with kindVal: KindExpr end
 
         (* Control Flow & Blocks *)
+        (* begin ... end: declarations and statements (declExprStmt) in order.
+         * Its value is the last phrase's if that is a statement, else ok *)
         exprBlock with bindings: vector.T(Node(ExprForm)) end
         exprIf with
             cond: Node(ExprForm)
@@ -240,6 +298,10 @@ export
         end
 
         (* Functions & Calls *)
+        (* fun(...) [: T] body, for one parenthesized parameter group, which
+         * may hold type parameters (typeParams) as well as value parameters; a
+         * curried fun(x: Int)(y: Int) is nested exprFuns, the return type on
+         * the innermost *)
         exprFun with
             params: vector.T(FormalParam)
             returnType: maybe.T(TypeExpr)
@@ -247,13 +309,20 @@ export
             typeParams: vector.T(TypeFormal)
         end
         exprApp with func: Node(ExprForm) args: vector.T(Node(ExprForm)) end
+        (* left op right, for any infix operator (+, :=, andif, or one a
+         * program defines); desugar turns andif and orif into exprIf,
+         * a[i] := v into exprIndexAssign, and an operator that is not built in
+         * into a call of the function the operator names *)
         exprInfix with left: Node(ExprForm) op: String right: Node(ExprForm) end
 
         (* Aggregates *)
         exprTuple with fields: vector.T(TupleFieldOf(Node(ExprForm))) end
         exprRecord with fields: vector.T(RecordBindingOf(Node(ExprForm))) end
         exprArray with elements: vector.T(Node(ExprForm)) elementType: maybe.T(TypeExpr) end
+        (* array of(count initVal), count copies of initVal *)
         exprArrayRep with count: Node(ExprForm) initVal: Node(ExprForm) end
+        (* option tag of T [with payload] end, or with ordinal(e) in place of
+         * the tag: exactly one of tag and ordinalExpr is given *)
         exprOption with
             tag: maybe.T(String)
             optionType: TypeExpr
@@ -273,9 +342,16 @@ export
         (* Selection, Indexing, and References *)
         exprSelect with target: Node(ExprForm) field: String end
         exprIndex with target: Node(ExprForm) index: Node(ExprForm) end
+        (* target[index] := value; only desugar builds it *)
         exprIndexAssign with target: Node(ExprForm) index: Node(ExprForm) value: Node(ExprForm) end
+        (* The two arguments a var or out parameter accepts
+         * (docs/type-system.md §6.5): var(value), a new cell holding value,
+         * and @target, the mutable location target names (@x, @r.field).
+         * exprDerefCell takes the location, it does not read the cell *)
         exprVarCell with value: Node(ExprForm) end
         exprDerefCell with target: Node(ExprForm) end
+        (* target?tag, whether target has the tag, and target!tag, its payload
+         * (docs/syntax.md §3.7) *)
         exprVariantCheck with target: Node(ExprForm) tag: String end
         exprVariantAssert with target: Node(ExprForm) tag: String end
 
@@ -290,7 +366,11 @@ export
             branches: vector.T(InspectBranchOf(Node(ExprForm)))
             elseBranch: maybe.T(Node(ExprForm))
         end
+        (* exception name [: T] end, a new exception whose payload is a T (Ok
+         * without one) *)
         exprException with name: String typeAnnot: maybe.T(TypeExpr) end
+        (* raise exc [with payload] [as T] end; raise does not return, so as T
+         * gives it a type where no expected type does (Ok otherwise) *)
         exprRaise with exc: Node(ExprForm) payload: maybe.T(Node(ExprForm)) asType: maybe.T(TypeExpr) end
         exprTry with
             body: Node(ExprForm)

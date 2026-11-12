@@ -1,15 +1,19 @@
 (* Quest Self-Hosted Compiler: The JIT's Loader Interface
  *
  * docs/jit.md section 3.6: loads encoded units (codegen/arm64/encode) into
- * the running driver. A session reserves an arena for code, in which every
- * bl reaches every other, and a region for data; each unit is placed after
- * the last, its relocations resolved against its own symbols, the exported
- * symbols of the units loaded before it, and the driver's own (dlsym). A
- * call or address of a driver symbol goes through a GOT slot in the data
- * region, a call through a stub in the arena; a thread-local's slot holds the
- * driver's own descriptor of it, which dlsym gives. Each unit's data is a root
- * of the collector, and each function's code is registered, so that frames
- * in it are attributed. Nothing is freed. *)
+ * the running driver. A session reserves an arena for code, 128 MB, so that
+ * a bl (arm64's call instruction, which reaches 128 MB either way) from any
+ * function in it reaches any other, and a region for data; each unit is
+ * placed after the last, its relocations resolved against its own symbols,
+ * the exported symbols of the units loaded before it, and the driver's own
+ * (dlsym). The driver's code may be out of a bl's reach, so a call or address
+ * of a driver symbol goes through a GOT slot (an entry of a global offset
+ * table: a word in the data region that the loader fills with the symbol's
+ * full address), a call through a stub in the arena that jumps to the slot's
+ * address; a thread-local's slot holds the driver's own descriptor of it,
+ * which dlsym gives. Each unit's data is a root of the collector, and each
+ * function's code is registered, so that frames in it are attributed.
+ * Nothing is freed. *)
 
 unsound interface Loader
 import

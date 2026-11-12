@@ -1,12 +1,14 @@
-"""Quest Module, Interface, and Import Elaboration (Phase 6).
+"""The elaboration of interfaces, modules, and imports: Cardelli's module
+system (docs/modules.md).
 
-Implements Cardelli's module system for Quest:
 - Interface declarations with type formals, manifest types, and value
   signatures.
 - Module definitions with conformance checking (type equality, subkinding,
   subtyping).
 - Information hiding via opaque type variables for abstract interface types.
 - Top-level and module-level import resolution.
+
+The self-hosted counterpart is questlang/modules/elaboration.
 """
 
 from __future__ import annotations

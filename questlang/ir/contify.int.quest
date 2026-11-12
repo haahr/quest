@@ -1,16 +1,23 @@
 (* Quest Self-Hosted Compiler: Contification Interface
  *
- * Local functions made loops of their callers (docs/ir.md section 8.6,
- * MLton's contification): a function a funs statement binds, of value
- * parameters and no type parameters, whose every use is a call, one of them
- * outside its own body and the others in its body (not its functions') tail
- * calls of itself, becomes a loop at the outside call, if it calls itself or
- * is recursive through others; any other is left to the inliner, which never
- * inlines a recursive function. The call's result is a join point's
- * parameter, whose continuation is the rest of the caller's body;
- * the function's returns jump to it, its tail calls assign its parameters'
- * variables and continue the loop, and each iteration binds the parameters to
- * them, so that the function's own functions capture values as before. *)
+ * Contification (docs/ir.md section 8.6; the term is MLton's) turns a local
+ * function into a loop inside its one caller, so that each of its calls of
+ * itself costs a jump rather than a call, and no closure is made for it. A
+ * function qualifies when a funs statement binds it; it has value parameters
+ * only and no type parameters; control cannot fall off its body's end; and
+ * every use of it is a call: one outside its body, and the others tail calls
+ * of itself in its body (not in the functions it binds, nor in a try's
+ * region). It must also loop: call itself, or be recursive through other
+ * functions. One that does not is left to the inliner (which never inlines a
+ * recursive function).
+ *
+ * The outside call becomes a join point, whose parameter is the call's
+ * result and whose continuation is the rest of the caller's body, around a
+ * loop that runs the function's body. The function's returns jump to the join
+ * point; its tail calls assign their arguments to mutable variables, one per
+ * parameter, and continue the loop. Each iteration binds the parameters to
+ * those variables anew, so that the function's own functions capture
+ * immutable values, as before (contify.mod's transform shows an example) *)
 
 interface Contify
 import

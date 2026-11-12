@@ -1,6 +1,9 @@
-"""Elaboration of auto values (Cardelli's dynamic types, The Quest Language and
-System §4.6): their construction, inspect, and the closedness check on types
-used at run time."""
+"""Elaboration of auto values (Cardelli's dynamic types, Typeful Programming
+§4.6, docs/TypefulProgramming.md): their construction, inspect, and the
+closedness check on types used at run time.
+
+The self-hosted counterpart is questlang/typechecker/autovalues;
+docs/type-system.md §6.11 describes auto types and inspect."""
 
 from __future__ import annotations
 

@@ -2,7 +2,9 @@
 assignment), conditionals, for loops, and blocks. Desugaring
 (quest/syntax/desugar.py) has made conditionals of short-circuit operators and
 elsif chains, calls of other infix operators, and ExprIndexAssign of assignments
-to array elements."""
+to array elements.
+
+The self-hosted counterpart is questlang/typechecker/control."""
 
 from __future__ import annotations
 

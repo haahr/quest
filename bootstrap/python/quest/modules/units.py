@@ -1,7 +1,9 @@
 """Unit files: an interface file (.int.quest) holds one interface declaration,
 and a module file (.mod.quest) one module declaration (docs/modules.md).
 `parse_unit` reads the source of a unit or program that is to be type checked
-outside the pipeline."""
+outside the pipeline.
+
+The self-hosted counterpart is questlang/modules/units."""
 
 from __future__ import annotations
 

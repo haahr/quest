@@ -57,7 +57,16 @@ export
         exprIndexAssign with target: Expr index: Expr value: Expr end
         exprArray with elements: Array(Expr) end
         exprArrayRep with count: Expr initVal: Expr end
-        (* Mutable references and assignment *)
+        (* Mutable references and assignment. A reference is a node of type
+         * Var(T) that stands for a location rather than its contents, which
+         * is what a var or out argument passes (docs/type-system.md §6.2):
+         * exprVarCell, var(e), a fresh location holding e; exprSelectRef,
+         * @r.f, a record's var field; exprIndexRef, @a[i]; and
+         * exprTupleSelectRef, @t.f or @t.1, a tuple's var component, by its
+         * index among the value components (field is its name, if written
+         * by name). An exprVar of a var variable or parameter is a reference
+         * too. exprDerefCell reads one: a var variable used as a value is
+         * exprDerefCell of its exprVar, of type T *)
         exprVarCell with value: Expr end
         exprDerefCell with target: Expr end
         exprSelectRef with target: Expr field: String end
@@ -125,8 +134,12 @@ export
         bindDefKind with name: String symbol: symbols.KindSymbol end
         bindExprStmt with expr: Expr end
         bindInterface with name: String signatures: Array(Binding) scope: symbols.Scope end
-        (* The id of the value symbol the module's name binds, which uses of the
-         * module refer to *)
+        (* A module. isPrecompiled marks one compiled separately, whose
+         * typed module the loader makes from its interface rather than its
+         * source: its bindings are empty, and the lowering emits no code for
+         * it. cInit is always none (here and in the bootstrap); nothing reads
+         * it. symbolId is the id of the value symbol the module's name binds,
+         * which uses of the module refer to *)
         bindModule with
             name: String
             interfaceName: String

@@ -1,5 +1,20 @@
-"""Quest Abstract Syntax Tree (AST) definitions and S-Expression
-Pretty-Printer."""
+"""The abstract syntax tree that the parser (syntax/grammar.py) builds and the
+type checker elaborates, its printer, and its traversal.
+
+Nodes are frozen dataclasses deriving from ASTNode, each with the offset in the
+file of the text it was parsed from, by which errors are reported. The sections,
+by their banners: parameter modes and formals; the three levels of Quest, kinds
+(level 2), types and type operators (level 1), and values (level 0, Expr); and
+bindings, declarations, and programs. ast_dump prints a tree as the parse
+phase's S-expression, and ast_fields and rebuild_ast are the tree's one
+traversal, with a case for each class, which desugaring (syntax/desugar.py)
+walks it by.
+
+The self-hosted counterparts are questlang/syntax/ast, node for node, though
+each node there is a Node(Form) of a span and a syntactic form
+(docs/compiler-organization.md §3), and its printer, questlang/syntax/astprint,
+which prints the same text. docs/syntax.md §4
+describes the hierarchy and its printed form."""
 
 from __future__ import annotations
 

@@ -606,6 +606,15 @@ export
             vals.callQuest(fn "" vals.concat(array of code env end args) vals.noValues vals.noValues results)
         end
 
+    (* The value of a polymorphic value of no parameters applied to types (a
+     * generic empty list at Int, say). Such a value is compiled as a function
+     * of its type parameters' descriptors, so this calls it (a variable's
+     * closure, a module member's, or an imported module's exported function)
+     * with the type arguments' descriptors, and converts the generic result
+     * by the application's plan to the type the let binds (docs/ir.md
+     * section 8.3). An application whose instance is a function is by now a
+     * closure of its thunk (questlang/ir/thunks, docs/ir.md section 8.4.1),
+     * so one with thunk parameters raises unsupported *)
     let typeApp(fn: vals.Fn o: ir.OpTypeApp result: Variable): Array(Int) =
         begin
             if maybe.isSome(:Array(ir.DescriptorParam) o.thunkParams) then

@@ -1,16 +1,27 @@
 (* Quest Self-Hosted Compiler: The SSA's Escape Analysis Interface
  *
- * Allocations that never leave the function that makes them
- * (docs/ssa.md section 4.2): a call of quest_alloc of a constant size whose
- * pointers, the call's result and those derived from it by a constant offset,
- * a word of the allocation that holds only its own pointer, or a block
- * parameter only ever bound to one of them, are only loaded from and stored
- * to within its size, tested for being a proxy, which a fresh allocation
- * never is, or passed to a write barrier, which keeps no pointer and which a
- * stack slot, a root without a header word, does not need. Such an
- * allocation does not escape; any other use of one of its pointers (an
- * argument to any other call, a value stored elsewhere, a return, a
- * comparison) does. *)
+ * Finds the heap allocations that never leave the function that makes them,
+ * and makes each a stack slot instead, which costs no collector work
+ * (docs/ssa.md section 4.2). Inlining is what brings maker and user into one
+ * function: a tuple made only to be taken apart, say.
+ *
+ * A candidate is a call of quest_alloc of a constant size. Its pointers are
+ * the call's result and those derived from it: by a constant offset, by
+ * loading a word of the allocation that holds only its own pointer, or as a
+ * block parameter (the SSA's form of a variable merged at a join) only ever
+ * bound to one of them. The allocation does not escape when each use of its
+ * pointers is one of these:
+ *
+ * - the address of a load or store within its size (the value stored is one
+ *   of its pointers only in a word that holds its own pointer);
+ * - a test for being a proxy, which folds to false, since a fresh allocation
+ *   never is one. A proxy is a tagged pointer standing for a tuple or option
+ *   viewed at a supertype (docs/c-representation.md section 5.8);
+ * - an argument to a write barrier, which keeps no pointer and which a stack
+ *   slot, a root with no header word, does not need.
+ *
+ * Any other use (an argument to any other call, a value stored elsewhere, a
+ * return, a comparison) makes it escape. *)
 
 interface Escape
 import

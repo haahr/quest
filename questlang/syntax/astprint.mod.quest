@@ -3,7 +3,7 @@
  * An AST is printed in two steps: each node is converted to a generic
  * S-expression (S) that has the shape of the corresponding Python AST node,
  * field for field, and a single renderer prints S-expressions with the same
- * layout rules as ast_dump in bootstrap/python/quest/ast.py. *)
+ * layout rules as ast_dump in bootstrap/python/quest/syntax/ast.py. *)
 
 module astprint : AstPrint
 import
@@ -438,6 +438,15 @@ export
             else simpleField(b v)
         end
 
+    (* Appends v to b, at nesting depth indent (two spaces a level), laid out
+     * as ast_dump lays it out. A node whose fields are all simple goes on one
+     * line, its field values in order without their names, and nil fields
+     * left out: (ExprId 'x'). Otherwise the node's name ends its line and
+     * each field follows on a line of its own as :name value, except fields
+     * that isOmitted; a node value continues on that line, and the items of a
+     * tuple go one to a line below it. A tuple goes on one line if its items
+     * are all simple, where a nil item prints as None and a tuple of strings
+     * as Python's str prints it, with commas: ('a', 'b') *)
     let rec render(b: stringBuilder.T v: S indent: Int): stringBuilder.T =
         case v
             when nil then b.str("nil")

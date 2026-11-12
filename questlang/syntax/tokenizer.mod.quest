@@ -430,6 +430,13 @@ export
     let isOperatorChar(tok: T): All(c: Char) Bool =
         fun(c: Char): Bool isSymbolicChar(c) andif not({c is '~'} andif strutil.isDigit(peekChar(tok 1)))
 
+    (* The token after the cursor, skipping whitespace and comments, or eof at
+     * the end of the text; the first character picks the kind of token. A
+     * delimiter is always one character, so f(( is f, (, (; a run of symbolic
+     * characters is one token, so a+-b is a, +-, b, unless it is reserved
+     * punctuation such as := (looked up as a whole run, so :=: is one
+     * symbolicInfix). A character that can start no token is reported and
+     * skipped *)
     let rec readNextToken(tok: T): tokens.Token =
         begin
             skipWhitespaceAndComments(tok)
