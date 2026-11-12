@@ -1,0 +1,80 @@
+(* Self-Hosted Quest Compiler: Test Inline Write Barriers
+ *
+ * questlang/ssa/writeBarriers (docs/ssa.md section 4.1, docs/collector.md
+ * section 3.5) on units of the SSA written as text and read by
+ * questlang/ssa/parser, each printed before and after the pass and verified:
+ * an object's barrier after a store, a slot's barrier after a store, both in
+ * one block with instructions after them that the rest of the block keeps,
+ * and a barrier in a block that branches, whose terminator moves to the
+ * rest. Other calls are left. *)
+(* @skip-phase: tokenize, parse, typecheck, ir_core *)
+
+import
+    questlang/ssa/parser : questlang/ssa/Parser
+    questlang/ssa/printer : questlang/ssa/Printer
+    questlang/ssa/writeBarriers : questlang/ssa/WriteBarriers
+    questlang/ssa/verify : questlang/ssa/Verify
+    util/strutil : util/Strutil
+    writer : Writer
+;
+
+let emit(s: String): Ok = writer.putString(writer.output s);
+
+let show(title: String lines: Array(String)): Ok =
+    begin
+        emit("== " <> title <> "\n")
+        let u = parser.readUnit(strutil.joinArray("\n" lines) <> "\n")
+        emit(printer.formatUnit(u))
+        writeBarriers.inlineUnit(u)
+        emit("-- after inlineBarriers\n")
+        emit(printer.formatUnit(u))
+        try verify.checkUnit(u) when verify.verifyError with m then emit(m <> "\n") end
+    end;
+
+show("an object's barrier" array of
+    "function setFirst(%0: ptr, %1: ptr): ptr {"
+    "b0(%0: ptr, %1: ptr):"
+    "  store8 %0 + 0, %1"
+    "  call quest_barrier(%0)"
+    "  return %0"
+    "}"
+end);
+
+show("a slot's barrier" array of
+    "function setSlot(%0: ptr, %1: ptr): ptr {"
+    "b0(%0: ptr, %1: ptr):"
+    "  store8 %0 + 0, %1"
+    "  call quest_barrier_slot(%0)"
+    "  return %0"
+    "}"
+end);
+
+show("both in one block, with what follows them" array of
+    "function both(%0: ptr, %1: ptr, %2: ptr): int {"
+    "b0(%0: ptr, %1: ptr, %2: ptr):"
+    "  store8 %0 + 8, %2"
+    "  call quest_barrier(%0)"
+    "  %3: int = const 16"
+    "  %4: ptr = ptrAdd %1, %3"
+    "  store8 %4 + 0, %2"
+    "  call quest_barrier_slot(%4)"
+    "  %5: int = load8 %0 + 0"
+    "  call puts(%2)"
+    "  return %5"
+    "}"
+end);
+
+show("a barrier in a block that branches" array of
+    "function choose(%0: ptr, %1: ptr, %2: int): int {"
+    "b0(%0: ptr, %1: ptr, %2: int):"
+    "  store8 %0 + 0, %1"
+    "  call quest_barrier(%0)"
+    "  %3: int = const 0"
+    "  %4: int = ne %2, %3"
+    "  branch %4, b1(), b2()"
+    "b1():"
+    "  return %2"
+    "b2():"
+    "  return %3"
+    "}"
+end);

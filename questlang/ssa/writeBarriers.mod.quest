@@ -1,0 +1,135 @@
+(* Quest Self-Hosted Compiler: The SSA's Inline Write Barriers Implementation *)
+
+module writeBarriers : WriteBarriers
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+    questlang/codegen/runtimeFunctions : questlang/codegen/RuntimeFunctions
+    questlang/codegen/runtimeLayout : questlang/codegen/RuntimeLayout
+    collections/vector : collections/Vector
+    stringOp = string : StringOp
+export
+    Let Function = ssa.Function
+
+    let none = array of :Int end
+
+    (* Moves the instructions after index k of block b of f to a new block,
+     * which takes b's terminator, and drops the one at k (the call): b is
+     * left to be terminated by the expansion, whose paths end in a jump to
+     * the new block *)
+    let split(f: Function b: Int k: Int): Int =
+        begin
+            let blk = ssa.block(f b)
+            let rest = ssa.newBlock(f)
+            let moved = ssa.block(f rest)
+            for j = k + 1 upto {vector.length(:ssa.Inst blk.insts) - 1} do
+                vector.append(:ssa.Inst moved.insts vector.get(:ssa.Inst blk.insts j))
+            end
+            while vector.length(:ssa.Inst blk.insts) > k do begin let ignored = vector.pop(:ssa.Inst blk.insts) end end
+            moved.term := blk.term
+            moved.termLoc := blk.termLoc
+            blk.term := ssa.termNone
+            rest
+        end
+
+    (* Ends block b with a branch on c to block yes, else to no *)
+    let branch(f: Function b: Int c: Int yes: Int no: ssa.Target): Ok =
+        ssa.terminate(f b option termBranch of ssa.Terminator with
+            let cond = c let ifTrue = ssa.target(yes none) let ifFalse = no
+        end)
+
+    let jump(f: Function b: Int t: ssa.Target): Ok = ssa.terminate(f b option termJump of ssa.Terminator with
+        let target = t
+    end)
+
+    (* A call of the runtime's slow path name, of one argument, in block b,
+     * which then jumps to rest *)
+    let slowPath(f: Function b: Int name: String arg: Int rest: Int): Ok =
+        begin
+            let r = runtimeFunctions.function(name)
+            begin
+                let ignored = ssa.call(f b name array of arg end runtimeFunctions.signature(r)
+                    runtimeFunctions.resultTypes(r))
+            end
+            jump(f b ssa.target(rest none))
+        end
+
+    (* The object's barrier, of obj, ending block b: the header, which is a
+     * word further back for an option's payload, tested for old and not
+     * logged *)
+    let object(f: Function b: Int obj: Int rest: Int): Ok =
+        begin
+            let tagged = ssa.newBlock(f)
+            let test = ssa.newBlock(f)
+            let slow = ssa.newBlock(f)
+            let word = ssa.load(f b obj ~8 8 false ssa.typeInt)
+            let isTag = ssa.binary(f b ssa.opUlt word ssa.constant(f b runtimeLayout.constant("Q_BARRIER_TAG_LIMIT")))
+            branch(f b isTag tagged ssa.target(test array of word end))
+            jump(f tagged ssa.target(test array of ssa.load(f tagged obj ~16 8 false ssa.typeInt) end))
+            let header = ssa.addParam(f test ssa.typeInt)
+            let old = runtimeLayout.constant("Q_HEADER_OLD")
+            let both = old + runtimeLayout.constant("Q_HEADER_LOGGED")
+            let flags = ssa.binary(f test ssa.opAnd header ssa.constant(f test both))
+            branch(f test ssa.binary(f test ssa.opEq flags ssa.constant(f test old)) slow ssa.target(rest none))
+            slowPath(f slow "quest_barrier_log" obj rest)
+        end
+
+    (* The slot's barrier, of slot, ending block b: a slot in the heap, in a
+     * marked line, whose card is clean *)
+    let slot(f: Function b: Int slot: Int rest: Int): Ok =
+        begin
+            let marked = ssa.newBlock(f)
+            let card = ssa.newBlock(f)
+            let slow = ssa.newBlock(f)
+            let global = fun(b2: Int name: String t: ssa.Type): Int
+                ssa.load(f b2 ssa.symbolAddress(f b2 name) 0 8 false t)
+            let low = global(b "quest_gc_heap_lo" ssa.typeInt)
+            let high = global(b "quest_gc_heap_hi" ssa.typeInt)
+            let offset = ssa.binary(f b ssa.opSub ssa.emit(f b ssa.opPtrToInt array of slot end ssa.typeInt) low)
+            let inHeap = ssa.binary(f b ssa.opUlt offset ssa.binary(f b ssa.opSub high low))
+            branch(f b inHeap marked ssa.target(rest none))
+            let byteOf = fun(b2: Int table: String bits: String): Int
+                ssa.ptrAdd(f b2 global(b2 table ssa.typePtr)
+                    ssa.binary(f b2 ssa.opLshr offset ssa.constant(f b2 runtimeLayout.constant(bits))))
+            let line = ssa.load(f marked byteOf(marked "quest_gc_lines" "Q_GC_LINE_BITS") 0 1 false ssa.typeInt)
+            branch(f marked ssa.binary(f marked ssa.opNe line ssa.constant(f marked 0)) card ssa.target(rest none))
+            let cardAt = byteOf(card "quest_gc_cards" "Q_GC_CARD_BITS")
+            let clean = ssa.binary(f card ssa.opEq ssa.load(f card cardAt 0 1 false ssa.typeInt) ssa.constant(f card 0))
+            branch(f card clean slow ssa.target(rest none))
+            slowPath(f slow "quest_barrier_card" cardAt rest)
+        end
+
+    let isBarrier(i: ssa.Inst name: String): Bool =
+        ssa.isOp(i ssa.opCall) andif stringOp.equal(i.symbol name) andif {extent i.args is 1}
+
+    let inlineFunction(f: Function): Ok =
+        begin
+            let at = f.at
+            let var b = 0
+            (* An expansion moves the rest of its block to a new one, which
+             * the loop reaches in turn *)
+            while b < vector.length(:ssa.Block f.blocks) do
+                let blk = ssa.block(f b)
+                let var k = 0
+                let var expanded = false
+                while not(expanded) andif {k < vector.length(:ssa.Inst blk.insts)} do
+                    let i = vector.get(:ssa.Inst blk.insts k)
+                    let isObject = isBarrier(i "quest_barrier")
+                    if isObject orif isBarrier(i "quest_barrier_slot") then
+                        f.at := i.loc
+                        let rest = split(f b k)
+                        if isObject then object(f b i.args[0] rest) else slot(f b i.args[0] rest) end
+                        blk.termLoc := i.loc
+                        expanded := true
+                    end
+                    k := k + 1
+                end
+                b := b + 1
+            end
+            f.at := at
+        end
+
+    let inlineUnit(u: ssa.Unit): Ok =
+        for i = 0 upto {vector.length(:Function u.functions) - 1} do
+            inlineFunction(vector.get(:Function u.functions i))
+        end
+end

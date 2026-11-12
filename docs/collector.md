@@ -280,7 +280,9 @@ cannot be rewritten, so the frame walk treats such a register's value as ambiguo
   compiler's build showed its tables logged whole: the log's scan was 17.5 s of the build's 20.5 s of minor pauses,
   a hundred logged objects taking 26 ms late in the build. The log and the dirty list live outside the heap (as do
   the work list and, should evacuation be taken, the slot log), so the slow paths never collect and §1's rule that a
-  collection happens only inside an allocation holds.
+  collection happens only inside an allocation holds. Both fast paths are inline where they are compiled: C's from
+  `quest_runtime.h`, and arm64's and the JIT's from `ssa/writeBarriers` (ssa.md §4.1), which call the slow paths,
+  `quest_barrier_log` and `quest_barrier_card`, themselves; ssac calls the barriers, which its C compiler inlines.
 - **Stores through interior pointers** find no header at the address minus 8: a record's `var` field is stored
   through its payload pointer, and the payload sits after the box when the record was made in it, at the start of
   its allocation when it is a module's, and elsewhere when `quest_record_box` boxed a viewed record; `sStoreAt`

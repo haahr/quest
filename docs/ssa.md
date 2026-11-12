@@ -314,6 +314,19 @@ internal error.
   `QUEST_SKIP_PASSES=inlineAllocation` leaves the calls, which `quest_inline.o`'s definition of `quest_alloc` serves,
   for measuring the inline path (docs/collector.md step 3). The questlang test `ssa_allocations` shows functions before
   and after.
+- **Inline write barriers** (`ssa/writeBarriers`, `pipeline.inlineBarriers`), run by arm64 and the JIT after inline
+  allocation, and after the barrier check (§7), which reads the calls: each call of `quest_barrier` or
+  `quest_barrier_slot` becomes the fast path `runtime/quest_runtime.h` inlines into C (docs/collector.md §3.5), the
+  block split at the call as for an allocation. The object's barrier loads the word before the object, and the word
+  before that when the first is under `Q_BARRIER_TAG_LIMIT` (an option's tag before its payload), and branches to a
+  call of `quest_barrier_log` when the header has `Q_HEADER_OLD` and not `Q_HEADER_LOGGED`. The slot's barrier loads
+  `quest_gc_heap_lo` and `quest_gc_heap_hi`, and for a slot in the heap the line's mark byte (`quest_gc_lines`, by the
+  offset shifted by `Q_GC_LINE_BITS`) and then, if it is set, the card's byte (`quest_gc_cards`, by `Q_GC_CARD_BITS`),
+  calling `quest_barrier_card` for a clean card. The slow paths test again, so a call of them is complete. The globals
+  are loaded at each barrier: they change only when the heap grows, in a call that allocates. The constants are the
+  header's, through `codegen/runtimeLayout`, which `codegen_runtime_layout` checks against it. ssac keeps the calls,
+  which its C compiler inlines from the header. `QUEST_SKIP_PASSES=inlineBarriers` leaves the calls, which
+  `quest_inline.o` serves. The questlang test `ssa_write_barriers` shows functions before and after.
 
 Only value numbering removes values that become dead; parameters no load reads stay, which the trivial allocator gives
 slots, and linear scan none.

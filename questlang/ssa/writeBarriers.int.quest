@@ -1,0 +1,31 @@
+(* Quest Self-Hosted Compiler: The SSA's Inline Write Barriers Interface
+ *
+ * Expands each call of quest_barrier and quest_barrier_slot into the fast
+ * paths runtime/quest_runtime.h inlines into C (docs/collector.md section
+ * 3.5, docs/ssa.md section 4.1), for the arm64 backend and the JIT, which
+ * cannot inline them from the header; ssac's printer keeps the calls, which
+ * its C compiler inlines. Each expansion calls the runtime's slow path,
+ * quest_barrier_log or quest_barrier_card, only when the fast path finds
+ * that the object or the card needs it; the slow paths test again, so they
+ * are complete when called from code that does not inline the fast paths.
+ *
+ * The object's barrier loads the word before the object, and the word before
+ * that when the first is an option's tag (under Q_BARRIER_TAG_LIMIT), and
+ * calls quest_barrier_log if the header has Q_HEADER_OLD and not
+ * Q_HEADER_LOGGED. The slot's barrier takes the slot's offset from
+ * quest_gc_heap_lo; within the heap, and in a line whose mark byte
+ * (quest_gc_lines) is set, it loads the card's byte (quest_gc_cards) and
+ * calls quest_barrier_card if the card is clean. The heap's bounds and
+ * tables are loaded at each barrier: they change only when the heap grows,
+ * inside a call that allocates. The constants are the header's, through
+ * questlang/codegen/runtimeLayout, whose table a test checks against it.
+ *
+ * It runs after the barrier rule's check (questlang/ssa/barriers), which
+ * reads the calls. *)
+
+interface WriteBarriers
+import
+    ssa = questlang/ssa/nodes : questlang/ssa/Nodes
+export
+    inlineUnit(u: ssa.Unit): Ok
+end

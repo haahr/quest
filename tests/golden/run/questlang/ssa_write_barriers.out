@@ -1,0 +1,192 @@
+== an object's barrier
+function setFirst(%0: ptr, %1: ptr): ptr {
+b0(%0: ptr, %1: ptr):
+  store8 %0 + 0, %1
+  call quest_barrier(%0)
+  return %0
+}
+-- after inlineBarriers
+function setFirst(%0: ptr, %1: ptr): ptr {
+b0(%0: ptr, %1: ptr):
+  store8 %0 + 0, %1
+  %2: int = load8 %0 + ~8
+  %3: int = const 65536
+  %4: int = ult %2, %3
+  branch %4, b2(), b3(%2)
+b1():
+  return %0
+b2():
+  %5: int = load8 %0 + ~16
+  jump b3(%5)
+b3(%6: int):
+  %7: int = const 72339069014638592
+  %8: int = and %6, %7
+  %9: int = const 72057594037927936
+  %10: int = eq %8, %9
+  branch %10, b4(), b1()
+b4():
+  call quest_barrier_log(%0)
+  jump b1()
+}
+== a slot's barrier
+function setSlot(%0: ptr, %1: ptr): ptr {
+b0(%0: ptr, %1: ptr):
+  store8 %0 + 0, %1
+  call quest_barrier_slot(%0)
+  return %0
+}
+-- after inlineBarriers
+function setSlot(%0: ptr, %1: ptr): ptr {
+b0(%0: ptr, %1: ptr):
+  store8 %0 + 0, %1
+  %2: ptr = symbol quest_gc_heap_lo
+  %3: int = load8 %2 + 0
+  %4: ptr = symbol quest_gc_heap_hi
+  %5: int = load8 %4 + 0
+  %6: int = ptrToInt %0
+  %7: int = sub %6, %3
+  %8: int = sub %5, %3
+  %9: int = ult %7, %8
+  branch %9, b2(), b1()
+b1():
+  return %0
+b2():
+  %10: ptr = symbol quest_gc_lines
+  %11: ptr = load8 %10 + 0
+  %12: int = const 7
+  %13: int = lshr %7, %12
+  %14: ptr = ptrAdd %11, %13
+  %15: int = load1 %14 + 0
+  %16: int = const 0
+  %17: int = ne %15, %16
+  branch %17, b3(), b1()
+b3():
+  %18: ptr = symbol quest_gc_cards
+  %19: ptr = load8 %18 + 0
+  %20: int = const 9
+  %21: int = lshr %7, %20
+  %22: ptr = ptrAdd %19, %21
+  %23: int = load1 %22 + 0
+  %24: int = const 0
+  %25: int = eq %23, %24
+  branch %25, b4(), b1()
+b4():
+  call quest_barrier_card(%22)
+  jump b1()
+}
+== both in one block, with what follows them
+function both(%0: ptr, %1: ptr, %2: ptr): int {
+b0(%0: ptr, %1: ptr, %2: ptr):
+  store8 %0 + 8, %2
+  call quest_barrier(%0)
+  %3: int = const 16
+  %4: ptr = ptrAdd %1, %3
+  store8 %4 + 0, %2
+  call quest_barrier_slot(%4)
+  %5: int = load8 %0 + 0
+  call puts(%2)
+  return %5
+}
+-- after inlineBarriers
+function both(%0: ptr, %1: ptr, %2: ptr): int {
+b0(%0: ptr, %1: ptr, %2: ptr):
+  store8 %0 + 8, %2
+  %6: int = load8 %0 + ~8
+  %7: int = const 65536
+  %8: int = ult %6, %7
+  branch %8, b2(), b3(%6)
+b1():
+  %3: int = const 16
+  %4: ptr = ptrAdd %1, %3
+  store8 %4 + 0, %2
+  %15: ptr = symbol quest_gc_heap_lo
+  %16: int = load8 %15 + 0
+  %17: ptr = symbol quest_gc_heap_hi
+  %18: int = load8 %17 + 0
+  %19: int = ptrToInt %4
+  %20: int = sub %19, %16
+  %21: int = sub %18, %16
+  %22: int = ult %20, %21
+  branch %22, b6(), b5()
+b2():
+  %9: int = load8 %0 + ~16
+  jump b3(%9)
+b3(%10: int):
+  %11: int = const 72339069014638592
+  %12: int = and %10, %11
+  %13: int = const 72057594037927936
+  %14: int = eq %12, %13
+  branch %14, b4(), b1()
+b4():
+  call quest_barrier_log(%0)
+  jump b1()
+b5():
+  %5: int = load8 %0 + 0
+  call puts(%2)
+  return %5
+b6():
+  %23: ptr = symbol quest_gc_lines
+  %24: ptr = load8 %23 + 0
+  %25: int = const 7
+  %26: int = lshr %20, %25
+  %27: ptr = ptrAdd %24, %26
+  %28: int = load1 %27 + 0
+  %29: int = const 0
+  %30: int = ne %28, %29
+  branch %30, b7(), b5()
+b7():
+  %31: ptr = symbol quest_gc_cards
+  %32: ptr = load8 %31 + 0
+  %33: int = const 9
+  %34: int = lshr %20, %33
+  %35: ptr = ptrAdd %32, %34
+  %36: int = load1 %35 + 0
+  %37: int = const 0
+  %38: int = eq %36, %37
+  branch %38, b8(), b5()
+b8():
+  call quest_barrier_card(%35)
+  jump b5()
+}
+== a barrier in a block that branches
+function choose(%0: ptr, %1: ptr, %2: int): int {
+b0(%0: ptr, %1: ptr, %2: int):
+  store8 %0 + 0, %1
+  call quest_barrier(%0)
+  %3: int = const 0
+  %4: int = ne %2, %3
+  branch %4, b1(), b2()
+b1():
+  return %2
+b2():
+  return %3
+}
+-- after inlineBarriers
+function choose(%0: ptr, %1: ptr, %2: int): int {
+b0(%0: ptr, %1: ptr, %2: int):
+  store8 %0 + 0, %1
+  %5: int = load8 %0 + ~8
+  %6: int = const 65536
+  %7: int = ult %5, %6
+  branch %7, b4(), b5(%5)
+b1():
+  return %2
+b2():
+  return %3
+b3():
+  %3: int = const 0
+  %4: int = ne %2, %3
+  branch %4, b1(), b2()
+b4():
+  %8: int = load8 %0 + ~16
+  jump b5(%8)
+b5(%9: int):
+  %10: int = const 72339069014638592
+  %11: int = and %9, %10
+  %12: int = const 72057594037927936
+  %13: int = eq %11, %12
+  branch %13, b6(), b3()
+b6():
+  call quest_barrier_log(%0)
+  jump b3()
+}
