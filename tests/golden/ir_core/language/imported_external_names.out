@@ -8,32 +8,34 @@ main {
   let %3: Int = prim extent(ws) @11:16
   let %4: Int = prim -(%3, 1) @11:16
   var i: Int = 0 @11:1
-  loop L1 {
-    let %5: Bool = prim <=(i, %4) @11:1
-    if %5 { @11:1
+  let %5: Bool = prim <=(i, %4) @11:1
+  if %5 { @11:1
+    loop L1 {
       let i.1: Int = i @11:1
       let %6: word.T = index(ws, i.1) @11:51
       let %7: word.T = index(ws, i.1) @11:57
       let %8: word.T = call word.add(%6, %7) @11:42
       store ws[i.1] := %8 @11:33
-      let %9: Int = prim +(i, 1) @11:1
-      i := %9 @11:1
-    } else {
-      break L1 @11:1
+      let %9: Bool = prim is(i, %4) @11:1
+      if %9 { @11:1
+        break L1 @11:1
+      }
+      let %10: Int = prim +(i, 1) @11:1
+      i := %10 @11:1
     }
   }
   funs {
     fun first [A::TYPE](a: Array(A)): A {
-      let %10: A = index(a, 0) @12:37
-      return %10
+      let %11: A = index(a, 0) @12:37
+      return %11
     }
   }
   let w: word.T = call first [word.T](ws) @13:9
   let annotated: word.T = call word.mul(w, w) @14:25
-  let %11: writer.T = member writer.output @15:18
-  let %12: Int = call word.toInt(annotated) @15:41
-  let %13: String = call conv.int(%12) @15:32
-  let %14: String = prim <>(%13, "\n") @15:32
-  do call writer.putString(%11, %14) @15:1
+  let %12: writer.T = member writer.output @15:18
+  let %13: Int = call word.toInt(annotated) @15:41
+  let %14: String = call conv.int(%13) @15:32
+  let %15: String = prim <>(%14, "\n") @15:32
+  do call writer.putString(%12, %15) @15:1
 }
 

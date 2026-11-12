@@ -5,9 +5,9 @@ import maybe = "util/maybe" : util/Maybe
 main {
   var total: Int = 0 @18:1
   var i: Int = 0 @19:1
-  loop L1 {
-    let %1: Bool = prim <=(i, 99999) @19:1
-    if %1 { @19:1
+  let %1: Bool = prim <=(i, 99999) @19:1
+  if %1 { @19:1
+    loop L1 {
       let i.1: Int = i @19:1
       let x: String = "alpha" @20:27
       let y: String = "beta" @20:43
@@ -38,15 +38,17 @@ main {
       let %17: Int = prim +(%5, %16) @28:22
       let %18: Int = prim +(total, %17) @28:14
       total := %18 @28:5
-      let %19: Int = prim +(i, 1) @19:1
-      i := %19 @19:1
-    } else {
-      break L1 @19:1
+      let %19: Bool = prim is(i, 99999) @19:1
+      if %19 { @19:1
+        break L1 @19:1
+      }
+      let %20: Int = prim +(i, 1) @19:1
+      i := %20 @19:1
     }
   }
-  let %20: writer.T = member writer.output @31:18
-  let %21: String = call conv.int(total) @31:32
-  let %22: String = prim <>(%21, "\n") @31:32
-  do call writer.putString(%20, %22) @31:1
+  let %21: writer.T = member writer.output @31:18
+  let %22: String = call conv.int(total) @31:32
+  let %23: String = prim <>(%22, "\n") @31:32
+  do call writer.putString(%21, %23) @31:1
 }
 

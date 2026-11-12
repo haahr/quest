@@ -716,7 +716,13 @@ export
                                         checkInterrupt(offset)
                                         define(loopEnv x.varName model.intValue(cur))
                                         try begin evalExpr(x.body loopEnv) ok end when loopExit then going := false end
-                                        cur := if x.isDownto then cur - 1 else cur + 1 end
+                                        (* Stop at the bound: a step past
+                                         * maxInt or minInt would wrap *)
+                                        if cur is t.n then
+                                            going := false
+                                        else
+                                            cur := if x.isDownto then cur - 1 else cur + 1 end
+                                        end
                                     end
                                     model.okValue
                                 else model.internalError(:Value "For loop bounds must evaluate to Int" offset)

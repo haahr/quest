@@ -35,31 +35,31 @@ b0(%0: int, %1: ptr):
   %12: int = sub %10, %2
   @11:1
   %14: int = const 0
-  jump b1(%14)
-b1(%92: int):
+  %18: int = le %14, %12
+  branch %18, b1(), b2()
+b1():
   @11:1
-  %18: int = le %92, %12
-  branch %18, b3(), b4()
+  jump b4(%14)
 b2():
-  @12:37
-  %65: int = const 0
-  %66: ptr = null
-  %67: int = peq %6, %66
-  branch %67, b19(), b18()
+  @11:1
+  jump b3()
 b3():
+  @12:37
+  %68: int = const 0
+  %69: ptr = null
+  %70: int = peq %6, %69
+  branch %70, b22(), b21()
+b4(%96: int):
   @11:51
   %21: ptr = null
   %22: int = peq %6, %21
   branch %22, b7(), b6()
-b4():
-  @11:1
-  jump b2()
 b5():
   @11:1
-  jump b1(%63)
+  jump b3()
 b6():
   @11:51
-  %25: int = ult %92, %10
+  %25: int = ult %96, %10
   branch %25, b8(), b9()
 b7():
   @11:51
@@ -69,7 +69,7 @@ b7():
 b8():
   @11:51
   %27: int = const 8
-  %28: int = mul %92, %27
+  %28: int = mul %96, %27
   %30: ptr = ptrAdd %6, %27
   %31: ptr = ptrAdd %30, %28
   %32: val = load8 %31 + 0
@@ -85,7 +85,7 @@ b9():
   unreachable
 b10():
   @11:57
-  %38: int = ult %92, %10
+  %38: int = ult %96, %10
   branch %38, b12(), b13()
 b11():
   @11:57
@@ -95,7 +95,7 @@ b11():
 b12():
   @11:57
   %40: int = const 8
-  %41: int = mul %92, %40
+  %41: int = mul %96, %40
   %43: ptr = ptrAdd %6, %40
   %44: ptr = ptrAdd %43, %41
   %45: val = load8 %44 + 0
@@ -113,7 +113,7 @@ b13():
   unreachable
 b14():
   @11:33
-  %52: int = ult %92, %10
+  %52: int = ult %96, %10
   branch %52, b16(), b17()
 b15():
   @11:33
@@ -123,60 +123,70 @@ b15():
 b16():
   @11:33
   %54: int = const 8
-  %55: int = mul %92, %54
+  %55: int = mul %96, %54
   %57: ptr = ptrAdd %6, %54
   %58: ptr = ptrAdd %57, %55
   %59: val = toVal %47
   store8 %58 + 0, %59
   @11:1
-  %62: int = const 1
-  %63: int = add %92, %62
-  jump b5()
+  %62: int = eq %96, %12
+  branch %62, b18(), b19()
 b17():
   @11:33
   %53: ptr = symbol qs_4
   call quest_raise_array_error_at(%53)
   unreachable
 b18():
-  @12:37
-  %70: int = ult %65, %10
-  branch %70, b20(), b21()
+  @11:1
+  jump b5()
 b19():
-  @12:37
-  %68: ptr = symbol qs_5
-  call quest_raise_array_error_at(%68)
-  unreachable
+  @11:1
+  jump b20()
 b20():
-  @12:37
-  %72: int = const 8
-  %73: int = mul %65, %72
-  %75: ptr = ptrAdd %6, %72
-  %76: ptr = ptrAdd %75, %73
-  %77: val = load8 %76 + 0
-  %78: int = fromVal %77
-  @14:25
-  %79: int = mul %78, %78
-  @15:18
-  %80: ptr = symbol qm_writer
-  %81: ptr = load8 %80 + 0
-  %82: ptr = load8 %80 + 8
-  %83: int = load8 %82 + 40
-  %84: ptr = ptrAdd %81, %83
-  %85: ptr = load8 %84 + 0
-  @15:32
-  %86: ptr = call quest_conv_int(%79)
-  %87: ptr = symbol qs_6
-  %88: int = const 1
-  %89: ptr = call quest_string_new(%87, %88)
-  %90: ptr = call quest_string_concat(%86, %89)
-  @15:1
-  call quest_writer_put_string(%85, %90)
-  %91: int = const 0
-  return %91
+  @11:1
+  %65: int = const 1
+  %66: int = add %96, %65
+  jump b4(%66)
 b21():
+  @12:37
+  %73: int = ult %68, %10
+  branch %73, b23(), b24()
+b22():
   @12:37
   %71: ptr = symbol qs_5
   call quest_raise_array_error_at(%71)
+  unreachable
+b23():
+  @12:37
+  %75: int = const 8
+  %76: int = mul %68, %75
+  %78: ptr = ptrAdd %6, %75
+  %79: ptr = ptrAdd %78, %76
+  %80: val = load8 %79 + 0
+  %81: int = fromVal %80
+  @14:25
+  %82: int = mul %81, %81
+  @15:18
+  %83: ptr = symbol qm_writer
+  %84: ptr = load8 %83 + 0
+  %85: ptr = load8 %83 + 8
+  %86: int = load8 %85 + 40
+  %87: ptr = ptrAdd %84, %86
+  %88: ptr = load8 %87 + 0
+  @15:32
+  %89: ptr = call quest_conv_int(%82)
+  %90: ptr = symbol qs_6
+  %91: int = const 1
+  %92: ptr = call quest_string_new(%90, %91)
+  %93: ptr = call quest_string_concat(%89, %92)
+  @15:1
+  call quest_writer_put_string(%88, %93)
+  %94: int = const 0
+  return %94
+b24():
+  @12:37
+  %74: ptr = symbol qs_5
+  call quest_raise_array_error_at(%74)
   unreachable
 }
 

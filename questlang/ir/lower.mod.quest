@@ -1313,6 +1313,11 @@ export
     and forLoop(l: Lowerer e: Expr): Ok =
         case e.form
             when exprFor with x then
+                (* var c = start; if c <= stop then loop L { let i = c; body;
+                 * if c is stop then break L; c := c + 1 } (downto alike). The
+                 * loop tests the bound before it steps, so a loop to maxInt
+                 * (or downto minInt) ends there rather than wrapping. The
+                 * bootstrap's for_loop (ir/lower.py) is the same *)
                 let start = value(l x.start none)
                 let stop = value(l x.stop none)
                 let counter = fresh(x.varName model.intType true)
@@ -1320,35 +1325,40 @@ export
                     let var pos = ~1 let var v = counter let var init = maybe.some(:Atom start)
                 end)
                 let lbl = label(l "L")
+                let more = letOp(l nodes.prim(if x.isDownto then nodes.primGe else nodes.primLe end array of va(counter) stop end
+                    maybe.none(:Int)) model.boolType none)
                 let loopBody = nodes.newBody()
-                emit(l option sLoop of Stmt with let label = lbl let var body = loopBody end)
+                emit(l option sIf of Stmt with
+                    let var pos = ~1
+                    let var cond = more
+                    let var thenBody = nodes.bodyOf(array of option sLoop of Stmt with
+                        let label = lbl let var body = loopBody
+                    end end)
+                    let var elseBody = nodes.newBody()
+                end)
                 vector.append(:String l.loops lbl)
                 inBody(l loopBody fun(): Ok
                     begin
-                        let more = letOp(l nodes.prim(if x.isDownto then nodes.primGe else nodes.primLe end array of va(counter) stop end
-                            maybe.none(:Int)) model.boolType none)
-                        let thenBody = nodes.newBody()
-                        emit(l option sIf of Stmt with
-                            let var pos = ~1
-                            let var cond = more
-                            let var thenBody = thenBody
-                            let var elseBody = nodes.bodyOf(array of option sBreak of Stmt with
-                                let var pos = l.pos let label = lbl
-                            end end)
-                        end)
-                        inBody(l thenBody fun(): Ok
-                            begin
-                                let i = bindSymbol(l x.symbol maybe.some(:Type model.intType) false)
-                                emit(l nodes.letStmt(i nodes.opOfVar(counter)))
-                                effect(l x.body)
-                                if not(nodes.terminated(l.body)) then
-                                    let step = letOp(l nodes.prim(if x.isDownto then nodes.primSub else nodes.primAdd end
-                                        array of va(counter) intConst(1) end maybe.none(:Int)) model.intType none)
-                                    emit(l option sAssign of Stmt with
-                                        let var pos = ~1 let var v = counter let var value = step
-                                    end)
-                                end
+                        let i = bindSymbol(l x.symbol maybe.some(:Type model.intType) false)
+                        emit(l nodes.letStmt(i nodes.opOfVar(counter)))
+                        effect(l x.body)
+                        if not(nodes.terminated(l.body)) then
+                            let last = letOp(l nodes.prim(nodes.primIs array of va(counter) stop end maybe.none(:Int))
+                                model.boolType none)
+                            emit(l option sIf of Stmt with
+                                let var pos = ~1
+                                let var cond = last
+                                let var thenBody = nodes.bodyOf(array of option sBreak of Stmt with
+                                    let var pos = l.pos let label = lbl
+                                end end)
+                                let var elseBody = nodes.newBody()
                             end)
+                            let step = letOp(l nodes.prim(if x.isDownto then nodes.primSub else nodes.primAdd end
+                                array of va(counter) intConst(1) end maybe.none(:Int)) model.intType none)
+                            emit(l option sAssign of Stmt with
+                                let var pos = ~1 let var v = counter let var value = step
+                            end)
+                        end
                     end)
                 vector.pop(:String l.loops)
                 ok

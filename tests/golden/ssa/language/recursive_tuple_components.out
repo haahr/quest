@@ -228,7 +228,7 @@ b15(%35: ptr, %36: ptr, %37: int):
 
 function qf_sizeForest(%0: ptr, %1: ptr, %2: ptr) pairs [1]: int {
 b0(%0: ptr, %1: ptr, %2: ptr):
-  %66: int = const 0
+  %73: int = const 0
   @68:47
   %6: int = load8 %2 + 0 invariant
   %7: ptr = ptrAdd %1, %6
@@ -238,31 +238,31 @@ b0(%0: ptr, %1: ptr, %2: ptr):
   %10: int = const 1
   %11: int = sub %9, %10
   @68:13
-  jump b1(%66, %66)
-b1(%62: int, %63: int):
+  %17: int = le %73, %11
+  branch %17, b1(), b2()
+b1():
   @68:13
-  %17: int = le %63, %11
-  branch %17, b3(), b4()
+  jump b4(%73, %73)
 b2():
   @68:13
-  return %62
-b3():
+  jump b3(%73)
+b3(%65: int):
+  @68:13
+  return %65
+b4(%66: int, %68: int):
   @69:31
   %21: ptr = ptrAdd %1, %6
   %22: ptr = load8 %21 + 0
   %23: ptr = null
   %24: int = peq %22, %23
   branch %24, b7(), b6()
-b4():
-  @68:13
-  jump b2()
 b5():
   @68:13
-  jump b1(%53, %58)
+  jump b3(%53)
 b6():
   @69:31
   %26: int = load8 %22 + 0 invariant
-  %27: int = ult %63, %26
+  %27: int = ult %68, %26
   branch %27, b8(), b9()
 b7():
   @69:31
@@ -272,7 +272,7 @@ b7():
 b8():
   @69:31
   %29: int = const 8
-  %30: int = mul %63, %29
+  %30: int = mul %68, %29
   %32: ptr = ptrAdd %22, %29
   %33: ptr = ptrAdd %32, %30
   %34: val = load8 %33 + 0
@@ -288,14 +288,13 @@ b9():
   unreachable
 b10(%38: int):
   @69:22
-  %53: int = add %62, %38
+  %53: int = add %66, %38
   @68:13
-  %57: int = const 1
-  %58: int = add %63, %57
-  jump b11()
+  %57: int = eq %68, %11
+  branch %57, b16(), b17()
 b11():
   @68:13
-  jump b5()
+  jump b4(%53, %61)
 b12():
   @60:9
   switch %36 [0: b13(), 1: b14()] default b15()
@@ -317,6 +316,17 @@ b15():
   @60:9
   %50: int = const 0
   jump b10(%50)
+b16():
+  @68:13
+  jump b5()
+b17():
+  @68:13
+  jump b18()
+b18():
+  @68:13
+  %60: int = const 1
+  %61: int = add %68, %60
+  jump b11()
 }
 
 function qf_toInt(%0: ptr, %1: ptr): int {

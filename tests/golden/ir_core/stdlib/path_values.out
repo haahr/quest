@@ -81,111 +81,113 @@ main {
   let %39: Int = call vector.length [String](parts) @40:17
   let %40: Int = prim -(%39, 1) @40:17
   var i: Int = 0 @40:1
-  loop L1 {
-    let %41: Bool = prim <=(i, %40) @40:1
-    if %41 { @40:1
+  let %41: Bool = prim <=(i, %40) @40:1
+  if %41 { @40:1
+    loop L1 {
       let i.1: Int = i @40:1
       let %42: String = call vector.get [String](parts, i.1) @40:81
       let %43: String = prim <>(%42, "]") @40:81
       let %44: String = prim <>("[", %43) @40:74
       let %45: String = prim <>(joined, %44) @40:64
       joined := %45 @40:54
-      let %46: Int = prim +(i, 1) @40:1
-      i := %46 @40:1
-    } else {
-      break L1 @40:1
+      let %46: Bool = prim is(i, %40) @40:1
+      if %46 { @40:1
+        break L1 @40:1
+      }
+      let %47: Int = prim +(i, 1) @40:1
+      i := %47 @40:1
     }
   }
-  let %47: String = prim <>("pathParts: ", joined) @41:7
-  do call print(%47) @41:1
-  let %48: path.T = call at(".") @42:75
-  let %49: vector.T(String) = call path.pathParts(%48) @42:60
-  let %50: Int = call vector.length [String](%49) @42:38
-  let %51: String = call conv.int(%50) @42:29
-  let %52: String = prim <>("pathParts of .: ", %51) @42:7
-  do call print(%52) @42:1
-  let %53: path.T = call path.withSuffix(p.1, ".xz") @45:23
-  do call show("withSuffix .xz", %53) @45:1
-  let %54: path.T = call at("a/b.txt") @46:40
-  let %55: path.T = call path.withSuffix(%54, "") @46:24
-  do call show("withSuffix \"\"", %55) @46:1
+  let %48: String = prim <>("pathParts: ", joined) @41:7
+  do call print(%48) @41:1
+  let %49: path.T = call at(".") @42:75
+  let %50: vector.T(String) = call path.pathParts(%49) @42:60
+  let %51: Int = call vector.length [String](%50) @42:38
+  let %52: String = call conv.int(%51) @42:29
+  let %53: String = prim <>("pathParts of .: ", %52) @42:7
+  do call print(%53) @42:1
+  let %54: path.T = call path.withSuffix(p.1, ".xz") @45:23
+  do call show("withSuffix .xz", %54) @45:1
+  let %55: path.T = call at("a/b.txt") @46:40
+  let %56: path.T = call path.withSuffix(%55, "") @46:24
+  do call show("withSuffix \"\"", %56) @46:1
   join k1(r: String) {
     do call print(r) @47:1
-    let %56: path.T = call at("a") @48:25
-    let %57: path.T = call path.child(%56, "b/c") @48:14
-    do call show("child", %57) @48:1
-    let %58: path.T = call at("a") @49:34
-    let %59: path.T = call path.child(%58, "/b") @49:23
-    do call show("child absolute", %59) @49:1
-    let %60: path.T = call at("a/b") @50:33
-    let %61: path.T = call at("../c") @50:43
-    let %62: path.T = call path.joinPaths(%60, %61) @50:18
-    do call show("joinPaths", %62) @50:1
-    let %63: Bool = call path.pathIsAbsolute(p.1) @51:39
-    let %64: String = call conv.bool(%63) @51:29
-    let %65: path.T = call at("a") @51:103
-    let %66: Bool = call path.pathIsAbsolute(%65) @51:83
-    let %67: String = call conv.bool(%66) @51:73
-    let %68: String = prim <>(" ", %67) @51:66
-    let %69: String = prim <>(%64, %68) @51:29
-    let %70: String = prim <>("pathIsAbsolute: ", %69) @51:7
-    do call print(%70) @51:1
-    let %71: path.T = call at("a/b/../c") @52:41
-    let %72: path.T = call path.normalizePath(%71) @52:22
-    do call show("normalizePath", %72) @52:1
-    let %73: path.T = call at("/a/b/c") @53:43
-    let %74: path.T = call at("/a") @53:56
-    let %75: path.T = call path.pathRelativeTo(%73, %74) @53:23
-    do call show("pathRelativeTo", %75) @53:1
-    let %76: path.T = call at("/a/b") @54:51
-    let %77: path.T = call at("/a/c") @54:62
-    let %78: path.T = call path.pathRelativeTo(%76, %77) @54:31
-    do call show("pathRelativeTo sibling", %78) @54:1
-    let %79: path.T = call at("x/y") @55:85
-    let %80: path.T = call path.resolvePath(%79) @55:68
-    let %81: Bool = call path.pathIsAbsolute(%80) @55:48
-    let %82: String = call conv.bool(%81) @55:38
-    let %83: String = prim <>("resolvePath is absolute: ", %82) @55:7
-    do call print(%83) @55:1
-    let %84: path.T = call at("a/b/") @58:41
-    let %85: path.T = call at("a//b") @58:52
-    let %86: Bool = call path.equal(%84, %85) @58:30
-    let %87: String = call conv.bool(%86) @58:20
-    let %88: path.T = call at("a/b") @58:96
-    let %89: path.T = call at("a/c") @58:106
-    let %90: Bool = call path.equal(%88, %89) @58:85
-    let %91: String = call conv.bool(%90) @58:75
-    let %92: String = prim <>(" ", %91) @58:68
-    let %93: String = prim <>(%87, %92) @58:20
-    let %94: String = prim <>("equal: ", %93) @58:7
-    do call print(%94) @58:1
-    let %95: Fun(a: path.T b: path.T): Bool = member path.equal @59:34
-    let %96: Fun(p: path.T): word.T = member path.hash @59:45
-    let m: hashMap.T(path.T Int) = call hashMap.new [path.T Int](%95, %96) @59:9
-    let %97: path.T = call at("src/x.quest") @60:31
-    let %98: Bool = call hashMap.insert [path.T Int](m, %97, 1) @60:1
-    let %99: path.T = call at("./src//x.quest") @61:31
-    let %100: Bool = call hashMap.insert [path.T Int](m, %99, 2) @61:1
-    let %101: Int = call hashMap.size [path.T Int](m) @62:31
-    let %102: String = call conv.int(%101) @62:22
-    let %103: String = prim <>("entries: ", %102) @62:7
-    do call print(%103) @62:1
-    let %104: path.T = call at("src/x.quest") @63:74
-    let %105: maybe.T(Int) = call hashMap.get [path.T Int](m, %104) @63:47
-    let %106: Int = call maybe.unwrap [Int](%105) @63:29
-    let %107: String = call conv.int(%106) @63:20
-    let %108: String = prim <>("found: ", %107) @63:7
-    do call print(%108) @63:1
+    let %57: path.T = call at("a") @48:25
+    let %58: path.T = call path.child(%57, "b/c") @48:14
+    do call show("child", %58) @48:1
+    let %59: path.T = call at("a") @49:34
+    let %60: path.T = call path.child(%59, "/b") @49:23
+    do call show("child absolute", %60) @49:1
+    let %61: path.T = call at("a/b") @50:33
+    let %62: path.T = call at("../c") @50:43
+    let %63: path.T = call path.joinPaths(%61, %62) @50:18
+    do call show("joinPaths", %63) @50:1
+    let %64: Bool = call path.pathIsAbsolute(p.1) @51:39
+    let %65: String = call conv.bool(%64) @51:29
+    let %66: path.T = call at("a") @51:103
+    let %67: Bool = call path.pathIsAbsolute(%66) @51:83
+    let %68: String = call conv.bool(%67) @51:73
+    let %69: String = prim <>(" ", %68) @51:66
+    let %70: String = prim <>(%65, %69) @51:29
+    let %71: String = prim <>("pathIsAbsolute: ", %70) @51:7
+    do call print(%71) @51:1
+    let %72: path.T = call at("a/b/../c") @52:41
+    let %73: path.T = call path.normalizePath(%72) @52:22
+    do call show("normalizePath", %73) @52:1
+    let %74: path.T = call at("/a/b/c") @53:43
+    let %75: path.T = call at("/a") @53:56
+    let %76: path.T = call path.pathRelativeTo(%74, %75) @53:23
+    do call show("pathRelativeTo", %76) @53:1
+    let %77: path.T = call at("/a/b") @54:51
+    let %78: path.T = call at("/a/c") @54:62
+    let %79: path.T = call path.pathRelativeTo(%77, %78) @54:31
+    do call show("pathRelativeTo sibling", %79) @54:1
+    let %80: path.T = call at("x/y") @55:85
+    let %81: path.T = call path.resolvePath(%80) @55:68
+    let %82: Bool = call path.pathIsAbsolute(%81) @55:48
+    let %83: String = call conv.bool(%82) @55:38
+    let %84: String = prim <>("resolvePath is absolute: ", %83) @55:7
+    do call print(%84) @55:1
+    let %85: path.T = call at("a/b/") @58:41
+    let %86: path.T = call at("a//b") @58:52
+    let %87: Bool = call path.equal(%85, %86) @58:30
+    let %88: String = call conv.bool(%87) @58:20
+    let %89: path.T = call at("a/b") @58:96
+    let %90: path.T = call at("a/c") @58:106
+    let %91: Bool = call path.equal(%89, %90) @58:85
+    let %92: String = call conv.bool(%91) @58:75
+    let %93: String = prim <>(" ", %92) @58:68
+    let %94: String = prim <>(%88, %93) @58:20
+    let %95: String = prim <>("equal: ", %94) @58:7
+    do call print(%95) @58:1
+    let %96: Fun(a: path.T b: path.T): Bool = member path.equal @59:34
+    let %97: Fun(p: path.T): word.T = member path.hash @59:45
+    let m: hashMap.T(path.T Int) = call hashMap.new [path.T Int](%96, %97) @59:9
+    let %98: path.T = call at("src/x.quest") @60:31
+    let %99: Bool = call hashMap.insert [path.T Int](m, %98, 1) @60:1
+    let %100: path.T = call at("./src//x.quest") @61:31
+    let %101: Bool = call hashMap.insert [path.T Int](m, %100, 2) @61:1
+    let %102: Int = call hashMap.size [path.T Int](m) @62:31
+    let %103: String = call conv.int(%102) @62:22
+    let %104: String = prim <>("entries: ", %103) @62:7
+    do call print(%104) @62:1
+    let %105: path.T = call at("src/x.quest") @63:74
+    let %106: maybe.T(Int) = call hashMap.get [path.T Int](m, %105) @63:47
+    let %107: Int = call maybe.unwrap [Int](%106) @63:29
+    let %108: String = call conv.int(%107) @63:20
+    let %109: String = prim <>("found: ", %108) @63:7
+    do call print(%109) @63:1
   } in {
-    let %109: Exception = member path.error @47:63
-    try catching (%109) {
-      let %110: path.T = call at("/") @47:41
-      let %111: path.T = call path.withSuffix(%110, ".txt") @47:25
-      let %112: String = call path.toString(%111) @47:11
-      jump k1(%112) @47:7
+    let %110: Exception = member path.error @47:63
+    try catching (%110) {
+      let %111: path.T = call at("/") @47:41
+      let %112: path.T = call path.withSuffix(%111, ".txt") @47:25
+      let %113: String = call path.toString(%112) @47:11
+      jump k1(%113) @47:7
     } handle (e: Exception) {
-      let %113: Bool = prim is(e, %109) @47:7
-      if %113 { @47:7
+      let %114: Bool = prim is(e, %110) @47:7
+      if %114 { @47:7
         jump k1("withSuffix of /: path.error") @47:7
       } else {
         reraise e @47:7

@@ -61,16 +61,16 @@ main {
   let %33: Int = prim extent(ws) @40:16
   let %34: Int = prim -(%33, 1) @40:16
   var i: Int = 0 @40:1
-  loop L1 {
-    let %35: Bool = prim <=(i, %34) @40:1
-    if %35 { @40:1
+  let %35: Bool = prim <=(i, %34) @40:1
+  if %35 { @40:1
+    loop L1 {
       let i.1: Int = i @40:1
       let %36: Int = prim extent(ws) @41:20
       let %37: Int = prim -(%36, 1) @41:20
       var j: Int = 0 @41:5
-      loop L2 {
-        let %38: Bool = prim <=(j, %37) @41:5
-        if %38 { @41:5
+      let %38: Bool = prim <=(j, %37) @41:5
+      if %38 { @41:5
+        loop L2 {
           let j.1: Int = j @41:5
           let %39: word.T = index(ws, i.1) @42:44
           let %40: word.T = index(ws, j.1) @42:50
@@ -82,16 +82,20 @@ main {
           let %45: word.T = call word.mul(%43, %44) @43:33
           let %46: word.T = call word.add(loSum, %45) @43:18
           loSum := %46 @43:9
-          let %47: Int = prim +(j, 1) @41:5
-          j := %47 @41:5
-        } else {
-          break L2 @41:5
+          let %47: Bool = prim is(j, %37) @41:5
+          if %47 { @41:5
+            break L2 @41:5
+          }
+          let %48: Int = prim +(j, 1) @41:5
+          j := %48 @41:5
         }
       }
-      let %48: Int = prim +(i, 1) @40:1
-      i := %48 @40:1
-    } else {
-      break L1 @40:1
+      let %49: Bool = prim is(i, %34) @40:1
+      if %49 { @40:1
+        break L1 @40:1
+      }
+      let %50: Int = prim +(i, 1) @40:1
+      i := %50 @40:1
     }
   }
   do call show(hiSum) @46:1

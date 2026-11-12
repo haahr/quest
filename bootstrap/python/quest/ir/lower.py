@@ -751,25 +751,32 @@ class _Lowerer:
                 self.emit(ir.StoreAt(v, address))
 
     def for_loop(self, e: TypedFor) -> None:
+        """Lowers for i = start upto stop do body end (downto alike) to
+
+            var c = start
+            if c <= stop then loop L { let i = c; body; if c is stop then break L; c := c + 1 } end
+
+        The loop tests the bound before it steps, so a loop to maxInt (or
+        downto minInt) ends there rather than wrapping. The self-hosted
+        compiler's lowering (questlang/ir/lower.mod.quest) is the same."""
         start = self.value(e.start)
         stop = self.value(e.stop)
         counter = self.fresh(e.var_name, INT_TYPE, mutable=True)
         self.emit(ir.VarDecl(counter, start))
         label = self.label("L")
+        more = self.let(ir.Prim(">=" if e.is_downto else "<=", (counter, stop)), BOOL_TYPE)
         loop = ir.Loop(label, ir.Body())
-        self.emit(loop)
+        self.emit(ir.If(more, ir.Body([loop]), ir.Body()))
         self.loops.append(label)
         with self.in_body(loop.body):
-            more = self.let(ir.Prim(">=" if e.is_downto else "<=", (counter, stop)), BOOL_TYPE)
-            then_body = ir.Body()
-            self.emit(ir.If(more, then_body, ir.Body([ir.Break(label)])))
-            with self.in_body(then_body):
-                i = self.bind_symbol(e.symbol, INT_TYPE)
-                self.emit(ir.Let(i, counter))
-                self.effect(e.body)
-                if not self.body.terminated:
-                    step = self.let(ir.Prim("-" if e.is_downto else "+", (counter, self.const(1, INT_TYPE))), INT_TYPE)
-                    self.emit(ir.Assign(counter, step))
+            i = self.bind_symbol(e.symbol, INT_TYPE)
+            self.emit(ir.Let(i, counter))
+            self.effect(e.body)
+            if not self.body.terminated:
+                last = self.let(ir.Prim("is", (counter, stop)), BOOL_TYPE)
+                self.emit(ir.If(last, ir.Body([ir.Break(label)]), ir.Body()))
+                step = self.let(ir.Prim("-" if e.is_downto else "+", (counter, self.const(1, INT_TYPE))), INT_TYPE)
+                self.emit(ir.Assign(counter, step))
         self.loops.pop()
 
     def branches(self, e: TypedExpr, lower_branch) -> None:

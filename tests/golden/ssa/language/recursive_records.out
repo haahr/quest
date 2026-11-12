@@ -14,31 +14,31 @@ b0(%0: ptr, %1: ptr, %2: ptr):
   %13: int = sub %11, %12
   @23:9
   %15: int = const 0
-  jump b1(%5, %15)
-b1(%53: int, %54: int):
+  %19: int = le %15, %13
+  branch %19, b1(), b2()
+b1():
   @23:9
-  %19: int = le %54, %13
-  branch %19, b3(), b4()
+  jump b4(%5, %15)
 b2():
   @23:9
-  return %53
-b3():
+  jump b3(%5)
+b3(%56: int):
+  @23:9
+  return %56
+b4(%57: int, %59: int):
   @24:26
   %23: ptr = ptrAdd %1, %8
   %24: ptr = load8 %23 + 0
   %25: ptr = null
   %26: int = peq %24, %25
   branch %26, b7(), b6()
-b4():
-  @23:9
-  jump b2()
 b5():
   @23:9
-  jump b1(%44, %49)
+  jump b3(%44)
 b6():
   @24:26
   %28: int = load8 %24 + 0 invariant
-  %29: int = ult %54, %28
+  %29: int = ult %59, %28
   branch %29, b8(), b9()
 b7():
   @24:26
@@ -48,7 +48,7 @@ b7():
 b8():
   @24:26
   %31: int = const 8
-  %32: int = mul %54, %31
+  %32: int = mul %59, %31
   %34: ptr = ptrAdd %24, %31
   %35: ptr = ptrAdd %34, %32
   %36: val = load8 %35 + 0
@@ -59,16 +59,26 @@ b8():
   %40: ptr = null
   %41: int = call qf_sum(%40, %38, %39) pairs [1]
   @24:18
-  %44: int = add %53, %41
+  %44: int = add %57, %41
   @23:9
-  %48: int = const 1
-  %49: int = add %54, %48
-  jump b5()
+  %48: int = eq %59, %13
+  branch %48, b10(), b11()
 b9():
   @24:26
   %30: ptr = symbol qs_1
   call quest_raise_array_error_at(%30)
   unreachable
+b10():
+  @23:9
+  jump b5()
+b11():
+  @23:9
+  jump b12()
+b12():
+  @23:9
+  %51: int = const 1
+  %52: int = add %59, %51
+  jump b4(%44, %52)
 }
 
 function qr_register_dicts() {

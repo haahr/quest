@@ -1,0 +1,42 @@
+(* Language: a for loop runs from its start to its bound inclusive, and ends
+   there even at the ends of Int: upto maxInt and downto minInt stop rather
+   than wrap. A start past the bound runs no iterations; exit leaves early *)
+
+import writer: Writer;
+import conv: Conv;
+import intOp = int: IntOp;
+
+let print(s: String): Ok = writer.putString(writer.output s <> "\n");
+
+let count(label: String n: Int): Ok = print(label <> ": " <> conv.int(n));
+
+let var n = 0;
+for i = intOp.maxInt - 2 upto intOp.maxInt do n := n + 1 end;
+count("upto maxInt" n);
+
+n := 0;
+for i = intOp.minInt + 2 downto intOp.minInt do n := n + 1 end;
+count("downto minInt" n);
+
+n := 0;
+for i = intOp.maxInt upto intOp.maxInt do n := n + 1 end;
+count("maxInt to maxInt" n);
+
+n := 0;
+for i = 3 upto 2 do n := n + 1 end;
+count("empty upto" n);
+
+n := 0;
+for i = 2 downto 3 do n := n + 1 end;
+count("empty downto" n);
+
+let var last = 0;
+for i = 1 upto 5 do last := i end;
+count("last of 1 upto 5" last);
+
+let var sum = 0;
+for i = 1 upto intOp.maxInt do
+    if i > 4 then exit end
+    sum := sum + i
+end;
+count("exit at 5" sum);
