@@ -188,6 +188,59 @@ export
             end
         end
 
+    (* Whether a break in b, or in a body within it, leaves the loop label *)
+    let rec breaksTo(b: Body label: String): Bool =
+        begin
+            let var found = false
+            for k = 0 upto {vector.length(:Stmt b.statements) - 1} do
+                let st = vector.get(:Stmt b.statements k)
+                case st
+                    when sBreak with x then
+                        found := found orif stringOp.equal(x.label label)
+                    else
+                        let inner = walk.statementBodies(st)
+                        for j = 0 upto {extent inner - 1} do found := found orif breaksTo(inner[j] label) end
+                end
+            end
+            found
+        end
+
+    (* Whether control cannot fall off b's end: its last statement returns,
+     * raises, jumps, or is unreachable, or is an if, a switch with an else,
+     * an inspect (which raises when no case matches and it has no else), a
+     * join, or a try whose bodies all end so, or a loop that nothing in it
+     * breaks out of (falling off a loop's body repeats it). Conservative: a
+     * switch without an else counts as falling off. The transformation needs
+     * it of f's body, which becomes a loop's body, where falling off the end
+     * would repeat the loop rather than return *)
+    let rec endsControl(b: Body): Bool =
+        begin
+            let n = vector.length(:Stmt b.statements)
+            if n is 0 then false
+            else
+                case vector.get(:Stmt b.statements n - 1)
+                    when sReturn, sRaise, sUnreachable, sJump, sBreak, sContinue then true
+                    when sIf with x then endsControl(x.thenBody) andif endsControl(x.elseBody)
+                    when sSwitch with x then
+                        let var all = maybe.isSome(:Body x.elseBody) andif endsControl(maybe.unwrap(:Body x.elseBody))
+                        for j = 0 upto {extent x.cases - 1} do
+                            if not(endsControl(x.cases[j].body)) then all := false end
+                        end
+                        all
+                    when sInspect with x then
+                        let var all = maybe.isNone(:Body x.elseBody) orif endsControl(maybe.unwrap(:Body x.elseBody))
+                        for j = 0 upto {extent x.cases - 1} do
+                            if not(endsControl(x.cases[j].body)) then all := false end
+                        end
+                        all
+                    when sJoin with x then endsControl(x.body) andif endsControl(x.continuation)
+                    when sTry with x then endsControl(x.body) andif endsControl(x.handler)
+                    when sLoop with x then not(breaksTo(x.body x.label))
+                    else false
+                end
+            end
+        end
+
     (* ======================================================================
      * The transformation
      * ====================================================================== *)
@@ -321,7 +374,7 @@ export
                 let sites = maybe.unwrapOr(:vector.T(Site) hashMap.get(:Int :vector.T(Site) u.sites f.v.id) vector.new(:Site))
                 let uses = maybe.unwrapOr(:Int hashMap.get(:Int :Int u.uses f.v.id) 0)
                 if not(done) andif values andif not(hashMap.contains(:Int :Bool pinned f.v.id))
-                    andif {uses is vector.length(:Site sites)} andif {uses > 0} then
+                    andif {uses is vector.length(:Site sites)} andif {uses > 0} andif endsControl(f.body) then
                     let sc = tuple let tails = vector.new(:Tail) let var calls = 0 end
                     scan(f sc f.body true false)
                     let inside = hashMap.new(:Int :Bool intEqual hash.int)
