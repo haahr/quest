@@ -1,4 +1,26 @@
-(* Self-Hosted Quest Compiler: Diagnostic Model and Rendering *)
+(* Quest Self-Hosted Compiler: Diagnostics Interface
+ *
+ * The compiler's two forms of error, and how they are printed.
+ *
+ * A Diagnostic is what the user sees: a severity, a message, the span of
+ * source it points at, and any further labels, notes, and help. Diagnostics
+ * are collected in a diagnostic bag (questlang/common/diagbag) as a
+ * compilation goes, and rendered at the end by format and render, which print
+ * the location, the message, and the source line with a caret under the span.
+ *
+ * A CompilerError is how code deep in the compiler (the type checker, the
+ * module loader) reports an error: it is raised as compilerError where it is
+ * found, which stops the work it was part of, and carries only an offset in
+ * the unit being checked, not a file, since the raiser often does not know
+ * which file that is. As it propagates, inFile and atImport record the file
+ * and the imports that led to it; the code that catches it turns it into a
+ * Diagnostic with errorDiagnostic and adds that to a bag. The tokenizer and
+ * parser, which know their file, add Diagnostics to a bag directly.
+ *
+ * The bootstrap counterpart is bootstrap/python/quest/diagnostics.py
+ * (Diagnostic, and QuestCompilerError with its subclasses).
+ * docs/diagnostics.md §2 describes both forms, §3 how they are reported, and
+ * §5 the rendering *)
 
 interface Diagnostics
 import

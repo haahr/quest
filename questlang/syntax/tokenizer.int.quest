@@ -1,4 +1,18 @@
-(* Quest Self-Hosted Compiler: Lexical Analyzer Interface *)
+(* Quest Self-Hosted Compiler: Lexical Analyzer Interface
+ *
+ * Splits a source file's text into tokens (tokens.Token: a kind, the lexeme,
+ * the literal's value, and the span of characters it covers) for the parser,
+ * skipping whitespace and nested (* ... *) comments. Callers usually take the
+ * whole file at once with tokenizeAll and hand the vector to the parser.
+ *
+ * Errors: malformed input (an unterminated string, an unknown escape, an
+ * out-of-range integer, an unexpected character) is reported to the
+ * diagnostic bag given to new, and lexing goes on: the bad literal still
+ * yields a token, with a placeholder value where none could be read, and an
+ * unexpected character is skipped. The tokenizer does not raise; the caller
+ * decides from the bag whether to stop. The bootstrap counterpart,
+ * bootstrap/python/quest/syntax/tokenizer.py, instead raises TokenizerError
+ * at the first error. docs/syntax.md §2 describes the lexical rules *)
 
 interface Tokenizer
 import

@@ -454,7 +454,27 @@ export
     let refJson(r: Ref t: Table): json.Value =
         if isBuiltin(r) then json.string(r.name) else json.int(hashMap.find(:Int :Int t.index r.index)) end
 
-    (* Merges equivalent nodes and numbers the rest from the roots *)
+    (* The type table for the types the roots refer to, and the table index
+     * of each node whose type is in it, made canonical: equal types give the
+     * same text, however
+     * the graph spells them (docs/dynamic.md section 2.2, "Canonical
+     * tables"). The graph need not be minimal: an interpreter's type and a
+     * compiled descriptor unroll a recursive type differently, and equal
+     * types written differently may make separate nodes.
+     *
+     * Equivalent nodes are merged first. Two nodes are equivalent (bisimilar)
+     * when they have the same shape and their children, in order, are the
+     * same built-in types or equivalent nodes; this holds through cycles. The
+     * classes are found by partition refinement: each node starts in the
+     * class of its shape, and each round splits a class whose nodes' children
+     * lie in different classes, until a round leaves the number of classes
+     * unchanged. That gives the coarsest such partition, the fewest classes.
+     *
+     * The classes are then numbered in the order a depth-first walk first
+     * reaches them, from each root in turn and each node's children in
+     * order, and the table lists one node of each class reached. Neither
+     * step depends on the graph's node numbering, so equal types number
+     * alike *)
     let canonicalTable(nodes: vector.T(Node) roots: vector.T(Ref)): Table =
         begin
             let n = vector.length(:Node nodes)

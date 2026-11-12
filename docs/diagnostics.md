@@ -79,7 +79,8 @@ are any.
 ## 4. Phase by Phase
 
 ### 4.1. Tokenizer and Parser
-- **The tokenizer** stops at the first lexical error: an unexpected character, an unclosed comment, an unterminated
+- **The tokenizer** reports a lexical error, and the bootstrap's stops there (the self-hosted one records it and
+  lexes on, and no later phase runs): an unexpected character, an unclosed comment, an unterminated
   string or character literal, an empty character literal, an unknown or unterminated escape, an invalid number, or
   an integer out of range.
 - **The parser** reports one syntax error, at the farthest position any alternative reached, naming everything that

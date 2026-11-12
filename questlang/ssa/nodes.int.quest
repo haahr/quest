@@ -71,18 +71,39 @@ export
      * parameters *)
     Def Target = Tuple block: Int var args: Array(Int) end
 
+    (* How a block ends: where control goes next (docs/ssa.md section 3) *)
     Def Terminator = Option
         (* A block being built has none yet *)
         termNone
+        (* Go to target *)
         termJump with target: Target end
+        (* Go to ifTrue if the int cond is nonzero, else to ifFalse *)
         termBranch with cond: Int ifTrue: Target ifFalse: Target end
+        (* Go to targets[k] if the int value is cases[k], else to default.
+         * cases and targets have the same length and no case repeats *)
         termSwitch with value: Int cases: Array(Int) targets: Array(Target) default: Target end
+        (* Return values, as many as the function has results *)
         termReturn with values: Array(Int) end
+        (* A call in tail position, whose results are the function's
+         * (marked by questlang/ssa/tailCalls) *)
         termTailCall with call: Inst end
+        (* Enter a try: go to body; if an exception is raised in the body,
+         * or in anything it calls, go to block handler instead. slot is the
+         * stack slot holding the handler record (a QExceptionHandler) that
+         * the builder has already pushed on the runtime's handler chain.
+         * The handler block has no parameters and no other predecessor, so
+         * the values it uses are those defined before the try; ssac enters
+         * it when _setjmp returns a second time *)
         termTry with slot: Int body: Target handler: Int end
+        (* Control never reaches the end of the block *)
         termUnreachable
     end
 
+    (* A basic block. Its params are the values a jump to it binds, one per
+     * argument of the jump's Target: SSA's replacement for phi nodes, so a
+     * value that differs by the path taken (a loop counter, say) is a
+     * parameter of the block where the paths meet. Block 0 is the entry, and
+     * its params are the function's parameters *)
     Def Block = Tuple
         params: vector.T(Int)
         insts: vector.T(Inst)

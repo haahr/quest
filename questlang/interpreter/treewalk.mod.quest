@@ -503,6 +503,8 @@ export
         if v.redefines then assignName(f v.name val maybe.none(:Int))
         else define(f v.name if v.symbol.isVar then model.cellValue(val) else val end) end
 
+    (* Whether binding b (or a member of its group) declares a name already
+     * bound in f's own frame, other than by redefining an interactive slot *)
     let declaresName(b: Binding f: Frame): Bool =
         begin
             let members = typedAst.bindingMembers(b)
@@ -1148,6 +1150,23 @@ export
             when bindExprStmt with x then evalExpr(x.expr f)
         end
 
+    (* Evaluates binding b, of a program, a module, or a block, in f0, and
+     * returns its value and the frame the bindings after it run in. Frames
+     * are mutable maps that closures capture by reference, so defining a name
+     * again in the frame a closure captured would change what that closure
+     * sees: in
+     *
+     *   let x = 1  let g() = x  let x = 2
+     *
+     * g() must still give 1. So a binding that declares a name already in
+     * the frame (declaresName) gets a new frame, a child of the current one,
+     * and the old binding stays where g finds it. A non-rec group (let x =
+     * ... and y = ...) computes all its values in the current frame first,
+     * since no member's value sees the others (let x = y and y = x swaps
+     * them), and then binds them in a new frame, always, for the same
+     * reason. A rec group
+     * binds its members in the frame it evaluates them in, so that each
+     * closure sees the others *)
     and evalScopedBinding(b: Binding f0: Frame): Scoped =
         begin
             let var f = makeScopeExceptions(typedAst.scopeExceptions(b) f0)

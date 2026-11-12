@@ -563,9 +563,44 @@ export
             outcomes
         end
 
+    (* Brings up to date every module that the unit importer imports, directly
+     * (roots, each with the interface importer expects of it) or
+     * transitively, and returns the object files to link: eng.extraObjects
+     * first, then each module's .o in the order the queue reached it.
+     * programDir is the program's directory, which names modules under no
+     * search root. The bootstrap counterpart is BuildEngine.build_modules in
+     * bootstrap/python/quest/build/engine.py (docs/build-process.md section
+     * 7.1).
+     *
+     * It goes in phases:
+     *
+     *   1. Queue roots. A FIFO queue holds module names, each queued once.
+     *   2. In waves, pop the queued modules (pop): find each one's source and
+     *      artifacts, and decide whether they are stale. With eng.jobs > 1 a
+     *      wave also pops the modules those are predicted to import, and
+     *      compiles its stale modules in parallel child processes
+     *      (compileWave, section 7.4).
+     *   3. Follow the queue in order, as a serial build would: write each
+     *      module's log entries, compile it here if it is stale and no child
+     *      did, read its manifest (.qm), check the interface it implements
+     *      against what its importers expect (section 6.3), and queue its
+     *      imports.
+     *   4. When the queue is empty, check every expected interface again,
+     *      across all modules, and look for a cycle among the modules' imports
+     *      (section 8.2).
+     *
+     * Raises buildError (or the error a compilation raised) for a module that
+     * cannot be found, fails to compile, implements the wrong interface, or
+     * is part of a cycle. Unflushed: the build log's entries are batched in
+     * eng.logger and not written here; buildModules and buildMain call this
+     * through flushingLog, which writes them out even if it raises *)
     let unflushedBuildModules(eng: T roots: Array(manifest.ImportedModuleRef) importer: String
         programDir: maybe.T(String)): Array(String) =
         begin
+            (* The queue and what the build has learned: the modules
+             * discovered (by name and lowercased name), the sources importers
+             * recorded for them, the objects to link, the import graph, the
+             * interfaces importers expect, and the manifests read *)
             let search = searchPaths(eng)
             let queue = vector.new(:String)
             let var head = 0
@@ -980,6 +1015,8 @@ export
                 end
             end
 
+            (* Modules must form an acyclic graph to be initialized in order
+             * (docs/build-process.md section 8.2) *)
             let cycle = detectModuleCycle(moduleGraph)
             if maybe.isSome(:Array(String) cycle) then
                 fail(:Ok "Cyclic module dependency detected: " <> strutil.join(" -> "

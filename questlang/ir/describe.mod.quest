@@ -437,6 +437,30 @@ export
 
     let memberType(m: nodes.Module name: String): Type = hashMap.find(:String :Variable m.members.vars name).type
 
+    (* Gives operation o, which the let of result binds (none for a do), the
+     * descriptors it needs at run time, in place (docs/ir.md section 8.4):
+     * - a read of a value of a type parameter bounded by a record, variant,
+     *   option, or tuple type (a field, a component, a tag, a payload, an
+     *   ordinal, an address) the view map it reads through (viewMap);
+     * - is and isnot, when whether two values are the same depends on their
+     *   type, their type's: for QVal words, whose bits are compared except
+     *   for a Real's 0.0 and ~0.0, and a tuple's or option's proxies
+     *   (quest_val_is); and for options that is compares by case, with no
+     *   components or a single-word option's one component (quest_option_is,
+     *   docs/extensions.md, Options as Values). Not for a handler's exception
+     *   variable, which holds the exception with its payload and is compared
+     *   by the exception's address;
+     * - calls, external calls, closures, and type applications their type
+     *   arguments'; a type application of a function also its thunk's
+     *   descriptor variables, which its plans use;
+     * - conversions their plans' (describePlan);
+     * - a record literal its own type's, which its header carries, and its
+     *   view's offset table: the static one, listed in the unit's static
+     *   data, or with run-time offsets the view's descriptor, from which the
+     *   runtime finds the table;
+     * - a field read through the offset table's stored types its type's, to
+     *   convert it to;
+     * - an auto value its witness's, its run-time type component *)
     let operation(d: Describer o: Op result: maybe.T(Variable)): Ok =
         begin
             case o
@@ -519,6 +543,25 @@ export
             end
         end
 
+    (* Gives inspect x of an auto value its descriptors, in place. An auto
+     * value stores its components in a layout that does not depend on its
+     * type component (docs/c-representation.md section 8.1): for Auto
+     * A::TYPE with a: A show(:A): String end, a is a QVal word and show a
+     * closure taking one, whatever A is, and a case at Int needs a as an Int
+     * and show as a closure taking an Int.
+     *
+     * x.witness is a new descriptor variable standing for the value's type
+     * component, its A (the C printer binds it to the value's type_desc).
+     * Each case gets its matched type's descriptor, and the arm of a case
+     * with binders a DescriptorPair per component the represent pass marked
+     * converted (arm.converted; the others are copied), the descriptors it is
+     * converted from and to:
+     * - "component", a component of type A itself (a): from the witness to
+     *   the case's type for it;
+     * - "mentions", one whose type mentions A otherwise (show): from its stored
+     *   type, A being the witness, to the case's type for it.
+     * The arm's descriptors, and its plan's for an exact case, are described
+     * with A's symbol bound to the witness *)
     let describeInspect(d: Describer x: nodes.StmtInspect): Ok =
         if maybe.isSome(:Type x.autoType) then
             let autoType = maybe.unwrap(:Type x.autoType)

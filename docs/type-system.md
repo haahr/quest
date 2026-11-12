@@ -22,7 +22,7 @@ constructs upward (synthesis mode).
 
 ---
 
-## 2. Semantic Hierarchy (`bootstrap/python/quest/types.py`)
+## 2. Semantic Hierarchy (`bootstrap/python/quest/types/model.py`)
 
 Semantic entities use a `Q` prefix to avoid name collisions with Python host primitives:
 
@@ -35,7 +35,7 @@ QKind (Level 2)
 
 QType (Level 1)
   ├── Base Types              QIntType, QRealType, QBoolType, QCharType, QStringType, QOkType
-  ├── Dynamic & Exceptions    QDynamicType, QExceptionType
+  ├── Dynamic & Exceptions    DYNAMIC_TYPE (a QAutoType), QExceptionType
   ├── Aggregates              QTupleType, QRecordType, QVariantType, QOptionType
   ├── Functions & References  QFunType, QVarType, QArrayType, QOutType
   ├── Polymorphic & Operators QAllType, QAutoType, QTypeFun, QTypeApp

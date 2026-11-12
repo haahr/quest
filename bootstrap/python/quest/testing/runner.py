@@ -1175,6 +1175,48 @@ def run_all_tests(
     driver_args: list[str],
     jobs: int = 1,
 ) -> int:
+    """Runs the golden and error tests the parsed command line args select,
+    in build_dir with jobs workers, printing a line per test and a summary.
+    Returns 0 if every test run passed (or is pending), 1 if any failed, and 2
+    for --backend without --self-hosted. main calls it once per --backend mode,
+    with a fresh driver_args, which it extends with the mode's options.
+    docs/testing.md §2.3 describes the runner and its modes.
+
+    The phases are --phase's, or all of available_phases, narrowed to the
+    compiler under test:
+
+    - The bootstrap's driver (the default) runs neither the SSA nor the
+      self-hosted compiler's own IR stages, and without --phase, none of the
+      IR dumps either, whose goldens are the self-hosted compiler's (§2.8).
+    - --self-hosted runs the self-hosted driver, compiled here (with the
+      bootstrap, or with the release under --seed release) unless
+      --self-hosted-driver names one, on the phases it has
+      (SELF_HOSTED_PHASES). --self-hosting first checks the self-hosted
+      compiler's fixed point (check_self_hosting, which exits if it fails)
+      and then runs that suite with stage 2; with --fixed-point-only it
+      returns 0 after the check.
+    - --backend MODE, other than c, needs --self-hosted: it passes the mode's
+      options to the driver (BACKEND_MODES) and keeps only the mode's phases,
+      run_c_compiled for the ssac, arm64 and whole-program modes, repl for
+      jit, and interpret for jit-files.
+
+    --skip-phase then removes phases, and --test keeps only the tests whose
+    id contains its text. The golden suite runs phase by phase, each phase's
+    tests in parallel, then the error suite does the same (--suite and
+    --errors choose the suites).
+
+    Each worker has a build directory of its own (w0, w1, ... under
+    build_dir; build_dir itself with one worker), which a test borrows from
+    worker_pool while it runs, so concurrent tests never write the same
+    artifacts. The questlang tests are the exception: one background thread
+    compiles them all into a shared directory while the earlier phases run,
+    and their run_c_compiled tests wait for it and run there.
+
+    With the self-hosted driver, the tests in tests/self-hosted/pending.txt,
+    and in the backend mode's own pending list, are not yet expected to pass
+    (with_pending): a failure counts as a pass reported as [PENDING], and a
+    pass is a failure, so that the entry is removed.
+    """
     start_time = time.perf_counter()
 
     # Determine suite mode
@@ -1226,6 +1268,7 @@ def run_all_tests(
         return 2
     phases_to_run = [phase for phase in phases_to_run if phase not in args.skip_phase]
 
+    # Counts for the summary, by suite
     total_golden = 0
     passed_golden = 0
     skipped_golden = 0
@@ -1387,6 +1430,7 @@ def run_all_tests(
                                 ),
                             ))
 
+                    # The phase's tests, all queued, run on the workers
                     p_total, p_passed = run_phase_tasks(
                         phase, phase_tasks, worker_pool, executor, jobs
                     )

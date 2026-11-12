@@ -48,6 +48,30 @@ export
      * and its immediate, and where the store is *)
     Let Store = Tuple root: Int offset: Int exact: Bool address: Int imm: Int block: Int index: Int end
 
+    (* The check of docs/ssa.md section 7 (the rule is docs/collector.md
+     * section 3.5's): a forward dataflow analysis, which computes facts at
+     * each block's start from those at its predecessors' ends, over two sets:
+     *
+     *   fresh  the quest_alloc results with no call that may collect since,
+     *          on every path here: young objects, whose stores need no
+     *          barrier
+     *   owed   the covered stores, into objects not fresh, that no barrier
+     *          has answered since, on some path here
+     *
+     * At a join, fresh is the intersection of the predecessors' sets (young
+     * only if young on every path) and owed the union (owed if owed on any).
+     * The entry and each try's handler start with both empty. A call that may
+     * collect clears both (it is where an owed store is due), and an
+     * allocation's result then becomes fresh; a barrier removes the stores it
+     * answers. The analysis visits the blocks in reverse postorder until no
+     * block's sets at its end change, ignoring predecessors not yet visited
+     * (whose sets are not yet known), so a loop's head starts from its
+     * entering edge and is revisited once its back edge has a value.
+     *
+     * A second pass then walks each block once from the fixed point's sets
+     * at its start, and reports every store still owed at a call that may
+     * collect, a return, or a tail call, naming the store and the point.
+     * A function with no covered stores needs neither pass *)
     let functionProblems(f: Function): Array(String) =
         begin
             let problems = vector.new(:String)

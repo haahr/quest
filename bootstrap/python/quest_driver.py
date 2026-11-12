@@ -157,7 +157,52 @@ def split_program_args(arg_parser: argparse.ArgumentParser, args: list[str]) -> 
 
 
 def run_driver(args: list[str]) -> int:
-    """Executes the compiler driver with given CLI argument list."""
+    """Runs the bootstrap driver (./questboot) on the command line args, without
+    the program name, and returns the exit status. Its self-hosted counterpart
+    is questlang/driver/main.quest; docs/pipeline.md §4 describes the command
+    line.
+
+    It decides what to do in this order:
+
+    1. A first argument `compile` hands the rest to run_compile, which
+       translates the program to C and compiles it.
+    2. The arguments after the program file (or after `--`) are the program's,
+       not the driver's (split_program_args); system.args is the source's
+       name followed by them.
+    3. Files ending in .o, .a, .dylib or .so are objects to link with the
+       program; at most one other file is the source.
+    4. The source is the -e code if given. Without a file, the driver enters
+       the REPL (docs/repl.md §2.1) if -i is given or standard input is a
+       terminal, and otherwise reads the program from standard input, as it
+       does for the file `-`. An interface or module file goes to
+       run_unit_file, which dumps its phases or compiles it alone, and
+       returns.
+    5. A program file with -o, and without --whole-program, --stop-after,
+       --dump-after or --echo, is built by the BuildEngine with separate
+       compilation: each imported module is compiled to its own object in the
+       build directory (default .build), reused while fresh, and linked
+       (docs/build-process.md §1.1).
+    6. Otherwise one pipeline runs the whole program: with -o, through C
+       (compile_pipeline), the C then compiled and linked here; with objects
+       or a codegen_c or run_c_compiled phase, through C and running the
+       compiled program (full_pipeline); with --stop-after run_ir_STAGE,
+       through the IR to STAGE and running it in the IR interpreter; with an
+       ir_STAGE phase, through the IR to the latest stage asked for; and by
+       default through the tree-walking interpreter. Objects given without -o
+       or a phase make the run stop after run_c_compiled: the program is
+       compiled, linked with them, and run.
+
+    After the pipeline, the driver writes the requested dumps in phase order,
+    then the last phrase's result when the program was interpreted (unless
+    --echo or an interpret dump printed it already), then the diagnostics. The
+    status is the program's own if it called exit, 70 (EX_SOFTWARE) for an
+    internal compiler error, 1 for any other error (a compiled run whose exit
+    status is not --expected-exit among them), --expected-exit after a
+    successful --stop-after run_c_compiled, and 0 otherwise; with -i the REPL
+    then starts in the program's environment (docs/repl.md §2.2). The
+    pipeline phases use and build imported units' artifacts in the build
+    directory (docs/build-process.md §5.2.4) even when nothing is written.
+    """
     if args and args[0] == "compile":
         return run_compile(args[1:])
 
@@ -325,7 +370,9 @@ def run_driver(args: list[str]) -> int:
             sys.stderr.write(f"quest: error reading '{file_path}': {error}\n")
             return 1
 
-    # Configure pipeline and options
+    # Configure pipeline and options. A program file built to -o takes the
+    # separate-compilation path and returns here; everything else runs one
+    # pipeline below
     has_output = parsed_args.output is not None
     if (
         has_output

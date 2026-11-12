@@ -2976,6 +2976,34 @@ export
             res
         end
 
+    (* The C file of p.unit, a program or a module file, as the bootstrap's
+     * CPrinter.print_unit (bootstrap/python/quest/codegen/c/printer.py)
+     * writes it (docs/codegen-c.md section 3.1).
+     *
+     * Two things come first. The closures each function is made by are
+     * collected, for the environment structs and for direct calls (a call of
+     * a variable known to hold one closure jumps straight to its code). Then
+     * the functions, the modules' initializers, and the program's top level
+     * are printed into buffers before anything else: printing them is what
+     * finds the tuple casts, option tables, object layouts, and names the
+     * declarations at the top of the file must list, and it numbers names in
+     * the bootstrap's order, so the two compilers' C can be compared.
+     *
+     * The file is then, in order: the includes (the runtime header, and a
+     * module file's interface header); the declarations of the types the
+     * unit uses and of the modules it imports; environment structs; a
+     * prototype and a static closure for each function; globals, option
+     * tables, and the modules' records; the root table (the globals and
+     * records the collector must scan); the object layouts; the table of
+     * functions that appear in tracebacks; qr_register_dicts, which registers
+     * those two tables and the offset tables of records the unit views at
+     * supertypes when the unit starts; and the buffered functions and
+     * initializers.
+     *
+     * A program ends with main, which initializes the runtime, the modules
+     * it imports and its own, and then runs its top level. A module file
+     * has no main: its initializer is extern, and calls qr_register_dicts
+     * and its imports' initializers itself (moduleInit) *)
     let printUnit(p: P): String =
         begin
             let unit = p.unit

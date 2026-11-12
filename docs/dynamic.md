@@ -139,7 +139,7 @@ from descriptors in compiled code, which unroll recursive types differently), me
 (partition refinement to the coarsest bisimulation, starting from each node's constructor and labels), and numbers
 the remaining nodes in the order a depth-first walk first reaches them: from the dynamic value's type, then from
 the types of nested dynamic values in the order their values are written, visiting each node's components in the
-order the node lists them (record fields by name, cases in declaration order, tuple components and parameters in
+order the node lists them (record fields by name, cases by name, tuple components and parameters in
 order, then a function's result; an abstract node's arguments, then its representation). An abstract node's name is
 part of its label, as a field name is. The table is therefore minimal, and equal types have one entry. A reader does not
 rely on this: it compares types structurally, never by index.

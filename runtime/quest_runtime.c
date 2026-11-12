@@ -1,6 +1,37 @@
 /*
  * Quest C Runtime Implementation
- * Part of Step 4: Bootstrap C Transpiler
+ *
+ * Most of the functions quest_runtime.h declares, which code compiled by
+ * either compiler, with any backend, calls. In order:
+ *
+ *   - strings, arrays, and the built-in exceptions;
+ *   - tracebacks and raises: function tables, walking the stack, and raising
+ *     (docs/exceptions.md §5);
+ *   - printing values for echo, and formatting reals;
+ *   - the base types' descriptors, descriptor interning, and subtyping on
+ *     descriptors (quest_is_subtype);
+ *   - record offset tables, the dict of a record value
+ *     (docs/c-representation.md §5.2);
+ *   - proxies, views of tuples and options at a supertype (§5.8);
+ *   - options as values (is on options) and conversion between layouts
+ *     (quest_convert);
+ *   - layout equivalence;
+ *   - descriptor templates, filled in with type arguments at run time (§6.4.5),
+ *     view maps (§5.1), and printing values by descriptor;
+ *   - dynamic adaptation of records and variants;
+ *   - descriptor constructors, module abstract types (docs/dynamic.md §2.3),
+ *     and auto values;
+ *   - the standard library's primitives: system, os, writers and readers,
+ *     conversions, string builders, ascii, reals, words, and hashing;
+ *   - running out of stack: the guard that reports a stack overflow
+ *     (docs/exceptions.md §6);
+ *   - built-in operators as closures, and initialization of the builtins.
+ *
+ * The rest of the runtime is in quest_gc.c (the collector, docs/collector.md),
+ * quest_serialization.c (dynamic.extern and dynamic.intern), quest_code.c (the
+ * JIT's primitives, docs/jit.md), quest_readline.c (io/readline), and
+ * quest_inline.c (external definitions of the header's inline helpers).
+ * docs/c-representation.md describes the representation this code works on.
  */
 
 /* pthread_getattr_np, for the stack guard on Linux (glibc) */
@@ -583,6 +614,26 @@ static Q_NORETURN void quest_resume_native(const QExceptionHandler *h) {
 #endif
 }
 
+/* Raises the exception that state describes; every raise, first or again,
+ * ends here. Traceback frames can be read only from the live stack, before
+ * the jump to a handler unwinds it, so the handler chain is searched first
+ * (quest_handlers_catch, docs/exceptions.md §5.1), from the innermost handler
+ * installed (a handler that raises again has already removed its own):
+ *
+ *   - none will catch it: write "Exception: " and the exception to stderr,
+ *     then exit(1) after writing the raise site and the frames: those captured
+ *     at an earlier raise if any, else the live stack's (quest_fail_with);
+ *   - one might, or one will that may raise it again (an else branch naming
+ *     it): capture the frames now (§5.4), unless state already has frames
+ *     from an earlier raise, which are kept, as they show where it began;
+ *   - one will: no frames are needed.
+ *
+ * Then it becomes quest_current_exception, every hold on collections is
+ * released (quest_gc_release_all: the operation that held them is abandoned),
+ * and control passes to the innermost handler, which tests its patterns and
+ * raises again if none match: a native handler (arm64 code, docs/arm64.md §3.6)
+ * by restoring its stack and frame pointers and branching to its resume
+ * address, a C handler by Q_LONGJMP to its setjmp. Does not return */
 void quest_reraise(QExceptionState state) {
     switch (quest_handlers_catch(quest_current_exception_handler, state.exc)) {
         case 0:
@@ -1068,6 +1119,15 @@ static char *quest_dup_str(const char *s) {
     return copy;
 }
 
+/* The trail of quest_is_subtype: the pairs (sub, super_type) whose proofs are
+ * in progress, innermost last; each call that compares parts pushes its pair
+ * and pops it when it returns. Descriptors of recursive types are cyclic, so a proof can come back
+ * to a pair it is already proving. That pair is assumed to hold (the proof is
+ * coinductive): every way of following the two types has been compared up to
+ * the cycle without finding a difference, so there is none. Without the
+ * assumption, comparing Rec(L) Option nil cons with head: Int tail: L end end
+ * with itself, through the separate descriptors two units emit for it, would
+ * never end */
 #define Q_SUBTYPE_TRAIL_MAX 64
 typedef struct QSubtypePair {
     const QTypeDescriptor *sub;
@@ -1077,6 +1137,36 @@ typedef struct QSubtypePair {
 static Q_THREAD_LOCAL QSubtypePair quest_subtyping_trail[Q_SUBTYPE_TRAIL_MAX];
 static Q_THREAD_LOCAL size_t quest_subtyping_trail_len = 0;
 
+/* Whether the type sub describes is a subtype of the one super_type describes,
+ * compared structurally (docs/c-representation.md §6.4.4, Subtyping
+ * Verification), as the type checkers compare types (types/subtyping in both
+ * compilers, docs/type-system.md §3.2) but without caching. Stored descriptors
+ * are looked through, and equal pointers are equal types. By kind of
+ * super_type:
+ *
+ *   - Int, Real, Bool, Char, String, Ok, bound type variables, and holes: the
+ *     same descriptor only;
+ *   - tuples: a prefix, with names equal where super_type names an element,
+ *     and covariant elements (any tuple is a subtype of Tuple end);
+ *   - records: every field of super_type, by name, covariant, or invariant
+ *     and var when super_type's is var;
+ *   - variants and options: every case of sub in super_type, by name, with a
+ *     payload in both or neither, covariant, or invariant when either is var;
+ *   - arrays and exceptions: invariant in the element or payload type;
+ *   - functions: as many parameters, each of the same mode, and type
+ *     parameters, equal bounds, contravariant value parameters, invariant var
+ *     parameters, covariant out parameters and result;
+ *   - opaque types: the same name, and equal arguments for an application;
+ *   - auto types: a bound within super_type's, if it has one, then a prefix
+ *     of components with equal names and var-ness, covariant, or invariant
+ *     when var.
+ *
+ * Covariant means sub's part is a subtype of super_type's, contravariant the
+ * reverse, and invariant both. Pairs met again while being proved are assumed
+ * to hold (the trail, above). The trail has room for Q_SUBTYPE_TRAIL_MAX pairs,
+ * and a comparison nested deeper than that gives false: a wrong "no" for types
+ * nested that deeply, such as 64 levels of tuples within tuples described by
+ * different descriptors */
 bool quest_is_subtype(const QTypeDescriptor *sub, const QTypeDescriptor *super_type) {
     /* A value stored as a type parameter has its type argument's type */
     sub = quest_stored_type(sub);

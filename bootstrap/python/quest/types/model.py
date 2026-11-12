@@ -1,4 +1,44 @@
-"""Quest Semantic Types, Kinds, Model Definitions, and Substitution."""
+"""Quest Semantic Types, Kinds, Model Definitions, and Substitution.
+
+The type checker's representation of types and kinds: the types it reasons
+about once a type as written (ast.Type) has been elaborated, with every name
+resolved to its symbol. Quest has three levels, after Cardelli: values have
+types, and types have kinds, the "types of types" (TYPE for ordinary types,
+POWER(B) for the subtypes of B, ALL(X::K) K' for type operators). Values are
+in quest/values/model.py; this module holds the other two, QType (level 1) and
+QKind (level 2), and the components types are built from (fields, parameters,
+quantifiers, tuple type formals). Its self-hosted counterpart is
+questlang/types/model; docs/type-system.md §2 describes the hierarchy and §2.2
+the representation.
+
+Three properties of the representation matter to code using it:
+
+- Interning (hash-consing). Constructing a node returns the one canonical
+  object for its structure, so equal structures share memory and `is` decides
+  structural identity, which caches keyed by a node's identity (the subtyping
+  cache in subtyping.py, for one) rely on. Nodes containing an inference
+  metavariable (QTypeMeta, the only mutable type) are not interned. `==` on a
+  type raises: types are compared with is_type_equal and is_subtype, since an
+  alias and its target, or a recursive type and its unfolding, are equal types
+  but distinct objects.
+- Free-variable metadata. Each node records at construction the symbol ids a
+  substitution could replace inside it and whether it contains a
+  metavariable, so that substitute returns a type untouched, without walking
+  it, when nothing in it would change.
+- Symbol ids, not names. Binders and type variables carry globally unique
+  symbol ids from the environment (positive), metavariables count down from
+  -1, and the few variables made outside any environment take reserved
+  negative ids that encode their use.
+
+Sections, by their banners: Reserved Symbol Ids; 0. Free-Variable Metadata;
+0b. Hash-Consing (and the field registry, type_fields and rebuild_type, every
+generic walker uses); 1. Kinds; 2. the base QType, with lazy evaluation and
+substitution; 3. Primitive Types; 4. Composite Types (tuples, records,
+variants, options); 5. Functions, References, and Computation Types; 6.
+Polymorphic, Higher-Order, and Parameterized Types; 7. Recursive Types,
+Variables, and Abstract Types (with aliases, Dynamic, and alias and path
+walkers); 8. Type Inference Metavariable (with structurally_equal).
+"""
 
 from __future__ import annotations
 

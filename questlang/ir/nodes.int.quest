@@ -89,7 +89,22 @@ export
     planKindName(k: PlanKind): String
 
     (* How an operation reads (or writes) a component of a tuple or option, as
-     * the represent pass decides *)
+     * the represent pass decides in its last step (questlang/ir/slots,
+     * docs/ir.md section 8.3); lowering makes every access direct. A tuple or
+     * option upcast to a supertype at which a component's representation
+     * changes (a record's offset table, a variant's tag numbering) is not
+     * copied, so that it stays the same object and shares its var components:
+     * it is wrapped in a proxy, a run-time view holding the original object,
+     * which converts components as they are read (docs/c-representation.md
+     * section 5.8). So:
+     * - direct: the value is not a proxy (its type cannot be one, or the
+     *   function made it), so the component is in its own slot;
+     * - original: it may be a proxy, but the component's type cannot change
+     *   view, so it is read (or written) in the original's slot; for is, the
+     *   originals are compared;
+     * - proxy: it may be a proxy, and the component's type can change view,
+     *   so the read checks for a proxy and converts through it (a write goes
+     *   into the original). An option's tag is read direct or proxy *)
     Def Access = Option direct original proxy end
     direct: Access
     original: Access
@@ -108,7 +123,27 @@ export
     (* The IR's stages, in order: each pass produces the next *)
     stages: Array(String)
 
-    (* The type of a descriptor variable, and of view map variables *)
+    (* The types of the variables the describe pass binds (docs/ir.md sections
+     * 7 and 8.4), external types whose C forms are pointers.
+     *
+     * A descriptor is a type as a run-time value (C's const QTypeDescriptor *,
+     * docs/c-representation.md section 6.4). Compiled code erases types, so
+     * generic code, which holds an unbounded type parameter's values as
+     * uniform words, is passed each type parameter's descriptor (before its
+     * value parameters) to compare, convert, print, or inspect its values. A
+     * descriptor variable (DescriptorParam) stands for a type parameter's: a
+     * function's, a thunk's, or an inspected auto value's type component.
+     *
+     * A view map (const QViewMap *, docs/c-representation.md section 5.1, Own
+     * views) lets generic code read a value of a type parameter bounded by a
+     * record, variant, option, or tuple type, held at its type argument's
+     * representation, as a value of the bound: for a record, where each of
+     * the bound's fields is in the type argument's offset table; for a
+     * variant or option, the bound's tag for each of the type argument's. A
+     * function computes one where it begins, from the type parameter's
+     * descriptor and the bound's (Function.viewMaps), for each such type
+     * parameter whose values it reads so, and those reads name it (their
+     * viewMap fields) *)
     descriptorType: Type
     viewMapType: Type
 
@@ -187,9 +222,25 @@ export
     and TypeComponent = Tuple name: String type: Type end
     and FieldAtom = Tuple name: String atom: Atom isVar: Bool end
 
-    (* The operations, the right-hand sides of let, and the atoms *)
+    (* The operations, the right-hand sides of let, and the atoms (docs/ir.md
+     * section 5). Lowering makes most of them; fields shared by many cases:
+     * - offset: the operation's place in the unit's source (fileOffset), the
+     *   site reported if it raises a run-time error (site);
+     * - access: how a tuple's or option's component or tag is read or written
+     *   (Access), set by the represent pass (questlang/ir/slots);
+     * - descriptor, descriptors: the descriptors of the types the operation
+     *   needs at run time (its type arguments' for a call), set by the
+     *   describe pass;
+     * - viewMap: for a value of a type parameter bounded by a record,
+     *   variant, option, or tuple type, the view map it is read through its
+     *   bound by (viewMapType), set by the describe pass *)
     and Op = Option
         opAtom with var atom: Atom end
+        (* For is and isnot: access original (set by the represent pass) when
+         * the values may be proxies, and a descriptor of their type (set by
+         * the describe pass) when they are QVal words (quest_val_is) or
+         * options that is compares by case (quest_option_is), since then
+         * whether two are the same depends on the type *)
         opPrim with
             op: Prim
             var args: Array(Atom)
@@ -197,6 +248,9 @@ export
             var access: Access
             var descriptor: maybe.T(Descriptor)
         end
+        (* A call of a function a funs statement binds or a variable holds
+         * (callee), or of a module's member (moduleRef and member, the
+         * member's type calleeType) *)
         opCall with
             var callee: maybe.T(Variable)
             var typeArgs: Array(Type)
@@ -206,6 +260,15 @@ export
             var calleeType: maybe.T(Type)
             var descriptors: Array(Descriptor)
         end
+        (* A polymorphic value applied to types only (maybe.none(:Int)). The
+         * represent pass sets plans: for a value of no parameters, its
+         * value's conversion to the let's type; for a function, whose instance
+         * is a thunk converting its arguments and result, the parameters'
+         * plans (none for var and out ones), then the result's; and
+         * thunkSymbols, the symbols the thunk's own type parameters are named
+         * by in those plans. The describe pass sets thunkParams, for a
+         * function only: the thunk's descriptor variables, which its plans'
+         * descriptors use (docs/ir.md section 8.4) *)
         opTypeApp with
             var callee: maybe.T(Variable)
             var typeArgs: Array(Type)
@@ -217,25 +280,55 @@ export
             var descriptors: Array(Descriptor)
             var thunkParams: maybe.T(Array(DescriptorParam))
         end
+        (* A module's member as a value, or with no member the module itself *)
         opModuleMember with var moduleRef: ModuleRef var member: maybe.T(String) end
+        (* A built-in function as a value, such as an infix operator (+) *)
         opBuiltin with name: String end
+        (* An external C value or function (external "symbol") as a value *)
         opExternal with symbol: String end
+        (* A call of an external C function: the body of a function defined as
+         * external "symbol", passing the C function its type parameters'
+         * descriptors and its parameters (addresses for var and out) *)
         opCallExternal with
             symbol: String
             var typeArgs: Array(Type)
             var args: Array(Atom)
             var descriptors: Array(Descriptor)
         end
+        (* A closure, made by closure conversion: code, one of the unit's
+         * functions, with the values it captures, which its body reads from
+         * its environment, and first the types of the enclosing functions'
+         * type parameters it takes (its leading type parameters) *)
         opMakeClosure with
             var code: Function
             var captures: Array(Atom)
             var typeArgs: Array(Type)
             var descriptors: Array(Descriptor)
         end
+        (* A value a closure captured, read from the environment env of the
+         * function it runs: its index'th capture. Closure conversion binds
+         * one at a function's start for each variable it captures *)
         opEnvField with var env: Atom index: Int end
+        (* A value changed from one representation to another, as plan says
+         * (made by the represent pass) *)
         opConvert with var value: Atom var plan: Plan end
+        (* A tuple of its value components, args. typeComponents are its type
+         * components' names and types, which compiled code erases, for the
+         * IR's dumps and its interpreter. embedded (set by the represent
+         * pass) lists the positions of the records and variants the tuple's
+         * own allocation boxes, rather than a box of their own (a box is
+         * immutable, so it may be shared) *)
         opMakeTuple with var args: Array(Atom) typeComponents: Array(TypeComponent) var embedded: Array(Int) end
         opTupleField with var tup: Atom var index: Int var access: Access var viewMap: maybe.T(Variable) end
+        (* A record, made in its box. embedded is as a tuple's. The represent
+         * pass sets runtimeOffsets when the offset table of the view the let
+         * binds it at (docs/c-representation.md section 5.2) cannot be known
+         * statically, since the view is not the record's type or a supertype
+         * by width alone. The describe pass sets descriptor, that of the
+         * record's own type (its fields' atoms' types), which the record
+         * carries, and either offsets, the static offset table of its view,
+         * or with runtime offsets viewDescriptor, the view's descriptor, by
+         * which the runtime finds the table (quest_record_dict) *)
         opMakeRecord with
             var fields: Array(FieldAtom)
             var embedded: Array(Int)
@@ -244,6 +337,11 @@ export
             var offsets: maybe.T(OffsetTable)
             var viewDescriptor: maybe.T(Descriptor)
         end
+        (* A record's field. The represent pass sets stored for an immutable
+         * field that a subtype's record may hold at another type
+         * (docs/c-representation.md section 5.2): it is read through the
+         * offset table's stored types and converted to the field's type,
+         * whose descriptor the describe pass sets *)
         opRecordField with
             var recordAtom: Atom
             name: String
@@ -252,6 +350,12 @@ export
             var viewMap: maybe.T(Variable)
         end
         opMakeVariant with tag: String var payload: maybe.T(Atom) end
+        (* An option of case tag, or with ordinalAtom, of the case whose
+         * index in cases is its value, computed at run time; cases are the
+         * names of the cases of the option's type as written
+         * (canonical.optionCaseNames), not its shape's order. A payload is a
+         * tuple of the case's components, which access says how to read
+         * (set by the represent pass) *)
         opMakeOption with
             tag: maybe.T(String)
             var payload: maybe.T(Atom)
@@ -260,7 +364,13 @@ export
             cases: Array(String)
             var access: Array(Access)
         end
+        (* Whether a variant or option is of case tag (v?tag) *)
         opIsTag with var value: Atom tag: String var access: Access var viewMap: maybe.T(Variable) end
+        (* The payload of case tag (v!tag, raising if it is another): a
+         * variant's, or an option's components as a new tuple, which starts
+         * with ordinalIndex, the case's index in the option's type as written
+         * (docs/ir.md section 5). access says how the tag is read, and
+         * components (set by the represent pass) how the components are *)
         opPayload with
             var value: Atom
             tag: String
@@ -270,20 +380,36 @@ export
             ordinalIndex: maybe.T(Int)
             var viewMap: maybe.T(Variable)
         end
+        (* An option's ordinal: its case's index in cases, as opMakeOption's *)
         opOrdinal with var value: Atom cases: Array(String) var access: Access var viewMap: maybe.T(Variable) end
         opMakeArray with var args: Array(Atom) end
+        (* An array of count copies of init *)
         opArrayRep with var count: Atom var init: Atom offset: maybe.T(Int) end
         opIndex with var arr: Atom var index: Atom offset: maybe.T(Int) end
+        (* An auto value of type autoType (Auto A::K with ... end,
+         * docs/c-representation.md section 8.1): witness, its type component,
+         * the type A stands for in it, and payload, a tuple of its other
+         * components. The describe pass sets descriptor, the witness's, which
+         * the value carries, for inspect to test *)
         opMakeAuto with witness: Type autoType: Type var payload: Atom var descriptor: maybe.T(Descriptor) end
+        (* A new exception (exceptions are generative), with the type of the
+         * payload it carries, if any *)
         opMakeException with name: String payloadType: maybe.T(Type) end
+        (* The payload of a handler's exception exc *)
         opExceptionPayload with var exc: Atom end
         (* A handler's exception as a value of raised.T (docs/raised.md) *)
         opCaughtException with var exc: Atom end
+        (* Addresses of locations, passed as var and out arguments: of a
+         * mutable variable (@x); of a fresh temporary cell holding init
+         * (var(e)); of a record's var field (@r.f), a tuple's var component
+         * (@t.f, through a proxy the original's slot), or an array's element
+         * (@a[i]) *)
         opAddrVar with var v: Variable end
         opAddrCell with var init: Atom end
         opAddrField with var base: Atom name: String var viewMap: maybe.T(Variable) end
         opAddrComponent with var base: Atom index: Int var access: Access var viewMap: maybe.T(Variable) end
         opAddrElement with var base: Atom var index: Atom offset: maybe.T(Int) end
+        (* The value at an address *)
         opLoad with var address: Atom end
     end
 
@@ -343,6 +469,10 @@ export
         sStoreElement with var pos: Int var value: Atom var base: Atom var index: Atom offset: maybe.T(Int) end
         sDo with var pos: Int var value: Op end
         sFuns with var functions: Array(Function) recursive: Bool end
+        (* Recursive values (let rec self: T = tuple ... end): body computes
+         * each of vars' values, a constructor or a function, and the closures
+         * it makes may refer to any of vars, which are bound when body
+         * finishes *)
         sLetRec with var vars: Array(Variable) var body: Body end
         sIf with var pos: Int var cond: Atom var thenBody: Body var elseBody: Body end
         sSwitch with
@@ -353,6 +483,13 @@ export
             var access: Access
             var viewMap: maybe.T(Variable)
         end
+        (* An inspect of an auto value (whose type is autoType) by its
+         * run-time type component (docs/ir.md section 6.5); with no case
+         * matching and no else body, it raises a dynamic error, reported at
+         * offset. The describe pass sets witness, the descriptor variable that
+         * stands for the value's type component, bound under the auto type's
+         * own symbol in the cases' arms (InspectArm), which convert the
+         * value's components by it *)
         sInspect with
             var pos: Int
             var value: Atom
@@ -363,8 +500,27 @@ export
             var witness: maybe.T(DescriptorParam)
         end
         sLoop with label: String var body: Body end
+        (* A try region (docs/ir.md section 6.4): a raise in body, or in what
+         * it calls, runs handler, with exc bound to the exception raised.
+         * catching says what the handler catches; for catchListed, catches
+         * are the exceptions its branches name, evaluated before the try, by
+         * which a raise tells whether it will be caught, and walks the stack
+         * for a traceback's frames only if not (docs/exceptions.md section
+         * 5.1) *)
         sTry with var body: Body var exc: Variable var handler: Body catching: Catching var catches: Array(Atom) end
+        (* A join point (docs/ir.md section 6.3), where paths that produce a
+         * value meet. Lowering makes let x = if c then 1 else 2 end; rest
+         *     join k(x) { rest } in { if c { jump k(1) } else { jump k(2) } }
+         * body runs first; a jump label(args) in it, in tail position and not
+         * from a function it binds, binds params to args and runs
+         * continuation, the only place params are in scope. After the
+         * continuation, or if body ends without jumping, control goes on
+         * after the join *)
         sJoin with label: String var params: Array(Variable) var continuation: Body var body: Body end
+        (* Prints a top-level phrase's value as the driver's --echo does: prefix
+         * (let x:T = , for a binding) and the value, or for an expression
+         * (prefix empty) the value and : type. The describe pass sets
+         * descriptor when the type does not say how the value is written *)
         sEcho with var pos: Int var value: Atom type: Type prefix: String var descriptor: maybe.T(Descriptor) end
         sEchoText with text: String end
         sReturn with var pos: Int var value: Atom end

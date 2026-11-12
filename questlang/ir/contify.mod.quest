@@ -208,6 +208,27 @@ export
             end
         end
 
+    (* Makes f, which funs binds, a loop at its one outside call, the statement
+     * at site, in place; tails are f's tail calls of itself. A mutable
+     * variable stands for each parameter; the loop's body binds the
+     * parameters to them, then runs f's body, whose returns become jumps to a
+     * join point whose continuation is the rest of the caller's body. Each
+     * tail call (with the return after it) becomes assignments to the
+     * variables and a continue. For example, with f(n) returning n when
+     * n = 0 and calling f(n - 1) otherwise,
+     *     let r = call f(10); rest
+     * becomes (the labels counted by labels)
+     *     join contified2(r) { rest } in {
+     *       var n' := 10
+     *       loop contified1 {
+     *         let n = n'
+     *         if n = 0 { jump contified2(n) }
+     *         else { let m = n - 1; n' := m; continue contified1 }
+     *       }
+     *     }
+     * Each iteration binds the parameters anew, immutable, because f's own
+     * functions may capture them and no function may capture a mutable
+     * variable (closure conversion rejects one). funs no longer binds f *)
     let transform(f: nodes.Function funs: nodes.StmtFuns site: Site tails: vector.T(Tail) labels: clone.Labels): Ok =
         begin
             labels.count := labels.count + 1

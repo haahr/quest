@@ -131,6 +131,31 @@ export
             vector.toArray(:String listed)
         end
 
+    (* The scope of the interface name, as an import in e names it, loaded
+     * from the first of:
+     *
+     *   1. a scope already loaded: by its canonical name in e.units, shared by
+     *      every unit that imports it, or for an interface with neither a
+     *      source nor a .qi (a builtin, or one the program declares), e's own
+     *      registration of name;
+     *   2. with an artifact root (resolvedArtifactRoot: a build directory, or
+     *      C compilation), its .qi there, which
+     *      ensureResolvedInterfaceArtifacts rebuilds first if stale; the
+     *      scope is cached in loadedQis until the file changes;
+     *   3. a fresh .qi on the search path (graph.freshInterfaceQi: current
+     *      ABI, newer than its source, and built from it);
+     *   4. its .int.quest source, parsed and elaborated, whose declared name
+     *      must match the file name.
+     *
+     * Each loaded scope is registered (register) in e under name as written,
+     * its last segment (Ast for questlang/syntax/Ast), and its canonical name,
+     * and recorded on its unit in e.units for later lookups.
+     *
+     * Raises a CompilerError (diagnostics.fail) for an interface that cannot
+     * be found, a mismatched name, or a cycle of interface imports, found
+     * from the chain e.loadingInterfaces of interfaces being loaded. The
+     * bootstrap counterpart is load_interface in
+     * bootstrap/python/quest/modules/loader.py *)
     let rec loadInterface(name: String e: env.T): Scope =
         begin
             let normName = paths.lower(name)
@@ -182,6 +207,13 @@ export
                     let qi = interfaceCompiler.ensureResolvedInterfaceArtifacts(resolved outRoot
                         maybe.none(:interfaceCompiler.OnCompiled) e.units.resolver).qiFile
                     if paths.isFile(qi) then
+                        (* outRoot goes first among the search roots, so that
+                         * later resolutions in e (this interface's own
+                         * imports, written relative to the root that gives it
+                         * its canonical name, and other units' .qi files)
+                         * look there before any other directory. The
+                         * bootstrap does the same; neither compiler records
+                         * why it must come first rather than last *)
                         let var listed = false
                         for i = 0 upto {vector.length(:String e.includePaths) - 1} do
                             if stringOp.equal(vector.get(:String e.includePaths i) outRoot) then listed := true end

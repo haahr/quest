@@ -1,6 +1,35 @@
 /*
- * Quest C Runtime ABI & Foundation Header
- * Part of Step 4: Bootstrap C Transpiler
+ * Quest C Runtime Interface
+ *
+ * The C representation of Quest values and types and the runtime's interface:
+ * what generated code and the runtime's own files (quest_runtime.c, quest_gc.c,
+ * quest_serialization.c, ...) agree on. The C that both compilers generate
+ * includes this header; the self-hosted compiler's arm64 backend and JIT, which
+ * emit machine code, mirror its structs and constants in codegen/runtimeLayout,
+ * which a test checks against this header (docs/arm64.md §3.3).
+ *
+ * The header is part of the artifact contract, the ABI: compiled units and
+ * interface artifacts are reused only by a compiler with the same ABI_VERSION
+ * (bootstrap/python/quest/config/abi.py, questlang/config/abi.mod.quest), and
+ * the ABI corpus records a digest of this file's bytes, so that a change here
+ * fails tests/python/test_abi_corpus.py until the version is bumped (or, after
+ * a change that is not incompatible, the digest regenerated;
+ * docs/build-process.md §5.2.3).
+ *
+ * In order: portability macros; the representation of values (QVal, strings,
+ * closures, arrays, records, variants, options, exceptions); type descriptors,
+ * the run-time descriptions of types, with their per-kind metadata, templates,
+ * and auto values; exception state, handlers, and tracebacks; the built-in
+ * exceptions and base descriptors; the collector's interface (object layouts,
+ * write barriers, root and frame tables, allocation); the runtime's functions,
+ * from raises and the standard library's primitives to descriptor operations,
+ * proxies, conversions, and view maps; inline helpers for checked operations,
+ * arithmetic, identity, words, and hashing; built-in operator closures; and the
+ * JIT's primitives.
+ *
+ * docs/c-representation.md describes the representation and the calling
+ * convention, docs/collector.md the collector (§3, the design), and
+ * docs/exceptions.md the tracebacks.
  */
 
 #ifndef QUEST_RUNTIME_H
@@ -156,6 +185,26 @@ typedef enum QTypeKind {
 
 typedef struct QTypeDescriptor QTypeDescriptor;
 
+/* A type descriptor: a Quest type described at run time, for the operations that need a value's type, not only its
+ * bits: subtyping (dynamic.be, inspect), conversion between layouts (quest_convert), printing (echo, uncaught
+ * exceptions), and serialization (dynamic.extern and dynamic.intern). Compiled code emits static descriptors for the
+ * types it uses and passes them as the type arguments of polymorphic functions; descriptors of recursive types are
+ * cyclic (docs/c-representation.md §6.4.4).
+ *
+ * name: the type as text. For most kinds it is only for display: compiled code writes the type as printed, cut off at
+ *   80 characters, so the name need not identify the type, and descriptors are compared structurally. An opaque
+ *   descriptor (an abstract type, or an application of an abstract type operator) is identified by its name (a
+ *   module's abstract type by its global name, "geo/coord.P"). quest_intern_type_descriptor and the
+ *   quest_make_*_descriptor constructors key their table by name.
+ * size, alignment: the size of the C type that holds a value (sizeof(QVal), sizeof(QVariantVal), ...), except that for
+ *   a tuple, record, or option it is the size of the struct a value points to (a record's payload). Only
+ *   deserialization reads size, to allocate an option; nothing reads alignment, which compiled code always sets to a
+ *   word's.
+ * is_subtype: always quest_is_subtype, which the runtime calls directly rather than through this field.
+ * extra: the kind's metadata, or NULL: QTupleTypeDescriptor (NULL for Tuple end), QRecordTypeDescriptor,
+ *   QVariantTypeDescriptor (variants and options), QArrayTypeDescriptor, QFunTypeDescriptor, QAutoTypeDescriptor,
+ *   QExceptionTypeDescriptor, QOpaqueTypeDescriptor (or NULL), QHoleDescriptor, and QStoredDescriptor; NULL for the
+ *   base types and a bound type variable, which is identified by its address in quest_type_bound_vars. */
 struct QTypeDescriptor {
     QTypeKind   kind;
     const char *name;

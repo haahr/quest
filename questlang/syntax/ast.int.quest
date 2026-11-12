@@ -1,4 +1,29 @@
-(* Quest Self-Hosted Compiler: Abstract Syntax Tree Interface *)
+(* Quest Self-Hosted Compiler: Abstract Syntax Tree Interface
+ *
+ * The syntax tree the parser builds. The same types serve every phase that
+ * works on source syntax: desugar rewrites a tree into one of the same types
+ * without the syntactic sugar, and the type checker and the module loader
+ * read it; there is no separate tree per phase.
+ *
+ * Every node is a Node(Form): the span of source it covers, for error
+ * messages, and a form, an option whose tag says what construct it is
+ * (exprIf, typeTuple, ...). The forms follow Quest's levels, the paper's term
+ * for values, the types that classify values, and the kinds that classify
+ * types:
+ *
+ *   Level 0  ExprForm   expressions, and declarations (Expr = Decl)
+ *   Level 1  TypeForm   types
+ *   Level 2  TypeForm   kinds, in the same form (TypeExpr = KindExpr)
+ *
+ * with PhraseForm and Program for the top level of a file. Parts of a node
+ * that are not themselves nodes (a formal parameter, a field of a signature)
+ * carry only the start offset the bootstrap gives them, not a span.
+ *
+ * The tree mirrors bootstrap/python/quest/syntax/ast.py node for node, so
+ * that astprint prints it in the bootstrap's form and the two parsers can be
+ * compared on every Quest file (docs/testing.md §2.3).
+ * docs/compiler-organization.md §3 explains the design, and docs/syntax.md §4
+ * lists the bootstrap's nodes *)
 
 interface Ast
 import
