@@ -2088,23 +2088,60 @@ arm64 faster on 30 of the 42.
 
 The arm64 run is §20.3's, earlier the same day; the C run is this section's.
 
-### 21.4. What follows
+### 21.4. The switch (2026-11-12)
 
-The user leans to arm64 as the default for building the compiler as well as for programs (2026-11-06); nothing is
-switched yet, and arm64.md §1's decision stands until the checks below pass and the user decides. What is left:
+The user leaned to arm64 as the default for building the compiler as well as for programs (2026-11-06), and on
+2026-11-11 asked for the switch once releases and the stage caches worked through arm64, if the arm64-built compiler
+stayed within 25 percent of the C-built one. It did, and arm64 is now the default ([arm64.md](arm64.md) §1):
 
-1. **Releases from an arm64-built stage 2.** `tools/release` runs `run_tests.py --self-hosting --seed ...`, which
-   builds stages 2 and 3 through C; it has no backend option. Give it one (passing `--stage-backend arm64`, which
-   `tools/check`'s `self-hosting-arm64` already uses with `--fixed-point-only`), run the full self-hosted suite with
-   that stage 2 (the JIT, REPL, and pty tests included, since the JIT then runs in an arm64-built host, jit.md §1),
-   record the backend in `release.json`, and check `--verify`, `--rollback`, and `--install` on such a release.
-2. **The stage caches.** `./quest` keeps C's stages in `.build/quest-stages` and another backend's in
-   `.build/quest-stages-BACKEND`, with `QUEST_BACKEND` defaulting to `c` (`quest`, line 21). Decide where the default's
-   stages live after the switch, and check that a tree whose cache was built by the old default rebuilds stage 2 rather
-   than reusing it (and see the ABI trap: a stale stage 2 after a codegen change).
-3. **The default for programs.** The driver's `--backend` defaults to C (`questlang/driver/main.quest`, its usage
-   text and its option's default). Survey the tests and goldens that run without a backend and so assume C, `-c`'s
-   outputs, `tools/check`'s choice of suites, and the bootstrap, which has no arm64 backend and stays C.
-4. **Documents:** arm64.md §1's decision, README.md, release-compiler.md, and roadmap.md where they name C as the
-   default.
-5. **Optional:** profile the arm64-built compiler compiling the driver for §21.2's 6 to 11 percent, likely calls.
+1. **Releases through arm64** (`a2a69f5a`). `tools/release --backend` (arm64 by default) passes `--stage-backend` to
+   the self-hosting check and records the backend in `release.json`. A release of `a2a69f5a` cut into scratch
+   releases (`QUEST_RELEASE_DIR`) passed the fixed point through arm64 and the self-hosted suite with its arm64-built
+   stage 2 (3773 tests), the `jit` and `jit-files` modes (286) and the terminal tests with that stage 2, and was
+   shown, verified, rolled back twice, and installed. Its check's stage 3, the arm64-built compiler compiling the
+   driver through arm64, took 21.5 s, stage 2, the C-built one, 18.3 s: 1.17.
+2. **The stage caches** (`a2a69f5a`). The default backend's stages are in `.build/quest-stages`, another's in
+   `.build/quest-stages-BACKEND`, and the backend is part of the stages' identity (their `seed` file), so that stages
+   the old default built are rebuilt, not reused; checked by flipping the default both ways.
+3. **The default** (`ac1e7715`): the driver's `--backend` (and `codegen_c` and `compile --emit-c` mean C unless one
+   is given), `./quest`'s stage 2, and `tools/check`, whose self-hosting check now runs through arm64, as releases
+   are built, beside the fixed point through C with the bootstrap's comparison. The test runner, `backends.py`, and
+   `unit_artifacts.py` name `--backend c` where they meant C; `tools/check --all` passed.
+4. **Documents** (`ac1e7715`): arm64.md §1, the README, roadmap, build-process, release-compiler, and testing.
+5. **The profile:** §21.5.
+
+### 21.5. Where the arm64-built compiler's time goes
+
+Each compiler (`.build/quest-stages-c/stage2/quest` and `.build/quest-stages/stage2/quest`, at `ac1e7715`)
+compiled the driver through arm64, so that no clang runs, at `-j 1` from an empty build directory, after three idle
+minutes: three timed rounds alternating, then two sampled by `tools/perf/pcprof.c` (every millisecond, with each
+process writing its own file). The arm64-built compiler takes **1.13** of the C-built one's user time (66.6, 68.8,
+66.7 s against 58.8, 58.7, 59.0; wall 71.8, 78.0, 71.3 against 64.0, 63.3, 64.4; maximum resident 4.22 GB against
+4.51), 1.18 of its samples (69,109 against 58,501). The difference is the compiled Quest code's: 37,625 samples
+against 26,658, while the C runtime and the collector take about the same (26,410 against 26,694). The arm64 binary
+has 1.23 times the C one's instructions (1.68 million against 1.36 million). The script, its copy of the sampler
+(writing a file for each process), the timings, and the samples by symbol are in
+`benchmarks/mlton/baselines/2026-11-12/` (`compiler-profile*`). Of the 10,600 more samples:
+
+- **No jump tables** (arm64.md §3.11): a switch is a comparison and a branch for each case, in order.
+  `nodes.opcodeIndex`, a 52-way case mapping an opcode to its position, takes 1,555 samples against C's 196, where clang
+  made it a bounds check and a load from a table of 52 words; `isKind` 494 against 141. About 1,700 samples, 16
+  percent of the difference, and more in every large case.
+- **Write barriers called out of line:** `quest_barrier_slot` 1,864 samples and `quest_barrier` 192, which the C
+  backend's code inlines from the runtime's header (so part of their cost is in C's callers too). Up to 2,000, 19
+  percent.
+- **Trampolines for calls across units:** another unit's function is called through its export, which moves the
+  arguments and branches to an adapter (`qa_adapt_N`), which sets `x0` and branches to the function, each pushing a
+  frame around its branch. vector.get is reached in three calls, where C's export is the function itself. The
+  2,508 functions that only branch on take 1,134 samples (1.6 percent of all), against 57 in C's 1,940, and their
+  callees' frames more. About 1,100, 11 percent.
+- **Code quality in general**, the rest, about half: the hot functions are 1.2 to 1.4 times as long as C's and take
+  about that much more time (hashmap `findIndex` 157 instructions, 2,284 samples, against 117 and 1,738; `insert`
+  677, 1,614 against 542, 1,044; sha256 `hexDigest` 1,215, 987 against 552, 642). In `findIndex`'s probe loop:
+  each of -1 and -2 made with a `mov` and three `movk` in every iteration where `movn` makes either in one (1,117
+  such sequences in the binary, none in C's), the record's proxy test repeated before each field it loads though
+  the record is the loop's, copies at the loop's join, and a spill reloaded each round.
+
+Each of the first three is a contained change to the arm64 backend: jump tables (or a table of values, for a case
+whose arms are constants) for dense switches, the barriers' fast paths inline, and exports and adapters that are
+the function, or branch without a frame. None is planned yet.
