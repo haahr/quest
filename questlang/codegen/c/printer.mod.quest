@@ -1775,7 +1775,7 @@ export
      * module's interface, and not how the module's unit lays the record out.
      * (A call of an imported module's function does not come here: callOp
      * calls the C function the module exports.) Raises unsupported for a
-     * member of an import whose interface is unknown *)
+     * member of an import whose interface is unknown or lacks it *)
     let moduleMember(p: P r: nodes.ModuleRef member: maybe.T(String)): String =
         case r
             when refModule with x then
@@ -1802,6 +1802,9 @@ export
                         if maybe.isNone(:Type fieldType) andif eq(fields[i].name fieldName) then
                             fieldType := maybe.some(:Type fields[i].type)
                         end
+                    end
+                    if maybe.isNone(:Type fieldType) then
+                        raise unsupported with "module " <> x.i.name <> ": its interface has no member " <> fieldName end
                     end
                     let cField = slotCType(shapeOf(maybe.unwrap(:Type fieldType)))
                     let dictType = staticdata.offsetDictStructName(p.ctx recType)

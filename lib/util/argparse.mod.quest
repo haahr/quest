@@ -79,6 +79,12 @@ export
             ok
         end
 
+    (* The index of the help option, which new registers first. Its flags
+     * mean help only while they name it: an option the program registers
+     * under -h or --help replaces it there, and one merely named "help" is
+     * an ordinary option *)
+    let helpIndex = 0
+
     let new(prog: String description: String): Parser =
         begin
             let p = tuple
@@ -95,7 +101,7 @@ export
                 let help = "Show this help message"
                 let kind = option flag of OptKind end
             end)
-            registerFlags(p "-h --help" 0)
+            registerFlags(p "-h --help" helpIndex)
             p
         end
 
@@ -374,7 +380,12 @@ export
 
                     if isFlag(opt.kind) then
                         (* Flag *)
-                        if stringOp.equal(opt.name "help") then
+                        if eqIdx isnot ~1 then
+                            writer.putString(writer.err {p.prog <> ": error: option '" <> flagPart
+                                <> "' takes no argument\n"})
+                            raise error end
+                        end
+                        if optIdx is helpIndex then
                             printHelp(p writer.output)
                             raise error end
                         end
@@ -412,7 +423,7 @@ export
 
                     if isFlag(opt.kind) then
                         (* Flag: could be bundled or single *)
-                        if stringOp.equal(opt.name "help") then
+                        if optIdx is helpIndex then
                             printHelp(p writer.output)
                             raise error end
                         end
@@ -439,7 +450,7 @@ export
                                     )
                                     raise error end
                                 end
-                                if stringOp.equal(bOpt.name "help") then
+                                if bOptIdx is helpIndex then
                                     printHelp(p writer.output)
                                     raise error end
                                 end

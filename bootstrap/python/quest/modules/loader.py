@@ -15,6 +15,7 @@ The self-hosted counterpart is questlang/modules/loader.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -62,6 +63,23 @@ def interface_artifact_root(name: str, env: Environment) -> Optional[Path]:
     build directory), the search root of its source. None when env elaborates
     interfaces from source."""
     return resolved_artifact_root(env, resolve_interface(name, env))
+
+
+def _searched_dirs(env: Environment) -> list[str]:
+    """The directories searched for a unit's source, in order, as a "cannot
+    find" error lists them: the importing unit's, the include paths (but the
+    build directory), $QUEST_LIB, lib/, and the project directory, as the
+    self-hosted paths.searchedDirs lists them."""
+    searched = [str(env.current_dir)] if env.current_dir else []
+    searched.extend(_listed_include_paths(env))
+    env_lib = os.environ.get("QUEST_LIB")
+    if env_lib:
+        searched.append(env_lib)
+    if DEFAULT_LIB_DIR.is_dir():
+        searched.append(str(DEFAULT_LIB_DIR))
+    if DEFAULT_PROJECT_DIR.is_dir():
+        searched.append(str(DEFAULT_PROJECT_DIR))
+    return searched
 
 
 def _listed_include_paths(env: Environment) -> list[str]:
@@ -163,12 +181,7 @@ def load_interface(name: str, env: Environment) -> Scope:
     # source
     file_path = fresh_interface_qi(resolved)
     if file_path is None:
-        searched = [str(env.current_dir)] if env.current_dir else []
-        searched.extend(_listed_include_paths(env))
-        if DEFAULT_LIB_DIR.is_dir():
-            searched.append(str(DEFAULT_LIB_DIR))
-        if DEFAULT_PROJECT_DIR.is_dir():
-            searched.append(str(DEFAULT_PROJECT_DIR))
+        searched = _searched_dirs(env)
         raise QuestTypeError(
             f"Undefined interface '{name}': cannot find interface file for '{name}' "
             f"(looked for '{norm_name}.qi' or '{norm_name}.int.quest' in {searched})"
@@ -313,12 +326,7 @@ def load_module(name: str, expected_interface: str, env: Environment) -> TypedMo
             unit.precompiled = True
             return _synthesize_precompiled_module()
 
-        searched = [str(env.current_dir)] if env.current_dir else []
-        searched.extend(_listed_include_paths(env))
-        if DEFAULT_LIB_DIR.is_dir():
-            searched.append(str(DEFAULT_LIB_DIR))
-        if DEFAULT_PROJECT_DIR.is_dir():
-            searched.append(str(DEFAULT_PROJECT_DIR))
+        searched = _searched_dirs(env)
         norm_name = name.lower()
         raise QuestTypeError(
             f"Undefined module '{name}': cannot find module file for '{name}' "

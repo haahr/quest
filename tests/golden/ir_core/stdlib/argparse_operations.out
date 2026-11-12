@@ -144,5 +144,24 @@ main {
       reraise e.3 @114:1
     }
   }
+  let %40: Exception = member argParse.error @128:6
+  try catching (%40) {
+    let bad5Args: Array(String) = array("--echo=yes", "main.quest") @125:20
+    let bad5: argParse.Results = call argParse.parse(p, bad5Args) @126:16
+    do call printStr("FAILED: should have raised on a flag's value") @127:5
+  } handle (e.4: Exception) {
+    let %41: Bool = prim is(e.4, %40) @124:1
+    if %41 { @124:1
+      do call printStr("CAUGHT: flag value error") @129:5
+    } else {
+      reraise e.4 @124:1
+    }
+  }
+  let q: argParse.Parser = call argParse.new("tool", "A tool") @133:9
+  do call argParse.addFlag(q, "help", "--usage", "Print usage notes") @134:1
+  let %42: Array(String) = array("--usage") @135:27
+  let r3: argParse.Results = call argParse.parse(q, %42) @135:10
+  let %43: Bool = call argParse.getBool(r3, "help") @136:11
+  do call printBool(%43) @136:1
 }
 

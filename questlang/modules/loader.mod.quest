@@ -374,7 +374,7 @@ export
      * importer knows as expectedInterface stands in for it. The module is
      * elaborated in a fresh scope above e's base scope, so that it sees only
      * the builtins and its own imports, and e's current scope is restored
-     * after, even on a CompilerError. The result is renamed to canon, the
+     * after, even if elaboration raises. The result is renamed to canon, the
      * name C symbols use for it, and registered in e under name and canon *)
     and loadModuleSource(
         name: String expectedInterface: String e: env.T file: String canon: String u: graph.Unit
@@ -431,10 +431,10 @@ export
                                     e.currentScope := symbols.newScope(maybe.some(:Scope e.baseScope) "temp_load_" <> decl.name)
                                     elaboration.elaborateModule(decl p.span.startOffset e)
                                 end))
-                    when diagnostics.compilerError with err then
+                    else with r then
                         begin
                             restoreScope()
-                            diagnostics.raiseError(:typedAst.Binding err)
+                            raised.reraise(:typedAst.Binding r)
                         end
                     end
                     restoreScope()
