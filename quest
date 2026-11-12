@@ -12,18 +12,25 @@
 # QUEST_VERBOSE=1 to see the builds' steps. The release builds stage 1, and
 # stage 1 builds stage 2, compiling QUEST_JOBS modules at once (-j; by default,
 # as many as there are CPUs); the bootstrap builds stage 1 one at a time.
-# QUEST_BACKEND (c, ssac, or arm64; c by default) is the backend stage 1
-# compiles stage 2 with, so that stage 2 is the compiler as that backend
+# QUEST_BACKEND (c, ssac, or arm64; DEFAULT_BACKEND by default) is the backend
+# stage 1 compiles stage 2 with, so that stage 2 is the compiler as that backend
 # compiles it (docs/arm64.md step 12); stage 1 is the seed's, compiled by C.
-# Each backend's stages are kept apart (c's in .build/quest-stages, another's in
-# .build/quest-stages-BACKEND), so that switching rebuilds neither.
+# Each backend's stages are kept apart (the default's in .build/quest-stages,
+# another's in .build/quest-stages-BACKEND), so that switching rebuilds
+# neither; the backend is part of the stages' identity (.build/.../seed), so
+# that stages another default built are rebuilt, not reused.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BACKEND="${QUEST_BACKEND:-c}"
+DEFAULT_BACKEND=c
+BACKEND="${QUEST_BACKEND:-$DEFAULT_BACKEND}"
 case "$BACKEND" in
-    c) BUILD="$SCRIPT_DIR/.build/quest-stages" ;;
-    ssac|arm64) BUILD="$SCRIPT_DIR/.build/quest-stages-$BACKEND" ;;
+    c|ssac|arm64) ;;
     *) echo "quest: QUEST_BACKEND must be c, ssac, or arm64, not $BACKEND" >&2; exit 1 ;;
 esac
+if [ "$BACKEND" = "$DEFAULT_BACKEND" ]; then
+    BUILD="$SCRIPT_DIR/.build/quest-stages"
+else
+    BUILD="$SCRIPT_DIR/.build/quest-stages-$BACKEND"
+fi
 STAGE1="$BUILD/stage1/quest"
 STAGE2="$BUILD/stage2/quest"
 DRIVER="questlang/driver/main.quest"
@@ -56,11 +63,11 @@ case "$SEED" in
             exit 1
         fi
         # Releases of one compiler can differ in their home/ alone
-        SEED_ID="release $(basename "$RELEASE") $ACTUAL"
+        SEED_ID="release $(basename "$RELEASE") $ACTUAL backend $BACKEND"
         SOURCES="questlang lib runtime"
         ;;
     bootstrap)
-        SEED_ID="bootstrap"
+        SEED_ID="bootstrap backend $BACKEND"
         SOURCES="questlang lib runtime bootstrap"
         ;;
     *)
@@ -69,8 +76,9 @@ case "$SEED" in
         ;;
 esac
 
-# Stages built by another seed are discarded: a release's home/ has its
-# commit's times, so its artifacts cannot be judged stale against another's
+# Stages built by another seed, or through another backend, are discarded: a
+# release's home/ has its commit's times, so its artifacts cannot be judged
+# stale against another's, and stage 2's sources do not change with the backend
 if [ "$(cat "$BUILD/seed" 2>/dev/null)" != "$SEED_ID" ]; then
     rm -rf "$BUILD"
 fi
@@ -88,7 +96,7 @@ if stale; then
     printf '%s\n' "$SEED_ID" > "$BUILD/seed"
     if [ "$SEED" = release ]; then
         echo "quest: building stage 1 (the release compiling $DRIVER)..." >&2
-        (cd "$SCRIPT_DIR" && QUEST_HOME="$RELEASE/home" "$RELEASE/quest" $VERBOSE -j "$JOBS" -I "$SCRIPT_DIR" \
+        (cd "$SCRIPT_DIR" && QUEST_HOME="$RELEASE/home" "$RELEASE/quest" $VERBOSE -j "$JOBS" --backend c -I "$SCRIPT_DIR" \
             --build-dir "$BUILD/stage1/build" -o "$STAGE1" "$DRIVER") || exit 1
     else
         echo "quest: building stage 1 (the bootstrap compiling $DRIVER)..." >&2

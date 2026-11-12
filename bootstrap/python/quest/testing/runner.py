@@ -100,7 +100,7 @@ BACKEND_MODES = {
     "arm64-modules": ["--backend", "arm64", "--unit-backend", "main=c"],
     # A whole program, its modules merged into the program's unit (ir/whole,
     # docs/arm64.md section 3.12), through each backend
-    "c-whole": ["--whole-program"],
+    "c-whole": ["--whole-program", "--backend", "c"],
     "ssac-whole": ["--whole-program", "--backend", "ssac"],
     "arm64-whole": ["--whole-program", "--backend", "arm64"],
     # The REPL's transcripts, their inputs compiled and run by the JIT, the
@@ -635,8 +635,9 @@ def run_driver_build(driver: Path, arguments: list[str], home: Path, backend: st
     # Modules compile in parallel (-j), as every release since c787e2d6 can.
     flags = ["-I", str(ROOT_DIR)] if home != ROOT_DIR else []
     flags += ["-j", str(os.cpu_count() or 1)]
-    if backend != "c":
-        flags += ["--backend", backend]
+    # Named even for c, which a release whose default is arm64 would not use
+    # otherwise
+    flags += ["--backend", backend]
     if whole_program:
         flags.append("--whole-program")
     # compile is a subcommand, ahead of the options
@@ -1216,6 +1217,10 @@ def run_all_tests(
             phases_to_run = [phase for phase in phases_to_run if phase in mode_phases]
             driver_args.extend(BACKEND_MODES[args.backend])
             pending |= self_hosted_pending(BACKEND_PENDING[args.backend])
+        else:
+            # The C backend's goldens and runs, named, since the driver's own
+            # default is arm64
+            driver_args.extend(["--backend", "c"])
     elif args.backend != "c":
         print("--backend needs --self-hosted", file=sys.stderr)
         return 2

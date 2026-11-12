@@ -8,6 +8,7 @@ current names the release that seeds builds, and previous the one before it.
     tools/release              cut a release from HEAD, after the self-hosting check, seeded from the current release
     tools/release --seed bootstrap
                                the same, seeded from the bootstrap (the first release, or past a gap)
+    tools/release --backend c  the same, releasing stage 2 as the C backend compiles it (arm64's by default)
     tools/release --whole-program
                                the same, releasing stage 2's whole-program build, after its fixed point and the
                                self-hosted suite with it
@@ -152,7 +153,7 @@ def verify(release: Path) -> str:
     return smoke_test(release)
 
 
-def cut(python: str, check_dir: Path, seed: str, whole_program: bool) -> None:
+def cut(python: str, check_dir: Path, seed: str, backend: str, whole_program: bool) -> None:
     commit = check_tree()
     abi, producer = abi_constants()
     current = target(CURRENT)
@@ -168,7 +169,10 @@ def cut(python: str, check_dir: Path, seed: str, whole_program: bool) -> None:
         seeded_by = "release " + json.loads((current / "release.json").read_text(encoding="utf-8"))["commit"]
     else:
         seeded_by = "bootstrap"
-    command = ["run_tests.py", "--self-hosting", "--seed", seed, "--build-dir", str(check_dir)]
+    # Stages 2 and 3 are built through backend, so that the release is the
+    # compiler as backend compiles it, and the suite runs with it
+    command = ["run_tests.py", "--self-hosting", "--seed", seed, "--stage-backend", backend, "--build-dir",
+               str(check_dir)]
     stages = check_dir / "self-hosting"
     if whole_program:
         # The fixed points first, the whole-program one among them, and then
@@ -207,14 +211,17 @@ def cut(python: str, check_dir: Path, seed: str, whole_program: bool) -> None:
         # Stage 1 was built by the seed: the release before this one, or the
         # bootstrap
         "seed": seeded_by,
-        "checked": f"run_tests.py --self-hosting --seed {seed} (the fixed point, and the self-hosted suite with "
-                   "stage 2)",
+        # The backend that compiled the released compiler
+        "backend": backend,
+        "checked": f"run_tests.py --self-hosting --seed {seed} --stage-backend {backend} (the fixed point, and the "
+                   "self-hosted suite with stage 2)",
     }
     if whole_program:
         # Stage 2's build of the driver as a whole program (--whole-program)
         description["build"] = "whole program"
-        description["checked"] = (f"run_tests.py --self-hosting --seed {seed} --whole-program-fixed-point (the fixed "
-                                  "points), and the self-hosted suite with the whole-program build")
+        description["checked"] = (f"run_tests.py --self-hosting --seed {seed} --stage-backend {backend} "
+                                  "--whole-program-fixed-point (the fixed points), and the self-hosted suite with the "
+                                  "whole-program build")
     (new / "release.json").write_text(json.dumps(description, indent=2) + "\n", encoding="utf-8")
     problem = verify(new)
     if problem:
@@ -308,7 +315,8 @@ def show() -> None:
             # theirs was the bootstrap
             seed = d.get("seed", "bootstrap")
             seed = f"release {seed.split()[1][:8]}" if seed.startswith("release ") else seed
-            build = f", {d['build']}" if "build" in d else ""
+            # Releases cut before --backend recorded none: C compiled them
+            build = f", {d.get('backend', 'c')}" + (f", {d['build']}" if "build" in d else "")
             print(f"{release.name}: {d['commit'][:8]} abi {d['abi']} {d['producer']}{build}, cut {d['date']}, "
                   f"seeded by {seed}")
         else:
@@ -328,6 +336,8 @@ def main() -> None:
                         help="what builds the check's stage 1: the current release (default), or the bootstrap")
     parser.add_argument("--check-dir", type=Path, default=DEFAULT_CHECK_DIR,
                         help="where the self-hosting check builds its stages (default .build/release-check)")
+    parser.add_argument("--backend", choices=("c", "ssac", "arm64"), default="arm64",
+                        help="the backend that compiles the released compiler (stages 2 and 3; default arm64)")
     parser.add_argument("--whole-program", action="store_true",
                         help="release stage 2's whole-program build of the driver rather than stage 2")
     args = parser.parse_args()
@@ -343,7 +353,7 @@ def main() -> None:
     elif args.install is not None:
         install(args.install.expanduser().resolve())
     else:
-        cut(sys.executable, args.check_dir.resolve(), args.seed, args.whole_program)
+        cut(sys.executable, args.check_dir.resolve(), args.seed, args.backend, args.whole_program)
 
 
 if __name__ == "__main__":
