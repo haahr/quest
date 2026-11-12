@@ -78,7 +78,9 @@ export
 
     (* A logical immediate's N:immr:imms (at bits 22, 16, and 10), for an n
      * that minst.isLogical accepts: the element, the run of ones in it, and
-     * the rotation right that makes the element of the run at its bottom *)
+     * immr, the rotation right that makes the element from the run at its
+     * bottom, which undoes the rotation right (r below) that brings the
+     * element's run to its bottom *)
     let bitmask(n: Int): Int =
         begin
             let w = words.fromInt(n)
@@ -91,11 +93,12 @@ export
             let rotateRight(v: words.T r: Int): words.T =
                 if r is 0 then v
                 else words.extract(words.orBits(words.shift(v 0 - r) words.shift(v e - r)) 0 e) end
-            let var immr = ~1
-            for r = 0 upto {e - 1} do
-                if {immr < 0} andif same(rotateRight(x r) run) then immr := r end
+            let var r = ~1
+            for k = 0 upto {e - 1} do
+                if {r < 0} andif same(rotateRight(x k) run) then r := k end
             end
-            if immr < 0 then raise unencodable with "logical immediate " <> conv.int(n) end end
+            if r < 0 then raise unencodable with "logical immediate " <> conv.int(n) end end
+            let immr = if r is 0 then 0 else e - r end
             (* For an element of e bits, imms is ones less 1 below the bits
              * that give e: 0 for 64 (with N 1), 0 for 32, 10 for 16, 110 for
              * 8, 1110 for 4, and 11110 for 2 *)

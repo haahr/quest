@@ -1,0 +1,117 @@
+import word = "word" : Word
+import conv = "conv" : Conv
+import writer = "writer" : Writer
+main {
+  funs {
+    fun show(n: Int): Ok {
+      let %1: writer.T = member writer.output @12:41
+      let %2: String = call conv.int(n) @12:55
+      let %3: String = prim <>(%2, "\n") @12:55
+      let %4: Ok = call writer.putString(%1, %3) @12:24
+      return %4
+    }
+  }
+  funs {
+    fun andHigh(x: Int): Int {
+      let %5: word.T = call word.fromInt(x) @14:52
+      let %6: word.T = call word.fromInt(65280) @14:68
+      let %7: word.T = call word.andBits(%5, %6) @14:39
+      let %8: Int = call word.toInt(%7) @14:28
+      return %8
+    }
+  }
+  funs {
+    fun andWrapped(x.1: Int): Int {
+      let %9: word.T = call word.fromInt(x.1) @15:55
+      let %10: word.T = call word.fromInt(-9223372036854775807) @15:71
+      let %11: word.T = call word.andBits(%9, %10) @15:42
+      let %12: Int = call word.toInt(%11) @15:31
+      return %12
+    }
+  }
+  funs {
+    fun andTop(x.2: Int): Int {
+      let %13: word.T = call word.fromInt(x.2) @16:51
+      let %14: word.T = call word.fromInt(-16) @16:67
+      let %15: word.T = call word.andBits(%13, %14) @16:38
+      let %16: Int = call word.toInt(%15) @16:27
+      return %16
+    }
+  }
+  funs {
+    fun orMiddle(x.3: Int): Int {
+      let %17: word.T = call word.fromInt(x.3) @17:52
+      let %18: word.T = call word.fromInt(4080) @17:68
+      let %19: word.T = call word.orBits(%17, %18) @17:40
+      let %20: Int = call word.toInt(%19) @17:29
+      return %20
+    }
+  }
+  funs {
+    fun xorRepeated(x.4: Int): Int {
+      let %21: word.T = call word.fromInt(x.4) @18:56
+      let %22: word.T = call word.fromInt(71777214294589695) @18:72
+      let %23: word.T = call word.xorBits(%21, %22) @18:43
+      let %24: Int = call word.toInt(%23) @18:32
+      return %24
+    }
+  }
+  funs {
+    fun wrapped(x.5: Int): Int {
+      join k1(r: Int) {
+        return r
+      } in {
+        let %25: Bool = prim >(x.5, 0) @19:31
+        if %25 { @19:28
+          jump k1(-9223372036854775807) @19:28
+        } else {
+          jump k1(-3) @19:28
+        }
+      }
+    }
+  }
+  funs {
+    fun repeated(x.6: Int): Int {
+      join k2(r.1: Int) {
+        return r.1
+      } in {
+        let %26: Bool = prim >(x.6, 0) @20:32
+        if %26 { @20:29
+          jump k2(-71777214294589696) @20:29
+        } else {
+          jump k2(4080) @20:29
+        }
+      }
+    }
+  }
+  let inputs: Array(Int) = array(0, 1, -1, 255, 65535, 1311768467463790320, -1311768467463790320) @22:14
+  let %27: Int = prim extent(inputs) @23:17
+  let %28: Int = prim -(%27, 1) @23:17
+  var i: Int = 0 @23:1
+  loop L1 {
+    let %29: Bool = prim <=(i, %28) @23:1
+    if %29 { @23:1
+      let i.1: Int = i @23:1
+      let x.7: Int = index(inputs, i.1) @24:13
+      let %30: Int = call andHigh(x.7) @25:10
+      do call show(%30) @25:5
+      let %31: Int = call andWrapped(x.7) @26:10
+      do call show(%31) @26:5
+      let %32: Int = call andTop(x.7) @27:10
+      do call show(%32) @27:5
+      let %33: Int = call orMiddle(x.7) @28:10
+      do call show(%33) @28:5
+      let %34: Int = call xorRepeated(x.7) @29:10
+      do call show(%34) @29:5
+      let %35: Int = call wrapped(x.7) @30:10
+      do call show(%35) @30:5
+      let %36: Int = call repeated(x.7) @31:10
+      do call show(%36) @31:5
+      let %37: Int = prim +(i, 1) @23:1
+      i := %37 @23:1
+    } else {
+      break L1 @23:1
+    }
+  }
+}
+
