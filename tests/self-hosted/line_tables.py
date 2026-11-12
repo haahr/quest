@@ -34,12 +34,22 @@ let rec fib(n: Int): Int =
     end
 
 writer.putString(writer.output conv.int(fib(20)) <> "\\n")
+
+let rec count(n: Int acc: Int): Int =
+    if n is 0 then acc else count(n - 1 acc + 1) end
+
+writer.putString(writer.output conv.int(count(5 0) + count(7 1)) <> "\\n")
 """
 
-# Each build's options, and what lldb must print: the breakpoint stopped at its
-# line, in fib, which main called from the program's last line
+# Each build's options, and for each breakpoint's line what lldb must print:
+# the breakpoint stopped there, in fib, which main called from line 11; and in
+# count, a loop that calls nothing and so has no frame (docs/arm64.md section
+# 3.10), which lldb unwinds by its return address in lr to main at line 16
 BUILDS = ([], ["--whole-program"])
-EXPECTED = ("stop reason = breakpoint 1.1", "frame #0: ", "`qf_fib at fib.quest:8:", "`main at fib.quest:11:")
+EXPECTED = {
+    8: ("stop reason = breakpoint 1.1", "frame #0: ", "`qf_fib at fib.quest:8:", "`main at fib.quest:11:"),
+    14: ("stop reason = breakpoint 1.1", "frame #0: ", "`qf_count at fib.quest:14:", "`main at fib.quest:16:"),
+}
 
 
 def check(driver: str, options: list[str]) -> list[str]:
@@ -53,13 +63,16 @@ def check(driver: str, options: list[str]) -> list[str]:
                                capture_output=True, text=True, cwd=directory, env=environment)
         if build.returncode != 0:
             return [f"{' '.join(options) or 'separate'}: the build failed:\n{build.stderr}"]
-        session = subprocess.run(["lldb", "--batch", "-o", "breakpoint set --file fib.quest --line 8", "-o", "run",
-                                  "-o", "bt", "./fib"], capture_output=True, text=True, cwd=directory, timeout=120)
-        missing = [text for text in EXPECTED if text not in session.stdout]
-        if missing:
-            return [f"{' '.join(options) or 'separate'}: lldb did not print {missing!r}:\n{session.stdout}"
-                    f"{session.stderr}"]
-        return []
+        problems = []
+        for line, expected in EXPECTED.items():
+            session = subprocess.run(["lldb", "--batch", "-o", f"breakpoint set --file fib.quest --line {line}", "-o",
+                                      "run", "-o", "bt", "./fib"], capture_output=True, text=True, cwd=directory,
+                                     timeout=120)
+            missing = [text for text in expected if text not in session.stdout]
+            if missing:
+                problems.append(f"{' '.join(options) or 'separate'}, line {line}: lldb did not print {missing!r}:\n"
+                                f"{session.stdout}{session.stderr}")
+        return problems
 
 
 # The REPL's inputs: fib, then a call of it, at whose line in the first input

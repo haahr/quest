@@ -63,12 +63,18 @@ class TestArm64(unittest.TestCase):
 
     def test_conventions(self) -> None:
         text = GOLDEN.read_text()
-        # Every function has a frame record, and unwind information; a function
-        # that saves pairs stores the lowest first, moving sp once, each pair's
-        # odd register above its even one, as compact unwind entries place them
-        # (arm64.md section 3.10)
-        self.assertEqual(text.count("stp x29, x30, [sp, #"), text.count(".cfi_startproc"))
-        self.assertEqual(len(re.findall(r"\]!\n", text)), text.count(".cfi_startproc"))
+        # Every function has unwind information, and a frame record unless it
+        # needs none: a frameless one calls nothing and leaves x29, x30, and sp
+        # alone. A function that saves pairs stores the lowest first, moving sp
+        # once, each pair's odd register above its even one, as compact unwind
+        # entries place them (arm64.md section 3.10)
+        functions = re.findall(r"\.cfi_startproc\n(.*?)\.cfi_endproc", text, re.S)
+        framed = [f for f in functions if "stp x29, x30, [sp, #" in f]
+        frameless = [f for f in functions if f not in framed]
+        self.assertTrue(framed and frameless)
+        for f in frameless:
+            self.assertIsNone(re.search(r"\b(x29|x30|sp)\b|\tbl |\tblr ", f), f)
+        self.assertEqual(len(re.findall(r"\]!\n", text)), len(framed))
         self.assertIn("stp d15, d14, [sp, #-160]!\n\tstp d13, d12, [sp, #16]", text)
         self.assertEqual(text.count(".cfi_startproc"), text.count(".cfi_endproc"))
         # A thread-local through its descriptor, an undefined symbol through the GOT

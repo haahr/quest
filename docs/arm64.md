@@ -386,8 +386,13 @@ The inventory (§7.2) lists every helper, and the arm64 tests (§4) cover each e
 
 ### 3.10. Frames, symbols, and unwind information
 
-Every function has a frame record (`stp x29, x30`) and sets `x29`, which Darwin requires and the traceback walk
-uses. The prologue and epilogue save the callee-saved registers the function uses, with `.cfi` directives from which
+Every function that calls has a frame record (`stp x29, x30`) and sets `x29`, which Darwin requires and the
+traceback walk uses. A function that needs none has none: one that saves no callee-saved register, has no frame,
+calls nothing (a tail call is a branch), and has no instruction using `x29`, `x30`, or `sp` (as an argument passed on
+the stack would) keeps them as its caller left them, its unwind information a frameless function's, so that a
+backtrace from it reads its return address in `x30` (`tests/self-hosted/line_tables.py` stops in one). Leaves, loops
+that call nothing, and the trampolines (an export's or an adapter's branch on to its function) are such
+functions; none is on the stack when a collection walks it, since none calls. The prologue and epilogue save the callee-saved registers the function uses, with `.cfi` directives from which
 the assembler and linker make compact unwind entries. The prologue stores the lowest of the pairs it saves
 first, moving `sp` once (`stp x28, x27, [sp, #-96]!`), then the others and the frame record above it, as clang does.
 Each pair's odd register is above its even one, and the `.cfi_offset` directives name `x19` before `x20` and each pair

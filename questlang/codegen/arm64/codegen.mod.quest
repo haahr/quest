@@ -588,6 +588,35 @@ export
             vector.toArray(:Int order)
         end
 
+    (* Whether a function needs no frame record: it saves no registers, has
+     * no frame, calls nothing (a tail call is a branch), and has no
+     * instruction that uses fp, lr, or sp, as an argument passed on the
+     * stack would. Such a function keeps fp and lr as its caller left them,
+     * and its unwind information is a frameless function's: no collection
+     * can find it on the stack, since it makes no call *)
+    let frameless(c: Compiled): Bool =
+        if {extent c.saved > 0} orif {c.size > 0} then false
+        else
+            let m = c.selection.f
+            let var none = true
+            for b = 0 upto {vector.length(:machine.Block m.blocks) - 1} do
+                let insts = machine.block(m b).insts
+                for j = 0 upto {vector.length(:machine.Inst insts) - 1} do
+                    let i = vector.get(:machine.Inst insts j)
+                    if machine.isKind(i machine.kindCall) then none := false end
+                    case vector.get(:minst.Op c.selection.ops i.op)
+                        when opBl, opBlr then none := false
+                        else ok
+                    end
+                    for r = 0 upto {extent i.operands - 1} do
+                        let reg = i.operands[r].reg
+                        if {reg is fp} orif {reg is lr} orif {reg is sp} then none := false end
+                    end
+                end
+            end
+            none
+        end
+
     (* The label just past the code of the unit's function numbered index *)
     let endLabel(index: Int): String = "Lf" <> conv.int(index) <> "_end"
 
@@ -628,7 +657,8 @@ export
             let printed = vector.new(:Int)
             let order = chains(s final)
             for k = 0 upto {extent order - 1} do vector.append(:Int printed order[k]) end
-            prologue(e)
+            let bare = frameless(c)
+            if not(bare) then prologue(e) end
             let var liveLabels = 0
             let marker = s.prefix <> "_m"
             let mapped = vector.new(:CallMap)
@@ -670,7 +700,8 @@ export
                             emit(e minst.loc(l.file l.line l.col))
                             last := l
                         end
-                        if machine.isKind(i machine.kindReturn) andif not(isBrk(op)) andif not(isTableEnd(op)) then
+                        if machine.isKind(i machine.kindReturn) andif not(isBrk(op)) andif not(isTableEnd(op))
+                            andif not(bare) then
                             restore(e)
                         end
                         if invert then
