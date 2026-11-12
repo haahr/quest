@@ -84,7 +84,10 @@ export
             when opSubImm with x then "sub " <> operands(array of n.full(rs[0]) n.full(rs[1]) immediate(x.imm) end)
             when opShiftImm with x then
                 mnemonic(x.arith) <> " " <> operands(array of n.full(rs[0]) n.full(rs[1]) immediate(x.imm) end)
-            when opCmpImm with x then "cmp " <> n.full(rs[0]) <> ", " <> immediate(x.imm)
+            (* cmn for a negative one, as the encoder encodes it *)
+            when opCmpImm with x then
+                if x.imm < 0 then "cmn " <> n.full(rs[0]) <> ", " <> immediate(0 - x.imm)
+                else "cmp " <> n.full(rs[0]) <> ", " <> immediate(x.imm) end
             when opCcmp with x then
                 "ccmp " <> operands(array of n.full(rs[0]) n.full(rs[1]) immediate(x.nzcv) condition(x.cond) end)
             when opCcmpImm with x then
@@ -149,19 +152,36 @@ export
             let code = vector.new(:minst.Inst)
             let d = if extent rs > 0 then rs[0] else ~1 end
             case op
-                (* Each nonzero halfword, the first by movz, which zeroes the
-                 * rest, and the others by movk *)
+                (* One mov when one makes it (movz, movn, or orr); else from
+                 * whichever of 0 and ~0 leaves fewer halfwords to fill, the
+                 * first by a mov, which sets the rest, and the others by
+                 * movk *)
                 when opMovConst with x then
-                    if x.imm is 0 then vector.append(:minst.Inst code minst.movImm(d 0))
+                    if minst.isMovImm(x.imm) then vector.append(:minst.Inst code minst.movImm(d x.imm))
                     else
                         let w = word.fromInt(x.imm)
+                        let half(k: Int): Int = word.toInt(word.extract(w 16 * k 16))
+                        let var zeros = 0
+                        let var ones = 0
+                        for k = 0 upto 3 do
+                            if half(k) is 0 then zeros := zeros + 1 end
+                            if half(k) is 65535 then ones := ones + 1 end
+                        end
+                        let fill = if ones > zeros then 65535 else 0 end
                         let var first = true
                         for k = 0 upto 3 do
-                            let h = word.toInt(word.extract(w 16 * k 16))
-                            if h isnot 0 then
-                                vector.append(:minst.Inst code
-                                    if first then minst.movz(d h 16 * k) else minst.movk(d h 16 * k) end)
-                                first := false
+                            if half(k) isnot fill then
+                                if first then
+                                    (* The fill with the constant's
+                                     * halfword k in it, which a movz or a
+                                     * movn makes *)
+                                    let base = if fill is 0 then word.toInt(word.shift(word.fromInt(half(k)) 16 * k))
+                                        else word.toInt(word.xorBits(word.fromInt(~1)
+                                            word.shift(word.fromInt(65535 - half(k)) 16 * k)))
+                                        end
+                                    vector.append(:minst.Inst code minst.movImm(d base))
+                                    first := false
+                                else vector.append(:minst.Inst code minst.movk(d half(k) 16 * k)) end
                             end
                         end
                     end

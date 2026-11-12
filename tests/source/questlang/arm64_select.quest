@@ -17,7 +17,8 @@
  * constants are logical immediates, and the flags that falsify a condition;
  * a load and a store of a symbol the unit defines at its page offset, an
  * array's element and a byte at an index register, and a narrow result of a
- * call extended unless the unit's callee extends it. *)
+ * call extended unless the unit's callee extends it; and comparisons with a
+ * negative constant (cmn) or a shifted one. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
 import
@@ -250,3 +251,15 @@ let sum = ssa.binary(folds 0 ssa.opAdd ssa.binary(folds 0 ssa.opAdd outside twic
     ssa.binary(folds 0 ssa.opAdd twice2 ssa.binary(folds 0 ssa.opAdd mine theirs)));
 ret(folds 0 array of sum end);
 show("addresses and narrow results" folds);
+
+(* 13. Comparisons with a negative constant, as cmn of its negation, and with
+ * an immediate shifted by 12, as cmp; one too large keeps its constant *)
+let cmns = ssa.newFunction("qf_cmns" false array of tInt end array of tInt end);
+let cp = params(cmns);
+let lt1 = ssa.binary(cmns 0 ssa.opLt cp[0] ssa.constant(cmns 0 ~1));
+let eq5 = ssa.binary(cmns 0 ssa.opEq cp[0] ssa.constant(cmns 0 ~5));
+let ge = ssa.binary(cmns 0 ssa.opGe cp[0] ssa.constant(cmns 0 8192));
+let big = ssa.binary(cmns 0 ssa.opUlt cp[0] ssa.constant(cmns 0 ~5000));
+ret(cmns 0 array of ssa.binary(cmns 0 ssa.opAdd ssa.binary(cmns 0 ssa.opAdd lt1 eq5) ssa.binary(cmns 0 ssa.opAdd ge big))
+    end);
+show("negative and shifted comparisons" cmns);

@@ -9,7 +9,7 @@ b1(%0 %1):
 	sub %7, %5, #10
 	add %9, %7, #3, lsl #12
 	lsl %11, %9, #3
-	movz %12, #16960, lsl #0; movk %12, #15, lsl #16
+	mov %12, #16960; movk %12, #15, lsl #16
 	add %13, %11, %12
 	cmp %13, #100
 	cset %15, lt
@@ -67,7 +67,7 @@ b0:
 b1(%0):
 	ldr %3, [%0, #24]
 	str %3, [%0, #20]
-	movz %4, #40000, lsl #0
+	mov %4, #40000
 	add %5, %0, %4
 	str %3, [%5, #8]
 	mov x0, %5 [move]
@@ -132,20 +132,20 @@ b1(%0):
 	cbz %0, Lt_b6 [branch] -> b6
 	cmp %0, #1
 	b.eq Lt_b7 [branch] -> b7
-	movz %5, #5000, lsl #0
+	mov %5, #5000
 	cmp %0, %5
 	b.eq Lt_b8 [branch] -> b8
 	b Lt_b5 [jump] -> b5
 b2:
-	movz %1, #1, lsl #0
+	mov %1, #1
 	mov x0, %1 [move]
 	ret { x0 } [return]
 b3:
-	movz %2, #2, lsl #0
+	mov %2, #2
 	mov x0, %2 [move]
 	ret { x0 } [return]
 b4:
-	movz %3, #3, lsl #0
+	mov %3, #3
 	mov x0, %3 [move]
 	ret { x0 } [return]
 b5:
@@ -187,7 +187,7 @@ b1(%0):
 	and %2, %0, #0xff00
 	orr %4, %2, #0x5555555555555555
 	eor %6, %4, #0xfffffffffffffff0
-	movz %7, #4660, lsl #0
+	mov %7, #4660
 	and %8, %6, %7
 	mov x0, %8 [move]
 	ret { x0 } [return]
@@ -200,14 +200,14 @@ b1(%0 %1):
 	tbnz %0, #0, Lt_b5 [branch] -> b5
 	b Lt_b3 [jump] -> b3
 b2:
-	movz %5, #1, lsl #0
+	mov %5, #1
 	mov x0, %5 [move]
 	ret { x0 } [return]
 b3:
 	tbz %1, #40, Lt_b6 [branch] -> b6
 	b Lt_b2 [jump] -> b2
 b4:
-	movz %10, #3, lsl #0
+	mov %10, #3
 	mov x0, %10 [move]
 	ret { x0 } [return]
 b5:
@@ -259,7 +259,7 @@ b1(%0 %1):
 	ldr %10, [%0, %1, lsl #3]
 	str %10, [%0, %1, lsl #3]
 	ldrb %15, [%0, %1]
-	movz %16, #8, lsl #0
+	mov %16, #8
 	mul %17, %3, %16
 	add %18, %0, %17
 	ldr %19, [%18, #0]
@@ -277,4 +277,23 @@ b1(%0 %1):
 	add %27, %20, %26
 	add %28, %25, %27
 	mov x0, %28 [move]
+	ret { x0 } [return]
+== negative and shifted comparisons
+b0:
+	mov %12, x0 [move]
+	b Lt_b1 { %12 } [jump] -> b1
+b1(%0):
+	cmn %0, #1
+	cset %2, lt
+	cmn %0, #5
+	cset %4, eq
+	cmp %0, #8192
+	cset %6, ge
+	mov %7, #-5000
+	cmp %0, %7
+	cset %8, lo
+	add %9, %2, %4
+	add %10, %6, %8
+	add %11, %9, %10
+	mov x0, %11 [move]
 	ret { x0 } [return]

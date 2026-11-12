@@ -8,8 +8,9 @@
  * comparisons; loads and stores of every width at near and far offsets; a
  * switch and a loop; a try, entered with _setjmp; a loop whose parallel copy
  * has cycles of either class; checks whose raising blocks are laid out
- * last; a thread-local's address and a symbol the unit does not define; and
- * data of zeros, text, and words.
+ * last; a thread-local's address and a symbol the unit does not define;
+ * constants, each in the fewest instructions; and data of zeros, text, and
+ * words.
  * tests/python/test_arm64.py assembles the golden. *)
 (* @skip-phase: tokenize, parse, typecheck, ir_core *)
 
@@ -191,7 +192,19 @@ ssa.tailCall(mainF 0 "qf_memory" array of pair[0] tried end ssa.signature(array 
     array of tInt end);
 add(mainF);
 
-(* 9. Data *)
+(* 9. Constants, each made in as few instructions as it takes: one mov for
+ * -1, -2, a halfword shifted, the complement of one, and a logical
+ * immediate; movn and a movk for one that is mostly ones; movz and movks for
+ * one that is mostly zeros, or neither *)
+let consts = ssa.newFunction("qf_constants" false array of tPtr end array of :ssa.Type end);
+let at = params(consts)[0];
+let values = array of ~1 ~2 3735879680 ~3735879681 71777214294589695 ~71777214294589696 ~261458978340865
+    20015998304256 1311768467463790320 0 end;
+for k = 0 upto {extent values - 1} do ssa.store(consts 0 at 8 * k 8 ssa.constant(consts 0 values[k])) end;
+ret(consts 0 none);
+add(consts);
+
+(* 10. Data *)
 let word(n: Int): ssa.Word = option wordInt of ssa.Word with let n = n end;
 let address(s: String n: Int): ssa.Word = option wordSymbol of ssa.Word with let symbol = s let addend = n end;
 vector.append(:ssa.Data unit.data tuple

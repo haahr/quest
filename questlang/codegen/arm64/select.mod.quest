@@ -396,7 +396,8 @@ export
             emit(s minst.fcmp(r(s i.args[0]) r(s i.args[if extent i.args > 1 then 1 else 0 end])))
         else
             let c = constOf(s i.args[1])
-            if maybe.isSome(:Int c) andif {maybe.unwrap(:Int c) >= 0} andif {maybe.unwrap(:Int c) < 4096} then
+            (* cmp of an add's immediate, or cmn of its negation *)
+            if maybe.isSome(:Int c) andif {addable(maybe.unwrap(:Int c)) orif addable(0 - maybe.unwrap(:Int c))} then
                 emit(s minst.cmpImm(r(s i.args[0]) maybe.unwrap(:Int c)))
             else emit(s minst.cmp(r(s i.args[0]) r(s i.args[1]))) end
         end

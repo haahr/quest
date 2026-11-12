@@ -86,7 +86,7 @@ class TestArm64(unittest.TestCase):
         # next by chain layout)
         self.assertTrue(re.search(resume.group(1) + r":\n(\tb Lf4_b\d+|Lf4_b\d+:)\n", text), text)
         # A frame of more than a page is probed (docs/arm64.md section 3.10)
-        probe = re.search(r"\tmovz x9, #(\d+), lsl #0\n\tbl ___chkstk_darwin\n\tmovz x9, #\1, lsl #0\n\tsub sp, sp, x9",
+        probe = re.search(r"\tmov x9, #(\d+)\n\tbl ___chkstk_darwin\n\tmov x9, #\1\n\tsub sp, sp, x9",
                           text)
         self.assertTrue(probe and int(probe.group(1)) > 4096, text)
         # (fp stored alone, or with sp below it as a pair)

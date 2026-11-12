@@ -50,8 +50,9 @@ export
         opMovImm with imm: Int end
         opMovz with imm: Int shift: Int end
         opMovk with imm: Int shift: Int end
-        (* d := any Int, by the fewest of movz and movk (or a mov of 0),
-         * which the printer writes *)
+        (* d := any Int, in the fewest instructions, which the printer
+         * writes: one mov when one makes it, else a mov from 0 or from ~0,
+         * whichever leaves fewer halfwords, and a movk for each other *)
         opMovConst with imm: Int end
         (* d := a symbol's address plus offset: local is whether the unit
          * defines it, else its address is in the GOT (x17 holds a large
@@ -153,6 +154,12 @@ export
     (* Whether n is a logical immediate: a rotation of a run of ones (not all
      * of them), in each element of 2, 4, 8, 16, 32, or 64 bits, repeated *)
     isLogical(n: Int): Bool
+    (* The halfword shift (0 to 3) at which n is its one nonzero halfword (0
+     * for 0), or ~1 *)
+    soleHalfword(n: Int): Int
+    (* Whether one mov makes n: movz of its one nonzero halfword, movn of its
+     * complement's, or orr of a logical immediate *)
+    isMovImm(n: Int): Bool
     (* How many of an Op's registers, its first, it writes *)
     results(op: Op): Int
     (* Whether an Op only computes its results: no memory, flags, or
